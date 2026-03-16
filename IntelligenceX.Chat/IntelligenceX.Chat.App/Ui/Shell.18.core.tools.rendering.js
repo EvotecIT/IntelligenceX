@@ -286,6 +286,9 @@
     if (Object.prototype.hasOwnProperty.call(nextOptions, "runtimeScheduler")) {
       state.options.runtimeScheduler = nextOptions.runtimeScheduler;
     }
+    if (Object.prototype.hasOwnProperty.call(nextOptions, "runtimeSchedulerScoped")) {
+      state.options.runtimeSchedulerScoped = nextOptions.runtimeSchedulerScoped;
+    }
     if (Object.prototype.hasOwnProperty.call(nextOptions, "runtimeSchedulerGlobal")) {
       state.options.runtimeSchedulerGlobal = nextOptions.runtimeSchedulerGlobal;
     }

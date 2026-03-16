@@ -101,6 +101,7 @@
         facts: []
       },
       runtimeScheduler: null,
+      runtimeSchedulerScoped: null,
       runtimeSchedulerGlobal: null,
       memoryDebug: null,
       startupDiagnostics: null,

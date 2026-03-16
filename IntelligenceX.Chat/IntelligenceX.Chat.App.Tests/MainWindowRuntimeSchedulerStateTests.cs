@@ -48,6 +48,11 @@ public sealed class MainWindowRuntimeSchedulerStateTests {
         BindingFlags.NonPublic | BindingFlags.Instance)
         ?? throw new InvalidOperationException("_backgroundSchedulerStatusSnapshot not found.");
 
+    private static readonly FieldInfo BackgroundSchedulerScopedStatusSnapshotField = typeof(MainWindow).GetField(
+        "_backgroundSchedulerScopedStatusSnapshot",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_backgroundSchedulerScopedStatusSnapshot not found.");
+
     private static readonly FieldInfo BackgroundSchedulerGlobalStatusSnapshotField = typeof(MainWindow).GetField(
         "_backgroundSchedulerGlobalStatusSnapshot",
         BindingFlags.NonPublic | BindingFlags.Instance)
@@ -300,13 +305,16 @@ public sealed class MainWindowRuntimeSchedulerStateTests {
         };
 
         BackgroundSchedulerGlobalStatusSnapshotField.SetValue(window, globalSnapshot);
-        BackgroundSchedulerStatusSnapshotField.SetValue(window, scopedSnapshot);
+        BackgroundSchedulerStatusSnapshotField.SetValue(window, globalSnapshot);
+        BackgroundSchedulerScopedStatusSnapshotField.SetValue(window, scopedSnapshot);
 
         RestoreBackgroundSchedulerSnapshotAfterRefreshFailureMethod.Invoke(window, new object?[] { true });
 
-        var restored = Assert.IsType<SessionCapabilityBackgroundSchedulerDto>(BackgroundSchedulerStatusSnapshotField.GetValue(window));
+        var effective = Assert.IsType<SessionCapabilityBackgroundSchedulerDto>(BackgroundSchedulerStatusSnapshotField.GetValue(window));
+        var restoredScoped = Assert.IsType<SessionCapabilityBackgroundSchedulerDto>(BackgroundSchedulerScopedStatusSnapshotField.GetValue(window));
         var preservedGlobal = Assert.IsType<SessionCapabilityBackgroundSchedulerDto>(BackgroundSchedulerGlobalStatusSnapshotField.GetValue(window));
-        Assert.Same(scopedSnapshot, restored);
+        Assert.Same(globalSnapshot, effective);
+        Assert.Same(scopedSnapshot, restoredScoped);
         Assert.Same(globalSnapshot, preservedGlobal);
     }
 
@@ -327,14 +335,45 @@ public sealed class MainWindowRuntimeSchedulerStateTests {
         };
 
         BackgroundSchedulerGlobalStatusSnapshotField.SetValue(window, globalSnapshot);
-        BackgroundSchedulerStatusSnapshotField.SetValue(window, scopedSnapshot);
+        BackgroundSchedulerStatusSnapshotField.SetValue(window, globalSnapshot);
+        BackgroundSchedulerScopedStatusSnapshotField.SetValue(window, scopedSnapshot);
 
         RestoreBackgroundSchedulerSnapshotAfterRefreshFailureMethod.Invoke(window, new object?[] { false });
 
         var restored = Assert.IsType<SessionCapabilityBackgroundSchedulerDto>(BackgroundSchedulerStatusSnapshotField.GetValue(window));
+        var preservedScoped = Assert.IsType<SessionCapabilityBackgroundSchedulerDto>(BackgroundSchedulerScopedStatusSnapshotField.GetValue(window));
         var preservedGlobal = Assert.IsType<SessionCapabilityBackgroundSchedulerDto>(BackgroundSchedulerGlobalStatusSnapshotField.GetValue(window));
         Assert.Same(globalSnapshot, restored);
+        Assert.Same(scopedSnapshot, preservedScoped);
         Assert.Same(globalSnapshot, preservedGlobal);
+    }
+
+    /// <summary>
+    /// Ensures a scoped scheduler refresh caches thread-specific data separately
+    /// without replacing the effective global runtime snapshot used by sidebar diagnostics.
+    /// </summary>
+    [Fact]
+    public void ApplyBackgroundSchedulerSnapshot_ScopedUpdatePreservesEffectiveGlobalSnapshot() {
+        var window = (MainWindow)RuntimeHelpers.GetUninitializedObject(typeof(MainWindow));
+        var globalSnapshot = new SessionCapabilityBackgroundSchedulerDto {
+            QueuedItemCount = 4
+        };
+        var scopedSnapshot = new SessionCapabilityBackgroundSchedulerDto {
+            ScopeThreadId = "thread-scoped",
+            QueuedItemCount = 1
+        };
+
+        BackgroundSchedulerStatusSnapshotField.SetValue(window, globalSnapshot);
+        BackgroundSchedulerGlobalStatusSnapshotField.SetValue(window, globalSnapshot);
+
+        ApplyBackgroundSchedulerSnapshotMethod.Invoke(window, new object?[] { scopedSnapshot, true });
+
+        var effective = Assert.IsType<SessionCapabilityBackgroundSchedulerDto>(BackgroundSchedulerStatusSnapshotField.GetValue(window));
+        var scoped = Assert.IsType<SessionCapabilityBackgroundSchedulerDto>(BackgroundSchedulerScopedStatusSnapshotField.GetValue(window));
+        var global = Assert.IsType<SessionCapabilityBackgroundSchedulerDto>(BackgroundSchedulerGlobalStatusSnapshotField.GetValue(window));
+        Assert.Same(globalSnapshot, effective);
+        Assert.Same(scopedSnapshot, scoped);
+        Assert.Same(globalSnapshot, global);
     }
 
     /// <summary>
@@ -345,6 +384,9 @@ public sealed class MainWindowRuntimeSchedulerStateTests {
     public void ClearBackgroundSchedulerSnapshots_ClearsScopedAndGlobalSnapshots() {
         var window = (MainWindow)RuntimeHelpers.GetUninitializedObject(typeof(MainWindow));
         BackgroundSchedulerStatusSnapshotField.SetValue(window, new SessionCapabilityBackgroundSchedulerDto {
+            QueuedItemCount = 2
+        });
+        BackgroundSchedulerScopedStatusSnapshotField.SetValue(window, new SessionCapabilityBackgroundSchedulerDto {
             ScopeThreadId = "thread-scoped",
             QueuedItemCount = 1
         });
@@ -355,6 +397,7 @@ public sealed class MainWindowRuntimeSchedulerStateTests {
         ClearBackgroundSchedulerSnapshotsMethod.Invoke(window, Array.Empty<object?>());
 
         Assert.Null(BackgroundSchedulerStatusSnapshotField.GetValue(window));
+        Assert.Null(BackgroundSchedulerScopedStatusSnapshotField.GetValue(window));
         Assert.Null(BackgroundSchedulerGlobalStatusSnapshotField.GetValue(window));
     }
 
@@ -370,6 +413,9 @@ public sealed class MainWindowRuntimeSchedulerStateTests {
         };
 
         BackgroundSchedulerStatusSnapshotField.SetValue(window, new SessionCapabilityBackgroundSchedulerDto {
+            QueuedItemCount = 3
+        });
+        BackgroundSchedulerScopedStatusSnapshotField.SetValue(window, new SessionCapabilityBackgroundSchedulerDto {
             ScopeThreadId = "thread-scoped",
             QueuedItemCount = 1
         });
@@ -381,6 +427,7 @@ public sealed class MainWindowRuntimeSchedulerStateTests {
 
         var effective = Assert.IsType<SessionCapabilityBackgroundSchedulerDto>(BackgroundSchedulerStatusSnapshotField.GetValue(window));
         var global = Assert.IsType<SessionCapabilityBackgroundSchedulerDto>(BackgroundSchedulerGlobalStatusSnapshotField.GetValue(window));
+        Assert.Null(BackgroundSchedulerScopedStatusSnapshotField.GetValue(window));
         Assert.Same(refreshedGlobalSnapshot, effective);
         Assert.Same(refreshedGlobalSnapshot, global);
     }

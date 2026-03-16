@@ -498,6 +498,7 @@ public sealed partial class MainWindow : Window {
             _backgroundSchedulerStatusSnapshot
             ?? _backgroundSchedulerGlobalStatusSnapshot
             ?? fallbackBackgroundScheduler);
+        var scopedBackgroundSchedulerState = BuildBackgroundSchedulerState(_backgroundSchedulerScopedStatusSnapshot);
         var globalBackgroundSchedulerState = BuildBackgroundSchedulerState(
             _backgroundSchedulerGlobalStatusSnapshot
             ?? fallbackBackgroundScheduler);
@@ -529,6 +530,7 @@ public sealed partial class MainWindow : Window {
             memoryDebug = BuildMemoryDebugState(),
             startupDiagnostics = startupDiagnosticsState,
             runtimeScheduler = effectiveBackgroundSchedulerState,
+            runtimeSchedulerScoped = scopedBackgroundSchedulerState,
             runtimeSchedulerGlobal = globalBackgroundSchedulerState,
             debug = new {
                 showTurnTrace = _showAssistantTurnTrace,

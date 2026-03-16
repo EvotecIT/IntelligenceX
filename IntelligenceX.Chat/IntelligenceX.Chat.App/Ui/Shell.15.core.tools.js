@@ -3191,10 +3191,13 @@
     var scheduler = state.options.runtimeScheduler && typeof state.options.runtimeScheduler === "object"
       ? state.options.runtimeScheduler
       : null;
+    var schedulerScoped = state.options.runtimeSchedulerScoped && typeof state.options.runtimeSchedulerScoped === "object"
+      ? state.options.runtimeSchedulerScoped
+      : null;
     var schedulerGlobal = state.options.runtimeSchedulerGlobal && typeof state.options.runtimeSchedulerGlobal === "object"
       ? state.options.runtimeSchedulerGlobal
       : null;
-    var schedulerOptionSource = schedulerGlobal || scheduler;
+    var schedulerOptionSource = schedulerGlobal || scheduler || schedulerScoped;
     var schedulerState = byId("optRuntimeSchedulerState");
     var schedulerKv = byId("optRuntimeSchedulerKv");
     var maintenanceList = byId("optRuntimeSchedulerMaintenanceList");
@@ -3221,12 +3224,9 @@
     var resumeButton = byId("btnSchedulerResume");
     var clearMaintenanceButton = byId("btnSchedulerClearMaintenance");
     var connected = normalizeBool(state.connected);
-    var maintenanceWindows = scheduler && Array.isArray(scheduler.maintenanceWindows)
-      ? scheduler.maintenanceWindows
-      : [];
-    var activeMaintenanceSpecs = scheduler && Array.isArray(scheduler.activeMaintenanceWindowSpecs)
-      ? scheduler.activeMaintenanceWindowSpecs
-      : [];
+    var preferredScopeThreadId = scopeSelect && scopeSelect.value
+      ? String(scopeSelect.value || "").trim()
+      : (schedulerScoped ? String(schedulerScoped.scopeThreadId || "").trim() : "");
 
     if (refreshButton) {
       refreshButton.disabled = !connected;
@@ -3413,9 +3413,7 @@
       scopeSelect,
       "All tracked threads",
       buildSchedulerThreadOptions(),
-      scopeSelect && scopeSelect.value
-        ? scopeSelect.value
-        : (scheduler ? scheduler.scopeThreadId : ""));
+      preferredScopeThreadId);
     populateSchedulerSelect(
       maintenancePackSelect,
       "Any pack",
@@ -3424,6 +3422,23 @@
       maintenanceThreadSelect,
       "Any tracked thread",
       buildSchedulerThreadOptions());
+
+    var selectedScopeThreadId = scopeSelect
+      ? String(scopeSelect.value || "").trim()
+      : preferredScopeThreadId;
+    var hasScopedSchedulerSelection = schedulerScoped
+      && selectedScopeThreadId.length > 0
+      && String(schedulerScoped.scopeThreadId || "").trim().toLowerCase() === selectedScopeThreadId.toLowerCase();
+    if (hasScopedSchedulerSelection) {
+      scheduler = schedulerScoped;
+    }
+
+    var maintenanceWindows = scheduler && Array.isArray(scheduler.maintenanceWindows)
+      ? scheduler.maintenanceWindows
+      : [];
+    var activeMaintenanceSpecs = scheduler && Array.isArray(scheduler.activeMaintenanceWindowSpecs)
+      ? scheduler.activeMaintenanceWindowSpecs
+      : [];
 
     if (!scheduler) {
       if (schedulerState) {

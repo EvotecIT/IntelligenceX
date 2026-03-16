@@ -19,10 +19,14 @@ public sealed partial class MainWindow {
     }
 
     private void ApplyBackgroundSchedulerSnapshot(SessionCapabilityBackgroundSchedulerDto? scheduler, bool scoped) {
-        _backgroundSchedulerStatusSnapshot = scheduler;
-        if (!scoped) {
-            _backgroundSchedulerGlobalStatusSnapshot = scheduler;
+        if (scoped) {
+            _backgroundSchedulerScopedStatusSnapshot = scheduler;
+            return;
         }
+
+        _backgroundSchedulerScopedStatusSnapshot = null;
+        _backgroundSchedulerStatusSnapshot = scheduler;
+        _backgroundSchedulerGlobalStatusSnapshot = scheduler;
     }
 
     private void SeedBackgroundSchedulerSnapshot(SessionCapabilityBackgroundSchedulerDto? scheduler) {
@@ -36,6 +40,7 @@ public sealed partial class MainWindow {
 
     private void ClearBackgroundSchedulerSnapshots() {
         _backgroundSchedulerStatusSnapshot = null;
+        _backgroundSchedulerScopedStatusSnapshot = null;
         _backgroundSchedulerGlobalStatusSnapshot = null;
     }
 
@@ -68,8 +73,11 @@ public sealed partial class MainWindow {
             includeThreadSummaries: true,
             maxRecentActivity: 8,
             maxThreadSummaries: 8).ConfigureAwait(false);
-        if (_backgroundSchedulerStatusSnapshot is not null) {
-            await SetStatusAsync("Background scheduler refreshed. " + BuildBackgroundSchedulerSummaryText(_backgroundSchedulerStatusSnapshot)).ConfigureAwait(false);
+        var refreshedSnapshot = string.IsNullOrWhiteSpace(threadId)
+            ? _backgroundSchedulerStatusSnapshot
+            : _backgroundSchedulerScopedStatusSnapshot;
+        if (refreshedSnapshot is not null) {
+            await SetStatusAsync("Background scheduler refreshed. " + BuildBackgroundSchedulerSummaryText(refreshedSnapshot)).ConfigureAwait(false);
         }
     }
 

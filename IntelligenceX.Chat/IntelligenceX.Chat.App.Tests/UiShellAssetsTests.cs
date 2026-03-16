@@ -190,12 +190,16 @@ public sealed partial class UiShellAssetsTests {
         Assert.Contains("id=\"btnSchedulerAddMaintenance\"", html, StringComparison.Ordinal);
         Assert.Contains("id=\"btnSchedulerClearMaintenance\"", html, StringComparison.Ordinal);
         Assert.Contains("runtimeScheduler: null", coreScript, StringComparison.Ordinal);
+        Assert.Contains("runtimeSchedulerScoped: null", coreScript, StringComparison.Ordinal);
         Assert.Contains("runtimeSchedulerGlobal: null", coreScript, StringComparison.Ordinal);
         Assert.Contains("if (Object.prototype.hasOwnProperty.call(nextOptions, \"runtimeScheduler\")) {", renderingScript, StringComparison.Ordinal);
         Assert.Contains("state.options.runtimeScheduler = nextOptions.runtimeScheduler;", renderingScript, StringComparison.Ordinal);
+        Assert.Contains("if (Object.prototype.hasOwnProperty.call(nextOptions, \"runtimeSchedulerScoped\")) {", renderingScript, StringComparison.Ordinal);
+        Assert.Contains("state.options.runtimeSchedulerScoped = nextOptions.runtimeSchedulerScoped;", renderingScript, StringComparison.Ordinal);
         Assert.Contains("if (Object.prototype.hasOwnProperty.call(nextOptions, \"runtimeSchedulerGlobal\")) {", renderingScript, StringComparison.Ordinal);
         Assert.Contains("state.options.runtimeSchedulerGlobal = nextOptions.runtimeSchedulerGlobal;", renderingScript, StringComparison.Ordinal);
         Assert.DoesNotContain("state.options.runtimeScheduler = nextOptions.runtimeScheduler || null;", renderingScript, StringComparison.Ordinal);
+        Assert.DoesNotContain("state.options.runtimeSchedulerScoped = nextOptions.runtimeSchedulerScoped || null;", renderingScript, StringComparison.Ordinal);
         Assert.DoesNotContain("state.options.runtimeSchedulerGlobal = nextOptions.runtimeSchedulerGlobal || null;", renderingScript, StringComparison.Ordinal);
         Assert.Contains("function renderRuntimeScheduler()", toolsScript, StringComparison.Ordinal);
         Assert.Contains("renderRuntimeScheduler();", toolsScript, StringComparison.Ordinal);
