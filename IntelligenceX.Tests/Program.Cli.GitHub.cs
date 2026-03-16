@@ -158,6 +158,156 @@ internal static partial class Program {
         AssertEqual(3, section.CurrentStreakDays, "github overview projector current streak honors window end");
     }
 
+    private static void TestGitHubRepositoryObservabilityMapperBuildsSnapshot() {
+        var snapshot = GitHubRepositoryObservabilityMapper.CreateSnapshot(
+            new GitHubRepositoryImpactRepository(
+                "EvotecIT/IntelligenceX",
+                "https://github.com/EvotecIT/IntelligenceX",
+                126,
+                21,
+                "C#",
+                "#178600",
+                "2026-03-16T09:55:00Z",
+                watchers: 15,
+                openIssues: 5,
+                description: "Unified intelligence workspace",
+                isArchived: false,
+                isFork: false),
+            new DateTimeOffset(2026, 03, 16, 10, 05, 0, TimeSpan.Zero));
+
+        AssertEqual("EvotecIT/IntelligenceX", snapshot.RepositoryNameWithOwner, "github observability mapper repository");
+        AssertEqual(126, snapshot.Stars, "github observability mapper stars");
+        AssertEqual(21, snapshot.Forks, "github observability mapper forks");
+        AssertEqual(15, snapshot.Watchers, "github observability mapper watchers");
+        AssertEqual(5, snapshot.OpenIssues, "github observability mapper open issues");
+        AssertEqual("Unified intelligence workspace", snapshot.Description, "github observability mapper description");
+        AssertEqual("C#", snapshot.PrimaryLanguage, "github observability mapper language");
+        AssertEqual(new DateTimeOffset(2026, 03, 16, 09, 55, 0, TimeSpan.Zero), snapshot.PushedAtUtc, "github observability mapper pushed at");
+    }
+
+    private static void TestGitHubRepositoryForkScoringRanksRecentPopularForksFirst() {
+        var insights = GitHubRepositoryForkScoring.Score(
+            new[] {
+                new GitHubRepositoryForkRecord(
+                    "someone/IntelligenceX",
+                    "https://github.com/someone/IntelligenceX",
+                    18,
+                    3,
+                    9,
+                    2,
+                    "High-signal fork",
+                    "C#",
+                    "2026-03-14T12:00:00Z",
+                    "2026-03-14T12:00:00Z",
+                    "2025-11-01T00:00:00Z",
+                    false),
+                new GitHubRepositoryForkRecord(
+                    "archive/IntelligenceX",
+                    "https://github.com/archive/IntelligenceX",
+                    40,
+                    6,
+                    4,
+                    30,
+                    "",
+                    "C#",
+                    "2025-01-01T12:00:00Z",
+                    "2025-01-01T12:00:00Z",
+                    "2024-01-01T00:00:00Z",
+                    true)
+            },
+            utcNow: () => new DateTimeOffset(2026, 03, 15, 0, 0, 0, TimeSpan.Zero));
+
+        AssertEqual(2, insights.Count, "github fork scoring count");
+        AssertEqual("someone/IntelligenceX", insights[0].Fork.RepositoryNameWithOwner, "github fork scoring top repository");
+        AssertEqual("high", insights[0].Tier, "github fork scoring top tier");
+        AssertEqual(true, insights[0].Score > insights[1].Score, "github fork scoring prefers recent active fork");
+        AssertEqual("low", insights[1].Tier, "github fork scoring archived fork tier");
+    }
+
+    private static void TestGitHubRepositoryForkDiscoveryHandlesPartialPagesWithNextPage() {
+        var calls = new List<(int First, string? After)>();
+        var forks = GitHubRepositoryForkDiscoveryClient.GetForksForTestAsync(
+                "EvotecIT/IntelligenceX",
+                55,
+                (owner, repository, first, after) => {
+                    calls.Add((first, after));
+                    if (calls.Count == 1) {
+                        return Task.FromResult(CreateForkDiscoveryResponse(
+                            CreateForkRepositoryBatch("batch1", 50, 100),
+                            hasNextPage: true,
+                            endCursor: "cursor-1"));
+                    }
+
+                    if (calls.Count == 2) {
+                        return Task.FromResult(CreateForkDiscoveryResponse(
+                            CreateForkRepositoryBatch("batch2", 1, 50),
+                            hasNextPage: true,
+                            endCursor: "cursor-2"));
+                    }
+
+                    return Task.FromResult(CreateForkDiscoveryResponse(
+                        CreateForkRepositoryBatch("batch3", 4, 49),
+                        hasNextPage: false,
+                        endCursor: null));
+                })
+            .GetAwaiter()
+            .GetResult();
+
+        AssertEqual(55, forks.Count, "github fork discovery partial-page total count");
+        AssertEqual(3, calls.Count, "github fork discovery partial-page call count");
+        AssertEqual(50, calls[0].First, "github fork discovery first page size");
+        AssertEqual(5, calls[1].First, "github fork discovery second page requested remaining count");
+        AssertEqual(4, calls[2].First, "github fork discovery third page requested actual remaining count");
+        AssertEqual("cursor-1", calls[1].After, "github fork discovery second page cursor");
+        AssertEqual("cursor-2", calls[2].After, "github fork discovery third page cursor");
+    }
+
+    private static JsonElement CreateForkDiscoveryResponse(
+        IReadOnlyList<string> repositories,
+        bool hasNextPage,
+        string? endCursor) {
+        var nodes = string.Join(",", repositories.Select(static repository => """
+{
+  "nameWithOwner": "__REPOSITORY__",
+  "url": "https://github.com/__REPOSITORY__",
+  "description": "fork",
+  "stargazerCount": 1,
+  "forkCount": 0,
+  "updatedAt": "2026-03-15T00:00:00Z",
+  "createdAt": "2026-03-01T00:00:00Z",
+  "pushedAt": "2026-03-15T00:00:00Z",
+  "isArchived": false,
+  "watchers": { "totalCount": 0 },
+  "issues": { "totalCount": 0 },
+  "primaryLanguage": { "name": "C#" }
+}
+""".Replace("__REPOSITORY__", repository)));
+        return ParseJson($$"""
+{
+  "data": {
+    "repository": {
+      "forks": {
+        "nodes": [{{nodes}}],
+        "pageInfo": {
+          "hasNextPage": {{hasNextPage.ToString().ToLowerInvariant()}},
+          "endCursor": {{(endCursor is null ? "null" : "\"" + endCursor + "\"")}}
+        }
+      }
+    }
+  }
+}
+""");
+    }
+
+    private static IReadOnlyList<string> CreateForkRepositoryBatch(string prefix, int count, int startIndex) {
+        var repositories = new List<string>(count);
+        for (var i = 0; i < count; i++) {
+            repositories.Add(prefix + (startIndex + i).ToString() + "/IntelligenceX");
+        }
+
+        return repositories;
+    }
+
     private static void TestGitHubContributionCalendarClientStitchesNonOverlappingWindows() {
         var calls = new List<(DateTimeOffset From, DateTimeOffset To)>();
         var client = new GitHubContributionCalendarClient((login, from, to) => {

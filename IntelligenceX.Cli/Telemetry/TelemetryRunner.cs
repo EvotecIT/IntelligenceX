@@ -15,6 +15,7 @@ internal static class TelemetryRunner {
         var rest = args.Skip(1).ToArray();
         return command switch {
             "usage" => await UsageTelemetryCliRunner.RunAsync(rest).ConfigureAwait(false),
+            "github" => await GitHubTelemetryCliRunner.RunAsync(rest).ConfigureAwait(false),
             _ => PrintHelpReturn()
         };
     }
@@ -22,6 +23,7 @@ internal static class TelemetryRunner {
     public static void PrintHelp() {
         Console.WriteLine("Telemetry commands:");
         Console.WriteLine("  intelligencex telemetry usage <command>");
+        Console.WriteLine("  intelligencex telemetry github <command>");
         Console.WriteLine();
         Console.WriteLine("Usage telemetry commands:");
         Console.WriteLine("  roots list       List registered telemetry source roots");
@@ -29,6 +31,15 @@ internal static class TelemetryRunner {
         Console.WriteLine("  discover         Discover default roots for known providers");
         Console.WriteLine("  import           Import normalized usage events into the telemetry ledger");
         Console.WriteLine("  stats            Summarize roots, providers, accounts, and event coverage");
+        Console.WriteLine();
+        Console.WriteLine("GitHub observability commands:");
+        Console.WriteLine("  watches list     List watched repositories");
+        Console.WriteLine("  watches add      Register a watched repository");
+        Console.WriteLine("  watches sync     Refresh snapshots for enabled watches");
+        Console.WriteLine("  snapshots list   Show persisted repository snapshot history");
+        Console.WriteLine("  forks discover   Rank useful forks for a repository");
+        Console.WriteLine("  forks history    Show persisted fork history changes");
+        Console.WriteLine("  dashboard        Show tray-friendly repository and fork trends");
     }
 
     private static bool IsHelp(string value) {

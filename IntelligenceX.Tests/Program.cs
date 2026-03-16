@@ -33,6 +33,16 @@ internal static partial class Program {
         failed += Run("Usage telemetry sqlite stores persist across reopen", TestUsageTelemetrySqliteStoresPersistAcrossReopen);
         failed += Run("Usage telemetry sqlite raw artifact store persists across reopen",
             TestUsageTelemetrySqliteRawArtifactStorePersistsAcrossReopen);
+        failed += Run("GitHub repository watch store looks up canonical repository",
+            TestGitHubRepositoryWatchStoreLooksUpCanonicalRepository);
+        failed += Run("GitHub repository snapshot analytics builds daily deltas using latest snapshot per day",
+            TestGitHubRepositorySnapshotAnalyticsBuildsDailyDeltasUsingLatestSnapshotPerDay);
+        failed += Run("GitHub repository sqlite stores persist across reopen",
+            TestGitHubRepositorySqliteStoresPersistAcrossReopen);
+        failed += Run("GitHub repository fork history analytics builds new and rising statuses",
+            TestGitHubRepositoryForkHistoryAnalyticsBuildsNewAndRisingStatuses);
+        failed += Run("GitHub repository fork sqlite store persists across reopen",
+            TestGitHubRepositoryForkSqliteStorePersistsAcrossReopen);
         failed += Run("Usage account binding resolver matches source root and raw label",
             TestUsageAccountBindingResolverMatchesSourceRootAndRawLabel);
         failed += Run("Usage telemetry import coordinator reimport applies account binding overrides",
@@ -85,6 +95,10 @@ internal static partial class Program {
             TestUsageTelemetryProviderCatalogInfersProviderFromPath);
         failed += Run("Usage quick report scanner supports alias provider filters",
             TestUsageTelemetryQuickReportScannerSupportsAliasProviderFilters);
+        failed += Run("Usage quick report scanner deduplicates Codex session copies across roots",
+            TestUsageTelemetryQuickReportScannerDeduplicatesCodexSessionCopiesAcrossRoots);
+        failed += Run("Usage quick report scanner reuses cached Codex duplicates safely",
+            TestUsageTelemetryQuickReportScannerReusesCachedCodexDuplicatesSafely);
         failed += Run("Usage provider registry supports alias lookups",
             TestUsageTelemetryProviderRegistrySupportsAliasLookups);
         failed += Run("Usage overview page model builder builds GitHub render model",
@@ -183,11 +197,16 @@ internal static partial class Program {
             TestCodexSessionUsageAdapterSkipsLockedFiles);
         failed += Run("Codex session usage adapter does not duplicate sessions-root artifacts",
             TestCodexSessionUsageAdapterDoesNotDuplicateSessionsRootArtifacts);
+        failed += Run("Codex session usage adapter does not duplicate archived session copies",
+            TestCodexSessionUsageAdapterDoesNotDuplicateArchivedSessionCopies);
 #if !NET472
         failed += Run("GitHub owner scope resolver returns administered organizations with public repos", TestGitHubOwnerScopeResolverReturnsAdministeredOrganizationsWithPublicRepos);
         failed += Run("GitHub overview collector appends correlated owners for user runs", TestGitHubOverviewDataCollectorAppendsCorrelatedOwnersForUserRuns);
         failed += Run("GitHub overview collector supports owner-only runs", TestGitHubOverviewDataCollectorSupportsOwnerOnlyRuns);
         failed += Run("GitHub overview projector uses window end for current streak", TestGitHubOverviewSectionProjectorUsesWindowEndForCurrentStreak);
+        failed += Run("GitHub repository observability mapper builds snapshot", TestGitHubRepositoryObservabilityMapperBuildsSnapshot);
+        failed += Run("GitHub repository fork scoring ranks recent popular forks first", TestGitHubRepositoryForkScoringRanksRecentPopularForksFirst);
+        failed += Run("GitHub repository fork discovery handles partial pages with next page", TestGitHubRepositoryForkDiscoveryHandlesPartialPagesWithNextPage);
         failed += Run("Usage options parse account id", TestUsageOptionsParseAccountId);
         failed += Run("Usage options parse by-surface", TestUsageOptionsParseBySurface);
         failed += Run("Usage options parse daily breakdown", TestUsageOptionsParseDailyBreakdown);
@@ -195,13 +214,25 @@ internal static partial class Program {
         failed += Run("Heatmap usage json routes telemetry from sqlite", TestHeatmapUsageJsonRoutesTelemetryFromSqlite);
         failed += Run("Telemetry help routes", TestTelemetryHelpRoutes);
         failed += Run("Telemetry usage help routes", TestTelemetryUsageHelpRoutes);
+        failed += Run("Telemetry GitHub help routes", TestTelemetryGitHubHelpRoutes);
+        failed += Run("Telemetry GitHub watches add and list json", TestTelemetryGitHubWatchesAddAndListJson);
+        failed += Run("Telemetry GitHub watches sync and snapshots list json", TestTelemetryGitHubWatchesSyncAndSnapshotsListJson);
+        failed += Run("Telemetry GitHub watches sync can record forks json", TestTelemetryGitHubWatchesSyncCanRecordForksJson);
+        failed += Run("Telemetry GitHub forks discover json", TestTelemetryGitHubForksDiscoverJson);
+        failed += Run("Telemetry GitHub forks record and history json", TestTelemetryGitHubForksRecordAndHistoryJson);
+        failed += Run("Telemetry GitHub dashboard json", TestTelemetryGitHubDashboardJson);
         failed += Run("Telemetry usage accounts bind and list json", TestTelemetryUsageAccountsBindAndListJson);
         failed += Run("Telemetry usage roots add and list json", TestTelemetryUsageRootsAddAndListJson);
         failed += Run("Telemetry usage import and stats json", TestTelemetryUsageImportAndStatsJson);
+        failed += Run("Telemetry usage import supports paths-only recovered path", TestTelemetryUsageImportSupportsPathsOnlyRecoveredPath);
         failed += Run("Telemetry usage overview json and export", TestTelemetryUsageOverviewJsonAndExport);
         failed += Run("Telemetry usage report auto imports and exports", TestTelemetryUsageReportAutoImportsAndExports);
         failed += Run("Telemetry usage report supports ad hoc recovered path", TestTelemetryUsageReportSupportsAdHocRecoveredPath);
+        failed += Run("Telemetry usage report supports paths-only recovered path", TestTelemetryUsageReportSupportsPathsOnlyRecoveredPath);
+        failed += Run("Telemetry usage report highlights quick scan duplicate collapse", TestTelemetryUsageReportHighlightsQuickScanDuplicateCollapse);
         failed += Run("Telemetry usage report supports ad hoc LM Studio path", TestTelemetryUsageReportSupportsAdHocLmStudioPath);
+        failed += Run("Telemetry usage report supports ad hoc Copilot path", TestTelemetryUsageReportSupportsAdHocCopilotPath);
+        failed += Run("Telemetry usage report full import supports ad hoc recovered path", TestTelemetryUsageReportFullImportSupportsAdHocRecoveredPath);
         failed += Run("Telemetry usage GitHub request planner supports owner-only runs", TestTelemetryUsageBuildGitHubSectionRequestsSupportsOwnerOnlyRuns);
         failed += Run("Usage surface summary json buckets", TestUsageSurfaceSummaryJsonBuckets);
         failed += Run("Usage surface summary json buckets include fast tier", TestUsageSurfaceSummaryJsonBucketsIncludeFastTier);

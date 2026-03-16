@@ -91,6 +91,8 @@ internal static class UsageTelemetryCliRunner {
         Console.WriteLine("  --disabled                        Register the binding in disabled state");
         Console.WriteLine();
         Console.WriteLine("Import options:");
+        Console.WriteLine("  --path <path>         Additional local or recovered folder/file to import immediately");
+        Console.WriteLine("  --paths-only          Skip default discovery and import only the explicit --path roots");
         Console.WriteLine("  --discover            Run default root discovery before importing");
         Console.WriteLine("  --machine <value>     Override imported machine id");
         Console.WriteLine("  --parser-version <v>  Optional parser version label");
@@ -101,6 +103,7 @@ internal static class UsageTelemetryCliRunner {
         Console.WriteLine("Report options:");
         Console.WriteLine("  --path <path>         Additional local or recovered folder/file to scan immediately");
         Console.WriteLine("                        Repeat to include multiple roots (for example Windows.old backups).");
+        Console.WriteLine("  --paths-only          Skip default discovery and scan only the explicit --path roots");
         Console.WriteLine("  --account <value>     Filter by provider account id or account label");
         Console.WriteLine("  --person <value>      Filter by person label");
         Console.WriteLine("  --github-user <login> Add a GitHub contribution section for the specified login");
@@ -115,6 +118,8 @@ internal static class UsageTelemetryCliRunner {
         Console.WriteLine("  --out-dir <path>      Export overview.json plus one SVG/JSON pair per heatmap");
         Console.WriteLine();
         Console.WriteLine("Overview options:");
+        Console.WriteLine("  --path <path>         Additional local or recovered folder/file to register before auto-import");
+        Console.WriteLine("  --paths-only          Skip default discovery and import only the explicit --path roots");
         Console.WriteLine("  --account <value>     Filter by provider account id or account label");
         Console.WriteLine("  --person <value>      Filter by person label");
         Console.WriteLine("  --github-user <login> Add a GitHub contribution section for the specified login");
@@ -361,6 +366,7 @@ internal static class UsageTelemetryCliRunner {
 
     private static async Task<int> RunImportAsync(string[] args) {
         var options = ImportOptions.Parse(args);
+        EnsurePathsOnlyHasPaths(options.PathsOnly, options.Paths, "import");
         var dbPath = ResolveDatabasePath(options.DatabasePath);
         using var rootStore = new SqliteSourceRootStore(dbPath);
         using var bindingStore = new SqliteUsageAccountBindingStore(dbPath);
@@ -368,7 +374,7 @@ internal static class UsageTelemetryCliRunner {
         using var eventStore = new SqliteUsageEventStore(dbPath);
         var coordinator = CreateCoordinator(rootStore, eventStore);
 
-        if (options.Discover) {
+        if (options.Discover && !options.PathsOnly) {
             await RunUsageStatusAsync(
                 "Discovering telemetry roots...",
                 "Discovering telemetry roots...",
@@ -377,6 +383,27 @@ internal static class UsageTelemetryCliRunner {
                     progress("Discovering telemetry roots...");
                     var discovered = await coordinator.DiscoverRootsAsync(options.ProviderId, CancellationToken.None).ConfigureAwait(false);
                     progress("Discovered " + discovered.Count.ToString(CultureInfo.InvariantCulture) + " telemetry root(s)");
+                }).ConfigureAwait(false);
+        } else if (options.Discover && options.PathsOnly) {
+            await RunUsageStatusAsync(
+                "Preparing telemetry import...",
+                "Preparing telemetry import...",
+                static _ => Task.CompletedTask,
+                async progress => {
+                    progress("Skipping default discovery because --paths-only was requested");
+                    await Task.CompletedTask.ConfigureAwait(false);
+                }).ConfigureAwait(false);
+        }
+
+        var adHocRoots = RegisterAdHocRoots(rootStore, options.ProviderId, options.Paths);
+        if (adHocRoots.Count > 0) {
+            await RunUsageStatusAsync(
+                "Preparing telemetry import...",
+                "Preparing telemetry import...",
+                static _ => Task.CompletedTask,
+                async progress => {
+                    progress("Queued " + adHocRoots.Count.ToString(CultureInfo.InvariantCulture) + " additional path(s) for import");
+                    await Task.CompletedTask.ConfigureAwait(false);
                 }).ConfigureAwait(false);
         }
 
@@ -524,6 +551,12 @@ internal static class UsageTelemetryCliRunner {
             foreach (var user in options.GitHubUsers) {
                 AddIfValue(overviewArgs, "--github-user", user);
             }
+            foreach (var path in options.Paths) {
+                AddIfValue(overviewArgs, "--path", path);
+            }
+            if (options.PathsOnly) {
+                overviewArgs.Add("--paths-only");
+            }
             AddIfValue(overviewArgs, "--github-token", options.GitHubToken);
             if (options.RecentFirst) {
                 overviewArgs.Add("--recent-first");
@@ -548,6 +581,7 @@ internal static class UsageTelemetryCliRunner {
     }
 
     private static async Task<int> RunQuickReportAsync(ReportOptions options) {
+        EnsurePathsOnlyHasPaths(options.PathsOnly, options.Paths, "report");
         var sourceRootStore = new InMemorySourceRootStore();
         var eventStore = new InMemoryUsageEventStore();
         var coordinator = CreateCoordinator(sourceRootStore, eventStore);
@@ -561,11 +595,15 @@ internal static class UsageTelemetryCliRunner {
             "Preparing quick telemetry report...",
             static _ => Task.CompletedTask,
             async progress => {
-                progress("Discovering telemetry roots...");
-                var discovered = await coordinator.DiscoverRootsAsync(options.ProviderId, CancellationToken.None).ConfigureAwait(false);
-                progress("Discovered " + discovered.Count.ToString(CultureInfo.InvariantCulture) + " default telemetry root(s)");
+                if (options.PathsOnly) {
+                    progress("Skipping default discovery because --paths-only was requested");
+                } else {
+                    progress("Discovering telemetry roots...");
+                    var discovered = await coordinator.DiscoverRootsAsync(options.ProviderId, CancellationToken.None).ConfigureAwait(false);
+                    progress("Discovered " + discovered.Count.ToString(CultureInfo.InvariantCulture) + " default telemetry root(s)");
+                }
 
-                var adHocRoots = RegisterAdHocReportRoots(sourceRootStore, options);
+                var adHocRoots = RegisterAdHocRoots(sourceRootStore, options.ProviderId, options.Paths);
                 if (adHocRoots.Count > 0) {
                     progress("Queued " + adHocRoots.Count.ToString(CultureInfo.InvariantCulture) + " additional path(s) for the quick scan");
                 }
@@ -602,14 +640,18 @@ internal static class UsageTelemetryCliRunner {
 
         var effectiveProviderId = NormalizeOptional(options.ProviderId)
                                   ?? InferSingleProviderId(events);
+        var sourceRoots = sourceRootStore.GetAll();
         var overview = new UsageTelemetryOverviewBuilder().Build(
             events,
             new UsageTelemetryOverviewOptions {
                 Metric = options.Metric,
                 Title = NormalizeOptional(options.Title) ?? BuildOverviewTitle(effectiveProviderId),
-                Subtitle = BuildQuickReportSubtitle(options, dbPath, scanResult),
-                SourceRootLabels = UsageTelemetryPresentationHelpers.BuildSourceRootLabels(sourceRootStore.GetAll())
+                Subtitle = BuildQuickReportSubtitle(options, dbPath, scanResult, sourceRoots),
+                SourceRootLabels = UsageTelemetryPresentationHelpers.BuildSourceRootLabels(sourceRoots)
             });
+        overview = ApplyQuickReportMetadata(overview, options, dbPath, scanResult, sourceRoots);
+        overview = ApplyQuickReportRootInsights(overview, sourceRoots, options.ProviderId, options.PathsOnly);
+        overview = ApplyQuickReportDiagnosticsInsights(overview, scanResult);
         overview = await AppendGitHubSectionsAsync(overview, options.GitHubUsers, options.GitHubOwners, Console.WriteLine).ConfigureAwait(false);
         overview = await AppendCopilotQuotaInsightsAsync(overview, ResolveGitHubToken(options.GitHubToken), Console.WriteLine).ConfigureAwait(false);
 
@@ -642,6 +684,7 @@ internal static class UsageTelemetryCliRunner {
 
     private static async Task<int> RunOverviewAsync(string[] args) {
         var options = OverviewOptions.Parse(args);
+        EnsurePathsOnlyHasPaths(options.PathsOnly, options.Paths, "overview");
         var dbPath = ResolveDatabasePath(options.DatabasePath);
         if (options.Discover) {
             await DiscoverAndImportForOverviewAsync(dbPath, options).ConfigureAwait(false);
@@ -845,9 +888,17 @@ internal static class UsageTelemetryCliRunner {
             "Preparing telemetry report...",
             static _ => Task.CompletedTask,
             async progress => {
-                progress("Discovering telemetry roots...");
-                var discovered = await coordinator.DiscoverRootsAsync(options.ProviderId, CancellationToken.None).ConfigureAwait(false);
-                progress("Discovered " + discovered.Count.ToString(CultureInfo.InvariantCulture) + " telemetry root(s)");
+                if (options.PathsOnly) {
+                    progress("Skipping default discovery because --paths-only was requested");
+                } else {
+                    progress("Discovering telemetry roots...");
+                    var discovered = await coordinator.DiscoverRootsAsync(options.ProviderId, CancellationToken.None).ConfigureAwait(false);
+                    progress("Discovered " + discovered.Count.ToString(CultureInfo.InvariantCulture) + " telemetry root(s)");
+                }
+                var adHocRoots = RegisterAdHocRoots(rootStore, options.ProviderId, options.Paths);
+                if (adHocRoots.Count > 0) {
+                    progress("Queued " + adHocRoots.Count.ToString(CultureInfo.InvariantCulture) + " additional path(s) for import");
+                }
 
                 await coordinator.ImportAllAsync(
                     new UsageImportContext {
@@ -872,6 +923,13 @@ internal static class UsageTelemetryCliRunner {
         }
 
         return NormalizeOptional(update.Phase) ?? "Working...";
+    }
+
+    private static void EnsurePathsOnlyHasPaths(bool pathsOnly, IReadOnlyList<string> paths, string commandName) {
+        if (pathsOnly && (paths is null || paths.Count == 0)) {
+            throw new InvalidOperationException(
+                "--paths-only requires at least one --path value for telemetry usage " + commandName + ".");
+        }
     }
 
     private static async Task RunUsageStatusAsync(
@@ -1025,13 +1083,17 @@ internal static class UsageTelemetryCliRunner {
         if (!string.IsNullOrWhiteSpace(options.PersonFilter)) {
             parts.Add("person: " + options.PersonFilter!.Trim());
         }
+        if (options.PathsOnly) {
+            parts.Add("paths-only");
+        }
         return parts.Count == 0 ? null : string.Join(" | ", parts);
     }
 
     private static string? BuildQuickReportSubtitle(
         ReportOptions options,
         string? dbPath,
-        UsageTelemetryQuickReportResult scanResult) {
+        UsageTelemetryQuickReportResult scanResult,
+        IReadOnlyList<SourceRootRecord> roots) {
         var parts = new List<string>();
         if (!string.IsNullOrWhiteSpace(options.ProviderId)) {
             parts.Add("provider: " + options.ProviderId!.Trim());
@@ -1043,6 +1105,9 @@ internal static class UsageTelemetryCliRunner {
             parts.Add("person: " + options.PersonFilter!.Trim());
         }
         parts.Add("quick scan");
+        if (options.PathsOnly) {
+            parts.Add("paths-only");
+        }
         if (options.RecentFirst) {
             parts.Add("recent-first");
         }
@@ -1054,10 +1119,420 @@ internal static class UsageTelemetryCliRunner {
         if (scanResult.ArtifactBudgetReached) {
             parts.Add("partial");
         }
+        var rootScope = BuildRootScopeSummary(roots, options.ProviderId);
+        if (!string.IsNullOrWhiteSpace(rootScope)) {
+            parts.Add(rootScope!);
+        }
         if (!string.IsNullOrWhiteSpace(dbPath)) {
             parts.Add("cache: " + dbPath);
         }
         return string.Join(" | ", parts);
+    }
+
+    private static string? BuildRootScopeSummary(
+        IReadOnlyList<SourceRootRecord> roots,
+        string? providerFilter) {
+        var filtered = (roots ?? Array.Empty<SourceRootRecord>())
+            .Where(root => root is not null && root.Enabled)
+            .Where(root => MatchesProvider(root.ProviderId, providerFilter))
+            .ToArray();
+        if (filtered.Length == 0) {
+            return null;
+        }
+
+        var buckets = filtered
+            .GroupBy(DescribeRootScope, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(group => ResolveRootScopeSortOrder(group.Key))
+            .ThenBy(group => group.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.Count().ToString(CultureInfo.InvariantCulture) + " " + group.Key)
+            .ToArray();
+        if (buckets.Length == 0) {
+            return null;
+        }
+
+        return "roots: " + string.Join(", ", buckets);
+    }
+
+    private static UsageTelemetryOverviewDocument ApplyQuickReportRootInsights(
+        UsageTelemetryOverviewDocument overview,
+        IReadOnlyList<SourceRootRecord> roots,
+        string? providerFilter,
+        bool pathsOnly) {
+        if (overview is null) {
+            throw new ArgumentNullException(nameof(overview));
+        }
+
+        var filteredRoots = (roots ?? Array.Empty<SourceRootRecord>())
+            .Where(root => root is not null && root.Enabled)
+            .Where(root => MatchesProvider(root.ProviderId, providerFilter))
+            .ToArray();
+        if (filteredRoots.Length == 0) {
+            return overview;
+        }
+
+        var sections = overview.ProviderSections
+            .Select(section => ApplyRootInsightToSection(section, filteredRoots, pathsOnly))
+            .ToArray();
+
+        return new UsageTelemetryOverviewDocument(
+            overview.Title,
+            overview.Subtitle,
+            overview.Metric,
+            overview.Units,
+            overview.Summary,
+            overview.Cards,
+            overview.Heatmaps,
+            sections,
+            overview.Metadata);
+    }
+
+    private static UsageTelemetryOverviewDocument ApplyQuickReportMetadata(
+        UsageTelemetryOverviewDocument overview,
+        ReportOptions options,
+        string? dbPath,
+        UsageTelemetryQuickReportResult scanResult,
+        IReadOnlyList<SourceRootRecord> roots) {
+        var metadata = overview.Metadata is null
+            ? new JsonObject()
+            : CloneJsonObject(overview.Metadata);
+        metadata.Add("scanContext", BuildQuickReportScanContext(options, dbPath, scanResult, roots));
+
+        return new UsageTelemetryOverviewDocument(
+            overview.Title,
+            overview.Subtitle,
+            overview.Metric,
+            overview.Units,
+            overview.Summary,
+            overview.Cards,
+            overview.Heatmaps,
+            overview.ProviderSections,
+            metadata);
+    }
+
+    private static UsageTelemetryOverviewDocument ApplyQuickReportDiagnosticsInsights(
+        UsageTelemetryOverviewDocument overview,
+        UsageTelemetryQuickReportResult scanResult) {
+        if (overview is null) {
+            throw new ArgumentNullException(nameof(overview));
+        }
+
+        var diagnosticsByProvider = (scanResult is null
+                ? Array.Empty<UsageTelemetryQuickReportProviderDiagnostics>()
+                : (IEnumerable<UsageTelemetryQuickReportProviderDiagnostics>)scanResult.ProviderDiagnostics)
+            .Where(static item => item is not null && item.RawEventsCollected > 0)
+            .ToDictionary(
+                static item => UsageTelemetryProviderCatalog.ResolveCanonicalProviderId(item.ProviderId) ?? item.ProviderId,
+                StringComparer.OrdinalIgnoreCase);
+        if (diagnosticsByProvider.Count == 0) {
+            return overview;
+        }
+
+        var sections = overview.ProviderSections
+            .Select(section => ApplyQuickReportDiagnosticsToSection(section, diagnosticsByProvider))
+            .ToArray();
+
+        return new UsageTelemetryOverviewDocument(
+            overview.Title,
+            overview.Subtitle,
+            overview.Metric,
+            overview.Units,
+            overview.Summary,
+            overview.Cards,
+            overview.Heatmaps,
+            sections,
+            overview.Metadata);
+    }
+
+    private static UsageTelemetryOverviewProviderSection ApplyRootInsightToSection(
+        UsageTelemetryOverviewProviderSection section,
+        IReadOnlyList<SourceRootRecord> roots,
+        bool pathsOnly) {
+        var providerRoots = roots
+            .Where(root => string.Equals(
+                UsageTelemetryProviderCatalog.ResolveCanonicalProviderId(root.ProviderId),
+                UsageTelemetryProviderCatalog.ResolveCanonicalProviderId(section.ProviderId),
+                StringComparison.OrdinalIgnoreCase))
+            .OrderBy(root => ResolveRootScopeSortOrder(DescribeRootScope(root)))
+            .ThenBy(root => root.Path, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (providerRoots.Length == 0) {
+            return section;
+        }
+
+        var additionalInsights = section.AdditionalInsights.ToList();
+        additionalInsights.RemoveAll(static insight => string.Equals(insight.Key, "source-roots", StringComparison.OrdinalIgnoreCase));
+        additionalInsights.Insert(0, BuildSourceRootsInsight(providerRoots, pathsOnly));
+
+        return new UsageTelemetryOverviewProviderSection(
+            section.Key,
+            section.ProviderId,
+            section.Title,
+            section.Subtitle,
+            section.Heatmap,
+            section.Metrics,
+            section.Composition,
+            section.SpotlightCards,
+            section.InputTokens,
+            section.OutputTokens,
+            section.TotalTokens,
+            section.MonthlyUsageTitle,
+            section.MonthlyUsageUnitsLabel,
+            section.MonthlyUsage,
+            additionalInsights,
+            section.TopModels,
+            section.ApiCostEstimate,
+            section.MostUsedModel,
+            section.RecentModel,
+            section.LongestStreakDays,
+            section.CurrentStreakDays,
+            HeatmapDisplayText.JoinSummaryParts(section.Note, BuildSourceRootsNote(providerRoots, pathsOnly)));
+    }
+
+    private static UsageTelemetryOverviewProviderSection ApplyQuickReportDiagnosticsToSection(
+        UsageTelemetryOverviewProviderSection section,
+        IReadOnlyDictionary<string, UsageTelemetryQuickReportProviderDiagnostics> diagnosticsByProvider) {
+        var providerId = UsageTelemetryProviderCatalog.ResolveCanonicalProviderId(section.ProviderId) ?? section.ProviderId;
+        if (!diagnosticsByProvider.TryGetValue(providerId, out var diagnostics) ||
+            diagnostics.DuplicateRecordsCollapsed <= 0) {
+            return section;
+        }
+
+        var additionalInsights = section.AdditionalInsights.ToList();
+        additionalInsights.RemoveAll(static insight => string.Equals(insight.Key, "quick-scan-dedupe", StringComparison.OrdinalIgnoreCase));
+        var sourceRootsIndex = additionalInsights.FindIndex(static insight =>
+            string.Equals(insight.Key, "source-roots", StringComparison.OrdinalIgnoreCase));
+        additionalInsights.Insert(sourceRootsIndex >= 0 ? sourceRootsIndex + 1 : 0, BuildQuickScanDedupeInsight(diagnostics));
+
+        return new UsageTelemetryOverviewProviderSection(
+            section.Key,
+            section.ProviderId,
+            section.Title,
+            section.Subtitle,
+            section.Heatmap,
+            section.Metrics,
+            section.Composition,
+            section.SpotlightCards,
+            section.InputTokens,
+            section.OutputTokens,
+            section.TotalTokens,
+            section.MonthlyUsageTitle,
+            section.MonthlyUsageUnitsLabel,
+            section.MonthlyUsage,
+            additionalInsights,
+            section.TopModels,
+            section.ApiCostEstimate,
+            section.MostUsedModel,
+            section.RecentModel,
+            section.LongestStreakDays,
+            section.CurrentStreakDays,
+            HeatmapDisplayText.JoinSummaryParts(section.Note, BuildQuickScanDedupeNote(diagnostics)));
+    }
+
+    private static UsageTelemetryOverviewInsightSection BuildSourceRootsInsight(
+        IReadOnlyList<SourceRootRecord> roots,
+        bool pathsOnly) {
+        var rows = roots
+            .GroupBy(DescribeRootScope, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(group => ResolveRootScopeSortOrder(group.Key))
+            .ThenBy(group => group.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(group => new UsageTelemetryOverviewInsightRow(
+                CultureInfo.InvariantCulture.TextInfo.ToTitleCase(group.Key),
+                group.Count().ToString(CultureInfo.InvariantCulture),
+                BuildRootExamplesSubtitle(group.Select(static root => root.Path).ToArray())))
+            .ToArray();
+
+        return new UsageTelemetryOverviewInsightSection(
+            "source-roots",
+            "Scanned roots",
+            roots.Count.ToString(CultureInfo.InvariantCulture) + " root(s) included in this quick scan",
+            pathsOnly
+                ? "Includes only explicitly requested --path roots for this report run."
+                : "Includes default discovery plus any ad hoc --path roots registered for this report run.",
+            rows);
+    }
+
+    private static UsageTelemetryOverviewInsightSection BuildQuickScanDedupeInsight(
+        UsageTelemetryQuickReportProviderDiagnostics diagnostics) {
+        var rows = new List<UsageTelemetryOverviewInsightRow> {
+            new(
+                "Duplicates collapsed",
+                diagnostics.DuplicateRecordsCollapsed.ToString(CultureInfo.InvariantCulture),
+                "Cross-root or copied quick-scan records merged before daily rollups.",
+                ComputeInsightRatio(diagnostics.DuplicateRecordsCollapsed, diagnostics.RawEventsCollected)),
+            new(
+                "Raw events",
+                diagnostics.RawEventsCollected.ToString(CultureInfo.InvariantCulture),
+                "Records gathered from parsed and cached provider artifacts before dedupe."),
+            new(
+                "Unique retained",
+                diagnostics.UniqueEventsRetained.ToString(CultureInfo.InvariantCulture),
+                "Distinct provider events kept for daily aggregation after dedupe.")
+        };
+        if (diagnostics.ArtifactsParsed > 0 || diagnostics.ArtifactsReused > 0) {
+            rows.Add(new UsageTelemetryOverviewInsightRow(
+                "Artifacts",
+                (diagnostics.ArtifactsParsed + diagnostics.ArtifactsReused).ToString(CultureInfo.InvariantCulture),
+                diagnostics.ArtifactsReused > 0
+                    ? diagnostics.ArtifactsParsed.ToString(CultureInfo.InvariantCulture) + " parsed | " +
+                      diagnostics.ArtifactsReused.ToString(CultureInfo.InvariantCulture) + " reused from cache"
+                    : diagnostics.ArtifactsParsed.ToString(CultureInfo.InvariantCulture) + " parsed during this run"));
+        }
+
+        return new UsageTelemetryOverviewInsightSection(
+            "quick-scan-dedupe",
+            "Quick-scan dedupe",
+            HeatmapDisplayText.FormatCount(
+                diagnostics.DuplicateRecordsCollapsed,
+                "duplicate record collapsed before aggregation",
+                "duplicate records collapsed before aggregation"),
+            "Useful when the same session log exists in current, archived, recovered, or copied roots.",
+            rows);
+    }
+
+    private static string BuildSourceRootsNote(IReadOnlyList<SourceRootRecord> roots, bool pathsOnly) {
+        var parts = roots
+            .GroupBy(DescribeRootScope, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(group => ResolveRootScopeSortOrder(group.Key))
+            .ThenBy(group => group.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.Count().ToString(CultureInfo.InvariantCulture) + " " + group.Key)
+            .ToArray();
+        return (pathsOnly ? "Paths-only roots: " : "Scanned roots: ") + string.Join(", ", parts);
+    }
+
+    private static string BuildQuickScanDedupeNote(UsageTelemetryQuickReportProviderDiagnostics diagnostics) {
+        return HeatmapDisplayText.FormatCount(
+            diagnostics.DuplicateRecordsCollapsed,
+            "Quick-scan dedupe collapsed 1 duplicate record before aggregation",
+            "Quick-scan dedupe collapsed " + diagnostics.DuplicateRecordsCollapsed.ToString(CultureInfo.InvariantCulture) + " duplicate records before aggregation");
+    }
+
+    private static string? BuildRootExamplesSubtitle(IReadOnlyList<string> paths) {
+        var examples = paths
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(2)
+            .Select(BuildCompactPathHint)
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .ToArray();
+        if (examples.Length == 0) {
+            return null;
+        }
+
+        return string.Join(" | ", examples);
+    }
+
+    private static string BuildCompactPathHint(string path) {
+        var normalized = UsageTelemetryIdentity.NormalizePath(path);
+        var parts = normalized
+            .Split(new[] { '\\', '/' }, StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length <= 4) {
+            return normalized;
+        }
+
+        return string.Join(Path.DirectorySeparatorChar.ToString(), parts.Skip(parts.Length - 4));
+    }
+
+    private static JsonObject BuildQuickReportScanContext(
+        ReportOptions options,
+        string? dbPath,
+        UsageTelemetryQuickReportResult scanResult,
+        IReadOnlyList<SourceRootRecord> roots) {
+        var rootsArray = new JsonArray();
+        foreach (var root in (roots ?? Array.Empty<SourceRootRecord>())
+                     .Where(root => root is not null && root.Enabled)
+                     .Where(root => MatchesProvider(root.ProviderId, options.ProviderId))
+                     .OrderBy(root => ResolveRootScopeSortOrder(DescribeRootScope(root)))
+                     .ThenBy(root => root.ProviderId, StringComparer.OrdinalIgnoreCase)
+                     .ThenBy(root => root.Path, StringComparer.OrdinalIgnoreCase)) {
+            rootsArray.Add(new JsonObject()
+                .Add("id", root.Id)
+                .Add("providerId", root.ProviderId)
+                .Add("sourceKind", root.SourceKind.ToString())
+                .Add("scope", DescribeRootScope(root))
+                .Add("path", root.Path)
+                .Add("platformHint", root.PlatformHint)
+                .Add("machineLabel", root.MachineLabel)
+                .Add("accountHint", root.AccountHint));
+        }
+
+        var obj = new JsonObject()
+            .Add("mode", "quick-report")
+            .Add("providerFilter", NormalizeOptional(options.ProviderId))
+            .Add("accountFilter", NormalizeOptional(options.AccountFilter))
+            .Add("personFilter", NormalizeOptional(options.PersonFilter))
+            .Add("pathsOnly", options.PathsOnly)
+            .Add("recentFirst", options.RecentFirst)
+            .Add("artifactBudgetReached", scanResult.ArtifactBudgetReached)
+            .Add("artifactsParsed", scanResult.ArtifactsParsed)
+            .Add("artifactsReused", scanResult.ArtifactsReused)
+            .Add("rawEventsCollected", scanResult.RawEventsCollected)
+            .Add("duplicateRecordsCollapsed", scanResult.DuplicateRecordsCollapsed)
+            .Add("rootsConsidered", scanResult.RootsConsidered)
+            .Add("cachePath", NormalizeOptional(dbPath))
+            .Add("providerDiagnostics", BuildQuickReportProviderDiagnostics(scanResult))
+            .Add("roots", rootsArray);
+        if (options.MaxArtifacts.HasValue) {
+            obj.Add("maxArtifacts", (long)options.MaxArtifacts.Value);
+        }
+        return obj;
+    }
+
+    private static JsonArray BuildQuickReportProviderDiagnostics(UsageTelemetryQuickReportResult scanResult) {
+        var array = new JsonArray();
+        foreach (var diagnostics in (scanResult is null
+                     ? Array.Empty<UsageTelemetryQuickReportProviderDiagnostics>()
+                     : (IEnumerable<UsageTelemetryQuickReportProviderDiagnostics>)scanResult.ProviderDiagnostics)
+                     .OrderBy(static item => UsageTelemetryProviderCatalog.ResolveSortOrder(item.ProviderId))
+                     .ThenBy(static item => item.ProviderId, StringComparer.OrdinalIgnoreCase)) {
+            array.Add(new JsonObject()
+                .Add("providerId", diagnostics.ProviderId)
+                .Add("rootsConsidered", diagnostics.RootsConsidered)
+                .Add("artifactsParsed", diagnostics.ArtifactsParsed)
+                .Add("artifactsReused", diagnostics.ArtifactsReused)
+                .Add("rawEventsCollected", diagnostics.RawEventsCollected)
+                .Add("uniqueEventsRetained", diagnostics.UniqueEventsRetained)
+                .Add("duplicateRecordsCollapsed", diagnostics.DuplicateRecordsCollapsed));
+        }
+
+        return array;
+    }
+
+    private static double? ComputeInsightRatio(int value, int total) {
+        if (value <= 0 || total <= 0) {
+            return 0d;
+        }
+
+        return Math.Min(1d, value / (double)total);
+    }
+
+    private static JsonObject CloneJsonObject(JsonObject source) {
+        var clone = new JsonObject();
+        foreach (var pair in source) {
+            clone.Add(pair.Key, pair.Value);
+        }
+        return clone;
+    }
+
+    private static string DescribeRootScope(SourceRootRecord root) {
+        if (root.SourceKind == UsageSourceKind.RecoveredFolder ||
+            root.Path.IndexOf("windows.old", StringComparison.OrdinalIgnoreCase) >= 0) {
+            return "recovered";
+        }
+
+        if (string.Equals(root.PlatformHint, "wsl", StringComparison.OrdinalIgnoreCase)) {
+            return "wsl";
+        }
+
+        return "local";
+    }
+
+    private static int ResolveRootScopeSortOrder(string scope) {
+        return scope.Trim().ToLowerInvariant() switch {
+            "local" => 0,
+            "wsl" => 1,
+            "recovered" => 2,
+            _ => 3
+        };
     }
 
     private static string? InferSingleProviderId(IReadOnlyList<UsageEventRecord> events) {
@@ -1070,26 +1545,27 @@ internal static class UsageTelemetryCliRunner {
         return providers.Length == 1 ? providers[0] : null;
     }
 
-    private static IReadOnlyList<SourceRootRecord> RegisterAdHocReportRoots(
+    private static IReadOnlyList<SourceRootRecord> RegisterAdHocRoots(
         ISourceRootStore sourceRootStore,
-        ReportOptions options) {
+        string? providerId,
+        IEnumerable<string> paths) {
         var roots = new List<SourceRootRecord>();
-        foreach (var rawPath in options.Paths) {
+        foreach (var rawPath in paths) {
             var normalizedPath = NormalizeOptional(rawPath);
             if (string.IsNullOrWhiteSpace(normalizedPath)) {
                 continue;
             }
 
-            var providerId = NormalizeOptional(options.ProviderId) ?? UsageTelemetryProviderCatalog.InferProviderIdFromPath(normalizedPath!);
-            if (string.IsNullOrWhiteSpace(providerId)) {
+            var effectiveProviderId = NormalizeOptional(providerId) ?? UsageTelemetryProviderCatalog.InferProviderIdFromPath(normalizedPath!);
+            if (string.IsNullOrWhiteSpace(effectiveProviderId)) {
                 throw new InvalidOperationException(
                     "Unable to infer the provider for '" + normalizedPath + "'. Use --provider <id> with --path.");
             }
 
             var sourceKind = InferSourceKindFromPath(normalizedPath!);
             var root = new SourceRootRecord(
-                SourceRootRecord.CreateStableId(providerId!, sourceKind, normalizedPath!),
-                providerId!,
+                SourceRootRecord.CreateStableId(effectiveProviderId!, sourceKind, normalizedPath!),
+                effectiveProviderId!,
                 sourceKind,
                 normalizedPath!);
             sourceRootStore.Upsert(root);
@@ -1634,7 +2110,9 @@ internal static class UsageTelemetryCliRunner {
         public int? MaxArtifacts { get; set; }
         public bool Discover { get; set; }
         public bool Force { get; set; }
+        public bool PathsOnly { get; set; }
         public bool Json { get; set; }
+        public List<string> Paths { get; } = new();
 
         public static ImportOptions Parse(string[] args) {
             var options = new ImportOptions();
@@ -1645,6 +2123,9 @@ internal static class UsageTelemetryCliRunner {
                         break;
                     case "--provider":
                         options.ProviderId = ReadValue(args, ref i);
+                        break;
+                    case "--path":
+                        options.Paths.Add(ReadValue(args, ref i));
                         break;
                     case "--machine":
                         options.MachineId = ReadValue(args, ref i);
@@ -1663,6 +2144,9 @@ internal static class UsageTelemetryCliRunner {
                         break;
                     case "--force":
                         options.Force = true;
+                        break;
+                    case "--paths-only":
+                        options.PathsOnly = true;
                         break;
                     case "--json":
                         options.Json = true;
@@ -1689,6 +2173,7 @@ internal static class UsageTelemetryCliRunner {
         public int? MaxArtifacts { get; set; }
         public bool Force { get; set; }
         public bool FullImport { get; set; }
+        public bool PathsOnly { get; set; }
         public bool Json { get; set; }
         public List<string> Paths { get; } = new();
         public List<string> GitHubUsers { get; } = new();
@@ -1739,6 +2224,9 @@ internal static class UsageTelemetryCliRunner {
                         break;
                     case "--full-import":
                         options.FullImport = true;
+                        break;
+                    case "--paths-only":
+                        options.PathsOnly = true;
                         break;
                     case "--out":
                         options.OutputPath = ReadValue(args, ref i);
@@ -1810,8 +2298,10 @@ internal static class UsageTelemetryCliRunner {
         public bool RecentFirst { get; set; }
         public int? MaxArtifacts { get; set; }
         public bool Force { get; set; }
+        public bool PathsOnly { get; set; }
         public bool SkipAutoImport { get; set; }
         public bool Json { get; set; }
+        public List<string> Paths { get; } = new();
         public List<string> GitHubUsers { get; } = new();
         public List<string> GitHubOwners { get; } = new();
 
@@ -1824,6 +2314,9 @@ internal static class UsageTelemetryCliRunner {
                         break;
                     case "--provider":
                         options.ProviderId = ReadValue(args, ref i);
+                        break;
+                    case "--path":
+                        options.Paths.Add(ReadValue(args, ref i));
                         break;
                     case "--account":
                         options.AccountFilter = ReadValue(args, ref i);
@@ -1857,6 +2350,9 @@ internal static class UsageTelemetryCliRunner {
                         break;
                     case "--force":
                         options.Force = true;
+                        break;
+                    case "--paths-only":
+                        options.PathsOnly = true;
                         break;
                     case "--no-auto-import":
                         options.SkipAutoImport = true;

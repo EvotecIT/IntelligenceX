@@ -255,6 +255,40 @@ internal static partial class Program {
         }
     }
 
+    private static void TestCodexSessionUsageAdapterDoesNotDuplicateArchivedSessionCopies() {
+        var tempDir = CreateUsageTelemetryTempDirectory();
+        try {
+            var codexHome = Path.Combine(tempDir, ".codex");
+            var sessionsDir = Path.Combine(codexHome, "sessions", "2026", "03", "11");
+            var archivedDir = Path.Combine(codexHome, "archived_sessions", "2026", "03", "11");
+            Directory.CreateDirectory(sessionsDir);
+            Directory.CreateDirectory(archivedDir);
+
+            WriteCodexRolloutFile(
+                Path.Combine(sessionsDir, "rollout-2026-03-11T13-10-00-thread-archive.jsonl"),
+                "thread-archive",
+                "resp-archive",
+                includeAuth: false,
+                authRoot: codexHome);
+            WriteCodexRolloutFile(
+                Path.Combine(archivedDir, "rollout-2026-03-11T13-10-00-thread-archive-copy.jsonl"),
+                "thread-archive",
+                "resp-archive",
+                includeAuth: false,
+                authRoot: codexHome);
+
+            var adapter = new CodexSessionUsageAdapter();
+            var root = new SourceRootRecord("src_codex_archive_dedupe", "codex", UsageSourceKind.LocalLogs, codexHome);
+            var records = adapter.ImportAsync(root, new UsageImportContext()).GetAwaiter().GetResult();
+
+            AssertEqual(1, records.Count, "codex archive dedupe record count");
+            AssertEqual(140L, records[0].TotalTokens, "codex archive dedupe total tokens");
+            AssertEqual("thread-archive", records[0].SessionId, "codex archive dedupe session id");
+        } finally {
+            TryDeleteUsageTelemetryTempDirectory(tempDir);
+        }
+    }
+
     private static string CreateUsageTelemetryTempDirectory() {
         var path = Path.Combine(Path.GetTempPath(), "ix-usage-telemetry-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(path);
