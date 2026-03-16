@@ -20,9 +20,6 @@
     <ProjectReference Include="..\IntelligenceX.Tools.Common\IntelligenceX.Tools.Common.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="System.ServiceProcess.ServiceController" Version="9.0.14" />
-  </ItemGroup>
-  <ItemGroup>
     <!-- System tools are engine-first and rely on ComputerX on Windows. -->
     <ProjectReference Include="$(TestimoXRoot)ComputerX\\ComputerX.csproj" Condition="Exists('$(TestimoXRoot)ComputerX\\ComputerX.csproj')" />
   </ItemGroup>
