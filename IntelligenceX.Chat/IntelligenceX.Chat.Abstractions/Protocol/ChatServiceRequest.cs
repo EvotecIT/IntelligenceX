@@ -29,6 +29,13 @@ namespace IntelligenceX.Chat.Abstractions.Protocol;
 [JsonDerivedType(typeof(CancelChatRequest), "chat_cancel")]
 [JsonDerivedType(typeof(ChatRequest), "chat")]
 public abstract record ChatServiceRequest {
+    private protected static string NormalizeBackgroundSchedulerMutationOperation(string? value) {
+        var normalized = (value ?? string.Empty).Trim().ToLowerInvariant();
+        return normalized is "add" or "remove" or "replace" or "clear" or "reset"
+            ? normalized
+            : string.Empty;
+    }
+
     /// <summary>
     /// Correlation id for the request.
     /// </summary>
@@ -203,10 +210,15 @@ public sealed record SetBackgroundSchedulerStateRequest : ChatServiceRequest {
 /// Applies a runtime maintenance-window policy update to the background scheduler.
 /// </summary>
 public sealed record SetBackgroundSchedulerMaintenanceWindowsRequest : ChatServiceRequest {
+    private string _operation = string.Empty;
+
     /// <summary>
     /// Requested operation: add, remove, replace, clear, or reset.
     /// </summary>
-    public required string Operation { get; init; }
+    public required string Operation {
+        get => _operation;
+        init => _operation = NormalizeBackgroundSchedulerMutationOperation(value);
+    }
 
     /// <summary>
     /// Maintenance window specs used by add/remove/replace operations.
@@ -228,11 +240,15 @@ public sealed record SetBackgroundSchedulerBlockedPacksRequest : ChatServiceRequ
     private int? _requestedDurationSeconds;
     private bool _requestedUntilNextMaintenanceWindow;
     private bool _requestedUntilNextMaintenanceWindowStart;
+    private string _operation = string.Empty;
 
     /// <summary>
     /// Requested operation: add, remove, replace, clear, or reset.
     /// </summary>
-    public required string Operation { get; init; }
+    public required string Operation {
+        get => _operation;
+        init => _operation = NormalizeBackgroundSchedulerMutationOperation(value);
+    }
 
     /// <summary>
     /// Pack ids used by add/remove/replace operations.
@@ -279,11 +295,15 @@ public sealed record SetBackgroundSchedulerBlockedThreadsRequest : ChatServiceRe
     private int? _requestedDurationSeconds;
     private bool _requestedUntilNextMaintenanceWindow;
     private bool _requestedUntilNextMaintenanceWindowStart;
+    private string _operation = string.Empty;
 
     /// <summary>
     /// Requested operation: add, remove, replace, clear, or reset.
     /// </summary>
-    public required string Operation { get; init; }
+    public required string Operation {
+        get => _operation;
+        init => _operation = NormalizeBackgroundSchedulerMutationOperation(value);
+    }
 
     /// <summary>
     /// Thread ids used by add/remove/replace operations.

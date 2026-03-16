@@ -353,6 +353,7 @@ public sealed partial class MainWindow {
         try {
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             var result = await operation(client, cts.Token, state).ConfigureAwait(false);
+            _backgroundSchedulerStatusSnapshot = null;
             ApplyBackgroundSchedulerSnapshot(result.Scheduler, scoped: false);
             await PublishOptionsStateAsync().ConfigureAwait(false);
             await SetStatusAsync(successPrefix + " " + BuildBackgroundSchedulerSummaryText(result.Scheduler)).ConfigureAwait(false);

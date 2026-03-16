@@ -161,6 +161,28 @@ public sealed class ToolHealthContractTests {
     }
 
     [Fact]
+    public void SetBackgroundSchedulerMaintenanceWindowsRequest_NormalizesOperation() {
+        var request = new SetBackgroundSchedulerMaintenanceWindowsRequest {
+            RequestId = "req_scheduler_windows_normalized",
+            Operation = "  RePlace  ",
+            Windows = new[] { "mon@02:00/60" }
+        };
+
+        Assert.Equal("replace", request.Operation);
+    }
+
+    [Fact]
+    public void SetBackgroundSchedulerMaintenanceWindowsRequest_InvalidOperationNormalizesToEmpty() {
+        var request = new SetBackgroundSchedulerMaintenanceWindowsRequest {
+            RequestId = "req_scheduler_windows_invalid",
+            Operation = " mutate ",
+            Windows = new[] { "mon@02:00/60" }
+        };
+
+        Assert.Equal(string.Empty, request.Operation);
+    }
+
+    [Fact]
     public void SetBackgroundSchedulerBlockedThreadsRequest_DeserializesViaPolymorphicContract() {
         const string json = """
             {
@@ -197,6 +219,28 @@ public sealed class ToolHealthContractTests {
         Assert.Null(request.DurationSeconds);
         Assert.False(request.UntilNextMaintenanceWindow);
         Assert.True(request.UntilNextMaintenanceWindowStart);
+    }
+
+    [Fact]
+    public void SetBackgroundSchedulerBlockedThreadsRequest_NormalizesOperation() {
+        var request = new SetBackgroundSchedulerBlockedThreadsRequest {
+            RequestId = "req_scheduler_threads_normalized",
+            Operation = "  Add  ",
+            ThreadIds = new[] { "thread-a" }
+        };
+
+        Assert.Equal("add", request.Operation);
+    }
+
+    [Fact]
+    public void SetBackgroundSchedulerBlockedThreadsRequest_InvalidOperationNormalizesToEmpty() {
+        var request = new SetBackgroundSchedulerBlockedThreadsRequest {
+            RequestId = "req_scheduler_threads_invalid_operation",
+            Operation = "  mutate  ",
+            ThreadIds = new[] { "thread-a" }
+        };
+
+        Assert.Equal(string.Empty, request.Operation);
     }
 
     [Fact]
@@ -277,6 +321,28 @@ public sealed class ToolHealthContractTests {
         Assert.Null(request.DurationSeconds);
         Assert.False(request.UntilNextMaintenanceWindow);
         Assert.True(request.UntilNextMaintenanceWindowStart);
+    }
+
+    [Fact]
+    public void SetBackgroundSchedulerBlockedPacksRequest_NormalizesOperation() {
+        var request = new SetBackgroundSchedulerBlockedPacksRequest {
+            RequestId = "req_scheduler_packs_normalized",
+            Operation = "  Remove  ",
+            PackIds = new[] { "system" }
+        };
+
+        Assert.Equal("remove", request.Operation);
+    }
+
+    [Fact]
+    public void SetBackgroundSchedulerBlockedPacksRequest_InvalidOperationNormalizesToEmpty() {
+        var request = new SetBackgroundSchedulerBlockedPacksRequest {
+            RequestId = "req_scheduler_packs_invalid_operation",
+            Operation = "  mutate  ",
+            PackIds = new[] { "system" }
+        };
+
+        Assert.Equal(string.Empty, request.Operation);
     }
 
     [Fact]
