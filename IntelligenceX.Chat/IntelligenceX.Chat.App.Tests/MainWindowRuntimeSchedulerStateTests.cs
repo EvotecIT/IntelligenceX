@@ -212,6 +212,18 @@ public sealed class MainWindowRuntimeSchedulerStateTests {
     }
 
     /// <summary>
+    /// Ensures app refresh clamps invalid negative thread summary caps to the request contract floor.
+    /// </summary>
+    [Fact]
+    public void ResolveBackgroundSchedulerThreadSummaryLimit_ClampsNegativeValuesToZero() {
+        var threadSummaryLimit = MainWindow.ResolveBackgroundSchedulerThreadSummaryLimit(
+            includeThreadSummaries: true,
+            maxThreadSummaries: -5);
+
+        Assert.Equal(0, threadSummaryLimit);
+    }
+
+    /// <summary>
     /// Ensures a scoped scheduler refresh failure restores the preserved global snapshot
     /// instead of blanking the active scheduler diagnostics view.
     /// </summary>

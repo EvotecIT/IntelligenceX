@@ -121,7 +121,7 @@ public sealed partial class MainWindow : Window {
 
     internal static int ResolveBackgroundSchedulerThreadSummaryLimit(bool includeThreadSummaries, int maxThreadSummaries) {
         return includeThreadSummaries
-            ? Math.Min(maxThreadSummaries, ChatRequestOptionLimits.MaxBackgroundSchedulerStatusItems)
+            ? Math.Clamp(maxThreadSummaries, 0, ChatRequestOptionLimits.MaxBackgroundSchedulerStatusItems)
             : maxThreadSummaries;
     }
 
