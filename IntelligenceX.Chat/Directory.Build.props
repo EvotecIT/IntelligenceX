@@ -37,9 +37,9 @@
     <DbaClientXRepoRoot Condition="'$(DbaClientXRepoRoot)' == '' and Exists('$(DbaClientXRepoRootCandidate2)DbaClientX.SQLite\\DbaClientX.SQLite.csproj')">$(DbaClientXRepoRootCandidate2)</DbaClientXRepoRoot>
     <DbaClientXRepoRoot Condition="'$(DbaClientXRepoRoot)' == ''">$(DbaClientXRepoRootCandidate1)</DbaClientXRepoRoot>
 
-    <OfficeImoMarkdownNuGetVersion Condition="'$(OfficeImoMarkdownNuGetVersion)' == ''">0.6.1</OfficeImoMarkdownNuGetVersion>
-    <OfficeImoMarkdownRendererNuGetVersion Condition="'$(OfficeImoMarkdownRendererNuGetVersion)' == ''">0.2.1</OfficeImoMarkdownRendererNuGetVersion>
-    <OfficeImoExcelNuGetVersion Condition="'$(OfficeImoExcelNuGetVersion)' == ''">0.6.14</OfficeImoExcelNuGetVersion>
-    <OfficeImoWordMarkdownNuGetVersion Condition="'$(OfficeImoWordMarkdownNuGetVersion)' == ''">1.0.8</OfficeImoWordMarkdownNuGetVersion>
+    <OfficeImoMarkdownNuGetVersion Condition="'$(OfficeImoMarkdownNuGetVersion)' == ''">0.6.2</OfficeImoMarkdownNuGetVersion>
+    <OfficeImoMarkdownRendererNuGetVersion Condition="'$(OfficeImoMarkdownRendererNuGetVersion)' == ''">0.2.2</OfficeImoMarkdownRendererNuGetVersion>
+    <OfficeImoExcelNuGetVersion Condition="'$(OfficeImoExcelNuGetVersion)' == ''">0.6.15</OfficeImoExcelNuGetVersion>
+    <OfficeImoWordMarkdownNuGetVersion Condition="'$(OfficeImoWordMarkdownNuGetVersion)' == ''">1.0.9</OfficeImoWordMarkdownNuGetVersion>
   </PropertyGroup>
 </Project>
