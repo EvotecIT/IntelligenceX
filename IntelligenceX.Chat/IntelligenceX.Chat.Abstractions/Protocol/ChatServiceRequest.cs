@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Serialization;
 using IntelligenceX.Chat.Abstractions.Policy;
 
@@ -36,6 +37,83 @@ public abstract record ChatServiceRequest {
         }
 
         throw new ArgumentException("Operation must be one of: add, remove, replace, clear, reset.", parameterName);
+    }
+
+    private protected static string[]? NormalizeBackgroundSchedulerMutationTargets(string[]? values) {
+        if (values is not { Length: > 0 }) {
+            return null;
+        }
+
+        var normalized = values
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .Select(static value => value.Trim())
+            .ToArray();
+
+        return normalized.Length > 0 ? normalized : null;
+    }
+
+    private protected static void ValidateBackgroundSchedulerTargetMutationState(
+        string operation,
+        string[]? targets,
+        string targetsParameterName) {
+        if (operation is "add" or "remove" or "replace") {
+            if (targets is not { Length: > 0 }) {
+                throw new ArgumentException(
+                    $"{targetsParameterName} must be provided for {operation} operations.",
+                    targetsParameterName);
+            }
+
+            return;
+        }
+
+        if (targets is { Length: > 0 }) {
+            throw new ArgumentException(
+                $"{targetsParameterName} must be omitted for {operation} operations.",
+                targetsParameterName);
+        }
+    }
+
+    private protected static void ValidateBackgroundSchedulerTemporarySuppressionState(
+        string operation,
+        int? durationSeconds,
+        bool untilNextMaintenanceWindow,
+        bool untilNextMaintenanceWindowStart,
+        string durationParameterName,
+        string untilWindowParameterName,
+        string untilWindowStartParameterName) {
+        if (untilNextMaintenanceWindow && untilNextMaintenanceWindowStart) {
+            throw new ArgumentException(
+                "UntilNextMaintenanceWindow and UntilNextMaintenanceWindowStart cannot both be true.",
+                untilWindowStartParameterName);
+        }
+
+        if (durationSeconds is not null && (untilNextMaintenanceWindow || untilNextMaintenanceWindowStart)) {
+            throw new ArgumentException(
+                "DurationSeconds cannot be combined with maintenance-window suppression flags.",
+                durationParameterName);
+        }
+
+        if (operation == "add") {
+            return;
+        }
+
+        if (durationSeconds is not null) {
+            throw new ArgumentException(
+                $"DurationSeconds is only supported for add operations, not {operation}.",
+                durationParameterName);
+        }
+
+        if (untilNextMaintenanceWindow) {
+            throw new ArgumentException(
+                $"UntilNextMaintenanceWindow is only supported for add operations, not {operation}.",
+                untilWindowParameterName);
+        }
+
+        if (untilNextMaintenanceWindowStart) {
+            throw new ArgumentException(
+                $"UntilNextMaintenanceWindowStart is only supported for add operations, not {operation}.",
+                untilWindowStartParameterName);
+        }
     }
 
     /// <summary>
@@ -231,20 +309,33 @@ public sealed record SetBackgroundSchedulerStateRequest : ChatServiceRequest {
 /// Applies a runtime maintenance-window policy update to the background scheduler.
 /// </summary>
 public sealed record SetBackgroundSchedulerMaintenanceWindowsRequest : ChatServiceRequest {
-    private string _operation = string.Empty;
+    /// <summary>
+    /// Creates a maintenance-window mutation request with operation-aware validation.
+    /// </summary>
+    /// <param name="requestId">Correlation id for the request.</param>
+    /// <param name="operation">Requested operation: add, remove, replace, clear, or reset.</param>
+    /// <param name="windows">Optional maintenance window specs for targeted operations.</param>
+    [JsonConstructor]
+    [SetsRequiredMembers]
+    public SetBackgroundSchedulerMaintenanceWindowsRequest(
+        string requestId,
+        string operation,
+        string[]? windows = null) {
+        RequestId = requestId;
+        Operation = NormalizeBackgroundSchedulerMutationOperation(operation, nameof(Operation));
+        Windows = NormalizeBackgroundSchedulerMutationTargets(windows);
+        ValidateBackgroundSchedulerTargetMutationState(Operation, Windows, nameof(Windows));
+    }
 
     /// <summary>
     /// Requested operation: add, remove, replace, clear, or reset.
     /// </summary>
-    public required string Operation {
-        get => _operation;
-        init => _operation = NormalizeBackgroundSchedulerMutationOperation(value, nameof(Operation));
-    }
+    public string Operation { get; }
 
     /// <summary>
     /// Maintenance window specs used by add/remove/replace operations.
     /// </summary>
-    public string[]? Windows { get; init; }
+    public string[]? Windows { get; }
 }
 
 /// <summary>
@@ -266,60 +357,67 @@ public sealed record SetBackgroundSchedulerBlockedPacksRequest : ChatServiceRequ
         return requested;
     }
 
-    private int? _requestedDurationSeconds;
-    private bool _requestedUntilNextMaintenanceWindow;
-    private bool _requestedUntilNextMaintenanceWindowStart;
-    private string _operation = string.Empty;
+    /// <summary>
+    /// Creates a blocked-pack mutation request with operation-aware validation.
+    /// </summary>
+    /// <param name="requestId">Correlation id for the request.</param>
+    /// <param name="operation">Requested operation: add, remove, replace, clear, or reset.</param>
+    /// <param name="packIds">Optional pack ids for targeted operations.</param>
+    /// <param name="durationSeconds">Optional temporary suppression duration in seconds for add operations.</param>
+    /// <param name="untilNextMaintenanceWindow">Whether the add operation should suppress until the next relevant maintenance window ends.</param>
+    /// <param name="untilNextMaintenanceWindowStart">Whether the add operation should suppress until the next relevant maintenance window starts.</param>
+    [JsonConstructor]
+    [SetsRequiredMembers]
+    public SetBackgroundSchedulerBlockedPacksRequest(
+        string requestId,
+        string operation,
+        string[]? packIds = null,
+        int? durationSeconds = null,
+        bool untilNextMaintenanceWindow = false,
+        bool untilNextMaintenanceWindowStart = false) {
+        RequestId = requestId;
+        Operation = NormalizeBackgroundSchedulerMutationOperation(operation, nameof(Operation));
+        PackIds = NormalizeBackgroundSchedulerMutationTargets(packIds);
+        DurationSeconds = ValidatePositiveDurationSeconds(durationSeconds, nameof(DurationSeconds));
+        UntilNextMaintenanceWindow = untilNextMaintenanceWindow;
+        UntilNextMaintenanceWindowStart = untilNextMaintenanceWindowStart;
+
+        ValidateBackgroundSchedulerTargetMutationState(Operation, PackIds, nameof(PackIds));
+        ValidateBackgroundSchedulerTemporarySuppressionState(
+            Operation,
+            DurationSeconds,
+            UntilNextMaintenanceWindow,
+            UntilNextMaintenanceWindowStart,
+            nameof(DurationSeconds),
+            nameof(UntilNextMaintenanceWindow),
+            nameof(UntilNextMaintenanceWindowStart));
+    }
 
     /// <summary>
     /// Requested operation: add, remove, replace, clear, or reset.
     /// </summary>
-    public required string Operation {
-        get => _operation;
-        init => _operation = NormalizeBackgroundSchedulerMutationOperation(value, nameof(Operation));
-    }
+    public string Operation { get; }
 
     /// <summary>
     /// Pack ids used by add/remove/replace operations.
     /// </summary>
-    public string[]? PackIds { get; init; }
+    public string[]? PackIds { get; }
 
     /// <summary>
     /// Optional temporary suppression duration in seconds for add operations.
     /// Null means a persistent policy update.
     /// </summary>
-    public int? DurationSeconds {
-        get => _requestedUntilNextMaintenanceWindow || _requestedUntilNextMaintenanceWindowStart ? null : _requestedDurationSeconds;
-        init => _requestedDurationSeconds = ValidatePositiveDurationSeconds(value, nameof(DurationSeconds));
-    }
+    public int? DurationSeconds { get; }
 
     /// <summary>
     /// When true, add operations derive a temporary suppression that lasts until the next relevant maintenance window ends.
     /// </summary>
-    public bool UntilNextMaintenanceWindow {
-        get => _requestedUntilNextMaintenanceWindow;
-        init {
-            if (value && _requestedUntilNextMaintenanceWindowStart) {
-                throw new ArgumentException("UntilNextMaintenanceWindow and UntilNextMaintenanceWindowStart cannot both be true.", nameof(UntilNextMaintenanceWindow));
-            }
-
-            _requestedUntilNextMaintenanceWindow = value;
-        }
-    }
+    public bool UntilNextMaintenanceWindow { get; }
 
     /// <summary>
     /// When true, add operations derive a temporary suppression that lasts until the next relevant maintenance window starts.
     /// </summary>
-    public bool UntilNextMaintenanceWindowStart {
-        get => _requestedUntilNextMaintenanceWindowStart;
-        init {
-            if (value && _requestedUntilNextMaintenanceWindow) {
-                throw new ArgumentException("UntilNextMaintenanceWindow and UntilNextMaintenanceWindowStart cannot both be true.", nameof(UntilNextMaintenanceWindowStart));
-            }
-
-            _requestedUntilNextMaintenanceWindowStart = value;
-        }
-    }
+    public bool UntilNextMaintenanceWindowStart { get; }
 }
 
 /// <summary>
@@ -341,60 +439,67 @@ public sealed record SetBackgroundSchedulerBlockedThreadsRequest : ChatServiceRe
         return requested;
     }
 
-    private int? _requestedDurationSeconds;
-    private bool _requestedUntilNextMaintenanceWindow;
-    private bool _requestedUntilNextMaintenanceWindowStart;
-    private string _operation = string.Empty;
+    /// <summary>
+    /// Creates a blocked-thread mutation request with operation-aware validation.
+    /// </summary>
+    /// <param name="requestId">Correlation id for the request.</param>
+    /// <param name="operation">Requested operation: add, remove, replace, clear, or reset.</param>
+    /// <param name="threadIds">Optional thread ids for targeted operations.</param>
+    /// <param name="durationSeconds">Optional temporary suppression duration in seconds for add operations.</param>
+    /// <param name="untilNextMaintenanceWindow">Whether the add operation should suppress until the next relevant maintenance window ends.</param>
+    /// <param name="untilNextMaintenanceWindowStart">Whether the add operation should suppress until the next relevant maintenance window starts.</param>
+    [JsonConstructor]
+    [SetsRequiredMembers]
+    public SetBackgroundSchedulerBlockedThreadsRequest(
+        string requestId,
+        string operation,
+        string[]? threadIds = null,
+        int? durationSeconds = null,
+        bool untilNextMaintenanceWindow = false,
+        bool untilNextMaintenanceWindowStart = false) {
+        RequestId = requestId;
+        Operation = NormalizeBackgroundSchedulerMutationOperation(operation, nameof(Operation));
+        ThreadIds = NormalizeBackgroundSchedulerMutationTargets(threadIds);
+        DurationSeconds = ValidatePositiveDurationSeconds(durationSeconds, nameof(DurationSeconds));
+        UntilNextMaintenanceWindow = untilNextMaintenanceWindow;
+        UntilNextMaintenanceWindowStart = untilNextMaintenanceWindowStart;
+
+        ValidateBackgroundSchedulerTargetMutationState(Operation, ThreadIds, nameof(ThreadIds));
+        ValidateBackgroundSchedulerTemporarySuppressionState(
+            Operation,
+            DurationSeconds,
+            UntilNextMaintenanceWindow,
+            UntilNextMaintenanceWindowStart,
+            nameof(DurationSeconds),
+            nameof(UntilNextMaintenanceWindow),
+            nameof(UntilNextMaintenanceWindowStart));
+    }
 
     /// <summary>
     /// Requested operation: add, remove, replace, clear, or reset.
     /// </summary>
-    public required string Operation {
-        get => _operation;
-        init => _operation = NormalizeBackgroundSchedulerMutationOperation(value, nameof(Operation));
-    }
+    public string Operation { get; }
 
     /// <summary>
     /// Thread ids used by add/remove/replace operations.
     /// </summary>
-    public string[]? ThreadIds { get; init; }
+    public string[]? ThreadIds { get; }
 
     /// <summary>
     /// Optional temporary suppression duration in seconds for add operations.
     /// Null means a persistent policy update.
     /// </summary>
-    public int? DurationSeconds {
-        get => _requestedUntilNextMaintenanceWindow || _requestedUntilNextMaintenanceWindowStart ? null : _requestedDurationSeconds;
-        init => _requestedDurationSeconds = ValidatePositiveDurationSeconds(value, nameof(DurationSeconds));
-    }
+    public int? DurationSeconds { get; }
 
     /// <summary>
     /// When true, add operations derive a temporary suppression that lasts until the next relevant maintenance window ends.
     /// </summary>
-    public bool UntilNextMaintenanceWindow {
-        get => _requestedUntilNextMaintenanceWindow;
-        init {
-            if (value && _requestedUntilNextMaintenanceWindowStart) {
-                throw new ArgumentException("UntilNextMaintenanceWindow and UntilNextMaintenanceWindowStart cannot both be true.", nameof(UntilNextMaintenanceWindow));
-            }
-
-            _requestedUntilNextMaintenanceWindow = value;
-        }
-    }
+    public bool UntilNextMaintenanceWindow { get; }
 
     /// <summary>
     /// When true, add operations derive a temporary suppression that lasts until the next relevant maintenance window starts.
     /// </summary>
-    public bool UntilNextMaintenanceWindowStart {
-        get => _requestedUntilNextMaintenanceWindowStart;
-        init {
-            if (value && _requestedUntilNextMaintenanceWindow) {
-                throw new ArgumentException("UntilNextMaintenanceWindow and UntilNextMaintenanceWindowStart cannot both be true.", nameof(UntilNextMaintenanceWindowStart));
-            }
-
-            _requestedUntilNextMaintenanceWindowStart = value;
-        }
-    }
+    public bool UntilNextMaintenanceWindowStart { get; }
 }
 
 /// <summary>

@@ -376,16 +376,15 @@ public sealed class ChatServiceClient : IAsyncDisposable {
         ValidateBackgroundSchedulerMaintenanceWindowOperation(operation, windows);
 
         return RequestAsync<BackgroundSchedulerStatusMessage>(
-            new SetBackgroundSchedulerMaintenanceWindowsRequest {
-                RequestId = NewRequestId(),
-                Operation = operation.Trim(),
-                Windows = windows is { Count: > 0 }
+            new SetBackgroundSchedulerMaintenanceWindowsRequest(
+                requestId: NewRequestId(),
+                operation: operation.Trim(),
+                windows: windows is { Count: > 0 }
                     ? windows
                         .Where(static window => !string.IsNullOrWhiteSpace(window))
                         .Select(static window => window.Trim())
                         .ToArray()
-                    : null
-            },
+                    : null),
             cancellationToken);
     }
 
@@ -431,14 +430,13 @@ public sealed class ChatServiceClient : IAsyncDisposable {
         }
 
         return RequestAsync<BackgroundSchedulerStatusMessage>(
-            new SetBackgroundSchedulerBlockedThreadsRequest {
-                RequestId = NewRequestId(),
-                Operation = operation.Trim(),
-                ThreadIds = normalizedThreadIds,
-                DurationSeconds = durationSeconds,
-                UntilNextMaintenanceWindow = untilNextMaintenanceWindow,
-                UntilNextMaintenanceWindowStart = untilNextMaintenanceWindowStart
-            },
+            new SetBackgroundSchedulerBlockedThreadsRequest(
+                requestId: NewRequestId(),
+                operation: operation.Trim(),
+                threadIds: normalizedThreadIds,
+                durationSeconds: durationSeconds,
+                untilNextMaintenanceWindow: untilNextMaintenanceWindow,
+                untilNextMaintenanceWindowStart: untilNextMaintenanceWindowStart),
             cancellationToken);
     }
 
@@ -484,14 +482,13 @@ public sealed class ChatServiceClient : IAsyncDisposable {
         }
 
         return RequestAsync<BackgroundSchedulerStatusMessage>(
-            new SetBackgroundSchedulerBlockedPacksRequest {
-                RequestId = NewRequestId(),
-                Operation = operation.Trim(),
-                PackIds = normalizedPackIds,
-                DurationSeconds = durationSeconds,
-                UntilNextMaintenanceWindow = untilNextMaintenanceWindow,
-                UntilNextMaintenanceWindowStart = untilNextMaintenanceWindowStart
-            },
+            new SetBackgroundSchedulerBlockedPacksRequest(
+                requestId: NewRequestId(),
+                operation: operation.Trim(),
+                packIds: normalizedPackIds,
+                durationSeconds: durationSeconds,
+                untilNextMaintenanceWindow: untilNextMaintenanceWindow,
+                untilNextMaintenanceWindowStart: untilNextMaintenanceWindowStart),
             cancellationToken);
     }
 

@@ -166,24 +166,60 @@ public sealed class ToolHealthContractTests {
 
     [Fact]
     public void SetBackgroundSchedulerMaintenanceWindowsRequest_NormalizesOperation() {
-        var request = new SetBackgroundSchedulerMaintenanceWindowsRequest {
-            RequestId = "req_scheduler_windows_normalized",
-            Operation = "  RePlace  ",
-            Windows = new[] { "mon@02:00/60" }
-        };
+        var request = new SetBackgroundSchedulerMaintenanceWindowsRequest(
+            "req_scheduler_windows_normalized",
+            "  RePlace  ",
+            new[] { "mon@02:00/60" });
 
         Assert.Equal("replace", request.Operation);
     }
 
     [Fact]
     public void SetBackgroundSchedulerMaintenanceWindowsRequest_RejectsInvalidOperation() {
-        var ex = Assert.Throws<ArgumentException>(() => new SetBackgroundSchedulerMaintenanceWindowsRequest {
-            RequestId = "req_scheduler_windows_invalid",
-            Operation = " mutate ",
-            Windows = new[] { "mon@02:00/60" }
-        });
+        var ex = Assert.Throws<ArgumentException>(() => new SetBackgroundSchedulerMaintenanceWindowsRequest(
+            "req_scheduler_windows_invalid",
+            " mutate ",
+            new[] { "mon@02:00/60" }));
 
         Assert.Contains("Operation must be one of", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("add")]
+    [InlineData("remove")]
+    [InlineData("replace")]
+    public void SetBackgroundSchedulerMaintenanceWindowsRequest_RequiresWindowsForTargetedOperations(string operation) {
+        var ex = Assert.Throws<ArgumentException>(() => new SetBackgroundSchedulerMaintenanceWindowsRequest(
+            "req_scheduler_windows_missing_targets",
+            operation));
+
+        Assert.Contains("Windows must be provided", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("clear")]
+    [InlineData("reset")]
+    public void SetBackgroundSchedulerMaintenanceWindowsRequest_RejectsWindowsForUntargetedOperations(string operation) {
+        var ex = Assert.Throws<ArgumentException>(() => new SetBackgroundSchedulerMaintenanceWindowsRequest(
+            "req_scheduler_windows_unexpected_targets",
+            operation,
+            new[] { "mon@02:00/60" }));
+
+        Assert.Contains("Windows must be omitted", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SetBackgroundSchedulerMaintenanceWindowsRequest_RejectsMissingWindowsDuringPolymorphicDeserialization() {
+        const string json = """
+            {
+              "type":"set_background_scheduler_maintenance_windows",
+              "requestId":"req_scheduler_windows_missing_targets_wire",
+              "operation":"add"
+            }
+            """;
+
+        var ex = Assert.ThrowsAny<ArgumentException>(() => JsonSerializer.Deserialize(json, ChatServiceJsonContext.Default.ChatServiceRequest));
+        Assert.Contains("Windows must be provided", ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -226,63 +262,102 @@ public sealed class ToolHealthContractTests {
 
     [Fact]
     public void SetBackgroundSchedulerBlockedThreadsRequest_RejectsConflictingFlags() {
-        var ex = Assert.Throws<ArgumentException>(() => new SetBackgroundSchedulerBlockedThreadsRequest {
-            RequestId = "req_scheduler_threads_invalid",
-            Operation = "add",
-            ThreadIds = new[] { "thread-a" },
-            DurationSeconds = 60,
-            UntilNextMaintenanceWindow = true,
-            UntilNextMaintenanceWindowStart = true
-        });
+        var ex = Assert.Throws<ArgumentException>(() => new SetBackgroundSchedulerBlockedThreadsRequest(
+            "req_scheduler_threads_invalid",
+            "add",
+            new[] { "thread-a" },
+            durationSeconds: 60,
+            untilNextMaintenanceWindow: true,
+            untilNextMaintenanceWindowStart: true));
 
         Assert.Contains("cannot both be true", ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]
     public void SetBackgroundSchedulerBlockedThreadsRequest_NormalizesOperation() {
-        var request = new SetBackgroundSchedulerBlockedThreadsRequest {
-            RequestId = "req_scheduler_threads_normalized",
-            Operation = "  Add  ",
-            ThreadIds = new[] { "thread-a" }
-        };
+        var request = new SetBackgroundSchedulerBlockedThreadsRequest(
+            "req_scheduler_threads_normalized",
+            "  Add  ",
+            new[] { "thread-a" });
 
         Assert.Equal("add", request.Operation);
     }
 
     [Fact]
     public void SetBackgroundSchedulerBlockedThreadsRequest_RejectsInvalidOperation() {
-        var ex = Assert.Throws<ArgumentException>(() => new SetBackgroundSchedulerBlockedThreadsRequest {
-            RequestId = "req_scheduler_threads_invalid_operation",
-            Operation = "  mutate  ",
-            ThreadIds = new[] { "thread-a" }
-        });
+        var ex = Assert.Throws<ArgumentException>(() => new SetBackgroundSchedulerBlockedThreadsRequest(
+            "req_scheduler_threads_invalid_operation",
+            "  mutate  ",
+            new[] { "thread-a" }));
 
         Assert.Contains("Operation must be one of", ex.Message, StringComparison.Ordinal);
     }
 
-    [Fact]
-    public void SetBackgroundSchedulerBlockedThreadsRequest_IgnoresInitializerOrder() {
-        var durationThenWindow = new SetBackgroundSchedulerBlockedThreadsRequest {
-            RequestId = "req_scheduler_threads_order_1",
-            Operation = "add",
-            ThreadIds = new[] { "thread-a" },
-            DurationSeconds = 60,
-            UntilNextMaintenanceWindow = true
-        };
-        var windowThenDuration = new SetBackgroundSchedulerBlockedThreadsRequest {
-            RequestId = "req_scheduler_threads_order_2",
-            Operation = "add",
-            ThreadIds = new[] { "thread-a" },
-            UntilNextMaintenanceWindow = true,
-            DurationSeconds = 60
-        };
+    [Theory]
+    [InlineData("add")]
+    [InlineData("remove")]
+    [InlineData("replace")]
+    public void SetBackgroundSchedulerBlockedThreadsRequest_RequiresThreadIdsForTargetedOperations(string operation) {
+        var ex = Assert.Throws<ArgumentException>(() => new SetBackgroundSchedulerBlockedThreadsRequest(
+            "req_scheduler_threads_missing_targets",
+            operation));
 
-        Assert.Null(durationThenWindow.DurationSeconds);
-        Assert.Null(windowThenDuration.DurationSeconds);
-        Assert.True(durationThenWindow.UntilNextMaintenanceWindow);
-        Assert.True(windowThenDuration.UntilNextMaintenanceWindow);
-        Assert.False(durationThenWindow.UntilNextMaintenanceWindowStart);
-        Assert.False(windowThenDuration.UntilNextMaintenanceWindowStart);
+        Assert.Contains("ThreadIds must be provided", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("clear")]
+    [InlineData("reset")]
+    public void SetBackgroundSchedulerBlockedThreadsRequest_RejectsThreadIdsForUntargetedOperations(string operation) {
+        var ex = Assert.Throws<ArgumentException>(() => new SetBackgroundSchedulerBlockedThreadsRequest(
+            "req_scheduler_threads_unexpected_targets",
+            operation,
+            new[] { "thread-a" }));
+
+        Assert.Contains("ThreadIds must be omitted", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("remove")]
+    [InlineData("replace")]
+    [InlineData("clear")]
+    [InlineData("reset")]
+    public void SetBackgroundSchedulerBlockedThreadsRequest_RejectsTemporaryControlsForNonAddOperations(string operation) {
+        var ex = Assert.Throws<ArgumentException>(() => new SetBackgroundSchedulerBlockedThreadsRequest(
+            "req_scheduler_threads_unexpected_temporary",
+            operation,
+            operation is "remove" or "replace" ? new[] { "thread-a" } : null,
+            durationSeconds: 60));
+
+        Assert.Contains("only supported for add operations", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SetBackgroundSchedulerBlockedThreadsRequest_RejectsDurationCombinedWithMaintenanceWindowFlag() {
+        var ex = Assert.Throws<ArgumentException>(() => new SetBackgroundSchedulerBlockedThreadsRequest(
+            "req_scheduler_threads_conflicting_temporary",
+            "add",
+            new[] { "thread-a" },
+            durationSeconds: 60,
+            untilNextMaintenanceWindow: true));
+
+        Assert.Contains("cannot be combined", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SetBackgroundSchedulerBlockedThreadsRequest_RejectsTemporaryControlsForRemoveDuringPolymorphicDeserialization() {
+        const string json = """
+            {
+              "type":"set_background_scheduler_blocked_threads",
+              "requestId":"req_scheduler_threads_unexpected_temporary_wire",
+              "operation":"remove",
+              "threadIds":["thread-a"],
+              "durationSeconds":60
+            }
+            """;
+
+        var ex = Assert.ThrowsAny<ArgumentException>(() => JsonSerializer.Deserialize(json, ChatServiceJsonContext.Default.ChatServiceRequest));
+        Assert.Contains("only supported for add operations", ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -319,12 +394,11 @@ public sealed class ToolHealthContractTests {
 
     [Fact]
     public void SetBackgroundSchedulerBlockedThreadsRequest_RejectsNonPositiveDuration() {
-        var ex = Assert.Throws<ArgumentOutOfRangeException>(() => new SetBackgroundSchedulerBlockedThreadsRequest {
-            RequestId = "req_scheduler_threads_invalid_duration",
-            Operation = "add",
-            ThreadIds = new[] { "thread-a" },
-            DurationSeconds = 0
-        });
+        var ex = Assert.Throws<ArgumentOutOfRangeException>(() => new SetBackgroundSchedulerBlockedThreadsRequest(
+            "req_scheduler_threads_invalid_duration",
+            "add",
+            new[] { "thread-a" },
+            durationSeconds: 0));
 
         Assert.Contains("DurationSeconds", ex.Message, StringComparison.Ordinal);
     }
@@ -370,63 +444,101 @@ public sealed class ToolHealthContractTests {
 
     [Fact]
     public void SetBackgroundSchedulerBlockedPacksRequest_RejectsConflictingFlags() {
-        var ex = Assert.Throws<ArgumentException>(() => new SetBackgroundSchedulerBlockedPacksRequest {
-            RequestId = "req_scheduler_packs_invalid",
-            Operation = "add",
-            PackIds = new[] { "system" },
-            DurationSeconds = 60,
-            UntilNextMaintenanceWindow = true,
-            UntilNextMaintenanceWindowStart = true
-        });
+        var ex = Assert.Throws<ArgumentException>(() => new SetBackgroundSchedulerBlockedPacksRequest(
+            "req_scheduler_packs_invalid",
+            "add",
+            new[] { "system" },
+            durationSeconds: 60,
+            untilNextMaintenanceWindow: true,
+            untilNextMaintenanceWindowStart: true));
 
         Assert.Contains("cannot both be true", ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]
     public void SetBackgroundSchedulerBlockedPacksRequest_NormalizesOperation() {
-        var request = new SetBackgroundSchedulerBlockedPacksRequest {
-            RequestId = "req_scheduler_packs_normalized",
-            Operation = "  Remove  ",
-            PackIds = new[] { "system" }
-        };
+        var request = new SetBackgroundSchedulerBlockedPacksRequest(
+            "req_scheduler_packs_normalized",
+            "  Remove  ",
+            new[] { "system" });
 
         Assert.Equal("remove", request.Operation);
     }
 
     [Fact]
     public void SetBackgroundSchedulerBlockedPacksRequest_RejectsInvalidOperation() {
-        var ex = Assert.Throws<ArgumentException>(() => new SetBackgroundSchedulerBlockedPacksRequest {
-            RequestId = "req_scheduler_packs_invalid_operation",
-            Operation = "  mutate  ",
-            PackIds = new[] { "system" }
-        });
+        var ex = Assert.Throws<ArgumentException>(() => new SetBackgroundSchedulerBlockedPacksRequest(
+            "req_scheduler_packs_invalid_operation",
+            "  mutate  ",
+            new[] { "system" }));
 
         Assert.Contains("Operation must be one of", ex.Message, StringComparison.Ordinal);
     }
 
-    [Fact]
-    public void SetBackgroundSchedulerBlockedPacksRequest_IgnoresInitializerOrder() {
-        var durationThenWindow = new SetBackgroundSchedulerBlockedPacksRequest {
-            RequestId = "req_scheduler_packs_order_1",
-            Operation = "add",
-            PackIds = new[] { "system" },
-            DurationSeconds = 60,
-            UntilNextMaintenanceWindowStart = true
-        };
-        var windowThenDuration = new SetBackgroundSchedulerBlockedPacksRequest {
-            RequestId = "req_scheduler_packs_order_2",
-            Operation = "add",
-            PackIds = new[] { "system" },
-            UntilNextMaintenanceWindowStart = true,
-            DurationSeconds = 60
-        };
+    [Theory]
+    [InlineData("add")]
+    [InlineData("remove")]
+    [InlineData("replace")]
+    public void SetBackgroundSchedulerBlockedPacksRequest_RequiresPackIdsForTargetedOperations(string operation) {
+        var ex = Assert.Throws<ArgumentException>(() => new SetBackgroundSchedulerBlockedPacksRequest(
+            "req_scheduler_packs_missing_targets",
+            operation));
 
-        Assert.Null(durationThenWindow.DurationSeconds);
-        Assert.Null(windowThenDuration.DurationSeconds);
-        Assert.False(durationThenWindow.UntilNextMaintenanceWindow);
-        Assert.False(windowThenDuration.UntilNextMaintenanceWindow);
-        Assert.True(durationThenWindow.UntilNextMaintenanceWindowStart);
-        Assert.True(windowThenDuration.UntilNextMaintenanceWindowStart);
+        Assert.Contains("PackIds must be provided", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("clear")]
+    [InlineData("reset")]
+    public void SetBackgroundSchedulerBlockedPacksRequest_RejectsPackIdsForUntargetedOperations(string operation) {
+        var ex = Assert.Throws<ArgumentException>(() => new SetBackgroundSchedulerBlockedPacksRequest(
+            "req_scheduler_packs_unexpected_targets",
+            operation,
+            new[] { "system" }));
+
+        Assert.Contains("PackIds must be omitted", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("remove")]
+    [InlineData("replace")]
+    [InlineData("clear")]
+    [InlineData("reset")]
+    public void SetBackgroundSchedulerBlockedPacksRequest_RejectsTemporaryControlsForNonAddOperations(string operation) {
+        var ex = Assert.Throws<ArgumentException>(() => new SetBackgroundSchedulerBlockedPacksRequest(
+            "req_scheduler_packs_unexpected_temporary",
+            operation,
+            operation is "remove" or "replace" ? new[] { "system" } : null,
+            durationSeconds: 60));
+
+        Assert.Contains("only supported for add operations", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SetBackgroundSchedulerBlockedPacksRequest_RejectsDurationCombinedWithMaintenanceWindowFlag() {
+        var ex = Assert.Throws<ArgumentException>(() => new SetBackgroundSchedulerBlockedPacksRequest(
+            "req_scheduler_packs_conflicting_temporary",
+            "add",
+            new[] { "system" },
+            durationSeconds: 60,
+            untilNextMaintenanceWindowStart: true));
+
+        Assert.Contains("cannot be combined", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SetBackgroundSchedulerBlockedPacksRequest_RejectsTargetsForClearDuringPolymorphicDeserialization() {
+        const string json = """
+            {
+              "type":"set_background_scheduler_blocked_packs",
+              "requestId":"req_scheduler_packs_unexpected_targets_wire",
+              "operation":"clear",
+              "packIds":["system"]
+            }
+            """;
+
+        var ex = Assert.ThrowsAny<ArgumentException>(() => JsonSerializer.Deserialize(json, ChatServiceJsonContext.Default.ChatServiceRequest));
+        Assert.Contains("PackIds must be omitted", ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -463,12 +575,11 @@ public sealed class ToolHealthContractTests {
 
     [Fact]
     public void SetBackgroundSchedulerBlockedPacksRequest_RejectsNonPositiveDuration() {
-        var ex = Assert.Throws<ArgumentOutOfRangeException>(() => new SetBackgroundSchedulerBlockedPacksRequest {
-            RequestId = "req_scheduler_packs_invalid_duration",
-            Operation = "add",
-            PackIds = new[] { "system" },
-            DurationSeconds = 0
-        });
+        var ex = Assert.Throws<ArgumentOutOfRangeException>(() => new SetBackgroundSchedulerBlockedPacksRequest(
+            "req_scheduler_packs_invalid_duration",
+            "add",
+            new[] { "system" },
+            durationSeconds: 0));
 
         Assert.Contains("DurationSeconds", ex.Message, StringComparison.Ordinal);
     }

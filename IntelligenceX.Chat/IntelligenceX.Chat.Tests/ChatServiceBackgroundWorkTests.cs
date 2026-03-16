@@ -1494,11 +1494,10 @@ public sealed class ChatServiceBackgroundWorkTests {
 
         using (var addStream = new MemoryStream())
         using (var addWriter = new StreamWriter(addStream, leaveOpen: true) { AutoFlush = true, NewLine = "\n" }) {
-            var addRequest = new SetBackgroundSchedulerMaintenanceWindowsRequest {
-                RequestId = "req_scheduler_windows_add",
-                Operation = "add",
-                Windows = new[] { "monday@02:00/30;pack=system", "daily@23:30/120;thread=thread-maintenance" }
-            };
+            var addRequest = new SetBackgroundSchedulerMaintenanceWindowsRequest(
+                "req_scheduler_windows_add",
+                "add",
+                new[] { "monday@02:00/30;pack=system", "daily@23:30/120;thread=thread-maintenance" });
 
             var addTask = Assert.IsAssignableFrom<Task>(method!.Invoke(session, new object?[] { addWriter, addRequest, default(System.Threading.CancellationToken) }));
             await addTask;
@@ -1513,10 +1512,9 @@ public sealed class ChatServiceBackgroundWorkTests {
 
         using (var resetStream = new MemoryStream())
         using (var resetWriter = new StreamWriter(resetStream, leaveOpen: true) { AutoFlush = true, NewLine = "\n" }) {
-            var resetRequest = new SetBackgroundSchedulerMaintenanceWindowsRequest {
-                RequestId = "req_scheduler_windows_reset",
-                Operation = "reset"
-            };
+            var resetRequest = new SetBackgroundSchedulerMaintenanceWindowsRequest(
+                "req_scheduler_windows_reset",
+                "reset");
 
             var resetTask = Assert.IsAssignableFrom<Task>(method!.Invoke(session, new object?[] { resetWriter, resetRequest, default(System.Threading.CancellationToken) }));
             await resetTask;
@@ -1532,11 +1530,10 @@ public sealed class ChatServiceBackgroundWorkTests {
 
     [Fact]
     public void HandleBackgroundSchedulerMaintenanceWindowsAsync_InvalidOperationIsRejectedByRequestContract() {
-        var ex = Assert.Throws<ArgumentException>(() => new SetBackgroundSchedulerMaintenanceWindowsRequest {
-            RequestId = "req_scheduler_windows_invalid",
-            Operation = "merge",
-            Windows = new[] { "mon@02:00/60" }
-        });
+        var ex = Assert.Throws<ArgumentException>(() => new SetBackgroundSchedulerMaintenanceWindowsRequest(
+            "req_scheduler_windows_invalid",
+            "merge",
+            new[] { "mon@02:00/60" }));
 
         Assert.Contains("Operation must be one of", ex.Message, StringComparison.Ordinal);
     }
@@ -1550,12 +1547,11 @@ public sealed class ChatServiceBackgroundWorkTests {
 
         using (var addStream = new MemoryStream())
         using (var addWriter = new StreamWriter(addStream, leaveOpen: true) { AutoFlush = true, NewLine = "\n" }) {
-            var addRequest = new SetBackgroundSchedulerBlockedThreadsRequest {
-                RequestId = "req_scheduler_threads_add",
-                Operation = "add",
-                ThreadIds = new[] { "thread-muted-a", "thread-muted-b" },
-                DurationSeconds = 90
-            };
+            var addRequest = new SetBackgroundSchedulerBlockedThreadsRequest(
+                "req_scheduler_threads_add",
+                "add",
+                new[] { "thread-muted-a", "thread-muted-b" },
+                durationSeconds: 90);
 
             var addTask = Assert.IsAssignableFrom<Task>(method!.Invoke(session, new object?[] { addWriter, addRequest, default(System.Threading.CancellationToken) }));
             await addTask;
@@ -1571,10 +1567,9 @@ public sealed class ChatServiceBackgroundWorkTests {
 
         using (var resetStream = new MemoryStream())
         using (var resetWriter = new StreamWriter(resetStream, leaveOpen: true) { AutoFlush = true, NewLine = "\n" }) {
-            var resetRequest = new SetBackgroundSchedulerBlockedThreadsRequest {
-                RequestId = "req_scheduler_threads_reset",
-                Operation = "reset"
-            };
+            var resetRequest = new SetBackgroundSchedulerBlockedThreadsRequest(
+                "req_scheduler_threads_reset",
+                "reset");
 
             var resetTask = Assert.IsAssignableFrom<Task>(method!.Invoke(session, new object?[] { resetWriter, resetRequest, default(System.Threading.CancellationToken) }));
             await resetTask;
@@ -1590,42 +1585,23 @@ public sealed class ChatServiceBackgroundWorkTests {
 
     [Fact]
     public void HandleBackgroundSchedulerBlockedThreadsAsync_InvalidOperationIsRejectedByRequestContract() {
-        var ex = Assert.Throws<ArgumentException>(() => new SetBackgroundSchedulerBlockedThreadsRequest {
-            RequestId = "req_scheduler_threads_invalid",
-            Operation = "merge",
-            ThreadIds = new[] { "thread-a" }
-        });
+        var ex = Assert.Throws<ArgumentException>(() => new SetBackgroundSchedulerBlockedThreadsRequest(
+            "req_scheduler_threads_invalid",
+            "merge",
+            new[] { "thread-a" }));
 
         Assert.Contains("Operation must be one of", ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]
-    public async Task HandleBackgroundSchedulerBlockedThreadsAsync_DurationRequiresAddOperation() {
-        var options = ChatServiceTestSessionFactory.CreateIsolatedOptions();
-        var session = new ChatServiceSession(options, Stream.Null);
-        var method = typeof(ChatServiceSession).GetMethod("HandleBackgroundSchedulerBlockedThreadsAsync", BindingFlags.Instance | BindingFlags.NonPublic);
-        Assert.NotNull(method);
+    public void HandleBackgroundSchedulerBlockedThreadsAsync_DurationRequiresAddOperation() {
+        var ex = Assert.Throws<ArgumentException>(() => new SetBackgroundSchedulerBlockedThreadsRequest(
+            "req_scheduler_threads_invalid_duration",
+            "remove",
+            new[] { "thread-a" },
+            durationSeconds: 60));
 
-        using var stream = new MemoryStream();
-        using var writer = new StreamWriter(stream, leaveOpen: true) { AutoFlush = true, NewLine = "\n" };
-        var request = new SetBackgroundSchedulerBlockedThreadsRequest {
-            RequestId = "req_scheduler_threads_invalid_duration",
-            Operation = "remove",
-            ThreadIds = new[] { "thread-a" },
-            DurationSeconds = 60
-        };
-
-        var task = Assert.IsAssignableFrom<Task>(method!.Invoke(session, new object?[] { writer, request, default(System.Threading.CancellationToken) }));
-        await task;
-        await writer.FlushAsync();
-
-        stream.Position = 0;
-        using var document = await JsonDocument.ParseAsync(stream);
-        var response = JsonSerializer.Deserialize(document.RootElement.GetRawText(), ChatServiceJsonContext.Default.ChatServiceMessage);
-        var typed = Assert.IsType<ErrorMessage>(response);
-
-        Assert.Equal("invalid_argument", typed.Code);
-        Assert.Contains("durationSeconds, untilNextMaintenanceWindow, and untilNextMaintenanceWindowStart are only supported for add operations", typed.Error, StringComparison.Ordinal);
+        Assert.Contains("only supported for add operations", ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -1638,12 +1614,11 @@ public sealed class ChatServiceBackgroundWorkTests {
 
         using var stream = new MemoryStream();
         using var writer = new StreamWriter(stream, leaveOpen: true) { AutoFlush = true, NewLine = "\n" };
-        var request = new SetBackgroundSchedulerBlockedThreadsRequest {
-            RequestId = "req_scheduler_threads_until_window",
-            Operation = "add",
-            ThreadIds = new[] { "thread-maintenance" },
-            UntilNextMaintenanceWindow = true
-        };
+        var request = new SetBackgroundSchedulerBlockedThreadsRequest(
+            "req_scheduler_threads_until_window",
+            "add",
+            new[] { "thread-maintenance" },
+            untilNextMaintenanceWindow: true);
 
         var task = Assert.IsAssignableFrom<Task>(method!.Invoke(session, new object?[] { writer, request, default(System.Threading.CancellationToken) }));
         await task;
@@ -1671,12 +1646,11 @@ public sealed class ChatServiceBackgroundWorkTests {
 
         using var stream = new MemoryStream();
         using var writer = new StreamWriter(stream, leaveOpen: true) { AutoFlush = true, NewLine = "\n" };
-        var request = new SetBackgroundSchedulerBlockedThreadsRequest {
-            RequestId = "req_scheduler_threads_until_window_missing",
-            Operation = "add",
-            ThreadIds = new[] { "thread-maintenance" },
-            UntilNextMaintenanceWindow = true
-        };
+        var request = new SetBackgroundSchedulerBlockedThreadsRequest(
+            "req_scheduler_threads_until_window_missing",
+            "add",
+            new[] { "thread-maintenance" },
+            untilNextMaintenanceWindow: true);
 
         var task = Assert.IsAssignableFrom<Task>(method!.Invoke(session, new object?[] { writer, request, default(System.Threading.CancellationToken) }));
         await task;
@@ -1701,12 +1675,11 @@ public sealed class ChatServiceBackgroundWorkTests {
 
         using var stream = new MemoryStream();
         using var writer = new StreamWriter(stream, leaveOpen: true) { AutoFlush = true, NewLine = "\n" };
-        var request = new SetBackgroundSchedulerBlockedThreadsRequest {
-            RequestId = "req_scheduler_threads_until_window_start",
-            Operation = "add",
-            ThreadIds = new[] { "thread-maintenance" },
-            UntilNextMaintenanceWindowStart = true
-        };
+        var request = new SetBackgroundSchedulerBlockedThreadsRequest(
+            "req_scheduler_threads_until_window_start",
+            "add",
+            new[] { "thread-maintenance" },
+            untilNextMaintenanceWindowStart: true);
 
         var task = Assert.IsAssignableFrom<Task>(method!.Invoke(session, new object?[] { writer, request, default(System.Threading.CancellationToken) }));
         await task;
@@ -1733,12 +1706,11 @@ public sealed class ChatServiceBackgroundWorkTests {
 
         using (var addStream = new MemoryStream())
         using (var addWriter = new StreamWriter(addStream, leaveOpen: true) { AutoFlush = true, NewLine = "\n" }) {
-            var addRequest = new SetBackgroundSchedulerBlockedPacksRequest {
-                RequestId = "req_scheduler_packs_add",
-                Operation = "add",
-                PackIds = new[] { "system", "ad" },
-                DurationSeconds = 120
-            };
+            var addRequest = new SetBackgroundSchedulerBlockedPacksRequest(
+                "req_scheduler_packs_add",
+                "add",
+                new[] { "system", "ad" },
+                durationSeconds: 120);
 
             var addTask = Assert.IsAssignableFrom<Task>(method!.Invoke(session, new object?[] { addWriter, addRequest, default(System.Threading.CancellationToken) }));
             await addTask;
@@ -1754,10 +1726,9 @@ public sealed class ChatServiceBackgroundWorkTests {
 
         using (var resetStream = new MemoryStream())
         using (var resetWriter = new StreamWriter(resetStream, leaveOpen: true) { AutoFlush = true, NewLine = "\n" }) {
-            var resetRequest = new SetBackgroundSchedulerBlockedPacksRequest {
-                RequestId = "req_scheduler_packs_reset",
-                Operation = "reset"
-            };
+            var resetRequest = new SetBackgroundSchedulerBlockedPacksRequest(
+                "req_scheduler_packs_reset",
+                "reset");
 
             var resetTask = Assert.IsAssignableFrom<Task>(method!.Invoke(session, new object?[] { resetWriter, resetRequest, default(System.Threading.CancellationToken) }));
             await resetTask;
@@ -1773,42 +1744,23 @@ public sealed class ChatServiceBackgroundWorkTests {
 
     [Fact]
     public void HandleBackgroundSchedulerBlockedPacksAsync_InvalidOperationIsRejectedByRequestContract() {
-        var ex = Assert.Throws<ArgumentException>(() => new SetBackgroundSchedulerBlockedPacksRequest {
-            RequestId = "req_scheduler_packs_invalid",
-            Operation = "merge",
-            PackIds = new[] { "system" }
-        });
+        var ex = Assert.Throws<ArgumentException>(() => new SetBackgroundSchedulerBlockedPacksRequest(
+            "req_scheduler_packs_invalid",
+            "merge",
+            new[] { "system" }));
 
         Assert.Contains("Operation must be one of", ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]
-    public async Task HandleBackgroundSchedulerBlockedPacksAsync_DurationRequiresAddOperation() {
-        var options = ChatServiceTestSessionFactory.CreateIsolatedOptions();
-        var session = new ChatServiceSession(options, Stream.Null);
-        var method = typeof(ChatServiceSession).GetMethod("HandleBackgroundSchedulerBlockedPacksAsync", BindingFlags.Instance | BindingFlags.NonPublic);
-        Assert.NotNull(method);
+    public void HandleBackgroundSchedulerBlockedPacksAsync_DurationRequiresAddOperation() {
+        var ex = Assert.Throws<ArgumentException>(() => new SetBackgroundSchedulerBlockedPacksRequest(
+            "req_scheduler_packs_invalid_duration",
+            "replace",
+            new[] { "system" },
+            durationSeconds: 60));
 
-        using var stream = new MemoryStream();
-        using var writer = new StreamWriter(stream, leaveOpen: true) { AutoFlush = true, NewLine = "\n" };
-        var request = new SetBackgroundSchedulerBlockedPacksRequest {
-            RequestId = "req_scheduler_packs_invalid_duration",
-            Operation = "replace",
-            PackIds = new[] { "system" },
-            DurationSeconds = 60
-        };
-
-        var task = Assert.IsAssignableFrom<Task>(method!.Invoke(session, new object?[] { writer, request, default(System.Threading.CancellationToken) }));
-        await task;
-        await writer.FlushAsync();
-
-        stream.Position = 0;
-        using var document = await JsonDocument.ParseAsync(stream);
-        var response = JsonSerializer.Deserialize(document.RootElement.GetRawText(), ChatServiceJsonContext.Default.ChatServiceMessage);
-        var typed = Assert.IsType<ErrorMessage>(response);
-
-        Assert.Equal("invalid_argument", typed.Code);
-        Assert.Contains("durationSeconds, untilNextMaintenanceWindow, and untilNextMaintenanceWindowStart are only supported for add operations", typed.Error, StringComparison.Ordinal);
+        Assert.Contains("only supported for add operations", ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -1821,12 +1773,11 @@ public sealed class ChatServiceBackgroundWorkTests {
 
         using var stream = new MemoryStream();
         using var writer = new StreamWriter(stream, leaveOpen: true) { AutoFlush = true, NewLine = "\n" };
-        var request = new SetBackgroundSchedulerBlockedPacksRequest {
-            RequestId = "req_scheduler_packs_until_window",
-            Operation = "add",
-            PackIds = new[] { "system" },
-            UntilNextMaintenanceWindow = true
-        };
+        var request = new SetBackgroundSchedulerBlockedPacksRequest(
+            "req_scheduler_packs_until_window",
+            "add",
+            new[] { "system" },
+            untilNextMaintenanceWindow: true);
 
         var task = Assert.IsAssignableFrom<Task>(method!.Invoke(session, new object?[] { writer, request, default(System.Threading.CancellationToken) }));
         await task;
@@ -1854,12 +1805,11 @@ public sealed class ChatServiceBackgroundWorkTests {
 
         using var stream = new MemoryStream();
         using var writer = new StreamWriter(stream, leaveOpen: true) { AutoFlush = true, NewLine = "\n" };
-        var request = new SetBackgroundSchedulerBlockedPacksRequest {
-            RequestId = "req_scheduler_packs_until_window_start",
-            Operation = "add",
-            PackIds = new[] { "system" },
-            UntilNextMaintenanceWindowStart = true
-        };
+        var request = new SetBackgroundSchedulerBlockedPacksRequest(
+            "req_scheduler_packs_until_window_start",
+            "add",
+            new[] { "system" },
+            untilNextMaintenanceWindowStart: true);
 
         var task = Assert.IsAssignableFrom<Task>(method!.Invoke(session, new object?[] { writer, request, default(System.Threading.CancellationToken) }));
         await task;
