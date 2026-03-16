@@ -13,7 +13,7 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="System.DirectoryServices" Version="9.0.13" />
+    <PackageReference Include="System.DirectoryServices" Version="9.0.14" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\\IntelligenceX.Tools.Common\\IntelligenceX.Tools.Common.csproj" />

@@ -432,9 +432,9 @@ INSERT INTO ix_service_profiles (
 
     private static void RecreateProfilesTableWithUnknownRequiredColumn(string dbPath) {
         var db = new SQLite();
-        db.ExecuteNonQuery(dbPath, "BEGIN IMMEDIATE TRANSACTION;");
+        db.BeginTransaction(dbPath);
         try {
-            db.ExecuteNonQuery(dbPath, "DROP TABLE IF EXISTS ix_service_profiles;");
+            db.ExecuteNonQuery(dbPath, "DROP TABLE IF EXISTS ix_service_profiles;", useTransaction: true);
             db.ExecuteNonQuery(dbPath, """
 CREATE TABLE ix_service_profiles (
   name TEXT PRIMARY KEY,
@@ -480,11 +480,11 @@ CREATE TABLE ix_service_profiles (
   custom_required_non_pack INTEGER NOT NULL,
   updated_utc TEXT NOT NULL
 );
-""");
-            db.ExecuteNonQuery(dbPath, "COMMIT;");
+""", useTransaction: true);
+            db.Commit();
         } catch {
             try {
-                db.ExecuteNonQuery(dbPath, "ROLLBACK;");
+                db.Rollback();
             } catch {
                 // Ignore rollback failures.
             }
