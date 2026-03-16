@@ -28,6 +28,11 @@ public sealed class MainWindowRuntimeSchedulerStateTests {
         BindingFlags.NonPublic | BindingFlags.Instance)
         ?? throw new InvalidOperationException("RestoreBackgroundSchedulerSnapshotAfterRefreshFailure not found.");
 
+    private static readonly MethodInfo ClearBackgroundSchedulerSnapshotsMethod = typeof(MainWindow).GetMethod(
+        "ClearBackgroundSchedulerSnapshots",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("ClearBackgroundSchedulerSnapshots not found.");
+
     private static readonly FieldInfo BackgroundSchedulerStatusSnapshotField = typeof(MainWindow).GetField(
         "_backgroundSchedulerStatusSnapshot",
         BindingFlags.NonPublic | BindingFlags.Instance)
@@ -244,5 +249,26 @@ public sealed class MainWindowRuntimeSchedulerStateTests {
         var preservedGlobal = Assert.IsType<SessionCapabilityBackgroundSchedulerDto>(BackgroundSchedulerGlobalStatusSnapshotField.GetValue(window));
         Assert.Same(globalSnapshot, restored);
         Assert.Same(globalSnapshot, preservedGlobal);
+    }
+
+    /// <summary>
+    /// Ensures disconnect/cache-clear cleanup blanks both scoped and global scheduler snapshots
+    /// before the next options payload is published to the web shell.
+    /// </summary>
+    [Fact]
+    public void ClearBackgroundSchedulerSnapshots_ClearsScopedAndGlobalSnapshots() {
+        var window = (MainWindow)RuntimeHelpers.GetUninitializedObject(typeof(MainWindow));
+        BackgroundSchedulerStatusSnapshotField.SetValue(window, new SessionCapabilityBackgroundSchedulerDto {
+            ScopeThreadId = "thread-scoped",
+            QueuedItemCount = 1
+        });
+        BackgroundSchedulerGlobalStatusSnapshotField.SetValue(window, new SessionCapabilityBackgroundSchedulerDto {
+            QueuedItemCount = 4
+        });
+
+        ClearBackgroundSchedulerSnapshotsMethod.Invoke(window, Array.Empty<object?>());
+
+        Assert.Null(BackgroundSchedulerStatusSnapshotField.GetValue(window));
+        Assert.Null(BackgroundSchedulerGlobalStatusSnapshotField.GetValue(window));
     }
 }
