@@ -44,7 +44,7 @@ public sealed partial class MainWindow {
             return;
         }
 
-        if (_backgroundSchedulerStatusSnapshot is null && _backgroundSchedulerGlobalStatusSnapshot is not null) {
+        if (_backgroundSchedulerGlobalStatusSnapshot is not null) {
             _backgroundSchedulerStatusSnapshot = _backgroundSchedulerGlobalStatusSnapshot;
         }
     }

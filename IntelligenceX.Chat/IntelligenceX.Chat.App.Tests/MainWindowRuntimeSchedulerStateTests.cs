@@ -311,6 +311,33 @@ public sealed class MainWindowRuntimeSchedulerStateTests {
     }
 
     /// <summary>
+    /// Ensures an unscoped scheduler refresh failure falls back to the preserved global snapshot
+    /// instead of keeping a stale scoped snapshot active in the published runtime state.
+    /// </summary>
+    [Fact]
+    public void RestoreBackgroundSchedulerSnapshotAfterRefreshFailure_UnscopedRefreshRestoresGlobalSnapshot() {
+        var window = (MainWindow)RuntimeHelpers.GetUninitializedObject(typeof(MainWindow));
+        var globalSnapshot = new SessionCapabilityBackgroundSchedulerDto {
+            DaemonEnabled = true,
+            QueuedItemCount = 5
+        };
+        var scopedSnapshot = new SessionCapabilityBackgroundSchedulerDto {
+            ScopeThreadId = "thread-scoped",
+            QueuedItemCount = 1
+        };
+
+        BackgroundSchedulerGlobalStatusSnapshotField.SetValue(window, globalSnapshot);
+        BackgroundSchedulerStatusSnapshotField.SetValue(window, scopedSnapshot);
+
+        RestoreBackgroundSchedulerSnapshotAfterRefreshFailureMethod.Invoke(window, new object?[] { false });
+
+        var restored = Assert.IsType<SessionCapabilityBackgroundSchedulerDto>(BackgroundSchedulerStatusSnapshotField.GetValue(window));
+        var preservedGlobal = Assert.IsType<SessionCapabilityBackgroundSchedulerDto>(BackgroundSchedulerGlobalStatusSnapshotField.GetValue(window));
+        Assert.Same(globalSnapshot, restored);
+        Assert.Same(globalSnapshot, preservedGlobal);
+    }
+
+    /// <summary>
     /// Ensures disconnect/cache-clear cleanup blanks both scoped and global scheduler snapshots
     /// before the next options payload is published to the web shell.
     /// </summary>
