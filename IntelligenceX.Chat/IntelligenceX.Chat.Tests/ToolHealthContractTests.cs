@@ -309,9 +309,25 @@ public sealed class ToolHealthContractTests {
         var ex = Assert.Throws<ArgumentException>(() => new SetBackgroundSchedulerBlockedThreadsRequest(
             "req_scheduler_threads_duplicate_targets",
             "add",
-            new[] { "thread-a", "  THREAD-A  " }));
+            new[] { "thread-a", "  thread-a  ", "THREAD-A" }));
 
         Assert.Contains("threadIds", ex.ParamName, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("duplicate targets", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SetBackgroundSchedulerBlockedThreadsRequest_RejectsDuplicateThreadIdsDuringPolymorphicDeserialization() {
+        const string json = """
+            {
+              "type":"set_background_scheduler_blocked_threads",
+              "requestId":"req_scheduler_threads_duplicate_targets_wire",
+              "operation":"add",
+              "threadIds":["thread-a","  thread-a  ","THREAD-A"]
+            }
+            """;
+
+        var ex = Assert.ThrowsAny<ArgumentException>(() => JsonSerializer.Deserialize(json, ChatServiceJsonContext.Default.ChatServiceRequest));
+        Assert.Contains("threadIds", ex.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("duplicate targets", ex.Message, StringComparison.Ordinal);
     }
 
@@ -502,9 +518,25 @@ public sealed class ToolHealthContractTests {
         var ex = Assert.Throws<ArgumentException>(() => new SetBackgroundSchedulerBlockedPacksRequest(
             "req_scheduler_packs_duplicate_targets",
             "add",
-            new[] { "system", "  SYSTEM  " }));
+            new[] { "system", "  system  ", "SYSTEM" }));
 
         Assert.Contains("packIds", ex.ParamName, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("duplicate targets", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SetBackgroundSchedulerBlockedPacksRequest_RejectsDuplicatePackIdsDuringPolymorphicDeserialization() {
+        const string json = """
+            {
+              "type":"set_background_scheduler_blocked_packs",
+              "requestId":"req_scheduler_packs_duplicate_targets_wire",
+              "operation":"add",
+              "packIds":["system","  system  ","SYSTEM"]
+            }
+            """;
+
+        var ex = Assert.ThrowsAny<ArgumentException>(() => JsonSerializer.Deserialize(json, ChatServiceJsonContext.Default.ChatServiceRequest));
+        Assert.Contains("packIds", ex.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("duplicate targets", ex.Message, StringComparison.Ordinal);
     }
 
