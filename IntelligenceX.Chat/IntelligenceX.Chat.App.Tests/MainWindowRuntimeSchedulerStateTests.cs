@@ -170,6 +170,33 @@ public sealed class MainWindowRuntimeSchedulerStateTests {
     }
 
     /// <summary>
+    /// Ensures non-paused snapshots do not report scoped maintenance when only global active windows are present.
+    /// </summary>
+    [Fact]
+    public void BuildBackgroundSchedulerState_DoesNotReportScopedMaintenanceForGlobalActiveWindows() {
+        var scheduler = new SessionCapabilityBackgroundSchedulerDto {
+            DaemonEnabled = true,
+            Paused = false,
+            ActiveMaintenanceWindowSpecs = new[] { "daily@23:30/120" },
+            ActiveMaintenanceWindows = new[] {
+                new SessionCapabilityBackgroundSchedulerMaintenanceWindowDto {
+                    Spec = "daily@23:30/120",
+                    Day = "daily",
+                    StartTimeLocal = "23:30",
+                    DurationMinutes = 120,
+                    Scoped = false
+                }
+            }
+        };
+
+        var state = BuildBackgroundSchedulerStateMethod.Invoke(null, new object?[] { scheduler });
+        Assert.NotNull(state);
+
+        using var document = JsonDocument.Parse(JsonSerializer.Serialize(state));
+        Assert.Equal("Background scheduler is idle.", document.RootElement.GetProperty("statusSummary").GetString());
+    }
+
+    /// <summary>
     /// Ensures scheduler state published for the UI keeps tracked-thread counts plus ready/running id samples
     /// even when not every tracked thread has a detailed thread summary entry.
     /// </summary>

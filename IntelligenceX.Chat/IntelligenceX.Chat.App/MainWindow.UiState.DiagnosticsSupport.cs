@@ -203,7 +203,7 @@ public sealed partial class MainWindow {
             var activeWindows = scheduler.ActiveMaintenanceWindows ?? Array.Empty<SessionCapabilityBackgroundSchedulerMaintenanceWindowDto>();
             var globalCount = activeWindows.Count(static item => !item.Scoped);
             if (globalCount <= 0) {
-                globalCount = scheduler.ActiveMaintenanceWindowSpecs?.Length ?? 0;
+                globalCount = CountActiveMaintenanceSpecsByScope(scheduler.ActiveMaintenanceWindowSpecs, scoped: false);
             }
 
             if (globalCount > 0) {
@@ -220,10 +220,12 @@ public sealed partial class MainWindow {
             var activeWindows = scheduler.ActiveMaintenanceWindows ?? Array.Empty<SessionCapabilityBackgroundSchedulerMaintenanceWindowDto>();
             var scopedCount = activeWindows.Count(static item => item.Scoped);
             if (scopedCount <= 0) {
-                scopedCount = scheduler.ActiveMaintenanceWindowSpecs.Length;
+                scopedCount = CountActiveMaintenanceSpecsByScope(scheduler.ActiveMaintenanceWindowSpecs, scoped: true);
             }
 
-            return $"Scoped maintenance active for {scopedCount} window(s).";
+            if (scopedCount > 0) {
+                return $"Scoped maintenance active for {scopedCount} window(s).";
+            }
         }
 
         if (scheduler.ReadyItemCount > 0 || scheduler.RunningItemCount > 0) {
@@ -235,5 +237,22 @@ public sealed partial class MainWindow {
         }
 
         return "Background scheduler is idle.";
+    }
+
+    private static int CountActiveMaintenanceSpecsByScope(string[]? specs, bool scoped) {
+        if (specs is not { Length: > 0 }) {
+            return 0;
+        }
+
+        return specs.Count(spec => IsScopedMaintenanceWindowSpec(spec) == scoped);
+    }
+
+    private static bool IsScopedMaintenanceWindowSpec(string? spec) {
+        if (string.IsNullOrWhiteSpace(spec)) {
+            return false;
+        }
+
+        return spec.Contains(";pack=", StringComparison.OrdinalIgnoreCase)
+            || spec.Contains(";thread=", StringComparison.OrdinalIgnoreCase);
     }
 }
