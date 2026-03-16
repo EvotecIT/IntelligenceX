@@ -10,6 +10,14 @@ using IntelligenceX.Chat.Client;
 namespace IntelligenceX.Chat.App;
 
 public sealed partial class MainWindow {
+    private static void ValidateBackgroundSchedulerMaintenanceWindowScope(string? packId, string? threadId) {
+        var hasPackId = !string.IsNullOrWhiteSpace(packId);
+        var hasThreadId = !string.IsNullOrWhiteSpace(threadId);
+        if (hasPackId && hasThreadId) {
+            throw new ArgumentException("Choose either packId or threadId for a maintenance window scope, not both.", nameof(threadId));
+        }
+    }
+
     private void ApplyBackgroundSchedulerSnapshot(SessionCapabilityBackgroundSchedulerDto? scheduler, bool scoped) {
         _backgroundSchedulerStatusSnapshot = scheduler;
         if (!scoped) {
@@ -118,6 +126,7 @@ public sealed partial class MainWindow {
         string spec;
         try {
             var durationMinutes = ParseSchedulerPositiveInt(durationMinutesText, min: 1, max: 1440, nameof(durationMinutesText));
+            ValidateBackgroundSchedulerMaintenanceWindowScope(packId, threadId);
             spec = ChatServiceClient.BuildBackgroundSchedulerMaintenanceWindowSpec(
                 day ?? "daily",
                 startTimeLocal ?? string.Empty,

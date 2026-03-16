@@ -29,11 +29,13 @@ namespace IntelligenceX.Chat.Abstractions.Protocol;
 [JsonDerivedType(typeof(CancelChatRequest), "chat_cancel")]
 [JsonDerivedType(typeof(ChatRequest), "chat")]
 public abstract record ChatServiceRequest {
-    private protected static string NormalizeBackgroundSchedulerMutationOperation(string? value) {
+    private protected static string NormalizeBackgroundSchedulerMutationOperation(string? value, string parameterName) {
         var normalized = (value ?? string.Empty).Trim().ToLowerInvariant();
-        return normalized is "add" or "remove" or "replace" or "clear" or "reset"
-            ? normalized
-            : string.Empty;
+        if (normalized is "add" or "remove" or "replace" or "clear" or "reset") {
+            return normalized;
+        }
+
+        throw new ArgumentException("Operation must be one of: add, remove, replace, clear, reset.", parameterName);
     }
 
     /// <summary>
@@ -217,7 +219,7 @@ public sealed record SetBackgroundSchedulerMaintenanceWindowsRequest : ChatServi
     /// </summary>
     public required string Operation {
         get => _operation;
-        init => _operation = NormalizeBackgroundSchedulerMutationOperation(value);
+        init => _operation = NormalizeBackgroundSchedulerMutationOperation(value, nameof(Operation));
     }
 
     /// <summary>
@@ -244,7 +246,7 @@ public sealed record SetBackgroundSchedulerBlockedPacksRequest : ChatServiceRequ
     /// </summary>
     public required string Operation {
         get => _operation;
-        init => _operation = NormalizeBackgroundSchedulerMutationOperation(value);
+        init => _operation = NormalizeBackgroundSchedulerMutationOperation(value, nameof(Operation));
     }
 
     /// <summary>
@@ -308,7 +310,7 @@ public sealed record SetBackgroundSchedulerBlockedThreadsRequest : ChatServiceRe
     /// </summary>
     public required string Operation {
         get => _operation;
-        init => _operation = NormalizeBackgroundSchedulerMutationOperation(value);
+        init => _operation = NormalizeBackgroundSchedulerMutationOperation(value, nameof(Operation));
     }
 
     /// <summary>

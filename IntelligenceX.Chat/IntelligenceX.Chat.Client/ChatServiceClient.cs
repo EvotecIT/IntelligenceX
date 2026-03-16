@@ -531,13 +531,17 @@ public sealed class ChatServiceClient : IAsyncDisposable {
             throw new ArgumentOutOfRangeException(nameof(startTimeLocal), "startTimeLocal must be provided.");
         }
 
-        var spec = $"{NormalizeBackgroundSchedulerMaintenanceWindowDay(normalizedDay)}@{normalizedStartTime}/{durationMinutes}";
         var normalizedPackId = (packId ?? string.Empty).Trim();
+        var normalizedThreadId = (threadId ?? string.Empty).Trim();
+        if (normalizedPackId.Length > 0 && normalizedThreadId.Length > 0) {
+            throw new ArgumentException("packId and threadId cannot both be provided for a maintenance window scope.", nameof(threadId));
+        }
+
+        var spec = $"{NormalizeBackgroundSchedulerMaintenanceWindowDay(normalizedDay)}@{normalizedStartTime}/{durationMinutes}";
         if (normalizedPackId.Length > 0) {
             spec += ";pack=" + normalizedPackId;
         }
 
-        var normalizedThreadId = (threadId ?? string.Empty).Trim();
         if (normalizedThreadId.Length > 0) {
             spec += ";thread=" + normalizedThreadId;
         }

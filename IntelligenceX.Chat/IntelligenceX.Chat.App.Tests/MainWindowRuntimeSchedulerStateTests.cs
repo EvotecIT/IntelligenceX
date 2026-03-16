@@ -38,6 +38,11 @@ public sealed class MainWindowRuntimeSchedulerStateTests {
         BindingFlags.NonPublic | BindingFlags.Instance)
         ?? throw new InvalidOperationException("ApplyBackgroundSchedulerSnapshot not found.");
 
+    private static readonly MethodInfo ValidateBackgroundSchedulerMaintenanceWindowScopeMethod = typeof(MainWindow).GetMethod(
+        "ValidateBackgroundSchedulerMaintenanceWindowScope",
+        BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("ValidateBackgroundSchedulerMaintenanceWindowScope not found.");
+
     private static readonly FieldInfo BackgroundSchedulerStatusSnapshotField = typeof(MainWindow).GetField(
         "_backgroundSchedulerStatusSnapshot",
         BindingFlags.NonPublic | BindingFlags.Instance)
@@ -227,6 +232,28 @@ public sealed class MainWindowRuntimeSchedulerStateTests {
         var threadSummaryLimit = MainWindow.ResolveBackgroundSchedulerThreadSummaryLimit(maxThreadSummaries: -5);
 
         Assert.Equal(0, threadSummaryLimit);
+    }
+
+    /// <summary>
+    /// Ensures the app rejects ambiguous maintenance-window scope selections before building or sending a request.
+    /// </summary>
+    [Fact]
+    public void ValidateBackgroundSchedulerMaintenanceWindowScope_RejectsPackAndThreadTogether() {
+        var ex = Assert.Throws<TargetInvocationException>(() =>
+            ValidateBackgroundSchedulerMaintenanceWindowScopeMethod.Invoke(null, new object?[] { "system", "thread-42" }));
+
+        var argument = Assert.IsType<ArgumentException>(ex.InnerException);
+        Assert.Contains("either packId or threadId", argument.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures scoped maintenance-window validation still allows pack-only and thread-only requests.
+    /// </summary>
+    [Fact]
+    public void ValidateBackgroundSchedulerMaintenanceWindowScope_AllowsSingleScopeTarget() {
+        ValidateBackgroundSchedulerMaintenanceWindowScopeMethod.Invoke(null, new object?[] { "system", null });
+        ValidateBackgroundSchedulerMaintenanceWindowScopeMethod.Invoke(null, new object?[] { null, "thread-42" });
+        ValidateBackgroundSchedulerMaintenanceWindowScopeMethod.Invoke(null, new object?[] { null, null });
     }
 
     /// <summary>

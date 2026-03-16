@@ -172,14 +172,29 @@ public sealed class ToolHealthContractTests {
     }
 
     [Fact]
-    public void SetBackgroundSchedulerMaintenanceWindowsRequest_InvalidOperationNormalizesToEmpty() {
-        var request = new SetBackgroundSchedulerMaintenanceWindowsRequest {
+    public void SetBackgroundSchedulerMaintenanceWindowsRequest_RejectsInvalidOperation() {
+        var ex = Assert.Throws<ArgumentException>(() => new SetBackgroundSchedulerMaintenanceWindowsRequest {
             RequestId = "req_scheduler_windows_invalid",
             Operation = " mutate ",
             Windows = new[] { "mon@02:00/60" }
-        };
+        });
 
-        Assert.Equal(string.Empty, request.Operation);
+        Assert.Contains("Operation must be one of", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SetBackgroundSchedulerMaintenanceWindowsRequest_RejectsInvalidOperationDuringPolymorphicDeserialization() {
+        const string json = """
+            {
+              "type":"set_background_scheduler_maintenance_windows",
+              "requestId":"req_scheduler_windows_invalid_wire",
+              "operation":"mutate",
+              "windows":["mon@02:00/60"]
+            }
+            """;
+
+        var ex = Assert.ThrowsAny<ArgumentException>(() => JsonSerializer.Deserialize(json, ChatServiceJsonContext.Default.ChatServiceRequest));
+        Assert.Contains("Operation must be one of", ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -231,14 +246,14 @@ public sealed class ToolHealthContractTests {
     }
 
     [Fact]
-    public void SetBackgroundSchedulerBlockedThreadsRequest_InvalidOperationNormalizesToEmpty() {
-        var request = new SetBackgroundSchedulerBlockedThreadsRequest {
+    public void SetBackgroundSchedulerBlockedThreadsRequest_RejectsInvalidOperation() {
+        var ex = Assert.Throws<ArgumentException>(() => new SetBackgroundSchedulerBlockedThreadsRequest {
             RequestId = "req_scheduler_threads_invalid_operation",
             Operation = "  mutate  ",
             ThreadIds = new[] { "thread-a" }
-        };
+        });
 
-        Assert.Equal(string.Empty, request.Operation);
+        Assert.Contains("Operation must be one of", ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -281,6 +296,21 @@ public sealed class ToolHealthContractTests {
 
         var ex = Assert.ThrowsAny<ArgumentException>(() => JsonSerializer.Deserialize(json, ChatServiceJsonContext.Default.ChatServiceRequest));
         Assert.Contains("cannot both be true", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SetBackgroundSchedulerBlockedThreadsRequest_RejectsInvalidOperationDuringPolymorphicDeserialization() {
+        const string json = """
+            {
+              "type":"set_background_scheduler_blocked_threads",
+              "requestId":"req_scheduler_threads_invalid_operation_wire",
+              "operation":"mutate",
+              "threadIds":["thread-a"]
+            }
+            """;
+
+        var ex = Assert.ThrowsAny<ArgumentException>(() => JsonSerializer.Deserialize(json, ChatServiceJsonContext.Default.ChatServiceRequest));
+        Assert.Contains("Operation must be one of", ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -332,14 +362,14 @@ public sealed class ToolHealthContractTests {
     }
 
     [Fact]
-    public void SetBackgroundSchedulerBlockedPacksRequest_InvalidOperationNormalizesToEmpty() {
-        var request = new SetBackgroundSchedulerBlockedPacksRequest {
+    public void SetBackgroundSchedulerBlockedPacksRequest_RejectsInvalidOperation() {
+        var ex = Assert.Throws<ArgumentException>(() => new SetBackgroundSchedulerBlockedPacksRequest {
             RequestId = "req_scheduler_packs_invalid_operation",
             Operation = "  mutate  ",
             PackIds = new[] { "system" }
-        };
+        });
 
-        Assert.Equal(string.Empty, request.Operation);
+        Assert.Contains("Operation must be one of", ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -382,6 +412,21 @@ public sealed class ToolHealthContractTests {
 
         var ex = Assert.ThrowsAny<ArgumentException>(() => JsonSerializer.Deserialize(json, ChatServiceJsonContext.Default.ChatServiceRequest));
         Assert.Contains("cannot both be true", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SetBackgroundSchedulerBlockedPacksRequest_RejectsInvalidOperationDuringPolymorphicDeserialization() {
+        const string json = """
+            {
+              "type":"set_background_scheduler_blocked_packs",
+              "requestId":"req_scheduler_packs_invalid_operation_wire",
+              "operation":"mutate",
+              "packIds":["system"]
+            }
+            """;
+
+        var ex = Assert.ThrowsAny<ArgumentException>(() => JsonSerializer.Deserialize(json, ChatServiceJsonContext.Default.ChatServiceRequest));
+        Assert.Contains("Operation must be one of", ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]
