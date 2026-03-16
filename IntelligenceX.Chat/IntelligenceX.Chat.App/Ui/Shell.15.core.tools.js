@@ -3183,6 +3183,1162 @@
         queueStateLabel.textContent = "Queued: " + queuedTurns + " turn(s), " + queuedSignIn + " sign-in item(s). Queue is paused.";
       }
     }
+
+    renderRuntimeScheduler();
+  }
+
+  function renderRuntimeScheduler() {
+    var scheduler = state.options.runtimeScheduler && typeof state.options.runtimeScheduler === "object"
+      ? state.options.runtimeScheduler
+      : null;
+    var schedulerScoped = state.options.runtimeSchedulerScoped && typeof state.options.runtimeSchedulerScoped === "object"
+      ? state.options.runtimeSchedulerScoped
+      : null;
+    var schedulerGlobal = state.options.runtimeSchedulerGlobal && typeof state.options.runtimeSchedulerGlobal === "object"
+      ? state.options.runtimeSchedulerGlobal
+      : null;
+    var schedulerOptionSource = schedulerGlobal || scheduler || schedulerScoped;
+    var schedulerState = byId("optRuntimeSchedulerState");
+    var schedulerKv = byId("optRuntimeSchedulerKv");
+    var maintenanceList = byId("optRuntimeSchedulerMaintenanceList");
+    var blockedPackList = byId("optRuntimeSchedulerBlockedPackList");
+    var blockedThreadList = byId("optRuntimeSchedulerBlockedThreadList");
+    var activityList = byId("optRuntimeSchedulerActivityList");
+    var threadList = byId("optRuntimeSchedulerThreadList");
+    var scopePackSelect = byId("optSchedulerScopePack");
+    var scopeSelect = byId("optSchedulerScopeThread");
+    var maintenancePackSelect = byId("optSchedulerMaintenancePackId");
+    var maintenanceThreadSelect = byId("optSchedulerMaintenanceThreadId");
+    var refreshButton = byId("btnSchedulerRefresh");
+    var scopeTogglePackMuteButton = byId("btnSchedulerScopeTogglePackMute");
+    var scopeTempPackMuteButton = byId("btnSchedulerScopeTempPackMute");
+    var scopePackMuteUntilMaintenanceButton = byId("btnSchedulerScopePackMuteUntilMaintenance");
+    var scopePackMuteUntilMaintenanceStartButton = byId("btnSchedulerScopePackMuteUntilMaintenanceStart");
+    var clearPackBlocksButton = byId("btnSchedulerClearPackBlocks");
+    var scopeToggleMuteButton = byId("btnSchedulerScopeToggleMute");
+    var scopeTempMuteButton = byId("btnSchedulerScopeTempMute");
+    var scopeThreadMuteUntilMaintenanceButton = byId("btnSchedulerScopeThreadMuteUntilMaintenance");
+    var scopeThreadMuteUntilMaintenanceStartButton = byId("btnSchedulerScopeThreadMuteUntilMaintenanceStart");
+    var clearThreadBlocksButton = byId("btnSchedulerClearThreadBlocks");
+    var pauseButton = byId("btnSchedulerPause");
+    var resumeButton = byId("btnSchedulerResume");
+    var clearMaintenanceButton = byId("btnSchedulerClearMaintenance");
+    var connected = normalizeBool(state.connected);
+    var preferredScopeThreadId = scopeSelect && scopeSelect.value
+      ? String(scopeSelect.value || "").trim()
+      : (schedulerScoped ? String(schedulerScoped.scopeThreadId || "").trim() : "");
+
+    if (refreshButton) {
+      refreshButton.disabled = !connected;
+    }
+    if (pauseButton) {
+      pauseButton.disabled = !connected;
+    }
+    if (resumeButton) {
+      resumeButton.disabled = !connected || !(scheduler && scheduler.manualPauseActive === true);
+    }
+    if (clearMaintenanceButton) {
+      clearMaintenanceButton.disabled = !connected || maintenanceWindows.length === 0;
+    }
+
+    if (schedulerKv) {
+      schedulerKv.textContent = "";
+    }
+    if (maintenanceList) {
+      maintenanceList.textContent = "";
+    }
+    if (blockedPackList) {
+      blockedPackList.textContent = "";
+    }
+    if (blockedThreadList) {
+      blockedThreadList.textContent = "";
+    }
+    if (activityList) {
+      activityList.textContent = "";
+    }
+    if (threadList) {
+      threadList.textContent = "";
+    }
+
+    function populateSchedulerSelect(select, emptyLabel, options, preferredValue) {
+      if (!select) {
+        return;
+      }
+
+      var previousValue = String(preferredValue == null ? select.value : preferredValue);
+      select.innerHTML = "";
+
+      var emptyOption = document.createElement("option");
+      emptyOption.value = "";
+      emptyOption.textContent = emptyLabel;
+      select.appendChild(emptyOption);
+
+      for (var oi = 0; oi < options.length; oi++) {
+        var optionData = options[oi] || {};
+        var optionValue = String(optionData.value || "").trim();
+        if (!optionValue) {
+          continue;
+        }
+
+        var option = document.createElement("option");
+        option.value = optionValue;
+        option.textContent = String(optionData.label || optionValue);
+        select.appendChild(option);
+      }
+
+      select.value = previousValue;
+      if (select.value !== previousValue) {
+        select.value = "";
+      }
+      syncCustomSelect(select);
+    }
+
+    function buildSchedulerThreadOptions() {
+      var seen = Object.create(null);
+      var result = [];
+
+      function addThreadOption(value, label) {
+        var normalizedValue = String(value || "").trim();
+        if (!normalizedValue) {
+          return;
+        }
+
+        var key = normalizedValue.toLowerCase();
+        if (seen[key]) {
+          return;
+        }
+        seen[key] = true;
+        result.push({
+          value: normalizedValue,
+          label: String(label || normalizedValue)
+        });
+      }
+
+      var conversations = state.options && Array.isArray(state.options.conversations)
+        ? state.options.conversations
+        : [];
+      for (var ci = 0; ci < conversations.length; ci++) {
+        var conversation = conversations[ci] || {};
+        var conversationThreadId = String(conversation.threadId || "").trim();
+        if (!conversationThreadId) {
+          continue;
+        }
+        var conversationTitle = String(conversation.title || conversation.id || conversationThreadId).trim();
+        addThreadOption(conversationThreadId, conversationTitle + " (" + conversationThreadId + ")");
+      }
+
+      var threadSummaries = schedulerOptionSource && Array.isArray(schedulerOptionSource.threadSummaries)
+        ? schedulerOptionSource.threadSummaries
+        : [];
+      for (var tsi = 0; tsi < threadSummaries.length; tsi++) {
+        var summary = threadSummaries[tsi] || {};
+        addThreadOption(summary.threadId, String(summary.threadId || "").trim());
+      }
+
+      var readyThreadIds = schedulerOptionSource && Array.isArray(schedulerOptionSource.readyThreadIds)
+        ? schedulerOptionSource.readyThreadIds
+        : [];
+      for (var rti = 0; rti < readyThreadIds.length; rti++) {
+        addThreadOption(readyThreadIds[rti], String(readyThreadIds[rti] || "").trim());
+      }
+
+      var runningThreadIds = schedulerOptionSource && Array.isArray(schedulerOptionSource.runningThreadIds)
+        ? schedulerOptionSource.runningThreadIds
+        : [];
+      for (var rni = 0; rni < runningThreadIds.length; rni++) {
+        addThreadOption(runningThreadIds[rni], String(runningThreadIds[rni] || "").trim());
+      }
+
+      var recentActivity = schedulerOptionSource && Array.isArray(schedulerOptionSource.recentActivity)
+        ? schedulerOptionSource.recentActivity
+        : [];
+      for (var rai = 0; rai < recentActivity.length; rai++) {
+        var activity = recentActivity[rai] || {};
+        addThreadOption(activity.threadId, String(activity.threadId || "").trim());
+      }
+
+      return result;
+    }
+
+    function buildSchedulerPackOptions() {
+      var seen = Object.create(null);
+      var result = [];
+
+      function addPackOption(value, label) {
+        var normalizedValue = String(value || "").trim();
+        if (!normalizedValue) {
+          return;
+        }
+
+        var key = normalizedValue.toLowerCase();
+        if (seen[key]) {
+          return;
+        }
+        seen[key] = true;
+        result.push({
+          value: normalizedValue,
+          label: String(label || normalizedValue)
+        });
+      }
+
+      var packs = state.options && Array.isArray(state.options.packs)
+        ? state.options.packs
+        : [];
+      for (var pi = 0; pi < packs.length; pi++) {
+        var pack = packs[pi] || {};
+        var packId = String(pack.id || "").trim();
+        var packName = String(pack.name || packId).trim();
+        addPackOption(packId, packName && packName !== packId ? (packName + " (" + packId + ")") : packId);
+      }
+
+      var configuredWindows = schedulerOptionSource && Array.isArray(schedulerOptionSource.maintenanceWindows)
+        ? schedulerOptionSource.maintenanceWindows
+        : [];
+      for (var mwi = 0; mwi < configuredWindows.length; mwi++) {
+        var maintenanceWindow = configuredWindows[mwi] || {};
+        var scopedPackId = String(maintenanceWindow.packId || "").trim();
+        if (scopedPackId) {
+          addPackOption(scopedPackId, scopedPackId);
+        }
+      }
+
+      return result;
+    }
+
+    populateSchedulerSelect(
+      scopePackSelect,
+      "Any pack",
+      buildSchedulerPackOptions());
+    populateSchedulerSelect(
+      scopeSelect,
+      "All tracked threads",
+      buildSchedulerThreadOptions(),
+      preferredScopeThreadId);
+    populateSchedulerSelect(
+      maintenancePackSelect,
+      "Any pack",
+      buildSchedulerPackOptions());
+    populateSchedulerSelect(
+      maintenanceThreadSelect,
+      "Any tracked thread",
+      buildSchedulerThreadOptions());
+
+    var selectedScopeThreadId = scopeSelect
+      ? String(scopeSelect.value || "").trim()
+      : preferredScopeThreadId;
+    var hasScopedSchedulerSelection = schedulerScoped
+      && selectedScopeThreadId.length > 0
+      && String(schedulerScoped.scopeThreadId || "").trim().toLowerCase() === selectedScopeThreadId.toLowerCase();
+    if (hasScopedSchedulerSelection) {
+      scheduler = schedulerScoped;
+    }
+
+    var maintenanceWindows = scheduler && Array.isArray(scheduler.maintenanceWindows)
+      ? scheduler.maintenanceWindows
+      : [];
+    var activeMaintenanceSpecs = scheduler && Array.isArray(scheduler.activeMaintenanceWindowSpecs)
+      ? scheduler.activeMaintenanceWindowSpecs
+      : [];
+
+    if (!scheduler) {
+      if (schedulerState) {
+        schedulerState.textContent = connected
+          ? "Background scheduler status not loaded yet."
+          : "Connect to the service to inspect scheduler runtime state.";
+      }
+      return;
+    }
+
+    if (schedulerState) {
+      schedulerState.textContent = String(scheduler.statusSummary || "Background scheduler diagnostics available.");
+    }
+
+    function appendSchedulerKv(label, value) {
+      if (!schedulerKv) {
+        return;
+      }
+      var k = document.createElement("div");
+      k.className = "options-k";
+      k.textContent = label;
+      var v = document.createElement("div");
+      v.className = "options-v";
+      v.textContent = value;
+      schedulerKv.appendChild(k);
+      schedulerKv.appendChild(v);
+    }
+
+    function normalizedCount(value) {
+      var parsed = Number(value);
+      if (!Number.isFinite(parsed) || parsed < 0) {
+        return 0;
+      }
+      return Math.floor(parsed);
+    }
+
+    function normalizedThreadIdArray(value) {
+      var items = Array.isArray(value) ? value : [];
+      var result = [];
+      var seen = Object.create(null);
+      for (var i = 0; i < items.length; i++) {
+        var text = String(items[i] || "").trim();
+        if (!text) {
+          continue;
+        }
+
+        var key = text.toLowerCase();
+        if (seen[key]) {
+          continue;
+        }
+        seen[key] = true;
+        result.push(text);
+      }
+      return result;
+    }
+
+    function normalizedPackIdArray(value) {
+      var items = Array.isArray(value) ? value : [];
+      var result = [];
+      var seen = Object.create(null);
+      for (var i = 0; i < items.length; i++) {
+        var text = String(items[i] || "").trim().toLowerCase();
+        if (!text || seen[text]) {
+          continue;
+        }
+
+        seen[text] = true;
+        result.push(text);
+      }
+      return result;
+    }
+
+    function normalizedSchedulerSuppressionArray(value, isPack) {
+      var items = Array.isArray(value) ? value : [];
+      var result = [];
+      var seen = Object.create(null);
+      for (var i = 0; i < items.length; i++) {
+        var item = items[i] || {};
+        var rawId = String(item.id || "").trim();
+        var normalizedId = isPack ? rawId.toLowerCase() : rawId;
+        if (!normalizedId) {
+          continue;
+        }
+
+        var key = isPack ? normalizedId : normalizedId.toLowerCase();
+        if (seen[key]) {
+          continue;
+        }
+
+        seen[key] = true;
+        result.push({
+          id: normalizedId,
+          mode: String(item.mode || "").trim().toLowerCase(),
+          temporary: item.temporary === true,
+          expiresUtcTicks: Number(item.expiresUtcTicks) || 0
+        });
+      }
+      return result;
+    }
+
+    function findSchedulerSuppression(entries, id, isPack) {
+      var normalizedId = String(id || "").trim();
+      if (!normalizedId) {
+        return null;
+      }
+
+      var lookup = isPack ? normalizedId.toLowerCase() : normalizedId;
+      for (var i = 0; i < entries.length; i++) {
+        var entry = entries[i] || {};
+        var entryId = isPack ? String(entry.id || "").trim().toLowerCase() : String(entry.id || "").trim();
+        if (entryId === lookup) {
+          return entry;
+        }
+      }
+
+      return null;
+    }
+
+    function isSchedulerTemporarySuppression(entry) {
+      return !!(entry && entry.temporary === true);
+    }
+
+    function formatSchedulerSuppressionMode(entry) {
+      if (!entry || typeof entry !== "object") {
+        return "";
+      }
+
+      if (entry.temporary === true) {
+        return "temporary";
+      }
+
+      return "persistent";
+    }
+
+    function formatSchedulerUtcTicks(utcTicks) {
+      var ticks = Number(utcTicks);
+      if (!Number.isFinite(ticks) || ticks <= 0) {
+        return "";
+      }
+
+      var unixMs = Math.floor((ticks - 621355968000000000) / 10000);
+      if (!Number.isFinite(unixMs) || unixMs <= 0) {
+        return "";
+      }
+
+      try {
+        return new Date(unixMs).toLocaleString();
+      } catch (err) {
+        return "";
+      }
+    }
+
+    function buildSchedulerSuppressionDescription(entry, noun) {
+      if (!entry || typeof entry !== "object") {
+        return "";
+      }
+
+      if (entry.temporary === true) {
+        var expiresLabel = formatSchedulerUtcTicks(entry.expiresUtcTicks);
+        return expiresLabel
+          ? ("Temporary daemon suppression for this " + noun + " until " + expiresLabel + ".")
+          : ("Temporary daemon suppression for this " + noun + ".");
+      }
+
+      if (String(entry.mode || "").trim().toLowerCase() === "persistent_default") {
+        return "Persistent daemon suppression from startup/profile policy.";
+      }
+
+      return "Persistent daemon suppression from runtime operator policy.";
+    }
+
+    function isSchedulerThreadBlocked(threadId) {
+      var normalizedThreadId = String(threadId || "").trim().toLowerCase();
+      if (!normalizedThreadId) {
+        return false;
+      }
+
+      for (var i = 0; i < blockedThreadIds.length; i++) {
+        if (blockedThreadIds[i].toLowerCase() === normalizedThreadId) {
+          return true;
+        }
+      }
+
+      return false;
+    }
+
+    function isSchedulerPackBlocked(packId) {
+      var normalizedPackId = String(packId || "").trim().toLowerCase();
+      if (!normalizedPackId) {
+        return false;
+      }
+
+      for (var i = 0; i < blockedPackIds.length; i++) {
+        if (blockedPackIds[i] === normalizedPackId) {
+          return true;
+        }
+      }
+
+      return false;
+    }
+
+    function resolveSchedulerThreadLabel(threadId) {
+      var normalizedThreadId = String(threadId || "").trim();
+      if (!normalizedThreadId) {
+        return "thread";
+      }
+
+      var conversations = state.options && Array.isArray(state.options.conversations)
+        ? state.options.conversations
+        : [];
+      var lookupKey = normalizedThreadId.toLowerCase();
+      for (var i = 0; i < conversations.length; i++) {
+        var conversation = conversations[i] || {};
+        if (String(conversation.threadId || "").trim().toLowerCase() !== lookupKey) {
+          continue;
+        }
+
+        var label = String(conversation.title || conversation.id || normalizedThreadId).trim();
+        if (label && label !== normalizedThreadId) {
+          return label + " (" + normalizedThreadId + ")";
+        }
+      }
+
+      return normalizedThreadId;
+    }
+
+    function resolveSchedulerPackLabel(packId) {
+      var normalizedPackId = String(packId || "").trim().toLowerCase();
+      if (!normalizedPackId) {
+        return "pack";
+      }
+
+      var packs = state.options && Array.isArray(state.options.packs)
+        ? state.options.packs
+        : [];
+      for (var i = 0; i < packs.length; i++) {
+        var pack = packs[i] || {};
+        if (String(pack.id || "").trim().toLowerCase() !== normalizedPackId) {
+          continue;
+        }
+
+        var packName = String(pack.name || "").trim();
+        if (packName && packName.toLowerCase() !== normalizedPackId) {
+          return packName + " (" + normalizedPackId + ")";
+        }
+      }
+
+      return normalizedPackId;
+    }
+
+    function findSchedulerToolByName(toolName) {
+      var normalizedToolName = String(toolName || "").trim();
+      if (!normalizedToolName) {
+        return null;
+      }
+
+      var tools = state.options && Array.isArray(state.options.tools)
+        ? state.options.tools
+        : [];
+      for (var i = 0; i < tools.length; i++) {
+        var tool = tools[i] || {};
+        if (String(tool.name || "").trim() === normalizedToolName) {
+          return tool;
+        }
+      }
+
+      return null;
+    }
+
+    function resolveActivityPackId(activity) {
+      if (!activity || typeof activity !== "object") {
+        return "";
+      }
+
+      var explicitPackId = normalizePackId(activity.packId);
+      if (explicitPackId) {
+        return explicitPackId;
+      }
+
+      var toolName = String(activity.toolName || "").trim();
+      if (!toolName) {
+        return "";
+      }
+
+      var tool = findSchedulerToolByName(toolName);
+      var inferred = normalizePackId(inferPackIdFromTool(tool));
+      return inferred === "uncategorized" ? "" : inferred;
+    }
+
+    function setSchedulerScopeAndRefresh(threadId) {
+      var normalizedThreadId = String(threadId || "").trim();
+      if (!normalizedThreadId) {
+        return;
+      }
+
+      if (scopeSelect) {
+        scopeSelect.value = normalizedThreadId;
+        syncCustomSelect(scopeSelect);
+      }
+
+      post("scheduler_refresh", { threadId: normalizedThreadId });
+    }
+
+    function appendSchedulerPackActionBar(host, packId, blocked) {
+      if (!host) {
+        return;
+      }
+
+      var normalizedPackId = String(packId || "").trim().toLowerCase();
+      if (!normalizedPackId) {
+        return;
+      }
+
+      var actions = document.createElement("div");
+      actions.className = "options-actions options-actions-wrap";
+
+      var toggleButton = document.createElement("button");
+      toggleButton.className = "options-btn options-btn-sm";
+      toggleButton.textContent = blocked ? "Unmute Pack" : "Mute Pack";
+      toggleButton.disabled = !connected;
+      toggleButton.addEventListener("click", function() {
+        post("scheduler_set_pack_block", {
+          packId: normalizedPackId,
+          blocked: !blocked
+        });
+      });
+      actions.appendChild(toggleButton);
+
+      if (!blocked) {
+        var tempButton = document.createElement("button");
+        tempButton.className = "options-btn options-btn-sm options-btn-ghost";
+        tempButton.textContent = "Mute 30m";
+        tempButton.disabled = !connected;
+        tempButton.addEventListener("click", function() {
+          post("scheduler_set_pack_block", {
+            packId: normalizedPackId,
+            blocked: true,
+            durationMinutes: "30"
+          });
+        });
+        actions.appendChild(tempButton);
+
+        var tempLongButton = document.createElement("button");
+        tempLongButton.className = "options-btn options-btn-sm options-btn-ghost";
+        tempLongButton.textContent = "Mute 2h";
+        tempLongButton.disabled = !connected;
+        tempLongButton.addEventListener("click", function() {
+          post("scheduler_set_pack_block", {
+            packId: normalizedPackId,
+            blocked: true,
+            durationMinutes: "120"
+          });
+        });
+        actions.appendChild(tempLongButton);
+
+        var untilMaintenanceButton = document.createElement("button");
+        untilMaintenanceButton.className = "options-btn options-btn-sm options-btn-ghost";
+        untilMaintenanceButton.textContent = "Until End";
+        untilMaintenanceButton.disabled = !connected;
+        untilMaintenanceButton.addEventListener("click", function() {
+          post("scheduler_set_pack_block", {
+            packId: normalizedPackId,
+            blocked: true,
+            untilNextMaintenanceWindow: true
+          });
+        });
+        actions.appendChild(untilMaintenanceButton);
+
+        var untilMaintenanceStartButton = document.createElement("button");
+        untilMaintenanceStartButton.className = "options-btn options-btn-sm options-btn-ghost";
+        untilMaintenanceStartButton.textContent = "Until Start";
+        untilMaintenanceStartButton.disabled = !connected;
+        untilMaintenanceStartButton.addEventListener("click", function() {
+          post("scheduler_set_pack_block", {
+            packId: normalizedPackId,
+            blocked: true,
+            untilNextMaintenanceWindowStart: true
+          });
+        });
+        actions.appendChild(untilMaintenanceStartButton);
+      }
+
+      host.appendChild(actions);
+    }
+
+    function appendSchedulerThreadActionBar(host, threadId, blocked) {
+      if (!host) {
+        return;
+      }
+
+      var normalizedThreadId = String(threadId || "").trim();
+      if (!normalizedThreadId) {
+        return;
+      }
+
+      var actions = document.createElement("div");
+      actions.className = "options-actions options-actions-wrap";
+
+      var inspectButton = document.createElement("button");
+      inspectButton.className = "options-btn options-btn-ghost options-btn-sm";
+      inspectButton.textContent = "Inspect";
+      inspectButton.disabled = !connected;
+      inspectButton.addEventListener("click", function() {
+        setSchedulerScopeAndRefresh(normalizedThreadId);
+      });
+      actions.appendChild(inspectButton);
+
+      var toggleButton = document.createElement("button");
+      toggleButton.className = "options-btn options-btn-sm";
+      toggleButton.textContent = blocked ? "Unmute Thread" : "Mute Thread";
+      toggleButton.disabled = !connected;
+      toggleButton.addEventListener("click", function() {
+        post("scheduler_set_thread_block", {
+          threadId: normalizedThreadId,
+          blocked: !blocked
+        });
+      });
+      actions.appendChild(toggleButton);
+
+      if (!blocked) {
+        var tempButton = document.createElement("button");
+        tempButton.className = "options-btn options-btn-sm options-btn-ghost";
+        tempButton.textContent = "Mute 30m";
+        tempButton.disabled = !connected;
+        tempButton.addEventListener("click", function() {
+          post("scheduler_set_thread_block", {
+            threadId: normalizedThreadId,
+            blocked: true,
+            durationMinutes: "30"
+          });
+        });
+        actions.appendChild(tempButton);
+
+        var tempLongButton = document.createElement("button");
+        tempLongButton.className = "options-btn options-btn-sm options-btn-ghost";
+        tempLongButton.textContent = "Mute 2h";
+        tempLongButton.disabled = !connected;
+        tempLongButton.addEventListener("click", function() {
+          post("scheduler_set_thread_block", {
+            threadId: normalizedThreadId,
+            blocked: true,
+            durationMinutes: "120"
+          });
+        });
+        actions.appendChild(tempLongButton);
+
+        var untilMaintenanceButton = document.createElement("button");
+        untilMaintenanceButton.className = "options-btn options-btn-sm options-btn-ghost";
+        untilMaintenanceButton.textContent = "Until End";
+        untilMaintenanceButton.disabled = !connected;
+        untilMaintenanceButton.addEventListener("click", function() {
+          post("scheduler_set_thread_block", {
+            threadId: normalizedThreadId,
+            blocked: true,
+            untilNextMaintenanceWindow: true
+          });
+        });
+        actions.appendChild(untilMaintenanceButton);
+
+        var untilMaintenanceStartButton = document.createElement("button");
+        untilMaintenanceStartButton.className = "options-btn options-btn-sm options-btn-ghost";
+        untilMaintenanceStartButton.textContent = "Until Start";
+        untilMaintenanceStartButton.disabled = !connected;
+        untilMaintenanceStartButton.addEventListener("click", function() {
+          post("scheduler_set_thread_block", {
+            threadId: normalizedThreadId,
+            blocked: true,
+            untilNextMaintenanceWindowStart: true
+          });
+        });
+        actions.appendChild(untilMaintenanceStartButton);
+      }
+
+      host.appendChild(actions);
+    }
+
+    function joinOrNone(value) {
+      var items = Array.isArray(value) ? value : [];
+      var normalized = [];
+      for (var i = 0; i < items.length; i++) {
+        var text = String(items[i] || "").trim();
+        if (text) {
+          normalized.push(text);
+        }
+      }
+      return normalized.length > 0 ? normalized.join(", ") : "none";
+    }
+
+    var blockedPackIds = normalizedPackIdArray(scheduler.blockedPackIds);
+    var blockedPackSuppressions = normalizedSchedulerSuppressionArray(scheduler.blockedPackSuppressions, true);
+    var blockedThreadIds = normalizedThreadIdArray(scheduler.blockedThreadIds);
+    var blockedThreadSuppressions = normalizedSchedulerSuppressionArray(scheduler.blockedThreadSuppressions, false);
+    var scopedPackId = scopePackSelect ? String(scopePackSelect.value || "").trim().toLowerCase() : "";
+    var scopedPackBlocked = isSchedulerPackBlocked(scopedPackId);
+    var scopedPackSuppression = findSchedulerSuppression(blockedPackSuppressions, scopedPackId, true);
+    var scopedThreadId = scopeSelect ? String(scopeSelect.value || "").trim() : "";
+    var scopedThreadBlocked = isSchedulerThreadBlocked(scopedThreadId);
+    var scopedThreadSuppression = findSchedulerSuppression(blockedThreadSuppressions, scopedThreadId, false);
+
+    if (scopeTogglePackMuteButton) {
+      scopeTogglePackMuteButton.disabled = !connected || !scopedPackId;
+      scopeTogglePackMuteButton.dataset.packId = scopedPackId;
+      scopeTogglePackMuteButton.dataset.blocked = scopedPackBlocked ? "true" : "false";
+      scopeTogglePackMuteButton.textContent = scopedPackBlocked ? "Unmute Scoped Pack" : "Mute Scoped Pack";
+    }
+    if (scopeTempPackMuteButton) {
+      scopeTempPackMuteButton.disabled = !connected || !scopedPackId || scopedPackBlocked;
+      scopeTempPackMuteButton.dataset.packId = scopedPackId;
+      scopeTempPackMuteButton.title = scopedPackSuppression && scopedPackSuppression.temporary === true
+        ? "This pack is already temporarily muted."
+        : "";
+    }
+    if (scopePackMuteUntilMaintenanceButton) {
+      scopePackMuteUntilMaintenanceButton.disabled = !connected || !scopedPackId || scopedPackBlocked;
+      scopePackMuteUntilMaintenanceButton.dataset.packId = scopedPackId;
+      scopePackMuteUntilMaintenanceButton.title = scopedPackSuppression && scopedPackSuppression.temporary === true
+        ? "This pack is already temporarily muted."
+        : "";
+    }
+    if (scopePackMuteUntilMaintenanceStartButton) {
+      scopePackMuteUntilMaintenanceStartButton.disabled = !connected || !scopedPackId || scopedPackBlocked;
+      scopePackMuteUntilMaintenanceStartButton.dataset.packId = scopedPackId;
+      scopePackMuteUntilMaintenanceStartButton.title = scopedPackSuppression && scopedPackSuppression.temporary === true
+        ? "This pack is already temporarily muted."
+        : "";
+    }
+    if (clearPackBlocksButton) {
+      clearPackBlocksButton.disabled = !connected || blockedPackIds.length === 0;
+    }
+    if (scopeToggleMuteButton) {
+      scopeToggleMuteButton.disabled = !connected || !scopedThreadId;
+      scopeToggleMuteButton.dataset.threadId = scopedThreadId;
+      scopeToggleMuteButton.dataset.blocked = scopedThreadBlocked ? "true" : "false";
+      scopeToggleMuteButton.textContent = scopedThreadBlocked ? "Unmute Scoped Thread" : "Mute Scoped Thread";
+    }
+    if (scopeTempMuteButton) {
+      scopeTempMuteButton.disabled = !connected || !scopedThreadId || scopedThreadBlocked;
+      scopeTempMuteButton.dataset.threadId = scopedThreadId;
+      scopeTempMuteButton.title = scopedThreadSuppression && scopedThreadSuppression.temporary === true
+        ? "This thread is already temporarily muted."
+        : "";
+    }
+    if (scopeThreadMuteUntilMaintenanceButton) {
+      scopeThreadMuteUntilMaintenanceButton.disabled = !connected || !scopedThreadId || scopedThreadBlocked;
+      scopeThreadMuteUntilMaintenanceButton.dataset.threadId = scopedThreadId;
+      scopeThreadMuteUntilMaintenanceButton.title = scopedThreadSuppression && scopedThreadSuppression.temporary === true
+        ? "This thread is already temporarily muted."
+        : "";
+    }
+    if (scopeThreadMuteUntilMaintenanceStartButton) {
+      scopeThreadMuteUntilMaintenanceStartButton.disabled = !connected || !scopedThreadId || scopedThreadBlocked;
+      scopeThreadMuteUntilMaintenanceStartButton.dataset.threadId = scopedThreadId;
+      scopeThreadMuteUntilMaintenanceStartButton.title = scopedThreadSuppression && scopedThreadSuppression.temporary === true
+        ? "This thread is already temporarily muted."
+        : "";
+    }
+    if (clearThreadBlocksButton) {
+      clearThreadBlocksButton.disabled = !connected || blockedThreadIds.length === 0;
+    }
+
+    appendSchedulerKv("daemon", scheduler.daemonEnabled === true ? "enabled" : "disabled");
+    appendSchedulerKv("pause mode", scheduler.paused === true
+      ? ("paused" + (scheduler.pauseReason ? " (" + scheduler.pauseReason + ")" : ""))
+      : (scheduler.scheduledPauseActive === true ? "scheduled window active" : "running"));
+    appendSchedulerKv(
+      "workload",
+      "queued " + normalizedCount(scheduler.queuedItemCount)
+      + " | ready " + normalizedCount(scheduler.readyItemCount)
+      + " | running " + normalizedCount(scheduler.runningItemCount)
+      + " | tracked threads " + normalizedCount(scheduler.trackedThreadCount));
+    appendSchedulerKv(
+      "completion",
+      "completed items " + normalizedCount(scheduler.completedItemCount)
+      + " | pending read-only " + normalizedCount(scheduler.pendingReadOnlyItemCount)
+      + " | pending unknown " + normalizedCount(scheduler.pendingUnknownItemCount));
+    appendSchedulerKv(
+      "executions",
+      "completed " + normalizedCount(scheduler.completedExecutionCount)
+      + " | requeued " + normalizedCount(scheduler.requeuedExecutionCount)
+      + " | released " + normalizedCount(scheduler.releasedExecutionCount));
+    appendSchedulerKv(
+      "failures",
+      "consecutive " + normalizedCount(scheduler.consecutiveFailureCount)
+      + " | last outcome " + String(scheduler.lastOutcome || "none"));
+    appendSchedulerKv("allowed packs", joinOrNone(scheduler.allowedPackIds));
+    appendSchedulerKv("blocked packs", joinOrNone(blockedPackIds));
+    appendSchedulerKv("allowed threads", joinOrNone(scheduler.allowedThreadIds));
+    appendSchedulerKv("blocked threads", joinOrNone(blockedThreadIds));
+    appendSchedulerKv("scope", String(scheduler.scopeThreadId || "").trim() || "global");
+    appendSchedulerKv("active maintenance", activeMaintenanceSpecs.length > 0 ? activeMaintenanceSpecs.join(", ") : "none");
+
+    if (blockedPackList) {
+      if (blockedPackIds.length === 0) {
+        blockedPackList.innerHTML = "<div class='options-item'><div class='options-item-title'>No muted scheduler packs</div></div>";
+      } else {
+        for (var bp = 0; bp < blockedPackIds.length; bp++) {
+          var blockedPackId = blockedPackIds[bp];
+          var blockedPackSuppression = findSchedulerSuppression(blockedPackSuppressions, blockedPackId, true);
+          var blockedPackCard = document.createElement("div");
+          blockedPackCard.className = "options-item";
+
+          var blockedPackHeader = document.createElement("div");
+          blockedPackHeader.className = "options-item-header";
+
+          var blockedPackTitle = document.createElement("div");
+          blockedPackTitle.className = "options-item-title";
+          blockedPackTitle.textContent = resolveSchedulerPackLabel(blockedPackId);
+          blockedPackHeader.appendChild(blockedPackTitle);
+
+          var blockedPackPill = document.createElement("span");
+          blockedPackPill.className = "options-pill options-pill-routing";
+          blockedPackPill.textContent = formatSchedulerSuppressionMode(blockedPackSuppression) || "muted";
+          blockedPackHeader.appendChild(blockedPackPill);
+
+          blockedPackCard.appendChild(blockedPackHeader);
+
+          var blockedPackSub = document.createElement("div");
+          blockedPackSub.className = "options-item-sub";
+          blockedPackSub.textContent = buildSchedulerSuppressionDescription(blockedPackSuppression, "pack")
+            || ("Daemon scheduling is suppressed for pack " + blockedPackId + ".");
+          blockedPackCard.appendChild(blockedPackSub);
+
+          appendSchedulerPackActionBar(blockedPackCard, blockedPackId, true);
+          blockedPackList.appendChild(blockedPackCard);
+        }
+      }
+    }
+
+    if (blockedThreadList) {
+      if (blockedThreadIds.length === 0) {
+        blockedThreadList.innerHTML = "<div class='options-item'><div class='options-item-title'>No muted scheduler threads</div></div>";
+      } else {
+        for (var bt = 0; bt < blockedThreadIds.length; bt++) {
+          var blockedThreadId = blockedThreadIds[bt];
+          var blockedThreadSuppression = findSchedulerSuppression(blockedThreadSuppressions, blockedThreadId, false);
+          var blockedCard = document.createElement("div");
+          blockedCard.className = "options-item";
+
+          var blockedHeader = document.createElement("div");
+          blockedHeader.className = "options-item-header";
+
+          var blockedTitle = document.createElement("div");
+          blockedTitle.className = "options-item-title";
+          blockedTitle.textContent = resolveSchedulerThreadLabel(blockedThreadId);
+          blockedHeader.appendChild(blockedTitle);
+
+          var blockedPill = document.createElement("span");
+          blockedPill.className = "options-pill options-pill-routing";
+          blockedPill.textContent = formatSchedulerSuppressionMode(blockedThreadSuppression) || "muted";
+          blockedHeader.appendChild(blockedPill);
+
+          blockedCard.appendChild(blockedHeader);
+
+          var blockedSub = document.createElement("div");
+          blockedSub.className = "options-item-sub";
+          blockedSub.textContent = buildSchedulerSuppressionDescription(blockedThreadSuppression, "thread")
+            || ("Daemon scheduling is suppressed for thread " + blockedThreadId + ".");
+          blockedCard.appendChild(blockedSub);
+
+          appendSchedulerThreadActionBar(blockedCard, blockedThreadId, true);
+          blockedThreadList.appendChild(blockedCard);
+        }
+      }
+    }
+
+    if (!maintenanceList) {
+      return;
+    }
+
+    if (maintenanceWindows.length === 0) {
+      maintenanceList.innerHTML = "<div class='options-item'><div class='options-item-title'>No maintenance windows configured</div></div>";
+      return;
+    }
+
+    for (var mw = 0; mw < maintenanceWindows.length; mw++) {
+      var maintenance = maintenanceWindows[mw] || {};
+      var spec = String(maintenance.spec || "").trim();
+      var card = document.createElement("div");
+      card.className = "options-item";
+
+      var header = document.createElement("div");
+      header.className = "options-item-header";
+
+      var title = document.createElement("div");
+      title.className = "options-item-title";
+      title.textContent = spec || "Maintenance window";
+      header.appendChild(title);
+
+      var active = activeMaintenanceSpecs.indexOf(spec) >= 0;
+      var scopePill = document.createElement("span");
+      scopePill.className = "options-pill options-pill-category";
+      scopePill.textContent = maintenance.scoped === true ? "scoped" : "global";
+      header.appendChild(scopePill);
+
+      if (active) {
+        var activePill = document.createElement("span");
+        activePill.className = "options-pill options-pill-routing";
+        activePill.textContent = "active";
+        header.appendChild(activePill);
+      }
+
+      var remove = document.createElement("button");
+      remove.className = "options-btn options-btn-ghost options-btn-sm";
+      remove.textContent = "Remove";
+      remove.disabled = !connected || !spec;
+      remove.dataset.schedulerSpec = spec;
+      remove.addEventListener("click", function(e) {
+        var target = e.target;
+        var value = target && target.dataset ? String(target.dataset.schedulerSpec || "").trim() : "";
+        if (!value) {
+          return;
+        }
+        post("scheduler_remove_maintenance", { spec: value });
+      });
+      header.appendChild(remove);
+      card.appendChild(header);
+
+      var detailParts = [];
+      var day = String(maintenance.day || "").trim();
+      var startTimeLocal = String(maintenance.startTimeLocal || "").trim();
+      var durationMinutes = Number(maintenance.durationMinutes);
+      if (day) {
+        detailParts.push(day);
+      }
+      if (startTimeLocal) {
+        detailParts.push(startTimeLocal);
+      }
+      if (Number.isFinite(durationMinutes) && durationMinutes > 0) {
+        detailParts.push(String(Math.floor(durationMinutes)) + "m");
+      }
+      var packId = String(maintenance.packId || "").trim();
+      if (packId) {
+        detailParts.push("pack " + packId);
+      }
+      var threadId = String(maintenance.threadId || "").trim();
+      if (threadId) {
+        detailParts.push("thread " + threadId);
+      }
+      if (detailParts.length > 0) {
+        var sub = document.createElement("div");
+        sub.className = "options-item-sub";
+        sub.textContent = detailParts.join(" · ");
+        card.appendChild(sub);
+      }
+
+      maintenanceList.appendChild(card);
+    }
+
+    var recentActivity = scheduler && Array.isArray(scheduler.recentActivity)
+      ? scheduler.recentActivity
+      : [];
+    if (activityList) {
+      if (recentActivity.length === 0) {
+        activityList.innerHTML = "<div class='options-item'><div class='options-item-title'>No recent scheduler activity captured</div></div>";
+      } else {
+        for (var ra = 0; ra < recentActivity.length; ra++) {
+          var activity = recentActivity[ra] || {};
+          var activityCard = document.createElement("div");
+          activityCard.className = "options-item";
+
+          var activityHeader = document.createElement("div");
+          activityHeader.className = "options-item-header";
+
+          var activityTitle = document.createElement("div");
+          activityTitle.className = "options-item-title";
+          var outcome = String(activity.outcome || "unknown").trim() || "unknown";
+          var toolName = String(activity.toolName || "").trim();
+          var threadIdForActivity = String(activity.threadId || "").trim();
+          var packIdForActivity = resolveActivityPackId(activity);
+          var threadSuppressionForActivity = findSchedulerSuppression(blockedThreadSuppressions, threadIdForActivity, false);
+          var packSuppressionForActivity = findSchedulerSuppression(blockedPackSuppressions, packIdForActivity, true);
+          activityTitle.textContent = toolName
+            ? (outcome + " · " + toolName)
+            : outcome;
+          activityHeader.appendChild(activityTitle);
+
+          if (threadIdForActivity) {
+            var activityThreadPill = document.createElement("span");
+            activityThreadPill.className = "options-pill options-pill-category";
+            activityThreadPill.textContent = threadIdForActivity;
+            activityHeader.appendChild(activityThreadPill);
+            if (isSchedulerThreadBlocked(threadIdForActivity)) {
+              var activityMutedPill = document.createElement("span");
+              activityMutedPill.className = "options-pill options-pill-routing";
+              activityMutedPill.textContent = formatSchedulerSuppressionMode(threadSuppressionForActivity) || "muted";
+              activityHeader.appendChild(activityMutedPill);
+            }
+          }
+          if (packIdForActivity) {
+            var activityPackPill = document.createElement("span");
+            activityPackPill.className = "options-pill options-pill-category";
+            activityPackPill.textContent = resolveSchedulerPackLabel(packIdForActivity);
+            activityHeader.appendChild(activityPackPill);
+            if (isSchedulerPackBlocked(packIdForActivity)) {
+              var activityPackMutedPill = document.createElement("span");
+              activityPackMutedPill.className = "options-pill options-pill-routing";
+              activityPackMutedPill.textContent = (formatSchedulerSuppressionMode(packSuppressionForActivity) || "pack muted") + (packSuppressionForActivity ? " pack" : "");
+              activityHeader.appendChild(activityPackMutedPill);
+            }
+          }
+
+          activityCard.appendChild(activityHeader);
+
+          var activityParts = [];
+          var reason = String(activity.reason || "").trim();
+          if (reason) {
+            activityParts.push(reason);
+          }
+          var itemId = String(activity.itemId || "").trim();
+          if (itemId) {
+            activityParts.push("item " + itemId);
+          }
+          var outputCount = Number(activity.outputCount);
+          if (Number.isFinite(outputCount) && outputCount > 0) {
+            activityParts.push("outputs " + Math.floor(outputCount));
+          }
+          var failureDetail = String(activity.failureDetail || "").trim();
+          if (failureDetail) {
+            activityParts.push(failureDetail);
+          }
+          if (activityParts.length > 0) {
+            var activitySub = document.createElement("div");
+            activitySub.className = "options-item-sub";
+            activitySub.textContent = activityParts.join(" · ");
+            activityCard.appendChild(activitySub);
+          }
+
+          if (threadIdForActivity) {
+            appendSchedulerThreadActionBar(activityCard, threadIdForActivity, isSchedulerThreadBlocked(threadIdForActivity));
+          }
+          if (packIdForActivity) {
+            appendSchedulerPackActionBar(activityCard, packIdForActivity, isSchedulerPackBlocked(packIdForActivity));
+          }
+
+          activityList.appendChild(activityCard);
+        }
+      }
+    }
+
+    var threadSummaries = scheduler && Array.isArray(scheduler.threadSummaries)
+      ? scheduler.threadSummaries
+      : [];
+    if (threadList) {
+      if (threadSummaries.length === 0) {
+        threadList.innerHTML = "<div class='options-item'><div class='options-item-title'>No per-thread scheduler summaries captured</div></div>";
+      } else {
+        for (var ts = 0; ts < threadSummaries.length; ts++) {
+          var summary = threadSummaries[ts] || {};
+          var threadCard = document.createElement("div");
+          threadCard.className = "options-item";
+
+          var threadHeader = document.createElement("div");
+          threadHeader.className = "options-item-header";
+
+          var threadTitle = document.createElement("div");
+          threadTitle.className = "options-item-title";
+          threadTitle.textContent = String(summary.threadId || "thread");
+          threadHeader.appendChild(threadTitle);
+
+          var threadPill = document.createElement("span");
+          threadPill.className = "options-pill options-pill-category";
+          threadPill.textContent = "ready " + normalizedCount(summary.readyItemCount) + " / running " + normalizedCount(summary.runningItemCount);
+          threadHeader.appendChild(threadPill);
+          var threadBlocked = isSchedulerThreadBlocked(summary.threadId);
+          var threadSuppression = findSchedulerSuppression(blockedThreadSuppressions, summary.threadId, false);
+          if (threadBlocked) {
+            var mutedPill = document.createElement("span");
+            mutedPill.className = "options-pill options-pill-routing";
+            mutedPill.textContent = formatSchedulerSuppressionMode(threadSuppression) || "muted";
+            threadHeader.appendChild(mutedPill);
+          }
+          threadCard.appendChild(threadHeader);
+
+          var threadParts = [];
+          threadParts.push(
+            "queued " + normalizedCount(summary.queuedItemCount)
+            + ", completed " + normalizedCount(summary.completedItemCount)
+            + ", pending read-only " + normalizedCount(summary.pendingReadOnlyItemCount)
+            + ", pending unknown " + normalizedCount(summary.pendingUnknownItemCount));
+          var evidenceTools = Array.isArray(summary.recentEvidenceTools) ? summary.recentEvidenceTools : [];
+          var normalizedEvidence = [];
+          for (var et = 0; et < evidenceTools.length; et++) {
+            var evidenceTool = String(evidenceTools[et] || "").trim();
+            if (evidenceTool) {
+              normalizedEvidence.push(evidenceTool);
+            }
+          }
+          if (normalizedEvidence.length > 0) {
+            threadParts.push("evidence " + normalizedEvidence.join(", "));
+          }
+
+          var threadSub = document.createElement("div");
+          threadSub.className = "options-item-sub";
+          threadSub.textContent = threadParts.join(" · ");
+          threadCard.appendChild(threadSub);
+          appendSchedulerThreadActionBar(threadCard, summary.threadId, threadBlocked);
+          threadList.appendChild(threadCard);
+        }
+      }
+    }
   }
 
   function renderMemory() {

@@ -114,7 +114,68 @@ public sealed partial class MainWindow : Window {
                     break;
                 case "options_refresh":
                     await RefreshLocalRuntimeDetectionAsync(publishOptions: false).ConfigureAwait(true);
+                    if (_client is not null) {
+                        await RefreshBackgroundSchedulerStatusAsync(
+                            _client,
+                            publishOptions: false,
+                            appendWarnings: true,
+                            includeRecentActivity: true,
+                            includeThreadSummaries: true,
+                            maxRecentActivity: 8,
+                            maxThreadSummaries: 8).ConfigureAwait(true);
+                    }
                     await PublishOptionsStateAsync().ConfigureAwait(true);
+                    break;
+                case "scheduler_refresh":
+                    await RefreshBackgroundSchedulerFromUiAsync(TryGetString(root, "threadId")).ConfigureAwait(true);
+                    break;
+                case "scheduler_pause":
+                    await SetBackgroundSchedulerPausedFromUiAsync(
+                        paused: true,
+                        pauseMinutesText: TryGetString(root, "minutes"),
+                        reason: "app_operator_pause").ConfigureAwait(true);
+                    break;
+                case "scheduler_resume":
+                    await SetBackgroundSchedulerPausedFromUiAsync(
+                        paused: false,
+                        pauseMinutesText: null,
+                        reason: "app_operator_resume").ConfigureAwait(true);
+                    break;
+                case "scheduler_add_maintenance":
+                    await AddBackgroundSchedulerMaintenanceWindowFromUiAsync(
+                        TryGetString(root, "day"),
+                        TryGetString(root, "startTimeLocal"),
+                        TryGetString(root, "durationMinutes"),
+                        TryGetString(root, "packId"),
+                        TryGetString(root, "threadId")).ConfigureAwait(true);
+                    break;
+                case "scheduler_remove_maintenance":
+                    await RemoveBackgroundSchedulerMaintenanceWindowFromUiAsync(TryGetString(root, "spec")).ConfigureAwait(true);
+                    break;
+                case "scheduler_clear_maintenance":
+                    await ClearBackgroundSchedulerMaintenanceWindowsFromUiAsync().ConfigureAwait(true);
+                    break;
+                case "scheduler_set_thread_block":
+                    await SetBackgroundSchedulerThreadBlockedFromUiAsync(
+                        TryGetString(root, "threadId"),
+                        TryGetBoolean(root, "blocked") == true,
+                        TryGetString(root, "durationMinutes"),
+                        TryGetBoolean(root, "untilNextMaintenanceWindow") == true,
+                        TryGetBoolean(root, "untilNextMaintenanceWindowStart") == true).ConfigureAwait(true);
+                    break;
+                case "scheduler_set_pack_block":
+                    await SetBackgroundSchedulerPackBlockedFromUiAsync(
+                        TryGetString(root, "packId"),
+                        TryGetBoolean(root, "blocked") == true,
+                        TryGetString(root, "durationMinutes"),
+                        TryGetBoolean(root, "untilNextMaintenanceWindow") == true,
+                        TryGetBoolean(root, "untilNextMaintenanceWindowStart") == true).ConfigureAwait(true);
+                    break;
+                case "scheduler_clear_thread_blocks":
+                    await ClearBackgroundSchedulerThreadBlocksFromUiAsync().ConfigureAwait(true);
+                    break;
+                case "scheduler_clear_pack_blocks":
+                    await ClearBackgroundSchedulerPackBlocksFromUiAsync().ConfigureAwait(true);
                     break;
                 case "auto_detect_local_runtime":
                     {

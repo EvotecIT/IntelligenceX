@@ -33,6 +33,685 @@ public sealed class ToolHealthContractTests {
     }
 
     [Fact]
+    public void GetBackgroundSchedulerStatusRequest_DeserializesViaPolymorphicContract() {
+        const string json = """
+            {
+              "type":"get_background_scheduler_status",
+              "requestId":"req_scheduler_1",
+              "threadId":"thread-42",
+              "includeRecentActivity":false,
+              "maxReadyThreadIds":1,
+              "maxRunningThreadIds":0,
+              "maxRecentActivity":2,
+              "maxThreadSummaries":3
+            }
+            """;
+
+        var parsed = JsonSerializer.Deserialize(json, ChatServiceJsonContext.Default.ChatServiceRequest);
+        var request = Assert.IsType<GetBackgroundSchedulerStatusRequest>(parsed);
+
+        Assert.Equal("req_scheduler_1", request.RequestId);
+        Assert.Equal("thread-42", request.ThreadId);
+        Assert.False(request.IncludeRecentActivity);
+        Assert.Equal(1, request.MaxReadyThreadIds);
+        Assert.Equal(0, request.MaxRunningThreadIds);
+        Assert.Equal(2, request.MaxRecentActivity);
+        Assert.Equal(3, request.MaxThreadSummaries);
+    }
+
+    [Fact]
+    public void GetBackgroundSchedulerStatusRequest_RejectsNegativeSampleLimits() {
+        const string json = """
+            {
+              "type":"get_background_scheduler_status",
+              "requestId":"req_scheduler_limits_negative",
+              "maxReadyThreadIds":-1
+            }
+            """;
+
+        var ex = Assert.ThrowsAny<ArgumentOutOfRangeException>(() => JsonSerializer.Deserialize(json, ChatServiceJsonContext.Default.ChatServiceRequest));
+        Assert.Contains("MaxReadyThreadIds", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void GetBackgroundSchedulerStatusRequest_RejectsOversizedSampleLimits() {
+        var oversized = ChatRequestOptionLimits.MaxBackgroundSchedulerStatusItems + 25;
+        var ex = Assert.Throws<ArgumentOutOfRangeException>(() => new GetBackgroundSchedulerStatusRequest {
+            RequestId = "req_scheduler_limits_max",
+            MaxReadyThreadIds = oversized,
+            MaxRunningThreadIds = oversized,
+            MaxRecentActivity = oversized,
+            MaxThreadSummaries = oversized
+        });
+
+        Assert.Contains("MaxReadyThreadIds", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SetBackgroundSchedulerStateRequest_DeserializesViaPolymorphicContract() {
+        const string json = """
+            {
+              "type":"set_background_scheduler_state",
+              "requestId":"req_scheduler_control_1",
+              "paused":true,
+              "pauseSeconds":120,
+              "reason":"maintenance window"
+            }
+            """;
+
+        var parsed = JsonSerializer.Deserialize(json, ChatServiceJsonContext.Default.ChatServiceRequest);
+        var request = Assert.IsType<SetBackgroundSchedulerStateRequest>(parsed);
+
+        Assert.Equal("req_scheduler_control_1", request.RequestId);
+        Assert.True(request.Paused);
+        Assert.Equal(120, request.PauseSeconds);
+        Assert.Equal("maintenance window", request.Reason);
+    }
+
+    [Fact]
+    public void SetBackgroundSchedulerStateRequest_RejectsNonPositivePauseSeconds() {
+        var ex = Assert.Throws<ArgumentOutOfRangeException>(() => new SetBackgroundSchedulerStateRequest {
+            RequestId = "req_scheduler_control_invalid",
+            Paused = true,
+            PauseSeconds = 0
+        });
+
+        Assert.Contains("PauseSeconds", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SetBackgroundSchedulerStateRequest_RejectsNonPositivePauseSecondsDuringPolymorphicDeserialization() {
+        const string json = """
+            {
+              "type":"set_background_scheduler_state",
+              "requestId":"req_scheduler_control_invalid_wire",
+              "paused":true,
+              "pauseSeconds":0
+            }
+            """;
+
+        var ex = Assert.ThrowsAny<ArgumentOutOfRangeException>(() => JsonSerializer.Deserialize(json, ChatServiceJsonContext.Default.ChatServiceRequest));
+        Assert.Contains("PauseSeconds", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SetBackgroundSchedulerStateRequest_TrimsReason() {
+        var request = new SetBackgroundSchedulerStateRequest {
+            RequestId = "req_scheduler_control_reason",
+            Paused = true,
+            Reason = "  maintenance window  "
+        };
+
+        Assert.Equal("maintenance window", request.Reason);
+    }
+
+    [Fact]
+    public void SetBackgroundSchedulerMaintenanceWindowsRequest_DeserializesViaPolymorphicContract() {
+        const string json = """
+            {
+              "type":"set_background_scheduler_maintenance_windows",
+              "requestId":"req_scheduler_windows_1",
+              "operation":"replace",
+              "windows":["mon@02:00/60","daily@23:30/120"]
+            }
+            """;
+
+        var parsed = JsonSerializer.Deserialize(json, ChatServiceJsonContext.Default.ChatServiceRequest);
+        var request = Assert.IsType<SetBackgroundSchedulerMaintenanceWindowsRequest>(parsed);
+
+        Assert.Equal("req_scheduler_windows_1", request.RequestId);
+        Assert.Equal("replace", request.Operation);
+        Assert.Equal(new[] { "mon@02:00/60", "daily@23:30/120" }, request.Windows);
+    }
+
+    [Fact]
+    public void SetBackgroundSchedulerMaintenanceWindowsRequest_NormalizesOperation() {
+        var request = new SetBackgroundSchedulerMaintenanceWindowsRequest(
+            "req_scheduler_windows_normalized",
+            "  RePlace  ",
+            new[] { "mon@02:00/60" });
+
+        Assert.Equal("replace", request.Operation);
+    }
+
+    [Fact]
+    public void SetBackgroundSchedulerMaintenanceWindowsRequest_RejectsInvalidOperation() {
+        var ex = Assert.Throws<ArgumentException>(() => new SetBackgroundSchedulerMaintenanceWindowsRequest(
+            "req_scheduler_windows_invalid",
+            " mutate ",
+            new[] { "mon@02:00/60" }));
+
+        Assert.Contains("Operation must be one of", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SetBackgroundSchedulerMaintenanceWindowsRequest_RejectsDuplicateWindowsAfterNormalization() {
+        var ex = Assert.Throws<ArgumentException>(() => new SetBackgroundSchedulerMaintenanceWindowsRequest(
+            "req_scheduler_windows_duplicate_targets",
+            "add",
+            new[] { "mon@02:00/60", "  MON@02:00/60  " }));
+
+        Assert.Contains("windows", ex.ParamName, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("duplicate targets", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("add")]
+    [InlineData("remove")]
+    [InlineData("replace")]
+    public void SetBackgroundSchedulerMaintenanceWindowsRequest_RequiresWindowsForTargetedOperations(string operation) {
+        var ex = Assert.Throws<ArgumentException>(() => new SetBackgroundSchedulerMaintenanceWindowsRequest(
+            "req_scheduler_windows_missing_targets",
+            operation));
+
+        Assert.Contains("Windows must be provided", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("clear")]
+    [InlineData("reset")]
+    public void SetBackgroundSchedulerMaintenanceWindowsRequest_RejectsWindowsForUntargetedOperations(string operation) {
+        var ex = Assert.Throws<ArgumentException>(() => new SetBackgroundSchedulerMaintenanceWindowsRequest(
+            "req_scheduler_windows_unexpected_targets",
+            operation,
+            new[] { "mon@02:00/60" }));
+
+        Assert.Contains("Windows must be omitted", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SetBackgroundSchedulerMaintenanceWindowsRequest_RejectsMissingWindowsDuringPolymorphicDeserialization() {
+        const string json = """
+            {
+              "type":"set_background_scheduler_maintenance_windows",
+              "requestId":"req_scheduler_windows_missing_targets_wire",
+              "operation":"add"
+            }
+            """;
+
+        var ex = Assert.ThrowsAny<ArgumentException>(() => JsonSerializer.Deserialize(json, ChatServiceJsonContext.Default.ChatServiceRequest));
+        Assert.Contains("Windows must be provided", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SetBackgroundSchedulerMaintenanceWindowsRequest_RejectsInvalidOperationDuringPolymorphicDeserialization() {
+        const string json = """
+            {
+              "type":"set_background_scheduler_maintenance_windows",
+              "requestId":"req_scheduler_windows_invalid_wire",
+              "operation":"mutate",
+              "windows":["mon@02:00/60"]
+            }
+            """;
+
+        var ex = Assert.ThrowsAny<ArgumentException>(() => JsonSerializer.Deserialize(json, ChatServiceJsonContext.Default.ChatServiceRequest));
+        Assert.Contains("Operation must be one of", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SetBackgroundSchedulerBlockedThreadsRequest_DeserializesViaPolymorphicContract() {
+        const string json = """
+            {
+              "type":"set_background_scheduler_blocked_threads",
+              "requestId":"req_scheduler_threads_1",
+              "operation":"add",
+              "threadIds":["thread-a"],
+              "untilNextMaintenanceWindow":true
+            }
+            """;
+
+        var parsed = JsonSerializer.Deserialize(json, ChatServiceJsonContext.Default.ChatServiceRequest);
+        var request = Assert.IsType<SetBackgroundSchedulerBlockedThreadsRequest>(parsed);
+
+        Assert.Equal("req_scheduler_threads_1", request.RequestId);
+        Assert.Equal("add", request.Operation);
+        Assert.Equal(new[] { "thread-a" }, request.ThreadIds);
+        Assert.Null(request.DurationSeconds);
+        Assert.True(request.UntilNextMaintenanceWindow);
+        Assert.False(request.UntilNextMaintenanceWindowStart);
+    }
+
+    [Fact]
+    public void SetBackgroundSchedulerBlockedThreadsRequest_RejectsConflictingFlags() {
+        var ex = Assert.Throws<ArgumentException>(() => new SetBackgroundSchedulerBlockedThreadsRequest(
+            "req_scheduler_threads_invalid",
+            "add",
+            new[] { "thread-a" },
+            durationSeconds: 60,
+            untilNextMaintenanceWindow: true,
+            untilNextMaintenanceWindowStart: true));
+
+        Assert.Contains("cannot both be true", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SetBackgroundSchedulerBlockedThreadsRequest_NormalizesOperation() {
+        var request = new SetBackgroundSchedulerBlockedThreadsRequest(
+            "req_scheduler_threads_normalized",
+            "  Add  ",
+            new[] { "thread-a" });
+
+        Assert.Equal("add", request.Operation);
+    }
+
+    [Fact]
+    public void SetBackgroundSchedulerBlockedThreadsRequest_RejectsInvalidOperation() {
+        var ex = Assert.Throws<ArgumentException>(() => new SetBackgroundSchedulerBlockedThreadsRequest(
+            "req_scheduler_threads_invalid_operation",
+            "  mutate  ",
+            new[] { "thread-a" }));
+
+        Assert.Contains("Operation must be one of", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SetBackgroundSchedulerBlockedThreadsRequest_RejectsDuplicateThreadIdsAfterNormalization() {
+        var ex = Assert.Throws<ArgumentException>(() => new SetBackgroundSchedulerBlockedThreadsRequest(
+            "req_scheduler_threads_duplicate_targets",
+            "add",
+            new[] { "thread-a", "  thread-a  ", "THREAD-A" }));
+
+        Assert.Contains("threadIds", ex.ParamName, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("duplicate targets", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SetBackgroundSchedulerBlockedThreadsRequest_RejectsDuplicateThreadIdsDuringPolymorphicDeserialization() {
+        const string json = """
+            {
+              "type":"set_background_scheduler_blocked_threads",
+              "requestId":"req_scheduler_threads_duplicate_targets_wire",
+              "operation":"add",
+              "threadIds":["thread-a","  thread-a  ","THREAD-A"]
+            }
+            """;
+
+        var ex = Assert.ThrowsAny<ArgumentException>(() => JsonSerializer.Deserialize(json, ChatServiceJsonContext.Default.ChatServiceRequest));
+        Assert.Contains("threadIds", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("duplicate targets", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("add")]
+    [InlineData("remove")]
+    [InlineData("replace")]
+    public void SetBackgroundSchedulerBlockedThreadsRequest_RequiresThreadIdsForTargetedOperations(string operation) {
+        var ex = Assert.Throws<ArgumentException>(() => new SetBackgroundSchedulerBlockedThreadsRequest(
+            "req_scheduler_threads_missing_targets",
+            operation));
+
+        Assert.Contains("ThreadIds must be provided", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("clear")]
+    [InlineData("reset")]
+    public void SetBackgroundSchedulerBlockedThreadsRequest_RejectsThreadIdsForUntargetedOperations(string operation) {
+        var ex = Assert.Throws<ArgumentException>(() => new SetBackgroundSchedulerBlockedThreadsRequest(
+            "req_scheduler_threads_unexpected_targets",
+            operation,
+            new[] { "thread-a" }));
+
+        Assert.Contains("ThreadIds must be omitted", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("remove")]
+    [InlineData("replace")]
+    [InlineData("clear")]
+    [InlineData("reset")]
+    public void SetBackgroundSchedulerBlockedThreadsRequest_RejectsTemporaryControlsForNonAddOperations(string operation) {
+        var ex = Assert.Throws<ArgumentException>(() => new SetBackgroundSchedulerBlockedThreadsRequest(
+            "req_scheduler_threads_unexpected_temporary",
+            operation,
+            operation is "remove" or "replace" ? new[] { "thread-a" } : null,
+            durationSeconds: 60));
+
+        Assert.Contains("only supported for add operations", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SetBackgroundSchedulerBlockedThreadsRequest_RejectsDurationCombinedWithMaintenanceWindowFlag() {
+        var ex = Assert.Throws<ArgumentException>(() => new SetBackgroundSchedulerBlockedThreadsRequest(
+            "req_scheduler_threads_conflicting_temporary",
+            "add",
+            new[] { "thread-a" },
+            durationSeconds: 60,
+            untilNextMaintenanceWindow: true));
+
+        Assert.Contains("cannot be combined", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SetBackgroundSchedulerBlockedThreadsRequest_RejectsTemporaryControlsForRemoveDuringPolymorphicDeserialization() {
+        const string json = """
+            {
+              "type":"set_background_scheduler_blocked_threads",
+              "requestId":"req_scheduler_threads_unexpected_temporary_wire",
+              "operation":"remove",
+              "threadIds":["thread-a"],
+              "durationSeconds":60
+            }
+            """;
+
+        var ex = Assert.ThrowsAny<ArgumentException>(() => JsonSerializer.Deserialize(json, ChatServiceJsonContext.Default.ChatServiceRequest));
+        Assert.Contains("only supported for add operations", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SetBackgroundSchedulerBlockedThreadsRequest_RejectsConflictingFlagsDuringPolymorphicDeserialization() {
+        const string json = """
+            {
+              "type":"set_background_scheduler_blocked_threads",
+              "requestId":"req_scheduler_threads_wire",
+              "operation":"add",
+              "threadIds":["thread-a"],
+              "untilNextMaintenanceWindow":true,
+              "untilNextMaintenanceWindowStart":true
+            }
+            """;
+
+        var ex = Assert.ThrowsAny<ArgumentException>(() => JsonSerializer.Deserialize(json, ChatServiceJsonContext.Default.ChatServiceRequest));
+        Assert.Contains("cannot both be true", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SetBackgroundSchedulerBlockedThreadsRequest_RejectsInvalidOperationDuringPolymorphicDeserialization() {
+        const string json = """
+            {
+              "type":"set_background_scheduler_blocked_threads",
+              "requestId":"req_scheduler_threads_invalid_operation_wire",
+              "operation":"mutate",
+              "threadIds":["thread-a"]
+            }
+            """;
+
+        var ex = Assert.ThrowsAny<ArgumentException>(() => JsonSerializer.Deserialize(json, ChatServiceJsonContext.Default.ChatServiceRequest));
+        Assert.Contains("Operation must be one of", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SetBackgroundSchedulerBlockedThreadsRequest_RejectsNonPositiveDuration() {
+        var ex = Assert.Throws<ArgumentOutOfRangeException>(() => new SetBackgroundSchedulerBlockedThreadsRequest(
+            "req_scheduler_threads_invalid_duration",
+            "add",
+            new[] { "thread-a" },
+            durationSeconds: 0));
+
+        Assert.Contains("DurationSeconds", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SetBackgroundSchedulerBlockedThreadsRequest_RejectsNonPositiveDurationDuringPolymorphicDeserialization() {
+        const string json = """
+            {
+              "type":"set_background_scheduler_blocked_threads",
+              "requestId":"req_scheduler_threads_invalid_duration_wire",
+              "operation":"add",
+              "threadIds":["thread-a"],
+              "durationSeconds":0
+            }
+            """;
+
+        var ex = Assert.ThrowsAny<ArgumentOutOfRangeException>(() => JsonSerializer.Deserialize(json, ChatServiceJsonContext.Default.ChatServiceRequest));
+        Assert.Contains("DurationSeconds", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SetBackgroundSchedulerBlockedPacksRequest_DeserializesViaPolymorphicContract() {
+        const string json = """
+            {
+              "type":"set_background_scheduler_blocked_packs",
+              "requestId":"req_scheduler_packs_1",
+              "operation":"add",
+              "packIds":["system","active_directory"],
+              "durationSeconds":120
+            }
+            """;
+
+        var parsed = JsonSerializer.Deserialize(json, ChatServiceJsonContext.Default.ChatServiceRequest);
+        var request = Assert.IsType<SetBackgroundSchedulerBlockedPacksRequest>(parsed);
+
+        Assert.Equal("req_scheduler_packs_1", request.RequestId);
+        Assert.Equal("add", request.Operation);
+        Assert.Equal(new[] { "system", "active_directory" }, request.PackIds);
+        Assert.Equal(120, request.DurationSeconds);
+        Assert.False(request.UntilNextMaintenanceWindow);
+        Assert.False(request.UntilNextMaintenanceWindowStart);
+    }
+
+    [Fact]
+    public void SetBackgroundSchedulerBlockedPacksRequest_RejectsConflictingFlags() {
+        var ex = Assert.Throws<ArgumentException>(() => new SetBackgroundSchedulerBlockedPacksRequest(
+            "req_scheduler_packs_invalid",
+            "add",
+            new[] { "system" },
+            durationSeconds: 60,
+            untilNextMaintenanceWindow: true,
+            untilNextMaintenanceWindowStart: true));
+
+        Assert.Contains("cannot both be true", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SetBackgroundSchedulerBlockedPacksRequest_NormalizesOperation() {
+        var request = new SetBackgroundSchedulerBlockedPacksRequest(
+            "req_scheduler_packs_normalized",
+            "  Remove  ",
+            new[] { "system" });
+
+        Assert.Equal("remove", request.Operation);
+    }
+
+    [Fact]
+    public void SetBackgroundSchedulerBlockedPacksRequest_RejectsInvalidOperation() {
+        var ex = Assert.Throws<ArgumentException>(() => new SetBackgroundSchedulerBlockedPacksRequest(
+            "req_scheduler_packs_invalid_operation",
+            "  mutate  ",
+            new[] { "system" }));
+
+        Assert.Contains("Operation must be one of", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SetBackgroundSchedulerBlockedPacksRequest_RejectsDuplicatePackIdsAfterNormalization() {
+        var ex = Assert.Throws<ArgumentException>(() => new SetBackgroundSchedulerBlockedPacksRequest(
+            "req_scheduler_packs_duplicate_targets",
+            "add",
+            new[] { "system", "  system  ", "SYSTEM" }));
+
+        Assert.Contains("packIds", ex.ParamName, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("duplicate targets", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SetBackgroundSchedulerBlockedPacksRequest_RejectsDuplicatePackIdsDuringPolymorphicDeserialization() {
+        const string json = """
+            {
+              "type":"set_background_scheduler_blocked_packs",
+              "requestId":"req_scheduler_packs_duplicate_targets_wire",
+              "operation":"add",
+              "packIds":["system","  system  ","SYSTEM"]
+            }
+            """;
+
+        var ex = Assert.ThrowsAny<ArgumentException>(() => JsonSerializer.Deserialize(json, ChatServiceJsonContext.Default.ChatServiceRequest));
+        Assert.Contains("packIds", ex.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("duplicate targets", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("add")]
+    [InlineData("remove")]
+    [InlineData("replace")]
+    public void SetBackgroundSchedulerBlockedPacksRequest_RequiresPackIdsForTargetedOperations(string operation) {
+        var ex = Assert.Throws<ArgumentException>(() => new SetBackgroundSchedulerBlockedPacksRequest(
+            "req_scheduler_packs_missing_targets",
+            operation));
+
+        Assert.Contains("PackIds must be provided", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("clear")]
+    [InlineData("reset")]
+    public void SetBackgroundSchedulerBlockedPacksRequest_RejectsPackIdsForUntargetedOperations(string operation) {
+        var ex = Assert.Throws<ArgumentException>(() => new SetBackgroundSchedulerBlockedPacksRequest(
+            "req_scheduler_packs_unexpected_targets",
+            operation,
+            new[] { "system" }));
+
+        Assert.Contains("PackIds must be omitted", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("remove")]
+    [InlineData("replace")]
+    [InlineData("clear")]
+    [InlineData("reset")]
+    public void SetBackgroundSchedulerBlockedPacksRequest_RejectsTemporaryControlsForNonAddOperations(string operation) {
+        var ex = Assert.Throws<ArgumentException>(() => new SetBackgroundSchedulerBlockedPacksRequest(
+            "req_scheduler_packs_unexpected_temporary",
+            operation,
+            operation is "remove" or "replace" ? new[] { "system" } : null,
+            durationSeconds: 60));
+
+        Assert.Contains("only supported for add operations", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SetBackgroundSchedulerBlockedPacksRequest_RejectsDurationCombinedWithMaintenanceWindowFlag() {
+        var ex = Assert.Throws<ArgumentException>(() => new SetBackgroundSchedulerBlockedPacksRequest(
+            "req_scheduler_packs_conflicting_temporary",
+            "add",
+            new[] { "system" },
+            durationSeconds: 60,
+            untilNextMaintenanceWindowStart: true));
+
+        Assert.Contains("cannot be combined", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SetBackgroundSchedulerBlockedPacksRequest_RejectsTargetsForClearDuringPolymorphicDeserialization() {
+        const string json = """
+            {
+              "type":"set_background_scheduler_blocked_packs",
+              "requestId":"req_scheduler_packs_unexpected_targets_wire",
+              "operation":"clear",
+              "packIds":["system"]
+            }
+            """;
+
+        var ex = Assert.ThrowsAny<ArgumentException>(() => JsonSerializer.Deserialize(json, ChatServiceJsonContext.Default.ChatServiceRequest));
+        Assert.Contains("PackIds must be omitted", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SetBackgroundSchedulerBlockedPacksRequest_RejectsConflictingFlagsDuringPolymorphicDeserialization() {
+        const string json = """
+            {
+              "type":"set_background_scheduler_blocked_packs",
+              "requestId":"req_scheduler_packs_wire",
+              "operation":"add",
+              "packIds":["system"],
+              "untilNextMaintenanceWindow":true,
+              "untilNextMaintenanceWindowStart":true
+            }
+            """;
+
+        var ex = Assert.ThrowsAny<ArgumentException>(() => JsonSerializer.Deserialize(json, ChatServiceJsonContext.Default.ChatServiceRequest));
+        Assert.Contains("cannot both be true", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SetBackgroundSchedulerBlockedPacksRequest_RejectsInvalidOperationDuringPolymorphicDeserialization() {
+        const string json = """
+            {
+              "type":"set_background_scheduler_blocked_packs",
+              "requestId":"req_scheduler_packs_invalid_operation_wire",
+              "operation":"mutate",
+              "packIds":["system"]
+            }
+            """;
+
+        var ex = Assert.ThrowsAny<ArgumentException>(() => JsonSerializer.Deserialize(json, ChatServiceJsonContext.Default.ChatServiceRequest));
+        Assert.Contains("Operation must be one of", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SetBackgroundSchedulerBlockedPacksRequest_RejectsNonPositiveDuration() {
+        var ex = Assert.Throws<ArgumentOutOfRangeException>(() => new SetBackgroundSchedulerBlockedPacksRequest(
+            "req_scheduler_packs_invalid_duration",
+            "add",
+            new[] { "system" },
+            durationSeconds: 0));
+
+        Assert.Contains("DurationSeconds", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SetBackgroundSchedulerBlockedPacksRequest_RejectsNonPositiveDurationDuringPolymorphicDeserialization() {
+        const string json = """
+            {
+              "type":"set_background_scheduler_blocked_packs",
+              "requestId":"req_scheduler_packs_invalid_duration_wire",
+              "operation":"add",
+              "packIds":["system"],
+              "durationSeconds":0
+            }
+            """;
+
+        var ex = Assert.ThrowsAny<ArgumentOutOfRangeException>(() => JsonSerializer.Deserialize(json, ChatServiceJsonContext.Default.ChatServiceRequest));
+        Assert.Contains("DurationSeconds", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SetBackgroundSchedulerBlockedPacksRequest_UntilNextMaintenanceWindow_DeserializesViaPolymorphicContract() {
+        const string json = """
+            {
+              "type":"set_background_scheduler_blocked_packs",
+              "requestId":"req_scheduler_packs_2",
+              "operation":"add",
+              "packIds":["system"],
+              "untilNextMaintenanceWindow":true
+            }
+            """;
+
+        var parsed = JsonSerializer.Deserialize(json, ChatServiceJsonContext.Default.ChatServiceRequest);
+        var request = Assert.IsType<SetBackgroundSchedulerBlockedPacksRequest>(parsed);
+
+        Assert.Equal("req_scheduler_packs_2", request.RequestId);
+        Assert.Equal("add", request.Operation);
+        Assert.Equal(new[] { "system" }, request.PackIds);
+        Assert.Null(request.DurationSeconds);
+        Assert.True(request.UntilNextMaintenanceWindow);
+        Assert.False(request.UntilNextMaintenanceWindowStart);
+    }
+
+    [Fact]
+    public void SetBackgroundSchedulerBlockedThreadsRequest_UntilNextMaintenanceWindowStart_DeserializesViaPolymorphicContract() {
+        const string json = """
+            {
+              "type":"set_background_scheduler_blocked_threads",
+              "requestId":"req_scheduler_threads_2",
+              "operation":"add",
+              "threadIds":["thread-a"],
+              "untilNextMaintenanceWindowStart":true
+            }
+            """;
+
+        var parsed = JsonSerializer.Deserialize(json, ChatServiceJsonContext.Default.ChatServiceRequest);
+        var request = Assert.IsType<SetBackgroundSchedulerBlockedThreadsRequest>(parsed);
+
+        Assert.Equal("req_scheduler_threads_2", request.RequestId);
+        Assert.Equal("add", request.Operation);
+        Assert.Equal(new[] { "thread-a" }, request.ThreadIds);
+        Assert.Null(request.DurationSeconds);
+        Assert.False(request.UntilNextMaintenanceWindow);
+        Assert.True(request.UntilNextMaintenanceWindowStart);
+    }
+
+    [Fact]
     public void ToolHealthMessage_RoundTripsProbeMetadata() {
         var message = new ToolHealthMessage {
             Kind = ChatServiceMessageKind.Response,
@@ -71,5 +750,203 @@ public sealed class ToolHealthContractTests {
         Assert.Equal("ad_pack_info", typed.Probes[1].ToolName);
         Assert.Equal(ToolPackSourceKind.ClosedSource, typed.Probes[1].SourceKind);
         Assert.Equal("provider_unavailable", typed.Probes[1].ErrorCode);
+    }
+
+    [Fact]
+    public void BackgroundSchedulerStatusMessage_RoundTripsSchedulerSummary() {
+        var message = new BackgroundSchedulerStatusMessage {
+            Kind = ChatServiceMessageKind.Response,
+            RequestId = "req_scheduler_2",
+            Scheduler = new SessionCapabilityBackgroundSchedulerDto {
+                ScopeThreadId = "thread-ready",
+                SupportsPersistentQueue = true,
+                SupportsReadOnlyAutoReplay = true,
+                SupportsCrossThreadScheduling = true,
+                DaemonEnabled = true,
+                AutoPauseEnabled = true,
+                ManualPauseActive = true,
+                ScheduledPauseActive = false,
+                FailureThreshold = 3,
+                FailurePauseSeconds = 180,
+                MaintenanceWindowSpecs = new[] { "mon@02:00/60" },
+                MaintenanceWindows = new[] {
+                    new SessionCapabilityBackgroundSchedulerMaintenanceWindowDto {
+                        Spec = "mon@02:00/60",
+                        Day = "mon",
+                        StartTimeLocal = "02:00",
+                        DurationMinutes = 60,
+                        Scoped = false
+                    }
+                },
+                ActiveMaintenanceWindowSpecs = new[] { "mon@02:00/60;pack=system" },
+                ActiveMaintenanceWindows = new[] {
+                    new SessionCapabilityBackgroundSchedulerMaintenanceWindowDto {
+                        Spec = "mon@02:00/60;pack=system",
+                        Day = "mon",
+                        StartTimeLocal = "02:00",
+                        DurationMinutes = 60,
+                        PackId = "system",
+                        Scoped = true
+                    }
+                },
+                AllowedPackIds = new[] { "system", "eventlog" },
+                BlockedPackIds = new[] { "active_directory" },
+                BlockedPackSuppressions = new[] {
+                    new SessionCapabilityBackgroundSchedulerSuppressionDto {
+                        Id = "active_directory",
+                        Mode = "persistent_runtime",
+                        Temporary = false
+                    }
+                },
+                AllowedThreadIds = new[] { "thread-ready", "thread-running" },
+                BlockedThreadIds = new[] { "thread-blocked" },
+                BlockedThreadSuppressions = new[] {
+                    new SessionCapabilityBackgroundSchedulerSuppressionDto {
+                        Id = "thread-blocked",
+                        Mode = "temporary_runtime",
+                        Temporary = true,
+                        ExpiresUtcTicks = DateTime.UtcNow.AddMinutes(15).Ticks
+                    }
+                },
+                Paused = true,
+                PausedUntilUtcTicks = DateTime.UtcNow.AddMinutes(3).Ticks,
+                PauseReason = "consecutive_failure_threshold_reached:requeued_after_tool_failure:system_info",
+                TrackedThreadCount = 2,
+                ReadyThreadCount = 1,
+                RunningThreadCount = 1,
+                QueuedItemCount = 2,
+                ReadyItemCount = 1,
+                RunningItemCount = 1,
+                CompletedItemCount = 4,
+                PendingReadOnlyItemCount = 1,
+                PendingUnknownItemCount = 0,
+                LastSchedulerTickUtcTicks = DateTime.UtcNow.Ticks,
+                LastOutcomeUtcTicks = DateTime.UtcNow.Ticks,
+                LastSuccessUtcTicks = DateTime.UtcNow.AddMinutes(-2).Ticks,
+                LastFailureUtcTicks = DateTime.UtcNow.AddMinutes(-1).Ticks,
+                CompletedExecutionCount = 5,
+                RequeuedExecutionCount = 2,
+                ReleasedExecutionCount = 1,
+                ConsecutiveFailureCount = 3,
+                LastOutcome = "requeued_after_tool_failure",
+                ReadyThreadIds = new[] { "thread-ready" },
+                RunningThreadIds = new[] { "thread-running" },
+                RecentActivity = new[] {
+                    new SessionCapabilityBackgroundSchedulerActivityDto {
+                        RecordedUtcTicks = DateTime.UtcNow.Ticks,
+                        Outcome = "requeued_after_tool_failure",
+                        ThreadId = "thread-ready",
+                        ItemId = "tool_handoff:system_info:machine_name:srv1",
+                        ToolName = "system_info",
+                        Reason = "background_scheduler_requeued_after_tool_failure",
+                        OutputCount = 1,
+                        FailureDetail = "remote_probe_failed"
+                    }
+                },
+                ThreadSummaries = new[] {
+                    new SessionCapabilityBackgroundSchedulerThreadSummaryDto {
+                        ThreadId = "thread-ready",
+                        QueuedItemCount = 0,
+                        ReadyItemCount = 1,
+                        RunningItemCount = 0,
+                        CompletedItemCount = 0,
+                        PendingReadOnlyItemCount = 1,
+                        PendingUnknownItemCount = 0,
+                        RecentEvidenceTools = new[] { "remote_disk_inventory" }
+                    }
+                }
+            }
+        };
+
+        var json = JsonSerializer.Serialize<ChatServiceMessage>(message, ChatServiceJsonContext.Default.ChatServiceMessage);
+        var parsed = JsonSerializer.Deserialize(json, ChatServiceJsonContext.Default.ChatServiceMessage);
+        var typed = Assert.IsType<BackgroundSchedulerStatusMessage>(parsed);
+
+        Assert.True(typed.Scheduler.DaemonEnabled);
+        Assert.True(typed.Scheduler.AutoPauseEnabled);
+        Assert.True(typed.Scheduler.ManualPauseActive);
+        Assert.False(typed.Scheduler.ScheduledPauseActive);
+        Assert.Equal("thread-ready", typed.Scheduler.ScopeThreadId);
+        Assert.Equal(new[] { "mon@02:00/60" }, typed.Scheduler.MaintenanceWindowSpecs);
+        Assert.Equal("02:00", Assert.Single(typed.Scheduler.MaintenanceWindows).StartTimeLocal);
+        Assert.Equal(new[] { "mon@02:00/60;pack=system" }, typed.Scheduler.ActiveMaintenanceWindowSpecs);
+        Assert.Equal("system", Assert.Single(typed.Scheduler.ActiveMaintenanceWindows).PackId);
+        Assert.Equal(new[] { "system", "eventlog" }, typed.Scheduler.AllowedPackIds);
+        Assert.Equal(new[] { "active_directory" }, typed.Scheduler.BlockedPackIds);
+        Assert.Equal("persistent_runtime", Assert.Single(typed.Scheduler.BlockedPackSuppressions).Mode);
+        Assert.Equal(new[] { "thread-ready", "thread-running" }, typed.Scheduler.AllowedThreadIds);
+        Assert.Equal(new[] { "thread-blocked" }, typed.Scheduler.BlockedThreadIds);
+        Assert.True(Assert.Single(typed.Scheduler.BlockedThreadSuppressions).Temporary);
+        Assert.True(typed.Scheduler.Paused);
+        Assert.Equal("requeued_after_tool_failure", typed.Scheduler.LastOutcome);
+        Assert.Equal("thread-ready", Assert.Single(typed.Scheduler.ReadyThreadIds));
+        Assert.Equal("remote_probe_failed", Assert.Single(typed.Scheduler.RecentActivity).FailureDetail);
+        Assert.Equal("thread-ready", Assert.Single(typed.Scheduler.ThreadSummaries).ThreadId);
+    }
+
+    [Fact]
+    public void SessionCapabilityBackgroundSchedulerDto_SourceGenRoundTripsSuppressionArrays() {
+        var scheduler = new SessionCapabilityBackgroundSchedulerDto {
+            BlockedPackIds = new[] { "system" },
+            BlockedPackSuppressions = new[] {
+                new SessionCapabilityBackgroundSchedulerSuppressionDto {
+                    Id = "system",
+                    Mode = "persistent_runtime",
+                    Temporary = false
+                }
+            },
+            BlockedThreadIds = new[] { "thread-a" },
+            BlockedThreadSuppressions = new[] {
+                new SessionCapabilityBackgroundSchedulerSuppressionDto {
+                    Id = "thread-a",
+                    Mode = "temporary_runtime",
+                    Temporary = true,
+                    ExpiresUtcTicks = DateTime.UtcNow.AddMinutes(5).Ticks
+                }
+            }
+        };
+
+        var json = JsonSerializer.Serialize(scheduler, ChatServiceJsonContext.Default.SessionCapabilityBackgroundSchedulerDto);
+        var parsed = JsonSerializer.Deserialize(json, ChatServiceJsonContext.Default.SessionCapabilityBackgroundSchedulerDto);
+
+        Assert.NotNull(parsed);
+        Assert.Equal("system", Assert.Single(parsed.BlockedPackSuppressions).Id);
+        Assert.Equal("persistent_runtime", Assert.Single(parsed.BlockedPackSuppressions).Mode);
+        Assert.Equal("thread-a", Assert.Single(parsed.BlockedThreadSuppressions).Id);
+        Assert.True(Assert.Single(parsed.BlockedThreadSuppressions).Temporary);
+    }
+
+    [Fact]
+    public void SessionCapabilitySnapshotDto_SourceGenRoundTripsBackgroundScheduler() {
+        var snapshot = new SessionCapabilitySnapshotDto {
+            RegisteredTools = 4,
+            EnabledPackCount = 2,
+            PluginCount = 0,
+            EnabledPluginCount = 0,
+            ToolingAvailable = true,
+            AllowedRootCount = 1,
+            BackgroundScheduler = new SessionCapabilityBackgroundSchedulerDto {
+                DaemonEnabled = true,
+                QueuedItemCount = 3,
+                ReadyThreadIds = new[] { "thread-a" },
+                BlockedThreadSuppressions = new[] {
+                    new SessionCapabilityBackgroundSchedulerSuppressionDto {
+                        Id = "thread-a",
+                        Mode = "temporary_runtime",
+                        Temporary = true,
+                        ExpiresUtcTicks = DateTime.UtcNow.AddMinutes(10).Ticks
+                    }
+                }
+            }
+        };
+
+        var json = JsonSerializer.Serialize(snapshot, ChatServiceJsonContext.Default.SessionCapabilitySnapshotDto);
+        var parsed = JsonSerializer.Deserialize(json, ChatServiceJsonContext.Default.SessionCapabilitySnapshotDto);
+
+        Assert.NotNull(parsed);
+        Assert.NotNull(parsed.BackgroundScheduler);
+        Assert.True(parsed.BackgroundScheduler.DaemonEnabled);
+        Assert.Equal("thread-a", Assert.Single(parsed.BackgroundScheduler.ReadyThreadIds));
+        Assert.Equal("temporary_runtime", Assert.Single(parsed.BackgroundScheduler.BlockedThreadSuppressions).Mode);
     }
 }

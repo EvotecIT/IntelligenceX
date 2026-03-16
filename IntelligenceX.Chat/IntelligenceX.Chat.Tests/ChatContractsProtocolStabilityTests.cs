@@ -89,6 +89,7 @@ public sealed class ChatContractsProtocolStabilityTests {
         Assert.Equal(3, ChatRequestOptionLimits.MaxReviewPasses);
         Assert.Equal(8, ChatRequestOptionLimits.DefaultModelHeartbeatSeconds);
         Assert.Equal(60, ChatRequestOptionLimits.MaxModelHeartbeatSeconds);
+        Assert.Equal(64, ChatRequestOptionLimits.MaxBackgroundSchedulerStatusItems);
     }
 
     [Fact]

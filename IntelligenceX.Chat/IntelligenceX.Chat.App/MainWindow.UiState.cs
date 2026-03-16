@@ -471,6 +471,20 @@ public sealed partial class MainWindow : Window {
             return;
         }
 
+        var json = BuildOptionsStateJson();
+        if (!UiPublishDedupe.TryBeginPublish(_uiPublishSync, ref _lastPublishedOptionsStateJson, json)) {
+            return;
+        }
+
+        try {
+            await RunOnUiThreadAsync(() => _webView.ExecuteScriptAsync("window.ixSetOptionsData(" + json + ");").AsTask()).ConfigureAwait(false);
+        } catch {
+            UiPublishDedupe.RollbackFailedPublish(_uiPublishSync, ref _lastPublishedOptionsStateJson, json);
+            throw;
+        }
+    }
+
+    private string BuildOptionsStateJson() {
         // Keep options-state toolsLoading derived from live watchdog-cleared startup
         // metadata flags so stale queued state cannot pin loading UI forever.
         _ = ApplyStartupMetadataSyncWatchdog();
@@ -492,7 +506,10 @@ public sealed partial class MainWindow : Window {
         var activeAccountUsageState = BuildActiveAccountUsageState();
         var runtimeCapabilitiesState = BuildLocalRuntimeCapabilitiesState();
         var startupDiagnosticsState = BuildStartupDiagnosticsState();
-        var json = JsonSerializer.Serialize(new {
+        var fallbackBackgroundScheduler = _sessionPolicy?.CapabilitySnapshot?.BackgroundScheduler
+                                        ?? _toolCatalogCapabilitySnapshot?.BackgroundScheduler;
+        var backgroundSchedulerState = BuildPublishedBackgroundSchedulerState(fallbackBackgroundScheduler);
+        return JsonSerializer.Serialize(new {
             timestampMode = _timestampMode,
             timestampFormat = _timestampFormat,
             export = new {
@@ -519,6 +536,9 @@ public sealed partial class MainWindow : Window {
             memory = BuildMemoryState(),
             memoryDebug = BuildMemoryDebugState(),
             startupDiagnostics = startupDiagnosticsState,
+            runtimeScheduler = backgroundSchedulerState.Effective,
+            runtimeSchedulerScoped = backgroundSchedulerState.Scoped,
+            runtimeSchedulerGlobal = backgroundSchedulerState.Global,
             debug = new {
                 showTurnTrace = _showAssistantTurnTrace,
                 showDraftBubbles = _showAssistantDraftBubbles
@@ -619,16 +639,18 @@ public sealed partial class MainWindow : Window {
                 capabilitySnapshot = BuildCapabilitySnapshotState(_sessionPolicy.CapabilitySnapshot)
             }
         });
-        if (!UiPublishDedupe.TryBeginPublish(_uiPublishSync, ref _lastPublishedOptionsStateJson, json)) {
-            return;
-        }
+    }
 
-        try {
-            await RunOnUiThreadAsync(() => _webView.ExecuteScriptAsync("window.ixSetOptionsData(" + json + ");").AsTask()).ConfigureAwait(false);
-        } catch {
-            UiPublishDedupe.RollbackFailedPublish(_uiPublishSync, ref _lastPublishedOptionsStateJson, json);
-            throw;
-        }
+    private (object? Effective, object? Scoped, object? Global) BuildPublishedBackgroundSchedulerState(SessionCapabilityBackgroundSchedulerDto? fallbackBackgroundScheduler) {
+        return (
+            BuildBackgroundSchedulerState(
+                _backgroundSchedulerStatusSnapshot
+                ?? _backgroundSchedulerGlobalStatusSnapshot
+                ?? fallbackBackgroundScheduler),
+            BuildBackgroundSchedulerState(_backgroundSchedulerScopedStatusSnapshot),
+            BuildBackgroundSchedulerState(
+                _backgroundSchedulerGlobalStatusSnapshot
+                ?? fallbackBackgroundScheduler));
     }
 
 }

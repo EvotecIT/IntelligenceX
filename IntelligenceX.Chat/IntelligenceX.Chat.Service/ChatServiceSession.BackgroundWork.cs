@@ -336,6 +336,20 @@ internal sealed partial class ChatServiceSession {
                 continue;
             }
 
+            if (!IsBackgroundSchedulerPackAllowed(item, toolDefinition, out var effectivePackId, out var packReason)) {
+                reason = packReason;
+                continue;
+            }
+
+            if (_backgroundSchedulerControlState.TryGetScopedMaintenanceWindowPause(
+                    nowUtcTicks,
+                    normalizedThreadId,
+                    effectivePackId,
+                    out _)) {
+                reason = "background_work_scoped_maintenance_window_active";
+                continue;
+            }
+
             var declaredMutability = string.Equals(item.Mutability, BackgroundWorkMutabilityReadOnly, StringComparison.OrdinalIgnoreCase)
                 ? ActionMutability.ReadOnly
                 : ActionMutability.Unknown;

@@ -299,6 +299,47 @@ internal sealed partial class ChatServiceSession {
         return result;
     }
 
+    internal bool TryBuildScheduledBackgroundWorkToolCallForTesting(
+        IReadOnlyList<ToolDefinition> toolDefinitions,
+        IReadOnlyDictionary<string, bool>? mutatingToolHintsByName,
+        out string threadId,
+        out string itemId,
+        out string toolName,
+        out string argumentsJson,
+        out string reason) {
+        ArgumentNullException.ThrowIfNull(toolDefinitions);
+        var result = TryBuildScheduledBackgroundWorkReplayCandidate(
+            toolDefinitions,
+            mutatingToolHintsByName,
+            out threadId,
+            out var toolCall,
+            out itemId,
+            out reason);
+        toolName = result ? toolCall.Name : string.Empty;
+        argumentsJson = result && toolCall.Arguments is not null ? JsonLite.Serialize(toolCall.Arguments) : string.Empty;
+        return result;
+    }
+
+    internal SessionCapabilityBackgroundSchedulerDto BuildBackgroundSchedulerSummaryForTesting() {
+        return BuildBackgroundSchedulerSummary();
+    }
+
+    internal bool TryReleaseScheduledBackgroundWorkReplayCandidateForTesting(string threadId, string itemId) {
+        ArgumentNullException.ThrowIfNull(threadId);
+        ArgumentNullException.ThrowIfNull(itemId);
+        return TryReleaseScheduledBackgroundWorkReplayCandidate(threadId, itemId);
+    }
+
+    internal Task<BackgroundSchedulerIterationResult> RunBackgroundSchedulerIterationAsyncForTesting(
+        IReadOnlyList<ToolDefinition> toolDefinitions,
+        IReadOnlyDictionary<string, bool>? mutatingToolHintsByName,
+        Func<string, ToolCall, CancellationToken, Task<IReadOnlyList<ToolOutputDto>>> executor,
+        CancellationToken cancellationToken = default) {
+        ArgumentNullException.ThrowIfNull(toolDefinitions);
+        ArgumentNullException.ThrowIfNull(executor);
+        return RunBackgroundSchedulerIterationAsync(toolDefinitions, mutatingToolHintsByName, executor, cancellationToken);
+    }
+
     internal void RememberBackgroundWorkExecutionOutcomeForTesting(
         string threadId,
         string itemId,

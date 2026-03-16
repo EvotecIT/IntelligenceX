@@ -53,6 +53,10 @@
     ensureCustomSelect("optAutonomyParallel");
     ensureCustomSelect("optAutonomyPlanReview");
     ensureCustomSelect("optAutonomyWeightedRouting");
+    ensureCustomSelect("optSchedulerScopePack");
+    ensureCustomSelect("optSchedulerScopeThread");
+    ensureCustomSelect("optSchedulerMaintenancePackId");
+    ensureCustomSelect("optSchedulerMaintenanceThreadId");
 
     renderToolLocalityQuickFilters();
     renderPolicy();
@@ -61,6 +65,7 @@
     renderLocalModelOptions();
     renderTools();
     renderSidebarConversations();
+    renderActiveConversationSchedulerHint();
     renderProfileScopeHint();
     renderExportPreferences();
     renderDebugPanel();
@@ -278,6 +283,15 @@
     state.options.export = nextOptions.export || state.options.export;
     state.options.autonomy = nextOptions.autonomy || state.options.autonomy;
     state.options.memory = nextOptions.memory || state.options.memory;
+    if (Object.prototype.hasOwnProperty.call(nextOptions, "runtimeScheduler")) {
+      state.options.runtimeScheduler = nextOptions.runtimeScheduler;
+    }
+    if (Object.prototype.hasOwnProperty.call(nextOptions, "runtimeSchedulerScoped")) {
+      state.options.runtimeSchedulerScoped = nextOptions.runtimeSchedulerScoped;
+    }
+    if (Object.prototype.hasOwnProperty.call(nextOptions, "runtimeSchedulerGlobal")) {
+      state.options.runtimeSchedulerGlobal = nextOptions.runtimeSchedulerGlobal;
+    }
     state.options.memoryDebug = nextOptions.memoryDebug || null;
     state.options.startupDiagnostics = nextOptions.startupDiagnostics || null;
     state.options.toolCatalogRoutingCatalog = nextOptions.toolCatalogRoutingCatalog || null;

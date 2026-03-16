@@ -252,6 +252,92 @@ internal sealed partial class ChatServiceSession {
         }
     }
 
+    private PersistedThreadBackgroundWorkSnapshot[] LoadAllPersistedThreadBackgroundWorkSnapshots() {
+        var path = ResolveBackgroundWorkStorePath();
+        lock (BackgroundWorkStoreLock) {
+            var store = ReadBackgroundWorkStoreNoThrow(path);
+            if (store.Threads.Count == 0) {
+                return Array.Empty<PersistedThreadBackgroundWorkSnapshot>();
+            }
+
+            var nowUtc = DateTime.UtcNow;
+            var snapshots = new List<PersistedThreadBackgroundWorkSnapshot>(store.Threads.Count);
+            foreach (var pair in store.Threads) {
+                var threadId = (pair.Key ?? string.Empty).Trim();
+                var entry = pair.Value;
+                if (threadId.Length == 0
+                    || entry is null
+                    || !TryGetUtcDateTimeFromTicks(entry.SeenUtcTicks, out var seenUtc)
+                    || seenUtc > nowUtc
+                    || nowUtc - seenUtc > ThreadBackgroundWorkContextMaxAge) {
+                    continue;
+                }
+
+                var normalizedRecentEvidenceTools = (entry.RecentEvidenceTools ?? Array.Empty<string>())
+                    .Where(static toolName => !string.IsNullOrWhiteSpace(toolName))
+                    .Select(static toolName => NormalizeToolNameForAnswerPlan(toolName))
+                    .Where(static toolName => toolName.Length > 0)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .Take(MaxBackgroundWorkEvidenceTools)
+                    .ToArray();
+                var normalizedItems = new List<ThreadBackgroundWorkItem>(Math.Min(MaxBackgroundWorkItems, (entry.Items ?? Array.Empty<BackgroundWorkStoreItemDto?>()).Length));
+                foreach (var persistedItem in entry.Items ?? Array.Empty<BackgroundWorkStoreItemDto?>()) {
+                    if (persistedItem is null || string.IsNullOrWhiteSpace(persistedItem.Id)) {
+                        continue;
+                    }
+
+                    normalizedItems.Add(new ThreadBackgroundWorkItem(
+                        Id: (persistedItem.Id ?? string.Empty).Trim(),
+                        Title: (persistedItem.Title ?? string.Empty).Trim(),
+                        Request: NormalizeWorkingMemoryAnswerPlanFocus(persistedItem.Request),
+                        State: NormalizeBackgroundWorkState(persistedItem.State),
+                        EvidenceToolNames: NormalizeBackgroundWorkToolNames(persistedItem.EvidenceToolNames),
+                        Kind: NormalizeBackgroundWorkKind(persistedItem.Kind),
+                        Mutability: NormalizeBackgroundWorkMutability(persistedItem.Mutability),
+                        SourceToolName: NormalizeToolNameForAnswerPlan(persistedItem.SourceToolName),
+                        SourceCallId: (persistedItem.SourceCallId ?? string.Empty).Trim(),
+                        TargetPackId: (persistedItem.TargetPackId ?? string.Empty).Trim(),
+                        TargetToolName: NormalizeToolNameForAnswerPlan(persistedItem.TargetToolName),
+                        FollowUpKind: ToolHandoffFollowUpKinds.Normalize(persistedItem.FollowUpKind),
+                        FollowUpPriority: ToolHandoffFollowUpPriorities.Normalize(persistedItem.FollowUpPriority),
+                        PreparedArgumentsJson: NormalizeBackgroundWorkArgumentsJson(persistedItem.PreparedArgumentsJson),
+                        ResultReference: (persistedItem.ResultReference ?? string.Empty).Trim(),
+                        ExecutionAttemptCount: Math.Max(0, persistedItem.ExecutionAttemptCount),
+                        LastExecutionCallId: (persistedItem.LastExecutionCallId ?? string.Empty).Trim(),
+                        LastExecutionStartedUtcTicks: Math.Max(0, persistedItem.LastExecutionStartedUtcTicks),
+                        LastExecutionFinishedUtcTicks: Math.Max(0, persistedItem.LastExecutionFinishedUtcTicks),
+                        LeaseExpiresUtcTicks: Math.Max(0, persistedItem.LeaseExpiresUtcTicks),
+                        CreatedUtcTicks: persistedItem.CreatedUtcTicks,
+                        UpdatedUtcTicks: persistedItem.UpdatedUtcTicks > 0 ? persistedItem.UpdatedUtcTicks : persistedItem.CreatedUtcTicks));
+                    if (normalizedItems.Count >= MaxBackgroundWorkItems) {
+                        break;
+                    }
+                }
+
+                if (normalizedItems.Count == 0) {
+                    continue;
+                }
+
+                var snapshot = new ThreadBackgroundWorkSnapshot(
+                    QueuedCount: Math.Max(0, entry.QueuedCount),
+                    ReadyCount: Math.Max(0, entry.ReadyCount),
+                    RunningCount: Math.Max(0, entry.RunningCount),
+                    CompletedCount: Math.Max(0, entry.CompletedCount),
+                    PendingReadOnlyCount: Math.Max(0, entry.PendingReadOnlyCount),
+                    PendingUnknownCount: Math.Max(0, entry.PendingUnknownCount),
+                    RecentEvidenceTools: normalizedRecentEvidenceTools,
+                    Items: normalizedItems.ToArray());
+                if (IsEmptyBackgroundWorkSnapshot(snapshot)) {
+                    continue;
+                }
+
+                snapshots.Add(new PersistedThreadBackgroundWorkSnapshot(threadId, snapshot, entry.SeenUtcTicks));
+            }
+
+            return snapshots.Count == 0 ? Array.Empty<PersistedThreadBackgroundWorkSnapshot>() : snapshots.ToArray();
+        }
+    }
+
     private void ClearBackgroundWorkSnapshots() {
         var path = ResolveBackgroundWorkStorePath();
         lock (BackgroundWorkStoreLock) {

@@ -31,18 +31,27 @@ public sealed class ActiveDirectoryLifecycleToolPack : IToolPack, IToolPackCatal
         Category = "active_directory",
         CapabilityTags = new[] {
             "directory",
+            "dry_run",
+            "governed_write",
             "identity_lifecycle",
             "joiner_leaver",
+            "mover",
             "remote_analysis",
             "write_capable"
         },
         SearchTokens = new[] {
             "ad",
             "adplayground",
+            "approval",
+            "dry_run",
+            "governed_write",
+            "group_membership",
             "identity_lifecycle",
             "joiner",
             "leaver",
+            "mover",
             "offboarding",
+            "onboarding",
             "user_provisioning",
             "password_reset",
             "account_disable"

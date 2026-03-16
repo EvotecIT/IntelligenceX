@@ -49,6 +49,123 @@ public sealed partial class ServiceOptionsProfileBootstrapTests {
     }
 
     [Fact]
+    public void Parse_AppliesBackgroundSchedulerDaemonOverrides() {
+        var options = ServiceOptions.Parse(new[] {
+            "--background-scheduler-daemon",
+            "--background-scheduler-start-paused-seconds", "90",
+            "--background-scheduler-maintenance-window", "mon@02:00/60",
+            "--background-scheduler-maintenance-window", "daily@23:30/120",
+            "--background-scheduler-poll-seconds", "45",
+            "--background-scheduler-burst-limit", "6",
+            "--background-scheduler-failure-threshold", "7",
+            "--background-scheduler-failure-pause-seconds", "120",
+            "--background-scheduler-allow-pack-id", "system",
+            "--background-scheduler-block-pack-id", "active_directory",
+            "--background-scheduler-allow-thread-id", "thread-system",
+            "--background-scheduler-block-thread-id", "thread-active-directory"
+        }, out var error);
+
+        Assert.NotNull(options);
+        Assert.True(string.IsNullOrWhiteSpace(error));
+        Assert.True(options.EnableBackgroundSchedulerDaemon);
+        Assert.True(options.BackgroundSchedulerStartPaused);
+        Assert.Equal(90, options.BackgroundSchedulerStartupPauseSeconds);
+        Assert.Equal(new[] { "mon@02:00/60", "daily@23:30/120" }, options.BackgroundSchedulerMaintenanceWindows);
+        Assert.Equal(45, options.BackgroundSchedulerPollSeconds);
+        Assert.Equal(6, options.BackgroundSchedulerBurstLimit);
+        Assert.Equal(7, options.BackgroundSchedulerFailureThreshold);
+        Assert.Equal(120, options.BackgroundSchedulerFailurePauseSeconds);
+        Assert.Contains("system", options.BackgroundSchedulerAllowedPackIds);
+        Assert.Contains("active_directory", options.BackgroundSchedulerBlockedPackIds);
+        Assert.Contains("thread-system", options.BackgroundSchedulerAllowedThreadIds);
+        Assert.Contains("thread-active-directory", options.BackgroundSchedulerBlockedThreadIds);
+    }
+
+    [Fact]
+    public void Parse_AppliesBackgroundSchedulerPackFilterPrecedence() {
+        var options = ServiceOptions.Parse(new[] {
+            "--background-scheduler-allow-pack-id", "system",
+            "--background-scheduler-allow-pack-id", "active_directory",
+            "--background-scheduler-block-pack-id", "active_directory"
+        }, out var error);
+
+        Assert.NotNull(options);
+        Assert.True(string.IsNullOrWhiteSpace(error));
+        Assert.Contains("system", options.BackgroundSchedulerAllowedPackIds);
+        Assert.DoesNotContain("active_directory", options.BackgroundSchedulerAllowedPackIds);
+        Assert.Contains("active_directory", options.BackgroundSchedulerBlockedPackIds);
+    }
+
+    [Fact]
+    public void Parse_AppliesBackgroundSchedulerThreadFilterPrecedence() {
+        var options = ServiceOptions.Parse(new[] {
+            "--background-scheduler-allow-thread-id", "thread-system",
+            "--background-scheduler-allow-thread-id", "thread-active-directory",
+            "--background-scheduler-block-thread-id", "thread-active-directory"
+        }, out var error);
+
+        Assert.NotNull(options);
+        Assert.True(string.IsNullOrWhiteSpace(error));
+        Assert.Contains("thread-system", options.BackgroundSchedulerAllowedThreadIds);
+        Assert.DoesNotContain("thread-active-directory", options.BackgroundSchedulerAllowedThreadIds);
+        Assert.Contains("thread-active-directory", options.BackgroundSchedulerBlockedThreadIds);
+    }
+
+    [Fact]
+    public void Parse_RejectsInvalidBackgroundSchedulerPollSeconds() {
+        _ = ServiceOptions.Parse(new[] {
+            "--background-scheduler-poll-seconds", "0"
+        }, out var error);
+
+        Assert.Equal("--background-scheduler-poll-seconds must be between 1 and 3600.", error);
+    }
+
+    [Fact]
+    public void Parse_RejectsInvalidBackgroundSchedulerBurstLimit() {
+        _ = ServiceOptions.Parse(new[] {
+            "--background-scheduler-burst-limit", "64"
+        }, out var error);
+
+        Assert.Equal("--background-scheduler-burst-limit must be between 1 and 32.", error);
+    }
+
+    [Fact]
+    public void Parse_RejectsInvalidBackgroundSchedulerFailureThreshold() {
+        _ = ServiceOptions.Parse(new[] {
+            "--background-scheduler-failure-threshold", "64"
+        }, out var error);
+
+        Assert.Equal("--background-scheduler-failure-threshold must be between 0 and 32.", error);
+    }
+
+    [Fact]
+    public void Parse_RejectsInvalidBackgroundSchedulerFailurePauseSeconds() {
+        _ = ServiceOptions.Parse(new[] {
+            "--background-scheduler-failure-pause-seconds", "0"
+        }, out var error);
+
+        Assert.Equal("--background-scheduler-failure-pause-seconds must be between 1 and 3600.", error);
+    }
+
+    [Fact]
+    public void Parse_RejectsInvalidBackgroundSchedulerStartupPauseSeconds() {
+        _ = ServiceOptions.Parse(new[] {
+            "--background-scheduler-start-paused-seconds", "0"
+        }, out var error);
+
+        Assert.Equal("--background-scheduler-start-paused-seconds must be between 1 and 3600.", error);
+    }
+
+    [Fact]
+    public void Parse_RejectsInvalidBackgroundSchedulerMaintenanceWindow() {
+        _ = ServiceOptions.Parse(new[] {
+            "--background-scheduler-maintenance-window", "weekday@99:00/10"
+        }, out var error);
+
+        Assert.Equal("--background-scheduler-maintenance-window must use <day>@HH:mm/<minutes> with day in daily, mon, tue, wed, thu, fri, sat, sun and minutes in 1..1440.", error);
+    }
+
+    [Fact]
     public void ApplyProfile_ClampsExecutionLaneValuesToParserBounds() {
         var options = new ServiceOptions();
         var profile = new ServiceProfile {
@@ -77,6 +194,98 @@ public sealed partial class ServiceOptionsProfileBootstrapTests {
 
         Assert.Equal(4096, profile.SessionExecutionQueueLimit);
         Assert.Equal(512, profile.GlobalExecutionLaneConcurrency);
+    }
+
+    [Fact]
+    public void ApplyProfile_ClampsBackgroundSchedulerValuesToParserBounds() {
+        var options = new ServiceOptions();
+        var profile = new ServiceProfile {
+            EnableBackgroundSchedulerDaemon = true,
+            BackgroundSchedulerStartPaused = true,
+            BackgroundSchedulerStartupPauseSeconds = 99_999,
+            BackgroundSchedulerMaintenanceWindows = new List<string> { "monday@02:00/30", "daily@23:30/120" },
+            BackgroundSchedulerPollSeconds = 99_999,
+            BackgroundSchedulerBurstLimit = 0,
+            BackgroundSchedulerFailureThreshold = 99_999,
+            BackgroundSchedulerFailurePauseSeconds = 0
+        };
+
+        var method = typeof(ServiceOptions).GetMethod("ApplyProfile", BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(method);
+        method!.Invoke(options, new object[] { profile });
+
+        Assert.True(options.EnableBackgroundSchedulerDaemon);
+        Assert.True(options.BackgroundSchedulerStartPaused);
+        Assert.Equal(3600, options.BackgroundSchedulerStartupPauseSeconds);
+        Assert.Equal(new[] { "mon@02:00/30", "daily@23:30/120" }, options.BackgroundSchedulerMaintenanceWindows);
+        Assert.Equal(3600, options.BackgroundSchedulerPollSeconds);
+        Assert.Equal(1, options.BackgroundSchedulerBurstLimit);
+        Assert.Equal(32, options.BackgroundSchedulerFailureThreshold);
+        Assert.Equal(1, options.BackgroundSchedulerFailurePauseSeconds);
+    }
+
+    [Fact]
+    public void ToProfile_ClampsBackgroundSchedulerValuesToParserBounds() {
+        var options = new ServiceOptions {
+            EnableBackgroundSchedulerDaemon = true,
+            BackgroundSchedulerStartPaused = true,
+            BackgroundSchedulerStartupPauseSeconds = 99_999,
+            BackgroundSchedulerMaintenanceWindows = { "mon@02:00/30", "daily@23:30/120" },
+            BackgroundSchedulerPollSeconds = 99_999,
+            BackgroundSchedulerBurstLimit = 99_999,
+            BackgroundSchedulerFailureThreshold = 99_999,
+            BackgroundSchedulerFailurePauseSeconds = 99_999
+        };
+
+        var method = typeof(ServiceOptions).GetMethod("ToProfile", BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(method);
+        var profile = Assert.IsType<ServiceProfile>(method!.Invoke(options, null));
+
+        Assert.True(profile.EnableBackgroundSchedulerDaemon);
+        Assert.True(profile.BackgroundSchedulerStartPaused);
+        Assert.Equal(3600, profile.BackgroundSchedulerStartupPauseSeconds);
+        Assert.Equal(new[] { "mon@02:00/30", "daily@23:30/120" }, profile.BackgroundSchedulerMaintenanceWindows);
+        Assert.Equal(3600, profile.BackgroundSchedulerPollSeconds);
+        Assert.Equal(32, profile.BackgroundSchedulerBurstLimit);
+        Assert.Equal(32, profile.BackgroundSchedulerFailureThreshold);
+        Assert.Equal(3600, profile.BackgroundSchedulerFailurePauseSeconds);
+    }
+
+    [Fact]
+    public void ApplyProfile_And_ToProfile_PreserveBackgroundSchedulerPackFilters() {
+        var options = new ServiceOptions();
+        var profile = new ServiceProfile {
+            BackgroundSchedulerStartPaused = true,
+            BackgroundSchedulerStartupPauseSeconds = 180,
+            BackgroundSchedulerMaintenanceWindows = new List<string> { "sun@01:00/180" },
+            BackgroundSchedulerAllowedPackIds = new List<string> { "system", "eventlog" },
+            BackgroundSchedulerBlockedPackIds = new List<string> { "active_directory" },
+            BackgroundSchedulerAllowedThreadIds = new List<string> { "thread-system", "thread-eventlog" },
+            BackgroundSchedulerBlockedThreadIds = new List<string> { "thread-active-directory" }
+        };
+
+        var applyMethod = typeof(ServiceOptions).GetMethod("ApplyProfile", BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(applyMethod);
+        applyMethod!.Invoke(options, new object[] { profile });
+
+        Assert.True(options.BackgroundSchedulerStartPaused);
+        Assert.Equal(180, options.BackgroundSchedulerStartupPauseSeconds);
+        Assert.Equal(new[] { "sun@01:00/180" }, options.BackgroundSchedulerMaintenanceWindows);
+        Assert.Equal(new[] { "system", "eventlog" }, options.BackgroundSchedulerAllowedPackIds);
+        Assert.Equal(new[] { "active_directory" }, options.BackgroundSchedulerBlockedPackIds);
+        Assert.Equal(new[] { "thread-system", "thread-eventlog" }, options.BackgroundSchedulerAllowedThreadIds);
+        Assert.Equal(new[] { "thread-active-directory" }, options.BackgroundSchedulerBlockedThreadIds);
+
+        var toProfileMethod = typeof(ServiceOptions).GetMethod("ToProfile", BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(toProfileMethod);
+        var roundTrip = Assert.IsType<ServiceProfile>(toProfileMethod!.Invoke(options, null));
+        Assert.True(roundTrip.BackgroundSchedulerStartPaused);
+        Assert.Equal(180, roundTrip.BackgroundSchedulerStartupPauseSeconds);
+        Assert.Equal(new[] { "sun@01:00/180" }, roundTrip.BackgroundSchedulerMaintenanceWindows);
+        Assert.Equal(new[] { "system", "eventlog" }, roundTrip.BackgroundSchedulerAllowedPackIds);
+        Assert.Equal(new[] { "active_directory" }, roundTrip.BackgroundSchedulerBlockedPackIds);
+        Assert.Equal(new[] { "thread-system", "thread-eventlog" }, roundTrip.BackgroundSchedulerAllowedThreadIds);
+        Assert.Equal(new[] { "thread-active-directory" }, roundTrip.BackgroundSchedulerBlockedThreadIds);
     }
 
     [Fact]

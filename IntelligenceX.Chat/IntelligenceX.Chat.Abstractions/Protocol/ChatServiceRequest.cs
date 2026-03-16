@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Serialization;
 using IntelligenceX.Chat.Abstractions.Policy;
 
@@ -13,6 +14,11 @@ namespace IntelligenceX.Chat.Abstractions.Protocol;
 [JsonDerivedType(typeof(ChatGptLoginPromptResponseRequest), "chatgpt_login_prompt_response")]
 [JsonDerivedType(typeof(CancelChatGptLoginRequest), "chatgpt_login_cancel")]
 [JsonDerivedType(typeof(ListToolsRequest), "list_tools")]
+[JsonDerivedType(typeof(GetBackgroundSchedulerStatusRequest), "get_background_scheduler_status")]
+[JsonDerivedType(typeof(SetBackgroundSchedulerStateRequest), "set_background_scheduler_state")]
+[JsonDerivedType(typeof(SetBackgroundSchedulerMaintenanceWindowsRequest), "set_background_scheduler_maintenance_windows")]
+[JsonDerivedType(typeof(SetBackgroundSchedulerBlockedPacksRequest), "set_background_scheduler_blocked_packs")]
+[JsonDerivedType(typeof(SetBackgroundSchedulerBlockedThreadsRequest), "set_background_scheduler_blocked_threads")]
 [JsonDerivedType(typeof(CheckToolHealthRequest), "check_tool_health")]
 [JsonDerivedType(typeof(ListProfilesRequest), "list_profiles")]
 [JsonDerivedType(typeof(SetProfileRequest), "set_profile")]
@@ -24,6 +30,104 @@ namespace IntelligenceX.Chat.Abstractions.Protocol;
 [JsonDerivedType(typeof(CancelChatRequest), "chat_cancel")]
 [JsonDerivedType(typeof(ChatRequest), "chat")]
 public abstract record ChatServiceRequest {
+    private protected static string NormalizeBackgroundSchedulerMutationOperation(string? value, string parameterName) {
+        var normalized = (value ?? string.Empty).Trim().ToLowerInvariant();
+        if (normalized is "add" or "remove" or "replace" or "clear" or "reset") {
+            return normalized;
+        }
+
+        throw new ArgumentException("Operation must be one of: add, remove, replace, clear, reset.", parameterName);
+    }
+
+    private protected static string[]? NormalizeBackgroundSchedulerMutationTargets(string[]? values, string parameterName) {
+        if (values is not { Length: > 0 }) {
+            return null;
+        }
+
+        var normalized = new List<string>(values.Length);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var value in values) {
+            if (string.IsNullOrWhiteSpace(value)) {
+                continue;
+            }
+
+            var trimmed = value.Trim();
+            if (!seen.Add(trimmed)) {
+                throw new ArgumentException(
+                    $"{parameterName} contains duplicate targets after normalization.",
+                    parameterName);
+            }
+
+            normalized.Add(trimmed);
+        }
+
+        return normalized.Count > 0 ? normalized.ToArray() : null;
+    }
+
+    private protected static void ValidateBackgroundSchedulerTargetMutationState(
+        string operation,
+        string[]? targets,
+        string targetsParameterName) {
+        if (operation is "add" or "remove" or "replace") {
+            if (targets is not { Length: > 0 }) {
+                throw new ArgumentException(
+                    $"{targetsParameterName} must be provided for {operation} operations.",
+                    targetsParameterName);
+            }
+
+            return;
+        }
+
+        if (targets is { Length: > 0 }) {
+            throw new ArgumentException(
+                $"{targetsParameterName} must be omitted for {operation} operations.",
+                targetsParameterName);
+        }
+    }
+
+    private protected static void ValidateBackgroundSchedulerTemporarySuppressionState(
+        string operation,
+        int? durationSeconds,
+        bool untilNextMaintenanceWindow,
+        bool untilNextMaintenanceWindowStart,
+        string durationParameterName,
+        string untilWindowParameterName,
+        string untilWindowStartParameterName) {
+        if (untilNextMaintenanceWindow && untilNextMaintenanceWindowStart) {
+            throw new ArgumentException(
+                "UntilNextMaintenanceWindow and UntilNextMaintenanceWindowStart cannot both be true.",
+                untilWindowStartParameterName);
+        }
+
+        if (durationSeconds is not null && (untilNextMaintenanceWindow || untilNextMaintenanceWindowStart)) {
+            throw new ArgumentException(
+                "DurationSeconds cannot be combined with maintenance-window suppression flags.",
+                durationParameterName);
+        }
+
+        if (operation == "add") {
+            return;
+        }
+
+        if (durationSeconds is not null) {
+            throw new ArgumentException(
+                $"DurationSeconds is only supported for add operations, not {operation}.",
+                durationParameterName);
+        }
+
+        if (untilNextMaintenanceWindow) {
+            throw new ArgumentException(
+                $"UntilNextMaintenanceWindow is only supported for add operations, not {operation}.",
+                untilWindowParameterName);
+        }
+
+        if (untilNextMaintenanceWindowStart) {
+            throw new ArgumentException(
+                $"UntilNextMaintenanceWindowStart is only supported for add operations, not {operation}.",
+                untilWindowStartParameterName);
+        }
+    }
+
     /// <summary>
     /// Correlation id for the request.
     /// </summary>
@@ -93,6 +197,322 @@ public sealed record CancelChatGptLoginRequest : ChatServiceRequest {
 /// Requests the list of registered tool definitions.
 /// </summary>
 public sealed record ListToolsRequest : ChatServiceRequest;
+
+/// <summary>
+/// Requests the current background scheduler status summary.
+/// </summary>
+public sealed record GetBackgroundSchedulerStatusRequest : ChatServiceRequest {
+    private static int? ValidateBackgroundSchedulerStatusLimit(int? value, string parameterName) {
+        if (value is not int requested) {
+            return null;
+        }
+
+        if (requested < 0 || requested > ChatRequestOptionLimits.MaxBackgroundSchedulerStatusItems) {
+            throw new ArgumentOutOfRangeException(
+                parameterName,
+                $"{parameterName} must be between 0 and {ChatRequestOptionLimits.MaxBackgroundSchedulerStatusItems}.");
+        }
+
+        return requested;
+    }
+
+    private readonly int? _maxReadyThreadIds;
+    private readonly int? _maxRunningThreadIds;
+    private readonly int? _maxRecentActivity;
+    private readonly int? _maxThreadSummaries;
+
+    /// <summary>
+    /// Optional thread scope. When set, scheduler counters and detail samples are constrained to the matching thread.
+    /// </summary>
+    public string? ThreadId { get; init; }
+
+    /// <summary>
+    /// Whether recent activity samples should be included in the response.
+    /// </summary>
+    public bool IncludeRecentActivity { get; init; } = true;
+
+    /// <summary>
+    /// Whether per-thread summary samples should be included in the response.
+    /// </summary>
+    public bool IncludeThreadSummaries { get; init; } = true;
+
+    /// <summary>
+    /// Optional cap for ready-thread id samples (0..<see cref="ChatRequestOptionLimits.MaxBackgroundSchedulerStatusItems"/>).
+    /// </summary>
+    public int? MaxReadyThreadIds {
+        get => _maxReadyThreadIds;
+        init => _maxReadyThreadIds = ValidateBackgroundSchedulerStatusLimit(value, nameof(MaxReadyThreadIds));
+    }
+
+    /// <summary>
+    /// Optional cap for running-thread id samples (0..<see cref="ChatRequestOptionLimits.MaxBackgroundSchedulerStatusItems"/>).
+    /// </summary>
+    public int? MaxRunningThreadIds {
+        get => _maxRunningThreadIds;
+        init => _maxRunningThreadIds = ValidateBackgroundSchedulerStatusLimit(value, nameof(MaxRunningThreadIds));
+    }
+
+    /// <summary>
+    /// Optional cap for recent scheduler activity samples (0..<see cref="ChatRequestOptionLimits.MaxBackgroundSchedulerStatusItems"/>).
+    /// </summary>
+    public int? MaxRecentActivity {
+        get => _maxRecentActivity;
+        init => _maxRecentActivity = ValidateBackgroundSchedulerStatusLimit(value, nameof(MaxRecentActivity));
+    }
+
+    /// <summary>
+    /// Optional cap for per-thread scheduler summaries (0..<see cref="ChatRequestOptionLimits.MaxBackgroundSchedulerStatusItems"/>).
+    /// </summary>
+    public int? MaxThreadSummaries {
+        get => _maxThreadSummaries;
+        init => _maxThreadSummaries = ValidateBackgroundSchedulerStatusLimit(value, nameof(MaxThreadSummaries));
+    }
+}
+
+/// <summary>
+/// Applies a runtime pause/resume action to the background scheduler.
+/// </summary>
+public sealed record SetBackgroundSchedulerStateRequest : ChatServiceRequest {
+    private static int? ValidatePositiveDurationSeconds(int? value, string parameterName) {
+        if (value is not int requested) {
+            return null;
+        }
+
+        if (requested < ChatRequestOptionLimits.MinPositiveTimeoutSeconds
+            || requested > ChatRequestOptionLimits.MaxTimeoutSeconds) {
+            throw new ArgumentOutOfRangeException(
+                parameterName,
+                $"{parameterName} must be between {ChatRequestOptionLimits.MinPositiveTimeoutSeconds} and {ChatRequestOptionLimits.MaxTimeoutSeconds}.");
+        }
+
+        return requested;
+    }
+
+    private static string? NormalizeOptionalReason(string? value) {
+        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    }
+
+    private int? _pauseSeconds;
+    private string? _reason;
+
+    /// <summary>
+    /// When true, manually pauses the scheduler; when false, clears any active manual/auto pause state.
+    /// </summary>
+    public bool Paused { get; init; }
+
+    /// <summary>
+    /// Optional manual pause duration in seconds. Null means pause until explicitly resumed.
+    /// </summary>
+    public int? PauseSeconds {
+        get => _pauseSeconds;
+        init => _pauseSeconds = ValidatePositiveDurationSeconds(value, nameof(PauseSeconds));
+    }
+
+    /// <summary>
+    /// Optional operator-facing reason to annotate the manual pause state.
+    /// </summary>
+    public string? Reason {
+        get => _reason;
+        init => _reason = NormalizeOptionalReason(value);
+    }
+}
+
+/// <summary>
+/// Applies a runtime maintenance-window policy update to the background scheduler.
+/// </summary>
+public sealed record SetBackgroundSchedulerMaintenanceWindowsRequest : ChatServiceRequest {
+    /// <summary>
+    /// Creates a maintenance-window mutation request with operation-aware validation.
+    /// </summary>
+    /// <param name="requestId">Correlation id for the request.</param>
+    /// <param name="operation">Requested operation: add, remove, replace, clear, or reset.</param>
+    /// <param name="windows">Optional maintenance window specs for targeted operations.</param>
+    [JsonConstructor]
+    [SetsRequiredMembers]
+    public SetBackgroundSchedulerMaintenanceWindowsRequest(
+        string requestId,
+        string operation,
+        string[]? windows = null) {
+        RequestId = requestId;
+        Operation = NormalizeBackgroundSchedulerMutationOperation(operation, nameof(Operation));
+        Windows = NormalizeBackgroundSchedulerMutationTargets(windows, nameof(windows));
+        ValidateBackgroundSchedulerTargetMutationState(Operation, Windows, nameof(Windows));
+    }
+
+    /// <summary>
+    /// Requested operation: add, remove, replace, clear, or reset.
+    /// </summary>
+    public string Operation { get; }
+
+    /// <summary>
+    /// Maintenance window specs used by add/remove/replace operations.
+    /// </summary>
+    public string[]? Windows { get; }
+}
+
+/// <summary>
+/// Applies a runtime blocked-pack policy update to the background scheduler.
+/// </summary>
+public sealed record SetBackgroundSchedulerBlockedPacksRequest : ChatServiceRequest {
+    private static int? ValidatePositiveDurationSeconds(int? value, string parameterName) {
+        if (value is not int requested) {
+            return null;
+        }
+
+        if (requested < ChatRequestOptionLimits.MinPositiveTimeoutSeconds
+            || requested > ChatRequestOptionLimits.MaxTimeoutSeconds) {
+            throw new ArgumentOutOfRangeException(
+                parameterName,
+                $"{parameterName} must be between {ChatRequestOptionLimits.MinPositiveTimeoutSeconds} and {ChatRequestOptionLimits.MaxTimeoutSeconds}.");
+        }
+
+        return requested;
+    }
+
+    /// <summary>
+    /// Creates a blocked-pack mutation request with operation-aware validation.
+    /// </summary>
+    /// <param name="requestId">Correlation id for the request.</param>
+    /// <param name="operation">Requested operation: add, remove, replace, clear, or reset.</param>
+    /// <param name="packIds">Optional pack ids for targeted operations.</param>
+    /// <param name="durationSeconds">Optional temporary suppression duration in seconds for add operations.</param>
+    /// <param name="untilNextMaintenanceWindow">Whether the add operation should suppress until the next relevant maintenance window ends.</param>
+    /// <param name="untilNextMaintenanceWindowStart">Whether the add operation should suppress until the next relevant maintenance window starts.</param>
+    [JsonConstructor]
+    [SetsRequiredMembers]
+    public SetBackgroundSchedulerBlockedPacksRequest(
+        string requestId,
+        string operation,
+        string[]? packIds = null,
+        int? durationSeconds = null,
+        bool untilNextMaintenanceWindow = false,
+        bool untilNextMaintenanceWindowStart = false) {
+        RequestId = requestId;
+        Operation = NormalizeBackgroundSchedulerMutationOperation(operation, nameof(Operation));
+        PackIds = NormalizeBackgroundSchedulerMutationTargets(packIds, nameof(packIds));
+        DurationSeconds = ValidatePositiveDurationSeconds(durationSeconds, nameof(DurationSeconds));
+        UntilNextMaintenanceWindow = untilNextMaintenanceWindow;
+        UntilNextMaintenanceWindowStart = untilNextMaintenanceWindowStart;
+
+        ValidateBackgroundSchedulerTargetMutationState(Operation, PackIds, nameof(PackIds));
+        ValidateBackgroundSchedulerTemporarySuppressionState(
+            Operation,
+            DurationSeconds,
+            UntilNextMaintenanceWindow,
+            UntilNextMaintenanceWindowStart,
+            nameof(DurationSeconds),
+            nameof(UntilNextMaintenanceWindow),
+            nameof(UntilNextMaintenanceWindowStart));
+    }
+
+    /// <summary>
+    /// Requested operation: add, remove, replace, clear, or reset.
+    /// </summary>
+    public string Operation { get; }
+
+    /// <summary>
+    /// Pack ids used by add/remove/replace operations.
+    /// </summary>
+    public string[]? PackIds { get; }
+
+    /// <summary>
+    /// Optional temporary suppression duration in seconds for add operations.
+    /// Null means a persistent policy update.
+    /// </summary>
+    public int? DurationSeconds { get; }
+
+    /// <summary>
+    /// When true, add operations derive a temporary suppression that lasts until the next relevant maintenance window ends.
+    /// </summary>
+    public bool UntilNextMaintenanceWindow { get; }
+
+    /// <summary>
+    /// When true, add operations derive a temporary suppression that lasts until the next relevant maintenance window starts.
+    /// </summary>
+    public bool UntilNextMaintenanceWindowStart { get; }
+}
+
+/// <summary>
+/// Applies a runtime blocked-thread policy update to the background scheduler.
+/// </summary>
+public sealed record SetBackgroundSchedulerBlockedThreadsRequest : ChatServiceRequest {
+    private static int? ValidatePositiveDurationSeconds(int? value, string parameterName) {
+        if (value is not int requested) {
+            return null;
+        }
+
+        if (requested < ChatRequestOptionLimits.MinPositiveTimeoutSeconds
+            || requested > ChatRequestOptionLimits.MaxTimeoutSeconds) {
+            throw new ArgumentOutOfRangeException(
+                parameterName,
+                $"{parameterName} must be between {ChatRequestOptionLimits.MinPositiveTimeoutSeconds} and {ChatRequestOptionLimits.MaxTimeoutSeconds}.");
+        }
+
+        return requested;
+    }
+
+    /// <summary>
+    /// Creates a blocked-thread mutation request with operation-aware validation.
+    /// </summary>
+    /// <param name="requestId">Correlation id for the request.</param>
+    /// <param name="operation">Requested operation: add, remove, replace, clear, or reset.</param>
+    /// <param name="threadIds">Optional thread ids for targeted operations.</param>
+    /// <param name="durationSeconds">Optional temporary suppression duration in seconds for add operations.</param>
+    /// <param name="untilNextMaintenanceWindow">Whether the add operation should suppress until the next relevant maintenance window ends.</param>
+    /// <param name="untilNextMaintenanceWindowStart">Whether the add operation should suppress until the next relevant maintenance window starts.</param>
+    [JsonConstructor]
+    [SetsRequiredMembers]
+    public SetBackgroundSchedulerBlockedThreadsRequest(
+        string requestId,
+        string operation,
+        string[]? threadIds = null,
+        int? durationSeconds = null,
+        bool untilNextMaintenanceWindow = false,
+        bool untilNextMaintenanceWindowStart = false) {
+        RequestId = requestId;
+        Operation = NormalizeBackgroundSchedulerMutationOperation(operation, nameof(Operation));
+        ThreadIds = NormalizeBackgroundSchedulerMutationTargets(threadIds, nameof(threadIds));
+        DurationSeconds = ValidatePositiveDurationSeconds(durationSeconds, nameof(DurationSeconds));
+        UntilNextMaintenanceWindow = untilNextMaintenanceWindow;
+        UntilNextMaintenanceWindowStart = untilNextMaintenanceWindowStart;
+
+        ValidateBackgroundSchedulerTargetMutationState(Operation, ThreadIds, nameof(ThreadIds));
+        ValidateBackgroundSchedulerTemporarySuppressionState(
+            Operation,
+            DurationSeconds,
+            UntilNextMaintenanceWindow,
+            UntilNextMaintenanceWindowStart,
+            nameof(DurationSeconds),
+            nameof(UntilNextMaintenanceWindow),
+            nameof(UntilNextMaintenanceWindowStart));
+    }
+
+    /// <summary>
+    /// Requested operation: add, remove, replace, clear, or reset.
+    /// </summary>
+    public string Operation { get; }
+
+    /// <summary>
+    /// Thread ids used by add/remove/replace operations.
+    /// </summary>
+    public string[]? ThreadIds { get; }
+
+    /// <summary>
+    /// Optional temporary suppression duration in seconds for add operations.
+    /// Null means a persistent policy update.
+    /// </summary>
+    public int? DurationSeconds { get; }
+
+    /// <summary>
+    /// When true, add operations derive a temporary suppression that lasts until the next relevant maintenance window ends.
+    /// </summary>
+    public bool UntilNextMaintenanceWindow { get; }
+
+    /// <summary>
+    /// When true, add operations derive a temporary suppression that lasts until the next relevant maintenance window starts.
+    /// </summary>
+    public bool UntilNextMaintenanceWindowStart { get; }
+}
 
 /// <summary>
 /// Requests health probes for registered <c>*_pack_info</c> tools.

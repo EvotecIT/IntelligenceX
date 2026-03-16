@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using IntelligenceX.Chat.Abstractions.Policy;
+using IntelligenceX.Chat.Client;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.Service;
 using Xunit;
@@ -10,6 +12,9 @@ public sealed class ChatServiceRequestClientConnectionPolicyTests {
     public static IEnumerable<object[]> RequestConnectionPolicyCases() {
         yield return new object[] { new HelloRequest { RequestId = "req_hello" }, false };
         yield return new object[] { new ListToolsRequest { RequestId = "req_tools" }, false };
+        yield return new object[] { new GetBackgroundSchedulerStatusRequest { RequestId = "req_scheduler" }, false };
+        yield return new object[] { new SetBackgroundSchedulerStateRequest { RequestId = "req_scheduler_control", Paused = true }, false };
+        yield return new object[] { new SetBackgroundSchedulerMaintenanceWindowsRequest("req_scheduler_windows", "add", new[] { "mon@02:00/60" }), false };
         yield return new object[] { new CheckToolHealthRequest { RequestId = "req_health" }, false };
         yield return new object[] { new ListProfilesRequest { RequestId = "req_profiles" }, false };
         yield return new object[] { new SetProfileRequest { RequestId = "req_profile_set", ProfileName = "local" }, false };
@@ -25,6 +30,9 @@ public sealed class ChatServiceRequestClientConnectionPolicyTests {
         yield return new object[] { new EnsureLoginRequest { RequestId = "req_login" }, false };
         yield return new object[] { new ListProfilesRequest { RequestId = "req_profiles" }, false };
         yield return new object[] { new ListToolsRequest { RequestId = "req_tools" }, true };
+        yield return new object[] { new GetBackgroundSchedulerStatusRequest { RequestId = "req_scheduler" }, true };
+        yield return new object[] { new SetBackgroundSchedulerStateRequest { RequestId = "req_scheduler_control", Paused = true }, true };
+        yield return new object[] { new SetBackgroundSchedulerMaintenanceWindowsRequest("req_scheduler_windows", "add", new[] { "mon@02:00/60" }), true };
         yield return new object[] { new CheckToolHealthRequest { RequestId = "req_health" }, true };
         yield return new object[] { new InvokeToolRequest { RequestId = "req_invoke", ToolName = "system_info", ArgumentsJson = "{}" }, true };
         yield return new object[] { new SetProfileRequest { RequestId = "req_profile_set", ProfileName = "local" }, true };
@@ -85,6 +93,83 @@ public sealed class ChatServiceRequestClientConnectionPolicyTests {
 
         Assert.Contains("tool catalog", message, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Plugin manifest invalid", message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void BuildToolingBootstrapFailureMessage_ForBackgroundSchedulerStatus_IncludesContext() {
+        var message = ChatServiceSession.BuildToolingBootstrapFailureMessage(
+            new GetBackgroundSchedulerStatusRequest { RequestId = "req_scheduler" },
+            new InvalidOperationException("Routing catalog unavailable"));
+
+        Assert.Contains("background scheduler status", message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Routing catalog unavailable", message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void BuildToolingBootstrapFailureMessage_ForBackgroundSchedulerState_IncludesContext() {
+        var message = ChatServiceSession.BuildToolingBootstrapFailureMessage(
+            new SetBackgroundSchedulerStateRequest { RequestId = "req_scheduler_control", Paused = true },
+            new InvalidOperationException("Routing catalog unavailable"));
+
+        Assert.Contains("background scheduler state", message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Routing catalog unavailable", message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void BuildToolingBootstrapFailureMessage_ForBackgroundSchedulerMaintenanceWindows_IncludesContext() {
+        var message = ChatServiceSession.BuildToolingBootstrapFailureMessage(
+            new SetBackgroundSchedulerMaintenanceWindowsRequest("req_scheduler_windows", "add", new[] { "mon@02:00/60" }),
+            new InvalidOperationException("Routing catalog unavailable"));
+
+        Assert.Contains("background scheduler maintenance windows", message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Routing catalog unavailable", message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void BuildBackgroundSchedulerMaintenanceWindowSpec_BuildsScopedSpecFromStructuredArguments() {
+        var spec = ChatServiceClient.BuildBackgroundSchedulerMaintenanceWindowSpec(
+            day: "monday",
+            startTimeLocal: "02:30",
+            durationMinutes: 90,
+            packId: "system");
+
+        Assert.Equal("mon@02:30/90;pack=system", spec);
+    }
+
+    [Fact]
+    public void BuildBackgroundSchedulerMaintenanceWindowSpec_RejectsConflictingStructuredScopes() {
+        var ex = Assert.Throws<ArgumentException>(() => ChatServiceClient.BuildBackgroundSchedulerMaintenanceWindowSpec(
+            day: "monday",
+            startTimeLocal: "02:30",
+            durationMinutes: 90,
+            packId: "system",
+            threadId: "thread-maintenance"));
+
+        Assert.Contains("cannot both be provided", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void BuildBackgroundSchedulerMaintenanceWindowSpec_BuildsSpecFromStructuredDescriptor() {
+        var spec = ChatServiceClient.BuildBackgroundSchedulerMaintenanceWindowSpec(
+            new SessionCapabilityBackgroundSchedulerMaintenanceWindowDto {
+                Day = "daily",
+                StartTimeLocal = "23:30",
+                DurationMinutes = 120,
+                PackId = "active_directory"
+            });
+
+        Assert.Equal("daily@23:30/120;pack=active_directory", spec);
+    }
+
+    [Fact]
+    public void BuildBackgroundSchedulerMaintenanceWindowSpec_RejectsInvalidSpec() {
+        var error = Assert.Throws<ArgumentOutOfRangeException>(() =>
+            ChatServiceClient.BuildBackgroundSchedulerMaintenanceWindowSpec(
+                new SessionCapabilityBackgroundSchedulerMaintenanceWindowDto {
+                    Spec = "bad-window"
+                }));
+
+        Assert.Contains("must use <day>@HH:mm/<minutes>", error.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Theory]

@@ -3,6 +3,7 @@ using System.Buffers;
 using System.Collections.Concurrent;
 using System.IO;
 using System.IO.Pipes;
+using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -315,6 +316,258 @@ public sealed class ChatServiceClient : IAsyncDisposable {
     }
 
     /// <summary>
+    /// Requests the current background scheduler status for the active session.
+    /// </summary>
+    public Task<BackgroundSchedulerStatusMessage> GetBackgroundSchedulerStatusAsync(
+        string? threadId = null,
+        bool includeRecentActivity = true,
+        bool includeThreadSummaries = true,
+        int? maxReadyThreadIds = null,
+        int? maxRunningThreadIds = null,
+        int? maxRecentActivity = null,
+        int? maxThreadSummaries = null,
+        CancellationToken cancellationToken = default) {
+        ValidateBackgroundSchedulerStatusLimit(maxReadyThreadIds, nameof(maxReadyThreadIds));
+        ValidateBackgroundSchedulerStatusLimit(maxRunningThreadIds, nameof(maxRunningThreadIds));
+        ValidateBackgroundSchedulerStatusLimit(maxRecentActivity, nameof(maxRecentActivity));
+        ValidateBackgroundSchedulerStatusLimit(maxThreadSummaries, nameof(maxThreadSummaries));
+
+        return RequestAsync<BackgroundSchedulerStatusMessage>(
+            new GetBackgroundSchedulerStatusRequest {
+                RequestId = NewRequestId(),
+                ThreadId = string.IsNullOrWhiteSpace(threadId) ? null : threadId.Trim(),
+                IncludeRecentActivity = includeRecentActivity,
+                IncludeThreadSummaries = includeThreadSummaries,
+                MaxReadyThreadIds = maxReadyThreadIds,
+                MaxRunningThreadIds = maxRunningThreadIds,
+                MaxRecentActivity = maxRecentActivity,
+                MaxThreadSummaries = maxThreadSummaries
+            },
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Applies an operator pause/resume action to the background scheduler and returns the updated scheduler summary.
+    /// </summary>
+    public Task<BackgroundSchedulerStatusMessage> SetBackgroundSchedulerPausedAsync(
+        bool paused,
+        int? pauseSeconds = null,
+        string? reason = null,
+        CancellationToken cancellationToken = default) {
+        ValidateBackgroundSchedulerPauseSeconds(paused, pauseSeconds);
+
+        return RequestAsync<BackgroundSchedulerStatusMessage>(
+            new SetBackgroundSchedulerStateRequest {
+                RequestId = NewRequestId(),
+                Paused = paused,
+                PauseSeconds = pauseSeconds,
+                Reason = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim()
+            },
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Updates background scheduler maintenance windows and returns the updated scheduler summary.
+    /// </summary>
+    public Task<BackgroundSchedulerStatusMessage> SetBackgroundSchedulerMaintenanceWindowsAsync(
+        string operation,
+        IReadOnlyList<string>? windows = null,
+        CancellationToken cancellationToken = default) {
+        ValidateBackgroundSchedulerMaintenanceWindowOperation(operation, windows);
+
+        return RequestAsync<BackgroundSchedulerStatusMessage>(
+            new SetBackgroundSchedulerMaintenanceWindowsRequest(
+                requestId: NewRequestId(),
+                operation: operation.Trim(),
+                windows: windows is { Count: > 0 }
+                    ? windows
+                        .Where(static window => !string.IsNullOrWhiteSpace(window))
+                        .Select(static window => window.Trim())
+                        .ToArray()
+                    : null),
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Updates background scheduler blocked-thread policy and returns the updated scheduler summary.
+    /// </summary>
+    public Task<BackgroundSchedulerStatusMessage> SetBackgroundSchedulerBlockedThreadsAsync(
+        string operation,
+        IReadOnlyList<string>? threadIds = null,
+        int? durationSeconds = null,
+        bool untilNextMaintenanceWindow = false,
+        bool untilNextMaintenanceWindowStart = false,
+        CancellationToken cancellationToken = default) {
+        if (string.IsNullOrWhiteSpace(operation)) {
+            throw new ArgumentException("Operation must be provided.", nameof(operation));
+        }
+
+        if (durationSeconds is < ChatRequestOptionLimits.MinPositiveTimeoutSeconds or > ChatRequestOptionLimits.MaxTimeoutSeconds) {
+            throw new ArgumentOutOfRangeException(
+                nameof(durationSeconds),
+                $"durationSeconds must be between {ChatRequestOptionLimits.MinPositiveTimeoutSeconds} and {ChatRequestOptionLimits.MaxTimeoutSeconds}.");
+        }
+
+        if (durationSeconds is not null && untilNextMaintenanceWindow) {
+            throw new ArgumentException("durationSeconds and untilNextMaintenanceWindow cannot be set together.", nameof(untilNextMaintenanceWindow));
+        }
+
+        if (durationSeconds is not null && untilNextMaintenanceWindowStart) {
+            throw new ArgumentException("durationSeconds and untilNextMaintenanceWindowStart cannot be set together.", nameof(untilNextMaintenanceWindowStart));
+        }
+
+        if (untilNextMaintenanceWindow && untilNextMaintenanceWindowStart) {
+            throw new ArgumentException("untilNextMaintenanceWindow and untilNextMaintenanceWindowStart cannot be set together.", nameof(untilNextMaintenanceWindowStart));
+        }
+
+        string[]? normalizedThreadIds = null;
+        if (threadIds is { Count: > 0 }) {
+            normalizedThreadIds = threadIds
+                .Where(static value => !string.IsNullOrWhiteSpace(value))
+                .Select(static value => value.Trim())
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+        }
+
+        return RequestAsync<BackgroundSchedulerStatusMessage>(
+            new SetBackgroundSchedulerBlockedThreadsRequest(
+                requestId: NewRequestId(),
+                operation: operation.Trim(),
+                threadIds: normalizedThreadIds,
+                durationSeconds: durationSeconds,
+                untilNextMaintenanceWindow: untilNextMaintenanceWindow,
+                untilNextMaintenanceWindowStart: untilNextMaintenanceWindowStart),
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Updates background scheduler blocked-pack policy and returns the updated scheduler summary.
+    /// </summary>
+    public Task<BackgroundSchedulerStatusMessage> SetBackgroundSchedulerBlockedPacksAsync(
+        string operation,
+        IReadOnlyList<string>? packIds = null,
+        int? durationSeconds = null,
+        bool untilNextMaintenanceWindow = false,
+        bool untilNextMaintenanceWindowStart = false,
+        CancellationToken cancellationToken = default) {
+        if (string.IsNullOrWhiteSpace(operation)) {
+            throw new ArgumentException("Operation must be provided.", nameof(operation));
+        }
+
+        if (durationSeconds is < ChatRequestOptionLimits.MinPositiveTimeoutSeconds or > ChatRequestOptionLimits.MaxTimeoutSeconds) {
+            throw new ArgumentOutOfRangeException(
+                nameof(durationSeconds),
+                $"durationSeconds must be between {ChatRequestOptionLimits.MinPositiveTimeoutSeconds} and {ChatRequestOptionLimits.MaxTimeoutSeconds}.");
+        }
+
+        if (durationSeconds is not null && untilNextMaintenanceWindow) {
+            throw new ArgumentException("durationSeconds and untilNextMaintenanceWindow cannot be set together.", nameof(untilNextMaintenanceWindow));
+        }
+
+        if (durationSeconds is not null && untilNextMaintenanceWindowStart) {
+            throw new ArgumentException("durationSeconds and untilNextMaintenanceWindowStart cannot be set together.", nameof(untilNextMaintenanceWindowStart));
+        }
+
+        if (untilNextMaintenanceWindow && untilNextMaintenanceWindowStart) {
+            throw new ArgumentException("untilNextMaintenanceWindow and untilNextMaintenanceWindowStart cannot be set together.", nameof(untilNextMaintenanceWindowStart));
+        }
+
+        string[]? normalizedPackIds = null;
+        if (packIds is { Count: > 0 }) {
+            normalizedPackIds = packIds
+                .Where(static value => !string.IsNullOrWhiteSpace(value))
+                .Select(static value => value.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        }
+
+        return RequestAsync<BackgroundSchedulerStatusMessage>(
+            new SetBackgroundSchedulerBlockedPacksRequest(
+                requestId: NewRequestId(),
+                operation: operation.Trim(),
+                packIds: normalizedPackIds,
+                durationSeconds: durationSeconds,
+                untilNextMaintenanceWindow: untilNextMaintenanceWindow,
+                untilNextMaintenanceWindowStart: untilNextMaintenanceWindowStart),
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Updates background scheduler maintenance windows from structured descriptors and returns the updated scheduler summary.
+    /// </summary>
+    public Task<BackgroundSchedulerStatusMessage> SetBackgroundSchedulerMaintenanceWindowEntriesAsync(
+        string operation,
+        IReadOnlyList<SessionCapabilityBackgroundSchedulerMaintenanceWindowDto>? windows,
+        CancellationToken cancellationToken = default) {
+        var windowSpecs = windows is { Count: > 0 }
+            ? windows.Select(BuildBackgroundSchedulerMaintenanceWindowSpec).ToArray()
+            : null;
+        return SetBackgroundSchedulerMaintenanceWindowsAsync(operation, windowSpecs, cancellationToken);
+    }
+
+    /// <summary>
+    /// Builds a canonical maintenance-window spec from structured day/time/scope values.
+    /// </summary>
+    public static string BuildBackgroundSchedulerMaintenanceWindowSpec(
+        string day,
+        string startTimeLocal,
+        int durationMinutes,
+        string? packId = null,
+        string? threadId = null) {
+        if (durationMinutes < 1 || durationMinutes > 1440) {
+            throw new ArgumentOutOfRangeException(nameof(durationMinutes), "durationMinutes must be between 1 and 1440.");
+        }
+
+        var normalizedDay = (day ?? string.Empty).Trim();
+        var normalizedStartTime = (startTimeLocal ?? string.Empty).Trim();
+        if (normalizedDay.Length == 0) {
+            throw new ArgumentOutOfRangeException(nameof(day), "day must be provided.");
+        }
+
+        if (normalizedStartTime.Length == 0) {
+            throw new ArgumentOutOfRangeException(nameof(startTimeLocal), "startTimeLocal must be provided.");
+        }
+
+        var normalizedPackId = (packId ?? string.Empty).Trim();
+        var normalizedThreadId = (threadId ?? string.Empty).Trim();
+        if (normalizedPackId.Length > 0 && normalizedThreadId.Length > 0) {
+            throw new ArgumentException("packId and threadId cannot both be provided for a maintenance window scope.", nameof(threadId));
+        }
+
+        var spec = $"{NormalizeBackgroundSchedulerMaintenanceWindowDay(normalizedDay)}@{normalizedStartTime}/{durationMinutes}";
+        if (normalizedPackId.Length > 0) {
+            spec += ";pack=" + normalizedPackId;
+        }
+
+        if (normalizedThreadId.Length > 0) {
+            spec += ";thread=" + normalizedThreadId;
+        }
+
+        ValidateBackgroundSchedulerMaintenanceWindowSpecs(new[] { spec });
+        return spec;
+    }
+
+    /// <summary>
+    /// Builds a canonical maintenance-window spec from a structured descriptor.
+    /// </summary>
+    public static string BuildBackgroundSchedulerMaintenanceWindowSpec(SessionCapabilityBackgroundSchedulerMaintenanceWindowDto window) {
+        ArgumentNullException.ThrowIfNull(window);
+
+        if (!string.IsNullOrWhiteSpace(window.Spec)) {
+            var explicitSpec = window.Spec.Trim();
+            ValidateBackgroundSchedulerMaintenanceWindowSpecs(new[] { explicitSpec });
+            return explicitSpec;
+        }
+
+        return BuildBackgroundSchedulerMaintenanceWindowSpec(
+            window.Day,
+            window.StartTimeLocal,
+            window.DurationMinutes,
+            window.PackId,
+            window.ThreadId);
+    }
+
+    /// <summary>
     /// Runs service-side <c>*_pack_info</c> health probes and returns per-pack status.
     /// </summary>
     public Task<ToolHealthMessage> CheckToolHealthAsync(int? toolTimeoutSeconds = null, IReadOnlyList<string>? packIds = null,
@@ -331,6 +584,148 @@ public sealed class ChatServiceClient : IAsyncDisposable {
             PackIds = packIds is { Count: > 0 } ? packIds.ToArray() : null,
             SourceKinds = sourceKinds is { Count: > 0 } ? sourceKinds.ToArray() : null
         }, cancellationToken);
+    }
+
+    private static void ValidateBackgroundSchedulerStatusLimit(int? value, string parameterName) {
+        if (value is not int requested) {
+            return;
+        }
+
+        if (requested < 0 || requested > ChatRequestOptionLimits.MaxBackgroundSchedulerStatusItems) {
+            throw new ArgumentOutOfRangeException(
+                parameterName,
+                $"{parameterName} must be between 0 and {ChatRequestOptionLimits.MaxBackgroundSchedulerStatusItems}.");
+        }
+    }
+
+    private static void ValidateBackgroundSchedulerPauseSeconds(bool paused, int? pauseSeconds) {
+        if (!paused && pauseSeconds is not null) {
+            throw new ArgumentOutOfRangeException(nameof(pauseSeconds), "pauseSeconds can only be set when paused is true.");
+        }
+
+        if (pauseSeconds is not int requested) {
+            return;
+        }
+
+        if (requested < ChatRequestOptionLimits.MinPositiveTimeoutSeconds || requested > ChatRequestOptionLimits.MaxTimeoutSeconds) {
+            throw new ArgumentOutOfRangeException(
+                nameof(pauseSeconds),
+                $"pauseSeconds must be between {ChatRequestOptionLimits.MinPositiveTimeoutSeconds} and {ChatRequestOptionLimits.MaxTimeoutSeconds}.");
+        }
+    }
+
+    private static void ValidateBackgroundSchedulerMaintenanceWindowOperation(string operation, IReadOnlyList<string>? windows) {
+        var normalizedOperation = (operation ?? string.Empty).Trim().ToLowerInvariant();
+        var requiresWindows = normalizedOperation is "add" or "remove" or "replace";
+        var forbidsWindows = normalizedOperation is "clear" or "reset";
+        if (!requiresWindows && !forbidsWindows) {
+            throw new ArgumentOutOfRangeException(nameof(operation), "operation must be one of: add, remove, replace, clear, reset.");
+        }
+
+        if (forbidsWindows) {
+            if (windows is { Count: > 0 }) {
+                throw new ArgumentOutOfRangeException(nameof(windows), "windows must be empty for clear/reset operations.");
+            }
+
+            return;
+        }
+
+        if (windows is not { Count: > 0 }) {
+            throw new ArgumentOutOfRangeException(nameof(windows), "windows must be provided for add/remove/replace operations.");
+        }
+
+        ValidateBackgroundSchedulerMaintenanceWindowSpecs(windows);
+    }
+
+    private static void ValidateBackgroundSchedulerMaintenanceWindowSpecs(IReadOnlyList<string> windows) {
+        for (var i = 0; i < windows.Count; i++) {
+            var spec = (windows[i] ?? string.Empty).Trim();
+            if (spec.Length == 0) {
+                throw new ArgumentOutOfRangeException(nameof(windows), "windows must not contain empty values.");
+            }
+
+            if (!TryValidateBackgroundSchedulerMaintenanceWindowSpec(spec, out var error)) {
+                throw new ArgumentOutOfRangeException(nameof(windows), error ?? "Invalid maintenance-window spec.");
+            }
+        }
+    }
+
+    private static bool TryValidateBackgroundSchedulerMaintenanceWindowSpec(string spec, out string? error) {
+        error = null;
+        var segments = spec.Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        if (segments.Length == 0) {
+            error = "must use <day>@HH:mm/<minutes> optionally followed by ;pack=<id> and/or ;thread=<id>.";
+            return false;
+        }
+
+        var schedule = segments[0];
+        var atIndex = schedule.IndexOf('@');
+        var slashIndex = schedule.IndexOf('/');
+        if (atIndex <= 0 || slashIndex <= atIndex + 1 || slashIndex >= schedule.Length - 1) {
+            error = "must use <day>@HH:mm/<minutes> optionally followed by ;pack=<id> and/or ;thread=<id>.";
+            return false;
+        }
+
+        var day = schedule[..atIndex].Trim().ToLowerInvariant();
+        if (day is not ("daily" or "everyday" or "day" or "mon" or "monday" or "tue" or "tuesday" or "wed" or "wednesday" or "thu" or "thursday" or "fri" or "friday" or "sat" or "saturday" or "sun" or "sunday")) {
+            error = "day must be daily, mon, tue, wed, thu, fri, sat, or sun.";
+            return false;
+        }
+
+        var time = schedule.Substring(atIndex + 1, slashIndex - atIndex - 1);
+        var timeParts = time.Split(':', StringSplitOptions.TrimEntries);
+        if (timeParts.Length != 2
+            || !int.TryParse(timeParts[0], out var hour)
+            || !int.TryParse(timeParts[1], out var minute)
+            || hour is < 0 or > 23
+            || minute is < 0 or > 59) {
+            error = "time must use HH:mm in 24-hour local time.";
+            return false;
+        }
+
+        var durationText = schedule[(slashIndex + 1)..];
+        if (!int.TryParse(durationText, out var durationMinutes) || durationMinutes is < 1 or > 1440) {
+            error = "duration minutes must be between 1 and 1440.";
+            return false;
+        }
+
+        for (var i = 1; i < segments.Length; i++) {
+            var segment = segments[i];
+            var equalsIndex = segment.IndexOf('=');
+            if (equalsIndex <= 0 || equalsIndex >= segment.Length - 1) {
+                error = "scope segments must use pack=<id> or thread=<id>.";
+                return false;
+            }
+
+            var key = segment[..equalsIndex].Trim().ToLowerInvariant();
+            var value = segment[(equalsIndex + 1)..].Trim();
+            if (value.Length == 0) {
+                error = "scope segments must use a non-empty value.";
+                return false;
+            }
+
+            if (key is not ("pack" or "thread")) {
+                error = "only pack=<id> and thread=<id> scope segments are supported.";
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static string NormalizeBackgroundSchedulerMaintenanceWindowDay(string day) {
+        return (day ?? string.Empty).Trim().ToLowerInvariant() switch {
+            "everyday" => "daily",
+            "day" => "daily",
+            "monday" => "mon",
+            "tuesday" => "tue",
+            "wednesday" => "wed",
+            "thursday" => "thu",
+            "friday" => "fri",
+            "saturday" => "sat",
+            "sunday" => "sun",
+            var value => value
+        };
     }
 
     /// <summary>

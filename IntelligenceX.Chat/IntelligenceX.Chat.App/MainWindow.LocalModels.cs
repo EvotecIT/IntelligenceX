@@ -71,8 +71,54 @@ public sealed partial class MainWindow : Window {
         await RefreshServiceProfilesAsync(client, publishOptions: false, appendWarnings).ConfigureAwait(false);
         var profileApplied = await TryApplyServiceProfileAsync(client, setProfileNewThread, appendWarnings).ConfigureAwait(false);
         await RefreshModelsAsync(client, forceModelRefresh, publishOptions: false, appendWarnings).ConfigureAwait(false);
+        await RefreshBackgroundSchedulerStatusAsync(client, publishOptions: false, appendWarnings).ConfigureAwait(false);
         await PublishOptionsStateAsync().ConfigureAwait(false);
         return profileApplied;
+    }
+
+    private async Task RefreshBackgroundSchedulerStatusAsync(
+        ChatServiceClient client,
+        bool publishOptions,
+        bool appendWarnings,
+        string? threadId = null,
+        bool includeRecentActivity = false,
+        bool includeThreadSummaries = true,
+        int maxRecentActivity = 6,
+        int maxThreadSummaries = 6) {
+        try {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+            var scopedRefresh = !string.IsNullOrWhiteSpace(threadId);
+            var threadSampleLimit = ResolveBackgroundSchedulerThreadIdSampleLimit(includeThreadSummaries);
+            var status = await client.GetBackgroundSchedulerStatusAsync(
+                threadId: string.IsNullOrWhiteSpace(threadId) ? null : threadId.Trim(),
+                includeRecentActivity: includeRecentActivity,
+                includeThreadSummaries: includeThreadSummaries,
+                maxReadyThreadIds: threadSampleLimit,
+                maxRunningThreadIds: threadSampleLimit,
+                maxRecentActivity: maxRecentActivity,
+                maxThreadSummaries: ResolveBackgroundSchedulerThreadSummaryLimit(maxThreadSummaries),
+                cancellationToken: cts.Token).ConfigureAwait(false);
+            ApplyBackgroundSchedulerSnapshot(status.Scheduler, scopedRefresh);
+        } catch (Exception ex) {
+            RestoreBackgroundSchedulerSnapshotAfterRefreshFailure(!string.IsNullOrWhiteSpace(threadId));
+            if (appendWarnings && (VerboseServiceLogs || _debugMode)) {
+                AppendSystem("Couldn't load background scheduler status: " + ex.Message);
+            }
+        }
+
+        if (publishOptions) {
+            await PublishOptionsStateAsync().ConfigureAwait(false);
+        }
+    }
+
+    internal static int ResolveBackgroundSchedulerThreadIdSampleLimit(bool includeThreadSummaries) {
+        return includeThreadSummaries
+            ? ChatRequestOptionLimits.MaxBackgroundSchedulerStatusItems
+            : 8;
+    }
+
+    internal static int ResolveBackgroundSchedulerThreadSummaryLimit(int maxThreadSummaries) {
+        return Math.Clamp(maxThreadSummaries, 0, ChatRequestOptionLimits.MaxBackgroundSchedulerStatusItems);
     }
 
     private async Task RefreshLocalRuntimeDetectionAsync(bool publishOptions) {

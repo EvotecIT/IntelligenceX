@@ -81,7 +81,537 @@ internal sealed partial class ChatServiceSession {
         }, cancellationToken).ConfigureAwait(false);
     }
 
+    private async Task HandleBackgroundSchedulerStatusAsync(
+        StreamWriter writer,
+        GetBackgroundSchedulerStatusRequest request,
+        CancellationToken cancellationToken) {
+        if (!TryBuildBackgroundSchedulerSummaryOptions(request, out var options, out var error)) {
+            await WriteAsync(writer, new ErrorMessage {
+                Kind = ChatServiceMessageKind.Response,
+                RequestId = request.RequestId,
+                Error = error ?? "Invalid background scheduler status request.",
+                Code = "invalid_argument"
+            }, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        await WriteAsync(writer, new BackgroundSchedulerStatusMessage {
+            Kind = ChatServiceMessageKind.Response,
+            RequestId = request.RequestId,
+            Scheduler = BuildBackgroundSchedulerSummary(options)
+        }, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task HandleBackgroundSchedulerStateAsync(
+        StreamWriter writer,
+        SetBackgroundSchedulerStateRequest request,
+        CancellationToken cancellationToken) {
+        if (!TryValidateBackgroundSchedulerStateRequest(request, out var normalizedPauseSeconds, out var error)) {
+            await WriteAsync(writer, new ErrorMessage {
+                Kind = ChatServiceMessageKind.Response,
+                RequestId = request.RequestId,
+                Error = error ?? "Invalid background scheduler control request.",
+                Code = "invalid_argument"
+            }, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        await WriteAsync(writer, new BackgroundSchedulerStatusMessage {
+            Kind = ChatServiceMessageKind.Response,
+            RequestId = request.RequestId,
+            Scheduler = SetBackgroundSchedulerManualPause(request.Paused, normalizedPauseSeconds, request.Reason)
+        }, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task HandleBackgroundSchedulerMaintenanceWindowsAsync(
+        StreamWriter writer,
+        SetBackgroundSchedulerMaintenanceWindowsRequest request,
+        CancellationToken cancellationToken) {
+        if (!TryValidateBackgroundSchedulerMaintenanceWindowsRequest(request, out var normalizedOperation, out var normalizedWindows, out var error)) {
+            await WriteAsync(writer, new ErrorMessage {
+                Kind = ChatServiceMessageKind.Response,
+                RequestId = request.RequestId,
+                Error = error ?? "Invalid background scheduler maintenance-window request.",
+                Code = "invalid_argument"
+            }, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        _backgroundSchedulerControlState.UpdateMaintenanceWindows(normalizedOperation, normalizedWindows);
+
+        await WriteAsync(writer, new BackgroundSchedulerStatusMessage {
+            Kind = ChatServiceMessageKind.Response,
+            RequestId = request.RequestId,
+            Scheduler = BuildBackgroundSchedulerSummary()
+        }, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task HandleBackgroundSchedulerBlockedPacksAsync(
+        StreamWriter writer,
+        SetBackgroundSchedulerBlockedPacksRequest request,
+        CancellationToken cancellationToken) {
+        if (!TryValidateBackgroundSchedulerBlockedPacksRequest(request, out var normalizedOperation, out var normalizedPackIds, out var durationSeconds, out var untilNextMaintenanceWindow, out var untilNextMaintenanceWindowStart, out var error)) {
+            await WriteAsync(writer, new ErrorMessage {
+                Kind = ChatServiceMessageKind.Response,
+                RequestId = request.RequestId,
+                Error = error ?? "Invalid background scheduler blocked-pack request.",
+                Code = "invalid_argument"
+            }, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        if (untilNextMaintenanceWindow) {
+            if (!_backgroundSchedulerControlState.TryResolveBlockedPackDurationUntilNextMaintenanceWindow(
+                    DateTime.UtcNow.Ticks,
+                    normalizedPackIds[0],
+                    out var resolvedDurationSeconds,
+                    out var maintenanceWindowSpec)) {
+                await WriteAsync(writer, new ErrorMessage {
+                    Kind = ChatServiceMessageKind.Response,
+                    RequestId = request.RequestId,
+                    Error = $"No relevant maintenance window was found for pack '{normalizedPackIds[0]}'.",
+                    Code = "invalid_argument"
+                }, cancellationToken).ConfigureAwait(false);
+                return;
+            }
+
+            durationSeconds = resolvedDurationSeconds;
+        } else if (untilNextMaintenanceWindowStart) {
+            if (!_backgroundSchedulerControlState.TryResolveBlockedPackDurationUntilNextMaintenanceWindowStart(
+                    DateTime.UtcNow.Ticks,
+                    normalizedPackIds[0],
+                    out var resolvedDurationSeconds,
+                    out var maintenanceWindowSpec)) {
+                await WriteAsync(writer, new ErrorMessage {
+                    Kind = ChatServiceMessageKind.Response,
+                    RequestId = request.RequestId,
+                    Error = $"No relevant maintenance window was found for pack '{normalizedPackIds[0]}'.",
+                    Code = "invalid_argument"
+                }, cancellationToken).ConfigureAwait(false);
+                return;
+            }
+
+            durationSeconds = resolvedDurationSeconds;
+        }
+
+        _backgroundSchedulerControlState.UpdateBlockedPacks(normalizedOperation, normalizedPackIds, durationSeconds);
+
+        await WriteAsync(writer, new BackgroundSchedulerStatusMessage {
+            Kind = ChatServiceMessageKind.Response,
+            RequestId = request.RequestId,
+            Scheduler = BuildBackgroundSchedulerSummary()
+        }, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task HandleBackgroundSchedulerBlockedThreadsAsync(
+        StreamWriter writer,
+        SetBackgroundSchedulerBlockedThreadsRequest request,
+        CancellationToken cancellationToken) {
+        if (!TryValidateBackgroundSchedulerBlockedThreadsRequest(request, out var normalizedOperation, out var normalizedThreadIds, out var durationSeconds, out var untilNextMaintenanceWindow, out var untilNextMaintenanceWindowStart, out var error)) {
+            await WriteAsync(writer, new ErrorMessage {
+                Kind = ChatServiceMessageKind.Response,
+                RequestId = request.RequestId,
+                Error = error ?? "Invalid background scheduler blocked-thread request.",
+                Code = "invalid_argument"
+            }, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        if (untilNextMaintenanceWindow) {
+            if (!_backgroundSchedulerControlState.TryResolveBlockedThreadDurationUntilNextMaintenanceWindow(
+                    DateTime.UtcNow.Ticks,
+                    normalizedThreadIds[0],
+                    out var resolvedDurationSeconds,
+                    out var maintenanceWindowSpec)) {
+                await WriteAsync(writer, new ErrorMessage {
+                    Kind = ChatServiceMessageKind.Response,
+                    RequestId = request.RequestId,
+                    Error = $"No relevant maintenance window was found for thread '{normalizedThreadIds[0]}'.",
+                    Code = "invalid_argument"
+                }, cancellationToken).ConfigureAwait(false);
+                return;
+            }
+
+            durationSeconds = resolvedDurationSeconds;
+        } else if (untilNextMaintenanceWindowStart) {
+            if (!_backgroundSchedulerControlState.TryResolveBlockedThreadDurationUntilNextMaintenanceWindowStart(
+                    DateTime.UtcNow.Ticks,
+                    normalizedThreadIds[0],
+                    out var resolvedDurationSeconds,
+                    out var maintenanceWindowSpec)) {
+                await WriteAsync(writer, new ErrorMessage {
+                    Kind = ChatServiceMessageKind.Response,
+                    RequestId = request.RequestId,
+                    Error = $"No relevant maintenance window was found for thread '{normalizedThreadIds[0]}'.",
+                    Code = "invalid_argument"
+                }, cancellationToken).ConfigureAwait(false);
+                return;
+            }
+
+            durationSeconds = resolvedDurationSeconds;
+        }
+
+        _backgroundSchedulerControlState.UpdateBlockedThreads(normalizedOperation, normalizedThreadIds, durationSeconds);
+
+        await WriteAsync(writer, new BackgroundSchedulerStatusMessage {
+            Kind = ChatServiceMessageKind.Response,
+            RequestId = request.RequestId,
+            Scheduler = BuildBackgroundSchedulerSummary()
+        }, cancellationToken).ConfigureAwait(false);
+    }
+
     internal static bool ShouldUseCachedToolCatalogFallbackForListTools(bool startupToolingBootstrapInProgress) {
+        return true;
+    }
+
+    private static bool TryBuildBackgroundSchedulerSummaryOptions(
+        GetBackgroundSchedulerStatusRequest request,
+        out BackgroundSchedulerSummaryOptions options,
+        out string? error) {
+        error = null;
+        var scopeThreadId = (request.ThreadId ?? string.Empty).Trim();
+        if (!TryValidateBackgroundSchedulerStatusLimit(request.MaxReadyThreadIds, "maxReadyThreadIds", out var maxReadyThreadIds, out error)
+            || !TryValidateBackgroundSchedulerStatusLimit(request.MaxRunningThreadIds, "maxRunningThreadIds", out var maxRunningThreadIds, out error)
+            || !TryValidateBackgroundSchedulerStatusLimit(request.MaxRecentActivity, "maxRecentActivity", out var maxRecentActivity, out error)
+            || !TryValidateBackgroundSchedulerStatusLimit(request.MaxThreadSummaries, "maxThreadSummaries", out var maxThreadSummaries, out error)) {
+            options = default;
+            return false;
+        }
+
+        options = new BackgroundSchedulerSummaryOptions(
+            ScopeThreadId: scopeThreadId,
+            IncludeRecentActivity: request.IncludeRecentActivity,
+            IncludeThreadSummaries: request.IncludeThreadSummaries,
+            MaxReadyThreadIds: maxReadyThreadIds ?? MaxBackgroundSchedulerThreadIds,
+            MaxRunningThreadIds: maxRunningThreadIds ?? MaxBackgroundSchedulerThreadIds,
+            MaxRecentActivity: maxRecentActivity ?? MaxBackgroundSchedulerRecentActivity,
+            MaxThreadSummaries: maxThreadSummaries ?? MaxBackgroundSchedulerThreadSummaries);
+        return true;
+    }
+
+    private static bool TryValidateBackgroundSchedulerStatusLimit(
+        int? value,
+        string optionName,
+        out int? normalizedValue,
+        out string? error) {
+        normalizedValue = value;
+        error = null;
+        if (value is null) {
+            return true;
+        }
+
+        if (value < 0 || value > ChatRequestOptionLimits.MaxBackgroundSchedulerStatusItems) {
+            error = $"{optionName} must be between 0 and {ChatRequestOptionLimits.MaxBackgroundSchedulerStatusItems}.";
+            normalizedValue = null;
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool TryValidateBackgroundSchedulerStateRequest(
+        SetBackgroundSchedulerStateRequest request,
+        out int? normalizedPauseSeconds,
+        out string? error) {
+        normalizedPauseSeconds = request.PauseSeconds;
+        error = null;
+
+        if (!request.Paused && request.PauseSeconds is not null) {
+            error = "pauseSeconds can only be set when paused=true.";
+            normalizedPauseSeconds = null;
+            return false;
+        }
+
+        if (request.PauseSeconds is not int pauseSeconds) {
+            return true;
+        }
+
+        if (pauseSeconds < ChatRequestOptionLimits.MinPositiveTimeoutSeconds
+            || pauseSeconds > ChatRequestOptionLimits.MaxTimeoutSeconds) {
+            error = $"pauseSeconds must be between {ChatRequestOptionLimits.MinPositiveTimeoutSeconds} and {ChatRequestOptionLimits.MaxTimeoutSeconds}.";
+            normalizedPauseSeconds = null;
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool TryValidateBackgroundSchedulerMaintenanceWindowsRequest(
+        SetBackgroundSchedulerMaintenanceWindowsRequest request,
+        out string normalizedOperation,
+        out string[] normalizedWindows,
+        out string? error) {
+        normalizedOperation = (request.Operation ?? string.Empty).Trim().ToLowerInvariant();
+        normalizedWindows = Array.Empty<string>();
+        error = null;
+
+        var requiresWindows = normalizedOperation is "add" or "remove" or "replace";
+        var forbidsWindows = normalizedOperation is "clear" or "reset";
+        if (!requiresWindows && !forbidsWindows) {
+            error = "operation must be one of: add, remove, replace, clear, reset.";
+            return false;
+        }
+
+        if (forbidsWindows) {
+            if (request.Windows is { Length: > 0 }) {
+                error = "windows must be empty for clear/reset operations.";
+                return false;
+            }
+
+            return true;
+        }
+
+        if (request.Windows is not { Length: > 0 }) {
+            error = "windows must be provided for add/remove/replace operations.";
+            return false;
+        }
+
+        var normalized = new List<string>(request.Windows.Length);
+        for (var i = 0; i < request.Windows.Length; i++) {
+            if (!ServiceOptions.TryApplyBackgroundSchedulerMaintenanceWindow(
+                    new ServiceOptions { },
+                    request.Windows[i],
+                    "--background-scheduler-maintenance-window",
+                    out error)) {
+                if (error is not null && error.StartsWith("--background-scheduler-maintenance-window ", StringComparison.Ordinal)) {
+                    error = error["--background-scheduler-maintenance-window ".Length..];
+                }
+                return false;
+            }
+
+            if (!ChatServiceBackgroundSchedulerControlState.TryNormalizeMaintenanceWindowSpec(request.Windows[i], out var normalizedSpec, out error)) {
+                return false;
+            }
+
+            if (normalized.Contains(normalizedSpec, StringComparer.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            normalized.Add(normalizedSpec);
+        }
+
+        normalizedWindows = normalized.ToArray();
+        if (normalizedWindows.Length == 0) {
+            error = "windows must include at least one valid maintenance window.";
+            return false;
+        }
+
+        return true;
+    }
+
+    private bool TryValidateBackgroundSchedulerBlockedPacksRequest(
+        SetBackgroundSchedulerBlockedPacksRequest request,
+        out string normalizedOperation,
+        out string[] normalizedPackIds,
+        out int? durationSeconds,
+        out bool untilNextMaintenanceWindow,
+        out bool untilNextMaintenanceWindowStart,
+        out string? error) {
+        normalizedOperation = (request.Operation ?? string.Empty).Trim().ToLowerInvariant();
+        normalizedPackIds = Array.Empty<string>();
+        durationSeconds = request.DurationSeconds;
+        untilNextMaintenanceWindow = request.UntilNextMaintenanceWindow;
+        untilNextMaintenanceWindowStart = request.UntilNextMaintenanceWindowStart;
+        error = null;
+
+        var requiresPackIds = normalizedOperation is "add" or "remove" or "replace";
+        var forbidsPackIds = normalizedOperation is "clear" or "reset";
+        if (!requiresPackIds && !forbidsPackIds) {
+            error = "operation must be one of: add, remove, replace, clear, reset.";
+            return false;
+        }
+
+        if ((durationSeconds is not null || untilNextMaintenanceWindow || untilNextMaintenanceWindowStart) && !string.Equals(normalizedOperation, "add", StringComparison.Ordinal)) {
+            error = "durationSeconds, untilNextMaintenanceWindow, and untilNextMaintenanceWindowStart are only supported for add operations.";
+            durationSeconds = null;
+            untilNextMaintenanceWindow = false;
+            untilNextMaintenanceWindowStart = false;
+            return false;
+        }
+
+        if (durationSeconds is < ChatRequestOptionLimits.MinPositiveTimeoutSeconds or > ChatRequestOptionLimits.MaxTimeoutSeconds) {
+            error = $"durationSeconds must be between {ChatRequestOptionLimits.MinPositiveTimeoutSeconds} and {ChatRequestOptionLimits.MaxTimeoutSeconds}.";
+            durationSeconds = null;
+            return false;
+        }
+
+        if (durationSeconds is not null && untilNextMaintenanceWindow) {
+            error = "durationSeconds and untilNextMaintenanceWindow cannot be used together.";
+            durationSeconds = null;
+            untilNextMaintenanceWindow = false;
+            return false;
+        }
+
+        if (durationSeconds is not null && untilNextMaintenanceWindowStart) {
+            error = "durationSeconds and untilNextMaintenanceWindowStart cannot be used together.";
+            durationSeconds = null;
+            untilNextMaintenanceWindowStart = false;
+            return false;
+        }
+
+        if (untilNextMaintenanceWindow && untilNextMaintenanceWindowStart) {
+            error = "untilNextMaintenanceWindow and untilNextMaintenanceWindowStart cannot be used together.";
+            untilNextMaintenanceWindow = false;
+            untilNextMaintenanceWindowStart = false;
+            return false;
+        }
+
+        if (forbidsPackIds) {
+            if (request.PackIds is { Length: > 0 }) {
+                error = "packIds must be omitted for clear/reset operations.";
+                return false;
+            }
+
+            return true;
+        }
+
+        if (request.PackIds is not { Length: > 0 }) {
+            error = "packIds must include at least one pack id.";
+            return false;
+        }
+
+        normalizedPackIds = request.PackIds
+            .Select(ResolveRuntimePackId)
+            .Where(static value => value.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (normalizedPackIds.Length == 0) {
+            error = "packIds must include at least one valid pack id.";
+            return false;
+        }
+
+        if ((untilNextMaintenanceWindow || untilNextMaintenanceWindowStart) && normalizedPackIds.Length != 1) {
+            error = untilNextMaintenanceWindowStart
+                ? "untilNextMaintenanceWindowStart requires exactly one pack id."
+                : "untilNextMaintenanceWindow requires exactly one pack id.";
+            normalizedPackIds = Array.Empty<string>();
+            untilNextMaintenanceWindow = false;
+            untilNextMaintenanceWindowStart = false;
+            return false;
+        }
+
+        if (normalizedPackIds.Length > ChatRequestOptionLimits.MaxToolSelectors) {
+            error = $"packIds cannot exceed {ChatRequestOptionLimits.MaxToolSelectors} items.";
+            normalizedPackIds = Array.Empty<string>();
+            return false;
+        }
+
+        for (var i = 0; i < normalizedPackIds.Length; i++) {
+            if (normalizedPackIds[i].Length > ChatRequestOptionLimits.MaxToolSelectorLength) {
+                error = $"packIds[{i}] cannot exceed {ChatRequestOptionLimits.MaxToolSelectorLength} characters.";
+                normalizedPackIds = Array.Empty<string>();
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool TryValidateBackgroundSchedulerBlockedThreadsRequest(
+        SetBackgroundSchedulerBlockedThreadsRequest request,
+        out string normalizedOperation,
+        out string[] normalizedThreadIds,
+        out int? durationSeconds,
+        out bool untilNextMaintenanceWindow,
+        out bool untilNextMaintenanceWindowStart,
+        out string? error) {
+        normalizedOperation = (request.Operation ?? string.Empty).Trim().ToLowerInvariant();
+        normalizedThreadIds = Array.Empty<string>();
+        durationSeconds = request.DurationSeconds;
+        untilNextMaintenanceWindow = request.UntilNextMaintenanceWindow;
+        untilNextMaintenanceWindowStart = request.UntilNextMaintenanceWindowStart;
+        error = null;
+
+        var requiresThreadIds = normalizedOperation is "add" or "remove" or "replace";
+        var forbidsThreadIds = normalizedOperation is "clear" or "reset";
+        if (!requiresThreadIds && !forbidsThreadIds) {
+            error = "operation must be one of: add, remove, replace, clear, reset.";
+            return false;
+        }
+
+        if ((durationSeconds is not null || untilNextMaintenanceWindow || untilNextMaintenanceWindowStart) && !string.Equals(normalizedOperation, "add", StringComparison.Ordinal)) {
+            error = "durationSeconds, untilNextMaintenanceWindow, and untilNextMaintenanceWindowStart are only supported for add operations.";
+            durationSeconds = null;
+            untilNextMaintenanceWindow = false;
+            untilNextMaintenanceWindowStart = false;
+            return false;
+        }
+
+        if (durationSeconds is < ChatRequestOptionLimits.MinPositiveTimeoutSeconds or > ChatRequestOptionLimits.MaxTimeoutSeconds) {
+            error = $"durationSeconds must be between {ChatRequestOptionLimits.MinPositiveTimeoutSeconds} and {ChatRequestOptionLimits.MaxTimeoutSeconds}.";
+            durationSeconds = null;
+            return false;
+        }
+
+        if (durationSeconds is not null && untilNextMaintenanceWindow) {
+            error = "durationSeconds and untilNextMaintenanceWindow cannot be used together.";
+            durationSeconds = null;
+            untilNextMaintenanceWindow = false;
+            return false;
+        }
+
+        if (durationSeconds is not null && untilNextMaintenanceWindowStart) {
+            error = "durationSeconds and untilNextMaintenanceWindowStart cannot be used together.";
+            durationSeconds = null;
+            untilNextMaintenanceWindowStart = false;
+            return false;
+        }
+
+        if (untilNextMaintenanceWindow && untilNextMaintenanceWindowStart) {
+            error = "untilNextMaintenanceWindow and untilNextMaintenanceWindowStart cannot be used together.";
+            untilNextMaintenanceWindow = false;
+            untilNextMaintenanceWindowStart = false;
+            return false;
+        }
+
+        if (forbidsThreadIds) {
+            if (request.ThreadIds is { Length: > 0 }) {
+                error = "threadIds must be omitted for clear/reset operations.";
+                return false;
+            }
+
+            return true;
+        }
+
+        if (request.ThreadIds is not { Length: > 0 }) {
+            error = "threadIds must include at least one thread id.";
+            return false;
+        }
+
+        normalizedThreadIds = request.ThreadIds
+            .Select(static value => (value ?? string.Empty).Trim())
+            .Where(static value => value.Length > 0)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        if (normalizedThreadIds.Length == 0) {
+            error = "threadIds must include at least one non-empty thread id.";
+            return false;
+        }
+
+        if ((untilNextMaintenanceWindow || untilNextMaintenanceWindowStart) && normalizedThreadIds.Length != 1) {
+            error = untilNextMaintenanceWindowStart
+                ? "untilNextMaintenanceWindowStart requires exactly one thread id."
+                : "untilNextMaintenanceWindow requires exactly one thread id.";
+            normalizedThreadIds = Array.Empty<string>();
+            untilNextMaintenanceWindow = false;
+            untilNextMaintenanceWindowStart = false;
+            return false;
+        }
+
+        if (normalizedThreadIds.Length > ChatRequestOptionLimits.MaxToolSelectors) {
+            error = $"threadIds cannot exceed {ChatRequestOptionLimits.MaxToolSelectors} items.";
+            normalizedThreadIds = Array.Empty<string>();
+            return false;
+        }
+
+        for (var i = 0; i < normalizedThreadIds.Length; i++) {
+            if (normalizedThreadIds[i].Length > ChatRequestOptionLimits.MaxToolSelectorLength) {
+                error = $"threadIds[{i}] cannot exceed {ChatRequestOptionLimits.MaxToolSelectorLength} characters.";
+                normalizedThreadIds = Array.Empty<string>();
+                return false;
+            }
+        }
+
         return true;
     }
 

@@ -71,6 +71,22 @@
       <div class="sidebar-resize-handle" id="sidebarResizeHandle" title="Resize sidebar"></div>
 
       <div class="chat-main">
+        <div class="chat-thread-banner" id="activeThreadSchedulerBanner" hidden>
+          <div class="chat-thread-banner-main">
+            <div class="chat-thread-banner-title" id="activeThreadSchedulerTitle"></div>
+            <div class="chat-thread-banner-meta" id="activeThreadSchedulerMeta"></div>
+            <div class="chat-thread-banner-detail" id="activeThreadSchedulerDetail"></div>
+          </div>
+          <div class="chat-thread-banner-actions">
+            <button id="btnActiveThreadSchedulerOpen" class="chat-thread-banner-btn chat-thread-banner-btn-ghost" type="button">Open Scheduler</button>
+            <button id="btnActiveThreadSchedulerToggleMute" class="chat-thread-banner-btn chat-thread-banner-btn-warn" type="button">Mute Thread</button>
+            <button id="btnActiveThreadSchedulerTempMute" class="chat-thread-banner-btn chat-thread-banner-btn-ghost" type="button">Mute 30m</button>
+            <button id="btnActiveThreadSchedulerTempMuteLong" class="chat-thread-banner-btn chat-thread-banner-btn-ghost" type="button">Mute 2h</button>
+            <button id="btnActiveThreadSchedulerMuteUntilMaintenance" class="chat-thread-banner-btn chat-thread-banner-btn-ghost" type="button">Until End</button>
+            <button id="btnActiveThreadSchedulerMuteUntilMaintenanceStart" class="chat-thread-banner-btn chat-thread-banner-btn-ghost" type="button">Until Start</button>
+            <button id="btnActiveThreadSchedulerRefresh" class="chat-thread-banner-btn" type="button">Refresh Thread</button>
+          </div>
+        </div>
         <main class="transcript" id="transcript" tabindex="0"></main>
 
         <div class="activity-indicator" id="activity">
@@ -487,6 +503,99 @@
             <button id="btnClearQueuedTurns" class="options-btn options-btn-sm options-btn-ghost">Clear Queues</button>
           </div>
           <div class="options-note" id="optQueueDispatchState">Queue empty.</div>
+        </section>
+
+        <section class="options-group">
+          <div class="options-label">Background Scheduler</div>
+          <div class="options-note">Service-backed daemon controls for prepared background follow-up work.</div>
+          <div class="options-note" id="optRuntimeSchedulerState">No background scheduler diagnostics yet.</div>
+          <div class="options-kv" id="optRuntimeSchedulerKv"></div>
+          <div class="options-list options-memory-list" id="optRuntimeSchedulerMaintenanceList"></div>
+          <div class="options-note">Muted pack policy</div>
+          <div class="options-list options-memory-list" id="optRuntimeSchedulerBlockedPackList"></div>
+          <div class="options-note">Muted thread policy</div>
+          <div class="options-list options-memory-list" id="optRuntimeSchedulerBlockedThreadList"></div>
+          <div class="options-note">Recent scheduler activity</div>
+          <div class="options-list options-memory-list" id="optRuntimeSchedulerActivityList"></div>
+          <div class="options-note">Tracked thread summaries</div>
+          <div class="options-list options-memory-list" id="optRuntimeSchedulerThreadList"></div>
+          <div class="options-row">
+            <label class="options-label-inline" for="optSchedulerScopePack">Pack scope</label>
+            <select id="optSchedulerScopePack" class="options-select">
+              <option value="">Any pack</option>
+            </select>
+          </div>
+          <div class="options-row">
+            <label class="options-label-inline" for="optSchedulerSuppressMinutes">Temporary mute minutes</label>
+            <input id="optSchedulerSuppressMinutes" class="options-input options-input-sm" type="number" min="1" max="1440" value="30" />
+          </div>
+          <div class="options-actions options-actions-wrap">
+            <button id="btnSchedulerScopeTogglePackMute" class="options-btn options-btn-sm options-btn-ghost">Mute Scoped Pack</button>
+            <button id="btnSchedulerScopeTempPackMute" class="options-btn options-btn-sm options-btn-ghost">Temp Mute Scoped Pack</button>
+            <button id="btnSchedulerScopePackMuteUntilMaintenance" class="options-btn options-btn-sm options-btn-ghost">Mute Pack Until End</button>
+            <button id="btnSchedulerScopePackMuteUntilMaintenanceStart" class="options-btn options-btn-sm options-btn-ghost">Mute Pack Until Start</button>
+            <button id="btnSchedulerClearPackBlocks" class="options-btn options-btn-sm options-btn-ghost">Clear Muted Packs</button>
+          </div>
+          <div class="options-row">
+            <label class="options-label-inline" for="optSchedulerScopeThread">Refresh scope</label>
+            <select id="optSchedulerScopeThread" class="options-select">
+              <option value="">All tracked threads</option>
+            </select>
+          </div>
+          <div class="options-actions options-actions-wrap">
+            <button id="btnSchedulerScopeToggleMute" class="options-btn options-btn-sm options-btn-ghost">Mute Scoped Thread</button>
+            <button id="btnSchedulerScopeTempMute" class="options-btn options-btn-sm options-btn-ghost">Temp Mute Scoped Thread</button>
+            <button id="btnSchedulerScopeThreadMuteUntilMaintenance" class="options-btn options-btn-sm options-btn-ghost">Mute Thread Until End</button>
+            <button id="btnSchedulerScopeThreadMuteUntilMaintenanceStart" class="options-btn options-btn-sm options-btn-ghost">Mute Thread Until Start</button>
+            <button id="btnSchedulerClearThreadBlocks" class="options-btn options-btn-sm options-btn-ghost">Clear Muted Threads</button>
+          </div>
+          <div class="options-row">
+            <label class="options-label-inline" for="optSchedulerPauseMinutes">Pause minutes</label>
+            <input id="optSchedulerPauseMinutes" class="options-input options-input-sm" type="number" min="1" max="1440" value="15" />
+          </div>
+          <div class="options-actions options-actions-wrap">
+            <button id="btnSchedulerRefresh" class="options-btn options-btn-sm options-btn-ghost">Refresh Status</button>
+            <button id="btnSchedulerPause" class="options-btn options-btn-sm options-btn-ghost">Pause</button>
+            <button id="btnSchedulerResume" class="options-btn options-btn-sm">Resume</button>
+          </div>
+          <div class="options-note">Add recurring maintenance window</div>
+          <div class="options-row">
+            <label class="options-label-inline" for="optSchedulerMaintenanceDay">Day</label>
+            <select id="optSchedulerMaintenanceDay" class="options-select">
+              <option value="daily">Daily</option>
+              <option value="mon">Mon</option>
+              <option value="tue">Tue</option>
+              <option value="wed">Wed</option>
+              <option value="thu">Thu</option>
+              <option value="fri">Fri</option>
+              <option value="sat">Sat</option>
+              <option value="sun">Sun</option>
+            </select>
+          </div>
+          <div class="options-row">
+            <label class="options-label-inline" for="optSchedulerMaintenanceStart">Start time</label>
+            <input id="optSchedulerMaintenanceStart" class="options-input options-input-sm" type="time" value="23:30" />
+          </div>
+          <div class="options-row">
+            <label class="options-label-inline" for="optSchedulerMaintenanceDuration">Duration (minutes)</label>
+            <input id="optSchedulerMaintenanceDuration" class="options-input options-input-sm" type="number" min="1" max="1440" value="120" />
+          </div>
+          <div class="options-row">
+            <label class="options-label-inline" for="optSchedulerMaintenancePackId">Pack scope</label>
+            <select id="optSchedulerMaintenancePackId" class="options-select">
+              <option value="">Any pack</option>
+            </select>
+          </div>
+          <div class="options-row">
+            <label class="options-label-inline" for="optSchedulerMaintenanceThreadId">Thread scope</label>
+            <select id="optSchedulerMaintenanceThreadId" class="options-select">
+              <option value="">Any tracked thread</option>
+            </select>
+          </div>
+          <div class="options-actions options-actions-wrap">
+            <button id="btnSchedulerAddMaintenance" class="options-btn options-btn-sm options-btn-ghost">Add Window</button>
+            <button id="btnSchedulerClearMaintenance" class="options-btn options-btn-sm options-btn-ghost">Clear Windows</button>
+          </div>
         </section>
 
         <section class="options-group">

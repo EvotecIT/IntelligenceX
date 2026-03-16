@@ -29,8 +29,29 @@ public sealed class EventLogToolPack : IToolPack, IToolPackCatalogProvider {
         SourceKind = "builtin",
         EngineId = "eventviewerx",
         Category = "eventlog",
-        CapabilityTags = new[] { "event_logs", "evtx", "forensics", "local_analysis", "remote_analysis" },
-        SearchTokens = new[] { "event", "eventlog", "eventviewerx", "evtx", "forensics", "remote_analysis", "windows_logs" },
+        CapabilityTags = new[] {
+            "auth",
+            "event_logs",
+            "evtx",
+            "forensics",
+            "kerberos",
+            "local_analysis",
+            "remote_analysis",
+            "security_events"
+        },
+        SearchTokens = new[] {
+            "auth",
+            "event",
+            "eventlog",
+            "eventviewerx",
+            "evtx",
+            "forensics",
+            "kerberos",
+            "remote_analysis",
+            "security_events",
+            "windows_events",
+            "windows_logs"
+        },
         CapabilityParity = EventLogToolPackParity.Slices
     };
 
