@@ -452,4 +452,92 @@ public class OfficeImoReadToolTests {
             }
         }
     }
+
+    [Fact]
+    public async Task OfficeImoRead_WhenMaxChunksReached_UsesUpstreamBudgetingAndMarksResultTruncated() {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "ix-officeimo-read-" + Guid.NewGuid().ToString("n"));
+        Directory.CreateDirectory(tempRoot);
+
+        try {
+            File.WriteAllText(Path.Combine(tempRoot, "a.md"), "# A\n\nAlpha");
+            File.WriteAllText(Path.Combine(tempRoot, "b.md"), "# B\n\nBeta");
+
+            var options = new OfficeImoToolOptions();
+            options.AllowedRoots.Add(tempRoot);
+            var tool = new OfficeImoReadTool(options);
+
+            var json = await tool.InvokeAsync(
+                arguments: new JsonObject()
+                    .Add("path", tempRoot)
+                    .Add("output_mode", "both")
+                    .Add("include_document_chunks", true)
+                    .Add("max_chunks", 1),
+                cancellationToken: CancellationToken.None);
+
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+
+            Assert.True(root.GetProperty("ok").GetBoolean());
+            Assert.True(root.GetProperty("truncated").GetBoolean());
+            Assert.Equal(2, root.GetProperty("documents").GetArrayLength());
+            Assert.Equal(1, root.GetProperty("chunks").GetArrayLength());
+            Assert.Equal(2, root.GetProperty("chunks_returned").GetInt32());
+
+            var documents = root.GetProperty("documents").EnumerateArray().ToArray();
+            Assert.Equal(1, documents[0].GetProperty("chunks").GetArrayLength());
+            Assert.Equal(0, documents[1].GetProperty("chunks").GetArrayLength());
+
+            var warnings = root.GetProperty("warnings").EnumerateArray()
+                .Select(static x => x.GetString())
+                .Where(static x => !string.IsNullOrWhiteSpace(x))
+                .ToArray();
+            Assert.Contains(warnings, static warning => warning!.Contains("MaxReturnedChunks", StringComparison.OrdinalIgnoreCase));
+        } finally {
+            try {
+                Directory.Delete(tempRoot, recursive: true);
+            } catch {
+                // Best-effort cleanup.
+            }
+        }
+    }
+
+    [Fact]
+    public async Task OfficeImoRead_WhenMaxChunksReached_ReportsTruncationAndKeepsSharedBudgetSemantics() {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "ix-officeimo-read-" + Guid.NewGuid().ToString("n"));
+        Directory.CreateDirectory(tempRoot);
+
+        try {
+            var markdownPath = Path.Combine(tempRoot, "knowledge.md");
+            File.WriteAllText(markdownPath, "# Top\n\nParagraph 1.\n\n## Child\n\nParagraph 2.");
+
+            var options = new OfficeImoToolOptions();
+            options.AllowedRoots.Add(tempRoot);
+            var tool = new OfficeImoReadTool(options);
+
+            var json = await tool.InvokeAsync(
+                arguments: new JsonObject()
+                    .Add("path", markdownPath)
+                    .Add("output_mode", "both")
+                    .Add("include_document_chunks", true)
+                    .Add("max_chunks", 1),
+                cancellationToken: CancellationToken.None);
+
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+
+            Assert.True(root.GetProperty("ok").GetBoolean());
+            Assert.True(root.GetProperty("truncated").GetBoolean());
+            Assert.Equal(1, root.GetProperty("chunks").GetArrayLength());
+            Assert.Single(root.GetProperty("documents").EnumerateArray());
+            Assert.Equal(1, root.GetProperty("documents")[0].GetProperty("chunks").GetArrayLength());
+            Assert.Equal(2, root.GetProperty("chunks_returned").GetInt32());
+            Assert.True(root.GetProperty("chunks_produced").GetInt32() >= 2);
+        } finally {
+            try {
+                Directory.Delete(tempRoot, recursive: true);
+            } catch {
+                // Best-effort cleanup.
+            }
+        }
+    }
 }

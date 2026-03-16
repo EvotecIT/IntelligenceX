@@ -139,6 +139,15 @@ public sealed class ToolArgumentReader {
     }
 
     /// <summary>
+    /// Reads an optional boolean value only when the source JSON token is a boolean.
+    /// </summary>
+    public bool? OptionalBoolean(string key) {
+        return _arguments?.TryGetValue(key, out var value) == true && value is not null && value.Kind == JsonValueKind.Boolean
+            ? value.AsBoolean()
+            : null;
+    }
+
+    /// <summary>
     /// Reads an integer value with bounds.
     /// </summary>
     public int CappedInt32(string key, int defaultValue, int minInclusive, int maxInclusive) {
@@ -178,6 +187,13 @@ public sealed class ToolArgumentReader {
     /// </summary>
     public IReadOnlyList<int> PositiveInt32ArrayCapped(string key, int maxInclusive) {
         return ToolArgs.ReadPositiveInt32ArrayCapped(_arguments?.GetArray(key), maxInclusive);
+    }
+
+    /// <summary>
+    /// Reads an optional JSON array value.
+    /// </summary>
+    public JsonArray? Array(string key) {
+        return _arguments?.GetArray(key);
     }
 }
 

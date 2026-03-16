@@ -162,13 +162,13 @@ public sealed class AdUserLifecycleTool : ActiveDirectoryToolBase, ITool {
                 InitialPassword: reader.OptionalString("initial_password"),
                 NewPassword: reader.OptionalString("new_password"),
                 Apply: reader.Boolean("apply"),
-                Enabled: TryReadNullableBoolean(arguments, "enabled"),
-                MustChangePasswordAtLogon: TryReadNullableBoolean(arguments, "must_change_password_at_logon"),
-                GroupsToAdd: ReadTrimmedStrings(arguments?.GetArray("groups_to_add")),
-                GroupsToRemove: ReadTrimmedStrings(arguments?.GetArray("groups_to_remove")),
-                ClearAttributes: ReadTrimmedStrings(arguments?.GetArray("clear_attributes")),
-                ExtensionAttributes: ReadAttributeMutations(arguments?.GetArray("extension_attributes")),
-                AdditionalAttributes: ReadAttributeMutations(arguments?.GetArray("additional_attributes")));
+                Enabled: reader.OptionalBoolean("enabled"),
+                MustChangePasswordAtLogon: reader.OptionalBoolean("must_change_password_at_logon"),
+                GroupsToAdd: ReadTrimmedStrings(reader.Array("groups_to_add")),
+                GroupsToRemove: ReadTrimmedStrings(reader.Array("groups_to_remove")),
+                ClearAttributes: ReadTrimmedStrings(reader.Array("clear_attributes")),
+                ExtensionAttributes: ReadAttributeMutations(reader.Array("extension_attributes")),
+                AdditionalAttributes: ReadAttributeMutations(reader.Array("additional_attributes")));
 
             return ValidateRequest(request);
         });
@@ -356,12 +356,6 @@ public sealed class AdUserLifecycleTool : ActiveDirectoryToolBase, ITool {
                 operation = string.Empty;
                 return false;
         }
-    }
-
-    private static bool? TryReadNullableBoolean(JsonObject? arguments, string key) {
-        return arguments?.TryGetValue(key, out var value) == true && value is not null && value.Kind == JsonValueKind.Boolean
-            ? value.AsBoolean()
-            : null;
     }
 
     private static IReadOnlyList<AttributeMutation> ReadAttributeMutations(JsonArray? array) {

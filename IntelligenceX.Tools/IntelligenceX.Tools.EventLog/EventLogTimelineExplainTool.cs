@@ -15,7 +15,7 @@ namespace IntelligenceX.Tools.EventLog;
 /// </summary>
 public sealed class EventLogTimelineExplainTool : EventLogToolBase, ITool {
     private static readonly string[] CorrelationKeyNames = NamedEventsTimelineQueryExecutor.AllowedCorrelationKeys.ToArray();
-    private static readonly string[] CorrelationProfileNames = EventLogTimelineCorrelationProfiles.Names.ToArray();
+    private static readonly string[] CorrelationProfileNames = NamedEventsTimelineCorrelationProfiles.Names.ToArray();
     private static readonly string[] InvestigationGoalNames = BuildInvestigationGoalNames();
     private static readonly string[] KeyPriority = {
         "who",
@@ -143,7 +143,7 @@ public sealed class EventLogTimelineExplainTool : EventLogToolBase, ITool {
         var recommendedProfile = ResolveProfileForGoal(request.InvestigationGoal);
         var profileKeyList = Array.Empty<string>();
         if (!string.IsNullOrWhiteSpace(recommendedProfile)) {
-            EventLogTimelineCorrelationProfiles.TryResolve(
+            NamedEventsTimelineCorrelationProfiles.TryResolve(
                 recommendedProfile,
                 out _,
                 out var profileKeys,
@@ -297,7 +297,7 @@ public sealed class EventLogTimelineExplainTool : EventLogToolBase, ITool {
 
     private static string[] BuildInvestigationGoalNames() {
         var goals = new List<string> { "generic" };
-        goals.AddRange(EventLogTimelineCorrelationProfiles.Names);
+        goals.AddRange(NamedEventsTimelineCorrelationProfiles.Names);
         return goals
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(static value => value, StringComparer.OrdinalIgnoreCase)

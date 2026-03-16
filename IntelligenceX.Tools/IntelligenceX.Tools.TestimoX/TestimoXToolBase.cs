@@ -83,4 +83,43 @@ public abstract class TestimoXToolBase : ToolBase {
             return (null, ErrorFromException(ex, defaultErrorMessage, fallbackErrorCode: "query_failed"));
         }
     }
+
+    /// <summary>
+    /// Converts lowercase tool source-type filters into TestimoX tooling enums.
+    /// </summary>
+    protected static IReadOnlyList<RuleSourceType> ToToolingSourceTypes(HashSet<string>? sourceTypeFilter) {
+        if (sourceTypeFilter is not { Count: > 0 }) {
+            return Array.Empty<RuleSourceType>();
+        }
+
+        var values = new List<RuleSourceType>(sourceTypeFilter.Count);
+        if (sourceTypeFilter.Contains("powershell")) {
+            values.Add(RuleSourceType.PowerShell);
+        }
+        if (sourceTypeFilter.Contains("csharp")) {
+            values.Add(RuleSourceType.CSharp);
+        }
+
+        return values;
+    }
+
+    /// <summary>
+    /// Converts rule-origin identifiers into TestimoX tooling enums.
+    /// </summary>
+    protected static ToolingRuleOrigin ToToolingRuleOrigin(string ruleOrigin) {
+        return string.Equals(ruleOrigin, TestimoXRuleSelectionHelper.RuleOriginExternal, StringComparison.OrdinalIgnoreCase)
+            ? ToolingRuleOrigin.External
+            : string.Equals(ruleOrigin, TestimoXRuleSelectionHelper.RuleOriginBuiltin, StringComparison.OrdinalIgnoreCase)
+                ? ToolingRuleOrigin.Builtin
+                : ToolingRuleOrigin.Any;
+    }
+
+    /// <summary>
+    /// Normalizes TestimoX enum source-type names to the stable lowercase tool contract.
+    /// </summary>
+    protected static string NormalizeSourceTypeName(string sourceType) {
+        return string.Equals(sourceType, nameof(RuleSourceType.CSharp), StringComparison.OrdinalIgnoreCase)
+            ? "csharp"
+            : "powershell";
+    }
 }

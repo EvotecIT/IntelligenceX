@@ -139,12 +139,12 @@ public sealed class AdGroupLifecycleTool : ActiveDirectoryToolBase, ITool {
                 ManagedBy: reader.OptionalString("managed_by"),
                 Notes: reader.OptionalString("notes"),
                 Scope: reader.OptionalString("scope"),
-                SecurityEnabled: TryReadNullableBoolean(arguments, "security_enabled"),
+                SecurityEnabled: reader.OptionalBoolean("security_enabled"),
                 Apply: reader.Boolean("apply"),
-                MembersToAdd: ReadTrimmedStrings(arguments?.GetArray("members_to_add")),
-                MembersToRemove: ReadTrimmedStrings(arguments?.GetArray("members_to_remove")),
-                ClearAttributes: ReadTrimmedStrings(arguments?.GetArray("clear_attributes")),
-                AdditionalAttributes: ReadAttributeMutations(arguments?.GetArray("additional_attributes")));
+                MembersToAdd: ReadTrimmedStrings(reader.Array("members_to_add")),
+                MembersToRemove: ReadTrimmedStrings(reader.Array("members_to_remove")),
+                ClearAttributes: ReadTrimmedStrings(reader.Array("clear_attributes")),
+                AdditionalAttributes: ReadAttributeMutations(reader.Array("additional_attributes")));
 
             return ValidateRequest(request);
         });
@@ -246,12 +246,6 @@ public sealed class AdGroupLifecycleTool : ActiveDirectoryToolBase, ITool {
                 operation = string.Empty;
                 return false;
         }
-    }
-
-    private static bool? TryReadNullableBoolean(JsonObject? arguments, string key) {
-        return arguments?.TryGetValue(key, out var value) == true && value is not null && value.Kind == JsonValueKind.Boolean
-            ? value.AsBoolean()
-            : null;
     }
 
     private static IReadOnlyList<string> ReadTrimmedStrings(JsonArray? array) {

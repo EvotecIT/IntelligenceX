@@ -1,5 +1,4 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -19,16 +18,7 @@ public sealed class EventLogLiveQueryTool : EventLogToolBase, ITool {
     private sealed record LiveQueryRequest(
         string LogName,
         string? XPathRaw,
-        List<int>? EventIds,
-        string? ProviderName,
-        DateTime? StartUtc,
-        DateTime? EndUtc,
-        Level? Level,
-        Keywords? Keywords,
-        string? UserId,
-        List<long>? RecordIds,
-        Hashtable? NamedDataFilter,
-        Hashtable? NamedDataExcludeFilter,
+        EventStructuredQueryFilter? StructuredFilter,
         bool HasStructuredFilters,
         string XPath,
         bool OldestFirst,
@@ -91,81 +81,20 @@ public sealed class EventLogLiveQueryTool : EventLogToolBase, ITool {
 
             var xpathRaw = reader.OptionalString("xpath");
 
-            if (!EventLogStructuredFilters.TryParseOptionalEventIds(
-                    arguments,
-                    "event_ids",
-                    EventLogStructuredFilters.MaxEventIds,
-                    out var eventIds,
-                    out var eventIdsError)) {
-                return ToolRequestBindingResult<LiveQueryRequest>.Failure(eventIdsError ?? "event_ids is invalid.");
-            }
-
-            if (!EventLogStructuredFilters.TryReadOptionalBoundedString(
-                    arguments,
-                    "provider_name",
-                    EventLogStructuredFilters.MaxProviderNameLength,
-                    out var providerName,
-                    out var providerNameError)) {
-                return ToolRequestBindingResult<LiveQueryRequest>.Failure(providerNameError ?? "provider_name is invalid.");
-            }
-
             if (!ToolTime.TryParseUtcRange(arguments, "start_time_utc", "end_time_utc", out var startUtc, out var endUtc, out var timeErr)) {
                 return ToolRequestBindingResult<LiveQueryRequest>.Failure(timeErr ?? "Invalid time range.");
             }
 
-            if (!EventLogStructuredFilters.TryParseOptionalLevel(arguments, "level", out var level, out var levelError)) {
-                return ToolRequestBindingResult<LiveQueryRequest>.Failure(levelError ?? "level is invalid.");
-            }
-
-            if (!EventLogStructuredFilters.TryParseOptionalKeywords(arguments, "keywords", out var keywords, out var keywordsError)) {
-                return ToolRequestBindingResult<LiveQueryRequest>.Failure(keywordsError ?? "keywords is invalid.");
-            }
-
-            if (!EventLogStructuredFilters.TryReadOptionalBoundedString(
+            if (!EventLogStructuredFilters.TryNormalize(
                     arguments,
-                    "user_id",
-                    EventLogStructuredFilters.MaxUserIdLength,
-                    out var userId,
-                    out var userIdError)) {
-                return ToolRequestBindingResult<LiveQueryRequest>.Failure(userIdError ?? "user_id is invalid.");
+                    startUtc,
+                    endUtc,
+                    out var structuredFilter,
+                    out var structuredFilterError)) {
+                return ToolRequestBindingResult<LiveQueryRequest>.Failure(structuredFilterError ?? "Structured filters are invalid.");
             }
 
-            if (!EventLogStructuredFilters.TryParseOptionalRecordIds(
-                    arguments,
-                    "event_record_ids",
-                    EventLogStructuredFilters.MaxRecordIds,
-                    out var recordIds,
-                    out var recordIdsError)) {
-                return ToolRequestBindingResult<LiveQueryRequest>.Failure(recordIdsError ?? "event_record_ids is invalid.");
-            }
-
-            if (!EventLogStructuredFilters.TryParseOptionalNamedDataFilter(
-                    arguments,
-                    "named_data_filter",
-                    out var namedDataFilter,
-                    out var namedDataFilterError)) {
-                return ToolRequestBindingResult<LiveQueryRequest>.Failure(namedDataFilterError ?? "named_data_filter is invalid.");
-            }
-
-            if (!EventLogStructuredFilters.TryParseOptionalNamedDataFilter(
-                    arguments,
-                    "named_data_exclude_filter",
-                    out var namedDataExcludeFilter,
-                    out var namedDataExcludeFilterError)) {
-                return ToolRequestBindingResult<LiveQueryRequest>.Failure(namedDataExcludeFilterError ?? "named_data_exclude_filter is invalid.");
-            }
-
-            var hasStructuredFilters = EventLogStructuredFilters.HasAnyStructuredFilter(
-                eventIds: eventIds,
-                providerName: providerName,
-                startTimeUtc: startUtc,
-                endTimeUtc: endUtc,
-                level: level,
-                keywords: keywords,
-                userId: userId,
-                eventRecordIds: recordIds,
-                namedDataFilter: namedDataFilter,
-                namedDataExcludeFilter: namedDataExcludeFilter);
+            var hasStructuredFilters = EventLogStructuredFilters.HasAnyStructuredFilter(structuredFilter);
 
             if (!string.IsNullOrWhiteSpace(xpathRaw) && hasStructuredFilters) {
                 return ToolRequestBindingResult<LiveQueryRequest>.Failure(
@@ -175,32 +104,13 @@ public sealed class EventLogLiveQueryTool : EventLogToolBase, ITool {
             var xpath = !string.IsNullOrWhiteSpace(xpathRaw)
                 ? xpathRaw!
                 : hasStructuredFilters
-                    ? EventLogStructuredFilters.BuildStructuredXPath(
-                        eventIds: eventIds,
-                        providerName: providerName,
-                        keywords: keywords,
-                        level: level,
-                        startTimeUtc: startUtc,
-                        endTimeUtc: endUtc,
-                        userId: userId,
-                        eventRecordIds: recordIds,
-                        namedDataFilter: namedDataFilter,
-                        namedDataExcludeFilter: namedDataExcludeFilter)
+                    ? EventLogStructuredFilters.BuildStructuredXPath(structuredFilter)
                     : "*";
 
             var request = new LiveQueryRequest(
                 LogName: logName,
                 XPathRaw: xpathRaw,
-                EventIds: eventIds,
-                ProviderName: providerName,
-                StartUtc: startUtc,
-                EndUtc: endUtc,
-                Level: level,
-                Keywords: keywords,
-                UserId: userId,
-                RecordIds: recordIds,
-                NamedDataFilter: namedDataFilter,
-                NamedDataExcludeFilter: namedDataExcludeFilter,
+                StructuredFilter: structuredFilter,
                 HasStructuredFilters: hasStructuredFilters,
                 XPath: xpath,
                 OldestFirst: reader.Boolean("oldest_first", defaultValue: false),

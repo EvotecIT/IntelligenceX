@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using ADPlayground.Monitoring.Probes;
-using ADPlayground.Monitoring.Probes.DirectoryHealth;
 using ADPlayground.Monitoring.Probes.Dns;
 using ADPlayground.Monitoring.Probes.Kerberos;
 using ADPlayground.Monitoring.Probes.Port;
@@ -55,22 +54,6 @@ public sealed partial class AdMonitoringProbeRunTool {
         "rpc_endpoint",
         "share_permissions"
     };
-
-    private static readonly IReadOnlyDictionary<string, DirectoryHealthProbeKind> DirectoryProbeKindsMap =
-        new Dictionary<string, DirectoryHealthProbeKind>(StringComparer.OrdinalIgnoreCase) {
-            ["root_dse"] = DirectoryHealthProbeKind.RootDse,
-            ["dns_registration"] = DirectoryHealthProbeKind.DnsRegistration,
-            ["srv_coverage"] = DirectoryHealthProbeKind.SrvCoverage,
-            ["fsmo"] = DirectoryHealthProbeKind.Fsmo,
-            ["sysvol_gpt"] = DirectoryHealthProbeKind.SysvolGpt,
-            ["netlogon_share"] = DirectoryHealthProbeKind.NetlogonShare,
-            ["dns_soa"] = DirectoryHealthProbeKind.DnsSoa,
-            ["ldap_search"] = DirectoryHealthProbeKind.LdapSearch,
-            ["gc_readiness"] = DirectoryHealthProbeKind.GcReadiness,
-            ["client_path"] = DirectoryHealthProbeKind.ClientPath,
-            ["rpc_endpoint"] = DirectoryHealthProbeKind.RpcEndpoint,
-            ["share_permissions"] = DirectoryHealthProbeKind.SharePermissions
-        };
 
     private static readonly IReadOnlyDictionary<string, MonitoringDnsProtocol> DnsProtocols =
         new Dictionary<string, MonitoringDnsProtocol>(StringComparer.OrdinalIgnoreCase) {

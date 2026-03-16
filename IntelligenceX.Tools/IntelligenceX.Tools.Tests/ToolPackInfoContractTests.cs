@@ -416,6 +416,14 @@ public class ToolPackInfoContractTests {
         Assert.Contains("testimox_analytics_diagnostics_get", ReadStringArray(root.GetProperty("tools")), StringComparer.OrdinalIgnoreCase);
         Assert.Contains(
             capabilities.EnumerateArray().Select(static node => node.GetProperty("id").GetString()),
+            static id => string.Equals(id, "dashboard_autogenerate_status", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("testimox_dashboard_autogenerate_status_get", ReadStringArray(root.GetProperty("tools")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains(
+            capabilities.EnumerateArray().Select(static node => node.GetProperty("id").GetString()),
+            static id => string.Equals(id, "availability_rollup_status", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("testimox_availability_rollup_status_get", ReadStringArray(root.GetProperty("tools")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains(
+            capabilities.EnumerateArray().Select(static node => node.GetProperty("id").GetString()),
             static id => string.Equals(id, "probe_index_status", StringComparison.OrdinalIgnoreCase));
         Assert.Contains("testimox_probe_index_status", ReadStringArray(root.GetProperty("tools")), StringComparer.OrdinalIgnoreCase);
         Assert.Contains(

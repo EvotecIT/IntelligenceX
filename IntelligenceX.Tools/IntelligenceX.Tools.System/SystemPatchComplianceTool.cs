@@ -39,51 +39,6 @@ public sealed class SystemPatchComplianceTool : SystemToolBase, ITool {
             .WithTableViewOptions()
             .NoAdditionalProperties());
 
-    private sealed record ComplianceRow(
-        string CveId,
-        string Severity,
-        bool IsExploited,
-        bool PubliclyDisclosed,
-        DateTime? Published,
-        string? Category,
-        IReadOnlyList<string> Kbs,
-        IReadOnlyList<string> InstalledKbs,
-        IReadOnlyList<string> MissingKbs,
-        string ComplianceState);
-
-    private sealed record PatchComplianceSummary(
-        int Total,
-        int Installed,
-        int Missing,
-        int UnknownNoKb,
-        int ExploitedMissing,
-        int PubliclyDisclosedMissing,
-        int CriticalMissing,
-        IReadOnlyList<string> MissingKbs);
-
-    private sealed record SystemPatchComplianceResult(
-        string ComputerName,
-        int Year,
-        int Month,
-        string Release,
-        bool ProductMappedFilterApplied,
-        string? ProductFamily,
-        string? ProductVersion,
-        string? ProductBuild,
-        string? ProductEdition,
-        IReadOnlyList<string> Severity,
-        bool ExploitedOnly,
-        bool PubliclyDisclosedOnly,
-        bool MissingOnly,
-        bool IncludePendingLocal,
-        bool PendingIncluded,
-        string? CveContains,
-        string? KbContains,
-        int Scanned,
-        bool Truncated,
-        PatchComplianceSummary Summary,
-        IReadOnlyList<ComplianceRow> Compliance);
-
     private sealed record PatchComplianceRequest(
         string? ComputerName,
         bool IncludePendingLocal,
@@ -150,189 +105,60 @@ public sealed class SystemPatchComplianceTool : SystemToolBase, ITool {
             return severityError!;
         }
 
-        var (monthly, patchError) = await TryGetMonthlyPatchDetailsAsync(
-            year: year,
-            month: month,
-            productFamily: productFamily,
-            productVersion: productVersion,
-            productBuild: productBuild,
-            productEdition: productEdition,
-            cancellationToken: cancellationToken).ConfigureAwait(false);
-        if (patchError is not null) {
-            return patchError;
+        PatchComplianceQueryResult result;
+        try {
+            result = await PatchComplianceQuery.GetAsync(new PatchComplianceQueryOptions {
+                ComputerName = request.ComputerName,
+                Year = year,
+                Month = month,
+                ProductFamily = productFamily,
+                ProductVersion = productVersion,
+                ProductBuild = productBuild,
+                ProductEdition = productEdition,
+                Severity = severity,
+                ExploitedOnly = request.ExploitedOnly,
+                PubliclyDisclosedOnly = request.PubliclyDisclosedOnly,
+                MissingOnly = request.MissingOnly,
+                IncludePendingLocal = request.IncludePendingLocal,
+                CveContains = request.CveContains,
+                KbContains = request.KbContains,
+                MaxResults = request.MaxResults
+            }, cancellationToken).ConfigureAwait(false);
+        } catch (Exception ex) {
+            return ErrorFromException(ex, defaultMessage: "Patch compliance query failed.");
         }
-
-        if (!TryGetInstalledAndPendingUpdates(
-                computerName: request.ComputerName,
-                target: target,
-                includePendingLocal: request.IncludePendingLocal,
-                updates: out var updates,
-                pendingIncluded: out var pendingIncluded,
-                errorResponse: out var updateError)) {
-            return updateError!;
-        }
-
-        var installedKbSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var update in updates) {
-            foreach (var kb in SystemPatchKbNormalization.EnumerateNormalized(update.Kb)) {
-                installedKbSet.Add(kb);
-            }
-            foreach (var kb in SystemPatchKbNormalization.EnumerateNormalized(update.Title)) {
-                installedKbSet.Add(kb);
-            }
-        }
-
-        var severitySet = severity.Count == 0
-            ? null
-            : new HashSet<string>(severity, StringComparer.OrdinalIgnoreCase);
-
-        var filtered = monthly
-            .Where(x => severitySet is null || severitySet.Contains(x.Severity))
-            .Where(x => !request.ExploitedOnly || x.IsExploited)
-            .Where(x => !request.PubliclyDisclosedOnly || x.PubliclyDisclosed)
-            .Where(x => string.IsNullOrWhiteSpace(request.CveContains)
-                || x.CveId.Contains(request.CveContains, StringComparison.OrdinalIgnoreCase))
-            .Where(x => string.IsNullOrWhiteSpace(request.KbContains)
-                || SystemPatchKbNormalization.MatchesContainsFilter(x.Kbs, request.KbContains))
-            .OrderByDescending(static x => x.IsExploited)
-            .ThenByDescending(static x => x.Published ?? DateTime.MinValue)
-            .ThenBy(static x => x.CveId, StringComparer.OrdinalIgnoreCase);
-
-        var complianceRows = new List<ComplianceRow>();
-        foreach (var item in filtered) {
-            var expected = SystemPatchKbNormalization.NormalizeDistinct(item.Kbs);
-
-            var installed = expected
-                .Where(installedKbSet.Contains)
-                .OrderBy(static x => x, StringComparer.OrdinalIgnoreCase)
-                .ToArray();
-            var missing = expected
-                .Where(kb => !installedKbSet.Contains(kb))
-                .OrderBy(static x => x, StringComparer.OrdinalIgnoreCase)
-                .ToArray();
-
-            var state = expected.Count == 0
-                ? "unknown_no_kb"
-                : missing.Length == 0
-                    ? "installed"
-                    : "missing";
-            if (request.MissingOnly && !string.Equals(state, "missing", StringComparison.OrdinalIgnoreCase)) {
-                continue;
-            }
-
-            complianceRows.Add(new ComplianceRow(
-                CveId: item.CveId,
-                Severity: item.Severity,
-                IsExploited: item.IsExploited,
-                PubliclyDisclosed: item.PubliclyDisclosed,
-                Published: item.Published,
-                Category: item.Category,
-                Kbs: expected,
-                InstalledKbs: installed,
-                MissingKbs: missing,
-                ComplianceState: state));
-        }
-
-        var rows = CapRows(complianceRows, request.MaxResults, out var scanned, out var truncated);
-        var summary = BuildSummary(complianceRows);
-        var release = new DateTime(year, month, 1).ToString("yyyy-MM");
-
-        var result = new SystemPatchComplianceResult(
-            ComputerName: target,
-            Year: year,
-            Month: month,
-            Release: release,
-            ProductMappedFilterApplied: !string.IsNullOrWhiteSpace(productFamily),
-            ProductFamily: productFamily,
-            ProductVersion: productVersion,
-            ProductBuild: productBuild,
-            ProductEdition: productEdition,
-            Severity: severity,
-            ExploitedOnly: request.ExploitedOnly,
-            PubliclyDisclosedOnly: request.PubliclyDisclosedOnly,
-            MissingOnly: request.MissingOnly,
-            IncludePendingLocal: request.IncludePendingLocal,
-            PendingIncluded: pendingIncluded,
-            CveContains: request.CveContains,
-            KbContains: request.KbContains,
-            Scanned: scanned,
-            Truncated: truncated,
-            Summary: summary,
-            Compliance: rows);
 
         var response = ToolResultV2.OkAutoTableResponse(
             arguments: context.Arguments,
             model: result,
-            sourceRows: rows,
+            sourceRows: result.Compliance,
             viewRowsPath: "compliance_view",
             title: "Patch compliance (preview)",
             maxTop: MaxViewTop,
-            baseTruncated: truncated,
-            scanned: scanned,
+            baseTruncated: result.Truncated,
+            scanned: result.Scanned,
             metaMutate: meta => {
-                AddComputerNameMeta(meta, target);
+                AddComputerNameMeta(meta, result.ComputerName);
                 AddMaxResultsMeta(meta, request.MaxResults);
-                AddPendingLocalMeta(meta, request.IncludePendingLocal, pendingIncluded);
+                AddPendingLocalMeta(meta, result.IncludePendingLocal, result.PendingIncluded);
                 AddPatchFilterMeta(
                     meta: meta,
-                    year: year,
-                    month: month,
-                    release: release,
-                    productFamily: productFamily,
-                    productVersion: productVersion,
-                    productBuild: productBuild,
-                    productEdition: productEdition,
-                    severity: severity,
-                    exploitedOnly: request.ExploitedOnly,
-                    publiclyDisclosedOnly: request.PubliclyDisclosedOnly,
-                    cveContains: request.CveContains,
-                    kbContains: request.KbContains);
-                if (request.MissingOnly) {
+                    year: result.Year,
+                    month: result.Month,
+                    release: result.Release,
+                    productFamily: result.ProductFamily,
+                    productVersion: result.ProductVersion,
+                    productBuild: result.ProductBuild,
+                    productEdition: result.ProductEdition,
+                    severity: result.Severity,
+                    exploitedOnly: result.ExploitedOnly,
+                    publiclyDisclosedOnly: result.PubliclyDisclosedOnly,
+                    cveContains: result.CveContains,
+                    kbContains: result.KbContains);
+                if (result.MissingOnly) {
                     meta.Add("missing_only", true);
                 }
             });
         return response;
-    }
-
-    private static PatchComplianceSummary BuildSummary(IReadOnlyList<ComplianceRow> rows) {
-        var installed = 0;
-        var missing = 0;
-        var unknownNoKb = 0;
-        var exploitedMissing = 0;
-        var publiclyDisclosedMissing = 0;
-        var criticalMissing = 0;
-        var missingKbs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        foreach (var row in rows) {
-            if (string.Equals(row.ComplianceState, "installed", StringComparison.OrdinalIgnoreCase)) {
-                installed++;
-            } else if (string.Equals(row.ComplianceState, "missing", StringComparison.OrdinalIgnoreCase)) {
-                missing++;
-                if (row.IsExploited) {
-                    exploitedMissing++;
-                }
-                if (row.PubliclyDisclosed) {
-                    publiclyDisclosedMissing++;
-                }
-                if (string.Equals(row.Severity, "Critical", StringComparison.OrdinalIgnoreCase)) {
-                    criticalMissing++;
-                }
-                foreach (var kb in row.MissingKbs) {
-                    missingKbs.Add(kb);
-                }
-            } else {
-                unknownNoKb++;
-            }
-        }
-
-        return new PatchComplianceSummary(
-            Total: rows.Count,
-            Installed: installed,
-            Missing: missing,
-            UnknownNoKb: unknownNoKb,
-            ExploitedMissing: exploitedMissing,
-            PubliclyDisclosedMissing: publiclyDisclosedMissing,
-            CriticalMissing: criticalMissing,
-            MissingKbs: missingKbs.OrderBy(static x => x, StringComparer.OrdinalIgnoreCase).ToArray());
     }
 }

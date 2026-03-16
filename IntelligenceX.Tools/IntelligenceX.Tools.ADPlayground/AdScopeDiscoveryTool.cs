@@ -1,7 +1,5 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -85,18 +83,6 @@ public sealed partial class AdScopeDiscoveryTool : ActiveDirectoryToolBase, IToo
         int DomainEnumerationTimeoutMs,
         int DcSourceTimeoutMs);
 
-    private sealed class StepExecutionResult<T> {
-        public bool Ok { get; init; }
-        public int DurationMs { get; init; }
-        public int TimeoutMs { get; init; }
-        public IReadOnlyList<string> EndpointsChecked { get; init; } = Array.Empty<string>();
-        public int Retries { get; init; }
-        public string? Error { get; init; }
-        public string? ErrorType { get; init; }
-        public T? Result { get; init; }
-        public object? Output { get; init; }
-    }
-
     private sealed record ScopeDiscoveryStep(
         string Name,
         bool Ok,
@@ -175,12 +161,8 @@ public sealed partial class AdScopeDiscoveryTool : ActiveDirectoryToolBase, IToo
 
     private async Task<string> ExecuteAsync(ToolPipelineContext<ScopeDiscoveryRequest> context, CancellationToken cancellationToken) {
         var request = context.Request;
-        var explicitForest = NormalizeOptional(request.ForestName);
-        var explicitDomain = NormalizeOptional(request.DomainName);
-        var explicitDomainController = NormalizeOptional(request.DomainController);
-
-        if (explicitForest is null &&
-            explicitDomain is null &&
+        if (string.IsNullOrWhiteSpace(request.ForestName) &&
+            string.IsNullOrWhiteSpace(request.DomainName) &&
             request.IncludeDomains.Count == 0 &&
             request.DiscoveryFallback == DirectoryDiscoveryFallback.None) {
             return ToolResultV2.Error(
@@ -192,220 +174,76 @@ public sealed partial class AdScopeDiscoveryTool : ActiveDirectoryToolBase, IToo
                 });
         }
 
-        var steps = new List<ScopeDiscoveryStep>();
-        var gaps = new List<ScopeDiscoveryGap>();
-
-        var rootDseStep = await ExecuteStepAsync(
-            name: "rootdse_context",
-            timeoutMs: request.RootDseTimeoutMs,
-            endpointsChecked: new[] { explicitDomainController ?? "<auto>" },
-            retries: 0,
-            operation: () => DomainInfoService.Query(explicitDomainController, cancellationToken),
-            outputProjection: static value => new {
-                domain_controller = NormalizeOptional(value.DomainController) ?? string.Empty,
-                dns_domain_name = NormalizeOptional(value.DnsDomainName) ?? string.Empty,
-                forest_dns_name = NormalizeOptional(value.ForestDnsName) ?? string.Empty
-            },
-            cancellationToken: cancellationToken);
-        steps.Add(ToStepModel("rootdse_context", rootDseStep));
-
-        if (!rootDseStep.Ok) {
-            gaps.Add(new ScopeDiscoveryGap("rootdse_context", "RootDSE context could not be resolved."));
-        }
-
-        var rootDseInfo = rootDseStep.Result;
-        var effectiveForest = explicitForest
-                             ?? NormalizeOptional(rootDseInfo?.ForestDnsName)
-                             ?? ResolveFallbackForest(request.DiscoveryFallback);
-        var effectiveDomain = explicitDomain
-                             ?? NormalizeOptional(rootDseInfo?.DnsDomainName)
-                             ?? ResolveFallbackDomain(request.DiscoveryFallback);
-
-        var domains = new List<string>();
-        if (explicitDomain is not null) {
-            domains.Add(explicitDomain);
-        }
-        if (request.IncludeDomains.Count > 0) {
-            domains.AddRange(request.IncludeDomains.Select(NormalizeHostOrName).Where(static x => !string.IsNullOrWhiteSpace(x)));
-        }
-
-        if (domains.Count == 0 && !string.IsNullOrWhiteSpace(effectiveForest)) {
-            var domainEnumerationStep = await ExecuteStepAsync(
-                name: "domains:forest_enumeration",
-                timeoutMs: request.DomainEnumerationTimeoutMs,
-                endpointsChecked: new[] { effectiveForest! },
-                retries: 0,
-                operation: () => DomainHelper.EnumerateForestDomainNames(effectiveForest, includeTrustedDomains: request.IncludeTrusts, cancellationToken: cancellationToken)
-                    .Where(static x => !string.IsNullOrWhiteSpace(x))
-                    .Select(NormalizeHostOrName)
-                    .Where(static x => !string.IsNullOrWhiteSpace(x))
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .ToArray(),
-                outputProjection: static value => new {
-                    count = value.Length,
-                    sample = value.Take(5).ToArray()
+        var discovery = await AdScopeDiscoveryService.DiscoverAsync(
+            new AdScopeDiscoveryService.ScopeDiscoveryRequest(
+                ForestName: request.ForestName,
+                DomainName: request.DomainName,
+                DomainController: request.DomainController,
+                IncludeDomains: request.IncludeDomains,
+                ExcludeDomains: request.ExcludeDomains,
+                IncludeDomainControllers: request.IncludeDomainControllers,
+                ExcludeDomainControllers: request.ExcludeDomainControllers,
+                SkipRodc: request.SkipRodc,
+                IncludeTrusts: request.IncludeTrusts,
+                DiscoveryFallback: request.DiscoveryFallback switch {
+                    DirectoryDiscoveryFallback.CurrentForest => AdScopeDiscoveryService.ScopeDiscoveryFallback.CurrentForest,
+                    DirectoryDiscoveryFallback.CurrentDomain => AdScopeDiscoveryService.ScopeDiscoveryFallback.CurrentDomain,
+                    _ => AdScopeDiscoveryService.ScopeDiscoveryFallback.None
                 },
-                cancellationToken: cancellationToken);
-            steps.Add(ToStepModel("domains:forest_enumeration", domainEnumerationStep));
+                MaxDomains: request.MaxDomains,
+                MaxDomainControllersTotal: request.MaxDomainControllersTotal,
+                MaxDomainControllersPerDomain: request.MaxDomainControllersPerDomain,
+                RootDseTimeoutMs: request.RootDseTimeoutMs,
+                DomainEnumerationTimeoutMs: request.DomainEnumerationTimeoutMs,
+                DcSourceTimeoutMs: request.DcSourceTimeoutMs),
+            cancellationToken).ConfigureAwait(false);
 
-            if (domainEnumerationStep.Ok && domainEnumerationStep.Result is not null) {
-                domains.AddRange(domainEnumerationStep.Result);
-            } else {
-                gaps.Add(new ScopeDiscoveryGap("domains", "Forest domain enumeration failed."));
-            }
-        }
-
-        if (domains.Count == 0 && !string.IsNullOrWhiteSpace(effectiveDomain)) {
-            domains.Add(effectiveDomain!);
-        }
-
-        var includeDomainSet = BuildSet(request.IncludeDomains);
-        var excludeDomainSet = BuildSet(request.ExcludeDomains);
-        domains = domains
-            .Select(NormalizeHostOrName)
-            .Where(static x => !string.IsNullOrWhiteSpace(x))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Where(domain => includeDomainSet.Count == 0 || includeDomainSet.Contains(domain))
-            .Where(domain => excludeDomainSet.Count == 0 || !excludeDomainSet.Contains(domain))
-            .OrderBy(static x => x, StringComparer.OrdinalIgnoreCase)
-            .Take(request.MaxDomains)
+        var steps = discovery.Steps
+            .Select(static step => new ScopeDiscoveryStep(
+                Name: step.Name,
+                Ok: step.Ok,
+                DurationMs: step.DurationMs,
+                TimeoutMs: step.TimeoutMs,
+                EndpointsChecked: step.EndpointsChecked,
+                Retries: step.Retries,
+                Error: step.Error,
+                ErrorType: step.ErrorType,
+                Output: step.Output))
             .ToList();
 
-        if (domains.Count == 0) {
-            gaps.Add(new ScopeDiscoveryGap("domains", "No domains resolved after fallback and include/exclude filtering."));
-        }
+        var gaps = discovery.Gaps
+            .Select(static gap => new ScopeDiscoveryGap(
+                Area: gap.Area,
+                Reason: gap.Reason))
+            .ToList();
 
-        var namingContexts = ReadNamingContexts(rootDseInfo);
-        if (string.IsNullOrWhiteSpace(namingContexts.DefaultNamingContext)) {
-            gaps.Add(new ScopeDiscoveryGap("naming_contexts.default_naming_context", "defaultNamingContext is missing."));
-        }
-        if (string.IsNullOrWhiteSpace(namingContexts.ConfigurationNamingContext)) {
-            gaps.Add(new ScopeDiscoveryGap("naming_contexts.configuration_naming_context", "configurationNamingContext is missing."));
-        }
-        if (string.IsNullOrWhiteSpace(namingContexts.SchemaNamingContext)) {
-            gaps.Add(new ScopeDiscoveryGap("naming_contexts.schema_naming_context", "schemaNamingContext is missing."));
-        }
-        if (string.IsNullOrWhiteSpace(namingContexts.RootDomainNamingContext)) {
-            gaps.Add(new ScopeDiscoveryGap("naming_contexts.root_domain_naming_context", "rootDomainNamingContext is missing."));
-        }
-
-        var includeDcSet = BuildSet(request.IncludeDomainControllers);
-        var excludeDcSet = BuildSet(request.ExcludeDomainControllers);
-        var allDcs = new List<string>();
-        var allDcsSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var byDomain = new List<DomainControllerDomainRow>();
-
-        foreach (var domain in domains) {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            var perDomainCandidates = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var perDomainSteps = new List<ScopeDiscoveryStep>();
-            var perDomainMissingReasons = new List<string>();
-
-            AddCandidate(perDomainCandidates, explicitDomainController);
-            AddCandidate(perDomainCandidates, DomainHelper.TryGetPdcHostName(domain));
-
-            var dsGetDcStep = await ExecuteStepAsync(
-                name: "domain_controllers:dsgetdcname",
-                timeoutMs: request.DcSourceTimeoutMs,
-                endpointsChecked: new[] { domain },
-                retries: 0,
-                operation: () => DomainHelper.EnumerateDomainControllersViaDsGetDcName(domain)
-                    .Where(static x => !string.IsNullOrWhiteSpace(x))
-                    .Select(NormalizeHostOrName)
-                    .Where(static x => !string.IsNullOrWhiteSpace(x))
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
+        var byDomain = discovery.DomainControllersByDomain
+            .Select(static row => new DomainControllerDomainRow(
+                DomainName: row.DomainName,
+                DomainControllers: row.DomainControllers,
+                Sources: row.Sources
+                    .Select(static source => new ScopeDiscoveryStep(
+                        Name: source.Name,
+                        Ok: source.Ok,
+                        DurationMs: source.DurationMs,
+                        TimeoutMs: source.TimeoutMs,
+                        EndpointsChecked: source.EndpointsChecked,
+                        Retries: source.Retries,
+                        Error: source.Error,
+                        ErrorType: source.ErrorType,
+                        Output: source.Output))
                     .ToArray(),
-                outputProjection: static value => new {
-                    count = value.Length,
-                    sample = value.Take(5).ToArray()
-                },
-                cancellationToken: cancellationToken);
-            perDomainSteps.Add(ToStepModel("domain_controllers:dsgetdcname", dsGetDcStep));
-            AddCandidates(perDomainCandidates, dsGetDcStep.Result);
+                MissingReasons: row.MissingReasons))
+            .ToList();
 
-            var dnsSrvStep = await ExecuteStepAsync(
-                name: "domain_controllers:dns_srv",
-                timeoutMs: request.DcSourceTimeoutMs,
-                endpointsChecked: new[] { domain },
-                retries: 0,
-                operation: () => DomainHelper.EnumerateDomainControllersViaDnsSrv(domain)
-                    .Where(static x => !string.IsNullOrWhiteSpace(x))
-                    .Select(NormalizeHostOrName)
-                    .Where(static x => !string.IsNullOrWhiteSpace(x))
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .ToArray(),
-                outputProjection: static value => new {
-                    count = value.Length,
-                    sample = value.Take(5).ToArray()
-                },
-                cancellationToken: cancellationToken);
-            perDomainSteps.Add(ToStepModel("domain_controllers:dns_srv", dnsSrvStep));
-            AddCandidates(perDomainCandidates, dnsSrvStep.Result);
-
-            var adStep = await ExecuteStepAsync(
-                name: "domain_controllers:active_directory",
-                timeoutMs: request.DcSourceTimeoutMs,
-                endpointsChecked: new[] { domain },
-                retries: 0,
-                operation: () => DomainHelper.EnumerateDomainControllers(domainName: domain, cancellationToken: cancellationToken)
-                    .Where(static x => !string.IsNullOrWhiteSpace(x))
-                    .Select(NormalizeHostOrName)
-                    .Where(static x => !string.IsNullOrWhiteSpace(x))
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .ToArray(),
-                outputProjection: static value => new {
-                    count = value.Length,
-                    sample = value.Take(5).ToArray()
-                },
-                cancellationToken: cancellationToken);
-            perDomainSteps.Add(ToStepModel("domain_controllers:active_directory", adStep));
-            AddCandidates(perDomainCandidates, adStep.Result);
-
-            var perDomain = perDomainCandidates
-                .Select(NormalizeHostOrName)
-                .Where(static x => !string.IsNullOrWhiteSpace(x))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .Where(dc => includeDcSet.Count == 0 || includeDcSet.Contains(dc))
-                .Where(dc => excludeDcSet.Count == 0 || !excludeDcSet.Contains(dc))
-                .Where(dc => !request.SkipRodc || !IsRodcBestEffort(dc))
-                .OrderBy(static x => x, StringComparer.OrdinalIgnoreCase)
-                .Take(request.MaxDomainControllersPerDomain)
-                .ToArray();
-
-            if (perDomain.Length == 0) {
-                perDomainMissingReasons.Add("No domain controllers discovered after source probing and include/exclude filtering.");
-            }
-
-            for (var i = 0; i < perDomain.Length; i++) {
-                if (allDcsSet.Add(perDomain[i])) {
-                    allDcs.Add(perDomain[i]);
-                }
-                if (allDcs.Count >= request.MaxDomainControllersTotal) {
-                    break;
-                }
-            }
-
-            byDomain.Add(new DomainControllerDomainRow(
-                DomainName: domain,
-                DomainControllers: perDomain,
-                Sources: perDomainSteps,
-                MissingReasons: perDomainMissingReasons));
-
-            if (allDcs.Count >= request.MaxDomainControllersTotal) {
-                break;
-            }
-        }
-
-        if (allDcs.Count == 0) {
-            gaps.Add(new ScopeDiscoveryGap("domain_controllers", "No domain controllers discovered for the effective domain set."));
-        }
-        if (string.IsNullOrWhiteSpace(effectiveForest)) {
-            gaps.Add(new ScopeDiscoveryGap("forest_name", "Effective forest name could not be resolved."));
-        }
-        if (string.IsNullOrWhiteSpace(effectiveDomain)) {
-            gaps.Add(new ScopeDiscoveryGap("domain_name", "Effective domain name could not be resolved."));
-        }
+        var effectiveForest = discovery.EffectiveForestName;
+        var effectiveDomain = discovery.EffectiveDomainName;
+        var domains = discovery.Domains;
+        var allDcs = discovery.DomainControllers;
+        var namingContexts = discovery.NamingContexts;
+        var explicitForest = request.ForestName?.Trim();
+        var explicitDomain = request.DomainName?.Trim();
+        var explicitDomainController = request.DomainController?.Trim();
 
         var requestedScope = new {
             forest_name = explicitForest ?? string.Empty,
@@ -702,60 +540,4 @@ public sealed partial class AdScopeDiscoveryTool : ActiveDirectoryToolBase, IToo
                 ("gaps", gaps.Count),
                 ("failed_steps", failedSteps)));
     }
-
-    private static async Task<StepExecutionResult<T>> ExecuteStepAsync<T>(
-        string name,
-        int timeoutMs,
-        IReadOnlyList<string> endpointsChecked,
-        int retries,
-        Func<T> operation,
-        Func<T, object?> outputProjection,
-        CancellationToken cancellationToken) {
-        var stopwatch = Stopwatch.StartNew();
-        try {
-            var task = Task.Run(operation, cancellationToken);
-            var completed = await Task.WhenAny(task, Task.Delay(timeoutMs, cancellationToken));
-            if (completed != task) {
-                cancellationToken.ThrowIfCancellationRequested();
-                throw new TimeoutException($"{name} exceeded timeout ({timeoutMs}ms).");
-            }
-
-            var result = await task;
-            stopwatch.Stop();
-            return new StepExecutionResult<T> {
-                Ok = true,
-                DurationMs = (int)Math.Min(int.MaxValue, stopwatch.Elapsed.TotalMilliseconds),
-                TimeoutMs = timeoutMs,
-                EndpointsChecked = endpointsChecked,
-                Retries = retries,
-                Result = result,
-                Output = outputProjection(result)
-            };
-        } catch (Exception ex) {
-            stopwatch.Stop();
-            return new StepExecutionResult<T> {
-                Ok = false,
-                DurationMs = (int)Math.Min(int.MaxValue, stopwatch.Elapsed.TotalMilliseconds),
-                TimeoutMs = timeoutMs,
-                EndpointsChecked = endpointsChecked,
-                Retries = retries,
-                Error = SanitizeErrorMessage(ex.Message, $"{name} failed."),
-                ErrorType = ex.GetType().FullName
-            };
-        }
-    }
-
-    private static ScopeDiscoveryStep ToStepModel<T>(string name, StepExecutionResult<T> step) {
-        return new ScopeDiscoveryStep(
-            Name: name,
-            Ok: step.Ok,
-            DurationMs: step.DurationMs,
-            TimeoutMs: step.TimeoutMs,
-            EndpointsChecked: step.EndpointsChecked,
-            Retries: step.Retries,
-            Error: step.Error,
-            ErrorType: step.ErrorType,
-            Output: step.Output);
-    }
-
 }

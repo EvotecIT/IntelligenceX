@@ -19,7 +19,7 @@ public sealed class EventLogTimelineQueryTool : EventLogToolBase, ITool {
 
     private static readonly string[] CorrelationKeyNames = NamedEventsTimelineQueryExecutor.AllowedCorrelationKeys
         .ToArray();
-    private static readonly string[] CorrelationProfileNames = EventLogTimelineCorrelationProfiles.Names
+    private static readonly string[] CorrelationProfileNames = NamedEventsTimelineCorrelationProfiles.Names
         .ToArray();
 
     private static readonly ToolDefinition DefinitionValue = new(
@@ -132,7 +132,7 @@ public sealed class EventLogTimelineQueryTool : EventLogToolBase, ITool {
                 return ToolRequestBindingResult<TimelineRequest>.Failure("correlation_profile cannot be combined with correlation_keys.");
             }
 
-            if (!EventLogTimelineCorrelationProfiles.TryResolve(
+            if (!NamedEventsTimelineCorrelationProfiles.TryResolve(
                     rawCorrelationProfile,
                     out var correlationProfile,
                     out var profileCorrelationKeys,

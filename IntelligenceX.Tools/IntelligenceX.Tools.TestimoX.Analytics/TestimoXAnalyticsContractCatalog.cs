@@ -35,6 +35,20 @@ internal static class TestimoXAnalyticsContractCatalog {
                     targetRoutesAreRequired: false));
         }
 
+        if (string.Equals(toolName, "testimox_dashboard_autogenerate_status_get", System.StringComparison.OrdinalIgnoreCase)) {
+            return ToolContractDefaults.CreateHandoff(
+                TestimoXAnalyticsFollowUpCatalog.CreateDashboardStatusArtifactRoutes(
+                    snapshotPathSourceField: "snapshot_path",
+                    reportPathSourceField: "report_path"));
+        }
+
+        if (string.Equals(toolName, "testimox_availability_rollup_status_get", System.StringComparison.OrdinalIgnoreCase)) {
+            return ToolContractDefaults.CreateHandoff(
+                TestimoXAnalyticsFollowUpCatalog.CreateSnapshotFileInspectionRoutes(
+                    snapshotPathSourceField: "snapshot_path",
+                    reason: "Promote availability rollup status into local snapshot inspection when raw rollup JSON is needed."));
+        }
+
         if (string.Equals(toolName, "testimox_report_job_history", System.StringComparison.OrdinalIgnoreCase)) {
             return ToolContractDefaults.CreateHandoff(
                 TestimoXAnalyticsFollowUpCatalog.CreateReportJobHistoryArtifactRoutes(

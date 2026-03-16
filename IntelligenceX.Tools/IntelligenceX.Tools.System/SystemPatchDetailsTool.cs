@@ -51,26 +51,6 @@ public sealed class SystemPatchDetailsTool : SystemToolBase, ITool {
             .WithTableViewOptions()
             .NoAdditionalProperties());
 
-    private sealed record SystemPatchDetailsResult(
-        int Year,
-        int Month,
-        string Release,
-        bool ProductMappedFilterApplied,
-        string? ProductFamily,
-        string? ProductVersion,
-        string? ProductBuild,
-        string? ProductEdition,
-        IReadOnlyList<string> ProductNameContains,
-        IReadOnlyList<string> Severity,
-        bool ExploitedOnly,
-        bool PubliclyDisclosedOnly,
-        string? CveContains,
-        string? KbContains,
-        int Scanned,
-        bool Truncated,
-        PatchDetailsSummary Summary,
-        IReadOnlyList<PatchDetailsInfo> Patches);
-
     /// <summary>
     /// Initializes a new instance of the <see cref="SystemPatchDetailsTool"/> class.
     /// </summary>
@@ -167,152 +147,57 @@ public sealed class SystemPatchDetailsTool : SystemToolBase, ITool {
     private async Task<string> ExecuteAsync(ToolPipelineContext<PatchDetailsRequest> context, CancellationToken cancellationToken) {
         cancellationToken.ThrowIfCancellationRequested();
         var request = context.Request;
-        var (monthly, patchError) = await TryGetMonthlyPatchDetailsAsync(
-            year: request.Year,
-            month: request.Month,
-            productFamily: request.ProductFamily,
-            productVersion: request.ProductVersion,
-            productBuild: request.ProductBuild,
-            productEdition: request.ProductEdition,
-            cancellationToken: cancellationToken).ConfigureAwait(false);
-        if (patchError is not null) {
-            return patchError;
+        PatchCatalogQueryResult result;
+        try {
+            result = await PatchCatalogQuery.GetAsync(new PatchCatalogQueryOptions {
+                Year = request.Year,
+                Month = request.Month,
+                ProductFamily = request.ProductFamily,
+                ProductVersion = request.ProductVersion,
+                ProductBuild = request.ProductBuild,
+                ProductEdition = request.ProductEdition,
+                ProductNameContains = request.ProductNameContains,
+                Severity = request.Severity,
+                ExploitedOnly = request.ExploitedOnly,
+                PubliclyDisclosedOnly = request.PubliclyDisclosedOnly,
+                CveContains = request.CveContains,
+                KbContains = request.KbContains,
+                MaxResults = request.MaxResults
+            }, cancellationToken).ConfigureAwait(false);
+        } catch (Exception ex) {
+            return ErrorFromException(ex, defaultMessage: "Patch details query failed.");
         }
-
-        var severitySet = request.Severity.Count == 0
-            ? null
-            : new HashSet<string>(request.Severity, StringComparer.OrdinalIgnoreCase);
-
-        var filtered = monthly
-            .Where(x => severitySet is null || severitySet.Contains(x.Severity))
-            .Where(x => !request.ExploitedOnly || x.IsExploited)
-            .Where(x => !request.PubliclyDisclosedOnly || x.PubliclyDisclosed)
-            .Where(x => string.IsNullOrWhiteSpace(request.CveContains)
-                || x.CveId.Contains(request.CveContains, StringComparison.OrdinalIgnoreCase))
-            .Where(x => string.IsNullOrWhiteSpace(request.KbContains)
-                || SystemPatchKbNormalization.MatchesContainsFilter(x.Kbs, request.KbContains))
-            .Where(x => request.ProductNameContains.Count == 0
-                || (x.Products?.Any(product =>
-                    request.ProductNameContains.Any(filter => product.Contains(filter, StringComparison.OrdinalIgnoreCase))) ?? false))
-            .OrderByDescending(static x => x.Published ?? DateTime.MinValue)
-            .ThenBy(static x => x.CveId, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-
-        var rows = CapRows(filtered, request.MaxResults, out var scanned, out var truncated);
-        var summary = BuildSummary(filtered);
-        var release = new DateTime(request.Year, request.Month, 1).ToString("yyyy-MM");
-
-        var result = new SystemPatchDetailsResult(
-            Year: request.Year,
-            Month: request.Month,
-            Release: release,
-            ProductMappedFilterApplied: !string.IsNullOrWhiteSpace(request.ProductFamily),
-            ProductFamily: request.ProductFamily,
-            ProductVersion: request.ProductVersion,
-            ProductBuild: request.ProductBuild,
-            ProductEdition: request.ProductEdition,
-            ProductNameContains: request.ProductNameContains,
-            Severity: request.Severity,
-            ExploitedOnly: request.ExploitedOnly,
-            PubliclyDisclosedOnly: request.PubliclyDisclosedOnly,
-            CveContains: request.CveContains,
-            KbContains: request.KbContains,
-            Scanned: scanned,
-            Truncated: truncated,
-            Summary: summary,
-            Patches: rows);
 
         var response = ToolResultV2.OkAutoTableResponse(
             arguments: context.Arguments,
             model: result,
-            sourceRows: rows,
+            sourceRows: result.Patches,
             viewRowsPath: "patches_view",
             title: "System patch details (preview)",
             maxTop: MaxViewTop,
-            baseTruncated: truncated,
-            scanned: scanned,
+            baseTruncated: result.Truncated,
+            scanned: result.Scanned,
             metaMutate: meta => {
                 AddMaxResultsMeta(meta, request.MaxResults);
                 AddPatchFilterMeta(
                     meta: meta,
-                    year: request.Year,
-                    month: request.Month,
-                    release: release,
-                    productFamily: request.ProductFamily,
-                    productVersion: request.ProductVersion,
-                    productBuild: request.ProductBuild,
-                    productEdition: request.ProductEdition,
-                    severity: request.Severity,
-                    exploitedOnly: request.ExploitedOnly,
-                    publiclyDisclosedOnly: request.PubliclyDisclosedOnly,
-                    cveContains: request.CveContains,
-                    kbContains: request.KbContains);
-                if (request.ProductNameContains.Count > 0) {
-                    meta.Add("product_name_contains", string.Join(", ", request.ProductNameContains));
+                    year: result.Year,
+                    month: result.Month,
+                    release: result.Release,
+                    productFamily: result.ProductFamily,
+                    productVersion: result.ProductVersion,
+                    productBuild: result.ProductBuild,
+                    productEdition: result.ProductEdition,
+                    severity: result.Severity,
+                    exploitedOnly: result.ExploitedOnly,
+                    publiclyDisclosedOnly: result.PubliclyDisclosedOnly,
+                    cveContains: result.CveContains,
+                    kbContains: result.KbContains);
+                if (result.ProductNameContains.Count > 0) {
+                    meta.Add("product_name_contains", string.Join(", ", result.ProductNameContains));
                 }
             });
 
         return response;
-    }
-
-    private static PatchDetailsSummary BuildSummary(IReadOnlyList<PatchDetailsInfo> rows) {
-        var summary = new PatchDetailsSummary {
-            Total = rows.Count
-        };
-
-        var newKbs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var notable = new List<string>();
-        var highestRated = new List<string>();
-
-        foreach (var x in rows) {
-            if (x.IsExploited) {
-                summary.Exploited++;
-                if (!string.IsNullOrWhiteSpace(x.CveId)) {
-                    notable.Add(x.CveId);
-                }
-            }
-            if (x.PubliclyDisclosed) {
-                summary.PubliclyDisclosed++;
-            }
-            if (x.ExploitationMoreLikely) {
-                summary.ExploitationMoreLikely++;
-            }
-
-            if (string.Equals(x.Severity, "Critical", StringComparison.OrdinalIgnoreCase)) {
-                summary.Critical++;
-            } else if (string.Equals(x.Severity, "Important", StringComparison.OrdinalIgnoreCase)) {
-                summary.Important++;
-            }
-
-            var category = x.Category ?? string.Empty;
-            if (category.IndexOf("Elevation of Privilege", StringComparison.OrdinalIgnoreCase) >= 0) {
-                summary.ElevationOfPrivilege++;
-            } else if (category.IndexOf("Security Feature Bypass", StringComparison.OrdinalIgnoreCase) >= 0) {
-                summary.SecurityFeatureBypass++;
-            } else if (category.IndexOf("Remote Code Execution", StringComparison.OrdinalIgnoreCase) >= 0) {
-                summary.RemoteCodeExecution++;
-            } else if (category.IndexOf("Information Disclosure", StringComparison.OrdinalIgnoreCase) >= 0) {
-                summary.InformationDisclosure++;
-            } else if (category.IndexOf("Denial of Service", StringComparison.OrdinalIgnoreCase) >= 0) {
-                summary.DenialOfService++;
-            } else if (category.IndexOf("Spoofing", StringComparison.OrdinalIgnoreCase) >= 0) {
-                summary.Spoofing++;
-            } else if (category.IndexOf("Edge - Chromium", StringComparison.OrdinalIgnoreCase) >= 0) {
-                summary.EdgeChromium++;
-            }
-
-            if (x.Cvss.HasValue && x.Cvss.Value >= 8.0 && !string.IsNullOrWhiteSpace(x.CveId)) {
-                highestRated.Add(x.CveId);
-            }
-
-            foreach (var kb in SystemPatchKbNormalization.NormalizeDistinct(x.Kbs)) {
-                newKbs.Add(kb);
-            }
-        }
-
-        summary.NewKbs = newKbs.OrderBy(static x => x, StringComparer.OrdinalIgnoreCase).ToArray();
-        summary.NotableCves = notable.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-        summary.HighestRatedCves = highestRated.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-        return summary;
     }
 }

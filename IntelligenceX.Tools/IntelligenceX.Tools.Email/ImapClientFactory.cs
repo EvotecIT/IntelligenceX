@@ -1,5 +1,4 @@
 using System;
-using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using MailKit.Net.Imap;
@@ -14,21 +13,22 @@ internal static class ImapClientFactory {
         }
         options.Validate();
 
-        var secure = EmailToolBase.ParseSecureSocketOptions(options.SecureSocketOptions);
-        return ImapConnector.ConnectAsync(
+        var request = new ImapConnectionRequest(
             options.Server,
             options.Port,
-            secure,
+            EmailToolBase.ParseSecureSocketOptions(options.SecureSocketOptions),
             options.TimeoutMs,
             options.SkipCertificateRevocation,
             options.SkipCertificateValidation,
-            authenticateAsync: async (client, ct) => {
-                await client.AuthenticateAsync(new NetworkCredential(options.UserName, options.Password), ct).ConfigureAwait(false);
-            },
             options.RetryCount,
             options.RetryDelayMilliseconds,
-            options.RetryDelayBackoff,
+            options.RetryDelayBackoff);
+
+        return ImapConnector.ConnectAuthenticatedAsync(
+            request,
+            options.UserName,
+            options.Password,
+            ProtocolAuthMode.Basic,
             cancellationToken);
     }
 }
-

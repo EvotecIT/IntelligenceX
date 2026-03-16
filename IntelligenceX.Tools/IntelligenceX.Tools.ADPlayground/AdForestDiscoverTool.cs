@@ -1,12 +1,9 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using ADPlayground;
 using ADPlayground.Helpers;
-using ADPlayground.Infrastructure;
 using ADPlayground.Monitoring.Probes;
 using IntelligenceX.Json;
 using IntelligenceX.Tools;
@@ -115,32 +112,58 @@ public sealed partial class AdForestDiscoverTool : ActiveDirectoryToolBase, IToo
         var trustTimeoutMs = ToolArgs.GetCappedInt32(arguments, "trust_timeout_ms", DefaultTrustTimeoutMs, 500, MaxTrustTimeoutMs);
         var maxTrusts = ToolArgs.GetCappedInt32(arguments, "max_trusts", DefaultMaxTrusts, 0, MaxTrustsCap);
 
-        var receipt = new List<object>();
+        var discovery = await AdForestDiscoveryService.DiscoverAsync(
+            new AdForestDiscoveryService.ForestDiscoveryRequest(
+                ForestName: explicitForest,
+                DomainName: explicitDomain,
+                DomainController: explicitDomainController,
+                IncludeDomains: includeDomains,
+                ExcludeDomains: excludeDomains,
+                IncludeDomainControllers: includeDomainControllers,
+                ExcludeDomainControllers: excludeDomainControllers,
+                SkipRodc: skipRodc,
+                IncludeTrustedDomains: includeTrustedDomains,
+                DiscoveryFallback: discoveryFallback switch {
+                    DirectoryDiscoveryFallback.CurrentForest => AdForestDiscoveryService.ForestDiscoveryFallback.CurrentForest,
+                    DirectoryDiscoveryFallback.CurrentDomain => AdForestDiscoveryService.ForestDiscoveryFallback.CurrentDomain,
+                    _ => AdForestDiscoveryService.ForestDiscoveryFallback.None
+                },
+                MaxDomains: maxDomains,
+                MaxDomainControllersTotal: maxDcsTotal,
+                MaxDomainControllersPerDomain: maxDcsPerDomain,
+                MaxTrusts: maxTrusts,
+                IncludeTrustRelationships: includeTrustRelationships,
+                IncludeDomainTrustRelationships: includeDomainTrustRelationships,
+                TrustTimeoutMs: trustTimeoutMs,
+                RootDseTimeoutMs: DefaultRootDseTimeoutMs,
+                LdapTimeoutMs: DefaultLdapTimeoutMs,
+                DcSourceTimeoutMs: DefaultDcSourceTimeoutMs),
+            cancellationToken).ConfigureAwait(false);
 
-        DomainInfoQueryResult? rootDseInfo = null;
-        var rootDseStep = new DiscoveryStep("rootdse_context");
-        receipt.Add(rootDseStep);
-        rootDseStep.Start();
-        try {
-            // Best-effort context: explicit domain_controller is honored, otherwise RootDseReader selects a candidate.
-            rootDseInfo = await RunWithTimeoutAsync(
-                () => DomainInfoService.Query(explicitDomainController, cancellationToken),
-                timeoutMs: DefaultRootDseTimeoutMs,
-                cancellationToken);
-            rootDseStep.Succeed(new {
-                domain_controller = rootDseInfo.DomainController,
-                dns_domain_name = rootDseInfo.DnsDomainName,
-                forest_dns_name = rootDseInfo.ForestDnsName
-            });
-        } catch (Exception ex) {
-            rootDseStep.Fail(ex);
-        }
-
-        var effectiveForest = NormalizeOptional(explicitForest)
-                              ?? NormalizeOptional(rootDseInfo?.ForestDnsName)
-                              ?? (discoveryFallback == DirectoryDiscoveryFallback.CurrentForest ? NormalizeOptional(DomainHelper.RootDomainName) : null);
-        var effectiveDomain = NormalizeOptional(explicitDomain)
-                              ?? NormalizeOptional(rootDseInfo?.DnsDomainName);
+        var effectiveForest = discovery.EffectiveForestName;
+        var effectiveDomain = discovery.EffectiveDomainName;
+        var domains = discovery.Domains;
+        var allDcs = discovery.DomainControllers;
+        var trusts = discovery.Trusts
+            .Select(static trust => (object)new {
+                scope = trust.Scope,
+                source_name = trust.SourceName,
+                target_name = trust.TargetName,
+                trust_type = trust.TrustType,
+                trust_direction = trust.TrustDirection
+            })
+            .ToList();
+        var dcByDomain = discovery.DomainControllersByDomain
+            .Select(static row => (object)new {
+                domain_name = row.DomainName,
+                domain_controllers = row.DomainControllers,
+                receipt = row.Receipt.Select(ToDiscoveryStep).ToArray(),
+                domain_controller_count = row.DomainControllerCount
+            })
+            .ToList();
+        var receipt = discovery.Steps
+            .Select(static step => (object)ToDiscoveryStep(step))
+            .ToList();
 
         if (string.IsNullOrWhiteSpace(effectiveForest) &&
             string.IsNullOrWhiteSpace(effectiveDomain) &&
@@ -156,260 +179,6 @@ public sealed partial class AdForestDiscoverTool : ActiveDirectoryToolBase, IToo
                 isTransient: false);
         }
 
-        // Domains: resolve with DirectoryTargetResolver semantics for filtering consistency, but we still record sources attempted.
-        var domains = new List<string>();
-        var domainsStep = new DiscoveryStep("domains");
-        receipt.Add(domainsStep);
-        domainsStep.Start();
-        try {
-            var domainSources = new List<object>();
-
-            if (!string.IsNullOrWhiteSpace(effectiveDomain)) {
-                var step = new DiscoveryStep("domains:explicit_domain_name");
-                domainSources.Add(step);
-                step.Start();
-                domains.Add(effectiveDomain!);
-                step.Succeed(new { count = 1, domain_name = effectiveDomain });
-            } else if (includeDomains.Count > 0) {
-                var step = new DiscoveryStep("domains:include_domains");
-                domainSources.Add(step);
-                step.Start();
-                domains.AddRange(includeDomains);
-                step.Succeed(new { count = includeDomains.Count });
-            } else {
-                var sdaStep = new DiscoveryStep("domains:active_directory");
-                domainSources.Add(sdaStep);
-                sdaStep.Start();
-                List<string> sdaDomains;
-                try {
-                    sdaDomains = DomainHelper.EnumerateForestDomainNames(
-                            forestName: effectiveForest,
-                            includeTrustedDomains: includeTrustedDomains,
-                            cancellationToken: cancellationToken)
-                        .ToList();
-                    sdaStep.Succeed(new { count = sdaDomains.Count, sample = sdaDomains.Take(5).ToArray(), include_trusts = includeTrustedDomains });
-                } catch (Exception ex) {
-                    sdaDomains = new List<string>();
-                    sdaStep.Fail(ex);
-                }
-
-                domains.AddRange(sdaDomains);
-
-                var ldapStep = new DiscoveryStep("domains:ldap_crossref");
-                domainSources.Add(ldapStep);
-                ldapStep.Start();
-                if (sdaDomains.Count > 1) {
-                    ldapStep.Succeed(new { enabled = false, reason = "active_directory_returned_multiple_domains" });
-                } else if (discoveryFallback == DirectoryDiscoveryFallback.None) {
-                    ldapStep.Succeed(new { enabled = false, reason = "discovery_fallback_none" });
-                } else {
-                    try {
-                        var ldapDomains = await RunWithTimeoutAsync(
-                            () => DomainHelper.EnumerateForestDomainNamesViaLdap(effectiveForest, cancellationToken).ToList(),
-                            timeoutMs: DefaultLdapTimeoutMs,
-                            cancellationToken);
-                        domains.AddRange(ldapDomains);
-                        ldapStep.Succeed(new { enabled = true, count = ldapDomains.Count, sample = ldapDomains.Take(5).ToArray() });
-                    } catch (Exception ex) {
-                        ldapStep.Fail(ex);
-                    }
-                }
-            }
-
-            // Apply include/exclude filters consistently across discovery modes.
-            var includeDomainSet = BuildSet(includeDomains);
-            var excludeDomainSet = BuildSet(excludeDomains);
-
-            // Force a stable, normalized representation.
-            domains = domains
-                .Select(NormalizeHostOrName)
-                .Where(static x => !string.IsNullOrWhiteSpace(x))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .Where(d => includeDomainSet.Count == 0 || includeDomainSet.Contains(d))
-                .Where(d => excludeDomainSet.Count == 0 || !excludeDomainSet.Contains(d))
-                .OrderBy(static x => x, StringComparer.OrdinalIgnoreCase)
-                .Take(maxDomains)
-                .ToList();
-
-            domainsStep.Succeed(new {
-                forest_name = effectiveForest ?? string.Empty,
-                domain_name = effectiveDomain ?? string.Empty,
-                include_trusts = includeTrustedDomains,
-                count = domains.Count,
-                max_domains = maxDomains,
-                sources = domainSources
-            });
-        } catch (Exception ex) {
-            domainsStep.Fail(ex);
-        }
-
-        // Domain controllers: enumerate per domain with a "what + how" receipt.
-        var dcByDomain = new List<object>();
-        var allDcs = new List<string>();
-        var allDcsSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        var dcStep = new DiscoveryStep("domain_controllers");
-        receipt.Add(dcStep);
-        dcStep.Start();
-
-        try {
-            var includedDcSet = BuildSet(includeDomainControllers);
-            var excludedDcSet = BuildSet(excludeDomainControllers);
-            bool AcceptDc(string dc) {
-                if (excludedDcSet.Count > 0 && excludedDcSet.Contains(dc)) {
-                    return false;
-                }
-                if (includedDcSet.Count > 0 && !includedDcSet.Contains(dc)) {
-                    return false;
-                }
-                return true;
-            }
-
-            foreach (var domain in domains) {
-                cancellationToken.ThrowIfCancellationRequested();
-
-                var perDomainReceipt = new List<object>();
-                var perDomain = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-                await CollectDcSourceAsync(
-                    perDomainReceipt,
-                    sourceName: "active_directory",
-                    () => DomainHelper.EnumerateDomainControllers(domain, cancellationToken: cancellationToken),
-                    perDomain,
-                    accept: AcceptDc,
-                    maxCapture: maxDcsPerDomain,
-                    timeoutMs: DefaultDcSourceTimeoutMs,
-                    cancellationToken);
-
-                if (discoveryFallback != DirectoryDiscoveryFallback.None) {
-                    await CollectDcSourceAsync(
-                        perDomainReceipt,
-                        sourceName: "dns_srv",
-                        () => DomainHelper.EnumerateDomainControllersViaDnsSrv(domain),
-                        perDomain,
-                        accept: AcceptDc,
-                        maxCapture: maxDcsPerDomain,
-                        timeoutMs: DefaultDcSourceTimeoutMs,
-                        cancellationToken);
-
-                    await CollectDcSourceAsync(
-                        perDomainReceipt,
-                        sourceName: "dsgetdcname",
-                        () => DomainHelper.EnumerateDomainControllersViaDsGetDcName(domain),
-                        perDomain,
-                        accept: AcceptDc,
-                        maxCapture: maxDcsPerDomain,
-                        timeoutMs: DefaultDcSourceTimeoutMs,
-                        cancellationToken);
-
-                    await CollectDcSourceAsync(
-                        perDomainReceipt,
-                        sourceName: "ldap_sites",
-                        () => DomainHelper.EnumerateDomainControllersViaLdap(domain, cancellationToken),
-                        perDomain,
-                        accept: AcceptDc,
-                        maxCapture: maxDcsPerDomain,
-                        timeoutMs: DefaultLdapTimeoutMs,
-                        cancellationToken);
-                }
-
-                var perDomainList = perDomain
-                    .Select(NormalizeHostOrName)
-                    .Where(static x => !string.IsNullOrWhiteSpace(x))
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .OrderBy(static x => x, StringComparer.OrdinalIgnoreCase)
-                    .ToList();
-
-                if (skipRodc && perDomainList.Count > 0) {
-                    perDomainList = perDomainList
-                        .Where(dc => !IsRodcBestEffort(dc))
-                        .ToList();
-                }
-
-                if (includedDcSet.Count > 0) {
-                    perDomainList = perDomainList.Where(dc => includedDcSet.Contains(dc)).ToList();
-                }
-                if (excludedDcSet.Count > 0) {
-                    perDomainList = perDomainList.Where(dc => !excludedDcSet.Contains(dc)).ToList();
-                }
-
-                if (perDomainList.Count > maxDcsPerDomain) {
-                    perDomainList = perDomainList.Take(maxDcsPerDomain).ToList();
-                }
-
-                foreach (var dc in perDomainList) {
-                    if (allDcsSet.Add(dc)) {
-                        allDcs.Add(dc);
-                    }
-                }
-
-                if (allDcs.Count >= maxDcsTotal) {
-                    break;
-                }
-
-                dcByDomain.Add(new {
-                    domain_name = domain,
-                    domain_controllers = perDomainList,
-                    receipt = perDomainReceipt,
-                    domain_controller_count = perDomainList.Count
-                });
-            }
-
-            if (allDcs.Count > maxDcsTotal) {
-                allDcs = allDcs.Take(maxDcsTotal).ToList();
-            }
-
-            dcStep.Succeed(new {
-                domain_count = domains.Count,
-                domain_controller_count = allDcs.Count,
-                max_domain_controllers_total = maxDcsTotal,
-                max_domain_controllers_per_domain = maxDcsPerDomain,
-                skip_rodc = skipRodc
-            });
-        } catch (Exception ex) {
-            dcStep.Fail(ex);
-        }
-
-        // Trusts (best-effort).
-        var trusts = new List<object>();
-        var trustsStep = new DiscoveryStep("trusts");
-        receipt.Add(trustsStep);
-        trustsStep.Start();
-
-        try {
-            if (!includeTrustRelationships && !includeDomainTrustRelationships) {
-                trustsStep.Succeed(new { enabled = false, count = 0 });
-            } else {
-                if (includeTrustRelationships && !string.IsNullOrWhiteSpace(effectiveForest)) {
-                    foreach (var trust in SdaFast.GetForestTrusts(effectiveForest, trustTimeoutMs)) {
-                        cancellationToken.ThrowIfCancellationRequested();
-                        trusts.Add(MapTrust(trust, scope: "forest"));
-                        if (trusts.Count >= maxTrusts) {
-                            break;
-                        }
-                    }
-                }
-
-                if (includeDomainTrustRelationships) {
-                    foreach (var domain in domains) {
-                        cancellationToken.ThrowIfCancellationRequested();
-                        foreach (var trust in SdaFast.GetDomainTrusts(domain, trustTimeoutMs)) {
-                            trusts.Add(MapTrust(trust, scope: "domain"));
-                            if (trusts.Count >= maxTrusts) {
-                                break;
-                            }
-                        }
-                        if (trusts.Count >= maxTrusts) {
-                            break;
-                        }
-                    }
-                }
-
-                trustsStep.Succeed(new { enabled = true, count = trusts.Count, max_trusts = maxTrusts });
-            }
-        } catch (Exception ex) {
-            trustsStep.Fail(ex);
-        }
         var chain = BuildChainContract(
             discoveryFallback: discoveryFallback,
             effectiveForest: effectiveForest,
@@ -418,10 +187,10 @@ public sealed partial class AdForestDiscoverTool : ActiveDirectoryToolBase, IToo
             domainControllers: allDcs,
             trusts: trusts,
             includeTrusts: includeTrustedDomains,
-            rootDseOk: rootDseStep.Ok,
-            domainsOk: domainsStep.Ok,
-            domainControllersOk: dcStep.Ok,
-            trustsOk: trustsStep.Ok);
+            rootDseOk: discovery.RootDseOk,
+            domainsOk: discovery.DomainsOk,
+            domainControllersOk: discovery.DomainControllersOk,
+            trustsOk: discovery.TrustsOk);
 
         var model = new {
             RequestedScope = new {

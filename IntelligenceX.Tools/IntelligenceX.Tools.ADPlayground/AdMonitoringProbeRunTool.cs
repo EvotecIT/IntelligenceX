@@ -145,7 +145,7 @@ public sealed partial class AdMonitoringProbeRunTool : ActiveDirectoryToolBase, 
             result.Children = null;
         }
 
-        var rows = FlattenProbeRows(result, includeChildren);
+        var rows = ProbeResultProjectionService.FlattenRows(result, includeChildren);
         var directoryProbeKind = string.Equals(normalizedKind, "directory", StringComparison.OrdinalIgnoreCase)
             ? ToolArgs.GetOptionalTrimmed(arguments, "directory_probe_kind")
             : null;
@@ -218,326 +218,244 @@ public sealed partial class AdMonitoringProbeRunTool : ActiveDirectoryToolBase, 
         return response;
 
         async Task<ProbeResult> RunLdapAsync() {
-            var def = new LdapProbeDefinition {
-                Name = name!,
-                Targets = resolvedTargets.ToArray(),
-                DomainName = domainName,
-                ForestName = forestName,
-                IncludeDomains = includeDomains.ToArray(),
-                ExcludeDomains = excludeDomains.ToArray(),
-                IncludeDomainControllers = includeDomainControllers.ToArray(),
-                ExcludeDomainControllers = excludeDomainControllers.ToArray(),
-                SkipRodc = skipRodc,
-                IncludeTrusts = includeTrusts,
-                Timeout = timeout,
-                Retries = retries,
-                RetryDelay = retryDelay,
-                MaxConcurrency = maxConcurrency,
-                VerifyCertificate = ToolArgs.GetBoolean(arguments, "verify_certificate", defaultValue: true),
-                SkipGlobalCatalog = !ToolArgs.GetBoolean(arguments, "include_global_catalog", defaultValue: true),
-                IncludeFacts = ToolArgs.GetBoolean(arguments, "include_facts", defaultValue: true),
-                Identity = ToolArgs.GetOptionalTrimmed(arguments, "identity")
-            };
-
-            var runner = new LdapProbeRunner();
-            return await runner.ExecuteAsync(def, cancellationToken).ConfigureAwait(false);
+            var ldapService = new OnDemandLdapProbeService();
+            return await ldapService.ExecuteAsync(
+                new OnDemandLdapProbeRequest {
+                    Name = name!,
+                    Targets = resolvedTargets.ToArray(),
+                    DomainName = domainName,
+                    ForestName = forestName,
+                    IncludeDomains = includeDomains.ToArray(),
+                    ExcludeDomains = excludeDomains.ToArray(),
+                    IncludeDomainControllers = includeDomainControllers.ToArray(),
+                    ExcludeDomainControllers = excludeDomainControllers.ToArray(),
+                    SkipRodc = skipRodc,
+                    IncludeTrusts = includeTrusts,
+                    Timeout = timeout,
+                    Retries = retries,
+                    RetryDelay = retryDelay,
+                    MaxConcurrency = maxConcurrency,
+                    VerifyCertificate = ToolArgs.GetBoolean(arguments, "verify_certificate", defaultValue: true),
+                    IncludeGlobalCatalog = ToolArgs.GetBoolean(arguments, "include_global_catalog", defaultValue: true),
+                    IncludeFacts = ToolArgs.GetBoolean(arguments, "include_facts", defaultValue: true),
+                    Identity = ToolArgs.GetOptionalTrimmed(arguments, "identity")
+                },
+                cancellationToken).ConfigureAwait(false);
         }
 
         async Task<ProbeResult> RunDnsAsync() {
-            var queries = ReadDnsQueries(arguments?.GetArray("dns_queries"));
-            if (queries.Count == 0) {
-                var effectiveScope = domainName;
-                if (string.IsNullOrWhiteSpace(effectiveScope)) {
-                    effectiveScope = DomainHelper.RootDomainName;
-                }
-
-                if (!string.IsNullOrWhiteSpace(effectiveScope)) {
-                    queries.Add(new DnsQueryItem {
-                        Name = $"_ldap._tcp.dc._msdcs.{effectiveScope}",
-                        Type = "SRV"
-                    });
-                    queries.Add(new DnsQueryItem {
-                        Name = effectiveScope!,
-                        Type = "A"
-                    });
-                }
-            }
-
-            if (queries.Count == 0) {
-                throw new InvalidOperationException("DNS probe requires dns_queries or a resolvable domain_name scope.");
-            }
-            if (resolvedTargets.Count == 0) {
-                throw new InvalidOperationException("DNS probe requires at least one target DNS server (targets/domain_controller/include_domain_controllers).");
-            }
-
-            var protocol = ToolEnumBinders.ParseOrDefault(
-                value: ToolArgs.GetOptionalTrimmed(arguments, "protocol"),
-                map: DnsProtocols,
-                defaultValue: MonitoringDnsProtocol.Both);
-
-            var def = new DnsProbeDefinition {
-                Name = name!,
-                Targets = resolvedTargets.ToList(),
-                DomainName = domainName,
-                ForestName = forestName,
-                IncludeDomains = includeDomains.ToArray(),
-                ExcludeDomains = excludeDomains.ToArray(),
-                IncludeDomainControllers = includeDomainControllers.ToArray(),
-                ExcludeDomainControllers = excludeDomainControllers.ToArray(),
-                SkipRodc = skipRodc,
-                IncludeTrusts = includeTrusts,
-                Timeout = timeout,
-                Retries = retries,
-                RetryDelay = retryDelay,
-                MaxConcurrency = maxConcurrency,
-                Protocol = protocol,
-                SplitProtocolResults = splitProtocolResults,
-                PerQueryTimeout = timeout,
-                Queries = queries
-            };
-
-            var runner = new DnsProbeRunner();
-            return await runner.ExecuteAsync(def, cancellationToken).ConfigureAwait(false);
+            var dnsService = new OnDemandDnsProbeService();
+            return await dnsService.ExecuteAsync(
+                new OnDemandDnsProbeRequest {
+                    Name = name!,
+                    Targets = resolvedTargets.ToArray(),
+                    DomainName = domainName,
+                    ForestName = forestName,
+                    IncludeDomains = includeDomains.ToArray(),
+                    ExcludeDomains = excludeDomains.ToArray(),
+                    IncludeDomainControllers = includeDomainControllers.ToArray(),
+                    ExcludeDomainControllers = excludeDomainControllers.ToArray(),
+                    SkipRodc = skipRodc,
+                    IncludeTrusts = includeTrusts,
+                    Timeout = timeout,
+                    Retries = retries,
+                    RetryDelay = retryDelay,
+                    MaxConcurrency = maxConcurrency,
+                    Protocol = ToolEnumBinders.ParseOrDefault(
+                        value: ToolArgs.GetOptionalTrimmed(arguments, "protocol"),
+                        map: DnsProtocols,
+                        defaultValue: MonitoringDnsProtocol.Both),
+                    SplitProtocolResults = splitProtocolResults,
+                    PerQueryTimeout = timeout,
+                    Queries = ReadDnsQueries(arguments?.GetArray("dns_queries")).ToArray()
+                },
+                cancellationToken).ConfigureAwait(false);
         }
 
         async Task<ProbeResult> RunKerberosAsync() {
-            var protocol = ToolEnumBinders.ParseOrDefault(
-                value: ToolArgs.GetOptionalTrimmed(arguments, "protocol"),
-                map: KerberosProtocols,
-                defaultValue: KerberosTransport.Both);
-
-            var def = new KerberosProbeDefinition {
-                Name = name!,
-                Targets = resolvedTargets.ToArray(),
-                DomainName = domainName,
-                ForestName = forestName,
-                IncludeDomains = includeDomains.ToArray(),
-                ExcludeDomains = excludeDomains.ToArray(),
-                IncludeDomainControllers = includeDomainControllers.ToArray(),
-                ExcludeDomainControllers = excludeDomainControllers.ToArray(),
-                SkipRodc = skipRodc,
-                IncludeTrusts = includeTrusts,
-                Timeout = timeout,
-                Retries = retries,
-                RetryDelay = retryDelay,
-                MaxConcurrency = maxConcurrency,
-                Transport = protocol,
-                SplitProtocolResults = splitProtocolResults
-            };
-
-            var runner = new KerberosProbeRunner();
-            return await runner.ExecuteAsync(def, cancellationToken).ConfigureAwait(false);
+            var kerberosService = new OnDemandKerberosProbeService();
+            return await kerberosService.ExecuteAsync(
+                new OnDemandKerberosProbeRequest {
+                    Name = name!,
+                    Targets = resolvedTargets.ToArray(),
+                    DomainName = domainName,
+                    ForestName = forestName,
+                    IncludeDomains = includeDomains.ToArray(),
+                    ExcludeDomains = excludeDomains.ToArray(),
+                    IncludeDomainControllers = includeDomainControllers.ToArray(),
+                    ExcludeDomainControllers = excludeDomainControllers.ToArray(),
+                    SkipRodc = skipRodc,
+                    IncludeTrusts = includeTrusts,
+                    Timeout = timeout,
+                    Retries = retries,
+                    RetryDelay = retryDelay,
+                    MaxConcurrency = maxConcurrency,
+                    Transport = ToolEnumBinders.ParseOrDefault(
+                        value: ToolArgs.GetOptionalTrimmed(arguments, "protocol"),
+                        map: KerberosProtocols,
+                        defaultValue: KerberosTransport.Both),
+                    SplitProtocolResults = splitProtocolResults
+                },
+                cancellationToken).ConfigureAwait(false);
         }
 
         async Task<ProbeResult> RunNtpAsync() {
-            var def = new NtpProbeDefinition {
-                Name = name!,
-                Targets = resolvedTargets.ToArray(),
-                DomainName = domainName,
-                ForestName = forestName,
-                IncludeDomains = includeDomains.ToArray(),
-                ExcludeDomains = excludeDomains.ToArray(),
-                IncludeDomainControllers = includeDomainControllers.ToArray(),
-                ExcludeDomainControllers = excludeDomainControllers.ToArray(),
-                SkipRodc = skipRodc,
-                IncludeTrusts = includeTrusts,
-                Timeout = timeout,
-                Retries = retries,
-                RetryDelay = retryDelay,
-                MaxConcurrency = maxConcurrency,
-                RequestTimeout = timeout
-            };
-
-            var runner = new NtpProbeRunner();
-            return await runner.ExecuteAsync(def, cancellationToken).ConfigureAwait(false);
+            var ntpService = new OnDemandNtpProbeService();
+            return await ntpService.ExecuteAsync(
+                new OnDemandNtpProbeRequest {
+                    Name = name!,
+                    Targets = resolvedTargets.ToArray(),
+                    DomainName = domainName,
+                    ForestName = forestName,
+                    IncludeDomains = includeDomains.ToArray(),
+                    ExcludeDomains = excludeDomains.ToArray(),
+                    IncludeDomainControllers = includeDomainControllers.ToArray(),
+                    ExcludeDomainControllers = excludeDomainControllers.ToArray(),
+                    SkipRodc = skipRodc,
+                    IncludeTrusts = includeTrusts,
+                    Timeout = timeout,
+                    Retries = retries,
+                    RetryDelay = retryDelay,
+                    MaxConcurrency = maxConcurrency,
+                    RequestTimeout = timeout
+                },
+                cancellationToken).ConfigureAwait(false);
         }
 
         async Task<ProbeResult> RunReplicationAsync() {
-            var queryMode = ToolEnumBinders.ParseOrDefault(
-                value: ToolArgs.GetOptionalTrimmed(arguments, "query_mode"),
-                map: ReplicationModes,
-                defaultValue: ReplicationQueryMode.Auto);
-
-            var staleThresholdHours = ToolArgs.GetCappedInt32(arguments, "stale_threshold_hours", 12, 1, 24 * 30);
-            var def = new ReplicationProbeDefinition {
-                Name = name!,
-                DomainName = domainName,
-                ForestName = forestName,
-                IncludeDomains = includeDomains.ToArray(),
-                ExcludeDomains = excludeDomains.ToArray(),
-                IncludeDomainControllers = includeDomainControllers.ToArray(),
-                ExcludeDomainControllers = excludeDomainControllers.ToArray(),
-                SkipRodc = skipRodc,
-                IncludeTrusts = includeTrusts,
-                Timeout = timeout,
-                QueryTimeout = timeout,
-                Retries = retries,
-                RetryDelay = retryDelay,
-                DomainControllers = resolvedTargets.ToList(),
-                StaleThreshold = TimeSpan.FromHours(staleThresholdHours),
-                IncludeSysvol = ToolArgs.GetBoolean(arguments, "include_sysvol", defaultValue: true),
-                TestSysvolShares = ToolArgs.GetBoolean(arguments, "test_sysvol_shares", defaultValue: false),
-                TestPorts = ToolArgs.GetBoolean(arguments, "test_ports", defaultValue: false),
-                TestPing = ToolArgs.GetBoolean(arguments, "test_ping", defaultValue: false),
-                QueryMode = queryMode
-            };
-
-            var runner = new ReplicationProbeRunner();
-            return await runner.ExecuteAsync(def, cancellationToken).ConfigureAwait(false);
+            var replicationService = new OnDemandReplicationProbeService();
+            return await replicationService.ExecuteAsync(
+                new OnDemandReplicationProbeRequest {
+                    Name = name!,
+                    DomainName = domainName,
+                    ForestName = forestName,
+                    IncludeDomains = includeDomains.ToArray(),
+                    ExcludeDomains = excludeDomains.ToArray(),
+                    IncludeDomainControllers = includeDomainControllers.ToArray(),
+                    ExcludeDomainControllers = excludeDomainControllers.ToArray(),
+                    SkipRodc = skipRodc,
+                    IncludeTrusts = includeTrusts,
+                    Timeout = timeout,
+                    QueryTimeout = timeout,
+                    Retries = retries,
+                    RetryDelay = retryDelay,
+                    DomainControllers = resolvedTargets.ToArray(),
+                    StaleThreshold = TimeSpan.FromHours(ToolArgs.GetCappedInt32(arguments, "stale_threshold_hours", 12, 1, 24 * 30)),
+                    IncludeSysvol = ToolArgs.GetBoolean(arguments, "include_sysvol", defaultValue: true),
+                    TestSysvolShares = ToolArgs.GetBoolean(arguments, "test_sysvol_shares", defaultValue: false),
+                    TestPorts = ToolArgs.GetBoolean(arguments, "test_ports", defaultValue: false),
+                    TestPing = ToolArgs.GetBoolean(arguments, "test_ping", defaultValue: false),
+                    QueryMode = ToolEnumBinders.ParseOrDefault(
+                        value: ToolArgs.GetOptionalTrimmed(arguments, "query_mode"),
+                        map: ReplicationModes,
+                        defaultValue: ReplicationQueryMode.Auto)
+                },
+                cancellationToken).ConfigureAwait(false);
         }
 
         async Task<ProbeResult> RunAdwsAsync() {
-            var def = new AdwsProbeDefinition {
-                Name = name!,
-                Targets = resolvedTargets.ToArray(),
-                DomainName = domainName,
-                ForestName = forestName,
-                IncludeDomains = includeDomains.ToArray(),
-                ExcludeDomains = excludeDomains.ToArray(),
-                IncludeDomainControllers = includeDomainControllers.ToArray(),
-                ExcludeDomainControllers = excludeDomainControllers.ToArray(),
-                SkipRodc = skipRodc,
-                IncludeTrusts = includeTrusts,
-                Timeout = timeout,
-                Retries = retries,
-                RetryDelay = retryDelay,
-                Port = ToolArgs.GetPositiveCappedInt32OrDefault(arguments, "port", defaultValue: 9389, maxInclusive: 65535),
-                Path = ToolArgs.GetTrimmedOrDefault(arguments, "path", "ActiveDirectoryWebServices/Windows/Enumeration"),
-                RequestTimeout = ReadOptionalTimeSpanFromMilliseconds(arguments, "request_timeout_ms") ?? timeout,
-                FailureHandling = ToolEnumBinders.ParseOrDefault(
-                    ToolArgs.GetOptionalTrimmed(arguments, "adws_failure_handling"),
-                    IssueHandlingModes,
-                    PortIssueHandling.Down),
-                BindIdentity = ToolArgs.GetOptionalTrimmed(arguments, "bind_identity"),
-                BindSecret = ToolArgs.GetOptionalTrimmed(arguments, "bind_secret"),
-                MaxConcurrency = maxConcurrency
-            };
-
-            var runner = new AdwsProbeRunner();
-            return await runner.ExecuteAsync(def, cancellationToken).ConfigureAwait(false);
+            var adwsService = new OnDemandAdwsProbeService();
+            return await adwsService.ExecuteAsync(
+                new OnDemandAdwsProbeRequest {
+                    Name = name!,
+                    Targets = resolvedTargets.ToArray(),
+                    DomainName = domainName,
+                    ForestName = forestName,
+                    IncludeDomains = includeDomains.ToArray(),
+                    ExcludeDomains = excludeDomains.ToArray(),
+                    IncludeDomainControllers = includeDomainControllers.ToArray(),
+                    ExcludeDomainControllers = excludeDomainControllers.ToArray(),
+                    SkipRodc = skipRodc,
+                    IncludeTrusts = includeTrusts,
+                    Timeout = timeout,
+                    Retries = retries,
+                    RetryDelay = retryDelay,
+                    Port = ToolArgs.GetPositiveCappedInt32OrDefault(arguments, "port", defaultValue: 9389, maxInclusive: 65535),
+                    Path = ToolArgs.GetOptionalTrimmed(arguments, "path") ?? string.Empty,
+                    RequestTimeout = ReadOptionalTimeSpanFromMilliseconds(arguments, "request_timeout_ms") ?? timeout,
+                    FailureHandling = ToolEnumBinders.ParseOrDefault(
+                        ToolArgs.GetOptionalTrimmed(arguments, "adws_failure_handling"),
+                        IssueHandlingModes,
+                        PortIssueHandling.Down),
+                    BindIdentity = ToolArgs.GetOptionalTrimmed(arguments, "bind_identity"),
+                    BindSecret = ToolArgs.GetOptionalTrimmed(arguments, "bind_secret"),
+                    MaxConcurrency = maxConcurrency
+                },
+                cancellationToken).ConfigureAwait(false);
         }
 
         async Task<ProbeResult> RunPortAsync() {
-            var tcpPorts = ToolArgs.ReadPositiveInt32ArrayCapped(arguments?.GetArray("tcp_ports"), 65535)
-                .Distinct()
-                .OrderBy(static x => x)
-                .ToArray();
-            var udpPorts = ToolArgs.ReadPositiveInt32ArrayCapped(arguments?.GetArray("udp_ports"), 65535)
-                .Distinct()
-                .OrderBy(static x => x)
-                .ToArray();
-
-            var def = new PortProbeDefinition {
-                Name = name!,
-                Targets = resolvedTargets.ToArray(),
-                DomainName = domainName,
-                ForestName = forestName,
-                IncludeDomains = includeDomains.ToArray(),
-                ExcludeDomains = excludeDomains.ToArray(),
-                IncludeDomainControllers = includeDomainControllers.ToArray(),
-                ExcludeDomainControllers = excludeDomainControllers.ToArray(),
-                SkipRodc = skipRodc,
-                IncludeTrusts = includeTrusts,
-                Timeout = timeout,
-                Retries = retries,
-                RetryDelay = retryDelay,
-                MaxConcurrency = maxConcurrency,
-                Ports = tcpPorts,
-                UdpPorts = udpPorts,
-                IncludeUdp = ToolArgs.GetBoolean(arguments, "include_udp", defaultValue: false),
-                UseAdCoreProfile = ToolArgs.GetBoolean(arguments, "use_ad_core_profile", defaultValue: true),
-                RetryCount = retries
-            };
-
-            var runner = new PortProbeRunner();
-            return await runner.ExecuteAsync(def, cancellationToken).ConfigureAwait(false);
+            var portService = new OnDemandPortProbeService();
+            return await portService.ExecuteAsync(
+                new OnDemandPortProbeRequest {
+                    Name = name!,
+                    Targets = resolvedTargets.ToArray(),
+                    DomainName = domainName,
+                    ForestName = forestName,
+                    IncludeDomains = includeDomains.ToArray(),
+                    ExcludeDomains = excludeDomains.ToArray(),
+                    IncludeDomainControllers = includeDomainControllers.ToArray(),
+                    ExcludeDomainControllers = excludeDomainControllers.ToArray(),
+                    SkipRodc = skipRodc,
+                    IncludeTrusts = includeTrusts,
+                    Timeout = timeout,
+                    Retries = retries,
+                    RetryDelay = retryDelay,
+                    MaxConcurrency = maxConcurrency,
+                    Ports = ToolArgs.ReadPositiveInt32ArrayCapped(arguments?.GetArray("tcp_ports"), 65535).ToArray(),
+                    UdpPorts = ToolArgs.ReadPositiveInt32ArrayCapped(arguments?.GetArray("udp_ports"), 65535).ToArray(),
+                    IncludeUdp = ToolArgs.GetBoolean(arguments, "include_udp", defaultValue: false),
+                    UseAdCoreProfile = ToolArgs.GetBoolean(arguments, "use_ad_core_profile", defaultValue: true)
+                },
+                cancellationToken).ConfigureAwait(false);
         }
 
         async Task<ProbeResult> RunDnsServiceAsync() {
-            var protocol = ToolEnumBinders.ParseOrDefault(
-                value: ToolArgs.GetOptionalTrimmed(arguments, "protocol"),
-                map: DnsProtocols,
-                defaultValue: MonitoringDnsProtocol.Udp);
-
-            var def = new DnsServiceProbeDefinition {
-                Name = name!,
-                Targets = resolvedTargets.ToArray(),
-                DomainName = domainName,
-                ForestName = forestName,
-                IncludeDomains = includeDomains.ToArray(),
-                ExcludeDomains = excludeDomains.ToArray(),
-                IncludeDomainControllers = includeDomainControllers.ToArray(),
-                ExcludeDomainControllers = excludeDomainControllers.ToArray(),
-                SkipRodc = skipRodc,
-                IncludeTrusts = includeTrusts,
-                Timeout = timeout,
-                Retries = retries,
-                RetryDelay = retryDelay,
-                Protocol = protocol,
-                QueryName = ToolArgs.GetTrimmedOrDefault(arguments, "dns_service_query_name", "_ldap._tcp.dc._msdcs.{domain}"),
-                RecordType = ToolArgs.GetTrimmedOrDefault(arguments, "dns_service_record_type", "SRV"),
-                RequireAnswers = ToolArgs.GetBoolean(arguments, "dns_service_require_answers", defaultValue: true),
-                QueryTimeout = ReadOptionalTimeSpanFromMilliseconds(arguments, "dns_service_query_timeout_ms") ?? timeout,
-                MaxConcurrency = maxConcurrency
-            };
-
-            var runner = new DnsServiceProbeRunner();
-            return await runner.ExecuteAsync(def, cancellationToken).ConfigureAwait(false);
+            var dnsService = new OnDemandDnsServiceProbeService();
+            return await dnsService.ExecuteAsync(
+                new OnDemandDnsServiceProbeRequest {
+                    Name = name!,
+                    Targets = resolvedTargets.ToArray(),
+                    DomainName = domainName,
+                    ForestName = forestName,
+                    IncludeDomains = includeDomains.ToArray(),
+                    ExcludeDomains = excludeDomains.ToArray(),
+                    IncludeDomainControllers = includeDomainControllers.ToArray(),
+                    ExcludeDomainControllers = excludeDomainControllers.ToArray(),
+                    SkipRodc = skipRodc,
+                    IncludeTrusts = includeTrusts,
+                    Timeout = timeout,
+                    Retries = retries,
+                    RetryDelay = retryDelay,
+                    Protocol = ToolEnumBinders.ParseOrDefault(
+                        value: ToolArgs.GetOptionalTrimmed(arguments, "protocol"),
+                        map: DnsProtocols,
+                        defaultValue: MonitoringDnsProtocol.Udp),
+                    QueryName = ToolArgs.GetOptionalTrimmed(arguments, "dns_service_query_name") ?? string.Empty,
+                    RecordType = ToolArgs.GetOptionalTrimmed(arguments, "dns_service_record_type") ?? string.Empty,
+                    RequireAnswers = ToolArgs.GetBoolean(arguments, "dns_service_require_answers", defaultValue: true),
+                    QueryTimeout = ReadOptionalTimeSpanFromMilliseconds(arguments, "dns_service_query_timeout_ms") ?? timeout,
+                    MaxConcurrency = maxConcurrency
+                },
+                cancellationToken).ConfigureAwait(false);
         }
 
         async Task<ProbeResult> RunHttpsAsync() {
-            var endpoints = new List<string>();
-            var url = ToolArgs.GetOptionalTrimmed(arguments, "url");
-            if (!string.IsNullOrWhiteSpace(url)) {
-                endpoints.Add(url!);
-            }
-            if (targets.Count > 0) {
-                endpoints.AddRange(targets);
-            }
-            if (endpoints.Count == 0) {
-                endpoints.AddRange(resolvedTargets);
-            }
-
-            endpoints = endpoints
-                .Where(static x => !string.IsNullOrWhiteSpace(x))
-                .Select(static x => x.Trim())
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToList();
-
-            if (endpoints.Count == 0) {
-                throw new InvalidOperationException("HTTPS probe requires url, targets, or resolvable scope.");
-            }
-
-            var template = new HttpsProbeDefinition {
-                Name = name!,
-                Timeout = timeout,
-                Retries = retries,
-                RetryDelay = retryDelay,
-                Port = ToolArgs.GetCappedInt32(arguments, "port", 443, 1, 65535),
-                VerifyCertificate = ToolArgs.GetBoolean(arguments, "verify_certificate", defaultValue: true),
-                CertificateDegradedDays = ToolArgs.GetCappedInt32(arguments, "certificate_degraded_days", 30, 0, 3650),
-                DegradedAbove = ReadOptionalTimeSpanFromMilliseconds(arguments, "degraded_above_ms") ?? TimeSpan.FromSeconds(2)
-            };
-
-            var runner = new HttpsProbeRunner();
-            if (endpoints.Count == 1) {
-                var single = CloneHttpsDefinition(template, endpoints[0], name!);
-                return await runner.ExecuteAsync(single, cancellationToken).ConfigureAwait(false);
-            }
-
-            var children = new List<ProbeResult>(endpoints.Count);
-            for (var i = 0; i < endpoints.Count; i++) {
-                var endpoint = endpoints[i];
-                var child = CloneHttpsDefinition(template, endpoint, $"{name}-{i + 1}");
-                children.Add(await runner.ExecuteAsync(child, cancellationToken).ConfigureAwait(false));
-            }
-
-            return BuildAggregateParentResult(
-                name: name!,
-                type: ProbeType.Https,
-                protocol: "HTTPS",
-                targetLabel: $"{children.Count} targets",
-                children: children);
+            var httpsService = new OnDemandHttpsProbeService();
+            return await httpsService.ExecuteAsync(
+                new OnDemandHttpsProbeRequest {
+                    Name = name!,
+                    Url = ToolArgs.GetOptionalTrimmed(arguments, "url"),
+                    Targets = (targets.Count == 0 ? resolvedTargets : targets).ToArray(),
+                    Timeout = timeout,
+                    Retries = retries,
+                    RetryDelay = retryDelay,
+                    Port = ToolArgs.GetCappedInt32(arguments, "port", 443, 1, 65535),
+                    VerifyCertificate = ToolArgs.GetBoolean(arguments, "verify_certificate", defaultValue: true),
+                    CertificateDegradedDays = ToolArgs.GetCappedInt32(arguments, "certificate_degraded_days", 30, 0, 3650),
+                    DegradedAbove = ReadOptionalTimeSpanFromMilliseconds(arguments, "degraded_above_ms") ?? TimeSpan.FromSeconds(2)
+                },
+                cancellationToken).ConfigureAwait(false);
         }
 
         Task<ProbeResult> RunDirectoryAsync() {
@@ -572,27 +490,27 @@ public sealed partial class AdMonitoringProbeRunTool : ActiveDirectoryToolBase, 
         }
 
         async Task<ProbeResult> RunWindowsUpdateAsync() {
-            var def = new WindowsUpdateProbeDefinition {
-                Name = name!,
-                Targets = resolvedTargets.ToArray(),
-                DomainName = domainName,
-                ForestName = forestName,
-                IncludeDomains = includeDomains.ToArray(),
-                ExcludeDomains = excludeDomains.ToArray(),
-                IncludeDomainControllers = includeDomainControllers.ToArray(),
-                ExcludeDomainControllers = excludeDomainControllers.ToArray(),
-                SkipRodc = skipRodc,
-                IncludeTrusts = includeTrusts,
-                Timeout = timeout,
-                Retries = retries,
-                RetryDelay = retryDelay,
-                MaxConcurrency = maxConcurrency,
-                QueryTimeout = timeout,
-                RequireWsus = ToolArgs.GetBoolean(arguments, "require_wsus", defaultValue: true)
-            };
-
-            var runner = new WindowsUpdateProbeRunner();
-            return await runner.ExecuteAsync(def, cancellationToken).ConfigureAwait(false);
+            var windowsUpdateService = new OnDemandWindowsUpdateProbeService();
+            return await windowsUpdateService.ExecuteAsync(
+                new OnDemandWindowsUpdateProbeRequest {
+                    Name = name!,
+                    Targets = resolvedTargets.ToArray(),
+                    DomainName = domainName,
+                    ForestName = forestName,
+                    IncludeDomains = includeDomains.ToArray(),
+                    ExcludeDomains = excludeDomains.ToArray(),
+                    IncludeDomainControllers = includeDomainControllers.ToArray(),
+                    ExcludeDomainControllers = excludeDomainControllers.ToArray(),
+                    SkipRodc = skipRodc,
+                    IncludeTrusts = includeTrusts,
+                    Timeout = timeout,
+                    Retries = retries,
+                    RetryDelay = retryDelay,
+                    MaxConcurrency = maxConcurrency,
+                    QueryTimeout = timeout,
+                    RequireWsus = ToolArgs.GetBoolean(arguments, "require_wsus", defaultValue: true)
+                },
+                cancellationToken).ConfigureAwait(false);
         }
     }
 }

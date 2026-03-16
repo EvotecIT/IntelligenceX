@@ -165,7 +165,15 @@ public sealed class EmailSmtpSendTool : EmailToolBase, ITool {
             // Ensure the MIME message exists before attempting send.
             await smtp.CreateMessageAsync(cancellationToken).ConfigureAwait(false);
 
-            var connectAuthResult = await SmtpClientFactory.ConnectAndAuthenticateAsync(smtp, smtpOptions).ConfigureAwait(false);
+            var connectAuthResult = await smtp.ConnectAndAuthenticateAsync(
+                smtpOptions.Server,
+                smtpOptions.Port,
+                smtpOptions.UserName,
+                smtpOptions.Password,
+                EmailToolBase.ParseSecureSocketOptions(smtpOptions.SecureSocketOptions),
+                smtpOptions.UseSsl,
+                ProtocolAuthMode.Basic,
+                cancellationToken).ConfigureAwait(false);
             if (!connectAuthResult.IsSuccess) {
                 return ToolResultV2.Error(
                     connectAuthResult.ErrorCode,
