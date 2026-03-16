@@ -206,19 +206,17 @@ public sealed class ToolHealthContractTests {
     }
 
     [Fact]
-    public void SetBackgroundSchedulerBlockedThreadsRequest_PreservesConflictingFlagsForValidation() {
-        var request = new SetBackgroundSchedulerBlockedThreadsRequest {
+    public void SetBackgroundSchedulerBlockedThreadsRequest_RejectsConflictingFlags() {
+        var ex = Assert.Throws<ArgumentException>(() => new SetBackgroundSchedulerBlockedThreadsRequest {
             RequestId = "req_scheduler_threads_invalid",
             Operation = "add",
             ThreadIds = new[] { "thread-a" },
             DurationSeconds = -30,
             UntilNextMaintenanceWindow = true,
             UntilNextMaintenanceWindowStart = true
-        };
+        });
 
-        Assert.Null(request.DurationSeconds);
-        Assert.True(request.UntilNextMaintenanceWindow);
-        Assert.True(request.UntilNextMaintenanceWindowStart);
+        Assert.Contains("cannot both be true", ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -269,19 +267,20 @@ public sealed class ToolHealthContractTests {
     }
 
     [Fact]
-    public void SetBackgroundSchedulerBlockedThreadsRequest_SerializesConflictingMaintenanceFlagsVerbatim() {
-        ChatServiceRequest request = new SetBackgroundSchedulerBlockedThreadsRequest {
-            RequestId = "req_scheduler_threads_wire",
-            Operation = "add",
-            ThreadIds = new[] { "thread-a" },
-            UntilNextMaintenanceWindow = true,
-            UntilNextMaintenanceWindowStart = true
-        };
+    public void SetBackgroundSchedulerBlockedThreadsRequest_RejectsConflictingFlagsDuringPolymorphicDeserialization() {
+        const string json = """
+            {
+              "type":"set_background_scheduler_blocked_threads",
+              "requestId":"req_scheduler_threads_wire",
+              "operation":"add",
+              "threadIds":["thread-a"],
+              "untilNextMaintenanceWindow":true,
+              "untilNextMaintenanceWindowStart":true
+            }
+            """;
 
-        using var document = JsonDocument.Parse(JsonSerializer.Serialize(request, ChatServiceJsonContext.Default.ChatServiceRequest));
-        Assert.True(document.RootElement.GetProperty("untilNextMaintenanceWindow").GetBoolean());
-        Assert.True(document.RootElement.GetProperty("untilNextMaintenanceWindowStart").GetBoolean());
-        Assert.False(document.RootElement.TryGetProperty("durationSeconds", out _));
+        var ex = Assert.ThrowsAny<ArgumentException>(() => JsonSerializer.Deserialize(json, ChatServiceJsonContext.Default.ChatServiceRequest));
+        Assert.Contains("cannot both be true", ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -308,19 +307,17 @@ public sealed class ToolHealthContractTests {
     }
 
     [Fact]
-    public void SetBackgroundSchedulerBlockedPacksRequest_PreservesConflictingFlagsForValidation() {
-        var request = new SetBackgroundSchedulerBlockedPacksRequest {
+    public void SetBackgroundSchedulerBlockedPacksRequest_RejectsConflictingFlags() {
+        var ex = Assert.Throws<ArgumentException>(() => new SetBackgroundSchedulerBlockedPacksRequest {
             RequestId = "req_scheduler_packs_invalid",
             Operation = "add",
             PackIds = new[] { "system" },
             DurationSeconds = 0,
             UntilNextMaintenanceWindow = true,
             UntilNextMaintenanceWindowStart = true
-        };
+        });
 
-        Assert.Null(request.DurationSeconds);
-        Assert.True(request.UntilNextMaintenanceWindow);
-        Assert.True(request.UntilNextMaintenanceWindowStart);
+        Assert.Contains("cannot both be true", ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -371,19 +368,20 @@ public sealed class ToolHealthContractTests {
     }
 
     [Fact]
-    public void SetBackgroundSchedulerBlockedPacksRequest_SerializesConflictingMaintenanceFlagsVerbatim() {
-        ChatServiceRequest request = new SetBackgroundSchedulerBlockedPacksRequest {
-            RequestId = "req_scheduler_packs_wire",
-            Operation = "add",
-            PackIds = new[] { "system" },
-            UntilNextMaintenanceWindow = true,
-            UntilNextMaintenanceWindowStart = true
-        };
+    public void SetBackgroundSchedulerBlockedPacksRequest_RejectsConflictingFlagsDuringPolymorphicDeserialization() {
+        const string json = """
+            {
+              "type":"set_background_scheduler_blocked_packs",
+              "requestId":"req_scheduler_packs_wire",
+              "operation":"add",
+              "packIds":["system"],
+              "untilNextMaintenanceWindow":true,
+              "untilNextMaintenanceWindowStart":true
+            }
+            """;
 
-        using var document = JsonDocument.Parse(JsonSerializer.Serialize(request, ChatServiceJsonContext.Default.ChatServiceRequest));
-        Assert.True(document.RootElement.GetProperty("untilNextMaintenanceWindow").GetBoolean());
-        Assert.True(document.RootElement.GetProperty("untilNextMaintenanceWindowStart").GetBoolean());
-        Assert.False(document.RootElement.TryGetProperty("durationSeconds", out _));
+        var ex = Assert.ThrowsAny<ArgumentException>(() => JsonSerializer.Deserialize(json, ChatServiceJsonContext.Default.ChatServiceRequest));
+        Assert.Contains("cannot both be true", ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]

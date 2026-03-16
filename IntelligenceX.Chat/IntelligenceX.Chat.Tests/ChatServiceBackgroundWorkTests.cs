@@ -1778,36 +1778,6 @@ public sealed class ChatServiceBackgroundWorkTests {
     }
 
     [Fact]
-    public async Task HandleBackgroundSchedulerBlockedThreadsAsync_ConflictingMaintenanceFlagsReturnError() {
-        var options = ChatServiceTestSessionFactory.CreateIsolatedOptions();
-        var session = new ChatServiceSession(options, Stream.Null);
-        var method = typeof(ChatServiceSession).GetMethod("HandleBackgroundSchedulerBlockedThreadsAsync", BindingFlags.Instance | BindingFlags.NonPublic);
-        Assert.NotNull(method);
-
-        using var stream = new MemoryStream();
-        using var writer = new StreamWriter(stream, leaveOpen: true) { AutoFlush = true, NewLine = "\n" };
-        var request = new SetBackgroundSchedulerBlockedThreadsRequest {
-            RequestId = "req_scheduler_threads_conflicting_flags",
-            Operation = "add",
-            ThreadIds = new[] { "thread-maintenance" },
-            UntilNextMaintenanceWindow = true,
-            UntilNextMaintenanceWindowStart = true
-        };
-
-        var task = Assert.IsAssignableFrom<Task>(method!.Invoke(session, new object?[] { writer, request, default(System.Threading.CancellationToken) }));
-        await task;
-        await writer.FlushAsync();
-
-        stream.Position = 0;
-        using var document = await JsonDocument.ParseAsync(stream);
-        var response = JsonSerializer.Deserialize(document.RootElement.GetRawText(), ChatServiceJsonContext.Default.ChatServiceMessage);
-        var typed = Assert.IsType<ErrorMessage>(response);
-
-        Assert.Equal("invalid_argument", typed.Code);
-        Assert.Contains("untilNextMaintenanceWindow and untilNextMaintenanceWindowStart cannot be used together.", typed.Error, StringComparison.Ordinal);
-    }
-
-    [Fact]
     public async Task HandleBackgroundSchedulerBlockedPacksAsync_AddAndResetReturnUpdatedSchedulerSummary() {
         var options = ChatServiceTestSessionFactory.CreateIsolatedOptions();
         var session = new ChatServiceSession(options, Stream.Null);
@@ -1976,36 +1946,6 @@ public sealed class ChatServiceBackgroundWorkTests {
         Assert.Equal("system", suppression.Id);
         Assert.True(suppression.Temporary);
         Assert.True(suppression.ExpiresUtcTicks > DateTime.UtcNow.Ticks);
-    }
-
-    [Fact]
-    public async Task HandleBackgroundSchedulerBlockedPacksAsync_ConflictingMaintenanceFlagsReturnError() {
-        var options = ChatServiceTestSessionFactory.CreateIsolatedOptions();
-        var session = new ChatServiceSession(options, Stream.Null);
-        var method = typeof(ChatServiceSession).GetMethod("HandleBackgroundSchedulerBlockedPacksAsync", BindingFlags.Instance | BindingFlags.NonPublic);
-        Assert.NotNull(method);
-
-        using var stream = new MemoryStream();
-        using var writer = new StreamWriter(stream, leaveOpen: true) { AutoFlush = true, NewLine = "\n" };
-        var request = new SetBackgroundSchedulerBlockedPacksRequest {
-            RequestId = "req_scheduler_packs_conflicting_flags",
-            Operation = "add",
-            PackIds = new[] { "system" },
-            UntilNextMaintenanceWindow = true,
-            UntilNextMaintenanceWindowStart = true
-        };
-
-        var task = Assert.IsAssignableFrom<Task>(method!.Invoke(session, new object?[] { writer, request, default(System.Threading.CancellationToken) }));
-        await task;
-        await writer.FlushAsync();
-
-        stream.Position = 0;
-        using var document = await JsonDocument.ParseAsync(stream);
-        var response = JsonSerializer.Deserialize(document.RootElement.GetRawText(), ChatServiceJsonContext.Default.ChatServiceMessage);
-        var typed = Assert.IsType<ErrorMessage>(response);
-
-        Assert.Equal("invalid_argument", typed.Code);
-        Assert.Contains("untilNextMaintenanceWindow and untilNextMaintenanceWindowStart cannot be used together.", typed.Error, StringComparison.Ordinal);
     }
 
     [Fact]

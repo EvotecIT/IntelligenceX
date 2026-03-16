@@ -266,7 +266,13 @@ public sealed record SetBackgroundSchedulerBlockedPacksRequest : ChatServiceRequ
     /// </summary>
     public bool UntilNextMaintenanceWindow {
         get => _requestedUntilNextMaintenanceWindow;
-        init => _requestedUntilNextMaintenanceWindow = value;
+        init {
+            if (value && _requestedUntilNextMaintenanceWindowStart) {
+                throw new ArgumentException("UntilNextMaintenanceWindow and UntilNextMaintenanceWindowStart cannot both be true.", nameof(UntilNextMaintenanceWindow));
+            }
+
+            _requestedUntilNextMaintenanceWindow = value;
+        }
     }
 
     /// <summary>
@@ -274,7 +280,13 @@ public sealed record SetBackgroundSchedulerBlockedPacksRequest : ChatServiceRequ
     /// </summary>
     public bool UntilNextMaintenanceWindowStart {
         get => _requestedUntilNextMaintenanceWindowStart;
-        init => _requestedUntilNextMaintenanceWindowStart = value;
+        init {
+            if (value && _requestedUntilNextMaintenanceWindow) {
+                throw new ArgumentException("UntilNextMaintenanceWindow and UntilNextMaintenanceWindowStart cannot both be true.", nameof(UntilNextMaintenanceWindowStart));
+            }
+
+            _requestedUntilNextMaintenanceWindowStart = value;
+        }
     }
 }
 
@@ -318,7 +330,13 @@ public sealed record SetBackgroundSchedulerBlockedThreadsRequest : ChatServiceRe
     /// </summary>
     public bool UntilNextMaintenanceWindow {
         get => _requestedUntilNextMaintenanceWindow;
-        init => _requestedUntilNextMaintenanceWindow = value;
+        init {
+            if (value && _requestedUntilNextMaintenanceWindowStart) {
+                throw new ArgumentException("UntilNextMaintenanceWindow and UntilNextMaintenanceWindowStart cannot both be true.", nameof(UntilNextMaintenanceWindow));
+            }
+
+            _requestedUntilNextMaintenanceWindow = value;
+        }
     }
 
     /// <summary>
@@ -326,7 +344,13 @@ public sealed record SetBackgroundSchedulerBlockedThreadsRequest : ChatServiceRe
     /// </summary>
     public bool UntilNextMaintenanceWindowStart {
         get => _requestedUntilNextMaintenanceWindowStart;
-        init => _requestedUntilNextMaintenanceWindowStart = value;
+        init {
+            if (value && _requestedUntilNextMaintenanceWindow) {
+                throw new ArgumentException("UntilNextMaintenanceWindow and UntilNextMaintenanceWindowStart cannot both be true.", nameof(UntilNextMaintenanceWindowStart));
+            }
+
+            _requestedUntilNextMaintenanceWindowStart = value;
+        }
     }
 }
 
