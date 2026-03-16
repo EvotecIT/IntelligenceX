@@ -222,6 +222,9 @@ public sealed record SetBackgroundSchedulerBlockedPacksRequest : ChatServiceRequ
         return value is > 0 ? value : null;
     }
 
+    private bool EffectiveUntilNextMaintenanceWindow => !_requestedUntilNextMaintenanceWindowStart && _requestedUntilNextMaintenanceWindow;
+    private bool EffectiveUntilNextMaintenanceWindowStart => _requestedUntilNextMaintenanceWindowStart;
+
     private int? _requestedDurationSeconds;
     private bool _requestedUntilNextMaintenanceWindow;
     private bool _requestedUntilNextMaintenanceWindowStart;
@@ -241,7 +244,7 @@ public sealed record SetBackgroundSchedulerBlockedPacksRequest : ChatServiceRequ
     /// Null means a persistent policy update.
     /// </summary>
     public int? DurationSeconds {
-        get => UntilNextMaintenanceWindow || UntilNextMaintenanceWindowStart ? null : _requestedDurationSeconds;
+        get => EffectiveUntilNextMaintenanceWindow || EffectiveUntilNextMaintenanceWindowStart ? null : _requestedDurationSeconds;
         init => _requestedDurationSeconds = NormalizePositiveDurationSeconds(value);
     }
 
@@ -249,7 +252,7 @@ public sealed record SetBackgroundSchedulerBlockedPacksRequest : ChatServiceRequ
     /// When true, add operations derive a temporary suppression that lasts until the next relevant maintenance window ends.
     /// </summary>
     public bool UntilNextMaintenanceWindow {
-        get => !_requestedUntilNextMaintenanceWindowStart && _requestedUntilNextMaintenanceWindow;
+        get => EffectiveUntilNextMaintenanceWindow;
         init => _requestedUntilNextMaintenanceWindow = value;
     }
 
@@ -257,7 +260,7 @@ public sealed record SetBackgroundSchedulerBlockedPacksRequest : ChatServiceRequ
     /// When true, add operations derive a temporary suppression that lasts until the next relevant maintenance window starts.
     /// </summary>
     public bool UntilNextMaintenanceWindowStart {
-        get => _requestedUntilNextMaintenanceWindowStart;
+        get => EffectiveUntilNextMaintenanceWindowStart;
         init => _requestedUntilNextMaintenanceWindowStart = value;
     }
 }
@@ -269,6 +272,9 @@ public sealed record SetBackgroundSchedulerBlockedThreadsRequest : ChatServiceRe
     private static int? NormalizePositiveDurationSeconds(int? value) {
         return value is > 0 ? value : null;
     }
+
+    private bool EffectiveUntilNextMaintenanceWindow => !_requestedUntilNextMaintenanceWindowStart && _requestedUntilNextMaintenanceWindow;
+    private bool EffectiveUntilNextMaintenanceWindowStart => _requestedUntilNextMaintenanceWindowStart;
 
     private int? _requestedDurationSeconds;
     private bool _requestedUntilNextMaintenanceWindow;
@@ -289,7 +295,7 @@ public sealed record SetBackgroundSchedulerBlockedThreadsRequest : ChatServiceRe
     /// Null means a persistent policy update.
     /// </summary>
     public int? DurationSeconds {
-        get => UntilNextMaintenanceWindow || UntilNextMaintenanceWindowStart ? null : _requestedDurationSeconds;
+        get => EffectiveUntilNextMaintenanceWindow || EffectiveUntilNextMaintenanceWindowStart ? null : _requestedDurationSeconds;
         init => _requestedDurationSeconds = NormalizePositiveDurationSeconds(value);
     }
 
@@ -297,7 +303,7 @@ public sealed record SetBackgroundSchedulerBlockedThreadsRequest : ChatServiceRe
     /// When true, add operations derive a temporary suppression that lasts until the next relevant maintenance window ends.
     /// </summary>
     public bool UntilNextMaintenanceWindow {
-        get => !_requestedUntilNextMaintenanceWindowStart && _requestedUntilNextMaintenanceWindow;
+        get => EffectiveUntilNextMaintenanceWindow;
         init => _requestedUntilNextMaintenanceWindow = value;
     }
 
@@ -305,7 +311,7 @@ public sealed record SetBackgroundSchedulerBlockedThreadsRequest : ChatServiceRe
     /// When true, add operations derive a temporary suppression that lasts until the next relevant maintenance window starts.
     /// </summary>
     public bool UntilNextMaintenanceWindowStart {
-        get => _requestedUntilNextMaintenanceWindowStart;
+        get => EffectiveUntilNextMaintenanceWindowStart;
         init => _requestedUntilNextMaintenanceWindowStart = value;
     }
 }

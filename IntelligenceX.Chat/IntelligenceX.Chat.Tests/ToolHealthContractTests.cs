@@ -225,6 +225,22 @@ public sealed class ToolHealthContractTests {
     }
 
     [Fact]
+    public void SetBackgroundSchedulerBlockedThreadsRequest_SerializesOnlyOneEffectiveMaintenanceFlag() {
+        ChatServiceRequest request = new SetBackgroundSchedulerBlockedThreadsRequest {
+            RequestId = "req_scheduler_threads_wire",
+            Operation = "add",
+            ThreadIds = new[] { "thread-a" },
+            UntilNextMaintenanceWindow = true,
+            UntilNextMaintenanceWindowStart = true
+        };
+
+        using var document = JsonDocument.Parse(JsonSerializer.Serialize(request, ChatServiceJsonContext.Default.ChatServiceRequest));
+        Assert.False(document.RootElement.GetProperty("untilNextMaintenanceWindow").GetBoolean());
+        Assert.True(document.RootElement.GetProperty("untilNextMaintenanceWindowStart").GetBoolean());
+        Assert.False(document.RootElement.TryGetProperty("durationSeconds", out _));
+    }
+
+    [Fact]
     public void SetBackgroundSchedulerBlockedPacksRequest_DeserializesViaPolymorphicContract() {
         const string json = """
             {
@@ -286,6 +302,22 @@ public sealed class ToolHealthContractTests {
         Assert.False(windowThenDuration.UntilNextMaintenanceWindow);
         Assert.True(durationThenWindow.UntilNextMaintenanceWindowStart);
         Assert.True(windowThenDuration.UntilNextMaintenanceWindowStart);
+    }
+
+    [Fact]
+    public void SetBackgroundSchedulerBlockedPacksRequest_SerializesOnlyOneEffectiveMaintenanceFlag() {
+        ChatServiceRequest request = new SetBackgroundSchedulerBlockedPacksRequest {
+            RequestId = "req_scheduler_packs_wire",
+            Operation = "add",
+            PackIds = new[] { "system" },
+            UntilNextMaintenanceWindow = true,
+            UntilNextMaintenanceWindowStart = true
+        };
+
+        using var document = JsonDocument.Parse(JsonSerializer.Serialize(request, ChatServiceJsonContext.Default.ChatServiceRequest));
+        Assert.False(document.RootElement.GetProperty("untilNextMaintenanceWindow").GetBoolean());
+        Assert.True(document.RootElement.GetProperty("untilNextMaintenanceWindowStart").GetBoolean());
+        Assert.False(document.RootElement.TryGetProperty("durationSeconds", out _));
     }
 
     [Fact]
