@@ -60,6 +60,45 @@ public sealed class ToolHealthContractTests {
     }
 
     [Fact]
+    public void GetBackgroundSchedulerStatusRequest_ClampsNegativeSampleLimitsToZero() {
+        const string json = """
+            {
+              "type":"get_background_scheduler_status",
+              "requestId":"req_scheduler_limits_negative",
+              "maxReadyThreadIds":-1,
+              "maxRunningThreadIds":-2,
+              "maxRecentActivity":-3,
+              "maxThreadSummaries":-4
+            }
+            """;
+
+        var parsed = JsonSerializer.Deserialize(json, ChatServiceJsonContext.Default.ChatServiceRequest);
+        var request = Assert.IsType<GetBackgroundSchedulerStatusRequest>(parsed);
+
+        Assert.Equal(0, request.MaxReadyThreadIds);
+        Assert.Equal(0, request.MaxRunningThreadIds);
+        Assert.Equal(0, request.MaxRecentActivity);
+        Assert.Equal(0, request.MaxThreadSummaries);
+    }
+
+    [Fact]
+    public void GetBackgroundSchedulerStatusRequest_ClampsOversizedSampleLimitsToContractMaximum() {
+        var oversized = ChatRequestOptionLimits.MaxBackgroundSchedulerStatusItems + 25;
+        var request = new GetBackgroundSchedulerStatusRequest {
+            RequestId = "req_scheduler_limits_max",
+            MaxReadyThreadIds = oversized,
+            MaxRunningThreadIds = oversized,
+            MaxRecentActivity = oversized,
+            MaxThreadSummaries = oversized
+        };
+
+        Assert.Equal(ChatRequestOptionLimits.MaxBackgroundSchedulerStatusItems, request.MaxReadyThreadIds);
+        Assert.Equal(ChatRequestOptionLimits.MaxBackgroundSchedulerStatusItems, request.MaxRunningThreadIds);
+        Assert.Equal(ChatRequestOptionLimits.MaxBackgroundSchedulerStatusItems, request.MaxRecentActivity);
+        Assert.Equal(ChatRequestOptionLimits.MaxBackgroundSchedulerStatusItems, request.MaxThreadSummaries);
+    }
+
+    [Fact]
     public void SetBackgroundSchedulerStateRequest_DeserializesViaPolymorphicContract() {
         const string json = """
             {

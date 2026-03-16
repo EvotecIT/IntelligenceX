@@ -103,6 +103,17 @@ public sealed record ListToolsRequest : ChatServiceRequest;
 /// Requests the current background scheduler status summary.
 /// </summary>
 public sealed record GetBackgroundSchedulerStatusRequest : ChatServiceRequest {
+    private static int? NormalizeBackgroundSchedulerStatusLimit(int? value) {
+        return value is null
+            ? null
+            : Math.Clamp(value.Value, 0, ChatRequestOptionLimits.MaxBackgroundSchedulerStatusItems);
+    }
+
+    private readonly int? _maxReadyThreadIds;
+    private readonly int? _maxRunningThreadIds;
+    private readonly int? _maxRecentActivity;
+    private readonly int? _maxThreadSummaries;
+
     /// <summary>
     /// Optional thread scope. When set, scheduler counters and detail samples are constrained to the matching thread.
     /// </summary>
@@ -121,22 +132,34 @@ public sealed record GetBackgroundSchedulerStatusRequest : ChatServiceRequest {
     /// <summary>
     /// Optional cap for ready-thread id samples (0..<see cref="ChatRequestOptionLimits.MaxBackgroundSchedulerStatusItems"/>).
     /// </summary>
-    public int? MaxReadyThreadIds { get; init; }
+    public int? MaxReadyThreadIds {
+        get => _maxReadyThreadIds;
+        init => _maxReadyThreadIds = NormalizeBackgroundSchedulerStatusLimit(value);
+    }
 
     /// <summary>
     /// Optional cap for running-thread id samples (0..<see cref="ChatRequestOptionLimits.MaxBackgroundSchedulerStatusItems"/>).
     /// </summary>
-    public int? MaxRunningThreadIds { get; init; }
+    public int? MaxRunningThreadIds {
+        get => _maxRunningThreadIds;
+        init => _maxRunningThreadIds = NormalizeBackgroundSchedulerStatusLimit(value);
+    }
 
     /// <summary>
     /// Optional cap for recent scheduler activity samples (0..<see cref="ChatRequestOptionLimits.MaxBackgroundSchedulerStatusItems"/>).
     /// </summary>
-    public int? MaxRecentActivity { get; init; }
+    public int? MaxRecentActivity {
+        get => _maxRecentActivity;
+        init => _maxRecentActivity = NormalizeBackgroundSchedulerStatusLimit(value);
+    }
 
     /// <summary>
     /// Optional cap for per-thread scheduler summaries (0..<see cref="ChatRequestOptionLimits.MaxBackgroundSchedulerStatusItems"/>).
     /// </summary>
-    public int? MaxThreadSummaries { get; init; }
+    public int? MaxThreadSummaries {
+        get => _maxThreadSummaries;
+        init => _maxThreadSummaries = NormalizeBackgroundSchedulerStatusLimit(value);
+    }
 }
 
 /// <summary>
