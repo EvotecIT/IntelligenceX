@@ -30,8 +30,28 @@ public sealed class ActiveDirectoryToolPack : IToolPack, IToolPackCatalogProvide
         SourceKind = "closed_source",
         EngineId = "adplayground",
         Category = "active_directory",
-        CapabilityTags = new[] { "directory", "domain_scope", "gpo", "identity", "remote_analysis" },
-        SearchTokens = new[] { "ad", "adplayground", "directory", "domain", "gpo", "identity", "remote_analysis" },
+        CapabilityTags = new[] {
+            "directory",
+            "domain_scope",
+            "gpo",
+            "identity",
+            "kerberos",
+            "replication",
+            "remote_analysis"
+        },
+        SearchTokens = new[] {
+            "ad",
+            "adplayground",
+            "directory",
+            "domain",
+            "domain_controller",
+            "gpo",
+            "identity",
+            "kerberos",
+            "ldap",
+            "replication",
+            "remote_analysis"
+        },
         CapabilityParity = ActiveDirectoryToolPackParity.Slices
     };
 

@@ -43,6 +43,41 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
         ToolTimeoutSeconds = profile.ToolTimeoutSeconds;
         SessionExecutionQueueLimit = Math.Clamp(profile.SessionExecutionQueueLimit, 0, MaxSessionExecutionQueueLimit);
         GlobalExecutionLaneConcurrency = Math.Clamp(profile.GlobalExecutionLaneConcurrency, 0, MaxGlobalExecutionLaneConcurrency);
+        EnableBackgroundSchedulerDaemon = profile.EnableBackgroundSchedulerDaemon;
+        BackgroundSchedulerPollSeconds = Math.Clamp(profile.BackgroundSchedulerPollSeconds, MinBackgroundSchedulerPollSeconds, MaxBackgroundSchedulerPollSeconds);
+        BackgroundSchedulerBurstLimit = Math.Clamp(profile.BackgroundSchedulerBurstLimit, MinBackgroundSchedulerBurstLimit, MaxBackgroundSchedulerBurstLimit);
+        BackgroundSchedulerFailureThreshold = Math.Clamp(profile.BackgroundSchedulerFailureThreshold, MinBackgroundSchedulerFailureThreshold, MaxBackgroundSchedulerFailureThreshold);
+        BackgroundSchedulerFailurePauseSeconds = Math.Clamp(profile.BackgroundSchedulerFailurePauseSeconds, MinBackgroundSchedulerFailurePauseSeconds, MaxBackgroundSchedulerFailurePauseSeconds);
+        BackgroundSchedulerStartPaused = profile.BackgroundSchedulerStartPaused;
+        BackgroundSchedulerStartupPauseSeconds = Math.Clamp(profile.BackgroundSchedulerStartupPauseSeconds, 0, MaxBackgroundSchedulerStartupPauseSeconds);
+        BackgroundSchedulerMaintenanceWindows.Clear();
+        if (profile.BackgroundSchedulerMaintenanceWindows is { Count: > 0 }) {
+            for (var i = 0; i < profile.BackgroundSchedulerMaintenanceWindows.Count; i++) {
+                if (TryApplyBackgroundSchedulerMaintenanceWindow(
+                        this,
+                        profile.BackgroundSchedulerMaintenanceWindows[i],
+                        "--background-scheduler-maintenance-window",
+                        out _)) {
+                    continue;
+                }
+            }
+        }
+        BackgroundSchedulerAllowedPackIds.Clear();
+        if (profile.BackgroundSchedulerAllowedPackIds is { Count: > 0 }) {
+            BackgroundSchedulerAllowedPackIds.AddRange(profile.BackgroundSchedulerAllowedPackIds);
+        }
+        BackgroundSchedulerBlockedPackIds.Clear();
+        if (profile.BackgroundSchedulerBlockedPackIds is { Count: > 0 }) {
+            BackgroundSchedulerBlockedPackIds.AddRange(profile.BackgroundSchedulerBlockedPackIds);
+        }
+        BackgroundSchedulerAllowedThreadIds.Clear();
+        if (profile.BackgroundSchedulerAllowedThreadIds is { Count: > 0 }) {
+            BackgroundSchedulerAllowedThreadIds.AddRange(profile.BackgroundSchedulerAllowedThreadIds);
+        }
+        BackgroundSchedulerBlockedThreadIds.Clear();
+        if (profile.BackgroundSchedulerBlockedThreadIds is { Count: > 0 }) {
+            BackgroundSchedulerBlockedThreadIds.AddRange(profile.BackgroundSchedulerBlockedThreadIds);
+        }
 
         AllowedRoots.Clear();
         if (profile.AllowedRoots != null && profile.AllowedRoots.Count > 0) {
@@ -124,6 +159,18 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
             ToolTimeoutSeconds = ToolTimeoutSeconds,
             SessionExecutionQueueLimit = Math.Clamp(SessionExecutionQueueLimit, 0, MaxSessionExecutionQueueLimit),
             GlobalExecutionLaneConcurrency = Math.Clamp(GlobalExecutionLaneConcurrency, 0, MaxGlobalExecutionLaneConcurrency),
+            EnableBackgroundSchedulerDaemon = EnableBackgroundSchedulerDaemon,
+            BackgroundSchedulerPollSeconds = Math.Clamp(BackgroundSchedulerPollSeconds, MinBackgroundSchedulerPollSeconds, MaxBackgroundSchedulerPollSeconds),
+            BackgroundSchedulerBurstLimit = Math.Clamp(BackgroundSchedulerBurstLimit, MinBackgroundSchedulerBurstLimit, MaxBackgroundSchedulerBurstLimit),
+            BackgroundSchedulerFailureThreshold = Math.Clamp(BackgroundSchedulerFailureThreshold, MinBackgroundSchedulerFailureThreshold, MaxBackgroundSchedulerFailureThreshold),
+            BackgroundSchedulerFailurePauseSeconds = Math.Clamp(BackgroundSchedulerFailurePauseSeconds, MinBackgroundSchedulerFailurePauseSeconds, MaxBackgroundSchedulerFailurePauseSeconds),
+            BackgroundSchedulerStartPaused = BackgroundSchedulerStartPaused,
+            BackgroundSchedulerStartupPauseSeconds = Math.Clamp(BackgroundSchedulerStartupPauseSeconds, 0, MaxBackgroundSchedulerStartupPauseSeconds),
+            BackgroundSchedulerMaintenanceWindows = new List<string>(BackgroundSchedulerMaintenanceWindows),
+            BackgroundSchedulerAllowedPackIds = new List<string>(BackgroundSchedulerAllowedPackIds),
+            BackgroundSchedulerBlockedPackIds = new List<string>(BackgroundSchedulerBlockedPackIds),
+            BackgroundSchedulerAllowedThreadIds = new List<string>(BackgroundSchedulerAllowedThreadIds),
+            BackgroundSchedulerBlockedThreadIds = new List<string>(BackgroundSchedulerBlockedThreadIds),
             AllowedRoots = new List<string>(AllowedRoots),
             AdDomainController = AdDomainController,
             AdDefaultSearchBaseDn = AdDefaultSearchBaseDn,

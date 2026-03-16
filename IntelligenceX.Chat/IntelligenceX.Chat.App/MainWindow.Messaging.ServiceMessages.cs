@@ -685,6 +685,7 @@ public sealed partial class MainWindow : Window {
             if (resetEnsureLoginProbeCache) {
                 ResetEnsureLoginProbeCache();
             }
+            ClearBackgroundSchedulerSnapshots();
             _isConnected = false;
             EndStartupMetadataSyncTracking();
             _autoSignInAttempted = _appState.OnboardingCompleted || AnyConversationHasMessages();

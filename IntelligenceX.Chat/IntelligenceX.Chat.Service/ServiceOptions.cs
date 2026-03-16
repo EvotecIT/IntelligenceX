@@ -16,6 +16,17 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
     private const int MaxToolRoundsLimit = ChatRequestOptionLimits.MaxToolRounds;
     private const int MaxSessionExecutionQueueLimit = 4096;
     private const int MaxGlobalExecutionLaneConcurrency = 512;
+    private const int MinBackgroundSchedulerPollSeconds = 1;
+    private const int MaxBackgroundSchedulerPollSeconds = 3600;
+    private const int MinBackgroundSchedulerBurstLimit = 1;
+    private const int MaxBackgroundSchedulerBurstLimit = 32;
+    private const int MinBackgroundSchedulerFailureThreshold = 0;
+    private const int MaxBackgroundSchedulerFailureThreshold = 32;
+    private const int MinBackgroundSchedulerFailurePauseSeconds = 1;
+    private const int MaxBackgroundSchedulerFailurePauseSeconds = 3600;
+    private const int MinBackgroundSchedulerStartupPauseSeconds = 1;
+    private const int MaxBackgroundSchedulerStartupPauseSeconds = 3600;
+    private const int MaxBackgroundSchedulerMaintenanceWindows = 32;
 
     public bool ShowHelp { get; set; }
     public string PipeName { get; set; } = "intelligencex.chat";
@@ -50,6 +61,18 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
     public int ToolTimeoutSeconds { get; set; }
     public int SessionExecutionQueueLimit { get; set; } = 32;
     public int GlobalExecutionLaneConcurrency { get; set; }
+    public bool EnableBackgroundSchedulerDaemon { get; set; }
+    public int BackgroundSchedulerPollSeconds { get; set; } = 30;
+    public int BackgroundSchedulerBurstLimit { get; set; } = 4;
+    public int BackgroundSchedulerFailureThreshold { get; set; } = 5;
+    public int BackgroundSchedulerFailurePauseSeconds { get; set; } = 300;
+    public bool BackgroundSchedulerStartPaused { get; set; }
+    public int BackgroundSchedulerStartupPauseSeconds { get; set; }
+    public List<string> BackgroundSchedulerMaintenanceWindows { get; } = new();
+    public List<string> BackgroundSchedulerAllowedPackIds { get; } = new();
+    public List<string> BackgroundSchedulerBlockedPackIds { get; } = new();
+    public List<string> BackgroundSchedulerAllowedThreadIds { get; } = new();
+    public List<string> BackgroundSchedulerBlockedThreadIds { get; } = new();
     public List<string> AllowedRoots { get; } = new();
 
     public string? AdDomainController { get; set; }
@@ -402,6 +425,128 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
                 options.GlobalExecutionLaneConcurrency = n;
                 continue;
             }
+            if (arg is "--background-scheduler-daemon") {
+                options.EnableBackgroundSchedulerDaemon = true;
+                continue;
+            }
+            if (arg is "--no-background-scheduler-daemon") {
+                options.EnableBackgroundSchedulerDaemon = false;
+                continue;
+            }
+            if (arg is "--background-scheduler-start-paused") {
+                options.BackgroundSchedulerStartPaused = true;
+                continue;
+            }
+            if (arg is "--no-background-scheduler-start-paused") {
+                options.BackgroundSchedulerStartPaused = false;
+                options.BackgroundSchedulerStartupPauseSeconds = 0;
+                continue;
+            }
+            if (arg is "--background-scheduler-start-paused-seconds") {
+                if (!TryConsume(args, ref i, out var value, out error)) {
+                    return options;
+                }
+                if (!int.TryParse(value, out var n) || n < MinBackgroundSchedulerStartupPauseSeconds || n > MaxBackgroundSchedulerStartupPauseSeconds) {
+                    error = $"--background-scheduler-start-paused-seconds must be between {MinBackgroundSchedulerStartupPauseSeconds} and {MaxBackgroundSchedulerStartupPauseSeconds}.";
+                    return options;
+                }
+                options.BackgroundSchedulerStartPaused = true;
+                options.BackgroundSchedulerStartupPauseSeconds = n;
+                continue;
+            }
+            if (arg is "--background-scheduler-maintenance-window") {
+                if (!TryConsume(args, ref i, out var value, out error)) {
+                    return options;
+                }
+                if (!TryApplyBackgroundSchedulerMaintenanceWindow(options, value, arg, out error)) {
+                    return options;
+                }
+                continue;
+            }
+            if (arg is "--clear-background-scheduler-maintenance-windows") {
+                options.BackgroundSchedulerMaintenanceWindows.Clear();
+                continue;
+            }
+            if (arg is "--background-scheduler-poll-seconds") {
+                if (!TryConsume(args, ref i, out var value, out error)) {
+                    return options;
+                }
+                if (!int.TryParse(value, out var n) || n < MinBackgroundSchedulerPollSeconds || n > MaxBackgroundSchedulerPollSeconds) {
+                    error = $"--background-scheduler-poll-seconds must be between {MinBackgroundSchedulerPollSeconds} and {MaxBackgroundSchedulerPollSeconds}.";
+                    return options;
+                }
+                options.BackgroundSchedulerPollSeconds = n;
+                continue;
+            }
+            if (arg is "--background-scheduler-burst-limit") {
+                if (!TryConsume(args, ref i, out var value, out error)) {
+                    return options;
+                }
+                if (!int.TryParse(value, out var n) || n < MinBackgroundSchedulerBurstLimit || n > MaxBackgroundSchedulerBurstLimit) {
+                    error = $"--background-scheduler-burst-limit must be between {MinBackgroundSchedulerBurstLimit} and {MaxBackgroundSchedulerBurstLimit}.";
+                    return options;
+                }
+                options.BackgroundSchedulerBurstLimit = n;
+                continue;
+            }
+            if (arg is "--background-scheduler-failure-threshold") {
+                if (!TryConsume(args, ref i, out var value, out error)) {
+                    return options;
+                }
+                if (!int.TryParse(value, out var n) || n < MinBackgroundSchedulerFailureThreshold || n > MaxBackgroundSchedulerFailureThreshold) {
+                    error = $"--background-scheduler-failure-threshold must be between {MinBackgroundSchedulerFailureThreshold} and {MaxBackgroundSchedulerFailureThreshold}.";
+                    return options;
+                }
+                options.BackgroundSchedulerFailureThreshold = n;
+                continue;
+            }
+            if (arg is "--background-scheduler-failure-pause-seconds") {
+                if (!TryConsume(args, ref i, out var value, out error)) {
+                    return options;
+                }
+                if (!int.TryParse(value, out var n) || n < MinBackgroundSchedulerFailurePauseSeconds || n > MaxBackgroundSchedulerFailurePauseSeconds) {
+                    error = $"--background-scheduler-failure-pause-seconds must be between {MinBackgroundSchedulerFailurePauseSeconds} and {MaxBackgroundSchedulerFailurePauseSeconds}.";
+                    return options;
+                }
+                options.BackgroundSchedulerFailurePauseSeconds = n;
+                continue;
+            }
+            if (arg is "--background-scheduler-allow-pack-id") {
+                if (!TryConsume(args, ref i, out var value, out error)) {
+                    return options;
+                }
+                if (!TryApplyBackgroundSchedulerPackFilter(options, value, allowed: true, arg, out error)) {
+                    return options;
+                }
+                continue;
+            }
+            if (arg is "--background-scheduler-block-pack-id") {
+                if (!TryConsume(args, ref i, out var value, out error)) {
+                    return options;
+                }
+                if (!TryApplyBackgroundSchedulerPackFilter(options, value, allowed: false, arg, out error)) {
+                    return options;
+                }
+                continue;
+            }
+            if (arg is "--background-scheduler-allow-thread-id") {
+                if (!TryConsume(args, ref i, out var value, out error)) {
+                    return options;
+                }
+                if (!TryApplyBackgroundSchedulerThreadFilter(options, value, allowed: true, arg, out error)) {
+                    return options;
+                }
+                continue;
+            }
+            if (arg is "--background-scheduler-block-thread-id") {
+                if (!TryConsume(args, ref i, out var value, out error)) {
+                    return options;
+                }
+                if (!TryApplyBackgroundSchedulerThreadFilter(options, value, allowed: false, arg, out error)) {
+                    return options;
+                }
+                continue;
+            }
             if (arg is "--ad-domain-controller") {
                 if (!TryConsume(args, ref i, out var value, out error)) {
                     return options;
@@ -616,6 +761,21 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
         Console.WriteLine("  --tool-timeout-seconds <N>  Per-tool timeout in seconds (0 = no timeout; default: 0).");
         Console.WriteLine("  --session-execution-queue-limit <N>  Max queued chat turns per session (0 = unlimited; default: 32).");
         Console.WriteLine("  --global-execution-lane-concurrency <N>  Global chat turn concurrency across sessions (0 = disabled; default: 0).");
+        Console.WriteLine("  --background-scheduler-daemon  Enable headless read-only background follow-up execution (default: off).");
+        Console.WriteLine("  --no-background-scheduler-daemon  Disable headless background follow-up execution.");
+        Console.WriteLine("  --background-scheduler-start-paused  Start the scheduler in a manual paused state until resumed.");
+        Console.WriteLine($"  --background-scheduler-start-paused-seconds <N>  Start the scheduler paused for a bounded window ({MinBackgroundSchedulerStartupPauseSeconds}..{MaxBackgroundSchedulerStartupPauseSeconds}).");
+        Console.WriteLine("  --no-background-scheduler-start-paused  Clear startup manual-pause behavior.");
+        Console.WriteLine("  --background-scheduler-maintenance-window <SPEC>  Add a recurring local maintenance window (repeatable; format: daily@HH:mm/<minutes> or mon@HH:mm/<minutes>).");
+        Console.WriteLine("  --clear-background-scheduler-maintenance-windows  Clear configured scheduler maintenance windows.");
+        Console.WriteLine($"  --background-scheduler-poll-seconds <N>  Idle poll interval for the background scheduler ({MinBackgroundSchedulerPollSeconds}..{MaxBackgroundSchedulerPollSeconds}; default: 30).");
+        Console.WriteLine($"  --background-scheduler-burst-limit <N>  Max background follow-up items processed per scheduler cycle ({MinBackgroundSchedulerBurstLimit}..{MaxBackgroundSchedulerBurstLimit}; default: 4).");
+        Console.WriteLine($"  --background-scheduler-failure-threshold <N>  Consecutive non-success outcomes before the daemon pauses itself ({MinBackgroundSchedulerFailureThreshold}..{MaxBackgroundSchedulerFailureThreshold}; default: 5; 0 disables auto-pause).");
+        Console.WriteLine($"  --background-scheduler-failure-pause-seconds <N>  Auto-pause duration after a background scheduler failure threshold is hit ({MinBackgroundSchedulerFailurePauseSeconds}..{MaxBackgroundSchedulerFailurePauseSeconds}; default: 300).");
+        Console.WriteLine("  --background-scheduler-allow-pack-id <ID>  Allow only selected target packs for daemon background execution (repeatable).");
+        Console.WriteLine("  --background-scheduler-block-pack-id <ID>  Block selected target packs from daemon background execution (repeatable; takes precedence).");
+        Console.WriteLine("  --background-scheduler-allow-thread-id <ID>  Allow only selected thread ids for daemon background execution (repeatable).");
+        Console.WriteLine("  --background-scheduler-block-thread-id <ID>  Block selected thread ids from daemon background execution (repeatable; takes precedence).");
         Console.WriteLine("  --ad-domain-controller  Active Directory domain controller host/FQDN (optional).");
         Console.WriteLine("  --ad-search-base        Active Directory base DN (optional; defaultNamingContext used otherwise).");
         Console.WriteLine("  --ad-max-results <N>    Max results returned by AD tools (default: 1000).");
@@ -777,6 +937,82 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
         return true;
     }
 
+    internal static bool TryApplyBackgroundSchedulerPackFilter(
+        ServiceOptions options,
+        string? rawPackId,
+        bool allowed,
+        string argumentName,
+        out string? error) {
+        error = null;
+        var normalizedPackId = ToolPackBootstrap.NormalizePackId(rawPackId);
+        if (normalizedPackId.Length == 0) {
+            error = $"{argumentName} requires a non-empty pack id.";
+            return false;
+        }
+
+        if (allowed) {
+            RemovePackId(options.BackgroundSchedulerBlockedPackIds, normalizedPackId);
+            AddPackIdIfMissing(options.BackgroundSchedulerAllowedPackIds, normalizedPackId);
+        } else {
+            RemovePackId(options.BackgroundSchedulerAllowedPackIds, normalizedPackId);
+            AddPackIdIfMissing(options.BackgroundSchedulerBlockedPackIds, normalizedPackId);
+        }
+
+        return true;
+    }
+
+    internal static bool TryApplyBackgroundSchedulerThreadFilter(
+        ServiceOptions options,
+        string? rawThreadId,
+        bool allowed,
+        string argumentName,
+        out string? error) {
+        error = null;
+        var normalizedThreadId = NormalizeBackgroundSchedulerThreadId(rawThreadId);
+        if (normalizedThreadId.Length == 0) {
+            error = $"{argumentName} requires a non-empty thread id.";
+            return false;
+        }
+
+        if (allowed) {
+            RemoveThreadId(options.BackgroundSchedulerBlockedThreadIds, normalizedThreadId);
+            AddThreadIdIfMissing(options.BackgroundSchedulerAllowedThreadIds, normalizedThreadId);
+        } else {
+            RemoveThreadId(options.BackgroundSchedulerAllowedThreadIds, normalizedThreadId);
+            AddThreadIdIfMissing(options.BackgroundSchedulerBlockedThreadIds, normalizedThreadId);
+        }
+
+        return true;
+    }
+
+    internal static bool TryApplyBackgroundSchedulerMaintenanceWindow(
+        ServiceOptions options,
+        string? rawSpec,
+        string argumentName,
+        out string? error) {
+        ArgumentNullException.ThrowIfNull(options);
+
+        error = null;
+        if (!ChatServiceBackgroundSchedulerControlState.TryNormalizeMaintenanceWindowSpec(rawSpec, out var normalizedSpec, out error)) {
+            error = $"{argumentName} {error}";
+            return false;
+        }
+
+        for (var i = 0; i < options.BackgroundSchedulerMaintenanceWindows.Count; i++) {
+            if (string.Equals(options.BackgroundSchedulerMaintenanceWindows[i], normalizedSpec, StringComparison.OrdinalIgnoreCase)) {
+                return true;
+            }
+        }
+
+        if (options.BackgroundSchedulerMaintenanceWindows.Count >= MaxBackgroundSchedulerMaintenanceWindows) {
+            error = $"{argumentName} supports at most {MaxBackgroundSchedulerMaintenanceWindows} windows.";
+            return false;
+        }
+
+        options.BackgroundSchedulerMaintenanceWindows.Add(normalizedSpec);
+        return true;
+    }
+
     private static void RemovePackId(List<string> packIds, string normalizedPackId) {
         for (var i = packIds.Count - 1; i >= 0; i--) {
             if (string.Equals(ToolPackBootstrap.NormalizePackId(packIds[i]), normalizedPackId, StringComparison.OrdinalIgnoreCase)) {
@@ -797,6 +1033,34 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
     private static void AddPackIdIfMissing(List<string> packIds, string normalizedPackId) {
         if (!ContainsPackId(packIds, normalizedPackId)) {
             packIds.Add(normalizedPackId);
+        }
+    }
+
+    private static string NormalizeBackgroundSchedulerThreadId(string? threadId) {
+        return (threadId ?? string.Empty).Trim();
+    }
+
+    private static void RemoveThreadId(List<string> threadIds, string normalizedThreadId) {
+        for (var i = threadIds.Count - 1; i >= 0; i--) {
+            if (string.Equals(NormalizeBackgroundSchedulerThreadId(threadIds[i]), normalizedThreadId, StringComparison.Ordinal)) {
+                threadIds.RemoveAt(i);
+            }
+        }
+    }
+
+    private static bool ContainsThreadId(List<string> threadIds, string normalizedThreadId) {
+        for (var i = 0; i < threadIds.Count; i++) {
+            if (string.Equals(NormalizeBackgroundSchedulerThreadId(threadIds[i]), normalizedThreadId, StringComparison.Ordinal)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static void AddThreadIdIfMissing(List<string> threadIds, string normalizedThreadId) {
+        if (!ContainsThreadId(threadIds, normalizedThreadId)) {
+            threadIds.Add(normalizedThreadId);
         }
     }
 

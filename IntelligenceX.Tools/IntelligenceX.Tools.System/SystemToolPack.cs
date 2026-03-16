@@ -29,8 +29,31 @@ public sealed class SystemToolPack : IToolPack, IToolPackCatalogProvider {
         SourceKind = "closed_source",
         EngineId = "computerx",
         Category = "system",
-        CapabilityTags = new[] { "host_inventory", "local_analysis", "performance", "remote_analysis", "storage" },
-        SearchTokens = new[] { "computerx", "cpu", "disk", "host", "memory", "remote_analysis", "server", "storage", "system" },
+        CapabilityTags = new[] {
+            "cpu",
+            "disk_space",
+            "host_inventory",
+            "local_analysis",
+            "memory",
+            "patching",
+            "performance",
+            "remote_analysis",
+            "storage"
+        },
+        SearchTokens = new[] {
+            "computerx",
+            "cpu",
+            "disk",
+            "disk_space",
+            "host",
+            "memory",
+            "patching",
+            "remote_analysis",
+            "server",
+            "storage",
+            "system",
+            "uptime"
+        },
         CapabilityParity = SystemToolPackParity.Slices
     };
 

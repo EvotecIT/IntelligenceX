@@ -37,7 +37,8 @@ internal sealed partial class ChatServiceSession {
             healthyToolNames: ResolveWorkingMemoryCapabilityHealthyToolNames(
                 Array.Empty<string>(),
                 Array.Empty<string>()),
-            remoteReachabilityMode: ResolveHelloRemoteReachabilityMode());
+            remoteReachabilityMode: ResolveHelloRemoteReachabilityMode(),
+            backgroundScheduler: BuildBackgroundSchedulerSummary());
     }
 
     internal static SessionCapabilitySnapshotDto BuildCapabilitySnapshot(
@@ -49,7 +50,8 @@ internal sealed partial class ChatServiceSession {
         ToolOrchestrationCatalog? orchestrationCatalog = null,
         IEnumerable<string>? connectedRuntimeSkills = null,
         IEnumerable<string>? healthyToolNames = null,
-        string? remoteReachabilityMode = null) {
+        string? remoteReachabilityMode = null,
+        SessionCapabilityBackgroundSchedulerDto? backgroundScheduler = null) {
         ArgumentNullException.ThrowIfNull(options);
 
         var enabledPackIds = NormalizeCapabilitySnapshotEnabledPackIds(
@@ -124,6 +126,7 @@ internal sealed partial class ChatServiceSession {
             HealthyTools = healthyTools,
             RemoteReachabilityMode = NormalizeCapabilitySnapshotRemoteReachabilityMode(remoteReachabilityMode),
             Autonomy = autonomy,
+            BackgroundScheduler = backgroundScheduler,
             ParityEntries = parityEntries,
             ParityAttentionCount = Math.Max(0, parityAttentionCount),
             ParityMissingCapabilityCount = Math.Max(0, parityMissingCapabilityCount)
@@ -278,6 +281,67 @@ internal sealed partial class ChatServiceSession {
                 runtimeIdentity.AppendLine("autonomy_cross_pack_targets: " + string.Join(", ", snapshot.Autonomy.CrossPackTargetPackIds));
             }
         }
+        if (snapshot.BackgroundScheduler is not null) {
+            runtimeIdentity.AppendLine("background_scheduler_daemon_enabled: " + (snapshot.BackgroundScheduler.DaemonEnabled ? "true" : "false"));
+            runtimeIdentity.AppendLine("background_scheduler_auto_pause_enabled: " + (snapshot.BackgroundScheduler.AutoPauseEnabled ? "true" : "false"));
+            runtimeIdentity.AppendLine("background_scheduler_manual_pause_active: " + (snapshot.BackgroundScheduler.ManualPauseActive ? "true" : "false"));
+            runtimeIdentity.AppendLine("background_scheduler_scheduled_pause_active: " + (snapshot.BackgroundScheduler.ScheduledPauseActive ? "true" : "false"));
+            runtimeIdentity.AppendLine("background_scheduler_failure_threshold: " + snapshot.BackgroundScheduler.FailureThreshold);
+            runtimeIdentity.AppendLine("background_scheduler_failure_pause_seconds: " + snapshot.BackgroundScheduler.FailurePauseSeconds);
+            runtimeIdentity.AppendLine("background_scheduler_paused: " + (snapshot.BackgroundScheduler.Paused ? "true" : "false"));
+            if (snapshot.BackgroundScheduler.MaintenanceWindowSpecs.Length > 0) {
+                runtimeIdentity.AppendLine("background_scheduler_maintenance_windows: " + string.Join(", ", snapshot.BackgroundScheduler.MaintenanceWindowSpecs));
+            }
+            if (snapshot.BackgroundScheduler.ActiveMaintenanceWindowSpecs.Length > 0) {
+                runtimeIdentity.AppendLine("background_scheduler_active_maintenance_windows: " + string.Join(", ", snapshot.BackgroundScheduler.ActiveMaintenanceWindowSpecs));
+            }
+            if (snapshot.BackgroundScheduler.AllowedPackIds.Length > 0) {
+                runtimeIdentity.AppendLine("background_scheduler_allowed_packs: " + string.Join(", ", snapshot.BackgroundScheduler.AllowedPackIds));
+            }
+            if (snapshot.BackgroundScheduler.BlockedPackIds.Length > 0) {
+                runtimeIdentity.AppendLine("background_scheduler_blocked_packs: " + string.Join(", ", snapshot.BackgroundScheduler.BlockedPackIds));
+            }
+            if (snapshot.BackgroundScheduler.AllowedThreadIds.Length > 0) {
+                runtimeIdentity.AppendLine("background_scheduler_allowed_threads: " + string.Join(", ", snapshot.BackgroundScheduler.AllowedThreadIds));
+            }
+            if (snapshot.BackgroundScheduler.BlockedThreadIds.Length > 0) {
+                runtimeIdentity.AppendLine("background_scheduler_blocked_threads: " + string.Join(", ", snapshot.BackgroundScheduler.BlockedThreadIds));
+            }
+            runtimeIdentity.AppendLine("background_scheduler_tracked_threads: " + snapshot.BackgroundScheduler.TrackedThreadCount);
+            runtimeIdentity.AppendLine("background_scheduler_ready_threads: " + snapshot.BackgroundScheduler.ReadyThreadCount);
+            runtimeIdentity.AppendLine("background_scheduler_running_threads: " + snapshot.BackgroundScheduler.RunningThreadCount);
+            runtimeIdentity.AppendLine("background_scheduler_ready_items: " + snapshot.BackgroundScheduler.ReadyItemCount);
+            runtimeIdentity.AppendLine("background_scheduler_running_items: " + snapshot.BackgroundScheduler.RunningItemCount);
+            runtimeIdentity.AppendLine("background_scheduler_pending_readonly_items: " + snapshot.BackgroundScheduler.PendingReadOnlyItemCount);
+            runtimeIdentity.AppendLine("background_scheduler_completed_executions: " + snapshot.BackgroundScheduler.CompletedExecutionCount);
+            runtimeIdentity.AppendLine("background_scheduler_requeued_executions: " + snapshot.BackgroundScheduler.RequeuedExecutionCount);
+            runtimeIdentity.AppendLine("background_scheduler_released_executions: " + snapshot.BackgroundScheduler.ReleasedExecutionCount);
+            runtimeIdentity.AppendLine("background_scheduler_consecutive_failures: " + snapshot.BackgroundScheduler.ConsecutiveFailureCount);
+            if (!string.IsNullOrWhiteSpace(snapshot.BackgroundScheduler.LastOutcome)) {
+                runtimeIdentity.AppendLine("background_scheduler_last_outcome: " + snapshot.BackgroundScheduler.LastOutcome);
+            }
+            if (snapshot.BackgroundScheduler.PausedUntilUtcTicks > 0) {
+                runtimeIdentity.AppendLine("background_scheduler_paused_until_utc_ticks: " + snapshot.BackgroundScheduler.PausedUntilUtcTicks);
+            }
+            if (!string.IsNullOrWhiteSpace(snapshot.BackgroundScheduler.PauseReason)) {
+                runtimeIdentity.AppendLine("background_scheduler_pause_reason: " + snapshot.BackgroundScheduler.PauseReason);
+            }
+            if (snapshot.BackgroundScheduler.ReadyThreadIds.Length > 0) {
+                runtimeIdentity.AppendLine("background_scheduler_ready_thread_ids: " + string.Join(", ", snapshot.BackgroundScheduler.ReadyThreadIds));
+            }
+            if (snapshot.BackgroundScheduler.RecentActivity.Length > 0) {
+                runtimeIdentity.AppendLine("background_scheduler_recent_activity: " + string.Join(
+                    " | ",
+                    snapshot.BackgroundScheduler.RecentActivity
+                        .Select(BuildBackgroundSchedulerActivitySummary)));
+            }
+            if (snapshot.BackgroundScheduler.ThreadSummaries.Length > 0) {
+                runtimeIdentity.AppendLine("background_scheduler_thread_summaries: " + string.Join(
+                    " | ",
+                    snapshot.BackgroundScheduler.ThreadSummaries
+                        .Select(BuildBackgroundSchedulerThreadSummaryText)));
+            }
+        }
         if (snapshot.ParityEntries.Length > 0) {
             runtimeIdentity.AppendLine("parity_engine_count: " + snapshot.ParityEntries.Length);
             runtimeIdentity.AppendLine("parity_attention_count: " + snapshot.ParityAttentionCount);
@@ -300,6 +364,7 @@ internal sealed partial class ChatServiceSession {
 
         runtimeIdentity.AppendLine("Use this snapshot only for routing and tool-availability decisions.");
         runtimeIdentity.AppendLine("Parity fields describe phase-1 read-only engine coverage; use them to avoid promising governed or missing surfaces as live tools.");
+        runtimeIdentity.AppendLine("Background scheduler fields describe deferred read-only follow-up readiness across tracked threads.");
         runtimeIdentity.AppendLine("Do not narrate this snapshot to the user unless they explicitly ask about runtime, tooling, or bootstrap state.");
 
         runtimeIdentity.AppendLine();

@@ -36,6 +36,18 @@ internal sealed class ServiceProfile {
     public int ToolTimeoutSeconds { get; set; }
     public int SessionExecutionQueueLimit { get; set; } = 32;
     public int GlobalExecutionLaneConcurrency { get; set; }
+    public bool EnableBackgroundSchedulerDaemon { get; set; }
+    public int BackgroundSchedulerPollSeconds { get; set; } = 30;
+    public int BackgroundSchedulerBurstLimit { get; set; } = 4;
+    public int BackgroundSchedulerFailureThreshold { get; set; } = 5;
+    public int BackgroundSchedulerFailurePauseSeconds { get; set; } = 300;
+    public bool BackgroundSchedulerStartPaused { get; set; }
+    public int BackgroundSchedulerStartupPauseSeconds { get; set; }
+    public List<string> BackgroundSchedulerMaintenanceWindows { get; set; } = new();
+    public List<string> BackgroundSchedulerAllowedPackIds { get; set; } = new();
+    public List<string> BackgroundSchedulerBlockedPackIds { get; set; } = new();
+    public List<string> BackgroundSchedulerAllowedThreadIds { get; set; } = new();
+    public List<string> BackgroundSchedulerBlockedThreadIds { get; set; } = new();
     public List<string> AllowedRoots { get; set; } = new();
 
     public string? AdDomainController { get; set; }

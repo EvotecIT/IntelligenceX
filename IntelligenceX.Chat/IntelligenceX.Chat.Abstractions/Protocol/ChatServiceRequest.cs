@@ -13,6 +13,11 @@ namespace IntelligenceX.Chat.Abstractions.Protocol;
 [JsonDerivedType(typeof(ChatGptLoginPromptResponseRequest), "chatgpt_login_prompt_response")]
 [JsonDerivedType(typeof(CancelChatGptLoginRequest), "chatgpt_login_cancel")]
 [JsonDerivedType(typeof(ListToolsRequest), "list_tools")]
+[JsonDerivedType(typeof(GetBackgroundSchedulerStatusRequest), "get_background_scheduler_status")]
+[JsonDerivedType(typeof(SetBackgroundSchedulerStateRequest), "set_background_scheduler_state")]
+[JsonDerivedType(typeof(SetBackgroundSchedulerMaintenanceWindowsRequest), "set_background_scheduler_maintenance_windows")]
+[JsonDerivedType(typeof(SetBackgroundSchedulerBlockedPacksRequest), "set_background_scheduler_blocked_packs")]
+[JsonDerivedType(typeof(SetBackgroundSchedulerBlockedThreadsRequest), "set_background_scheduler_blocked_threads")]
 [JsonDerivedType(typeof(CheckToolHealthRequest), "check_tool_health")]
 [JsonDerivedType(typeof(ListProfilesRequest), "list_profiles")]
 [JsonDerivedType(typeof(SetProfileRequest), "set_profile")]
@@ -93,6 +98,143 @@ public sealed record CancelChatGptLoginRequest : ChatServiceRequest {
 /// Requests the list of registered tool definitions.
 /// </summary>
 public sealed record ListToolsRequest : ChatServiceRequest;
+
+/// <summary>
+/// Requests the current background scheduler status summary.
+/// </summary>
+public sealed record GetBackgroundSchedulerStatusRequest : ChatServiceRequest {
+    /// <summary>
+    /// Optional thread scope. When set, scheduler counters and detail samples are constrained to the matching thread.
+    /// </summary>
+    public string? ThreadId { get; init; }
+
+    /// <summary>
+    /// Whether recent activity samples should be included in the response.
+    /// </summary>
+    public bool IncludeRecentActivity { get; init; } = true;
+
+    /// <summary>
+    /// Whether per-thread summary samples should be included in the response.
+    /// </summary>
+    public bool IncludeThreadSummaries { get; init; } = true;
+
+    /// <summary>
+    /// Optional cap for ready-thread id samples (0..<see cref="ChatRequestOptionLimits.MaxBackgroundSchedulerStatusItems"/>).
+    /// </summary>
+    public int? MaxReadyThreadIds { get; init; }
+
+    /// <summary>
+    /// Optional cap for running-thread id samples (0..<see cref="ChatRequestOptionLimits.MaxBackgroundSchedulerStatusItems"/>).
+    /// </summary>
+    public int? MaxRunningThreadIds { get; init; }
+
+    /// <summary>
+    /// Optional cap for recent scheduler activity samples (0..<see cref="ChatRequestOptionLimits.MaxBackgroundSchedulerStatusItems"/>).
+    /// </summary>
+    public int? MaxRecentActivity { get; init; }
+
+    /// <summary>
+    /// Optional cap for per-thread scheduler summaries (0..<see cref="ChatRequestOptionLimits.MaxBackgroundSchedulerStatusItems"/>).
+    /// </summary>
+    public int? MaxThreadSummaries { get; init; }
+}
+
+/// <summary>
+/// Applies a runtime pause/resume action to the background scheduler.
+/// </summary>
+public sealed record SetBackgroundSchedulerStateRequest : ChatServiceRequest {
+    /// <summary>
+    /// When true, manually pauses the scheduler; when false, clears any active manual/auto pause state.
+    /// </summary>
+    public bool Paused { get; init; }
+
+    /// <summary>
+    /// Optional manual pause duration in seconds. Null means pause until explicitly resumed.
+    /// </summary>
+    public int? PauseSeconds { get; init; }
+
+    /// <summary>
+    /// Optional operator-facing reason to annotate the manual pause state.
+    /// </summary>
+    public string? Reason { get; init; }
+}
+
+/// <summary>
+/// Applies a runtime maintenance-window policy update to the background scheduler.
+/// </summary>
+public sealed record SetBackgroundSchedulerMaintenanceWindowsRequest : ChatServiceRequest {
+    /// <summary>
+    /// Requested operation: add, remove, replace, clear, or reset.
+    /// </summary>
+    public required string Operation { get; init; }
+
+    /// <summary>
+    /// Maintenance window specs used by add/remove/replace operations.
+    /// </summary>
+    public string[]? Windows { get; init; }
+}
+
+/// <summary>
+/// Applies a runtime blocked-pack policy update to the background scheduler.
+/// </summary>
+public sealed record SetBackgroundSchedulerBlockedPacksRequest : ChatServiceRequest {
+    /// <summary>
+    /// Requested operation: add, remove, replace, clear, or reset.
+    /// </summary>
+    public required string Operation { get; init; }
+
+    /// <summary>
+    /// Pack ids used by add/remove/replace operations.
+    /// </summary>
+    public string[]? PackIds { get; init; }
+
+    /// <summary>
+    /// Optional temporary suppression duration in seconds for add operations.
+    /// Null means a persistent policy update.
+    /// </summary>
+    public int? DurationSeconds { get; init; }
+
+    /// <summary>
+    /// When true, add operations derive a temporary suppression that lasts until the next relevant maintenance window ends.
+    /// </summary>
+    public bool UntilNextMaintenanceWindow { get; init; }
+
+    /// <summary>
+    /// When true, add operations derive a temporary suppression that lasts until the next relevant maintenance window starts.
+    /// </summary>
+    public bool UntilNextMaintenanceWindowStart { get; init; }
+}
+
+/// <summary>
+/// Applies a runtime blocked-thread policy update to the background scheduler.
+/// </summary>
+public sealed record SetBackgroundSchedulerBlockedThreadsRequest : ChatServiceRequest {
+    /// <summary>
+    /// Requested operation: add, remove, replace, clear, or reset.
+    /// </summary>
+    public required string Operation { get; init; }
+
+    /// <summary>
+    /// Thread ids used by add/remove/replace operations.
+    /// </summary>
+    public string[]? ThreadIds { get; init; }
+
+    /// <summary>
+    /// Optional temporary suppression duration in seconds for add operations.
+    /// Null means a persistent policy update.
+    /// </summary>
+    public int? DurationSeconds { get; init; }
+
+    /// <summary>
+    /// When true, add operations derive a temporary suppression that lasts until the next relevant maintenance window ends.
+    /// </summary>
+    public bool UntilNextMaintenanceWindow { get; init; }
+
+    /// <summary>
+    /// When true, add operations derive a temporary suppression that lasts until the next relevant maintenance window starts.
+    /// </summary>
+    public bool UntilNextMaintenanceWindowStart { get; init; }
+}
 
 /// <summary>
 /// Requests health probes for registered <c>*_pack_info</c> tools.

@@ -100,6 +100,8 @@
         count: 0,
         facts: []
       },
+      runtimeScheduler: null,
+      runtimeSchedulerGlobal: null,
       memoryDebug: null,
       startupDiagnostics: null,
       activeProfileName: "default",

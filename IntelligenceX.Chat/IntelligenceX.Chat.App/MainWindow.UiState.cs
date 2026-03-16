@@ -492,6 +492,15 @@ public sealed partial class MainWindow : Window {
         var activeAccountUsageState = BuildActiveAccountUsageState();
         var runtimeCapabilitiesState = BuildLocalRuntimeCapabilitiesState();
         var startupDiagnosticsState = BuildStartupDiagnosticsState();
+        var fallbackBackgroundScheduler = _sessionPolicy?.CapabilitySnapshot?.BackgroundScheduler
+                                        ?? _toolCatalogCapabilitySnapshot?.BackgroundScheduler;
+        var effectiveBackgroundSchedulerState = BuildBackgroundSchedulerState(
+            _backgroundSchedulerStatusSnapshot
+            ?? _backgroundSchedulerGlobalStatusSnapshot
+            ?? fallbackBackgroundScheduler);
+        var globalBackgroundSchedulerState = BuildBackgroundSchedulerState(
+            _backgroundSchedulerGlobalStatusSnapshot
+            ?? fallbackBackgroundScheduler);
         var json = JsonSerializer.Serialize(new {
             timestampMode = _timestampMode,
             timestampFormat = _timestampFormat,
@@ -519,6 +528,8 @@ public sealed partial class MainWindow : Window {
             memory = BuildMemoryState(),
             memoryDebug = BuildMemoryDebugState(),
             startupDiagnostics = startupDiagnosticsState,
+            runtimeScheduler = effectiveBackgroundSchedulerState,
+            runtimeSchedulerGlobal = globalBackgroundSchedulerState,
             debug = new {
                 showTurnTrace = _showAssistantTurnTrace,
                 showDraftBubbles = _showAssistantDraftBubbles

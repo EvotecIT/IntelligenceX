@@ -17,6 +17,7 @@ namespace IntelligenceX.Chat.Abstractions.Protocol;
 [JsonDerivedType(typeof(ChatGptLoginPromptMessage), "chatgpt_login_prompt")]
 [JsonDerivedType(typeof(ChatGptLoginCompletedMessage), "chatgpt_login_completed")]
 [JsonDerivedType(typeof(ToolListMessage), "tool_list")]
+[JsonDerivedType(typeof(BackgroundSchedulerStatusMessage), "background_scheduler_status")]
 [JsonDerivedType(typeof(ToolHealthMessage), "tool_health")]
 [JsonDerivedType(typeof(ProfileListMessage), "profile_list")]
 [JsonDerivedType(typeof(ModelListMessage), "model_list")]
@@ -302,6 +303,16 @@ public sealed record ToolListMessage : ChatServiceMessage {
     /// Aggregate capability snapshot projected from the returned tool inventory.
     /// </summary>
     public SessionCapabilitySnapshotDto? CapabilitySnapshot { get; init; }
+}
+
+/// <summary>
+/// Response message for <see cref="GetBackgroundSchedulerStatusRequest"/>.
+/// </summary>
+public sealed record BackgroundSchedulerStatusMessage : ChatServiceMessage {
+    /// <summary>
+    /// Current background scheduler summary for the active session.
+    /// </summary>
+    public required SessionCapabilityBackgroundSchedulerDto Scheduler { get; init; }
 }
 
 /// <summary>

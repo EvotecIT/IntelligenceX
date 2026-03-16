@@ -345,6 +345,8 @@ public sealed partial class MainWindow : Window {
     private ToolPackInfoDto[] _toolCatalogPacks = Array.Empty<ToolPackInfoDto>();
     private SessionRoutingCatalogDiagnosticsDto? _toolCatalogRoutingCatalog;
     private SessionCapabilitySnapshotDto? _toolCatalogCapabilitySnapshot;
+    private SessionCapabilityBackgroundSchedulerDto? _backgroundSchedulerStatusSnapshot;
+    private SessionCapabilityBackgroundSchedulerDto? _backgroundSchedulerGlobalStatusSnapshot;
     private readonly Dictionary<string, bool> _toolStates = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _toolDisplayNames = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _toolDescriptions = new(StringComparer.OrdinalIgnoreCase);

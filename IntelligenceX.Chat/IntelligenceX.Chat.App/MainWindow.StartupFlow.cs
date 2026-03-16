@@ -506,6 +506,7 @@ public sealed partial class MainWindow : Window {
                         : Array.Empty<ToolPackInfoDto>();
                     _toolCatalogRoutingCatalog = hello.Policy?.RoutingCatalog;
                     _toolCatalogCapabilitySnapshot = hello.Policy?.CapabilitySnapshot;
+                    SeedBackgroundSchedulerSnapshot(hello.Policy?.CapabilitySnapshot?.BackgroundScheduler);
                     RecordStartupBootstrapCacheMode(_sessionPolicy);
                     RecordStartupHelloPhaseDiagnostics(helloStopwatch.Elapsed, helloAttemptCount, success: true);
                     helloPhaseSucceeded = true;
@@ -606,6 +607,7 @@ public sealed partial class MainWindow : Window {
                     toolCatalogDuration = listToolsStopwatch.Elapsed;
                     RecordStartupListToolsPhaseDiagnostics(listToolsStopwatch.Elapsed, listToolsAttemptCount, success: true);
                     UpdateToolCatalog(toolList.Tools, toolList.RoutingCatalog, toolList.Packs, toolList.CapabilitySnapshot);
+                    SeedBackgroundSchedulerSnapshot(toolList.CapabilitySnapshot?.BackgroundScheduler);
                     toolCatalogPhaseSucceeded = true;
                     listedToolCount = toolList.Tools?.Length ?? 0;
                     StartupLog.Write("StartupConnect.list_tools done");

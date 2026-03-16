@@ -87,6 +87,11 @@ public sealed record SessionCapabilitySnapshotDto {
     public SessionCapabilityAutonomySummaryDto? Autonomy { get; init; }
 
     /// <summary>
+    /// Lightweight background scheduler/readiness summary for deferred follow-up work.
+    /// </summary>
+    public SessionCapabilityBackgroundSchedulerDto? BackgroundScheduler { get; init; }
+
+    /// <summary>
     /// Phase-1 read-only parity inventory derived from live pack surfaces and upstream engines.
     /// </summary>
     public SessionCapabilityParityEntryDto[] ParityEntries { get; init; } = Array.Empty<SessionCapabilityParityEntryDto>();

@@ -1446,6 +1446,67 @@ public sealed class ChatServicePlannerPromptTests {
     }
 
     [Fact]
+    public void BuildToolRoutingSearchText_IncludesRuntimePackCategoryEngineAndCapabilityTags_WhenPackSelfRegistersThem() {
+        var definition = new ToolDefinition(
+            "ops_inventory_query",
+            "Query remote host inventory.",
+            ToolSchema.Object(("computer_name", ToolSchema.String("Target host."))).NoAdditionalProperties(),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "ops_inventory",
+                Role = ToolRoutingTaxonomy.RoleOperational
+            });
+
+        var searchText = BuildToolRoutingSearchText(
+            definition,
+            packAvailability: new[] {
+                new ToolPackAvailabilityInfo {
+                    Id = "ops_inventory",
+                    Name = "Ops Inventory",
+                    SourceKind = "open_source",
+                    Category = "system",
+                    EngineId = "computerx",
+                    CapabilityTags = new[] { "remote_analysis", "host_inventory", "server_health" },
+                    Enabled = true
+                }
+            });
+
+        Assert.Contains("category system", searchText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("pack_category system", searchText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("engine computerx", searchText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("engine:computerx", searchText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("capability remote_analysis", searchText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("capability host_inventory", searchText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("capability server_health", searchText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildToolRoutingSearchText_UsesPackOwnedRepresentativeExamplesFromOrchestrationCatalogWithoutChatHardcoding() {
+        var definition = new ToolDefinition(
+            "custom_probe",
+            "Probe custom runtime state.",
+            ToolSchema.Object(("target", ToolSchema.String("Target."))).NoAdditionalProperties(),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "customx",
+                Role = ToolRoutingTaxonomy.RoleOperational
+            });
+        var orchestrationCatalog = ToolOrchestrationCatalog.Build(new[] { definition }, new IToolPack[] { new SyntheticRepresentativeExamplePack() });
+
+        var searchText = BuildToolRoutingSearchText(
+            definition,
+            orchestrationCatalog: orchestrationCatalog);
+
+        Assert.Contains(
+            "inspect the custom endpoint state through pack-owned metadata",
+            searchText,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("adplayground", searchText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void TokenizeRoutingTokens_PreservesSeparatorAwarePackAliasTokensAndCompactVariants() {
         var result = TokenizeRoutingTokensMethod.Invoke(
             null,
@@ -2491,7 +2552,8 @@ public sealed class ChatServicePlannerPromptTests {
 
     private static string BuildToolRoutingSearchText(
         ToolDefinition definition,
-        IReadOnlyList<ToolPackAvailabilityInfo>? packAvailability = null) {
+        IReadOnlyList<ToolPackAvailabilityInfo>? packAvailability = null,
+        ToolOrchestrationCatalog? orchestrationCatalog = null) {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         if (packAvailability is { Count: > 0 }) {
             session.SetCapabilitySnapshotContextForTesting(
@@ -2507,6 +2569,10 @@ public sealed class ChatServicePlannerPromptTests {
                     FamilyActionConflictFamilies = 0,
                     FamilyActions = Array.Empty<ToolRoutingFamilyActionSummary>()
                 });
+        }
+
+        if (orchestrationCatalog is not null) {
+            session.SetToolOrchestrationCatalogForTesting(orchestrationCatalog);
         }
 
         return session.BuildToolRoutingSearchTextForTesting(definition);

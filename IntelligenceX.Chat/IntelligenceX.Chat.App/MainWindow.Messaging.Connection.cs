@@ -820,6 +820,7 @@ public sealed partial class MainWindow : Window {
                         : Array.Empty<ToolPackInfoDto>();
                     _toolCatalogRoutingCatalog = hello.Policy?.RoutingCatalog;
                     _toolCatalogCapabilitySnapshot = hello.Policy?.CapabilitySnapshot;
+                    SeedBackgroundSchedulerSnapshot(hello.Policy?.CapabilitySnapshot?.BackgroundScheduler);
                     RecordStartupBootstrapCacheMode(_sessionPolicy);
                     RecordStartupHelloPhaseDiagnostics(helloStopwatch.Elapsed, attempts: 1, success: true);
                     inlineHelloPhaseSucceeded = true;
@@ -843,6 +844,7 @@ public sealed partial class MainWindow : Window {
                     LogStartupConnectPhase("list_tools", "begin");
                     var toolList = await _client.RequestAsync<ToolListMessage>(new ListToolsRequest { RequestId = NextId() }, CancellationToken.None).ConfigureAwait(false);
                     UpdateToolCatalog(toolList.Tools, toolList.RoutingCatalog, toolList.Packs, toolList.CapabilitySnapshot);
+                    SeedBackgroundSchedulerSnapshot(toolList.CapabilitySnapshot?.BackgroundScheduler);
                     RecordStartupListToolsPhaseDiagnostics(listToolsStopwatch.Elapsed, attempts: 1, success: true);
                     inlineToolCatalogPhaseSucceeded = true;
                     LogStartupConnectPhase("list_tools", "done");

@@ -625,7 +625,10 @@ public sealed class ToolPackBootstrapMetadataTests {
         Assert.Equal(ToolCapabilityTier.DangerousWrite, lifecyclePack.Tier);
         Assert.Equal("active_directory", lifecyclePack.Category);
         Assert.Equal("adplayground", lifecyclePack.EngineId);
+        Assert.Contains("governed_write", lifecyclePack.CapabilityTags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("dry_run", lifecyclePack.CapabilityTags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("joiner", lifecyclePack.SearchTokens, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("mover", lifecyclePack.SearchTokens, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("offboarding", lifecyclePack.SearchTokens, StringComparer.OrdinalIgnoreCase);
         Assert.Equal("Disabled by runtime configuration.", lifecyclePack.DisabledReason);
     }
@@ -641,17 +644,20 @@ public sealed class ToolPackBootstrapMetadataTests {
             string.Equals(pack.Id, "active_directory", StringComparison.OrdinalIgnoreCase));
         Assert.Equal("adplayground", activeDirectory.EngineId);
         Assert.Contains("directory", activeDirectory.CapabilityTags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("replication", activeDirectory.CapabilityTags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("remote_analysis", activeDirectory.CapabilityTags, StringComparer.OrdinalIgnoreCase);
 
         var system = Assert.Single(result.PackAvailability, static pack =>
             string.Equals(pack.Id, "system", StringComparison.OrdinalIgnoreCase));
         Assert.Equal("computerx", system.EngineId);
+        Assert.Contains("cpu", system.CapabilityTags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("host_inventory", system.CapabilityTags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("local_analysis", system.CapabilityTags, StringComparer.OrdinalIgnoreCase);
 
         var eventLog = Assert.Single(result.PackAvailability, static pack =>
             string.Equals(pack.Id, "eventlog", StringComparison.OrdinalIgnoreCase));
         Assert.Equal("eventviewerx", eventLog.EngineId);
+        Assert.Contains("auth", eventLog.CapabilityTags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("event_logs", eventLog.CapabilityTags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("evtx", eventLog.CapabilityTags, StringComparer.OrdinalIgnoreCase);
     }
@@ -670,6 +676,7 @@ public sealed class ToolPackBootstrapMetadataTests {
         Assert.Contains("adplayground", activeDirectory.Aliases, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("adplayground", activeDirectory.SearchTokens, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("directory", activeDirectory.SearchTokens, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("replication", activeDirectory.SearchTokens, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("gpo", activeDirectory.SearchTokens, StringComparer.OrdinalIgnoreCase);
 
         var system = Assert.Single(result.PackAvailability, static pack =>
@@ -677,12 +684,14 @@ public sealed class ToolPackBootstrapMetadataTests {
         Assert.Equal("system", system.Category);
         Assert.Contains("computerx", system.SearchTokens, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("cpu", system.SearchTokens, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("disk_space", system.SearchTokens, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("memory", system.SearchTokens, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("disk", system.SearchTokens, StringComparer.OrdinalIgnoreCase);
 
         var eventLog = Assert.Single(result.PackAvailability, static pack =>
             string.Equals(pack.Id, "eventlog", StringComparison.OrdinalIgnoreCase));
         Assert.Equal("eventlog", eventLog.Category);
+        Assert.Contains("auth", eventLog.SearchTokens, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("eventviewerx", eventLog.SearchTokens, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("evtx", eventLog.SearchTokens, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("windows_logs", eventLog.SearchTokens, StringComparer.OrdinalIgnoreCase);
@@ -917,6 +926,34 @@ public sealed class ToolPackBootstrapMetadataTests {
             var dto = Assert.IsType<ToolDefinitionDto>(toolDtos[toolName]);
             AssertToolDtoMatchesOrchestration(dto, entry!, packAvailabilityById);
         }
+    }
+
+    [Fact]
+    public void BuildToolDefinitionDtos_FallsBackToPackCategory_WhenDefinitionCategoryIsMissingAndPackSelfRegistersIt() {
+        var definition = new ToolDefinition(
+            "ops_inventory_query",
+            "Query remote host inventory.",
+            ToolSchema.Object(("computer_name", ToolSchema.String("Target host."))).NoAdditionalProperties(),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "ops_inventory",
+                Role = ToolRoutingTaxonomy.RoleOperational
+            });
+        var orchestrationCatalog = ToolOrchestrationCatalog.Build(new[] { definition });
+        var packAvailability = new[] {
+            new ToolPackAvailabilityInfo {
+                Id = "ops_inventory",
+                Name = "Ops Inventory",
+                SourceKind = "open_source",
+                Category = "system",
+                Enabled = true
+            }
+        };
+
+        var dto = Assert.Single(ToolCatalogExportBuilder.BuildToolDefinitionDtos(new[] { definition }, orchestrationCatalog, packAvailability));
+
+        Assert.Equal("system", dto.Category);
     }
 
     [Fact]

@@ -435,6 +435,7 @@ internal sealed partial class ChatServiceSession {
         }
 
         var sb = new StringBuilder(256);
+        var orchestrationEntry = TryResolveToolRoutingCatalogEntry(definition);
         sb.Append(definition.Name);
         if (!string.IsNullOrWhiteSpace(definition.Description)) {
             sb.Append(' ').Append(definition.Description!.Trim());
@@ -462,6 +463,7 @@ internal sealed partial class ChatServiceSession {
 
         AppendRoutingPackTokens(sb, definition);
         AppendRoutingRoleTokens(sb, definition);
+        AppendRuntimePackMetadataTokens(sb, definition, orchestrationEntry);
 
         var schemaArguments = ExtractToolSchemaPropertyNames(definition, maxCount: 12, out var schemaTraits);
         for (var i = 0; i < schemaArguments.Length; i++) {
@@ -486,7 +488,22 @@ internal sealed partial class ChatServiceSession {
             sb.Append(contractSearchAugmentation);
         }
 
+        var orchestrationSearchAugmentation = BuildOrchestrationCatalogSearchAugmentation(orchestrationEntry);
+        if (orchestrationSearchAugmentation.Length > 0) {
+            sb.Append(orchestrationSearchAugmentation);
+        }
+
         return sb.ToString();
+    }
+
+    private ToolOrchestrationCatalogEntry? TryResolveToolRoutingCatalogEntry(ToolDefinition definition) {
+        if (definition is null) {
+            return null;
+        }
+
+        return _toolOrchestrationCatalog.TryGetEntry(definition.Name, out var entry)
+            ? entry
+            : null;
     }
 
     private static string BuildContractSearchAugmentation(ToolDefinition definition) {
@@ -557,6 +574,65 @@ internal sealed partial class ChatServiceSession {
         return sb.ToString();
     }
 
+    private static string BuildOrchestrationCatalogSearchAugmentation(ToolOrchestrationCatalogEntry? entry) {
+        if (entry is null) {
+            return string.Empty;
+        }
+
+        var sb = new StringBuilder(192);
+        AppendRepresentativeExamples(sb, entry.RepresentativeExamples, maxCount: 4);
+
+        if (entry.IsEnvironmentDiscoverTool) {
+            sb.Append(" environment_discover");
+        }
+
+        if (entry.IsSetupAware && !string.IsNullOrWhiteSpace(entry.SetupToolName)) {
+            sb.Append(" setup_catalog ").Append(entry.SetupToolName.Trim());
+        }
+
+        if (entry.IsRecoveryAware && entry.RecoveryToolNames.Count > 0) {
+            for (var i = 0; i < entry.RecoveryToolNames.Count && i < 4; i++) {
+                var toolName = (entry.RecoveryToolNames[i] ?? string.Empty).Trim();
+                if (toolName.Length == 0) {
+                    continue;
+                }
+
+                sb.Append(" recovery_catalog ").Append(toolName);
+            }
+        }
+
+        if (entry.IsHandoffAware && entry.HandoffEdges.Count > 0) {
+            for (var i = 0; i < entry.HandoffEdges.Count && i < 6; i++) {
+                var edge = entry.HandoffEdges[i];
+                if (!string.IsNullOrWhiteSpace(edge.TargetPackId)) {
+                    sb.Append(" handoff_pack ").Append(edge.TargetPackId.Trim());
+                }
+
+                if (!string.IsNullOrWhiteSpace(edge.TargetToolName)) {
+                    sb.Append(" handoff_tool ").Append(edge.TargetToolName.Trim());
+                }
+            }
+        }
+
+        return sb.ToString();
+    }
+
+    private static void AppendRepresentativeExamples(StringBuilder sb, IReadOnlyList<string>? examples, int maxCount) {
+        if (sb is null || examples is not { Count: > 0 } || maxCount <= 0) {
+            return;
+        }
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < examples.Count && i < maxCount; i++) {
+            var example = (examples[i] ?? string.Empty).Trim();
+            if (example.Length == 0 || !seen.Add(example)) {
+                continue;
+            }
+
+            sb.Append(" example ").Append(example);
+        }
+    }
+
     private void AppendRoutingPackTokens(StringBuilder sb, ToolDefinition definition) {
         var packHint = ResolveRoutingPackHint(definition);
         if (packHint.Length == 0) {
@@ -578,6 +654,68 @@ internal sealed partial class ChatServiceSession {
         foreach (var alias in packSearchTokens) {
             AppendPackToken(alias);
         }
+    }
+
+    private void AppendRuntimePackMetadataTokens(
+        StringBuilder sb,
+        ToolDefinition definition,
+        ToolOrchestrationCatalogEntry? orchestrationEntry) {
+        if (sb is null || definition is null) {
+            return;
+        }
+
+        var packId = ResolvePackIdForRoutingSearch(definition, orchestrationEntry);
+        if (packId.Length == 0) {
+            return;
+        }
+
+        if (_packCategoriesById.TryGetValue(packId, out var category)
+            && !string.IsNullOrWhiteSpace(category)) {
+            var normalizedCategory = category.Trim();
+            sb.Append(" category ").Append(normalizedCategory);
+            sb.Append(" pack_category ").Append(normalizedCategory);
+        }
+
+        if (_packEngineIdsById.TryGetValue(packId, out var engineId)
+            && !string.IsNullOrWhiteSpace(engineId)) {
+            var normalizedEngineId = engineId.Trim();
+            sb.Append(" engine ").Append(normalizedEngineId);
+            sb.Append(" engine:").Append(normalizedEngineId);
+        }
+
+        if (_packCapabilityTagsById.TryGetValue(packId, out var capabilityTags)
+            && capabilityTags is { Length: > 0 }) {
+            var appended = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            for (var i = 0; i < capabilityTags.Length; i++) {
+                var capabilityTag = (capabilityTags[i] ?? string.Empty).Trim();
+                if (capabilityTag.Length == 0 || !appended.Add(capabilityTag)) {
+                    continue;
+                }
+
+                sb.Append(" capability ").Append(capabilityTag);
+                sb.Append(' ').Append(capabilityTag);
+            }
+        }
+    }
+
+    private string ResolvePackIdForRoutingSearch(ToolDefinition definition, ToolOrchestrationCatalogEntry? orchestrationEntry) {
+        if (definition is null) {
+            return string.Empty;
+        }
+
+        var packId = ResolveRuntimePackId(orchestrationEntry?.PackId);
+        if (packId.Length > 0) {
+            return packId;
+        }
+
+        packId = ResolveRuntimePackId(definition.Routing?.PackId);
+        if (packId.Length > 0) {
+            return packId;
+        }
+
+        return ToolSelectionMetadata.TryResolvePackId(definition, out var inferredPackId)
+            ? ResolveRuntimePackId(inferredPackId)
+            : string.Empty;
     }
 
     private IReadOnlyList<string> ResolvePackSearchTokens(string packHint) {

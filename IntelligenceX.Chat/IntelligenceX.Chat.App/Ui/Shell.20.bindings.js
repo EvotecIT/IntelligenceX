@@ -540,6 +540,289 @@
   byId("btnAutonomyReset").addEventListener("click", function() {
     post("reset_autonomy");
   });
+  ensureCustomSelect("optSchedulerMaintenanceDay");
+  ensureCustomSelect("optSchedulerScopePack");
+  ensureCustomSelect("optSchedulerScopeThread");
+  ensureCustomSelect("optSchedulerMaintenancePackId");
+  ensureCustomSelect("optSchedulerMaintenanceThreadId");
+
+  var schedulerRefreshButton = byId("btnSchedulerRefresh");
+  if (schedulerRefreshButton) {
+    schedulerRefreshButton.addEventListener("click", function() {
+      post("scheduler_refresh", {
+        threadId: (byId("optSchedulerScopeThread").value || "").trim()
+      });
+    });
+  }
+  var schedulerScopeTogglePackMuteButton = byId("btnSchedulerScopeTogglePackMute");
+  if (schedulerScopeTogglePackMuteButton) {
+    schedulerScopeTogglePackMuteButton.addEventListener("click", function() {
+      var packId = String(schedulerScopeTogglePackMuteButton.dataset.packId || "").trim();
+      if (!packId) {
+        return;
+      }
+
+      var blocked = String(schedulerScopeTogglePackMuteButton.dataset.blocked || "").trim().toLowerCase() === "true";
+      post("scheduler_set_pack_block", {
+        packId: packId,
+        blocked: !blocked
+      });
+    });
+  }
+  var schedulerScopeTempPackMuteButton = byId("btnSchedulerScopeTempPackMute");
+  if (schedulerScopeTempPackMuteButton) {
+    schedulerScopeTempPackMuteButton.addEventListener("click", function() {
+      var packId = String(schedulerScopeTempPackMuteButton.dataset.packId || "").trim();
+      if (!packId) {
+        return;
+      }
+
+      post("scheduler_set_pack_block", {
+        packId: packId,
+        blocked: true,
+        durationMinutes: (byId("optSchedulerSuppressMinutes").value || "").trim()
+      });
+    });
+  }
+  var schedulerScopePackMuteUntilMaintenanceButton = byId("btnSchedulerScopePackMuteUntilMaintenance");
+  if (schedulerScopePackMuteUntilMaintenanceButton) {
+    schedulerScopePackMuteUntilMaintenanceButton.addEventListener("click", function() {
+      var packId = String(schedulerScopePackMuteUntilMaintenanceButton.dataset.packId || "").trim();
+      if (!packId) {
+        return;
+      }
+
+      post("scheduler_set_pack_block", {
+        packId: packId,
+        blocked: true,
+        untilNextMaintenanceWindow: true
+      });
+    });
+  }
+  var schedulerScopePackMuteUntilMaintenanceStartButton = byId("btnSchedulerScopePackMuteUntilMaintenanceStart");
+  if (schedulerScopePackMuteUntilMaintenanceStartButton) {
+    schedulerScopePackMuteUntilMaintenanceStartButton.addEventListener("click", function() {
+      var packId = String(schedulerScopePackMuteUntilMaintenanceStartButton.dataset.packId || "").trim();
+      if (!packId) {
+        return;
+      }
+
+      post("scheduler_set_pack_block", {
+        packId: packId,
+        blocked: true,
+        untilNextMaintenanceWindowStart: true
+      });
+    });
+  }
+  var schedulerClearPackBlocksButton = byId("btnSchedulerClearPackBlocks");
+  if (schedulerClearPackBlocksButton) {
+    schedulerClearPackBlocksButton.addEventListener("click", function() {
+      post("scheduler_clear_pack_blocks");
+    });
+  }
+  var schedulerScopeToggleMuteButton = byId("btnSchedulerScopeToggleMute");
+  if (schedulerScopeToggleMuteButton) {
+    schedulerScopeToggleMuteButton.addEventListener("click", function() {
+      var threadId = String(schedulerScopeToggleMuteButton.dataset.threadId || "").trim();
+      if (!threadId) {
+        return;
+      }
+
+      var blocked = String(schedulerScopeToggleMuteButton.dataset.blocked || "").trim().toLowerCase() === "true";
+      post("scheduler_set_thread_block", {
+        threadId: threadId,
+        blocked: !blocked
+      });
+    });
+  }
+  var schedulerScopeTempMuteButton = byId("btnSchedulerScopeTempMute");
+  if (schedulerScopeTempMuteButton) {
+    schedulerScopeTempMuteButton.addEventListener("click", function() {
+      var threadId = String(schedulerScopeTempMuteButton.dataset.threadId || "").trim();
+      if (!threadId) {
+        return;
+      }
+
+      post("scheduler_set_thread_block", {
+        threadId: threadId,
+        blocked: true,
+        durationMinutes: (byId("optSchedulerSuppressMinutes").value || "").trim()
+      });
+    });
+  }
+  var schedulerScopeThreadMuteUntilMaintenanceButton = byId("btnSchedulerScopeThreadMuteUntilMaintenance");
+  if (schedulerScopeThreadMuteUntilMaintenanceButton) {
+    schedulerScopeThreadMuteUntilMaintenanceButton.addEventListener("click", function() {
+      var threadId = String(schedulerScopeThreadMuteUntilMaintenanceButton.dataset.threadId || "").trim();
+      if (!threadId) {
+        return;
+      }
+
+      post("scheduler_set_thread_block", {
+        threadId: threadId,
+        blocked: true,
+        untilNextMaintenanceWindow: true
+      });
+    });
+  }
+  var schedulerScopeThreadMuteUntilMaintenanceStartButton = byId("btnSchedulerScopeThreadMuteUntilMaintenanceStart");
+  if (schedulerScopeThreadMuteUntilMaintenanceStartButton) {
+    schedulerScopeThreadMuteUntilMaintenanceStartButton.addEventListener("click", function() {
+      var threadId = String(schedulerScopeThreadMuteUntilMaintenanceStartButton.dataset.threadId || "").trim();
+      if (!threadId) {
+        return;
+      }
+
+      post("scheduler_set_thread_block", {
+        threadId: threadId,
+        blocked: true,
+        untilNextMaintenanceWindowStart: true
+      });
+    });
+  }
+  var schedulerClearThreadBlocksButton = byId("btnSchedulerClearThreadBlocks");
+  if (schedulerClearThreadBlocksButton) {
+    schedulerClearThreadBlocksButton.addEventListener("click", function() {
+      post("scheduler_clear_thread_blocks");
+    });
+  }
+  var schedulerPauseButton = byId("btnSchedulerPause");
+  if (schedulerPauseButton) {
+    schedulerPauseButton.addEventListener("click", function() {
+      post("scheduler_pause", {
+        minutes: (byId("optSchedulerPauseMinutes").value || "").trim()
+      });
+    });
+  }
+  var schedulerResumeButton = byId("btnSchedulerResume");
+  if (schedulerResumeButton) {
+    schedulerResumeButton.addEventListener("click", function() {
+      post("scheduler_resume");
+    });
+  }
+  var schedulerAddMaintenanceButton = byId("btnSchedulerAddMaintenance");
+  if (schedulerAddMaintenanceButton) {
+    schedulerAddMaintenanceButton.addEventListener("click", function() {
+      post("scheduler_add_maintenance", {
+        day: (byId("optSchedulerMaintenanceDay").value || "daily").trim(),
+        startTimeLocal: (byId("optSchedulerMaintenanceStart").value || "").trim(),
+        durationMinutes: (byId("optSchedulerMaintenanceDuration").value || "").trim(),
+        packId: (byId("optSchedulerMaintenancePackId").value || "").trim(),
+        threadId: (byId("optSchedulerMaintenanceThreadId").value || "").trim()
+      });
+    });
+  }
+  var schedulerClearMaintenanceButton = byId("btnSchedulerClearMaintenance");
+  if (schedulerClearMaintenanceButton) {
+    schedulerClearMaintenanceButton.addEventListener("click", function() {
+      post("scheduler_clear_maintenance");
+    });
+  }
+  var activeThreadSchedulerRefreshButton = byId("btnActiveThreadSchedulerRefresh");
+  if (activeThreadSchedulerRefreshButton) {
+    activeThreadSchedulerRefreshButton.addEventListener("click", function() {
+      var threadId = String(activeThreadSchedulerRefreshButton.dataset.threadId || "").trim();
+      if (!threadId) {
+        return;
+      }
+
+      post("scheduler_refresh", { threadId: threadId });
+    });
+  }
+  var activeThreadSchedulerOpenButton = byId("btnActiveThreadSchedulerOpen");
+  if (activeThreadSchedulerOpenButton) {
+    activeThreadSchedulerOpenButton.addEventListener("click", function() {
+      var threadId = String(activeThreadSchedulerOpenButton.dataset.threadId || "").trim();
+      if (!threadId) {
+        return;
+      }
+
+      openOptions();
+      switchOptionsTab("session");
+      var scopeSelect = byId("optSchedulerScopeThread");
+      if (scopeSelect) {
+        scopeSelect.value = threadId;
+        syncCustomSelect(scopeSelect);
+      }
+
+      post("scheduler_refresh", { threadId: threadId });
+    });
+  }
+  var activeThreadSchedulerToggleMuteButton = byId("btnActiveThreadSchedulerToggleMute");
+  if (activeThreadSchedulerToggleMuteButton) {
+    activeThreadSchedulerToggleMuteButton.addEventListener("click", function() {
+      var threadId = String(activeThreadSchedulerToggleMuteButton.dataset.threadId || "").trim();
+      if (!threadId) {
+        return;
+      }
+
+      var blocked = String(activeThreadSchedulerToggleMuteButton.dataset.blocked || "").trim().toLowerCase() === "true";
+      post("scheduler_set_thread_block", {
+        threadId: threadId,
+        blocked: !blocked
+      });
+    });
+  }
+  var activeThreadSchedulerTempMuteButton = byId("btnActiveThreadSchedulerTempMute");
+  if (activeThreadSchedulerTempMuteButton) {
+    activeThreadSchedulerTempMuteButton.addEventListener("click", function() {
+      var threadId = String(activeThreadSchedulerTempMuteButton.dataset.threadId || "").trim();
+      if (!threadId) {
+        return;
+      }
+
+      post("scheduler_set_thread_block", {
+        threadId: threadId,
+        blocked: true,
+        durationMinutes: "30"
+      });
+    });
+  }
+  var activeThreadSchedulerTempMuteLongButton = byId("btnActiveThreadSchedulerTempMuteLong");
+  if (activeThreadSchedulerTempMuteLongButton) {
+    activeThreadSchedulerTempMuteLongButton.addEventListener("click", function() {
+      var threadId = String(activeThreadSchedulerTempMuteLongButton.dataset.threadId || "").trim();
+      if (!threadId) {
+        return;
+      }
+
+      post("scheduler_set_thread_block", {
+        threadId: threadId,
+        blocked: true,
+        durationMinutes: "120"
+      });
+    });
+  }
+  var activeThreadSchedulerMuteUntilMaintenanceButton = byId("btnActiveThreadSchedulerMuteUntilMaintenance");
+  if (activeThreadSchedulerMuteUntilMaintenanceButton) {
+    activeThreadSchedulerMuteUntilMaintenanceButton.addEventListener("click", function() {
+      var threadId = String(activeThreadSchedulerMuteUntilMaintenanceButton.dataset.threadId || "").trim();
+      if (!threadId) {
+        return;
+      }
+
+      post("scheduler_set_thread_block", {
+        threadId: threadId,
+        blocked: true,
+        untilNextMaintenanceWindow: true
+      });
+    });
+  }
+  var activeThreadSchedulerMuteUntilMaintenanceStartButton = byId("btnActiveThreadSchedulerMuteUntilMaintenanceStart");
+  if (activeThreadSchedulerMuteUntilMaintenanceStartButton) {
+    activeThreadSchedulerMuteUntilMaintenanceStartButton.addEventListener("click", function() {
+      var threadId = String(activeThreadSchedulerMuteUntilMaintenanceStartButton.dataset.threadId || "").trim();
+      if (!threadId) {
+        return;
+      }
+
+      post("scheduler_set_thread_block", {
+        threadId: threadId,
+        blocked: true,
+        untilNextMaintenanceWindowStart: true
+      });
+    });
+  }
 
   byId("optMemoryEnabled").addEventListener("change", function(e) {
     post("set_memory_enabled", { enabled: e.target.checked === true });

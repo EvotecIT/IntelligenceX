@@ -442,6 +442,7 @@ public sealed partial class MainWindow : Window {
                 preview,
                 isActive = string.Equals(conversation.Id, _activeConversationId, StringComparison.OrdinalIgnoreCase),
                 isSystem,
+                threadId = string.IsNullOrWhiteSpace(conversation.ThreadId) ? null : conversation.ThreadId.Trim(),
                 runtimeLabel = string.IsNullOrWhiteSpace(conversation.RuntimeLabel) ? null : conversation.RuntimeLabel.Trim(),
                 modelLabel = string.IsNullOrWhiteSpace(conversation.ModelLabel) ? null : conversation.ModelLabel.Trim(),
                 modelOverride = string.IsNullOrWhiteSpace(conversation.ModelOverride) ? null : conversation.ModelOverride.Trim(),

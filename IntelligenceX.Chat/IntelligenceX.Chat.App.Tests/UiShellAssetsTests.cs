@@ -152,6 +152,205 @@ public sealed partial class UiShellAssetsTests {
     }
 
     /// <summary>
+    /// Ensures the session tab exposes runtime scheduler operator controls and rendering hooks.
+    /// </summary>
+    [Fact]
+    public void Load_IncludesBackgroundSchedulerOperatorSurface() {
+        var html = UiShellAssets.Load();
+        var coreScriptPath = Path.Combine(UiDirectory, "Shell.10.core.js");
+        var coreScript = File.ReadAllText(coreScriptPath);
+        var toolsScriptPath = Path.Combine(UiDirectory, "Shell.15.core.tools.js");
+        var toolsScript = File.ReadAllText(toolsScriptPath);
+        var bindingsScriptPath = Path.Combine(UiDirectory, "Shell.20.bindings.js");
+        var bindingsScript = File.ReadAllText(bindingsScriptPath);
+        var renderingScriptPath = Path.Combine(UiDirectory, RenderingScriptFile);
+        var renderingScript = File.ReadAllText(renderingScriptPath);
+
+        Assert.Contains("id=\"optRuntimeSchedulerState\"", html, StringComparison.Ordinal);
+        Assert.Contains("id=\"optRuntimeSchedulerKv\"", html, StringComparison.Ordinal);
+        Assert.Contains("id=\"optRuntimeSchedulerMaintenanceList\"", html, StringComparison.Ordinal);
+        Assert.Contains("id=\"optRuntimeSchedulerBlockedPackList\"", html, StringComparison.Ordinal);
+        Assert.Contains("id=\"optRuntimeSchedulerBlockedThreadList\"", html, StringComparison.Ordinal);
+        Assert.Contains("id=\"optRuntimeSchedulerActivityList\"", html, StringComparison.Ordinal);
+        Assert.Contains("id=\"optRuntimeSchedulerThreadList\"", html, StringComparison.Ordinal);
+        Assert.Contains("id=\"optSchedulerScopePack\"", html, StringComparison.Ordinal);
+        Assert.Contains("id=\"optSchedulerScopeThread\"", html, StringComparison.Ordinal);
+        Assert.Contains("id=\"optSchedulerSuppressMinutes\"", html, StringComparison.Ordinal);
+        Assert.Contains("id=\"btnSchedulerScopeTogglePackMute\"", html, StringComparison.Ordinal);
+        Assert.Contains("id=\"btnSchedulerScopeTempPackMute\"", html, StringComparison.Ordinal);
+        Assert.Contains("id=\"btnSchedulerClearPackBlocks\"", html, StringComparison.Ordinal);
+        Assert.Contains("id=\"btnSchedulerScopeToggleMute\"", html, StringComparison.Ordinal);
+        Assert.Contains("id=\"btnSchedulerScopeTempMute\"", html, StringComparison.Ordinal);
+        Assert.Contains("id=\"btnSchedulerClearThreadBlocks\"", html, StringComparison.Ordinal);
+        Assert.Contains("id=\"optSchedulerMaintenancePackId\"", html, StringComparison.Ordinal);
+        Assert.Contains("id=\"optSchedulerMaintenanceThreadId\"", html, StringComparison.Ordinal);
+        Assert.Contains("id=\"btnSchedulerRefresh\"", html, StringComparison.Ordinal);
+        Assert.Contains("id=\"btnSchedulerPause\"", html, StringComparison.Ordinal);
+        Assert.Contains("id=\"btnSchedulerResume\"", html, StringComparison.Ordinal);
+        Assert.Contains("id=\"btnSchedulerAddMaintenance\"", html, StringComparison.Ordinal);
+        Assert.Contains("id=\"btnSchedulerClearMaintenance\"", html, StringComparison.Ordinal);
+        Assert.Contains("runtimeScheduler: null", coreScript, StringComparison.Ordinal);
+        Assert.Contains("runtimeSchedulerGlobal: null", coreScript, StringComparison.Ordinal);
+        Assert.Contains("state.options.runtimeScheduler = nextOptions.runtimeScheduler || null;", renderingScript, StringComparison.Ordinal);
+        Assert.Contains("state.options.runtimeSchedulerGlobal = nextOptions.runtimeSchedulerGlobal || null;", renderingScript, StringComparison.Ordinal);
+        Assert.Contains("function renderRuntimeScheduler()", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("renderRuntimeScheduler();", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("buildSchedulerThreadOptions()", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("buildSchedulerPackOptions()", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("normalizedPackIdArray(value)", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("normalizedSchedulerSuppressionArray(value, isPack)", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("appendSchedulerPackActionBar(host, packId, blocked)", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("tempButton.textContent = \"Mute 30m\";", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("tempLongButton.textContent = \"Mute 2h\";", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("untilMaintenanceButton.textContent = \"Until End\";", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("untilMaintenanceStartButton.textContent = \"Until Start\";", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("durationMinutes: \"30\"", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("durationMinutes: \"120\"", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("untilNextMaintenanceWindow: true", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("untilNextMaintenanceWindowStart: true", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("No muted scheduler packs", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("normalizedThreadIdArray(value)", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("appendSchedulerThreadActionBar(host, threadId, blocked)", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("No muted scheduler threads", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("scopeTogglePackMuteButton.dataset.packId = scopedPackId;", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("scopeTogglePackMuteButton.textContent = scopedPackBlocked ? \"Unmute Scoped Pack\" : \"Mute Scoped Pack\";", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("scopeTempPackMuteButton.disabled = !connected || !scopedPackId || scopedPackBlocked;", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("scopePackMuteUntilMaintenanceButton.disabled = !connected || !scopedPackId || scopedPackBlocked;", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("scopePackMuteUntilMaintenanceStartButton.disabled = !connected || !scopedPackId || scopedPackBlocked;", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("scopeToggleMuteButton.dataset.threadId = scopedThreadId;", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("scopeToggleMuteButton.textContent = scopedThreadBlocked ? \"Unmute Scoped Thread\" : \"Mute Scoped Thread\";", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("scopeTempMuteButton.disabled = !connected || !scopedThreadId || scopedThreadBlocked;", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("scopeThreadMuteUntilMaintenanceButton.disabled = !connected || !scopedThreadId || scopedThreadBlocked;", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("scopeThreadMuteUntilMaintenanceStartButton.disabled = !connected || !scopedThreadId || scopedThreadBlocked;", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("scheduler.scopeThreadId", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("scheduler.recentActivity", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("function resolveActivityPackId(activity)", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("resolveSchedulerPackLabel(packIdForActivity)", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("activityPackMutedPill.textContent = (formatSchedulerSuppressionMode(packSuppressionForActivity) || \"pack muted\") + (packSuppressionForActivity ? \" pack\" : \"\");", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("appendSchedulerPackActionBar(activityCard, packIdForActivity, isSchedulerPackBlocked(packIdForActivity));", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("appendSchedulerThreadActionBar(activityCard, threadIdForActivity, isSchedulerThreadBlocked(threadIdForActivity));", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("activityMutedPill.textContent = formatSchedulerSuppressionMode(threadSuppressionForActivity) || \"muted\";", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("scheduler.threadSummaries", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("post(\"scheduler_set_pack_block\", {", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("post(\"scheduler_set_thread_block\", {", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("post(\"scheduler_refresh\", {", bindingsScript, StringComparison.Ordinal);
+        Assert.Contains("post(\"scheduler_set_pack_block\", {", bindingsScript, StringComparison.Ordinal);
+        Assert.Contains("post(\"scheduler_set_pack_block\", {\n        packId: packId,\n        blocked: true,\n        durationMinutes: (byId(\"optSchedulerSuppressMinutes\").value || \"\").trim()", bindingsScript, StringComparison.Ordinal);
+        Assert.Contains("var schedulerScopePackMuteUntilMaintenanceButton = byId(\"btnSchedulerScopePackMuteUntilMaintenance\");", bindingsScript, StringComparison.Ordinal);
+        Assert.Contains("var schedulerScopePackMuteUntilMaintenanceStartButton = byId(\"btnSchedulerScopePackMuteUntilMaintenanceStart\");", bindingsScript, StringComparison.Ordinal);
+        Assert.Contains("post(\"scheduler_clear_pack_blocks\");", bindingsScript, StringComparison.Ordinal);
+        Assert.Contains("post(\"scheduler_set_thread_block\", {", bindingsScript, StringComparison.Ordinal);
+        Assert.Contains("post(\"scheduler_set_thread_block\", {\n        threadId: threadId,\n        blocked: true,\n        durationMinutes: (byId(\"optSchedulerSuppressMinutes\").value || \"\").trim()", bindingsScript, StringComparison.Ordinal);
+        Assert.Contains("var schedulerScopeThreadMuteUntilMaintenanceButton = byId(\"btnSchedulerScopeThreadMuteUntilMaintenance\");", bindingsScript, StringComparison.Ordinal);
+        Assert.Contains("var schedulerScopeThreadMuteUntilMaintenanceStartButton = byId(\"btnSchedulerScopeThreadMuteUntilMaintenanceStart\");", bindingsScript, StringComparison.Ordinal);
+        Assert.Contains("untilNextMaintenanceWindow: true", bindingsScript, StringComparison.Ordinal);
+        Assert.Contains("untilNextMaintenanceWindowStart: true", bindingsScript, StringComparison.Ordinal);
+        Assert.Contains("post(\"scheduler_clear_thread_blocks\");", bindingsScript, StringComparison.Ordinal);
+        Assert.Contains("post(\"scheduler_pause\"", bindingsScript, StringComparison.Ordinal);
+        Assert.Contains("post(\"scheduler_resume\")", bindingsScript, StringComparison.Ordinal);
+        Assert.Contains("post(\"scheduler_add_maintenance\"", bindingsScript, StringComparison.Ordinal);
+        Assert.Contains("post(\"scheduler_clear_maintenance\")", bindingsScript, StringComparison.Ordinal);
+        Assert.Contains("post(\"scheduler_remove_maintenance\"", toolsScript, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures sidebar conversation rendering can surface per-thread background scheduler hints
+    /// without losing global visibility after a scoped scheduler refresh.
+    /// </summary>
+    [Fact]
+    public void Load_IncludesSidebarBackgroundSchedulerHints() {
+        var helpersScriptPath = Path.Combine(UiDirectory, "Shell.12.core.helpers.js");
+        var helpersScript = File.ReadAllText(helpersScriptPath);
+        var baseCssPath = Path.Combine(UiDirectory, "Shell.10.base.css");
+        var baseCss = File.ReadAllText(baseCssPath);
+
+        Assert.Contains("function getGlobalRuntimeScheduler()", helpersScript, StringComparison.Ordinal);
+        Assert.Contains("function getConversationSchedulerHint(chat)", helpersScript, StringComparison.Ordinal);
+        Assert.Contains("var schedulerSuppression = findConversationSchedulerSuppression(chat);", helpersScript, StringComparison.Ordinal);
+        Assert.Contains("var schedulerBlocked = isConversationSchedulerBlocked(chat);", helpersScript, StringComparison.Ordinal);
+        Assert.Contains("var schedulerHint = getConversationSchedulerHint(chat);", helpersScript, StringComparison.Ordinal);
+        Assert.Contains("chat-sidebar-item-pill chat-sidebar-item-pill-scheduler", helpersScript, StringComparison.Ordinal);
+        Assert.Contains("BG muted", helpersScript, StringComparison.Ordinal);
+        Assert.Contains("BG temp", helpersScript, StringComparison.Ordinal);
+        Assert.Contains("BG ready ", helpersScript, StringComparison.Ordinal);
+        Assert.Contains(".chat-sidebar-item-pill-scheduler {", baseCss, StringComparison.Ordinal);
+        Assert.Contains(".chat-sidebar-item-pill-scheduler.tone-ready {", baseCss, StringComparison.Ordinal);
+        Assert.Contains(".chat-sidebar-item-pill-scheduler.tone-running {", baseCss, StringComparison.Ordinal);
+        Assert.Contains(".chat-sidebar-item-pill-scheduler.tone-queued {", baseCss, StringComparison.Ordinal);
+        Assert.Contains(".chat-sidebar-item-pill-scheduler.tone-muted {", baseCss, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures the active conversation surface can expose thread-scoped background scheduler hints
+    /// and trigger a direct scoped refresh without opening the Session tab.
+    /// </summary>
+    [Fact]
+    public void Load_IncludesActiveThreadSchedulerHintSurface() {
+        var html = UiShellAssets.Load();
+        var helpersScriptPath = Path.Combine(UiDirectory, "Shell.12.core.helpers.js");
+        var helpersScript = File.ReadAllText(helpersScriptPath);
+        var bindingsScriptPath = Path.Combine(UiDirectory, "Shell.20.bindings.js");
+        var bindingsScript = File.ReadAllText(bindingsScriptPath);
+        var renderingScriptPath = Path.Combine(UiDirectory, RenderingScriptFile);
+        var renderingScript = File.ReadAllText(renderingScriptPath);
+        var baseCssPath = Path.Combine(UiDirectory, "Shell.10.base.css");
+        var baseCss = File.ReadAllText(baseCssPath);
+
+        Assert.Contains("id=\"activeThreadSchedulerBanner\"", html, StringComparison.Ordinal);
+        Assert.Contains("id=\"activeThreadSchedulerTitle\"", html, StringComparison.Ordinal);
+        Assert.Contains("id=\"activeThreadSchedulerMeta\"", html, StringComparison.Ordinal);
+        Assert.Contains("id=\"activeThreadSchedulerDetail\"", html, StringComparison.Ordinal);
+        Assert.Contains("id=\"btnActiveThreadSchedulerOpen\"", html, StringComparison.Ordinal);
+        Assert.Contains("id=\"btnActiveThreadSchedulerToggleMute\"", html, StringComparison.Ordinal);
+        Assert.Contains("id=\"btnActiveThreadSchedulerTempMute\"", html, StringComparison.Ordinal);
+        Assert.Contains("id=\"btnActiveThreadSchedulerTempMuteLong\"", html, StringComparison.Ordinal);
+        Assert.Contains("id=\"btnActiveThreadSchedulerMuteUntilMaintenance\"", html, StringComparison.Ordinal);
+        Assert.Contains("id=\"btnActiveThreadSchedulerMuteUntilMaintenanceStart\"", html, StringComparison.Ordinal);
+        Assert.Contains("id=\"btnActiveThreadSchedulerRefresh\"", html, StringComparison.Ordinal);
+        Assert.Contains("function findActiveConversation()", helpersScript, StringComparison.Ordinal);
+        Assert.Contains("function renderActiveConversationSchedulerHint()", helpersScript, StringComparison.Ordinal);
+        Assert.Contains("function buildActiveConversationSchedulerActivityText(chat)", helpersScript, StringComparison.Ordinal);
+        Assert.Contains("function isConversationSchedulerBlocked(chat)", helpersScript, StringComparison.Ordinal);
+        Assert.Contains("function findConversationSchedulerSuppression(chat)", helpersScript, StringComparison.Ordinal);
+        Assert.Contains("function formatSchedulerSuppressionExpiry(utcTicks)", helpersScript, StringComparison.Ordinal);
+        Assert.Contains("refreshButton.dataset.threadId = threadId;", helpersScript, StringComparison.Ordinal);
+        Assert.Contains("toggleMuteButton.dataset.threadId = threadId;", helpersScript, StringComparison.Ordinal);
+        Assert.Contains("toggleMuteButton.textContent = blocked ? \"Unmute Thread\" : \"Mute Thread\";", helpersScript, StringComparison.Ordinal);
+        Assert.Contains("tempMuteButton.dataset.threadId = threadId;", helpersScript, StringComparison.Ordinal);
+        Assert.Contains("tempMuteLongButton.dataset.threadId = threadId;", helpersScript, StringComparison.Ordinal);
+        Assert.Contains("muteUntilMaintenanceButton.dataset.threadId = threadId;", helpersScript, StringComparison.Ordinal);
+        Assert.Contains("muteUntilMaintenanceStartButton.dataset.threadId = threadId;", helpersScript, StringComparison.Ordinal);
+        Assert.Contains("tempMuteButton.disabled = !normalizeBool(state.connected) || blocked;", helpersScript, StringComparison.Ordinal);
+        Assert.Contains("tempMuteLongButton.disabled = !normalizeBool(state.connected) || blocked;", helpersScript, StringComparison.Ordinal);
+        Assert.Contains("muteUntilMaintenanceButton.disabled = !normalizeBool(state.connected) || blocked;", helpersScript, StringComparison.Ordinal);
+        Assert.Contains("muteUntilMaintenanceStartButton.disabled = !normalizeBool(state.connected) || blocked;", helpersScript, StringComparison.Ordinal);
+        Assert.Contains("titleEl.textContent = suppression && suppression.temporary === true ? \"BG temp\" : \"BG muted\";", helpersScript, StringComparison.Ordinal);
+        Assert.Contains("detailEl.textContent = blocked", helpersScript, StringComparison.Ordinal);
+        Assert.Contains("? (suppression && suppression.temporary === true", helpersScript, StringComparison.Ordinal);
+        Assert.Contains(": \"Daemon scheduling is muted for this thread until you unmute it.\")", helpersScript, StringComparison.Ordinal);
+        Assert.Contains("? (suppression && suppression.temporary === true", helpersScript, StringComparison.Ordinal);
+        Assert.Contains(": buildActiveConversationSchedulerActivityText(activeConversation);", helpersScript, StringComparison.Ordinal);
+        Assert.Contains("renderActiveConversationSchedulerHint();", renderingScript, StringComparison.Ordinal);
+        Assert.Contains("post(\"scheduler_refresh\", { threadId: threadId });", bindingsScript, StringComparison.Ordinal);
+        Assert.Contains("post(\"scheduler_set_thread_block\", {", bindingsScript, StringComparison.Ordinal);
+        Assert.Contains("var activeThreadSchedulerTempMuteButton = byId(\"btnActiveThreadSchedulerTempMute\");", bindingsScript, StringComparison.Ordinal);
+        Assert.Contains("durationMinutes: \"30\"", bindingsScript, StringComparison.Ordinal);
+        Assert.Contains("var activeThreadSchedulerTempMuteLongButton = byId(\"btnActiveThreadSchedulerTempMuteLong\");", bindingsScript, StringComparison.Ordinal);
+        Assert.Contains("durationMinutes: \"120\"", bindingsScript, StringComparison.Ordinal);
+        Assert.Contains("var activeThreadSchedulerMuteUntilMaintenanceButton = byId(\"btnActiveThreadSchedulerMuteUntilMaintenance\");", bindingsScript, StringComparison.Ordinal);
+        Assert.Contains("var activeThreadSchedulerMuteUntilMaintenanceStartButton = byId(\"btnActiveThreadSchedulerMuteUntilMaintenanceStart\");", bindingsScript, StringComparison.Ordinal);
+        Assert.Contains("switchOptionsTab(\"session\");", bindingsScript, StringComparison.Ordinal);
+        Assert.Contains("scopeSelect.value = threadId;", bindingsScript, StringComparison.Ordinal);
+        Assert.Contains(".chat-thread-banner {", baseCss, StringComparison.Ordinal);
+        Assert.Contains(".chat-thread-banner-detail {", baseCss, StringComparison.Ordinal);
+        Assert.Contains(".chat-thread-banner-actions {", baseCss, StringComparison.Ordinal);
+        Assert.Contains(".chat-thread-banner-btn {", baseCss, StringComparison.Ordinal);
+        Assert.Contains(".chat-thread-banner-btn-ghost {", baseCss, StringComparison.Ordinal);
+        Assert.Contains(".chat-thread-banner-btn-warn {", baseCss, StringComparison.Ordinal);
+        Assert.Contains(".chat-thread-banner-btn-warn.is-active {", baseCss, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Ensures debug surfaces expose transcript forensics export so persisted/raw/normalized/rendered states
     /// can be captured without modifying the main transcript pipeline.
     /// </summary>

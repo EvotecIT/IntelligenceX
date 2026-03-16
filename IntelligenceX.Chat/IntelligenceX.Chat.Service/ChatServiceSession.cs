@@ -52,6 +52,7 @@ internal sealed partial class ChatServiceSession {
     private static readonly TimeSpan NativeUsageRefreshInterval = TimeSpan.FromMinutes(1);
     private readonly ServiceOptions _options;
     private readonly ChatServiceToolingBootstrapCache? _toolingBootstrapCache;
+    private readonly ChatServiceBackgroundSchedulerControlState _backgroundSchedulerControlState;
     private readonly Stream _stream;
     private ToolRegistry _registry;
     private IReadOnlyList<IToolPack> _packs;
@@ -105,6 +106,19 @@ internal sealed partial class ChatServiceSession {
     private readonly object _threadBackgroundWorkLock = new();
     private readonly Dictionary<string, ThreadBackgroundWorkSnapshot> _threadBackgroundWorkByThreadId = new(StringComparer.Ordinal);
     private readonly Dictionary<string, long> _threadBackgroundWorkSeenUtcTicksByThreadId = new(StringComparer.Ordinal);
+    private long _backgroundSchedulerLastTickUtcTicks;
+    private readonly object _backgroundSchedulerTelemetryLock = new();
+    private string _backgroundSchedulerLastOutcome = string.Empty;
+    private long _backgroundSchedulerLastOutcomeUtcTicks;
+    private long _backgroundSchedulerLastSuccessUtcTicks;
+    private long _backgroundSchedulerLastFailureUtcTicks;
+    private int _backgroundSchedulerCompletedExecutionCount;
+    private int _backgroundSchedulerRequeuedExecutionCount;
+    private int _backgroundSchedulerReleasedExecutionCount;
+    private int _backgroundSchedulerConsecutiveFailureCount;
+    private long _backgroundSchedulerPausedUntilUtcTicks;
+    private string _backgroundSchedulerPauseReason = string.Empty;
+    private readonly List<SessionCapabilityBackgroundSchedulerActivityDto> _backgroundSchedulerRecentActivity = new();
 
     private readonly object _modelListCacheLock = new();
     private ModelListCacheEntry? _modelListCache;
@@ -126,9 +140,14 @@ internal sealed partial class ChatServiceSession {
     private readonly Dictionary<string, ChatRun> _chatRunsByRequestId = new(StringComparer.Ordinal);
     private Task? _chatRunPumpTask;
     private string? _activeThreadId;
-    public ChatServiceSession(ServiceOptions options, Stream stream, ChatServiceToolingBootstrapCache? toolingBootstrapCache = null) {
+    public ChatServiceSession(
+        ServiceOptions options,
+        Stream stream,
+        ChatServiceToolingBootstrapCache? toolingBootstrapCache = null,
+        ChatServiceBackgroundSchedulerControlState? backgroundSchedulerControlState = null) {
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _toolingBootstrapCache = toolingBootstrapCache;
+        _backgroundSchedulerControlState = backgroundSchedulerControlState ?? new ChatServiceBackgroundSchedulerControlState(_options);
         _stream = stream ?? throw new ArgumentNullException(nameof(stream));
 
         _runtimePolicyDiagnostics = BuildDefaultRuntimePolicyDiagnostics(_options);
@@ -400,6 +419,11 @@ internal sealed partial class ChatServiceSession {
 
     internal static bool RequestRequiresToolingBootstrap(ChatServiceRequest request) {
         return request is ListToolsRequest
+               or GetBackgroundSchedulerStatusRequest
+               or SetBackgroundSchedulerStateRequest
+               or SetBackgroundSchedulerMaintenanceWindowsRequest
+               or SetBackgroundSchedulerBlockedPacksRequest
+               or SetBackgroundSchedulerBlockedThreadsRequest
                or CheckToolHealthRequest
                or InvokeToolRequest
                or ChatRequest
@@ -415,6 +439,11 @@ internal sealed partial class ChatServiceSession {
 
         return request switch {
             ListToolsRequest => "Couldn't load tool catalog because tool bootstrap failed: " + detail,
+            GetBackgroundSchedulerStatusRequest => "Couldn't load background scheduler status because tool bootstrap failed: " + detail,
+            SetBackgroundSchedulerStateRequest => "Couldn't update background scheduler state because tool bootstrap failed: " + detail,
+            SetBackgroundSchedulerMaintenanceWindowsRequest => "Couldn't update background scheduler maintenance windows because tool bootstrap failed: " + detail,
+            SetBackgroundSchedulerBlockedPacksRequest => "Couldn't update background scheduler blocked-pack policy because tool bootstrap failed: " + detail,
+            SetBackgroundSchedulerBlockedThreadsRequest => "Couldn't update background scheduler blocked-thread policy because tool bootstrap failed: " + detail,
             CheckToolHealthRequest => "Couldn't run tool health probes because tool bootstrap failed: " + detail,
             InvokeToolRequest => "Couldn't invoke tool because tool bootstrap failed: " + detail,
             ChatRequest => "Couldn't start chat because tool bootstrap failed: " + detail,
@@ -632,6 +661,26 @@ internal sealed partial class ChatServiceSession {
 
                     case ListToolsRequest:
                         await HandleListToolsAsync(writer, request.RequestId, cancellationToken).ConfigureAwait(false);
+                        break;
+
+                    case GetBackgroundSchedulerStatusRequest getBackgroundSchedulerStatus:
+                        await HandleBackgroundSchedulerStatusAsync(writer, getBackgroundSchedulerStatus, cancellationToken).ConfigureAwait(false);
+                        break;
+
+                    case SetBackgroundSchedulerStateRequest setBackgroundSchedulerState:
+                        await HandleBackgroundSchedulerStateAsync(writer, setBackgroundSchedulerState, cancellationToken).ConfigureAwait(false);
+                        break;
+
+                    case SetBackgroundSchedulerMaintenanceWindowsRequest setBackgroundSchedulerMaintenanceWindows:
+                        await HandleBackgroundSchedulerMaintenanceWindowsAsync(writer, setBackgroundSchedulerMaintenanceWindows, cancellationToken).ConfigureAwait(false);
+                        break;
+
+                    case SetBackgroundSchedulerBlockedPacksRequest setBackgroundSchedulerBlockedPacks:
+                        await HandleBackgroundSchedulerBlockedPacksAsync(writer, setBackgroundSchedulerBlockedPacks, cancellationToken).ConfigureAwait(false);
+                        break;
+
+                    case SetBackgroundSchedulerBlockedThreadsRequest setBackgroundSchedulerBlockedThreads:
+                        await HandleBackgroundSchedulerBlockedThreadsAsync(writer, setBackgroundSchedulerBlockedThreads, cancellationToken).ConfigureAwait(false);
                         break;
 
                     case CheckToolHealthRequest checkToolHealth:

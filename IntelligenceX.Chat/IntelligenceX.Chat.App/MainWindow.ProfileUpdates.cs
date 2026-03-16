@@ -43,6 +43,7 @@ public sealed partial class MainWindow : Window {
             _toolCatalogPacks = Array.Empty<ToolPackInfoDto>();
             _toolCatalogRoutingCatalog = null;
             _toolCatalogCapabilitySnapshot = null;
+            ClearBackgroundSchedulerSnapshots();
         }
 
         _toolStates.Clear();

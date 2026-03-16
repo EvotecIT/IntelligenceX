@@ -164,7 +164,7 @@ public static class ToolCatalogExportBuilder {
             Name = definition.Name,
             Description = definition.Description ?? string.Empty,
             DisplayName = ResolveToolDisplayName(definition),
-            Category = ResolveToolListCategory(definition.Category),
+            Category = ResolveExportToolCategory(definition, orchestrationEntry, packLookup),
             Tags = definition.Tags.Count == 0 ? null : definition.Tags.ToArray(),
             PackId = string.IsNullOrWhiteSpace(packId) ? null : packId,
             RoutingRole = string.IsNullOrWhiteSpace(orchestrationEntry?.Role) ? null : orchestrationEntry!.Role,
@@ -212,6 +212,39 @@ public static class ToolCatalogExportBuilder {
             RequiredArguments = requiredArguments,
             Parameters = parameters
         };
+    }
+
+    private static string ResolveExportToolCategory(
+        ToolDefinition definition,
+        ToolOrchestrationCatalogEntry? orchestrationEntry,
+        IReadOnlyDictionary<string, ToolPackAvailabilityInfo> packLookup) {
+        var explicitCategory = (definition.Category ?? string.Empty).Trim();
+        if (explicitCategory.Length > 0) {
+            return ResolveToolListCategory(explicitCategory);
+        }
+
+        var packId = ToolPackBootstrap.NormalizePackId(orchestrationEntry?.PackId);
+        if (packId.Length == 0 && ToolSelectionMetadata.TryResolvePackId(definition, out var inferredPackId)) {
+            packId = ToolPackBootstrap.NormalizePackId(inferredPackId);
+        }
+
+        if (packId.Length > 0
+            && packLookup.TryGetValue(packId, out var pack)
+            && !string.IsNullOrWhiteSpace(pack.Category)) {
+            return ResolveToolListCategory(pack.Category);
+        }
+
+        var enrichedCategory = (ToolSelectionMetadata.Enrich(definition, toolType: null).Category ?? string.Empty).Trim();
+        if (enrichedCategory.Length > 0
+            && !string.Equals(enrichedCategory, "general", StringComparison.OrdinalIgnoreCase)) {
+            return ResolveToolListCategory(enrichedCategory);
+        }
+
+        if (enrichedCategory.Length > 0) {
+            return ResolveToolListCategory(enrichedCategory);
+        }
+
+        return ResolveToolListCategory(explicitCategory);
     }
 
     private static string ResolveToolDisplayName(ToolDefinition definition) {

@@ -71,8 +71,43 @@ public sealed partial class MainWindow : Window {
         await RefreshServiceProfilesAsync(client, publishOptions: false, appendWarnings).ConfigureAwait(false);
         var profileApplied = await TryApplyServiceProfileAsync(client, setProfileNewThread, appendWarnings).ConfigureAwait(false);
         await RefreshModelsAsync(client, forceModelRefresh, publishOptions: false, appendWarnings).ConfigureAwait(false);
+        await RefreshBackgroundSchedulerStatusAsync(client, publishOptions: false, appendWarnings).ConfigureAwait(false);
         await PublishOptionsStateAsync().ConfigureAwait(false);
         return profileApplied;
+    }
+
+    private async Task RefreshBackgroundSchedulerStatusAsync(
+        ChatServiceClient client,
+        bool publishOptions,
+        bool appendWarnings,
+        string? threadId = null,
+        bool includeRecentActivity = false,
+        bool includeThreadSummaries = false,
+        int maxRecentActivity = 6,
+        int maxThreadSummaries = 6) {
+        try {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+            var scopedRefresh = !string.IsNullOrWhiteSpace(threadId);
+            var status = await client.GetBackgroundSchedulerStatusAsync(
+                threadId: string.IsNullOrWhiteSpace(threadId) ? null : threadId.Trim(),
+                includeRecentActivity: includeRecentActivity,
+                includeThreadSummaries: includeThreadSummaries,
+                maxReadyThreadIds: 4,
+                maxRunningThreadIds: 4,
+                maxRecentActivity: maxRecentActivity,
+                maxThreadSummaries: maxThreadSummaries,
+                cancellationToken: cts.Token).ConfigureAwait(false);
+            ApplyBackgroundSchedulerSnapshot(status.Scheduler, scopedRefresh);
+        } catch (Exception ex) {
+            _backgroundSchedulerStatusSnapshot = null;
+            if (appendWarnings && (VerboseServiceLogs || _debugMode)) {
+                AppendSystem("Couldn't load background scheduler status: " + ex.Message);
+            }
+        }
+
+        if (publishOptions) {
+            await PublishOptionsStateAsync().ConfigureAwait(false);
+        }
     }
 
     private async Task RefreshLocalRuntimeDetectionAsync(bool publishOptions) {

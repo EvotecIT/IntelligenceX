@@ -47,6 +47,18 @@ internal sealed partial class ChatServiceSession {
         warning.Append(" remote_reachability_mode='").Append(snapshot.RemoteReachabilityMode ?? "none").Append('\'');
         warning.Append(" autonomy_remote_capable_tools='").Append(snapshot.Autonomy?.RemoteCapableToolCount ?? 0).Append('\'');
         warning.Append(" autonomy_cross_pack_handoff_tools='").Append(snapshot.Autonomy?.CrossPackHandoffToolCount ?? 0).Append('\'');
+        warning.Append(" background_scheduler_daemon_enabled='").Append(snapshot.BackgroundScheduler?.DaemonEnabled == true ? "true" : "false").Append('\'');
+        warning.Append(" background_scheduler_auto_pause_enabled='").Append(snapshot.BackgroundScheduler?.AutoPauseEnabled == true ? "true" : "false").Append('\'');
+        warning.Append(" background_scheduler_failure_threshold='").Append(snapshot.BackgroundScheduler?.FailureThreshold ?? 0).Append('\'');
+        warning.Append(" background_scheduler_failure_pause_seconds='").Append(snapshot.BackgroundScheduler?.FailurePauseSeconds ?? 0).Append('\'');
+        warning.Append(" background_scheduler_paused='").Append(snapshot.BackgroundScheduler?.Paused == true ? "true" : "false").Append('\'');
+        warning.Append(" background_scheduler_ready_items='").Append(snapshot.BackgroundScheduler?.ReadyItemCount ?? 0).Append('\'');
+        warning.Append(" background_scheduler_running_items='").Append(snapshot.BackgroundScheduler?.RunningItemCount ?? 0).Append('\'');
+        warning.Append(" background_scheduler_tracked_threads='").Append(snapshot.BackgroundScheduler?.TrackedThreadCount ?? 0).Append('\'');
+        warning.Append(" background_scheduler_completed_executions='").Append(snapshot.BackgroundScheduler?.CompletedExecutionCount ?? 0).Append('\'');
+        warning.Append(" background_scheduler_requeued_executions='").Append(snapshot.BackgroundScheduler?.RequeuedExecutionCount ?? 0).Append('\'');
+        warning.Append(" background_scheduler_released_executions='").Append(snapshot.BackgroundScheduler?.ReleasedExecutionCount ?? 0).Append('\'');
+        warning.Append(" background_scheduler_consecutive_failures='").Append(snapshot.BackgroundScheduler?.ConsecutiveFailureCount ?? 0).Append('\'');
         warning.Append(" skills_marker='").Append(SkillsSnapshotMarker).Append('\'');
         warning.Append(" skill_count='").Append(snapshot.Skills.Length).Append('\'');
         warning.Append(" parity_engine_count='").Append(snapshot.ParityEntries.Length).Append('\'');
@@ -88,6 +100,57 @@ internal sealed partial class ChatServiceSession {
         }
         if (snapshot.Autonomy?.CrossPackTargetPackIds is { Length: > 0 }) {
             warning.Append(" autonomy_cross_pack_targets='").Append(string.Join(",", snapshot.Autonomy.CrossPackTargetPackIds)).Append('\'');
+        }
+        if (snapshot.BackgroundScheduler is not null) {
+            warning.Append(" background_scheduler_persistent_queue='").Append(snapshot.BackgroundScheduler.SupportsPersistentQueue ? "true" : "false").Append('\'');
+            warning.Append(" background_scheduler_readonly_autoreplay='").Append(snapshot.BackgroundScheduler.SupportsReadOnlyAutoReplay ? "true" : "false").Append('\'');
+            warning.Append(" background_scheduler_cross_thread='").Append(snapshot.BackgroundScheduler.SupportsCrossThreadScheduling ? "true" : "false").Append('\'');
+            warning.Append(" background_scheduler_manual_pause_active='").Append(snapshot.BackgroundScheduler.ManualPauseActive ? "true" : "false").Append('\'');
+            warning.Append(" background_scheduler_scheduled_pause_active='").Append(snapshot.BackgroundScheduler.ScheduledPauseActive ? "true" : "false").Append('\'');
+            if (!string.IsNullOrWhiteSpace(snapshot.BackgroundScheduler.LastOutcome)) {
+                warning.Append(" background_scheduler_last_outcome='").Append(snapshot.BackgroundScheduler.LastOutcome).Append('\'');
+            }
+            if (snapshot.BackgroundScheduler.PausedUntilUtcTicks > 0) {
+                warning.Append(" background_scheduler_paused_until_utc_ticks='").Append(snapshot.BackgroundScheduler.PausedUntilUtcTicks).Append('\'');
+            }
+            if (!string.IsNullOrWhiteSpace(snapshot.BackgroundScheduler.PauseReason)) {
+                warning.Append(" background_scheduler_pause_reason='").Append(snapshot.BackgroundScheduler.PauseReason).Append('\'');
+            }
+            if (snapshot.BackgroundScheduler.MaintenanceWindowSpecs.Length > 0) {
+                warning.Append(" background_scheduler_maintenance_windows='").Append(string.Join(",", snapshot.BackgroundScheduler.MaintenanceWindowSpecs)).Append('\'');
+            }
+            if (snapshot.BackgroundScheduler.ActiveMaintenanceWindowSpecs.Length > 0) {
+                warning.Append(" background_scheduler_active_maintenance_windows='").Append(string.Join(",", snapshot.BackgroundScheduler.ActiveMaintenanceWindowSpecs)).Append('\'');
+            }
+            if (snapshot.BackgroundScheduler.AllowedPackIds.Length > 0) {
+                warning.Append(" background_scheduler_allowed_packs='").Append(string.Join(",", snapshot.BackgroundScheduler.AllowedPackIds)).Append('\'');
+            }
+            if (snapshot.BackgroundScheduler.BlockedPackIds.Length > 0) {
+                warning.Append(" background_scheduler_blocked_packs='").Append(string.Join(",", snapshot.BackgroundScheduler.BlockedPackIds)).Append('\'');
+            }
+            if (snapshot.BackgroundScheduler.AllowedThreadIds.Length > 0) {
+                warning.Append(" background_scheduler_allowed_threads='").Append(string.Join(",", snapshot.BackgroundScheduler.AllowedThreadIds)).Append('\'');
+            }
+            if (snapshot.BackgroundScheduler.BlockedThreadIds.Length > 0) {
+                warning.Append(" background_scheduler_blocked_threads='").Append(string.Join(",", snapshot.BackgroundScheduler.BlockedThreadIds)).Append('\'');
+            }
+            if (snapshot.BackgroundScheduler.ReadyThreadIds.Length > 0) {
+                warning.Append(" background_scheduler_ready_threads='").Append(string.Join(",", snapshot.BackgroundScheduler.ReadyThreadIds)).Append('\'');
+            }
+            if (snapshot.BackgroundScheduler.RecentActivity.Length > 0) {
+                warning.Append(" background_scheduler_recent_activity='").Append(string.Join(
+                    "|",
+                    snapshot.BackgroundScheduler.RecentActivity
+                        .Take(2)
+                        .Select(BuildBackgroundSchedulerActivitySummary))).Append('\'');
+            }
+            if (snapshot.BackgroundScheduler.ThreadSummaries.Length > 0) {
+                warning.Append(" background_scheduler_thread_summaries='").Append(string.Join(
+                    "|",
+                    snapshot.BackgroundScheduler.ThreadSummaries
+                        .Take(2)
+                        .Select(BuildBackgroundSchedulerThreadSummaryText))).Append('\'');
+            }
         }
         var parityAttention = ToolCapabilityParityInventoryBuilder.BuildAttentionSummaries(snapshot.ParityEntries, maxItems: 3);
         if (parityAttention.Count > 0) {

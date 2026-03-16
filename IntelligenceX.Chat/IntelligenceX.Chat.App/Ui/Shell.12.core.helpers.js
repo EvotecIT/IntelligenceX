@@ -65,6 +65,297 @@
     return list;
   }
 
+  function getGlobalRuntimeScheduler() {
+    var globalScheduler = state.options.runtimeSchedulerGlobal && typeof state.options.runtimeSchedulerGlobal === "object"
+      ? state.options.runtimeSchedulerGlobal
+      : null;
+    if (globalScheduler) {
+      return globalScheduler;
+    }
+
+    var currentScheduler = state.options.runtimeScheduler && typeof state.options.runtimeScheduler === "object"
+      ? state.options.runtimeScheduler
+      : null;
+    if (currentScheduler && !String(currentScheduler.scopeThreadId || "").trim()) {
+      return currentScheduler;
+    }
+
+    return null;
+  }
+
+  function findConversationSchedulerSummary(chat) {
+    var threadId = chat && chat.threadId ? String(chat.threadId).trim() : "";
+    if (!threadId || conversationIsSystem(chat)) {
+      return null;
+    }
+
+    var scheduler = getGlobalRuntimeScheduler();
+    if (!scheduler) {
+      return null;
+    }
+
+    var threadSummaries = Array.isArray(scheduler.threadSummaries)
+      ? scheduler.threadSummaries
+      : [];
+    var lookupKey = threadId.toLowerCase();
+    for (var i = 0; i < threadSummaries.length; i++) {
+      var candidate = threadSummaries[i] || {};
+      if (String(candidate.threadId || "").trim().toLowerCase() === lookupKey) {
+        return candidate;
+      }
+    }
+
+    return null;
+  }
+
+  function getConversationSchedulerHint(chat) {
+    var summary = findConversationSchedulerSummary(chat);
+    if (!summary) {
+      return null;
+    }
+
+    var running = typeof summary.runningItemCount === "number" ? summary.runningItemCount : 0;
+    var ready = typeof summary.readyItemCount === "number" ? summary.readyItemCount : 0;
+    var queued = typeof summary.queuedItemCount === "number" ? summary.queuedItemCount : 0;
+    if (running <= 0 && ready <= 0 && queued <= 0) {
+      return null;
+    }
+
+    var text = "";
+    var tone = "queued";
+    if (running > 0) {
+      text = "BG run " + String(running);
+      tone = "running";
+    } else if (ready > 0) {
+      text = "BG ready " + String(ready);
+      tone = "ready";
+    } else {
+      text = "BG queued " + String(queued);
+    }
+
+    return {
+      text: text,
+      tone: tone,
+      title: "Background scheduler: ready "
+        + String(ready)
+        + ", running "
+        + String(running)
+        + ", queued "
+        + String(queued)
+    };
+  }
+
+  function isConversationSchedulerBlocked(chat) {
+    var threadId = chat && chat.threadId ? String(chat.threadId).trim() : "";
+    if (!threadId) {
+      return false;
+    }
+
+    var scheduler = getGlobalRuntimeScheduler();
+    var blockedThreadIds = scheduler && Array.isArray(scheduler.blockedThreadIds)
+      ? scheduler.blockedThreadIds
+      : [];
+    var lookupKey = threadId.toLowerCase();
+    for (var i = 0; i < blockedThreadIds.length; i++) {
+      if (String(blockedThreadIds[i] || "").trim().toLowerCase() === lookupKey) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  function findConversationSchedulerSuppression(chat) {
+    var threadId = chat && chat.threadId ? String(chat.threadId).trim() : "";
+    if (!threadId) {
+      return null;
+    }
+
+    var scheduler = getGlobalRuntimeScheduler();
+    var suppressions = scheduler && Array.isArray(scheduler.blockedThreadSuppressions)
+      ? scheduler.blockedThreadSuppressions
+      : [];
+    var lookupKey = threadId.toLowerCase();
+    for (var i = 0; i < suppressions.length; i++) {
+      var candidate = suppressions[i] || {};
+      if (String(candidate.id || "").trim().toLowerCase() === lookupKey) {
+        return candidate;
+      }
+    }
+
+    return null;
+  }
+
+  function formatSchedulerSuppressionExpiry(utcTicks) {
+    var ticks = Number(utcTicks);
+    if (!Number.isFinite(ticks) || ticks <= 0) {
+      return "";
+    }
+
+    var unixMs = Math.floor((ticks - 621355968000000000) / 10000);
+    if (!Number.isFinite(unixMs) || unixMs <= 0) {
+      return "";
+    }
+
+    try {
+      return new Date(unixMs).toLocaleString();
+    } catch (err) {
+      return "";
+    }
+  }
+
+  function findActiveConversation() {
+    var activeConversationId = state.options && state.options.activeConversationId
+      ? String(state.options.activeConversationId)
+      : "";
+    var conversations = state.options && Array.isArray(state.options.conversations)
+      ? state.options.conversations
+      : [];
+
+    for (var i = 0; i < conversations.length; i++) {
+      var chat = conversations[i] || {};
+      if (String(chat.id || "") === activeConversationId) {
+        return chat;
+      }
+    }
+
+    return null;
+  }
+
+  function buildActiveConversationSchedulerActivityText(chat) {
+    var threadId = chat && chat.threadId ? String(chat.threadId).trim() : "";
+    if (!threadId) {
+      return "";
+    }
+
+    var scheduler = getGlobalRuntimeScheduler();
+    if (!scheduler || !Array.isArray(scheduler.recentActivity)) {
+      return "";
+    }
+
+    var matches = [];
+    var lookupKey = threadId.toLowerCase();
+    for (var i = 0; i < scheduler.recentActivity.length; i++) {
+      var candidate = scheduler.recentActivity[i] || {};
+      if (String(candidate.threadId || "").trim().toLowerCase() !== lookupKey) {
+        continue;
+      }
+
+      var toolName = String(candidate.toolName || "").trim();
+      var outcome = String(candidate.outcome || candidate.reason || "activity").trim();
+      var label = toolName
+        ? (toolName + " · " + outcome)
+        : outcome;
+      if (!label) {
+          continue;
+      }
+
+      matches.push(label);
+      if (matches.length >= 2) {
+        break;
+      }
+    }
+
+    if (matches.length === 0) {
+      return "";
+    }
+
+    return "Recent: " + matches.join(" | ");
+  }
+
+  function renderActiveConversationSchedulerHint() {
+    var banner = byId("activeThreadSchedulerBanner");
+    var titleEl = byId("activeThreadSchedulerTitle");
+    var metaEl = byId("activeThreadSchedulerMeta");
+    var detailEl = byId("activeThreadSchedulerDetail");
+    var openButton = byId("btnActiveThreadSchedulerOpen");
+    var toggleMuteButton = byId("btnActiveThreadSchedulerToggleMute");
+    var tempMuteButton = byId("btnActiveThreadSchedulerTempMute");
+    var tempMuteLongButton = byId("btnActiveThreadSchedulerTempMuteLong");
+    var muteUntilMaintenanceButton = byId("btnActiveThreadSchedulerMuteUntilMaintenance");
+    var muteUntilMaintenanceStartButton = byId("btnActiveThreadSchedulerMuteUntilMaintenanceStart");
+    var refreshButton = byId("btnActiveThreadSchedulerRefresh");
+    if (!banner || !titleEl || !metaEl || !detailEl || !openButton || !toggleMuteButton || !tempMuteButton || !tempMuteLongButton || !muteUntilMaintenanceButton || !muteUntilMaintenanceStartButton || !refreshButton) {
+      return;
+    }
+
+    var activeConversation = findActiveConversation();
+    var summary = findConversationSchedulerSummary(activeConversation);
+    var hint = getConversationSchedulerHint(activeConversation);
+    var blocked = isConversationSchedulerBlocked(activeConversation);
+    var suppression = findConversationSchedulerSuppression(activeConversation);
+    var threadId = activeConversation && activeConversation.threadId
+      ? String(activeConversation.threadId).trim()
+      : "";
+    if (!activeConversation || !threadId || conversationIsSystem(activeConversation) || (!blocked && (!summary || !hint))) {
+      banner.hidden = true;
+      titleEl.textContent = "";
+      metaEl.textContent = "";
+      detailEl.textContent = "";
+      detailEl.hidden = true;
+      openButton.dataset.threadId = "";
+      toggleMuteButton.dataset.threadId = "";
+      toggleMuteButton.dataset.blocked = "";
+      tempMuteButton.dataset.threadId = "";
+      tempMuteLongButton.dataset.threadId = "";
+      muteUntilMaintenanceButton.dataset.threadId = "";
+      muteUntilMaintenanceStartButton.dataset.threadId = "";
+      refreshButton.dataset.threadId = "";
+      return;
+    }
+
+    var ready = typeof summary.readyItemCount === "number" ? summary.readyItemCount : 0;
+    var running = typeof summary.runningItemCount === "number" ? summary.runningItemCount : 0;
+    var queued = typeof summary.queuedItemCount === "number" ? summary.queuedItemCount : 0;
+    var suppressionExpiry = suppression && suppression.temporary === true
+      ? formatSchedulerSuppressionExpiry(suppression.expiresUtcTicks)
+      : "";
+    banner.hidden = false;
+    if (blocked) {
+      titleEl.textContent = suppression && suppression.temporary === true ? "BG temp" : "BG muted";
+      metaEl.textContent = suppression && suppression.temporary === true
+        ? ("Thread " + threadId + " is temporarily blocked from daemon scheduling"
+          + (suppressionExpiry ? (" until " + suppressionExpiry) : "")
+          + ".")
+        : "Thread " + threadId + " is blocked from daemon scheduling.";
+    } else {
+      titleEl.textContent = String(hint && hint.text ? hint.text : "Background work active");
+      metaEl.textContent = "Thread "
+        + threadId
+        + " · Ready "
+        + String(ready)
+        + " · Running "
+        + String(running)
+        + " · Queued "
+        + String(queued);
+    }
+    detailEl.textContent = blocked
+      ? (suppression && suppression.temporary === true
+          ? ("Daemon scheduling is temporarily muted for this thread until "
+            + (formatSchedulerSuppressionExpiry(suppression.expiresUtcTicks) || "it expires")
+            + ".")
+          : "Daemon scheduling is muted for this thread until you unmute it.")
+      : buildActiveConversationSchedulerActivityText(activeConversation);
+    detailEl.hidden = detailEl.textContent.length === 0;
+    openButton.dataset.threadId = threadId;
+    toggleMuteButton.dataset.threadId = threadId;
+    toggleMuteButton.dataset.blocked = blocked ? "true" : "false";
+    toggleMuteButton.textContent = blocked ? "Unmute Thread" : "Mute Thread";
+    toggleMuteButton.classList.toggle("is-active", blocked);
+    tempMuteButton.dataset.threadId = threadId;
+    tempMuteLongButton.dataset.threadId = threadId;
+    muteUntilMaintenanceButton.dataset.threadId = threadId;
+    muteUntilMaintenanceStartButton.dataset.threadId = threadId;
+    tempMuteButton.disabled = !normalizeBool(state.connected) || blocked;
+    tempMuteLongButton.disabled = !normalizeBool(state.connected) || blocked;
+    muteUntilMaintenanceButton.disabled = !normalizeBool(state.connected) || blocked;
+    muteUntilMaintenanceStartButton.disabled = !normalizeBool(state.connected) || blocked;
+    refreshButton.dataset.threadId = threadId;
+    openButton.disabled = !normalizeBool(state.connected);
+    toggleMuteButton.disabled = !normalizeBool(state.connected);
+    refreshButton.disabled = !normalizeBool(state.connected);
+  }
+
   function renderSidebarConversations() {
     var host = chatSidebarList;
     if (!host) {
@@ -112,6 +403,31 @@
         badge.className = "chat-sidebar-item-pill";
         badge.textContent = "System";
         body.appendChild(badge);
+      }
+      var schedulerBlocked = isConversationSchedulerBlocked(chat);
+      var schedulerHint = getConversationSchedulerHint(chat);
+      if (schedulerBlocked) {
+        var schedulerSuppression = findConversationSchedulerSuppression(chat);
+        var suppressionExpiryLabel = schedulerSuppression && schedulerSuppression.temporary === true
+          ? formatSchedulerSuppressionExpiry(schedulerSuppression.expiresUtcTicks)
+          : "";
+        var blockedBadge = document.createElement("span");
+        blockedBadge.className = "chat-sidebar-item-pill chat-sidebar-item-pill-scheduler tone-muted";
+        blockedBadge.textContent = schedulerSuppression && schedulerSuppression.temporary === true ? "BG temp" : "BG muted";
+        blockedBadge.title = schedulerSuppression && schedulerSuppression.temporary === true
+          ? ("Background scheduler is temporarily muted for this thread"
+            + (suppressionExpiryLabel ? (" until " + suppressionExpiryLabel) : "."))
+          : "Background scheduler is muted for this thread.";
+        body.appendChild(blockedBadge);
+      } else if (schedulerHint) {
+        var schedulerBadge = document.createElement("span");
+        schedulerBadge.className = "chat-sidebar-item-pill chat-sidebar-item-pill-scheduler";
+        schedulerBadge.classList.add("tone-" + String(schedulerHint.tone || "queued"));
+        schedulerBadge.textContent = String(schedulerHint.text || "BG");
+        if (schedulerHint.title) {
+          schedulerBadge.title = String(schedulerHint.title);
+        }
+        body.appendChild(schedulerBadge);
       }
 
       var meta = document.createElement("span");

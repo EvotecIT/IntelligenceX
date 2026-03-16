@@ -73,6 +73,11 @@ public static class ChatRequestOptionLimits {
     /// Maximum model heartbeat interval supported per request.
     /// </summary>
     public const int MaxModelHeartbeatSeconds = 60;
+
+    /// <summary>
+    /// Maximum sample size supported by background-scheduler status requests.
+    /// </summary>
+    public const int MaxBackgroundSchedulerStatusItems = 64;
 }
 
 /// <summary>
