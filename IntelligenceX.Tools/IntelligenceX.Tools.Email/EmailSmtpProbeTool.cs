@@ -61,22 +61,16 @@ public sealed class EmailSmtpProbeTool : EmailToolBase, ITool {
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        var smtp = SmtpClientFactory.Create(smtpOptions, dryRun: true);
+        var smtp = new Smtp();
 
         try {
-            var connectAuthResult = await smtp.ConnectAndAuthenticateAsync(
-                smtpOptions.Server,
-                smtpOptions.Port,
-                smtpOptions.UserName,
-                smtpOptions.Password,
-                EmailToolBase.ParseSecureSocketOptions(smtpOptions.SecureSocketOptions),
-                smtpOptions.UseSsl,
-                ProtocolAuthMode.Basic,
-                cancellationToken).ConfigureAwait(false);
+            var connectAuthResult = await SmtpSessionService
+                .ConnectAndAuthenticateAsync(smtp, EmailSessionRequests.BuildSmtpSessionRequest(smtpOptions, dryRun: true), cancellationToken)
+                .ConfigureAwait(false);
             if (!connectAuthResult.IsSuccess) {
                 return ToolResultV2.Error(
-                    connectAuthResult.ErrorCode,
-                    connectAuthResult.Error,
+                    connectAuthResult.ErrorCode ?? "smtp_probe_failed",
+                    connectAuthResult.Error ?? "SMTP probe failed.",
                     isTransient: connectAuthResult.IsTransient);
             }
 
@@ -121,7 +115,7 @@ public sealed class EmailSmtpProbeTool : EmailToolBase, ITool {
                 $"SMTP probe failed. {ex.Message}",
                 isTransient: true);
         } finally {
-            SmtpClientFactory.DisposeQuietly(smtp);
+            SmtpSessionService.DisposeQuietly(smtp);
         }
     }
 }

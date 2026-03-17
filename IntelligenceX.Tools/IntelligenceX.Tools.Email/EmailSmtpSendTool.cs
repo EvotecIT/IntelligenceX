@@ -150,7 +150,7 @@ public sealed class EmailSmtpSendTool : EmailToolBase, ITool {
         }
 
         var request = context.Request;
-        var smtp = SmtpClientFactory.Create(smtpOptions, dryRun: !request.Send);
+        var smtp = new Smtp();
 
         try {
             smtp.From = request.From;
@@ -165,19 +165,13 @@ public sealed class EmailSmtpSendTool : EmailToolBase, ITool {
             // Ensure the MIME message exists before attempting send.
             await smtp.CreateMessageAsync(cancellationToken).ConfigureAwait(false);
 
-            var connectAuthResult = await smtp.ConnectAndAuthenticateAsync(
-                smtpOptions.Server,
-                smtpOptions.Port,
-                smtpOptions.UserName,
-                smtpOptions.Password,
-                EmailToolBase.ParseSecureSocketOptions(smtpOptions.SecureSocketOptions),
-                smtpOptions.UseSsl,
-                ProtocolAuthMode.Basic,
-                cancellationToken).ConfigureAwait(false);
+            var connectAuthResult = await SmtpSessionService
+                .ConnectAndAuthenticateAsync(smtp, EmailSessionRequests.BuildSmtpSessionRequest(smtpOptions, dryRun: !request.Send), cancellationToken)
+                .ConfigureAwait(false);
             if (!connectAuthResult.IsSuccess) {
                 return ToolResultV2.Error(
-                    connectAuthResult.ErrorCode,
-                    connectAuthResult.Error,
+                    connectAuthResult.ErrorCode ?? "connect_failed",
+                    connectAuthResult.Error ?? "SMTP connect/authenticate failed.",
                     isTransient: connectAuthResult.IsTransient);
             }
 
@@ -227,7 +221,7 @@ public sealed class EmailSmtpSendTool : EmailToolBase, ITool {
                 meta: meta,
                 summaryTitle: "SMTP send");
         } finally {
-            SmtpClientFactory.DisposeQuietly(smtp);
+            SmtpSessionService.DisposeQuietly(smtp);
         }
     }
 }
