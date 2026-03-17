@@ -171,14 +171,15 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
                 Providers.Add(p);
             }
 
-            if (previousSelection == "__github__") {
-                SelectedProvider = Providers.FirstOrDefault(p => p.ProviderId == "__github__");
-                IsGitHubTabSelected = true;
-            } else {
-                SelectedProvider = (previousSelection != null
-                    ? Providers.FirstOrDefault(p => p.ProviderId == previousSelection)
-                    : null) ?? Providers.FirstOrDefault();
+            // Restore previous selection or pick first available
+            ProviderViewModel? restored = null;
+            if (previousSelection != null) {
+                restored = Providers.FirstOrDefault(p => p.ProviderId == previousSelection);
             }
+            SelectedProvider = restored ?? Providers.FirstOrDefault();
+
+            // Ensure IsGitHubTabSelected is in sync with whatever ended up selected
+            IsGitHubTabSelected = SelectedProvider?.ProviderId == "__github__";
 
             OnPropertyChanged(nameof(HasData));
             LastRefreshed = DateTimeOffset.Now;

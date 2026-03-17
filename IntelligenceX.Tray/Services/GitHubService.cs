@@ -40,14 +40,19 @@ public sealed class GitHubService {
         var userRepos = await FetchPublicReposAsync($"/users/{Uri.EscapeDataString(login)}/repos?sort=stars&direction=desc&per_page=10&type=owner", ct);
         repos.AddRange(userRepos);
 
-        // Fetch user's orgs and their repos
+        // Fetch user's orgs and their repos in parallel
         var orgsJson = await GetPublicJsonAsync($"/users/{Uri.EscapeDataString(login)}/orgs", ct);
         if (orgsJson != null) {
             using var orgsDoc = JsonDocument.Parse(orgsJson);
-            foreach (var org in orgsDoc.RootElement.EnumerateArray()) {
-                var orgLogin = org.TryGetProperty("login", out var l) ? l.GetString() : null;
-                if (orgLogin == null) continue;
-                var orgRepos = await FetchPublicReposAsync($"/orgs/{Uri.EscapeDataString(orgLogin)}/repos?sort=stars&direction=desc&per_page=10&type=public", ct);
+            var orgLogins = orgsDoc.RootElement.EnumerateArray()
+                .Select(org => org.TryGetProperty("login", out var l) ? l.GetString() : null)
+                .Where(l => l != null)
+                .ToList();
+
+            var orgTasks = orgLogins.Select(orgLogin =>
+                FetchPublicReposAsync($"/orgs/{Uri.EscapeDataString(orgLogin!)}/repos?sort=stars&direction=desc&per_page=10&type=public", ct));
+            var orgResults = await Task.WhenAll(orgTasks);
+            foreach (var orgRepos in orgResults) {
                 repos.AddRange(orgRepos);
             }
         }
@@ -93,11 +98,20 @@ public sealed class GitHubService {
     }
 
     private static async Task<string?> GetPublicJsonAsync(string endpoint, CancellationToken ct) {
+        var url = endpoint.StartsWith("http") ? endpoint : $"https://api.github.com{endpoint}";
         try {
-            var url = endpoint.StartsWith("http") ? endpoint : $"https://api.github.com{endpoint}";
             var response = await SharedClient.GetAsync(url, ct).ConfigureAwait(false);
-            return response.IsSuccessStatusCode ? await response.Content.ReadAsStringAsync(ct) : null;
-        } catch {
+            if (!response.IsSuccessStatusCode) {
+                System.Diagnostics.Debug.WriteLine(
+                    $"GitHub API {(int)response.StatusCode} for {url}");
+                return null;
+            }
+            return await response.Content.ReadAsStringAsync(ct);
+        } catch (OperationCanceledException) {
+            throw; // Don't swallow cancellation
+        } catch (HttpRequestException ex) {
+            System.Diagnostics.Debug.WriteLine(
+                $"GitHub API error for {url}: {ex.Message}");
             return null;
         }
     }

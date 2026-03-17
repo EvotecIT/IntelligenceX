@@ -60,7 +60,6 @@ public sealed class ProviderViewModel : ViewModelBase {
         set {
             if (SetProperty(ref _iconKey, value)) {
                 IconGeometry = ResolveIconGeometry(value);
-                OnPropertyChanged(nameof(IconGeometry));
             }
         }
     }
