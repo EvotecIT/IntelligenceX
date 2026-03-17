@@ -1,6 +1,6 @@
 using System;
 using System.IO;
-using ADPlayground.Monitoring.Config;
+using ADPlayground.Monitoring.History;
 using IntelligenceX.Json;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.Common;
@@ -8,9 +8,6 @@ using IntelligenceX.Tools.Common;
 namespace IntelligenceX.Tools.TestimoX;
 
 internal static class TestimoXAnalyticsHistoryHelper {
-    private const string DefaultSqliteDatabaseFileName = "monitoring.sqlite";
-    private const int DefaultPreviewChars = 1200;
-
     internal static bool TryResolveHistoryDirectory(
         TestimoXToolOptions options,
         string? inputPath,
@@ -54,54 +51,53 @@ internal static class TestimoXAnalyticsHistoryHelper {
         return true;
     }
 
-    internal static bool TryResolveHistoryDatabasePath(
+    internal static bool TryResolveHistoryReadContext(
         TestimoXToolOptions options,
         string? historyDirectoryInput,
         string toolName,
-        out string historyDirectory,
-        out string databasePath,
+        out MonitoringHistoryReadContext historyContext,
         out string errorResponse) {
-        historyDirectory = string.Empty;
-        databasePath = string.Empty;
+        historyContext = null!;
         errorResponse = string.Empty;
 
-        if (!TryResolveHistoryDirectory(options, historyDirectoryInput, toolName, out historyDirectory, out errorResponse)) {
+        if (!TryResolveHistoryDirectory(options, historyDirectoryInput, toolName, out var historyDirectory, out errorResponse)) {
             return false;
         }
 
-        databasePath = Path.Combine(historyDirectory, DefaultSqliteDatabaseFileName);
-        if (File.Exists(databasePath)) {
+        historyContext = new MonitoringHistoryReadContext(historyDirectory);
+        if (File.Exists(historyContext.DatabasePath)) {
             return true;
         }
 
         errorResponse = ToolResultV2.Error(
             errorCode: "not_found",
-            error: $"Monitoring history database '{DefaultSqliteDatabaseFileName}' was not found in the requested history_directory.",
+            error: $"Monitoring history database '{MonitoringHistoryReadContext.DefaultSqliteDatabaseFileName}' was not found in the requested history_directory.",
             hints: new[] {
-                "Point history_directory at the monitoring history folder that contains monitoring.sqlite.",
-                $"Expected database path: {databasePath}"
+                $"Point history_directory at the monitoring history folder that contains {MonitoringHistoryReadContext.DefaultSqliteDatabaseFileName}.",
+                $"Expected database path: {historyContext.DatabasePath}"
             },
             isTransient: false);
         return false;
     }
 
-    internal static bool TryResolveHistoryFilePath(
+    internal static bool TryResolveExistingHistoryArtifactPath(
         TestimoXToolOptions options,
         string? historyDirectoryInput,
         string fileName,
         string toolName,
-        out string historyDirectory,
+        out MonitoringHistoryReadContext historyContext,
         out string filePath,
         out string errorResponse) {
-        historyDirectory = string.Empty;
+        historyContext = null!;
         filePath = string.Empty;
         errorResponse = string.Empty;
 
-        if (!TryResolveHistoryDirectory(options, historyDirectoryInput, toolName, out historyDirectory, out errorResponse)) {
+        if (!TryResolveHistoryDirectory(options, historyDirectoryInput, toolName, out var historyDirectory, out errorResponse)) {
             return false;
         }
 
-        filePath = Path.Combine(historyDirectory, fileName);
+        historyContext = new MonitoringHistoryReadContext(historyDirectory);
+        filePath = historyContext.GetArtifactPath(fileName);
         if (File.Exists(filePath)) {
             return true;
         }
@@ -117,17 +113,6 @@ internal static class TestimoXAnalyticsHistoryHelper {
         return false;
     }
 
-    internal static HistoryDatabaseConfig CreateSqliteDatabaseConfig(string databasePath) {
-        return new HistoryDatabaseConfig {
-            Provider = HistoryDatabaseProvider.Sqlite,
-            DatabasePath = databasePath
-        };
-    }
-
-    internal static SqliteHistoryOptions CreateSqliteOptions() {
-        return new SqliteHistoryOptions();
-    }
-
     internal static int ResolveContentCharLimit(JsonObject? arguments, int maxChars) {
         return ToolArgs.GetCappedInt32(
             arguments: arguments,
@@ -136,45 +121,4 @@ internal static class TestimoXAnalyticsHistoryHelper {
             minInclusive: 128,
             maxInclusive: maxChars);
     }
-
-    internal static SnapshotTextProjection ProjectText(string? value, bool includeContent, int maxChars) {
-        var text = value ?? string.Empty;
-        var preview = text.Length <= DefaultPreviewChars
-            ? text
-            : text.Substring(0, DefaultPreviewChars) + "...";
-
-        if (!includeContent) {
-            return new SnapshotTextProjection(
-                Preview: preview,
-                Content: string.Empty,
-                Included: false,
-                Truncated: text.Length > DefaultPreviewChars,
-                ReturnedChars: preview.Length);
-        }
-
-        var returned = text.Length <= maxChars
-            ? text
-            : text.Substring(0, maxChars);
-        return new SnapshotTextProjection(
-            Preview: preview,
-            Content: returned,
-            Included: true,
-            Truncated: text.Length > returned.Length,
-            ReturnedChars: returned.Length);
-    }
-
-    internal static string NormalizeJsonPreview(string? json) {
-        if (string.IsNullOrWhiteSpace(json)) {
-            return string.Empty;
-        }
-
-        return json.Trim();
-    }
-
-    internal sealed record SnapshotTextProjection(
-        string Preview,
-        string Content,
-        bool Included,
-        bool Truncated,
-        int ReturnedChars);
 }

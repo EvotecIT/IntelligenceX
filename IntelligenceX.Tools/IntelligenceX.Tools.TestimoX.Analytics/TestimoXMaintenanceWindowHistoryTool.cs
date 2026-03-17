@@ -122,25 +122,32 @@ public sealed class TestimoXMaintenanceWindowHistoryTool : TestimoXToolBase, ITo
                 isTransient: false);
         }
 
-        if (!TestimoXAnalyticsHistoryHelper.TryResolveHistoryDatabasePath(
+        if (!TestimoXAnalyticsHistoryHelper.TryResolveHistoryReadContext(
                 Options,
                 context.Request.HistoryDirectory,
                 toolName: "testimox_maintenance_window_history",
-                out var historyDirectory,
-                out var databasePath,
+                out var historyContext,
                 out var resolveError)) {
             return resolveError;
         }
 
-        IReadOnlyList<MaintenanceWindowHistoryEntry> discovered;
+        MonitoringMaintenanceWindowQueryResult result;
         try {
-            using var store = new MonitoringMaintenanceWindowHistoryStore(
-                TestimoXAnalyticsHistoryHelper.CreateSqliteDatabaseConfig(databasePath),
-                TestimoXAnalyticsHistoryHelper.CreateSqliteOptions(),
-                historyDirectory);
-            discovered = await store.ReadEntriesAsync(
-                    new DateTimeOffset(context.Request.StartUtc, TimeSpan.Zero),
-                    new DateTimeOffset(context.Request.EndUtc, TimeSpan.Zero),
+            var service = new MonitoringMaintenanceWindowQueryService(
+                historyContext.DatabaseConfig,
+                historyContext.SqliteOptions,
+                historyContext.HistoryDirectory);
+            result = await service.QueryAsync(
+                    new MonitoringMaintenanceWindowQueryRequest(
+                        StartUtc: new DateTimeOffset(context.Request.StartUtc, TimeSpan.Zero),
+                        EndUtc: new DateTimeOffset(context.Request.EndUtc, TimeSpan.Zero),
+                        DefinitionKey: context.Request.DefinitionKey,
+                        NameContains: context.Request.NameContains,
+                        ReasonContains: context.Request.ReasonContains,
+                        ProbeNamePatternContains: context.Request.ProbeNamePatternContains,
+                        TargetPatternContains: context.Request.TargetPatternContains,
+                        PageSize: context.Request.PageSize,
+                        Offset: context.Request.Offset),
                     cancellationToken)
                 .ConfigureAwait(false);
         } catch (OperationCanceledException) {
@@ -149,88 +156,59 @@ public sealed class TestimoXMaintenanceWindowHistoryTool : TestimoXToolBase, ITo
             return ErrorFromException(ex, "Monitoring maintenance window history query failed.");
         }
 
-        IEnumerable<MaintenanceWindowHistoryEntry> filtered = discovered;
-        if (!string.IsNullOrWhiteSpace(context.Request.DefinitionKey)) {
-            filtered = filtered.Where(entry => string.Equals(
-                entry.DefinitionKey,
-                context.Request.DefinitionKey,
-                StringComparison.OrdinalIgnoreCase));
-        }
-        if (!string.IsNullOrWhiteSpace(context.Request.NameContains)) {
-            filtered = filtered.Where(entry => ContainsIgnoreCase(entry.Window.Name, context.Request.NameContains));
-        }
-        if (!string.IsNullOrWhiteSpace(context.Request.ReasonContains)) {
-            filtered = filtered.Where(entry => ContainsIgnoreCase(entry.Window.Reason, context.Request.ReasonContains));
-        }
-        if (!string.IsNullOrWhiteSpace(context.Request.ProbeNamePatternContains)) {
-            filtered = filtered.Where(entry => ContainsIgnoreCase(entry.Window.ProbeNamePattern, context.Request.ProbeNamePatternContains));
-        }
-        if (!string.IsNullOrWhiteSpace(context.Request.TargetPatternContains)) {
-            filtered = filtered.Where(entry => ContainsIgnoreCase(entry.Window.TargetPattern, context.Request.TargetPatternContains)
-                || entry.Window.TargetPatterns.Any(pattern => ContainsIgnoreCase(pattern, context.Request.TargetPatternContains)));
-        }
-
-        var matchedRows = filtered
-            .OrderByDescending(static entry => entry.StartUtc)
-            .ThenBy(static entry => entry.DefinitionKey, StringComparer.OrdinalIgnoreCase)
-            .Select(static entry => new MaintenanceWindowHistoryRow(
-                DefinitionKey: entry.DefinitionKey,
-                Name: entry.Window.Name ?? string.Empty,
-                Reason: entry.Window.Reason ?? string.Empty,
-                StartUtc: entry.StartUtc,
-                EndUtc: entry.EndUtc,
-                LastSeenUtc: entry.LastSeenUtc,
-                DurationMinutes: Math.Round((entry.EndUtc - entry.StartUtc).TotalMinutes, 2),
-                ProbeType: entry.Window.ProbeType?.ToString() ?? string.Empty,
-                ProbeTypeKnown: entry.Window.ProbeType.HasValue
-                    && ProbeTypeNames.Contains(entry.Window.ProbeType.Value.ToString(), StringComparer.OrdinalIgnoreCase),
-                ProbeNamePattern: entry.Window.ProbeNamePattern ?? string.Empty,
-                ZonePattern: entry.Window.ZonePattern ?? string.Empty,
-                AgentPattern: entry.Window.AgentPattern ?? string.Empty,
-                TargetPattern: entry.Window.TargetPattern ?? string.Empty,
-                TargetPatterns: entry.Window.TargetPatterns.ToArray(),
-                ProtocolPattern: entry.Window.ProtocolPattern ?? string.Empty,
-                ErrorPattern: entry.Window.ErrorPattern ?? string.Empty,
-                MetadataFilterCount: entry.Window.MetadataFilters.Count,
-                DaysOfWeek: entry.Window.DaysOfWeek?.Select(static day => day.ToString()).ToArray() ?? Array.Empty<string>(),
-                StartTimeUtc: entry.Window.StartTimeUtc?.ToString(),
-                EndTimeUtc: entry.Window.EndTimeUtc?.ToString(),
-                Cron: entry.Window.Cron ?? string.Empty,
-                Duration: entry.Window.Duration?.ToString() ?? string.Empty,
-                SuppressNotifications: entry.Window.SuppressNotifications,
-                SuppressSummaries: entry.Window.SuppressSummaries,
-                SuppressReporting: entry.Window.SuppressReporting,
-                PauseProbes: entry.Window.PauseProbes))
+        var rows = result.Rows
+            .Select(static row => new MaintenanceWindowHistoryRow(
+                DefinitionKey: row.DefinitionKey,
+                Name: row.Name,
+                Reason: row.Reason,
+                StartUtc: row.StartUtc,
+                EndUtc: row.EndUtc,
+                LastSeenUtc: row.LastSeenUtc,
+                DurationMinutes: row.DurationMinutes,
+                ProbeType: row.ProbeType?.ToString() ?? string.Empty,
+                ProbeTypeKnown: row.ProbeTypeKnown
+                    && row.ProbeType.HasValue
+                    && ProbeTypeNames.Contains(row.ProbeType.Value.ToString(), StringComparer.OrdinalIgnoreCase),
+                ProbeNamePattern: row.ProbeNamePattern,
+                ZonePattern: row.ZonePattern,
+                AgentPattern: row.AgentPattern,
+                TargetPattern: row.TargetPattern,
+                TargetPatterns: row.TargetPatterns.ToArray(),
+                ProtocolPattern: row.ProtocolPattern,
+                ErrorPattern: row.ErrorPattern,
+                MetadataFilterCount: row.MetadataFilterCount,
+                DaysOfWeek: row.DaysOfWeek.ToArray(),
+                StartTimeUtc: row.StartTimeUtc,
+                EndTimeUtc: row.EndTimeUtc,
+                Cron: row.Cron,
+                Duration: row.Duration,
+                SuppressNotifications: row.SuppressNotifications,
+                SuppressSummaries: row.SuppressSummaries,
+                SuppressReporting: row.SuppressReporting,
+                PauseProbes: row.PauseProbes))
             .ToList();
-
-        var offset = context.Request.Offset > matchedRows.Count ? matchedRows.Count : context.Request.Offset;
-        var pageRows = matchedRows.Skip(offset);
-        var rows = context.Request.PageSize.HasValue
-            ? pageRows.Take(context.Request.PageSize.Value).ToList()
-            : pageRows.ToList();
-        var truncatedByPage = context.Request.PageSize.HasValue && offset + rows.Count < matchedRows.Count;
-        var nextOffset = truncatedByPage ? offset + rows.Count : (int?)null;
+        var nextOffset = result.NextOffset;
         var nextCursor = nextOffset.HasValue ? OffsetCursor.Encode(nextOffset.Value) : string.Empty;
 
         var model = new MaintenanceWindowHistoryResult(
-            HistoryDirectory: historyDirectory,
-            DatabasePath: databasePath,
-            StartUtc: context.Request.StartUtc,
-            EndUtc: context.Request.EndUtc,
-            DefinitionKey: context.Request.DefinitionKey ?? string.Empty,
-            NameContains: context.Request.NameContains ?? string.Empty,
-            ReasonContains: context.Request.ReasonContains ?? string.Empty,
-            ProbeNamePatternContains: context.Request.ProbeNamePatternContains ?? string.Empty,
-            TargetPatternContains: context.Request.TargetPatternContains ?? string.Empty,
-            DiscoveredCount: discovered.Count,
-            MatchedCount: matchedRows.Count,
-            ReturnedCount: rows.Count,
-            Offset: offset,
-            PageSize: context.Request.PageSize,
+            HistoryDirectory: historyContext.HistoryDirectory,
+            DatabasePath: historyContext.DatabasePath,
+            StartUtc: result.StartUtc.UtcDateTime,
+            EndUtc: result.EndUtc.UtcDateTime,
+            DefinitionKey: result.DefinitionKey,
+            NameContains: result.NameContains,
+            ReasonContains: result.ReasonContains,
+            ProbeNamePatternContains: result.ProbeNamePatternContains,
+            TargetPatternContains: result.TargetPatternContains,
+            DiscoveredCount: result.DiscoveredCount,
+            MatchedCount: result.MatchedCount,
+            ReturnedCount: result.ReturnedCount,
+            Offset: result.Offset,
+            PageSize: result.PageSize,
             NextOffset: nextOffset,
             NextCursor: nextCursor,
-            TruncatedByPage: truncatedByPage,
-            Truncated: truncatedByPage,
+            TruncatedByPage: result.TruncatedByPage,
+            Truncated: result.TruncatedByPage,
             Rows: rows);
 
         return ToolResultV2.OkAutoTableResponse(
@@ -239,17 +217,17 @@ public sealed class TestimoXMaintenanceWindowHistoryTool : TestimoXToolBase, ITo
             sourceRows: rows,
             viewRowsPath: "rows_view",
             title: "Monitoring maintenance window history",
-            baseTruncated: truncatedByPage,
-            maxTop: Math.Max(Options.MaxHistoryRowsInCatalog, matchedRows.Count),
-            scanned: discovered.Count,
+            baseTruncated: result.TruncatedByPage,
+            maxTop: Math.Max(Options.MaxHistoryRowsInCatalog, result.MatchedCount),
+            scanned: result.DiscoveredCount,
             metaMutate: meta => {
-                meta.Add("history_directory", historyDirectory);
-                meta.Add("database_path", databasePath);
-                meta.Add("matched_count", matchedRows.Count);
+                meta.Add("history_directory", historyContext.HistoryDirectory);
+                meta.Add("database_path", historyContext.DatabasePath);
+                meta.Add("matched_count", result.MatchedCount);
                 meta.Add("returned_count", rows.Count);
-                meta.Add("offset", offset);
-                if (context.Request.PageSize.HasValue) {
-                    meta.Add("page_size", context.Request.PageSize.Value);
+                meta.Add("offset", result.Offset);
+                if (result.PageSize.HasValue) {
+                    meta.Add("page_size", result.PageSize.Value);
                 }
                 if (nextOffset.HasValue) {
                     meta.Add("next_offset", nextOffset.Value);
@@ -257,16 +235,8 @@ public sealed class TestimoXMaintenanceWindowHistoryTool : TestimoXToolBase, ITo
                 if (!string.IsNullOrWhiteSpace(nextCursor)) {
                     meta.Add("next_cursor", nextCursor);
                 }
-                meta.Add("truncated_by_page", truncatedByPage);
+                meta.Add("truncated_by_page", result.TruncatedByPage);
             });
-    }
-
-    private static bool ContainsIgnoreCase(string? value, string? candidate) {
-        if (string.IsNullOrWhiteSpace(value) || string.IsNullOrWhiteSpace(candidate)) {
-            return false;
-        }
-
-        return value.Contains(candidate, StringComparison.OrdinalIgnoreCase);
     }
 
     private sealed record MaintenanceWindowHistoryResult(

@@ -84,30 +84,34 @@ public sealed class TestimoXReportSnapshotGetTool : TestimoXToolBase, ITool {
                 isTransient: false);
         }
 
-        if (!TestimoXAnalyticsHistoryHelper.TryResolveHistoryDatabasePath(
+        if (!TestimoXAnalyticsHistoryHelper.TryResolveHistoryReadContext(
                 Options,
                 context.Request.HistoryDirectory,
                 toolName: "testimox_report_snapshot_get",
-                out var historyDirectory,
-                out var databasePath,
+                out var historyContext,
                 out var resolveError)) {
             return resolveError;
         }
 
-        MonitoringReportSnapshot? snapshot;
+        MonitoringReportSnapshotQueryResult? result;
         try {
-            using var store = new MonitoringReportSnapshotStore(
-                TestimoXAnalyticsHistoryHelper.CreateSqliteDatabaseConfig(databasePath),
-                TestimoXAnalyticsHistoryHelper.CreateSqliteOptions(),
-                historyDirectory);
-            snapshot = await store.TryLoadAsync(context.Request.ReportKey, cancellationToken).ConfigureAwait(false);
+            var service = new MonitoringReportSnapshotQueryService(
+                historyContext.DatabaseConfig,
+                historyContext.SqliteOptions,
+                historyContext.HistoryDirectory);
+            result = await service.QueryAsync(
+                new MonitoringReportSnapshotQueryRequest(
+                    context.Request.ReportKey,
+                    context.Request.IncludeHtml,
+                    context.Request.MaxChars),
+                cancellationToken).ConfigureAwait(false);
         } catch (OperationCanceledException) {
             throw;
         } catch (Exception ex) {
             return ErrorFromException(ex, "Monitoring report snapshot query failed.");
         }
 
-        if (snapshot is null) {
+        if (result is null) {
             return ToolResultV2.Error(
                 errorCode: "not_found",
                 error: $"Monitoring report snapshot '{context.Request.ReportKey}' was not found.",
@@ -118,28 +122,24 @@ public sealed class TestimoXReportSnapshotGetTool : TestimoXToolBase, ITool {
                 isTransient: false);
         }
 
-        var htmlProjection = TestimoXAnalyticsHistoryHelper.ProjectText(
-            snapshot.Html,
-            context.Request.IncludeHtml,
-            context.Request.MaxChars);
-
+        var projected = result.Snapshot;
         var row = new ReportSnapshotRow(
-            ReportKey: snapshot.ReportKey,
-            GeneratedUtc: snapshot.GeneratedUtc,
-            SourceUpdatedUtc: snapshot.SourceUpdatedUtc,
-            HtmlBytes: snapshot.HtmlBytes,
-            HtmlHash: snapshot.HtmlHash ?? string.Empty,
-            MetadataJson: TestimoXAnalyticsHistoryHelper.NormalizeJsonPreview(snapshot.MetadataJson),
-            HtmlPreview: htmlProjection.Preview,
-            Html: htmlProjection.Content,
-            HtmlIncluded: htmlProjection.Included,
-            HtmlTruncated: htmlProjection.Truncated,
-            HtmlCharsReturned: htmlProjection.ReturnedChars);
+            ReportKey: projected.ReportKey,
+            GeneratedUtc: projected.GeneratedUtc,
+            SourceUpdatedUtc: projected.SourceUpdatedUtc,
+            HtmlBytes: projected.HtmlBytes,
+            HtmlHash: projected.HtmlHash,
+            MetadataJson: projected.MetadataJson,
+            HtmlPreview: projected.HtmlPreview,
+            Html: projected.Html,
+            HtmlIncluded: projected.HtmlIncluded,
+            HtmlTruncated: projected.HtmlTruncated,
+            HtmlCharsReturned: projected.HtmlCharsReturned);
 
         var model = new ReportSnapshotResult(
-            HistoryDirectory: historyDirectory,
-            DatabasePath: databasePath,
-            ReportKey: snapshot.ReportKey,
+            HistoryDirectory: historyContext.HistoryDirectory,
+            DatabasePath: historyContext.DatabasePath,
+            ReportKey: result.ReportKey,
             Snapshot: row);
 
         return ToolResultV2.OkAutoTableResponse(
@@ -152,9 +152,9 @@ public sealed class TestimoXReportSnapshotGetTool : TestimoXToolBase, ITool {
             maxTop: 1,
             scanned: 1,
             metaMutate: meta => {
-                meta.Add("history_directory", historyDirectory);
-                meta.Add("database_path", databasePath);
-                meta.Add("report_key", snapshot.ReportKey);
+                meta.Add("history_directory", historyContext.HistoryDirectory);
+                meta.Add("database_path", historyContext.DatabasePath);
+                meta.Add("report_key", result.ReportKey);
                 meta.Add("html_included", row.HtmlIncluded);
                 meta.Add("html_truncated", row.HtmlTruncated);
                 meta.Add("html_chars_returned", row.HtmlCharsReturned);
