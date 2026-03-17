@@ -71,11 +71,7 @@ public sealed class ProviderViewModel : ViewModelBase {
 
     public string IconKey {
         get => _iconKey;
-        set {
-            if (SetProperty(ref _iconKey, value)) {
-                IconGeometry = ResolveIconGeometry(value);
-            }
-        }
+        set => SetProperty(ref _iconKey, value);
     }
 
     public System.Windows.Media.Geometry? IconGeometry {
@@ -86,6 +82,10 @@ public sealed class ProviderViewModel : ViewModelBase {
     private static System.Windows.Media.Geometry? ResolveIconGeometry(string? key) {
         if (string.IsNullOrWhiteSpace(key)) return null;
         return System.Windows.Application.Current?.TryFindResource(key) as System.Windows.Media.Geometry;
+    }
+
+    public void RefreshIconGeometry() {
+        IconGeometry = ResolveIconGeometry(IconKey);
     }
 
     public int SortOrder {

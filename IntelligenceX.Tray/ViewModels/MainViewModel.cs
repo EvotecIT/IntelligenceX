@@ -163,6 +163,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
             // Only UI updates on dispatcher thread
             Providers.Clear();
             foreach (var p in newProviders) {
+                p.RefreshIconGeometry();
                 Providers.Add(p);
             }
 
