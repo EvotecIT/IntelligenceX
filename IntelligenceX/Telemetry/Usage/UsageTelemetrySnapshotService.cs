@@ -11,6 +11,7 @@ namespace IntelligenceX.Telemetry.Usage;
 /// Shared snapshot service for lightweight usage discovery and aggregation.
 /// </summary>
 public sealed class UsageTelemetrySnapshotService {
+    private const int TrayMaxArtifacts = 60;
     private readonly Func<IReadOnlyList<IUsageTelemetryRootDiscovery>> _createDiscoveries;
     private readonly Func<UsageTelemetryQuickReportScanner> _createScanner;
 
@@ -71,7 +72,7 @@ public sealed class UsageTelemetrySnapshotService {
                 var scanner = _createScanner();
                 var options = new UsageTelemetryQuickReportOptions {
                     PreferRecentArtifacts = true,
-                    MaxArtifacts = 200
+                    MaxArtifacts = TrayMaxArtifacts
                 };
                 var result = await scanner
                     .ScanAsync(providerRoots.ToArray(), options, cancellationToken)

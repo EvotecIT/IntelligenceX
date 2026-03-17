@@ -5,6 +5,7 @@ using System.Globalization;
 using System.IO;
 using System.Threading;
 using System.Windows;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
 using IntelligenceX.OpenAI.Usage;
@@ -139,6 +140,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     public bool HasData => Providers.Count > 0 && SelectedProvider != null;
     public bool CanToggleFavoriteSelectedProvider => SelectedProvider is { ProviderId: not "__all__" };
     public string FavoriteSelectedProviderLabel => SelectedProvider?.IsFavorite == true ? "Pinned" : "Pin";
+    public ICommand HeaderRefreshCommand => ShowGitHubContent ? RefreshGitHubCommand : RefreshCommand;
+    public string HeaderRefreshLabel => ShowGitHubContent ? "Load" : "Refresh";
 
     public int AutoRefreshIntervalSeconds {
         get => _autoRefreshIntervalSeconds;
@@ -708,6 +711,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         OnPropertyChanged(nameof(HasData));
         OnPropertyChanged(nameof(ShowUsageContent));
         OnPropertyChanged(nameof(ShowGitHubContent));
+        OnPropertyChanged(nameof(HeaderRefreshCommand));
+        OnPropertyChanged(nameof(HeaderRefreshLabel));
     }
 
     private Task ToggleSelectedProviderFavoriteAsync() {

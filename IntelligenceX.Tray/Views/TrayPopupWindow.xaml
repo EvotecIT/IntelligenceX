@@ -89,10 +89,10 @@
                                        Text="Cache" />
                         </Button>
                         <Button Style="{StaticResource RefreshButtonStyle}"
-                                Command="{Binding RefreshCommand}"
+                                Command="{Binding HeaderRefreshCommand}"
                                 VerticalAlignment="Center">
                             <TextBlock FontFamily="{StaticResource AppFont}" FontSize="11"
-                                       Text="Refresh" />
+                                       Text="{Binding HeaderRefreshLabel}" />
                         </Button>
                     </StackPanel>
                 </Grid>
@@ -1348,6 +1348,7 @@
                                         <Grid.RowDefinitions>
                                             <RowDefinition Height="Auto" />
                                             <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
                                         </Grid.RowDefinitions>
                                         <StackPanel Grid.Column="0">
                                             <TextBlock Text="{Binding OwnedRepositoriesFormatted}"
@@ -1355,16 +1356,26 @@
                                             <TextBlock Text="Owned repos" Style="{StaticResource LabelTextStyle}" />
                                         </StackPanel>
                                         <StackPanel Grid.Column="1">
+                                            <TextBlock Text="{Binding PublicRepositoriesFormatted}"
+                                                       Style="{StaticResource StatValueStyle}" FontSize="16" />
+                                            <TextBlock Text="Public repos" Style="{StaticResource LabelTextStyle}" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Row="1" Grid.Column="0" Margin="0,10,0,0">
                                             <TextBlock Text="{Binding OwnerCountFormatted}"
                                                        Style="{StaticResource StatValueStyle}" FontSize="16" />
                                             <TextBlock Text="Owners" Style="{StaticResource LabelTextStyle}" />
                                         </StackPanel>
-                                        <StackPanel Grid.Row="1" Grid.Column="0" Margin="0,10,0,0">
+                                        <StackPanel Grid.Row="1" Grid.Column="1" Margin="0,10,0,0">
+                                            <TextBlock Text="{Binding DominantLanguage}"
+                                                       Style="{StaticResource StatValueStyle}" FontSize="16" />
+                                            <TextBlock Text="Top language" Style="{StaticResource LabelTextStyle}" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Row="2" Grid.Column="0" Margin="0,10,0,0">
                                             <TextBlock Text="{Binding TotalStarsFormatted}"
                                                        Style="{StaticResource StatValueStyle}" FontSize="16" />
                                             <TextBlock Text="Stars" Style="{StaticResource LabelTextStyle}" />
                                         </StackPanel>
-                                        <StackPanel Grid.Row="1" Grid.Column="1" Margin="0,10,0,0">
+                                        <StackPanel Grid.Row="2" Grid.Column="1" Margin="0,10,0,0">
                                             <TextBlock Text="{Binding TotalForksFormatted}"
                                                        Style="{StaticResource StatValueStyle}" FontSize="16" />
                                             <TextBlock Text="Forks" Style="{StaticResource LabelTextStyle}" />
@@ -1450,6 +1461,48 @@
                                                                    Foreground="{StaticResource SecondaryTextBrush}"
                                                                    Margin="2,0,0,0" />
                                                     </StackPanel>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </Border>
+
+                            <Border Style="{StaticResource CardStyle}"
+                                    Visibility="{Binding HasLanguages, Converter={StaticResource BoolToVis}}">
+                                <StackPanel>
+                                    <TextBlock Text="LANGUAGE MIX" Style="{StaticResource SectionHeaderStyle}" Margin="0,0,0,10" />
+                                    <ItemsControl ItemsSource="{Binding Languages}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate DataType="{x:Type vm:GitHubLanguageViewModel}">
+                                                <Grid Margin="0,0,0,8">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto" />
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Grid.Column="0"
+                                                               Text="{Binding Language}"
+                                                               FontFamily="{StaticResource AppFont}"
+                                                               FontSize="10.5"
+                                                               FontWeight="SemiBold"
+                                                               Foreground="{StaticResource PrimaryTextBrush}"
+                                                               Margin="0,0,10,0"
+                                                               VerticalAlignment="Center" />
+                                                    <Grid Grid.Column="1" Height="6" VerticalAlignment="Center">
+                                                        <Border CornerRadius="3" Background="#12ffffff" />
+                                                        <Border CornerRadius="3"
+                                                                Background="{Binding BarBrush}"
+                                                                HorizontalAlignment="Left"
+                                                                Width="{Binding Proportion, Converter={StaticResource PropToWidth}, ConverterParameter=200}" />
+                                                    </Grid>
+                                                    <TextBlock Grid.Column="2"
+                                                               Text="{Binding RepositoryCountFormatted}"
+                                                               FontFamily="{StaticResource AppFont}"
+                                                               FontSize="10"
+                                                               Foreground="{StaticResource SecondaryTextBrush}"
+                                                               Margin="10,0,0,0"
+                                                               VerticalAlignment="Center" />
                                                 </Grid>
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
@@ -1543,51 +1596,83 @@
                                     <ItemsControl ItemsSource="{Binding TopRepos}">
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate DataType="{x:Type vm:GitHubRepoViewModel}">
-                                                <Grid Margin="0,0,0,6">
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="Auto" />
-                                                        <ColumnDefinition Width="*" />
-                                                        <ColumnDefinition Width="Auto" />
-                                                        <ColumnDefinition Width="Auto" />
-                                                    </Grid.ColumnDefinitions>
-                                                    <Ellipse Grid.Column="0" Width="8" Height="8"
-                                                             Fill="{Binding LanguageBrush}"
-                                                             Margin="0,0,6,0" VerticalAlignment="Center" />
-                                                    <Button Grid.Column="1"
-                                                            Style="{StaticResource InlineLinkButtonStyle}"
-                                                            Click="OnOpenUrlClick"
-                                                            Tag="{Binding RepositoryUrl}"
-                                                            HorizontalAlignment="Left">
-                                                        <TextBlock Text="{Binding Name}"
-                                                                   FontFamily="{StaticResource AppFont}"
-                                                                   FontSize="11"
-                                                                   Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
-                                                                   TextTrimming="CharacterEllipsis"
-                                                                   VerticalAlignment="Center" />
-                                                    </Button>
-                                                    <StackPanel Grid.Column="2" Orientation="Horizontal"
-                                                                Margin="8,0,0,0" VerticalAlignment="Center">
-                                                        <TextBlock Text="&#x2605; "
+                                                <Border Background="#10ffffff"
+                                                        BorderBrush="{StaticResource BorderBrush}"
+                                                        BorderThickness="1"
+                                                        CornerRadius="10"
+                                                        Margin="0,0,0,8"
+                                                        Padding="10">
+                                                    <StackPanel>
+                                                        <Grid>
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*" />
+                                                                <ColumnDefinition Width="Auto" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <StackPanel Grid.Column="0" Orientation="Horizontal">
+                                                                <Ellipse Width="8" Height="8"
+                                                                         Fill="{Binding LanguageBrush}"
+                                                                         Margin="0,0,6,0"
+                                                                         VerticalAlignment="Center" />
+                                                                <Button Style="{StaticResource InlineLinkButtonStyle}"
+                                                                        Click="OnOpenUrlClick"
+                                                                        Tag="{Binding RepositoryUrl}"
+                                                                        HorizontalAlignment="Left">
+                                                                    <TextBlock Text="{Binding Name}"
+                                                                               FontFamily="{StaticResource AppFont}"
+                                                                               FontSize="11"
+                                                                               FontWeight="SemiBold"
+                                                                               Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                                               TextTrimming="CharacterEllipsis"
+                                                                               VerticalAlignment="Center" />
+                                                                </Button>
+                                                                <Border Background="#18ffffff"
+                                                                        BorderBrush="{StaticResource BorderBrush}"
+                                                                        BorderThickness="1"
+                                                                        CornerRadius="8"
+                                                                        Padding="6,1"
+                                                                        Margin="6,0,0,0">
+                                                                    <TextBlock Text="{Binding Owner}"
+                                                                               FontFamily="{StaticResource AppFont}"
+                                                                               FontSize="9.5"
+                                                                               Foreground="{StaticResource SecondaryTextBrush}" />
+                                                                </Border>
+                                                            </StackPanel>
+                                                            <StackPanel Grid.Column="1" Orientation="Horizontal"
+                                                                        VerticalAlignment="Center">
+                                                                <TextBlock Text="★"
+                                                                           FontFamily="{StaticResource AppFont}"
+                                                                           FontSize="10"
+                                                                           Foreground="#f0c040" />
+                                                                <TextBlock Text="{Binding StarsFormatted}"
+                                                                           FontFamily="{StaticResource AppFont}"
+                                                                           FontSize="10"
+                                                                           FontWeight="SemiBold"
+                                                                           Foreground="{StaticResource SecondaryTextBrush}"
+                                                                           Margin="2,0,8,0" />
+                                                                <TextBlock Text="&#x2442;"
+                                                                           FontFamily="{StaticResource AppFont}"
+                                                                           FontSize="10"
+                                                                           Foreground="{StaticResource TertiaryTextBrush}" />
+                                                                <TextBlock Text="{Binding ForksFormatted}"
+                                                                           FontFamily="{StaticResource AppFont}"
+                                                                           FontSize="10"
+                                                                           Foreground="{StaticResource SecondaryTextBrush}"
+                                                                           Margin="2,0,0,0" />
+                                                            </StackPanel>
+                                                        </Grid>
+                                                        <TextBlock Text="{Binding Description}"
                                                                    FontFamily="{StaticResource AppFont}"
                                                                    FontSize="10"
-                                                                   Foreground="#f0c040" />
-                                                        <TextBlock Text="{Binding StarsFormatted}"
+                                                                   Foreground="{StaticResource SecondaryTextBrush}"
+                                                                   TextWrapping="Wrap"
+                                                                   Margin="0,6,0,0" />
+                                                        <TextBlock Text="{Binding Language}"
                                                                    FontFamily="{StaticResource AppFont}"
-                                                                   FontSize="10" FontWeight="SemiBold"
-                                                                   Foreground="{StaticResource SecondaryTextBrush}" />
+                                                                   FontSize="10"
+                                                                   Foreground="{StaticResource TertiaryTextBrush}"
+                                                                   Margin="0,6,0,0" />
                                                     </StackPanel>
-                                                    <StackPanel Grid.Column="3" Orientation="Horizontal"
-                                                                Margin="10,0,0,0" VerticalAlignment="Center">
-                                                        <TextBlock Text="&#x2442; "
-                                                                   FontFamily="{StaticResource AppFont}"
-                                                                   FontSize="10"
-                                                                   Foreground="{StaticResource TertiaryTextBrush}" />
-                                                        <TextBlock Text="{Binding ForksFormatted}"
-                                                                   FontFamily="{StaticResource AppFont}"
-                                                                   FontSize="10"
-                                                                   Foreground="{StaticResource SecondaryTextBrush}" />
-                                                    </StackPanel>
-                                                </Grid>
+                                                </Border>
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
