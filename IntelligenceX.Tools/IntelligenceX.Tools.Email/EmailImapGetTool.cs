@@ -113,11 +113,7 @@ public sealed class EmailImapGetTool : EmailToolBase, ITool {
                     Attachments = attachments
                 };
 
-                var summaryPreview = message.TextBody;
-                const int previewMax = 1000;
-                if (summaryPreview.Length > previewMax) {
-                    summaryPreview = summaryPreview.Substring(0, previewMax) + "...";
-                }
+                var summaryPreview = CreateSummaryPreview(message.TextBody);
 
                 var summaryMarkdown = ToolMarkdown.SummaryFacts(
                     title: "IMAP message",
@@ -180,5 +176,18 @@ public sealed class EmailImapGetTool : EmailToolBase, ITool {
         }
 
         return false;
+    }
+
+    internal static string CreateSummaryPreview(string? textBody, int previewMax = 1000) {
+        if (previewMax < 1) {
+            previewMax = 1;
+        }
+
+        var summaryPreview = textBody ?? string.Empty;
+        if (summaryPreview.Length > previewMax) {
+            summaryPreview = summaryPreview.Substring(0, previewMax) + "...";
+        }
+
+        return summaryPreview;
     }
 }
