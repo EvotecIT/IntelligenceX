@@ -420,7 +420,7 @@
         <Setter Property="FontSize" Value="10.5" />
         <Setter Property="MinWidth" Value="92" />
         <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-        <Setter Property="ItemContainerStyle" Value="{StaticResource FilterComboBoxItemStyle}" />
+        <Setter Property="ItemContainerStyle" Value="{DynamicResource FilterComboBoxItemStyle}" />
         <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
         <Setter Property="Template">
             <Setter.Value>
