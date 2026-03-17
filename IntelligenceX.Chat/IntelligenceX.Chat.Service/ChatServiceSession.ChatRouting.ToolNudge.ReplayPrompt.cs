@@ -69,6 +69,9 @@ internal sealed partial class ChatServiceSession {
     private static string BuildExecutionContractBlockerText(string userRequest, string assistantDraft, string reason) {
         var requestText = TrimForPrompt(userRequest, 280);
         var reasonCode = string.IsNullOrWhiteSpace(reason) ? "no_tool_calls_after_retries" : reason.Trim();
+        var detailLine = string.Equals(reasonCode, "background_work_waiting_on_prerequisites", StringComparison.OrdinalIgnoreCase)
+            ? "Prepared follow-up work is waiting on prerequisite helper steps before a safe replay can continue."
+            : string.Empty;
         var replayActionBlock = BuildExecutionContractReplayActionBlock(userRequest, assistantDraft);
         return $$"""
             [Execution blocked]
@@ -79,6 +82,125 @@ internal sealed partial class ChatServiceSession {
             {{requestText}}
 
             Reason code: {{reasonCode}}
+            {{detailLine}}
+
+            Please retry this action in this context, or use the action command below.
+            {{replayActionBlock}}
+            """;
+    }
+
+    private static string BuildBackgroundWorkDependencyRecoveryPrompt(
+        string userRequest,
+        string assistantDraft,
+        BackgroundWorkDependencyRecoverySummary summary,
+        string reason) {
+        var requestText = TrimForPrompt(userRequest, ToolReceiptCorrectionMaxUserRequestChars);
+        var draftText = TrimForPrompt(assistantDraft, ToolReceiptCorrectionMaxDraftChars);
+        var helperToolsLine = summary.HelperToolNames.Length == 0
+            ? "helper_tools: (unknown)"
+            : "helper_tools: " + string.Join(", ", summary.HelperToolNames);
+        var authArgsLine = summary.AuthenticationArgumentNames.Length == 0
+            ? string.Empty
+            : "runtime_auth_args: " + string.Join(", ", summary.AuthenticationArgumentNames);
+        var setupHelpersLine = summary.SetupHelperToolNames.Length == 0
+            ? string.Empty
+            : "setup_helpers: " + string.Join(", ", summary.SetupHelperToolNames);
+        var cooldownHelpersLine = summary.RetryCooldownHelperToolNames.Length == 0
+            ? string.Empty
+            : "cooldown_helpers: " + string.Join(", ", summary.RetryCooldownHelperToolNames);
+        return $$"""
+            [Background prerequisite recovery]
+            ix:background-prerequisite-recovery:v1
+            Selected action request:
+            {{requestText}}
+
+            Previous assistant draft:
+            {{draftText}}
+
+            Prepared follow-up work is blocked on prerequisite helpers.
+            blocked_items: {{summary.BlockedItemCount}}
+            {{helperToolsLine}}
+            recovery_reason: {{reason}}
+            {{authArgsLine}}
+            {{setupHelpersLine}}
+            {{cooldownHelpersLine}}
+
+            Requirements:
+            - Do not claim execution completed.
+            - If runtime auth context is missing, ask only for the minimal runtime auth input needed to continue.
+            - If runtime setup context is missing, ask only for the minimal setup or runtime profile details needed to continue.
+            - If helper retry is cooling down or still pending, explain that prepared follow-up work is waiting on prerequisite helpers and that execution can continue after they succeed.
+            - Do not ask for broad confirmation.
+            - Keep the response concise and execution-focused.
+            """;
+    }
+
+    private static string BuildBackgroundWorkDependencyRecoveryBlockerText(
+        string userRequest,
+        string assistantDraft,
+        BackgroundWorkDependencyRecoverySummary summary,
+        string reason) {
+        var requestText = TrimForPrompt(userRequest, 280);
+        var helperToolsLine = summary.HelperToolNames.Length == 0
+            ? "helper_tools: (unknown)"
+            : "helper_tools: " + string.Join(", ", summary.HelperToolNames);
+        var replayActionBlock = BuildExecutionContractReplayActionBlock(userRequest, assistantDraft);
+
+        if (string.Equals(reason, "background_prerequisite_auth_context_required", StringComparison.OrdinalIgnoreCase)) {
+            var authArgs = summary.AuthenticationArgumentNames.Length == 0
+                ? "runtime authentication context"
+                : string.Join(", ", summary.AuthenticationArgumentNames);
+            return $$"""
+                [Execution blocked]
+                {{ExecutionContractMarker}}
+                I do not have confirmed tool output for this selected action yet.
+
+                Selected action request:
+                {{requestText}}
+
+                Reason code: {{reason}}
+                Prepared follow-up work is blocked on prerequisite helpers: {{string.Join(", ", summary.HelperToolNames)}}.
+                To continue, provide the minimal runtime authentication input required for this session: {{authArgs}}.
+
+                Please retry this action in this context, or use the action command below.
+                {{replayActionBlock}}
+                """;
+        }
+
+        if (string.Equals(reason, "background_prerequisite_setup_context_required", StringComparison.OrdinalIgnoreCase)) {
+            var setupHelpers = summary.SetupHelperToolNames.Length == 0
+                ? helperToolsLine
+                : "setup_helpers: " + string.Join(", ", summary.SetupHelperToolNames);
+            return $$"""
+                [Execution blocked]
+                {{ExecutionContractMarker}}
+                I do not have confirmed tool output for this selected action yet.
+
+                Selected action request:
+                {{requestText}}
+
+                Reason code: {{reason}}
+                Prepared follow-up work is blocked on prerequisite setup helpers.
+                {{setupHelpers}}
+                Provide the minimal setup or runtime-profile details needed for those helpers, then retry.
+
+                Please retry this action in this context, or use the action command below.
+                {{replayActionBlock}}
+                """;
+        }
+
+        return $$"""
+            [Execution blocked]
+            {{ExecutionContractMarker}}
+            I do not have confirmed tool output for this selected action yet.
+
+            Selected action request:
+            {{requestText}}
+
+            Reason code: {{reason}}
+            Prepared follow-up work is still waiting on prerequisite helpers.
+            {{helperToolsLine}}
+            The helper retry is still pending, so execution can continue after the prerequisite step succeeds.
 
             Please retry this action in this context, or use the action command below.
             {{replayActionBlock}}

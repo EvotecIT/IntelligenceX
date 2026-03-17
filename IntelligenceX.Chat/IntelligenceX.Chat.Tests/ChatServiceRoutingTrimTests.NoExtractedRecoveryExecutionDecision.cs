@@ -468,6 +468,104 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ResolveNoExtractedRecoveryPrePromptExecutionDecisionForTesting_PreservesBlockedBackgroundPrerequisiteReason() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        const string threadId = "thread-background-prereq-blocked";
+        var toolDefinitions = new[] {
+            new ToolDefinition(
+                name: "seed_eventlog_live_followup",
+                description: "seed live event log follow-up",
+                handoff: new ToolHandoffContract {
+                    IsHandoffAware = true,
+                    OutboundRoutes = new[] {
+                        new ToolHandoffRoute {
+                            TargetPackId = "eventlog",
+                            TargetToolName = "eventlog_live_query",
+                            TargetRole = ToolRoutingTaxonomy.RoleOperational,
+                            FollowUpKind = ToolHandoffFollowUpKinds.Verification,
+                            FollowUpPriority = ToolHandoffFollowUpPriorities.High,
+                            Bindings = new[] {
+                                new ToolHandoffBinding {
+                                    SourceField = "computer_name",
+                                    TargetArgument = "machine_name"
+                                }
+                            }
+                        }
+                    }
+                }),
+            new ToolDefinition(
+                "eventlog_live_query",
+                "Inspect live event logs on a remote machine after validation and setup.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties(),
+                authentication: new ToolAuthenticationContract {
+                    IsAuthenticationAware = true,
+                    RequiresAuthentication = true,
+                    AuthenticationContractId = "ix.auth.runtime.v1",
+                    Mode = ToolAuthenticationMode.ProfileReference,
+                    ProfileIdArgumentName = "profile_id",
+                    SupportsConnectivityProbe = true,
+                    ProbeToolName = "eventlog_channels_list"
+                },
+                setup: new ToolSetupContract {
+                    IsSetupAware = true,
+                    SetupToolName = "eventlog_runtime_profile_validate"
+                }),
+            new ToolDefinition(
+                "eventlog_channels_list",
+                "List available event log channels and validate access for the target machine.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties()),
+            new ToolDefinition(
+                "eventlog_runtime_profile_validate",
+                "Validate runtime profile readiness for the target machine.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties())
+        };
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(toolDefinitions));
+        session.RememberToolHandoffBackgroundWorkForTesting(
+            threadId,
+            toolDefinitions,
+            new List<ToolCallDto> {
+                new() {
+                    CallId = "call-live-followup",
+                    Name = "seed_eventlog_live_followup",
+                    ArgumentsJson = """{"computer_name":"srv-eventlog.contoso.com"}"""
+                }
+            },
+            new List<ToolOutputDto> {
+                new() {
+                    CallId = "call-live-followup",
+                    Ok = true,
+                    Output = """{"ok":true}"""
+                }
+            });
+        var snapshot = session.ResolveThreadBackgroundWorkSnapshotForTesting(threadId);
+        foreach (var helperItem in snapshot.Items) {
+            if (string.Equals(helperItem.TargetToolName, "eventlog_live_query", System.StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            Assert.True(session.TrySetThreadBackgroundWorkItemStateForTesting(threadId, helperItem.Id, "failed"));
+        }
+
+        var result = session.ResolveNoExtractedRecoveryPrePromptExecutionDecisionForTesting(
+            threadId: threadId,
+            userRequest: "continue",
+            assistantDraft: "I can keep going with the prepared follow-up.",
+            toolDefinitions: toolDefinitions,
+            mutatingToolHintsByName: new Dictionary<string, bool>(System.StringComparer.OrdinalIgnoreCase),
+            continuationFollowUpTurn: true,
+            compactFollowUpTurn: true,
+            autoPendingActionReplayUsed: true,
+            hostStructuredNextActionReplayUsed: true,
+            priorToolCalls: 0,
+            priorToolOutputs: 0);
+
+        Assert.Equal("None", result.Kind);
+        Assert.Equal("background_work_waiting_on_prerequisites", result.Reason);
+        Assert.Null(result.ToolName);
+        Assert.False(result.ExpandToFullToolAvailability);
+    }
+
+    [Fact]
     public void ResolveNoExtractedRecoveryPostPromptExecutionDecisionForTesting_SelectsDomainBootstrapFromRememberedFamily() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var registry = new ToolRegistry();

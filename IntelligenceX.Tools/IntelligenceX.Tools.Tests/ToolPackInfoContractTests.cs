@@ -64,8 +64,17 @@ public class ToolPackInfoContractTests {
                 CountExpectedRemoteCapableTools(@case.ExpectedCatalog),
                 autonomySummary.GetProperty("remote_capable_tools").GetInt32());
             Assert.Equal(
+                CountExpectedTargetScopedTools(@case.ExpectedCatalog),
+                autonomySummary.GetProperty("target_scoped_tools").GetInt32());
+            Assert.Equal(
+                CountExpectedRemoteHostTargetingTools(@case.ExpectedCatalog),
+                autonomySummary.GetProperty("remote_host_targeting_tools").GetInt32());
+            Assert.Equal(
                 CountExpectedSetupAwareTools(@case.ExpectedCatalog),
                 autonomySummary.GetProperty("setup_aware_tools").GetInt32());
+            Assert.Equal(
+                CountExpectedEnvironmentDiscoverTools(@case.ExpectedCatalog),
+                autonomySummary.GetProperty("environment_discover_tools").GetInt32());
             Assert.Equal(
                 CountExpectedHandoffAwareTools(@case.ExpectedCatalog),
                 autonomySummary.GetProperty("handoff_aware_tools").GetInt32());
@@ -73,20 +82,47 @@ public class ToolPackInfoContractTests {
                 CountExpectedRecoveryAwareTools(@case.ExpectedCatalog),
                 autonomySummary.GetProperty("recovery_aware_tools").GetInt32());
             Assert.Equal(
+                CountExpectedWriteCapableTools(@case.ExpectedCatalog),
+                autonomySummary.GetProperty("write_capable_tools").GetInt32());
+            Assert.Equal(
+                CountExpectedAuthenticationRequiredTools(@case.ExpectedCatalog),
+                autonomySummary.GetProperty("authentication_required_tools").GetInt32());
+            Assert.Equal(
+                CountExpectedProbeCapableTools(@case.ExpectedCatalog),
+                autonomySummary.GetProperty("probe_capable_tools").GetInt32());
+            Assert.Equal(
                 CountExpectedCrossPackHandoffTools(@case.ExpectedCatalog),
                 autonomySummary.GetProperty("cross_pack_handoff_tools").GetInt32());
             Assert.Equal(
                 ReadExpectedRemoteCapableToolNames(@case.ExpectedCatalog),
                 ReadStringArray(autonomySummary.GetProperty("remote_capable_tool_names")));
             Assert.Equal(
+                ReadExpectedTargetScopedToolNames(@case.ExpectedCatalog),
+                ReadStringArray(autonomySummary.GetProperty("target_scoped_tool_names")));
+            Assert.Equal(
+                ReadExpectedRemoteHostTargetingToolNames(@case.ExpectedCatalog),
+                ReadStringArray(autonomySummary.GetProperty("remote_host_targeting_tool_names")));
+            Assert.Equal(
                 ReadExpectedSetupAwareToolNames(@case.ExpectedCatalog),
                 ReadStringArray(autonomySummary.GetProperty("setup_aware_tool_names")));
+            Assert.Equal(
+                ReadExpectedEnvironmentDiscoverToolNames(@case.ExpectedCatalog),
+                ReadStringArray(autonomySummary.GetProperty("environment_discover_tool_names")));
             Assert.Equal(
                 ReadExpectedHandoffAwareToolNames(@case.ExpectedCatalog),
                 ReadStringArray(autonomySummary.GetProperty("handoff_aware_tool_names")));
             Assert.Equal(
                 ReadExpectedRecoveryAwareToolNames(@case.ExpectedCatalog),
                 ReadStringArray(autonomySummary.GetProperty("recovery_aware_tool_names")));
+            Assert.Equal(
+                ReadExpectedWriteCapableToolNames(@case.ExpectedCatalog),
+                ReadStringArray(autonomySummary.GetProperty("write_capable_tool_names")));
+            Assert.Equal(
+                ReadExpectedAuthenticationRequiredToolNames(@case.ExpectedCatalog),
+                ReadStringArray(autonomySummary.GetProperty("authentication_required_tool_names")));
+            Assert.Equal(
+                ReadExpectedProbeCapableToolNames(@case.ExpectedCatalog),
+                ReadStringArray(autonomySummary.GetProperty("probe_capable_tool_names")));
             Assert.Equal(
                 ReadExpectedCrossPackHandoffToolNames(@case.ExpectedCatalog),
                 ReadStringArray(autonomySummary.GetProperty("cross_pack_handoff_tool_names")));
@@ -853,8 +889,24 @@ public class ToolPackInfoContractTests {
             || ToolExecutionScopes.IsRemoteCapable(entry.Traits.ExecutionScope));
     }
 
+    private static int CountExpectedTargetScopedTools(IReadOnlyList<ToolPackToolCatalogEntryModel> catalog) {
+        return catalog.Count(static entry =>
+            entry.Traits.SupportsTargetScoping
+            || entry.Traits.TargetScopeArguments.Count > 0);
+    }
+
+    private static int CountExpectedRemoteHostTargetingTools(IReadOnlyList<ToolPackToolCatalogEntryModel> catalog) {
+        return catalog.Count(static entry =>
+            entry.Traits.SupportsRemoteHostTargeting
+            || entry.Traits.RemoteHostArguments.Count > 0);
+    }
+
     private static int CountExpectedSetupAwareTools(IReadOnlyList<ToolPackToolCatalogEntryModel> catalog) {
         return catalog.Count(static entry => entry.Setup.IsSetupAware);
+    }
+
+    private static int CountExpectedEnvironmentDiscoverTools(IReadOnlyList<ToolPackToolCatalogEntryModel> catalog) {
+        return catalog.Count(static entry => entry.IsEnvironmentDiscoverTool);
     }
 
     private static int CountExpectedHandoffAwareTools(IReadOnlyList<ToolPackToolCatalogEntryModel> catalog) {
@@ -863,6 +915,18 @@ public class ToolPackInfoContractTests {
 
     private static int CountExpectedRecoveryAwareTools(IReadOnlyList<ToolPackToolCatalogEntryModel> catalog) {
         return catalog.Count(static entry => entry.Recovery.IsRecoveryAware);
+    }
+
+    private static int CountExpectedWriteCapableTools(IReadOnlyList<ToolPackToolCatalogEntryModel> catalog) {
+        return catalog.Count(static entry => entry.IsWriteCapable);
+    }
+
+    private static int CountExpectedAuthenticationRequiredTools(IReadOnlyList<ToolPackToolCatalogEntryModel> catalog) {
+        return catalog.Count(static entry => entry.RequiresAuthentication);
+    }
+
+    private static int CountExpectedProbeCapableTools(IReadOnlyList<ToolPackToolCatalogEntryModel> catalog) {
+        return catalog.Count(static entry => entry.SupportsConnectivityProbe);
     }
 
     private static int CountExpectedCrossPackHandoffTools(IReadOnlyList<ToolPackToolCatalogEntryModel> catalog) {
@@ -876,6 +940,24 @@ public class ToolPackInfoContractTests {
                 entry.Traits.SupportsRemoteHostTargeting
                 || entry.Traits.RemoteHostArguments.Count > 0
                 || ToolExecutionScopes.IsRemoteCapable(entry.Traits.ExecutionScope))
+            .Select(static entry => entry.Name)
+            .Where(static name => !string.IsNullOrWhiteSpace(name))
+            .OrderBy(static name => name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static string[] ReadExpectedTargetScopedToolNames(IReadOnlyList<ToolPackToolCatalogEntryModel> catalog) {
+        return catalog
+            .Where(static entry => entry.Traits.SupportsTargetScoping || entry.Traits.TargetScopeArguments.Count > 0)
+            .Select(static entry => entry.Name)
+            .Where(static name => !string.IsNullOrWhiteSpace(name))
+            .OrderBy(static name => name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static string[] ReadExpectedRemoteHostTargetingToolNames(IReadOnlyList<ToolPackToolCatalogEntryModel> catalog) {
+        return catalog
+            .Where(static entry => entry.Traits.SupportsRemoteHostTargeting || entry.Traits.RemoteHostArguments.Count > 0)
             .Select(static entry => entry.Name)
             .Where(static name => !string.IsNullOrWhiteSpace(name))
             .OrderBy(static name => name, StringComparer.OrdinalIgnoreCase)
@@ -899,6 +981,15 @@ public class ToolPackInfoContractTests {
             .ToArray();
     }
 
+    private static string[] ReadExpectedEnvironmentDiscoverToolNames(IReadOnlyList<ToolPackToolCatalogEntryModel> catalog) {
+        return catalog
+            .Where(static entry => entry.IsEnvironmentDiscoverTool)
+            .Select(static entry => entry.Name)
+            .Where(static name => !string.IsNullOrWhiteSpace(name))
+            .OrderBy(static name => name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
     private static string[] ReadExpectedHandoffAwareToolNames(IReadOnlyList<ToolPackToolCatalogEntryModel> catalog) {
         return catalog
             .Where(static entry => entry.Handoff.IsHandoffAware)
@@ -911,6 +1002,33 @@ public class ToolPackInfoContractTests {
     private static string[] ReadExpectedRecoveryAwareToolNames(IReadOnlyList<ToolPackToolCatalogEntryModel> catalog) {
         return catalog
             .Where(static entry => entry.Recovery.IsRecoveryAware)
+            .Select(static entry => entry.Name)
+            .Where(static name => !string.IsNullOrWhiteSpace(name))
+            .OrderBy(static name => name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static string[] ReadExpectedWriteCapableToolNames(IReadOnlyList<ToolPackToolCatalogEntryModel> catalog) {
+        return catalog
+            .Where(static entry => entry.IsWriteCapable)
+            .Select(static entry => entry.Name)
+            .Where(static name => !string.IsNullOrWhiteSpace(name))
+            .OrderBy(static name => name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static string[] ReadExpectedAuthenticationRequiredToolNames(IReadOnlyList<ToolPackToolCatalogEntryModel> catalog) {
+        return catalog
+            .Where(static entry => entry.RequiresAuthentication)
+            .Select(static entry => entry.Name)
+            .Where(static name => !string.IsNullOrWhiteSpace(name))
+            .OrderBy(static name => name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static string[] ReadExpectedProbeCapableToolNames(IReadOnlyList<ToolPackToolCatalogEntryModel> catalog) {
+        return catalog
+            .Where(static entry => entry.SupportsConnectivityProbe)
             .Select(static entry => entry.Name)
             .Where(static name => !string.IsNullOrWhiteSpace(name))
             .OrderBy(static name => name, StringComparer.OrdinalIgnoreCase)

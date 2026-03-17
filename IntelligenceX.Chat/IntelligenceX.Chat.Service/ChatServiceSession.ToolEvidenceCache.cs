@@ -278,6 +278,9 @@ internal sealed partial class ChatServiceSession {
         sb.AppendLine("[Cached evidence fallback]");
         sb.AppendLine(CachedToolEvidenceMarker);
         sb.AppendLine("Live tool execution did not complete in this turn, so I reused recent read-only evidence from this session.");
+        if (TryBuildBackgroundWorkDependencyBlockedGuidance(normalizedThreadId, out var backgroundWorkDependencyGuidance)) {
+            sb.AppendLine(backgroundWorkDependencyGuidance);
+        }
         sb.AppendLine();
         sb.AppendLine("Recent evidence:");
         for (var i = 0; i < selected.Length; i++) {

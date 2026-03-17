@@ -652,4 +652,18 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         Assert.False(Assert.IsType<bool>(result));
     }
+
+    [Fact]
+    public void BuildExecutionContractBlockerText_ExplainsBlockedBackgroundPrerequisites() {
+        var blockerText = Assert.IsType<string>(BuildExecutionContractBlockerTextMethod.Invoke(
+            null,
+            new object?[] {
+                "Continue with the prepared follow-up.",
+                "I can keep going with the queued work.",
+                "background_work_waiting_on_prerequisites"
+            }));
+
+        Assert.Contains("Reason code: background_work_waiting_on_prerequisites", blockerText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("waiting on prerequisite helper steps", blockerText, StringComparison.OrdinalIgnoreCase);
+    }
 }

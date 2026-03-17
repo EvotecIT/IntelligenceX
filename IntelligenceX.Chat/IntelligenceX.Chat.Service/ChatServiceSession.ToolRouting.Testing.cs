@@ -242,6 +242,34 @@ internal sealed partial class ChatServiceSession {
         return ResolveThreadBackgroundWorkSnapshot(threadId);
     }
 
+    internal bool TryBuildBackgroundWorkDependencyRecoveryPromptForTesting(
+        string threadId,
+        string userRequest,
+        string assistantDraft,
+        IReadOnlyList<ToolDefinition> toolDefinitions,
+        out string prompt,
+        out string reason) {
+        ArgumentNullException.ThrowIfNull(threadId);
+        ArgumentNullException.ThrowIfNull(userRequest);
+        ArgumentNullException.ThrowIfNull(assistantDraft);
+        ArgumentNullException.ThrowIfNull(toolDefinitions);
+        return TryBuildBackgroundWorkDependencyRecoveryPrompt(threadId, userRequest, assistantDraft, toolDefinitions, out prompt, out reason);
+    }
+
+    internal bool TryBuildBackgroundWorkDependencyRecoveryBlockerTextForTesting(
+        string threadId,
+        string userRequest,
+        string assistantDraft,
+        IReadOnlyList<ToolDefinition> toolDefinitions,
+        out string text,
+        out string reason) {
+        ArgumentNullException.ThrowIfNull(threadId);
+        ArgumentNullException.ThrowIfNull(userRequest);
+        ArgumentNullException.ThrowIfNull(assistantDraft);
+        ArgumentNullException.ThrowIfNull(toolDefinitions);
+        return TryBuildBackgroundWorkDependencyRecoveryBlockerText(threadId, userRequest, assistantDraft, toolDefinitions, out text, out reason);
+    }
+
     internal void RememberToolHandoffBackgroundWorkForTesting(
         string threadId,
         IReadOnlyList<ToolDefinition> toolDefinitions,
@@ -356,8 +384,10 @@ internal sealed partial class ChatServiceSession {
         return ResolveBackgroundWorkStorePath();
     }
 
-    internal static string BuildBackgroundWorkQueuedStatusMessageForTesting(int queuedCount) {
-        return BuildBackgroundWorkQueuedStatusMessage(queuedCount);
+    internal static string BuildBackgroundWorkQueuedStatusMessageForTesting(
+        int queuedCount,
+        IReadOnlyList<ThreadBackgroundWorkItem>? items = null) {
+        return BuildBackgroundWorkQueuedStatusMessage(queuedCount, items);
     }
 
     internal static string BuildBackgroundWorkReadyStatusMessageForTesting(

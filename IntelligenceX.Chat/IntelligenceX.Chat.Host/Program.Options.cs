@@ -69,6 +69,7 @@ internal static partial class Program {
         public bool EnableBuiltInPackLoading { get; set; } = true;
         public bool UseDefaultBuiltInToolAssemblyNames { get; set; } = true;
         public List<string> BuiltInToolAssemblyNames { get; } = new();
+        public List<string> BuiltInToolProbePaths { get; } = new();
         public bool EnableDefaultPluginPaths { get; set; } = true;
         public List<string> PluginPaths { get; } = new();
         public List<string> DisabledPackIds { get; } = new();
@@ -87,6 +88,7 @@ internal static partial class Program {
         ToolAuthenticationRuntimePreset IToolRuntimePolicySettings.AuthenticationRuntimePreset => AuthenticationRuntimePreset;
         IReadOnlyList<string> IToolPackRuntimeSettings.AllowedRoots => AllowedRoots;
         IReadOnlyList<string> IToolPackRuntimeSettings.BuiltInToolAssemblyNames => BuiltInToolAssemblyNames;
+        IReadOnlyList<string> IToolPackRuntimeSettings.BuiltInToolProbePaths => BuiltInToolProbePaths;
         IReadOnlyList<string> IToolPackRuntimeSettings.PluginPaths => PluginPaths;
         IReadOnlyList<string> IToolPackRuntimeSettings.DisabledPackIds => DisabledPackIds;
         IReadOnlyList<string> IToolPackRuntimeSettings.EnabledPackIds => EnabledPackIds;
@@ -318,6 +320,12 @@ internal static partial class Program {
                             return options;
                         }
                         options.BuiltInToolAssemblyNames.Add(builtInAssemblyName);
+                        break;
+                    case "--built-in-tool-probe-path":
+                        if (!TryGetValue(args, ref i, out var builtInToolProbePath, out error)) {
+                            return options;
+                        }
+                        options.BuiltInToolProbePaths.Add(builtInToolProbePath);
                         break;
                     case "--no-default-built-in-tool-assemblies":
                         options.UseDefaultBuiltInToolAssemblyNames = false;
@@ -643,6 +651,9 @@ internal static partial class Program {
             if (BuiltInToolAssemblyNames.Count > 0) {
                 clone.BuiltInToolAssemblyNames.AddRange(BuiltInToolAssemblyNames);
             }
+            if (BuiltInToolProbePaths.Count > 0) {
+                clone.BuiltInToolProbePaths.AddRange(BuiltInToolProbePaths);
+            }
             if (PluginPaths.Count > 0) {
                 clone.PluginPaths.AddRange(PluginPaths);
             }
@@ -719,6 +730,11 @@ internal static partial class Program {
             BuiltInToolAssemblyNames.Clear();
             if (source.BuiltInToolAssemblyNames.Count > 0) {
                 BuiltInToolAssemblyNames.AddRange(source.BuiltInToolAssemblyNames);
+            }
+
+            BuiltInToolProbePaths.Clear();
+            if (source.BuiltInToolProbePaths.Count > 0) {
+                BuiltInToolProbePaths.AddRange(source.BuiltInToolProbePaths);
             }
 
             PluginPaths.Clear();

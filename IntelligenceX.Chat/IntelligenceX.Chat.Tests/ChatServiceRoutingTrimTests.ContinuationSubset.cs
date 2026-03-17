@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.Service;
+using IntelligenceX.Chat.Tooling;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.Common;
 using Xunit;
@@ -422,6 +423,51 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.True(result);
         Assert.Contains(subset, tool => string.Equals(tool.Name, "ad_ldap_diagnostics", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(subset, tool => string.Equals(tool.Name, "ad_monitoring_probe_run", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void TryGetContinuationToolSubset_ReordersProbeHelpersAheadOfDependentAuthTools() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        const string threadId = "thread-continuation-subset-contract-helper-order";
+        var allDefinitions = new List<ToolDefinition> {
+            new(
+                "eventlog_live_query",
+                "Inspect live event logs on a remote machine after runtime profile validation.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties(),
+                authentication: new ToolAuthenticationContract {
+                    IsAuthenticationAware = true,
+                    RequiresAuthentication = true,
+                    AuthenticationContractId = "ix.auth.runtime.v1",
+                    Mode = ToolAuthenticationMode.ProfileReference,
+                    ProfileIdArgumentName = "profile_id",
+                    SupportsConnectivityProbe = true,
+                    ProbeToolName = "eventlog_channels_list"
+                }),
+            new(
+                "eventlog_channels_list",
+                "List available event log channels and validate access for the target machine.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties()),
+            new(
+                "system_info",
+                "Inspect system identity.",
+                ToolSchema.Object(("computer_name", ToolSchema.String("Computer"))).NoAdditionalProperties())
+        };
+
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(allDefinitions));
+        RememberWeightedToolSubsetMethod.Invoke(
+            session,
+            new object?[] {
+                threadId,
+                new List<ToolDefinition> { allDefinitions[0], allDefinitions[1] },
+                allDefinitions.Count
+            });
+
+        var result = session.TryGetContinuationToolSubsetForTesting(threadId, "continue", allDefinitions, out var subset);
+
+        Assert.True(result);
+        Assert.Equal(2, subset.Count);
+        Assert.Equal("eventlog_channels_list", subset[0].Name);
+        Assert.Equal("eventlog_live_query", subset[1].Name);
     }
 
     private static List<ToolDefinition> BuildContinuationSubsetTestToolDefinitions() {

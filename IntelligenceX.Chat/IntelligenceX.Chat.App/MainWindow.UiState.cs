@@ -643,12 +643,12 @@ public sealed partial class MainWindow : Window {
 
     private (object? Effective, object? Scoped, object? Global) BuildPublishedBackgroundSchedulerState(SessionCapabilityBackgroundSchedulerDto? fallbackBackgroundScheduler) {
         return (
-            BuildBackgroundSchedulerState(
+            BuildPublishedBackgroundSchedulerRuntimeState(
                 _backgroundSchedulerStatusSnapshot
                 ?? _backgroundSchedulerGlobalStatusSnapshot
                 ?? fallbackBackgroundScheduler),
-            BuildBackgroundSchedulerState(_backgroundSchedulerScopedStatusSnapshot),
-            BuildBackgroundSchedulerState(
+            BuildPublishedBackgroundSchedulerRuntimeState(_backgroundSchedulerScopedStatusSnapshot),
+            BuildPublishedBackgroundSchedulerRuntimeState(
                 _backgroundSchedulerGlobalStatusSnapshot
                 ?? fallbackBackgroundScheduler));
     }

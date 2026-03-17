@@ -82,6 +82,7 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
     public bool EnableBuiltInPackLoading { get; set; } = true;
     public bool UseDefaultBuiltInToolAssemblyNames { get; set; } = true;
     public List<string> BuiltInToolAssemblyNames { get; } = new();
+    public List<string> BuiltInToolProbePaths { get; } = new();
     public bool EnableDefaultPluginPaths { get; set; } = true;
     public List<string> PluginPaths { get; } = new();
     internal List<string> RuntimePluginPaths { get; } = new();
@@ -101,6 +102,7 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
     ToolAuthenticationRuntimePreset IToolRuntimePolicySettings.AuthenticationRuntimePreset => AuthenticationRuntimePreset;
     IReadOnlyList<string> IToolPackRuntimeSettings.AllowedRoots => AllowedRoots;
     IReadOnlyList<string> IToolPackRuntimeSettings.BuiltInToolAssemblyNames => BuiltInToolAssemblyNames;
+    IReadOnlyList<string> IToolPackRuntimeSettings.BuiltInToolProbePaths => BuiltInToolProbePaths;
     IReadOnlyList<string> IToolPackRuntimeSettings.PluginPaths => GetEffectivePluginPaths();
     IReadOnlyList<string> IToolPackRuntimeSettings.DisabledPackIds => DisabledPackIds;
     IReadOnlyList<string> IToolPackRuntimeSettings.EnabledPackIds => EnabledPackIds;
@@ -602,6 +604,13 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
                 options.BuiltInToolAssemblyNames.Add(value!);
                 continue;
             }
+            if (arg is "--built-in-tool-probe-path") {
+                if (!TryConsume(args, ref i, out var value, out error)) {
+                    return options;
+                }
+                options.BuiltInToolProbePaths.Add(value!);
+                continue;
+            }
             if (arg is "--no-default-built-in-tool-assemblies") {
                 options.UseDefaultBuiltInToolAssemblyNames = false;
                 continue;
@@ -786,6 +795,7 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
         Console.WriteLine("  --no-built-in-packs    Disable built-in pack loading (plugin-only mode).");
         Console.WriteLine("  --built-in-packs       Enable built-in pack loading (default: on).");
         Console.WriteLine("  --built-in-tool-assembly <NAME> Additional built-in tool assembly name to include (repeatable).");
+        Console.WriteLine("  --built-in-tool-probe-path <PATH> Runtime-only built-in tool assembly probe root (repeatable; not persisted to profiles).");
         Console.WriteLine("  --no-default-built-in-tool-assemblies Disable built-in discovery from Chat's default assembly allowlist.");
         Console.WriteLine("  --default-built-in-tool-assemblies Re-enable built-in discovery from Chat's default assembly allowlist.");
         Console.WriteLine("  --plugin-path <PATH>    Runtime-only folder-based plugin path (repeatable; not persisted to profiles).");

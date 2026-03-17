@@ -239,6 +239,11 @@ public sealed class ChatContractsProtocolStabilityTests {
                     IsPackInfoTool = false,
                     IsEnvironmentDiscoverTool = true,
                     IsWriteCapable = false,
+                    RequiresAuthentication = true,
+                    AuthenticationContractId = "ix.auth.runtime.v1",
+                    AuthenticationArguments = new[] { "machine_name" },
+                    SupportsConnectivityProbe = true,
+                    ProbeToolName = "eventlog_channels_list",
                     IsExecutionAware = true,
                     ExecutionContractId = "ix.tool-execution.v1",
                     ExecutionScope = "local_or_remote",
@@ -294,6 +299,11 @@ public sealed class ChatContractsProtocolStabilityTests {
         Assert.Equal("ix.tool-execution.v1", tool.ExecutionContractId);
         Assert.False(tool.IsPackInfoTool);
         Assert.True(tool.IsEnvironmentDiscoverTool);
+        Assert.True(tool.RequiresAuthentication);
+        Assert.Equal("ix.auth.runtime.v1", tool.AuthenticationContractId);
+        Assert.Equal(new[] { "machine_name" }, tool.AuthenticationArguments);
+        Assert.True(tool.SupportsConnectivityProbe);
+        Assert.Equal("eventlog_channels_list", tool.ProbeToolName);
         Assert.Equal("local_or_remote", tool.ExecutionScope);
         Assert.True(tool.SupportsLocalExecution);
         Assert.True(tool.SupportsRemoteExecution);

@@ -21,10 +21,20 @@ internal sealed partial class ChatServiceSession {
     private const int PlannerCrossPackContinuationPriorityBoost = 120;
     private const int PlannerEnvironmentDiscoverPriorityBoost = 160;
     private const int PlannerSetupAwarePriorityBoost = 110;
+    private const int PlannerStructuredMutatingActionPriorityBoost = 140;
+    private const int PlannerContractHelperPriorityStep = 45;
+    private const int PlannerContractHelperPriorityMaxBoost = 180;
+    private const int PlannerWriteFollowUpPriorityPenalty = 90;
+    private const int PlannerAuthFollowUpPriorityPenalty = 55;
     private const double WeightedRoutingRemoteCapableScoreBoost = 3.5d;
     private const double WeightedRoutingCrossPackContinuationScoreBoost = 1.75d;
     private const double WeightedRoutingEnvironmentDiscoverScoreBoost = 2.4d;
     private const double WeightedRoutingSetupAwareScoreBoost = 1.65d;
+    private const double WeightedRoutingStructuredMutatingActionScoreBoost = 2.25d;
+    private const double WeightedRoutingContractHelperScoreStep = 1.1d;
+    private const double WeightedRoutingContractHelperScoreMaxBoost = 3.3d;
+    private const double WeightedRoutingWriteFollowUpScorePenalty = 1.85d;
+    private const double WeightedRoutingAuthFollowUpScorePenalty = 1.1d;
 
     private IReadOnlyList<ToolDefinition> SelectDeterministicToolSubset(IReadOnlyList<ToolDefinition> definitions, int limit) {
         return SelectDeterministicToolSubset(definitions, limit, _toolOrchestrationCatalog);
@@ -284,6 +294,9 @@ internal sealed partial class ChatServiceSession {
             }
             if (toolScore.SetupAwareBoost > 0.01d) {
                 reasons.Add("setup-aware preflight support");
+            }
+            if (toolScore.ContractHelperBoost > 0.01d) {
+                reasons.Add("probe/setup prerequisite support");
             }
             if (toolScore.Adjustment > 0.2d) {
                 reasons.Add("recent tool success");

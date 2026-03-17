@@ -524,10 +524,15 @@ internal static partial class Program {
             var parts = new List<string> {
                 $"tools={summary.TotalTools}",
                 $"remote-capable={summary.RemoteCapableTools}",
+                $"target-scoped={summary.TargetScopedTools}",
+                $"remote-targeting={summary.RemoteHostTargetingTools}",
                 $"setup-aware={summary.SetupAwareTools}",
                 $"environment-discover={summary.EnvironmentDiscoverTools}",
                 $"handoff-aware={summary.HandoffAwareTools}",
                 $"recovery-aware={summary.RecoveryAwareTools}",
+                $"write-capable={summary.WriteCapableTools}",
+                $"auth-required={summary.AuthenticationRequiredTools}",
+                $"probe-capable={summary.ProbeCapableTools}",
                 $"cross-pack={summary.CrossPackHandoffTools}"
             };
             if (summary.CrossPackTargetPacks.Length > 0) {
@@ -562,6 +567,30 @@ internal static partial class Program {
 
             if (entry.RemoteHostArguments.Count > 0) {
                 details.Add("remote_args=" + string.Join("/", entry.RemoteHostArguments));
+            }
+
+            if (entry.TargetScopeArguments.Count > 0) {
+                details.Add("target_scope=" + string.Join("/", entry.TargetScopeArguments));
+            }
+
+            if (entry.IsWriteCapable) {
+                details.Add("write=mutating");
+            }
+
+            if (entry.RequiresAuthentication) {
+                details.Add("auth=" + (entry.AuthenticationContractId.Length > 0 ? entry.AuthenticationContractId : "required"));
+                var authenticationArguments = entry.AuthenticationArguments
+                    .Concat(definition.Authentication?.GetSchemaArgumentNames() ?? Array.Empty<string>())
+                    .Where(static value => !string.IsNullOrWhiteSpace(value))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+                if (authenticationArguments.Length > 0) {
+                    details.Add("auth_args=" + string.Join("/", authenticationArguments));
+                }
+            }
+
+            if (entry.SupportsConnectivityProbe || entry.ProbeToolName.Length > 0) {
+                details.Add("probe=" + (entry.ProbeToolName.Length > 0 ? entry.ProbeToolName : "supported"));
             }
 
             if (entry.SetupToolName.Length > 0) {

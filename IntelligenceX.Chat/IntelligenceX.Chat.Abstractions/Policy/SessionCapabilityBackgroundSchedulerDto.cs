@@ -137,9 +137,54 @@ public sealed record SessionCapabilityBackgroundSchedulerDto {
     public int RunningThreadCount { get; init; }
 
     /// <summary>
+    /// Number of tracked threads whose queued work is blocked on prerequisite helpers.
+    /// </summary>
+    public int DependencyBlockedThreadCount { get; init; }
+
+    /// <summary>
     /// Total queued work items across tracked threads.
     /// </summary>
     public int QueuedItemCount { get; init; }
+
+    /// <summary>
+    /// Total queued work items currently blocked on prerequisite helpers.
+    /// </summary>
+    public int DependencyBlockedItemCount { get; init; }
+
+    /// <summary>
+    /// Sample of helper tool names currently blocking queued dependent work across tracked threads.
+    /// </summary>
+    public string[] DependencyHelperToolNames { get; init; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Best-effort normalized recovery reason for dependency-blocked work across tracked threads.
+    /// </summary>
+    public string DependencyRecoveryReason { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Best-effort normalized next action for dependency-blocked work across tracked threads.
+    /// </summary>
+    public string DependencyNextAction { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Helper tools whose previously attempted executions are still pending retry/cooldown across tracked threads.
+    /// </summary>
+    public string[] DependencyRetryCooldownHelperToolNames { get; init; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Helper tools indicating runtime authentication context is required before dependent work can continue.
+    /// </summary>
+    public string[] DependencyAuthenticationHelperToolNames { get; init; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Minimal runtime authentication argument names inferred for blocked dependent work across tracked threads.
+    /// </summary>
+    public string[] DependencyAuthenticationArgumentNames { get; init; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Setup helpers indicating additional setup or runtime-profile context is required before dependent work can continue.
+    /// </summary>
+    public string[] DependencySetupHelperToolNames { get; init; } = Array.Empty<string>();
 
     /// <summary>
     /// Total ready work items across tracked threads.

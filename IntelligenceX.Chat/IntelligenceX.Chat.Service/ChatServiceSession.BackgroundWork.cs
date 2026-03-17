@@ -31,6 +31,7 @@ internal sealed partial class ChatServiceSession {
         string Title,
         string Request,
         string State,
+        string[] DependencyItemIds,
         string[] EvidenceToolNames,
         string Kind,
         string Mutability,
@@ -69,6 +70,18 @@ internal sealed partial class ChatServiceSession {
     private readonly record struct BackgroundWorkFollowUpSummary(
         string[] FollowUpKinds,
         string PriorityFocus);
+
+    private readonly record struct BackgroundWorkDependencySummary(
+        int BlockedItemCount,
+        string[] HelperToolNames);
+
+    private readonly record struct BackgroundWorkDependencyRecoverySummary(
+        int BlockedItemCount,
+        string[] HelperToolNames,
+        string[] RetryCooldownHelperToolNames,
+        string[] AuthenticationHelperToolNames,
+        string[] AuthenticationArgumentNames,
+        string[] SetupHelperToolNames);
 
     private ThreadBackgroundWorkSnapshot ResolveThreadBackgroundWorkSnapshot(string threadId) {
         var normalizedThreadId = (threadId ?? string.Empty).Trim();
@@ -159,6 +172,7 @@ internal sealed partial class ChatServiceSession {
             Title: (title ?? string.Empty).Trim(),
             Request: NormalizeWorkingMemoryAnswerPlanFocus(request),
             State: NormalizeBackgroundWorkState(state),
+            DependencyItemIds: Array.Empty<string>(),
             EvidenceToolNames: NormalizeBackgroundWorkToolNames(evidenceToolNames),
             Kind: BackgroundWorkKindPendingAction,
             Mutability: NormalizeBackgroundWorkMutability(mutability),
@@ -196,6 +210,7 @@ internal sealed partial class ChatServiceSession {
 
         var nowTicks = DateTime.UtcNow.Ticks;
         var seededItems = new List<ThreadBackgroundWorkItem>();
+        var seededItemIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         for (var i = 0; i < toolCalls.Count; i++) {
             var call = toolCalls[i];
             var callId = (call.CallId ?? string.Empty).Trim();
@@ -220,7 +235,29 @@ internal sealed partial class ChatServiceSession {
                              edge: orchestrationEntry.HandoffEdges[edgeIndex],
                              createdUtcTicks: nowTicks,
                              updatedUtcTicks: nowTicks)) {
-                    seededItems.Add(item);
+                    var enrichedItem = EnrichBackgroundWorkDependentItemWithContractMetadata(item, toolDefinitions);
+                    var helperItems = CreateContractHelperBackgroundWorkItems(
+                                 toolDefinitions,
+                                 enrichedItem,
+                                 createdUtcTicks: nowTicks,
+                                 updatedUtcTicks: nowTicks)
+                        .ToArray();
+                    var dependentItem = helperItems.Length == 0
+                        ? enrichedItem
+                        : enrichedItem with {
+                            State = BackgroundWorkStateQueued,
+                            DependencyItemIds = NormalizeBackgroundWorkDependencyItemIds(helperItems.Select(static helperItem => helperItem.Id))
+                        };
+
+                    if (seededItemIds.Add(dependentItem.Id)) {
+                        seededItems.Add(dependentItem);
+                    }
+
+                    foreach (var helperItem in helperItems) {
+                        if (seededItemIds.Add(helperItem.Id)) {
+                            seededItems.Add(helperItem);
+                        }
+                    }
                 }
             }
         }
@@ -234,7 +271,46 @@ internal sealed partial class ChatServiceSession {
             seededItems,
             seededItems.Select(static item => item.SourceToolName).Where(static value => !string.IsNullOrWhiteSpace(value)).ToArray());
         var mergedSnapshot = MergeThreadBackgroundWorkSnapshots(rememberedSnapshot, seededSnapshot);
+        mergedSnapshot = NormalizeThreadBackgroundWorkDependencyStates(mergedSnapshot);
         RememberThreadBackgroundWorkSnapshot(normalizedThreadId, mergedSnapshot, nowTicks);
+    }
+
+    private ThreadBackgroundWorkItem EnrichBackgroundWorkDependentItemWithContractMetadata(
+        ThreadBackgroundWorkItem item,
+        IReadOnlyList<ToolDefinition> toolDefinitions) {
+        if (toolDefinitions is null
+            || toolDefinitions.Count == 0
+            || string.IsNullOrWhiteSpace(item.TargetToolName)
+            || !TryGetToolDefinitionByName(toolDefinitions, item.TargetToolName, out var dependentDefinition)) {
+            return item;
+        }
+
+        var segments = new List<string>();
+        var existingReference = (item.ResultReference ?? string.Empty).Trim();
+        if (existingReference.Length > 0) {
+            segments.Add(existingReference);
+        }
+
+        if (ToolRequiresAuthentication(dependentDefinition, _toolOrchestrationCatalog)) {
+            segments.Add("dependent_requires_auth=true");
+            var authenticationArguments = dependentDefinition.Authentication?.GetSchemaArgumentNames() ?? Array.Empty<string>();
+            var normalizedAuthenticationArguments = authenticationArguments
+                .Select(NormalizeBackgroundWorkToken)
+                .Where(static value => value.Length > 0)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            if (normalizedAuthenticationArguments.Length > 0) {
+                segments.Add("dependent_auth_args=" + string.Join(",", normalizedAuthenticationArguments));
+            }
+        }
+
+        if (segments.Count == 0) {
+            return item;
+        }
+
+        return item with {
+            ResultReference = string.Join(";", segments)
+        };
     }
 
     private bool TryBuildReadyBackgroundWorkToolCall(
@@ -316,12 +392,35 @@ internal sealed partial class ChatServiceSession {
         }
 
         if (readyCandidateIndexes.Count == 0) {
-            reason = "background_work_no_ready_handoffs";
+            var dependencySummary = BuildBackgroundWorkDependencySummary(snapshot.Items);
+            reason = dependencySummary.BlockedItemCount > 0
+                ? "background_work_waiting_on_prerequisites"
+                : "background_work_no_ready_handoffs";
             return false;
         }
 
+        var readyTargetDefinitions = new List<ToolDefinition>(readyCandidateIndexes.Count);
+        for (var i = 0; i < readyCandidateIndexes.Count; i++) {
+            var readyItem = snapshot.Items[readyCandidateIndexes[i]];
+            if (TryGetToolDefinitionByName(toolDefinitions, readyItem.TargetToolName, out var readyDefinition)) {
+                readyTargetDefinitions.Add(readyDefinition);
+            }
+        }
+
+        var helperDemandByToolName = BuildContractHelperDemandByToolName(readyTargetDefinitions, _toolOrchestrationCatalog);
+        var availableReadyTargetToolNames = new HashSet<string>(
+            readyTargetDefinitions
+                .Select(static definition => NormalizeToolNameForAnswerPlan(definition?.Name))
+                .Where(static toolName => toolName.Length > 0),
+            StringComparer.OrdinalIgnoreCase);
+
         readyCandidateIndexes.Sort((leftIndex, rightIndex) =>
-            CompareBackgroundWorkReplayPriority(snapshot.Items[leftIndex], snapshot.Items[rightIndex]));
+            CompareBackgroundWorkReplayPriority(
+                snapshot.Items[leftIndex],
+                snapshot.Items[rightIndex],
+                toolDefinitions,
+                helperDemandByToolName,
+                availableReadyTargetToolNames));
 
         var nowUtcTicks = DateTime.UtcNow.Ticks;
         for (var candidateIndex = 0; candidateIndex < readyCandidateIndexes.Count; candidateIndex++) {
@@ -414,10 +513,22 @@ internal sealed partial class ChatServiceSession {
             return true;
         }
 
+        var blockedDependencySummary = BuildBackgroundWorkDependencySummary(snapshot.Items);
+        if (blockedDependencySummary.BlockedItemCount > 0
+            && (string.Equals(reason, "background_work_retry_cooldown_active", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(reason, "background_work_no_ready_handoffs", StringComparison.OrdinalIgnoreCase))) {
+            reason = "background_work_waiting_on_prerequisites";
+        }
+
         return false;
     }
 
-    private static int CompareBackgroundWorkReplayPriority(ThreadBackgroundWorkItem left, ThreadBackgroundWorkItem right) {
+    private int CompareBackgroundWorkReplayPriority(
+        ThreadBackgroundWorkItem left,
+        ThreadBackgroundWorkItem right,
+        IReadOnlyList<ToolDefinition> toolDefinitions,
+        IReadOnlyDictionary<string, int>? helperDemandByToolName,
+        IReadOnlySet<string>? availableReadyTargetToolNames) {
         var followUpPriorityComparison = ToolHandoffFollowUpPriorities.Normalize(right.FollowUpPriority)
             .CompareTo(ToolHandoffFollowUpPriorities.Normalize(left.FollowUpPriority));
         if (followUpPriorityComparison != 0) {
@@ -428,6 +539,21 @@ internal sealed partial class ChatServiceSession {
             .CompareTo(GetBackgroundWorkFollowUpKindSortOrder(right.FollowUpKind));
         if (followUpKindComparison != 0) {
             return followUpKindComparison;
+        }
+
+        var helperDemandComparison = GetContractHelperDemand(right.TargetToolName, helperDemandByToolName)
+            .CompareTo(GetContractHelperDemand(left.TargetToolName, helperDemandByToolName));
+        if (helperDemandComparison != 0) {
+            return helperDemandComparison;
+        }
+
+        var dependencyComparison = CompareBackgroundWorkContractDependencyOrder(
+            left.TargetToolName,
+            right.TargetToolName,
+            toolDefinitions,
+            availableReadyTargetToolNames);
+        if (dependencyComparison != 0) {
+            return dependencyComparison;
         }
 
         var attemptComparison = Math.Max(0, left.ExecutionAttemptCount).CompareTo(Math.Max(0, right.ExecutionAttemptCount));
@@ -446,6 +572,18 @@ internal sealed partial class ChatServiceSession {
         }
 
         return StringComparer.OrdinalIgnoreCase.Compare(left.Id, right.Id);
+    }
+
+    private int CompareBackgroundWorkContractDependencyOrder(
+        string? leftTargetToolName,
+        string? rightTargetToolName,
+        IReadOnlyList<ToolDefinition> toolDefinitions,
+        IReadOnlySet<string>? availableReadyTargetToolNames) {
+        var leftHasHelper = TryGetToolDefinitionByName(toolDefinitions, leftTargetToolName ?? string.Empty, out var leftDefinition)
+            && HasAvailableContractHelper(leftDefinition, availableReadyTargetToolNames, _toolOrchestrationCatalog);
+        var rightHasHelper = TryGetToolDefinitionByName(toolDefinitions, rightTargetToolName ?? string.Empty, out var rightDefinition)
+            && HasAvailableContractHelper(rightDefinition, availableReadyTargetToolNames, _toolOrchestrationCatalog);
+        return rightHasHelper.CompareTo(leftHasHelper);
     }
 
     private static long ResolveBackgroundWorkReplayPriorityTicks(ThreadBackgroundWorkItem item) {
@@ -631,6 +769,7 @@ internal sealed partial class ChatServiceSession {
                     Title: BuildToolHandoffBackgroundWorkTitle(targetToolName, value),
                     Request: BuildToolHandoffBackgroundWorkRequest(targetToolName, pair.Key, value, sourceToolName),
                     State: BackgroundWorkStateReady,
+                    DependencyItemIds: Array.Empty<string>(),
                     EvidenceToolNames: NormalizeBackgroundWorkToolNames(new[] { sourceToolName }),
                     Kind: BackgroundWorkKindToolHandoff,
                     Mutability: BackgroundWorkMutabilityReadOnly,
@@ -650,6 +789,80 @@ internal sealed partial class ChatServiceSession {
                     CreatedUtcTicks: createdUtcTicks,
                     UpdatedUtcTicks: updatedUtcTicks);
             }
+        }
+    }
+
+    private IEnumerable<ThreadBackgroundWorkItem> CreateContractHelperBackgroundWorkItems(
+        IReadOnlyList<ToolDefinition> toolDefinitions,
+        ThreadBackgroundWorkItem dependentItem,
+        long createdUtcTicks,
+        long updatedUtcTicks) {
+        if (toolDefinitions is null
+            || toolDefinitions.Count == 0
+            || string.IsNullOrWhiteSpace(dependentItem.TargetToolName)
+            || !TryGetToolDefinitionByName(toolDefinitions, dependentItem.TargetToolName, out var dependentDefinition)) {
+            yield break;
+        }
+
+        var helperCandidates = new[] {
+            (ToolName: ResolveProbeToolName(dependentDefinition, _toolOrchestrationCatalog), Kind: "probe"),
+            (ToolName: ResolveSetupToolName(dependentDefinition, _toolOrchestrationCatalog), Kind: "setup")
+        };
+        var seenHelperToolNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < helperCandidates.Length; i++) {
+            var helperToolName = NormalizeToolNameForAnswerPlan(helperCandidates[i].ToolName);
+            var helperKind = helperCandidates[i].Kind;
+            if (helperToolName.Length == 0
+                || !seenHelperToolNames.Add(helperToolName)
+                || string.Equals(helperToolName, dependentItem.TargetToolName, StringComparison.OrdinalIgnoreCase)
+                || !TryGetToolDefinitionByName(toolDefinitions, helperToolName, out var helperDefinition)
+                || ToolIsWriteCapable(helperDefinition, _toolOrchestrationCatalog)
+                || !TryBuildBackgroundWorkContractHelperPreparedArguments(
+                    dependentItem.PreparedArgumentsJson,
+                    helperDefinition,
+                    out var helperPreparedArgumentsJson,
+                    out var primaryArgumentName,
+                    out var primaryArgumentValue)) {
+                continue;
+            }
+
+            yield return new ThreadBackgroundWorkItem(
+                Id: BuildToolHandoffBackgroundWorkItemId(
+                    dependentItem.SourceToolName,
+                    helperToolName,
+                    primaryArgumentName,
+                    primaryArgumentValue),
+                Title: BuildContractHelperBackgroundWorkTitle(helperToolName, dependentItem.TargetToolName, primaryArgumentValue),
+                Request: BuildContractHelperBackgroundWorkRequest(
+                    helperToolName,
+                    dependentItem.TargetToolName,
+                    primaryArgumentName,
+                    primaryArgumentValue,
+                    dependentItem.SourceToolName,
+                    helperKind),
+                State: BackgroundWorkStateReady,
+                DependencyItemIds: Array.Empty<string>(),
+                EvidenceToolNames: NormalizeBackgroundWorkToolNames(dependentItem.EvidenceToolNames),
+                Kind: BackgroundWorkKindToolHandoff,
+                Mutability: BackgroundWorkMutabilityReadOnly,
+                SourceToolName: dependentItem.SourceToolName,
+                SourceCallId: dependentItem.SourceCallId,
+                TargetPackId: ResolveToolPackId(helperDefinition, _toolOrchestrationCatalog),
+                TargetToolName: helperToolName,
+                FollowUpKind: ToolHandoffFollowUpKinds.Normalize(dependentItem.FollowUpKind),
+                FollowUpPriority: ToolHandoffFollowUpPriorities.Normalize(dependentItem.FollowUpPriority),
+                PreparedArgumentsJson: helperPreparedArgumentsJson,
+                ResultReference: BuildBackgroundWorkContractHelperResultReference(
+                    dependentItem.ResultReference,
+                    dependentItem.TargetToolName,
+                    helperKind),
+                ExecutionAttemptCount: 0,
+                LastExecutionCallId: string.Empty,
+                LastExecutionStartedUtcTicks: 0,
+                LastExecutionFinishedUtcTicks: 0,
+                LeaseExpiresUtcTicks: 0,
+                CreatedUtcTicks: createdUtcTicks,
+                UpdatedUtcTicks: updatedUtcTicks);
         }
     }
 
@@ -934,6 +1147,120 @@ internal sealed partial class ChatServiceSession {
         });
     }
 
+    private static bool TryBuildBackgroundWorkContractHelperPreparedArguments(
+        string? preparedArgumentsJson,
+        ToolDefinition helperDefinition,
+        out string helperPreparedArgumentsJson,
+        out string primaryArgumentName,
+        out string primaryArgumentValue) {
+        helperPreparedArgumentsJson = "{}";
+        primaryArgumentName = string.Empty;
+        primaryArgumentValue = string.Empty;
+
+        var sourceArguments = ResolveBackgroundWorkHelperSourceArguments(preparedArgumentsJson);
+        if (sourceArguments is null
+            || !TryBuildBackgroundWorkContractHelperArguments(sourceArguments, helperDefinition, out var helperArguments)
+            || !TryResolvePrimaryBackgroundWorkArgument(helperArguments, out primaryArgumentName, out primaryArgumentValue)) {
+            return false;
+        }
+
+        helperPreparedArgumentsJson = JsonLite.Serialize(helperArguments);
+        return true;
+    }
+
+    private static JsonObject? ResolveBackgroundWorkHelperSourceArguments(string? preparedArgumentsJson) {
+        var input = (preparedArgumentsJson ?? string.Empty).Trim();
+        if (input.Length == 0) {
+            return null;
+        }
+
+        try {
+            return JsonLite.Parse(input)?.AsObject();
+        } catch {
+            return null;
+        }
+    }
+
+    private static bool TryBuildBackgroundWorkContractHelperArguments(
+        JsonObject sourceArguments,
+        ToolDefinition helperDefinition,
+        out JsonObject helperArguments) {
+        helperArguments = new JsonObject(StringComparer.Ordinal);
+        if (helperDefinition?.Parameters is null || sourceArguments is null) {
+            return false;
+        }
+
+        var properties = helperDefinition.Parameters.GetObject("properties");
+        if (properties is not { Count: > 0 }) {
+            return false;
+        }
+
+        foreach (var property in properties) {
+            if (sourceArguments.TryGetValue(property.Key, out var value)
+                && value is not null
+                && TryCloneRecoveryHelperArgumentValue(value, out var clonedValue)) {
+                helperArguments.Add(property.Key, clonedValue);
+            }
+        }
+
+        if (helperArguments.Count == 0) {
+            return false;
+        }
+
+        var required = helperDefinition.Parameters.GetArray("required");
+        if (required is not { Count: > 0 }) {
+            return true;
+        }
+
+        for (var i = 0; i < required.Count; i++) {
+            var requiredName = (required[i]?.AsString() ?? string.Empty).Trim();
+            if (requiredName.Length == 0) {
+                continue;
+            }
+
+            if (!helperArguments.TryGetValue(requiredName, out _)) {
+                helperArguments = new JsonObject(StringComparer.Ordinal);
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool TryResolvePrimaryBackgroundWorkArgument(
+        JsonObject helperArguments,
+        out string argumentName,
+        out string argumentValue) {
+        argumentName = string.Empty;
+        argumentValue = string.Empty;
+        if (helperArguments is null || helperArguments.Count == 0) {
+            return false;
+        }
+
+        foreach (var pair in helperArguments) {
+            var normalizedArgumentName = NormalizeBackgroundWorkToken(pair.Key);
+            if (normalizedArgumentName.Length == 0) {
+                continue;
+            }
+
+            var candidateValue = pair.Value?.AsString();
+            if (string.IsNullOrWhiteSpace(candidateValue) && pair.Value is not null) {
+                candidateValue = JsonLite.Serialize(pair.Value);
+            }
+
+            candidateValue = (candidateValue ?? string.Empty).Trim();
+            if (candidateValue.Length == 0) {
+                continue;
+            }
+
+            argumentName = normalizedArgumentName;
+            argumentValue = candidateValue;
+            return true;
+        }
+
+        return false;
+    }
+
     private static string BuildBackgroundWorkResultReference(
         string sourceToolName,
         string sourceCallId,
@@ -947,6 +1274,57 @@ internal sealed partial class ChatServiceSession {
             "target_tool=" + NormalizeToolNameForAnswerPlan(targetToolName),
             "target_argument=" + NormalizeBackgroundWorkToken(targetArgument),
             "target_value=" + (value ?? string.Empty).Trim());
+    }
+
+    private static string BuildContractHelperBackgroundWorkTitle(string helperToolName, string dependentToolName, string value) {
+        var normalizedHelperToolName = NormalizeToolNameForAnswerPlan(helperToolName);
+        var normalizedDependentToolName = NormalizeToolNameForAnswerPlan(dependentToolName);
+        var normalizedValue = (value ?? string.Empty).Trim();
+        if (normalizedValue.Length == 0) {
+            return "Prepared " + normalizedHelperToolName + " prerequisite for " + normalizedDependentToolName;
+        }
+
+        return "Prepared " + normalizedHelperToolName + " prerequisite for "
+               + normalizedDependentToolName
+               + " on "
+               + normalizedValue;
+    }
+
+    private static string BuildContractHelperBackgroundWorkRequest(
+        string helperToolName,
+        string dependentToolName,
+        string targetArgument,
+        string value,
+        string sourceToolName,
+        string helperKind) {
+        return "Run "
+               + NormalizeToolNameForAnswerPlan(helperToolName)
+               + " as a "
+               + NormalizeBackgroundWorkToken(helperKind)
+               + " prerequisite for "
+               + NormalizeToolNameForAnswerPlan(dependentToolName)
+               + " with "
+               + NormalizeBackgroundWorkToken(targetArgument)
+               + "="
+               + (value ?? string.Empty).Trim()
+               + " using the latest "
+               + NormalizeToolNameForAnswerPlan(sourceToolName)
+               + " evidence.";
+    }
+
+    private static string BuildBackgroundWorkContractHelperResultReference(
+        string? existingResultReference,
+        string dependentToolName,
+        string helperKind) {
+        var normalizedExisting = (existingResultReference ?? string.Empty).Trim();
+        var segments = new List<string>();
+        if (normalizedExisting.Length > 0) {
+            segments.Add(normalizedExisting);
+        }
+
+        segments.Add("dependent_tool=" + NormalizeToolNameForAnswerPlan(dependentToolName));
+        segments.Add("helper_kind=" + NormalizeBackgroundWorkToken(helperKind));
+        return string.Join(";", segments);
     }
 
     private static ThreadBackgroundWorkSnapshot MergeThreadBackgroundWorkSnapshots(params ThreadBackgroundWorkSnapshot[] snapshots) {
@@ -1019,12 +1397,60 @@ internal sealed partial class ChatServiceSession {
             Items: normalizedItems);
     }
 
+    private ThreadBackgroundWorkSnapshot NormalizeThreadBackgroundWorkDependencyStates(ThreadBackgroundWorkSnapshot snapshot) {
+        if (!TryNormalizeThreadBackgroundWorkDependencyStates(snapshot, out var normalizedSnapshot)) {
+            return snapshot;
+        }
+
+        return normalizedSnapshot;
+    }
+
+    private static bool TryNormalizeThreadBackgroundWorkDependencyStates(
+        ThreadBackgroundWorkSnapshot snapshot,
+        out ThreadBackgroundWorkSnapshot normalizedSnapshot) {
+        normalizedSnapshot = snapshot;
+        if (snapshot.Items.Length == 0) {
+            return false;
+        }
+
+        var itemsById = snapshot.Items
+            .Where(static item => !string.IsNullOrWhiteSpace(item.Id))
+            .ToDictionary(static item => item.Id, static item => item, StringComparer.OrdinalIgnoreCase);
+        if (itemsById.Count == 0) {
+            return false;
+        }
+
+        var changed = false;
+        var items = new ThreadBackgroundWorkItem[snapshot.Items.Length];
+        for (var i = 0; i < snapshot.Items.Length; i++) {
+            var current = NormalizeThreadBackgroundWorkItem(snapshot.Items[i]);
+            var nextState = ResolveBackgroundWorkDependencyState(current, itemsById);
+            if (!string.Equals(current.State, nextState, StringComparison.OrdinalIgnoreCase)) {
+                current = current with {
+                    State = nextState,
+                    UpdatedUtcTicks = DateTime.UtcNow.Ticks
+                };
+                changed = true;
+            }
+
+            items[i] = current;
+        }
+
+        if (!changed) {
+            return false;
+        }
+
+        normalizedSnapshot = BuildBackgroundWorkSnapshotFromItems(items, snapshot.RecentEvidenceTools);
+        return true;
+    }
+
     private static ThreadBackgroundWorkItem NormalizeThreadBackgroundWorkItem(ThreadBackgroundWorkItem item) {
         return item with {
             Id = (item.Id ?? string.Empty).Trim(),
             Title = (item.Title ?? string.Empty).Trim(),
             Request = NormalizeWorkingMemoryAnswerPlanFocus(item.Request),
             State = NormalizeBackgroundWorkState(item.State),
+            DependencyItemIds = NormalizeBackgroundWorkDependencyItemIds(item.DependencyItemIds),
             EvidenceToolNames = NormalizeBackgroundWorkToolNames(item.EvidenceToolNames),
             Kind = NormalizeBackgroundWorkKind(item.Kind),
             Mutability = NormalizeBackgroundWorkMutability(item.Mutability),
@@ -1044,6 +1470,44 @@ internal sealed partial class ChatServiceSession {
             CreatedUtcTicks = item.CreatedUtcTicks,
             UpdatedUtcTicks = item.UpdatedUtcTicks > 0 ? item.UpdatedUtcTicks : item.CreatedUtcTicks
         };
+    }
+
+    private static string[] NormalizeBackgroundWorkDependencyItemIds(IEnumerable<string>? dependencyItemIds) {
+        return (dependencyItemIds ?? Array.Empty<string>())
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .Select(static value => value.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(MaxBackgroundWorkItems)
+            .ToArray();
+    }
+
+    private static bool IsBackgroundWorkDependencyBlocked(ThreadBackgroundWorkItem item) {
+        return string.Equals(NormalizeBackgroundWorkState(item.State), BackgroundWorkStateQueued, StringComparison.OrdinalIgnoreCase)
+               && item.DependencyItemIds is { Length: > 0 };
+    }
+
+    private static string ResolveBackgroundWorkDependencyState(
+        ThreadBackgroundWorkItem item,
+        IReadOnlyDictionary<string, ThreadBackgroundWorkItem> itemsById) {
+        var normalizedState = NormalizeBackgroundWorkState(item.State);
+        if (normalizedState == BackgroundWorkStateRunning || normalizedState == BackgroundWorkStateCompleted) {
+            return normalizedState;
+        }
+
+        if (item.DependencyItemIds is not { Length: > 0 }) {
+            return normalizedState;
+        }
+
+        for (var i = 0; i < item.DependencyItemIds.Length; i++) {
+            var dependencyId = (item.DependencyItemIds[i] ?? string.Empty).Trim();
+            if (dependencyId.Length == 0
+                || !itemsById.TryGetValue(dependencyId, out var dependencyItem)
+                || !string.Equals(NormalizeBackgroundWorkState(dependencyItem.State), BackgroundWorkStateCompleted, StringComparison.OrdinalIgnoreCase)) {
+                return BackgroundWorkStateQueued;
+            }
+        }
+
+        return BackgroundWorkStateReady;
     }
 
     private static int GetBackgroundWorkStateSortOrder(string? state) {
@@ -1131,7 +1595,7 @@ internal sealed partial class ChatServiceSession {
                     requestId,
                     threadId,
                     status: ChatStatusCodes.BackgroundWorkQueued,
-                    message: BuildBackgroundWorkQueuedStatusMessage(snapshot.QueuedCount))
+                    message: BuildBackgroundWorkQueuedStatusMessage(snapshot.QueuedCount, snapshot.Items))
                 .ConfigureAwait(false);
         }
 
@@ -1249,7 +1713,23 @@ internal sealed partial class ChatServiceSession {
             toolCallId: toolCallId,
             output: output);
         var nextState = output.Ok == true ? BackgroundWorkStateCompleted : BackgroundWorkStateReady;
-        _ = TrySetThreadBackgroundWorkItemState(normalizedThreadId, normalizedItemId, nextState, resultReference, toolCallId);
+        if (!TrySetThreadBackgroundWorkItemState(normalizedThreadId, normalizedItemId, nextState, resultReference, toolCallId)) {
+            return;
+        }
+
+        if (!TryGetRememberedThreadBackgroundWorkSnapshot(normalizedThreadId, out var updatedSnapshot)
+            || updatedSnapshot.Items.Length == 0) {
+            return;
+        }
+
+        var normalizedSnapshot = NormalizeThreadBackgroundWorkDependencyStates(updatedSnapshot);
+        if (!ReferenceEquals(updatedSnapshot.Items, normalizedSnapshot.Items)
+            || updatedSnapshot.QueuedCount != normalizedSnapshot.QueuedCount
+            || updatedSnapshot.ReadyCount != normalizedSnapshot.ReadyCount
+            || updatedSnapshot.RunningCount != normalizedSnapshot.RunningCount
+            || updatedSnapshot.CompletedCount != normalizedSnapshot.CompletedCount) {
+            RememberThreadBackgroundWorkSnapshot(normalizedThreadId, normalizedSnapshot, DateTime.UtcNow.Ticks);
+        }
     }
 
     private bool TrySetThreadBackgroundWorkLeaseExpiry(string threadId, string itemId, long leaseExpiresUtcTicks) {
@@ -1322,11 +1802,27 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static string BuildBackgroundWorkQueuedStatusMessage(int queuedCount) {
+        return BuildBackgroundWorkQueuedStatusMessage(queuedCount, items: null);
+    }
+
+    private static string BuildBackgroundWorkQueuedStatusMessage(
+        int queuedCount,
+        IReadOnlyList<ThreadBackgroundWorkItem>? items) {
         var boundedCount = Math.Max(0, queuedCount);
-        return boundedCount == 1
+        var message = boundedCount == 1
             ? "Queued 1 safe follow-up item for background preparation."
             : "Queued " + boundedCount.ToString(System.Globalization.CultureInfo.InvariantCulture)
               + " safe follow-up items for background preparation.";
+        var dependencySummary = BuildBackgroundWorkDependencySummary(items);
+        if (dependencySummary.BlockedItemCount <= 0) {
+            return message;
+        }
+
+        if (dependencySummary.HelperToolNames.Length > 0) {
+            return message + " Waiting on prerequisites: " + string.Join(", ", dependencySummary.HelperToolNames) + ".";
+        }
+
+        return message + " Some queued follow-up items are waiting on prerequisite helpers.";
     }
 
     private static string BuildBackgroundWorkReadyStatusMessage(
@@ -1417,6 +1913,362 @@ internal sealed partial class ChatServiceSession {
         }
 
         return " Focus: " + string.Join(", ", summary.FollowUpKinds) + ".";
+    }
+
+    private static BackgroundWorkDependencySummary BuildBackgroundWorkDependencySummary(IReadOnlyList<ThreadBackgroundWorkItem>? items) {
+        if (items is null || items.Count == 0) {
+            return new BackgroundWorkDependencySummary(0, Array.Empty<string>());
+        }
+
+        var itemsById = items
+            .Where(static item => !string.IsNullOrWhiteSpace(item.Id))
+            .ToDictionary(static item => item.Id, static item => item, StringComparer.OrdinalIgnoreCase);
+        if (itemsById.Count == 0) {
+            return new BackgroundWorkDependencySummary(0, Array.Empty<string>());
+        }
+
+        var blockedItemCount = 0;
+        var helperToolNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var item in items) {
+            if (!IsBackgroundWorkDependencyBlocked(item)) {
+                continue;
+            }
+
+            blockedItemCount++;
+            for (var i = 0; i < item.DependencyItemIds.Length; i++) {
+                var dependencyId = (item.DependencyItemIds[i] ?? string.Empty).Trim();
+                if (dependencyId.Length == 0
+                    || !itemsById.TryGetValue(dependencyId, out var dependencyItem)
+                    || string.Equals(NormalizeBackgroundWorkState(dependencyItem.State), BackgroundWorkStateCompleted, StringComparison.OrdinalIgnoreCase)) {
+                    continue;
+                }
+
+                var helperToolName = NormalizeToolNameForAnswerPlan(dependencyItem.TargetToolName);
+                if (helperToolName.Length > 0) {
+                    helperToolNames.Add(helperToolName);
+                }
+            }
+        }
+
+        return new BackgroundWorkDependencySummary(
+            BlockedItemCount: Math.Max(0, blockedItemCount),
+            HelperToolNames: helperToolNames.Take(3).ToArray());
+    }
+
+    private bool TryBuildBackgroundWorkDependencyBlockedGuidance(string threadId, out string guidance) {
+        guidance = string.Empty;
+        var normalizedThreadId = (threadId ?? string.Empty).Trim();
+        if (normalizedThreadId.Length == 0
+            || !TryGetRememberedThreadBackgroundWorkSnapshot(normalizedThreadId, out var snapshot)
+            || snapshot.Items.Length == 0) {
+            return false;
+        }
+
+        var dependencySummary = BuildBackgroundWorkDependencySummary(snapshot.Items);
+        if (dependencySummary.BlockedItemCount <= 0) {
+            return false;
+        }
+
+        guidance = BuildBackgroundWorkDependencyBlockedGuidance(dependencySummary);
+        return guidance.Length > 0;
+    }
+
+    private bool TryBuildBackgroundWorkDependencyRecoveryPrompt(
+        string threadId,
+        string userRequest,
+        string assistantDraft,
+        IReadOnlyList<ToolDefinition> toolDefinitions,
+        out string prompt,
+        out string reason) {
+        prompt = string.Empty;
+        reason = string.Empty;
+
+        if (!TryBuildBackgroundWorkDependencyRecoverySummary(threadId, toolDefinitions, out var summary)) {
+            return false;
+        }
+
+        reason = ResolveBackgroundWorkDependencyRecoveryReason(summary);
+        if (reason.Length == 0) {
+            return false;
+        }
+
+        prompt = BuildBackgroundWorkDependencyRecoveryPrompt(userRequest, assistantDraft, summary, reason);
+        return prompt.Length > 0;
+    }
+
+    private bool TryBuildBackgroundWorkDependencyRecoveryBlockerText(
+        string threadId,
+        string userRequest,
+        string assistantDraft,
+        IReadOnlyList<ToolDefinition> toolDefinitions,
+        out string text,
+        out string reason) {
+        text = string.Empty;
+        reason = string.Empty;
+
+        if (!TryBuildBackgroundWorkDependencyRecoverySummary(threadId, toolDefinitions, out var summary)) {
+            return false;
+        }
+
+        reason = ResolveBackgroundWorkDependencyRecoveryReason(summary);
+        if (reason.Length == 0) {
+            return false;
+        }
+
+        text = BuildBackgroundWorkDependencyRecoveryBlockerText(userRequest, assistantDraft, summary, reason);
+        return text.Length > 0;
+    }
+
+    private static string BuildBackgroundWorkDependencyBlockedGuidance(BackgroundWorkDependencySummary summary) {
+        if (summary.BlockedItemCount <= 0) {
+            return string.Empty;
+        }
+
+        if (summary.HelperToolNames.Length > 0) {
+            return summary.BlockedItemCount == 1
+                ? "Prepared follow-up work is waiting on prerequisite helpers: " + string.Join(", ", summary.HelperToolNames) + "."
+                : "Some prepared follow-up items are waiting on prerequisite helpers: " + string.Join(", ", summary.HelperToolNames) + ".";
+        }
+
+        return summary.BlockedItemCount == 1
+            ? "Prepared follow-up work is waiting on prerequisite helpers."
+            : "Some prepared follow-up items are waiting on prerequisite helpers.";
+    }
+
+    private bool TryBuildBackgroundWorkDependencyRecoverySummary(
+        string threadId,
+        IReadOnlyList<ToolDefinition> toolDefinitions,
+        out BackgroundWorkDependencyRecoverySummary summary) {
+        summary = new BackgroundWorkDependencyRecoverySummary(
+            BlockedItemCount: 0,
+            HelperToolNames: Array.Empty<string>(),
+            RetryCooldownHelperToolNames: Array.Empty<string>(),
+            AuthenticationHelperToolNames: Array.Empty<string>(),
+            AuthenticationArgumentNames: Array.Empty<string>(),
+            SetupHelperToolNames: Array.Empty<string>());
+        var normalizedThreadId = (threadId ?? string.Empty).Trim();
+        if (normalizedThreadId.Length == 0
+            || !TryGetRememberedThreadBackgroundWorkSnapshot(normalizedThreadId, out var snapshot)
+            || snapshot.Items.Length == 0) {
+            return false;
+        }
+
+        summary = BuildBackgroundWorkDependencyRecoverySummary(snapshot.Items, toolDefinitions);
+        return summary.BlockedItemCount > 0;
+    }
+
+    private BackgroundWorkDependencyRecoverySummary BuildBackgroundWorkDependencyRecoverySummary(
+        IReadOnlyList<ThreadBackgroundWorkItem>? items,
+        IReadOnlyList<ToolDefinition> toolDefinitions) {
+        if (items is null || items.Count == 0) {
+            return new BackgroundWorkDependencyRecoverySummary(
+                BlockedItemCount: 0,
+                HelperToolNames: Array.Empty<string>(),
+                RetryCooldownHelperToolNames: Array.Empty<string>(),
+                AuthenticationHelperToolNames: Array.Empty<string>(),
+                AuthenticationArgumentNames: Array.Empty<string>(),
+                SetupHelperToolNames: Array.Empty<string>());
+        }
+
+        var itemsById = items
+            .Where(static item => !string.IsNullOrWhiteSpace(item.Id))
+            .ToDictionary(static item => item.Id, static item => item, StringComparer.OrdinalIgnoreCase);
+        if (itemsById.Count == 0) {
+            return new BackgroundWorkDependencyRecoverySummary(
+                BlockedItemCount: 0,
+                HelperToolNames: Array.Empty<string>(),
+                RetryCooldownHelperToolNames: Array.Empty<string>(),
+                AuthenticationHelperToolNames: Array.Empty<string>(),
+                AuthenticationArgumentNames: Array.Empty<string>(),
+                SetupHelperToolNames: Array.Empty<string>());
+        }
+
+        var nowUtcTicks = DateTime.UtcNow.Ticks;
+        var blockedItemCount = 0;
+        var helperToolNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var retryCooldownHelperToolNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var authenticationHelperToolNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var authenticationArgumentNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var setupHelperToolNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var item in items) {
+            if (!IsBackgroundWorkDependencyBlocked(item)) {
+                continue;
+            }
+
+            blockedItemCount++;
+            TryGetToolDefinitionByName(toolDefinitions, item.TargetToolName, out var dependentDefinition);
+            ToolOrchestrationCatalogEntry? dependentEntry = null;
+            var hasDependentEntry = _toolOrchestrationCatalog is not null
+                && _toolOrchestrationCatalog.TryGetEntry(item.TargetToolName, out dependentEntry);
+            var dependentAuthenticationArguments = TryGetBackgroundWorkResultReferenceValue(item.ResultReference, "dependent_auth_args", out var dependentAuthArgsValue)
+                ? dependentAuthArgsValue
+                    .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+                    .Select(NormalizeBackgroundWorkToken)
+                    .Where(static value => value.Length > 0)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToArray()
+                : Array.Empty<string>();
+            var dependentRequiresAuthenticationFromReference = TryGetBackgroundWorkResultReferenceValue(item.ResultReference, "dependent_requires_auth", out var dependentRequiresAuthValue)
+                && string.Equals(NormalizeBackgroundWorkToken(dependentRequiresAuthValue), "true", StringComparison.OrdinalIgnoreCase);
+            for (var i = 0; i < item.DependencyItemIds.Length; i++) {
+                var dependencyId = (item.DependencyItemIds[i] ?? string.Empty).Trim();
+                if (dependencyId.Length == 0
+                    || !itemsById.TryGetValue(dependencyId, out var dependencyItem)
+                    || string.Equals(NormalizeBackgroundWorkState(dependencyItem.State), BackgroundWorkStateCompleted, StringComparison.OrdinalIgnoreCase)) {
+                    continue;
+                }
+
+                var helperToolName = NormalizeToolNameForAnswerPlan(dependencyItem.TargetToolName);
+                if (helperToolName.Length > 0) {
+                    helperToolNames.Add(helperToolName);
+                }
+
+                if (helperToolName.Length > 0
+                    && Math.Max(0, dependencyItem.ExecutionAttemptCount) > 0) {
+                    retryCooldownHelperToolNames.Add(helperToolName);
+                }
+
+                if (!IsBackgroundWorkItemRetryEligibleNow(dependencyItem, nowUtcTicks, out var retryEligibilityReason)
+                    && string.Equals(retryEligibilityReason, "background_work_retry_cooldown_active", StringComparison.OrdinalIgnoreCase)
+                    && helperToolName.Length > 0) {
+                    retryCooldownHelperToolNames.Add(helperToolName);
+                }
+
+                var helperKind = TryGetBackgroundWorkResultReferenceValue(dependencyItem.ResultReference, "helper_kind", out var helperKindValue)
+                    ? NormalizeBackgroundWorkToken(helperKindValue)
+                    : string.Empty;
+                var executionErrorCode = TryGetBackgroundWorkResultReferenceValue(dependencyItem.ResultReference, "execution_error_code", out var errorCodeValue)
+                    ? NormalizeBackgroundWorkToken(errorCodeValue)
+                    : string.Empty;
+
+                if (executionErrorCode.Length == 0) {
+                    continue;
+                }
+
+                var dependentRequiresAuthentication = dependentDefinition is not null
+                    ? ToolRequiresAuthentication(dependentDefinition, _toolOrchestrationCatalog)
+                    : dependentRequiresAuthenticationFromReference || (hasDependentEntry && dependentEntry?.RequiresAuthentication == true);
+                if (dependentRequiresAuthentication
+                    && IsBackgroundWorkAuthenticationErrorCode(executionErrorCode)) {
+                    if (helperToolName.Length > 0) {
+                        authenticationHelperToolNames.Add(helperToolName);
+                    }
+
+                    var authenticationArguments = dependentDefinition?.Authentication?.GetSchemaArgumentNames()
+                        ?? (hasDependentEntry ? dependentEntry?.AuthenticationArguments ?? Array.Empty<string>() : Array.Empty<string>());
+                    if (authenticationArguments.Count == 0 && dependentAuthenticationArguments.Length > 0) {
+                        authenticationArguments = dependentAuthenticationArguments;
+                    }
+                    foreach (var authArgument in authenticationArguments) {
+                        var normalizedAuthArgument = NormalizeBackgroundWorkToken(authArgument);
+                        if (normalizedAuthArgument.Length > 0) {
+                            authenticationArgumentNames.Add(normalizedAuthArgument);
+                        }
+                    }
+                }
+
+                if (string.Equals(helperKind, "setup", StringComparison.OrdinalIgnoreCase)
+                    && IsBackgroundWorkSetupContextErrorCode(executionErrorCode)
+                    && helperToolName.Length > 0) {
+                    setupHelperToolNames.Add(helperToolName);
+                }
+            }
+        }
+
+        return new BackgroundWorkDependencyRecoverySummary(
+            BlockedItemCount: Math.Max(0, blockedItemCount),
+            HelperToolNames: helperToolNames.Take(3).ToArray(),
+            RetryCooldownHelperToolNames: retryCooldownHelperToolNames.Take(3).ToArray(),
+            AuthenticationHelperToolNames: authenticationHelperToolNames.Take(3).ToArray(),
+            AuthenticationArgumentNames: authenticationArgumentNames.Take(4).ToArray(),
+            SetupHelperToolNames: setupHelperToolNames.Take(3).ToArray());
+    }
+
+    private static string ResolveBackgroundWorkDependencyRecoveryReason(BackgroundWorkDependencyRecoverySummary summary) {
+        if (summary.AuthenticationArgumentNames.Length > 0) {
+            return "background_prerequisite_auth_context_required";
+        }
+
+        if (summary.SetupHelperToolNames.Length > 0) {
+            return "background_prerequisite_setup_context_required";
+        }
+
+        if (summary.RetryCooldownHelperToolNames.Length > 0) {
+            return "background_prerequisite_retry_cooldown";
+        }
+
+        return string.Empty;
+    }
+
+    private static string ResolveBackgroundWorkDependencyNextAction(BackgroundWorkDependencyRecoverySummary summary) {
+        var reason = ResolveBackgroundWorkDependencyRecoveryReason(summary);
+        if (string.Equals(reason, "background_prerequisite_auth_context_required", StringComparison.OrdinalIgnoreCase)) {
+            return "request_runtime_auth_context";
+        }
+
+        if (string.Equals(reason, "background_prerequisite_setup_context_required", StringComparison.OrdinalIgnoreCase)) {
+            return "request_setup_context";
+        }
+
+        if (string.Equals(reason, "background_prerequisite_retry_cooldown", StringComparison.OrdinalIgnoreCase)) {
+            return "wait_for_helper_retry";
+        }
+
+        return string.Empty;
+    }
+
+    private static bool TryGetBackgroundWorkResultReferenceValue(string? resultReference, string key, out string value) {
+        value = string.Empty;
+        var normalizedReference = (resultReference ?? string.Empty).Trim();
+        var normalizedKey = (key ?? string.Empty).Trim();
+        if (normalizedReference.Length == 0 || normalizedKey.Length == 0) {
+            return false;
+        }
+
+        var segments = normalizedReference.Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        for (var i = 0; i < segments.Length; i++) {
+            var separatorIndex = segments[i].IndexOf('=');
+            if (separatorIndex <= 0) {
+                continue;
+            }
+
+            var segmentKey = segments[i].Substring(0, separatorIndex).Trim();
+            if (!string.Equals(segmentKey, normalizedKey, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            value = segments[i].Substring(separatorIndex + 1).Trim();
+            return value.Length > 0;
+        }
+
+        return false;
+    }
+
+    private static bool IsBackgroundWorkAuthenticationErrorCode(string? errorCode) {
+        var normalized = NormalizeBackgroundWorkToken(errorCode);
+        if (normalized.Length == 0) {
+            return false;
+        }
+
+        return normalized.Contains("auth", StringComparison.OrdinalIgnoreCase)
+               || normalized.Contains("unauthorized", StringComparison.OrdinalIgnoreCase)
+               || normalized.Contains("forbidden", StringComparison.OrdinalIgnoreCase)
+               || normalized.Contains("access_denied", StringComparison.OrdinalIgnoreCase)
+               || normalized.Contains("permission", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsBackgroundWorkSetupContextErrorCode(string? errorCode) {
+        var normalized = NormalizeBackgroundWorkToken(errorCode);
+        if (normalized.Length == 0) {
+            return false;
+        }
+
+        return normalized.Contains("invalid", StringComparison.OrdinalIgnoreCase)
+               || normalized.Contains("argument", StringComparison.OrdinalIgnoreCase)
+               || normalized.Contains("validation", StringComparison.OrdinalIgnoreCase)
+               || normalized.Contains("missing", StringComparison.OrdinalIgnoreCase)
+               || normalized.Contains("required", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string BuildBackgroundWorkExecutionOutcomeReference(

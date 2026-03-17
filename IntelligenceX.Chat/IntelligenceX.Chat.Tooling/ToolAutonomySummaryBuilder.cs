@@ -34,6 +34,12 @@ public static class ToolAutonomySummaryBuilder {
         var remoteCapableToolNames = entries
             .Where(static entry => IsRemoteCapable(entry))
             .Select(static entry => entry.ToolName);
+        var targetScopedToolNames = entries
+            .Where(static entry => entry.SupportsTargetScoping || entry.TargetScopeArguments.Count > 0)
+            .Select(static entry => entry.ToolName);
+        var remoteHostTargetingToolNames = entries
+            .Where(static entry => entry.SupportsRemoteHostTargeting || entry.RemoteHostArguments.Count > 0)
+            .Select(static entry => entry.ToolName);
         var setupAwareToolNames = entries
             .Where(static entry => entry.IsSetupAware)
             .Select(static entry => entry.ToolName);
@@ -46,6 +52,15 @@ public static class ToolAutonomySummaryBuilder {
         var recoveryAwareToolNames = entries
             .Where(static entry => entry.IsRecoveryAware)
             .Select(static entry => entry.ToolName);
+        var writeCapableToolNames = entries
+            .Where(static entry => entry.IsWriteCapable)
+            .Select(static entry => entry.ToolName);
+        var authenticationRequiredToolNames = entries
+            .Where(static entry => entry.RequiresAuthentication)
+            .Select(static entry => entry.ToolName);
+        var probeCapableToolNames = entries
+            .Where(static entry => entry.SupportsConnectivityProbe || !string.IsNullOrWhiteSpace(entry.ProbeToolName))
+            .Select(static entry => entry.ToolName);
         var crossPackHandoffToolNames = entries
             .Where(entry => IsCrossPackHandoff(normalizedPackId, entry))
             .Select(static entry => entry.ToolName);
@@ -56,16 +71,26 @@ public static class ToolAutonomySummaryBuilder {
             .Where(targetPackId => targetPackId.Length > 0 && !string.Equals(targetPackId, normalizedPackId, StringComparison.OrdinalIgnoreCase));
 
         var remoteCapableToolCount = CountDistinct(remoteCapableToolNames);
+        var targetScopedToolCount = CountDistinct(targetScopedToolNames);
+        var remoteHostTargetingToolCount = CountDistinct(remoteHostTargetingToolNames);
         var setupAwareToolCount = CountDistinct(setupAwareToolNames);
         var environmentDiscoverToolCount = CountDistinct(environmentDiscoverToolNames);
         var handoffAwareToolCount = CountDistinct(handoffAwareToolNames);
         var recoveryAwareToolCount = CountDistinct(recoveryAwareToolNames);
+        var writeCapableToolCount = CountDistinct(writeCapableToolNames);
+        var authenticationRequiredToolCount = CountDistinct(authenticationRequiredToolNames);
+        var probeCapableToolCount = CountDistinct(probeCapableToolNames);
         var crossPackHandoffToolCount = CountDistinct(crossPackHandoffToolNames);
         var normalizedRemoteCapableToolNames = NormalizeDistinctStrings(remoteCapableToolNames, maxItems);
+        var normalizedTargetScopedToolNames = NormalizeDistinctStrings(targetScopedToolNames, maxItems);
+        var normalizedRemoteHostTargetingToolNames = NormalizeDistinctStrings(remoteHostTargetingToolNames, maxItems);
         var normalizedSetupAwareToolNames = NormalizeDistinctStrings(setupAwareToolNames, maxItems);
         var normalizedEnvironmentDiscoverToolNames = NormalizeDistinctStrings(environmentDiscoverToolNames, maxItems);
         var normalizedHandoffAwareToolNames = NormalizeDistinctStrings(handoffAwareToolNames, maxItems);
         var normalizedRecoveryAwareToolNames = NormalizeDistinctStrings(recoveryAwareToolNames, maxItems);
+        var normalizedWriteCapableToolNames = NormalizeDistinctStrings(writeCapableToolNames, maxItems);
+        var normalizedAuthenticationRequiredToolNames = NormalizeDistinctStrings(authenticationRequiredToolNames, maxItems);
+        var normalizedProbeCapableToolNames = NormalizeDistinctStrings(probeCapableToolNames, maxItems);
         var normalizedCrossPackHandoffToolNames = NormalizeDistinctStrings(crossPackHandoffToolNames, maxItems);
         var normalizedCrossPackTargetPacks = NormalizeDistinctStrings(crossPackTargetPacks, maxItems);
 
@@ -73,6 +98,10 @@ public static class ToolAutonomySummaryBuilder {
             TotalTools = Math.Max(0, entries.Count),
             RemoteCapableTools = remoteCapableToolCount,
             RemoteCapableToolNames = normalizedRemoteCapableToolNames,
+            TargetScopedTools = targetScopedToolCount,
+            TargetScopedToolNames = normalizedTargetScopedToolNames,
+            RemoteHostTargetingTools = remoteHostTargetingToolCount,
+            RemoteHostTargetingToolNames = normalizedRemoteHostTargetingToolNames,
             SetupAwareTools = setupAwareToolCount,
             EnvironmentDiscoverTools = environmentDiscoverToolCount,
             SetupAwareToolNames = normalizedSetupAwareToolNames,
@@ -81,6 +110,12 @@ public static class ToolAutonomySummaryBuilder {
             HandoffAwareToolNames = normalizedHandoffAwareToolNames,
             RecoveryAwareTools = recoveryAwareToolCount,
             RecoveryAwareToolNames = normalizedRecoveryAwareToolNames,
+            WriteCapableTools = writeCapableToolCount,
+            WriteCapableToolNames = normalizedWriteCapableToolNames,
+            AuthenticationRequiredTools = authenticationRequiredToolCount,
+            AuthenticationRequiredToolNames = normalizedAuthenticationRequiredToolNames,
+            ProbeCapableTools = probeCapableToolCount,
+            ProbeCapableToolNames = normalizedProbeCapableToolNames,
             CrossPackHandoffTools = crossPackHandoffToolCount,
             CrossPackHandoffToolNames = normalizedCrossPackHandoffToolNames,
             CrossPackTargetPacks = normalizedCrossPackTargetPacks
@@ -108,13 +143,23 @@ public static class ToolAutonomySummaryBuilder {
         }
 
         var remoteCapableToolCount = 0;
+        var targetScopedToolCount = 0;
+        var remoteHostTargetingToolCount = 0;
         var setupAwareToolCount = 0;
         var environmentDiscoverToolCount = 0;
         var handoffAwareToolCount = 0;
         var recoveryAwareToolCount = 0;
+        var writeCapableToolCount = 0;
+        var authenticationRequiredToolCount = 0;
+        var probeCapableToolCount = 0;
         var crossPackHandoffToolCount = 0;
         var remoteCapablePackIds = new List<string>();
+        var targetScopedPackIds = new List<string>();
+        var remoteHostTargetingPackIds = new List<string>();
         var environmentDiscoverPackIds = new List<string>();
+        var writeCapablePackIds = new List<string>();
+        var authenticationRequiredPackIds = new List<string>();
+        var probeCapablePackIds = new List<string>();
         var crossPackReadyPackIds = new List<string>();
         var crossPackTargetPackIds = new List<string>();
 
@@ -125,17 +170,37 @@ public static class ToolAutonomySummaryBuilder {
             }
 
             remoteCapableToolCount += Math.Max(0, summary.RemoteCapableTools);
+            targetScopedToolCount += Math.Max(0, summary.TargetScopedTools);
+            remoteHostTargetingToolCount += Math.Max(0, summary.RemoteHostTargetingTools);
             setupAwareToolCount += Math.Max(0, summary.SetupAwareTools);
             environmentDiscoverToolCount += Math.Max(0, summary.EnvironmentDiscoverTools);
             handoffAwareToolCount += Math.Max(0, summary.HandoffAwareTools);
             recoveryAwareToolCount += Math.Max(0, summary.RecoveryAwareTools);
+            writeCapableToolCount += Math.Max(0, summary.WriteCapableTools);
+            authenticationRequiredToolCount += Math.Max(0, summary.AuthenticationRequiredTools);
+            probeCapableToolCount += Math.Max(0, summary.ProbeCapableTools);
             crossPackHandoffToolCount += Math.Max(0, summary.CrossPackHandoffTools);
 
             if (summary.RemoteCapableTools > 0) {
                 remoteCapablePackIds.Add(enabledPackIds[i]);
             }
+            if (summary.TargetScopedTools > 0) {
+                targetScopedPackIds.Add(enabledPackIds[i]);
+            }
+            if (summary.RemoteHostTargetingTools > 0) {
+                remoteHostTargetingPackIds.Add(enabledPackIds[i]);
+            }
             if (summary.EnvironmentDiscoverTools > 0) {
                 environmentDiscoverPackIds.Add(enabledPackIds[i]);
+            }
+            if (summary.WriteCapableTools > 0) {
+                writeCapablePackIds.Add(enabledPackIds[i]);
+            }
+            if (summary.AuthenticationRequiredTools > 0) {
+                authenticationRequiredPackIds.Add(enabledPackIds[i]);
+            }
+            if (summary.ProbeCapableTools > 0) {
+                probeCapablePackIds.Add(enabledPackIds[i]);
             }
 
             if (summary.CrossPackHandoffTools > 0) {
@@ -145,18 +210,33 @@ public static class ToolAutonomySummaryBuilder {
         }
 
         var normalizedRemoteCapablePackIds = NormalizeDistinctStrings(remoteCapablePackIds, maxPackIds);
+        var normalizedTargetScopedPackIds = NormalizeDistinctStrings(targetScopedPackIds, maxPackIds);
+        var normalizedRemoteHostTargetingPackIds = NormalizeDistinctStrings(remoteHostTargetingPackIds, maxPackIds);
         var normalizedEnvironmentDiscoverPackIds = NormalizeDistinctStrings(environmentDiscoverPackIds, maxPackIds);
+        var normalizedWriteCapablePackIds = NormalizeDistinctStrings(writeCapablePackIds, maxPackIds);
+        var normalizedAuthenticationRequiredPackIds = NormalizeDistinctStrings(authenticationRequiredPackIds, maxPackIds);
+        var normalizedProbeCapablePackIds = NormalizeDistinctStrings(probeCapablePackIds, maxPackIds);
         var normalizedCrossPackReadyPackIds = NormalizeDistinctStrings(crossPackReadyPackIds, maxPackIds);
         var normalizedCrossPackTargetPackIds = NormalizeDistinctStrings(crossPackTargetPackIds, maxPackIds);
 
         if (remoteCapableToolCount <= 0
+            && targetScopedToolCount <= 0
+            && remoteHostTargetingToolCount <= 0
             && setupAwareToolCount <= 0
             && environmentDiscoverToolCount <= 0
             && handoffAwareToolCount <= 0
             && recoveryAwareToolCount <= 0
+            && writeCapableToolCount <= 0
+            && authenticationRequiredToolCount <= 0
+            && probeCapableToolCount <= 0
             && crossPackHandoffToolCount <= 0
             && normalizedRemoteCapablePackIds.Length == 0
+            && normalizedTargetScopedPackIds.Length == 0
+            && normalizedRemoteHostTargetingPackIds.Length == 0
             && normalizedEnvironmentDiscoverPackIds.Length == 0
+            && normalizedWriteCapablePackIds.Length == 0
+            && normalizedAuthenticationRequiredPackIds.Length == 0
+            && normalizedProbeCapablePackIds.Length == 0
             && normalizedCrossPackReadyPackIds.Length == 0
             && normalizedCrossPackTargetPackIds.Length == 0) {
             return null;
@@ -164,13 +244,23 @@ public static class ToolAutonomySummaryBuilder {
 
         return new SessionCapabilityAutonomySummaryDto {
             RemoteCapableToolCount = Math.Max(0, remoteCapableToolCount),
+            TargetScopedToolCount = Math.Max(0, targetScopedToolCount),
+            RemoteHostTargetingToolCount = Math.Max(0, remoteHostTargetingToolCount),
             SetupAwareToolCount = Math.Max(0, setupAwareToolCount),
             EnvironmentDiscoverToolCount = Math.Max(0, environmentDiscoverToolCount),
             HandoffAwareToolCount = Math.Max(0, handoffAwareToolCount),
             RecoveryAwareToolCount = Math.Max(0, recoveryAwareToolCount),
+            WriteCapableToolCount = Math.Max(0, writeCapableToolCount),
+            AuthenticationRequiredToolCount = Math.Max(0, authenticationRequiredToolCount),
+            ProbeCapableToolCount = Math.Max(0, probeCapableToolCount),
             CrossPackHandoffToolCount = Math.Max(0, crossPackHandoffToolCount),
             RemoteCapablePackIds = normalizedRemoteCapablePackIds,
+            TargetScopedPackIds = normalizedTargetScopedPackIds,
+            RemoteHostTargetingPackIds = normalizedRemoteHostTargetingPackIds,
             EnvironmentDiscoverPackIds = normalizedEnvironmentDiscoverPackIds,
+            WriteCapablePackIds = normalizedWriteCapablePackIds,
+            AuthenticationRequiredPackIds = normalizedAuthenticationRequiredPackIds,
+            ProbeCapablePackIds = normalizedProbeCapablePackIds,
             CrossPackReadyPackIds = normalizedCrossPackReadyPackIds,
             CrossPackTargetPackIds = normalizedCrossPackTargetPackIds
         };

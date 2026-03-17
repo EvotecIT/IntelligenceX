@@ -161,6 +161,36 @@ public sealed class ChatFallbackArchitectureGuardrailTests {
     }
 
     [Fact]
+    public void ChatToolingProject_ShouldOnlyReferenceSharedToolContracts_NotBuiltInToolPackProjects() {
+        var repoRoot = FindRepoRoot();
+        var source = File.ReadAllText(Path.Combine(
+            repoRoot,
+            "IntelligenceX.Chat",
+            "IntelligenceX.Chat.Tooling",
+            "IntelligenceX.Chat.Tooling.csproj"));
+
+        Assert.Contains("IntelligenceX.Tools.Common", source, StringComparison.OrdinalIgnoreCase);
+
+        var disallowedPackProjectTokens = new[] {
+            "IntelligenceX.Tools.ADPlayground",
+            "IntelligenceX.Tools.DomainDetective",
+            "IntelligenceX.Tools.DnsClientX",
+            "IntelligenceX.Tools.Email",
+            "IntelligenceX.Tools.EventLog",
+            "IntelligenceX.Tools.FileSystem",
+            "IntelligenceX.Tools.OfficeIMO",
+            "IntelligenceX.Tools.PowerShell",
+            "IntelligenceX.Tools.ReviewerSetup",
+            "IntelligenceX.Tools.System",
+            "IntelligenceX.Tools.TestimoX"
+        };
+
+        for (var i = 0; i < disallowedPackProjectTokens.Length; i++) {
+            Assert.DoesNotContain(disallowedPackProjectTokens[i], source, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
     public void ChatRuntimeSurface_ShouldNotHardcodePackIdsInAppOrService() {
         var repoRoot = FindRepoRoot();
         var roots = new[] {

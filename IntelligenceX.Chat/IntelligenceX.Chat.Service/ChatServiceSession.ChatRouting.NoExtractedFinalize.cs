@@ -64,6 +64,7 @@ internal sealed partial class ChatServiceSession {
         var noTextToolOutputDirectRetryUsed = state.NoTextToolOutputDirectRetryUsed;
         var structuredNextActionRetryUsed = state.StructuredNextActionRetryUsed;
         var toolProgressRecoveryUsed = state.ToolProgressRecoveryUsed;
+        var backgroundDependencyRecoveryUsed = state.BackgroundDependencyRecoveryUsed;
         var hostStructuredNextActionReplayUsed = state.HostStructuredNextActionReplayUsed;
         var noResultPhaseLoopWatchdogUsed = state.NoResultPhaseLoopWatchdogUsed;
         var lastNonEmptyAssistantDraft = state.LastNonEmptyAssistantDraft;
@@ -237,12 +238,8 @@ internal sealed partial class ChatServiceSession {
                     toolsAvailable: fullToolDefs.Length > 0 || toolDefs.Count > 0,
                     assistantDraftToolCalls: extracted.Count,
                     toolProgressRecoveryUsed: toolProgressRecoveryUsed);
-                if (finalizeContinuationDecision.Kind != NoExtractedFinalizeContinuationDecisionKind.None) {
-                    if (finalizeContinuationDecision.Kind == NoExtractedFinalizeContinuationDecisionKind.StructuredNextActionRetry) {
-                        structuredNextActionRetryUsed = true;
-                    } else if (finalizeContinuationDecision.Kind == NoExtractedFinalizeContinuationDecisionKind.ToolProgressRecovery) {
-                        toolProgressRecoveryUsed = true;
-                    }
+                if (finalizeContinuationDecision.Kind == NoExtractedFinalizeContinuationDecisionKind.StructuredNextActionRetry) {
+                    structuredNextActionRetryUsed = true;
 
                     if (finalizeContinuationDecision.ExpandToFullToolAvailability
                         && fullToolDefs.Length > 0
@@ -254,13 +251,77 @@ internal sealed partial class ChatServiceSession {
                         RememberWeightedToolSubset(threadId, toolDefs, originalToolCount);
                     }
 
-                    if (finalizeContinuationDecision.Kind == NoExtractedFinalizeContinuationDecisionKind.StructuredNextActionRetry) {
-                        Trace.WriteLine(
-                            $"[structured-next-action] outcome=retry reason={finalizeContinuationDecision.Reason} continuation={continuationFollowUpTurn} tools={toolDefs.Count} prior_calls={toolCalls.Count} prior_outputs={toolOutputs.Count}");
-                    } else {
-                        Trace.WriteLine(
-                            $"[tool-progress-recovery] outcome=retry reason={finalizeContinuationDecision.Reason} continuation={continuationFollowUpTurn} tools={toolDefs.Count} prior_calls={toolCalls.Count} prior_outputs={toolOutputs.Count}");
+                    Trace.WriteLine(
+                        $"[structured-next-action] outcome=retry reason={finalizeContinuationDecision.Reason} continuation={continuationFollowUpTurn} tools={toolDefs.Count} prior_calls={toolCalls.Count} prior_outputs={toolOutputs.Count}");
+
+                    turn = await ApplyNoExtractedFinalizeContinuationDecisionAsync(
+                            client,
+                            writer,
+                            request,
+                            threadId,
+                            options,
+                            turnToken,
+                            planExecuteReviewLoop,
+                            modelHeartbeatSeconds,
+                            finalizeContinuationDecision)
+                        .ConfigureAwait(false);
+                    return ContinueRound();
+                }
+
+                if (!backgroundDependencyRecoveryUsed
+                    && TryBuildBackgroundWorkDependencyRecoveryBlockerText(
+                        threadId: threadId,
+                        userRequest: routedUserRequest,
+                        assistantDraft: text,
+                        toolDefinitions: structuredNextActionToolDefs,
+                        text: out var backgroundDependencyRecoveryText,
+                        reason: out var backgroundDependencyRecoveryTextReason)) {
+                    backgroundDependencyRecoveryUsed = true;
+                    Trace.WriteLine(
+                        $"[background-prerequisite-recovery] outcome=deterministic_blocker reason={backgroundDependencyRecoveryTextReason} continuation={continuationFollowUpTurn} prior_calls={toolCalls.Count} prior_outputs={toolOutputs.Count}");
+                    text = backgroundDependencyRecoveryText;
+                } else if (!backgroundDependencyRecoveryUsed
+                    && TryBuildBackgroundWorkDependencyRecoveryPrompt(
+                        threadId: threadId,
+                        userRequest: routedUserRequest,
+                        assistantDraft: text,
+                        toolDefinitions: structuredNextActionToolDefs,
+                        prompt: out var backgroundDependencyRecoveryPrompt,
+                        reason: out var backgroundDependencyRecoveryReason)) {
+                    backgroundDependencyRecoveryUsed = true;
+                    Trace.WriteLine(
+                        $"[background-prerequisite-recovery] outcome=prompt reason={backgroundDependencyRecoveryReason} continuation={continuationFollowUpTurn} prior_calls={toolCalls.Count} prior_outputs={toolOutputs.Count}");
+                    turn = await RunModelPhaseWithProgressAsync(
+                            client,
+                            writer,
+                            request.RequestId,
+                            threadId,
+                            ChatInput.FromText(backgroundDependencyRecoveryPrompt),
+                            CopyChatOptions(options, newThreadOverride: false),
+                            turnToken,
+                            phaseStatus: planExecuteReviewLoop ? ChatStatusCodes.PhasePlan : ChatStatusCodes.Thinking,
+                            phaseMessage: "Resolving prepared follow-up prerequisites.",
+                            heartbeatLabel: "Resolving prerequisites",
+                            heartbeatSeconds: modelHeartbeatSeconds)
+                        .ConfigureAwait(false);
+                    return ContinueRound();
+                }
+
+                if (finalizeContinuationDecision.Kind == NoExtractedFinalizeContinuationDecisionKind.ToolProgressRecovery) {
+                    toolProgressRecoveryUsed = true;
+
+                    if (finalizeContinuationDecision.ExpandToFullToolAvailability
+                        && fullToolDefs.Length > 0
+                        && toolDefs.Count != fullToolDefs.Length) {
+                        toolDefs = fullToolDefs;
+                        options.Tools = fullToolDefs;
+                        options.ToolChoice = ToolChoice.Auto;
+                        usedContinuationSubset = false;
+                        RememberWeightedToolSubset(threadId, toolDefs, originalToolCount);
                     }
+
+                    Trace.WriteLine(
+                        $"[tool-progress-recovery] outcome=retry reason={finalizeContinuationDecision.Reason} continuation={continuationFollowUpTurn} tools={toolDefs.Count} prior_calls={toolCalls.Count} prior_outputs={toolOutputs.Count}");
 
                     turn = await ApplyNoExtractedFinalizeContinuationDecisionAsync(
                             client,
@@ -417,9 +478,14 @@ internal sealed partial class ChatServiceSession {
                         toolActivityDetected: hasToolActivity,
                         answerPlan: state.AnswerPlan,
                         assistantDraft: text)) {
+                    var backgroundWorkBlockedOnPrerequisites = TryBuildBackgroundWorkDependencyBlockedGuidance(
+                        threadId,
+                        out _);
                     var blockerReason = noToolExecutionWatchdogUsed
                         ? "no_tool_calls_after_watchdog_retry"
-                        : "no_tool_evidence_at_finalize";
+                        : backgroundWorkBlockedOnPrerequisites
+                            ? "background_work_waiting_on_prerequisites"
+                            : "no_tool_evidence_at_finalize";
                     var builtCachedEvidenceFallback =
                         TryBuildToolEvidenceFallbackText(threadId, primaryUserRequest, out var cachedEvidenceFallbackText)
                         || TryBuildToolEvidenceFallbackText(threadId, routedUserRequest, out cachedEvidenceFallbackText);
@@ -610,6 +676,7 @@ internal sealed partial class ChatServiceSession {
             state.NoTextToolOutputDirectRetryUsed = noTextToolOutputDirectRetryUsed;
             state.StructuredNextActionRetryUsed = structuredNextActionRetryUsed;
             state.ToolProgressRecoveryUsed = toolProgressRecoveryUsed;
+            state.BackgroundDependencyRecoveryUsed = backgroundDependencyRecoveryUsed;
             state.HostStructuredNextActionReplayUsed = hostStructuredNextActionReplayUsed;
             state.NoResultPhaseLoopWatchdogUsed = noResultPhaseLoopWatchdogUsed;
             state.LastNonEmptyAssistantDraft = lastNonEmptyAssistantDraft;

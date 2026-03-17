@@ -44,8 +44,15 @@ internal sealed partial class ChatServiceSession {
         warning.Append(" registered_tools='").Append(snapshot.RegisteredTools).Append('\'');
         warning.Append(" allowed_roots='").Append(snapshot.AllowedRootCount).Append('\'');
         warning.Append(" tooling_available='").Append(snapshot.ToolingAvailable ? "true" : "false").Append('\'');
+        warning.Append(" dangerous_tools_enabled='").Append(snapshot.DangerousToolsEnabled ? "true" : "false").Append('\'');
         warning.Append(" remote_reachability_mode='").Append(snapshot.RemoteReachabilityMode ?? "none").Append('\'');
         warning.Append(" autonomy_remote_capable_tools='").Append(snapshot.Autonomy?.RemoteCapableToolCount ?? 0).Append('\'');
+        warning.Append(" autonomy_target_scoped_tools='").Append(snapshot.Autonomy?.TargetScopedToolCount ?? 0).Append('\'');
+        warning.Append(" autonomy_remote_host_targeting_tools='").Append(snapshot.Autonomy?.RemoteHostTargetingToolCount ?? 0).Append('\'');
+        warning.Append(" autonomy_environment_discover_tools='").Append(snapshot.Autonomy?.EnvironmentDiscoverToolCount ?? 0).Append('\'');
+        warning.Append(" autonomy_write_capable_tools='").Append(snapshot.Autonomy?.WriteCapableToolCount ?? 0).Append('\'');
+        warning.Append(" autonomy_auth_required_tools='").Append(snapshot.Autonomy?.AuthenticationRequiredToolCount ?? 0).Append('\'');
+        warning.Append(" autonomy_probe_capable_tools='").Append(snapshot.Autonomy?.ProbeCapableToolCount ?? 0).Append('\'');
         warning.Append(" autonomy_cross_pack_handoff_tools='").Append(snapshot.Autonomy?.CrossPackHandoffToolCount ?? 0).Append('\'');
         warning.Append(" background_scheduler_daemon_enabled='").Append(snapshot.BackgroundScheduler?.DaemonEnabled == true ? "true" : "false").Append('\'');
         warning.Append(" background_scheduler_auto_pause_enabled='").Append(snapshot.BackgroundScheduler?.AutoPauseEnabled == true ? "true" : "false").Append('\'');
@@ -55,6 +62,8 @@ internal sealed partial class ChatServiceSession {
         warning.Append(" background_scheduler_ready_items='").Append(snapshot.BackgroundScheduler?.ReadyItemCount ?? 0).Append('\'');
         warning.Append(" background_scheduler_running_items='").Append(snapshot.BackgroundScheduler?.RunningItemCount ?? 0).Append('\'');
         warning.Append(" background_scheduler_tracked_threads='").Append(snapshot.BackgroundScheduler?.TrackedThreadCount ?? 0).Append('\'');
+        warning.Append(" background_scheduler_dependency_blocked_items='").Append(snapshot.BackgroundScheduler?.DependencyBlockedItemCount ?? 0).Append('\'');
+        warning.Append(" background_scheduler_dependency_blocked_threads='").Append(snapshot.BackgroundScheduler?.DependencyBlockedThreadCount ?? 0).Append('\'');
         warning.Append(" background_scheduler_completed_executions='").Append(snapshot.BackgroundScheduler?.CompletedExecutionCount ?? 0).Append('\'');
         warning.Append(" background_scheduler_requeued_executions='").Append(snapshot.BackgroundScheduler?.RequeuedExecutionCount ?? 0).Append('\'');
         warning.Append(" background_scheduler_released_executions='").Append(snapshot.BackgroundScheduler?.ReleasedExecutionCount ?? 0).Append('\'');
@@ -73,6 +82,10 @@ internal sealed partial class ChatServiceSession {
             warning.Append(" enabled_plugins='").Append(string.Join(",", snapshot.EnabledPluginIds)).Append('\'');
         }
 
+        if (snapshot.DangerousPackIds.Length > 0) {
+            warning.Append(" dangerous_packs='").Append(string.Join(",", snapshot.DangerousPackIds)).Append('\'');
+        }
+
         if (snapshot.EnabledPackEngineIds.Length > 0) {
             warning.Append(" enabled_pack_engines='").Append(string.Join(",", snapshot.EnabledPackEngineIds)).Append('\'');
         }
@@ -85,6 +98,14 @@ internal sealed partial class ChatServiceSession {
             warning.Append(" routing_families='").Append(string.Join(",", snapshot.RoutingFamilies)).Append('\'');
         }
 
+        if (snapshot.RepresentativeExamples.Length > 0) {
+            warning.Append(" representative_examples='").Append(string.Join("|", snapshot.RepresentativeExamples)).Append('\'');
+        }
+
+        if (snapshot.CrossPackTargetPackDisplayNames.Length > 0) {
+            warning.Append(" cross_pack_followup_targets='").Append(string.Join(",", snapshot.CrossPackTargetPackDisplayNames)).Append('\'');
+        }
+
         if (snapshot.Skills.Length > 0) {
             warning.Append(" skills='").Append(string.Join(",", snapshot.Skills)).Append('\'');
         }
@@ -94,6 +115,24 @@ internal sealed partial class ChatServiceSession {
         }
         if (snapshot.Autonomy?.RemoteCapablePackIds is { Length: > 0 }) {
             warning.Append(" autonomy_remote_capable_packs='").Append(string.Join(",", snapshot.Autonomy.RemoteCapablePackIds)).Append('\'');
+        }
+        if (snapshot.Autonomy?.TargetScopedPackIds is { Length: > 0 }) {
+            warning.Append(" autonomy_target_scoped_packs='").Append(string.Join(",", snapshot.Autonomy.TargetScopedPackIds)).Append('\'');
+        }
+        if (snapshot.Autonomy?.RemoteHostTargetingPackIds is { Length: > 0 }) {
+            warning.Append(" autonomy_remote_host_targeting_packs='").Append(string.Join(",", snapshot.Autonomy.RemoteHostTargetingPackIds)).Append('\'');
+        }
+        if (snapshot.Autonomy?.EnvironmentDiscoverPackIds is { Length: > 0 }) {
+            warning.Append(" autonomy_environment_discover_packs='").Append(string.Join(",", snapshot.Autonomy.EnvironmentDiscoverPackIds)).Append('\'');
+        }
+        if (snapshot.Autonomy?.WriteCapablePackIds is { Length: > 0 }) {
+            warning.Append(" autonomy_write_capable_packs='").Append(string.Join(",", snapshot.Autonomy.WriteCapablePackIds)).Append('\'');
+        }
+        if (snapshot.Autonomy?.AuthenticationRequiredPackIds is { Length: > 0 }) {
+            warning.Append(" autonomy_auth_required_packs='").Append(string.Join(",", snapshot.Autonomy.AuthenticationRequiredPackIds)).Append('\'');
+        }
+        if (snapshot.Autonomy?.ProbeCapablePackIds is { Length: > 0 }) {
+            warning.Append(" autonomy_probe_capable_packs='").Append(string.Join(",", snapshot.Autonomy.ProbeCapablePackIds)).Append('\'');
         }
         if (snapshot.Autonomy?.CrossPackReadyPackIds is { Length: > 0 }) {
             warning.Append(" autonomy_cross_pack_ready_packs='").Append(string.Join(",", snapshot.Autonomy.CrossPackReadyPackIds)).Append('\'');

@@ -17,6 +17,22 @@ public sealed record ToolPackAutonomySummaryDto {
     /// </summary>
     public string[] RemoteCapableToolNames { get; init; } = [];
     /// <summary>
+    /// Number of tools that expose explicit target-scope arguments.
+    /// </summary>
+    public int TargetScopedTools { get; init; }
+    /// <summary>
+    /// Target-scoped tool names.
+    /// </summary>
+    public string[] TargetScopedToolNames { get; init; } = [];
+    /// <summary>
+    /// Number of tools that directly target remote hosts/endpoints.
+    /// </summary>
+    public int RemoteHostTargetingTools { get; init; }
+    /// <summary>
+    /// Remote-host-targeting tool names.
+    /// </summary>
+    public string[] RemoteHostTargetingToolNames { get; init; } = [];
+    /// <summary>
     /// Number of tools that declare setup metadata.
     /// </summary>
     public int SetupAwareTools { get; init; }
@@ -48,6 +64,30 @@ public sealed record ToolPackAutonomySummaryDto {
     /// Recovery-aware tool names.
     /// </summary>
     public string[] RecoveryAwareToolNames { get; init; } = [];
+    /// <summary>
+    /// Number of tools that can perform mutating/write actions.
+    /// </summary>
+    public int WriteCapableTools { get; init; }
+    /// <summary>
+    /// Write-capable tool names.
+    /// </summary>
+    public string[] WriteCapableToolNames { get; init; } = [];
+    /// <summary>
+    /// Number of tools that require authentication.
+    /// </summary>
+    public int AuthenticationRequiredTools { get; init; }
+    /// <summary>
+    /// Authentication-required tool names.
+    /// </summary>
+    public string[] AuthenticationRequiredToolNames { get; init; } = [];
+    /// <summary>
+    /// Number of tools that expose connectivity/auth probe workflows.
+    /// </summary>
+    public int ProbeCapableTools { get; init; }
+    /// <summary>
+    /// Probe-capable tool names.
+    /// </summary>
+    public string[] ProbeCapableToolNames { get; init; } = [];
     /// <summary>
     /// Number of tools that declare cross-pack handoffs.
     /// </summary>

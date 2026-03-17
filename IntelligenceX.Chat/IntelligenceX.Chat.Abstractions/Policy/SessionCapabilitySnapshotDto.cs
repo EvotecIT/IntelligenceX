@@ -47,6 +47,16 @@ public sealed record SessionCapabilitySnapshotDto {
     public string[] EnabledPluginIds { get; init; } = Array.Empty<string>();
 
     /// <summary>
+    /// Whether any enabled pack currently exposes dangerous/write capability.
+    /// </summary>
+    public bool DangerousToolsEnabled { get; init; }
+
+    /// <summary>
+    /// Normalized enabled pack identifiers that currently expose dangerous/write capability.
+    /// </summary>
+    public string[] DangerousPackIds { get; init; } = Array.Empty<string>();
+
+    /// <summary>
     /// Normalized engine identifiers advertised by enabled packs.
     /// </summary>
     public string[] EnabledPackEngineIds { get; init; } = Array.Empty<string>();
@@ -70,6 +80,16 @@ public sealed record SessionCapabilitySnapshotDto {
     /// Normalized reusable skill identifiers surfaced by the runtime.
     /// </summary>
     public string[] Skills { get; init; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Compact pack-owned representative examples that describe what the current tool set can do.
+    /// </summary>
+    public string[] RepresentativeExamples { get; init; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Human-friendly cross-pack follow-up target pack names available from current handoff contracts.
+    /// </summary>
+    public string[] CrossPackTargetPackDisplayNames { get; init; } = Array.Empty<string>();
 
     /// <summary>
     /// Recently healthy tool names observed by the session.

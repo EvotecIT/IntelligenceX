@@ -155,10 +155,41 @@ public sealed class HostCapabilitySnapshotDiagnosticsTests {
         Assert.Contains(lines, static line => line.Contains("Routing catalog:", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(lines, static line => line.Contains("[routing]", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(lines, static line => line.Contains("Pack readiness:", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains(lines, static line => line.Contains("Active Directory [active_directory]: tools=1, remote-capable=0, setup-aware=0, environment-discover=0, handoff-aware=1, recovery-aware=0, cross-pack=1, targets=system", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains(lines, static line => line.Contains("Event Log [eventlog]: tools=1, remote-capable=1, setup-aware=1, environment-discover=0, handoff-aware=1, recovery-aware=1, cross-pack=1, targets=system", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains(lines, static line => line.Contains("Eventlog / Timeline Query (eventlog_timeline_query): Query event timeline from a host. [pack=eventlog, role=operational, scope=local_or_remote, remote_args=machine_name, setup=eventlog_channels_list, handoff=system/system_metrics_summary, recovery=eventlog_channels_list]", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains(lines, static line => line.Contains("System / Metrics Summary (system_metrics_summary): Summarize local system metrics. [pack=system, role=operational, scope=local_or_remote, remote_args=computer_name]", StringComparison.OrdinalIgnoreCase));
+        var activeDirectoryPackLine = Assert.Single(lines, static line => line.Contains("Active Directory [active_directory]:", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("target-scoped=1", activeDirectoryPackLine, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("write-capable=1", activeDirectoryPackLine, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("cross-pack=1", activeDirectoryPackLine, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("targets=system", activeDirectoryPackLine, StringComparison.OrdinalIgnoreCase);
+
+        var eventLogPackLine = Assert.Single(lines, static line => line.Contains("Event Log [eventlog]:", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("remote-capable=1", eventLogPackLine, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("target-scoped=1", eventLogPackLine, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("remote-targeting=1", eventLogPackLine, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("auth-required=1", eventLogPackLine, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("probe-capable=1", eventLogPackLine, StringComparison.OrdinalIgnoreCase);
+
+        var eventLogToolLine = Assert.Single(lines, static line => line.Contains("Eventlog / Timeline Query (eventlog_timeline_query):", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("pack=eventlog", eventLogToolLine, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("scope=local_or_remote", eventLogToolLine, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("remote_args=machine_name", eventLogToolLine, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("target_scope=channel/machine_name", eventLogToolLine, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("auth=ix.auth.runtime.v1", eventLogToolLine, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("probe=eventlog_channels_list", eventLogToolLine, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("setup=eventlog_channels_list", eventLogToolLine, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("handoff=system/system_metrics_summary", eventLogToolLine, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("recovery=eventlog_channels_list", eventLogToolLine, StringComparison.OrdinalIgnoreCase);
+
+        var activeDirectoryToolLine = Assert.Single(lines, static line => line.Contains("(ad_domain_monitor):", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("pack=active_directory", activeDirectoryToolLine, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("scope=local_only", activeDirectoryToolLine, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("target_scope=domain_name", activeDirectoryToolLine, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("write=mutating", activeDirectoryToolLine, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("handoff=system/system_info", activeDirectoryToolLine, StringComparison.OrdinalIgnoreCase);
+
+        var systemToolLine = Assert.Single(lines, static line => line.Contains("(system_metrics_summary):", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("pack=system", systemToolLine, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("scope=local_or_remote", systemToolLine, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("remote_args=computer_name", systemToolLine, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -385,6 +416,12 @@ public sealed class HostCapabilitySnapshotDiagnosticsTests {
         Assert.Equal(entry.PackId, dto.PackId);
         Assert.Equal(entry.IsPackInfoTool, dto.IsPackInfoTool);
         Assert.Equal(entry.IsEnvironmentDiscoverTool, dto.IsEnvironmentDiscoverTool);
+        Assert.Equal(entry.IsWriteCapable, dto.IsWriteCapable);
+        Assert.Equal(entry.RequiresAuthentication, dto.RequiresAuthentication);
+        Assert.Equal(string.IsNullOrWhiteSpace(entry.AuthenticationContractId) ? null : entry.AuthenticationContractId, dto.AuthenticationContractId);
+        Assert.Equal(entry.AuthenticationArguments, dto.AuthenticationArguments);
+        Assert.Equal(entry.SupportsConnectivityProbe, dto.SupportsConnectivityProbe);
+        Assert.Equal(string.IsNullOrWhiteSpace(entry.ProbeToolName) ? null : entry.ProbeToolName, dto.ProbeToolName);
         Assert.Equal(entry.ExecutionScope, dto.ExecutionScope);
         Assert.Equal(entry.SupportsTargetScoping, dto.SupportsTargetScoping);
         Assert.Equal(entry.TargetScopeArguments, dto.TargetScopeArguments);
@@ -453,6 +490,16 @@ public sealed class HostCapabilitySnapshotDiagnosticsTests {
                     IsSetupAware = true,
                     SetupToolName = "eventlog_channels_list"
                 },
+                authentication: new ToolAuthenticationContract {
+                    IsAuthenticationAware = true,
+                    RequiresAuthentication = true,
+                    AuthenticationContractId = "ix.auth.runtime.v1",
+                    Mode = ToolAuthenticationMode.ProfileReference,
+                    ProfileIdArgumentName = "profile_id",
+                    SupportsConnectivityProbe = true,
+                    ProbeToolName = "eventlog_channels_list",
+                    ProbeIdArgumentName = "probe_id"
+                },
                 handoff: new ToolHandoffContract {
                     IsHandoffAware = true,
                     OutboundRoutes = new[] {
@@ -486,6 +533,11 @@ public sealed class HostCapabilitySnapshotDiagnosticsTests {
                     DomainIntentFamily = ToolSelectionMetadata.DomainIntentFamilyAd,
                     DomainIntentActionId = "act_domain_monitor"
                 },
+                execution: new ToolExecutionContract {
+                    IsExecutionAware = true,
+                    ExecutionScope = ToolExecutionScopes.LocalOnly,
+                    TargetScopeArguments = new[] { "domain_name" }
+                },
                 handoff: new ToolHandoffContract {
                     IsHandoffAware = true,
                     OutboundRoutes = new[] {
@@ -500,6 +552,9 @@ public sealed class HostCapabilitySnapshotDiagnosticsTests {
                             }
                         }
                     }
+                },
+                writeGovernance: new ToolWriteGovernanceContract {
+                    IsWriteCapable = true
                 }),
             new ToolDefinition(
                 "system_metrics_summary",

@@ -13,6 +13,9 @@ using IntelligenceX.Tools.Common;
 namespace IntelligenceX.Chat.Tooling;
 
 public static partial class ToolPackBootstrap {
+    private const string BuiltInToolAssemblyManifestResourceSuffix = ".BuiltInToolAssemblies.txt";
+    private const string BuiltInToolProbePathsEnvironmentVariable = "INTELLIGENCEX_BUILTIN_TOOL_PROBE_PATHS";
+
     /// <summary>
     /// Resolves plugin search roots used by folder-based plugin loading.
     /// </summary>
@@ -26,6 +29,19 @@ public static partial class ToolPackBootstrap {
         return PluginFolderToolPackLoader.ResolvePluginSearchRoots(options)
             .Select(static root => root.Path)
             .ToArray();
+    }
+
+    /// <summary>
+    /// Resolves trusted built-in assembly probe roots used when dependency-graph resolution is unavailable.
+    /// </summary>
+    /// <param name="options">Bootstrap options.</param>
+    /// <returns>Deterministic built-in assembly probe roots.</returns>
+    public static IReadOnlyList<string> GetBuiltInToolAssemblyProbePaths(ToolPackBootstrapOptions options) {
+        if (options is null) {
+            throw new ArgumentNullException(nameof(options));
+        }
+
+        return ResolveBuiltInToolAssemblyProbePaths(options, typeof(ToolPackBootstrap).Assembly);
     }
 
     private static IReadOnlyList<BuiltInPackRegistrationCandidate> DiscoverBuiltInPacks(ToolPackBootstrapOptions options) {
@@ -86,7 +102,7 @@ public static partial class ToolPackBootstrap {
         var seen = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (var assemblyName in EnumerateToolAssemblyNamesForDiscovery(options)) {
-            var assembly = TryLoadToolAssembly(assemblyName, onWarning);
+            var assembly = TryLoadToolAssembly(assemblyName, options, onWarning);
             if (assembly is null) {
                 continue;
             }
@@ -199,16 +215,19 @@ public static partial class ToolPackBootstrap {
     private static IReadOnlyList<string> DiscoverDefaultBuiltInAssemblyNames(Action<string>? onWarning) {
         try {
             var discovered = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var depsFilePath in EnumerateDependencyContextFiles(typeof(ToolPackBootstrap).Assembly)) {
+            var bootstrapAssembly = typeof(ToolPackBootstrap).Assembly;
+            foreach (var depsFilePath in EnumerateDependencyContextFiles(bootstrapAssembly)) {
                 using var stream = File.OpenRead(depsFilePath);
                 using var document = JsonDocument.Parse(stream);
                 AddBuiltInToolAssemblyNamesFromDependencyContext(document.RootElement, discovered);
             }
 
+            AddBuiltInToolAssemblyNamesFromEmbeddedManifest(bootstrapAssembly, discovered);
+
             if (discovered.Count == 0) {
                 Warn(
                     onWarning,
-                    "[startup] built_in_pack_default_discovery_failed reason='dependency graph did not expose built-in tool assemblies.'",
+                    "[startup] built_in_pack_default_discovery_failed reason='dependency graph and embedded manifest did not expose built-in tool assemblies.'",
                     shouldWarn: true);
                 return Array.Empty<string>();
             }
@@ -223,6 +242,48 @@ public static partial class ToolPackBootstrap {
                 shouldWarn: true);
             return Array.Empty<string>();
         }
+    }
+
+    private static void AddBuiltInToolAssemblyNamesFromEmbeddedManifest(Assembly bootstrapAssembly, HashSet<string> discovered) {
+        if (bootstrapAssembly is null || discovered is null) {
+            return;
+        }
+
+        using var stream = TryOpenBuiltInToolAssemblyManifestStream(bootstrapAssembly);
+        if (stream is null) {
+            return;
+        }
+
+        using var reader = new StreamReader(stream);
+        while (!reader.EndOfStream) {
+            var line = reader.ReadLine();
+            if (string.IsNullOrWhiteSpace(line)) {
+                continue;
+            }
+
+            var candidate = line.Trim();
+            if (candidate.StartsWith("#", StringComparison.Ordinal)) {
+                continue;
+            }
+
+            if (IsBuiltInToolAssemblyName(candidate)) {
+                discovered.Add(candidate);
+            }
+        }
+    }
+
+    private static Stream? TryOpenBuiltInToolAssemblyManifestStream(Assembly bootstrapAssembly) {
+        var manifestResourceNames = bootstrapAssembly.GetManifestResourceNames();
+        for (var i = 0; i < manifestResourceNames.Length; i++) {
+            var resourceName = manifestResourceNames[i];
+            if (!resourceName.EndsWith(BuiltInToolAssemblyManifestResourceSuffix, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            return bootstrapAssembly.GetManifestResourceStream(resourceName);
+        }
+
+        return null;
     }
 
     private static IEnumerable<string> EnumerateDependencyContextFiles(Assembly bootstrapAssembly) {
@@ -296,7 +357,7 @@ public static partial class ToolPackBootstrap {
                && normalized.IndexOf(".Benchmarks", StringComparison.OrdinalIgnoreCase) < 0;
     }
 
-    private static Assembly? TryLoadToolAssembly(AssemblyName assemblyName, Action<string>? onWarning) {
+    private static Assembly? TryLoadToolAssembly(AssemblyName assemblyName, ToolPackBootstrapOptions options, Action<string>? onWarning) {
         try {
             var requestedName = (assemblyName.Name ?? string.Empty).Trim();
             if (requestedName.Length == 0) {
@@ -310,7 +371,7 @@ public static partial class ToolPackBootstrap {
                 return alreadyLoaded;
             }
 
-            if (!TryResolveTrustedToolAssemblyPath(assemblyName, out var trustedAssemblyPath)) {
+            if (!TryResolveTrustedToolAssemblyPath(assemblyName, options, out var trustedAssemblyPath)) {
                 Warn(
                     onWarning,
                     $"[startup] built_in_pack_assembly_skipped assembly='{requestedName}' reason='trusted assembly path not found.'",
@@ -328,7 +389,7 @@ public static partial class ToolPackBootstrap {
         }
     }
 
-    private static bool TryResolveTrustedToolAssemblyPath(AssemblyName assemblyName, out string trustedAssemblyPath) {
+    private static bool TryResolveTrustedToolAssemblyPath(AssemblyName assemblyName, ToolPackBootstrapOptions options, out string trustedAssemblyPath) {
         trustedAssemblyPath = string.Empty;
         var assemblyNameValue = (assemblyName.Name ?? string.Empty).Trim();
         if (assemblyNameValue.Length == 0) {
@@ -347,17 +408,109 @@ public static partial class ToolPackBootstrap {
 
         var dependencyResolver = new AssemblyDependencyResolver(bootstrapAssemblyPath);
         var resolvedAssemblyPath = dependencyResolver.ResolveAssemblyToPath(assemblyName);
-        if (string.IsNullOrWhiteSpace(resolvedAssemblyPath)) {
+        if (!string.IsNullOrWhiteSpace(resolvedAssemblyPath)) {
+            var normalizedResolvedPath = Path.GetFullPath(resolvedAssemblyPath);
+            if (File.Exists(normalizedResolvedPath)) {
+                trustedAssemblyPath = normalizedResolvedPath;
+                return true;
+            }
+        }
+
+        var probeRoots = ResolveBuiltInToolAssemblyProbePaths(options, typeof(ToolPackBootstrap).Assembly);
+        if (TryResolveTrustedToolAssemblyPathFromProbeRoots(assemblyName, probeRoots, out var probedAssemblyPath)) {
+            trustedAssemblyPath = probedAssemblyPath;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static IReadOnlyList<string> ResolveBuiltInToolAssemblyProbePaths(ToolPackBootstrapOptions options, Assembly bootstrapAssembly) {
+        var discovered = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        void AddProbeRoot(string? candidate) {
+            if (string.IsNullOrWhiteSpace(candidate)) {
+                return;
+            }
+
+            string normalizedPath;
+            try {
+                normalizedPath = Path.GetFullPath(candidate.Trim());
+            } catch (Exception) {
+                return;
+            }
+
+            if (!Directory.Exists(normalizedPath) || !seen.Add(normalizedPath)) {
+                return;
+            }
+
+            discovered.Add(normalizedPath);
+        }
+
+        if (options.BuiltInToolProbePaths is { Count: > 0 }) {
+            for (var i = 0; i < options.BuiltInToolProbePaths.Count; i++) {
+                AddProbeRoot(options.BuiltInToolProbePaths[i]);
+            }
+        }
+
+        var environmentProbePaths = Environment.GetEnvironmentVariable(BuiltInToolProbePathsEnvironmentVariable);
+        if (!string.IsNullOrWhiteSpace(environmentProbePaths)) {
+            var candidates = environmentProbePaths.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            for (var i = 0; i < candidates.Length; i++) {
+                AddProbeRoot(candidates[i]);
+            }
+        }
+
+        var bootstrapAssemblyPath = bootstrapAssembly.Location;
+        if (!string.IsNullOrWhiteSpace(bootstrapAssemblyPath)) {
+            AddProbeRoot(Path.GetDirectoryName(bootstrapAssemblyPath));
+        }
+
+        AddProbeRoot(AppContext.BaseDirectory);
+        AddProbeRoot(Path.Combine(AppContext.BaseDirectory, "tools"));
+        AddProbeRoot(Path.Combine(AppContext.BaseDirectory, "service"));
+        AddProbeRoot(Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "service")));
+
+        return discovered;
+    }
+
+    private static bool TryResolveTrustedToolAssemblyPathFromProbeRoots(
+        AssemblyName assemblyName,
+        IReadOnlyList<string> probeRoots,
+        out string trustedAssemblyPath) {
+        trustedAssemblyPath = string.Empty;
+        var assemblyNameValue = (assemblyName.Name ?? string.Empty).Trim();
+        if (assemblyNameValue.Length == 0 || probeRoots.Count == 0) {
             return false;
         }
 
-        var normalizedResolvedPath = Path.GetFullPath(resolvedAssemblyPath);
-        if (!File.Exists(normalizedResolvedPath)) {
-            return false;
+        var fileName = assemblyNameValue + ".dll";
+        for (var i = 0; i < probeRoots.Count; i++) {
+            var probeRoot = probeRoots[i];
+            if (string.IsNullOrWhiteSpace(probeRoot)) {
+                continue;
+            }
+
+            var candidatePath = Path.Combine(probeRoot, fileName);
+            if (!File.Exists(candidatePath)) {
+                continue;
+            }
+
+            try {
+                var candidateAssemblyName = AssemblyName.GetAssemblyName(candidatePath);
+                if (!string.Equals(candidateAssemblyName.Name, assemblyNameValue, StringComparison.OrdinalIgnoreCase)) {
+                    continue;
+                }
+
+                trustedAssemblyPath = Path.GetFullPath(candidatePath);
+                return true;
+            } catch (Exception) {
+                // Ignore malformed or mismatched assemblies in trusted probe roots.
+            }
         }
 
-        trustedAssemblyPath = normalizedResolvedPath;
-        return true;
+        return false;
     }
 
     private static IReadOnlyList<Type> EnumerateLoadableTypes(Assembly assembly, Action<string>? onWarning) {

@@ -48,6 +48,11 @@ public sealed class MainWindowRuntimeSchedulerStateTests {
         BindingFlags.NonPublic | BindingFlags.Static)
         ?? throw new InvalidOperationException("ValidateBackgroundSchedulerMaintenanceWindowScope not found.");
 
+    private static readonly MethodInfo BuildBackgroundSchedulerContinuationPlanMethod = typeof(MainWindow).GetMethod(
+        "BuildBackgroundSchedulerContinuationPlan",
+        BindingFlags.NonPublic | BindingFlags.Static)
+        ?? throw new InvalidOperationException("BuildBackgroundSchedulerContinuationPlan not found.");
+
     private static readonly FieldInfo BackgroundSchedulerStatusSnapshotField = typeof(MainWindow).GetField(
         "_backgroundSchedulerStatusSnapshot",
         BindingFlags.NonPublic | BindingFlags.Instance)
@@ -62,6 +67,27 @@ public sealed class MainWindowRuntimeSchedulerStateTests {
         "_backgroundSchedulerGlobalStatusSnapshot",
         BindingFlags.NonPublic | BindingFlags.Instance)
         ?? throw new InvalidOperationException("_backgroundSchedulerGlobalStatusSnapshot not found.");
+
+    private static readonly FieldInfo ServiceProfileNamesField = typeof(MainWindow).GetField(
+        "_serviceProfileNames",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_serviceProfileNames not found.");
+
+    private static readonly FieldInfo ServiceActiveProfileNameField = typeof(MainWindow).GetField(
+        "_serviceActiveProfileName",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_serviceActiveProfileName not found.");
+
+    private static readonly FieldInfo AppProfileNameField = typeof(MainWindow).GetField(
+        "_appProfileName",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_appProfileName not found.");
+
+    private static T GetPlanProperty<T>(object plan, string propertyName) {
+        var property = plan.GetType().GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+                       ?? throw new InvalidOperationException($"Plan property '{propertyName}' not found.");
+        return Assert.IsType<T>(property.GetValue(plan));
+    }
 
     /// <summary>
     /// Ensures capability snapshot diagnostics retain background scheduler details for the UI bridge.
@@ -107,12 +133,45 @@ public sealed class MainWindowRuntimeSchedulerStateTests {
                     new SessionCapabilityBackgroundSchedulerThreadSummaryDto {
                         ThreadId = "thread-1",
                         QueuedItemCount = 2,
+                        DependencyBlockedItemCount = 1,
                         ReadyItemCount = 1,
                         RunningItemCount = 0,
                         CompletedItemCount = 3,
                         PendingReadOnlyItemCount = 1,
                         PendingUnknownItemCount = 0,
-                        RecentEvidenceTools = new[] { "system_disk_inventory" }
+                        RecentEvidenceTools = new[] { "system_disk_inventory" },
+                        DependencyHelperToolNames = new[] { "eventlog_channels_list" },
+                        DependencyRecoveryReason = "background_prerequisite_auth_context_required",
+                        DependencyNextAction = "request_runtime_auth_context",
+                        ContinuationHint = new SessionCapabilityBackgroundSchedulerContinuationHintDto {
+                            ThreadId = "thread-1",
+                            NextAction = "request_runtime_auth_context",
+                            RecoveryReason = "background_prerequisite_auth_context_required",
+                            HelperToolNames = new[] { "eventlog_channels_list" },
+                            InputArgumentNames = new[] { "profile_id" },
+                            SuggestedRequests = new[] {
+                                new SessionCapabilityBackgroundSchedulerContinuationRequestDto {
+                                    RequestKind = "list_profiles",
+                                    Purpose = "discover_runtime_profiles"
+                                },
+                                new SessionCapabilityBackgroundSchedulerContinuationRequestDto {
+                                    RequestKind = "set_profile",
+                                    Purpose = "apply_runtime_auth_context",
+                                    RequiredArgumentNames = new[] { "profileName" },
+                                    SatisfiesInputArgumentNames = new[] { "profile_id" },
+                                    SuggestedArguments = new[] {
+                                        new SessionCapabilityBackgroundSchedulerContinuationRequestArgumentDto {
+                                            Name = "newThread",
+                                            Value = "false",
+                                            ValueKind = "boolean"
+                                        }
+                                    }
+                                }
+                            },
+                            StatusSummary = "Waiting on runtime auth context: profile_id."
+                        },
+                        DependencyAuthenticationHelperToolNames = new[] { "eventlog_channels_list" },
+                        DependencyAuthenticationArgumentNames = new[] { "profile_id" }
                     }
                 }
             }
@@ -129,6 +188,11 @@ public sealed class MainWindowRuntimeSchedulerStateTests {
         Assert.Equal(2, scheduler.GetProperty("readyItemCount").GetInt32());
         Assert.Equal("system_disk_inventory", scheduler.GetProperty("recentActivity")[0].GetProperty("toolName").GetString());
         Assert.Equal("thread-1", scheduler.GetProperty("threadSummaries")[0].GetProperty("threadId").GetString());
+        Assert.Equal("request_runtime_auth_context", scheduler.GetProperty("threadSummaries")[0].GetProperty("dependencyNextAction").GetString());
+        Assert.Equal("request_runtime_auth_context", scheduler.GetProperty("threadSummaries")[0].GetProperty("continuationHint").GetProperty("nextAction").GetString());
+        Assert.Equal("set_profile", scheduler.GetProperty("threadSummaries")[0].GetProperty("continuationHint").GetProperty("suggestedRequests")[1].GetProperty("requestKind").GetString());
+        Assert.Equal("profile_id", scheduler.GetProperty("threadSummaries")[0].GetProperty("dependencyAuthenticationArgumentNames")[0].GetString());
+        Assert.Equal("Ready=1, running=0, queued=2.", scheduler.GetProperty("threadSummaries")[0].GetProperty("statusSummary").GetString());
         Assert.Equal(4, scheduler.GetProperty("queuedItemCount").GetInt32());
     }
 
@@ -204,6 +268,250 @@ public sealed class MainWindowRuntimeSchedulerStateTests {
 
         using var document = JsonDocument.Parse(JsonSerializer.Serialize(state));
         Assert.Equal("Background scheduler is idle.", document.RootElement.GetProperty("statusSummary").GetString());
+    }
+
+    /// <summary>
+    /// Ensures dependency-blocked scheduler state surfaces deterministic runtime-auth next steps instead of idle text.
+    /// </summary>
+    [Fact]
+    public void BuildBackgroundSchedulerState_SummarizesBlockedRuntimeAuthContext() {
+        var scheduler = new SessionCapabilityBackgroundSchedulerDto {
+            DaemonEnabled = true,
+            DependencyBlockedThreadCount = 1,
+            DependencyBlockedItemCount = 2,
+            DependencyHelperToolNames = new[] { "eventlog_channels_list" },
+            DependencyRecoveryReason = "background_prerequisite_auth_context_required",
+            DependencyNextAction = "request_runtime_auth_context",
+            DependencyAuthenticationHelperToolNames = new[] { "eventlog_channels_list" },
+            DependencyAuthenticationArgumentNames = new[] { "profile_id" }
+        };
+
+        var state = BuildBackgroundSchedulerStateMethod.Invoke(null, new object?[] { scheduler });
+        Assert.NotNull(state);
+
+        using var document = JsonDocument.Parse(JsonSerializer.Serialize(state));
+        Assert.Equal("Waiting on runtime auth context: profile_id.", document.RootElement.GetProperty("statusSummary").GetString());
+        Assert.Equal("request_runtime_auth_context", document.RootElement.GetProperty("dependencyNextAction").GetString());
+        Assert.Equal("profile_id", document.RootElement.GetProperty("dependencyAuthenticationArgumentNames")[0].GetString());
+    }
+
+    /// <summary>
+    /// Ensures dependency-blocked scheduler state surfaces helper retry waits instead of idle text.
+    /// </summary>
+    [Fact]
+    public void BuildBackgroundSchedulerState_SummarizesBlockedHelperRetry() {
+        var scheduler = new SessionCapabilityBackgroundSchedulerDto {
+            DaemonEnabled = true,
+            DependencyBlockedThreadCount = 1,
+            DependencyBlockedItemCount = 1,
+            DependencyHelperToolNames = new[] { "eventlog_channels_list" },
+            DependencyRecoveryReason = "background_prerequisite_retry_cooldown",
+            DependencyNextAction = "wait_for_helper_retry",
+            DependencyRetryCooldownHelperToolNames = new[] { "eventlog_channels_list" }
+        };
+
+        var state = BuildBackgroundSchedulerStateMethod.Invoke(null, new object?[] { scheduler });
+        Assert.NotNull(state);
+
+        using var document = JsonDocument.Parse(JsonSerializer.Serialize(state));
+        Assert.Equal("Waiting on helper retry: eventlog_channels_list.", document.RootElement.GetProperty("statusSummary").GetString());
+        Assert.Equal("wait_for_helper_retry", document.RootElement.GetProperty("dependencyNextAction").GetString());
+        Assert.Equal("eventlog_channels_list", document.RootElement.GetProperty("dependencyRetryCooldownHelperToolNames")[0].GetString());
+    }
+
+    /// <summary>
+    /// Ensures published per-thread scheduler summaries retain dependency recovery hints and thread-level status text.
+    /// </summary>
+    [Fact]
+    public void BuildBackgroundSchedulerState_EmbedsPerThreadDependencyRecoveryState() {
+        var scheduler = new SessionCapabilityBackgroundSchedulerDto {
+            DaemonEnabled = true,
+            ThreadSummaries = new[] {
+                new SessionCapabilityBackgroundSchedulerThreadSummaryDto {
+                    ThreadId = "thread-auth",
+                    QueuedItemCount = 1,
+                    DependencyBlockedItemCount = 1,
+                    ReadyItemCount = 0,
+                    RunningItemCount = 0,
+                    CompletedItemCount = 2,
+                    PendingReadOnlyItemCount = 1,
+                    PendingUnknownItemCount = 0,
+                    DependencyHelperToolNames = new[] { "eventlog_channels_list" },
+                    DependencyRecoveryReason = "background_prerequisite_auth_context_required",
+                    DependencyNextAction = "request_runtime_auth_context",
+                    ContinuationHint = new SessionCapabilityBackgroundSchedulerContinuationHintDto {
+                        ThreadId = "thread-auth",
+                        NextAction = "request_runtime_auth_context",
+                        RecoveryReason = "background_prerequisite_auth_context_required",
+                        HelperToolNames = new[] { "eventlog_channels_list" },
+                        InputArgumentNames = new[] { "profile_id" },
+                        SuggestedRequests = new[] {
+                            new SessionCapabilityBackgroundSchedulerContinuationRequestDto {
+                                RequestKind = "list_profiles",
+                                Purpose = "discover_runtime_profiles"
+                            },
+                            new SessionCapabilityBackgroundSchedulerContinuationRequestDto {
+                                RequestKind = "set_profile",
+                                Purpose = "apply_runtime_auth_context",
+                                RequiredArgumentNames = new[] { "profileName" },
+                                SatisfiesInputArgumentNames = new[] { "profile_id" },
+                                SuggestedArguments = new[] {
+                                    new SessionCapabilityBackgroundSchedulerContinuationRequestArgumentDto {
+                                        Name = "newThread",
+                                        Value = "false",
+                                        ValueKind = "boolean"
+                                    }
+                                }
+                            }
+                        },
+                        StatusSummary = "Waiting on runtime auth context: profile_id."
+                    },
+                    DependencyAuthenticationHelperToolNames = new[] { "eventlog_channels_list" },
+                    DependencyAuthenticationArgumentNames = new[] { "profile_id" }
+                }
+            }
+        };
+
+        var state = BuildBackgroundSchedulerStateMethod.Invoke(null, new object?[] { scheduler });
+        Assert.NotNull(state);
+
+        using var document = JsonDocument.Parse(JsonSerializer.Serialize(state));
+        var threadSummary = document.RootElement.GetProperty("threadSummaries")[0];
+        Assert.Equal("thread-auth", threadSummary.GetProperty("threadId").GetString());
+        Assert.Equal("request_runtime_auth_context", threadSummary.GetProperty("dependencyNextAction").GetString());
+        Assert.Equal("request_runtime_auth_context", threadSummary.GetProperty("continuationHint").GetProperty("nextAction").GetString());
+        Assert.Equal("discover_runtime_profiles", threadSummary.GetProperty("continuationHint").GetProperty("suggestedRequests")[0].GetProperty("purpose").GetString());
+        Assert.Equal("profile_id", threadSummary.GetProperty("dependencyAuthenticationArgumentNames")[0].GetString());
+        Assert.Equal("Waiting on runtime auth context: profile_id.", threadSummary.GetProperty("statusSummary").GetString());
+    }
+
+    /// <summary>
+    /// Ensures runtime-auth continuations resolve to an app profile application plan when the saved app profile is available.
+    /// </summary>
+    [Fact]
+    public void BuildBackgroundSchedulerContinuationPlan_UsesSavedAppProfileForRuntimeAuthRecovery() {
+        var scheduler = new SessionCapabilityBackgroundSchedulerDto {
+            ThreadSummaries = new[] {
+                new SessionCapabilityBackgroundSchedulerThreadSummaryDto {
+                    ThreadId = "thread-auth",
+                    ContinuationHint = new SessionCapabilityBackgroundSchedulerContinuationHintDto {
+                        ThreadId = "thread-auth",
+                        NextAction = "request_runtime_auth_context",
+                        RecoveryReason = "background_prerequisite_auth_context_required",
+                        SuggestedRequests = new[] {
+                            new SessionCapabilityBackgroundSchedulerContinuationRequestDto {
+                                RequestKind = "list_profiles",
+                                Purpose = "discover_runtime_profiles"
+                            },
+                            new SessionCapabilityBackgroundSchedulerContinuationRequestDto {
+                                RequestKind = "set_profile",
+                                Purpose = "apply_runtime_auth_context",
+                                RequiredArgumentNames = new[] { "profileName" },
+                                SatisfiesInputArgumentNames = new[] { "profile_id" }
+                            }
+                        }
+                    }
+                }
+            }
+        };
+
+        var plan = BuildBackgroundSchedulerContinuationPlanMethod.Invoke(null, new object?[] {
+            scheduler,
+            "thread-auth",
+            "ops",
+            new[] { "ops", "lab" },
+            "lab"
+        });
+
+        Assert.NotNull(plan);
+        Assert.False(GetPlanProperty<bool>(plan!, "RefreshServiceProfiles"));
+        Assert.True(GetPlanProperty<bool>(plan!, "ApplyServiceProfile"));
+        Assert.True(GetPlanProperty<bool>(plan!, "RefreshSchedulerThread"));
+        Assert.Equal("ops", GetPlanProperty<string>(plan!, "ProfileName"));
+        Assert.Empty(GetPlanProperty<string[]>(plan!, "MissingArgumentNames"));
+    }
+
+    /// <summary>
+    /// Ensures runtime-auth continuations first refresh profile inventory when the app has not loaded service profiles yet.
+    /// </summary>
+    [Fact]
+    public void BuildBackgroundSchedulerContinuationPlan_RefreshesProfilesBeforeRuntimeAuthRecoveryWhenUnknown() {
+        var scheduler = new SessionCapabilityBackgroundSchedulerDto {
+            ThreadSummaries = new[] {
+                new SessionCapabilityBackgroundSchedulerThreadSummaryDto {
+                    ThreadId = "thread-auth",
+                    ContinuationHint = new SessionCapabilityBackgroundSchedulerContinuationHintDto {
+                        ThreadId = "thread-auth",
+                        NextAction = "request_runtime_auth_context",
+                        RecoveryReason = "background_prerequisite_auth_context_required",
+                        SuggestedRequests = new[] {
+                            new SessionCapabilityBackgroundSchedulerContinuationRequestDto {
+                                RequestKind = "list_profiles",
+                                Purpose = "discover_runtime_profiles"
+                            },
+                            new SessionCapabilityBackgroundSchedulerContinuationRequestDto {
+                                RequestKind = "set_profile",
+                                Purpose = "apply_runtime_auth_context",
+                                RequiredArgumentNames = new[] { "profileName" }
+                            }
+                        }
+                    }
+                }
+            }
+        };
+
+        var plan = BuildBackgroundSchedulerContinuationPlanMethod.Invoke(null, new object?[] {
+            scheduler,
+            "thread-auth",
+            "ops",
+            Array.Empty<string>(),
+            null
+        });
+
+        Assert.NotNull(plan);
+        Assert.True(GetPlanProperty<bool>(plan!, "RefreshServiceProfiles"));
+        Assert.False(GetPlanProperty<bool>(plan!, "ApplyServiceProfile"));
+        Assert.False(GetPlanProperty<bool>(plan!, "RefreshSchedulerThread"));
+        Assert.Empty(GetPlanProperty<string[]>(plan!, "MissingArgumentNames"));
+    }
+
+    /// <summary>
+    /// Ensures retry/pending continuations resolve to a scoped scheduler refresh plan instead of profile mutation.
+    /// </summary>
+    [Fact]
+    public void BuildBackgroundSchedulerContinuationPlan_UsesScopedRefreshForHelperRetryRecovery() {
+        var scheduler = new SessionCapabilityBackgroundSchedulerDto {
+            ThreadSummaries = new[] {
+                new SessionCapabilityBackgroundSchedulerThreadSummaryDto {
+                    ThreadId = "thread-retry",
+                    ContinuationHint = new SessionCapabilityBackgroundSchedulerContinuationHintDto {
+                        ThreadId = "thread-retry",
+                        NextAction = "wait_for_helper_retry",
+                        RecoveryReason = "background_prerequisite_retry_cooldown",
+                        SuggestedRequests = new[] {
+                            new SessionCapabilityBackgroundSchedulerContinuationRequestDto {
+                                RequestKind = "get_background_scheduler_status",
+                                Purpose = "refresh_helper_retry_status"
+                            }
+                        }
+                    }
+                }
+            }
+        };
+
+        var plan = BuildBackgroundSchedulerContinuationPlanMethod.Invoke(null, new object?[] {
+            scheduler,
+            "thread-retry",
+            "ops",
+            new[] { "ops" },
+            "ops"
+        });
+
+        Assert.NotNull(plan);
+        Assert.False(GetPlanProperty<bool>(plan!, "RefreshServiceProfiles"));
+        Assert.False(GetPlanProperty<bool>(plan!, "ApplyServiceProfile"));
+        Assert.True(GetPlanProperty<bool>(plan!, "RefreshSchedulerThread"));
+        Assert.Empty(GetPlanProperty<string[]>(plan!, "MissingArgumentNames"));
     }
 
     /// <summary>
@@ -418,6 +726,99 @@ public sealed class MainWindowRuntimeSchedulerStateTests {
         Assert.Equal(4, globalDocument.RootElement.GetProperty("queuedItemCount").GetInt32());
         Assert.Equal("thread-scoped", scopedDocument.RootElement.GetProperty("scopeThreadId").GetString());
         Assert.Equal(1, scopedDocument.RootElement.GetProperty("queuedItemCount").GetInt32());
+    }
+
+    /// <summary>
+    /// Ensures live published scheduler state exposes a direct continuation command when the current app profile can resume a blocked thread.
+    /// </summary>
+    [Fact]
+    public void BuildPublishedBackgroundSchedulerState_EmbedsContinuationCommandForBlockedThread() {
+        var window = (MainWindow)RuntimeHelpers.GetUninitializedObject(typeof(MainWindow));
+        var globalSnapshot = new SessionCapabilityBackgroundSchedulerDto {
+            ThreadSummaries = new[] {
+                new SessionCapabilityBackgroundSchedulerThreadSummaryDto {
+                    ThreadId = "thread-auth",
+                    DependencyBlockedItemCount = 1,
+                    ContinuationHint = new SessionCapabilityBackgroundSchedulerContinuationHintDto {
+                        ThreadId = "thread-auth",
+                        NextAction = "request_runtime_auth_context",
+                        RecoveryReason = "background_prerequisite_auth_context_required",
+                        SuggestedRequests = new[] {
+                            new SessionCapabilityBackgroundSchedulerContinuationRequestDto {
+                                RequestKind = "set_profile",
+                                Purpose = "apply_runtime_auth_context",
+                                RequiredArgumentNames = new[] { "profileName" }
+                            }
+                        }
+                    }
+                }
+            }
+        };
+
+        AppProfileNameField.SetValue(window, "ops");
+        ServiceProfileNamesField.SetValue(window, new[] { "ops", "lab" });
+        ServiceActiveProfileNameField.SetValue(window, "lab");
+        BackgroundSchedulerStatusSnapshotField.SetValue(window, globalSnapshot);
+        BackgroundSchedulerGlobalStatusSnapshotField.SetValue(window, globalSnapshot);
+
+        var schedulerState = BuildPublishedBackgroundSchedulerStateMethod.Invoke(window, new object?[] { null });
+        Assert.NotNull(schedulerState);
+        var effective = schedulerState.GetType().GetField("Item1")?.GetValue(schedulerState);
+
+        using var effectiveDocument = JsonDocument.Parse(JsonSerializer.Serialize(effective));
+        var command = effectiveDocument.RootElement
+            .GetProperty("threadSummaries")[0]
+            .GetProperty("continuationCommand");
+        Assert.Equal("scheduler_continue_thread", command.GetProperty("command").GetString());
+        Assert.Equal("thread-auth", command.GetProperty("threadId").GetString());
+        Assert.True(command.GetProperty("enabled").GetBoolean());
+        Assert.Equal("ops", command.GetProperty("profileName").GetString());
+    }
+
+    /// <summary>
+    /// Ensures live published scheduler state marks continuation commands disabled when required profile context is unavailable.
+    /// </summary>
+    [Fact]
+    public void BuildPublishedBackgroundSchedulerState_DisablesContinuationCommandWhenProfileIsMissing() {
+        var window = (MainWindow)RuntimeHelpers.GetUninitializedObject(typeof(MainWindow));
+        var globalSnapshot = new SessionCapabilityBackgroundSchedulerDto {
+            ThreadSummaries = new[] {
+                new SessionCapabilityBackgroundSchedulerThreadSummaryDto {
+                    ThreadId = "thread-auth",
+                    DependencyBlockedItemCount = 1,
+                    ContinuationHint = new SessionCapabilityBackgroundSchedulerContinuationHintDto {
+                        ThreadId = "thread-auth",
+                        NextAction = "request_runtime_auth_context",
+                        RecoveryReason = "background_prerequisite_auth_context_required",
+                        SuggestedRequests = new[] {
+                            new SessionCapabilityBackgroundSchedulerContinuationRequestDto {
+                                RequestKind = "set_profile",
+                                Purpose = "apply_runtime_auth_context",
+                                RequiredArgumentNames = new[] { "profileName" }
+                            }
+                        }
+                    }
+                }
+            }
+        };
+
+        AppProfileNameField.SetValue(window, "ops");
+        ServiceProfileNamesField.SetValue(window, Array.Empty<string>());
+        ServiceActiveProfileNameField.SetValue(window, null);
+        BackgroundSchedulerStatusSnapshotField.SetValue(window, globalSnapshot);
+        BackgroundSchedulerGlobalStatusSnapshotField.SetValue(window, globalSnapshot);
+
+        var schedulerState = BuildPublishedBackgroundSchedulerStateMethod.Invoke(window, new object?[] { null });
+        Assert.NotNull(schedulerState);
+        var effective = schedulerState.GetType().GetField("Item1")?.GetValue(schedulerState);
+
+        using var effectiveDocument = JsonDocument.Parse(JsonSerializer.Serialize(effective));
+        var command = effectiveDocument.RootElement
+            .GetProperty("threadSummaries")[0]
+            .GetProperty("continuationCommand");
+        Assert.Equal("scheduler_continue_thread", command.GetProperty("command").GetString());
+        Assert.False(command.GetProperty("enabled").GetBoolean());
+        Assert.Equal("profileName", command.GetProperty("missingArgumentNames")[0].GetString());
     }
 
     /// <summary>

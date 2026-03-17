@@ -140,6 +140,20 @@ public sealed class HostOptionsProfileBootstrapTests {
     }
 
     [Fact]
+    public void Parse_AppliesBuiltInToolProbePaths_AsRuntimeOnlyOverrides() {
+        var options = ParseHostOptions(new[] {
+            "--built-in-tool-probe-path", "C:\\tools\\a",
+            "--built-in-tool-probe-path", "D:\\shared\\tools"
+        }, out var error);
+
+        Assert.NotNull(options);
+        Assert.True(string.IsNullOrWhiteSpace(error), error);
+        Assert.Equal(
+            new[] { "C:\\tools\\a", "D:\\shared\\tools" },
+            ReadStringListProperty(options!, "BuiltInToolProbePaths"));
+    }
+
+    [Fact]
     public void Parse_ProfileDefaultMutatingParallelTrue_IsAppliedWithoutCliOverride() {
         var dbPath = CreateTempProfileDbPath();
         try {

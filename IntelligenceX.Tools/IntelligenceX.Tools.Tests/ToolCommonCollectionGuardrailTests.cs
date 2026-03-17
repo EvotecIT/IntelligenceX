@@ -95,8 +95,21 @@ public sealed class ToolCommonCollectionGuardrailTests {
         };
 
         var remoteCapableToolNames = new List<string> { "system_info" };
+        var targetScopedToolNames = new List<string> { "system_info" };
+        var remoteHostTargetingToolNames = new List<string> { "system_info" };
+        var environmentDiscoverToolNames = new List<string> { "system_pack_info" };
+        var writeCapableToolNames = new List<string> { "ad_user_lifecycle" };
+        var authenticationRequiredToolNames = new List<string> { "email_imap_list" };
+        var probeCapableToolNames = new List<string> { "email_imap_probe" };
         var autonomySummary = new ToolPackAutonomySummaryModel {
-            RemoteCapableToolNames = remoteCapableToolNames
+            RemoteCapableToolNames = remoteCapableToolNames,
+            TargetScopedToolNames = targetScopedToolNames,
+            RemoteHostTargetingToolNames = remoteHostTargetingToolNames,
+            EnvironmentDiscoverToolNames = environmentDiscoverToolNames
+            ,
+            WriteCapableToolNames = writeCapableToolNames,
+            AuthenticationRequiredToolNames = authenticationRequiredToolNames,
+            ProbeCapableToolNames = probeCapableToolNames
         };
 
         return new[] {
@@ -252,6 +265,72 @@ public sealed class ToolCommonCollectionGuardrailTests {
                 AssertSnapshot: static value => {
                     var list = Assert.IsAssignableFrom<IReadOnlyList<string>>(value);
                     Assert.Equal(new[] { "system_info" }, list);
+                },
+                AssertImmutable: static value => AssertReadOnlyList(value, addValue: "x", replaceValue: "y")),
+
+            new GuardCase(
+                ModelType: typeof(ToolPackAutonomySummaryModel),
+                PropertyName: nameof(ToolPackAutonomySummaryModel.TargetScopedToolNames),
+                Model: autonomySummary,
+                MutateSource: () => targetScopedToolNames.Add("system_metrics_summary"),
+                AssertSnapshot: static value => {
+                    var list = Assert.IsAssignableFrom<IReadOnlyList<string>>(value);
+                    Assert.Equal(new[] { "system_info" }, list);
+                },
+                AssertImmutable: static value => AssertReadOnlyList(value, addValue: "x", replaceValue: "y")),
+
+            new GuardCase(
+                ModelType: typeof(ToolPackAutonomySummaryModel),
+                PropertyName: nameof(ToolPackAutonomySummaryModel.RemoteHostTargetingToolNames),
+                Model: autonomySummary,
+                MutateSource: () => remoteHostTargetingToolNames.Add("eventlog_live_query"),
+                AssertSnapshot: static value => {
+                    var list = Assert.IsAssignableFrom<IReadOnlyList<string>>(value);
+                    Assert.Equal(new[] { "system_info" }, list);
+                },
+                AssertImmutable: static value => AssertReadOnlyList(value, addValue: "x", replaceValue: "y")),
+
+            new GuardCase(
+                ModelType: typeof(ToolPackAutonomySummaryModel),
+                PropertyName: nameof(ToolPackAutonomySummaryModel.EnvironmentDiscoverToolNames),
+                Model: autonomySummary,
+                MutateSource: () => environmentDiscoverToolNames.Add("system_environment_discover"),
+                AssertSnapshot: static value => {
+                    var list = Assert.IsAssignableFrom<IReadOnlyList<string>>(value);
+                    Assert.Equal(new[] { "system_pack_info" }, list);
+                },
+                AssertImmutable: static value => AssertReadOnlyList(value, addValue: "x", replaceValue: "y")),
+
+            new GuardCase(
+                ModelType: typeof(ToolPackAutonomySummaryModel),
+                PropertyName: nameof(ToolPackAutonomySummaryModel.WriteCapableToolNames),
+                Model: autonomySummary,
+                MutateSource: () => writeCapableToolNames.Add("ad_group_lifecycle"),
+                AssertSnapshot: static value => {
+                    var list = Assert.IsAssignableFrom<IReadOnlyList<string>>(value);
+                    Assert.Equal(new[] { "ad_user_lifecycle" }, list);
+                },
+                AssertImmutable: static value => AssertReadOnlyList(value, addValue: "x", replaceValue: "y")),
+
+            new GuardCase(
+                ModelType: typeof(ToolPackAutonomySummaryModel),
+                PropertyName: nameof(ToolPackAutonomySummaryModel.AuthenticationRequiredToolNames),
+                Model: autonomySummary,
+                MutateSource: () => authenticationRequiredToolNames.Add("email_smtp_send"),
+                AssertSnapshot: static value => {
+                    var list = Assert.IsAssignableFrom<IReadOnlyList<string>>(value);
+                    Assert.Equal(new[] { "email_imap_list" }, list);
+                },
+                AssertImmutable: static value => AssertReadOnlyList(value, addValue: "x", replaceValue: "y")),
+
+            new GuardCase(
+                ModelType: typeof(ToolPackAutonomySummaryModel),
+                PropertyName: nameof(ToolPackAutonomySummaryModel.ProbeCapableToolNames),
+                Model: autonomySummary,
+                MutateSource: () => probeCapableToolNames.Add("email_smtp_probe"),
+                AssertSnapshot: static value => {
+                    var list = Assert.IsAssignableFrom<IReadOnlyList<string>>(value);
+                    Assert.Equal(new[] { "email_imap_probe" }, list);
                 },
                 AssertImmutable: static value => AssertReadOnlyList(value, addValue: "x", replaceValue: "y"))
         };

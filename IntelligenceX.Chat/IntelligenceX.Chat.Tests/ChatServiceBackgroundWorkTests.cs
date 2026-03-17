@@ -100,6 +100,7 @@ public sealed class ChatServiceBackgroundWorkTests {
             Title: "Verify Bob",
             Request: "verify bob after disable",
             State: "ready",
+            DependencyItemIds: Array.Empty<string>(),
             EvidenceToolNames: new[] { "ad_user_lifecycle" },
             Kind: "tool_handoff",
             Mutability: "read_only",
@@ -131,6 +132,66 @@ public sealed class ChatServiceBackgroundWorkTests {
             ready);
         Assert.Equal("Background follow-up preparation started. Focus: critical verification.", running);
         Assert.Equal("Background follow-up item completed. Focus: critical verification.", completed);
+    }
+
+    [Fact]
+    public void BackgroundWorkQueuedStatusMessages_ExposeDependencyHelpers() {
+        var helperItem = new ChatServiceSession.ThreadBackgroundWorkItem(
+            Id: "handoff:source:eventlog_channels_list:machine_name:srv-eventlog.contoso.com",
+            Title: "Probe Event Log",
+            Request: "probe event log",
+            State: "ready",
+            DependencyItemIds: Array.Empty<string>(),
+            EvidenceToolNames: new[] { "seed_eventlog_live_followup" },
+            Kind: "tool_handoff",
+            Mutability: "read_only",
+            SourceToolName: "seed_eventlog_live_followup",
+            SourceCallId: "call-live-followup",
+            TargetPackId: "eventlog",
+            TargetToolName: "eventlog_channels_list",
+            FollowUpKind: ToolHandoffFollowUpKinds.Verification,
+            FollowUpPriority: ToolHandoffFollowUpPriorities.High,
+            PreparedArgumentsJson: """{"machine_name":"srv-eventlog.contoso.com"}""",
+            ResultReference: "helper_kind=probe",
+            ExecutionAttemptCount: 0,
+            LastExecutionCallId: string.Empty,
+            LastExecutionStartedUtcTicks: 0,
+            LastExecutionFinishedUtcTicks: 0,
+            LeaseExpiresUtcTicks: 0,
+            CreatedUtcTicks: DateTime.UtcNow.Ticks,
+            UpdatedUtcTicks: DateTime.UtcNow.Ticks);
+        var dependentItem = new ChatServiceSession.ThreadBackgroundWorkItem(
+            Id: "handoff:source:eventlog_live_query:machine_name:srv-eventlog.contoso.com",
+            Title: "Run Event Log Query",
+            Request: "run event log live query",
+            State: "queued",
+            DependencyItemIds: new[] { helperItem.Id },
+            EvidenceToolNames: new[] { "seed_eventlog_live_followup" },
+            Kind: "tool_handoff",
+            Mutability: "read_only",
+            SourceToolName: "seed_eventlog_live_followup",
+            SourceCallId: "call-live-followup",
+            TargetPackId: "eventlog",
+            TargetToolName: "eventlog_live_query",
+            FollowUpKind: ToolHandoffFollowUpKinds.Verification,
+            FollowUpPriority: ToolHandoffFollowUpPriorities.High,
+            PreparedArgumentsJson: """{"machine_name":"srv-eventlog.contoso.com"}""",
+            ResultReference: string.Empty,
+            ExecutionAttemptCount: 0,
+            LastExecutionCallId: string.Empty,
+            LastExecutionStartedUtcTicks: 0,
+            LastExecutionFinishedUtcTicks: 0,
+            LeaseExpiresUtcTicks: 0,
+            CreatedUtcTicks: DateTime.UtcNow.Ticks,
+            UpdatedUtcTicks: DateTime.UtcNow.Ticks);
+
+        var queued = ChatServiceSession.BuildBackgroundWorkQueuedStatusMessageForTesting(
+            queuedCount: 1,
+            items: new[] { dependentItem, helperItem });
+
+        Assert.Equal(
+            "Queued 1 safe follow-up item for background preparation. Waiting on prerequisites: eventlog_channels_list.",
+            queued);
     }
 
     [Fact]
@@ -278,6 +339,216 @@ public sealed class ChatServiceBackgroundWorkTests {
         Assert.Equal(8, summary.ReadyItemCount);
         Assert.Equal(6, summary.ReadyThreadIds.Length);
         Assert.Equal(4, summary.ThreadSummaries.Length);
+    }
+
+    [Fact]
+    public void BuildBackgroundSchedulerSummary_ExposesDependencyBlockedWorkAndHelpers() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        const string threadId = "thread-background-scheduler-dependency-blocked";
+        var definitions = new[] {
+            new ToolDefinition(
+                name: "seed_eventlog_live_followup",
+                description: "seed live event log follow-up",
+                handoff: new ToolHandoffContract {
+                    IsHandoffAware = true,
+                    OutboundRoutes = new[] {
+                        new ToolHandoffRoute {
+                            TargetPackId = "eventlog",
+                            TargetToolName = "eventlog_live_query",
+                            TargetRole = ToolRoutingTaxonomy.RoleOperational,
+                            FollowUpKind = ToolHandoffFollowUpKinds.Verification,
+                            FollowUpPriority = ToolHandoffFollowUpPriorities.High,
+                            Bindings = new[] {
+                                new ToolHandoffBinding {
+                                    SourceField = "computer_name",
+                                    TargetArgument = "machine_name"
+                                }
+                            }
+                        }
+                    }
+                }),
+            new ToolDefinition(
+                "eventlog_live_query",
+                "Inspect live event logs on a remote machine after validation and setup.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties(),
+                authentication: new ToolAuthenticationContract {
+                    IsAuthenticationAware = true,
+                    RequiresAuthentication = true,
+                    AuthenticationContractId = "ix.auth.runtime.v1",
+                    Mode = ToolAuthenticationMode.ProfileReference,
+                    ProfileIdArgumentName = "profile_id",
+                    SupportsConnectivityProbe = true,
+                    ProbeToolName = "eventlog_channels_list"
+                },
+                setup: new ToolSetupContract {
+                    IsSetupAware = true,
+                    SetupToolName = "eventlog_runtime_profile_validate"
+                }),
+            new ToolDefinition(
+                "eventlog_channels_list",
+                "List available event log channels and validate access for the target machine.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties()),
+            new ToolDefinition(
+                "eventlog_runtime_profile_validate",
+                "Validate runtime profile readiness for the target machine.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties())
+        };
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(definitions));
+        session.RememberToolHandoffBackgroundWorkForTesting(
+            threadId,
+            definitions,
+            new[] {
+                new ToolCallDto {
+                    CallId = "call-live-followup",
+                    Name = "seed_eventlog_live_followup",
+                    ArgumentsJson = """{"computer_name":"srv-eventlog.contoso.com"}"""
+                }
+            },
+            new[] {
+                new ToolOutputDto {
+                    CallId = "call-live-followup",
+                    Ok = true,
+                    Output = """{"ok":true}"""
+                }
+            });
+
+        var summary = session.BuildBackgroundSchedulerSummaryForTesting();
+
+        Assert.Equal(1, summary.DependencyBlockedThreadCount);
+        Assert.Equal(1, summary.DependencyBlockedItemCount);
+        Assert.Contains("eventlog_channels_list", summary.DependencyHelperToolNames, StringComparer.OrdinalIgnoreCase);
+        Assert.Equal(string.Empty, summary.DependencyRecoveryReason);
+        Assert.Equal(string.Empty, summary.DependencyNextAction);
+        var threadSummary = Assert.Single(summary.ThreadSummaries, static item => string.Equals(item.ThreadId, threadId, StringComparison.Ordinal));
+        Assert.NotNull(threadSummary.ContinuationHint);
+        Assert.Equal("wait_for_prerequisites", threadSummary.ContinuationHint!.NextAction);
+        Assert.Equal("background_prerequisite_pending", threadSummary.ContinuationHint.RecoveryReason);
+        Assert.Contains("eventlog_channels_list", threadSummary.ContinuationHint.HelperToolNames, StringComparer.OrdinalIgnoreCase);
+        var refreshRequest = Assert.Single(threadSummary.ContinuationHint.SuggestedRequests);
+        Assert.Equal("get_background_scheduler_status", refreshRequest.RequestKind);
+        Assert.Equal("refresh_blocked_thread_status", refreshRequest.Purpose);
+        Assert.Contains(refreshRequest.SuggestedArguments, static argument =>
+            string.Equals(argument.Name, "threadId", StringComparison.Ordinal)
+            && string.Equals(argument.Value, threadId, StringComparison.Ordinal)
+            && string.Equals(argument.ValueKind, "string", StringComparison.Ordinal));
+        Assert.Contains(refreshRequest.SuggestedArguments, static argument =>
+            string.Equals(argument.Name, "includeThreadSummaries", StringComparison.Ordinal)
+            && string.Equals(argument.Value, "true", StringComparison.Ordinal)
+            && string.Equals(argument.ValueKind, "boolean", StringComparison.Ordinal));
+        Assert.Equal(1, threadSummary.DependencyBlockedItemCount);
+        Assert.Contains("eventlog_channels_list", threadSummary.DependencyHelperToolNames, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("eventlog_runtime_profile_validate", threadSummary.DependencyHelperToolNames, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildBackgroundSchedulerSummary_ExposesDependencyRecoveryReasonAndAuthArguments() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        const string threadId = "thread-background-scheduler-dependency-auth";
+        var definitions = new[] {
+            new ToolDefinition(
+                name: "seed_eventlog_live_followup",
+                description: "seed live event log follow-up",
+                handoff: new ToolHandoffContract {
+                    IsHandoffAware = true,
+                    OutboundRoutes = new[] {
+                        new ToolHandoffRoute {
+                            TargetPackId = "eventlog",
+                            TargetToolName = "eventlog_live_query",
+                            TargetRole = ToolRoutingTaxonomy.RoleOperational,
+                            FollowUpKind = ToolHandoffFollowUpKinds.Verification,
+                            FollowUpPriority = ToolHandoffFollowUpPriorities.High,
+                            Bindings = new[] {
+                                new ToolHandoffBinding {
+                                    SourceField = "computer_name",
+                                    TargetArgument = "machine_name"
+                                }
+                            }
+                        }
+                    }
+                }),
+            new ToolDefinition(
+                "eventlog_live_query",
+                "Inspect live event logs on a remote machine after validation and setup.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties(),
+                authentication: new ToolAuthenticationContract {
+                    IsAuthenticationAware = true,
+                    RequiresAuthentication = true,
+                    AuthenticationContractId = "ix.auth.runtime.v1",
+                    Mode = ToolAuthenticationMode.ProfileReference,
+                    ProfileIdArgumentName = "profile_id",
+                    SupportsConnectivityProbe = true,
+                    ProbeToolName = "eventlog_channels_list"
+                }),
+            new ToolDefinition(
+                "eventlog_channels_list",
+                "List available event log channels and validate access for the target machine.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties())
+        };
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(definitions));
+        session.RememberToolHandoffBackgroundWorkForTesting(
+            threadId,
+            definitions,
+            new[] {
+                new ToolCallDto {
+                    CallId = "call-live-followup",
+                    Name = "seed_eventlog_live_followup",
+                    ArgumentsJson = """{"computer_name":"srv-eventlog.contoso.com"}"""
+                }
+            },
+            new[] {
+                new ToolOutputDto {
+                    CallId = "call-live-followup",
+                    Ok = true,
+                    Output = """{"ok":true}"""
+                }
+            });
+
+        var helperItem = Assert.Single(
+            session.ResolveThreadBackgroundWorkSnapshotForTesting(threadId).Items,
+            static item => string.Equals(item.TargetToolName, "eventlog_channels_list", StringComparison.OrdinalIgnoreCase));
+        Assert.True(session.TrySetThreadBackgroundWorkItemStateForTesting(threadId, helperItem.Id, "running"));
+        session.RememberBackgroundWorkExecutionOutcomeForTesting(
+            threadId,
+            helperItem.Id,
+            "call-probe",
+            new[] {
+                new ToolOutputDto {
+                    CallId = "call-probe",
+                    Ok = false,
+                    ErrorCode = "authentication_failed",
+                    Error = "Missing runtime profile for remote eventlog access.",
+                    Output = """{"ok":false}"""
+                }
+            });
+
+        var summary = session.BuildBackgroundSchedulerSummaryForTesting();
+        var threadSummary = Assert.Single(summary.ThreadSummaries, static item => string.Equals(item.ThreadId, threadId, StringComparison.Ordinal));
+
+        Assert.Equal("background_prerequisite_auth_context_required", threadSummary.DependencyRecoveryReason);
+        Assert.Equal("request_runtime_auth_context", threadSummary.DependencyNextAction);
+        Assert.NotNull(threadSummary.ContinuationHint);
+        Assert.Equal("request_runtime_auth_context", threadSummary.ContinuationHint!.NextAction);
+        Assert.Equal("background_prerequisite_auth_context_required", threadSummary.ContinuationHint.RecoveryReason);
+        Assert.Contains("profile_id", threadSummary.ContinuationHint.InputArgumentNames, StringComparer.OrdinalIgnoreCase);
+        Assert.Equal(2, threadSummary.ContinuationHint.SuggestedRequests.Length);
+        var listProfilesRequest = Assert.Single(
+            threadSummary.ContinuationHint.SuggestedRequests,
+            static request => string.Equals(request.RequestKind, "list_profiles", StringComparison.Ordinal));
+        Assert.Equal("discover_runtime_profiles", listProfilesRequest.Purpose);
+        Assert.Empty(listProfilesRequest.RequiredArgumentNames);
+        Assert.Empty(listProfilesRequest.SuggestedArguments);
+        var setProfileRequest = Assert.Single(
+            threadSummary.ContinuationHint.SuggestedRequests,
+            static request => string.Equals(request.RequestKind, "set_profile", StringComparison.Ordinal));
+        Assert.Equal("apply_runtime_auth_context", setProfileRequest.Purpose);
+        Assert.Contains("profileName", setProfileRequest.RequiredArgumentNames, StringComparer.Ordinal);
+        Assert.Contains("profile_id", setProfileRequest.SatisfiesInputArgumentNames, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains(setProfileRequest.SuggestedArguments, static argument =>
+            string.Equals(argument.Name, "newThread", StringComparison.Ordinal)
+            && string.Equals(argument.Value, "false", StringComparison.Ordinal)
+            && string.Equals(argument.ValueKind, "boolean", StringComparison.Ordinal));
+        Assert.Contains("eventlog_channels_list", threadSummary.DependencyAuthenticationHelperToolNames, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("profile_id", threadSummary.DependencyAuthenticationArgumentNames, StringComparer.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -2839,6 +3110,627 @@ public sealed class ChatServiceBackgroundWorkTests {
     }
 
     [Fact]
+    public void TryBuildReadyBackgroundWorkToolCallForTesting_PrefersProbeHelperFollowUpBeforeDependentAuthTool() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        const string threadId = "thread-background-work-contract-helper-order";
+        var definitions = new[] {
+            CreateDefinition(
+                name: "seed_eventlog_live_followup",
+                handoff: new ToolHandoffContract {
+                    IsHandoffAware = true,
+                    OutboundRoutes = new[] {
+                        new ToolHandoffRoute {
+                            TargetPackId = "eventlog",
+                            TargetToolName = "eventlog_live_query",
+                            TargetRole = ToolRoutingTaxonomy.RoleOperational,
+                            FollowUpKind = ToolHandoffFollowUpKinds.Verification,
+                            FollowUpPriority = ToolHandoffFollowUpPriorities.Normal,
+                            Bindings = new[] {
+                                new ToolHandoffBinding {
+                                    SourceField = "computer_name",
+                                    TargetArgument = "machine_name"
+                                }
+                            }
+                        }
+                    }
+                }),
+            CreateDefinition(
+                name: "seed_eventlog_probe_followup",
+                handoff: new ToolHandoffContract {
+                    IsHandoffAware = true,
+                    OutboundRoutes = new[] {
+                        new ToolHandoffRoute {
+                            TargetPackId = "eventlog",
+                            TargetToolName = "eventlog_channels_list",
+                            TargetRole = ToolRoutingTaxonomy.RoleOperational,
+                            FollowUpKind = ToolHandoffFollowUpKinds.Verification,
+                            FollowUpPriority = ToolHandoffFollowUpPriorities.Normal,
+                            Bindings = new[] {
+                                new ToolHandoffBinding {
+                                    SourceField = "computer_name",
+                                    TargetArgument = "machine_name"
+                                }
+                            }
+                        }
+                    }
+                }),
+            new ToolDefinition(
+                "eventlog_live_query",
+                "Inspect live event logs on a remote machine after runtime profile validation.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties(),
+                authentication: new ToolAuthenticationContract {
+                    IsAuthenticationAware = true,
+                    RequiresAuthentication = true,
+                    AuthenticationContractId = "ix.auth.runtime.v1",
+                    Mode = ToolAuthenticationMode.ProfileReference,
+                    ProfileIdArgumentName = "profile_id",
+                    SupportsConnectivityProbe = true,
+                    ProbeToolName = "eventlog_channels_list"
+                }),
+            new ToolDefinition(
+                "eventlog_channels_list",
+                "List available event log channels and validate access for the target machine.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties())
+        };
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(definitions));
+
+        session.RememberToolHandoffBackgroundWorkForTesting(
+            threadId,
+            definitions,
+            new List<ToolCallDto> {
+                new() {
+                    CallId = "call-live-followup",
+                    Name = "seed_eventlog_live_followup",
+                    ArgumentsJson = """{"computer_name":"srv-eventlog.contoso.com"}"""
+                },
+                new() {
+                    CallId = "call-probe-followup",
+                    Name = "seed_eventlog_probe_followup",
+                    ArgumentsJson = """{"computer_name":"srv-eventlog.contoso.com"}"""
+                }
+            },
+            new List<ToolOutputDto> {
+                new() {
+                    CallId = "call-live-followup",
+                    Ok = true,
+                    Output = """{"ok":true}"""
+                },
+                new() {
+                    CallId = "call-probe-followup",
+                    Ok = true,
+                    Output = """{"ok":true}"""
+                }
+            });
+
+        Assert.True(session.TryBuildReadyBackgroundWorkToolCallForTesting(
+            threadId,
+            "continue",
+            definitions,
+            new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase),
+            out _,
+            out var toolName,
+            out var argumentsJson,
+            out _));
+
+        Assert.Equal("eventlog_channels_list", toolName);
+        Assert.Contains("\"machine_name\":\"srv-eventlog.contoso.com\"", argumentsJson, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RememberToolHandoffBackgroundWork_SeedsContractHelperPrerequisitesForDependentFollowUp() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        const string threadId = "thread-background-work-contract-helper-seeding";
+        var definitions = new[] {
+            new ToolDefinition(
+                name: "seed_eventlog_live_followup",
+                description: "seed live event log follow-up",
+                handoff: new ToolHandoffContract {
+                    IsHandoffAware = true,
+                    OutboundRoutes = new[] {
+                        new ToolHandoffRoute {
+                            TargetPackId = "eventlog",
+                            TargetToolName = "eventlog_live_query",
+                            TargetRole = ToolRoutingTaxonomy.RoleOperational,
+                            FollowUpKind = ToolHandoffFollowUpKinds.Verification,
+                            FollowUpPriority = ToolHandoffFollowUpPriorities.High,
+                            Bindings = new[] {
+                                new ToolHandoffBinding {
+                                    SourceField = "computer_name",
+                                    TargetArgument = "machine_name"
+                                }
+                            }
+                        }
+                    }
+                }),
+            new ToolDefinition(
+                "eventlog_live_query",
+                "Inspect live event logs on a remote machine after validation and setup.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties(),
+                authentication: new ToolAuthenticationContract {
+                    IsAuthenticationAware = true,
+                    RequiresAuthentication = true,
+                    AuthenticationContractId = "ix.auth.runtime.v1",
+                    Mode = ToolAuthenticationMode.ProfileReference,
+                    ProfileIdArgumentName = "profile_id",
+                    SupportsConnectivityProbe = true,
+                    ProbeToolName = "eventlog_channels_list"
+                },
+                setup: new ToolSetupContract {
+                    IsSetupAware = true,
+                    SetupToolName = "eventlog_runtime_profile_validate"
+                }),
+            new ToolDefinition(
+                "eventlog_channels_list",
+                "List available event log channels and validate access for the target machine.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties()),
+            new ToolDefinition(
+                "eventlog_runtime_profile_validate",
+                "Validate runtime profile readiness for the target machine.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties())
+        };
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(definitions));
+
+        session.RememberToolHandoffBackgroundWorkForTesting(
+            threadId,
+            definitions,
+            new List<ToolCallDto> {
+                new() {
+                    CallId = "call-live-followup",
+                    Name = "seed_eventlog_live_followup",
+                    ArgumentsJson = """{"computer_name":"srv-eventlog.contoso.com"}"""
+                }
+            },
+            new List<ToolOutputDto> {
+                new() {
+                    CallId = "call-live-followup",
+                    Ok = true,
+                    Output = """{"ok":true}"""
+                }
+            });
+
+        var snapshot = session.ResolveThreadBackgroundWorkSnapshotForTesting(threadId);
+
+        Assert.Equal(2, snapshot.ReadyCount);
+        Assert.Equal(1, snapshot.QueuedCount);
+        Assert.Equal(3, snapshot.PendingReadOnlyCount);
+        var dependentItem = Assert.Single(snapshot.Items, static item => string.Equals(item.TargetToolName, "eventlog_live_query", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal("queued", dependentItem.State);
+        Assert.Equal(2, dependentItem.DependencyItemIds.Length);
+
+        var probeItem = Assert.Single(snapshot.Items, static item => string.Equals(item.TargetToolName, "eventlog_channels_list", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("\"machine_name\":\"srv-eventlog.contoso.com\"", probeItem.PreparedArgumentsJson, StringComparison.Ordinal);
+        Assert.Contains("dependent_tool=eventlog_live_query", probeItem.ResultReference, StringComparison.Ordinal);
+        Assert.Contains("helper_kind=probe", probeItem.ResultReference, StringComparison.Ordinal);
+
+        var setupItem = Assert.Single(snapshot.Items, static item => string.Equals(item.TargetToolName, "eventlog_runtime_profile_validate", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("\"machine_name\":\"srv-eventlog.contoso.com\"", setupItem.PreparedArgumentsJson, StringComparison.Ordinal);
+        Assert.Contains("helper_kind=setup", setupItem.ResultReference, StringComparison.Ordinal);
+
+        Assert.True(session.TryBuildReadyBackgroundWorkToolCallForTesting(
+            threadId,
+            "continue",
+            definitions,
+            new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase),
+            out _,
+            out var toolName,
+            out var argumentsJson,
+            out _));
+
+        Assert.Equal("eventlog_channels_list", toolName);
+        Assert.Contains("\"machine_name\":\"srv-eventlog.contoso.com\"", argumentsJson, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RememberToolHandoffBackgroundWork_SkipsContractHelperSeedWhenRequiredArgumentsCannotBeDerived() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        const string threadId = "thread-background-work-contract-helper-skip";
+        var definitions = new[] {
+            new ToolDefinition(
+                name: "seed_eventlog_live_followup",
+                description: "seed live event log follow-up",
+                handoff: new ToolHandoffContract {
+                    IsHandoffAware = true,
+                    OutboundRoutes = new[] {
+                        new ToolHandoffRoute {
+                            TargetPackId = "eventlog",
+                            TargetToolName = "eventlog_live_query",
+                            TargetRole = ToolRoutingTaxonomy.RoleOperational,
+                            FollowUpKind = ToolHandoffFollowUpKinds.Verification,
+                            FollowUpPriority = ToolHandoffFollowUpPriorities.Normal,
+                            Bindings = new[] {
+                                new ToolHandoffBinding {
+                                    SourceField = "computer_name",
+                                    TargetArgument = "machine_name"
+                                }
+                            }
+                        }
+                    }
+                }),
+            new ToolDefinition(
+                "eventlog_live_query",
+                "Inspect live event logs after helper validation.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties(),
+                authentication: new ToolAuthenticationContract {
+                    IsAuthenticationAware = true,
+                    RequiresAuthentication = true,
+                    AuthenticationContractId = "ix.auth.runtime.v1",
+                    Mode = ToolAuthenticationMode.ProfileReference,
+                    ProfileIdArgumentName = "profile_id",
+                    SupportsConnectivityProbe = true,
+                    ProbeToolName = "eventlog_profile_validate"
+                }),
+            new ToolDefinition(
+                "eventlog_profile_validate",
+                "Validate runtime profile availability before running the query.",
+                ToolSchema.Object(("profile_id", ToolSchema.String("Runtime profile id."))).Required("profile_id").NoAdditionalProperties())
+        };
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(definitions));
+
+        session.RememberToolHandoffBackgroundWorkForTesting(
+            threadId,
+            definitions,
+            new List<ToolCallDto> {
+                new() {
+                    CallId = "call-live-followup",
+                    Name = "seed_eventlog_live_followup",
+                    ArgumentsJson = """{"computer_name":"srv-eventlog.contoso.com"}"""
+                }
+            },
+            new List<ToolOutputDto> {
+                new() {
+                    CallId = "call-live-followup",
+                    Ok = true,
+                    Output = """{"ok":true}"""
+                }
+            });
+
+        var snapshot = session.ResolveThreadBackgroundWorkSnapshotForTesting(threadId);
+
+        var item = Assert.Single(snapshot.Items);
+        Assert.Equal("eventlog_live_query", item.TargetToolName);
+        Assert.DoesNotContain(snapshot.Items, static item => string.Equals(item.TargetToolName, "eventlog_profile_validate", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void RememberBackgroundWorkExecutionOutcomeForTesting_CompletedHelpersPromoteDependentFollowUpWhenAllDependenciesSucceed() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        const string threadId = "thread-background-work-contract-helper-promotion";
+        var definitions = new[] {
+            new ToolDefinition(
+                name: "seed_eventlog_live_followup",
+                description: "seed live event log follow-up",
+                handoff: new ToolHandoffContract {
+                    IsHandoffAware = true,
+                    OutboundRoutes = new[] {
+                        new ToolHandoffRoute {
+                            TargetPackId = "eventlog",
+                            TargetToolName = "eventlog_live_query",
+                            TargetRole = ToolRoutingTaxonomy.RoleOperational,
+                            FollowUpKind = ToolHandoffFollowUpKinds.Verification,
+                            FollowUpPriority = ToolHandoffFollowUpPriorities.High,
+                            Bindings = new[] {
+                                new ToolHandoffBinding {
+                                    SourceField = "computer_name",
+                                    TargetArgument = "machine_name"
+                                }
+                            }
+                        }
+                    }
+                }),
+            new ToolDefinition(
+                "eventlog_live_query",
+                "Inspect live event logs on a remote machine after validation and setup.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties(),
+                authentication: new ToolAuthenticationContract {
+                    IsAuthenticationAware = true,
+                    RequiresAuthentication = true,
+                    AuthenticationContractId = "ix.auth.runtime.v1",
+                    Mode = ToolAuthenticationMode.ProfileReference,
+                    ProfileIdArgumentName = "profile_id",
+                    SupportsConnectivityProbe = true,
+                    ProbeToolName = "eventlog_channels_list"
+                },
+                setup: new ToolSetupContract {
+                    IsSetupAware = true,
+                    SetupToolName = "eventlog_runtime_profile_validate"
+                }),
+            new ToolDefinition(
+                "eventlog_channels_list",
+                "List available event log channels and validate access for the target machine.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties()),
+            new ToolDefinition(
+                "eventlog_runtime_profile_validate",
+                "Validate runtime profile readiness for the target machine.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties())
+        };
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(definitions));
+
+        session.RememberToolHandoffBackgroundWorkForTesting(
+            threadId,
+            definitions,
+            new List<ToolCallDto> {
+                new() {
+                    CallId = "call-live-followup",
+                    Name = "seed_eventlog_live_followup",
+                    ArgumentsJson = """{"computer_name":"srv-eventlog.contoso.com"}"""
+                }
+            },
+            new List<ToolOutputDto> {
+                new() {
+                    CallId = "call-live-followup",
+                    Ok = true,
+                    Output = """{"ok":true}"""
+                }
+            });
+
+        var initialSnapshot = session.ResolveThreadBackgroundWorkSnapshotForTesting(threadId);
+        var dependentItem = Assert.Single(initialSnapshot.Items, static item => string.Equals(item.TargetToolName, "eventlog_live_query", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal("queued", dependentItem.State);
+
+        Assert.True(session.TryBuildReadyBackgroundWorkToolCallForTesting(
+            threadId,
+            "continue",
+            definitions,
+            new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase),
+            out var probeItemId,
+            out var firstToolName,
+            out _,
+            out _));
+        Assert.Equal("eventlog_channels_list", firstToolName);
+        session.RememberBackgroundWorkExecutionOutcomeForTesting(
+            threadId,
+            probeItemId,
+            "host_background_work_eventlog_channels_list_001",
+            new[] {
+                new ToolOutputDto {
+                    CallId = "host_background_work_eventlog_channels_list_001",
+                    Ok = true,
+                    Output = """{"ok":true}"""
+                }
+            });
+
+        var afterProbeSnapshot = session.ResolveThreadBackgroundWorkSnapshotForTesting(threadId);
+        dependentItem = Assert.Single(afterProbeSnapshot.Items, static item => string.Equals(item.TargetToolName, "eventlog_live_query", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal("queued", dependentItem.State);
+
+        Assert.True(session.TryBuildReadyBackgroundWorkToolCallForTesting(
+            threadId,
+            "continue",
+            definitions,
+            new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase),
+            out var setupItemId,
+            out var secondToolName,
+            out _,
+            out _));
+        Assert.Equal("eventlog_runtime_profile_validate", secondToolName);
+        session.RememberBackgroundWorkExecutionOutcomeForTesting(
+            threadId,
+            setupItemId,
+            "host_background_work_eventlog_runtime_profile_validate_001",
+            new[] {
+                new ToolOutputDto {
+                    CallId = "host_background_work_eventlog_runtime_profile_validate_001",
+                    Ok = true,
+                    Output = """{"ok":true}"""
+                }
+            });
+
+        var promotedSnapshot = session.ResolveThreadBackgroundWorkSnapshotForTesting(threadId);
+        dependentItem = Assert.Single(promotedSnapshot.Items, static item => string.Equals(item.TargetToolName, "eventlog_live_query", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal("ready", dependentItem.State);
+        Assert.Equal(1, promotedSnapshot.ReadyCount);
+
+        Assert.True(session.TryBuildReadyBackgroundWorkToolCallForTesting(
+            threadId,
+            "continue",
+            definitions,
+            new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase),
+            out _,
+            out var promotedToolName,
+            out var promotedArgumentsJson,
+            out _));
+        Assert.Equal("eventlog_live_query", promotedToolName);
+        Assert.Contains("\"machine_name\":\"srv-eventlog.contoso.com\"", promotedArgumentsJson, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RememberBackgroundWorkExecutionOutcomeForTesting_FailedHelperKeepsDependentFollowUpQueued() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        const string threadId = "thread-background-work-contract-helper-failure-block";
+        var definitions = new[] {
+            new ToolDefinition(
+                name: "seed_eventlog_live_followup",
+                description: "seed live event log follow-up",
+                handoff: new ToolHandoffContract {
+                    IsHandoffAware = true,
+                    OutboundRoutes = new[] {
+                        new ToolHandoffRoute {
+                            TargetPackId = "eventlog",
+                            TargetToolName = "eventlog_live_query",
+                            TargetRole = ToolRoutingTaxonomy.RoleOperational,
+                            FollowUpKind = ToolHandoffFollowUpKinds.Verification,
+                            FollowUpPriority = ToolHandoffFollowUpPriorities.High,
+                            Bindings = new[] {
+                                new ToolHandoffBinding {
+                                    SourceField = "computer_name",
+                                    TargetArgument = "machine_name"
+                                }
+                            }
+                        }
+                    }
+                }),
+            new ToolDefinition(
+                "eventlog_live_query",
+                "Inspect live event logs on a remote machine after validation and setup.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties(),
+                authentication: new ToolAuthenticationContract {
+                    IsAuthenticationAware = true,
+                    RequiresAuthentication = true,
+                    AuthenticationContractId = "ix.auth.runtime.v1",
+                    Mode = ToolAuthenticationMode.ProfileReference,
+                    ProfileIdArgumentName = "profile_id",
+                    SupportsConnectivityProbe = true,
+                    ProbeToolName = "eventlog_channels_list"
+                }),
+            new ToolDefinition(
+                "eventlog_channels_list",
+                "List available event log channels and validate access for the target machine.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties())
+        };
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(definitions));
+
+        session.RememberToolHandoffBackgroundWorkForTesting(
+            threadId,
+            definitions,
+            new List<ToolCallDto> {
+                new() {
+                    CallId = "call-live-followup",
+                    Name = "seed_eventlog_live_followup",
+                    ArgumentsJson = """{"computer_name":"srv-eventlog.contoso.com"}"""
+                }
+            },
+            new List<ToolOutputDto> {
+                new() {
+                    CallId = "call-live-followup",
+                    Ok = true,
+                    Output = """{"ok":true}"""
+                }
+            });
+
+        Assert.True(session.TryBuildReadyBackgroundWorkToolCallForTesting(
+            threadId,
+            "continue",
+            definitions,
+            new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase),
+            out var helperItemId,
+            out var helperToolName,
+            out _,
+            out _));
+        Assert.Equal("eventlog_channels_list", helperToolName);
+
+        session.RememberBackgroundWorkExecutionOutcomeForTesting(
+            threadId,
+            helperItemId,
+            "host_background_work_eventlog_channels_list_002",
+            new[] {
+                new ToolOutputDto {
+                    CallId = "host_background_work_eventlog_channels_list_002",
+                    Ok = false,
+                    ErrorCode = "remote_unavailable",
+                    Output = """{"ok":false}"""
+                }
+            });
+
+        var snapshot = session.ResolveThreadBackgroundWorkSnapshotForTesting(threadId);
+        var dependentItem = Assert.Single(snapshot.Items, static item => string.Equals(item.TargetToolName, "eventlog_live_query", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal("queued", dependentItem.State);
+
+        var helperItem = Assert.Single(snapshot.Items, static item => string.Equals(item.TargetToolName, "eventlog_channels_list", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal("ready", helperItem.State);
+        Assert.Equal(1, snapshot.ReadyCount);
+        Assert.Equal(1, snapshot.QueuedCount);
+    }
+
+    [Fact]
+    public void TryBuildReadyBackgroundWorkToolCallForTesting_ReturnsWaitingOnPrerequisitesReasonWhenOnlyBlockedQueuedItemsRemain() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        const string threadId = "thread-background-work-waiting-on-prerequisites";
+        var definitions = new[] {
+            new ToolDefinition(
+                name: "seed_eventlog_live_followup",
+                description: "seed live event log follow-up",
+                handoff: new ToolHandoffContract {
+                    IsHandoffAware = true,
+                    OutboundRoutes = new[] {
+                        new ToolHandoffRoute {
+                            TargetPackId = "eventlog",
+                            TargetToolName = "eventlog_live_query",
+                            TargetRole = ToolRoutingTaxonomy.RoleOperational,
+                            FollowUpKind = ToolHandoffFollowUpKinds.Verification,
+                            FollowUpPriority = ToolHandoffFollowUpPriorities.High,
+                            Bindings = new[] {
+                                new ToolHandoffBinding {
+                                    SourceField = "computer_name",
+                                    TargetArgument = "machine_name"
+                                }
+                            }
+                        }
+                    }
+                }),
+            new ToolDefinition(
+                "eventlog_live_query",
+                "Inspect live event logs after prerequisites.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties(),
+                authentication: new ToolAuthenticationContract {
+                    IsAuthenticationAware = true,
+                    RequiresAuthentication = true,
+                    AuthenticationContractId = "ix.auth.runtime.v1",
+                    Mode = ToolAuthenticationMode.ProfileReference,
+                    ProfileIdArgumentName = "profile_id",
+                    SupportsConnectivityProbe = true,
+                    ProbeToolName = "eventlog_channels_list"
+                }),
+            new ToolDefinition(
+                "eventlog_channels_list",
+                "List channels for the target machine.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties())
+        };
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(definitions));
+        session.RememberToolHandoffBackgroundWorkForTesting(
+            threadId,
+            definitions,
+            new[] {
+                new ToolCallDto {
+                    CallId = "call-live-followup",
+                    Name = "seed_eventlog_live_followup",
+                    ArgumentsJson = """{"computer_name":"srv-eventlog.contoso.com"}"""
+                }
+            },
+            new[] {
+                new ToolOutputDto {
+                    CallId = "call-live-followup",
+                    Ok = true,
+                    Output = """{"ok":true}"""
+                }
+            });
+
+        Assert.True(session.TryBuildReadyBackgroundWorkToolCallForTesting(
+            threadId,
+            "continue",
+            definitions,
+            new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase),
+            out var helperItemId,
+            out var helperToolName,
+            out _,
+            out _));
+        Assert.Equal("eventlog_channels_list", helperToolName);
+
+        session.RememberBackgroundWorkExecutionOutcomeForTesting(
+            threadId,
+            helperItemId,
+            "host_background_work_eventlog_channels_list_003",
+            new[] {
+                new ToolOutputDto {
+                    CallId = "host_background_work_eventlog_channels_list_003",
+                    Ok = false,
+                    ErrorCode = "remote_unavailable",
+                    Output = """{"ok":false}"""
+                }
+            });
+
+        Assert.False(session.TryBuildReadyBackgroundWorkToolCallForTesting(
+            threadId,
+            "continue",
+            definitions,
+            new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase),
+            out _,
+            out _,
+            out _,
+            out var reason));
+        Assert.Equal("background_work_waiting_on_prerequisites", reason);
+    }
+
+    [Fact]
     public void TryBuildReadyBackgroundWorkToolCallForTesting_ThrottlesImmediateRetryAfterFailure() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         const string threadId = "thread-background-work-cooldown";
@@ -2997,6 +3889,307 @@ public sealed class ChatServiceBackgroundWorkTests {
         Assert.Contains("\"computer_name\":\"srv9.contoso.com\"", replayedArgumentsJson, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void TryBuildBackgroundWorkDependencyRecoveryPromptForTesting_PrefersRuntimeAuthContextWhenProbeFailureMatchesBlockedDependentTool() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        const string threadId = "thread-background-work-dependency-auth-recovery";
+        var definitions = new[] {
+            new ToolDefinition(
+                name: "seed_eventlog_live_followup",
+                description: "seed live event log follow-up",
+                handoff: new ToolHandoffContract {
+                    IsHandoffAware = true,
+                    OutboundRoutes = new[] {
+                        new ToolHandoffRoute {
+                            TargetPackId = "eventlog",
+                            TargetToolName = "eventlog_live_query",
+                            TargetRole = ToolRoutingTaxonomy.RoleOperational,
+                            FollowUpKind = ToolHandoffFollowUpKinds.Verification,
+                            FollowUpPriority = ToolHandoffFollowUpPriorities.High,
+                            Bindings = new[] {
+                                new ToolHandoffBinding {
+                                    SourceField = "computer_name",
+                                    TargetArgument = "machine_name"
+                                }
+                            }
+                        }
+                    }
+                }),
+            new ToolDefinition(
+                "eventlog_live_query",
+                "Inspect live event logs on a remote machine after validation and setup.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties(),
+                authentication: new ToolAuthenticationContract {
+                    IsAuthenticationAware = true,
+                    RequiresAuthentication = true,
+                    AuthenticationContractId = "ix.auth.runtime.v1",
+                    Mode = ToolAuthenticationMode.ProfileReference,
+                    ProfileIdArgumentName = "profile_id",
+                    SupportsConnectivityProbe = true,
+                    ProbeToolName = "eventlog_channels_list"
+                }),
+            new ToolDefinition(
+                "eventlog_channels_list",
+                "List available event log channels and validate access for the target machine.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties())
+        };
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(definitions));
+        session.RememberToolHandoffBackgroundWorkForTesting(
+            threadId,
+            definitions,
+            new List<ToolCallDto> {
+                new() {
+                    CallId = "call-live-followup",
+                    Name = "seed_eventlog_live_followup",
+                    ArgumentsJson = """{"computer_name":"srv-eventlog.contoso.com"}"""
+                }
+            },
+            new List<ToolOutputDto> {
+                new() {
+                    CallId = "call-live-followup",
+                    Ok = true,
+                    Output = """{"ok":true}"""
+                }
+            });
+        var helperItem = Assert.Single(
+            session.ResolveThreadBackgroundWorkSnapshotForTesting(threadId).Items,
+            static item => string.Equals(item.TargetToolName, "eventlog_channels_list", StringComparison.OrdinalIgnoreCase));
+        Assert.True(session.TrySetThreadBackgroundWorkItemStateForTesting(threadId, helperItem.Id, "running"));
+        session.RememberBackgroundWorkExecutionOutcomeForTesting(
+            threadId,
+            helperItem.Id,
+            "call-probe",
+            new List<ToolOutputDto> {
+                new() {
+                    CallId = "call-probe",
+                    Ok = false,
+                    ErrorCode = "authentication_failed",
+                    Error = "Missing runtime profile for remote eventlog access.",
+                    Output = """{"ok":false}"""
+                }
+            });
+
+        var built = session.TryBuildBackgroundWorkDependencyRecoveryPromptForTesting(
+            threadId,
+            "continue",
+            "I can keep going with the prepared follow-up.",
+            definitions,
+            out var prompt,
+            out var reason);
+
+        Assert.True(built);
+        Assert.Equal("background_prerequisite_auth_context_required", reason);
+        Assert.Contains("runtime_auth_args: profile_id", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("helper_tools: eventlog_channels_list", prompt, StringComparison.OrdinalIgnoreCase);
+
+        var builtBlocker = session.TryBuildBackgroundWorkDependencyRecoveryBlockerTextForTesting(
+            threadId,
+            "continue",
+            "I can keep going with the prepared follow-up.",
+            definitions,
+            out var blockerText,
+            out var blockerReason);
+
+        Assert.True(builtBlocker);
+        Assert.Equal("background_prerequisite_auth_context_required", blockerReason);
+        Assert.Contains("ix:execution-contract:v1", blockerText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("profile_id", blockerText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void TryBuildBackgroundWorkDependencyRecoveryPromptForTesting_PrefersSetupContextWhenSetupHelperFailsValidation() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        const string threadId = "thread-background-work-dependency-setup-recovery";
+        var definitions = new[] {
+            new ToolDefinition(
+                name: "seed_eventlog_live_followup",
+                description: "seed live event log follow-up",
+                handoff: new ToolHandoffContract {
+                    IsHandoffAware = true,
+                    OutboundRoutes = new[] {
+                        new ToolHandoffRoute {
+                            TargetPackId = "eventlog",
+                            TargetToolName = "eventlog_live_query",
+                            TargetRole = ToolRoutingTaxonomy.RoleOperational,
+                            FollowUpKind = ToolHandoffFollowUpKinds.Verification,
+                            FollowUpPriority = ToolHandoffFollowUpPriorities.High,
+                            Bindings = new[] {
+                                new ToolHandoffBinding {
+                                    SourceField = "computer_name",
+                                    TargetArgument = "machine_name"
+                                }
+                            }
+                        }
+                    }
+                }),
+            new ToolDefinition(
+                "eventlog_live_query",
+                "Inspect live event logs on a remote machine after validation and setup.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties(),
+                setup: new ToolSetupContract {
+                    IsSetupAware = true,
+                    SetupToolName = "eventlog_runtime_profile_validate"
+                }),
+            new ToolDefinition(
+                "eventlog_runtime_profile_validate",
+                "Validate runtime profile readiness for the target machine.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties())
+        };
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(definitions));
+        session.RememberToolHandoffBackgroundWorkForTesting(
+            threadId,
+            definitions,
+            new List<ToolCallDto> {
+                new() {
+                    CallId = "call-live-followup",
+                    Name = "seed_eventlog_live_followup",
+                    ArgumentsJson = """{"computer_name":"srv-eventlog.contoso.com"}"""
+                }
+            },
+            new List<ToolOutputDto> {
+                new() {
+                    CallId = "call-live-followup",
+                    Ok = true,
+                    Output = """{"ok":true}"""
+                }
+            });
+        var helperItem = Assert.Single(
+            session.ResolveThreadBackgroundWorkSnapshotForTesting(threadId).Items,
+            static item => string.Equals(item.TargetToolName, "eventlog_runtime_profile_validate", StringComparison.OrdinalIgnoreCase));
+        Assert.True(session.TrySetThreadBackgroundWorkItemStateForTesting(threadId, helperItem.Id, "running"));
+        session.RememberBackgroundWorkExecutionOutcomeForTesting(
+            threadId,
+            helperItem.Id,
+            "call-setup",
+            new List<ToolOutputDto> {
+                new() {
+                    CallId = "call-setup",
+                    Ok = false,
+                    ErrorCode = "validation_failed",
+                    Error = "Runtime profile details were incomplete.",
+                    Output = """{"ok":false}"""
+                }
+            });
+
+        var built = session.TryBuildBackgroundWorkDependencyRecoveryPromptForTesting(
+            threadId,
+            "continue",
+            "I can keep going with the prepared follow-up.",
+            definitions,
+            out var prompt,
+            out var reason);
+
+        Assert.True(built);
+        Assert.Equal("background_prerequisite_setup_context_required", reason);
+        Assert.Contains("setup_helpers: eventlog_runtime_profile_validate", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void TryBuildBackgroundWorkDependencyRecoveryPromptForTesting_UsesRetryCooldownReasonForNonAuthHelperFailure() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        const string threadId = "thread-background-work-dependency-cooldown-recovery";
+        var definitions = new[] {
+            new ToolDefinition(
+                name: "seed_eventlog_live_followup",
+                description: "seed live event log follow-up",
+                handoff: new ToolHandoffContract {
+                    IsHandoffAware = true,
+                    OutboundRoutes = new[] {
+                        new ToolHandoffRoute {
+                            TargetPackId = "eventlog",
+                            TargetToolName = "eventlog_live_query",
+                            TargetRole = ToolRoutingTaxonomy.RoleOperational,
+                            FollowUpKind = ToolHandoffFollowUpKinds.Verification,
+                            FollowUpPriority = ToolHandoffFollowUpPriorities.High,
+                            Bindings = new[] {
+                                new ToolHandoffBinding {
+                                    SourceField = "computer_name",
+                                    TargetArgument = "machine_name"
+                                }
+                            }
+                        }
+                    }
+                }),
+            new ToolDefinition(
+                "eventlog_live_query",
+                "Inspect live event logs on a remote machine after validation and setup.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties(),
+                authentication: new ToolAuthenticationContract {
+                    IsAuthenticationAware = true,
+                    RequiresAuthentication = true,
+                    AuthenticationContractId = "ix.auth.runtime.v1",
+                    Mode = ToolAuthenticationMode.ProfileReference,
+                    ProfileIdArgumentName = "profile_id",
+                    SupportsConnectivityProbe = true,
+                    ProbeToolName = "eventlog_channels_list"
+                }),
+            new ToolDefinition(
+                "eventlog_channels_list",
+                "List available event log channels and validate access for the target machine.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties())
+        };
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(definitions));
+        session.RememberToolHandoffBackgroundWorkForTesting(
+            threadId,
+            definitions,
+            new List<ToolCallDto> {
+                new() {
+                    CallId = "call-live-followup",
+                    Name = "seed_eventlog_live_followup",
+                    ArgumentsJson = """{"computer_name":"srv-eventlog.contoso.com"}"""
+                }
+            },
+            new List<ToolOutputDto> {
+                new() {
+                    CallId = "call-live-followup",
+                    Ok = true,
+                    Output = """{"ok":true}"""
+                }
+            });
+        var helperItem = Assert.Single(
+            session.ResolveThreadBackgroundWorkSnapshotForTesting(threadId).Items,
+            static item => string.Equals(item.TargetToolName, "eventlog_channels_list", StringComparison.OrdinalIgnoreCase));
+        Assert.True(session.TrySetThreadBackgroundWorkItemStateForTesting(threadId, helperItem.Id, "running"));
+        session.RememberBackgroundWorkExecutionOutcomeForTesting(
+            threadId,
+            helperItem.Id,
+            "call-probe",
+            new List<ToolOutputDto> {
+                new() {
+                    CallId = "call-probe",
+                    Ok = false,
+                    ErrorCode = "remote_unavailable",
+                    Error = "Remote endpoint was temporarily unavailable.",
+                    Output = """{"ok":false}"""
+                }
+            });
+
+        var built = session.TryBuildBackgroundWorkDependencyRecoveryPromptForTesting(
+            threadId,
+            "continue",
+            "I can keep going with the prepared follow-up.",
+            definitions,
+            out var prompt,
+            out var reason);
+
+        Assert.True(built);
+        Assert.Equal("background_prerequisite_retry_cooldown", reason);
+        Assert.Contains("cooldown_helpers: eventlog_channels_list", prompt, StringComparison.OrdinalIgnoreCase);
+
+        var builtBlocker = session.TryBuildBackgroundWorkDependencyRecoveryBlockerTextForTesting(
+            threadId,
+            "continue",
+            "I can keep going with the prepared follow-up.",
+            definitions,
+            out var blockerText,
+            out var blockerReason);
+
+        Assert.True(builtBlocker);
+        Assert.Equal("background_prerequisite_retry_cooldown", blockerReason);
+        Assert.Contains("ix:execution-contract:v1", blockerText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("helper retry is still pending", blockerText, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static ToolDefinition CreateDefinition(
         string name,
         ToolHandoffContract? handoff = null,
@@ -3019,6 +4212,7 @@ public sealed class ChatServiceBackgroundWorkTests {
             Title: id,
             Request: id,
             State: state,
+            DependencyItemIds: Array.Empty<string>(),
             EvidenceToolNames: Array.Empty<string>(),
             Kind: "tool_handoff",
             Mutability: "read_only",

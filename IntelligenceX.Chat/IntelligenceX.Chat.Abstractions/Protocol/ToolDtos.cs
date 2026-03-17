@@ -90,6 +90,26 @@ public sealed record ToolDefinitionDto {
     /// </summary>
     public bool IsWriteCapable { get; init; }
     /// <summary>
+    /// Indicates whether the tool requires an authentication/runtime identity contract.
+    /// </summary>
+    public bool RequiresAuthentication { get; init; }
+    /// <summary>
+    /// Optional stable authentication contract identifier.
+    /// </summary>
+    public string? AuthenticationContractId { get; init; }
+    /// <summary>
+    /// Canonical authentication-related arguments projected from the contract.
+    /// </summary>
+    public string[] AuthenticationArguments { get; init; } = System.Array.Empty<string>();
+    /// <summary>
+    /// Indicates whether the tool supports a connectivity/authentication probe workflow.
+    /// </summary>
+    public bool SupportsConnectivityProbe { get; init; }
+    /// <summary>
+    /// Optional helper tool name used for connectivity/authentication probing.
+    /// </summary>
+    public string? ProbeToolName { get; init; }
+    /// <summary>
     /// Indicates whether the tool exposes a structured execution contract.
     /// </summary>
     public bool IsExecutionAware { get; init; }

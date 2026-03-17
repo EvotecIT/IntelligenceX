@@ -155,6 +155,36 @@ public sealed record ToolOrchestrationCatalogEntry {
     public IReadOnlyList<string> RepresentativeExamples { get; init; } = Array.Empty<string>();
 
     /// <summary>
+    /// Indicates whether the tool can perform mutating/write actions.
+    /// </summary>
+    public bool IsWriteCapable { get; init; }
+
+    /// <summary>
+    /// Indicates whether authentication is required for normal operation.
+    /// </summary>
+    public bool RequiresAuthentication { get; init; }
+
+    /// <summary>
+    /// Optional authentication contract identifier.
+    /// </summary>
+    public string AuthenticationContractId { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Canonical authentication argument names exposed by the tool schema.
+    /// </summary>
+    public IReadOnlyList<string> AuthenticationArguments { get; init; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Indicates whether the tool supports connectivity/authentication probe workflows.
+    /// </summary>
+    public bool SupportsConnectivityProbe { get; init; }
+
+    /// <summary>
+    /// Optional probe tool name exposed by the authentication contract.
+    /// </summary>
+    public string ProbeToolName { get; init; } = string.Empty;
+
+    /// <summary>
     /// Optional domain intent family token.
     /// </summary>
     public string DomainIntentFamily { get; init; } = string.Empty;
@@ -372,6 +402,8 @@ public sealed class ToolOrchestrationCatalog {
             var setup = definition.Setup;
             var handoff = definition.Handoff;
             var recovery = definition.Recovery;
+            var writeGovernance = definition.WriteGovernance;
+            var authentication = definition.Authentication;
             var handoffBindingCount = 0;
             var routes = handoff?.OutboundRoutes;
             var handoffEdges = new List<ToolOrchestrationHandoffEdge>();
@@ -452,6 +484,9 @@ public sealed class ToolOrchestrationCatalog {
             var normalizedSetupRequirementPairs = NormalizeDistinctTokens(setupRequirementPairs);
             var normalizedSetupHintKeys = NormalizeDistinctTokens(setupHintKeys);
             var normalizedSetupToolName = NormalizeToken(setup?.SetupToolName);
+            var normalizedAuthenticationContractId = NormalizeToken(authentication?.AuthenticationContractId);
+            var normalizedAuthenticationArguments = NormalizeDistinctTokens(authentication?.GetSchemaArgumentNames());
+            var normalizedProbeToolName = NormalizeToken(authentication?.ProbeToolName);
             var isSetupAware = setup?.IsSetupAware == true
                                && (normalizedSetupRequirementPairs.Length > 0
                                    || normalizedSetupHintKeys.Length > 0
@@ -498,6 +533,12 @@ public sealed class ToolOrchestrationCatalog {
                 TargetScopeArguments = FreezeStringList(schemaTraits.TargetScopeArguments),
                 SupportsRemoteHostTargeting = schemaTraits.SupportsRemoteHostTargeting,
                 RemoteHostArguments = FreezeStringList(schemaTraits.RemoteHostArguments),
+                IsWriteCapable = writeGovernance?.IsWriteCapable == true,
+                RequiresAuthentication = authentication?.RequiresAuthentication == true,
+                AuthenticationContractId = normalizedAuthenticationContractId,
+                AuthenticationArguments = FreezeStringList(normalizedAuthenticationArguments),
+                SupportsConnectivityProbe = authentication?.SupportsConnectivityProbe == true,
+                ProbeToolName = normalizedProbeToolName,
                 DomainIntentFamily = normalizedFamily,
                 DomainIntentActionId = actionId,
                 IsSetupAware = isSetupAware,
@@ -701,33 +742,65 @@ public sealed class ToolOrchestrationCatalog {
 
         var targetScopeArguments = NormalizeDistinctTokens(overlayEntry.Traits?.TargetScopeArguments);
         var remoteHostArguments = NormalizeDistinctTokens(overlayEntry.Traits?.RemoteHostArguments);
-        var supportsTargetScoping = overlayEntry.Traits?.SupportsTargetScoping == true || targetScopeArguments.Length > 0;
-        var supportsRemoteHostTargeting = overlayEntry.Traits?.SupportsRemoteHostTargeting == true || remoteHostArguments.Length > 0;
+        var resolvedTargetScopeArguments = targetScopeArguments.Length > 0
+            ? targetScopeArguments
+            : entry.TargetScopeArguments;
+        var resolvedRemoteHostArguments = remoteHostArguments.Length > 0
+            ? remoteHostArguments
+            : entry.RemoteHostArguments;
+        var supportsTargetScoping = overlayEntry.Traits?.SupportsTargetScoping == true
+                                    || targetScopeArguments.Length > 0
+                                    || entry.SupportsTargetScoping
+                                    || entry.TargetScopeArguments.Count > 0;
+        var supportsRemoteHostTargeting = overlayEntry.Traits?.SupportsRemoteHostTargeting == true
+                                          || remoteHostArguments.Length > 0
+                                          || entry.SupportsRemoteHostTargeting
+                                          || entry.RemoteHostArguments.Count > 0;
         var executionScope = NormalizeOverlayExecutionScope(
             overlayEntry.Traits?.ExecutionScope,
             entry.ExecutionScope,
             supportsRemoteHostTargeting);
         var representativeExamples = FreezeRepresentativeExamples(overlayEntry.RepresentativeExamples);
+        var authenticationArguments = NormalizeDistinctTokens(overlayEntry.AuthenticationArguments);
+        var authenticationContractId = NormalizeToken(overlayEntry.AuthenticationContractId, entry.AuthenticationContractId);
+        var probeToolName = NormalizeToken(overlayEntry.ProbeToolName, entry.ProbeToolName);
 
-        var setupToolName = NormalizeToken(overlayEntry.Setup?.SetupToolName);
+        var setupToolName = NormalizeToken(overlayEntry.Setup?.SetupToolName, entry.SetupToolName);
         var setupRequirementIds = NormalizeDistinctTokens(overlayEntry.Setup?.RequirementIds);
+        var resolvedSetupRequirementIds = setupRequirementIds.Length > 0
+            ? setupRequirementIds
+            : entry.SetupRequirementIds;
         var setupHintKeys = NormalizeDistinctTokens(overlayEntry.Setup?.HintKeys);
+        var resolvedSetupHintKeys = setupHintKeys.Length > 0
+            ? setupHintKeys
+            : entry.SetupHintKeys;
         var isSetupAware = overlayEntry.Setup?.IsSetupAware == true
+                           || entry.IsSetupAware
                            || setupToolName.Length > 0
-                           || setupRequirementIds.Length > 0
-                           || setupHintKeys.Length > 0;
+                           || resolvedSetupRequirementIds.Count > 0
+                           || resolvedSetupHintKeys.Count > 0;
 
         var handoffEdges = BuildOverlayHandoffEdges(overlayEntry.Handoff);
-        var handoffBindingCount = handoffEdges.Sum(static edge => edge.BindingCount);
-        var isHandoffAware = overlayEntry.Handoff?.IsHandoffAware == true || handoffEdges.Count > 0;
+        var resolvedHandoffEdges = handoffEdges.Count > 0
+            ? handoffEdges
+            : entry.HandoffEdges;
+        var handoffBindingCount = resolvedHandoffEdges.Sum(static edge => edge.BindingCount);
+        var isHandoffAware = overlayEntry.Handoff?.IsHandoffAware == true || entry.IsHandoffAware || resolvedHandoffEdges.Count > 0;
 
         var retryableErrorCodes = NormalizeDistinctTokens(overlayEntry.Recovery?.RetryableErrorCodes);
+        var resolvedRetryableErrorCodes = retryableErrorCodes.Length > 0
+            ? retryableErrorCodes
+            : entry.RetryableErrorCodes;
         var recoveryToolNames = NormalizeDistinctTokens(overlayEntry.Recovery?.RecoveryToolNames);
-        var supportsTransientRetry = overlayEntry.Recovery?.SupportsTransientRetry == true;
-        var maxRetryAttempts = Math.Max(0, overlayEntry.Recovery?.MaxRetryAttempts ?? 0);
+        var resolvedRecoveryToolNames = recoveryToolNames.Length > 0
+            ? recoveryToolNames
+            : entry.RecoveryToolNames;
+        var supportsTransientRetry = overlayEntry.Recovery?.SupportsTransientRetry == true || entry.SupportsTransientRetry;
+        var maxRetryAttempts = Math.Max(entry.MaxRetryAttempts, Math.Max(0, overlayEntry.Recovery?.MaxRetryAttempts ?? 0));
         var isRecoveryAware = overlayEntry.Recovery?.IsRecoveryAware == true
-                              || retryableErrorCodes.Length > 0
-                              || recoveryToolNames.Length > 0
+                              || entry.IsRecoveryAware
+                              || resolvedRetryableErrorCodes.Count > 0
+                              || resolvedRecoveryToolNames.Count > 0
                               || supportsTransientRetry
                               || maxRetryAttempts > 0;
 
@@ -744,33 +817,39 @@ public sealed class ToolOrchestrationCatalog {
             IsRoutingAware = true,
             ExecutionScope = executionScope,
             SupportsTargetScoping = supportsTargetScoping,
-            TargetScopeArguments = FreezeStringList(targetScopeArguments),
+            TargetScopeArguments = FreezeStringList(resolvedTargetScopeArguments),
             SupportsRemoteHostTargeting = supportsRemoteHostTargeting,
-            RemoteHostArguments = FreezeStringList(remoteHostArguments),
+            RemoteHostArguments = FreezeStringList(resolvedRemoteHostArguments),
             RepresentativeExamples = representativeExamples,
+            IsWriteCapable = overlayEntry.IsWriteCapable || entry.IsWriteCapable,
+            RequiresAuthentication = overlayEntry.RequiresAuthentication || entry.RequiresAuthentication,
+            AuthenticationContractId = authenticationContractId,
+            AuthenticationArguments = FreezeStringList(authenticationArguments.Length > 0 ? authenticationArguments : entry.AuthenticationArguments),
+            SupportsConnectivityProbe = overlayEntry.SupportsConnectivityProbe || entry.SupportsConnectivityProbe,
+            ProbeToolName = probeToolName,
             DomainIntentFamily = normalizedDomainIntentFamily,
             DomainIntentActionId = normalizedDomainIntentActionId,
             IsSetupAware = isSetupAware,
             SetupRequirementCount = isSetupAware
-                ? Math.Max(entry.SetupRequirementCount, setupRequirementIds.Length)
+                ? Math.Max(entry.SetupRequirementCount, resolvedSetupRequirementIds.Count)
                 : 0,
             SetupToolName = setupToolName,
-            SetupRequirementIds = FreezeStringList(setupRequirementIds),
+            SetupRequirementIds = FreezeStringList(resolvedSetupRequirementIds),
             SetupRequirementKinds = isSetupAware ? entry.SetupRequirementKinds : Array.Empty<string>(),
-            SetupHintKeys = FreezeStringList(setupHintKeys),
+            SetupHintKeys = FreezeStringList(resolvedSetupHintKeys),
             IsHandoffAware = isHandoffAware,
-            HandoffRouteCount = handoffEdges.Count,
+            HandoffRouteCount = resolvedHandoffEdges.Count,
             HandoffBindingCount = handoffBindingCount,
-            HandoffEdges = handoffEdges,
+            HandoffEdges = resolvedHandoffEdges,
             IsRecoveryAware = isRecoveryAware,
             SupportsTransientRetry = supportsTransientRetry,
             MaxRetryAttempts = maxRetryAttempts,
             SupportsAlternateEngines = entry.SupportsAlternateEngines,
             AlternateEngineCount = entry.AlternateEngineCount,
-            RecoveryToolCount = recoveryToolNames.Length,
-            RetryableErrorCodes = FreezeStringList(retryableErrorCodes),
+            RecoveryToolCount = resolvedRecoveryToolNames.Count,
+            RetryableErrorCodes = FreezeStringList(resolvedRetryableErrorCodes),
             AlternateEngineIds = entry.AlternateEngineIds,
-            RecoveryToolNames = FreezeStringList(recoveryToolNames)
+            RecoveryToolNames = FreezeStringList(resolvedRecoveryToolNames)
         };
     }
 
@@ -782,15 +861,21 @@ public sealed class ToolOrchestrationCatalog {
         var edges = new List<ToolOrchestrationHandoffEdge>();
         for (var i = 0; i < handoff.Routes.Count; i++) {
             var route = handoff.Routes[i];
+            var targetPackId = NormalizePackId(route?.TargetPackId);
+            var targetToolName = NormalizeToken(route?.TargetToolName);
+            var targetRole = NormalizeToken(route?.TargetRole);
             var bindingPairs = NormalizeTokensPreserveMultiplicity(route?.BindingPairs);
-            if (bindingPairs.Count == 0) {
+            if (targetPackId.Length == 0
+                && targetToolName.Length == 0
+                && targetRole.Length == 0
+                && bindingPairs.Count == 0) {
                 continue;
             }
 
             edges.Add(new ToolOrchestrationHandoffEdge {
-                TargetPackId = NormalizePackId(route?.TargetPackId),
-                TargetToolName = NormalizeToken(route?.TargetToolName),
-                TargetRole = NormalizeToken(route?.TargetRole),
+                TargetPackId = targetPackId,
+                TargetToolName = targetToolName,
+                TargetRole = targetRole,
                 BindingCount = bindingPairs.Count,
                 BindingPairs = FreezeStringList(bindingPairs)
             });
