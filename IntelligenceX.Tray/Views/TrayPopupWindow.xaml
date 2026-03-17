@@ -177,39 +177,36 @@
 
                         <Border Style="{StaticResource CardStyle}">
                             <StackPanel>
-                                <Grid Margin="0,0,0,8">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
+                                <StackPanel Margin="0,0,0,8">
                                     <TextBlock Text="EXPLORER RANGE" Style="{StaticResource SectionHeaderStyle}" Margin="0" />
-                                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                    <WrapPanel Margin="0,6,0,0">
                                         <Button Style="{StaticResource LinkButtonStyle}"
                                                 Command="{Binding OpenDetailedReportCommand}"
-                                                Margin="0,0,6,0">
+                                                Margin="0,0,6,6">
                                             <TextBlock FontFamily="{StaticResource AppFont}" FontSize="10.5" Text="Report" />
                                         </Button>
                                         <Button Style="{StaticResource LinkButtonStyle}"
                                                 Command="{Binding ExportCsvCommand}"
-                                                Margin="0,0,6,0">
+                                                Margin="0,0,6,6">
                                             <TextBlock FontFamily="{StaticResource AppFont}" FontSize="10.5" Text="CSV" />
                                         </Button>
                                         <Button Style="{StaticResource LinkButtonStyle}"
                                                 Command="{Binding ExportJsonCommand}"
-                                                Margin="0,0,6,0">
+                                                Margin="0,0,6,6">
                                             <TextBlock FontFamily="{StaticResource AppFont}" FontSize="10.5" Text="JSON" />
                                         </Button>
                                         <Button Style="{StaticResource LinkButtonStyle}"
                                                 Command="{Binding ClearFiltersCommand}"
-                                                Margin="0,0,6,0">
+                                                Margin="0,0,6,6">
                                             <TextBlock FontFamily="{StaticResource AppFont}" FontSize="10.5" Text="Clear" />
                                         </Button>
                                         <Button Style="{StaticResource LinkButtonStyle}"
-                                                Command="{Binding CopySummaryCommand}">
+                                                Command="{Binding CopySummaryCommand}"
+                                                Margin="0,0,0,6">
                                             <TextBlock FontFamily="{StaticResource AppFont}" FontSize="10.5" Text="Copy" />
                                         </Button>
-                                    </StackPanel>
-                                </Grid>
+                                    </WrapPanel>
+                                </StackPanel>
                                 <WrapPanel>
                                     <ToggleButton Style="{StaticResource RangeChipStyle}"
                                                   IsChecked="{Binding IsTodayRangeSelected, Mode=OneWay}"
@@ -1332,19 +1329,27 @@
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="*" />
                                         </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
                                         <StackPanel Grid.Column="0">
                                             <TextBlock Text="{Binding OwnedRepositoriesFormatted}"
                                                        Style="{StaticResource StatValueStyle}" FontSize="16" />
                                             <TextBlock Text="Owned repos" Style="{StaticResource LabelTextStyle}" />
                                         </StackPanel>
                                         <StackPanel Grid.Column="1">
+                                            <TextBlock Text="{Binding OwnerCountFormatted}"
+                                                       Style="{StaticResource StatValueStyle}" FontSize="16" />
+                                            <TextBlock Text="Owners" Style="{StaticResource LabelTextStyle}" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Row="1" Grid.Column="0" Margin="0,10,0,0">
                                             <TextBlock Text="{Binding TotalStarsFormatted}"
                                                        Style="{StaticResource StatValueStyle}" FontSize="16" />
                                             <TextBlock Text="Stars" Style="{StaticResource LabelTextStyle}" />
                                         </StackPanel>
-                                        <StackPanel Grid.Column="2">
+                                        <StackPanel Grid.Row="1" Grid.Column="1" Margin="0,10,0,0">
                                             <TextBlock Text="{Binding TotalForksFormatted}"
                                                        Style="{StaticResource StatValueStyle}" FontSize="16" />
                                             <TextBlock Text="Forks" Style="{StaticResource LabelTextStyle}" />
@@ -1356,6 +1361,84 @@
                                                Foreground="{StaticResource TertiaryTextBrush}"
                                                Margin="0,8,0,0"
                                                Visibility="{Binding HasOrganizationRepositories, Converter={StaticResource BoolToVis}}" />
+                                </StackPanel>
+                            </Border>
+
+                            <Border Style="{StaticResource CardStyle}"
+                                    Visibility="{Binding HasOwners, Converter={StaticResource BoolToVis}}">
+                                <StackPanel>
+                                    <Grid Margin="0,0,0,8">
+                                        <TextBlock Text="REPO OWNERS" Style="{StaticResource SectionHeaderStyle}" Margin="0" />
+                                        <TextBlock HorizontalAlignment="Right"
+                                                   FontFamily="{StaticResource AppFont}"
+                                                   FontSize="10"
+                                                   Foreground="{StaticResource TertiaryTextBrush}"
+                                                   Text="{Binding OwnerCountFormatted, StringFormat={}{0} visible}" />
+                                    </Grid>
+                                    <ItemsControl ItemsSource="{Binding Owners}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate DataType="{x:Type vm:GitHubOwnerViewModel}">
+                                                <Grid Margin="0,0,0,8">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <StackPanel Grid.Column="0">
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <Button Style="{StaticResource InlineLinkButtonStyle}"
+                                                                    Click="OnOpenUrlClick"
+                                                                    Tag="{Binding ProfileUrl}"
+                                                                    HorizontalAlignment="Left">
+                                                                <TextBlock Text="{Binding Owner}"
+                                                                           FontFamily="{StaticResource AppFont}"
+                                                                           FontSize="11"
+                                                                           FontWeight="SemiBold"
+                                                                           Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                                                            </Button>
+                                                            <Border Background="#18ffffff"
+                                                                    BorderBrush="{StaticResource BorderBrush}"
+                                                                    BorderThickness="1"
+                                                                    CornerRadius="8"
+                                                                    Padding="6,1"
+                                                                    Margin="6,0,0,0">
+                                                                <TextBlock Text="{Binding KindText}"
+                                                                           FontFamily="{StaticResource AppFont}"
+                                                                           FontSize="9.5"
+                                                                           Foreground="{StaticResource SecondaryTextBrush}" />
+                                                            </Border>
+                                                        </StackPanel>
+                                                        <TextBlock Text="{Binding RepositoryCountFormatted, StringFormat={}{0} repos in the mix}"
+                                                                   FontFamily="{StaticResource AppFont}"
+                                                                   FontSize="10"
+                                                                   Foreground="{StaticResource SecondaryTextBrush}"
+                                                                   Margin="0,2,0,0" />
+                                                    </StackPanel>
+                                                    <StackPanel Grid.Column="1"
+                                                                Orientation="Horizontal"
+                                                                VerticalAlignment="Center">
+                                                        <TextBlock Text="★"
+                                                                   FontFamily="{StaticResource AppFont}"
+                                                                   FontSize="10"
+                                                                   Foreground="#f0c040" />
+                                                        <TextBlock Text="{Binding StarsFormatted}"
+                                                                   FontFamily="{StaticResource AppFont}"
+                                                                   FontSize="10"
+                                                                   Foreground="{StaticResource SecondaryTextBrush}"
+                                                                   Margin="2,0,8,0" />
+                                                        <TextBlock Text="&#x2442;"
+                                                                   FontFamily="{StaticResource AppFont}"
+                                                                   FontSize="10"
+                                                                   Foreground="{StaticResource TertiaryTextBrush}" />
+                                                        <TextBlock Text="{Binding ForksFormatted}"
+                                                                   FontFamily="{StaticResource AppFont}"
+                                                                   FontSize="10"
+                                                                   Foreground="{StaticResource SecondaryTextBrush}"
+                                                                   Margin="2,0,0,0" />
+                                                    </StackPanel>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
                                 </StackPanel>
                             </Border>
 

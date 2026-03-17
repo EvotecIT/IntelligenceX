@@ -6,11 +6,21 @@ using IntelligenceX.Tray.ViewModels;
 namespace IntelligenceX.Tray.Views;
 
 public partial class TrayPopupWindow : Window {
+    private DateTimeOffset _suppressDeactivateUntilUtc;
+
     public TrayPopupWindow() {
         InitializeComponent();
     }
 
+    public void PrepareForTrayOpen(TimeSpan? suppressDeactivateFor = null) {
+        _suppressDeactivateUntilUtc = DateTimeOffset.UtcNow + (suppressDeactivateFor ?? TimeSpan.FromMilliseconds(450));
+    }
+
     private void OnDeactivated(object? sender, EventArgs e) {
+        if (DateTimeOffset.UtcNow < _suppressDeactivateUntilUtc) {
+            return;
+        }
+
         Hide();
     }
 

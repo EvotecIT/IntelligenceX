@@ -17,6 +17,7 @@ public partial class App : Application {
     private readonly List<(System.Windows.Controls.MenuItem Item, int Seconds)> _refreshIntervalItems = [];
     private System.Windows.Controls.MenuItem? _notificationsItem;
     private string? _pendingNotificationProviderId;
+    private DateTimeOffset _suppressTrayToggleUntilUtc;
 
     protected override async void OnStartup(StartupEventArgs e) {
         base.OnStartup(e);
@@ -153,8 +154,13 @@ public partial class App : Application {
     private void OnTrayLeftClick(object? sender, RoutedEventArgs e) {
         if (_popupWindow is null) return;
 
+        if (DateTimeOffset.UtcNow < _suppressTrayToggleUntilUtc) {
+            return;
+        }
+
         if (_popupWindow.IsVisible) {
             _popupWindow.Hide();
+            _suppressTrayToggleUntilUtc = DateTimeOffset.UtcNow.AddMilliseconds(250);
         } else {
             ShowPopup();
         }
@@ -165,6 +171,8 @@ public partial class App : Application {
             return;
         }
 
+        _popupWindow.PrepareForTrayOpen();
+        _suppressTrayToggleUntilUtc = DateTimeOffset.UtcNow.AddMilliseconds(500);
         PositionPopupNearTray();
         _popupWindow.Show();
         _popupWindow.Activate();

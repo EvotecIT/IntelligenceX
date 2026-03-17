@@ -8,6 +8,7 @@ public sealed class GitHubViewModel : ViewModelBase {
     private string _login = "";
     private string _usernameInput = "";
     private bool _hasToken;
+    private int _ownerCount;
     private int _totalContributions;
     private int _totalCommits;
     private int _totalPRs;
@@ -20,6 +21,10 @@ public sealed class GitHubViewModel : ViewModelBase {
     private bool _hasData;
     private bool _isLoading;
     private string _errorMessage = "";
+
+    public GitHubViewModel() {
+        Owners.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasOwners));
+    }
 
     public string Login {
         get => _login;
@@ -43,6 +48,8 @@ public sealed class GitHubViewModel : ViewModelBase {
     public string UsernameHelpText => HasToken
         ? "Leave blank to load the authenticated account, or enter a username to inspect someone else."
         : "Enter a username to view public repos. Set GITHUB_TOKEN or GH_TOKEN for full contribution data.";
+    public int OwnerCount { get => _ownerCount; set { if (SetProperty(ref _ownerCount, value)) OnPropertyChanged(nameof(OwnerCountFormatted)); } }
+    public string OwnerCountFormatted => FormatCount(OwnerCount);
     public int TotalContributions { get => _totalContributions; set { if (SetProperty(ref _totalContributions, value)) OnPropertyChanged(nameof(TotalContributionsFormatted)); } }
     public string TotalContributionsFormatted => FormatCount(TotalContributions);
     public int TotalCommits { get => _totalCommits; set { if (SetProperty(ref _totalCommits, value)) OnPropertyChanged(nameof(TotalCommitsFormatted)); } }
@@ -73,8 +80,10 @@ public sealed class GitHubViewModel : ViewModelBase {
     public bool IsLoading { get => _isLoading; set => SetProperty(ref _isLoading, value); }
     public string ErrorMessage { get => _errorMessage; set => SetProperty(ref _errorMessage, value); }
     public string ProfileUrl => string.IsNullOrWhiteSpace(Login) ? string.Empty : $"https://github.com/{Login}";
+    public bool HasOwners => Owners.Count > 0;
 
     public ObservableCollection<GitHubContribBarViewModel> ContribBars { get; } = [];
+    public ObservableCollection<GitHubOwnerViewModel> Owners { get; } = [];
     public ObservableCollection<GitHubRepoViewModel> TopRepos { get; } = [];
 
     public void ClearData() {
@@ -86,9 +95,11 @@ public sealed class GitHubViewModel : ViewModelBase {
         TotalIssues = 0;
         TotalStars = 0;
         TotalForks = 0;
+        OwnerCount = 0;
         OwnedRepositories = 0;
         OrganizationRepositories = 0;
         ContribBars.Clear();
+        Owners.Clear();
         TopRepos.Clear();
         HasData = false;
         ErrorMessage = string.Empty;
@@ -111,6 +122,27 @@ public sealed class GitHubViewModel : ViewModelBase {
 
         var allRepos = data.AllRepos ?? data.TopRepos;
         var login = data.Login.Trim();
+        var ownerGroups = allRepos
+            .Select(static repo => new {
+                Repo = repo,
+                Owner = ExtractOwner(repo.NameWithOwner)
+            })
+            .Where(static item => !string.IsNullOrWhiteSpace(item.Owner))
+            .GroupBy(static item => item.Owner!, StringComparer.OrdinalIgnoreCase)
+            .Select(group => new {
+                Owner = group.Key,
+                RepositoryCount = group.Count(),
+                Stars = group.Sum(static item => item.Repo.Stars),
+                Forks = group.Sum(static item => item.Repo.Forks),
+                IsPrimaryOwner = string.Equals(group.Key, login, StringComparison.OrdinalIgnoreCase)
+            })
+            .OrderByDescending(static group => group.IsPrimaryOwner)
+            .ThenByDescending(static group => group.RepositoryCount)
+            .ThenByDescending(static group => group.Stars)
+            .ThenBy(static group => group.Owner, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        OwnerCount = ownerGroups.Count;
         OwnedRepositories = allRepos.Count(repo => HasOwner(repo, login));
         OrganizationRepositories = Math.Max(0, allRepos.Count - OwnedRepositories);
         TotalStars = allRepos.Sum(r => r.Stars);
@@ -133,6 +165,18 @@ public sealed class GitHubViewModel : ViewModelBase {
                 BarBrush = brush,
                 DayLabel = day.Date.Day == 1 || day.Date == last30.First().Date
                     ? day.Date.ToString("MMM d") : ""
+            });
+        }
+
+        Owners.Clear();
+        foreach (var owner in ownerGroups.Take(6)) {
+            Owners.Add(new GitHubOwnerViewModel {
+                Owner = owner.Owner,
+                KindText = owner.IsPrimaryOwner ? "You" : "Org",
+                RepositoryCount = owner.RepositoryCount,
+                Stars = owner.Stars,
+                Forks = owner.Forks,
+                ProfileUrl = "https://github.com/" + owner.Owner
             });
         }
 
@@ -179,6 +223,15 @@ public sealed class GitHubViewModel : ViewModelBase {
         return string.Equals(owner, login, StringComparison.OrdinalIgnoreCase);
     }
 
+    private static string? ExtractOwner(string? nameWithOwner) {
+        if (string.IsNullOrWhiteSpace(nameWithOwner)) {
+            return null;
+        }
+
+        var slashIndex = nameWithOwner.IndexOf('/');
+        return slashIndex <= 0 ? null : nameWithOwner[..slashIndex];
+    }
+
     private static string FormatCount(int n) => n switch {
         >= 1_000_000 => $"{n / 1_000_000.0:F1}M",
         >= 1_000 => $"{n / 1_000.0:F1}K",
@@ -202,6 +255,18 @@ public sealed class GitHubRepoViewModel {
     public int Forks { get; set; }
     public string Language { get; set; } = "";
     public Brush LanguageBrush { get; set; } = Brushes.Gray;
+    public string StarsFormatted => Stars >= 1000 ? $"{Stars / 1000.0:F1}K" : Stars.ToString("N0");
+    public string ForksFormatted => Forks >= 1000 ? $"{Forks / 1000.0:F1}K" : Forks.ToString("N0");
+}
+
+public sealed class GitHubOwnerViewModel {
+    public string Owner { get; set; } = "";
+    public string KindText { get; set; } = "";
+    public int RepositoryCount { get; set; }
+    public int Stars { get; set; }
+    public int Forks { get; set; }
+    public string ProfileUrl { get; set; } = "";
+    public string RepositoryCountFormatted => RepositoryCount.ToString("N0");
     public string StarsFormatted => Stars >= 1000 ? $"{Stars / 1000.0:F1}K" : Stars.ToString("N0");
     public string ForksFormatted => Forks >= 1000 ? $"{Forks / 1000.0:F1}K" : Forks.ToString("N0");
 }
