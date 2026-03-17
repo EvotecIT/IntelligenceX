@@ -10,6 +10,7 @@ namespace IntelligenceX.Tray.ViewModels;
 public sealed class ProviderViewModel : ViewModelBase {
     private string _providerId = string.Empty;
     private string _displayName = string.Empty;
+    private string _shortName = string.Empty;
     private int _sortOrder;
     private Brush _accentBrush = Brushes.White;
     private Color _inputColor;
@@ -45,6 +46,11 @@ public sealed class ProviderViewModel : ViewModelBase {
     public string DisplayName {
         get => _displayName;
         set => SetProperty(ref _displayName, value);
+    }
+
+    public string ShortName {
+        get => _shortName;
+        set => SetProperty(ref _shortName, value);
     }
 
     public int SortOrder {
@@ -247,6 +253,7 @@ public sealed class ProviderViewModel : ViewModelBase {
     public void ApplyProviderInfo(ProviderInfo info) {
         ProviderId = info.Id;
         DisplayName = info.DisplayName;
+        ShortName = info.ShortName;
         SortOrder = info.SortOrder;
         InputColor = info.InputColor;
         OutputColor = info.OutputColor;

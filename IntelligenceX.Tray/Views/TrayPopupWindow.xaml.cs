@@ -16,7 +16,12 @@ public partial class TrayPopupWindow : Window {
     private void OnProviderTabClick(object sender, RoutedEventArgs e) {
         if (sender is RadioButton { Tag: ProviderViewModel provider } &&
             DataContext is MainViewModel mainVm) {
-            mainVm.SelectedProvider = provider;
+            if (provider.ProviderId == "__github__") {
+                mainVm.SelectedProvider = provider;
+                mainVm.IsGitHubTabSelected = true;
+            } else {
+                mainVm.SelectedProvider = provider;
+            }
         }
     }
 }

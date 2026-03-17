@@ -14,6 +14,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     private bool _isLoading;
     private string _statusText = "Initializing...";
     private DateTimeOffset _lastRefreshed;
+    private bool _isGitHubTabSelected;
 
     public MainViewModel(UsageTelemetrySnapshotService usageService, GitHubService gitHubService) {
         _usageService = usageService;
@@ -35,12 +36,34 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         set {
             if (SetProperty(ref _selectedProvider, value)) {
                 OnPropertyChanged(nameof(HeaderTitle));
+                // If selecting a non-GitHub provider tab, clear GitHub tab selection
+                if (value != null && value.ProviderId != "__github__") {
+                    IsGitHubTabSelected = false;
+                }
+                OnPropertyChanged(nameof(ShowUsageContent));
+                OnPropertyChanged(nameof(ShowGitHubContent));
             }
         }
     }
 
+    public bool IsGitHubTabSelected {
+        get => _isGitHubTabSelected;
+        set {
+            if (SetProperty(ref _isGitHubTabSelected, value)) {
+                OnPropertyChanged(nameof(HeaderTitle));
+                OnPropertyChanged(nameof(ShowUsageContent));
+                OnPropertyChanged(nameof(ShowGitHubContent));
+            }
+        }
+    }
+
+    public bool ShowUsageContent => !IsGitHubTabSelected && HasData;
+    public bool ShowGitHubContent => IsGitHubTabSelected;
+
     public string HeaderTitle {
         get {
+            if (IsGitHubTabSelected)
+                return "GitHub";
             if (SelectedProvider == null || SelectedProvider.ProviderId == "__all__")
                 return "Usage Monitor";
             return SelectedProvider.DisplayName;
@@ -106,6 +129,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
             if (events.Count > 0) {
                 var allVm = BuildProviderViewModel("__all__", events.ToList(), today, weekAgo, monthAgo);
                 allVm.DisplayName = "All";
+                allVm.ShortName = "All";
                 allVm.SortOrder = -1;
                 allVm.AccentBrush = new SolidColorBrush(Color.FromRgb(155, 233, 168));
                 allVm.InputColor = Color.FromRgb(155, 233, 168);
@@ -120,15 +144,32 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
                 newProviders.Add(vm);
             }
 
+            // Add a special GitHub tab at the end
+            var ghTab = new ProviderViewModel {
+                ProviderId = "__github__",
+                DisplayName = "GitHub",
+                ShortName = "GitHub",
+                SortOrder = 999,
+                AccentBrush = new SolidColorBrush(Color.FromRgb(64, 196, 99)),
+                InputColor = Color.FromRgb(155, 233, 168),
+                OutputColor = Color.FromRgb(64, 196, 99)
+            };
+            newProviders.Add(ghTab);
+
             Providers.Clear();
             foreach (var p in newProviders) {
                 Providers.Add(p);
             }
 
             // Restore previous selection or pick first
-            SelectedProvider = (previousSelection != null
-                ? Providers.FirstOrDefault(p => p.ProviderId == previousSelection)
-                : null) ?? Providers.FirstOrDefault();
+            if (previousSelection == "__github__") {
+                SelectedProvider = Providers.FirstOrDefault(p => p.ProviderId == "__github__");
+                IsGitHubTabSelected = true;
+            } else {
+                SelectedProvider = (previousSelection != null
+                    ? Providers.FirstOrDefault(p => p.ProviderId == previousSelection)
+                    : null) ?? Providers.FirstOrDefault();
+            }
 
             OnPropertyChanged(nameof(HasData));
             LastRefreshed = DateTimeOffset.Now;
