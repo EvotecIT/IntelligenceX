@@ -26,10 +26,12 @@ public sealed class GitHubViewModel : ViewModelBase {
         set {
             if (SetProperty(ref _hasToken, value)) {
                 OnPropertyChanged(nameof(NeedsUsername));
+                OnPropertyChanged(nameof(ShowUsernameInput));
             }
         }
     }
     public bool NeedsUsername => !HasToken;
+    public bool ShowUsernameInput => !HasToken;
     public int TotalContributions { get => _totalContributions; set { if (SetProperty(ref _totalContributions, value)) OnPropertyChanged(nameof(TotalContributionsFormatted)); } }
     public string TotalContributionsFormatted => FormatCount(TotalContributions);
     public int TotalCommits { get => _totalCommits; set { if (SetProperty(ref _totalCommits, value)) OnPropertyChanged(nameof(TotalCommitsFormatted)); } }
@@ -49,6 +51,7 @@ public sealed class GitHubViewModel : ViewModelBase {
         set {
             if (SetProperty(ref _hasData, value)) {
                 OnPropertyChanged(nameof(NeedsUsername));
+                OnPropertyChanged(nameof(ShowUsernameInput));
             }
         }
     }
@@ -70,6 +73,7 @@ public sealed class GitHubViewModel : ViewModelBase {
         ContribBars.Clear();
         TopRepos.Clear();
         HasData = false;
+        ErrorMessage = string.Empty;
     }
 
     public void Apply(GitHubDashboardData data) {

@@ -68,7 +68,15 @@ public sealed class GitHubService {
             }
         }
 
-        var topRepos = repos
+        var dedupedRepos = repos
+            .GroupBy(static repo => repo.NameWithOwner, StringComparer.OrdinalIgnoreCase)
+            .Select(static group => group
+                .OrderByDescending(static repo => repo.Stars)
+                .ThenByDescending(static repo => repo.Forks)
+                .First())
+            .ToList();
+
+        var topRepos = dedupedRepos
             .OrderByDescending(r => r.Stars)
             .ThenByDescending(r => r.Forks)
             .Take(8)

@@ -541,13 +541,9 @@
                                 <Style TargetType="Border">
                                     <Setter Property="Visibility" Value="Collapsed" />
                                     <Style.Triggers>
-                                        <MultiDataTrigger>
-                                            <MultiDataTrigger.Conditions>
-                                                <Condition Binding="{Binding NeedsUsername}" Value="True" />
-                                                <Condition Binding="{Binding IsLoading}" Value="False" />
-                                            </MultiDataTrigger.Conditions>
+                                        <DataTrigger Binding="{Binding ShowUsernameInput}" Value="True">
                                             <Setter Property="Visibility" Value="Visible" />
-                                        </MultiDataTrigger>
+                                        </DataTrigger>
                                     </Style.Triggers>
                                 </Style>
                             </Border.Style>
@@ -571,11 +567,31 @@
                                              BorderBrush="{StaticResource BorderBrush}"
                                              BorderThickness="1"
                                              Padding="8,6"
-                                             CaretBrush="{StaticResource PrimaryTextBrush}" />
+                                             CaretBrush="{StaticResource PrimaryTextBrush}">
+                                        <TextBox.Style>
+                                            <Style TargetType="TextBox">
+                                                <Setter Property="IsEnabled" Value="True" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsLoading}" Value="True">
+                                                        <Setter Property="IsEnabled" Value="False" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBox.Style>
+                                    </TextBox>
                                     <Button Grid.Column="1"
-                                            Style="{StaticResource RefreshButtonStyle}"
                                             Command="{Binding DataContext.RefreshCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                             Margin="6,0,0,0">
+                                        <Button.Style>
+                                            <Style TargetType="Button" BasedOn="{StaticResource RefreshButtonStyle}">
+                                                <Setter Property="IsEnabled" Value="True" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsLoading}" Value="True">
+                                                        <Setter Property="IsEnabled" Value="False" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Button.Style>
                                         <TextBlock FontFamily="{StaticResource AppFont}" FontSize="11" Text="Load" />
                                     </Button>
                                 </Grid>
