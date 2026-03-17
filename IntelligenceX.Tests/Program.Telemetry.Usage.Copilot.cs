@@ -8,6 +8,7 @@ using IntelligenceX.Visualization.Heatmaps;
 using System.Text.Json;
 using System.Threading;
 using IntelligenceX.Cli.Telemetry;
+using IntelligenceX.Telemetry.Limits;
 #endif
 
 namespace IntelligenceX.Tests;

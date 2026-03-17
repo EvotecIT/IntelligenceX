@@ -7,6 +7,7 @@
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="Themes/DarkTheme.xaml" />
+                <ResourceDictionary Source="Themes/ProviderIcons.xaml" />
             </ResourceDictionary.MergedDictionaries>
 
             <tb:TaskbarIcon x:Key="TrayIcon"

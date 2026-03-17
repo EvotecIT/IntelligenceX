@@ -1,5 +1,6 @@
 using System.Windows;
 using H.NotifyIcon;
+using IntelligenceX.Telemetry.Limits;
 using IntelligenceX.Telemetry.Usage;
 using IntelligenceX.Tray.Services;
 using IntelligenceX.Tray.ViewModels;
@@ -17,8 +18,9 @@ public partial class App : Application {
 
         try {
             var usageService = new UsageTelemetrySnapshotService();
+            var limitService = new ProviderLimitSnapshotService();
             var gitHubService = new GitHubService();
-            _viewModel = new MainViewModel(usageService, gitHubService);
+            _viewModel = new MainViewModel(usageService, limitService, gitHubService);
 
             _popupWindow = new TrayPopupWindow {
                 DataContext = _viewModel

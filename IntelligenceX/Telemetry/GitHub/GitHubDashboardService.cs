@@ -171,12 +171,7 @@ query($login: String!, $from: DateTime!, $to: DateTime!) {
             repositories.AddRange(await FetchOwnerRepositoriesAsync(owner, cancellationToken).ConfigureAwait(false));
         }
 
-        return repositories
-            .OrderByDescending(static repo => repo.Stars)
-            .ThenByDescending(static repo => repo.Forks)
-            .ThenBy(static repo => repo.NameWithOwner, StringComparer.OrdinalIgnoreCase)
-            .Take(8)
-            .ToArray();
+        return GitHubDashboardRepositoryRanking.BuildTopRepositories(repositories, limit: 8);
     }
 
     private async Task<IReadOnlyList<string>> FetchUserOrganizationsAsync(CancellationToken cancellationToken) {

@@ -6,6 +6,8 @@ namespace IntelligenceX.Tray.ViewModels;
 
 public sealed class GitHubViewModel : ViewModelBase {
     private string _login = "";
+    private string _usernameInput = "";
+    private bool _hasToken;
     private int _totalContributions;
     private int _totalCommits;
     private int _totalPRs;
@@ -18,6 +20,18 @@ public sealed class GitHubViewModel : ViewModelBase {
     private string _errorMessage = "";
 
     public string Login { get => _login; set => SetProperty(ref _login, value); }
+    public string UsernameInput { get => _usernameInput; set => SetProperty(ref _usernameInput, value); }
+    public bool HasToken {
+        get => _hasToken;
+        set {
+            if (SetProperty(ref _hasToken, value)) {
+                OnPropertyChanged(nameof(NeedsUsername));
+                OnPropertyChanged(nameof(ShowUsernameInput));
+            }
+        }
+    }
+    public bool NeedsUsername => !HasToken;
+    public bool ShowUsernameInput => !HasToken;
     public int TotalContributions { get => _totalContributions; set { if (SetProperty(ref _totalContributions, value)) OnPropertyChanged(nameof(TotalContributionsFormatted)); } }
     public string TotalContributionsFormatted => FormatCount(TotalContributions);
     public int TotalCommits { get => _totalCommits; set { if (SetProperty(ref _totalCommits, value)) OnPropertyChanged(nameof(TotalCommitsFormatted)); } }
@@ -32,14 +46,41 @@ public sealed class GitHubViewModel : ViewModelBase {
     public string TotalStarsFormatted => FormatCount(TotalStars);
     public int TotalForks { get => _totalForks; set { if (SetProperty(ref _totalForks, value)) OnPropertyChanged(nameof(TotalForksFormatted)); } }
     public string TotalForksFormatted => FormatCount(TotalForks);
-    public bool HasData { get => _hasData; set => SetProperty(ref _hasData, value); }
+    public bool HasData {
+        get => _hasData;
+        set {
+            if (SetProperty(ref _hasData, value)) {
+                OnPropertyChanged(nameof(NeedsUsername));
+                OnPropertyChanged(nameof(ShowUsernameInput));
+            }
+        }
+    }
     public bool IsLoading { get => _isLoading; set => SetProperty(ref _isLoading, value); }
     public string ErrorMessage { get => _errorMessage; set => SetProperty(ref _errorMessage, value); }
 
     public ObservableCollection<GitHubContribBarViewModel> ContribBars { get; } = [];
     public ObservableCollection<GitHubRepoViewModel> TopRepos { get; } = [];
 
+    public void ClearData() {
+        Login = string.Empty;
+        TotalContributions = 0;
+        TotalCommits = 0;
+        TotalPRs = 0;
+        TotalReviews = 0;
+        TotalIssues = 0;
+        TotalStars = 0;
+        TotalForks = 0;
+        ContribBars.Clear();
+        TopRepos.Clear();
+        HasData = false;
+        ErrorMessage = string.Empty;
+    }
+
     public void Apply(GitHubDashboardData data) {
+        if (string.IsNullOrWhiteSpace(UsernameInput) && !string.IsNullOrWhiteSpace(data.Login)) {
+            UsernameInput = data.Login;
+        }
+
         Login = data.Login;
         var c = data.Contributions;
         TotalContributions = c.TotalContributions;
@@ -86,6 +127,7 @@ public sealed class GitHubViewModel : ViewModelBase {
         }
 
         HasData = true;
+        ErrorMessage = string.Empty;
     }
 
     private static SolidColorBrush ParseColorOrDefault(string? hex, string fallback) {

@@ -104,11 +104,14 @@
                                              Click="OnProviderTabClick"
                                              Tag="{Binding}">
                                     <StackPanel Orientation="Horizontal">
-                                        <Ellipse Width="7" Height="7"
-                                                 Fill="{Binding AccentBrush}"
+                                        <Viewbox Width="14" Height="14"
                                                  Margin="0,0,5,0"
-                                                 VerticalAlignment="Center" />
-                                        <TextBlock Text="{Binding DisplayName}"
+                                                 VerticalAlignment="Center">
+                                            <Path Data="{Binding IconGeometry}"
+                                                  Fill="{Binding AccentBrush}"
+                                                  Stretch="Uniform" />
+                                        </Viewbox>
+                                        <TextBlock Text="{Binding ShortName}"
                                                    VerticalAlignment="Center" />
                                     </StackPanel>
                                 </RadioButton>
@@ -129,10 +132,10 @@
                            VerticalAlignment="Center"
                            Visibility="{Binding IsLoading, Converter={StaticResource BoolToVis}}" />
 
-                <!-- Scrollable data content -->
+                <!-- ── USAGE CONTENT (provider tab selected) ── -->
                 <ScrollViewer VerticalScrollBarVisibility="Auto"
                               HorizontalScrollBarVisibility="Disabled"
-                              Visibility="{Binding HasData, Converter={StaticResource BoolToVis}}">
+                              Visibility="{Binding ShowUsageContent, Converter={StaticResource BoolToVis}}">
                     <StackPanel DataContext="{Binding SelectedProvider}"
                                 Margin="16,12,16,8">
 
@@ -223,6 +226,147 @@
                                                    Style="{StaticResource StatValueStyle}" />
                                     </StackPanel>
                                 </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- ── LIVE LIMITS ── -->
+                        <Border Style="{StaticResource CardStyle}"
+                                Visibility="{Binding HasLimitSection, Converter={StaticResource BoolToVis}}">
+                            <StackPanel>
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="LIVE LIMITS"
+                                               Style="{StaticResource SectionHeaderStyle}"
+                                               Margin="0" />
+                                    <TextBlock Grid.Column="1"
+                                               Text="{Binding LimitSourceLabel}"
+                                               FontFamily="{StaticResource AppFont}"
+                                               FontSize="10"
+                                               Foreground="{StaticResource TertiaryTextBrush}" />
+                                </Grid>
+
+                                <TextBlock Text="{Binding LimitPlanLabel}"
+                                           FontFamily="{StaticResource AppFont}"
+                                           FontSize="17"
+                                           FontWeight="SemiBold"
+                                           Foreground="{StaticResource PrimaryTextBrush}">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding LimitPlanLabel}" Value="{x:Null}">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding LimitPlanLabel}" Value="">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+
+                                <TextBlock Text="{Binding LimitAccountLabel}"
+                                           FontFamily="{StaticResource AppFont}"
+                                           FontSize="11"
+                                           Foreground="{StaticResource SecondaryTextBrush}"
+                                           Margin="0,2,0,8">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding LimitAccountLabel}" Value="{x:Null}">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding LimitAccountLabel}" Value="">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+
+                                <ItemsControl ItemsSource="{Binding LimitWindows}"
+                                              Visibility="{Binding HasLiveLimitData, Converter={StaticResource BoolToVis}}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate DataType="{x:Type vm:ProviderLimitWindowViewModel}">
+                                            <StackPanel Margin="0,0,0,10">
+                                                <Grid Margin="0,0,0,4">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Grid.Column="0"
+                                                               Text="{Binding Label}"
+                                                               FontFamily="{StaticResource AppFont}"
+                                                               FontSize="11"
+                                                               FontWeight="SemiBold"
+                                                               Foreground="{StaticResource PrimaryTextBrush}" />
+                                                    <TextBlock Grid.Column="1"
+                                                               Text="{Binding UsedPercentFormatted}"
+                                                               FontFamily="{StaticResource AppFont}"
+                                                               FontSize="11"
+                                                               FontWeight="SemiBold"
+                                                               Foreground="{StaticResource SecondaryTextBrush}" />
+                                                </Grid>
+
+                                                <Grid Height="6" Margin="0,0,0,4">
+                                                    <Border CornerRadius="3" Background="#12ffffff" />
+                                                    <Border CornerRadius="3"
+                                                            Background="{Binding BarBrush}"
+                                                            Opacity="0.8"
+                                                            HorizontalAlignment="Left"
+                                                            Width="{Binding Proportion, Converter={StaticResource PropToWidth}, ConverterParameter=310}" />
+                                                </Grid>
+
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Grid.Column="0"
+                                                               Text="{Binding ResetText}"
+                                                               FontFamily="{StaticResource AppFont}"
+                                                               FontSize="10"
+                                                               Foreground="{StaticResource TertiaryTextBrush}" />
+                                                    <TextBlock Grid.Column="1"
+                                                               Text="{Binding Detail}"
+                                                               FontFamily="{StaticResource AppFont}"
+                                                               FontSize="10"
+                                                               Foreground="{StaticResource SecondaryTextBrush}">
+                                                        <TextBlock.Style>
+                                                            <Style TargetType="TextBlock">
+                                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding HasDetail}" Value="True">
+                                                                        <Setter Property="Visibility" Value="Visible" />
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </TextBlock.Style>
+                                                    </TextBlock>
+                                                </Grid>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <TextBlock Text="{Binding LimitSummary}"
+                                           FontFamily="{StaticResource AppFont}"
+                                           FontSize="11"
+                                           Foreground="{StaticResource SecondaryTextBrush}"
+                                           TextWrapping="Wrap"
+                                           Margin="0,0,0,6"
+                                           Visibility="{Binding HasLimitSummary, Converter={StaticResource BoolToVis}}" />
+
+                                <TextBlock Text="{Binding LimitStatusMessage}"
+                                           FontFamily="{StaticResource AppFont}"
+                                           FontSize="11"
+                                           Foreground="{StaticResource TertiaryTextBrush}"
+                                           TextWrapping="Wrap"
+                                           Visibility="{Binding HasLimitStatusMessage, Converter={StaticResource BoolToVis}}" />
                             </StackPanel>
                         </Border>
 
@@ -369,125 +513,254 @@
                             </StackPanel>
                         </Border>
 
-                        <!-- ── GITHUB ── -->
-                        <Border Style="{StaticResource CardStyle}"
-                                DataContext="{Binding DataContext.GitHub, RelativeSource={RelativeSource AncestorType=Window}}"
-                                Visibility="{Binding HasData, Converter={StaticResource BoolToVis}}">
-                            <StackPanel>
-                                <Grid Margin="0,0,0,8">
-                                    <TextBlock Text="GITHUB" Style="{StaticResource SectionHeaderStyle}" Margin="0" />
-                                    <TextBlock HorizontalAlignment="Right"
-                                               FontFamily="{StaticResource AppFont}" FontSize="10"
-                                               Foreground="{StaticResource TertiaryTextBrush}"
-                                               Text="{Binding Login}" />
-                                </Grid>
+                    </StackPanel>
+                </ScrollViewer>
 
-                                <!-- Contribution stats row -->
-                                <Grid Margin="0,0,0,10">
+                <!-- ── GITHUB CONTENT (GitHub tab selected) ── -->
+                <ScrollViewer VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled"
+                              DataContext="{Binding GitHub}"
+                              Visibility="{Binding DataContext.ShowGitHubContent, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVis}}">
+                    <StackPanel Margin="16,12,16,8">
+
+                        <!-- Loading state -->
+                        <TextBlock Text="Loading GitHub data..."
+                                   FontFamily="{StaticResource AppFont}"
+                                   FontSize="12"
+                                   Foreground="{StaticResource SecondaryTextBrush}"
+                                   HorizontalAlignment="Center"
+                                   Margin="0,20"
+                                   Visibility="{Binding IsLoading, Converter={StaticResource BoolToVis}}" />
+
+                        <!-- Username input + info when no token -->
+                        <Border Background="{StaticResource CardBrush}"
+                                BorderBrush="{StaticResource BorderBrush}"
+                                BorderThickness="1" CornerRadius="12" Padding="16"
+                                Margin="0,0,0,10">
+                            <Border.Style>
+                                <Style TargetType="Border">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding ShowUsernameInput}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
+                            <StackPanel>
+                                <TextBlock Text="GitHub Username"
+                                           FontFamily="{StaticResource AppFont}"
+                                           FontSize="11" FontWeight="SemiBold"
+                                           Foreground="{StaticResource SecondaryTextBrush}"
+                                           Margin="0,0,0,6" />
+                                <Grid Margin="0,0,0,8">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
-                                    <StackPanel Grid.Column="0">
-                                        <TextBlock Text="{Binding TotalCommitsFormatted}"
-                                                   Style="{StaticResource StatValueStyle}" FontSize="13" />
-                                        <TextBlock Text="Commits" Style="{StaticResource LabelTextStyle}" />
-                                    </StackPanel>
-                                    <StackPanel Grid.Column="1">
-                                        <TextBlock Text="{Binding TotalPRsFormatted}"
-                                                   Style="{StaticResource StatValueStyle}" FontSize="13" />
-                                        <TextBlock Text="PRs" Style="{StaticResource LabelTextStyle}" />
-                                    </StackPanel>
-                                    <StackPanel Grid.Column="2">
-                                        <TextBlock Text="{Binding TotalStarsFormatted}"
-                                                   Style="{StaticResource StatValueStyle}" FontSize="13" />
-                                        <TextBlock Text="Stars" Style="{StaticResource LabelTextStyle}" />
-                                    </StackPanel>
-                                    <StackPanel Grid.Column="3">
-                                        <TextBlock Text="{Binding TotalForksFormatted}"
-                                                   Style="{StaticResource StatValueStyle}" FontSize="13" />
-                                        <TextBlock Text="Forks" Style="{StaticResource LabelTextStyle}" />
-                                    </StackPanel>
+                                    <TextBox Grid.Column="0"
+                                             Text="{Binding UsernameInput, UpdateSourceTrigger=PropertyChanged}"
+                                             FontFamily="{StaticResource AppFont}"
+                                             FontSize="12"
+                                             Background="#15ffffff"
+                                             Foreground="{StaticResource PrimaryTextBrush}"
+                                             BorderBrush="{StaticResource BorderBrush}"
+                                             BorderThickness="1"
+                                             Padding="8,6"
+                                             CaretBrush="{StaticResource PrimaryTextBrush}">
+                                        <TextBox.Style>
+                                            <Style TargetType="TextBox">
+                                                <Setter Property="IsEnabled" Value="True" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsLoading}" Value="True">
+                                                        <Setter Property="IsEnabled" Value="False" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBox.Style>
+                                    </TextBox>
+                                    <Button Grid.Column="1"
+                                            Command="{Binding DataContext.RefreshCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                            Margin="6,0,0,0">
+                                        <Button.Style>
+                                            <Style TargetType="Button" BasedOn="{StaticResource RefreshButtonStyle}">
+                                                <Setter Property="IsEnabled" Value="True" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsLoading}" Value="True">
+                                                        <Setter Property="IsEnabled" Value="False" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Button.Style>
+                                        <TextBlock FontFamily="{StaticResource AppFont}" FontSize="11" Text="Load" />
+                                    </Button>
                                 </Grid>
-
-                                <!-- 30-day contribution heatmap bars -->
-                                <TextBlock Text="30-DAY CONTRIBUTIONS" Style="{StaticResource SectionHeaderStyle}" />
-                                <ItemsControl ItemsSource="{Binding ContribBars}" Margin="0,0,0,4">
-                                    <ItemsControl.ItemsPanel>
-                                        <ItemsPanelTemplate>
-                                            <UniformGrid Columns="30" />
-                                        </ItemsPanelTemplate>
-                                    </ItemsControl.ItemsPanel>
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate DataType="{x:Type vm:GitHubContribBarViewModel}">
-                                            <Grid Height="42" VerticalAlignment="Bottom" Margin="0.5,0"
-                                                  ToolTip="{Binding Count}">
-                                                <Border CornerRadius="2"
-                                                        Background="#08ffffff"
-                                                        VerticalAlignment="Stretch" />
-                                                <Border CornerRadius="2"
-                                                        Background="{Binding BarBrush}"
-                                                        Opacity="0.8"
-                                                        VerticalAlignment="Bottom"
-                                                        Height="{Binding BarHeight}" />
-                                            </Grid>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-
-                                <!-- Top repos -->
-                                <TextBlock Text="TOP REPOS" Style="{StaticResource SectionHeaderStyle}" Margin="0,8,0,6" />
-                                <ItemsControl ItemsSource="{Binding TopRepos}">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate DataType="{x:Type vm:GitHubRepoViewModel}">
-                                            <Grid Margin="0,0,0,6">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="Auto" />
-                                                    <ColumnDefinition Width="*" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                </Grid.ColumnDefinitions>
-                                                <Ellipse Grid.Column="0" Width="8" Height="8"
-                                                         Fill="{Binding LanguageBrush}"
-                                                         Margin="0,0,6,0" VerticalAlignment="Center" />
-                                                <TextBlock Grid.Column="1"
-                                                           Text="{Binding Name}"
-                                                           FontFamily="{StaticResource AppFont}"
-                                                           FontSize="11"
-                                                           Foreground="{StaticResource PrimaryTextBrush}"
-                                                           TextTrimming="CharacterEllipsis"
-                                                           VerticalAlignment="Center" />
-                                                <StackPanel Grid.Column="2" Orientation="Horizontal"
-                                                            Margin="8,0,0,0" VerticalAlignment="Center">
-                                                    <TextBlock Text="&#x2605; "
-                                                               FontFamily="{StaticResource AppFont}"
-                                                               FontSize="10"
-                                                               Foreground="#f0c040" />
-                                                    <TextBlock Text="{Binding StarsFormatted}"
-                                                               FontFamily="{StaticResource AppFont}"
-                                                               FontSize="10" FontWeight="SemiBold"
-                                                               Foreground="{StaticResource SecondaryTextBrush}" />
-                                                </StackPanel>
-                                                <StackPanel Grid.Column="3" Orientation="Horizontal"
-                                                            Margin="10,0,0,0" VerticalAlignment="Center">
-                                                    <TextBlock Text="&#x2442; "
-                                                               FontFamily="{StaticResource AppFont}"
-                                                               FontSize="10"
-                                                               Foreground="{StaticResource TertiaryTextBrush}" />
-                                                    <TextBlock Text="{Binding ForksFormatted}"
-                                                               FontFamily="{StaticResource AppFont}"
-                                                               FontSize="10"
-                                                               Foreground="{StaticResource SecondaryTextBrush}" />
-                                                </StackPanel>
-                                            </Grid>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
+                                <TextBlock TextWrapping="Wrap"
+                                           FontFamily="{StaticResource AppFont}"
+                                           FontSize="10"
+                                           Foreground="{StaticResource TertiaryTextBrush}">
+                                    Enter a username to view public repos. Set GITHUB_TOKEN or GH_TOKEN for full contribution data.
+                                </TextBlock>
                             </StackPanel>
                         </Border>
 
+                        <!-- GitHub data -->
+                        <StackPanel Visibility="{Binding HasData, Converter={StaticResource BoolToVis}}">
+
+                            <!-- User login -->
+                            <Border Style="{StaticResource CardStyle}">
+                                <Grid>
+                                    <TextBlock Text="GITHUB PROFILE" Style="{StaticResource SectionHeaderStyle}" Margin="0" />
+                                    <TextBlock HorizontalAlignment="Right"
+                                               FontFamily="{StaticResource AppFont}" FontSize="12"
+                                               FontWeight="SemiBold"
+                                               Foreground="{StaticResource PrimaryTextBrush}"
+                                               Text="{Binding Login}" />
+                                </Grid>
+                            </Border>
+
+                            <!-- Contribution stats 2x2 grid -->
+                            <Border Style="{StaticResource CardStyle}">
+                                <StackPanel>
+                                    <TextBlock Text="CONTRIBUTIONS" Style="{StaticResource SectionHeaderStyle}" />
+                                    <Grid Margin="0,4,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <StackPanel Grid.Row="0" Grid.Column="0" Margin="0,0,0,10">
+                                            <TextBlock Text="{Binding TotalCommitsFormatted}"
+                                                       Style="{StaticResource StatValueStyle}" FontSize="18" />
+                                            <TextBlock Text="Commits" Style="{StaticResource LabelTextStyle}" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Row="0" Grid.Column="1" Margin="0,0,0,10">
+                                            <TextBlock Text="{Binding TotalPRsFormatted}"
+                                                       Style="{StaticResource StatValueStyle}" FontSize="18" />
+                                            <TextBlock Text="Pull Requests" Style="{StaticResource LabelTextStyle}" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Row="1" Grid.Column="0">
+                                            <TextBlock Text="{Binding TotalReviewsFormatted}"
+                                                       Style="{StaticResource StatValueStyle}" FontSize="18" />
+                                            <TextBlock Text="Reviews" Style="{StaticResource LabelTextStyle}" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Row="1" Grid.Column="1">
+                                            <TextBlock Text="{Binding TotalIssuesFormatted}"
+                                                       Style="{StaticResource StatValueStyle}" FontSize="18" />
+                                            <TextBlock Text="Issues" Style="{StaticResource LabelTextStyle}" />
+                                        </StackPanel>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- 30-day contribution bar chart -->
+                            <Border Style="{StaticResource CardStyle}">
+                                <StackPanel>
+                                    <Grid Margin="0,0,0,6">
+                                        <TextBlock Text="30-DAY CONTRIBUTIONS" Style="{StaticResource SectionHeaderStyle}" Margin="0" />
+                                        <TextBlock HorizontalAlignment="Right"
+                                                   FontFamily="{StaticResource AppFont}" FontSize="10"
+                                                   Foreground="{StaticResource TertiaryTextBrush}"
+                                                   Text="{Binding TotalContributionsFormatted}" />
+                                    </Grid>
+                                    <ItemsControl ItemsSource="{Binding ContribBars}" Margin="0,0,0,4">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <UniformGrid Columns="30" />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate DataType="{x:Type vm:GitHubContribBarViewModel}">
+                                                <Grid Height="42" VerticalAlignment="Bottom" Margin="0.5,0"
+                                                      ToolTip="{Binding Count}">
+                                                    <Border CornerRadius="2"
+                                                            Background="#08ffffff"
+                                                            VerticalAlignment="Stretch" />
+                                                    <Border CornerRadius="2"
+                                                            Background="{Binding BarBrush}"
+                                                            Opacity="0.8"
+                                                            VerticalAlignment="Bottom"
+                                                            Height="{Binding BarHeight}" />
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Top repos -->
+                            <Border Style="{StaticResource CardStyle}">
+                                <StackPanel>
+                                    <Grid Margin="0,0,0,6">
+                                        <TextBlock Text="TOP REPOS" Style="{StaticResource SectionHeaderStyle}" Margin="0" />
+                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                            <TextBlock FontFamily="{StaticResource AppFont}" FontSize="10"
+                                                       Foreground="#f0c040" Text="&#x2605; " />
+                                            <TextBlock Text="{Binding TotalStarsFormatted}"
+                                                       FontFamily="{StaticResource AppFont}" FontSize="10"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="{StaticResource SecondaryTextBrush}"
+                                                       Margin="0,0,8,0" />
+                                            <TextBlock FontFamily="{StaticResource AppFont}" FontSize="10"
+                                                       Foreground="{StaticResource TertiaryTextBrush}" Text="&#x2442; " />
+                                            <TextBlock Text="{Binding TotalForksFormatted}"
+                                                       FontFamily="{StaticResource AppFont}" FontSize="10"
+                                                       Foreground="{StaticResource SecondaryTextBrush}" />
+                                        </StackPanel>
+                                    </Grid>
+                                    <ItemsControl ItemsSource="{Binding TopRepos}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate DataType="{x:Type vm:GitHubRepoViewModel}">
+                                                <Grid Margin="0,0,0,6">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto" />
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <Ellipse Grid.Column="0" Width="8" Height="8"
+                                                             Fill="{Binding LanguageBrush}"
+                                                             Margin="0,0,6,0" VerticalAlignment="Center" />
+                                                    <TextBlock Grid.Column="1"
+                                                               Text="{Binding Name}"
+                                                               FontFamily="{StaticResource AppFont}"
+                                                               FontSize="11"
+                                                               Foreground="{StaticResource PrimaryTextBrush}"
+                                                               TextTrimming="CharacterEllipsis"
+                                                               VerticalAlignment="Center" />
+                                                    <StackPanel Grid.Column="2" Orientation="Horizontal"
+                                                                Margin="8,0,0,0" VerticalAlignment="Center">
+                                                        <TextBlock Text="&#x2605; "
+                                                                   FontFamily="{StaticResource AppFont}"
+                                                                   FontSize="10"
+                                                                   Foreground="#f0c040" />
+                                                        <TextBlock Text="{Binding StarsFormatted}"
+                                                                   FontFamily="{StaticResource AppFont}"
+                                                                   FontSize="10" FontWeight="SemiBold"
+                                                                   Foreground="{StaticResource SecondaryTextBrush}" />
+                                                    </StackPanel>
+                                                    <StackPanel Grid.Column="3" Orientation="Horizontal"
+                                                                Margin="10,0,0,0" VerticalAlignment="Center">
+                                                        <TextBlock Text="&#x2442; "
+                                                                   FontFamily="{StaticResource AppFont}"
+                                                                   FontSize="10"
+                                                                   Foreground="{StaticResource TertiaryTextBrush}" />
+                                                        <TextBlock Text="{Binding ForksFormatted}"
+                                                                   FontFamily="{StaticResource AppFont}"
+                                                                   FontSize="10"
+                                                                   Foreground="{StaticResource SecondaryTextBrush}" />
+                                                    </StackPanel>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </Border>
+
+                        </StackPanel>
                     </StackPanel>
                 </ScrollViewer>
             </Grid>

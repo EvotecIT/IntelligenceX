@@ -73,6 +73,14 @@ internal static partial class Program {
             TestGitHubWrappedHtmlRendererBuildsShareablePage);
         failed += Run("GitHub wrapped card html renderer builds compact card",
             TestGitHubWrappedCardHtmlRendererBuildsCompactCard);
+        failed += Run("GitHub dashboard repository ranking deduplicates overlapping repositories",
+            TestGitHubDashboardRepositoryRankingDeduplicatesOverlappingRepositories);
+        failed += Run("GitHub dashboard repository ranking orders and caps repositories",
+            TestGitHubDashboardRepositoryRankingOrdersAndCapsRepositories);
+        failed += Run("Provider limit snapshot batch keeps healthy providers when one fails",
+            TestProviderLimitSnapshotServiceBatchKeepsHealthyProvidersWhenOneFails);
+        failed += Run("Provider limit snapshot batch propagates caller cancellation",
+            TestProviderLimitSnapshotServiceBatchPropagatesCallerCancellation);
         failed += Run("Usage breakdown html renderer uses shared assets",
             TestUsageTelemetryBreakdownHtmlRendererUsesSharedAssets);
         failed += Run("Usage breakdown html renderer adds source family badges",

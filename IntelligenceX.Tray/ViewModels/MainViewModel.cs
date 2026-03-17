@@ -1,6 +1,8 @@
 using System.Collections.ObjectModel;
+using System.Threading;
 using System.Windows.Media;
 using System.Windows.Threading;
+using IntelligenceX.Telemetry.Limits;
 using IntelligenceX.Telemetry.Usage;
 using IntelligenceX.Tray.Services;
 
@@ -8,15 +10,19 @@ namespace IntelligenceX.Tray.ViewModels;
 
 public sealed class MainViewModel : ViewModelBase, IDisposable {
     private readonly UsageTelemetrySnapshotService _usageService;
+    private readonly ProviderLimitSnapshotService _limitService;
     private readonly GitHubService _gitHubService;
     private readonly DispatcherTimer _refreshTimer;
     private ProviderViewModel? _selectedProvider;
     private bool _isLoading;
     private string _statusText = "Initializing...";
     private DateTimeOffset _lastRefreshed;
+    private int _gitHubRefreshVersion;
+    private CancellationTokenSource? _gitHubRefreshCts;
 
-    public MainViewModel(UsageTelemetrySnapshotService usageService, GitHubService gitHubService) {
+    public MainViewModel(UsageTelemetrySnapshotService usageService, ProviderLimitSnapshotService limitService, GitHubService gitHubService) {
         _usageService = usageService;
+        _limitService = limitService;
         _gitHubService = gitHubService;
         GitHub = new GitHubViewModel();
         RefreshCommand = new RelayCommand(RefreshAsync);
@@ -34,13 +40,22 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         get => _selectedProvider;
         set {
             if (SetProperty(ref _selectedProvider, value)) {
-                OnPropertyChanged(nameof(HeaderTitle));
+                RefreshProviderSelectionState();
             }
         }
     }
 
+    private bool HasGitHubProvider => Providers.Any(provider => provider.ProviderId == "__github__");
+    private bool HasUsageProviders => Providers.Any(provider => provider.ProviderId != "__github__");
+    public bool IsGitHubTabSelected => SelectedProvider?.ProviderId == "__github__";
+
+    public bool ShowUsageContent => SelectedProvider is { ProviderId: not "__github__" };
+    public bool ShowGitHubContent => IsGitHubTabSelected || (!HasUsageProviders && HasGitHubProvider);
+
     public string HeaderTitle {
         get {
+            if (ShowGitHubContent)
+                return "GitHub";
             if (SelectedProvider == null || SelectedProvider.ProviderId == "__all__")
                 return "Usage Monitor";
             return SelectedProvider.DisplayName;
@@ -86,81 +101,203 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         StatusText = "Scanning providers...";
 
         try {
-            var snapshot = await Task.Run(() => _usageService.ScanAsync());
-            var events = snapshot.Events;
-
-            var today = DateTime.UtcNow.Date;
-            var weekAgo = DateTime.UtcNow.AddDays(-7).Date;
-            var monthAgo = DateTime.UtcNow.AddDays(-30).Date;
-
-            var byProvider = events
-                .GroupBy(e => e.ProviderId?.Trim()?.ToLowerInvariant() ?? "unknown")
-                .Where(g => !string.IsNullOrWhiteSpace(g.Key))
-                .OrderBy(g => ProviderMetadata.Resolve(g.Key).SortOrder)
-                .ToList();
-
+            // Do ALL heavy work on background thread: scan + aggregate
             var previousSelection = SelectedProvider?.ProviderId;
-            var newProviders = new List<ProviderViewModel>();
+            var refreshData = await Task.Run(async () => {
+                var snapshot = await _usageService.ScanAsync();
+                var events = snapshot.Events;
 
-            // "All" combined view
-            if (events.Count > 0) {
-                var allVm = BuildProviderViewModel("__all__", events.ToList(), today, weekAgo, monthAgo);
+                var today = DateTime.UtcNow.Date;
+                var weekAgo = DateTime.UtcNow.AddDays(-7).Date;
+                var monthAgo = DateTime.UtcNow.AddDays(-30).Date;
+
+                var byProvider = events
+                    .GroupBy(e => e.ProviderId?.Trim()?.ToLowerInvariant() ?? "unknown")
+                    .Where(g => !string.IsNullOrWhiteSpace(g.Key))
+                    .OrderBy(g => ProviderMetadata.Resolve(g.Key).SortOrder)
+                    .ToList();
+                var limitSnapshots = await _limitService.FetchAsync(byProvider.Select(group => group.Key)).ConfigureAwait(false);
+
+                var info = $"{events.Count} events, {byProvider.Count} providers";
+                if (snapshot.ScanDurationMs > 0) info += $" ({snapshot.ScanDurationMs / 1000.0:F1}s)";
+                if (snapshot.Errors.Count > 0) info += $" [{snapshot.Errors.Count} errors]";
+
+                return new RefreshComputationResult(
+                    events.ToList(),
+                    byProvider.Select(group => new ProviderRefreshData(group.Key, group.ToList())).ToList(),
+                    limitSnapshots,
+                    snapshot.ScannedAtUtc,
+                    today,
+                    weekAgo,
+                    monthAgo,
+                    info);
+            });
+
+            var newProviders = new List<ProviderViewModel>();
+            if (refreshData.AllEvents.Count > 0) {
+                var allVm = BuildProviderViewModel("__all__", refreshData.AllEvents, refreshData.Today, refreshData.WeekAgo, refreshData.MonthAgo);
                 allVm.DisplayName = "All";
+                allVm.ShortName = "All";
+                allVm.IconKey = "IconIx";
                 allVm.SortOrder = -1;
-                allVm.AccentBrush = new SolidColorBrush(Color.FromRgb(155, 233, 168));
+                allVm.AccentBrush = Frozen(new SolidColorBrush(Color.FromRgb(155, 233, 168)));
                 allVm.InputColor = Color.FromRgb(155, 233, 168);
                 allVm.OutputColor = Color.FromRgb(64, 196, 99);
-                allVm.LastUpdated = snapshot.ScannedAtUtc;
+                allVm.LastUpdated = refreshData.ScannedAtUtc;
                 newProviders.Add(allVm);
             }
 
-            foreach (var group in byProvider) {
-                var vm = BuildProviderViewModel(group.Key, group.ToList(), today, weekAgo, monthAgo);
-                vm.LastUpdated = snapshot.ScannedAtUtc;
+            foreach (var group in refreshData.ByProvider) {
+                var vm = BuildProviderViewModel(group.ProviderId, group.Events, refreshData.Today, refreshData.WeekAgo, refreshData.MonthAgo);
+                vm.LastUpdated = refreshData.ScannedAtUtc;
+                if (refreshData.LimitSnapshots.TryGetValue(group.ProviderId, out var limitSnapshot)) {
+                    vm.ApplyLimitSnapshot(limitSnapshot);
+                }
                 newProviders.Add(vm);
             }
 
+            newProviders.Add(new ProviderViewModel {
+                ProviderId = "__github__",
+                DisplayName = "GitHub",
+                ShortName = "GitHub",
+                IconKey = "IconGitHub",
+                SortOrder = 999,
+                AccentBrush = Frozen(new SolidColorBrush(Color.FromRgb(64, 196, 99))),
+                InputColor = Color.FromRgb(155, 233, 168),
+                OutputColor = Color.FromRgb(64, 196, 99)
+            });
+
             Providers.Clear();
             foreach (var p in newProviders) {
+                p.RefreshIconGeometry();
                 Providers.Add(p);
             }
 
-            // Restore previous selection or pick first
-            SelectedProvider = (previousSelection != null
-                ? Providers.FirstOrDefault(p => p.ProviderId == previousSelection)
-                : null) ?? Providers.FirstOrDefault();
-
-            OnPropertyChanged(nameof(HasData));
+            // Restore previous selection or pick first available
+            ProviderViewModel? restored = null;
+            if (previousSelection != null) {
+                restored = Providers.FirstOrDefault(p => p.ProviderId == previousSelection);
+            }
+            SelectedProvider = restored ?? Providers.FirstOrDefault();
+            RefreshProviderSelectionState();
             LastRefreshed = DateTimeOffset.Now;
+            StatusText = refreshData.ScanInfo;
 
-            var scanInfo = $"{events.Count} events, {byProvider.Count} providers";
-            if (snapshot.ScanDurationMs > 0) {
-                scanInfo += $" ({snapshot.ScanDurationMs / 1000.0:F1}s)";
-            }
-            if (snapshot.Errors.Count > 0) {
-                scanInfo += $" [{snapshot.Errors.Count} errors]";
-            }
-            StatusText = scanInfo;
-
-            // Fetch GitHub data in the background
-            _ = Task.Run(async () => {
-                try {
-                    GitHub.IsLoading = true;
-                    var ghData = await _gitHubService.FetchAsync();
-                    if (ghData != null) {
-                        await System.Windows.Application.Current.Dispatcher.InvokeAsync(() => GitHub.Apply(ghData));
-                    }
-                } catch (Exception ghEx) {
-                    GitHub.ErrorMessage = ghEx.Message;
-                } finally {
-                    GitHub.IsLoading = false;
-                }
-            });
+            // Fetch GitHub data in the background (non-blocking)
+            var ghLogin = GitHub.UsernameInput;
+            _ = RefreshGitHubAsync(ghLogin);
         } catch (Exception ex) {
             StatusText = $"Error: {ex.Message}";
         } finally {
             IsLoading = false;
         }
+    }
+
+    private async Task RefreshGitHubAsync(string? ghLogin) {
+        var dispatcher = System.Windows.Application.Current.Dispatcher;
+        var currentVersion = Interlocked.Increment(ref _gitHubRefreshVersion);
+        using var refreshCts = new CancellationTokenSource();
+        var previousCts = Interlocked.Exchange(ref _gitHubRefreshCts, refreshCts);
+        previousCts?.Cancel();
+        previousCts?.Dispose();
+        var cancellationToken = refreshCts.Token;
+        var hasToken = !string.IsNullOrWhiteSpace(
+            IntelligenceX.Telemetry.GitHub.GitHubDashboardService.ResolveTokenFromEnvironment());
+        var effectiveLogin = string.IsNullOrWhiteSpace(ghLogin) ? null : ghLogin.Trim();
+
+        await dispatcher.InvokeAsync(() => {
+            if (!IsCurrentGitHubRefresh(currentVersion, cancellationToken)) {
+                return;
+            }
+
+            if (!hasToken) {
+                GitHub.ClearData();
+                if (effectiveLogin is not null) {
+                    GitHub.UsernameInput = effectiveLogin;
+                }
+            }
+
+            GitHub.HasToken = hasToken;
+            GitHub.IsLoading = hasToken || !string.IsNullOrWhiteSpace(effectiveLogin);
+            GitHub.ErrorMessage = string.Empty;
+        });
+
+        if (!hasToken && string.IsNullOrWhiteSpace(effectiveLogin)) {
+            await dispatcher.InvokeAsync(() => {
+                if (!IsLatestGitHubRefresh(currentVersion)) {
+                    return;
+                }
+
+                GitHub.IsLoading = false;
+            });
+            Interlocked.CompareExchange(ref _gitHubRefreshCts, null, refreshCts);
+            return;
+        }
+
+        try {
+            var ghData = await _gitHubService.FetchAsync(effectiveLogin, cancellationToken).ConfigureAwait(false);
+            await dispatcher.InvokeAsync(() => {
+                if (!IsCurrentGitHubRefresh(currentVersion, cancellationToken)) {
+                    return;
+                }
+
+                if (ghData is not null) {
+                    GitHub.Apply(ghData);
+                    return;
+                }
+
+                GitHub.ClearData();
+                if (effectiveLogin is not null) {
+                    GitHub.UsernameInput = effectiveLogin;
+                }
+
+                if (!hasToken && !string.IsNullOrWhiteSpace(effectiveLogin)) {
+                    GitHub.ErrorMessage = $"No public GitHub data was returned for '{effectiveLogin}'.";
+                }
+            });
+        } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
+            // A newer refresh superseded this one.
+        } catch (Exception ghEx) {
+            await dispatcher.InvokeAsync(() => {
+                if (!IsCurrentGitHubRefresh(currentVersion, cancellationToken)) {
+                    return;
+                }
+
+                GitHub.ClearData();
+                if (effectiveLogin is not null) {
+                    GitHub.UsernameInput = effectiveLogin;
+                }
+                GitHub.ErrorMessage = ghEx.Message;
+            });
+        } finally {
+            await dispatcher.InvokeAsync(() => {
+                if (!IsLatestGitHubRefresh(currentVersion)) {
+                    return;
+                }
+
+                GitHub.IsLoading = false;
+            });
+
+            if (ReferenceEquals(Interlocked.CompareExchange(ref _gitHubRefreshCts, null, refreshCts), refreshCts)) {
+                // cleared
+            }
+        }
+    }
+
+    private bool IsCurrentGitHubRefresh(int version, CancellationToken cancellationToken) {
+        return !cancellationToken.IsCancellationRequested && IsLatestGitHubRefresh(version);
+    }
+
+    private bool IsLatestGitHubRefresh(int version) {
+        return version == Volatile.Read(ref _gitHubRefreshVersion);
+    }
+
+    private void RefreshProviderSelectionState() {
+        OnPropertyChanged(nameof(HeaderTitle));
+        OnPropertyChanged(nameof(IsGitHubTabSelected));
+        OnPropertyChanged(nameof(HasData));
+        OnPropertyChanged(nameof(ShowUsageContent));
+        OnPropertyChanged(nameof(ShowGitHubContent));
     }
 
     private static ProviderViewModel BuildProviderViewModel(
@@ -232,14 +369,31 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
                 ModelName = mg.Model,
                 TotalTokens = mg.Total,
                 Proportion = (double)mg.Total / maxModelTokens,
-                BarBrush = new SolidColorBrush(info.OutputColor)
+                BarBrush = Frozen(new SolidColorBrush(info.OutputColor))
             });
         }
 
         return vm;
     }
 
+    private static SolidColorBrush Frozen(SolidColorBrush brush) { brush.Freeze(); return brush; }
+
+    private sealed record ProviderRefreshData(string ProviderId, List<IntelligenceX.Telemetry.Usage.UsageEventRecord> Events);
+
+    private sealed record RefreshComputationResult(
+        List<IntelligenceX.Telemetry.Usage.UsageEventRecord> AllEvents,
+        List<ProviderRefreshData> ByProvider,
+        IReadOnlyDictionary<string, ProviderLimitSnapshot> LimitSnapshots,
+        DateTimeOffset ScannedAtUtc,
+        DateTime Today,
+        DateTime WeekAgo,
+        DateTime MonthAgo,
+        string ScanInfo);
+
     public void Dispose() {
         _refreshTimer.Stop();
+        var cts = Interlocked.Exchange(ref _gitHubRefreshCts, null);
+        cts?.Cancel();
+        cts?.Dispose();
     }
 }

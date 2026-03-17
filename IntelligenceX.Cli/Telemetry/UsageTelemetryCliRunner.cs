@@ -10,6 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Cli.GitHub;
 using IntelligenceX.Json;
+using IntelligenceX.Telemetry.Limits;
 using IntelligenceX.Telemetry.Usage;
 using IntelligenceX.Visualization.Heatmaps;
 using Spectre.Console;

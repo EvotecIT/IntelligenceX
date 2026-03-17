@@ -1,5 +1,7 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Windows.Media;
+using IntelligenceX.Telemetry.Limits;
 using IntelligenceX.Tray.Services;
 
 namespace IntelligenceX.Tray.ViewModels;
@@ -10,6 +12,9 @@ namespace IntelligenceX.Tray.ViewModels;
 public sealed class ProviderViewModel : ViewModelBase {
     private string _providerId = string.Empty;
     private string _displayName = string.Empty;
+    private string _shortName = string.Empty;
+    private string _iconKey = "";
+    private System.Windows.Media.Geometry? _iconGeometry;
     private int _sortOrder;
     private Brush _accentBrush = Brushes.White;
     private Color _inputColor;
@@ -36,6 +41,18 @@ public sealed class ProviderViewModel : ViewModelBase {
     private decimal _monthlyCostUsd;
 
     private DateTimeOffset _lastUpdated;
+    private string? _limitPlanLabel;
+    private string? _limitAccountLabel;
+    private string? _limitSummary;
+    private string? _limitSourceLabel;
+    private string? _limitStatusMessage;
+
+    public ProviderViewModel() {
+        LimitWindows.CollectionChanged += (_, _) => {
+            OnPropertyChanged(nameof(HasLiveLimitData));
+            OnPropertyChanged(nameof(HasLimitSection));
+        };
+    }
 
     public string ProviderId {
         get => _providerId;
@@ -45,6 +62,39 @@ public sealed class ProviderViewModel : ViewModelBase {
     public string DisplayName {
         get => _displayName;
         set => SetProperty(ref _displayName, value);
+    }
+
+    public string ShortName {
+        get => _shortName;
+        set => SetProperty(ref _shortName, value);
+    }
+
+    public string IconKey {
+        get => _iconKey;
+        set {
+            if (!SetProperty(ref _iconKey, value)) {
+                return;
+            }
+
+            var dispatcher = System.Windows.Application.Current?.Dispatcher;
+            if (dispatcher?.CheckAccess() == true) {
+                IconGeometry = ResolveIconGeometry(value);
+            }
+        }
+    }
+
+    public System.Windows.Media.Geometry? IconGeometry {
+        get => _iconGeometry;
+        private set => SetProperty(ref _iconGeometry, value);
+    }
+
+    private static System.Windows.Media.Geometry? ResolveIconGeometry(string? key) {
+        if (string.IsNullOrWhiteSpace(key)) return null;
+        return System.Windows.Application.Current?.TryFindResource(key) as System.Windows.Media.Geometry;
+    }
+
+    public void RefreshIconGeometry() {
+        IconGeometry = ResolveIconGeometry(IconKey);
     }
 
     public int SortOrder {
@@ -241,17 +291,114 @@ public sealed class ProviderViewModel : ViewModelBase {
         ? "Never"
         : LastUpdated.ToLocalTime().ToString("HH:mm:ss");
 
+    public string? LimitPlanLabel {
+        get => _limitPlanLabel;
+        set {
+            if (SetProperty(ref _limitPlanLabel, value)) {
+                OnPropertyChanged(nameof(HasLimitSection));
+            }
+        }
+    }
+
+    public string? LimitAccountLabel {
+        get => _limitAccountLabel;
+        set {
+            if (SetProperty(ref _limitAccountLabel, value)) {
+                OnPropertyChanged(nameof(HasLimitSection));
+            }
+        }
+    }
+
+    public string? LimitSummary {
+        get => _limitSummary;
+        set {
+            if (SetProperty(ref _limitSummary, value)) {
+                OnPropertyChanged(nameof(HasLimitSummary));
+                OnPropertyChanged(nameof(HasLimitSection));
+            }
+        }
+    }
+
+    public string? LimitSourceLabel {
+        get => _limitSourceLabel;
+        set {
+            if (SetProperty(ref _limitSourceLabel, value)) {
+                OnPropertyChanged(nameof(HasLimitSection));
+            }
+        }
+    }
+
+    public string? LimitStatusMessage {
+        get => _limitStatusMessage;
+        set {
+            if (SetProperty(ref _limitStatusMessage, value)) {
+                OnPropertyChanged(nameof(HasLimitStatusMessage));
+                OnPropertyChanged(nameof(HasLimitSection));
+            }
+        }
+    }
+
+    public bool HasLimitSummary => !string.IsNullOrWhiteSpace(LimitSummary);
+    public bool HasLimitStatusMessage => !string.IsNullOrWhiteSpace(LimitStatusMessage);
+    public bool HasLiveLimitData => LimitWindows.Count > 0;
+    public bool HasLimitSection =>
+        HasLiveLimitData
+        || HasLimitStatusMessage
+        || !string.IsNullOrWhiteSpace(LimitPlanLabel)
+        || !string.IsNullOrWhiteSpace(LimitAccountLabel)
+        || HasLimitSummary
+        || !string.IsNullOrWhiteSpace(LimitSourceLabel);
+
     public ObservableCollection<ModelUsageViewModel> ModelBreakdown { get; } = [];
     public ObservableCollection<DailyBarViewModel> DailyBars { get; } = [];
+    public ObservableCollection<ProviderLimitWindowViewModel> LimitWindows { get; } = [];
 
     public void ApplyProviderInfo(ProviderInfo info) {
         ProviderId = info.Id;
         DisplayName = info.DisplayName;
+        ShortName = info.ShortName;
+        IconKey = info.Icon;
         SortOrder = info.SortOrder;
         InputColor = info.InputColor;
         OutputColor = info.OutputColor;
         TotalColor = info.TotalColor;
-        AccentBrush = new SolidColorBrush(info.TotalColor);
+        var brush = new SolidColorBrush(info.TotalColor);
+        brush.Freeze();
+        AccentBrush = brush;
+    }
+
+    public void ApplyLimitSnapshot(ProviderLimitSnapshot? snapshot) {
+        LimitWindows.Clear();
+        if (snapshot is null) {
+            LimitPlanLabel = null;
+            LimitAccountLabel = null;
+            LimitSummary = null;
+            LimitSourceLabel = null;
+            LimitStatusMessage = null;
+            return;
+        }
+
+        LimitPlanLabel = snapshot.PlanLabel;
+        LimitAccountLabel = snapshot.AccountLabel;
+        LimitSummary = snapshot.Summary;
+        LimitSourceLabel = snapshot.SourceLabel;
+        LimitStatusMessage = snapshot.DetailMessage;
+
+        foreach (var window in snapshot.Windows) {
+            LimitWindows.Add(new ProviderLimitWindowViewModel {
+                Label = window.Label,
+                UsedPercent = window.UsedPercent,
+                UsedPercentFormatted = window.UsedPercent.HasValue
+                    ? window.UsedPercent.Value.ToString("0.#", CultureInfo.InvariantCulture) + "%"
+                    : "--",
+                ResetText = FormatResetText(window.ResetsAt),
+                Detail = window.Detail,
+                Proportion = window.UsedPercent.HasValue
+                    ? Math.Min(1d, Math.Max(0d, window.UsedPercent.Value / 100d))
+                    : 0d,
+                BarBrush = FrozenBrush(OutputColor)
+            });
+        }
     }
 
     private static string FormatTokens(long tokens) {
@@ -261,5 +408,32 @@ public sealed class ProviderViewModel : ViewModelBase {
             >= 1_000L => $"{tokens / 1_000.0:F1}K",
             _ => tokens.ToString("N0")
         };
+    }
+
+    private static string FormatResetText(DateTimeOffset? resetsAt) {
+        if (!resetsAt.HasValue) {
+            return "Reset unknown";
+        }
+
+        var local = resetsAt.Value.ToLocalTime();
+        var now = DateTimeOffset.Now;
+        var remaining = local - now;
+        if (remaining.TotalMinutes > 0 && remaining.TotalHours < 24) {
+            if (remaining.TotalHours >= 1) {
+                return "Resets in "
+                       + Math.Floor(remaining.TotalHours).ToString(CultureInfo.InvariantCulture)
+                       + "h " + remaining.Minutes.ToString(CultureInfo.InvariantCulture) + "m";
+            }
+
+            return "Resets in " + Math.Max(1, remaining.Minutes).ToString(CultureInfo.InvariantCulture) + "m";
+        }
+
+        return "Resets " + local.ToString("MMM d HH:mm", CultureInfo.CurrentCulture);
+    }
+
+    private static Brush FrozenBrush(Color color) {
+        var brush = new SolidColorBrush(color);
+        brush.Freeze();
+        return brush;
     }
 }
