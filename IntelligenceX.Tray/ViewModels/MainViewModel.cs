@@ -5,9 +5,6 @@ using IntelligenceX.Tray.Services;
 
 namespace IntelligenceX.Tray.ViewModels;
 
-/// <summary>
-/// Top-level ViewModel for the tray popup. Manages provider tabs, auto-refresh, and data flow.
-/// </summary>
 public sealed class MainViewModel : ViewModelBase, IDisposable {
     private readonly UsageDataService _usageService;
     private readonly DispatcherTimer _refreshTimer;
@@ -21,7 +18,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         RefreshCommand = new RelayCommand(RefreshAsync);
 
         _refreshTimer = new DispatcherTimer {
-            Interval = TimeSpan.FromSeconds(60)
+            Interval = TimeSpan.FromSeconds(120)
         };
         _refreshTimer.Tick += async (_, _) => await RefreshAsync();
     }
@@ -30,7 +27,19 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
 
     public ProviderViewModel? SelectedProvider {
         get => _selectedProvider;
-        set => SetProperty(ref _selectedProvider, value);
+        set {
+            if (SetProperty(ref _selectedProvider, value)) {
+                OnPropertyChanged(nameof(HeaderTitle));
+            }
+        }
+    }
+
+    public string HeaderTitle {
+        get {
+            if (SelectedProvider == null || SelectedProvider.ProviderId == "__all__")
+                return "Usage Monitor";
+            return SelectedProvider.DisplayName;
+        }
     }
 
     public bool IsLoading {
@@ -56,6 +65,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         ? "Never"
         : LastRefreshed.ToLocalTime().ToString("HH:mm:ss");
 
+    public bool HasData => Providers.Count > 0 && SelectedProvider != null;
+
     public RelayCommand RefreshCommand { get; }
 
     public async Task InitializeAsync() {
@@ -64,12 +75,10 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     }
 
     public async Task RefreshAsync() {
-        if (IsLoading) {
-            return;
-        }
+        if (IsLoading) return;
 
         IsLoading = true;
-        StatusText = "Scanning...";
+        StatusText = "Scanning providers...";
 
         try {
             var snapshot = await Task.Run(() => _usageService.ScanAsync());
@@ -79,23 +88,26 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
             var weekAgo = DateTime.UtcNow.AddDays(-7).Date;
             var monthAgo = DateTime.UtcNow.AddDays(-30).Date;
 
-            // Group events by provider
             var byProvider = events
                 .GroupBy(e => e.ProviderId?.Trim()?.ToLowerInvariant() ?? "unknown")
                 .Where(g => !string.IsNullOrWhiteSpace(g.Key))
                 .OrderBy(g => ProviderMetadata.Resolve(g.Key).SortOrder)
                 .ToList();
 
-            // Build provider ViewModels
+            var previousSelection = SelectedProvider?.ProviderId;
             var newProviders = new List<ProviderViewModel>();
 
-            // Add "All" provider first
-            var allVm = BuildProviderViewModel("__all__", events.ToList(), today, weekAgo, monthAgo);
-            allVm.DisplayName = "All";
-            allVm.SortOrder = -1;
-            allVm.AccentBrush = new SolidColorBrush(Color.FromRgb(155, 233, 168));
-            allVm.LastUpdated = snapshot.ScannedAtUtc;
-            newProviders.Add(allVm);
+            // "All" combined view
+            if (events.Count > 0) {
+                var allVm = BuildProviderViewModel("__all__", events.ToList(), today, weekAgo, monthAgo);
+                allVm.DisplayName = "All";
+                allVm.SortOrder = -1;
+                allVm.AccentBrush = new SolidColorBrush(Color.FromRgb(155, 233, 168));
+                allVm.InputColor = Color.FromRgb(155, 233, 168);
+                allVm.OutputColor = Color.FromRgb(64, 196, 99);
+                allVm.LastUpdated = snapshot.ScannedAtUtc;
+                newProviders.Add(allVm);
+            }
 
             foreach (var group in byProvider) {
                 var vm = BuildProviderViewModel(group.Key, group.ToList(), today, weekAgo, monthAgo);
@@ -103,17 +115,29 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
                 newProviders.Add(vm);
             }
 
-            // Update the collection on the UI thread
             Providers.Clear();
             foreach (var p in newProviders) {
                 Providers.Add(p);
             }
 
-            SelectedProvider = Providers.FirstOrDefault();
+            // Restore previous selection or pick first
+            SelectedProvider = (previousSelection != null
+                ? Providers.FirstOrDefault(p => p.ProviderId == previousSelection)
+                : null) ?? Providers.FirstOrDefault();
+
+            OnPropertyChanged(nameof(HasData));
             LastRefreshed = DateTimeOffset.Now;
-            StatusText = $"{events.Count} events from {byProvider.Count} providers";
+
+            var scanInfo = $"{events.Count} events, {byProvider.Count} providers";
+            if (snapshot.ScanDurationMs > 0) {
+                scanInfo += $" ({snapshot.ScanDurationMs / 1000.0:F1}s)";
+            }
+            if (snapshot.Errors.Count > 0) {
+                scanInfo += $" [{snapshot.Errors.Count} errors]";
+            }
+            StatusText = scanInfo;
         } catch (Exception ex) {
-            StatusText = $"Scan failed: {ex.Message}";
+            StatusText = $"Error: {ex.Message}";
         } finally {
             IsLoading = false;
         }
@@ -129,7 +153,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         var info = ProviderMetadata.Resolve(providerId);
         vm.ApplyProviderInfo(info);
 
-        // Today
         var todayEvents = events.Where(e => e.TimestampUtc.UtcDateTime.Date == today).ToList();
         vm.TodayTotalTokens = todayEvents.Sum(e => e.TotalTokens ?? 0L);
         vm.TodayInputTokens = todayEvents.Sum(e => e.InputTokens ?? 0L);
@@ -139,20 +162,41 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         vm.TodayCostUsd = todayEvents.Sum(e => e.CostUsd ?? 0m);
         vm.TodayEventCount = todayEvents.Count;
 
-        // 7-day rolling
         var weekEvents = events.Where(e => e.TimestampUtc.UtcDateTime.Date >= weekAgo).ToList();
         vm.WeeklyTotalTokens = weekEvents.Sum(e => e.TotalTokens ?? 0L);
         vm.WeeklyAvgPerDay = weekEvents.Count > 0 ? vm.WeeklyTotalTokens / 7 : 0;
         vm.WeeklyCostUsd = weekEvents.Sum(e => e.CostUsd ?? 0m);
 
-        // 30-day rolling
         var monthEvents = events.Where(e => e.TimestampUtc.UtcDateTime.Date >= monthAgo).ToList();
         vm.MonthlyTotalTokens = monthEvents.Sum(e => e.TotalTokens ?? 0L);
         vm.MonthlyAvgPerDay = monthEvents.Count > 0 ? vm.MonthlyTotalTokens / 30 : 0;
         vm.MonthlyCostUsd = monthEvents.Sum(e => e.CostUsd ?? 0m);
 
-        // Model breakdown (from 30-day events)
-        var modelGroups = monthEvents
+        // Daily activity bars (last 7 days)
+        var barBrush = new SolidColorBrush(info.OutputColor);
+        barBrush.Freeze();
+        var todayBrush = new SolidColorBrush(info.InputColor);
+        todayBrush.Freeze();
+        var dailyTotals = new List<(DateTime Day, long Tokens)>();
+        for (int i = 6; i >= 0; i--) {
+            var day = today.AddDays(-i);
+            var tokens = events.Where(e => e.TimestampUtc.UtcDateTime.Date == day).Sum(e => e.TotalTokens ?? 0L);
+            dailyTotals.Add((day, tokens));
+        }
+        var maxDaily = dailyTotals.Max(d => d.Tokens);
+        vm.DailyBars.Clear();
+        foreach (var (day, tokens) in dailyTotals) {
+            vm.DailyBars.Add(new DailyBarViewModel {
+                DayUtc = day,
+                DayLabel = day == today ? "Today" : day.ToString("ddd"),
+                TotalTokens = tokens,
+                BarHeight = maxDaily > 0 ? Math.Max(2, 48.0 * tokens / maxDaily) : 2,
+                BarBrush = day == today ? todayBrush : barBrush
+            });
+        }
+
+        // Model breakdown from all events (not just 30-day, since quick-scan merges by day)
+        var modelGroups = events
             .Where(e => !string.IsNullOrWhiteSpace(e.Model))
             .GroupBy(e => e.Model!.Trim(), StringComparer.OrdinalIgnoreCase)
             .Select(g => new { Model = g.Key, Total = g.Sum(e => e.TotalTokens ?? 0L) })

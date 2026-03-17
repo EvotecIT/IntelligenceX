@@ -1,48 +1,83 @@
+using System.Diagnostics;
 using IntelligenceX.Telemetry.Usage;
 
 namespace IntelligenceX.Tray.Services;
 
 /// <summary>
 /// Wraps the IX telemetry APIs to discover, scan, and aggregate usage data.
+/// Scans each provider separately with its own artifact budget to ensure
+/// all providers get represented even when one has thousands of files.
 /// </summary>
 public sealed class UsageDataService {
-    /// <summary>
-    /// Scans all known provider roots and returns usage events.
-    /// </summary>
     public async Task<UsageDataSnapshot> ScanAsync(CancellationToken cancellationToken = default) {
         var discoveries = UsageTelemetryProviderCatalog.CreateRootDiscoveries();
-        var roots = new List<SourceRootRecord>();
+        var allRoots = new List<SourceRootRecord>();
+        var errors = new List<string>();
+
         foreach (var discovery in discoveries) {
             try {
-                var discovered = discovery.DiscoverRoots();
-                roots.AddRange(discovered);
-            } catch {
-                // Skip providers whose root discovery fails (e.g. missing directories).
+                allRoots.AddRange(discovery.DiscoverRoots());
+            } catch (Exception ex) {
+                errors.Add($"{discovery.ProviderId}: {ex.Message}");
             }
         }
 
-        if (roots.Count == 0) {
-            return UsageDataSnapshot.Empty;
+        if (allRoots.Count == 0) {
+            return new UsageDataSnapshot([], DateTimeOffset.UtcNow, 0, 0, errors);
         }
 
-        var scanner = new UsageTelemetryQuickReportScanner();
-        var result = await scanner.ScanAsync(roots, cancellationToken: cancellationToken);
+        // Group roots by provider and scan each separately with its own budget.
+        var rootsByProvider = allRoots
+            .Where(r => r.Enabled)
+            .GroupBy(r => r.ProviderId, StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
-        return new UsageDataSnapshot(result.Events, DateTimeOffset.UtcNow);
+        var allEvents = new List<UsageEventRecord>();
+        var sw = Stopwatch.StartNew();
+
+        foreach (var providerRoots in rootsByProvider) {
+            cancellationToken.ThrowIfCancellationRequested();
+            try {
+                var scanner = new UsageTelemetryQuickReportScanner();
+                var options = new UsageTelemetryQuickReportOptions {
+                    PreferRecentArtifacts = true,
+                    MaxArtifacts = 200
+                };
+                var result = await scanner.ScanAsync(providerRoots.ToList(), options, cancellationToken);
+                allEvents.AddRange(result.Events);
+            } catch (Exception ex) {
+                errors.Add($"{providerRoots.Key}: scan failed - {ex.Message}");
+            }
+        }
+
+        sw.Stop();
+
+        return new UsageDataSnapshot(
+            allEvents,
+            DateTimeOffset.UtcNow,
+            allRoots.Count,
+            sw.ElapsedMilliseconds,
+            errors);
     }
 }
 
-/// <summary>
-/// A point-in-time snapshot of scanned usage data.
-/// </summary>
 public sealed class UsageDataSnapshot {
-    public static readonly UsageDataSnapshot Empty = new([], DateTimeOffset.UtcNow);
-
-    public UsageDataSnapshot(IReadOnlyList<UsageEventRecord> events, DateTimeOffset scannedAtUtc) {
+    public UsageDataSnapshot(
+        IReadOnlyList<UsageEventRecord> events,
+        DateTimeOffset scannedAtUtc,
+        int rootsFound,
+        long scanDurationMs,
+        IReadOnlyList<string> errors) {
         Events = events;
         ScannedAtUtc = scannedAtUtc;
+        RootsFound = rootsFound;
+        ScanDurationMs = scanDurationMs;
+        Errors = errors;
     }
 
     public IReadOnlyList<UsageEventRecord> Events { get; }
     public DateTimeOffset ScannedAtUtc { get; }
+    public int RootsFound { get; }
+    public long ScanDurationMs { get; }
+    public IReadOnlyList<string> Errors { get; }
 }

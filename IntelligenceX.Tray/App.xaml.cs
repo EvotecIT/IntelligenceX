@@ -1,4 +1,3 @@
-using System.Drawing;
 using System.Windows;
 using H.NotifyIcon;
 using IntelligenceX.Tray.Services;
@@ -15,40 +14,56 @@ public partial class App : Application {
     protected override async void OnStartup(StartupEventArgs e) {
         base.OnStartup(e);
 
-        var usageService = new UsageDataService();
-        _viewModel = new MainViewModel(usageService);
+        try {
+            var usageService = new UsageDataService();
+            _viewModel = new MainViewModel(usageService);
 
-        _popupWindow = new TrayPopupWindow {
-            DataContext = _viewModel
-        };
+            _popupWindow = new TrayPopupWindow {
+                DataContext = _viewModel
+            };
 
-        _trayIcon = new TaskbarIcon {
-            ToolTipText = "IntelligenceX Usage Monitor",
-            ContextMenu = CreateContextMenu(),
-            Icon = CreateTrayIcon()
-        };
+            // Create tray icon from XAML resource
+            _trayIcon = (TaskbarIcon)FindResource("TrayIcon");
+            _trayIcon.TrayLeftMouseUp += OnTrayLeftClick;
+            _trayIcon.ForceCreate();
 
-        _trayIcon.TrayLeftMouseUp += OnTrayLeftClick;
+            // Build context menu
+            _trayIcon.ContextMenu = CreateContextMenu();
 
-        await _viewModel.InitializeAsync();
+            // Show the popup immediately on first launch so users know it works
+            PositionPopupNearTray();
+            _popupWindow.Show();
+            _popupWindow.Activate();
+
+            await _viewModel.InitializeAsync();
+        } catch (Exception ex) {
+            MessageBox.Show(
+                $"IntelligenceX Tray failed to start:\n\n{ex}",
+                "Startup Error",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+            Shutdown(1);
+        }
     }
 
     private System.Windows.Controls.ContextMenu CreateContextMenu() {
         var menu = new System.Windows.Controls.ContextMenu();
-        menu.Style = (Style)FindResource("DarkContextMenuStyle");
+        if (TryFindResource("DarkContextMenuStyle") is Style cmStyle) {
+            menu.Style = cmStyle;
+        }
+
+        var itemStyle = TryFindResource("DarkMenuItemStyle") as Style;
 
         var refreshItem = new System.Windows.Controls.MenuItem { Header = "Refresh Now" };
-        refreshItem.Style = (Style)FindResource("DarkMenuItemStyle");
+        if (itemStyle is not null) refreshItem.Style = itemStyle;
         refreshItem.Click += async (_, _) => {
-            if (_viewModel is not null) {
-                await _viewModel.RefreshAsync();
-            }
+            if (_viewModel is not null) await _viewModel.RefreshAsync();
         };
 
         var separator = new System.Windows.Controls.Separator();
 
         var aboutItem = new System.Windows.Controls.MenuItem { Header = "About IntelligenceX Tray" };
-        aboutItem.Style = (Style)FindResource("DarkMenuItemStyle");
+        if (itemStyle is not null) aboutItem.Style = itemStyle;
         aboutItem.Click += (_, _) => {
             MessageBox.Show(
                 "IntelligenceX Usage Monitor\nVersion 0.1.0\n\nMonitors AI tool usage across Codex, Claude, Copilot, LM Studio and more.",
@@ -58,7 +73,7 @@ public partial class App : Application {
         };
 
         var quitItem = new System.Windows.Controls.MenuItem { Header = "Quit" };
-        quitItem.Style = (Style)FindResource("DarkMenuItemStyle");
+        if (itemStyle is not null) quitItem.Style = itemStyle;
         quitItem.Click += (_, _) => Shutdown();
 
         menu.Items.Add(refreshItem);
@@ -70,9 +85,7 @@ public partial class App : Application {
     }
 
     private void OnTrayLeftClick(object? sender, RoutedEventArgs e) {
-        if (_popupWindow is null) {
-            return;
-        }
+        if (_popupWindow is null) return;
 
         if (_popupWindow.IsVisible) {
             _popupWindow.Hide();
@@ -84,27 +97,11 @@ public partial class App : Application {
     }
 
     private void PositionPopupNearTray() {
-        if (_popupWindow is null) {
-            return;
-        }
+        if (_popupWindow is null) return;
 
         var workArea = SystemParameters.WorkArea;
         _popupWindow.Left = workArea.Right - _popupWindow.Width - 8;
         _popupWindow.Top = workArea.Bottom - _popupWindow.Height - 8;
-    }
-
-    private static Icon CreateTrayIcon() {
-        // Generate a simple 16x16 icon programmatically since we don't ship an .ico file.
-        var bitmap = new Bitmap(16, 16);
-        using (var graphics = Graphics.FromImage(bitmap)) {
-            graphics.Clear(Color.FromArgb(26, 26, 46));
-            using var brush = new SolidBrush(Color.FromArgb(155, 233, 168));
-            graphics.FillEllipse(brush, 2, 2, 12, 12);
-            using var innerBrush = new SolidBrush(Color.FromArgb(64, 196, 99));
-            graphics.FillEllipse(innerBrush, 5, 5, 6, 6);
-        }
-
-        return Icon.FromHandle(bitmap.GetHicon());
     }
 
     protected override void OnExit(ExitEventArgs e) {

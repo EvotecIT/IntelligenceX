@@ -73,11 +73,21 @@ public sealed class ProviderViewModel : ViewModelBase {
     }
 
     // -- Today --
+    // Bar widths for the token distribution bar (max ~310px)
+    public double InputBarWidth => TodayTotalTokens > 0
+        ? Math.Max(2, 310.0 * TodayInputTokens / TodayTotalTokens)
+        : 2;
+    public double OutputBarWidth => TodayTotalTokens > 0
+        ? Math.Max(2, 310.0 * TodayOutputTokens / TodayTotalTokens)
+        : 2;
+
     public long TodayTotalTokens {
         get => _todayTotalTokens;
         set {
             if (SetProperty(ref _todayTotalTokens, value)) {
                 OnPropertyChanged(nameof(TodayTotalTokensFormatted));
+                OnPropertyChanged(nameof(InputBarWidth));
+                OnPropertyChanged(nameof(OutputBarWidth));
             }
         }
     }
@@ -232,6 +242,7 @@ public sealed class ProviderViewModel : ViewModelBase {
         : LastUpdated.ToLocalTime().ToString("HH:mm:ss");
 
     public ObservableCollection<ModelUsageViewModel> ModelBreakdown { get; } = [];
+    public ObservableCollection<DailyBarViewModel> DailyBars { get; } = [];
 
     public void ApplyProviderInfo(ProviderInfo info) {
         ProviderId = info.Id;

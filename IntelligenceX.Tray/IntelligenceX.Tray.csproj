@@ -13,6 +13,9 @@
         <PackageReference Include="H.NotifyIcon.Wpf" Version="2.3.0" />
     </ItemGroup>
     <ItemGroup>
+        <Resource Include="Resources\tray-icon.ico" />
+    </ItemGroup>
+    <ItemGroup>
         <ProjectReference Include="..\IntelligenceX\IntelligenceX.csproj" />
     </ItemGroup>
 </Project>

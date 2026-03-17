@@ -4,7 +4,7 @@
         xmlns:vm="clr-namespace:IntelligenceX.Tray.ViewModels"
         xmlns:conv="clr-namespace:IntelligenceX.Tray.Converters"
         Title="IntelligenceX Usage"
-        Width="380" Height="620"
+        Width="400" Height="640"
         WindowStyle="None"
         AllowsTransparency="True"
         Background="Transparent"
@@ -15,17 +15,27 @@
 
     <Window.Resources>
         <conv:BoolToVisibilityConverter x:Key="BoolToVis" />
+        <conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVis" />
         <conv:ProportionToWidthConverter x:Key="PropToWidth" />
     </Window.Resources>
 
     <Border Background="{StaticResource BackgroundBrush}"
             BorderBrush="{StaticResource BorderBrush}"
             BorderThickness="1"
-            CornerRadius="12"
-            Margin="4">
+            CornerRadius="14"
+            Margin="6">
         <Border.Effect>
-            <DropShadowEffect BlurRadius="16" ShadowDepth="2" Opacity="0.5" Color="#000000" />
+            <DropShadowEffect BlurRadius="20" ShadowDepth="4" Opacity="0.6" Color="#000000" />
         </Border.Effect>
+
+        <!-- Clip content to rounded corners -->
+        <Border.Clip>
+            <RectangleGeometry RadiusX="14" RadiusY="14">
+                <RectangleGeometry.Rect>
+                    <Rect X="0" Y="0" Width="388" Height="628" />
+                </RectangleGeometry.Rect>
+            </RectangleGeometry>
+        </Border.Clip>
 
         <Grid>
             <Grid.RowDefinitions>
@@ -35,36 +45,51 @@
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
-            <!-- Header -->
-            <Border Grid.Row="0" Padding="16,12,16,6">
+            <!-- ═══ HEADER ═══ -->
+            <Border Grid.Row="0" Padding="16,12,16,8">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                        <Ellipse Width="10" Height="10" Fill="{StaticResource AccentBrush}" Margin="0,0,8,0" />
-                        <TextBlock Text="IntelligenceX Usage"
-                                   FontFamily="{StaticResource AppFont}"
-                                   FontSize="15"
-                                   FontWeight="Bold"
-                                   Foreground="{StaticResource PrimaryTextBrush}" />
+                        <Border Width="26" Height="26" CornerRadius="7" Margin="0,0,10,0">
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                    <GradientStop Color="#7c6ff5" Offset="0" />
+                                    <GradientStop Color="#50d880" Offset="1" />
+                                </LinearGradientBrush>
+                            </Border.Background>
+                            <TextBlock Text="IX" FontFamily="{StaticResource AppFont}"
+                                       FontSize="11" FontWeight="ExtraBold"
+                                       Foreground="White"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center" />
+                        </Border>
+                        <TextBlock FontFamily="{StaticResource AppFont}"
+                                   FontSize="15" FontWeight="SemiBold"
+                                   VerticalAlignment="Center"
+                                   Foreground="{StaticResource PrimaryTextBrush}"
+                                   Text="{Binding HeaderTitle}" />
                     </StackPanel>
                     <Button Grid.Column="1"
                             Style="{StaticResource RefreshButtonStyle}"
                             Command="{Binding RefreshCommand}"
-                            Content="Refresh"
-                            VerticalAlignment="Center" />
+                            VerticalAlignment="Center">
+                        <TextBlock FontFamily="{StaticResource AppFont}" FontSize="11"
+                                   Text="Refresh" />
+                    </Button>
                 </Grid>
             </Border>
 
-            <!-- Provider Tabs -->
+            <!-- ═══ PROVIDER TABS ═══ -->
             <Border Grid.Row="1"
+                    Background="#08ffffff"
                     BorderBrush="{StaticResource BorderBrush}"
-                    BorderThickness="0,0,0,1">
+                    BorderThickness="0,1,0,1"
+                    Padding="6,2">
                 <ScrollViewer HorizontalScrollBarVisibility="Auto"
-                              VerticalScrollBarVisibility="Disabled"
-                              Padding="8,0">
+                              VerticalScrollBarVisibility="Disabled">
                     <ItemsControl ItemsSource="{Binding Providers}">
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate>
@@ -79,10 +104,12 @@
                                              Click="OnProviderTabClick"
                                              Tag="{Binding}">
                                     <StackPanel Orientation="Horizontal">
-                                        <Ellipse Width="8" Height="8"
+                                        <Ellipse Width="7" Height="7"
                                                  Fill="{Binding AccentBrush}"
-                                                 Margin="0,0,6,0" />
-                                        <TextBlock Text="{Binding DisplayName}" />
+                                                 Margin="0,0,5,0"
+                                                 VerticalAlignment="Center" />
+                                        <TextBlock Text="{Binding DisplayName}"
+                                                   VerticalAlignment="Center" />
                                     </StackPanel>
                                 </RadioButton>
                             </DataTemplate>
@@ -91,269 +118,264 @@
                 </ScrollViewer>
             </Border>
 
-            <!-- Main Content (bound to SelectedProvider) -->
-            <ScrollViewer Grid.Row="2"
-                          VerticalScrollBarVisibility="Auto"
-                          HorizontalScrollBarVisibility="Disabled"
-                          Padding="16,10">
-                <StackPanel DataContext="{Binding SelectedProvider}">
+            <!-- ═══ MAIN CONTENT ═══ -->
+            <Grid Grid.Row="2">
+                <!-- Loading overlay (centered, above scroll content) -->
+                <TextBlock Text="Scanning providers..."
+                           Foreground="{StaticResource SecondaryTextBrush}"
+                           FontFamily="{StaticResource AppFont}"
+                           FontSize="12"
+                           HorizontalAlignment="Center"
+                           VerticalAlignment="Center"
+                           Visibility="{Binding IsLoading, Converter={StaticResource BoolToVis}}" />
 
-                    <!-- Loading Indicator -->
-                    <TextBlock Text="Loading..."
-                               Foreground="{StaticResource SecondaryTextBrush}"
-                               FontFamily="{StaticResource AppFont}"
-                               FontSize="13"
-                               HorizontalAlignment="Center"
-                               Margin="0,20"
-                               Visibility="{Binding DataContext.IsLoading, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVis}}" />
+                <!-- Scrollable data content -->
+                <ScrollViewer VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled"
+                              Visibility="{Binding HasData, Converter={StaticResource BoolToVis}}">
+                    <StackPanel DataContext="{Binding SelectedProvider}"
+                                Margin="16,12,16,8">
 
-                    <!-- TODAY'S USAGE -->
-                    <Border Style="{StaticResource CardStyle}">
-                        <StackPanel>
-                            <TextBlock Text="TODAY'S USAGE"
-                                       Style="{StaticResource SectionHeaderStyle}" />
-
-                            <!-- Total Tokens (large) -->
-                            <TextBlock Text="{Binding TodayTotalTokensFormatted}"
-                                       Style="{StaticResource ValueTextStyle}"
-                                       Margin="0,0,0,2" />
-                            <TextBlock Text="total tokens"
-                                       Style="{StaticResource LabelTextStyle}"
-                                       Margin="0,0,0,10" />
-
-                            <!-- Token Bar -->
-                            <Grid Margin="0,0,0,12">
-                                <Border Style="{StaticResource TokenBarStyle}"
-                                        Background="#20ffffff"
-                                        HorizontalAlignment="Stretch" />
-                                <Grid HorizontalAlignment="Left">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <Border Grid.Column="0"
-                                            Style="{StaticResource TokenBarStyle}"
-                                            Width="120"
-                                            HorizontalAlignment="Left">
-                                        <Border.Background>
-                                            <SolidColorBrush Color="{Binding InputColor}" />
-                                        </Border.Background>
-                                    </Border>
-                                    <Border Grid.Column="1"
-                                            Style="{StaticResource TokenBarStyle}"
-                                            Width="80"
-                                            HorizontalAlignment="Left">
-                                        <Border.Background>
-                                            <SolidColorBrush Color="{Binding OutputColor}" />
-                                        </Border.Background>
-                                    </Border>
+                        <!-- ── TODAY'S USAGE ── -->
+                        <Border Style="{StaticResource CardStyle}">
+                            <StackPanel>
+                                <Grid Margin="0,0,0,8">
+                                    <TextBlock Text="TODAY'S USAGE"
+                                               Style="{StaticResource SectionHeaderStyle}"
+                                               Margin="0" />
+                                    <TextBlock HorizontalAlignment="Right"
+                                               FontFamily="{StaticResource AppFont}"
+                                               FontSize="10"
+                                               Foreground="{StaticResource TertiaryTextBrush}">
+                                        <Run Text="{Binding TodayEventCount, Mode=OneWay}" />
+                                        <Run Text=" events" />
+                                    </TextBlock>
                                 </Grid>
-                            </Grid>
 
-                            <!-- Breakdown Grid -->
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
-                                </Grid.RowDefinitions>
-
-                                <!-- Input -->
-                                <StackPanel Grid.Row="0" Grid.Column="0" Margin="0,0,0,6">
-                                    <TextBlock Style="{StaticResource LabelTextStyle}">
-                                        <Run Text="Input" />
-                                    </TextBlock>
-                                    <TextBlock Text="{Binding TodayInputTokensFormatted}"
-                                               Style="{StaticResource StatValueStyle}" />
+                                <!-- Total Tokens - Hero Number -->
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,2">
+                                    <TextBlock Text="{Binding TodayTotalTokensFormatted}"
+                                               Style="{StaticResource ValueTextStyle}" />
+                                    <TextBlock Text=" tokens"
+                                               Style="{StaticResource LabelTextStyle}"
+                                               VerticalAlignment="Bottom"
+                                               Margin="4,0,0,4" />
                                 </StackPanel>
 
-                                <!-- Output -->
-                                <StackPanel Grid.Row="0" Grid.Column="1" Margin="0,0,0,6">
-                                    <TextBlock Style="{StaticResource LabelTextStyle}">
-                                        <Run Text="Output" />
-                                    </TextBlock>
-                                    <TextBlock Text="{Binding TodayOutputTokensFormatted}"
-                                               Style="{StaticResource StatValueStyle}" />
-                                </StackPanel>
+                                <!-- Token Bars (stacked Input + Output) -->
+                                <Grid Height="10" Margin="0,6,0,12">
+                                    <Border CornerRadius="5" Background="#15ffffff" />
+                                    <StackPanel Orientation="Horizontal">
+                                        <Border CornerRadius="5,0,0,5"
+                                                Height="10"
+                                                MinWidth="2"
+                                                Width="{Binding InputBarWidth}">
+                                            <Border.Background>
+                                                <SolidColorBrush Color="{Binding InputColor}" Opacity="0.85" />
+                                            </Border.Background>
+                                        </Border>
+                                        <Border CornerRadius="0,5,5,0"
+                                                Height="10"
+                                                MinWidth="2"
+                                                Width="{Binding OutputBarWidth}">
+                                            <Border.Background>
+                                                <SolidColorBrush Color="{Binding OutputColor}" Opacity="0.85" />
+                                            </Border.Background>
+                                        </Border>
+                                    </StackPanel>
+                                </Grid>
 
-                                <!-- Cached -->
-                                <StackPanel Grid.Row="1" Grid.Column="0" Margin="0,0,0,6">
-                                    <TextBlock Style="{StaticResource LabelTextStyle}">
-                                        <Run Text="Cached" />
-                                    </TextBlock>
-                                    <TextBlock Text="{Binding TodayCachedTokensFormatted}"
-                                               Style="{StaticResource StatValueStyle}" />
-                                </StackPanel>
+                                <!-- Token Breakdown Grid -->
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
 
-                                <!-- Reasoning -->
-                                <StackPanel Grid.Row="1" Grid.Column="1" Margin="0,0,0,6">
-                                    <TextBlock Style="{StaticResource LabelTextStyle}">
-                                        <Run Text="Reasoning" />
-                                    </TextBlock>
-                                    <TextBlock Text="{Binding TodayReasoningTokensFormatted}"
-                                               Style="{StaticResource StatValueStyle}" />
-                                </StackPanel>
+                                    <StackPanel Grid.Row="0" Grid.Column="0" Margin="0,0,0,8">
+                                        <TextBlock Style="{StaticResource LabelTextStyle}" Text="Input" />
+                                        <TextBlock Text="{Binding TodayInputTokensFormatted}"
+                                                   Style="{StaticResource StatValueStyle}" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Row="0" Grid.Column="1" Margin="0,0,0,8">
+                                        <TextBlock Style="{StaticResource LabelTextStyle}" Text="Output" />
+                                        <TextBlock Text="{Binding TodayOutputTokensFormatted}"
+                                                   Style="{StaticResource StatValueStyle}" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Row="0" Grid.Column="2" Margin="0,0,0,8">
+                                        <TextBlock Style="{StaticResource LabelTextStyle}" Text="Cost" />
+                                        <TextBlock Text="{Binding TodayCostFormatted}"
+                                                   Style="{StaticResource StatValueStyle}" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Row="1" Grid.Column="0">
+                                        <TextBlock Style="{StaticResource LabelTextStyle}" Text="Cached" />
+                                        <TextBlock Text="{Binding TodayCachedTokensFormatted}"
+                                                   Style="{StaticResource StatValueStyle}" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Row="1" Grid.Column="1">
+                                        <TextBlock Style="{StaticResource LabelTextStyle}" Text="Reasoning" />
+                                        <TextBlock Text="{Binding TodayReasoningTokensFormatted}"
+                                                   Style="{StaticResource StatValueStyle}" />
+                                    </StackPanel>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
 
-                                <!-- Cost -->
-                                <StackPanel Grid.Row="2" Grid.Column="0" Margin="0,0,0,4">
-                                    <TextBlock Style="{StaticResource LabelTextStyle}">
-                                        <Run Text="Cost" />
-                                    </TextBlock>
-                                    <TextBlock Text="{Binding TodayCostFormatted}"
-                                               Style="{StaticResource StatValueStyle}" />
-                                </StackPanel>
+                        <!-- ── 7-DAY + 30-DAY side-by-side ── -->
+                        <Grid Margin="0,0,0,10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="10" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
 
-                                <!-- Events -->
-                                <StackPanel Grid.Row="2" Grid.Column="1" Margin="0,0,0,4">
-                                    <TextBlock Style="{StaticResource LabelTextStyle}">
-                                        <Run Text="Events" />
-                                    </TextBlock>
-                                    <TextBlock Text="{Binding TodayEventCount}"
-                                               Style="{StaticResource StatValueStyle}" />
-                                </StackPanel>
-                            </Grid>
-                        </StackPanel>
-                    </Border>
-
-                    <!-- 7-DAY ROLLING -->
-                    <Border Style="{StaticResource CardStyle}">
-                        <StackPanel>
-                            <TextBlock Text="7-DAY ROLLING"
-                                       Style="{StaticResource SectionHeaderStyle}" />
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0">
+                            <Border Grid.Column="0" Style="{StaticResource CardStyle}" Margin="0">
+                                <StackPanel>
+                                    <TextBlock Text="7-DAY" Style="{StaticResource SectionHeaderStyle}" />
                                     <TextBlock Text="{Binding WeeklyTotalTokensFormatted}"
-                                               Style="{StaticResource ValueTextStyle}"
-                                               FontSize="18" />
-                                    <TextBlock Text="total tokens"
-                                               Style="{StaticResource LabelTextStyle}" />
-                                </StackPanel>
-                                <StackPanel Grid.Column="1">
+                                               Style="{StaticResource ValueTextStyle}" FontSize="18" />
+                                    <TextBlock Text="tokens" Style="{StaticResource LabelTextStyle}" Margin="0,0,0,6" />
                                     <TextBlock Text="{Binding WeeklyAvgPerDayFormatted}"
-                                               Style="{StaticResource StatValueStyle}" />
-                                    <TextBlock Text="avg per day"
-                                               Style="{StaticResource LabelTextStyle}" />
-                                    <TextBlock Text="{Binding WeeklyCostFormatted}"
-                                               Style="{StaticResource StatValueStyle}"
-                                               Margin="0,4,0,0"
-                                               Visibility="{Binding HasWeeklyCost, Converter={StaticResource BoolToVis}}" />
-                                    <TextBlock Text="cost"
-                                               Style="{StaticResource LabelTextStyle}"
-                                               Visibility="{Binding HasWeeklyCost, Converter={StaticResource BoolToVis}}" />
+                                               Style="{StaticResource StatValueStyle}" FontSize="12" />
+                                    <TextBlock Style="{StaticResource LabelTextStyle}" Margin="0,0,0,4">
+                                        <Run Text="{Binding WeeklyCostFormatted, Mode=OneWay}" />
+                                        <Run Text=" cost" />
+                                    </TextBlock>
                                 </StackPanel>
-                            </Grid>
-                        </StackPanel>
-                    </Border>
+                            </Border>
 
-                    <!-- 30-DAY ROLLING -->
-                    <Border Style="{StaticResource CardStyle}">
-                        <StackPanel>
-                            <TextBlock Text="30-DAY ROLLING"
-                                       Style="{StaticResource SectionHeaderStyle}" />
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0">
+                            <Border Grid.Column="2" Style="{StaticResource CardStyle}" Margin="0">
+                                <StackPanel>
+                                    <TextBlock Text="30-DAY" Style="{StaticResource SectionHeaderStyle}" />
                                     <TextBlock Text="{Binding MonthlyTotalTokensFormatted}"
-                                               Style="{StaticResource ValueTextStyle}"
-                                               FontSize="18" />
-                                    <TextBlock Text="total tokens"
-                                               Style="{StaticResource LabelTextStyle}" />
-                                </StackPanel>
-                                <StackPanel Grid.Column="1">
+                                               Style="{StaticResource ValueTextStyle}" FontSize="18" />
+                                    <TextBlock Text="tokens" Style="{StaticResource LabelTextStyle}" Margin="0,0,0,6" />
                                     <TextBlock Text="{Binding MonthlyAvgPerDayFormatted}"
-                                               Style="{StaticResource StatValueStyle}" />
-                                    <TextBlock Text="avg per day"
-                                               Style="{StaticResource LabelTextStyle}" />
-                                    <TextBlock Text="{Binding MonthlyCostFormatted}"
-                                               Style="{StaticResource StatValueStyle}"
-                                               Margin="0,4,0,0"
-                                               Visibility="{Binding HasMonthlyCost, Converter={StaticResource BoolToVis}}" />
-                                    <TextBlock Text="cost"
-                                               Style="{StaticResource LabelTextStyle}"
-                                               Visibility="{Binding HasMonthlyCost, Converter={StaticResource BoolToVis}}" />
+                                               Style="{StaticResource StatValueStyle}" FontSize="12" />
+                                    <TextBlock Style="{StaticResource LabelTextStyle}" Margin="0,0,0,4">
+                                        <Run Text="{Binding MonthlyCostFormatted, Mode=OneWay}" />
+                                        <Run Text=" cost" />
+                                    </TextBlock>
                                 </StackPanel>
-                            </Grid>
-                        </StackPanel>
-                    </Border>
+                            </Border>
+                        </Grid>
 
-                    <!-- MODEL BREAKDOWN -->
-                    <Border Style="{StaticResource CardStyle}">
-                        <StackPanel>
-                            <TextBlock Text="MODEL BREAKDOWN"
-                                       Style="{StaticResource SectionHeaderStyle}" />
-                            <ItemsControl ItemsSource="{Binding ModelBreakdown}">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate DataType="{x:Type vm:ModelUsageViewModel}">
-                                        <StackPanel Margin="0,0,0,8">
-                                            <Grid>
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="*" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                </Grid.ColumnDefinitions>
-                                                <TextBlock Grid.Column="0"
-                                                           Text="{Binding ModelName}"
+                        <!-- ── DAILY ACTIVITY (7-day bars) ── -->
+                        <Border Style="{StaticResource CardStyle}">
+                            <StackPanel>
+                                <TextBlock Text="DAILY ACTIVITY" Style="{StaticResource SectionHeaderStyle}" />
+                                <ItemsControl ItemsSource="{Binding DailyBars}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <UniformGrid Columns="7" />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate DataType="{x:Type vm:DailyBarViewModel}">
+                                            <StackPanel HorizontalAlignment="Center" Margin="2,0">
+                                                <Grid Height="50" VerticalAlignment="Bottom">
+                                                    <Border CornerRadius="3"
+                                                            Background="#10ffffff"
+                                                            VerticalAlignment="Stretch" />
+                                                    <Border CornerRadius="3"
+                                                            Background="{Binding BarBrush}"
+                                                            Opacity="0.75"
+                                                            VerticalAlignment="Bottom"
+                                                            Height="{Binding BarHeight}" />
+                                                </Grid>
+                                                <TextBlock Text="{Binding DayLabel}"
                                                            FontFamily="{StaticResource AppFont}"
-                                                           FontSize="11"
-                                                           Foreground="{StaticResource PrimaryTextBrush}"
-                                                           TextTrimming="CharacterEllipsis" />
-                                                <TextBlock Grid.Column="1"
-                                                           Text="{Binding TotalTokensFormatted}"
+                                                           FontSize="9"
+                                                           Foreground="{StaticResource TertiaryTextBrush}"
+                                                           HorizontalAlignment="Center"
+                                                           Margin="0,4,0,0" />
+                                                <TextBlock Text="{Binding TokensFormatted}"
                                                            FontFamily="{StaticResource AppFont}"
-                                                           FontSize="11"
-                                                           FontWeight="SemiBold"
+                                                           FontSize="8"
                                                            Foreground="{StaticResource SecondaryTextBrush}"
-                                                           Margin="8,0,0,0" />
-                                            </Grid>
-                                            <Grid Margin="0,3,0,0">
-                                                <Border Style="{StaticResource ModelBarStyle}"
-                                                        Background="#15ffffff"
-                                                        HorizontalAlignment="Stretch" />
-                                                <Border Style="{StaticResource ModelBarStyle}"
-                                                        Background="{Binding BarBrush}"
-                                                        HorizontalAlignment="Left"
-                                                        Width="{Binding Proportion, Converter={StaticResource PropToWidth}, ConverterParameter=280}" />
-                                            </Grid>
-                                        </StackPanel>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                            <TextBlock Text="No model data available"
-                                       HorizontalAlignment="Center"
-                                       Margin="0,4">
-                                <TextBlock.Style>
-                                    <Style TargetType="TextBlock" BasedOn="{StaticResource LabelTextStyle}">
-                                        <Setter Property="Visibility" Value="Collapsed" />
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding ModelBreakdown.Count}" Value="0">
-                                                <Setter Property="Visibility" Value="Visible" />
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </TextBlock.Style>
-                            </TextBlock>
-                        </StackPanel>
-                    </Border>
+                                                           HorizontalAlignment="Center" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Border>
 
-                </StackPanel>
-            </ScrollViewer>
+                        <!-- ── MODEL BREAKDOWN ── -->
+                        <Border Style="{StaticResource CardStyle}">
+                            <StackPanel>
+                                <TextBlock Text="MODELS" Style="{StaticResource SectionHeaderStyle}" />
+                                <ItemsControl ItemsSource="{Binding ModelBreakdown}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate DataType="{x:Type vm:ModelUsageViewModel}">
+                                            <Grid Margin="0,0,0,8">
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto" />
+                                                    <RowDefinition Height="Auto" />
+                                                </Grid.RowDefinitions>
+                                                <Grid Grid.Row="0" Margin="0,0,0,3">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Grid.Column="0"
+                                                               Text="{Binding ModelName}"
+                                                               FontFamily="{StaticResource AppFont}"
+                                                               FontSize="11"
+                                                               Foreground="{StaticResource PrimaryTextBrush}"
+                                                               TextTrimming="CharacterEllipsis" />
+                                                    <TextBlock Grid.Column="1"
+                                                               Text="{Binding TotalTokensFormatted}"
+                                                               FontFamily="{StaticResource AppFont}"
+                                                               FontSize="11"
+                                                               FontWeight="SemiBold"
+                                                               Foreground="{StaticResource SecondaryTextBrush}" />
+                                                </Grid>
+                                                <Grid Grid.Row="1">
+                                                    <Border CornerRadius="3" Height="5"
+                                                            Background="#12ffffff" />
+                                                    <Border CornerRadius="3" Height="5"
+                                                            Background="{Binding BarBrush}"
+                                                            Opacity="0.7"
+                                                            HorizontalAlignment="Left"
+                                                            Width="{Binding Proportion, Converter={StaticResource PropToWidth}, ConverterParameter=310}" />
+                                                </Grid>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <TextBlock Text="No model data"
+                                           FontFamily="{StaticResource AppFont}"
+                                           FontSize="11"
+                                           Foreground="{StaticResource TertiaryTextBrush}"
+                                           HorizontalAlignment="Center"
+                                           Margin="0,4">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding ModelBreakdown.Count}" Value="0">
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </StackPanel>
+                        </Border>
 
-            <!-- Footer -->
+                    </StackPanel>
+                </ScrollViewer>
+            </Grid>
+
+            <!-- ═══ FOOTER ═══ -->
             <Border Grid.Row="3"
-                    Background="{StaticResource CardBrush}"
-                    BorderBrush="{StaticResource BorderBrush}"
-                    BorderThickness="0,1,0,0"
-                    CornerRadius="0,0,12,12"
+                    Background="#0affffff"
                     Padding="16,8">
                 <Grid>
                     <Grid.ColumnDefinitions>
@@ -361,22 +383,21 @@
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <StackPanel Grid.Column="0" Orientation="Horizontal">
-                        <TextBlock Text="Last refreshed: "
-                                   FontFamily="{StaticResource AppFont}"
-                                   FontSize="10"
-                                   Foreground="{StaticResource TertiaryTextBrush}" />
+                        <TextBlock FontFamily="{StaticResource AppFont}" FontSize="10"
+                                   Foreground="{StaticResource TertiaryTextBrush}">
+                            <Run Text="Updated " />
+                        </TextBlock>
                         <TextBlock Text="{Binding LastRefreshedFormatted}"
-                                   FontFamily="{StaticResource AppFont}"
-                                   FontSize="10"
+                                   FontFamily="{StaticResource AppFont}" FontSize="10"
+                                   FontWeight="SemiBold"
                                    Foreground="{StaticResource SecondaryTextBrush}" />
                     </StackPanel>
                     <TextBlock Grid.Column="1"
                                Text="{Binding StatusText}"
-                               FontFamily="{StaticResource AppFont}"
-                               FontSize="10"
+                               FontFamily="{StaticResource AppFont}" FontSize="10"
                                Foreground="{StaticResource TertiaryTextBrush}"
                                TextTrimming="CharacterEllipsis"
-                               MaxWidth="180" />
+                               MaxWidth="200" />
                 </Grid>
             </Border>
         </Grid>
