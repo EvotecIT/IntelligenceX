@@ -47,6 +47,10 @@
         <PackageReference Include="DBAClientX.SQLite" Version="0.2.0" />
     </ItemGroup>
 
+    <ItemGroup Condition="'$(TargetFramework)' == 'net472' Or '$(TargetFramework)' == 'netstandard2.0'">
+        <PackageReference Include="System.Text.Json" Version="8.0.5" />
+    </ItemGroup>
+
     <ItemGroup>
         <EmbeddedResource Include="Visualization\Heatmaps\Assets\**\*.*" />
     </ItemGroup>
