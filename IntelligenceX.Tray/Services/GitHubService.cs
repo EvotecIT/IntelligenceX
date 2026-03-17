@@ -27,8 +27,9 @@ public sealed class GitHubService {
                 return await dashboard.FetchAsync(normalizedLogin, ct).ConfigureAwait(false);
             } catch (OperationCanceledException) {
                 throw;
-            } catch when (!string.IsNullOrWhiteSpace(normalizedLogin)) {
+            } catch (Exception) when (!string.IsNullOrWhiteSpace(normalizedLogin)) {
                 // Keep the username-based public path recoverable even when a stale token is present.
+                return await FetchPublicAsync(normalizedLogin!, ct).ConfigureAwait(false);
             }
         }
 
