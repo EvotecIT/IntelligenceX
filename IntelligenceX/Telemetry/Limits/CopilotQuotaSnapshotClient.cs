@@ -62,7 +62,13 @@ public sealed class CopilotQuotaSnapshotClient : IDisposable {
                 + ".");
         }
 
+        #if NET8_0_OR_GREATER
+        using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        #else
+        cancellationToken.ThrowIfCancellationRequested();
         using var stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        #endif
         using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
         return ParseSnapshot(document.RootElement);
     }

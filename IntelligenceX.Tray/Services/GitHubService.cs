@@ -68,19 +68,7 @@ public sealed class GitHubService {
             }
         }
 
-        var dedupedRepos = repos
-            .GroupBy(static repo => repo.NameWithOwner, StringComparer.OrdinalIgnoreCase)
-            .Select(static group => group
-                .OrderByDescending(static repo => repo.Stars)
-                .ThenByDescending(static repo => repo.Forks)
-                .First())
-            .ToList();
-
-        var topRepos = dedupedRepos
-            .OrderByDescending(r => r.Stars)
-            .ThenByDescending(r => r.Forks)
-            .Take(8)
-            .ToList();
+        var topRepos = GitHubDashboardRepositoryRanking.BuildTopRepositories(repos, limit: 8);
 
         // No contribution data available via public API (would need GraphQL + token)
         var contribs = new GitHubContribData();
@@ -126,6 +114,10 @@ public sealed class GitHubService {
                     throw new InvalidOperationException("GitHub could not find that public user or resource.");
                 }
 
+                if (status == System.Net.HttpStatusCode.Unauthorized) {
+                    throw new InvalidOperationException("GitHub rejected the public API request. Try again later or configure a GitHub token.");
+                }
+
                 if (status == System.Net.HttpStatusCode.Forbidden) {
                     var remaining = response.Headers.TryGetValues("X-RateLimit-Remaining", out var values)
                         ? values.FirstOrDefault()
@@ -133,11 +125,21 @@ public sealed class GitHubService {
                     if (string.Equals(remaining, "0", StringComparison.OrdinalIgnoreCase)) {
                         throw new InvalidOperationException("GitHub public API rate limit was exceeded. Try again later or set GITHUB_TOKEN for authenticated requests.");
                     }
+
+                    throw new InvalidOperationException("GitHub denied the public API request. Try again later or configure a GitHub token.");
                 }
 
-                System.Diagnostics.Debug.WriteLine(
-                    $"GitHub API {(int)response.StatusCode} for {url}");
-                return null;
+                if ((int)status >= 500) {
+                    throw new InvalidOperationException(
+                        "GitHub public API is temporarily unavailable (HTTP "
+                        + ((int)status).ToString(System.Globalization.CultureInfo.InvariantCulture)
+                        + ").");
+                }
+
+                throw new InvalidOperationException(
+                    "GitHub public API request failed with HTTP "
+                    + ((int)status).ToString(System.Globalization.CultureInfo.InvariantCulture)
+                    + ".");
             }
             return await response.Content.ReadAsStringAsync(ct);
         } catch (OperationCanceledException) {
