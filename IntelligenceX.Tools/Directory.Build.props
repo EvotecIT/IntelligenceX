@@ -54,6 +54,9 @@
   <PropertyGroup Condition="'$(PSEventViewerRoot)'!=''">
     <PSEventViewerRoot>$([MSBuild]::EnsureTrailingSlash('$(PSEventViewerRoot)'))</PSEventViewerRoot>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(EventViewerXProjectPath)'=='' AND '$(PSEventViewerRoot)'!='' AND Exists('$(PSEventViewerRoot)$(IxToolsEventViewerProjectMarker)')">
+    <EventViewerXProjectPath>$([System.IO.Path]::GetFullPath('$(PSEventViewerRoot)$(IxToolsEventViewerProjectMarker)'))</EventViewerXProjectPath>
+  </PropertyGroup>
   <PropertyGroup Condition="'$(MailozaurrRoot)'!=''">
     <MailozaurrRoot>$([MSBuild]::EnsureTrailingSlash('$(MailozaurrRoot)'))</MailozaurrRoot>
   </PropertyGroup>
