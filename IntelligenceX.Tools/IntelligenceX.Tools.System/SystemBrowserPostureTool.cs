@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
@@ -90,7 +89,12 @@ public sealed class SystemBrowserPostureTool : SystemToolBase, ITool {
             var extensions = request.IncludeExtensions
                 ? CapRows(posture.Extensions, request.MaxExtensions, out _, out _)
                 : Array.Empty<BrowserExtensionInfo>();
-            var warnings = BuildWarnings(posture, request.IncludeExtensions, IsLocalTarget(request.ComputerName, request.Target));
+            var warnings = BrowserPostureRiskEvaluator.Evaluate(
+                posture,
+                new BrowserPostureRiskOptions {
+                    IncludeExtensions = request.IncludeExtensions,
+                    IsLocalTarget = IsLocalTarget(request.ComputerName, request.Target)
+                });
             var model = new BrowserPostureResponse(
                 ComputerName: effectiveComputerName,
                 PolicyCollectionAttempted: posture.PolicyCollectionAttempted,
@@ -144,28 +148,4 @@ public sealed class SystemBrowserPostureTool : SystemToolBase, ITool {
         }
     }
 
-    private static IReadOnlyList<string> BuildWarnings(BrowserPostureInfo posture, bool includeExtensions, bool isLocalTarget) {
-        var warnings = new List<string>();
-        AddPolicyWarnings(warnings, posture.EdgePolicy);
-        AddPolicyWarnings(warnings, posture.ChromePolicy);
-        AddPolicyWarnings(warnings, posture.FirefoxPolicy);
-
-        if (includeExtensions && !isLocalTarget) {
-            warnings.Add("Extension inventory is only collected locally; remote calls return machine-policy posture only.");
-        }
-
-        return warnings;
-    }
-
-    private static void AddPolicyWarnings(List<string> warnings, BrowserPolicyInfo policy) {
-        if (policy.SafeBrowsingEnabled == false) {
-            warnings.Add($"{policy.BrowserName} Safe Browsing is disabled by policy.");
-        }
-        if (policy.SmartScreenEnabled == false) {
-            warnings.Add($"{policy.BrowserName} SmartScreen is disabled by policy.");
-        }
-        if (policy.SmartScreenPuaEnabled == false) {
-            warnings.Add($"{policy.BrowserName} PUA SmartScreen is disabled by policy.");
-        }
-    }
 }

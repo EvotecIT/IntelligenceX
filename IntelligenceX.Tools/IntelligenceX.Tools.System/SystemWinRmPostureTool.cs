@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Threading;
@@ -76,7 +75,7 @@ public sealed class SystemWinRmPostureTool : SystemToolBase, ITool {
         var request = context.Request;
         try {
             var posture = WinRmPolicyQuery.Get(request.ComputerName);
-            var warnings = BuildWarnings(posture);
+            var warnings = WinRmPolicyRiskEvaluator.Evaluate(posture);
             var httpsListeners = posture.Listeners.Count(static listener =>
                 string.Equals(listener.Transport, "HTTPS", StringComparison.OrdinalIgnoreCase));
             var httpListeners = posture.Listeners.Count(static listener =>
@@ -128,24 +127,6 @@ public sealed class SystemWinRmPostureTool : SystemToolBase, ITool {
         } catch (Exception ex) {
             return Task.FromResult(ErrorFromException(ex, defaultMessage: "WinRM posture query failed."));
         }
-    }
-
-    private static IReadOnlyList<string> BuildWarnings(WinRmPolicyState posture) {
-        var warnings = new List<string>();
-        if (posture.ServiceAllowUnencrypted == true || posture.ClientAllowUnencrypted == true) {
-            warnings.Add("WinRM allows unencrypted traffic on the service or client side.");
-        }
-        if (posture.ServiceAuth.Basic == true || posture.ClientAuth.Basic == true) {
-            warnings.Add("WinRM Basic authentication is enabled.");
-        }
-        if (posture.Listeners.Count > 0 && posture.Listeners.All(static listener => !string.Equals(listener.Transport, "HTTPS", StringComparison.OrdinalIgnoreCase))) {
-            warnings.Add("WinRM listeners are present but none use HTTPS transport.");
-        }
-        if (posture.Listeners.Any(static listener => string.Equals(listener.Transport, "HTTPS", StringComparison.OrdinalIgnoreCase) && string.IsNullOrWhiteSpace(listener.CertificateThumbprint))) {
-            warnings.Add("One or more HTTPS WinRM listeners do not expose a certificate thumbprint.");
-        }
-
-        return warnings;
     }
 
     private static string FormatNullableBool(bool? value) {
