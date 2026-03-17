@@ -1,6 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Windows.Media;
-using IntelligenceX.Tray.Services;
+using IntelligenceX.Telemetry.GitHub;
 
 namespace IntelligenceX.Tray.ViewModels;
 

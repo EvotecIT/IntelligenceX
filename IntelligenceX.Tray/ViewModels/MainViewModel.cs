@@ -1,12 +1,13 @@
 using System.Collections.ObjectModel;
 using System.Windows.Media;
 using System.Windows.Threading;
+using IntelligenceX.Telemetry.Usage;
 using IntelligenceX.Tray.Services;
 
 namespace IntelligenceX.Tray.ViewModels;
 
 public sealed class MainViewModel : ViewModelBase, IDisposable {
-    private readonly UsageDataService _usageService;
+    private readonly UsageTelemetrySnapshotService _usageService;
     private readonly GitHubService _gitHubService;
     private readonly DispatcherTimer _refreshTimer;
     private ProviderViewModel? _selectedProvider;
@@ -14,7 +15,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     private string _statusText = "Initializing...";
     private DateTimeOffset _lastRefreshed;
 
-    public MainViewModel(UsageDataService usageService, GitHubService gitHubService) {
+    public MainViewModel(UsageTelemetrySnapshotService usageService, GitHubService gitHubService) {
         _usageService = usageService;
         _gitHubService = gitHubService;
         GitHub = new GitHubViewModel();

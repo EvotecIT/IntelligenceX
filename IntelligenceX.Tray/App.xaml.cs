@@ -1,5 +1,6 @@
 using System.Windows;
 using H.NotifyIcon;
+using IntelligenceX.Telemetry.Usage;
 using IntelligenceX.Tray.Services;
 using IntelligenceX.Tray.ViewModels;
 using IntelligenceX.Tray.Views;
@@ -15,7 +16,7 @@ public partial class App : Application {
         base.OnStartup(e);
 
         try {
-            var usageService = new UsageDataService();
+            var usageService = new UsageTelemetrySnapshotService();
             var gitHubService = new GitHubService();
             _viewModel = new MainViewModel(usageService, gitHubService);
 
