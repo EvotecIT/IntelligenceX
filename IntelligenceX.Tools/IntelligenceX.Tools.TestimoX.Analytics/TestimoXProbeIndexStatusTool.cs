@@ -24,7 +24,7 @@ public sealed class TestimoXProbeIndexStatusTool : TestimoXToolBase, ITool {
         IReadOnlyList<string> ProbeNames,
         DateTime? SinceUtc,
         string? ProbeNameContains,
-        HashSet<string>? StatusFilter,
+        IReadOnlyCollection<ProbeStatus>? StatusFilter,
         int? PageSize,
         int Offset);
 
@@ -112,89 +112,68 @@ public sealed class TestimoXProbeIndexStatusTool : TestimoXToolBase, ITool {
                 isTransient: false);
         }
 
-        if (!TestimoXAnalyticsHistoryHelper.TryResolveHistoryDatabasePath(
+        if (!TestimoXAnalyticsHistoryHelper.TryResolveHistoryReadContext(
                 Options,
                 context.Request.HistoryDirectory,
                 toolName: "testimox_probe_index_status",
-                out var historyDirectory,
-                out var databasePath,
+                out var historyContext,
                 out var resolveError)) {
             return resolveError;
         }
 
-        IReadOnlyCollection<string> candidateNames;
-        Dictionary<string, ProbeIndexStatusEntry> statusByProbe;
-        var effectiveSinceUtc = context.Request.SinceUtc ?? DateTime.UtcNow.Subtract(DefaultLookback);
-        var usedExplicitProbeNames = context.Request.ProbeNames.Count > 0;
+        MonitoringProbeIndexQueryResult result;
         try {
-            using var store = new DbaClientXHistoryStore(
-                TestimoXAnalyticsHistoryHelper.CreateSqliteDatabaseConfig(databasePath),
-                historyDirectory,
-                sqliteOptions: TestimoXAnalyticsHistoryHelper.CreateSqliteOptions());
-            candidateNames = usedExplicitProbeNames
-                ? context.Request.ProbeNames
-                : await store.ListProbeNamesSinceAsync(new DateTimeOffset(DateTime.SpecifyKind(effectiveSinceUtc, DateTimeKind.Utc), TimeSpan.Zero), cancellationToken)
-                    .ConfigureAwait(false);
-
-            if (!usedExplicitProbeNames && candidateNames.Count == 0) {
-                candidateNames = await store.ListProbeNamesAsync(cancellationToken).ConfigureAwait(false);
-            }
-
-            statusByProbe = await store.ReadProbeIndexStatusAsync(candidateNames, cancellationToken).ConfigureAwait(false);
+            var service = new MonitoringProbeIndexQueryService(
+                historyContext.DatabaseConfig,
+                historyContext.SqliteOptions,
+                historyContext.HistoryDirectory);
+            result = await service.QueryAsync(
+                    new MonitoringProbeIndexQueryRequest(
+                        ProbeNames: context.Request.ProbeNames,
+                        SinceUtc: context.Request.SinceUtc.HasValue
+                            ? new DateTimeOffset(DateTime.SpecifyKind(context.Request.SinceUtc.Value, DateTimeKind.Utc))
+                            : null,
+                        ProbeNameContains: context.Request.ProbeNameContains,
+                        StatusFilter: context.Request.StatusFilter,
+                        PageSize: context.Request.PageSize,
+                        Offset: context.Request.Offset,
+                        DefaultLookback: DefaultLookback),
+                    cancellationToken)
+                .ConfigureAwait(false);
         } catch (OperationCanceledException) {
             throw;
         } catch (Exception ex) {
             return ErrorFromException(ex, "Monitoring probe index status query failed.");
         }
 
-        IEnumerable<KeyValuePair<string, ProbeIndexStatusEntry>> filtered = statusByProbe;
-        if (!string.IsNullOrWhiteSpace(context.Request.ProbeNameContains)) {
-            filtered = filtered.Where(entry => entry.Key.Contains(context.Request.ProbeNameContains, StringComparison.OrdinalIgnoreCase));
-        }
-        if (context.Request.StatusFilter is { Count: > 0 }) {
-            filtered = filtered.Where(entry => context.Request.StatusFilter.Contains(entry.Value.Status.ToString()));
-        }
-
-        var nowUtc = DateTimeOffset.UtcNow;
-        var matchedRows = filtered
-            .OrderByDescending(static entry => entry.Value.CompletedUtc)
-            .ThenBy(static entry => entry.Key, StringComparer.OrdinalIgnoreCase)
-            .Select(entry => new ProbeIndexStatusRow(
-                ProbeName: entry.Key,
-                Status: entry.Value.Status.ToString(),
-                CompletedUtc: entry.Value.CompletedUtc,
-                AgeMinutes: Math.Round((nowUtc - entry.Value.CompletedUtc).TotalMinutes, 2)))
+        var rows = result.Rows
+            .Select(static row => new ProbeIndexStatusRow(
+                ProbeName: row.ProbeName,
+                Status: row.Status.ToString(),
+                CompletedUtc: row.CompletedUtc,
+                AgeMinutes: row.AgeMinutes))
             .ToList();
-
-        var offset = context.Request.Offset > matchedRows.Count ? matchedRows.Count : context.Request.Offset;
-        var pageRows = matchedRows.Skip(offset);
-        var rows = context.Request.PageSize.HasValue
-            ? pageRows.Take(context.Request.PageSize.Value).ToList()
-            : pageRows.ToList();
-        var truncatedByPage = context.Request.PageSize.HasValue && offset + rows.Count < matchedRows.Count;
-        var nextOffset = truncatedByPage ? offset + rows.Count : (int?)null;
+        var nextOffset = result.NextOffset;
         var nextCursor = nextOffset.HasValue ? OffsetCursor.Encode(nextOffset.Value) : string.Empty;
 
         var model = new ProbeIndexStatusResult(
-            HistoryDirectory: historyDirectory,
-            DatabasePath: databasePath,
-            DiscoveryMode: usedExplicitProbeNames ? "explicit_probe_names" : "recent_probe_index",
-            ProbeNames: context.Request.ProbeNames,
-            SinceUtc: DateTime.SpecifyKind(effectiveSinceUtc, DateTimeKind.Utc),
-            ProbeNameContains: context.Request.ProbeNameContains ?? string.Empty,
-            StatusFilters: context.Request.StatusFilter is { Count: > 0 }
-                ? context.Request.StatusFilter.OrderBy(static value => value, StringComparer.OrdinalIgnoreCase).ToArray()
-                : Array.Empty<string>(),
-            DiscoveredProbeCount: candidateNames.Count,
-            IndexedProbeCount: statusByProbe.Count,
-            MatchedCount: matchedRows.Count,
-            ReturnedCount: rows.Count,
-            Offset: offset,
-            PageSize: context.Request.PageSize,
+            HistoryDirectory: historyContext.HistoryDirectory,
+            DatabasePath: historyContext.DatabasePath,
+            DiscoveryMode: result.DiscoveryMode == MonitoringProbeIndexDiscoveryMode.ExplicitProbeNames ? "explicit_probe_names" : "recent_probe_index",
+            ProbeNames: result.ProbeNames,
+            SinceUtc: result.SinceUtc.UtcDateTime,
+            ProbeNameContains: result.ProbeNameContains,
+            StatusFilters: result.StatusFilter.Select(static value => value.ToString()).ToArray(),
+            DiscoveredProbeCount: result.DiscoveredProbeCount,
+            IndexedProbeCount: result.IndexedProbeCount,
+            MatchedCount: result.MatchedCount,
+            ReturnedCount: result.ReturnedCount,
+            Offset: result.Offset,
+            PageSize: result.PageSize,
             NextOffset: nextOffset,
             NextCursor: nextCursor,
-            TruncatedByPage: truncatedByPage,
-            Truncated: truncatedByPage,
+            TruncatedByPage: result.TruncatedByPage,
+            Truncated: result.TruncatedByPage,
             Rows: rows);
 
         return ToolResultV2.OkAutoTableResponse(
@@ -203,19 +182,19 @@ public sealed class TestimoXProbeIndexStatusTool : TestimoXToolBase, ITool {
             sourceRows: rows,
             viewRowsPath: "rows_view",
             title: "Monitoring probe index status",
-            baseTruncated: truncatedByPage,
-            maxTop: Math.Max(Options.MaxHistoryRowsInCatalog, matchedRows.Count),
-            scanned: statusByProbe.Count,
+            baseTruncated: result.TruncatedByPage,
+            maxTop: Math.Max(Options.MaxHistoryRowsInCatalog, result.MatchedCount),
+            scanned: result.IndexedProbeCount,
             metaMutate: meta => {
-                meta.Add("history_directory", historyDirectory);
-                meta.Add("database_path", databasePath);
-                meta.Add("discovery_mode", usedExplicitProbeNames ? "explicit_probe_names" : "recent_probe_index");
-                meta.Add("indexed_probe_count", statusByProbe.Count);
-                meta.Add("matched_count", matchedRows.Count);
+                meta.Add("history_directory", historyContext.HistoryDirectory);
+                meta.Add("database_path", historyContext.DatabasePath);
+                meta.Add("discovery_mode", result.DiscoveryMode == MonitoringProbeIndexDiscoveryMode.ExplicitProbeNames ? "explicit_probe_names" : "recent_probe_index");
+                meta.Add("indexed_probe_count", result.IndexedProbeCount);
+                meta.Add("matched_count", result.MatchedCount);
                 meta.Add("returned_count", rows.Count);
-                meta.Add("offset", offset);
-                if (context.Request.PageSize.HasValue) {
-                    meta.Add("page_size", context.Request.PageSize.Value);
+                meta.Add("offset", result.Offset);
+                if (result.PageSize.HasValue) {
+                    meta.Add("page_size", result.PageSize.Value);
                 }
                 if (nextOffset.HasValue) {
                     meta.Add("next_offset", nextOffset.Value);
@@ -223,13 +202,13 @@ public sealed class TestimoXProbeIndexStatusTool : TestimoXToolBase, ITool {
                 if (!string.IsNullOrWhiteSpace(nextCursor)) {
                     meta.Add("next_cursor", nextCursor);
                 }
-                meta.Add("truncated_by_page", truncatedByPage);
+                meta.Add("truncated_by_page", result.TruncatedByPage);
             });
     }
 
     private static bool TryParseStatusFilter(
         IReadOnlyList<string> values,
-        out HashSet<string>? statusFilter,
+        out IReadOnlyCollection<ProbeStatus>? statusFilter,
         out string? error) {
         statusFilter = null;
         error = null;
@@ -238,7 +217,7 @@ public sealed class TestimoXProbeIndexStatusTool : TestimoXToolBase, ITool {
             return true;
         }
 
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var seen = new HashSet<ProbeStatus>();
         foreach (var value in values) {
             if (string.IsNullOrWhiteSpace(value)) {
                 continue;
@@ -249,10 +228,10 @@ public sealed class TestimoXProbeIndexStatusTool : TestimoXToolBase, ITool {
                 return false;
             }
 
-            seen.Add(parsed.ToString());
+            seen.Add(parsed);
         }
 
-        statusFilter = seen.Count > 0 ? seen : null;
+        statusFilter = seen.Count > 0 ? seen.ToArray() : null;
         return true;
     }
 

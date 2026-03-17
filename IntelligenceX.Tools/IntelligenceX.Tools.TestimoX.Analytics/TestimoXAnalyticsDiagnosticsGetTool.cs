@@ -1,6 +1,4 @@
 using System;
-using System.IO;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using ADPlayground.Monitoring.Diagnostics;
@@ -85,18 +83,23 @@ public sealed class TestimoXAnalyticsDiagnosticsGetTool : TestimoXToolBase, IToo
                 isTransient: false));
         }
 
-        if (!TestimoXAnalyticsHistoryHelper.TryResolveHistoryFilePath(
+        if (!TestimoXAnalyticsHistoryHelper.TryResolveExistingHistoryArtifactPath(
                 Options,
                 context.Request.HistoryDirectory,
                 MonitoringDiagnosticsSnapshot.DefaultFileName,
                 toolName: "testimox_analytics_diagnostics_get",
-                out var historyDirectory,
+                out var historyContext,
                 out var snapshotPath,
                 out var resolveError)) {
             return Task.FromResult(resolveError);
         }
 
-        if (!MonitoringDiagnosticsSnapshot.TryLoad(snapshotPath, out var snapshot) || snapshot is null) {
+        var result = MonitoringDiagnosticsQueryService.Query(
+            snapshotPath,
+            new MonitoringDiagnosticsQueryRequest(
+                context.Request.IncludeSlowProbes,
+                context.Request.MaxSlowProbes));
+        if (result is null) {
             return Task.FromResult(ToolResultV2.Error(
                 errorCode: "unreadable_snapshot",
                 error: "Monitoring diagnostics snapshot could not be loaded.",
@@ -107,80 +110,75 @@ public sealed class TestimoXAnalyticsDiagnosticsGetTool : TestimoXToolBase, IToo
                 isTransient: false));
         }
 
-        var slowProbes = snapshot.SlowProbes ?? Array.Empty<MonitoringSlowProbeSnapshot>();
-        var includedSlowProbes = context.Request.IncludeSlowProbes
-            ? slowProbes
-                .OrderByDescending(static probe => probe.DurationSeconds)
-                .ThenBy(static probe => probe.Name, StringComparer.OrdinalIgnoreCase)
-                .Take(context.Request.MaxSlowProbes)
-                .Select(static probe => new SlowProbeRow(
-                    Name: probe.Name,
-                    ProbeType: probe.Type.ToString(),
-                    Status: probe.Status.ToString(),
-                    Target: probe.Target ?? string.Empty,
-                    CompletedUtc: probe.CompletedUtc,
-                    DurationSeconds: probe.DurationSeconds,
-                    IntervalSeconds: probe.IntervalSeconds,
-                    TimeoutSeconds: probe.TimeoutSeconds,
-                    IntervalOverrun: probe.IntervalOverrun))
-                .ToArray()
-            : Array.Empty<SlowProbeRow>();
+        var projected = result.Snapshot;
+        var includedSlowProbes = result.SlowProbes
+            .Select(static probe => new SlowProbeRow(
+                Name: probe.Name,
+                ProbeType: probe.ProbeType,
+                Status: probe.Status,
+                Target: probe.Target,
+                CompletedUtc: probe.CompletedUtc,
+                DurationSeconds: probe.DurationSeconds,
+                IntervalSeconds: probe.IntervalSeconds,
+                TimeoutSeconds: probe.TimeoutSeconds,
+                IntervalOverrun: probe.IntervalOverrun))
+            .ToArray();
 
         var row = new MonitoringDiagnosticsRow(
-            GeneratedUtc: snapshot.GeneratedUtc,
-            SinceUtc: snapshot.SinceUtc,
-            NotificationSent: snapshot.NotificationSent,
-            NotificationFailed: snapshot.NotificationFailed,
-            NotificationDeduped: snapshot.NotificationDeduped,
-            NotificationCooldownSuppressions: snapshot.NotificationCooldownSuppressions,
-            NotificationRateLimitHits: snapshot.NotificationRateLimitHits,
-            NotificationQueueDepth: snapshot.NotificationQueueDepth,
-            NotificationQueueCapacity: snapshot.NotificationQueueCapacity,
-            NotificationQueueFallbacks: snapshot.NotificationQueueFallbacks,
-            NotificationQueueDrops: snapshot.NotificationQueueDrops,
-            NotificationLastFailedChannel: snapshot.NotificationLastFailedChannel ?? string.Empty,
-            NotificationLastFailedError: snapshot.NotificationLastFailedError ?? string.Empty,
-            ProactiveTriggers: snapshot.ProactiveTriggers,
-            ProactiveFollowUpsScheduled: snapshot.ProactiveFollowUpsScheduled,
-            HistoryQueueDepth: snapshot.HistoryQueueDepth,
-            HistoryQueueMaxDepth: snapshot.HistoryQueueMaxDepth,
-            HistoryWriteFailures: snapshot.HistoryWriteFailures,
-            HistorySpoolFileCount: snapshot.HistorySpoolFileCount,
-            HistorySpoolItemCount: snapshot.HistorySpoolItemCount,
-            HistoryMaintenanceRuns: snapshot.HistoryMaintenanceRuns,
-            HistoryMaintenanceFailures: snapshot.HistoryMaintenanceFailures,
-            HistoryMaintenanceLastCompletedUtc: snapshot.HistoryMaintenanceLastCompletedUtc,
-            HistoryMaintenanceLastError: snapshot.HistoryMaintenanceLastError ?? string.Empty,
-            ProbeHardTimeoutInFlight: snapshot.ProbeHardTimeoutInFlight,
-            AlertLogQueueDepth: snapshot.AlertLogQueueDepth,
-            SmtpFailureStreak: snapshot.SmtpFailureStreak,
-            SmtpCooldownUntilUtc: snapshot.SmtpCooldownUntilUtc,
-            SlowProbeCount: slowProbes.Count,
-            SlowProbesIncluded: context.Request.IncludeSlowProbes,
-            SlowProbesReturned: includedSlowProbes.Length,
-            SqliteLastCheckUtc: snapshot.SqliteHealth?.LastCheckUtc,
-            SqliteLastCheckStatus: snapshot.SqliteHealth?.LastCheckStatus?.ToString() ?? string.Empty,
-            SqliteLastCheckMessage: snapshot.SqliteHealth?.LastCheckMessage ?? string.Empty,
-            SqliteLastBackupUtc: snapshot.SqliteHealth?.LastBackupUtc,
-            SqliteLastBackupFile: SanitizePath(snapshot.SqliteHealth?.LastBackupPath),
-            SqliteLastRestoreUtc: snapshot.SqliteHealth?.LastRestoreUtc,
-            SqliteLastRestoreFile: SanitizePath(snapshot.SqliteHealth?.LastRestoreSource),
-            SqliteLastRestoreMessage: snapshot.SqliteHealth?.LastRestoreMessage ?? string.Empty,
-            ReachabilityAgent: snapshot.Reachability?.Agent ?? string.Empty,
-            ReachabilityTargetsConfigured: snapshot.Reachability?.TargetsConfigured,
-            ReachabilityHostsTracked: snapshot.Reachability?.HostsTracked,
-            ReachabilityZonesTracked: snapshot.Reachability?.ZonesTracked,
-            ReachabilitySchedulerQueueDepth: snapshot.Reachability?.SchedulerQueueDepth,
-            ReachabilityPersistQueueDepth: snapshot.Reachability?.PersistQueueDepth,
-            ReachabilityPersistQueueDropped: snapshot.Reachability?.PersistQueueDropped,
-            ReachabilityPingsStarted: snapshot.Reachability?.PingsStarted,
-            ReachabilityPingsSucceeded: snapshot.Reachability?.PingsSucceeded,
-            ReachabilityPingsFailed: snapshot.Reachability?.PingsFailed,
-            ReachabilityStoreFailureStreak: snapshot.Reachability?.StoreFailureStreak,
-            ReachabilityStoreBackoffUntilUtc: snapshot.Reachability?.StoreBackoffUntilUtc);
+            GeneratedUtc: projected.GeneratedUtc,
+            SinceUtc: projected.SinceUtc,
+            NotificationSent: projected.NotificationSent,
+            NotificationFailed: projected.NotificationFailed,
+            NotificationDeduped: projected.NotificationDeduped,
+            NotificationCooldownSuppressions: projected.NotificationCooldownSuppressions,
+            NotificationRateLimitHits: projected.NotificationRateLimitHits,
+            NotificationQueueDepth: projected.NotificationQueueDepth,
+            NotificationQueueCapacity: projected.NotificationQueueCapacity,
+            NotificationQueueFallbacks: projected.NotificationQueueFallbacks,
+            NotificationQueueDrops: projected.NotificationQueueDrops,
+            NotificationLastFailedChannel: projected.NotificationLastFailedChannel,
+            NotificationLastFailedError: projected.NotificationLastFailedError,
+            ProactiveTriggers: projected.ProactiveTriggers,
+            ProactiveFollowUpsScheduled: projected.ProactiveFollowUpsScheduled,
+            HistoryQueueDepth: projected.HistoryQueueDepth,
+            HistoryQueueMaxDepth: projected.HistoryQueueMaxDepth,
+            HistoryWriteFailures: projected.HistoryWriteFailures,
+            HistorySpoolFileCount: projected.HistorySpoolFileCount,
+            HistorySpoolItemCount: projected.HistorySpoolItemCount,
+            HistoryMaintenanceRuns: projected.HistoryMaintenanceRuns,
+            HistoryMaintenanceFailures: projected.HistoryMaintenanceFailures,
+            HistoryMaintenanceLastCompletedUtc: projected.HistoryMaintenanceLastCompletedUtc,
+            HistoryMaintenanceLastError: projected.HistoryMaintenanceLastError,
+            ProbeHardTimeoutInFlight: projected.ProbeHardTimeoutInFlight,
+            AlertLogQueueDepth: projected.AlertLogQueueDepth,
+            SmtpFailureStreak: projected.SmtpFailureStreak,
+            SmtpCooldownUntilUtc: projected.SmtpCooldownUntilUtc,
+            SlowProbeCount: projected.SlowProbeCount,
+            SlowProbesIncluded: projected.SlowProbesIncluded,
+            SlowProbesReturned: projected.SlowProbesReturned,
+            SqliteLastCheckUtc: projected.SqliteLastCheckUtc,
+            SqliteLastCheckStatus: projected.SqliteLastCheckStatus,
+            SqliteLastCheckMessage: projected.SqliteLastCheckMessage,
+            SqliteLastBackupUtc: projected.SqliteLastBackupUtc,
+            SqliteLastBackupFile: projected.SqliteLastBackupFile,
+            SqliteLastRestoreUtc: projected.SqliteLastRestoreUtc,
+            SqliteLastRestoreFile: projected.SqliteLastRestoreFile,
+            SqliteLastRestoreMessage: projected.SqliteLastRestoreMessage,
+            ReachabilityAgent: projected.ReachabilityAgent,
+            ReachabilityTargetsConfigured: projected.ReachabilityTargetsConfigured,
+            ReachabilityHostsTracked: projected.ReachabilityHostsTracked,
+            ReachabilityZonesTracked: projected.ReachabilityZonesTracked,
+            ReachabilitySchedulerQueueDepth: projected.ReachabilitySchedulerQueueDepth,
+            ReachabilityPersistQueueDepth: projected.ReachabilityPersistQueueDepth,
+            ReachabilityPersistQueueDropped: projected.ReachabilityPersistQueueDropped,
+            ReachabilityPingsStarted: projected.ReachabilityPingsStarted,
+            ReachabilityPingsSucceeded: projected.ReachabilityPingsSucceeded,
+            ReachabilityPingsFailed: projected.ReachabilityPingsFailed,
+            ReachabilityStoreFailureStreak: projected.ReachabilityStoreFailureStreak,
+            ReachabilityStoreBackoffUntilUtc: projected.ReachabilityStoreBackoffUntilUtc);
 
         var model = new MonitoringDiagnosticsResult(
-            HistoryDirectory: historyDirectory,
+            HistoryDirectory: historyContext.HistoryDirectory,
             SnapshotPath: snapshotPath,
             Snapshot: row,
             SlowProbes: includedSlowProbes);
@@ -191,22 +189,16 @@ public sealed class TestimoXAnalyticsDiagnosticsGetTool : TestimoXToolBase, IToo
             sourceRows: new[] { row },
             viewRowsPath: "snapshot_view",
             title: "Analytics diagnostics snapshot",
-            baseTruncated: !context.Request.IncludeSlowProbes && slowProbes.Count > 0,
+            baseTruncated: !context.Request.IncludeSlowProbes && projected.SlowProbeCount > 0,
             maxTop: 1,
             scanned: 1,
             metaMutate: meta => {
-                meta.Add("history_directory", historyDirectory);
+                meta.Add("history_directory", historyContext.HistoryDirectory);
                 meta.Add("snapshot_path", snapshotPath);
-                meta.Add("slow_probe_count", slowProbes.Count);
+                meta.Add("slow_probe_count", projected.SlowProbeCount);
                 meta.Add("slow_probes_included", context.Request.IncludeSlowProbes);
                 meta.Add("slow_probes_returned", includedSlowProbes.Length);
             }));
-    }
-
-    private static string SanitizePath(string? path) {
-        return string.IsNullOrWhiteSpace(path)
-            ? string.Empty
-            : Path.GetFileName(path);
     }
 
     private sealed record MonitoringDiagnosticsResult(

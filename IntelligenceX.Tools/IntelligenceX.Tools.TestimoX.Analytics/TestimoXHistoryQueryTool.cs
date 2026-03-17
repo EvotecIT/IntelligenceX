@@ -130,105 +130,84 @@ public sealed class TestimoXHistoryQueryTool : TestimoXToolBase, ITool {
                 isTransient: false);
         }
 
-        if (!TestimoXAnalyticsHistoryHelper.TryResolveHistoryDatabasePath(
+        if (!TestimoXAnalyticsHistoryHelper.TryResolveHistoryReadContext(
                 Options,
                 context.Request.HistoryDirectory,
                 toolName: "testimox_history_query",
-                out var historyDirectory,
-                out var databasePath,
+                out var historyContext,
                 out var resolveError)) {
             return resolveError;
         }
 
-        IReadOnlyList<MonitoringAvailabilityRollupSample> discovered;
+        MonitoringAvailabilityRollupQueryResult result;
         try {
-            using var store = new MonitoringAvailabilityRollupStore(
-                TestimoXAnalyticsHistoryHelper.CreateSqliteDatabaseConfig(databasePath),
-                TestimoXAnalyticsHistoryHelper.CreateSqliteOptions(),
-                historyDirectory);
-            discovered = context.Request.RootProbeNames.Count > 0 || context.Request.ExcludedProbeNamePrefixes.Count > 0
-                ? await store.ReadFilteredAsync(
-                        context.Request.BucketKind,
-                        new DateTimeOffset(context.Request.StartUtc, TimeSpan.Zero),
-                        new DateTimeOffset(context.Request.EndUtc, TimeSpan.Zero),
-                        context.Request.RootProbeNames,
-                        context.Request.ExcludedProbeNamePrefixes,
-                        cancellationToken)
-                    .ConfigureAwait(false)
-                : await store.ReadAsync(
-                        context.Request.BucketKind,
-                        new DateTimeOffset(context.Request.StartUtc, TimeSpan.Zero),
-                        new DateTimeOffset(context.Request.EndUtc, TimeSpan.Zero),
-                        cancellationToken)
-                    .ConfigureAwait(false);
+            var service = new MonitoringAvailabilityRollupQueryService(
+                historyContext.DatabaseConfig,
+                historyContext.SqliteOptions,
+                historyContext.HistoryDirectory);
+            result = await service.QueryAsync(
+                    new MonitoringAvailabilityRollupQueryRequest(
+                        BucketKind: context.Request.BucketKind,
+                        StartUtc: new DateTimeOffset(context.Request.StartUtc, TimeSpan.Zero),
+                        EndUtc: new DateTimeOffset(context.Request.EndUtc, TimeSpan.Zero),
+                        RootProbeNames: context.Request.RootProbeNames,
+                        ExcludedProbeNamePrefixes: context.Request.ExcludedProbeNamePrefixes,
+                        ProbeNameContains: context.Request.ProbeNameContains,
+                        PageSize: context.Request.PageSize,
+                        Offset: context.Request.Offset),
+                    cancellationToken)
+                .ConfigureAwait(false);
         } catch (OperationCanceledException) {
             throw;
         } catch (Exception ex) {
             return ErrorFromException(ex, "Monitoring history query failed.");
         }
 
-        IEnumerable<MonitoringAvailabilityRollupSample> filtered = discovered;
-        if (!string.IsNullOrWhiteSpace(context.Request.ProbeNameContains)) {
-            filtered = filtered.Where(sample =>
-                sample.ProbeName.Contains(context.Request.ProbeNameContains, StringComparison.OrdinalIgnoreCase)
-                || (!string.IsNullOrWhiteSpace(sample.RootProbe)
-                    && sample.RootProbe.Contains(context.Request.ProbeNameContains, StringComparison.OrdinalIgnoreCase)));
-        }
-
-        var matchedRows = filtered
-            .OrderByDescending(static sample => sample.BucketUtc)
-            .ThenBy(static sample => sample.ProbeName, StringComparer.OrdinalIgnoreCase)
-            .Select(static sample => new HistoryRollupRow(
-                BucketKind: sample.BucketKind.ToString(),
-                BucketUtc: sample.BucketUtc,
-                ProbeName: sample.ProbeName,
-                RootProbe: sample.RootProbe ?? string.Empty,
-                ProbeType: sample.ProbeType.ToString(),
-                Agent: sample.Agent ?? string.Empty,
-                Zone: sample.Zone ?? string.Empty,
-                Target: sample.Target ?? string.Empty,
-                Protocol: sample.Protocol ?? string.Empty,
-                DirectoryKind: sample.DirectoryKind ?? string.Empty,
-                DirectoryScope: sample.DirectoryScope ?? string.Empty,
-                ScopeRootDisabled: sample.ScopeRootDisabled,
-                UpCount: sample.UpCount,
-                DownCount: sample.DownCount,
-                DegradedCount: sample.DegradedCount,
-                RecoveringCount: sample.RecoveringCount,
-                UnknownCount: sample.UnknownCount,
-                MaintenanceCount: sample.MaintenanceCount,
-                TotalCount: sample.TotalCount,
-                UpRatioPercent: ComputePercent(sample.UpCount, sample.TotalCount),
-                ProblemRatioPercent: ComputePercent(sample.DownCount + sample.DegradedCount + sample.UnknownCount, sample.TotalCount)))
+        var rows = result.Rows
+            .Select(static row => new HistoryRollupRow(
+                BucketKind: row.BucketKind.ToString(),
+                BucketUtc: row.BucketUtc,
+                ProbeName: row.ProbeName,
+                RootProbe: row.RootProbe,
+                ProbeType: row.ProbeType.ToString(),
+                Agent: row.Agent,
+                Zone: row.Zone,
+                Target: row.Target,
+                Protocol: row.Protocol,
+                DirectoryKind: row.DirectoryKind,
+                DirectoryScope: row.DirectoryScope,
+                ScopeRootDisabled: row.ScopeRootDisabled,
+                UpCount: row.UpCount,
+                DownCount: row.DownCount,
+                DegradedCount: row.DegradedCount,
+                RecoveringCount: row.RecoveringCount,
+                UnknownCount: row.UnknownCount,
+                MaintenanceCount: row.MaintenanceCount,
+                TotalCount: row.TotalCount,
+                UpRatioPercent: row.UpRatioPercent,
+                ProblemRatioPercent: row.ProblemRatioPercent))
             .ToList();
-
-        var offset = context.Request.Offset > matchedRows.Count ? matchedRows.Count : context.Request.Offset;
-        var pageRows = matchedRows.Skip(offset);
-        var rows = context.Request.PageSize.HasValue
-            ? pageRows.Take(context.Request.PageSize.Value).ToList()
-            : pageRows.ToList();
-        var truncatedByPage = context.Request.PageSize.HasValue && offset + rows.Count < matchedRows.Count;
-        var nextOffset = truncatedByPage ? offset + rows.Count : (int?)null;
+        var nextOffset = result.NextOffset;
         var nextCursor = nextOffset.HasValue ? OffsetCursor.Encode(nextOffset.Value) : string.Empty;
 
         var model = new HistoryQueryResult(
-            HistoryDirectory: historyDirectory,
-            DatabasePath: databasePath,
-            BucketKind: context.Request.BucketKind.ToString(),
-            StartUtc: context.Request.StartUtc,
-            EndUtc: context.Request.EndUtc,
-            RootProbeNames: context.Request.RootProbeNames,
-            ExcludedProbeNamePrefixes: context.Request.ExcludedProbeNamePrefixes,
-            ProbeNameContains: context.Request.ProbeNameContains ?? string.Empty,
-            DiscoveredCount: discovered.Count,
-            MatchedCount: matchedRows.Count,
-            ReturnedCount: rows.Count,
-            Offset: offset,
-            PageSize: context.Request.PageSize,
+            HistoryDirectory: historyContext.HistoryDirectory,
+            DatabasePath: historyContext.DatabasePath,
+            BucketKind: result.BucketKind.ToString(),
+            StartUtc: result.StartUtc.UtcDateTime,
+            EndUtc: result.EndUtc.UtcDateTime,
+            RootProbeNames: result.RootProbeNames,
+            ExcludedProbeNamePrefixes: result.ExcludedProbeNamePrefixes,
+            ProbeNameContains: result.ProbeNameContains,
+            DiscoveredCount: result.DiscoveredCount,
+            MatchedCount: result.MatchedCount,
+            ReturnedCount: result.ReturnedCount,
+            Offset: result.Offset,
+            PageSize: result.PageSize,
             NextOffset: nextOffset,
             NextCursor: nextCursor,
-            TruncatedByPage: truncatedByPage,
-            Truncated: truncatedByPage,
+            TruncatedByPage: result.TruncatedByPage,
+            Truncated: result.TruncatedByPage,
             Rows: rows);
 
         return ToolResultV2.OkAutoTableResponse(
@@ -237,18 +216,18 @@ public sealed class TestimoXHistoryQueryTool : TestimoXToolBase, ITool {
             sourceRows: rows,
             viewRowsPath: "rows_view",
             title: "Monitoring availability rollups",
-            baseTruncated: truncatedByPage,
-            maxTop: Math.Max(Options.MaxHistoryRowsInCatalog, matchedRows.Count),
-            scanned: discovered.Count,
+            baseTruncated: result.TruncatedByPage,
+            maxTop: Math.Max(Options.MaxHistoryRowsInCatalog, result.MatchedCount),
+            scanned: result.DiscoveredCount,
             metaMutate: meta => {
-                meta.Add("history_directory", historyDirectory);
-                meta.Add("database_path", databasePath);
-                meta.Add("bucket_kind", context.Request.BucketKind.ToString());
-                meta.Add("matched_count", matchedRows.Count);
+                meta.Add("history_directory", historyContext.HistoryDirectory);
+                meta.Add("database_path", historyContext.DatabasePath);
+                meta.Add("bucket_kind", result.BucketKind.ToString());
+                meta.Add("matched_count", result.MatchedCount);
                 meta.Add("returned_count", rows.Count);
-                meta.Add("offset", offset);
-                if (context.Request.PageSize.HasValue) {
-                    meta.Add("page_size", context.Request.PageSize.Value);
+                meta.Add("offset", result.Offset);
+                if (result.PageSize.HasValue) {
+                    meta.Add("page_size", result.PageSize.Value);
                 }
                 if (nextOffset.HasValue) {
                     meta.Add("next_offset", nextOffset.Value);
@@ -256,16 +235,8 @@ public sealed class TestimoXHistoryQueryTool : TestimoXToolBase, ITool {
                 if (!string.IsNullOrWhiteSpace(nextCursor)) {
                     meta.Add("next_cursor", nextCursor);
                 }
-                meta.Add("truncated_by_page", truncatedByPage);
+                meta.Add("truncated_by_page", result.TruncatedByPage);
             });
-    }
-
-    private static double? ComputePercent(int numerator, int denominator) {
-        if (denominator <= 0) {
-            return null;
-        }
-
-        return Math.Round((numerator / (double)denominator) * 100.0, 2);
     }
 
     private sealed record HistoryQueryResult(

@@ -22,7 +22,7 @@ public sealed class TestimoXReportJobHistoryTool : TestimoXToolBase, ITool {
         string HistoryDirectory,
         string? JobKey,
         DateTime? SinceUtc,
-        HashSet<string>? StatusFilter,
+        IReadOnlyCollection<MonitoringReportJobStatus>? StatusFilter,
         int? PageSize,
         int Offset);
 
@@ -116,26 +116,31 @@ public sealed class TestimoXReportJobHistoryTool : TestimoXToolBase, ITool {
                 isTransient: false);
         }
 
-        if (!TestimoXAnalyticsHistoryHelper.TryResolveHistoryDatabasePath(
+        if (!TestimoXAnalyticsHistoryHelper.TryResolveHistoryReadContext(
                 Options,
                 context.Request.HistoryDirectory,
                 toolName: "testimox_report_job_history",
-                out var historyDirectory,
-                out var databasePath,
+                out var historyContext,
                 out var resolveError)) {
             return resolveError;
         }
 
-        IReadOnlyList<MonitoringReportJobSummary> discovered;
+        MonitoringReportJobQueryResult result;
         try {
-            using var store = new MonitoringReportJobStore(
-                TestimoXAnalyticsHistoryHelper.CreateSqliteDatabaseConfig(databasePath),
-                TestimoXAnalyticsHistoryHelper.CreateSqliteOptions(),
-                historyDirectory);
-            discovered = await store.QueryRecentAsync(
-                    context.Request.JobKey,
-                    Options.MaxHistoryRowsInCatalog,
-                    context.Request.SinceUtc.HasValue ? new DateTimeOffset(DateTime.SpecifyKind(context.Request.SinceUtc.Value, DateTimeKind.Utc)) : null,
+            var service = new MonitoringReportJobQueryService(
+                historyContext.DatabaseConfig,
+                historyContext.SqliteOptions,
+                historyContext.HistoryDirectory);
+            result = await service.QueryRecentAsync(
+                    new MonitoringReportJobQueryRequest(
+                        JobKey: context.Request.JobKey,
+                        SinceUtc: context.Request.SinceUtc.HasValue
+                            ? new DateTimeOffset(DateTime.SpecifyKind(context.Request.SinceUtc.Value, DateTimeKind.Utc))
+                            : null,
+                        StatusFilter: context.Request.StatusFilter,
+                        MaxRows: Options.MaxHistoryRowsInCatalog,
+                        PageSize: context.Request.PageSize,
+                        Offset: context.Request.Offset),
                     cancellationToken)
                 .ConfigureAwait(false);
         } catch (OperationCanceledException) {
@@ -144,67 +149,51 @@ public sealed class TestimoXReportJobHistoryTool : TestimoXToolBase, ITool {
             return ErrorFromException(ex, "Monitoring report job history query failed.");
         }
 
-        IEnumerable<MonitoringReportJobSummary> filtered = discovered;
-        if (context.Request.StatusFilter is { Count: > 0 }) {
-            filtered = filtered.Where(job => context.Request.StatusFilter.Contains(job.Status.ToString()));
-        }
-
-        var matchedRows = filtered
-            .OrderByDescending(static job => job.StartedUtc)
-            .ThenBy(static job => job.JobId, StringComparer.OrdinalIgnoreCase)
-            .Select(static job => new ReportJobHistoryRow(
-                JobId: job.JobId,
-                JobKey: job.JobKey,
-                ReportKey: job.JobKey,
-                Trigger: job.Trigger ?? string.Empty,
-                ReportPath: job.ReportPath ?? string.Empty,
-                Status: job.Status.ToString(),
-                StartedUtc: job.StartedUtc,
-                CompletedUtc: job.CompletedUtc,
-                DurationSeconds: job.Duration?.TotalSeconds,
-                Outcome: job.Outcome ?? string.Empty,
-                ErrorText: job.ErrorText ?? string.Empty,
-                HistoryEntries: job.Metrics?.HistoryEntries,
-                HistoryRootCount: job.Metrics?.HistoryRootCount,
-                HistoryProbeCount: job.Metrics?.HistoryProbeCount,
-                HistorySampleCount: job.Metrics?.HistorySampleCount,
-                HistoryLoadSeconds: job.Metrics?.HistoryLoadSeconds,
-                HistoryCacheMode: job.Metrics?.HistoryCacheMode ?? string.Empty,
-                HistoryIndexWarning: job.Metrics?.HistoryIndexWarning ?? string.Empty,
-                ReportBuildSeconds: job.Metrics?.ReportBuildSeconds,
-                ReportRenderSeconds: job.Metrics?.ReportRenderSeconds,
-                ReportWriteSeconds: job.Metrics?.ReportWriteSeconds,
-                ReportBytes: job.Metrics?.ReportBytes,
-                ReportHash: job.Metrics?.ReportHash ?? string.Empty,
-                SourceUpdatedUtc: job.Metrics?.SourceUpdatedUtc))
+        var rows = result.Rows
+            .Select(static row => new ReportJobHistoryRow(
+                JobId: row.JobId,
+                JobKey: row.JobKey,
+                ReportKey: row.ReportKey,
+                Trigger: row.Trigger,
+                ReportPath: row.ReportPath,
+                Status: row.Status.ToString(),
+                StartedUtc: row.StartedUtc,
+                CompletedUtc: row.CompletedUtc,
+                DurationSeconds: row.DurationSeconds,
+                Outcome: row.Outcome,
+                ErrorText: row.ErrorText,
+                HistoryEntries: row.HistoryEntries,
+                HistoryRootCount: row.HistoryRootCount,
+                HistoryProbeCount: row.HistoryProbeCount,
+                HistorySampleCount: row.HistorySampleCount,
+                HistoryLoadSeconds: row.HistoryLoadSeconds,
+                HistoryCacheMode: row.HistoryCacheMode,
+                HistoryIndexWarning: row.HistoryIndexWarning,
+                ReportBuildSeconds: row.ReportBuildSeconds,
+                ReportRenderSeconds: row.ReportRenderSeconds,
+                ReportWriteSeconds: row.ReportWriteSeconds,
+                ReportBytes: row.ReportBytes,
+                ReportHash: row.ReportHash,
+                SourceUpdatedUtc: row.SourceUpdatedUtc))
             .ToList();
-
-        var offset = context.Request.Offset > matchedRows.Count ? matchedRows.Count : context.Request.Offset;
-        var pageRows = matchedRows.Skip(offset);
-        var rows = context.Request.PageSize.HasValue
-            ? pageRows.Take(context.Request.PageSize.Value).ToList()
-            : pageRows.ToList();
-        var truncatedByPage = context.Request.PageSize.HasValue && offset + rows.Count < matchedRows.Count;
-        var nextOffset = truncatedByPage ? offset + rows.Count : (int?)null;
+        var nextOffset = result.NextOffset;
         var nextCursor = nextOffset.HasValue ? OffsetCursor.Encode(nextOffset.Value) : string.Empty;
 
         var model = new ReportJobHistoryResult(
-            HistoryDirectory: historyDirectory,
-            DatabasePath: databasePath,
-            JobKey: context.Request.JobKey ?? string.Empty,
-            StatusFilters: context.Request.StatusFilter is { Count: > 0 }
-                ? context.Request.StatusFilter.OrderBy(static value => value, StringComparer.OrdinalIgnoreCase).ToArray()
-                : Array.Empty<string>(),
-            SinceUtc: context.Request.SinceUtc,
-            DiscoveredCount: discovered.Count,
-            MatchedCount: matchedRows.Count,
-            ReturnedCount: rows.Count,
-            Offset: offset,
-            PageSize: context.Request.PageSize,
+            HistoryDirectory: historyContext.HistoryDirectory,
+            DatabasePath: historyContext.DatabasePath,
+            JobKey: result.JobKey,
+            StatusFilters: result.StatusFilter.Select(static value => value.ToString()).ToArray(),
+            SinceUtc: result.SinceUtc?.UtcDateTime,
+            DiscoveredCount: result.DiscoveredCount,
+            MatchedCount: result.MatchedCount,
+            ReturnedCount: result.ReturnedCount,
+            Offset: result.Offset,
+            PageSize: result.PageSize,
             NextOffset: nextOffset,
             NextCursor: nextCursor,
-            TruncatedByPage: truncatedByPage,
-            Truncated: truncatedByPage,
+            TruncatedByPage: result.TruncatedByPage,
+            Truncated: result.TruncatedByPage,
             Jobs: rows);
 
         return ToolResultV2.OkAutoTableResponse(
@@ -213,17 +202,17 @@ public sealed class TestimoXReportJobHistoryTool : TestimoXToolBase, ITool {
             sourceRows: rows,
             viewRowsPath: "jobs_view",
             title: "Monitoring report jobs",
-            baseTruncated: truncatedByPage,
-            maxTop: Math.Max(Options.MaxHistoryRowsInCatalog, matchedRows.Count),
-            scanned: discovered.Count,
+            baseTruncated: result.TruncatedByPage,
+            maxTop: Math.Max(Options.MaxHistoryRowsInCatalog, result.MatchedCount),
+            scanned: result.DiscoveredCount,
             metaMutate: meta => {
-                meta.Add("history_directory", historyDirectory);
-                meta.Add("database_path", databasePath);
-                meta.Add("matched_count", matchedRows.Count);
+                meta.Add("history_directory", historyContext.HistoryDirectory);
+                meta.Add("database_path", historyContext.DatabasePath);
+                meta.Add("matched_count", result.MatchedCount);
                 meta.Add("returned_count", rows.Count);
-                meta.Add("offset", offset);
-                if (context.Request.PageSize.HasValue) {
-                    meta.Add("page_size", context.Request.PageSize.Value);
+                meta.Add("offset", result.Offset);
+                if (result.PageSize.HasValue) {
+                    meta.Add("page_size", result.PageSize.Value);
                 }
                 if (nextOffset.HasValue) {
                     meta.Add("next_offset", nextOffset.Value);
@@ -231,13 +220,13 @@ public sealed class TestimoXReportJobHistoryTool : TestimoXToolBase, ITool {
                 if (!string.IsNullOrWhiteSpace(nextCursor)) {
                     meta.Add("next_cursor", nextCursor);
                 }
-                meta.Add("truncated_by_page", truncatedByPage);
+                meta.Add("truncated_by_page", result.TruncatedByPage);
             });
     }
 
     private static bool TryParseStatusFilter(
         IReadOnlyList<string> values,
-        out HashSet<string>? statusFilter,
+        out IReadOnlyCollection<MonitoringReportJobStatus>? statusFilter,
         out string? error) {
         statusFilter = null;
         error = null;
@@ -246,7 +235,7 @@ public sealed class TestimoXReportJobHistoryTool : TestimoXToolBase, ITool {
             return true;
         }
 
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var seen = new HashSet<MonitoringReportJobStatus>();
         foreach (var value in values) {
             if (string.IsNullOrWhiteSpace(value)) {
                 continue;
@@ -257,10 +246,10 @@ public sealed class TestimoXReportJobHistoryTool : TestimoXToolBase, ITool {
                 return false;
             }
 
-            seen.Add(parsed.ToString());
+            seen.Add(parsed);
         }
 
-        statusFilter = seen.Count > 0 ? seen : null;
+        statusFilter = seen.Count > 0 ? seen.ToArray() : null;
         return true;
     }
 
