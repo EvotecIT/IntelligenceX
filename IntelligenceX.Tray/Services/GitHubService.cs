@@ -54,7 +54,9 @@ public sealed class GitHubService {
             using var orgsDoc = JsonDocument.Parse(orgsJson);
             var orgLogins = orgsDoc.RootElement.EnumerateArray()
                 .Select(org => org.TryGetProperty("login", out var l) ? l.GetString() : null)
-                .Where(l => l != null)
+                .OfType<string>()
+                .Where(static loginValue => !string.IsNullOrWhiteSpace(loginValue))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
             using var gate = new SemaphoreSlim(PublicOrgRepoConcurrency);
@@ -62,7 +64,7 @@ public sealed class GitHubService {
                 await gate.WaitAsync(ct).ConfigureAwait(false);
                 try {
                     return await FetchPublicReposAsync(
-                        $"/orgs/{Uri.EscapeDataString(orgLogin!)}/repos?sort=stars&direction=desc&per_page=10&type=public",
+                        $"/orgs/{Uri.EscapeDataString(orgLogin)}/repos?sort=stars&direction=desc&per_page=10&type=public",
                         ct).ConfigureAwait(false);
                 } finally {
                     gate.Release();
