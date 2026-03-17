@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Threading;
 using System.Windows.Media;
 using System.Windows.Threading;
 using IntelligenceX.Telemetry.Limits;
@@ -16,6 +17,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     private bool _isLoading;
     private string _statusText = "Initializing...";
     private DateTimeOffset _lastRefreshed;
+    private int _gitHubRefreshVersion;
+    private CancellationTokenSource? _gitHubRefreshCts;
 
     public MainViewModel(UsageTelemetrySnapshotService usageService, ProviderLimitSnapshotService limitService, GitHubService gitHubService) {
         _usageService = usageService;
@@ -189,11 +192,21 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
 
     private async Task RefreshGitHubAsync(string? ghLogin) {
         var dispatcher = System.Windows.Application.Current.Dispatcher;
+        var currentVersion = Interlocked.Increment(ref _gitHubRefreshVersion);
+        using var refreshCts = new CancellationTokenSource();
+        var previousCts = Interlocked.Exchange(ref _gitHubRefreshCts, refreshCts);
+        previousCts?.Cancel();
+        previousCts?.Dispose();
+        var cancellationToken = refreshCts.Token;
         var hasToken = !string.IsNullOrWhiteSpace(
             IntelligenceX.Telemetry.GitHub.GitHubDashboardService.ResolveTokenFromEnvironment());
         var effectiveLogin = string.IsNullOrWhiteSpace(ghLogin) ? null : ghLogin.Trim();
 
         await dispatcher.InvokeAsync(() => {
+            if (!IsCurrentGitHubRefresh(currentVersion, cancellationToken)) {
+                return;
+            }
+
             GitHub.HasToken = hasToken;
             GitHub.IsLoading = hasToken || !string.IsNullOrWhiteSpace(effectiveLogin);
             GitHub.ErrorMessage = string.Empty;
@@ -204,8 +217,12 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         }
 
         try {
-            var ghData = await _gitHubService.FetchAsync(effectiveLogin).ConfigureAwait(false);
+            var ghData = await _gitHubService.FetchAsync(effectiveLogin, cancellationToken).ConfigureAwait(false);
             await dispatcher.InvokeAsync(() => {
+                if (!IsCurrentGitHubRefresh(currentVersion, cancellationToken)) {
+                    return;
+                }
+
                 if (ghData is not null) {
                     GitHub.Apply(ghData);
                     return;
@@ -216,14 +233,34 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
                     GitHub.ErrorMessage = $"No public GitHub data was returned for '{effectiveLogin}'.";
                 }
             });
+        } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
+            // A newer refresh superseded this one.
         } catch (Exception ghEx) {
             await dispatcher.InvokeAsync(() => {
+                if (!IsCurrentGitHubRefresh(currentVersion, cancellationToken)) {
+                    return;
+                }
+
                 GitHub.ClearData();
                 GitHub.ErrorMessage = ghEx.Message;
             });
         } finally {
-            await dispatcher.InvokeAsync(() => GitHub.IsLoading = false);
+            await dispatcher.InvokeAsync(() => {
+                if (!IsCurrentGitHubRefresh(currentVersion, cancellationToken)) {
+                    return;
+                }
+
+                GitHub.IsLoading = false;
+            });
+
+            if (ReferenceEquals(Interlocked.CompareExchange(ref _gitHubRefreshCts, null, refreshCts), refreshCts)) {
+                // cleared
+            }
         }
+    }
+
+    private bool IsCurrentGitHubRefresh(int version, CancellationToken cancellationToken) {
+        return !cancellationToken.IsCancellationRequested && version == Volatile.Read(ref _gitHubRefreshVersion);
     }
 
     private static ProviderViewModel BuildProviderViewModel(
@@ -306,5 +343,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
 
     public void Dispose() {
         _refreshTimer.Stop();
+        var cts = Interlocked.Exchange(ref _gitHubRefreshCts, null);
+        cts?.Cancel();
+        cts?.Dispose();
     }
 }
