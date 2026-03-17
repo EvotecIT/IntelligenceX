@@ -9,6 +9,11 @@ using IntelligenceX.Tools.Common;
 namespace IntelligenceX.Tools.EventLog;
 
 internal static class EventLogStructuredFilters {
+    internal const int MaxEventIds = EventStructuredQueryFilterService.MaxEventIds;
+    internal const int MaxRecordIds = EventStructuredQueryFilterService.MaxRecordIds;
+    internal const int MaxNamedDataKeys = EventStructuredQueryFilterService.MaxNamedDataKeys;
+    internal const int MaxNamedDataValuesPerKey = EventStructuredQueryFilterService.MaxNamedDataValuesPerKey;
+
     internal static readonly string[] LevelNames = EventStructuredQueryFilterService.LevelNames.ToArray();
     internal static readonly string[] KeywordNames = EventStructuredQueryFilterService.KeywordNames.ToArray();
 
@@ -137,7 +142,13 @@ internal static class EventLogStructuredFilters {
             return false;
         }
 
-        values = ToolArgs.TryReadPositiveInt32Array(raw.AsArray(), argumentName, out error);
+        var array = raw.AsArray();
+        if (array is { Count: > MaxEventIds }) {
+            error = $"{argumentName} supports at most {MaxEventIds} values.";
+            return false;
+        }
+
+        values = ToolArgs.TryReadPositiveInt32Array(array, argumentName, out error);
         return error is null;
     }
 
@@ -161,6 +172,11 @@ internal static class EventLogStructuredFilters {
         var array = raw.AsArray();
         if (array is null || array.Count == 0) {
             return true;
+        }
+
+        if (array.Count > MaxRecordIds) {
+            error = $"{argumentName} supports at most {MaxRecordIds} values.";
+            return false;
         }
 
         var list = new List<long>(array.Count);
@@ -204,6 +220,11 @@ internal static class EventLogStructuredFilters {
             return true;
         }
 
+        if (map.Count > MaxNamedDataKeys) {
+            error = $"{argumentName} supports at most {MaxNamedDataKeys} keys.";
+            return false;
+        }
+
         var normalized = new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
         foreach (var (key, value) in map) {
             if (!TryReadNamedDataValue(value, argumentName, key, out var parsed, out error)) {
@@ -234,6 +255,11 @@ internal static class EventLogStructuredFilters {
             var array = value.AsArray();
             if (array is null) {
                 error = $"{argumentName}.{key} must be a scalar or array of scalar values.";
+                return false;
+            }
+
+            if (array.Count > MaxNamedDataValuesPerKey) {
+                error = $"{argumentName}.{key} supports at most {MaxNamedDataValuesPerKey} values.";
                 return false;
             }
 
