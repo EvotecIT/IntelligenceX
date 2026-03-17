@@ -113,6 +113,33 @@ internal static class TestimoXAnalyticsHistoryHelper {
         return false;
     }
 
+    internal static bool TryResolveHistoryFilePath(
+        TestimoXToolOptions options,
+        string? historyDirectoryInput,
+        string fileName,
+        string toolName,
+        out string historyDirectory,
+        out string filePath,
+        out string errorResponse) {
+        historyDirectory = string.Empty;
+        filePath = string.Empty;
+        errorResponse = string.Empty;
+
+        if (!TryResolveExistingHistoryArtifactPath(
+                options,
+                historyDirectoryInput,
+                fileName,
+                toolName,
+                out var historyContext,
+                out filePath,
+                out errorResponse)) {
+            return false;
+        }
+
+        historyDirectory = historyContext.HistoryDirectory;
+        return true;
+    }
+
     internal static int ResolveContentCharLimit(JsonObject? arguments, int maxChars) {
         return ToolArgs.GetCappedInt32(
             arguments: arguments,
