@@ -104,10 +104,13 @@
                                              Click="OnProviderTabClick"
                                              Tag="{Binding}">
                                     <StackPanel Orientation="Horizontal">
-                                        <Ellipse Width="7" Height="7"
-                                                 Fill="{Binding AccentBrush}"
+                                        <Viewbox Width="14" Height="14"
                                                  Margin="0,0,5,0"
-                                                 VerticalAlignment="Center" />
+                                                 VerticalAlignment="Center">
+                                            <Path Data="{Binding IconGeometry}"
+                                                  Fill="{Binding AccentBrush}"
+                                                  Stretch="Uniform" />
+                                        </Viewbox>
                                         <TextBlock Text="{Binding ShortName}"
                                                    VerticalAlignment="Center" />
                                     </StackPanel>
@@ -388,25 +391,61 @@
                                    Margin="0,20"
                                    Visibility="{Binding IsLoading, Converter={StaticResource BoolToVis}}" />
 
-                        <!-- Error state -->
-                        <TextBlock Text="{Binding ErrorMessage}"
-                                   FontFamily="{StaticResource AppFont}"
-                                   FontSize="11"
-                                   Foreground="#e06060"
-                                   TextWrapping="Wrap"
-                                   HorizontalAlignment="Center"
-                                   Margin="0,20">
-                            <TextBlock.Style>
-                                <Style TargetType="TextBlock">
+                        <!-- Username input + info when no token -->
+                        <Border Background="{StaticResource CardBrush}"
+                                BorderBrush="{StaticResource BorderBrush}"
+                                BorderThickness="1" CornerRadius="12" Padding="16"
+                                Margin="0,0,0,10">
+                            <Border.Style>
+                                <Style TargetType="Border">
                                     <Setter Property="Visibility" Value="Collapsed" />
                                     <Style.Triggers>
-                                        <DataTrigger Binding="{Binding HasData}" Value="False">
+                                        <MultiDataTrigger>
+                                            <MultiDataTrigger.Conditions>
+                                                <Condition Binding="{Binding HasData}" Value="False" />
+                                                <Condition Binding="{Binding IsLoading}" Value="False" />
+                                            </MultiDataTrigger.Conditions>
                                             <Setter Property="Visibility" Value="Visible" />
-                                        </DataTrigger>
+                                        </MultiDataTrigger>
                                     </Style.Triggers>
                                 </Style>
-                            </TextBlock.Style>
-                        </TextBlock>
+                            </Border.Style>
+                            <StackPanel>
+                                <TextBlock Text="GitHub Username"
+                                           FontFamily="{StaticResource AppFont}"
+                                           FontSize="11" FontWeight="SemiBold"
+                                           Foreground="{StaticResource SecondaryTextBrush}"
+                                           Margin="0,0,0,6" />
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox Grid.Column="0"
+                                             Text="{Binding UsernameInput, UpdateSourceTrigger=PropertyChanged}"
+                                             FontFamily="{StaticResource AppFont}"
+                                             FontSize="12"
+                                             Background="#15ffffff"
+                                             Foreground="{StaticResource PrimaryTextBrush}"
+                                             BorderBrush="{StaticResource BorderBrush}"
+                                             BorderThickness="1"
+                                             Padding="8,6"
+                                             CaretBrush="{StaticResource PrimaryTextBrush}" />
+                                    <Button Grid.Column="1"
+                                            Style="{StaticResource RefreshButtonStyle}"
+                                            Command="{Binding DataContext.RefreshCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                            Margin="6,0,0,0">
+                                        <TextBlock FontFamily="{StaticResource AppFont}" FontSize="11" Text="Load" />
+                                    </Button>
+                                </Grid>
+                                <TextBlock TextWrapping="Wrap"
+                                           FontFamily="{StaticResource AppFont}"
+                                           FontSize="10"
+                                           Foreground="{StaticResource TertiaryTextBrush}">
+                                    Enter a username to view public repos. Set GITHUB_TOKEN or GH_TOKEN for full contribution data.
+                                </TextBlock>
+                            </StackPanel>
+                        </Border>
 
                         <!-- GitHub data -->
                         <StackPanel Visibility="{Binding HasData, Converter={StaticResource BoolToVis}}">

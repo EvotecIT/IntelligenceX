@@ -6,6 +6,8 @@ namespace IntelligenceX.Tray.ViewModels;
 
 public sealed class GitHubViewModel : ViewModelBase {
     private string _login = "";
+    private string _usernameInput = "";
+    private bool _hasToken;
     private int _totalContributions;
     private int _totalCommits;
     private int _totalPRs;
@@ -18,6 +20,9 @@ public sealed class GitHubViewModel : ViewModelBase {
     private string _errorMessage = "";
 
     public string Login { get => _login; set => SetProperty(ref _login, value); }
+    public string UsernameInput { get => _usernameInput; set => SetProperty(ref _usernameInput, value); }
+    public bool HasToken { get => _hasToken; set => SetProperty(ref _hasToken, value); }
+    public bool NeedsUsername => !HasToken && !HasData;
     public int TotalContributions { get => _totalContributions; set { if (SetProperty(ref _totalContributions, value)) OnPropertyChanged(nameof(TotalContributionsFormatted)); } }
     public string TotalContributionsFormatted => FormatCount(TotalContributions);
     public int TotalCommits { get => _totalCommits; set { if (SetProperty(ref _totalCommits, value)) OnPropertyChanged(nameof(TotalCommitsFormatted)); } }

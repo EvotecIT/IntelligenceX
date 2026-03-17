@@ -11,6 +11,8 @@ public sealed class ProviderViewModel : ViewModelBase {
     private string _providerId = string.Empty;
     private string _displayName = string.Empty;
     private string _shortName = string.Empty;
+    private string _iconKey = "";
+    private System.Windows.Media.Geometry? _iconGeometry;
     private int _sortOrder;
     private Brush _accentBrush = Brushes.White;
     private Color _inputColor;
@@ -51,6 +53,26 @@ public sealed class ProviderViewModel : ViewModelBase {
     public string ShortName {
         get => _shortName;
         set => SetProperty(ref _shortName, value);
+    }
+
+    public string IconKey {
+        get => _iconKey;
+        set {
+            if (SetProperty(ref _iconKey, value)) {
+                IconGeometry = ResolveIconGeometry(value);
+                OnPropertyChanged(nameof(IconGeometry));
+            }
+        }
+    }
+
+    public System.Windows.Media.Geometry? IconGeometry {
+        get => _iconGeometry;
+        private set => SetProperty(ref _iconGeometry, value);
+    }
+
+    private static System.Windows.Media.Geometry? ResolveIconGeometry(string? key) {
+        if (string.IsNullOrWhiteSpace(key)) return null;
+        return System.Windows.Application.Current?.TryFindResource(key) as System.Windows.Media.Geometry;
     }
 
     public int SortOrder {
@@ -254,11 +276,14 @@ public sealed class ProviderViewModel : ViewModelBase {
         ProviderId = info.Id;
         DisplayName = info.DisplayName;
         ShortName = info.ShortName;
+        IconKey = info.Icon;
         SortOrder = info.SortOrder;
         InputColor = info.InputColor;
         OutputColor = info.OutputColor;
         TotalColor = info.TotalColor;
-        AccentBrush = new SolidColorBrush(info.TotalColor);
+        var brush = new SolidColorBrush(info.TotalColor);
+        brush.Freeze();
+        AccentBrush = brush;
     }
 
     private static string FormatTokens(long tokens) {

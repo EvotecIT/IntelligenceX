@@ -109,59 +109,68 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         StatusText = "Scanning providers...";
 
         try {
-            var snapshot = await Task.Run(() => _usageService.ScanAsync());
-            var events = snapshot.Events;
-
-            var today = DateTime.UtcNow.Date;
-            var weekAgo = DateTime.UtcNow.AddDays(-7).Date;
-            var monthAgo = DateTime.UtcNow.AddDays(-30).Date;
-
-            var byProvider = events
-                .GroupBy(e => e.ProviderId?.Trim()?.ToLowerInvariant() ?? "unknown")
-                .Where(g => !string.IsNullOrWhiteSpace(g.Key))
-                .OrderBy(g => ProviderMetadata.Resolve(g.Key).SortOrder)
-                .ToList();
-
+            // Do ALL heavy work on background thread: scan + aggregate
             var previousSelection = SelectedProvider?.ProviderId;
-            var newProviders = new List<ProviderViewModel>();
+            var (newProviders, scanInfo) = await Task.Run(async () => {
+                var snapshot = await _usageService.ScanAsync();
+                var events = snapshot.Events;
 
-            // "All" combined view
-            if (events.Count > 0) {
-                var allVm = BuildProviderViewModel("__all__", events.ToList(), today, weekAgo, monthAgo);
-                allVm.DisplayName = "All";
-                allVm.ShortName = "All";
-                allVm.SortOrder = -1;
-                allVm.AccentBrush = new SolidColorBrush(Color.FromRgb(155, 233, 168));
-                allVm.InputColor = Color.FromRgb(155, 233, 168);
-                allVm.OutputColor = Color.FromRgb(64, 196, 99);
-                allVm.LastUpdated = snapshot.ScannedAtUtc;
-                newProviders.Add(allVm);
-            }
+                var today = DateTime.UtcNow.Date;
+                var weekAgo = DateTime.UtcNow.AddDays(-7).Date;
+                var monthAgo = DateTime.UtcNow.AddDays(-30).Date;
 
-            foreach (var group in byProvider) {
-                var vm = BuildProviderViewModel(group.Key, group.ToList(), today, weekAgo, monthAgo);
-                vm.LastUpdated = snapshot.ScannedAtUtc;
-                newProviders.Add(vm);
-            }
+                var byProvider = events
+                    .GroupBy(e => e.ProviderId?.Trim()?.ToLowerInvariant() ?? "unknown")
+                    .Where(g => !string.IsNullOrWhiteSpace(g.Key))
+                    .OrderBy(g => ProviderMetadata.Resolve(g.Key).SortOrder)
+                    .ToList();
 
-            // Add a special GitHub tab at the end
-            var ghTab = new ProviderViewModel {
-                ProviderId = "__github__",
-                DisplayName = "GitHub",
-                ShortName = "GitHub",
-                SortOrder = 999,
-                AccentBrush = new SolidColorBrush(Color.FromRgb(64, 196, 99)),
-                InputColor = Color.FromRgb(155, 233, 168),
-                OutputColor = Color.FromRgb(64, 196, 99)
-            };
-            newProviders.Add(ghTab);
+                var providers = new List<ProviderViewModel>();
 
+                if (events.Count > 0) {
+                    var allVm = BuildProviderViewModel("__all__", events.ToList(), today, weekAgo, monthAgo);
+                    allVm.DisplayName = "All";
+                    allVm.ShortName = "All";
+                    allVm.IconKey = "IconIx";
+                    allVm.SortOrder = -1;
+                    allVm.AccentBrush = Frozen(new SolidColorBrush(Color.FromRgb(155, 233, 168)));
+                    allVm.InputColor = Color.FromRgb(155, 233, 168);
+                    allVm.OutputColor = Color.FromRgb(64, 196, 99);
+                    allVm.LastUpdated = snapshot.ScannedAtUtc;
+                    providers.Add(allVm);
+                }
+
+                foreach (var group in byProvider) {
+                    var vm = BuildProviderViewModel(group.Key, group.ToList(), today, weekAgo, monthAgo);
+                    vm.LastUpdated = snapshot.ScannedAtUtc;
+                    providers.Add(vm);
+                }
+
+                var ghTab = new ProviderViewModel {
+                    ProviderId = "__github__",
+                    DisplayName = "GitHub",
+                    ShortName = "GitHub",
+                    IconKey = "IconGitHub",
+                    SortOrder = 999,
+                    AccentBrush = Frozen(new SolidColorBrush(Color.FromRgb(64, 196, 99))),
+                    InputColor = Color.FromRgb(155, 233, 168),
+                    OutputColor = Color.FromRgb(64, 196, 99)
+                };
+                providers.Add(ghTab);
+
+                var info = $"{events.Count} events, {byProvider.Count} providers";
+                if (snapshot.ScanDurationMs > 0) info += $" ({snapshot.ScanDurationMs / 1000.0:F1}s)";
+                if (snapshot.Errors.Count > 0) info += $" [{snapshot.Errors.Count} errors]";
+
+                return (providers, info);
+            });
+
+            // Only UI updates on dispatcher thread
             Providers.Clear();
             foreach (var p in newProviders) {
                 Providers.Add(p);
             }
 
-            // Restore previous selection or pick first
             if (previousSelection == "__github__") {
                 SelectedProvider = Providers.FirstOrDefault(p => p.ProviderId == "__github__");
                 IsGitHubTabSelected = true;
@@ -173,21 +182,17 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
 
             OnPropertyChanged(nameof(HasData));
             LastRefreshed = DateTimeOffset.Now;
-
-            var scanInfo = $"{events.Count} events, {byProvider.Count} providers";
-            if (snapshot.ScanDurationMs > 0) {
-                scanInfo += $" ({snapshot.ScanDurationMs / 1000.0:F1}s)";
-            }
-            if (snapshot.Errors.Count > 0) {
-                scanInfo += $" [{snapshot.Errors.Count} errors]";
-            }
             StatusText = scanInfo;
 
-            // Fetch GitHub data in the background
+            // Fetch GitHub data in the background (non-blocking)
+            var ghLogin = GitHub.UsernameInput;
+            GitHub.HasToken = !string.IsNullOrWhiteSpace(
+                IntelligenceX.Telemetry.GitHub.GitHubDashboardService.ResolveTokenFromEnvironment());
             _ = Task.Run(async () => {
                 try {
                     GitHub.IsLoading = true;
-                    var ghData = await _gitHubService.FetchAsync();
+                    var effectiveLogin = string.IsNullOrWhiteSpace(ghLogin) ? null : ghLogin.Trim();
+                    var ghData = await _gitHubService.FetchAsync(effectiveLogin);
                     if (ghData != null) {
                         await System.Windows.Application.Current.Dispatcher.InvokeAsync(() => GitHub.Apply(ghData));
                     }
@@ -273,12 +278,14 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
                 ModelName = mg.Model,
                 TotalTokens = mg.Total,
                 Proportion = (double)mg.Total / maxModelTokens,
-                BarBrush = new SolidColorBrush(info.OutputColor)
+                BarBrush = Frozen(new SolidColorBrush(info.OutputColor))
             });
         }
 
         return vm;
     }
+
+    private static SolidColorBrush Frozen(SolidColorBrush brush) { brush.Freeze(); return brush; }
 
     public void Dispose() {
         _refreshTimer.Stop();
