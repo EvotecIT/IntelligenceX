@@ -69,6 +69,8 @@ internal static partial class Program {
             TestUsageTelemetryOverviewBuilderBuildsCopilotActivitySectionWithoutTokens);
         failed += Run("Usage telemetry overview builder builds cards and heatmaps",
             TestUsageTelemetryOverviewBuilderBuildsCardsAndHeatmaps);
+        failed += Run("Usage telemetry overview builder estimates API cost for mini and nano models",
+            TestUsageTelemetryOverviewBuilderEstimatesApiCostForMiniAndNanoModels);
         failed += Run("GitHub wrapped html renderer builds shareable page",
             TestGitHubWrappedHtmlRendererBuildsShareablePage);
         failed += Run("GitHub wrapped card html renderer builds compact card",
@@ -245,6 +247,8 @@ internal static partial class Program {
         failed += Run("Usage surface summary json buckets", TestUsageSurfaceSummaryJsonBuckets);
         failed += Run("Usage surface summary json buckets include fast tier", TestUsageSurfaceSummaryJsonBucketsIncludeFastTier);
         failed += Run("OpenAI model catalog normalizes fast mode suffix", TestOpenAiModelCatalogNormalizesFastModeSuffix);
+        failed += Run("OpenAI model catalog normalizes mini and nano model ids", TestOpenAiModelCatalogNormalizesMiniAndNanoModelIds);
+        failed += Run("OpenAI model catalog baseline fallback includes mini and nano", TestOpenAiModelCatalogBaselineFallbackIncludesMiniAndNano);
         failed += Run("CLI auth sync-codex help options", TestCliAuthSyncCodexHelpSupportsOptions);
         failed += Run("CLI auth sync-codex missing provider value shows help", TestCliAuthSyncCodexMissingProviderValueShowsHelp);
         failed += Run("CLI models help routes", TestCliModelsHelpRoutes);

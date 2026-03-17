@@ -134,6 +134,46 @@ internal static partial class Program {
         AssertContainsText(json, "\"apiCostEstimate\":", "usage overview json provider api estimate");
     }
 
+    private static void TestUsageTelemetryOverviewBuilderEstimatesApiCostForMiniAndNanoModels() {
+        var builder = new UsageTelemetryOverviewBuilder();
+        var events = new[] {
+            new UsageEventRecord("evt-mini", "ix", "ix.client-turn", "src-mini", new DateTimeOffset(2026, 03, 14, 10, 0, 0, TimeSpan.Zero)) {
+                AccountLabel = "work",
+                PersonLabel = "Przemek",
+                Surface = "chat",
+                Model = "gpt-5-mini",
+                InputTokens = 1000,
+                OutputTokens = 200,
+                TotalTokens = 1200,
+                TruthLevel = UsageTruthLevel.Exact
+            },
+            new UsageEventRecord("evt-nano", "ix", "ix.client-turn", "src-nano", new DateTimeOffset(2026, 03, 15, 10, 0, 0, TimeSpan.Zero)) {
+                AccountLabel = "work",
+                PersonLabel = "Przemek",
+                Surface = "chat",
+                Model = "gpt-5-nano",
+                InputTokens = 2000,
+                OutputTokens = 100,
+                TotalTokens = 2100,
+                TruthLevel = UsageTruthLevel.Exact
+            }
+        };
+
+        var overview = builder.Build(
+            events,
+            new UsageTelemetryOverviewOptions {
+                Title = "Mini Nano Usage"
+            });
+
+        var section = overview.ProviderSections.Single(providerSection => string.Equals(providerSection.ProviderId, "ix", StringComparison.OrdinalIgnoreCase));
+        AssertNotNull(section.ApiCostEstimate, "usage overview mini/nano api estimate exists");
+        AssertEqual(0.00079m, section.ApiCostEstimate?.TotalEstimatedCostUsd ?? 0m, "usage overview mini/nano api estimate total");
+        AssertEqual(2, section.ApiCostEstimate?.TopDrivers.Count ?? 0, "usage overview mini/nano api estimate driver count");
+        AssertEqual("gpt-5-mini", section.ApiCostEstimate?.TopDrivers[0].Model, "usage overview mini/nano top cost driver");
+        AssertEqual("gpt-5-nano", section.TopModels[0].Model, "usage overview mini/nano top model");
+        AssertEqual("gpt-5-nano", section.MostUsedModel?.Model, "usage overview mini/nano most used model");
+    }
+
     private static void TestGitHubWrappedHtmlRendererBuildsShareablePage() {
         var section = CreateSampleGitHubOverviewSection();
 

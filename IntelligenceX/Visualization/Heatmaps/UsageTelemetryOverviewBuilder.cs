@@ -698,6 +698,8 @@ public sealed class UsageTelemetryOverviewBuilder {
         new Dictionary<string, UsageTelemetryApiPrice>(StringComparer.OrdinalIgnoreCase) {
             ["gpt-5.4"] = new(2.50m, 0.25m, 15m),
             ["gpt-5.4-codex"] = new(2.50m, 0.25m, 15m),
+            ["gpt-5-mini"] = new(0.25m, 0.025m, 2m),
+            ["gpt-5-nano"] = new(0.05m, 0.005m, 0.40m),
             ["gpt-5.3"] = new(1.75m, 0.175m, 14m),
             ["gpt-5.3-codex"] = new(1.75m, 0.175m, 14m),
             ["gpt-5.2"] = new(1.75m, 0.175m, 14m),

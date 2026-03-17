@@ -15,6 +15,8 @@ public static class OpenAIModelCatalog {
     private static readonly string[] BaselineFallbackModels = {
         DefaultModel,
         "gpt-5.4-codex",
+        "gpt-5-mini",
+        "gpt-5-nano",
         "gpt-5.3",
         "gpt-5.3-codex",
         "gpt-5.2",
