@@ -317,6 +317,7 @@ public class OfficeImoReadToolTests {
             Assert.InRange(confidence.GetDouble(), 0d, 1d);
             Assert.True(root.TryGetProperty("documents", out var documents));
             Assert.True(root.TryGetProperty("chunks", out var chunks));
+            Assert.Single(documents.EnumerateArray());
             Assert.Equal(0, chunks.GetArrayLength());
             Assert.Equal(0, root.GetProperty("chunks_returned").GetInt32());
             Assert.Equal(0, root.GetProperty("token_estimate_returned").GetInt32());
@@ -332,9 +333,11 @@ public class OfficeImoReadToolTests {
             if (documents.GetArrayLength() > 0) {
                 var first = documents[0];
                 Assert.Equal("knowledge.md", Path.GetFileName(first.GetProperty("path").GetString() ?? string.Empty));
+                Assert.Equal(0, first.GetProperty("chunks").GetArrayLength());
                 Assert.Equal(0, first.GetProperty("chunks_returned").GetInt32());
                 Assert.Equal(0, first.GetProperty("token_estimate_returned").GetInt32());
                 Assert.True(first.GetProperty("chunks_produced").GetInt32() >= 1);
+                Assert.Equal(first.GetProperty("chunks_produced").GetInt32(), root.GetProperty("chunks_produced").GetInt32());
             }
         } finally {
             try {

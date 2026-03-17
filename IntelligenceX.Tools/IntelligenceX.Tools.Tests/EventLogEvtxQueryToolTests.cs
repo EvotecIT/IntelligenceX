@@ -180,4 +180,68 @@ public class EventLogEvtxQueryToolTests {
             }
         }
     }
+
+    [Fact]
+    public async Task EvtxQuery_WhenNamedDataFilterValueContainsControlCharacter_ReturnsInvalidArgument() {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "ix-evtx-query-" + Guid.NewGuid().ToString("n"));
+        Directory.CreateDirectory(tempRoot);
+        try {
+            var evtx = Path.Combine(tempRoot, "System.evtx");
+            File.WriteAllText(evtx, "x");
+
+            var options = new EventLogToolOptions();
+            options.AllowedRoots.Add(tempRoot);
+            var tool = new EventLogEvtxQueryTool(options);
+
+            var args = new JsonObject()
+                .Add("path", evtx)
+                .Add("named_data_filter", new JsonObject().Add("SubjectUserName", "ali\0ce"));
+
+            var json = await tool.InvokeAsync(args, CancellationToken.None);
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+
+            Assert.False(root.GetProperty("ok").GetBoolean());
+            Assert.Equal("invalid_argument", root.GetProperty("error_code").GetString());
+            Assert.Contains("control characters", root.GetProperty("error").GetString(), StringComparison.OrdinalIgnoreCase);
+        } finally {
+            try {
+                Directory.Delete(tempRoot, recursive: true);
+            } catch {
+                // Best-effort cleanup.
+            }
+        }
+    }
+
+    [Fact]
+    public async Task EvtxQuery_WhenNamedDataExcludeFilterContainsEmptyArray_ReturnsInvalidArgument() {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "ix-evtx-query-" + Guid.NewGuid().ToString("n"));
+        Directory.CreateDirectory(tempRoot);
+        try {
+            var evtx = Path.Combine(tempRoot, "System.evtx");
+            File.WriteAllText(evtx, "x");
+
+            var options = new EventLogToolOptions();
+            options.AllowedRoots.Add(tempRoot);
+            var tool = new EventLogEvtxQueryTool(options);
+
+            var args = new JsonObject()
+                .Add("path", evtx)
+                .Add("named_data_exclude_filter", new JsonObject().Add("SubjectUserName", new JsonArray()));
+
+            var json = await tool.InvokeAsync(args, CancellationToken.None);
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+
+            Assert.False(root.GetProperty("ok").GetBoolean());
+            Assert.Equal("invalid_argument", root.GetProperty("error_code").GetString());
+            Assert.Contains("must include at least one value", root.GetProperty("error").GetString(), StringComparison.OrdinalIgnoreCase);
+        } finally {
+            try {
+                Directory.Delete(tempRoot, recursive: true);
+            } catch {
+                // Best-effort cleanup.
+            }
+        }
+    }
 }

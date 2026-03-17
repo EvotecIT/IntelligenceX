@@ -79,4 +79,42 @@ public class EventLogLiveQueryToolTests {
         Assert.Equal("invalid_argument", root.GetProperty("error_code").GetString());
         Assert.Contains("event_ids", root.GetProperty("error").GetString(), StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public async Task LiveQuery_WhenNamedDataFilterValueCountExceedsCap_ReturnsInvalidArgument() {
+        var tool = new EventLogLiveQueryTool(new EventLogToolOptions());
+        var values = new JsonArray();
+        for (var i = 0; i < EventStructuredQueryFilterService.MaxNamedDataValuesPerKey + 1; i++) {
+            values.Add($"value-{i}");
+        }
+
+        var json = await tool.InvokeAsync(
+            new JsonObject()
+                .Add("log_name", "Security")
+                .Add("named_data_filter", new JsonObject().Add("SubjectUserName", values)),
+            CancellationToken.None);
+
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        Assert.False(root.GetProperty("ok").GetBoolean());
+        Assert.Equal("invalid_argument", root.GetProperty("error_code").GetString());
+        Assert.Contains("named_data_filter", root.GetProperty("error").GetString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task LiveQuery_WhenNamedDataFilterKeyContainsControlCharacter_ReturnsInvalidArgument() {
+        var tool = new EventLogLiveQueryTool(new EventLogToolOptions());
+
+        var json = await tool.InvokeAsync(
+            new JsonObject()
+                .Add("log_name", "Security")
+                .Add("named_data_filter", new JsonObject().Add("Subject\tUserName", "alice")),
+            CancellationToken.None);
+
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        Assert.False(root.GetProperty("ok").GetBoolean());
+        Assert.Equal("invalid_argument", root.GetProperty("error_code").GetString());
+        Assert.Contains("control characters", root.GetProperty("error").GetString(), StringComparison.OrdinalIgnoreCase);
+    }
 }

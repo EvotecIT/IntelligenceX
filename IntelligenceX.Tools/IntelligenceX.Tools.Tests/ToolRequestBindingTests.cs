@@ -69,4 +69,15 @@ public sealed class ToolRequestBindingTests {
 
         Assert.Equal(new[] { "first hint", "second hint" }, result.Hints);
     }
+
+    [Fact]
+    public void ArgumentReader_OptionalBoolean_ShouldMatchPreviousNullableBooleanSemantics() {
+        var booleanReader = new ToolArgumentReader(new JsonObject().Add("enabled", true));
+        var stringReader = new ToolArgumentReader(new JsonObject().Add("enabled", "true"));
+        var numberReader = new ToolArgumentReader(new JsonObject().Add("enabled", 1));
+
+        Assert.True(booleanReader.OptionalBoolean("enabled"));
+        Assert.Null(stringReader.OptionalBoolean("enabled"));
+        Assert.Null(numberReader.OptionalBoolean("enabled"));
+    }
 }

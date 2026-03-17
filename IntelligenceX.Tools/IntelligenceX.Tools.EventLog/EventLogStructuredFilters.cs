@@ -13,6 +13,8 @@ internal static class EventLogStructuredFilters {
     internal const int MaxRecordIds = EventStructuredQueryFilterService.MaxRecordIds;
     internal const int MaxNamedDataKeys = EventStructuredQueryFilterService.MaxNamedDataKeys;
     internal const int MaxNamedDataValuesPerKey = EventStructuredQueryFilterService.MaxNamedDataValuesPerKey;
+    internal const int MaxNamedDataKeyLength = EventStructuredQueryFilterService.MaxNamedDataKeyLength;
+    internal const int MaxNamedDataValueLength = EventStructuredQueryFilterService.MaxNamedDataValueLength;
 
     internal static readonly string[] LevelNames = EventStructuredQueryFilterService.LevelNames.ToArray();
     internal static readonly string[] KeywordNames = EventStructuredQueryFilterService.KeywordNames.ToArray();
@@ -215,9 +217,9 @@ internal static class EventLogStructuredFilters {
         }
 
         var map = raw.AsObject();
-        if (map is null) {
-            values = new Dictionary<string, IReadOnlyList<string>>();
-            return true;
+        if (map is null || map.Count == 0) {
+            error = $"{argumentName} must include at least one key.";
+            return false;
         }
 
         if (map.Count > MaxNamedDataKeys) {
@@ -227,14 +229,38 @@ internal static class EventLogStructuredFilters {
 
         var normalized = new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
         foreach (var (key, value) in map) {
-            if (!TryReadNamedDataValue(value, argumentName, key, out var parsed, out error)) {
+            if (!TryNormalizeNamedDataKey(argumentName, key, out var normalizedKey, out error)) {
                 return false;
             }
 
-            normalized[key] = parsed;
+            if (!TryReadNamedDataValue(value, argumentName, normalizedKey, out var parsed, out error)) {
+                return false;
+            }
+
+            normalized[normalizedKey] = parsed;
         }
 
         values = normalized;
+        return true;
+    }
+
+    private static bool TryNormalizeNamedDataKey(
+        string argumentName,
+        string? rawKey,
+        out string normalized,
+        out string? error) {
+        normalized = (rawKey ?? string.Empty).Trim();
+        error = null;
+
+        if (normalized.Length == 0) {
+            error = $"{argumentName} keys must be non-empty strings.";
+            return false;
+        }
+
+        if (!TryValidateNamedDataString(normalized, MaxNamedDataKeyLength, $"{argumentName} keys", out error)) {
+            return false;
+        }
+
         return true;
     }
 
@@ -258,18 +284,26 @@ internal static class EventLogStructuredFilters {
                 return false;
             }
 
+            if (array.Count == 0 && string.Equals(argumentName, "named_data_exclude_filter", StringComparison.Ordinal)) {
+                error = $"{argumentName}.{key} must include at least one value.";
+                return false;
+            }
+
             if (array.Count > MaxNamedDataValuesPerKey) {
                 error = $"{argumentName}.{key} supports at most {MaxNamedDataValuesPerKey} values.";
                 return false;
             }
 
             var items = new List<string>(array.Count);
+            var seen = new HashSet<string>(StringComparer.Ordinal);
             for (var i = 0; i < array.Count; i++) {
                 if (!TryReadNamedDataScalar(array[i], argumentName, key, out var scalar, out error)) {
                     return false;
                 }
 
-                items.Add(scalar);
+                if (seen.Add(scalar)) {
+                    items.Add(scalar);
+                }
             }
 
             parsed = items;
@@ -296,18 +330,18 @@ internal static class EventLogStructuredFilters {
         switch (value.Kind) {
             case JsonValueKind.String:
                 normalized = (value.AsString() ?? string.Empty).Trim();
-                return true;
+                break;
             case JsonValueKind.Number: {
                 var asInt64 = value.AsInt64();
                 if (asInt64.HasValue) {
                     normalized = asInt64.Value.ToString(CultureInfo.InvariantCulture);
-                    return true;
+                    break;
                 }
 
                 var asDouble = value.AsDouble();
                 if (asDouble.HasValue && double.IsFinite(asDouble.Value)) {
                     normalized = asDouble.Value.ToString(CultureInfo.InvariantCulture);
-                    return true;
+                    break;
                 }
 
                 error = $"{argumentName}.{key} contains an invalid numeric value.";
@@ -315,10 +349,34 @@ internal static class EventLogStructuredFilters {
             }
             case JsonValueKind.Boolean:
                 normalized = value.AsBoolean().ToString();
-                return true;
+                break;
             default:
                 error = $"{argumentName}.{key} must be a scalar or array of scalar values.";
                 return false;
         }
+
+        return TryValidateNamedDataString(normalized, MaxNamedDataValueLength, $"{argumentName}.{key} values", out error);
+    }
+
+    private static bool TryValidateNamedDataString(
+        string value,
+        int maxLength,
+        string label,
+        out string? error) {
+        error = null;
+
+        if (value.Length > maxLength) {
+            error = $"{label} must be <= {maxLength} characters.";
+            return false;
+        }
+
+        for (var i = 0; i < value.Length; i++) {
+            if (char.IsControl(value[i])) {
+                error = $"{label} must not contain control characters.";
+                return false;
+            }
+        }
+
+        return true;
     }
 }
