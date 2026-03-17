@@ -40,23 +40,21 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         get => _selectedProvider;
         set {
             if (SetProperty(ref _selectedProvider, value)) {
-                OnPropertyChanged(nameof(HeaderTitle));
-                OnPropertyChanged(nameof(IsGitHubTabSelected));
-                OnPropertyChanged(nameof(HasData));
-                OnPropertyChanged(nameof(ShowUsageContent));
-                OnPropertyChanged(nameof(ShowGitHubContent));
+                RefreshProviderSelectionState();
             }
         }
     }
 
+    private bool HasGitHubProvider => Providers.Any(provider => provider.ProviderId == "__github__");
+    private bool HasUsageProviders => Providers.Any(provider => provider.ProviderId != "__github__");
     public bool IsGitHubTabSelected => SelectedProvider?.ProviderId == "__github__";
 
-    public bool ShowUsageContent => !IsGitHubTabSelected && HasData;
-    public bool ShowGitHubContent => IsGitHubTabSelected;
+    public bool ShowUsageContent => SelectedProvider is { ProviderId: not "__github__" };
+    public bool ShowGitHubContent => IsGitHubTabSelected || (!HasUsageProviders && HasGitHubProvider);
 
     public string HeaderTitle {
         get {
-            if (IsGitHubTabSelected)
+            if (ShowGitHubContent)
                 return "GitHub";
             if (SelectedProvider == null || SelectedProvider.ProviderId == "__all__")
                 return "Usage Monitor";
@@ -181,7 +179,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
                 restored = Providers.FirstOrDefault(p => p.ProviderId == previousSelection);
             }
             SelectedProvider = restored ?? Providers.FirstOrDefault();
-            OnPropertyChanged(nameof(HasData));
+            RefreshProviderSelectionState();
             LastRefreshed = DateTimeOffset.Now;
             StatusText = refreshData.ScanInfo;
 
@@ -292,6 +290,14 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
 
     private bool IsLatestGitHubRefresh(int version) {
         return version == Volatile.Read(ref _gitHubRefreshVersion);
+    }
+
+    private void RefreshProviderSelectionState() {
+        OnPropertyChanged(nameof(HeaderTitle));
+        OnPropertyChanged(nameof(IsGitHubTabSelected));
+        OnPropertyChanged(nameof(HasData));
+        OnPropertyChanged(nameof(ShowUsageContent));
+        OnPropertyChanged(nameof(ShowGitHubContent));
     }
 
     private static ProviderViewModel BuildProviderViewModel(
