@@ -233,7 +233,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
                     return;
                 }
 
-                GitHub.ClearData();
                 if (!hasToken && !string.IsNullOrWhiteSpace(effectiveLogin)) {
                     GitHub.ErrorMessage = $"No public GitHub data was returned for '{effectiveLogin}'.";
                 }
@@ -246,7 +245,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
                     return;
                 }
 
-                GitHub.ClearData();
                 GitHub.ErrorMessage = ghEx.Message;
             });
         } finally {
