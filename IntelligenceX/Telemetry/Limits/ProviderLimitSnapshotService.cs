@@ -19,6 +19,18 @@ namespace IntelligenceX.Telemetry.Limits;
 /// Fetches live provider limits using reusable provider-native APIs.
 /// </summary>
 public sealed partial class ProviderLimitSnapshotService {
+    private readonly Func<string, CancellationToken, Task<ProviderLimitSnapshot>>? _fetchOverride;
+
+    internal ProviderLimitSnapshotService(
+        Func<string, CancellationToken, Task<ProviderLimitSnapshot>> fetchOverride) {
+        _fetchOverride = fetchOverride ?? throw new ArgumentNullException(nameof(fetchOverride));
+    }
+
+    /// <summary>
+    /// Initializes the provider limit snapshot service.
+    /// </summary>
+    public ProviderLimitSnapshotService() {
+    }
 
     /// <summary>
     /// Fetches live limits for the requested providers.
@@ -41,7 +53,7 @@ public sealed partial class ProviderLimitSnapshotService {
         }
 
         var tasks = keys
-            .Select(key => FetchSingleAsync(key, cancellationToken))
+            .Select(key => FetchSingleResilientAsync(key, cancellationToken))
             .ToArray();
         var snapshots = await Task.WhenAll(tasks).ConfigureAwait(false);
 
@@ -58,7 +70,31 @@ public sealed partial class ProviderLimitSnapshotService {
     public Task<ProviderLimitSnapshot> FetchAsync(string providerId, CancellationToken cancellationToken = default) {
         var normalized = NormalizeOptional(providerId)
                          ?? throw new ArgumentException("Provider id cannot be null or whitespace.", nameof(providerId));
-        return FetchSingleAsync(normalized, cancellationToken);
+        return FetchSingleCoreAsync(normalized, cancellationToken);
+    }
+
+    private async Task<ProviderLimitSnapshot> FetchSingleResilientAsync(string requestedProviderId, CancellationToken cancellationToken) {
+        try {
+            return await FetchSingleCoreAsync(requestedProviderId, cancellationToken).ConfigureAwait(false);
+        } catch (OperationCanceledException) {
+            if (cancellationToken.IsCancellationRequested) {
+                throw;
+            }
+
+            return BuildUnavailableSnapshot(
+                requestedProviderId,
+                "Live limits request was canceled before completion.");
+        } catch (Exception ex) {
+            return BuildUnavailableSnapshot(requestedProviderId, ex.Message);
+        }
+    }
+
+    private Task<ProviderLimitSnapshot> FetchSingleCoreAsync(string requestedProviderId, CancellationToken cancellationToken) {
+        if (_fetchOverride is not null) {
+            return _fetchOverride(requestedProviderId, cancellationToken);
+        }
+
+        return FetchSingleAsync(requestedProviderId, cancellationToken);
     }
 
     private async Task<ProviderLimitSnapshot> FetchSingleAsync(string requestedProviderId, CancellationToken cancellationToken) {
