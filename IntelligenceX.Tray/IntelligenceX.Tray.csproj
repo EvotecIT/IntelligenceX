@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <OutputType>WinExe</OutputType>
+        <TargetFramework>net10.0-windows</TargetFramework>
+        <UseWPF>true</UseWPF>
+        <AssemblyName>IntelligenceX.Tray</AssemblyName>
+        <RootNamespace>IntelligenceX.Tray</RootNamespace>
+        <Nullable>enable</Nullable>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <LangVersion>Latest</LangVersion>
+    </PropertyGroup>
+    <ItemGroup>
+        <PackageReference Include="H.NotifyIcon.Wpf" Version="2.3.0" />
+    </ItemGroup>
+    <ItemGroup>
+        <Resource Include="Resources\tray-icon.ico" />
+    </ItemGroup>
+    <ItemGroup>
+        <ProjectReference Include="..\IntelligenceX\IntelligenceX.csproj" />
+    </ItemGroup>
+</Project>
