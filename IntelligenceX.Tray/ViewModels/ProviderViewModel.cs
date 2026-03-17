@@ -79,8 +79,6 @@ public sealed class ProviderViewModel : ViewModelBase {
             var dispatcher = System.Windows.Application.Current?.Dispatcher;
             if (dispatcher?.CheckAccess() == true) {
                 IconGeometry = ResolveIconGeometry(value);
-            } else {
-                IconGeometry = null;
             }
         }
     }
