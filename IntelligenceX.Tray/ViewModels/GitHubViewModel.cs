@@ -58,6 +58,20 @@ public sealed class GitHubViewModel : ViewModelBase {
     public ObservableCollection<GitHubContribBarViewModel> ContribBars { get; } = [];
     public ObservableCollection<GitHubRepoViewModel> TopRepos { get; } = [];
 
+    public void ClearData() {
+        Login = string.Empty;
+        TotalContributions = 0;
+        TotalCommits = 0;
+        TotalPRs = 0;
+        TotalReviews = 0;
+        TotalIssues = 0;
+        TotalStars = 0;
+        TotalForks = 0;
+        ContribBars.Clear();
+        TopRepos.Clear();
+        HasData = false;
+    }
+
     public void Apply(GitHubDashboardData data) {
         if (string.IsNullOrWhiteSpace(UsernameInput) && !string.IsNullOrWhiteSpace(data.Login)) {
             UsernameInput = data.Login;

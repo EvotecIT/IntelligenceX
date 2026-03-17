@@ -11,6 +11,7 @@ namespace IntelligenceX.Tray.Services;
 /// </summary>
 public sealed class GitHubService {
     private static readonly HttpClient SharedClient = CreateClient();
+    private const int PublicOrgRepoConcurrency = 3;
 
     /// <summary>
     /// Fetch GitHub data. Tries authenticated API first, then public API with explicit login.
@@ -40,7 +41,7 @@ public sealed class GitHubService {
         var userRepos = await FetchPublicReposAsync($"/users/{Uri.EscapeDataString(login)}/repos?sort=stars&direction=desc&per_page=10&type=owner", ct);
         repos.AddRange(userRepos);
 
-        // Fetch user's orgs and their repos without unbounded fan-out to avoid rate-limit spikes.
+        // Fetch user's orgs and their repos with a small concurrency cap to avoid rate-limit spikes.
         var orgsJson = await GetPublicJsonAsync($"/users/{Uri.EscapeDataString(login)}/orgs", ct);
         if (orgsJson != null) {
             using var orgsDoc = JsonDocument.Parse(orgsJson);
@@ -49,10 +50,20 @@ public sealed class GitHubService {
                 .Where(l => l != null)
                 .ToList();
 
-            foreach (var orgLogin in orgLogins) {
-                var orgRepos = await FetchPublicReposAsync(
-                    $"/orgs/{Uri.EscapeDataString(orgLogin!)}/repos?sort=stars&direction=desc&per_page=10&type=public",
-                    ct).ConfigureAwait(false);
+            using var gate = new SemaphoreSlim(PublicOrgRepoConcurrency);
+            var orgTasks = orgLogins.Select(async orgLogin => {
+                await gate.WaitAsync(ct).ConfigureAwait(false);
+                try {
+                    return await FetchPublicReposAsync(
+                        $"/orgs/{Uri.EscapeDataString(orgLogin!)}/repos?sort=stars&direction=desc&per_page=10&type=public",
+                        ct).ConfigureAwait(false);
+                } finally {
+                    gate.Release();
+                }
+            });
+
+            var orgResults = await Task.WhenAll(orgTasks).ConfigureAwait(false);
+            foreach (var orgRepos in orgResults) {
                 repos.AddRange(orgRepos);
             }
         }

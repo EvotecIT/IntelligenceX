@@ -210,12 +210,16 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
                     return;
                 }
 
+                GitHub.ClearData();
                 if (!hasToken && !string.IsNullOrWhiteSpace(effectiveLogin)) {
                     GitHub.ErrorMessage = $"No public GitHub data was returned for '{effectiveLogin}'.";
                 }
             });
         } catch (Exception ghEx) {
-            await dispatcher.InvokeAsync(() => GitHub.ErrorMessage = ghEx.Message);
+            await dispatcher.InvokeAsync(() => {
+                GitHub.ClearData();
+                GitHub.ErrorMessage = ghEx.Message;
+            });
         } finally {
             await dispatcher.InvokeAsync(() => GitHub.IsLoading = false);
         }
