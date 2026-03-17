@@ -98,6 +98,9 @@ public partial class App : Application {
         };
 
         var separator = new System.Windows.Controls.Separator();
+        if (TryFindResource("DarkSeparatorStyle") is Style separatorStyle) {
+            separator.Style = separatorStyle;
+        }
 
         var aboutItem = new System.Windows.Controls.MenuItem { Header = "About IntelligenceX Tray" };
         if (itemStyle is not null) aboutItem.Style = itemStyle;
