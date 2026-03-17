@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Threading;
@@ -79,7 +78,7 @@ public sealed class SystemAppControlPostureTool : SystemToolBase, ITool {
         try {
             var posture = await AppControl.GetAsync(request.ComputerName, cancellationToken).ConfigureAwait(false);
             var effectiveComputerName = string.IsNullOrWhiteSpace(posture.ComputerName) ? request.Target : posture.ComputerName;
-            var warnings = BuildWarnings(posture);
+            var warnings = AppControlRiskEvaluator.Evaluate(posture);
             var totalRuleCount = posture.Collections.Sum(static collection => Math.Max(0, collection.RuleCount));
             var model = new AppControlResponse(
                 ComputerName: effectiveComputerName,
@@ -131,21 +130,6 @@ public sealed class SystemAppControlPostureTool : SystemToolBase, ITool {
         } catch (Exception ex) {
             return ErrorFromException(ex, defaultMessage: "App-control posture query failed.");
         }
-    }
-
-    private static IReadOnlyList<string> BuildWarnings(AppControlInfo posture) {
-        var warnings = new List<string>();
-        if (posture.AppLockerPolicyPresent != true && posture.Wdac.PolicyPresent != true) {
-            warnings.Add("No AppLocker or WDAC policy indicators were discovered.");
-        }
-        if (posture.AppLockerPolicyPresent == true && posture.AppLockerServiceRunning == false) {
-            warnings.Add("AppLocker policy indicators exist but AppIDSvc is not running.");
-        }
-        if (posture.Wdac.PolicyPresent == true && posture.Wdac.KernelModeEnforcement == WdacEnforcementMode.Off) {
-            warnings.Add("WDAC policy indicators exist but kernel-mode enforcement is disabled.");
-        }
-
-        return warnings;
     }
 
     private static string FormatNullableBool(bool? value) => value.HasValue ? (value.Value ? "true" : "false") : "unknown";

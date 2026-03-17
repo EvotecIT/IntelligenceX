@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
@@ -79,7 +78,9 @@ public sealed class SystemRemoteAccessPostureTool : SystemToolBase, ITool {
         try {
             var posture = await RemoteAccess.GetAsync(request.ComputerName, cancellationToken).ConfigureAwait(false);
             var effectiveComputerName = string.IsNullOrWhiteSpace(posture.ComputerName) ? request.Target : posture.ComputerName;
-            var warnings = BuildWarnings(posture, !IsLocalTarget(request.ComputerName, request.Target));
+            var warnings = RemoteAccessRiskEvaluator.Evaluate(
+                posture,
+                new RemoteAccessRiskOptions { IsRemoteScope = !IsLocalTarget(request.ComputerName, request.Target) });
             var model = new RemoteAccessResponse(
                 ComputerName: effectiveComputerName,
                 SshdServiceInstalled: posture.SshdServiceInstalled,
@@ -128,24 +129,6 @@ public sealed class SystemRemoteAccessPostureTool : SystemToolBase, ITool {
         } catch (Exception ex) {
             return ErrorFromException(ex, defaultMessage: "Remote-access posture query failed.");
         }
-    }
-
-    private static IReadOnlyList<string> BuildWarnings(RemoteAccessPostureInfo posture, bool isRemoteScope) {
-        var warnings = new List<string>();
-        if (posture.SshdServiceRunning == true) {
-            warnings.Add("OpenSSH server is running.");
-        }
-        if (posture.RemoteAssistanceEnabled == true) {
-            warnings.Add("Remote Assistance is enabled by policy.");
-        }
-        if (posture.OpenSshPort22Listening == true) {
-            warnings.Add("Port 22 listener is active on the local host.");
-        }
-        if (isRemoteScope && (!posture.OpenSshConfigPresent.HasValue || !posture.OpenSshPort22Listening.HasValue)) {
-            warnings.Add("OpenSSH config-file and local port-listener checks are only available on the local host.");
-        }
-
-        return warnings;
     }
 
     private static string FormatNullableBool(bool? value) {

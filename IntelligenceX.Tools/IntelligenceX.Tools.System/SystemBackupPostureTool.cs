@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
@@ -102,7 +101,7 @@ public sealed class SystemBackupPostureTool : SystemToolBase, ITool {
             var restorePoints = request.IncludeRestorePoints
                 ? CapRows(posture.RestorePoints, request.MaxRestorePoints, out _, out _)
                 : Array.Empty<RestorePointInfo>();
-            var warnings = BuildWarnings(posture);
+            var warnings = BackupPostureRiskEvaluator.Evaluate(posture);
             var model = new BackupPostureResponse(
                 ComputerName: effectiveComputerName,
                 VssServiceInstalled: posture.VssServiceInstalled,
@@ -159,27 +158,6 @@ public sealed class SystemBackupPostureTool : SystemToolBase, ITool {
         } catch (Exception ex) {
             return ErrorFromException(ex, defaultMessage: "Backup posture query failed.");
         }
-    }
-
-    private static IReadOnlyList<string> BuildWarnings(BackupPostureInfo posture) {
-        var warnings = new List<string>();
-        if (posture.VssServiceInstalled == true && posture.VssServiceRunning == false) {
-            warnings.Add("VSS service is installed but not running.");
-        }
-        if (posture.SwprvServiceInstalled == true && posture.SwprvServiceRunning == false) {
-            warnings.Add("Software Shadow Copy Provider service is installed but not running.");
-        }
-        if (posture.SystemRestoreEnabled == false) {
-            warnings.Add("System Restore appears disabled.");
-        }
-        if (posture.ShadowCopyCount == 0) {
-            warnings.Add("No shadow copies were discovered.");
-        }
-        if (posture.RestorePointCount == 0) {
-            warnings.Add("No restore points were discovered.");
-        }
-
-        return warnings;
     }
 
     private static string FormatNullableBool(bool? value) {

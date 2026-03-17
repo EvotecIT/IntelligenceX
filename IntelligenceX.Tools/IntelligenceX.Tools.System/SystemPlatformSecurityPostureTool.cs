@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
@@ -85,7 +84,7 @@ public sealed class SystemPlatformSecurityPostureTool : SystemToolBase, ITool {
         try {
             var posture = await PlatformSecurity.GetAsync(request.ComputerName, cancellationToken).ConfigureAwait(false);
             var effectiveComputerName = string.IsNullOrWhiteSpace(posture.ComputerName) ? request.Target : posture.ComputerName;
-            var warnings = BuildWarnings(posture);
+            var warnings = PlatformSecurityRiskEvaluator.Evaluate(posture);
             var model = new PlatformSecurityResponse(
                 ComputerName: effectiveComputerName,
                 FirmwareType: posture.FirmwareType?.ToString(),
@@ -147,33 +146,6 @@ public sealed class SystemPlatformSecurityPostureTool : SystemToolBase, ITool {
         } catch (Exception ex) {
             return ErrorFromException(ex, defaultMessage: "Platform security posture query failed.");
         }
-    }
-
-    private static IReadOnlyList<string> BuildWarnings(PlatformSecurityInfo posture) {
-        var warnings = new List<string>();
-        if (posture.SecureBoot.Enabled == false) {
-            warnings.Add("Secure Boot is not enabled.");
-        }
-        if (posture.Tpm.Present && posture.Tpm.Ready == false) {
-            warnings.Add("TPM is present but not ready.");
-        }
-        if (posture.DriverTrust.HvciConfigured == false) {
-            warnings.Add("HVCI is not configured.");
-        }
-        if (posture.DriverTrust.VulnerableDriverBlocklistEnabled == false) {
-            warnings.Add("Vulnerable driver blocklist is not enabled.");
-        }
-        if (posture.DriverTrust.BootTestSigningEnabled) {
-            warnings.Add("Boot test-signing mode is enabled.");
-        }
-        if (posture.DriverTrust.BootDebugEnabled) {
-            warnings.Add("Boot debugging is enabled.");
-        }
-        if (posture.DriverTrust.BootNoIntegrityChecksEnabled) {
-            warnings.Add("Boot no-integrity-checks mode is enabled.");
-        }
-
-        return warnings;
     }
 
     private static string FormatNullableBool(bool? value) => value.HasValue ? (value.Value ? "true" : "false") : "unknown";
