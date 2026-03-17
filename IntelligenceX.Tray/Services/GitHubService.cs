@@ -22,14 +22,18 @@ public sealed class GitHubService {
 
         // Authenticated path: full data (contributions + repos)
         if (!string.IsNullOrWhiteSpace(token)) {
+            using var dashboard = new GitHubDashboardService(token);
             try {
-                using var dashboard = new GitHubDashboardService(token);
                 return await dashboard.FetchAsync(normalizedLogin, ct).ConfigureAwait(false);
             } catch (OperationCanceledException) {
                 throw;
-            } catch (Exception) when (!string.IsNullOrWhiteSpace(normalizedLogin)) {
-                // Keep the username-based public path recoverable even when a stale token is present.
-                return await FetchPublicAsync(normalizedLogin!, ct).ConfigureAwait(false);
+            } catch (Exception) {
+                if (!string.IsNullOrWhiteSpace(normalizedLogin)) {
+                    // Keep the username-based public path recoverable even when a stale token is present.
+                    return await FetchPublicAsync(normalizedLogin, ct).ConfigureAwait(false);
+                }
+
+                throw;
             }
         }
 
