@@ -6,10 +6,14 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace IntelligenceX.Cli.Telemetry;
+#pragma warning disable CS1591
 
-internal sealed class CopilotQuotaSnapshotClient : IDisposable {
-    // These mirror the stable Copilot Chat request shape used by current GitHub Copilot clients.
+namespace IntelligenceX.Telemetry.Limits;
+
+/// <summary>
+/// Fetches GitHub Copilot quota snapshots from the native GitHub API.
+/// </summary>
+public sealed class CopilotQuotaSnapshotClient : IDisposable {
     private const string EditorVersionHeaderValue = "vscode/1.96.2";
     private const string EditorPluginVersionHeaderValue = "copilot-chat/0.26.7";
     private const string UserAgentHeaderValue = "GitHubCopilotChat/0.26.7";
@@ -58,12 +62,12 @@ internal sealed class CopilotQuotaSnapshotClient : IDisposable {
                 + ".");
         }
 
-        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        using var stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
         using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
         return ParseSnapshot(document.RootElement);
     }
 
-    internal static CopilotQuotaSnapshot? ParseSnapshot(JsonElement root) {
+    public static CopilotQuotaSnapshot? ParseSnapshot(JsonElement root) {
         if (root.ValueKind != JsonValueKind.Object) {
             return null;
         }
@@ -173,7 +177,7 @@ internal sealed class CopilotQuotaSnapshotClient : IDisposable {
         }
 
         var left = Math.Max(0d, remaining.Value);
-        var percentRemaining = Math.Clamp(left / total * 100d, 0d, 100d);
+        var percentRemaining = Math.Min(100d, Math.Max(0d, left / total * 100d));
         return new CopilotQuotaWindow(quotaId, total, left, percentRemaining, true);
     }
 
@@ -190,10 +194,10 @@ internal sealed class CopilotQuotaSnapshotClient : IDisposable {
         var hasPercentRemaining = false;
         double normalizedPercent;
         if (percentRemaining.HasValue) {
-            normalizedPercent = Math.Clamp(percentRemaining.Value, 0d, 100d);
+            normalizedPercent = Math.Min(100d, Math.Max(0d, percentRemaining.Value));
             hasPercentRemaining = true;
         } else if (entitlement > 0d) {
-            normalizedPercent = Math.Clamp(remaining / entitlement * 100d, 0d, 100d);
+            normalizedPercent = Math.Min(100d, Math.Max(0d, remaining / entitlement * 100d));
             hasPercentRemaining = true;
         } else {
             normalizedPercent = 0d;
@@ -272,7 +276,7 @@ internal sealed class CopilotQuotaSnapshotClient : IDisposable {
     }
 }
 
-internal sealed record CopilotQuotaSnapshot(
+public sealed record CopilotQuotaSnapshot(
     string Plan,
     string? AssignedDateRaw,
     DateTimeOffset? AssignedDate,
@@ -281,17 +285,17 @@ internal sealed record CopilotQuotaSnapshot(
     CopilotQuotaWindow? PremiumInteractions,
     CopilotQuotaWindow? Chat);
 
-internal sealed record CopilotQuotaWindow(
+public sealed record CopilotQuotaWindow(
     string QuotaId,
     double Entitlement,
     double Remaining,
     double PercentRemaining,
     bool HasPercentRemaining) {
-    public double UsedPercent => Math.Clamp(100d - PercentRemaining, 0d, 100d);
+    public double UsedPercent => Math.Min(100d, Math.Max(0d, 100d - PercentRemaining));
 }
 
-internal sealed record CopilotQuotaCounts(double? Chat, double? Completions);
+public sealed record CopilotQuotaCounts(double? Chat, double? Completions);
 
-internal sealed record CopilotQuotaSnapshotContainer(
+public sealed record CopilotQuotaSnapshotContainer(
     CopilotQuotaWindow? PremiumInteractions,
     CopilotQuotaWindow? Chat);

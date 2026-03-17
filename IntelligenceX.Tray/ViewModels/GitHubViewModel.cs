@@ -21,8 +21,15 @@ public sealed class GitHubViewModel : ViewModelBase {
 
     public string Login { get => _login; set => SetProperty(ref _login, value); }
     public string UsernameInput { get => _usernameInput; set => SetProperty(ref _usernameInput, value); }
-    public bool HasToken { get => _hasToken; set => SetProperty(ref _hasToken, value); }
-    public bool NeedsUsername => !HasToken && !HasData;
+    public bool HasToken {
+        get => _hasToken;
+        set {
+            if (SetProperty(ref _hasToken, value)) {
+                OnPropertyChanged(nameof(NeedsUsername));
+            }
+        }
+    }
+    public bool NeedsUsername => !HasToken;
     public int TotalContributions { get => _totalContributions; set { if (SetProperty(ref _totalContributions, value)) OnPropertyChanged(nameof(TotalContributionsFormatted)); } }
     public string TotalContributionsFormatted => FormatCount(TotalContributions);
     public int TotalCommits { get => _totalCommits; set { if (SetProperty(ref _totalCommits, value)) OnPropertyChanged(nameof(TotalCommitsFormatted)); } }
@@ -37,7 +44,14 @@ public sealed class GitHubViewModel : ViewModelBase {
     public string TotalStarsFormatted => FormatCount(TotalStars);
     public int TotalForks { get => _totalForks; set { if (SetProperty(ref _totalForks, value)) OnPropertyChanged(nameof(TotalForksFormatted)); } }
     public string TotalForksFormatted => FormatCount(TotalForks);
-    public bool HasData { get => _hasData; set => SetProperty(ref _hasData, value); }
+    public bool HasData {
+        get => _hasData;
+        set {
+            if (SetProperty(ref _hasData, value)) {
+                OnPropertyChanged(nameof(NeedsUsername));
+            }
+        }
+    }
     public bool IsLoading { get => _isLoading; set => SetProperty(ref _isLoading, value); }
     public string ErrorMessage { get => _errorMessage; set => SetProperty(ref _errorMessage, value); }
 
@@ -45,6 +59,10 @@ public sealed class GitHubViewModel : ViewModelBase {
     public ObservableCollection<GitHubRepoViewModel> TopRepos { get; } = [];
 
     public void Apply(GitHubDashboardData data) {
+        if (string.IsNullOrWhiteSpace(UsernameInput) && !string.IsNullOrWhiteSpace(data.Login)) {
+            UsernameInput = data.Login;
+        }
+
         Login = data.Login;
         var c = data.Contributions;
         TotalContributions = c.TotalContributions;
@@ -91,6 +109,7 @@ public sealed class GitHubViewModel : ViewModelBase {
         }
 
         HasData = true;
+        ErrorMessage = string.Empty;
     }
 
     private static SolidColorBrush ParseColorOrDefault(string? hex, string fallback) {

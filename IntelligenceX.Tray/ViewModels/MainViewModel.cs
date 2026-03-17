@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Windows.Media;
 using System.Windows.Threading;
+using IntelligenceX.Telemetry.Limits;
 using IntelligenceX.Telemetry.Usage;
 using IntelligenceX.Tray.Services;
 
@@ -8,16 +9,17 @@ namespace IntelligenceX.Tray.ViewModels;
 
 public sealed class MainViewModel : ViewModelBase, IDisposable {
     private readonly UsageTelemetrySnapshotService _usageService;
+    private readonly ProviderLimitSnapshotService _limitService;
     private readonly GitHubService _gitHubService;
     private readonly DispatcherTimer _refreshTimer;
     private ProviderViewModel? _selectedProvider;
     private bool _isLoading;
     private string _statusText = "Initializing...";
     private DateTimeOffset _lastRefreshed;
-    private bool _isGitHubTabSelected;
 
-    public MainViewModel(UsageTelemetrySnapshotService usageService, GitHubService gitHubService) {
+    public MainViewModel(UsageTelemetrySnapshotService usageService, ProviderLimitSnapshotService limitService, GitHubService gitHubService) {
         _usageService = usageService;
+        _limitService = limitService;
         _gitHubService = gitHubService;
         GitHub = new GitHubViewModel();
         RefreshCommand = new RelayCommand(RefreshAsync);
@@ -36,26 +38,15 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         set {
             if (SetProperty(ref _selectedProvider, value)) {
                 OnPropertyChanged(nameof(HeaderTitle));
-                // If selecting a non-GitHub provider tab, clear GitHub tab selection
-                if (value != null && value.ProviderId != "__github__") {
-                    IsGitHubTabSelected = false;
-                }
+                OnPropertyChanged(nameof(IsGitHubTabSelected));
+                OnPropertyChanged(nameof(HasData));
                 OnPropertyChanged(nameof(ShowUsageContent));
                 OnPropertyChanged(nameof(ShowGitHubContent));
             }
         }
     }
 
-    public bool IsGitHubTabSelected {
-        get => _isGitHubTabSelected;
-        set {
-            if (SetProperty(ref _isGitHubTabSelected, value)) {
-                OnPropertyChanged(nameof(HeaderTitle));
-                OnPropertyChanged(nameof(ShowUsageContent));
-                OnPropertyChanged(nameof(ShowGitHubContent));
-            }
-        }
-    }
+    public bool IsGitHubTabSelected => SelectedProvider?.ProviderId == "__github__";
 
     public bool ShowUsageContent => !IsGitHubTabSelected && HasData;
     public bool ShowGitHubContent => IsGitHubTabSelected;
@@ -124,6 +115,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
                     .Where(g => !string.IsNullOrWhiteSpace(g.Key))
                     .OrderBy(g => ProviderMetadata.Resolve(g.Key).SortOrder)
                     .ToList();
+                var limitSnapshots = await _limitService.FetchAsync(byProvider.Select(group => group.Key)).ConfigureAwait(false);
 
                 var providers = new List<ProviderViewModel>();
 
@@ -143,6 +135,9 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
                 foreach (var group in byProvider) {
                     var vm = BuildProviderViewModel(group.Key, group.ToList(), today, weekAgo, monthAgo);
                     vm.LastUpdated = snapshot.ScannedAtUtc;
+                    if (limitSnapshots.TryGetValue(group.Key, out var limitSnapshot)) {
+                        vm.ApplyLimitSnapshot(limitSnapshot);
+                    }
                     providers.Add(vm);
                 }
 
@@ -177,36 +172,52 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
                 restored = Providers.FirstOrDefault(p => p.ProviderId == previousSelection);
             }
             SelectedProvider = restored ?? Providers.FirstOrDefault();
-
-            // Ensure IsGitHubTabSelected is in sync with whatever ended up selected
-            IsGitHubTabSelected = SelectedProvider?.ProviderId == "__github__";
-
             OnPropertyChanged(nameof(HasData));
             LastRefreshed = DateTimeOffset.Now;
             StatusText = scanInfo;
 
             // Fetch GitHub data in the background (non-blocking)
             var ghLogin = GitHub.UsernameInput;
-            GitHub.HasToken = !string.IsNullOrWhiteSpace(
-                IntelligenceX.Telemetry.GitHub.GitHubDashboardService.ResolveTokenFromEnvironment());
-            _ = Task.Run(async () => {
-                try {
-                    GitHub.IsLoading = true;
-                    var effectiveLogin = string.IsNullOrWhiteSpace(ghLogin) ? null : ghLogin.Trim();
-                    var ghData = await _gitHubService.FetchAsync(effectiveLogin);
-                    if (ghData != null) {
-                        await System.Windows.Application.Current.Dispatcher.InvokeAsync(() => GitHub.Apply(ghData));
-                    }
-                } catch (Exception ghEx) {
-                    GitHub.ErrorMessage = ghEx.Message;
-                } finally {
-                    GitHub.IsLoading = false;
-                }
-            });
+            _ = RefreshGitHubAsync(ghLogin);
         } catch (Exception ex) {
             StatusText = $"Error: {ex.Message}";
         } finally {
             IsLoading = false;
+        }
+    }
+
+    private async Task RefreshGitHubAsync(string? ghLogin) {
+        var dispatcher = System.Windows.Application.Current.Dispatcher;
+        var hasToken = !string.IsNullOrWhiteSpace(
+            IntelligenceX.Telemetry.GitHub.GitHubDashboardService.ResolveTokenFromEnvironment());
+        var effectiveLogin = string.IsNullOrWhiteSpace(ghLogin) ? null : ghLogin.Trim();
+
+        await dispatcher.InvokeAsync(() => {
+            GitHub.HasToken = hasToken;
+            GitHub.IsLoading = hasToken || !string.IsNullOrWhiteSpace(effectiveLogin);
+            GitHub.ErrorMessage = string.Empty;
+        });
+
+        if (!hasToken && string.IsNullOrWhiteSpace(effectiveLogin)) {
+            return;
+        }
+
+        try {
+            var ghData = await _gitHubService.FetchAsync(effectiveLogin).ConfigureAwait(false);
+            await dispatcher.InvokeAsync(() => {
+                if (ghData is not null) {
+                    GitHub.Apply(ghData);
+                    return;
+                }
+
+                if (!hasToken && !string.IsNullOrWhiteSpace(effectiveLogin)) {
+                    GitHub.ErrorMessage = $"No public GitHub data was returned for '{effectiveLogin}'.";
+                }
+            });
+        } catch (Exception ghEx) {
+            await dispatcher.InvokeAsync(() => GitHub.ErrorMessage = ghEx.Message);
+        } finally {
+            await dispatcher.InvokeAsync(() => GitHub.IsLoading = false);
         }
     }
 

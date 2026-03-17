@@ -229,6 +229,147 @@
                             </StackPanel>
                         </Border>
 
+                        <!-- ── LIVE LIMITS ── -->
+                        <Border Style="{StaticResource CardStyle}"
+                                Visibility="{Binding HasLimitSection, Converter={StaticResource BoolToVis}}">
+                            <StackPanel>
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="LIVE LIMITS"
+                                               Style="{StaticResource SectionHeaderStyle}"
+                                               Margin="0" />
+                                    <TextBlock Grid.Column="1"
+                                               Text="{Binding LimitSourceLabel}"
+                                               FontFamily="{StaticResource AppFont}"
+                                               FontSize="10"
+                                               Foreground="{StaticResource TertiaryTextBrush}" />
+                                </Grid>
+
+                                <TextBlock Text="{Binding LimitPlanLabel}"
+                                           FontFamily="{StaticResource AppFont}"
+                                           FontSize="17"
+                                           FontWeight="SemiBold"
+                                           Foreground="{StaticResource PrimaryTextBrush}">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding LimitPlanLabel}" Value="{x:Null}">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding LimitPlanLabel}" Value="">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+
+                                <TextBlock Text="{Binding LimitAccountLabel}"
+                                           FontFamily="{StaticResource AppFont}"
+                                           FontSize="11"
+                                           Foreground="{StaticResource SecondaryTextBrush}"
+                                           Margin="0,2,0,8">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding LimitAccountLabel}" Value="{x:Null}">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding LimitAccountLabel}" Value="">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+
+                                <ItemsControl ItemsSource="{Binding LimitWindows}"
+                                              Visibility="{Binding HasLiveLimitData, Converter={StaticResource BoolToVis}}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate DataType="{x:Type vm:ProviderLimitWindowViewModel}">
+                                            <StackPanel Margin="0,0,0,10">
+                                                <Grid Margin="0,0,0,4">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Grid.Column="0"
+                                                               Text="{Binding Label}"
+                                                               FontFamily="{StaticResource AppFont}"
+                                                               FontSize="11"
+                                                               FontWeight="SemiBold"
+                                                               Foreground="{StaticResource PrimaryTextBrush}" />
+                                                    <TextBlock Grid.Column="1"
+                                                               Text="{Binding UsedPercentFormatted}"
+                                                               FontFamily="{StaticResource AppFont}"
+                                                               FontSize="11"
+                                                               FontWeight="SemiBold"
+                                                               Foreground="{StaticResource SecondaryTextBrush}" />
+                                                </Grid>
+
+                                                <Grid Height="6" Margin="0,0,0,4">
+                                                    <Border CornerRadius="3" Background="#12ffffff" />
+                                                    <Border CornerRadius="3"
+                                                            Background="{Binding BarBrush}"
+                                                            Opacity="0.8"
+                                                            HorizontalAlignment="Left"
+                                                            Width="{Binding Proportion, Converter={StaticResource PropToWidth}, ConverterParameter=310}" />
+                                                </Grid>
+
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Grid.Column="0"
+                                                               Text="{Binding ResetText}"
+                                                               FontFamily="{StaticResource AppFont}"
+                                                               FontSize="10"
+                                                               Foreground="{StaticResource TertiaryTextBrush}" />
+                                                    <TextBlock Grid.Column="1"
+                                                               Text="{Binding Detail}"
+                                                               FontFamily="{StaticResource AppFont}"
+                                                               FontSize="10"
+                                                               Foreground="{StaticResource SecondaryTextBrush}">
+                                                        <TextBlock.Style>
+                                                            <Style TargetType="TextBlock">
+                                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding HasDetail}" Value="True">
+                                                                        <Setter Property="Visibility" Value="Visible" />
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </TextBlock.Style>
+                                                    </TextBlock>
+                                                </Grid>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <TextBlock Text="{Binding LimitSummary}"
+                                           FontFamily="{StaticResource AppFont}"
+                                           FontSize="11"
+                                           Foreground="{StaticResource SecondaryTextBrush}"
+                                           TextWrapping="Wrap"
+                                           Margin="0,0,0,6"
+                                           Visibility="{Binding HasLimitSummary, Converter={StaticResource BoolToVis}}" />
+
+                                <TextBlock Text="{Binding LimitStatusMessage}"
+                                           FontFamily="{StaticResource AppFont}"
+                                           FontSize="11"
+                                           Foreground="{StaticResource TertiaryTextBrush}"
+                                           TextWrapping="Wrap"
+                                           Visibility="{Binding HasLimitStatusMessage, Converter={StaticResource BoolToVis}}" />
+                            </StackPanel>
+                        </Border>
+
                         <!-- ── 7-DAY + 30-DAY side-by-side ── -->
                         <Grid Margin="0,0,0,10">
                             <Grid.ColumnDefinitions>
@@ -402,7 +543,7 @@
                                     <Style.Triggers>
                                         <MultiDataTrigger>
                                             <MultiDataTrigger.Conditions>
-                                                <Condition Binding="{Binding HasData}" Value="False" />
+                                                <Condition Binding="{Binding NeedsUsername}" Value="True" />
                                                 <Condition Binding="{Binding IsLoading}" Value="False" />
                                             </MultiDataTrigger.Conditions>
                                             <Setter Property="Visibility" Value="Visible" />
