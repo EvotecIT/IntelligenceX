@@ -18,17 +18,24 @@ public sealed class GitHubService {
     /// </summary>
     public async Task<GitHubDashboardData?> FetchAsync(string? login = null, CancellationToken ct = default) {
         var token = GitHubDashboardService.ResolveTokenFromEnvironment();
+        var normalizedLogin = string.IsNullOrWhiteSpace(login) ? null : login.Trim();
 
         // Authenticated path: full data (contributions + repos)
         if (!string.IsNullOrWhiteSpace(token)) {
-            using var dashboard = new GitHubDashboardService(token);
-            return await dashboard.FetchAsync(login, ct).ConfigureAwait(false);
+            try {
+                using var dashboard = new GitHubDashboardService(token);
+                return await dashboard.FetchAsync(normalizedLogin, ct).ConfigureAwait(false);
+            } catch (OperationCanceledException) {
+                throw;
+            } catch when (!string.IsNullOrWhiteSpace(normalizedLogin)) {
+                // Keep the username-based public path recoverable even when a stale token is present.
+            }
         }
 
         // Public path: repos only, requires a username
-        if (string.IsNullOrWhiteSpace(login)) return null;
+        if (string.IsNullOrWhiteSpace(normalizedLogin)) return null;
 
-        return await FetchPublicAsync(login.Trim(), ct).ConfigureAwait(false);
+        return await FetchPublicAsync(normalizedLogin!, ct).ConfigureAwait(false);
     }
 
     /// <summary>

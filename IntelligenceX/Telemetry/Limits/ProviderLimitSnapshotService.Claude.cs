@@ -22,43 +22,61 @@ public sealed partial class ProviderLimitSnapshotService {
         var oauthAccessToken = NormalizeOptional(credentials?.AccessToken);
         var hasProfileScope = credentials?.Scopes.Any(scope =>
             string.Equals(scope, "user:profile", StringComparison.OrdinalIgnoreCase)) == true;
+        string? oauthFailureMessage = null;
 
         if (!string.IsNullOrWhiteSpace(oauthAccessToken) && hasProfileScope) {
-            using var httpClient = CreateHttpClient();
-            var oauthSnapshot = await FetchClaudeOAuthAsync(httpClient, oauthAccessToken!, credentials, cancellationToken).ConfigureAwait(false);
-            if (oauthSnapshot is not null) {
-                return new ProviderLimitSnapshot(
-                    requestedProviderId,
-                    UsageTelemetryProviderCatalog.ResolveDisplayTitle("claude"),
-                    "Claude OAuth usage API",
-                    oauthSnapshot.PlanLabel,
-                    null,
-                    oauthSnapshot.Windows,
-                    oauthSnapshot.Summary,
-                    oauthSnapshot.Windows.Count == 0 ? "Claude OAuth returned no live rate-limit windows." : null,
-                    DateTimeOffset.UtcNow);
+            try {
+                using var httpClient = CreateHttpClient();
+                var oauthSnapshot = await FetchClaudeOAuthAsync(httpClient, oauthAccessToken!, credentials, cancellationToken).ConfigureAwait(false);
+                if (oauthSnapshot is not null) {
+                    return new ProviderLimitSnapshot(
+                        requestedProviderId,
+                        UsageTelemetryProviderCatalog.ResolveDisplayTitle("claude"),
+                        "Claude OAuth usage API",
+                        oauthSnapshot.PlanLabel,
+                        null,
+                        oauthSnapshot.Windows,
+                        oauthSnapshot.Summary,
+                        oauthSnapshot.Windows.Count == 0 ? "Claude OAuth returned no live rate-limit windows." : null,
+                        DateTimeOffset.UtcNow);
+                }
+            } catch (OperationCanceledException) {
+                throw;
+            } catch (Exception ex) {
+                oauthFailureMessage = NormalizeOptional(ex.Message);
             }
         }
 
         var sessionKey = ResolveClaudeSessionKeyFromEnvironment();
         if (!string.IsNullOrWhiteSpace(sessionKey)) {
-            using var httpClient = CreateHttpClient();
-            var webSnapshot = await FetchClaudeWebAsync(httpClient, sessionKey!, cancellationToken).ConfigureAwait(false);
-            return new ProviderLimitSnapshot(
-                requestedProviderId,
-                UsageTelemetryProviderCatalog.ResolveDisplayTitle("claude"),
-                "Claude web usage API",
-                webSnapshot.PlanLabel,
-                webSnapshot.AccountLabel,
-                webSnapshot.Windows,
-                webSnapshot.Summary,
-                webSnapshot.Windows.Count == 0 ? "Claude web usage did not return live limit windows." : null,
-                DateTimeOffset.UtcNow);
+            try {
+                using var httpClient = CreateHttpClient();
+                var webSnapshot = await FetchClaudeWebAsync(httpClient, sessionKey!, cancellationToken).ConfigureAwait(false);
+                return new ProviderLimitSnapshot(
+                    requestedProviderId,
+                    UsageTelemetryProviderCatalog.ResolveDisplayTitle("claude"),
+                    "Claude web usage API",
+                    webSnapshot.PlanLabel,
+                    webSnapshot.AccountLabel,
+                    webSnapshot.Windows,
+                    webSnapshot.Summary,
+                    webSnapshot.Windows.Count == 0 ? "Claude web usage did not return live limit windows." : null,
+                    DateTimeOffset.UtcNow);
+            } catch (OperationCanceledException) {
+                throw;
+            } catch (Exception ex) when (!string.IsNullOrWhiteSpace(oauthFailureMessage)) {
+                throw new InvalidOperationException(
+                    ex.Message + " Claude OAuth also failed earlier: " + oauthFailureMessage,
+                    ex);
+            }
         }
 
         var message = hasProfileScope
             ? "Claude credentials were found, but live usage was not available. If OAuth fails, set INTELLIGENCEX_CLAUDE_SESSION_KEY (or CLAUDE_SESSION_KEY) with a claude.ai session key."
             : "Claude live limits need OAuth credentials with user:profile scope, or INTELLIGENCEX_CLAUDE_SESSION_KEY / CLAUDE_SESSION_KEY for the claude.ai web usage API.";
+        if (!string.IsNullOrWhiteSpace(oauthFailureMessage)) {
+            message = oauthFailureMessage + " " + message;
+        }
 
         return BuildUnavailableSnapshot(
             requestedProviderId,
