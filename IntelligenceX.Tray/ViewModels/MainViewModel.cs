@@ -225,6 +225,13 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         });
 
         if (!hasToken && string.IsNullOrWhiteSpace(effectiveLogin)) {
+            await dispatcher.InvokeAsync(() => {
+                if (!IsLatestGitHubRefresh(currentVersion)) {
+                    return;
+                }
+
+                GitHub.IsLoading = false;
+            });
             Interlocked.CompareExchange(ref _gitHubRefreshCts, null, refreshCts);
             return;
         }
@@ -266,7 +273,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
             });
         } finally {
             await dispatcher.InvokeAsync(() => {
-                if (!IsCurrentGitHubRefresh(currentVersion, cancellationToken)) {
+                if (!IsLatestGitHubRefresh(currentVersion)) {
                     return;
                 }
 
@@ -280,7 +287,11 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     }
 
     private bool IsCurrentGitHubRefresh(int version, CancellationToken cancellationToken) {
-        return !cancellationToken.IsCancellationRequested && version == Volatile.Read(ref _gitHubRefreshVersion);
+        return !cancellationToken.IsCancellationRequested && IsLatestGitHubRefresh(version);
+    }
+
+    private bool IsLatestGitHubRefresh(int version) {
+        return version == Volatile.Read(ref _gitHubRefreshVersion);
     }
 
     private static ProviderViewModel BuildProviderViewModel(
