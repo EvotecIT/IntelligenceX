@@ -33,4 +33,13 @@ internal static class EmailSessionRequests {
             Password = options.Password
         };
     }
+
+    internal static void ApplySmtpRuntimeOptions(Smtp smtp, SmtpAccountOptions options, bool dryRun) {
+        ArgumentNullException.ThrowIfNull(smtp);
+        ArgumentNullException.ThrowIfNull(options);
+
+        smtp.Timeout = options.TimeoutMs;
+        smtp.RetryCount = options.RetryCount;
+        smtp.DryRun = dryRun;
+    }
 }

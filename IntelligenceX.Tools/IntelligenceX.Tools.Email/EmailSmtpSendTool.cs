@@ -151,6 +151,7 @@ public sealed class EmailSmtpSendTool : EmailToolBase, ITool {
 
         var request = context.Request;
         var smtp = new Smtp();
+        EmailSessionRequests.ApplySmtpRuntimeOptions(smtp, smtpOptions, dryRun: !request.Send);
 
         try {
             smtp.From = request.From;

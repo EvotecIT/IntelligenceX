@@ -62,6 +62,7 @@ public sealed class EmailSmtpProbeTool : EmailToolBase, ITool {
         cancellationToken.ThrowIfCancellationRequested();
 
         var smtp = new Smtp();
+        EmailSessionRequests.ApplySmtpRuntimeOptions(smtp, smtpOptions, dryRun: true);
 
         try {
             var connectAuthResult = await SmtpSessionService
