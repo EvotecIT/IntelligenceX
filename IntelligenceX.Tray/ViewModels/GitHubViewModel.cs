@@ -15,23 +15,34 @@ public sealed class GitHubViewModel : ViewModelBase {
     private int _totalIssues;
     private int _totalStars;
     private int _totalForks;
+    private int _ownedRepositories;
+    private int _organizationRepositories;
     private bool _hasData;
     private bool _isLoading;
     private string _errorMessage = "";
 
-    public string Login { get => _login; set => SetProperty(ref _login, value); }
+    public string Login {
+        get => _login;
+        set {
+            if (SetProperty(ref _login, value)) {
+                OnPropertyChanged(nameof(ProfileUrl));
+            }
+        }
+    }
     public string UsernameInput { get => _usernameInput; set => SetProperty(ref _usernameInput, value); }
     public bool HasToken {
         get => _hasToken;
         set {
             if (SetProperty(ref _hasToken, value)) {
-                OnPropertyChanged(nameof(NeedsUsername));
                 OnPropertyChanged(nameof(ShowUsernameInput));
+                OnPropertyChanged(nameof(UsernameHelpText));
             }
         }
     }
-    public bool NeedsUsername => !HasToken;
-    public bool ShowUsernameInput => !HasToken;
+    public bool ShowUsernameInput => true;
+    public string UsernameHelpText => HasToken
+        ? "Leave blank to load the authenticated account, or enter a username to inspect someone else."
+        : "Enter a username to view public repos. Set GITHUB_TOKEN or GH_TOKEN for full contribution data.";
     public int TotalContributions { get => _totalContributions; set { if (SetProperty(ref _totalContributions, value)) OnPropertyChanged(nameof(TotalContributionsFormatted)); } }
     public string TotalContributionsFormatted => FormatCount(TotalContributions);
     public int TotalCommits { get => _totalCommits; set { if (SetProperty(ref _totalCommits, value)) OnPropertyChanged(nameof(TotalCommitsFormatted)); } }
@@ -46,17 +57,22 @@ public sealed class GitHubViewModel : ViewModelBase {
     public string TotalStarsFormatted => FormatCount(TotalStars);
     public int TotalForks { get => _totalForks; set { if (SetProperty(ref _totalForks, value)) OnPropertyChanged(nameof(TotalForksFormatted)); } }
     public string TotalForksFormatted => FormatCount(TotalForks);
+    public int OwnedRepositories { get => _ownedRepositories; set { if (SetProperty(ref _ownedRepositories, value)) OnPropertyChanged(nameof(OwnedRepositoriesFormatted)); } }
+    public string OwnedRepositoriesFormatted => FormatCount(OwnedRepositories);
+    public int OrganizationRepositories { get => _organizationRepositories; set { if (SetProperty(ref _organizationRepositories, value)) OnPropertyChanged(nameof(OrganizationRepositoriesFormatted)); OnPropertyChanged(nameof(HasOrganizationRepositories)); } }
+    public string OrganizationRepositoriesFormatted => FormatCount(OrganizationRepositories);
+    public bool HasOrganizationRepositories => OrganizationRepositories > 0;
     public bool HasData {
         get => _hasData;
         set {
             if (SetProperty(ref _hasData, value)) {
-                OnPropertyChanged(nameof(NeedsUsername));
                 OnPropertyChanged(nameof(ShowUsernameInput));
             }
         }
     }
     public bool IsLoading { get => _isLoading; set => SetProperty(ref _isLoading, value); }
     public string ErrorMessage { get => _errorMessage; set => SetProperty(ref _errorMessage, value); }
+    public string ProfileUrl => string.IsNullOrWhiteSpace(Login) ? string.Empty : $"https://github.com/{Login}";
 
     public ObservableCollection<GitHubContribBarViewModel> ContribBars { get; } = [];
     public ObservableCollection<GitHubRepoViewModel> TopRepos { get; } = [];
@@ -70,10 +86,13 @@ public sealed class GitHubViewModel : ViewModelBase {
         TotalIssues = 0;
         TotalStars = 0;
         TotalForks = 0;
+        OwnedRepositories = 0;
+        OrganizationRepositories = 0;
         ContribBars.Clear();
         TopRepos.Clear();
         HasData = false;
         ErrorMessage = string.Empty;
+        OnPropertyChanged(nameof(ProfileUrl));
     }
 
     public void Apply(GitHubDashboardData data) {
@@ -82,6 +101,7 @@ public sealed class GitHubViewModel : ViewModelBase {
         }
 
         Login = data.Login;
+        OnPropertyChanged(nameof(ProfileUrl));
         var c = data.Contributions;
         TotalContributions = c.TotalContributions;
         TotalCommits = c.TotalCommits;
@@ -89,9 +109,12 @@ public sealed class GitHubViewModel : ViewModelBase {
         TotalReviews = c.TotalReviews;
         TotalIssues = c.TotalIssues;
 
-        // Stars/forks totals
-        TotalStars = data.TopRepos.Sum(r => r.Stars);
-        TotalForks = data.TopRepos.Sum(r => r.Forks);
+        var allRepos = data.AllRepos ?? data.TopRepos;
+        var login = data.Login.Trim();
+        OwnedRepositories = allRepos.Count(repo => HasOwner(repo, login));
+        OrganizationRepositories = Math.Max(0, allRepos.Count - OwnedRepositories);
+        TotalStars = allRepos.Sum(r => r.Stars);
+        TotalForks = allRepos.Sum(r => r.Forks);
 
         // Contribution bars (last 30 days)
         ContribBars.Clear();
@@ -122,7 +145,8 @@ public sealed class GitHubViewModel : ViewModelBase {
                 Stars = repo.Stars,
                 Forks = repo.Forks,
                 Language = repo.Language ?? "",
-                LanguageBrush = ParseColorOrDefault(repo.LanguageColor, "#8b949e")
+                LanguageBrush = ParseColorOrDefault(repo.LanguageColor, "#8b949e"),
+                RepositoryUrl = $"https://github.com/{repo.NameWithOwner}"
             });
         }
 
@@ -139,6 +163,20 @@ public sealed class GitHubViewModel : ViewModelBase {
         } catch {
             return Brushes.Gray;
         }
+    }
+
+    private static bool HasOwner(GitHubRepoInfo repo, string login) {
+        if (string.IsNullOrWhiteSpace(login) || string.IsNullOrWhiteSpace(repo.NameWithOwner)) {
+            return false;
+        }
+
+        var slashIndex = repo.NameWithOwner.IndexOf('/');
+        if (slashIndex <= 0) {
+            return false;
+        }
+
+        var owner = repo.NameWithOwner[..slashIndex];
+        return string.Equals(owner, login, StringComparison.OrdinalIgnoreCase);
     }
 
     private static string FormatCount(int n) => n switch {
@@ -159,6 +197,7 @@ public sealed class GitHubContribBarViewModel {
 public sealed class GitHubRepoViewModel {
     public string Name { get; set; } = "";
     public string FullName { get; set; } = "";
+    public string RepositoryUrl { get; set; } = "";
     public int Stars { get; set; }
     public int Forks { get; set; }
     public string Language { get; set; } = "";

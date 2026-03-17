@@ -12,6 +12,7 @@ namespace IntelligenceX.Tray.Services;
 public sealed class GitHubService {
     private static readonly HttpClient SharedClient = CreateClient();
     private const int PublicOrgRepoConcurrency = 3;
+    private const int PublicRepoPageSize = 100;
 
     /// <summary>
     /// Fetch GitHub data. Tries authenticated API first, then public API with explicit login.
@@ -49,8 +50,10 @@ public sealed class GitHubService {
     private static async Task<GitHubDashboardData?> FetchPublicAsync(string login, CancellationToken ct) {
         var repos = new List<GitHubRepoInfo>();
 
-        // Fetch user's public repos sorted by stars
-        var userRepos = await FetchPublicReposAsync($"/users/{Uri.EscapeDataString(login)}/repos?sort=stars&direction=desc&per_page=10&type=owner", ct);
+        // Fetch all owned public repos so totals reflect the full profile, not just the visible top slice.
+        var userRepos = await FetchAllPublicReposAsync(
+            $"/users/{Uri.EscapeDataString(login)}/repos?sort=updated&direction=desc&type=owner",
+            ct);
         repos.AddRange(userRepos);
 
         // Fetch user's orgs and their repos with a small concurrency cap to avoid rate-limit spikes.
@@ -68,8 +71,8 @@ public sealed class GitHubService {
             var orgTasks = orgLogins.Select(async orgLogin => {
                 await gate.WaitAsync(ct).ConfigureAwait(false);
                 try {
-                    return await FetchPublicReposAsync(
-                        $"/orgs/{Uri.EscapeDataString(orgLogin)}/repos?sort=stars&direction=desc&per_page=10&type=public",
+                    return await FetchAllPublicReposAsync(
+                        $"/orgs/{Uri.EscapeDataString(orgLogin)}/repos?sort=updated&direction=desc&type=public",
                         ct).ConfigureAwait(false);
                 } finally {
                     gate.Release();
@@ -86,7 +89,27 @@ public sealed class GitHubService {
 
         // No contribution data available via public API (would need GraphQL + token)
         var contribs = new GitHubContribData();
-        return new GitHubDashboardData(login, contribs, topRepos);
+        return new GitHubDashboardData(login, contribs, topRepos, repos);
+    }
+
+    private static async Task<List<GitHubRepoInfo>> FetchAllPublicReposAsync(string endpoint, CancellationToken ct) {
+        var repositories = new List<GitHubRepoInfo>();
+        for (var page = 1; page <= 20; page++) {
+            var separator = endpoint.Contains('?') ? "&" : "?";
+            var pageEndpoint = endpoint + separator + "per_page=" + PublicRepoPageSize.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                               + "&page=" + page.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            var pageRepos = await FetchPublicReposAsync(pageEndpoint, ct).ConfigureAwait(false);
+            if (pageRepos.Count == 0) {
+                break;
+            }
+
+            repositories.AddRange(pageRepos);
+            if (pageRepos.Count < PublicRepoPageSize) {
+                break;
+            }
+        }
+
+        return repositories;
     }
 
     private static async Task<List<GitHubRepoInfo>> FetchPublicReposAsync(string endpoint, CancellationToken ct) {
