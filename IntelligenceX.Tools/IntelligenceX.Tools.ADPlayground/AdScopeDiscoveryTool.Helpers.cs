@@ -4,6 +4,15 @@ using ADPlayground.Monitoring.Probes;
 namespace IntelligenceX.Tools.ADPlayground;
 
 public sealed partial class AdScopeDiscoveryTool : ActiveDirectoryToolBase, ITool {
+    private static string? NormalizeOptionalDnsName(string? value) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            return null;
+        }
+
+        var normalized = value.Trim().TrimEnd('.');
+        return string.IsNullOrWhiteSpace(normalized) ? null : normalized;
+    }
+
     private static bool TryParseDiscoveryFallback(
         string raw,
         out DirectoryDiscoveryFallback fallback,

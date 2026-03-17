@@ -164,6 +164,7 @@ internal static class EventLogStructuredFilters {
         }
 
         var list = new List<long>(array.Count);
+        var seen = new HashSet<long>();
         for (var i = 0; i < array.Count; i++) {
             var item = array[i].AsInt64();
             if (!item.HasValue || item.Value <= 0) {
@@ -171,7 +172,9 @@ internal static class EventLogStructuredFilters {
                 return false;
             }
 
-            list.Add(item.Value);
+            if (seen.Add(item.Value)) {
+                list.Add(item.Value);
+            }
         }
 
         values = list;

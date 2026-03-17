@@ -199,6 +199,7 @@ public sealed partial class OfficeImoReadTool : OfficeImoToolBase, ITool {
                         continue;
                     }
 
+                    AddWarning(result.Warnings, warning!);
                     officeDocument.Warnings.Add(warning!);
                 }
             }

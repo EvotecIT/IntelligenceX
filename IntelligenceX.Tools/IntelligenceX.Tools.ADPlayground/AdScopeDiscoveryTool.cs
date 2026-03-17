@@ -241,9 +241,9 @@ public sealed partial class AdScopeDiscoveryTool : ActiveDirectoryToolBase, IToo
         var domains = discovery.Domains;
         var allDcs = discovery.DomainControllers;
         var namingContexts = discovery.NamingContexts;
-        var explicitForest = request.ForestName?.Trim();
-        var explicitDomain = request.DomainName?.Trim();
-        var explicitDomainController = request.DomainController?.Trim();
+        var explicitForest = NormalizeOptionalDnsName(request.ForestName);
+        var explicitDomain = NormalizeOptionalDnsName(request.DomainName);
+        var explicitDomainController = NormalizeOptionalDnsName(request.DomainController);
 
         var requestedScope = new {
             forest_name = explicitForest ?? string.Empty,

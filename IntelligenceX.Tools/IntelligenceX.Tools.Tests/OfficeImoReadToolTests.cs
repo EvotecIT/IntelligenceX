@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -539,5 +540,34 @@ public class OfficeImoReadToolTests {
                 // Best-effort cleanup.
             }
         }
+    }
+
+    [Fact]
+    public void OfficeImoRead_ProjectDocuments_PromotesSourceWarningsToTopLevelWarnings() {
+        var sourceType = Type.GetType("OfficeIMO.Reader.ReaderSourceDocument, OfficeIMO.Reader", throwOnError: true)!;
+        var chunkType = Type.GetType("OfficeIMO.Reader.ReaderChunk, OfficeIMO.Reader", throwOnError: true)!;
+        var source = Activator.CreateInstance(sourceType)!;
+        sourceType.GetProperty("Path")!.SetValue(source, "example.md");
+        sourceType.GetProperty("Parsed")!.SetValue(source, true);
+        sourceType.GetProperty("Warnings")!.SetValue(source, new[] { "source warning" });
+        sourceType.GetProperty("Chunks")!.SetValue(source, Array.CreateInstance(chunkType, 0));
+
+        var listType = typeof(List<>).MakeGenericType(sourceType);
+        var sources = Activator.CreateInstance(listType)!;
+        listType.GetMethod("Add")!.Invoke(sources, new[] { source });
+
+        var result = new OfficeImoReadResult();
+        var method = typeof(OfficeImoReadTool)
+            .GetMethods(BindingFlags.Static | BindingFlags.NonPublic)
+            .Single(candidate =>
+                string.Equals(candidate.Name, "ProjectDocuments", StringComparison.Ordinal)
+                && candidate.GetParameters().Length == 5
+                && candidate.GetParameters()[0].ParameterType.IsGenericType);
+
+        method.Invoke(null, new object[] { sources, false, true, false, result });
+
+        Assert.Contains("source warning", result.Warnings, StringComparer.OrdinalIgnoreCase);
+        Assert.Single(result.Documents);
+        Assert.Contains("source warning", result.Documents[0].Warnings, StringComparer.OrdinalIgnoreCase);
     }
 }
