@@ -71,7 +71,18 @@ public sealed class ProviderViewModel : ViewModelBase {
 
     public string IconKey {
         get => _iconKey;
-        set => SetProperty(ref _iconKey, value);
+        set {
+            if (!SetProperty(ref _iconKey, value)) {
+                return;
+            }
+
+            var dispatcher = System.Windows.Application.Current?.Dispatcher;
+            if (dispatcher?.CheckAccess() == true) {
+                IconGeometry = ResolveIconGeometry(value);
+            } else {
+                IconGeometry = null;
+            }
+        }
     }
 
     public System.Windows.Media.Geometry? IconGeometry {

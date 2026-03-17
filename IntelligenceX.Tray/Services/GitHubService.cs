@@ -113,6 +113,20 @@ public sealed class GitHubService {
         try {
             using var response = await SharedClient.GetAsync(url, ct).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode) {
+                var status = response.StatusCode;
+                if (status == System.Net.HttpStatusCode.NotFound) {
+                    throw new InvalidOperationException("GitHub could not find that public user or resource.");
+                }
+
+                if (status == System.Net.HttpStatusCode.Forbidden) {
+                    var remaining = response.Headers.TryGetValues("X-RateLimit-Remaining", out var values)
+                        ? values.FirstOrDefault()
+                        : null;
+                    if (string.Equals(remaining, "0", StringComparison.OrdinalIgnoreCase)) {
+                        throw new InvalidOperationException("GitHub public API rate limit was exceeded. Try again later or set GITHUB_TOKEN for authenticated requests.");
+                    }
+                }
+
                 System.Diagnostics.Debug.WriteLine(
                     $"GitHub API {(int)response.StatusCode} for {url}");
                 return null;
