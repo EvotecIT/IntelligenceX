@@ -14,6 +14,34 @@ using IntelligenceX.Tools.Common;
 namespace IntelligenceX.Tools.ADPlayground;
 
 public sealed partial class AdMonitoringProbeRunTool {
+    internal static string? ValidateDirectoryProbeKindArgument(string normalizedKind, JsonObject? arguments) {
+        if (!string.Equals(normalizedKind, "directory", StringComparison.OrdinalIgnoreCase)) {
+            return null;
+        }
+
+        var directoryProbeKind = ToolArgs.GetOptionalTrimmed(arguments, "directory_probe_kind");
+        if (string.IsNullOrWhiteSpace(directoryProbeKind)) {
+            return "directory_probe_kind is required when probe_kind=directory.";
+        }
+
+        if (!OnDemandDirectoryHealthProbeService.KindNames.Contains(directoryProbeKind, StringComparer.OrdinalIgnoreCase)) {
+            return "directory_probe_kind must be one of: " + string.Join(", ", OnDemandDirectoryHealthProbeService.KindNames) + ".";
+        }
+
+        return null;
+    }
+
+    internal static string[] ResolveHttpsTargetsForRequest(
+        IReadOnlyList<string> explicitTargets,
+        IReadOnlyList<string> resolvedTargets,
+        string? url) {
+        if (!string.IsNullOrWhiteSpace(url) && (explicitTargets is null || explicitTargets.Count == 0)) {
+            return Array.Empty<string>();
+        }
+
+        return (explicitTargets is { Count: > 0 } ? explicitTargets : resolvedTargets).ToArray();
+    }
+
     private static ToolChainContractModel BuildChainContract(
         string normalizedKind,
         string? directoryProbeKind,

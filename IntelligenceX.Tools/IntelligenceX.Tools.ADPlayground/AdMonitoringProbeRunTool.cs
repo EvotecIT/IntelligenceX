@@ -42,6 +42,11 @@ public sealed partial class AdMonitoringProbeRunTool : ActiveDirectoryToolBase, 
             return Error("invalid_argument", "probe_kind must be one of: " + string.Join(", ", ProbeKinds) + ".");
         }
 
+        var directoryProbeKindError = ValidateDirectoryProbeKindArgument(normalizedKind, arguments);
+        if (!string.IsNullOrWhiteSpace(directoryProbeKindError)) {
+            return Error("invalid_argument", directoryProbeKindError);
+        }
+
         var name = ToolArgs.GetOptionalTrimmed(arguments, "name");
         if (string.IsNullOrWhiteSpace(name)) {
             name = $"ix-{normalizedKind}-{DateTime.UtcNow:yyyyMMddHHmmss}";
@@ -446,7 +451,10 @@ public sealed partial class AdMonitoringProbeRunTool : ActiveDirectoryToolBase, 
                 new OnDemandHttpsProbeRequest {
                     Name = name!,
                     Url = ToolArgs.GetOptionalTrimmed(arguments, "url"),
-                    Targets = (targets.Count == 0 ? resolvedTargets : targets).ToArray(),
+                    Targets = ResolveHttpsTargetsForRequest(
+                        explicitTargets: targets,
+                        resolvedTargets: resolvedTargets,
+                        url: ToolArgs.GetOptionalTrimmed(arguments, "url")),
                     Timeout = timeout,
                     Retries = retries,
                     RetryDelay = retryDelay,
