@@ -1,14 +1,12 @@
 using System;
 using System.Linq;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Json;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.Common;
 using MailKit;
-using MailKit.Net.Imap;
-using MimeKit;
+using Mailozaurr;
 
 namespace IntelligenceX.Tools.Email;
 
@@ -81,69 +79,61 @@ public sealed class EmailImapGetTool : EmailToolBase, ITool {
             var folder = request.Folder ?? imap.DefaultFolder;
             var maxBodyBytes = request.MaxBodyBytes;
 
-            using var client = await ImapClientFactory.ConnectAsync(imap, cancellationToken).ConfigureAwait(false);
+            using var client = await ImapSessionService
+                .ConnectAsync(EmailSessionRequests.BuildImapSessionRequest(imap), cancellationToken)
+                .ConfigureAwait(false);
             try {
-                var mailFolder = ResolveFolder(client, folder);
-                await mailFolder.OpenAsync(FolderAccess.ReadOnly, cancellationToken).ConfigureAwait(false);
-                var uid = new UniqueId((uint)request.Uid);
-                var message = await mailFolder.GetMessageAsync(uid, cancellationToken).ConfigureAwait(false);
+                var message = await ImapMessageReader
+                    .ReadAsync(
+                        client,
+                        new ImapMessageReadRequest(
+                            Uid: new MailKit.UniqueId((uint)request.Uid),
+                            Folder: folder,
+                            MaxBodyBytes: maxBodyBytes),
+                        cancellationToken)
+                    .ConfigureAwait(false);
 
-                var attachments = message.Attachments.Select(static a => a is MimePart part
-                    ? new {
-                        FileName = part.FileName ?? string.Empty,
-                        ContentType = part.ContentType?.MimeType ?? string.Empty
-                    }
-                    : new {
-                        FileName = string.Empty,
-                        ContentType = a.ContentType?.MimeType ?? string.Empty
-                    }).ToArray();
-
-                var text = TruncateUtf8(message.TextBody, maxBodyBytes, out var textTruncated);
-                var html = TruncateUtf8(message.HtmlBody, maxBodyBytes, out var htmlTruncated);
-                var fromText = string.Join(", ", message.From.Mailboxes.Select(static m => m.ToString()));
-                var toText = string.Join(", ", message.To.Mailboxes.Select(static m => m.ToString()));
-                var hasAttachments = attachments.Length > 0;
+                var attachments = message.Attachments.Select(static attachment => new {
+                    FileName = attachment.FileName,
+                    ContentType = attachment.ContentType
+                }).ToArray();
 
                 var root = new {
-                    Uid = (long)uid.Id,
-                    Folder = folder ?? string.Empty,
-                    Subject = message.Subject ?? string.Empty,
-                    From = fromText,
-                    To = toText,
-                    DateUtc = message.Date.UtcDateTime.ToString("O"),
-                    TextBody = text ?? string.Empty,
-                    TextTruncated = textTruncated,
-                    HtmlBody = html ?? string.Empty,
-                    HtmlTruncated = htmlTruncated,
-                    HasAttachments = hasAttachments,
+                    Uid = message.Uid,
+                    Folder = message.Folder,
+                    Subject = message.Subject,
+                    From = message.From,
+                    To = message.To,
+                    DateUtc = message.DateUtc.ToString("O"),
+                    TextBody = message.TextBody,
+                    TextTruncated = message.TextTruncated,
+                    HtmlBody = message.HtmlBody,
+                    HtmlTruncated = message.HtmlTruncated,
+                    HasAttachments = message.HasAttachments,
                     Attachments = attachments
                 };
 
-                var summaryPreview = text ?? string.Empty;
-                const int previewMax = 1000;
-                if (summaryPreview.Length > previewMax) {
-                    summaryPreview = summaryPreview.Substring(0, previewMax) + "...";
-                }
+                var summaryPreview = CreateSummaryPreview(message.TextBody);
 
                 var summaryMarkdown = ToolMarkdown.SummaryFacts(
                     title: "IMAP message",
                     facts: new (string Key, string Value)[] {
-                        ("UID", uid.Id.ToString()),
-                        ("Folder", folder ?? string.Empty),
-                        ("Subject", message.Subject ?? string.Empty),
-                        ("From", fromText),
-                        ("Date (UTC)", message.Date.UtcDateTime.ToString("O")),
-                        ("Attachments", hasAttachments ? "yes" : "no"),
-                        ("Text truncated", textTruncated ? "yes" : "no"),
-                        ("HTML truncated", htmlTruncated ? "yes" : "no")
+                        ("UID", message.Uid.ToString()),
+                        ("Folder", message.Folder),
+                        ("Subject", message.Subject),
+                        ("From", message.From),
+                        ("Date (UTC)", message.DateUtc.ToString("O")),
+                        ("Attachments", message.HasAttachments ? "yes" : "no"),
+                        ("Text truncated", message.TextTruncated ? "yes" : "no"),
+                        ("HTML truncated", message.HtmlTruncated ? "yes" : "no")
                     },
                     codeLanguage: "text",
                     codeContent: summaryPreview);
 
-                var meta = ToolOutputHints.Meta(count: 1, truncated: textTruncated || htmlTruncated)
+                var meta = ToolOutputHints.Meta(count: 1, truncated: message.TextTruncated || message.HtmlTruncated)
                     .Add("max_body_bytes", maxBodyBytes)
-                    .Add("text_truncated", textTruncated)
-                    .Add("html_truncated", htmlTruncated)
+                    .Add("text_truncated", message.TextTruncated)
+                    .Add("html_truncated", message.HtmlTruncated)
                     .Add("attachments_count", attachments.Length);
 
                 return ToolResultV2.OkModel(
@@ -188,32 +178,16 @@ public sealed class EmailImapGetTool : EmailToolBase, ITool {
         return false;
     }
 
-    private static IMailFolder ResolveFolder(ImapClient client, string? folder) {
-        if (string.IsNullOrWhiteSpace(folder)) {
-            return client.Inbox;
+    internal static string CreateSummaryPreview(string? textBody, int previewMax = 1000) {
+        if (previewMax < 1) {
+            previewMax = 1;
         }
-        try {
-            return client.GetFolder(folder);
-        } catch (FolderNotFoundException) {
-            if (client.PersonalNamespaces.Count == 0) {
-                throw;
-            }
-            return client.GetFolder(client.PersonalNamespaces[0]).GetSubfolder(folder);
-        }
-    }
 
-    private static string? TruncateUtf8(string? value, long maxBytes, out bool truncated) {
-        truncated = false;
-        if (string.IsNullOrEmpty(value)) {
-            return value;
+        var summaryPreview = textBody ?? string.Empty;
+        if (summaryPreview.Length > previewMax) {
+            summaryPreview = summaryPreview.Substring(0, previewMax) + "...";
         }
-        var bytes = Encoding.UTF8.GetBytes(value);
-        if (bytes.LongLength <= maxBytes) {
-            return value;
-        }
-        truncated = true;
-        var slice = bytes.AsSpan(0, (int)Math.Min(maxBytes, int.MaxValue));
-        return Encoding.UTF8.GetString(slice);
-    }
 
+        return summaryPreview;
+    }
 }

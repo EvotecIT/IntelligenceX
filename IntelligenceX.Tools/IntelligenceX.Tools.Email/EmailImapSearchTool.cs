@@ -104,7 +104,9 @@ public sealed class EmailImapSearchTool : EmailToolBase, ITool {
         var request = context.Request;
         var folder = request.Folder ?? imap.DefaultFolder;
 
-        using var client = await ImapClientFactory.ConnectAsync(imap, cancellationToken).ConfigureAwait(false);
+        using var client = await ImapSessionService
+            .ConnectAsync(EmailSessionRequests.BuildImapSessionRequest(imap), cancellationToken)
+            .ConfigureAwait(false);
         try {
             var messages = await MailboxSearcher.SearchImapAsync(
                 client,
