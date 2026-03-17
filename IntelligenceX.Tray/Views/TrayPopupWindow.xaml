@@ -1,0 +1,384 @@
+<Window x:Class="IntelligenceX.Tray.Views.TrayPopupWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:IntelligenceX.Tray.ViewModels"
+        xmlns:conv="clr-namespace:IntelligenceX.Tray.Converters"
+        Title="IntelligenceX Usage"
+        Width="380" Height="620"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ShowInTaskbar="False"
+        Topmost="True"
+        ResizeMode="NoResize"
+        Deactivated="OnDeactivated">
+
+    <Window.Resources>
+        <conv:BoolToVisibilityConverter x:Key="BoolToVis" />
+        <conv:ProportionToWidthConverter x:Key="PropToWidth" />
+    </Window.Resources>
+
+    <Border Background="{StaticResource BackgroundBrush}"
+            BorderBrush="{StaticResource BorderBrush}"
+            BorderThickness="1"
+            CornerRadius="12"
+            Margin="4">
+        <Border.Effect>
+            <DropShadowEffect BlurRadius="16" ShadowDepth="2" Opacity="0.5" Color="#000000" />
+        </Border.Effect>
+
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <!-- Header -->
+            <Border Grid.Row="0" Padding="16,12,16,6">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Ellipse Width="10" Height="10" Fill="{StaticResource AccentBrush}" Margin="0,0,8,0" />
+                        <TextBlock Text="IntelligenceX Usage"
+                                   FontFamily="{StaticResource AppFont}"
+                                   FontSize="15"
+                                   FontWeight="Bold"
+                                   Foreground="{StaticResource PrimaryTextBrush}" />
+                    </StackPanel>
+                    <Button Grid.Column="1"
+                            Style="{StaticResource RefreshButtonStyle}"
+                            Command="{Binding RefreshCommand}"
+                            Content="Refresh"
+                            VerticalAlignment="Center" />
+                </Grid>
+            </Border>
+
+            <!-- Provider Tabs -->
+            <Border Grid.Row="1"
+                    BorderBrush="{StaticResource BorderBrush}"
+                    BorderThickness="0,0,0,1">
+                <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                              VerticalScrollBarVisibility="Disabled"
+                              Padding="8,0">
+                    <ItemsControl ItemsSource="{Binding Providers}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="{x:Type vm:ProviderViewModel}">
+                                <RadioButton Style="{StaticResource ProviderTabStyle}"
+                                             GroupName="ProviderTabs"
+                                             IsChecked="{Binding IsSelected, RelativeSource={RelativeSource Self}}"
+                                             Click="OnProviderTabClick"
+                                             Tag="{Binding}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Ellipse Width="8" Height="8"
+                                                 Fill="{Binding AccentBrush}"
+                                                 Margin="0,0,6,0" />
+                                        <TextBlock Text="{Binding DisplayName}" />
+                                    </StackPanel>
+                                </RadioButton>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </Border>
+
+            <!-- Main Content (bound to SelectedProvider) -->
+            <ScrollViewer Grid.Row="2"
+                          VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled"
+                          Padding="16,10">
+                <StackPanel DataContext="{Binding SelectedProvider}">
+
+                    <!-- Loading Indicator -->
+                    <TextBlock Text="Loading..."
+                               Foreground="{StaticResource SecondaryTextBrush}"
+                               FontFamily="{StaticResource AppFont}"
+                               FontSize="13"
+                               HorizontalAlignment="Center"
+                               Margin="0,20"
+                               Visibility="{Binding DataContext.IsLoading, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVis}}" />
+
+                    <!-- TODAY'S USAGE -->
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel>
+                            <TextBlock Text="TODAY'S USAGE"
+                                       Style="{StaticResource SectionHeaderStyle}" />
+
+                            <!-- Total Tokens (large) -->
+                            <TextBlock Text="{Binding TodayTotalTokensFormatted}"
+                                       Style="{StaticResource ValueTextStyle}"
+                                       Margin="0,0,0,2" />
+                            <TextBlock Text="total tokens"
+                                       Style="{StaticResource LabelTextStyle}"
+                                       Margin="0,0,0,10" />
+
+                            <!-- Token Bar -->
+                            <Grid Margin="0,0,0,12">
+                                <Border Style="{StaticResource TokenBarStyle}"
+                                        Background="#20ffffff"
+                                        HorizontalAlignment="Stretch" />
+                                <Grid HorizontalAlignment="Left">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border Grid.Column="0"
+                                            Style="{StaticResource TokenBarStyle}"
+                                            Width="120"
+                                            HorizontalAlignment="Left">
+                                        <Border.Background>
+                                            <SolidColorBrush Color="{Binding InputColor}" />
+                                        </Border.Background>
+                                    </Border>
+                                    <Border Grid.Column="1"
+                                            Style="{StaticResource TokenBarStyle}"
+                                            Width="80"
+                                            HorizontalAlignment="Left">
+                                        <Border.Background>
+                                            <SolidColorBrush Color="{Binding OutputColor}" />
+                                        </Border.Background>
+                                    </Border>
+                                </Grid>
+                            </Grid>
+
+                            <!-- Breakdown Grid -->
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+
+                                <!-- Input -->
+                                <StackPanel Grid.Row="0" Grid.Column="0" Margin="0,0,0,6">
+                                    <TextBlock Style="{StaticResource LabelTextStyle}">
+                                        <Run Text="Input" />
+                                    </TextBlock>
+                                    <TextBlock Text="{Binding TodayInputTokensFormatted}"
+                                               Style="{StaticResource StatValueStyle}" />
+                                </StackPanel>
+
+                                <!-- Output -->
+                                <StackPanel Grid.Row="0" Grid.Column="1" Margin="0,0,0,6">
+                                    <TextBlock Style="{StaticResource LabelTextStyle}">
+                                        <Run Text="Output" />
+                                    </TextBlock>
+                                    <TextBlock Text="{Binding TodayOutputTokensFormatted}"
+                                               Style="{StaticResource StatValueStyle}" />
+                                </StackPanel>
+
+                                <!-- Cached -->
+                                <StackPanel Grid.Row="1" Grid.Column="0" Margin="0,0,0,6">
+                                    <TextBlock Style="{StaticResource LabelTextStyle}">
+                                        <Run Text="Cached" />
+                                    </TextBlock>
+                                    <TextBlock Text="{Binding TodayCachedTokensFormatted}"
+                                               Style="{StaticResource StatValueStyle}" />
+                                </StackPanel>
+
+                                <!-- Reasoning -->
+                                <StackPanel Grid.Row="1" Grid.Column="1" Margin="0,0,0,6">
+                                    <TextBlock Style="{StaticResource LabelTextStyle}">
+                                        <Run Text="Reasoning" />
+                                    </TextBlock>
+                                    <TextBlock Text="{Binding TodayReasoningTokensFormatted}"
+                                               Style="{StaticResource StatValueStyle}" />
+                                </StackPanel>
+
+                                <!-- Cost -->
+                                <StackPanel Grid.Row="2" Grid.Column="0" Margin="0,0,0,4">
+                                    <TextBlock Style="{StaticResource LabelTextStyle}">
+                                        <Run Text="Cost" />
+                                    </TextBlock>
+                                    <TextBlock Text="{Binding TodayCostFormatted}"
+                                               Style="{StaticResource StatValueStyle}" />
+                                </StackPanel>
+
+                                <!-- Events -->
+                                <StackPanel Grid.Row="2" Grid.Column="1" Margin="0,0,0,4">
+                                    <TextBlock Style="{StaticResource LabelTextStyle}">
+                                        <Run Text="Events" />
+                                    </TextBlock>
+                                    <TextBlock Text="{Binding TodayEventCount}"
+                                               Style="{StaticResource StatValueStyle}" />
+                                </StackPanel>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- 7-DAY ROLLING -->
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel>
+                            <TextBlock Text="7-DAY ROLLING"
+                                       Style="{StaticResource SectionHeaderStyle}" />
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="{Binding WeeklyTotalTokensFormatted}"
+                                               Style="{StaticResource ValueTextStyle}"
+                                               FontSize="18" />
+                                    <TextBlock Text="total tokens"
+                                               Style="{StaticResource LabelTextStyle}" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="1">
+                                    <TextBlock Text="{Binding WeeklyAvgPerDayFormatted}"
+                                               Style="{StaticResource StatValueStyle}" />
+                                    <TextBlock Text="avg per day"
+                                               Style="{StaticResource LabelTextStyle}" />
+                                    <TextBlock Text="{Binding WeeklyCostFormatted}"
+                                               Style="{StaticResource StatValueStyle}"
+                                               Margin="0,4,0,0"
+                                               Visibility="{Binding HasWeeklyCost, Converter={StaticResource BoolToVis}}" />
+                                    <TextBlock Text="cost"
+                                               Style="{StaticResource LabelTextStyle}"
+                                               Visibility="{Binding HasWeeklyCost, Converter={StaticResource BoolToVis}}" />
+                                </StackPanel>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- 30-DAY ROLLING -->
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel>
+                            <TextBlock Text="30-DAY ROLLING"
+                                       Style="{StaticResource SectionHeaderStyle}" />
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="{Binding MonthlyTotalTokensFormatted}"
+                                               Style="{StaticResource ValueTextStyle}"
+                                               FontSize="18" />
+                                    <TextBlock Text="total tokens"
+                                               Style="{StaticResource LabelTextStyle}" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="1">
+                                    <TextBlock Text="{Binding MonthlyAvgPerDayFormatted}"
+                                               Style="{StaticResource StatValueStyle}" />
+                                    <TextBlock Text="avg per day"
+                                               Style="{StaticResource LabelTextStyle}" />
+                                    <TextBlock Text="{Binding MonthlyCostFormatted}"
+                                               Style="{StaticResource StatValueStyle}"
+                                               Margin="0,4,0,0"
+                                               Visibility="{Binding HasMonthlyCost, Converter={StaticResource BoolToVis}}" />
+                                    <TextBlock Text="cost"
+                                               Style="{StaticResource LabelTextStyle}"
+                                               Visibility="{Binding HasMonthlyCost, Converter={StaticResource BoolToVis}}" />
+                                </StackPanel>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- MODEL BREAKDOWN -->
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel>
+                            <TextBlock Text="MODEL BREAKDOWN"
+                                       Style="{StaticResource SectionHeaderStyle}" />
+                            <ItemsControl ItemsSource="{Binding ModelBreakdown}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate DataType="{x:Type vm:ModelUsageViewModel}">
+                                        <StackPanel Margin="0,0,0,8">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Grid.Column="0"
+                                                           Text="{Binding ModelName}"
+                                                           FontFamily="{StaticResource AppFont}"
+                                                           FontSize="11"
+                                                           Foreground="{StaticResource PrimaryTextBrush}"
+                                                           TextTrimming="CharacterEllipsis" />
+                                                <TextBlock Grid.Column="1"
+                                                           Text="{Binding TotalTokensFormatted}"
+                                                           FontFamily="{StaticResource AppFont}"
+                                                           FontSize="11"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="{StaticResource SecondaryTextBrush}"
+                                                           Margin="8,0,0,0" />
+                                            </Grid>
+                                            <Grid Margin="0,3,0,0">
+                                                <Border Style="{StaticResource ModelBarStyle}"
+                                                        Background="#15ffffff"
+                                                        HorizontalAlignment="Stretch" />
+                                                <Border Style="{StaticResource ModelBarStyle}"
+                                                        Background="{Binding BarBrush}"
+                                                        HorizontalAlignment="Left"
+                                                        Width="{Binding Proportion, Converter={StaticResource PropToWidth}, ConverterParameter=280}" />
+                                            </Grid>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <TextBlock Text="No model data available"
+                                       HorizontalAlignment="Center"
+                                       Margin="0,4">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource LabelTextStyle}">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding ModelBreakdown.Count}" Value="0">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </StackPanel>
+                    </Border>
+
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- Footer -->
+            <Border Grid.Row="3"
+                    Background="{StaticResource CardBrush}"
+                    BorderBrush="{StaticResource BorderBrush}"
+                    BorderThickness="0,1,0,0"
+                    CornerRadius="0,0,12,12"
+                    Padding="16,8">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Orientation="Horizontal">
+                        <TextBlock Text="Last refreshed: "
+                                   FontFamily="{StaticResource AppFont}"
+                                   FontSize="10"
+                                   Foreground="{StaticResource TertiaryTextBrush}" />
+                        <TextBlock Text="{Binding LastRefreshedFormatted}"
+                                   FontFamily="{StaticResource AppFont}"
+                                   FontSize="10"
+                                   Foreground="{StaticResource SecondaryTextBrush}" />
+                    </StackPanel>
+                    <TextBlock Grid.Column="1"
+                               Text="{Binding StatusText}"
+                               FontFamily="{StaticResource AppFont}"
+                               FontSize="10"
+                               Foreground="{StaticResource TertiaryTextBrush}"
+                               TextTrimming="CharacterEllipsis"
+                               MaxWidth="180" />
+                </Grid>
+            </Border>
+        </Grid>
+    </Border>
+</Window>

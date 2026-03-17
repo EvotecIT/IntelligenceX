@@ -63,6 +63,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IntelligenceX.Tools.Testimo
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IntelligenceX.Shared", "IntelligenceX.Shared\IntelligenceX.Shared.csproj", "{3552C200-02FE-4AF3-9200-F11F8D646804}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "IntelligenceX.Tray", "IntelligenceX.Tray\IntelligenceX.Tray.csproj", "{9BA5DEA9-19EF-4F68-9171-BB7107D63947}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -409,6 +411,18 @@ Global
 		{3552C200-02FE-4AF3-9200-F11F8D646804}.Release|x64.Build.0 = Release|Any CPU
 		{3552C200-02FE-4AF3-9200-F11F8D646804}.Release|x86.ActiveCfg = Release|Any CPU
 		{3552C200-02FE-4AF3-9200-F11F8D646804}.Release|x86.Build.0 = Release|Any CPU
+		{9BA5DEA9-19EF-4F68-9171-BB7107D63947}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9BA5DEA9-19EF-4F68-9171-BB7107D63947}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9BA5DEA9-19EF-4F68-9171-BB7107D63947}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{9BA5DEA9-19EF-4F68-9171-BB7107D63947}.Debug|x64.Build.0 = Debug|Any CPU
+		{9BA5DEA9-19EF-4F68-9171-BB7107D63947}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{9BA5DEA9-19EF-4F68-9171-BB7107D63947}.Debug|x86.Build.0 = Debug|Any CPU
+		{9BA5DEA9-19EF-4F68-9171-BB7107D63947}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9BA5DEA9-19EF-4F68-9171-BB7107D63947}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9BA5DEA9-19EF-4F68-9171-BB7107D63947}.Release|x64.ActiveCfg = Release|Any CPU
+		{9BA5DEA9-19EF-4F68-9171-BB7107D63947}.Release|x64.Build.0 = Release|Any CPU
+		{9BA5DEA9-19EF-4F68-9171-BB7107D63947}.Release|x86.ActiveCfg = Release|Any CPU
+		{9BA5DEA9-19EF-4F68-9171-BB7107D63947}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
