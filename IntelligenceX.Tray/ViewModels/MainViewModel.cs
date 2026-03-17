@@ -218,6 +218,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         });
 
         if (!hasToken && string.IsNullOrWhiteSpace(effectiveLogin)) {
+            Interlocked.CompareExchange(ref _gitHubRefreshCts, null, refreshCts);
             return;
         }
 
