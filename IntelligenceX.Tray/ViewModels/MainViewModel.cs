@@ -105,7 +105,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         try {
             // Do ALL heavy work on background thread: scan + aggregate
             var previousSelection = SelectedProvider?.ProviderId;
-            var (newProviders, scanInfo) = await Task.Run(async () => {
+            var refreshData = await Task.Run(async () => {
                 var snapshot = await _usageService.ScanAsync();
                 var events = snapshot.Events;
 
@@ -120,50 +120,55 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
                     .ToList();
                 var limitSnapshots = await _limitService.FetchAsync(byProvider.Select(group => group.Key)).ConfigureAwait(false);
 
-                var providers = new List<ProviderViewModel>();
-
-                if (events.Count > 0) {
-                    var allVm = BuildProviderViewModel("__all__", events.ToList(), today, weekAgo, monthAgo);
-                    allVm.DisplayName = "All";
-                    allVm.ShortName = "All";
-                    allVm.IconKey = "IconIx";
-                    allVm.SortOrder = -1;
-                    allVm.AccentBrush = Frozen(new SolidColorBrush(Color.FromRgb(155, 233, 168)));
-                    allVm.InputColor = Color.FromRgb(155, 233, 168);
-                    allVm.OutputColor = Color.FromRgb(64, 196, 99);
-                    allVm.LastUpdated = snapshot.ScannedAtUtc;
-                    providers.Add(allVm);
-                }
-
-                foreach (var group in byProvider) {
-                    var vm = BuildProviderViewModel(group.Key, group.ToList(), today, weekAgo, monthAgo);
-                    vm.LastUpdated = snapshot.ScannedAtUtc;
-                    if (limitSnapshots.TryGetValue(group.Key, out var limitSnapshot)) {
-                        vm.ApplyLimitSnapshot(limitSnapshot);
-                    }
-                    providers.Add(vm);
-                }
-
-                var ghTab = new ProviderViewModel {
-                    ProviderId = "__github__",
-                    DisplayName = "GitHub",
-                    ShortName = "GitHub",
-                    IconKey = "IconGitHub",
-                    SortOrder = 999,
-                    AccentBrush = Frozen(new SolidColorBrush(Color.FromRgb(64, 196, 99))),
-                    InputColor = Color.FromRgb(155, 233, 168),
-                    OutputColor = Color.FromRgb(64, 196, 99)
-                };
-                providers.Add(ghTab);
-
                 var info = $"{events.Count} events, {byProvider.Count} providers";
                 if (snapshot.ScanDurationMs > 0) info += $" ({snapshot.ScanDurationMs / 1000.0:F1}s)";
                 if (snapshot.Errors.Count > 0) info += $" [{snapshot.Errors.Count} errors]";
 
-                return (providers, info);
+                return new RefreshComputationResult(
+                    events.ToList(),
+                    byProvider.Select(group => new ProviderRefreshData(group.Key, group.ToList())).ToList(),
+                    limitSnapshots,
+                    snapshot.ScannedAtUtc,
+                    today,
+                    weekAgo,
+                    monthAgo,
+                    info);
             });
 
-            // Only UI updates on dispatcher thread
+            var newProviders = new List<ProviderViewModel>();
+            if (refreshData.AllEvents.Count > 0) {
+                var allVm = BuildProviderViewModel("__all__", refreshData.AllEvents, refreshData.Today, refreshData.WeekAgo, refreshData.MonthAgo);
+                allVm.DisplayName = "All";
+                allVm.ShortName = "All";
+                allVm.IconKey = "IconIx";
+                allVm.SortOrder = -1;
+                allVm.AccentBrush = Frozen(new SolidColorBrush(Color.FromRgb(155, 233, 168)));
+                allVm.InputColor = Color.FromRgb(155, 233, 168);
+                allVm.OutputColor = Color.FromRgb(64, 196, 99);
+                allVm.LastUpdated = refreshData.ScannedAtUtc;
+                newProviders.Add(allVm);
+            }
+
+            foreach (var group in refreshData.ByProvider) {
+                var vm = BuildProviderViewModel(group.ProviderId, group.Events, refreshData.Today, refreshData.WeekAgo, refreshData.MonthAgo);
+                vm.LastUpdated = refreshData.ScannedAtUtc;
+                if (refreshData.LimitSnapshots.TryGetValue(group.ProviderId, out var limitSnapshot)) {
+                    vm.ApplyLimitSnapshot(limitSnapshot);
+                }
+                newProviders.Add(vm);
+            }
+
+            newProviders.Add(new ProviderViewModel {
+                ProviderId = "__github__",
+                DisplayName = "GitHub",
+                ShortName = "GitHub",
+                IconKey = "IconGitHub",
+                SortOrder = 999,
+                AccentBrush = Frozen(new SolidColorBrush(Color.FromRgb(64, 196, 99))),
+                InputColor = Color.FromRgb(155, 233, 168),
+                OutputColor = Color.FromRgb(64, 196, 99)
+            });
+
             Providers.Clear();
             foreach (var p in newProviders) {
                 p.RefreshIconGeometry();
@@ -178,7 +183,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
             SelectedProvider = restored ?? Providers.FirstOrDefault();
             OnPropertyChanged(nameof(HasData));
             LastRefreshed = DateTimeOffset.Now;
-            StatusText = scanInfo;
+            StatusText = refreshData.ScanInfo;
 
             // Fetch GitHub data in the background (non-blocking)
             var ghLogin = GitHub.UsernameInput;
@@ -340,6 +345,18 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     }
 
     private static SolidColorBrush Frozen(SolidColorBrush brush) { brush.Freeze(); return brush; }
+
+    private sealed record ProviderRefreshData(string ProviderId, List<IntelligenceX.Telemetry.Usage.UsageEventRecord> Events);
+
+    private sealed record RefreshComputationResult(
+        List<IntelligenceX.Telemetry.Usage.UsageEventRecord> AllEvents,
+        List<ProviderRefreshData> ByProvider,
+        IReadOnlyDictionary<string, ProviderLimitSnapshot> LimitSnapshots,
+        DateTimeOffset ScannedAtUtc,
+        DateTime Today,
+        DateTime WeekAgo,
+        DateTime MonthAgo,
+        string ScanInfo);
 
     public void Dispose() {
         _refreshTimer.Stop();
