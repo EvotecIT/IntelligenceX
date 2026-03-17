@@ -7,14 +7,17 @@ namespace IntelligenceX.Tray.ViewModels;
 
 public sealed class MainViewModel : ViewModelBase, IDisposable {
     private readonly UsageDataService _usageService;
+    private readonly GitHubService _gitHubService;
     private readonly DispatcherTimer _refreshTimer;
     private ProviderViewModel? _selectedProvider;
     private bool _isLoading;
     private string _statusText = "Initializing...";
     private DateTimeOffset _lastRefreshed;
 
-    public MainViewModel(UsageDataService usageService) {
+    public MainViewModel(UsageDataService usageService, GitHubService gitHubService) {
         _usageService = usageService;
+        _gitHubService = gitHubService;
+        GitHub = new GitHubViewModel();
         RefreshCommand = new RelayCommand(RefreshAsync);
 
         _refreshTimer = new DispatcherTimer {
@@ -24,6 +27,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     }
 
     public ObservableCollection<ProviderViewModel> Providers { get; } = [];
+    public GitHubViewModel GitHub { get; }
 
     public ProviderViewModel? SelectedProvider {
         get => _selectedProvider;
@@ -136,6 +140,21 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
                 scanInfo += $" [{snapshot.Errors.Count} errors]";
             }
             StatusText = scanInfo;
+
+            // Fetch GitHub data in the background
+            _ = Task.Run(async () => {
+                try {
+                    GitHub.IsLoading = true;
+                    var ghData = await _gitHubService.FetchAsync();
+                    if (ghData != null) {
+                        await System.Windows.Application.Current.Dispatcher.InvokeAsync(() => GitHub.Apply(ghData));
+                    }
+                } catch (Exception ghEx) {
+                    GitHub.ErrorMessage = ghEx.Message;
+                } finally {
+                    GitHub.IsLoading = false;
+                }
+            });
         } catch (Exception ex) {
             StatusText = $"Error: {ex.Message}";
         } finally {

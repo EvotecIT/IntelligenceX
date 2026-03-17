@@ -16,7 +16,8 @@ public partial class App : Application {
 
         try {
             var usageService = new UsageDataService();
-            _viewModel = new MainViewModel(usageService);
+            var gitHubService = new GitHubService();
+            _viewModel = new MainViewModel(usageService, gitHubService);
 
             _popupWindow = new TrayPopupWindow {
                 DataContext = _viewModel

@@ -369,6 +369,125 @@
                             </StackPanel>
                         </Border>
 
+                        <!-- ── GITHUB ── -->
+                        <Border Style="{StaticResource CardStyle}"
+                                DataContext="{Binding DataContext.GitHub, RelativeSource={RelativeSource AncestorType=Window}}"
+                                Visibility="{Binding HasData, Converter={StaticResource BoolToVis}}">
+                            <StackPanel>
+                                <Grid Margin="0,0,0,8">
+                                    <TextBlock Text="GITHUB" Style="{StaticResource SectionHeaderStyle}" Margin="0" />
+                                    <TextBlock HorizontalAlignment="Right"
+                                               FontFamily="{StaticResource AppFont}" FontSize="10"
+                                               Foreground="{StaticResource TertiaryTextBrush}"
+                                               Text="{Binding Login}" />
+                                </Grid>
+
+                                <!-- Contribution stats row -->
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0">
+                                        <TextBlock Text="{Binding TotalCommitsFormatted}"
+                                                   Style="{StaticResource StatValueStyle}" FontSize="13" />
+                                        <TextBlock Text="Commits" Style="{StaticResource LabelTextStyle}" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1">
+                                        <TextBlock Text="{Binding TotalPRsFormatted}"
+                                                   Style="{StaticResource StatValueStyle}" FontSize="13" />
+                                        <TextBlock Text="PRs" Style="{StaticResource LabelTextStyle}" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="2">
+                                        <TextBlock Text="{Binding TotalStarsFormatted}"
+                                                   Style="{StaticResource StatValueStyle}" FontSize="13" />
+                                        <TextBlock Text="Stars" Style="{StaticResource LabelTextStyle}" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="3">
+                                        <TextBlock Text="{Binding TotalForksFormatted}"
+                                                   Style="{StaticResource StatValueStyle}" FontSize="13" />
+                                        <TextBlock Text="Forks" Style="{StaticResource LabelTextStyle}" />
+                                    </StackPanel>
+                                </Grid>
+
+                                <!-- 30-day contribution heatmap bars -->
+                                <TextBlock Text="30-DAY CONTRIBUTIONS" Style="{StaticResource SectionHeaderStyle}" />
+                                <ItemsControl ItemsSource="{Binding ContribBars}" Margin="0,0,0,4">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <UniformGrid Columns="30" />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate DataType="{x:Type vm:GitHubContribBarViewModel}">
+                                            <Grid Height="42" VerticalAlignment="Bottom" Margin="0.5,0"
+                                                  ToolTip="{Binding Count}">
+                                                <Border CornerRadius="2"
+                                                        Background="#08ffffff"
+                                                        VerticalAlignment="Stretch" />
+                                                <Border CornerRadius="2"
+                                                        Background="{Binding BarBrush}"
+                                                        Opacity="0.8"
+                                                        VerticalAlignment="Bottom"
+                                                        Height="{Binding BarHeight}" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <!-- Top repos -->
+                                <TextBlock Text="TOP REPOS" Style="{StaticResource SectionHeaderStyle}" Margin="0,8,0,6" />
+                                <ItemsControl ItemsSource="{Binding TopRepos}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate DataType="{x:Type vm:GitHubRepoViewModel}">
+                                            <Grid Margin="0,0,0,6">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <Ellipse Grid.Column="0" Width="8" Height="8"
+                                                         Fill="{Binding LanguageBrush}"
+                                                         Margin="0,0,6,0" VerticalAlignment="Center" />
+                                                <TextBlock Grid.Column="1"
+                                                           Text="{Binding Name}"
+                                                           FontFamily="{StaticResource AppFont}"
+                                                           FontSize="11"
+                                                           Foreground="{StaticResource PrimaryTextBrush}"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           VerticalAlignment="Center" />
+                                                <StackPanel Grid.Column="2" Orientation="Horizontal"
+                                                            Margin="8,0,0,0" VerticalAlignment="Center">
+                                                    <TextBlock Text="&#x2605; "
+                                                               FontFamily="{StaticResource AppFont}"
+                                                               FontSize="10"
+                                                               Foreground="#f0c040" />
+                                                    <TextBlock Text="{Binding StarsFormatted}"
+                                                               FontFamily="{StaticResource AppFont}"
+                                                               FontSize="10" FontWeight="SemiBold"
+                                                               Foreground="{StaticResource SecondaryTextBrush}" />
+                                                </StackPanel>
+                                                <StackPanel Grid.Column="3" Orientation="Horizontal"
+                                                            Margin="10,0,0,0" VerticalAlignment="Center">
+                                                    <TextBlock Text="&#x2442; "
+                                                               FontFamily="{StaticResource AppFont}"
+                                                               FontSize="10"
+                                                               Foreground="{StaticResource TertiaryTextBrush}" />
+                                                    <TextBlock Text="{Binding ForksFormatted}"
+                                                               FontFamily="{StaticResource AppFont}"
+                                                               FontSize="10"
+                                                               Foreground="{StaticResource SecondaryTextBrush}" />
+                                                </StackPanel>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Border>
+
                     </StackPanel>
                 </ScrollViewer>
             </Grid>
