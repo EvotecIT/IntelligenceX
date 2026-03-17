@@ -31,6 +31,47 @@ public static class TestimoXAnalyticsFollowUpCatalog {
     }
 
     /// <summary>
+    /// Builds dashboard status follow-up routes into local snapshot and report file inspection.
+    /// </summary>
+    public static ToolHandoffRoute[] CreateDashboardStatusArtifactRoutes(
+        string snapshotPathSourceField,
+        string reportPathSourceField) {
+        return new[] {
+            ToolContractDefaults.CreateRoute(
+                targetPackId: "filesystem",
+                targetToolName: "fs_read",
+                reason: "Promote dashboard auto-generate status into local snapshot inspection when raw scheduler JSON is needed.",
+                bindings: new[] {
+                    ToolContractDefaults.CreateBinding(snapshotPathSourceField, "path")
+                }),
+            ToolContractDefaults.CreateRoute(
+                targetPackId: "filesystem",
+                targetToolName: "fs_read",
+                reason: "Promote dashboard auto-generate status into local report file inspection when a rendered dashboard path is available.",
+                bindings: new[] {
+                    ToolContractDefaults.CreateBinding(reportPathSourceField, "path", isRequired: false)
+                })
+        };
+    }
+
+    /// <summary>
+    /// Builds a single snapshot-file follow-up route into local file inspection.
+    /// </summary>
+    public static ToolHandoffRoute[] CreateSnapshotFileInspectionRoutes(
+        string snapshotPathSourceField,
+        string reason) {
+        return new[] {
+            ToolContractDefaults.CreateRoute(
+                targetPackId: "filesystem",
+                targetToolName: "fs_read",
+                reason: reason,
+                bindings: new[] {
+                    ToolContractDefaults.CreateBinding(snapshotPathSourceField, "path")
+                })
+        };
+    }
+
+    /// <summary>
     /// Builds the standard report-job-history follow-up routes into cached artifacts and optional local file inspection.
     /// </summary>
     public static ToolHandoffRoute[] CreateReportJobHistoryArtifactRoutes(

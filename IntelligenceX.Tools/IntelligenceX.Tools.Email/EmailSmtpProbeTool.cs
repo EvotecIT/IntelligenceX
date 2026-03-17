@@ -64,7 +64,15 @@ public sealed class EmailSmtpProbeTool : EmailToolBase, ITool {
         var smtp = SmtpClientFactory.Create(smtpOptions, dryRun: true);
 
         try {
-            var connectAuthResult = await SmtpClientFactory.ConnectAndAuthenticateAsync(smtp, smtpOptions).ConfigureAwait(false);
+            var connectAuthResult = await smtp.ConnectAndAuthenticateAsync(
+                smtpOptions.Server,
+                smtpOptions.Port,
+                smtpOptions.UserName,
+                smtpOptions.Password,
+                EmailToolBase.ParseSecureSocketOptions(smtpOptions.SecureSocketOptions),
+                smtpOptions.UseSsl,
+                ProtocolAuthMode.Basic,
+                cancellationToken).ConfigureAwait(false);
             if (!connectAuthResult.IsSuccess) {
                 return ToolResultV2.Error(
                     connectAuthResult.ErrorCode,

@@ -345,6 +345,8 @@ public class SourceGuardrailTests {
             Path.Combine(repoRoot, "IntelligenceX.Tools.TestimoX", "TestimoXRulesRunTool.cs"),
             Path.Combine(repoRoot, "IntelligenceX.Tools.TestimoX.Analytics", "TestimoXAnalyticsPackInfoTool.cs"),
             Path.Combine(repoRoot, "IntelligenceX.Tools.TestimoX.Analytics", "TestimoXAnalyticsDiagnosticsGetTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.TestimoX.Analytics", "TestimoXDashboardAutoGenerateStatusGetTool.cs"),
+            Path.Combine(repoRoot, "IntelligenceX.Tools.TestimoX.Analytics", "TestimoXAvailabilityRollupStatusGetTool.cs"),
             Path.Combine(repoRoot, "IntelligenceX.Tools.FileSystem", "FileSystemPackInfoTool.cs"),
             Path.Combine(repoRoot, "IntelligenceX.Tools.FileSystem", "FsListTool.cs"),
             Path.Combine(repoRoot, "IntelligenceX.Tools.FileSystem", "FsReadTool.cs"),

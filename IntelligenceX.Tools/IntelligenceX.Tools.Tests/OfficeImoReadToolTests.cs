@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -316,6 +317,7 @@ public class OfficeImoReadToolTests {
             Assert.InRange(confidence.GetDouble(), 0d, 1d);
             Assert.True(root.TryGetProperty("documents", out var documents));
             Assert.True(root.TryGetProperty("chunks", out var chunks));
+            Assert.Single(documents.EnumerateArray());
             Assert.Equal(0, chunks.GetArrayLength());
             Assert.Equal(0, root.GetProperty("chunks_returned").GetInt32());
             Assert.Equal(0, root.GetProperty("token_estimate_returned").GetInt32());
@@ -331,9 +333,11 @@ public class OfficeImoReadToolTests {
             if (documents.GetArrayLength() > 0) {
                 var first = documents[0];
                 Assert.Equal("knowledge.md", Path.GetFileName(first.GetProperty("path").GetString() ?? string.Empty));
+                Assert.Equal(0, first.GetProperty("chunks").GetArrayLength());
                 Assert.Equal(0, first.GetProperty("chunks_returned").GetInt32());
                 Assert.Equal(0, first.GetProperty("token_estimate_returned").GetInt32());
                 Assert.True(first.GetProperty("chunks_produced").GetInt32() >= 1);
+                Assert.Equal(first.GetProperty("chunks_produced").GetInt32(), root.GetProperty("chunks_produced").GetInt32());
             }
         } finally {
             try {
@@ -451,5 +455,122 @@ public class OfficeImoReadToolTests {
                 // Best-effort cleanup.
             }
         }
+    }
+
+    [Fact]
+    public async Task OfficeImoRead_WhenMaxChunksReached_UsesUpstreamBudgetingAndMarksResultTruncated() {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "ix-officeimo-read-" + Guid.NewGuid().ToString("n"));
+        Directory.CreateDirectory(tempRoot);
+
+        try {
+            File.WriteAllText(Path.Combine(tempRoot, "a.md"), "# A\n\nAlpha");
+            File.WriteAllText(Path.Combine(tempRoot, "b.md"), "# B\n\nBeta");
+
+            var options = new OfficeImoToolOptions();
+            options.AllowedRoots.Add(tempRoot);
+            var tool = new OfficeImoReadTool(options);
+
+            var json = await tool.InvokeAsync(
+                arguments: new JsonObject()
+                    .Add("path", tempRoot)
+                    .Add("output_mode", "both")
+                    .Add("include_document_chunks", true)
+                    .Add("max_chunks", 1),
+                cancellationToken: CancellationToken.None);
+
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+
+            Assert.True(root.GetProperty("ok").GetBoolean());
+            Assert.True(root.GetProperty("truncated").GetBoolean());
+            Assert.Equal(2, root.GetProperty("documents").GetArrayLength());
+            Assert.Equal(1, root.GetProperty("chunks").GetArrayLength());
+            Assert.Equal(2, root.GetProperty("chunks_returned").GetInt32());
+
+            var documents = root.GetProperty("documents").EnumerateArray().ToArray();
+            Assert.Equal(1, documents[0].GetProperty("chunks").GetArrayLength());
+            Assert.Equal(0, documents[1].GetProperty("chunks").GetArrayLength());
+
+            var warnings = root.GetProperty("warnings").EnumerateArray()
+                .Select(static x => x.GetString())
+                .Where(static x => !string.IsNullOrWhiteSpace(x))
+                .ToArray();
+            Assert.Contains(warnings, static warning => warning!.Contains("MaxReturnedChunks", StringComparison.OrdinalIgnoreCase));
+        } finally {
+            try {
+                Directory.Delete(tempRoot, recursive: true);
+            } catch {
+                // Best-effort cleanup.
+            }
+        }
+    }
+
+    [Fact]
+    public async Task OfficeImoRead_WhenMaxChunksReached_ReportsTruncationAndKeepsSharedBudgetSemantics() {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "ix-officeimo-read-" + Guid.NewGuid().ToString("n"));
+        Directory.CreateDirectory(tempRoot);
+
+        try {
+            var markdownPath = Path.Combine(tempRoot, "knowledge.md");
+            File.WriteAllText(markdownPath, "# Top\n\nParagraph 1.\n\n## Child\n\nParagraph 2.");
+
+            var options = new OfficeImoToolOptions();
+            options.AllowedRoots.Add(tempRoot);
+            var tool = new OfficeImoReadTool(options);
+
+            var json = await tool.InvokeAsync(
+                arguments: new JsonObject()
+                    .Add("path", markdownPath)
+                    .Add("output_mode", "both")
+                    .Add("include_document_chunks", true)
+                    .Add("max_chunks", 1),
+                cancellationToken: CancellationToken.None);
+
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+
+            Assert.True(root.GetProperty("ok").GetBoolean());
+            Assert.True(root.GetProperty("truncated").GetBoolean());
+            Assert.Equal(1, root.GetProperty("chunks").GetArrayLength());
+            Assert.Single(root.GetProperty("documents").EnumerateArray());
+            Assert.Equal(1, root.GetProperty("documents")[0].GetProperty("chunks").GetArrayLength());
+            Assert.Equal(2, root.GetProperty("chunks_returned").GetInt32());
+            Assert.True(root.GetProperty("chunks_produced").GetInt32() >= 2);
+        } finally {
+            try {
+                Directory.Delete(tempRoot, recursive: true);
+            } catch {
+                // Best-effort cleanup.
+            }
+        }
+    }
+
+    [Fact]
+    public void OfficeImoRead_ProjectDocuments_PromotesSourceWarningsToTopLevelWarnings() {
+        var sourceType = Type.GetType("OfficeIMO.Reader.ReaderSourceDocument, OfficeIMO.Reader", throwOnError: true)!;
+        var chunkType = Type.GetType("OfficeIMO.Reader.ReaderChunk, OfficeIMO.Reader", throwOnError: true)!;
+        var source = Activator.CreateInstance(sourceType)!;
+        sourceType.GetProperty("Path")!.SetValue(source, "example.md");
+        sourceType.GetProperty("Parsed")!.SetValue(source, true);
+        sourceType.GetProperty("Warnings")!.SetValue(source, new[] { "source warning" });
+        sourceType.GetProperty("Chunks")!.SetValue(source, Array.CreateInstance(chunkType, 0));
+
+        var listType = typeof(List<>).MakeGenericType(sourceType);
+        var sources = Activator.CreateInstance(listType)!;
+        listType.GetMethod("Add")!.Invoke(sources, new[] { source });
+
+        var result = new OfficeImoReadResult();
+        var method = typeof(OfficeImoReadTool)
+            .GetMethods(BindingFlags.Static | BindingFlags.NonPublic)
+            .Single(candidate =>
+                string.Equals(candidate.Name, "ProjectDocuments", StringComparison.Ordinal)
+                && candidate.GetParameters().Length == 5
+                && candidate.GetParameters()[0].ParameterType.IsGenericType);
+
+        method.Invoke(null, new object[] { sources, false, true, false, result });
+
+        Assert.Contains("source warning", result.Warnings, StringComparer.OrdinalIgnoreCase);
+        Assert.Single(result.Documents);
+        Assert.Contains("source warning", result.Documents[0].Warnings, StringComparer.OrdinalIgnoreCase);
     }
 }

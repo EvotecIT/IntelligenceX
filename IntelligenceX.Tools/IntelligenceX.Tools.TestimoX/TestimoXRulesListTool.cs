@@ -6,7 +6,6 @@ using System.Threading.Tasks;
 using IntelligenceX.Json;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.Common;
-using TestimoX.Definitions;
 using TestimoX.Execution;
 
 namespace IntelligenceX.Tools.TestimoX;
@@ -125,71 +124,42 @@ public sealed class TestimoXRulesListTool : TestimoXToolBase, ITool {
         var includeDisabled = context.Request.IncludeDisabled;
         var includeHidden = context.Request.IncludeHidden;
         var includeDeprecated = context.Request.IncludeDeprecated;
-        var searchText = context.Request.SearchText;
-        var sourceTypeFilter = context.Request.SourceTypeFilter;
-        var ruleOrigin = context.Request.RuleOrigin;
-        var requestedCategories = context.Request.RequestedCategories;
-        var requestedTags = context.Request.RequestedTags;
-        var powerShellRulesDirectory = context.Request.PowerShellRulesDirectory;
         var pageSize = context.Request.PageSize;
         var offset = context.Request.Offset;
-
-        List<Rule> discovered;
-        var usingExternalDirectory = !string.IsNullOrWhiteSpace(powerShellRulesDirectory);
-        HashSet<string>? builtinRuleNames = null;
-        var runner = new TestimoRunner();
-        var discovery = await TryDiscoverRulesAsync(
-            runner,
-            powerShellRulesDirectory,
-            cancellationToken,
-            defaultErrorMessage: "TestimoX rule discovery failed.").ConfigureAwait(false);
-        if (!string.IsNullOrWhiteSpace(discovery.ErrorResponse)) {
-            return discovery.ErrorResponse!;
+        ToolingRuleDiscoveryResult discovery;
+        try {
+            discovery = await ToolingRuleService.DiscoverRulesAsync(new ToolingRuleDiscoveryRequest {
+                IncludeDisabled = includeDisabled,
+                IncludeHidden = includeHidden,
+                IncludeDeprecated = includeDeprecated,
+                Query = context.Request.SearchText,
+                Categories = context.Request.RequestedCategories,
+                Tags = context.Request.RequestedTags,
+                SourceTypes = ToToolingSourceTypes(context.Request.SourceTypeFilter),
+                RuleOrigin = ToToolingRuleOrigin(context.Request.RuleOrigin),
+                PowerShellRulesDirectory = context.Request.PowerShellRulesDirectory
+            }, cancellationToken).ConfigureAwait(false);
+        } catch (OperationCanceledException) {
+            throw;
+        } catch (Exception ex) {
+            return ErrorFromException(ex, "TestimoX rule discovery failed.");
         }
 
-        discovered = discovery.Rules ?? new List<Rule>();
-        if (usingExternalDirectory) {
-            var builtinDiscovery = await TryDiscoverBuiltinRuleNamesAsync(
-                cancellationToken,
-                defaultErrorMessage: "TestimoX builtin rule discovery failed.").ConfigureAwait(false);
-            if (!string.IsNullOrWhiteSpace(builtinDiscovery.ErrorResponse)) {
-                return builtinDiscovery.ErrorResponse!;
-            }
-
-            builtinRuleNames = builtinDiscovery.RuleNames ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        }
-
-        IEnumerable<Rule> filtered = TestimoXRuleSelectionHelper.ApplyVisibilityFilters(
-            discovered,
-            includeDisabled: includeDisabled,
-            includeHidden: includeHidden,
-            includeDeprecated: includeDeprecated);
-        filtered = TestimoXRuleSelectionHelper.ApplySharedFilters(
-            filtered,
-            searchText,
-            requestedCategories,
-            requestedTags,
-            sourceTypeFilter,
-            ruleOrigin,
-            usingExternalDirectory,
-            builtinRuleNames);
-
-        var matchedRows = filtered
-            .OrderBy(static x => x.Name, StringComparer.OrdinalIgnoreCase)
-            .Select(rule => new TestimoRuleCatalogRow(
-                RuleName: rule.Name,
-                DisplayName: rule.DisplayName,
-                Description: rule.Description,
-                SourceType: TestimoXRuleSelectionHelper.GetSourceType(rule),
-                Enabled: rule.Enable,
-                Visibility: rule.Visibility.ToString(),
-                IsDeprecated: rule.IsDeprecated,
-                Scope: rule.Scope.ToString(),
-                PermissionRequired: rule.PermissionRequired.ToString(),
-                Cost: rule.Cost.ToString(),
-                RuleOrigin: TestimoXRuleSelectionHelper.ResolveRuleOrigin(rule, usingExternalDirectory, builtinRuleNames),
-                Categories: rule.Category.Select(static x => x.ToString()).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(static x => x, StringComparer.OrdinalIgnoreCase).ToArray(),
-                Tags: rule.Tags.Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(static x => x, StringComparer.OrdinalIgnoreCase).ToArray()))
+        var matchedRows = discovery.Rules
+            .Select(row => new TestimoRuleCatalogRow(
+                RuleName: row.Name,
+                DisplayName: row.DisplayName,
+                Description: row.Description,
+                SourceType: NormalizeSourceTypeName(row.SourceType),
+                Enabled: row.Enabled,
+                Visibility: row.Visibility,
+                IsDeprecated: row.IsDeprecated,
+                Scope: row.Scope,
+                PermissionRequired: row.PermissionRequired,
+                Cost: row.Cost,
+                RuleOrigin: row.RuleOrigin,
+                Categories: row.Categories,
+                Tags: row.Tags))
             .ToList();
 
         if (offset > matchedRows.Count) {
@@ -206,8 +176,8 @@ public sealed class TestimoXRulesListTool : TestimoXToolBase, ITool {
         var nextCursor = nextOffset.HasValue ? OffsetCursor.Encode(nextOffset.Value) : string.Empty;
 
         var model = new TestimoRulesCatalogResult(
-            DiscoveredCount: discovered.Count,
-            MatchedCount: matchedRows.Count,
+            DiscoveredCount: discovery.DiscoveredCount,
+            MatchedCount: discovery.MatchedCount,
             ReturnedCount: rows.Count,
             Offset: offset,
             PageSize: pageSize,
@@ -224,11 +194,11 @@ public sealed class TestimoXRulesListTool : TestimoXToolBase, ITool {
             sourceRows: rows,
             viewRowsPath: "rules_view",
             title: "TestimoX rules (preview)",
-            maxTop: Math.Max(Options.MaxRulesInCatalog, matchedRows.Count),
+            maxTop: Math.Max(Options.MaxRulesInCatalog, discovery.MatchedCount),
             baseTruncated: truncated,
-            scanned: discovered.Count,
+            scanned: discovery.DiscoveredCount,
             metaMutate: meta => {
-                meta.Add("matched_count", matchedRows.Count);
+                meta.Add("matched_count", discovery.MatchedCount);
                 meta.Add("returned_count", rows.Count);
                 meta.Add("offset", offset);
                 if (pageSize.HasValue) {

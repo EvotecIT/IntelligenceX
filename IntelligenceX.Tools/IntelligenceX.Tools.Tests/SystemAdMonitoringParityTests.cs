@@ -676,6 +676,31 @@ public class SystemAdMonitoringParityTests {
         Assert.Equal(80, document.RootElement.GetProperty("snapshot").GetProperty("scheduled_probes").GetInt32());
     }
 
+    [Fact]
+    public async Task AdMonitoringProbeRunTool_DirectoryProbeKind_ShouldFailFastWhenMissing() {
+        var tool = new AdMonitoringProbeRunTool(new ActiveDirectoryToolOptions());
+
+        var json = await tool.InvokeAsync(
+            new JsonObject()
+                .Add("probe_kind", "directory")
+                .Add("targets", new JsonArray().Add("dc01.contoso.com")),
+            CancellationToken.None);
+
+        using var document = JsonDocument.Parse(json);
+        Assert.Equal("invalid_argument", document.RootElement.GetProperty("error_code").GetString());
+        Assert.Contains("directory_probe_kind is required", document.RootElement.GetProperty("error").GetString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void AdMonitoringProbeRunTool_HttpsUrlOnlyRequests_ShouldNotFanOutToResolvedTargets() {
+        var targets = AdMonitoringProbeRunTool.ResolveHttpsTargetsForRequest(
+            explicitTargets: Array.Empty<string>(),
+            resolvedTargets: new[] { "dc01.contoso.com", "dc02.contoso.com" },
+            url: "https://portal.contoso.com/health");
+
+        Assert.Empty(targets);
+    }
+
     private static string CreateMonitoringDirectory() {
         var path = Path.Combine(Path.GetTempPath(), "ix-ad-monitoring-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(path);

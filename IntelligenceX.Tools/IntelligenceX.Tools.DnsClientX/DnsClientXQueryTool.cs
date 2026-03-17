@@ -123,19 +123,21 @@ public sealed class DnsClientXQueryTool : DnsClientXToolBase, ITool {
         DnsResponse response;
         try {
             response = await ClientX.QueryDns(
-                name: request.Name,
-                recordType: recordType,
-                dnsEndpoint: endpoint,
-                dnsSelectionStrategy: DnsSelectionStrategy.First,
-                timeOutMilliseconds: request.TimeoutMs,
-                retryOnTransient: request.RetryOnTransient,
-                maxRetries: request.MaxRetries,
-                retryDelayMs: 200,
-                requestDnsSec: request.RequestDnsSec,
-                validateDnsSec: request.ValidateDnsSec,
-                typedRecords: request.TypedRecords,
-                parseTypedTxtRecords: request.ParseTypedTxtRecords,
-                cancellationToken: cancellationToken);
+                request.Name,
+                recordType,
+                new DnsQueryOptions {
+                    DnsEndpoint = endpoint,
+                    DnsSelectionStrategy = DnsSelectionStrategy.First,
+                    TimeOutMilliseconds = request.TimeoutMs,
+                    RetryOnTransient = request.RetryOnTransient,
+                    MaxRetries = request.MaxRetries,
+                    RetryDelayMs = 200,
+                    RequestDnsSec = request.RequestDnsSec,
+                    ValidateDnsSec = request.ValidateDnsSec,
+                    TypedRecords = request.TypedRecords,
+                    ParseTypedTxtRecords = request.ParseTypedTxtRecords
+                },
+                cancellationToken);
         } catch (OperationCanceledException) {
             return ToolResultV2.Error(
                 errorCode: "timeout",
@@ -163,12 +165,7 @@ public sealed class DnsClientXQueryTool : DnsClientXToolBase, ITool {
         var truncated = answersTruncated || authoritiesTruncated || additionalTruncated;
 
         if (response.ErrorCode == DnsQueryErrorCode.None
-            && IsSuspiciousEmptyNoErrorResponse(
-                questionCount: questions.Count,
-                answerCount: answers.Count,
-                authorityCount: authorities.Count,
-                additionalCount: additional.Count,
-                isTruncated: response.IsTruncated)) {
+            && DnsQueryDiagnostics.IsSuspiciousEmptySuccess(response)) {
             return ToolResultV2.Error(
                 errorCode: "query_failed",
                 error: "Resolver returned an empty response envelope without question/answer sections.",
@@ -310,22 +307,6 @@ public sealed class DnsClientXQueryTool : DnsClientXToolBase, ITool {
         return rows;
     }
 #endif
-
-    private static bool IsSuspiciousEmptyNoErrorResponse(
-        int questionCount,
-        int answerCount,
-        int authorityCount,
-        int additionalCount,
-        bool isTruncated) {
-        if (isTruncated) {
-            return false;
-        }
-
-        return questionCount <= 0
-               && answerCount <= 0
-               && authorityCount <= 0
-               && additionalCount <= 0;
-    }
 
     private static JsonValue? BuildRenderHints(
         int answerCount,

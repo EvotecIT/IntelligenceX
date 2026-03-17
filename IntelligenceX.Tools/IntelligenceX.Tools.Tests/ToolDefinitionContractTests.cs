@@ -843,6 +843,8 @@ public class ToolDefinitionContractTests {
         AssertRoutingRole(definitionsByName, "testimox_rules_run", ToolRoutingTaxonomy.RoleOperational);
         AssertRoutingIntent(definitionsByName, "testimox_run_summary", "security_posture", "act_domain_scope_security_posture");
         AssertRoutingRole(definitionsByName, "testimox_analytics_diagnostics_get", ToolRoutingTaxonomy.RoleDiagnostic);
+        AssertRoutingRole(definitionsByName, "testimox_dashboard_autogenerate_status_get", ToolRoutingTaxonomy.RoleDiagnostic);
+        AssertRoutingRole(definitionsByName, "testimox_availability_rollup_status_get", ToolRoutingTaxonomy.RoleDiagnostic);
         AssertRoutingRole(definitionsByName, "testimox_history_query", ToolRoutingTaxonomy.RoleResolver);
         AssertRoutingRole(definitionsByName, "testimox_report_job_history", ToolRoutingTaxonomy.RoleResolver);
         AssertRoutingRole(definitionsByName, "testimox_report_data_snapshot_get", ToolRoutingTaxonomy.RoleResolver);
@@ -888,6 +890,34 @@ public class ToolDefinitionContractTests {
                             && route.Bindings.Any(static binding =>
                                 string.Equals(binding.SourceField, "slow_probes[].target", StringComparison.OrdinalIgnoreCase)
                                 && string.Equals(binding.TargetArgument, "machine_name", StringComparison.OrdinalIgnoreCase)));
+
+        var dashboardStatusHandoff = Assert.IsType<ToolHandoffContract>(definitionsByName["testimox_dashboard_autogenerate_status_get"].Handoff);
+        Assert.Contains(
+            dashboardStatusHandoff.OutboundRoutes,
+            static route => string.Equals(route.TargetPackId, "filesystem", StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(route.TargetToolName, "fs_read", StringComparison.OrdinalIgnoreCase)
+                            && route.Bindings.Count == 1
+                            && route.Bindings.Any(static binding =>
+                                string.Equals(binding.SourceField, "snapshot_path", StringComparison.OrdinalIgnoreCase)
+                                && string.Equals(binding.TargetArgument, "path", StringComparison.OrdinalIgnoreCase)));
+        Assert.Contains(
+            dashboardStatusHandoff.OutboundRoutes,
+            static route => string.Equals(route.TargetPackId, "filesystem", StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(route.TargetToolName, "fs_read", StringComparison.OrdinalIgnoreCase)
+                            && route.Bindings.Count == 1
+                            && route.Bindings.Any(static binding =>
+                                string.Equals(binding.SourceField, "report_path", StringComparison.OrdinalIgnoreCase)
+                                && string.Equals(binding.TargetArgument, "path", StringComparison.OrdinalIgnoreCase)));
+
+        var rollupStatusHandoff = Assert.IsType<ToolHandoffContract>(definitionsByName["testimox_availability_rollup_status_get"].Handoff);
+        Assert.Contains(
+            rollupStatusHandoff.OutboundRoutes,
+            static route => string.Equals(route.TargetPackId, "filesystem", StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(route.TargetToolName, "fs_read", StringComparison.OrdinalIgnoreCase)
+                            && route.Bindings.Count == 1
+                            && route.Bindings.Any(static binding =>
+                                string.Equals(binding.SourceField, "snapshot_path", StringComparison.OrdinalIgnoreCase)
+                                && string.Equals(binding.TargetArgument, "path", StringComparison.OrdinalIgnoreCase)));
 
         var historyQueryHandoff = Assert.IsType<ToolHandoffContract>(definitionsByName["testimox_history_query"].Handoff);
         Assert.Contains(
@@ -1067,6 +1097,8 @@ public class ToolDefinitionContractTests {
 
         Assert.Contains("testimox_analytics_pack_info", names);
         Assert.Contains("testimox_analytics_diagnostics_get", names);
+        Assert.Contains("testimox_dashboard_autogenerate_status_get", names);
+        Assert.Contains("testimox_availability_rollup_status_get", names);
         Assert.Contains("testimox_probe_index_status", names);
         Assert.Contains("testimox_maintenance_window_history", names);
         Assert.Contains("testimox_report_data_snapshot_get", names);
@@ -1076,6 +1108,8 @@ public class ToolDefinitionContractTests {
 
         var definitionsByName = definitions.ToDictionary(static d => d.Name, StringComparer.OrdinalIgnoreCase);
         var monitoringDiagnostics = Assert.IsType<ToolDefinition>(definitionsByName["testimox_analytics_diagnostics_get"]);
+        var dashboardStatus = Assert.IsType<ToolDefinition>(definitionsByName["testimox_dashboard_autogenerate_status_get"]);
+        var rollupStatus = Assert.IsType<ToolDefinition>(definitionsByName["testimox_availability_rollup_status_get"]);
         var probeIndexStatus = Assert.IsType<ToolDefinition>(definitionsByName["testimox_probe_index_status"]);
         var maintenanceWindowHistory = Assert.IsType<ToolDefinition>(definitionsByName["testimox_maintenance_window_history"]);
         var reportDataSnapshot = Assert.IsType<ToolDefinition>(definitionsByName["testimox_report_data_snapshot_get"]);
@@ -1086,6 +1120,12 @@ public class ToolDefinitionContractTests {
         Assert.Contains("diagnostics", monitoringDiagnostics.Tags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("snapshot", monitoringDiagnostics.Tags, StringComparer.OrdinalIgnoreCase);
         AssertFallbackRouting(monitoringDiagnostics, requiresSelection: true, selectionKeys: new[] { "history_directory" }, hintKeys: new[] { "history_directory", "include_slow_probes", "max_slow_probes" });
+        Assert.Contains("dashboard", dashboardStatus.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("status", dashboardStatus.Tags, StringComparer.OrdinalIgnoreCase);
+        AssertFallbackRouting(dashboardStatus, requiresSelection: true, selectionKeys: new[] { "history_directory" }, hintKeys: new[] { "history_directory" });
+        Assert.Contains("availability", rollupStatus.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("rollup", rollupStatus.Tags, StringComparer.OrdinalIgnoreCase);
+        AssertFallbackRouting(rollupStatus, requiresSelection: true, selectionKeys: new[] { "history_directory" }, hintKeys: new[] { "history_directory" });
         Assert.Contains("index", probeIndexStatus.Tags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("status", probeIndexStatus.Tags, StringComparer.OrdinalIgnoreCase);
         AssertFallbackRouting(probeIndexStatus, requiresSelection: true, selectionKeys: new[] { "history_directory" }, hintKeys: new[] { "history_directory", "probe_names", "since_utc", "probe_name_contains", "statuses" });
@@ -2724,6 +2764,32 @@ public class ToolDefinitionContractTests {
             diagnosticsHandoff.OutboundRoutes,
             static route => string.Equals(route.TargetPackId, "system", StringComparison.OrdinalIgnoreCase)
                             && string.Equals(route.TargetToolName, "system_info", StringComparison.OrdinalIgnoreCase));
+
+        var dashboardStatus = ApplyInternalToolContract(
+            typeof(TestimoXAnalyticsPackInfoTool),
+            "IntelligenceX.Tools.TestimoX.TestimoXAnalyticsPackContractCatalog",
+            new ToolDefinition(
+                name: "testimox_dashboard_autogenerate_status_get",
+                description: "Dashboard status",
+                parameters: ToolSchema.Object().NoAdditionalProperties()));
+        var dashboardStatusHandoff = Assert.IsType<ToolHandoffContract>(dashboardStatus.Handoff);
+        Assert.Contains(
+            dashboardStatusHandoff.OutboundRoutes,
+            static route => string.Equals(route.TargetPackId, "filesystem", StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(route.TargetToolName, "fs_read", StringComparison.OrdinalIgnoreCase));
+
+        var rollupStatus = ApplyInternalToolContract(
+            typeof(TestimoXAnalyticsPackInfoTool),
+            "IntelligenceX.Tools.TestimoX.TestimoXAnalyticsPackContractCatalog",
+            new ToolDefinition(
+                name: "testimox_availability_rollup_status_get",
+                description: "Rollup status",
+                parameters: ToolSchema.Object().NoAdditionalProperties()));
+        var rollupStatusHandoff = Assert.IsType<ToolHandoffContract>(rollupStatus.Handoff);
+        Assert.Contains(
+            rollupStatusHandoff.OutboundRoutes,
+            static route => string.Equals(route.TargetPackId, "filesystem", StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(route.TargetToolName, "fs_read", StringComparison.OrdinalIgnoreCase));
 
         var reportJobHistory = ApplyInternalToolContract(
             typeof(TestimoXAnalyticsPackInfoTool),

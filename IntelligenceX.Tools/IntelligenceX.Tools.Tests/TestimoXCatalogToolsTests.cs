@@ -177,6 +177,49 @@ public sealed class TestimoXCatalogToolsTests {
     }
 
     [Fact]
+    public async Task TestimoXDashboardAutoGenerateStatusGetTool_ShouldReturnDashboardSchedulerSnapshot() {
+        using var fixture = CreateMonitoringHistoryFixture();
+        var options = new TestimoXToolOptions();
+        options.AllowedHistoryRoots.Add(fixture.RootDirectory);
+        var tool = new TestimoXDashboardAutoGenerateStatusGetTool(options);
+        var arguments = new JsonObject()
+            .Add("history_directory", fixture.HistoryDirectory);
+
+        var json = await tool.InvokeAsync(arguments, CancellationToken.None);
+
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+
+        Assert.True(root.GetProperty("ok").GetBoolean());
+        Assert.Equal("dashboard-auto.html", root.GetProperty("snapshot").GetProperty("report_file").GetString());
+        Assert.Equal("Success", root.GetProperty("snapshot").GetProperty("last_outcome").GetString());
+        Assert.Equal("profile-a", root.GetProperty("snapshot").GetProperty("profile_name").GetString());
+        Assert.False(root.GetProperty("snapshot").GetProperty("in_flight").GetBoolean());
+        Assert.Equal("dashboard-auto.html", root.GetProperty("meta").GetProperty("report_file").GetString());
+    }
+
+    [Fact]
+    public async Task TestimoXAvailabilityRollupStatusGetTool_ShouldReturnRollupRefreshSnapshot() {
+        using var fixture = CreateMonitoringHistoryFixture();
+        var options = new TestimoXToolOptions();
+        options.AllowedHistoryRoots.Add(fixture.RootDirectory);
+        var tool = new TestimoXAvailabilityRollupStatusGetTool(options);
+        var arguments = new JsonObject()
+            .Add("history_directory", fixture.HistoryDirectory);
+
+        var json = await tool.InvokeAsync(arguments, CancellationToken.None);
+
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+
+        Assert.True(root.GetProperty("ok").GetBoolean());
+        Assert.Equal(24, root.GetProperty("snapshot").GetProperty("hourly_row_count").GetInt32());
+        Assert.Equal(7, root.GetProperty("snapshot").GetProperty("daily_row_count").GetInt32());
+        Assert.Equal("", root.GetProperty("snapshot").GetProperty("last_error").GetString());
+        Assert.False(root.GetProperty("meta").GetProperty("has_error").GetBoolean());
+    }
+
+    [Fact]
     public async Task TestimoXReportDataSnapshotGetTool_ShouldReturnPreviewByDefault() {
         using var fixture = CreateMonitoringHistoryFixture();
         var options = new TestimoXToolOptions();
@@ -722,6 +765,60 @@ public sealed class TestimoXCatalogToolsTests {
         File.WriteAllText(
             Path.Combine(historyDirectory, MonitoringDiagnosticsSnapshot.DefaultFileName),
             JsonSerializer.Serialize(diagnosticsSnapshot));
+
+        var dashboardSnapshot = new MonitoringDashboardAutoGenerateSnapshot {
+            GeneratedUtc = new DateTimeOffset(2026, 03, 03, 09, 05, 00, TimeSpan.Zero),
+            ProfileName = "profile-a",
+            Enabled = true,
+            Interval = TimeSpan.FromMinutes(15),
+            ConfiguredTimeout = TimeSpan.FromMinutes(5),
+            EffectiveTimeout = TimeSpan.FromMinutes(8),
+            NextRunUtc = new DateTimeOffset(2026, 03, 03, 09, 15, 00, TimeSpan.Zero),
+            InFlight = false,
+            LastRunId = 42,
+            LastRunStartedUtc = new DateTimeOffset(2026, 03, 03, 09, 00, 00, TimeSpan.Zero),
+            LastRunCompletedUtc = new DateTimeOffset(2026, 03, 03, 09, 02, 00, TimeSpan.Zero),
+            LastRunDurationSeconds = 120,
+            LastRunHistoryLoadSeconds = 18,
+            LastRunReportBuildSeconds = 32,
+            LastRunReportRenderSeconds = 44,
+            LastRunReportWriteSeconds = 7,
+            LastOutcome = "Success",
+            LastOutcomeDetails = "dashboard refreshed",
+            BusyDeferralBypassCount = 1,
+            LastBusyDeferralBypassUtc = new DateTimeOffset(2026, 03, 02, 09, 00, 00, TimeSpan.Zero),
+            LastBusyDeferralBypassReason = "stale-report",
+            LastRunHistoryLoadCompleted = true,
+            LastRunFallbackGenerated = false,
+            LastFallbackReason = null,
+            HistoryBreakerOpenUntilUtc = new DateTimeOffset(2026, 03, 03, 09, 30, 00, TimeSpan.Zero),
+            SqliteOomCooldownUntilUtc = null,
+            ReportPath = Path.Combine(historyDirectory, "dashboard-auto.html"),
+            ReportLastWriteUtc = new DateTimeOffset(2026, 03, 03, 09, 02, 00, TimeSpan.Zero),
+            LiveSnapshotUpdatedUtc = new DateTimeOffset(2026, 03, 03, 09, 01, 30, TimeSpan.Zero),
+            ReportAgeSeconds = 180,
+            SkippedIntervals = 0,
+            BehindScheduleSeconds = 0,
+            LastError = null,
+            HistoryEntriesOverride = 200,
+            LastRunHistoryCacheMode = "precomputed",
+            LastRunHistoryIndexWarning = null
+        };
+        File.WriteAllText(
+            Path.Combine(historyDirectory, MonitoringDashboardAutoGenerateSnapshot.DefaultFileName),
+            JsonSerializer.Serialize(dashboardSnapshot));
+
+        var rollupSnapshot = new MonitoringAvailabilityRollupSnapshot {
+            RefreshedUtc = new DateTimeOffset(2026, 03, 03, 09, 04, 00, TimeSpan.Zero),
+            HourlyLatestBucketUtc = new DateTimeOffset(2026, 03, 03, 09, 00, 00, TimeSpan.Zero),
+            DailyLatestBucketUtc = new DateTimeOffset(2026, 03, 03, 00, 00, 00, TimeSpan.Zero),
+            HourlyRowCount = 24,
+            DailyRowCount = 7,
+            LastError = null
+        };
+        File.WriteAllText(
+            Path.Combine(historyDirectory, MonitoringAvailabilityRollupSnapshot.DefaultFileName),
+            JsonSerializer.Serialize(rollupSnapshot));
 
         return new MonitoringHistoryFixture(rootDirectory, historyDirectory);
     }

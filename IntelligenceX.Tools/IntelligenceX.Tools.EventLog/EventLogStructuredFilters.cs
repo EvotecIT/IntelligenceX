@@ -1,5 +1,4 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -10,34 +9,92 @@ using IntelligenceX.Tools.Common;
 namespace IntelligenceX.Tools.EventLog;
 
 internal static class EventLogStructuredFilters {
-    internal const int MaxEventIds = 256;
-    internal const int MaxRecordIds = 256;
-    internal const int MaxProviderNameLength = 260;
-    internal const int MaxUserIdLength = 260;
-    internal const int MaxNamedDataKeys = 32;
-    internal const int MaxNamedDataValuesPerKey = 16;
-    internal const int MaxNamedDataKeyLength = 128;
-    internal const int MaxNamedDataValueLength = 256;
+    internal const int MaxEventIds = EventStructuredQueryFilterService.MaxEventIds;
+    internal const int MaxRecordIds = EventStructuredQueryFilterService.MaxRecordIds;
+    internal const int MaxNamedDataKeys = EventStructuredQueryFilterService.MaxNamedDataKeys;
+    internal const int MaxNamedDataValuesPerKey = EventStructuredQueryFilterService.MaxNamedDataValuesPerKey;
+    internal const int MaxNamedDataKeyLength = EventStructuredQueryFilterService.MaxNamedDataKeyLength;
+    internal const int MaxNamedDataValueLength = EventStructuredQueryFilterService.MaxNamedDataValueLength;
 
-    internal static readonly string[] LevelNames = Enum.GetValues<Level>()
-        .Select(static value => ToSnakeCase(value.ToString()))
-        .Distinct(StringComparer.OrdinalIgnoreCase)
-        .OrderBy(static value => value, StringComparer.OrdinalIgnoreCase)
-        .ToArray();
+    internal static readonly string[] LevelNames = EventStructuredQueryFilterService.LevelNames.ToArray();
+    internal static readonly string[] KeywordNames = EventStructuredQueryFilterService.KeywordNames.ToArray();
 
-    internal static readonly string[] KeywordNames = Enum.GetValues<Keywords>()
-        .Select(static value => ToSnakeCase(value.ToString()))
-        .Distinct(StringComparer.OrdinalIgnoreCase)
-        .OrderBy(static value => value, StringComparer.OrdinalIgnoreCase)
-        .ToArray();
+    internal static JsonObject ObjectMapSchema(string description) {
+        return new JsonObject()
+            .Add("type", "object")
+            .Add("description", description);
+    }
 
-    private static readonly IReadOnlyDictionary<string, Level> LevelsByName = BuildLevelMap();
-    private static readonly IReadOnlyDictionary<string, Keywords> KeywordsByName = BuildKeywordMap();
+    internal static bool TryNormalize(
+        JsonObject? arguments,
+        DateTime? startUtc,
+        DateTime? endUtc,
+        out EventStructuredQueryFilter? filter,
+        out string? error) {
+        filter = null;
+        error = null;
 
-    internal static bool TryReadOptionalBoundedString(
+        if (!TryReadOptionalPositiveInt32Array(arguments, "event_ids", out var eventIds, out error)) {
+            return false;
+        }
+
+        if (!TryReadOptionalString(arguments, "provider_name", allowNumber: false, out var providerName, out error)) {
+            return false;
+        }
+
+        if (!TryReadOptionalString(arguments, "level", allowNumber: true, out var level, out error)) {
+            return false;
+        }
+
+        if (!TryReadOptionalString(arguments, "keywords", allowNumber: true, out var keywords, out error)) {
+            return false;
+        }
+
+        if (!TryReadOptionalString(arguments, "user_id", allowNumber: false, out var userId, out error)) {
+            return false;
+        }
+
+        if (!TryReadOptionalPositiveInt64Array(arguments, "event_record_ids", out var eventRecordIds, out error)) {
+            return false;
+        }
+
+        if (!TryReadOptionalNamedDataMap(arguments, "named_data_filter", out var namedDataFilter, out error)) {
+            return false;
+        }
+
+        if (!TryReadOptionalNamedDataMap(arguments, "named_data_exclude_filter", out var namedDataExcludeFilter, out error)) {
+            return false;
+        }
+
+        return EventStructuredQueryFilterService.TryNormalize(
+            new EventStructuredQueryFilterInput {
+                EventIds = eventIds,
+                ProviderName = providerName,
+                StartTimeUtc = startUtc,
+                EndTimeUtc = endUtc,
+                Level = level,
+                Keywords = keywords,
+                UserId = userId,
+                RecordIds = eventRecordIds,
+                NamedDataFilter = namedDataFilter,
+                NamedDataExcludeFilter = namedDataExcludeFilter
+            },
+            out filter,
+            out error);
+    }
+
+    internal static bool HasAnyStructuredFilter(EventStructuredQueryFilter? filter) {
+        return EventStructuredQueryFilterService.HasAny(filter);
+    }
+
+    internal static string BuildStructuredXPath(EventStructuredQueryFilter? filter) {
+        return EventStructuredQueryFilterService.BuildXPath(filter);
+    }
+
+    private static bool TryReadOptionalString(
         JsonObject? arguments,
         string argumentName,
-        int maxLength,
+        bool allowNumber,
         out string? value,
         out string? error) {
         value = null;
@@ -47,37 +104,32 @@ internal static class EventLogStructuredFilters {
             return true;
         }
 
-        if (raw.Kind != JsonValueKind.String) {
-            error = $"{argumentName} must be a string.";
-            return false;
-        }
-
-        var text = raw.AsString();
-        if (string.IsNullOrWhiteSpace(text)) {
+        if (raw.Kind == JsonValueKind.String) {
+            value = raw.AsString();
             return true;
         }
 
-        var normalized = text.Trim();
-        if (normalized.Length > maxLength) {
-            error = $"{argumentName} must be <= {maxLength} characters.";
-            return false;
-        }
+        if (allowNumber && raw.Kind == JsonValueKind.Number) {
+            var asInt64 = raw.AsInt64();
+            if (asInt64.HasValue) {
+                value = asInt64.Value.ToString(CultureInfo.InvariantCulture);
+                return true;
+            }
 
-        for (var i = 0; i < normalized.Length; i++) {
-            if (char.IsControl(normalized[i])) {
-                error = $"{argumentName} must not contain control characters.";
-                return false;
+            var asDouble = raw.AsDouble();
+            if (asDouble.HasValue && double.IsFinite(asDouble.Value)) {
+                value = asDouble.Value.ToString(CultureInfo.InvariantCulture);
+                return true;
             }
         }
 
-        value = normalized;
-        return true;
+        error = $"{argumentName} must be a string.";
+        return false;
     }
 
-    internal static bool TryParseOptionalEventIds(
+    private static bool TryReadOptionalPositiveInt32Array(
         JsonObject? arguments,
         string argumentName,
-        int maxItems,
         out List<int>? values,
         out string? error) {
         values = null;
@@ -93,38 +145,18 @@ internal static class EventLogStructuredFilters {
         }
 
         var array = raw.AsArray();
-        if (array is null || array.Count == 0) {
-            return true;
-        }
-
-        if (array.Count > maxItems) {
-            error = $"{argumentName} supports at most {maxItems} values.";
+        if (array is { Count: > MaxEventIds }) {
+            error = $"{argumentName} supports at most {MaxEventIds} values.";
             return false;
         }
 
-        var list = new List<int>(array.Count);
-        var dedup = new HashSet<int>();
-        for (var i = 0; i < array.Count; i++) {
-            var item = array[i].AsInt64();
-            if (!item.HasValue || item.Value <= 0 || item.Value > int.MaxValue) {
-                error = $"{argumentName} values must be positive 32-bit integers.";
-                return false;
-            }
-
-            var value = (int)item.Value;
-            if (dedup.Add(value)) {
-                list.Add(value);
-            }
-        }
-
-        values = list.Count == 0 ? null : list;
-        return true;
+        values = ToolArgs.TryReadPositiveInt32Array(array, argumentName, out error);
+        return error is null;
     }
 
-    internal static bool TryParseOptionalRecordIds(
+    private static bool TryReadOptionalPositiveInt64Array(
         JsonObject? arguments,
         string argumentName,
-        int maxItems,
         out List<long>? values,
         out string? error) {
         values = null;
@@ -144,13 +176,13 @@ internal static class EventLogStructuredFilters {
             return true;
         }
 
-        if (array.Count > maxItems) {
-            error = $"{argumentName} supports at most {maxItems} values.";
+        if (array.Count > MaxRecordIds) {
+            error = $"{argumentName} supports at most {MaxRecordIds} values.";
             return false;
         }
 
         var list = new List<long>(array.Count);
-        var dedup = new HashSet<long>();
+        var seen = new HashSet<long>();
         for (var i = 0; i < array.Count; i++) {
             var item = array[i].AsInt64();
             if (!item.HasValue || item.Value <= 0) {
@@ -158,126 +190,21 @@ internal static class EventLogStructuredFilters {
                 return false;
             }
 
-            if (dedup.Add(item.Value)) {
+            if (seen.Add(item.Value)) {
                 list.Add(item.Value);
             }
         }
 
-        values = list.Count == 0 ? null : list;
+        values = list;
         return true;
     }
 
-    internal static bool TryParseOptionalLevel(
+    private static bool TryReadOptionalNamedDataMap(
         JsonObject? arguments,
         string argumentName,
-        out Level? level,
+        out IReadOnlyDictionary<string, IReadOnlyList<string>>? values,
         out string? error) {
-        level = null;
-        error = null;
-
-        if (arguments is null || !arguments.TryGetValue(argumentName, out var raw) || raw is null || raw.Kind == JsonValueKind.Null) {
-            return true;
-        }
-
-        if (raw.Kind == JsonValueKind.Number) {
-            var numeric = raw.AsInt64();
-            if (!numeric.HasValue || numeric.Value < int.MinValue || numeric.Value > int.MaxValue) {
-                error = $"{argumentName} must be one of: {string.Join(", ", LevelNames)}.";
-                return false;
-            }
-
-            var value = (Level)(int)numeric.Value;
-            if (!Enum.IsDefined(value)) {
-                error = $"{argumentName} must be one of: {string.Join(", ", LevelNames)}.";
-                return false;
-            }
-
-            level = value;
-            return true;
-        }
-
-        if (raw.Kind != JsonValueKind.String) {
-            error = $"{argumentName} must be a string.";
-            return false;
-        }
-
-        var text = raw.AsString();
-        if (string.IsNullOrWhiteSpace(text)) {
-            return true;
-        }
-
-        var normalized = ToSnakeCase(text.Trim());
-        if (normalized.Length == 0 || string.Equals(normalized, "any", StringComparison.OrdinalIgnoreCase)) {
-            return true;
-        }
-
-        if (LevelsByName.TryGetValue(normalized, out var parsed)) {
-            level = parsed;
-            return true;
-        }
-
-        error = $"{argumentName} must be one of: any, {string.Join(", ", LevelNames)}.";
-        return false;
-    }
-
-    internal static bool TryParseOptionalKeywords(
-        JsonObject? arguments,
-        string argumentName,
-        out Keywords? keywords,
-        out string? error) {
-        keywords = null;
-        error = null;
-
-        if (arguments is null || !arguments.TryGetValue(argumentName, out var raw) || raw is null || raw.Kind == JsonValueKind.Null) {
-            return true;
-        }
-
-        if (raw.Kind == JsonValueKind.Number) {
-            var numeric = raw.AsInt64();
-            if (!numeric.HasValue || numeric.Value < 0) {
-                error = $"{argumentName} must be one of: {string.Join(", ", KeywordNames)}.";
-                return false;
-            }
-
-            keywords = (Keywords)numeric.Value;
-            return true;
-        }
-
-        if (raw.Kind != JsonValueKind.String) {
-            error = $"{argumentName} must be a string.";
-            return false;
-        }
-
-        var text = raw.AsString();
-        if (string.IsNullOrWhiteSpace(text)) {
-            return true;
-        }
-
-        var normalized = ToSnakeCase(text.Trim());
-        if (normalized.Length == 0 || string.Equals(normalized, "any", StringComparison.OrdinalIgnoreCase)) {
-            return true;
-        }
-
-        if (KeywordsByName.TryGetValue(normalized, out var parsed)) {
-            keywords = parsed;
-            return true;
-        }
-
-        if (long.TryParse(normalized, NumberStyles.Integer, CultureInfo.InvariantCulture, out var numericMask) && numericMask >= 0) {
-            keywords = (Keywords)numericMask;
-            return true;
-        }
-
-        error = $"{argumentName} must be one of: any, {string.Join(", ", KeywordNames)}.";
-        return false;
-    }
-
-    internal static bool TryParseOptionalNamedDataFilter(
-        JsonObject? arguments,
-        string argumentName,
-        out Hashtable? filter,
-        out string? error) {
-        filter = null;
+        values = null;
         error = null;
 
         if (arguments is null || !arguments.TryGetValue(argumentName, out var raw) || raw is null || raw.Kind == JsonValueKind.Null) {
@@ -300,97 +227,53 @@ internal static class EventLogStructuredFilters {
             return false;
         }
 
-        var table = new Hashtable(StringComparer.OrdinalIgnoreCase);
-        foreach (var (keyRaw, value) in map) {
-            var key = (keyRaw ?? string.Empty).Trim();
-            if (key.Length == 0) {
-                error = $"{argumentName} keys must be non-empty strings.";
+        var normalized = new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (key, value) in map) {
+            if (!TryNormalizeNamedDataKey(argumentName, key, out var normalizedKey, out error)) {
                 return false;
             }
 
-            if (key.Length > MaxNamedDataKeyLength) {
-                error = $"{argumentName} keys must be <= {MaxNamedDataKeyLength} characters.";
+            if (!TryReadNamedDataValue(value, argumentName, normalizedKey, out var parsed, out error)) {
                 return false;
             }
 
-            if (!TryParseNamedDataValue(value, argumentName, key, out var parsed, out error)) {
-                return false;
-            }
-
-            table[key] = parsed;
+            normalized[normalizedKey] = parsed;
         }
 
-        filter = table.Count == 0 ? null : table;
+        values = normalized;
         return true;
     }
 
-    internal static bool HasAnyStructuredFilter(
-        IReadOnlyList<int>? eventIds,
-        string? providerName,
-        DateTime? startTimeUtc,
-        DateTime? endTimeUtc,
-        Level? level,
-        Keywords? keywords,
-        string? userId,
-        IReadOnlyList<long>? eventRecordIds,
-        Hashtable? namedDataFilter,
-        Hashtable? namedDataExcludeFilter) {
-        return (eventIds?.Count ?? 0) > 0
-               || !string.IsNullOrWhiteSpace(providerName)
-               || startTimeUtc.HasValue
-               || endTimeUtc.HasValue
-               || level.HasValue
-               || keywords.HasValue
-               || !string.IsNullOrWhiteSpace(userId)
-               || (eventRecordIds?.Count ?? 0) > 0
-               || (namedDataFilter?.Count ?? 0) > 0
-               || (namedDataExcludeFilter?.Count ?? 0) > 0;
+    private static bool TryNormalizeNamedDataKey(
+        string argumentName,
+        string? rawKey,
+        out string normalized,
+        out string? error) {
+        normalized = (rawKey ?? string.Empty).Trim();
+        error = null;
+
+        if (normalized.Length == 0) {
+            error = $"{argumentName} keys must be non-empty strings.";
+            return false;
+        }
+
+        if (!TryValidateNamedDataString(normalized, MaxNamedDataKeyLength, $"{argumentName} keys", out error)) {
+            return false;
+        }
+
+        return true;
     }
 
-    internal static string BuildStructuredXPath(
-        IReadOnlyList<int>? eventIds,
-        string? providerName,
-        Keywords? keywords,
-        Level? level,
-        DateTime? startTimeUtc,
-        DateTime? endTimeUtc,
-        string? userId,
-        IReadOnlyList<long>? eventRecordIds,
-        Hashtable? namedDataFilter,
-        Hashtable? namedDataExcludeFilter) {
-        var xpath = SearchEvents.BuildWinEventFilter(
-            id: eventIds?.Select(static value => value.ToString(CultureInfo.InvariantCulture)).ToArray(),
-            eventRecordId: eventRecordIds?.Select(static value => value.ToString(CultureInfo.InvariantCulture)).ToArray(),
-            startTime: startTimeUtc,
-            endTime: endTimeUtc,
-            providerName: string.IsNullOrWhiteSpace(providerName) ? null : new[] { providerName.Trim() },
-            keywords: keywords.HasValue ? new[] { (long)keywords.Value } : null,
-            level: level.HasValue ? new[] { level.Value.ToString() } : null,
-            userId: string.IsNullOrWhiteSpace(userId) ? null : new[] { userId.Trim() },
-            namedDataFilter: namedDataFilter is null ? null : new[] { namedDataFilter },
-            namedDataExcludeFilter: namedDataExcludeFilter is null ? null : new[] { namedDataExcludeFilter },
-            xpathOnly: true);
-
-        return string.IsNullOrWhiteSpace(xpath) ? "*" : xpath;
-    }
-
-    internal static JsonObject ObjectMapSchema(string description) {
-        return new JsonObject()
-            .Add("type", "object")
-            .Add("description", description);
-    }
-
-    private static bool TryParseNamedDataValue(
+    private static bool TryReadNamedDataValue(
         JsonValue value,
         string argumentName,
         string key,
-        out object parsed,
+        out IReadOnlyList<string> parsed,
         out string? error) {
-        parsed = string.Empty;
+        parsed = Array.Empty<string>();
         error = null;
 
         if (value is null || value.Kind == JsonValueKind.Null) {
-            parsed = Array.Empty<string>();
             return true;
         }
 
@@ -401,41 +284,41 @@ internal static class EventLogStructuredFilters {
                 return false;
             }
 
+            if (array.Count == 0 && string.Equals(argumentName, "named_data_exclude_filter", StringComparison.Ordinal)) {
+                error = $"{argumentName}.{key} must include at least one value.";
+                return false;
+            }
+
             if (array.Count > MaxNamedDataValuesPerKey) {
                 error = $"{argumentName}.{key} supports at most {MaxNamedDataValuesPerKey} values.";
                 return false;
             }
 
-            if (array.Count == 0) {
-                parsed = Array.Empty<string>();
-                return true;
-            }
-
-            var values = new List<string>(array.Count);
-            var dedup = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var items = new List<string>(array.Count);
+            var seen = new HashSet<string>(StringComparer.Ordinal);
             for (var i = 0; i < array.Count; i++) {
-                if (!TryParseNamedDataScalar(array[i], argumentName, key, out var scalar, out error)) {
+                if (!TryReadNamedDataScalar(array[i], argumentName, key, out var scalar, out error)) {
                     return false;
                 }
 
-                if (dedup.Add(scalar)) {
-                    values.Add(scalar);
+                if (seen.Add(scalar)) {
+                    items.Add(scalar);
                 }
             }
 
-            parsed = values.ToArray();
+            parsed = items;
             return true;
         }
 
-        if (!TryParseNamedDataScalar(value, argumentName, key, out var normalized, out error)) {
+        if (!TryReadNamedDataScalar(value, argumentName, key, out var normalized, out error)) {
             return false;
         }
 
-        parsed = normalized;
+        parsed = new[] { normalized };
         return true;
     }
 
-    private static bool TryParseNamedDataScalar(
+    private static bool TryReadNamedDataScalar(
         JsonValue value,
         string argumentName,
         string key,
@@ -445,11 +328,9 @@ internal static class EventLogStructuredFilters {
         error = null;
 
         switch (value.Kind) {
-            case JsonValueKind.String: {
-                var text = value.AsString() ?? string.Empty;
-                normalized = text.Trim();
+            case JsonValueKind.String:
+                normalized = (value.AsString() ?? string.Empty).Trim();
                 break;
-            }
             case JsonValueKind.Number: {
                 var asInt64 = value.AsInt64();
                 if (asInt64.HasValue) {
@@ -458,13 +339,13 @@ internal static class EventLogStructuredFilters {
                 }
 
                 var asDouble = value.AsDouble();
-                if (!asDouble.HasValue || !double.IsFinite(asDouble.Value)) {
-                    error = $"{argumentName}.{key} contains an invalid numeric value.";
-                    return false;
+                if (asDouble.HasValue && double.IsFinite(asDouble.Value)) {
+                    normalized = asDouble.Value.ToString(CultureInfo.InvariantCulture);
+                    break;
                 }
 
-                normalized = asDouble.Value.ToString(CultureInfo.InvariantCulture);
-                break;
+                error = $"{argumentName}.{key} contains an invalid numeric value.";
+                return false;
             }
             case JsonValueKind.Boolean:
                 normalized = value.AsBoolean().ToString();
@@ -474,43 +355,28 @@ internal static class EventLogStructuredFilters {
                 return false;
         }
 
-        if (normalized.Length > MaxNamedDataValueLength) {
-            error = $"{argumentName}.{key} values must be <= {MaxNamedDataValueLength} characters.";
+        return TryValidateNamedDataString(normalized, MaxNamedDataValueLength, $"{argumentName}.{key} values", out error);
+    }
+
+    private static bool TryValidateNamedDataString(
+        string value,
+        int maxLength,
+        string label,
+        out string? error) {
+        error = null;
+
+        if (value.Length > maxLength) {
+            error = $"{label} must be <= {maxLength} characters.";
             return false;
         }
 
-        for (var i = 0; i < normalized.Length; i++) {
-            if (char.IsControl(normalized[i])) {
-                error = $"{argumentName}.{key} values must not contain control characters.";
+        for (var i = 0; i < value.Length; i++) {
+            if (char.IsControl(value[i])) {
+                error = $"{label} must not contain control characters.";
                 return false;
             }
         }
 
         return true;
-    }
-
-    private static string ToSnakeCase(string name) {
-        return EventLogNamedEventsQueryShared.ToSnakeCase(name);
-    }
-
-    private static IReadOnlyDictionary<string, Level> BuildLevelMap() {
-        var map = new Dictionary<string, Level>(StringComparer.OrdinalIgnoreCase);
-        foreach (var value in Enum.GetValues<Level>()) {
-            map[ToSnakeCase(value.ToString())] = value;
-        }
-
-        map["info"] = Level.Informational;
-        map["information"] = Level.Informational;
-        map["warn"] = Level.Warning;
-        map["crit"] = Level.Critical;
-        return map;
-    }
-
-    private static IReadOnlyDictionary<string, Keywords> BuildKeywordMap() {
-        var map = new Dictionary<string, Keywords>(StringComparer.OrdinalIgnoreCase);
-        foreach (var value in Enum.GetValues<Keywords>()) {
-            map[ToSnakeCase(value.ToString())] = value;
-        }
-        return map;
     }
 }

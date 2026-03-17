@@ -38,17 +38,6 @@ public sealed class SystemUpdatesInstalledTool : SystemToolBase, ITool {
             .WithTableViewOptions()
             .NoAdditionalProperties());
 
-    private sealed record SystemUpdatesInstalledResult(
-        string ComputerName,
-        bool IncludePendingLocal,
-        bool PendingIncluded,
-        string? TitleContains,
-        string? KbContains,
-        string? InstalledAfterUtc,
-        int Scanned,
-        bool Truncated,
-        IReadOnlyList<UpdateInfo> Updates);
-
     /// <summary>
     /// Initializes a new instance of the <see cref="SystemUpdatesInstalledTool"/> class.
     /// </summary>
@@ -99,69 +88,49 @@ public sealed class SystemUpdatesInstalledTool : SystemToolBase, ITool {
         if (windowsError is not null) {
             return Task.FromResult(windowsError);
         }
-        if (!TryGetInstalledAndPendingUpdates(
-                computerName: request.ComputerName,
-                target: request.Target,
-                includePendingLocal: request.IncludePendingLocal,
-                updates: out var rows,
-                pendingIncluded: out var pendingIncluded,
-                errorResponse: out var updateError)) {
-            return Task.FromResult(updateError!);
+        InstalledUpdateInventoryQueryResult result;
+        try {
+            result = InstalledUpdateInventoryQuery.Get(new InstalledUpdateInventoryQueryOptions {
+                ComputerName = request.ComputerName,
+                IncludePendingLocal = request.IncludePendingLocal,
+                TitleContains = request.TitleContains,
+                KbContains = request.KbContains,
+                InstalledAfterUtc = request.InstalledAfterUtc,
+                MaxResults = request.MaxResults
+            });
+        } catch (Exception ex) {
+            return Task.FromResult(ErrorFromException(ex, defaultMessage: "Installed updates query failed."));
         }
-
-        var filtered = rows
-            .Where(x => string.IsNullOrWhiteSpace(request.TitleContains)
-                || x.Title.Contains(request.TitleContains, StringComparison.OrdinalIgnoreCase))
-            .Where(x => string.IsNullOrWhiteSpace(request.KbContains)
-                || SystemPatchKbNormalization.MatchesContainsFilter(
-                    SystemPatchKbNormalization.NormalizeDistinct(new[] { x.Kb, x.Title }),
-                    request.KbContains))
-            .Where(x => !request.InstalledAfterUtc.HasValue
-                || (x.InstalledOn.HasValue && x.InstalledOn.Value.ToUniversalTime() >= request.InstalledAfterUtc.Value))
-            .ToArray();
-
-        var viewRows = CapRows(filtered, request.MaxResults, out var scanned, out var truncated);
-
-        var result = new SystemUpdatesInstalledResult(
-            ComputerName: request.Target,
-            IncludePendingLocal: request.IncludePendingLocal,
-            PendingIncluded: pendingIncluded,
-            TitleContains: request.TitleContains,
-            KbContains: request.KbContains,
-            InstalledAfterUtc: request.InstalledAfterUtc?.ToString("O"),
-            Scanned: scanned,
-            Truncated: truncated,
-            Updates: viewRows);
 
         var response = ToolResultV2.OkAutoTableResponse(
             arguments: context.Arguments,
             model: result,
-            sourceRows: viewRows,
+            sourceRows: result.Updates,
             viewRowsPath: "updates_view",
             title: "System updates (preview)",
             maxTop: MaxViewTop,
-            baseTruncated: truncated,
-            scanned: scanned,
+            baseTruncated: result.Truncated,
+            scanned: result.Scanned,
             metaMutate: meta => {
-                AddComputerNameMeta(meta, request.Target);
-                AddPendingLocalMeta(meta, request.IncludePendingLocal, pendingIncluded);
+                AddComputerNameMeta(meta, result.ComputerName);
+                AddPendingLocalMeta(meta, result.IncludePendingLocal, result.PendingIncluded);
                 AddMaxResultsMeta(meta, request.MaxResults);
-                if (!string.IsNullOrWhiteSpace(request.TitleContains)) {
-                    meta.Add("title_contains", request.TitleContains);
+                if (!string.IsNullOrWhiteSpace(result.TitleContains)) {
+                    meta.Add("title_contains", result.TitleContains);
                 }
-                if (!string.IsNullOrWhiteSpace(request.KbContains)) {
-                    meta.Add("kb_contains", request.KbContains);
+                if (!string.IsNullOrWhiteSpace(result.KbContains)) {
+                    meta.Add("kb_contains", result.KbContains);
                 }
-                if (request.InstalledAfterUtc.HasValue) {
-                    meta.Add("installed_after_utc", request.InstalledAfterUtc.Value.ToString("O"));
+                if (!string.IsNullOrWhiteSpace(result.InstalledAfterUtc)) {
+                    meta.Add("installed_after_utc", result.InstalledAfterUtc);
                 }
                 AddReadOnlyPostureChainingMeta(
                     meta: meta,
                     currentTool: "system_updates_installed",
-                    targetComputer: request.Target,
-                    isRemoteScope: !IsLocalTarget(request.ComputerName, request.Target),
-                    scanned: scanned,
-                    truncated: truncated);
+                    targetComputer: result.ComputerName,
+                    isRemoteScope: !IsLocalTarget(request.ComputerName, result.ComputerName),
+                    scanned: result.Scanned,
+                    truncated: result.Truncated);
             });
         return Task.FromResult(response);
     }

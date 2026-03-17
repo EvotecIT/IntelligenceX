@@ -7,9 +7,7 @@ using System.Threading.Tasks;
 using IntelligenceX.Json;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.Common;
-using TestimoX;
 using TestimoX.Configuration;
-using TestimoX.Definitions;
 using TestimoX.Execution;
 
 namespace IntelligenceX.Tools.TestimoX;
@@ -273,37 +271,26 @@ public sealed class TestimoXRulesRunTool : TestimoXToolBase, ITool {
         var powerShellRulesDirectory = context.Request.PowerShellRulesDirectory;
         var preflightMode = context.Request.PreflightMode;
 
-        TestimoRunner runner;
-        List<Rule> discoveredRules;
-        var usingExternalDirectory = !string.IsNullOrWhiteSpace(powerShellRulesDirectory);
-        HashSet<string>? builtinRuleNames = null;
-        runner = new TestimoRunner();
-        var discovery = await TryDiscoverRulesAsync(
-            runner,
-            powerShellRulesDirectory,
-            cancellationToken,
-            defaultErrorMessage: "TestimoX rule discovery failed.").ConfigureAwait(false);
-        if (!string.IsNullOrWhiteSpace(discovery.ErrorResponse)) {
-            return discovery.ErrorResponse!;
+        ToolingRuleDiscoveryResult allDiscovery;
+        try {
+            allDiscovery = await ToolingRuleService.DiscoverRulesAsync(new ToolingRuleDiscoveryRequest {
+                IncludeDisabled = true,
+                IncludeHidden = true,
+                IncludeDeprecated = true,
+                PowerShellRulesDirectory = powerShellRulesDirectory
+            }, cancellationToken).ConfigureAwait(false);
+        } catch (OperationCanceledException) {
+            throw;
+        } catch (Exception ex) {
+            return ErrorFromException(ex, defaultMessage: "TestimoX rule discovery failed.");
         }
 
-        discoveredRules = discovery.Rules ?? new List<Rule>();
-        if (usingExternalDirectory) {
-            var builtinDiscovery = await TryDiscoverBuiltinRuleNamesAsync(
-                cancellationToken,
-                defaultErrorMessage: "TestimoX builtin rule discovery failed.").ConfigureAwait(false);
-            if (!string.IsNullOrWhiteSpace(builtinDiscovery.ErrorResponse)) {
-                return builtinDiscovery.ErrorResponse!;
-            }
-
-            builtinRuleNames = builtinDiscovery.RuleNames ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        }
-
-        var availableByName = discoveredRules
-            .Where(static x => !string.IsNullOrWhiteSpace(x.Name))
-            .ToDictionary(static x => x.Name, StringComparer.OrdinalIgnoreCase);
+        var availableNames = allDiscovery.Rules
+            .Where(static row => !string.IsNullOrWhiteSpace(row.Name))
+            .Select(static row => row.Name)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var unknown = requestedRuleNames
-            .Where(name => !availableByName.ContainsKey(name))
+            .Where(name => !availableNames.Contains(name))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(static x => x, StringComparer.OrdinalIgnoreCase)
             .ToArray();
@@ -315,9 +302,9 @@ public sealed class TestimoXRulesRunTool : TestimoXToolBase, ITool {
                 isTransient: false);
         }
 
-        var selectedRules = new Dictionary<string, Rule>(StringComparer.OrdinalIgnoreCase);
+        var selectedRuleNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var requestedRuleName in requestedRuleNames) {
-            selectedRules[requestedRuleName] = availableByName[requestedRuleName];
+            selectedRuleNames.Add(requestedRuleName);
         }
 
         var hasSelectorFilters =
@@ -328,103 +315,100 @@ public sealed class TestimoXRulesRunTool : TestimoXToolBase, ITool {
             sourceTypeFilter is { Count: > 0 } ||
             !string.Equals(ruleOrigin, TestimoXRuleSelectionHelper.RuleOriginAny, StringComparison.OrdinalIgnoreCase);
         if (hasSelectorFilters || runAllEnabledWhenNoSelection) {
-            IEnumerable<Rule> candidates = TestimoXRuleSelectionHelper.ApplyVisibilityFilters(
-                discoveredRules,
-                includeDisabled: includeDisabledForSelection,
-                includeHidden: includeHiddenForSelection,
-                includeDeprecated: includeDeprecatedForSelection);
-
-            if (ruleNamePatterns.Count > 0) {
-                candidates = candidates.Where(rule => TestimoXRuleSelectionHelper.MatchesAnyPattern(rule, ruleNamePatterns));
+            ToolingRuleDiscoveryResult selectionDiscovery;
+            try {
+                selectionDiscovery = await ToolingRuleService.DiscoverRulesAsync(new ToolingRuleDiscoveryRequest {
+                    IncludeDisabled = includeDisabledForSelection,
+                    IncludeHidden = includeHiddenForSelection,
+                    IncludeDeprecated = includeDeprecatedForSelection,
+                    NamePatterns = ruleNamePatterns,
+                    Query = searchText,
+                    Categories = requestedCategories,
+                    Tags = requestedTags,
+                    SourceTypes = ToToolingSourceTypes(sourceTypeFilter),
+                    RuleOrigin = ToToolingRuleOrigin(ruleOrigin),
+                    PowerShellRulesDirectory = powerShellRulesDirectory
+                }, cancellationToken).ConfigureAwait(false);
+            } catch (OperationCanceledException) {
+                throw;
+            } catch (Exception ex) {
+                return ErrorFromException(ex, defaultMessage: "TestimoX rule discovery failed.");
             }
 
-            candidates = TestimoXRuleSelectionHelper.ApplySharedFilters(
-                candidates,
-                searchText,
-                requestedCategories,
-                requestedTags,
-                sourceTypeFilter,
-                ruleOrigin,
-                usingExternalDirectory,
-                builtinRuleNames);
-
-            foreach (var rule in candidates.OrderBy(static x => x.Name, StringComparer.OrdinalIgnoreCase)) {
-                if (!string.IsNullOrWhiteSpace(rule.Name)) {
-                    selectedRules[rule.Name] = rule;
+            foreach (var row in selectionDiscovery.Rules) {
+                if (!string.IsNullOrWhiteSpace(row.Name)) {
+                    selectedRuleNames.Add(row.Name);
                 }
             }
         }
 
-        if (selectedRules.Count == 0) {
+        if (selectedRuleNames.Count == 0) {
             return ToolResultV2.Error(
                 "invalid_argument",
                 "Selection resolved to zero rules. Broaden filters or call testimox_rules_list to discover available rules.");
         }
 
-        if (selectedRules.Count > maxSelectedRules) {
+        if (selectedRuleNames.Count > maxSelectedRules) {
             return ToolResultV2.Error(
                 "invalid_argument",
                 $"Selected rules exceed max_selected_rules ({maxSelectedRules}). Narrow filters or run in batches.");
         }
-        if (selectedRules.Count > Options.MaxRulesPerRun) {
+        if (selectedRuleNames.Count > Options.MaxRulesPerRun) {
             return ToolResultV2.Error(
                 "invalid_argument",
                 $"Selected rules exceed the pack cap ({Options.MaxRulesPerRun}). Narrow filters or run in batches.");
         }
 
-        var selectedRuleNames = selectedRules.Keys
+        var orderedSelectedRuleNames = selectedRuleNames
             .OrderBy(static x => x, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
-        TestimoRunResult run;
+        ToolingRuleRunResult run;
         try {
-            var config = new ExecutionConfiguration {
-                Concurrency = concurrency,
-                GenerateHtml = false,
-                OpenReport = false,
-                GenerateWord = false,
-                GenerateJson = false,
-                AutoConfirm = true,
-                Verbosity = VerbosityLevel.Normal,
-                ConsoleView = ConsoleView.Ansi,
-                KeepOpen = false,
-                Preflight = preflightMode,
-                IncludeSupersededRules = includeSupersededRules,
-                PowerShellRulesDirectory = powerShellRulesDirectory
-            };
-
-            var engine = new Testimo {
-                IncludeDomains = includeDomains.Count == 0 ? null : includeDomains.ToArray(),
-                ExcludeDomains = excludeDomains.Count == 0 ? null : excludeDomains.ToArray(),
-                IncludeDomainControllers = includeDomainControllers.Count == 0 ? null : includeDomainControllers.ToArray(),
-                ExcludeDomainControllers = excludeDomainControllers.Count == 0 ? null : excludeDomainControllers.ToArray(),
+            run = await ToolingRuleService.RunRulesAsync(new ToolingRuleRunRequest {
+                RuleNames = orderedSelectedRuleNames,
+                FailWhenMissingRuleNames = true,
+                IncludeRuleData = includeRuleResults,
+                IncludeFilteredRuleData = includeRuleResults,
+                IncludeExcludedRuleData = false,
+                IncludeStreams = true,
+                IncludeTestResults = includeTestResults,
+                IncludeExecutionParameters = false,
+                PowerShellRulesDirectory = powerShellRulesDirectory,
+                Configuration = new ExecutionConfiguration {
+                    Concurrency = concurrency,
+                    GenerateHtml = false,
+                    OpenReport = false,
+                    GenerateWord = false,
+                    GenerateJson = false,
+                    AutoConfirm = true,
+                    Verbosity = VerbosityLevel.Normal,
+                    ConsoleView = ConsoleView.Ansi,
+                    KeepOpen = false,
+                    Preflight = preflightMode,
+                    IncludeSupersededRules = includeSupersededRules,
+                    PowerShellRulesDirectory = powerShellRulesDirectory
+                },
+                IncludeDomains = includeDomains,
+                ExcludeDomains = excludeDomains,
+                IncludeDomainControllers = includeDomainControllers,
+                ExcludeDomainControllers = excludeDomainControllers,
                 IncludeTrustedDomains = includeTrustedDomains,
-                PowerShellRulesDirectory = powerShellRulesDirectory
-            };
-
-            run = await runner.RunAsync(
-                engine: engine,
-                ruleNames: selectedRuleNames,
-                config: config,
-                ct: cancellationToken).ConfigureAwait(false);
+                IncludeSupersededRules = includeSupersededRules
+            }, cancellationToken).ConfigureAwait(false);
         } catch (OperationCanceledException) {
             throw;
         } catch (Exception ex) {
             return ErrorFromException(ex, defaultMessage: "TestimoX execution failed.", fallbackErrorCode: "execution_failed");
         }
 
-        var completed = (run.Engine.RulesCompleted ?? new List<RuleComplete>())
-            .OrderBy(static x => x.RuleName, StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        var rows = completed
+        var rows = run.Rules
+            .OrderBy(static x => x.Name, StringComparer.OrdinalIgnoreCase)
             .Select(row => MapRuleRow(
                 row,
                 includeTestResults: includeTestResults,
                 includeRuleResults: includeRuleResults,
-                maxResultRowsPerRule: maxResultRowsPerRule,
-                usingExternalDirectory: usingExternalDirectory,
-                builtinRuleNames: builtinRuleNames))
+                maxResultRowsPerRule: maxResultRowsPerRule))
             .ToList();
 
         var model = new TestimoRunResultModel(
@@ -443,10 +427,10 @@ public sealed class TestimoXRulesRunTool : TestimoXToolBase, ITool {
             ExcludeDomains: excludeDomains,
             IncludeDomainControllers: includeDomainControllers,
             ExcludeDomainControllers: excludeDomainControllers,
-            SelectedRuleNames: selectedRuleNames,
+            SelectedRuleNames: orderedSelectedRuleNames,
             RequestedRuleCount: requestedRuleNames.Count,
-            SelectedRuleCount: selectedRuleNames.Length,
-            ExecutedRuleCount: run.RuleCount,
+            SelectedRuleCount: orderedSelectedRuleNames.Length,
+            ExecutedRuleCount: run.ExecutedRuleCount,
             FailedRuleCount: run.FailedRules,
             SkippedRuleCount: run.SkippedRules,
             ErrorCount: run.Errors,
@@ -462,16 +446,14 @@ public sealed class TestimoXRulesRunTool : TestimoXToolBase, ITool {
             title: "TestimoX run outcomes (preview)",
             maxTop: Options.MaxRulesPerRun,
             baseTruncated: false,
-            scanned: completed.Count);
+            scanned: rows.Count);
     }
 
     private static TestimoRuleRunRow MapRuleRow(
-        RuleComplete row,
+        ToolingRuleExecutionResult row,
         bool includeTestResults,
         bool includeRuleResults,
-        int maxResultRowsPerRule,
-        bool usingExternalDirectory,
-        HashSet<string>? builtinRuleNames) {
+        int maxResultRowsPerRule) {
         var testRows = includeTestResults
             ? row.TestResults.Select(static test => new TestimoRuleTestRunRow(
                 Name: test.Name,
@@ -485,17 +467,12 @@ public sealed class TestimoXRulesRunTool : TestimoXToolBase, ITool {
             ? ReadRawRows(row, maxResultRowsPerRule)
             : Array.Empty<object?>();
 
-        var sourceType = TestimoXRuleSelectionHelper.GetSourceType(row.Rule);
-        var ruleOrigin = row.Rule is null
-            ? (usingExternalDirectory ? TestimoXRuleSelectionHelper.RuleOriginExternal : TestimoXRuleSelectionHelper.RuleOriginBuiltin)
-            : TestimoXRuleSelectionHelper.ResolveRuleOrigin(row.Rule, usingExternalDirectory, builtinRuleNames);
-
         return new TestimoRuleRunRow(
-            RuleName: row.RuleName,
-            DisplayName: row.Rule?.DisplayName ?? string.Empty,
-            SourceType: sourceType,
-            RuleOrigin: ruleOrigin,
-            Scope: row.Rule?.Scope.ToString() ?? string.Empty,
+            RuleName: row.Name,
+            DisplayName: row.DisplayName,
+            SourceType: NormalizeSourceTypeName(row.SourceType),
+            RuleOrigin: row.RuleOrigin,
+            Scope: row.Scope,
             OverallStatus: row.OverallStatus.ToString(),
             OverallStatusText: row.OverallStatusText,
             Success: row.Success,
@@ -505,18 +482,18 @@ public sealed class TestimoXRulesRunTool : TestimoXToolBase, ITool {
             ExecutionMs: (long)row.ExecutionTime.TotalMilliseconds,
             CpuMs: (long)row.CpuTime.TotalMilliseconds,
             MemoryBytes: row.MemoryUsage,
-            ErrorCount: row.PowerShellErrors.Count,
-            WarningCount: row.PowerShellWarnings.Count,
-            Categories: row.Rule?.Category.Select(static x => x.ToString()).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(static x => x, StringComparer.OrdinalIgnoreCase).ToArray() ?? Array.Empty<string>(),
-            Tags: row.Rule?.Tags.Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(static x => x, StringComparer.OrdinalIgnoreCase).ToArray() ?? Array.Empty<string>(),
+            ErrorCount: row.Errors.Count,
+            WarningCount: row.Warnings.Count,
+            Categories: row.Categories.Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(static x => x, StringComparer.OrdinalIgnoreCase).ToArray(),
+            Tags: row.Tags.Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(static x => x, StringComparer.OrdinalIgnoreCase).ToArray(),
             TestResults: testRows,
             ResultRows: resultRows);
     }
 
-    private static IReadOnlyList<object?> ReadRawRows(RuleComplete row, int maxResultRowsPerRule) {
-        var source = row.ResultsFilteredRaw;
-        if (source is null || !source.Any()) {
-            source = row.ResultsRaw;
+    private static IReadOnlyList<object?> ReadRawRows(ToolingRuleExecutionResult row, int maxResultRowsPerRule) {
+        var source = row.FilteredResults.Items;
+        if (source is null || source.Count == 0) {
+            source = row.Results.Items;
         }
 
         return source

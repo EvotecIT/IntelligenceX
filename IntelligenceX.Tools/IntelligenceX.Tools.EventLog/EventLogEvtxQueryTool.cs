@@ -1,7 +1,7 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using EventViewerX;
@@ -19,16 +19,7 @@ public sealed class EventLogEvtxQueryTool : EventLogToolBase, ITool {
     private const int MaxViewTop = 5000;
     private sealed record EvtxQueryToolRequest(
         string FullPath,
-        List<int>? EventIds,
-        string? ProviderName,
-        DateTime? StartUtc,
-        DateTime? EndUtc,
-        Level? Level,
-        Keywords? Keywords,
-        string? UserId,
-        List<long>? RecordIds,
-        Hashtable? NamedDataFilter,
-        Hashtable? NamedDataExcludeFilter,
+        EventStructuredQueryFilter? StructuredFilter,
         int MaxEvents,
         bool OldestFirst,
         bool IncludeMessage);
@@ -90,83 +81,23 @@ public sealed class EventLogEvtxQueryTool : EventLogToolBase, ITool {
                     isTransient: false);
             }
 
-            if (!EventLogStructuredFilters.TryReadOptionalBoundedString(
-                    arguments,
-                    "provider_name",
-                    EventLogStructuredFilters.MaxProviderNameLength,
-                    out var providerName,
-                    out var providerNameError)) {
-                return ToolRequestBindingResult<EvtxQueryToolRequest>.Failure(
-                    providerNameError ?? "provider_name is invalid.");
-            }
-
             if (!ToolTime.TryParseUtcRange(arguments, "start_time_utc", "end_time_utc", out var startUtc, out var endUtc, out var timeErr)) {
                 return ToolRequestBindingResult<EvtxQueryToolRequest>.Failure(timeErr ?? "Invalid time range.");
             }
 
-            if (!EventLogStructuredFilters.TryParseOptionalEventIds(
+            if (!EventLogStructuredFilters.TryNormalize(
                     arguments,
-                    "event_ids",
-                    EventLogStructuredFilters.MaxEventIds,
-                    out var eventIds,
-                    out var eventIdsError)) {
-                return ToolRequestBindingResult<EvtxQueryToolRequest>.Failure(eventIdsError ?? "event_ids is invalid.");
-            }
-
-            if (!EventLogStructuredFilters.TryParseOptionalLevel(arguments, "level", out var level, out var levelError)) {
-                return ToolRequestBindingResult<EvtxQueryToolRequest>.Failure(levelError ?? "level is invalid.");
-            }
-
-            if (!EventLogStructuredFilters.TryParseOptionalKeywords(arguments, "keywords", out var keywords, out var keywordsError)) {
-                return ToolRequestBindingResult<EvtxQueryToolRequest>.Failure(keywordsError ?? "keywords is invalid.");
-            }
-
-            if (!EventLogStructuredFilters.TryReadOptionalBoundedString(
-                    arguments,
-                    "user_id",
-                    EventLogStructuredFilters.MaxUserIdLength,
-                    out var userId,
-                    out var userIdError)) {
-                return ToolRequestBindingResult<EvtxQueryToolRequest>.Failure(userIdError ?? "user_id is invalid.");
-            }
-
-            if (!EventLogStructuredFilters.TryParseOptionalRecordIds(
-                    arguments,
-                    "event_record_ids",
-                    EventLogStructuredFilters.MaxRecordIds,
-                    out var eventRecordIds,
-                    out var eventRecordIdsError)) {
-                return ToolRequestBindingResult<EvtxQueryToolRequest>.Failure(eventRecordIdsError ?? "event_record_ids is invalid.");
-            }
-
-            if (!EventLogStructuredFilters.TryParseOptionalNamedDataFilter(
-                    arguments,
-                    "named_data_filter",
-                    out var namedDataFilter,
-                    out var namedDataFilterError)) {
-                return ToolRequestBindingResult<EvtxQueryToolRequest>.Failure(namedDataFilterError ?? "named_data_filter is invalid.");
-            }
-
-            if (!EventLogStructuredFilters.TryParseOptionalNamedDataFilter(
-                    arguments,
-                    "named_data_exclude_filter",
-                    out var namedDataExcludeFilter,
-                    out var namedDataExcludeFilterError)) {
-                return ToolRequestBindingResult<EvtxQueryToolRequest>.Failure(namedDataExcludeFilterError ?? "named_data_exclude_filter is invalid.");
+                    startUtc,
+                    endUtc,
+                    out var structuredFilter,
+                    out var structuredFilterError)) {
+                return ToolRequestBindingResult<EvtxQueryToolRequest>.Failure(
+                    structuredFilterError ?? "Structured filters are invalid.");
             }
 
             var request = new EvtxQueryToolRequest(
                 FullPath: fullPath,
-                EventIds: eventIds,
-                ProviderName: providerName,
-                StartUtc: startUtc,
-                EndUtc: endUtc,
-                Level: level,
-                Keywords: keywords,
-                UserId: userId,
-                RecordIds: eventRecordIds,
-                NamedDataFilter: namedDataFilter,
-                NamedDataExcludeFilter: namedDataExcludeFilter,
+                StructuredFilter: structuredFilter,
                 MaxEvents: ResolveBoundedOptionLimit(arguments, "max_events"),
                 OldestFirst: reader.Boolean("oldest_first", defaultValue: false),
                 IncludeMessage: reader.Boolean("include_message", defaultValue: false));
@@ -179,25 +110,22 @@ public sealed class EventLogEvtxQueryTool : EventLogToolBase, ITool {
 
         var request = new EvtxQueryRequest {
             FilePath = context.Request.FullPath,
-            EventIds = context.Request.EventIds,
-            ProviderName = context.Request.ProviderName,
-            StartTimeUtc = context.Request.StartUtc,
-            EndTimeUtc = context.Request.EndUtc,
+            EventIds = context.Request.StructuredFilter?.EventIds?.ToList(),
+            ProviderName = context.Request.StructuredFilter?.ProviderName,
+            StartTimeUtc = context.Request.StructuredFilter?.StartTimeUtc,
+            EndTimeUtc = context.Request.StructuredFilter?.EndTimeUtc,
             MaxEvents = context.Request.MaxEvents,
             OldestFirst = context.Request.OldestFirst
         };
 
-        var hasAdvancedFilters = EventLogStructuredFilters.HasAnyStructuredFilter(
-            eventIds: null,
-            providerName: null,
-            startTimeUtc: null,
-            endTimeUtc: null,
-            level: context.Request.Level,
-            keywords: context.Request.Keywords,
-            userId: context.Request.UserId,
-            eventRecordIds: context.Request.RecordIds,
-            namedDataFilter: context.Request.NamedDataFilter,
-            namedDataExcludeFilter: context.Request.NamedDataExcludeFilter);
+        var filter = context.Request.StructuredFilter;
+        var hasAdvancedFilters = filter is not null &&
+                                 (filter.Level.HasValue
+                                  || filter.Keywords.HasValue
+                                  || !string.IsNullOrWhiteSpace(filter.UserId)
+                                  || (filter.RecordIds?.Count ?? 0) > 0
+                                  || (filter.NamedDataFilter?.Count ?? 0) > 0
+                                  || (filter.NamedDataExcludeFilter?.Count ?? 0) > 0);
 
         EvtxEventReportResult root;
         EvtxQueryFailure? failure;
@@ -214,12 +142,7 @@ public sealed class EventLogEvtxQueryTool : EventLogToolBase, ITool {
         } else {
             if (!TryBuildAdvancedReport(
                     request: request,
-                    level: context.Request.Level,
-                    keywords: context.Request.Keywords,
-                    userId: context.Request.UserId,
-                    eventRecordIds: context.Request.RecordIds,
-                    namedDataFilter: context.Request.NamedDataFilter,
-                    namedDataExcludeFilter: context.Request.NamedDataExcludeFilter,
+                    structuredFilter: filter,
                     includeMessage: context.Request.IncludeMessage,
                     maxMessageChars: Options.MaxMessageChars,
                     report: out root,
@@ -243,12 +166,7 @@ public sealed class EventLogEvtxQueryTool : EventLogToolBase, ITool {
 
     private static bool TryBuildAdvancedReport(
         EvtxQueryRequest request,
-        Level? level,
-        Keywords? keywords,
-        string? userId,
-        List<long>? eventRecordIds,
-        Hashtable? namedDataFilter,
-        Hashtable? namedDataExcludeFilter,
+        EventStructuredQueryFilter? structuredFilter,
         bool includeMessage,
         int maxMessageChars,
         out EvtxEventReportResult report,
@@ -280,16 +198,16 @@ public sealed class EventLogEvtxQueryTool : EventLogToolBase, ITool {
                          filePath: request.FilePath,
                          eventIds: eventIds,
                          providerName: request.ProviderName,
-                         keywords: keywords,
-                         level: level,
+                         keywords: structuredFilter?.Keywords,
+                         level: structuredFilter?.Level,
                          startTime: request.StartTimeUtc,
                          endTime: request.EndTimeUtc,
-                         userId: userId,
+                         userId: structuredFilter?.UserId,
                          maxEvents: request.MaxEvents,
-                         eventRecordId: eventRecordIds,
+                         eventRecordId: structuredFilter?.RecordIds?.ToList(),
                          oldest: request.OldestFirst,
-                         namedDataFilter: namedDataFilter,
-                         namedDataExcludeFilter: namedDataExcludeFilter,
+                         namedDataFilter: structuredFilter?.NamedDataFilter,
+                         namedDataExcludeFilter: structuredFilter?.NamedDataExcludeFilter,
                          cancellationToken: cancellationToken)) {
                 cancellationToken.ThrowIfCancellationRequested();
 

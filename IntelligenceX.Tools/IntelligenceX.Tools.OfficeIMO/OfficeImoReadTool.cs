@@ -233,62 +233,7 @@ public sealed partial class OfficeImoReadTool : OfficeImoToolBase, ITool {
         var includeFlatChunks = outputMode is OfficeImoOutputMode.Chunks or OfficeImoOutputMode.Both;
         var includeDocuments = outputMode is OfficeImoOutputMode.Documents or OfficeImoOutputMode.Both;
         var includeDocChunksInPayload = includeDocuments && includeDocumentChunks;
-        var enforceChunkBudget = includeFlatChunks || includeDocChunksInPayload;
-        var remainingChunkBudget = enforceChunkBudget ? maxChunks : int.MaxValue;
-
-        if (Directory.Exists(fullPath)) {
-            var progress = new FolderProgressState();
-            var folderOptions = new ReaderFolderOptions {
-                Recurse = recurse,
-                MaxFiles = maxFiles,
-                MaxTotalBytes = maxTotalBytes,
-                Extensions = normalizedExt.OrderBy(static x => x, StringComparer.Ordinal).ToArray(),
-                SkipReparsePoints = true,
-                DeterministicOrder = true
-            };
-
-            foreach (var source in DocumentReader.ReadFolderDocuments(
-                         folderPath: fullPath,
-                         folderOptions: folderOptions,
-                         options: readerOptions,
-                         onProgress: p => UpdateProgress(progress, p),
-                         cancellationToken: cancellationToken)) {
-                cancellationToken.ThrowIfCancellationRequested();
-                if (!string.IsNullOrWhiteSpace(source.Path)) {
-                    result.Files.Add(source.Path);
-                }
-                ProcessSourceDocument(
-                    source,
-                    includeFlatChunks,
-                    includeDocuments,
-                    includeDocChunksInPayload,
-                    ref remainingChunkBudget,
-                    result);
-
-                if (enforceChunkBudget && remainingChunkBudget <= 0) {
-                    result.Truncated = true;
-                    AddWarning(result.Warnings, $"Stopped after reaching max_chunks={maxChunks}.");
-                    break;
-                }
-            }
-
-            result.FilesScanned = progress.FilesScanned;
-            result.FilesParsed = progress.FilesParsed;
-            result.FilesSkipped = progress.FilesSkipped;
-            result.BytesRead = progress.BytesRead;
-            result.ChunksProduced = progress.ChunksProduced;
-        } else if (File.Exists(fullPath)) {
-            ProcessSingleFile(
-                fullPath,
-                readerOptions,
-                includeFlatChunks,
-                includeDocuments,
-                includeDocChunksInPayload,
-                ref remainingChunkBudget,
-                maxChunks,
-                result,
-                cancellationToken);
-        } else {
+        if (!Directory.Exists(fullPath) && !File.Exists(fullPath)) {
             return Task.FromResult(ToolResultV2.Error(
                 errorCode: "not_found",
                 error: "File or directory not found.",
@@ -296,7 +241,41 @@ public sealed partial class OfficeImoReadTool : OfficeImoToolBase, ITool {
                 isTransient: false));
         }
 
-        FinalizeResultCounters(result, includeFlatChunks, includeDocChunksInPayload);
+        var folderOptions = CreateFolderOptions(
+            recurse: recurse,
+            maxFiles: maxFiles,
+            maxTotalBytes: maxTotalBytes,
+            normalizedExtensions: normalizedExt);
+
+        var projected = DocumentReader.ReadPathDocumentsDetailed(
+            path: fullPath,
+            folderOptions: folderOptions,
+            options: readerOptions,
+            includeDocumentChunks: includeFlatChunks || includeDocChunksInPayload,
+            maxReturnedChunks: (includeFlatChunks || includeDocChunksInPayload) ? maxChunks : null,
+            cancellationToken: cancellationToken);
+
+        result.Files.AddRange(projected.Files);
+        result.FilesScanned = projected.FilesScanned;
+        result.FilesParsed = projected.FilesParsed;
+        result.FilesSkipped = projected.FilesSkipped;
+        result.BytesRead = projected.BytesRead;
+        result.ChunksProduced = projected.ChunksProduced;
+        result.Truncated = projected.Truncated;
+
+        if (projected.Warnings != null) {
+            for (var i = 0; i < projected.Warnings.Count; i++) {
+                AddWarning(result.Warnings, projected.Warnings[i]);
+            }
+        }
+
+        ProjectDocuments(
+            sources: projected.Documents,
+            includeFlatChunks: includeFlatChunks,
+            includeDocuments: includeDocuments,
+            includeDocumentChunks: includeDocChunksInPayload,
+            result: result);
+
         ApplyChainContract(result, fullPath, outputMode, includeDocumentChunks);
         var preview = BuildPreviewMarkdown(
             chunks: result.Chunks,

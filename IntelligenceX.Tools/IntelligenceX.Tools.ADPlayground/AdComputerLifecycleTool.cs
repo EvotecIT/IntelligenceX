@@ -144,10 +144,10 @@ public sealed class AdComputerLifecycleTool : ActiveDirectoryToolBase, ITool {
                 OperatingSystemServicePack: reader.OptionalString("operating_system_service_pack"),
                 NewPassword: reader.OptionalString("new_password"),
                 Apply: reader.Boolean("apply"),
-                Enabled: TryReadNullableBoolean(arguments, "enabled"),
-                ServicePrincipalNames: ReadTrimmedStrings(arguments?.GetArray("service_principal_names")),
-                ClearAttributes: ReadTrimmedStrings(arguments?.GetArray("clear_attributes")),
-                AdditionalAttributes: ReadAttributeMutations(arguments?.GetArray("additional_attributes")));
+                Enabled: reader.OptionalBoolean("enabled"),
+                ServicePrincipalNames: ReadTrimmedStrings(reader.Array("service_principal_names")),
+                ClearAttributes: ReadTrimmedStrings(reader.Array("clear_attributes")),
+                AdditionalAttributes: ReadAttributeMutations(reader.Array("additional_attributes")));
 
             return ValidateRequest(request);
         });
@@ -271,12 +271,6 @@ public sealed class AdComputerLifecycleTool : ActiveDirectoryToolBase, ITool {
                 operation = string.Empty;
                 return false;
         }
-    }
-
-    private static bool? TryReadNullableBoolean(JsonObject? arguments, string key) {
-        return arguments?.TryGetValue(key, out var value) == true && value is not null && value.Kind == JsonValueKind.Boolean
-            ? value.AsBoolean()
-            : null;
     }
 
     private static IReadOnlyList<string> ReadTrimmedStrings(JsonArray? array) {

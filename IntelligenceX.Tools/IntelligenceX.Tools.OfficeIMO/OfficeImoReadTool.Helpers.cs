@@ -134,171 +134,113 @@ public sealed partial class OfficeImoReadTool : OfficeImoToolBase, ITool {
         };
     }
 
-    private static void UpdateProgress(FolderProgressState state, ReaderProgress progress) {
-        if (state == null || progress == null) return;
-        state.FilesScanned = progress.FilesScanned;
-        state.FilesParsed = progress.FilesParsed;
-        state.FilesSkipped = progress.FilesSkipped;
-        state.BytesRead = progress.BytesRead;
-        state.ChunksProduced = progress.ChunksProduced;
-    }
-
-    private static void ProcessSingleFile(
-        string path,
-        ReaderOptions readerOptions,
-        bool includeFlatChunks,
-        bool includeDocuments,
-        bool includeDocChunksInPayload,
-        ref int remainingChunkBudget,
-        int maxChunks,
-        OfficeImoReadResult result,
-        CancellationToken cancellationToken) {
-        result.Files.Add(path);
-        result.FilesScanned = 1;
-
-        List<ReaderChunk>? sourceChunks = null;
-        string? warning = null;
-        try {
-            sourceChunks = DocumentReader.Read(path, options: readerOptions, cancellationToken: cancellationToken).ToList();
-        } catch (NotSupportedException ex) {
-            warning = $"Skipped (unsupported): {path} ({ex.Message})";
-        } catch (IOException ex) {
-            warning = $"Skipped (I/O): {path} ({ex.Message})";
-        } catch (Exception ex) {
-            warning = $"Skipped (error): {path} ({ex.Message})";
-        }
-
-        if (sourceChunks == null) {
-            result.FilesSkipped = 1;
-            AddWarning(result.Warnings, warning ?? $"Skipped (error): {path}");
-            if (includeDocuments) {
-                var failedDoc = new OfficeImoDocument {
-                    Path = path,
-                    Parsed = false
-                };
-                if (!string.IsNullOrWhiteSpace(warning)) {
-                    failedDoc.Warnings.Add(warning!);
-                }
-                result.Documents.Add(failedDoc);
-            }
-            return;
-        }
-
-        result.FilesParsed = 1;
-        result.ChunksProduced = sourceChunks.Count;
-
-        var sourceDoc = BuildSourceDocumentFromChunks(path, sourceChunks);
-        ProcessSourceDocument(
-            sourceDoc,
-            includeFlatChunks,
-            includeDocuments,
-            includeDocChunksInPayload,
-            ref remainingChunkBudget,
-            result);
-
-        if ((includeFlatChunks || includeDocChunksInPayload) && remainingChunkBudget <= 0) {
-            result.Truncated = true;
-            AddWarning(result.Warnings, $"Stopped after reaching max_chunks={maxChunks}.");
-        }
-    }
-
-    private static ReaderSourceDocument BuildSourceDocumentFromChunks(string path, IReadOnlyList<ReaderChunk> chunks) {
-        if (chunks is null || chunks.Count == 0) {
-            return new ReaderSourceDocument {
-                Path = path,
-                Parsed = true,
-                ChunksProduced = 0,
-                TokenEstimateTotal = 0,
-                Chunks = Array.Empty<ReaderChunk>()
-            };
-        }
-
-        var first = chunks[0];
-        var tokenEstimateTotal = 0;
-        var warnings = new List<string>();
-        for (var i = 0; i < chunks.Count; i++) {
-            var c = chunks[i];
-            tokenEstimateTotal += c.TokenEstimate ?? 0;
-            if (c.Warnings is null) continue;
-            for (var j = 0; j < c.Warnings.Count; j++) {
-                var w = c.Warnings[j];
-                if (!string.IsNullOrWhiteSpace(w)) warnings.Add(w!);
-            }
-        }
-
-        return new ReaderSourceDocument {
-            Path = first.Location?.Path ?? path,
-            SourceId = first.SourceId,
-            SourceHash = first.SourceHash,
-            SourceLastWriteUtc = first.SourceLastWriteUtc,
-            SourceLengthBytes = first.SourceLengthBytes,
-            Parsed = true,
-            ChunksProduced = chunks.Count,
-            TokenEstimateTotal = tokenEstimateTotal,
-            Warnings = warnings.Count > 0 ? warnings : null,
-            Chunks = chunks
+    private static ReaderFolderOptions CreateFolderOptions(
+        bool recurse,
+        int maxFiles,
+        long maxTotalBytes,
+        HashSet<string> normalizedExtensions) {
+        return new ReaderFolderOptions {
+            Recurse = recurse,
+            MaxFiles = maxFiles,
+            MaxTotalBytes = maxTotalBytes,
+            Extensions = normalizedExtensions.OrderBy(static x => x, StringComparer.Ordinal).ToArray(),
+            SkipReparsePoints = true,
+            DeterministicOrder = true
         };
     }
 
-    private static void ProcessSourceDocument(
+    private static void ProjectDocuments(
         ReaderSourceDocument source,
         bool includeFlatChunks,
         bool includeDocuments,
-        bool includeDocChunksInPayload,
-        ref int remainingChunkBudget,
+        bool includeDocumentChunks,
         OfficeImoReadResult result) {
-        if (source == null) return;
+        ProjectDocuments(
+            sources: new[] { source },
+            includeFlatChunks: includeFlatChunks,
+            includeDocuments: includeDocuments,
+            includeDocumentChunks: includeDocumentChunks,
+            result: result);
+    }
 
-        var officeDocument = new OfficeImoDocument {
-            Path = source.Path ?? string.Empty,
-            SourceId = source.SourceId,
-            SourceHash = source.SourceHash,
-            SourceLastWriteUtc = source.SourceLastWriteUtc,
-            SourceLengthBytes = source.SourceLengthBytes,
-            Parsed = source.Parsed,
-            ChunksProduced = source.ChunksProduced,
-            TokenEstimateTotal = source.TokenEstimateTotal
-        };
+    private static void ProjectDocuments(
+        IReadOnlyList<ReaderSourceDocument> sources,
+        bool includeFlatChunks,
+        bool includeDocuments,
+        bool includeDocumentChunks,
+        OfficeImoReadResult result) {
+        if (sources is null || result is null) {
+            return;
+        }
 
-        if (source.Warnings != null) {
-            for (var i = 0; i < source.Warnings.Count; i++) {
-                var warning = source.Warnings[i];
-                if (string.IsNullOrWhiteSpace(warning)) continue;
-                officeDocument.Warnings.Add(warning!);
-                AddWarning(result.Warnings, warning!);
+        var flatTokenTotal = 0;
+        var documentTokenTotal = 0;
+        for (var i = 0; i < sources.Count; i++) {
+            var source = sources[i];
+            if (source == null) {
+                continue;
+            }
+
+            var officeDocument = new OfficeImoDocument {
+                Path = source.Path ?? string.Empty,
+                SourceId = source.SourceId,
+                SourceHash = source.SourceHash,
+                SourceLastWriteUtc = source.SourceLastWriteUtc,
+                SourceLengthBytes = source.SourceLengthBytes,
+                Parsed = source.Parsed,
+                ChunksProduced = source.ChunksProduced,
+                TokenEstimateTotal = source.TokenEstimateTotal
+            };
+
+            if (source.Warnings != null) {
+                for (var warningIndex = 0; warningIndex < source.Warnings.Count; warningIndex++) {
+                    var warning = source.Warnings[warningIndex];
+                    if (string.IsNullOrWhiteSpace(warning)) {
+                        continue;
+                    }
+
+                    AddWarning(result.Warnings, warning!);
+                    officeDocument.Warnings.Add(warning!);
+                }
+            }
+
+            var returnedTokens = 0;
+            if (source.Chunks != null && source.Chunks.Count > 0) {
+                for (var chunkIndex = 0; chunkIndex < source.Chunks.Count; chunkIndex++) {
+                    var mapped = ToOfficeChunk(source.Chunks[chunkIndex]);
+                    if (includeFlatChunks) {
+                        result.Chunks.Add(mapped);
+                        flatTokenTotal += mapped.TokenEstimate ?? 0;
+                    }
+
+                    if (includeDocumentChunks) {
+                        officeDocument.Chunks.Add(mapped);
+                        returnedTokens += mapped.TokenEstimate ?? 0;
+                    }
+                }
+            }
+
+            officeDocument.ChunksReturned = officeDocument.Chunks.Count;
+            officeDocument.TokenEstimateReturned = returnedTokens;
+
+            if (includeDocumentChunks) {
+                documentTokenTotal += returnedTokens;
+            }
+
+            if (includeDocuments) {
+                result.Documents.Add(officeDocument);
             }
         }
 
-        var returnedChunks = 0;
-        var returnedTokens = 0;
-        if (source.Chunks != null && (includeFlatChunks || includeDocChunksInPayload)) {
-            for (var i = 0; i < source.Chunks.Count; i++) {
-                if (remainingChunkBudget <= 0) break;
-
-                var mapped = ToOfficeChunk(source.Chunks[i]);
-                if (includeFlatChunks) {
-                    result.Chunks.Add(mapped);
-                }
-                if (includeDocChunksInPayload) {
-                    officeDocument.Chunks.Add(mapped);
-                }
-
-                returnedChunks++;
-                returnedTokens += mapped.TokenEstimate ?? 0;
-                remainingChunkBudget--;
+        var documentChunkCount = 0;
+        if (includeDocuments && includeDocumentChunks) {
+            for (var i = 0; i < result.Documents.Count; i++) {
+                documentChunkCount += result.Documents[i].ChunksReturned;
             }
         }
 
-        officeDocument.ChunksReturned = returnedChunks;
-        officeDocument.TokenEstimateReturned = returnedTokens;
-
-        if (includeDocuments) {
-            result.Documents.Add(officeDocument);
-        }
-
-        if (source.Parsed && source.SourceLengthBytes.HasValue) {
-            result.BytesRead += source.SourceLengthBytes.Value;
-        }
+        result.ChunksReturned = result.Chunks.Count + documentChunkCount;
+        result.TokenEstimateReturned = flatTokenTotal + documentTokenTotal;
     }
 
     private static OfficeImoChunk ToOfficeChunk(ReaderChunk chunk) {
@@ -380,59 +322,6 @@ public sealed partial class OfficeImoReadTool : OfficeImoToolBase, ITool {
         return mapped.Count == 0 ? null : mapped;
     }
 
-    private static int SumTokenEstimate(IReadOnlyList<OfficeImoChunk> chunks) {
-        if (chunks is null || chunks.Count == 0) return 0;
-        var total = 0;
-        for (var i = 0; i < chunks.Count; i++) {
-            total += chunks[i]?.TokenEstimate ?? 0;
-        }
-        return total;
-    }
-
-    private static void FinalizeResultCounters(
-        OfficeImoReadResult result,
-        bool includeFlatChunks,
-        bool includeDocumentChunks) {
-        if (result == null) return;
-
-        if (!includeFlatChunks && result.Chunks.Count > 0) {
-            result.Chunks.Clear();
-        }
-
-        var flatCount = result.Chunks.Count;
-        var flatTokens = SumTokenEstimate(result.Chunks);
-
-        var documentCount = 0;
-        var documentTokens = 0;
-        for (var i = 0; i < result.Documents.Count; i++) {
-            var doc = result.Documents[i];
-            if (doc == null) continue;
-
-            if (!includeDocumentChunks && doc.Chunks.Count > 0) {
-                doc.Chunks.Clear();
-            }
-
-            doc.ChunksReturned = doc.Chunks.Count;
-            doc.TokenEstimateReturned = SumTokenEstimate(doc.Chunks);
-
-            if (includeDocumentChunks) {
-                documentCount += doc.ChunksReturned;
-                documentTokens += doc.TokenEstimateReturned;
-            }
-        }
-
-        // Count actual chunk objects present in the payload shape.
-        result.ChunksReturned = flatCount + documentCount;
-        result.TokenEstimateReturned = flatTokens + documentTokens;
-    }
-
-    private sealed class FolderProgressState {
-        public int FilesScanned { get; set; }
-        public int FilesParsed { get; set; }
-        public int FilesSkipped { get; set; }
-        public long BytesRead { get; set; }
-        public int ChunksProduced { get; set; }
-    }
 #endif
 
     private static void AddWarning(List<string> warnings, string warning) {

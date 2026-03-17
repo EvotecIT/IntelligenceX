@@ -20,6 +20,12 @@ internal static class TestimoXAnalyticsToolPackRepresentativeExamples {
             },
             ["testimox_analytics_diagnostics_get"] = new[] {
                 "collect a compact TestimoX analytics diagnostics snapshot for the monitoring history store"
+            },
+            ["testimox_dashboard_autogenerate_status_get"] = new[] {
+                "inspect dashboard auto-generate scheduler state before opening the latest generated monitoring report"
+            },
+            ["testimox_availability_rollup_status_get"] = new[] {
+                "check whether monitoring availability rollups refreshed recently before querying history buckets"
             }
         };
 }

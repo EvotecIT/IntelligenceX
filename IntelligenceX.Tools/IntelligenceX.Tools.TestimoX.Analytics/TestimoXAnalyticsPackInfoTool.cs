@@ -49,6 +49,8 @@ public sealed class TestimoXAnalyticsPackInfoTool : TestimoXToolBase, ITool {
             tools: ToolRegistryTestimoXAnalyticsExtensions.GetRegisteredToolNames(Options),
             recommendedFlow: new[] {
                 "Call testimox_analytics_diagnostics_get when you need a compact operator-facing diagnostics snapshot from an allowed analytics history directory before deeper history/report drill-down.",
+                "Call testimox_dashboard_autogenerate_status_get when you need dashboard scheduler state, last outcome, next run, or generated report path from an allowed analytics history directory.",
+                "Call testimox_availability_rollup_status_get when you need the latest rollup refresh timestamp, bucket freshness, or row counts from an allowed analytics history directory.",
                 "Call testimox_probe_index_status when you need the latest indexed status per probe from an allowed monitoring history directory without loading raw probe history.",
                 "Call testimox_maintenance_window_history when you need resolved reporting maintenance windows and suppression scope from an allowed monitoring history directory.",
                 "Call testimox_report_data_snapshot_get when you need the cached report data payload for a known report key and want a safe preview by default.",
@@ -61,6 +63,12 @@ public sealed class TestimoXAnalyticsPackInfoTool : TestimoXToolBase, ITool {
                 ToolPackGuidance.FlowStep(
                     goal: "Inspect compact analytics diagnostics",
                     suggestedTools: new[] { "testimox_analytics_diagnostics_get" }),
+                ToolPackGuidance.FlowStep(
+                    goal: "Inspect dashboard auto-generate scheduler state",
+                    suggestedTools: new[] { "testimox_dashboard_autogenerate_status_get" }),
+                ToolPackGuidance.FlowStep(
+                    goal: "Inspect availability rollup refresh status",
+                    suggestedTools: new[] { "testimox_availability_rollup_status_get" }),
                 ToolPackGuidance.FlowStep(
                     goal: "Inspect latest indexed probe status",
                     suggestedTools: new[] { "testimox_probe_index_status" }),
@@ -88,6 +96,14 @@ public sealed class TestimoXAnalyticsPackInfoTool : TestimoXToolBase, ITool {
                     id: "analytics_diagnostics",
                     summary: "Load a compact monitoring diagnostics snapshot with queue, notification, maintenance, SQLite health, reachability, and optional slow-probe summaries.",
                     primaryTools: new[] { "testimox_analytics_diagnostics_get" }),
+                ToolPackGuidance.Capability(
+                    id: "dashboard_autogenerate_status",
+                    summary: "Load dashboard auto-generate scheduler state, run outcome, cooldowns, and generated report file context from an allowed monitoring history directory.",
+                    primaryTools: new[] { "testimox_dashboard_autogenerate_status_get" }),
+                ToolPackGuidance.Capability(
+                    id: "availability_rollup_status",
+                    summary: "Load availability rollup refresh timestamps, latest bucket freshness, row counts, and last refresh error from an allowed monitoring history directory.",
+                    primaryTools: new[] { "testimox_availability_rollup_status_get" }),
                 ToolPackGuidance.Capability(
                     id: "probe_index_status",
                     summary: "Read the latest indexed status and completion time per probe from an allowed monitoring history directory.",

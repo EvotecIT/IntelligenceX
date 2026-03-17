@@ -11,6 +11,10 @@ internal static class TestimoXAnalyticsRoutingCatalog {
 
     private static readonly string[] DiagnosticsFallbackSelectionKeys = { "history_directory" };
     private static readonly string[] DiagnosticsFallbackHintKeys = { "history_directory", "include_slow_probes", "max_slow_probes" };
+    private static readonly string[] DashboardStatusFallbackSelectionKeys = { "history_directory" };
+    private static readonly string[] DashboardStatusFallbackHintKeys = { "history_directory" };
+    private static readonly string[] RollupStatusFallbackSelectionKeys = { "history_directory" };
+    private static readonly string[] RollupStatusFallbackHintKeys = { "history_directory" };
     private static readonly string[] ReportSnapshotFallbackSelectionKeys = { "history_directory", "report_key" };
     private static readonly string[] ReportSnapshotFallbackHintKeys = { "history_directory", "report_key", "include_html", "max_chars" };
     private static readonly string[] MaintenanceWindowHistoryFallbackSelectionKeys = { "history_directory" };
@@ -31,6 +35,8 @@ internal static class TestimoXAnalyticsRoutingCatalog {
             ["testimox_history_query"] = ToolRoutingTaxonomy.RoleResolver,
             ["testimox_probe_index_status"] = ToolRoutingTaxonomy.RoleDiagnostic,
             ["testimox_analytics_diagnostics_get"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["testimox_dashboard_autogenerate_status_get"] = ToolRoutingTaxonomy.RoleDiagnostic,
+            ["testimox_availability_rollup_status_get"] = ToolRoutingTaxonomy.RoleDiagnostic,
             ["testimox_maintenance_window_history"] = ToolRoutingTaxonomy.RoleResolver,
             ["testimox_report_data_snapshot_get"] = ToolRoutingTaxonomy.RoleResolver,
             ["testimox_report_snapshot_get"] = ToolRoutingTaxonomy.RoleResolver
@@ -78,6 +84,8 @@ internal static class TestimoXAnalyticsRoutingCatalog {
 
         return toolName switch {
             "testimox_analytics_diagnostics_get" => DiagnosticsFallbackSelectionKeys,
+            "testimox_dashboard_autogenerate_status_get" => DashboardStatusFallbackSelectionKeys,
+            "testimox_availability_rollup_status_get" => RollupStatusFallbackSelectionKeys,
             "testimox_report_snapshot_get" => ReportSnapshotFallbackSelectionKeys,
             "testimox_maintenance_window_history" => MaintenanceWindowHistoryFallbackSelectionKeys,
             "testimox_history_query" => HistoryQueryFallbackSelectionKeys,
@@ -95,6 +103,8 @@ internal static class TestimoXAnalyticsRoutingCatalog {
 
         return toolName switch {
             "testimox_analytics_diagnostics_get" => DiagnosticsFallbackHintKeys,
+            "testimox_dashboard_autogenerate_status_get" => DashboardStatusFallbackHintKeys,
+            "testimox_availability_rollup_status_get" => RollupStatusFallbackHintKeys,
             "testimox_report_snapshot_get" => ReportSnapshotFallbackHintKeys,
             "testimox_maintenance_window_history" => MaintenanceWindowHistoryFallbackHintKeys,
             "testimox_history_query" => HistoryQueryFallbackHintKeys,
