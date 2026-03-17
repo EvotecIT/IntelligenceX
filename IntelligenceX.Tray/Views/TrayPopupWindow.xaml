@@ -1304,6 +1304,21 @@
                             </StackPanel>
                         </Border>
 
+                        <Border Style="{StaticResource CardStyle}"
+                                Visibility="{Binding HasError, Converter={StaticResource BoolToVis}}">
+                            <StackPanel>
+                                <TextBlock Text="GITHUB STATUS"
+                                           Style="{StaticResource SectionHeaderStyle}"
+                                           Margin="0" />
+                                <TextBlock Text="{Binding ErrorMessage}"
+                                           FontFamily="{StaticResource AppFont}"
+                                           FontSize="11"
+                                           Foreground="#f0c040"
+                                           TextWrapping="Wrap"
+                                           Margin="0,8,0,0" />
+                            </StackPanel>
+                        </Border>
+
                         <!-- GitHub data -->
                         <StackPanel Visibility="{Binding HasData, Converter={StaticResource BoolToVis}}">
 

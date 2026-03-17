@@ -470,6 +470,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
 
                 if (ghData is not null) {
                     GitHub.Apply(ghData);
+                    StatusText = "GitHub loaded for " + ghData.Login + ".";
                     return;
                 }
 
@@ -480,6 +481,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
 
                 if (!hasToken && !string.IsNullOrWhiteSpace(effectiveLogin)) {
                     GitHub.ErrorMessage = $"No public GitHub data was returned for '{effectiveLogin}'.";
+                    StatusText = GitHub.ErrorMessage;
                 }
             });
         } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
@@ -496,6 +498,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
                 }
 
                 GitHub.ErrorMessage = ghEx.Message;
+                StatusText = "GitHub load failed: " + ghEx.Message;
             });
         } finally {
             await dispatcher.InvokeAsync(() => {

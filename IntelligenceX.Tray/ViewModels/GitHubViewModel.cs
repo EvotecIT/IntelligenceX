@@ -78,9 +78,17 @@ public sealed class GitHubViewModel : ViewModelBase {
         }
     }
     public bool IsLoading { get => _isLoading; set => SetProperty(ref _isLoading, value); }
-    public string ErrorMessage { get => _errorMessage; set => SetProperty(ref _errorMessage, value); }
+    public string ErrorMessage {
+        get => _errorMessage;
+        set {
+            if (SetProperty(ref _errorMessage, value)) {
+                OnPropertyChanged(nameof(HasError));
+            }
+        }
+    }
     public string ProfileUrl => string.IsNullOrWhiteSpace(Login) ? string.Empty : $"https://github.com/{Login}";
     public bool HasOwners => Owners.Count > 0;
+    public bool HasError => !string.IsNullOrWhiteSpace(ErrorMessage);
 
     public ObservableCollection<GitHubContribBarViewModel> ContribBars { get; } = [];
     public ObservableCollection<GitHubOwnerViewModel> Owners { get; } = [];
