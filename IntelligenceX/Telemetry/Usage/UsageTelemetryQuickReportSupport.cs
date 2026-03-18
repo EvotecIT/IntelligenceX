@@ -19,6 +19,7 @@ internal static class UsageTelemetryQuickReportSupport {
         string providerId,
         string sourceRootId,
         DateTime dayUtc,
+        DateTimeOffset timestampUtc,
         string model,
         string surface,
         string? machineId,
@@ -32,8 +33,12 @@ internal static class UsageTelemetryQuickReportSupport {
         var normalizedSurface = NormalizeOptional(surface) ?? "unknown-surface";
         var key = string.Join("|", providerId, sourceRootId, dayUtc.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), normalizedModel, normalizedSurface, NormalizeOptional(accountLabel) ?? string.Empty);
         if (!aggregates.TryGetValue(key, out var bucket)) {
-            bucket = new UsageAggregateBucket(providerId, sourceRootId, dayUtc, normalizedModel, normalizedSurface, machineId, accountLabel);
+            bucket = new UsageAggregateBucket(providerId, sourceRootId, dayUtc, timestampUtc, normalizedModel, normalizedSurface, machineId, accountLabel);
             aggregates[key] = bucket;
+        }
+
+        if (timestampUtc > bucket.LatestTimestampUtc) {
+            bucket.LatestTimestampUtc = timestampUtc;
         }
 
         bucket.InputTokens += Math.Max(0L, inputTokens);
@@ -60,7 +65,7 @@ internal static class UsageTelemetryQuickReportSupport {
                 bucket.ProviderId,
                 adapterId,
                 bucket.SourceRootId,
-                new DateTimeOffset(bucket.DayUtc, TimeSpan.Zero)) {
+                bucket.LatestTimestampUtc) {
                 AccountLabel = bucket.AccountLabel,
                 MachineId = bucket.MachineId,
                 Model = bucket.Model,
@@ -190,6 +195,7 @@ internal static class UsageTelemetryQuickReportSupport {
             string providerId,
             string sourceRootId,
             DateTime dayUtc,
+            DateTimeOffset latestTimestampUtc,
             string model,
             string surface,
             string? machineId,
@@ -197,6 +203,7 @@ internal static class UsageTelemetryQuickReportSupport {
             ProviderId = providerId;
             SourceRootId = sourceRootId;
             DayUtc = dayUtc;
+            LatestTimestampUtc = latestTimestampUtc;
             Model = model;
             Surface = surface;
             MachineId = machineId;
@@ -206,6 +213,7 @@ internal static class UsageTelemetryQuickReportSupport {
         public string ProviderId { get; }
         public string SourceRootId { get; }
         public DateTime DayUtc { get; }
+        public DateTimeOffset LatestTimestampUtc { get; set; }
         public string Model { get; }
         public string Surface { get; }
         public string? MachineId { get; }

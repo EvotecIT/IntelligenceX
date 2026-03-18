@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using IntelligenceX.Json;
-using IntelligenceX.OpenAI;
 using IntelligenceX.Telemetry.Usage;
 
 namespace IntelligenceX.Visualization.Heatmaps;
@@ -694,22 +693,6 @@ public sealed class UsageTelemetryOverviewDocument {
 /// </summary>
 public sealed class UsageTelemetryOverviewBuilder {
     private const int ProviderTrailingWindowDays = 364;
-    private static readonly IReadOnlyDictionary<string, UsageTelemetryApiPrice> ApiPricingByModel =
-        new Dictionary<string, UsageTelemetryApiPrice>(StringComparer.OrdinalIgnoreCase) {
-            ["gpt-5.4"] = new(2.50m, 0.25m, 15m),
-            ["gpt-5.4-codex"] = new(2.50m, 0.25m, 15m),
-            ["gpt-5-mini"] = new(0.25m, 0.025m, 2m),
-            ["gpt-5-nano"] = new(0.05m, 0.005m, 0.40m),
-            ["gpt-5.3"] = new(1.75m, 0.175m, 14m),
-            ["gpt-5.3-codex"] = new(1.75m, 0.175m, 14m),
-            ["gpt-5.2"] = new(1.75m, 0.175m, 14m),
-            ["gpt-5.2-codex"] = new(1.75m, 0.175m, 14m),
-            ["gpt-5.1"] = new(1.25m, 0.125m, 10m),
-            ["gpt-5.1-codex"] = new(1.25m, 0.125m, 10m),
-            ["gpt-5-codex"] = new(1.25m, 0.125m, 10m),
-            ["gpt-5.1-codex-max"] = new(1.25m, 0.125m, 10m),
-            ["gpt-5.1-codex-mini"] = new(0.25m, 0.025m, 2m)
-        };
 
     /// <summary>
     /// Builds an overview document from canonical telemetry events.
@@ -1011,43 +994,19 @@ public sealed class UsageTelemetryOverviewBuilder {
     private static UsageTelemetryOverviewApiCostEstimate? BuildApiCostEstimate(
         IReadOnlyList<UsageEventRecord> events,
         int driverLimit) {
-        if (events.Count == 0) {
+        var estimate = UsageTelemetryApiPricing.Estimate(events, driverLimit);
+        if (estimate is null) {
             return null;
         }
 
-        var estimates = events
-            .Select(EstimateEventApiCost)
+        var topDrivers = estimate.TopDrivers
+            .Select(static driver => new UsageTelemetryOverviewCostDriver(driver.Model, driver.EstimatedCostUsd, driver.SharePercent))
             .ToArray();
-        var totalEstimatedCost = estimates.Sum(static estimate => estimate.EstimatedCostUsd);
-        var coveredTokens = estimates
-            .Where(static estimate => estimate.HasKnownPricing)
-            .Sum(static estimate => estimate.TotalTokens);
-        var uncoveredTokens = estimates
-            .Where(static estimate => !estimate.HasKnownPricing)
-            .Sum(static estimate => estimate.TotalTokens);
-
-        var topDrivers = estimates
-            .Where(static estimate => estimate.HasKnownPricing)
-            .GroupBy(static estimate => estimate.Model, StringComparer.OrdinalIgnoreCase)
-            .Select(group => {
-                var cost = group.Sum(static estimate => estimate.EstimatedCostUsd);
-                var share = totalEstimatedCost <= 0m ? 0d : (double)(cost / totalEstimatedCost * 100m);
-                return new UsageTelemetryOverviewCostDriver(group.Key, cost, share);
-            })
-            .Where(static driver => driver.EstimatedCostUsd > 0m)
-            .OrderByDescending(static driver => driver.EstimatedCostUsd)
-            .ThenBy(static driver => driver.Model, StringComparer.OrdinalIgnoreCase)
-            .Take(Math.Max(1, driverLimit))
-            .ToArray();
-
-        if (totalEstimatedCost <= 0m && coveredTokens <= 0L && uncoveredTokens <= 0L) {
-            return null;
-        }
 
         return new UsageTelemetryOverviewApiCostEstimate(
-            totalEstimatedCost,
-            coveredTokens,
-            uncoveredTokens,
+            estimate.TotalEstimatedCostUsd,
+            estimate.CoveredTokens,
+            estimate.UncoveredTokens,
             topDrivers);
     }
 
@@ -1193,35 +1152,6 @@ public sealed class UsageTelemetryOverviewBuilder {
         };
     }
 
-    private static UsageTelemetryApiCostEventEstimate EstimateEventApiCost(UsageEventRecord record) {
-        var normalizedModel = NormalizePricingModelId(record.ProviderId, record.Model);
-        var totalTokens = record.TotalTokens ?? 0L;
-        if (!TryResolveApiPrice(normalizedModel, out var rate)) {
-            return new UsageTelemetryApiCostEventEstimate(
-                Model: normalizedModel,
-                TotalTokens: totalTokens,
-                EstimatedCostUsd: 0m,
-                HasKnownPricing: false);
-        }
-
-        var inputTokens = Math.Max(0L, record.InputTokens ?? 0L);
-        var cachedInputTokens = Math.Max(0L, record.CachedInputTokens ?? 0L);
-        var outputTokens = Math.Max(0L, record.OutputTokens ?? 0L);
-        var reasoningTokens = Math.Max(0L, record.ReasoningTokens ?? 0L);
-        var effectiveOutputTokens = outputTokens + reasoningTokens;
-
-        var estimatedCostUsd =
-            ComputePerMillionCost(inputTokens, rate.InputUsdPerMillion) +
-            ComputePerMillionCost(cachedInputTokens, rate.CachedInputUsdPerMillion ?? rate.InputUsdPerMillion) +
-            ComputePerMillionCost(effectiveOutputTokens, rate.OutputUsdPerMillion);
-
-        return new UsageTelemetryApiCostEventEstimate(
-            Model: normalizedModel,
-            TotalTokens: totalTokens,
-            EstimatedCostUsd: estimatedCostUsd,
-            HasKnownPricing: true);
-    }
-
     private static bool HasProviderTokenTelemetry(IReadOnlyList<UsageEventRecord> events) {
         return events.Any(static record =>
             (record.TotalTokens ?? 0L) > 0L ||
@@ -1245,45 +1175,6 @@ public sealed class UsageTelemetryOverviewBuilder {
         return events
             .Where(static record => !string.IsNullOrWhiteSpace(record.TurnId))
             .ToArray();
-    }
-
-    private static decimal ComputePerMillionCost(long tokens, decimal usdPerMillion) {
-        if (tokens <= 0L || usdPerMillion <= 0m) {
-            return 0m;
-        }
-
-        return tokens / 1_000_000m * usdPerMillion;
-    }
-
-    private static string NormalizePricingModelId(string? providerId, string? model) {
-        var provider = NormalizeOptional(providerId)?.ToLowerInvariant();
-        if (provider is "codex" or "openai" or "ix") {
-            return OpenAIModelCatalog.NormalizeModelId(model, "unknown-model").Trim().ToLowerInvariant();
-        }
-
-        return NormalizeOptional(model)?.ToLowerInvariant() ?? "unknown-model";
-    }
-
-    private static bool TryResolveApiPrice(string normalizedModelId, out UsageTelemetryApiPrice rate) {
-        if (ApiPricingByModel.TryGetValue(normalizedModelId, out rate)) {
-            return true;
-        }
-
-        if (normalizedModelId.StartsWith("claude-opus-4-6", StringComparison.OrdinalIgnoreCase)) {
-            rate = new UsageTelemetryApiPrice(5m, null, 25m);
-            return true;
-        }
-        if (normalizedModelId.StartsWith("claude-opus-4-5", StringComparison.OrdinalIgnoreCase)) {
-            rate = new UsageTelemetryApiPrice(5m, null, 25m);
-            return true;
-        }
-        if (normalizedModelId.StartsWith("claude-opus-4", StringComparison.OrdinalIgnoreCase)) {
-            rate = new UsageTelemetryApiPrice(5m, null, 25m);
-            return true;
-        }
-
-        rate = default;
-        return false;
     }
 
     private static UsageTelemetryOverviewModelHighlight? BuildModelHighlight(
@@ -1753,10 +1644,6 @@ public sealed class UsageTelemetryOverviewBuilder {
             .ToArray();
         return new string(chars).Trim('-');
     }
-
-    private readonly record struct UsageTelemetryApiPrice(decimal InputUsdPerMillion, decimal? CachedInputUsdPerMillion, decimal OutputUsdPerMillion);
-
-    private readonly record struct UsageTelemetryApiCostEventEstimate(string Model, long TotalTokens, decimal EstimatedCostUsd, bool HasKnownPricing);
 
     private readonly record struct ProviderAccentColors(string Input, string Output, string Total, string Other);
 }

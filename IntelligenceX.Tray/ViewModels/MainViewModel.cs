@@ -17,7 +17,11 @@ namespace IntelligenceX.Tray.ViewModels;
 
 public sealed class MainViewModel : ViewModelBase, IDisposable {
     private const int DefaultRefreshIntervalSeconds = 120;
+    private const int UsageStartupRefreshStalenessSeconds = 1800;
+    private const int UsageRootSafetySweepSeconds = 21600;
+    private const int UsageChangeDebounceSeconds = 15;
     private const int RefreshHistoryDepth = 4;
+    private const int FreshLimitSnapshotWindowSeconds = 75;
     private const double LimitWarningThresholdPercent = 90d;
     private const double LimitExhaustedThresholdPercent = 100d;
 
@@ -25,31 +29,51 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     private readonly ProviderLimitSnapshotService _limitService;
     private readonly GitHubService _gitHubService;
     private readonly TrayPreferencesStore _preferencesStore;
+    private readonly TrayUsageSnapshotStore _usageSnapshotStore;
     private readonly TrayPreferences _preferences;
     private readonly DispatcherTimer _refreshTimer;
+    private readonly DispatcherTimer _loadingStatusTimer;
+    private readonly DispatcherTimer _usageDirtyRefreshTimer;
+    private readonly UsageChangeWatcher _usageChangeWatcher;
     private readonly HashSet<string> _activeLimitNotificationKeys = new(StringComparer.Ordinal);
     private readonly HashSet<string> _favoriteProviderIds;
+    private readonly Dictionary<string, ProviderLimitSnapshot> _latestLimitSnapshots = new(StringComparer.OrdinalIgnoreCase);
+    private Dictionary<string, List<UsageEventRecord>> _displayedProviderEvents = new(StringComparer.OrdinalIgnoreCase);
     private Dictionary<string, ProviderRefreshSnapshot> _previousProviderSnapshots = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, Queue<ProviderRefreshSnapshot>> _providerRefreshHistory = new(StringComparer.OrdinalIgnoreCase);
     private ProviderViewModel? _selectedProvider;
     private bool _isLoading;
     private string _statusText = "Initializing...";
+    private string _loadingDetailText = "Preparing tray refresh...";
+    private double _loadingProgressValue;
+    private double _loadingProgressMaximum = 1d;
+    private bool _loadingProgressIsIndeterminate = true;
+    private DateTimeOffset _loadingProgressUpdatedAtUtc;
     private DateTimeOffset _lastRefreshed;
+    private DateTimeOffset _lastLimitRefreshUtc;
     private int _gitHubRefreshVersion;
     private CancellationTokenSource? _gitHubRefreshCts;
+    private int _limitRefreshVersion;
+    private CancellationTokenSource? _limitRefreshCts;
     private int _autoRefreshIntervalSeconds;
     private bool _notificationsEnabled;
     private bool _hasCompletedInitialRefresh;
+    private DateTimeOffset _lastUsageSnapshotScannedAtUtc;
+    private DateTimeOffset _lastUsageRootDiscoveryUtc;
+    private DateTimeOffset _usageDirtyAtUtc;
+    private string? _latestUsageChangePath;
 
     public MainViewModel(
         UsageTelemetrySnapshotService usageService,
         ProviderLimitSnapshotService limitService,
         GitHubService gitHubService,
-        TrayPreferencesStore preferencesStore) {
+        TrayPreferencesStore preferencesStore,
+        TrayUsageSnapshotStore usageSnapshotStore) {
         _usageService = usageService;
         _limitService = limitService;
         _gitHubService = gitHubService;
         _preferencesStore = preferencesStore;
+        _usageSnapshotStore = usageSnapshotStore;
         _preferences = _preferencesStore.Load();
         _autoRefreshIntervalSeconds = NormalizeRefreshIntervalSeconds(_preferences.AutoRefreshIntervalSeconds);
         _notificationsEnabled = _preferences.NotificationsEnabled;
@@ -63,7 +87,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         };
         GitHub.PropertyChanged += OnGitHubPropertyChanged;
 
-        RefreshCommand = new RelayCommand(RefreshAsync);
+        RefreshCommand = new RelayCommand(() => RefreshAsync());
         RefreshGitHubCommand = new RelayCommand(RefreshGitHubCurrentAsync);
         OpenOpenAiCacheCommand = new RelayCommand(OpenOpenAiCacheAsync);
         ToggleSelectedProviderFavoriteCommand = new RelayCommand(ToggleSelectedProviderFavoriteAsync, () => CanToggleFavoriteSelectedProvider);
@@ -71,7 +95,27 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         _refreshTimer = new DispatcherTimer {
             Interval = TimeSpan.FromSeconds(Math.Max(1, _autoRefreshIntervalSeconds <= 0 ? DefaultRefreshIntervalSeconds : _autoRefreshIntervalSeconds))
         };
-        _refreshTimer.Tick += async (_, _) => await RefreshAsync();
+        _refreshTimer.Tick += async (_, _) => await RefreshAutoAsync();
+
+        _usageChangeWatcher = new UsageChangeWatcher();
+        _usageChangeWatcher.Changed += OnUsageChangeDetected;
+        _usageDirtyRefreshTimer = new DispatcherTimer {
+            Interval = TimeSpan.FromSeconds(UsageChangeDebounceSeconds)
+        };
+        _usageDirtyRefreshTimer.Tick += async (_, _) => {
+            _usageDirtyRefreshTimer.Stop();
+            await RefreshUsageIfDirtyAsync();
+        };
+
+        _loadingStatusTimer = new DispatcherTimer {
+            Interval = TimeSpan.FromSeconds(1)
+        };
+        _loadingStatusTimer.Tick += (_, _) => {
+            if (IsLoading) {
+                OnPropertyChanged(nameof(LoadingDetailDisplayText));
+                OnPropertyChanged(nameof(FooterStatusText));
+            }
+        };
     }
 
     public event EventHandler<TrayNotificationRequestedEventArgs>? NotificationRequested;
@@ -99,6 +143,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
 
     public bool ShowUsageContent => SelectedProvider is { ProviderId: not "__github__" };
     public bool ShowGitHubContent => IsGitHubTabSelected || (!HasUsageProviders && HasGitHubProvider);
+    public bool ShowLoadingOverlay => IsLoading && ShowUsageContent && !HasUsageProviders;
 
     public string HeaderTitle {
         get {
@@ -116,13 +161,65 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
 
     public bool IsLoading {
         get => _isLoading;
-        set => SetProperty(ref _isLoading, value);
+        set {
+            if (SetProperty(ref _isLoading, value)) {
+                if (value) {
+                    _loadingProgressUpdatedAtUtc = DateTimeOffset.UtcNow;
+                    if (!_loadingStatusTimer.IsEnabled) {
+                        _loadingStatusTimer.Start();
+                    }
+                } else {
+                    _loadingProgressUpdatedAtUtc = default;
+                    if (_loadingStatusTimer.IsEnabled) {
+                        _loadingStatusTimer.Stop();
+                    }
+                    OnPropertyChanged(nameof(LoadingDetailDisplayText));
+                }
+                OnPropertyChanged(nameof(ShowLoadingOverlay));
+                OnPropertyChanged(nameof(FooterStatusText));
+            }
+        }
     }
 
     public string StatusText {
         get => _statusText;
-        set => SetProperty(ref _statusText, value);
+        set {
+            if (SetProperty(ref _statusText, value)) {
+                OnPropertyChanged(nameof(FooterStatusText));
+            }
+        }
     }
+
+    public string LoadingDetailText {
+        get => _loadingDetailText;
+        set {
+            if (SetProperty(ref _loadingDetailText, value)) {
+                OnPropertyChanged(nameof(LoadingDetailDisplayText));
+                OnPropertyChanged(nameof(FooterStatusText));
+            }
+        }
+    }
+
+    public string LoadingDetailDisplayText => BuildLoadingStatusText(LoadingDetailText);
+
+    public double LoadingProgressValue {
+        get => _loadingProgressValue;
+        set => SetProperty(ref _loadingProgressValue, value);
+    }
+
+    public double LoadingProgressMaximum {
+        get => _loadingProgressMaximum;
+        set => SetProperty(ref _loadingProgressMaximum, value <= 0d ? 1d : value);
+    }
+
+    public bool LoadingProgressIsIndeterminate {
+        get => _loadingProgressIsIndeterminate;
+        set => SetProperty(ref _loadingProgressIsIndeterminate, value);
+    }
+
+    public string FooterStatusText => IsLoading && !string.IsNullOrWhiteSpace(LoadingDetailText)
+        ? BuildLoadingStatusText(LoadingDetailText)
+        : StatusText;
 
     public DateTimeOffset LastRefreshed {
         get => _lastRefreshed;
@@ -167,22 +264,156 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     public RelayCommand ToggleSelectedProviderFavoriteCommand { get; }
 
     public async Task InitializeAsync() {
-        await RefreshAsync();
+        var loadedCachedUsageSnapshot = ApplyCachedUsageSnapshot();
         ConfigureRefreshTimer();
+        _ = RefreshGitHubAsync(GitHub.UsernameInput);
+        if (loadedCachedUsageSnapshot) {
+            _ = RefreshLightweightAutoAsync();
+            if (ShouldRunStartupUsageRefresh()) {
+                _ = RefreshAsync();
+            }
+            return;
+        }
+
+        await RefreshAsync(startupWarmup: true);
+        _ = RefreshAsync();
     }
 
-    public async Task RefreshAsync() {
+    private async Task RefreshAutoAsync() {
         if (IsLoading) {
             return;
         }
 
+        if (ShouldRunFullAutomaticUsageRefresh()) {
+            await RefreshAsync();
+            return;
+        }
+
+        await RefreshLightweightAutoAsync();
+    }
+
+    public async Task RefreshAsync(bool startupWarmup = false) {
+        if (IsLoading) {
+            return;
+        }
+
+        var refreshStartedAtUtc = DateTimeOffset.UtcNow;
+        var hasVisibleUsageData = HasUsageProviders;
+        var showBusyOverlay = !hasVisibleUsageData;
         IsLoading = true;
-        StatusText = "Scanning providers...";
+        _loadingProgressUpdatedAtUtc = DateTimeOffset.UtcNow;
+        LoadingProgressIsIndeterminate = true;
+        LoadingProgressValue = 0d;
+        LoadingProgressMaximum = 1d;
+        if (showBusyOverlay) {
+            StatusText = startupWarmup ? "Loading recent usage snapshot..." : "Starting usage refresh...";
+            LoadingDetailText = startupWarmup
+                ? "Preparing a quick startup snapshot from recent artifacts."
+                : "Preparing local usage scan and cache lookup.";
+        } else {
+            StatusText = "Refreshing usage in background...";
+        }
 
         try {
-            var preferredSelection = SelectedProvider?.ProviderId ?? _preferences.SelectedProviderId;
+            var discoveredProviderIds = new List<string>();
+            var progressiveProviderEvents = new Dictionary<string, List<UsageEventRecord>>(StringComparer.OrdinalIgnoreCase);
+            var dispatcher = Application.Current.Dispatcher;
+            var progressGate = new object();
+            UsageTelemetryScanProgress? pendingScanProgress = null;
+            var scanProgressDispatchQueued = 0;
+
+            void ApplyScanProgressUpdate(UsageTelemetryScanProgress progress) {
+                if (!IsLoading) {
+                    return;
+                }
+
+                _loadingProgressUpdatedAtUtc = DateTimeOffset.UtcNow;
+                OnPropertyChanged(nameof(LoadingDetailDisplayText));
+                OnPropertyChanged(nameof(FooterStatusText));
+                StatusText = progress.StatusText;
+                if (!string.IsNullOrWhiteSpace(progress.DetailText)) {
+                    LoadingDetailText = progress.DetailText!;
+                } else if (showBusyOverlay) {
+                    LoadingDetailText = "Scanning local usage data.";
+                }
+
+                if (progress.ProviderArtifactProgress is { } providerArtifactProgress && providerArtifactProgress.ArtifactCount > 0) {
+                    LoadingProgressIsIndeterminate = false;
+                    LoadingProgressMaximum = providerArtifactProgress.ArtifactCount;
+                    LoadingProgressValue = Math.Min(providerArtifactProgress.ArtifactOrdinal, providerArtifactProgress.ArtifactCount);
+                } else {
+                    LoadingProgressIsIndeterminate = true;
+                }
+
+                var usageShapeChanged = false;
+                if (progress.DiscoveredProviderIds is { Count: > 0 }) {
+                    foreach (var providerId in progress.DiscoveredProviderIds) {
+                        if (string.IsNullOrWhiteSpace(providerId)) {
+                            continue;
+                        }
+
+                        if (discoveredProviderIds.Contains(providerId, StringComparer.OrdinalIgnoreCase)) {
+                            continue;
+                        }
+
+                        discoveredProviderIds.Add(providerId);
+                        usageShapeChanged = true;
+                    }
+                }
+
+                if (progress.CompletedProvider is { } completedProvider) {
+                    if (!discoveredProviderIds.Contains(completedProvider.ProviderId, StringComparer.OrdinalIgnoreCase)) {
+                        discoveredProviderIds.Add(completedProvider.ProviderId);
+                    }
+
+                    progressiveProviderEvents[completedProvider.ProviderId] = completedProvider.Events.ToList();
+                    usageShapeChanged = true;
+                }
+
+                if (usageShapeChanged) {
+                    ApplyProgressiveUsageProviders(discoveredProviderIds, progressiveProviderEvents);
+                }
+            }
+
+            void ScheduleScanProgressFlush() {
+                if (Interlocked.CompareExchange(ref scanProgressDispatchQueued, 1, 0) != 0) {
+                    return;
+                }
+
+                _ = dispatcher.InvokeAsync(() => {
+                    try {
+                        UsageTelemetryScanProgress? progressToApply;
+                        lock (progressGate) {
+                            progressToApply = pendingScanProgress;
+                            pendingScanProgress = null;
+                        }
+
+                        if (progressToApply is not null) {
+                            ApplyScanProgressUpdate(progressToApply);
+                        }
+                    } finally {
+                        Interlocked.Exchange(ref scanProgressDispatchQueued, 0);
+                        lock (progressGate) {
+                            if (pendingScanProgress is not null) {
+                                ScheduleScanProgressFlush();
+                            }
+                        }
+                    }
+                }, DispatcherPriority.Background);
+            }
+
+            using var scanProgressTimer = new Timer(_ => ScheduleScanProgressFlush(), null, TimeSpan.FromMilliseconds(150), TimeSpan.FromMilliseconds(150));
+            var scanProgress = new Progress<UsageTelemetryScanProgress>(progress => {
+                lock (progressGate) {
+                    pendingScanProgress = progress;
+                }
+
+                if (progress.CompletedProvider is not null || progress.ProviderArtifactProgress is null) {
+                    ScheduleScanProgressFlush();
+                }
+            });
             var refreshData = await Task.Run(async () => {
-                var snapshot = await _usageService.ScanAsync();
+                var snapshot = await _usageService.ScanAsync(progress: scanProgress, startupWarmup: startupWarmup);
                 var events = snapshot.Events;
 
                 var byProvider = events
@@ -190,7 +421,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
                     .Where(g => !string.IsNullOrWhiteSpace(g.Key))
                     .OrderBy(g => ProviderMetadata.Resolve(g.Key).SortOrder)
                     .ToList();
-                var limitSnapshots = await _limitService.FetchAsync(byProvider.Select(group => group.Key)).ConfigureAwait(false);
 
                 var info = $"{events.Count} events, {byProvider.Count} providers";
                 if (snapshot.ScanDurationMs > 0) {
@@ -204,109 +434,154 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
                 return new RefreshComputationResult(
                     events.ToList(),
                     byProvider.Select(group => new ProviderRefreshData(group.Key, group.ToList())).ToList(),
-                    limitSnapshots,
                     snapshot.ScannedAtUtc,
-                    info);
+                    info,
+                    snapshot.DiscoveredProviderIds,
+                    snapshot.SourceRoots);
             });
-            var providerDelta = BuildProviderComparisonDelta(refreshData.ByProvider, _previousProviderSnapshots);
-            var currentProviderSnapshots = refreshData.ByProvider.ToDictionary(
+            ScheduleScanProgressFlush();
+            var mergedProviderData = BuildMergedProviderData(
+                refreshData.ByProvider,
+                refreshData.DiscoveredProviderIds.Count > 0 ? refreshData.DiscoveredProviderIds : discoveredProviderIds);
+            var providerIds = mergedProviderData
+                .Select(static group => group.ProviderId)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            var providerDelta = BuildProviderComparisonDelta(mergedProviderData, _previousProviderSnapshots);
+            var currentProviderSnapshots = mergedProviderData.ToDictionary(
                 static group => group.ProviderId,
                 static group => ProviderRefreshSnapshot.FromEvents(group.Events),
                 StringComparer.OrdinalIgnoreCase);
             UpdateProviderRefreshHistory(currentProviderSnapshots);
             var providerHistory = BuildProviderComparisonHistory(_providerRefreshHistory);
-
-            var newProviders = new List<ProviderViewModel>();
-            if (refreshData.AllEvents.Count > 0) {
-                var allVm = BuildProviderViewModel("__all__", refreshData.AllEvents);
-                allVm.DisplayName = "All";
-                allVm.ShortName = "All";
-                allVm.IconKey = "IconIx";
-                allVm.SortOrder = -1;
-                allVm.AccentBrush = Frozen(new SolidColorBrush(Color.FromRgb(155, 233, 168)));
-                allVm.InputColor = Color.FromRgb(155, 233, 168);
-                allVm.OutputColor = Color.FromRgb(64, 196, 99);
-                allVm.LastUpdated = refreshData.ScannedAtUtc;
-                allVm.IsFavorite = false;
-                allVm.ApplyRefreshDelta(
-                    providerDelta.Values.Where(static delta => delta.TokenDelta > 0L).Sum(static delta => delta.TokenDelta),
-                    providerDelta.Values.Where(static delta => delta.EventDelta > 0).Sum(static delta => delta.EventDelta));
-                allVm.ApplyExplorerPreferences(GetProviderExplorerPreferences(allVm.ProviderId));
-                newProviders.Add(allVm);
-            }
-
-            foreach (var group in refreshData.ByProvider) {
-                var vm = BuildProviderViewModel(group.ProviderId, group.Events);
-                vm.LastUpdated = refreshData.ScannedAtUtc;
-                vm.IsFavorite = IsFavoriteProvider(group.ProviderId);
-                if (providerDelta.TryGetValue(group.ProviderId, out var deltaInfo)) {
-                    vm.ApplyRefreshDelta(deltaInfo.TokenDelta, deltaInfo.EventDelta);
-                } else {
-                    vm.ApplyRefreshDelta(0L, 0);
-                }
-
-                if (refreshData.LimitSnapshots.TryGetValue(group.ProviderId, out var limitSnapshot)) {
-                    vm.ApplyLimitSnapshot(limitSnapshot);
-                }
-
-                vm.ApplyExplorerPreferences(GetProviderExplorerPreferences(vm.ProviderId));
-                newProviders.Add(vm);
-            }
-
-            if (newProviders.FirstOrDefault(provider => string.Equals(provider.ProviderId, "__all__", StringComparison.Ordinal)) is { } allProvider) {
-                allProvider.SetProviderComparisonHealth(BuildProviderComparisonHealth(newProviders));
-                allProvider.SetProviderComparisonDelta(providerDelta);
-                allProvider.SetProviderComparisonHistory(providerHistory);
-                allProvider.SetProviderComparisonFavorites(_favoriteProviderIds);
-            }
-
-            var gitHubProvider = new ProviderViewModel {
-                ProviderId = "__github__",
-                DisplayName = "GitHub",
-                ShortName = "GitHub",
-                IconKey = "IconGitHub",
-                SortOrder = 999,
-                IsFavorite = IsFavoriteProvider("__github__"),
-                AccentBrush = Frozen(new SolidColorBrush(Color.FromRgb(64, 196, 99))),
-                InputColor = Color.FromRgb(155, 233, 168),
-                OutputColor = Color.FromRgb(64, 196, 99)
-            };
-            gitHubProvider.ApplyRefreshDelta(0L, 0);
-            newProviders.Add(gitHubProvider);
-
-            var orderedProviders = OrderProviders(newProviders);
-            UnsubscribeProviders();
-            Providers.Clear();
-            foreach (var provider in orderedProviders) {
-                provider.RefreshIconGeometry();
-                if (provider.ProviderId != "__github__") {
-                    provider.PropertyChanged += OnProviderPropertyChanged;
-                }
-
-                Providers.Add(provider);
-            }
-
-            var restored = !string.IsNullOrWhiteSpace(preferredSelection)
-                ? Providers.FirstOrDefault(p => string.Equals(p.ProviderId, preferredSelection, StringComparison.Ordinal))
-                : null;
-            SelectedProvider = restored
-                               ?? Providers.FirstOrDefault(static provider => provider.IsFavorite)
-                               ?? Providers.FirstOrDefault();
-            RefreshProviderSelectionState();
+            var newProviders = BuildUsageProviders(
+                mergedProviderData,
+                refreshData.AllEvents,
+                refreshData.ScannedAtUtc,
+                providerDelta,
+                providerHistory);
+            ReplaceProviders(newProviders);
+            UpdateDisplayedProviderEvents(mergedProviderData);
             LastRefreshed = refreshData.ScannedAtUtc.ToLocalTime();
-            StatusText = refreshData.ScanInfo;
+            _lastUsageSnapshotScannedAtUtc = refreshData.ScannedAtUtc;
+            _lastUsageRootDiscoveryUtc = DateTimeOffset.UtcNow;
+            if (_usageDirtyAtUtc <= refreshStartedAtUtc) {
+                _usageDirtyAtUtc = default;
+                _latestUsageChangePath = null;
+            }
+            _usageChangeWatcher.SetRoots(refreshData.SourceRoots);
+            StatusText = startupWarmup
+                ? refreshData.ScanInfo + " • Recent startup snapshot ready."
+                : BuildUsageRefreshStatus(refreshData.ScanInfo, providerIds);
+            _usageSnapshotStore.Save(
+                refreshData.ScannedAtUtc,
+                refreshData.AllEvents,
+                refreshData.DiscoveredProviderIds,
+                refreshData.SourceRoots);
 
-            EvaluateLimitNotifications(refreshData.LimitSnapshots);
             _previousProviderSnapshots = new Dictionary<string, ProviderRefreshSnapshot>(currentProviderSnapshots, StringComparer.OrdinalIgnoreCase);
-
-            var ghLogin = GitHub.UsernameInput;
-            _ = RefreshGitHubAsync(ghLogin);
-            _hasCompletedInitialRefresh = true;
+            if (!startupWarmup) {
+                EvaluateLimitNotifications(_latestLimitSnapshots);
+                _ = RefreshProviderLimitsAsync(providerIds, refreshData.ScanInfo);
+                var ghLogin = GitHub.UsernameInput;
+                _ = RefreshGitHubAsync(ghLogin);
+                _hasCompletedInitialRefresh = true;
+            }
         } catch (Exception ex) {
             StatusText = $"Error: {ex.Message}";
+            LoadingDetailText = ex.Message;
         } finally {
             IsLoading = false;
+            LoadingProgressIsIndeterminate = true;
+            LoadingProgressValue = 0d;
+            LoadingProgressMaximum = 1d;
+            _loadingProgressUpdatedAtUtc = default;
+            if (showBusyOverlay) {
+                LoadingDetailText = string.Empty;
+            }
         }
+    }
+
+    private bool ShouldRunFullAutomaticUsageRefresh() {
+        if (!HasUsageProviders || _lastUsageSnapshotScannedAtUtc == default) {
+            return true;
+        }
+
+        if (!_usageChangeWatcher.HasActiveWatchers) {
+            return true;
+        }
+
+        if (HasPendingUsageChanges()) {
+            return true;
+        }
+
+        if (_lastUsageRootDiscoveryUtc == default) {
+            return true;
+        }
+
+        var age = DateTimeOffset.UtcNow - _lastUsageRootDiscoveryUtc;
+        return age.TotalSeconds >= UsageRootSafetySweepSeconds;
+    }
+
+    private async Task RefreshLightweightAutoAsync() {
+        var providerIds = Providers
+            .Where(static provider => provider.ProviderId != "__all__" && provider.ProviderId != "__github__")
+            .Select(static provider => provider.ProviderId)
+            .Where(static providerId => !string.IsNullOrWhiteSpace(providerId))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        var backgroundTasks = new List<Task> {
+            RefreshGitHubAsync(GitHub.UsernameInput)
+        };
+
+        if (providerIds.Length > 0) {
+            backgroundTasks.Add(RefreshProviderLimitsAsync(providerIds, "Usage snapshot current"));
+        }
+
+        await Task.WhenAll(backgroundTasks).ConfigureAwait(false);
+    }
+
+    private bool ShouldRunStartupUsageRefresh() {
+        if (!HasUsageProviders || _lastUsageSnapshotScannedAtUtc == default) {
+            return true;
+        }
+
+        if (!_usageChangeWatcher.HasActiveWatchers) {
+            return true;
+        }
+
+        var age = DateTimeOffset.UtcNow - _lastUsageSnapshotScannedAtUtc;
+        return age.TotalSeconds >= UsageStartupRefreshStalenessSeconds;
+    }
+
+    private bool HasPendingUsageChanges() {
+        return _usageDirtyAtUtc != default && _usageDirtyAtUtc > _lastUsageSnapshotScannedAtUtc;
+    }
+
+    private async Task RefreshUsageIfDirtyAsync() {
+        if (AutoRefreshIntervalSeconds <= 0 || IsLoading || !HasPendingUsageChanges()) {
+            return;
+        }
+
+        await RefreshAsync().ConfigureAwait(false);
+    }
+
+    private string BuildLoadingStatusText(string? value) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            return string.Empty;
+        }
+
+        if (!IsLoading || _loadingProgressUpdatedAtUtc == default) {
+            return value!;
+        }
+
+        var elapsed = DateTimeOffset.UtcNow - _loadingProgressUpdatedAtUtc;
+        if (elapsed < TimeSpan.FromSeconds(3)) {
+            return value!;
+        }
+
+        return value + " • " + Math.Max(1, (int)Math.Floor(elapsed.TotalSeconds)).ToString(CultureInfo.InvariantCulture) + "s";
     }
 
     public Task RefreshGitHubCurrentAsync() {
@@ -431,20 +706,23 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         previousCts?.Cancel();
         previousCts?.Dispose();
         var cancellationToken = refreshCts.Token;
-        var hasToken = !string.IsNullOrWhiteSpace(
-            IntelligenceX.Telemetry.GitHub.GitHubDashboardService.ResolveTokenFromEnvironment());
+        var gitHubCredentials = await IntelligenceX.Telemetry.GitHub.GitHubCredentialResolver.ResolveAsync(cancellationToken).ConfigureAwait(false);
+        var resolvedGitHubToken = gitHubCredentials.Token;
+        var hasToken = gitHubCredentials.HasToken;
         var effectiveLogin = string.IsNullOrWhiteSpace(ghLogin) ? null : ghLogin.Trim();
+        var preserveExistingData = ShouldPreserveGitHubDataDuringRefresh(effectiveLogin, hasToken);
 
         await dispatcher.InvokeAsync(() => {
             if (!IsCurrentGitHubRefresh(currentVersion, cancellationToken)) {
                 return;
             }
 
-            if (!hasToken) {
+            if (effectiveLogin is not null) {
+                GitHub.UsernameInput = effectiveLogin;
+            }
+
+            if (!preserveExistingData && !hasToken && !GitHub.HasData) {
                 GitHub.ClearData();
-                if (effectiveLogin is not null) {
-                    GitHub.UsernameInput = effectiveLogin;
-                }
             }
 
             GitHub.HasToken = hasToken;
@@ -465,7 +743,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         }
 
         try {
-            var ghData = await _gitHubService.FetchAsync(effectiveLogin, cancellationToken).ConfigureAwait(false);
+            var ghData = await _gitHubService.FetchAsync(effectiveLogin, resolvedGitHubToken, cancellationToken).ConfigureAwait(false);
             await dispatcher.InvokeAsync(() => {
                 if (!IsCurrentGitHubRefresh(currentVersion, cancellationToken)) {
                     return;
@@ -473,18 +751,18 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
 
                 if (ghData is not null) {
                     GitHub.Apply(ghData);
-                    StatusText = "GitHub loaded for " + ghData.Login + ".";
                     return;
                 }
 
-                GitHub.ClearData();
-                if (effectiveLogin is not null) {
-                    GitHub.UsernameInput = effectiveLogin;
+                if (!preserveExistingData) {
+                    GitHub.ClearData();
+                    if (effectiveLogin is not null) {
+                        GitHub.UsernameInput = effectiveLogin;
+                    }
                 }
 
                 if (!hasToken && !string.IsNullOrWhiteSpace(effectiveLogin)) {
                     GitHub.ErrorMessage = $"No public GitHub data was returned for '{effectiveLogin}'.";
-                    StatusText = GitHub.ErrorMessage;
                 }
             });
         } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
@@ -495,13 +773,14 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
                     return;
                 }
 
-                GitHub.ClearData();
-                if (effectiveLogin is not null) {
-                    GitHub.UsernameInput = effectiveLogin;
+                if (!preserveExistingData) {
+                    GitHub.ClearData();
+                    if (effectiveLogin is not null) {
+                        GitHub.UsernameInput = effectiveLogin;
+                    }
                 }
 
                 GitHub.ErrorMessage = ghEx.Message;
-                StatusText = "GitHub load failed: " + ghEx.Message;
             });
         } finally {
             await dispatcher.InvokeAsync(() => {
@@ -516,6 +795,18 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
                 // cleared
             }
         }
+    }
+
+    private bool ShouldPreserveGitHubDataDuringRefresh(string? requestedLogin, bool hasToken) {
+        if (!GitHub.HasData) {
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(requestedLogin)) {
+            return hasToken;
+        }
+
+        return string.Equals(GitHub.Login, requestedLogin, StringComparison.OrdinalIgnoreCase);
     }
 
     private void OnGitHubPropertyChanged(object? sender, PropertyChangedEventArgs e) {
@@ -552,11 +843,16 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     private void ConfigureRefreshTimer() {
         if (AutoRefreshIntervalSeconds <= 0) {
             _refreshTimer.Stop();
+            _usageDirtyRefreshTimer.Stop();
             return;
         }
 
         _refreshTimer.Interval = TimeSpan.FromSeconds(AutoRefreshIntervalSeconds);
         _refreshTimer.Start();
+        if (HasPendingUsageChanges()) {
+            _usageDirtyRefreshTimer.Stop();
+            _usageDirtyRefreshTimer.Start();
+        }
     }
 
     private ProviderExplorerPreferences? GetProviderExplorerPreferences(string providerId) {
@@ -618,6 +914,108 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         }
 
         _activeLimitNotificationKeys.RemoveWhere(key => !activeKeys.Contains(key));
+    }
+
+    private async Task RefreshProviderLimitsAsync(IReadOnlyCollection<string> providerIds, string usageScanInfo) {
+        if (providerIds.Count == 0) {
+            return;
+        }
+
+        if (HasFreshLimitSnapshotsFor(providerIds)) {
+            ApplyLatestLimitSnapshotsToProviders();
+            return;
+        }
+
+        var dispatcher = Application.Current.Dispatcher;
+        var currentVersion = Interlocked.Increment(ref _limitRefreshVersion);
+        using var refreshCts = new CancellationTokenSource();
+        var previousCts = Interlocked.Exchange(ref _limitRefreshCts, refreshCts);
+        previousCts?.Cancel();
+        previousCts?.Dispose();
+        var cancellationToken = refreshCts.Token;
+
+        try {
+            var limitSnapshots = await _limitService.FetchAsync(providerIds, cancellationToken).ConfigureAwait(false);
+            await dispatcher.InvokeAsync(() => {
+                if (!IsCurrentLimitRefresh(currentVersion, cancellationToken)) {
+                    return;
+                }
+
+                foreach (var (providerId, snapshot) in limitSnapshots) {
+                    _latestLimitSnapshots[providerId] = snapshot;
+                }
+
+                _lastLimitRefreshUtc = DateTimeOffset.UtcNow;
+                ApplyLatestLimitSnapshotsToProviders();
+                EvaluateLimitNotifications(limitSnapshots);
+                if (!IsLoading) {
+                    StatusText = usageScanInfo + " • Live limits updated.";
+                }
+            });
+        } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
+            // A newer live-limit refresh superseded this one.
+        } catch (Exception ex) {
+            await dispatcher.InvokeAsync(() => {
+                if (!IsCurrentLimitRefresh(currentVersion, cancellationToken)) {
+                    return;
+                }
+
+                if (!IsLoading) {
+                    StatusText = usageScanInfo + " • Live limits unavailable: " + ex.Message;
+                }
+            });
+        } finally {
+            if (ReferenceEquals(Interlocked.CompareExchange(ref _limitRefreshCts, null, refreshCts), refreshCts)) {
+                // cleared
+            }
+        }
+    }
+
+    private bool HasFreshLimitSnapshotsFor(IEnumerable<string> providerIds) {
+        if (_latestLimitSnapshots.Count == 0 || _lastLimitRefreshUtc == default) {
+            return false;
+        }
+
+        var age = DateTimeOffset.UtcNow - _lastLimitRefreshUtc;
+        if (age.TotalSeconds > FreshLimitSnapshotWindowSeconds) {
+            return false;
+        }
+
+        foreach (var providerId in providerIds) {
+            if (!_latestLimitSnapshots.ContainsKey(providerId)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private void ApplyLatestLimitSnapshotsToProviders() {
+        foreach (var provider in Providers.Where(static provider => provider.ProviderId != "__all__")) {
+            provider.ApplyLimitSnapshot(_latestLimitSnapshots.TryGetValue(provider.ProviderId, out var snapshot)
+                ? snapshot
+                : null);
+        }
+
+        if (Providers.FirstOrDefault(provider => string.Equals(provider.ProviderId, "__all__", StringComparison.Ordinal)) is { } allProvider) {
+            allProvider.SetProviderComparisonHealth(BuildProviderComparisonHealth(Providers));
+        }
+    }
+
+    private string BuildUsageRefreshStatus(string scanInfo, IReadOnlyCollection<string> providerIds) {
+        if (providerIds.Count == 0) {
+            return scanInfo;
+        }
+
+        if (HasFreshLimitSnapshotsFor(providerIds)) {
+            return scanInfo + " • Live limits current.";
+        }
+
+        if (_latestLimitSnapshots.Count > 0) {
+            return scanInfo + " • Refreshing live limits in background...";
+        }
+
+        return scanInfo + " • Loading live limits in background...";
     }
 
     private static LimitNotificationLevel? GetNotificationLevel(double? usedPercent) {
@@ -705,12 +1103,42 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         return version == Volatile.Read(ref _gitHubRefreshVersion);
     }
 
+    private bool IsCurrentLimitRefresh(int version, CancellationToken cancellationToken) {
+        return !cancellationToken.IsCancellationRequested && IsLatestLimitRefresh(version);
+    }
+
+    private bool IsLatestLimitRefresh(int version) {
+        return version == Volatile.Read(ref _limitRefreshVersion);
+    }
+
+    private void OnUsageChangeDetected(object? sender, UsageChangeDetectedEventArgs e) {
+        _usageDirtyAtUtc = e.ChangedAtUtc;
+        _latestUsageChangePath = !string.IsNullOrWhiteSpace(e.ChangedPath)
+            ? Path.GetFileName(e.ChangedPath)
+            : Path.GetFileName(e.RootPath);
+
+        if (!IsLoading) {
+            StatusText = string.IsNullOrWhiteSpace(_latestUsageChangePath)
+                ? "Usage changes detected. Refresh queued."
+                : "Usage changes detected (" + _latestUsageChangePath + "). Refresh queued.";
+        }
+
+        if (AutoRefreshIntervalSeconds <= 0) {
+            _usageDirtyRefreshTimer.Stop();
+            return;
+        }
+
+        _usageDirtyRefreshTimer.Stop();
+        _usageDirtyRefreshTimer.Start();
+    }
+
     private void RefreshProviderSelectionState() {
         OnPropertyChanged(nameof(HeaderTitle));
         OnPropertyChanged(nameof(IsGitHubTabSelected));
         OnPropertyChanged(nameof(HasData));
         OnPropertyChanged(nameof(ShowUsageContent));
         OnPropertyChanged(nameof(ShowGitHubContent));
+        OnPropertyChanged(nameof(ShowLoadingOverlay));
         OnPropertyChanged(nameof(HeaderRefreshCommand));
         OnPropertyChanged(nameof(HeaderRefreshLabel));
     }
@@ -773,12 +1201,271 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         }
     }
 
+    private bool ApplyCachedUsageSnapshot() {
+        var cachedSnapshot = _usageSnapshotStore.Load();
+        var serviceSnapshot = _usageService.TryLoadCachedSnapshot();
+        if (serviceSnapshot is not null && serviceSnapshot.Events.Count > 0) {
+            var serviceCache = new TrayUsageSnapshotStore.TrayUsageSnapshotCache(
+                serviceSnapshot.ScannedAtUtc,
+                serviceSnapshot.DiscoveredProviderIds.ToList(),
+                serviceSnapshot.SourceRoots.ToList(),
+                serviceSnapshot.Events.ToList());
+            if (ShouldPreferCachedSnapshot(serviceCache, cachedSnapshot)) {
+                cachedSnapshot = serviceCache;
+                _usageSnapshotStore.Save(
+                    serviceSnapshot.ScannedAtUtc,
+                    serviceSnapshot.Events,
+                    serviceSnapshot.DiscoveredProviderIds,
+                    serviceSnapshot.SourceRoots);
+            }
+        }
+
+        if (cachedSnapshot is null || cachedSnapshot.Events.Count == 0) {
+            return false;
+        }
+
+        var byProvider = cachedSnapshot.Events
+            .GroupBy(e => e.ProviderId?.Trim()?.ToLowerInvariant() ?? "unknown")
+            .Where(static group => !string.IsNullOrWhiteSpace(group.Key))
+            .OrderBy(group => ProviderMetadata.Resolve(group.Key).SortOrder)
+            .Select(group => new ProviderRefreshData(group.Key, group.ToList()))
+            .ToList();
+        var mergedProviderData = BuildMergedProviderData(byProvider, cachedSnapshot.DiscoveredProviderIds);
+        var providerSnapshots = mergedProviderData.ToDictionary(
+            static group => group.ProviderId,
+            static group => ProviderRefreshSnapshot.FromEvents(group.Events),
+            StringComparer.OrdinalIgnoreCase);
+        var cachedProviders = BuildUsageProviders(
+            mergedProviderData,
+            cachedSnapshot.Events,
+            cachedSnapshot.ScannedAtUtc,
+            providerDelta: null,
+            providerHistory: null);
+        ReplaceProviders(cachedProviders);
+        UpdateDisplayedProviderEvents(mergedProviderData);
+        _previousProviderSnapshots = new Dictionary<string, ProviderRefreshSnapshot>(providerSnapshots, StringComparer.OrdinalIgnoreCase);
+        _lastUsageSnapshotScannedAtUtc = cachedSnapshot.ScannedAtUtc;
+        _lastUsageRootDiscoveryUtc = cachedSnapshot.ScannedAtUtc;
+        _usageChangeWatcher.SetRoots(cachedSnapshot.SourceRoots);
+        LastRefreshed = cachedSnapshot.ScannedAtUtc.ToLocalTime();
+        StatusText = "Loaded last usage snapshot from disk. Watching for local changes.";
+        LoadingDetailText = "Showing cached usage while providers refresh.";
+        return true;
+    }
+
+    private static bool ShouldPreferCachedSnapshot(
+        TrayUsageSnapshotStore.TrayUsageSnapshotCache candidate,
+        TrayUsageSnapshotStore.TrayUsageSnapshotCache? current) {
+        if (current is null || current.Events.Count == 0) {
+            return true;
+        }
+
+        var candidateLatestEventUtc = GetLatestEventTimestampUtc(candidate.Events);
+        var currentLatestEventUtc = GetLatestEventTimestampUtc(current.Events);
+        if (candidateLatestEventUtc != currentLatestEventUtc) {
+            return candidateLatestEventUtc > currentLatestEventUtc;
+        }
+
+        var candidateProviderCount = candidate.DiscoveredProviderIds.Count > 0
+            ? candidate.DiscoveredProviderIds.Count
+            : candidate.Events
+                .Select(static item => item.ProviderId)
+                .Where(static item => !string.IsNullOrWhiteSpace(item))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Count();
+        var currentProviderCount = current.DiscoveredProviderIds.Count > 0
+            ? current.DiscoveredProviderIds.Count
+            : current.Events
+                .Select(static item => item.ProviderId)
+                .Where(static item => !string.IsNullOrWhiteSpace(item))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Count();
+
+        if (candidateProviderCount != currentProviderCount) {
+            return candidateProviderCount > currentProviderCount;
+        }
+
+        if (candidate.Events.Count != current.Events.Count) {
+            return candidate.Events.Count > current.Events.Count;
+        }
+
+        return candidate.ScannedAtUtc > current.ScannedAtUtc;
+    }
+
+    private static DateTimeOffset GetLatestEventTimestampUtc(IEnumerable<UsageEventRecord> events) {
+        var latestEventUtc = DateTimeOffset.MinValue;
+        foreach (var usageEvent in events) {
+            if (usageEvent.TimestampUtc > latestEventUtc) {
+                latestEventUtc = usageEvent.TimestampUtc;
+            }
+        }
+
+        return latestEventUtc;
+    }
+
+    private void ApplyProgressiveUsageProviders(
+        IReadOnlyCollection<string> discoveredProviderIds,
+        IReadOnlyDictionary<string, List<UsageEventRecord>> providerEventsById) {
+        if (discoveredProviderIds.Count == 0 && providerEventsById.Count == 0) {
+            return;
+        }
+
+        var currentProviderData = _displayedProviderEvents
+            .Select(static pair => new ProviderRefreshData(pair.Key, pair.Value))
+            .ToList();
+        foreach (var (providerId, events) in providerEventsById) {
+            var existingIndex = currentProviderData.FindIndex(group => string.Equals(group.ProviderId, providerId, StringComparison.OrdinalIgnoreCase));
+            if (existingIndex >= 0) {
+                currentProviderData[existingIndex] = new ProviderRefreshData(providerId, events);
+            } else {
+                currentProviderData.Add(new ProviderRefreshData(providerId, events));
+            }
+        }
+
+        var providerData = BuildMergedProviderData(currentProviderData, discoveredProviderIds);
+        var allEvents = providerData
+            .SelectMany(static provider => provider.Events)
+            .OrderByDescending(static usageEvent => usageEvent.TimestampUtc)
+            .ToList();
+        var progressiveProviders = BuildUsageProviders(
+            providerData,
+            allEvents,
+            DateTimeOffset.UtcNow,
+            providerHistory: null,
+            providerDelta: null);
+        ReplaceProviders(progressiveProviders);
+        UpdateDisplayedProviderEvents(providerData);
+    }
+
+    private void UpdateDisplayedProviderEvents(IEnumerable<ProviderRefreshData> providerData) {
+        _displayedProviderEvents = providerData.ToDictionary(
+            static group => group.ProviderId,
+            static group => group.Events.ToList(),
+            StringComparer.OrdinalIgnoreCase);
+    }
+
+    private List<ProviderViewModel> BuildUsageProviders(
+        IReadOnlyList<ProviderRefreshData> providerData,
+        List<UsageEventRecord> allEvents,
+        DateTimeOffset scannedAtUtc,
+        IReadOnlyDictionary<string, ProviderComparisonDeltaInfo>? providerDelta,
+        IReadOnlyDictionary<string, ProviderComparisonHistoryInfo>? providerHistory) {
+        var newProviders = new List<ProviderViewModel>();
+        var shouldShowCombinedProvider = providerData.Count > 0 || allEvents.Count > 0;
+        if (shouldShowCombinedProvider) {
+            var allVm = BuildCombinedProviderViewModel(allEvents, scannedAtUtc);
+            allVm.ApplyRefreshDelta(
+                providerDelta?.Values.Where(static delta => delta.TokenDelta > 0L).Sum(static delta => delta.TokenDelta) ?? 0L,
+                providerDelta?.Values.Where(static delta => delta.EventDelta > 0).Sum(static delta => delta.EventDelta) ?? 0);
+            allVm.ApplyExplorerPreferences(GetProviderExplorerPreferences(allVm.ProviderId));
+            newProviders.Add(allVm);
+        }
+
+        foreach (var group in providerData) {
+            var vm = BuildProviderViewModel(group.ProviderId, group.Events);
+            vm.LastUpdated = scannedAtUtc;
+            vm.IsFavorite = IsFavoriteProvider(group.ProviderId);
+            if (providerDelta is not null && providerDelta.TryGetValue(group.ProviderId, out var deltaInfo)) {
+                vm.ApplyRefreshDelta(deltaInfo.TokenDelta, deltaInfo.EventDelta);
+            } else {
+                vm.ApplyRefreshDelta(0L, 0);
+            }
+
+            if (_latestLimitSnapshots.TryGetValue(group.ProviderId, out var limitSnapshot)) {
+                vm.ApplyLimitSnapshot(limitSnapshot);
+            }
+
+            vm.ApplyExplorerPreferences(GetProviderExplorerPreferences(vm.ProviderId));
+            newProviders.Add(vm);
+        }
+
+        if (newProviders.FirstOrDefault(provider => string.Equals(provider.ProviderId, "__all__", StringComparison.Ordinal)) is { } allProvider) {
+            allProvider.SetProviderComparisonHealth(BuildProviderComparisonHealth(newProviders));
+            allProvider.SetProviderComparisonDelta(providerDelta);
+            allProvider.SetProviderComparisonHistory(providerHistory);
+            allProvider.SetProviderComparisonFavorites(_favoriteProviderIds);
+        }
+
+        newProviders.Add(BuildGitHubProviderViewModel());
+        return newProviders;
+    }
+
+    private void ReplaceProviders(IEnumerable<ProviderViewModel> providers) {
+        var preferredSelection = SelectedProvider?.ProviderId ?? _preferences.SelectedProviderId;
+        var orderedProviders = OrderProviders(providers);
+        UnsubscribeProviders();
+        Providers.Clear();
+        foreach (var provider in orderedProviders) {
+            provider.RefreshIconGeometry();
+            if (provider.ProviderId != "__github__") {
+                provider.PropertyChanged += OnProviderPropertyChanged;
+            }
+
+            Providers.Add(provider);
+        }
+
+        var restored = !string.IsNullOrWhiteSpace(preferredSelection)
+            ? Providers.FirstOrDefault(p => string.Equals(p.ProviderId, preferredSelection, StringComparison.Ordinal))
+            : null;
+        SelectedProvider = restored
+                           ?? Providers.FirstOrDefault(static provider => provider.IsFavorite)
+                           ?? Providers.FirstOrDefault();
+        RefreshProviderSelectionState();
+    }
+
     private static ProviderViewModel BuildProviderViewModel(string providerId, List<UsageEventRecord> events) {
         var vm = new ProviderViewModel();
         var info = ProviderMetadata.Resolve(providerId);
         vm.ApplyProviderInfo(info);
         vm.ApplyUsageEvents(events);
         return vm;
+    }
+
+    private static ProviderViewModel BuildCombinedProviderViewModel(List<UsageEventRecord> events, DateTimeOffset scannedAtUtc) {
+        var allVm = BuildProviderViewModel("__all__", events);
+        allVm.DisplayName = "All";
+        allVm.ShortName = "All";
+        allVm.IconKey = "IconIx";
+        allVm.SortOrder = -1;
+        allVm.AccentBrush = Frozen(new SolidColorBrush(Color.FromRgb(155, 233, 168)));
+        allVm.InputColor = Color.FromRgb(155, 233, 168);
+        allVm.OutputColor = Color.FromRgb(64, 196, 99);
+        allVm.LastUpdated = scannedAtUtc;
+        allVm.IsFavorite = false;
+        return allVm;
+    }
+
+    private ProviderViewModel BuildGitHubProviderViewModel() {
+        var gitHubProvider = new ProviderViewModel {
+            ProviderId = "__github__",
+            DisplayName = "GitHub",
+            ShortName = "GitHub",
+            IconKey = "IconGitHub",
+            SortOrder = 999,
+            IsFavorite = IsFavoriteProvider("__github__"),
+            AccentBrush = Frozen(new SolidColorBrush(Color.FromRgb(64, 196, 99))),
+            InputColor = Color.FromRgb(155, 233, 168),
+            OutputColor = Color.FromRgb(64, 196, 99)
+        };
+        gitHubProvider.ApplyRefreshDelta(0L, 0);
+        return gitHubProvider;
+    }
+
+    private static List<ProviderRefreshData> BuildMergedProviderData(
+        IReadOnlyList<ProviderRefreshData> providerData,
+        IEnumerable<string> discoveredProviderIds) {
+        var mergedProviderIds = discoveredProviderIds
+            .Concat(providerData.Select(static provider => provider.ProviderId))
+            .Where(static providerId => !string.IsNullOrWhiteSpace(providerId))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(static providerId => ProviderMetadata.Resolve(providerId).SortOrder)
+            .ThenBy(static providerId => ProviderMetadata.Resolve(providerId).DisplayName, StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
+
+        return mergedProviderIds
+            .Select(providerId => providerData.FirstOrDefault(group => string.Equals(group.ProviderId, providerId, StringComparison.OrdinalIgnoreCase))
+                                  ?? new ProviderRefreshData(providerId, []))
+            .ToList();
     }
 
     private static SolidColorBrush Frozen(SolidColorBrush brush) {
@@ -978,9 +1665,16 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
 
     public void Dispose() {
         _refreshTimer.Stop();
+        _loadingStatusTimer.Stop();
+        _usageDirtyRefreshTimer.Stop();
         GitHub.PropertyChanged -= OnGitHubPropertyChanged;
+        _usageChangeWatcher.Changed -= OnUsageChangeDetected;
+        _usageChangeWatcher.Dispose();
         UnsubscribeProviders();
         var cts = Interlocked.Exchange(ref _gitHubRefreshCts, null);
+        cts?.Cancel();
+        cts?.Dispose();
+        cts = Interlocked.Exchange(ref _limitRefreshCts, null);
         cts?.Cancel();
         cts?.Dispose();
     }
@@ -1000,9 +1694,10 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     private sealed record RefreshComputationResult(
         List<UsageEventRecord> AllEvents,
         List<ProviderRefreshData> ByProvider,
-        IReadOnlyDictionary<string, ProviderLimitSnapshot> LimitSnapshots,
         DateTimeOffset ScannedAtUtc,
-        string ScanInfo);
+        string ScanInfo,
+        IReadOnlyList<string> DiscoveredProviderIds,
+        IReadOnlyList<SourceRootRecord> SourceRoots);
 
     private enum LimitNotificationLevel {
         Warning,

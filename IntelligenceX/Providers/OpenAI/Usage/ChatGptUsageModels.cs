@@ -14,6 +14,7 @@ public sealed class ChatGptUsageSnapshot {
     /// </summary>
     public ChatGptUsageSnapshot(string? userId, string? accountId, string? email, string? planType,
         ChatGptRateLimitStatus? rateLimit, ChatGptRateLimitStatus? codeReviewRateLimit,
+        IReadOnlyList<ChatGptNamedRateLimit>? additionalRateLimits,
         ChatGptCreditsSnapshot? credits, JsonObject raw, JsonObject? additional) {
         UserId = userId;
         AccountId = accountId;
@@ -21,6 +22,7 @@ public sealed class ChatGptUsageSnapshot {
         PlanType = planType;
         RateLimit = rateLimit;
         CodeReviewRateLimit = codeReviewRateLimit;
+        AdditionalRateLimits = additionalRateLimits ?? Array.Empty<ChatGptNamedRateLimit>();
         Credits = credits;
         Raw = raw;
         Additional = additional;
@@ -55,6 +57,10 @@ public sealed class ChatGptUsageSnapshot {
     /// </summary>
     public ChatGptCreditsSnapshot? Credits { get; }
     /// <summary>
+    /// Gets any additional named rate limits returned by the API.
+    /// </summary>
+    public IReadOnlyList<ChatGptNamedRateLimit> AdditionalRateLimits { get; }
+    /// <summary>
     /// Gets the raw JSON object.
     /// </summary>
     public JsonObject Raw { get; }
@@ -75,11 +81,12 @@ public sealed class ChatGptUsageSnapshot {
         var planType = obj.GetString("plan_type") ?? obj.GetString("planType");
         var rateLimit = ChatGptRateLimitStatus.FromJson(obj.GetObject("rate_limit") ?? obj.GetObject("rateLimit"));
         var codeReview = ChatGptRateLimitStatus.FromJson(obj.GetObject("code_review_rate_limit") ?? obj.GetObject("codeReviewRateLimit"));
+        var additionalRateLimits = ReadAdditionalRateLimits(obj.GetArray("additional_rate_limits") ?? obj.GetArray("additionalRateLimits"));
         var credits = ChatGptCreditsSnapshot.FromJson(obj.GetObject("credits"));
         var additional = obj.ExtractAdditional(
             "user_id", "userId", "account_id", "accountId", "email", "plan_type", "planType",
-            "rate_limit", "rateLimit", "code_review_rate_limit", "codeReviewRateLimit", "credits", "promo");
-        return new ChatGptUsageSnapshot(userId, accountId, email, planType, rateLimit, codeReview, credits, obj, additional);
+            "rate_limit", "rateLimit", "code_review_rate_limit", "codeReviewRateLimit", "additional_rate_limits", "additionalRateLimits", "credits", "promo");
+        return new ChatGptUsageSnapshot(userId, accountId, email, planType, rateLimit, codeReview, additionalRateLimits, credits, obj, additional);
     }
 
     /// <summary>
@@ -108,8 +115,112 @@ public sealed class ChatGptUsageSnapshot {
         if (CodeReviewRateLimit is not null) {
             obj.Add("code_review_rate_limit", CodeReviewRateLimit.ToJson());
         }
+        if (AdditionalRateLimits.Count > 0) {
+            var array = new JsonArray();
+            foreach (var rateLimit in AdditionalRateLimits) {
+                array.Add(JsonValue.From(rateLimit.ToJson()));
+            }
+            obj.Add("additional_rate_limits", array);
+        }
         if (Credits is not null) {
             obj.Add("credits", Credits.ToJson());
+        }
+        return obj;
+    }
+
+    private static IReadOnlyList<ChatGptNamedRateLimit> ReadAdditionalRateLimits(JsonArray? array) {
+        if (array is null) {
+            return Array.Empty<ChatGptNamedRateLimit>();
+        }
+
+        var limits = new List<ChatGptNamedRateLimit>();
+        foreach (var item in array) {
+            var obj = item.AsObject();
+            if (obj is null) {
+                continue;
+            }
+
+            var parsed = ChatGptNamedRateLimit.FromJson(obj);
+            if (parsed is not null) {
+                limits.Add(parsed);
+            }
+        }
+
+        return limits;
+    }
+}
+
+/// <summary>
+/// Represents an additional named rate limit returned alongside the primary usage status.
+/// </summary>
+public sealed class ChatGptNamedRateLimit {
+    /// <summary>
+    /// Initializes a new named rate limit payload.
+    /// </summary>
+    public ChatGptNamedRateLimit(string? limitName, string? meteredFeature, ChatGptRateLimitStatus? rateLimit, JsonObject raw,
+        JsonObject? additional) {
+        LimitName = limitName;
+        MeteredFeature = meteredFeature;
+        RateLimit = rateLimit;
+        Raw = raw;
+        Additional = additional;
+    }
+
+    /// <summary>
+    /// Gets the provider-facing limit name.
+    /// </summary>
+    public string? LimitName { get; }
+    /// <summary>
+    /// Gets the metered feature identifier when present.
+    /// </summary>
+    public string? MeteredFeature { get; }
+    /// <summary>
+    /// Gets the underlying rate limit status.
+    /// </summary>
+    public ChatGptRateLimitStatus? RateLimit { get; }
+    /// <summary>
+    /// Gets the raw JSON object.
+    /// </summary>
+    public JsonObject Raw { get; }
+    /// <summary>
+    /// Gets unrecognized fields from the payload.
+    /// </summary>
+    public JsonObject? Additional { get; }
+
+    /// <summary>
+    /// Parses a named rate limit from JSON.
+    /// </summary>
+    public static ChatGptNamedRateLimit? FromJson(JsonObject? obj) {
+        if (obj is null) {
+            return null;
+        }
+
+        var additional = obj.ExtractAdditional("limit_name", "limitName", "metered_feature", "meteredFeature", "rate_limit", "rateLimit");
+        return new ChatGptNamedRateLimit(
+            obj.GetString("limit_name") ?? obj.GetString("limitName"),
+            obj.GetString("metered_feature") ?? obj.GetString("meteredFeature"),
+            ChatGptRateLimitStatus.FromJson(obj.GetObject("rate_limit") ?? obj.GetObject("rateLimit")),
+            obj,
+            additional);
+    }
+
+    /// <summary>
+    /// Serializes the named rate limit to JSON.
+    /// </summary>
+    public JsonObject ToJson() {
+        if (Raw is not null) {
+            return Raw;
+        }
+
+        var obj = new JsonObject();
+        if (!string.IsNullOrWhiteSpace(LimitName)) {
+            obj.Add("limit_name", LimitName);
+        }
+        if (!string.IsNullOrWhiteSpace(MeteredFeature)) {
+            obj.Add("metered_feature", MeteredFeature);
+        }
+        if (RateLimit is not null) {
+            obj.Add("rate_limit", RateLimit.ToJson());
         }
         return obj;
     }

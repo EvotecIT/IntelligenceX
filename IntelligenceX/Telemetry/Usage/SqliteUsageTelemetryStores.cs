@@ -474,6 +474,162 @@ ORDER BY source_root_id, adapter_id, path;"));
         }
     }
 
+    /// <inheritdoc />
+    public IReadOnlyDictionary<string, RawArtifactDescriptor> GetBySourceRootAdapter(string sourceRootId, string adapterId) {
+        if (string.IsNullOrWhiteSpace(sourceRootId) || string.IsNullOrWhiteSpace(adapterId)) {
+            return new Dictionary<string, RawArtifactDescriptor>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        lock (_gate) {
+            var table = SqliteUsageTelemetrySchema.QueryAsTable(_db.Query(
+                _dbPath,
+                @"
+SELECT
+  source_root_id,
+  adapter_id,
+  path,
+  fingerprint,
+  parser_version,
+  size_bytes,
+  last_write_utc,
+  imported_at_utc,
+  parsed_bytes,
+  state_json
+FROM ix_usage_raw_artifacts
+WHERE source_root_id = @source_root_id
+  AND adapter_id = @adapter_id
+ORDER BY imported_at_utc DESC, last_write_utc DESC, path DESC;",
+                parameters: new Dictionary<string, object?> {
+                    ["@source_root_id"] = sourceRootId.Trim(),
+                    ["@adapter_id"] = adapterId.Trim()
+                }));
+
+            if (table is null || table.Rows.Count == 0) {
+                return new Dictionary<string, RawArtifactDescriptor>(StringComparer.OrdinalIgnoreCase);
+            }
+
+            var artifacts = new Dictionary<string, RawArtifactDescriptor>(StringComparer.OrdinalIgnoreCase);
+            foreach (DataRow row in table.Rows) {
+                var artifact = ReadRawArtifact(row);
+                artifacts[UsageTelemetryIdentity.NormalizePath(artifact.Path)] = artifact;
+            }
+
+            return artifacts;
+        }
+    }
+
+    /// <summary>
+    /// Returns the most recently imported raw artifacts.
+    /// </summary>
+    /// <param name="limit">Maximum artifacts to return.</param>
+    /// <returns>Recent raw artifacts ordered from newest to oldest.</returns>
+    public IReadOnlyList<RawArtifactDescriptor> GetRecent(int limit) {
+        if (limit <= 0) {
+            return Array.Empty<RawArtifactDescriptor>();
+        }
+
+        lock (_gate) {
+            var table = SqliteUsageTelemetrySchema.QueryAsTable(_db.Query(
+                _dbPath,
+                @"
+SELECT
+  source_root_id,
+  adapter_id,
+  path,
+  fingerprint,
+  parser_version,
+  size_bytes,
+  last_write_utc,
+  imported_at_utc,
+  parsed_bytes,
+  state_json
+FROM ix_usage_raw_artifacts
+WHERE state_json IS NOT NULL
+  AND state_json <> ''
+ORDER BY imported_at_utc DESC, last_write_utc DESC, path DESC
+LIMIT @limit;",
+                parameters: new Dictionary<string, object?> {
+                    ["@limit"] = limit
+                }));
+
+            if (table is null || table.Rows.Count == 0) {
+                return Array.Empty<RawArtifactDescriptor>();
+            }
+
+            var artifacts = new List<RawArtifactDescriptor>(table.Rows.Count);
+            foreach (DataRow row in table.Rows) {
+                artifacts.Add(ReadRawArtifact(row));
+            }
+
+            return artifacts;
+        }
+    }
+
+    /// <summary>
+    /// Returns the most recently imported raw artifacts per source root and adapter.
+    /// </summary>
+    /// <param name="limitPerSourceRoot">Maximum artifacts to return for each source root/adapter pair.</param>
+    /// <returns>Recent raw artifacts ordered by source root and newest import first.</returns>
+    public IReadOnlyList<RawArtifactDescriptor> GetRecentPerSourceRoot(int limitPerSourceRoot) {
+        if (limitPerSourceRoot <= 0) {
+            return Array.Empty<RawArtifactDescriptor>();
+        }
+
+        lock (_gate) {
+            var table = SqliteUsageTelemetrySchema.QueryAsTable(_db.Query(
+                _dbPath,
+                @"
+WITH ranked AS (
+    SELECT
+      source_root_id,
+      adapter_id,
+      path,
+      fingerprint,
+      parser_version,
+      size_bytes,
+      last_write_utc,
+      imported_at_utc,
+      parsed_bytes,
+      state_json,
+      ROW_NUMBER() OVER (
+        PARTITION BY source_root_id, adapter_id
+        ORDER BY imported_at_utc DESC, last_write_utc DESC, path DESC
+      ) AS artifact_rank
+    FROM ix_usage_raw_artifacts
+    WHERE state_json IS NOT NULL
+      AND state_json <> ''
+)
+SELECT
+  source_root_id,
+  adapter_id,
+  path,
+  fingerprint,
+  parser_version,
+  size_bytes,
+  last_write_utc,
+  imported_at_utc,
+  parsed_bytes,
+  state_json
+FROM ranked
+WHERE artifact_rank <= @limitPerSourceRoot
+ORDER BY source_root_id, adapter_id, imported_at_utc DESC, last_write_utc DESC, path DESC;",
+                parameters: new Dictionary<string, object?> {
+                    ["@limitPerSourceRoot"] = limitPerSourceRoot
+                }));
+
+            if (table is null || table.Rows.Count == 0) {
+                return Array.Empty<RawArtifactDescriptor>();
+            }
+
+            var artifacts = new List<RawArtifactDescriptor>(table.Rows.Count);
+            foreach (DataRow row in table.Rows) {
+                artifacts.Add(ReadRawArtifact(row));
+            }
+
+            return artifacts;
+        }
+    }
+
     /// <summary>
     /// Releases database resources held by the store.
     /// </summary>

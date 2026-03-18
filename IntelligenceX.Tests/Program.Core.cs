@@ -437,7 +437,8 @@ internal static partial class Program {
             + "\"plan_type\":\"pro\","
             + "\"rate_limit\":{\"allowed\":true,\"limit_reached\":false,\"primary_window\":{\"used_percent\":12.5,\"limit_window_seconds\":18000,\"reset_after_seconds\":120}},"
             + "\"code_review_rate_limit\":{\"allowed\":true,\"limit_reached\":false},"
-            + "\"credits\":{\"has_credits\":true,\"unlimited\":false,\"balance\":4.52,\"approx_local_messages\":[1,6]}"
+            + "\"additional_rate_limits\":[{\"limit_name\":\"GPT-5.3-Codex-Spark\",\"metered_feature\":\"codex_bengalfox\",\"rate_limit\":{\"allowed\":true,\"limit_reached\":false,\"secondary_window\":{\"used_percent\":44,\"limit_window_seconds\":604800,\"reset_after_seconds\":3600}}}],"
+            + "\"credits\":{\"has_credits\":true,\"unlimited\":false,\"balance\":4.52,\"approx_local_messages\":[1,6],\"approx_cloud_messages\":[3,9]}"
             + "}";
         var obj = JsonLite.Parse(json).AsObject();
         AssertNotNull(obj, "usage json");
@@ -448,8 +449,14 @@ internal static partial class Program {
         AssertNotNull(snapshot.RateLimit.PrimaryWindow, "primary window");
         AssertEqual(18000L, snapshot.RateLimit.PrimaryWindow!.LimitWindowSeconds, "window seconds");
         AssertNotNull(snapshot.CodeReviewRateLimit, "code review rate limit");
+        AssertEqual(1, snapshot.AdditionalRateLimits.Count, "additional rate limits count");
+        AssertEqual("GPT-5.3-Codex-Spark", snapshot.AdditionalRateLimits[0].LimitName, "additional rate limit name");
+        AssertNotNull(snapshot.AdditionalRateLimits[0].RateLimit, "additional rate limit payload");
+        AssertNotNull(snapshot.AdditionalRateLimits[0].RateLimit!.SecondaryWindow, "additional rate limit secondary window");
+        AssertEqual(604800L, snapshot.AdditionalRateLimits[0].RateLimit!.SecondaryWindow!.LimitWindowSeconds, "additional weekly window");
         AssertNotNull(snapshot.Credits, "credits");
         AssertEqual(true, snapshot.Credits!.HasCredits, "credits has");
+        AssertEqual(9, snapshot.Credits.ApproxCloudMessages![1], "approx cloud messages");
     }
 
     private static void TestChatGptDailyTokenBreakdownParse() {

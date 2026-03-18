@@ -2,12 +2,193 @@ using System;
 using System.IO;
 using System.Linq;
 using IntelligenceX.Json;
+using IntelligenceX.Telemetry.Limits;
 using IntelligenceX.Telemetry.Usage;
 using IntelligenceX.Visualization.Heatmaps;
 
 namespace IntelligenceX.Tests;
 
 internal static partial class Program {
+    private static void TestUsageTelemetryApiPricingBlendsExactAndEstimatedCosts() {
+        var events = new[] {
+            new UsageEventRecord("evt-priced", "codex", "codex.logs", "src-1", new DateTimeOffset(2026, 03, 10, 9, 0, 0, TimeSpan.Zero)) {
+                Model = "gpt-5.4",
+                InputTokens = 1_000_000,
+                CachedInputTokens = 200_000,
+                OutputTokens = 100_000,
+                TotalTokens = 1_300_000,
+                CostUsd = 4.20m,
+                TruthLevel = UsageTruthLevel.Exact
+            },
+            new UsageEventRecord("evt-estimated", "codex", "codex.logs", "src-1", new DateTimeOffset(2026, 03, 10, 10, 0, 0, TimeSpan.Zero)) {
+                Model = "gpt-5.3-codex",
+                InputTokens = 2_000_000,
+                CachedInputTokens = 500_000,
+                OutputTokens = 300_000,
+                TotalTokens = 2_800_000,
+                TruthLevel = UsageTruthLevel.Exact
+            }
+        };
+
+        var displayCost = UsageTelemetryApiPricing.BuildDisplayCost(events);
+        AssertEqual(4.20m, displayCost.ExactCostUsd, "api pricing exact cost portion");
+        AssertEqual(7.7875m, displayCost.EstimatedFallbackCostUsd, "api pricing estimated fallback portion");
+        AssertEqual(11.9875m, displayCost.TotalCostUsd, "api pricing blended total");
+        AssertEqual(true, displayCost.UsesEstimatedFallback, "api pricing indicates approximation");
+
+        var estimate = UsageTelemetryApiPricing.Estimate(events);
+        AssertNotNull(estimate, "api pricing estimate exists");
+        AssertEqual(11.8375m, estimate!.TotalEstimatedCostUsd, "api pricing pure estimate total");
+        AssertEqual(4_100_000L, estimate.CoveredTokens, "api pricing covered tokens");
+    }
+
+    private static void TestProviderLimitForecastingFlagsOverLimitPace() {
+        var now = new DateTimeOffset(2026, 03, 18, 12, 00, 00, TimeSpan.Zero);
+        var snapshot = new ProviderLimitSnapshot(
+            "codex",
+            "Codex",
+            "OpenAI usage API",
+            "pro",
+            "codex@example.com",
+            new[] {
+                new ProviderLimitWindow(
+                    "global-primary",
+                    "Global 5-hour",
+                    60d,
+                    now.AddHours(2.5),
+                    windowDuration: TimeSpan.FromHours(5))
+            },
+            null,
+            null,
+            now);
+
+        var forecasts = ProviderLimitForecasting.BuildForecasts(snapshot, now);
+        AssertEqual(1, forecasts.Count, "forecast count");
+        AssertEqual(true, forecasts.TryGetValue("global-primary", out var forecast), "forecast exists");
+        AssertNotNull(forecast, "forecast value");
+        AssertEqual(true, forecast!.ExhaustsBeforeReset, "forecast flags exhaustion");
+        AssertEqual(1.2d, Math.Round(forecast.PaceMultiple, 1), "forecast pace multiple");
+        AssertEqual(120d, Math.Round(forecast.ProjectedUsedPercentAtReset, 0), "forecast projected percent");
+        AssertContainsText(forecast.Summary ?? string.Empty, "1.2x sustainable pace", "forecast summary pace");
+    }
+
+    private static void TestProviderLimitForecastingRecognizesOnPaceWindow() {
+        var now = new DateTimeOffset(2026, 03, 18, 12, 00, 00, TimeSpan.Zero);
+        var snapshot = new ProviderLimitSnapshot(
+            "codex",
+            "Codex",
+            "OpenAI usage API",
+            "pro",
+            "codex@example.com",
+            new[] {
+                new ProviderLimitWindow(
+                    "global-primary",
+                    "Global 5-hour",
+                    50d,
+                    now.AddHours(2.5),
+                    windowDuration: TimeSpan.FromHours(5))
+            },
+            null,
+            null,
+            now);
+
+        var forecasts = ProviderLimitForecasting.BuildForecasts(snapshot, now);
+        AssertEqual(true, forecasts.TryGetValue("global-primary", out var forecast), "forecast exists on pace");
+        AssertNotNull(forecast, "forecast value on pace");
+        AssertEqual(false, forecast!.ExhaustsBeforeReset, "forecast avoids false exhaustion");
+        AssertEqual(1.0d, Math.Round(forecast.PaceMultiple, 1), "forecast on pace multiple");
+        AssertContainsText(forecast.Summary ?? string.Empty, "On pace", "forecast on pace summary");
+    }
+
+    private static void TestProviderLimitForecastingRanksBestAccount() {
+        var now = new DateTimeOffset(2026, 03, 18, 12, 00, 00, TimeSpan.Zero);
+        var snapshot = new ProviderLimitSnapshot(
+            "codex",
+            "Codex",
+            "OpenAI usage API",
+            "pro",
+            "acct-a@example.com",
+            new[] {
+                new ProviderLimitWindow(
+                    "global-primary",
+                    "Global 5-hour",
+                    70d,
+                    now.AddHours(1),
+                    windowDuration: TimeSpan.FromHours(5))
+            },
+            null,
+            null,
+            now,
+            new[] {
+                new ProviderLimitAccountSnapshot(
+                    "acct-a",
+                    "acct-a@example.com",
+                    "pro",
+                    new[] {
+                        new ProviderLimitWindow("global-primary", "Global 5-hour", 70d, now.AddHours(1), windowDuration: TimeSpan.FromHours(5))
+                    },
+                    null,
+                    null,
+                    now,
+                    isSelected: true),
+                new ProviderLimitAccountSnapshot(
+                    "acct-b",
+                    "acct-b@example.com",
+                    "pro",
+                    new[] {
+                        new ProviderLimitWindow("global-primary", "Global 5-hour", 15d, now.AddHours(4), windowDuration: TimeSpan.FromHours(5))
+                    },
+                    null,
+                    null,
+                    now)
+            });
+
+        var advisories = ProviderLimitForecasting.BuildAccountAdvisories(snapshot, now);
+        AssertEqual(2, advisories.Count, "account advisory count");
+        AssertEqual(true, advisories[0].IsRecommended, "first advisory recommended");
+        AssertEqual("acct-b@example.com", advisories[0].DisplayLabel, "lower-risk account recommended");
+        AssertEqual(false, advisories[1].IsRecommended, "second advisory not recommended");
+    }
+
+    private static void TestProviderLimitForecastingDescribesAccountRunway() {
+        var now = new DateTimeOffset(2026, 03, 18, 12, 00, 00, TimeSpan.Zero);
+        var snapshot = new ProviderLimitSnapshot(
+            "codex",
+            "Codex",
+            "OpenAI usage API",
+            "pro",
+            "acct-a@example.com",
+            new[] {
+                new ProviderLimitWindow(
+                    "global-primary",
+                    "Global 5-hour",
+                    60d,
+                    now.AddHours(2.5),
+                    windowDuration: TimeSpan.FromHours(5))
+            },
+            null,
+            null,
+            now,
+            new[] {
+                new ProviderLimitAccountSnapshot(
+                    "acct-a",
+                    "acct-a@example.com",
+                    "pro",
+                    new[] {
+                        new ProviderLimitWindow("global-primary", "Global 5-hour", 60d, now.AddHours(2.5), windowDuration: TimeSpan.FromHours(5))
+                    },
+                    null,
+                    null,
+                    now,
+                    isSelected: true)
+            });
+
+        var advisories = ProviderLimitForecasting.BuildAccountAdvisories(snapshot, now);
+        AssertEqual(1, advisories.Count, "account runway advisory count");
+        AssertContainsText(advisories[0].Summary ?? string.Empty, "If you keep this pace", "account runway summary prefix");
+        AssertContainsText(advisories[0].Summary ?? string.Empty, "runs out in", "account runway summary runout");
+    }
+
     private static void TestUsageTelemetryOverviewBuilderBuildsCopilotActivitySectionWithoutTokens() {
         var builder = new UsageTelemetryOverviewBuilder();
         var events = new[] {

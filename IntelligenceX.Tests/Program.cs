@@ -67,6 +67,16 @@ internal static partial class Program {
             TestUsageSummaryBuilderBuildsTopBreakdowns);
         failed += Run("Usage telemetry overview builder builds Copilot activity section without tokens",
             TestUsageTelemetryOverviewBuilderBuildsCopilotActivitySectionWithoutTokens);
+        failed += Run("Usage telemetry API pricing blends exact and estimated costs",
+            TestUsageTelemetryApiPricingBlendsExactAndEstimatedCosts);
+        failed += Run("Provider limit forecasting flags over-limit pace",
+            TestProviderLimitForecastingFlagsOverLimitPace);
+        failed += Run("Provider limit forecasting recognizes on-pace window",
+            TestProviderLimitForecastingRecognizesOnPaceWindow);
+        failed += Run("Provider limit forecasting ranks best account",
+            TestProviderLimitForecastingRanksBestAccount);
+        failed += Run("Provider limit forecasting describes account runway",
+            TestProviderLimitForecastingDescribesAccountRunway);
         failed += Run("Usage telemetry overview builder builds cards and heatmaps",
             TestUsageTelemetryOverviewBuilderBuildsCardsAndHeatmaps);
         failed += Run("Usage telemetry overview builder estimates API cost for mini and nano models",
@@ -287,6 +297,7 @@ internal static partial class Program {
         failed += Run("Auth store invalid key throws", TestAuthStoreInvalidKeyThrows);
         failed += Run("Auth store encrypted roundtrip", TestAuthStoreEncryptedRoundtrip);
         failed += Run("Auth store decrypt with explicit key override", TestAuthStoreDecryptWithExplicitKeyOverride);
+        failed += Run("Auth store list filters provider and orders accounts", TestAuthStoreListAsyncFiltersProviderAndOrdersAccounts);
         failed += Run("Path safety blocks symlink traversal", TestPathSafetyBlocksSymlinkTraversal);
 #endif
         failed += Run("Native tool schema fallback detects tools[n]", TestNativeToolSchemaFallbackDetectsIndex);

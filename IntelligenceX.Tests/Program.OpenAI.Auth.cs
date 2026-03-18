@@ -129,6 +129,35 @@ internal static partial class Program {
             }
         }
     }
+
+    private static void TestAuthStoreListAsyncFiltersProviderAndOrdersAccounts() {
+        var path = Path.Combine(Path.GetTempPath(), $"ix-auth-list-{Guid.NewGuid():N}.json");
+        try {
+            var store = new FileAuthBundleStore(path: path);
+            store.SaveAsync(new AuthBundle("openai-codex", "access-b", "refresh", DateTimeOffset.UtcNow.AddHours(2)) {
+                AccountId = "acct-b"
+            }, CancellationToken.None).GetAwaiter().GetResult();
+            store.SaveAsync(new AuthBundle("openai-codex", "access-a", "refresh", DateTimeOffset.UtcNow.AddHours(1)) {
+                AccountId = "acct-a"
+            }, CancellationToken.None).GetAwaiter().GetResult();
+            store.SaveAsync(new AuthBundle("openai", "access-other", "refresh", DateTimeOffset.UtcNow.AddHours(3)) {
+                AccountId = "acct-other"
+            }, CancellationToken.None).GetAwaiter().GetResult();
+
+            var bundles = store.ListAsync("openai-codex", CancellationToken.None).GetAwaiter().GetResult();
+            AssertEqual(2, bundles.Count, "auth store list provider count");
+            AssertEqual("acct-a", bundles[0].AccountId, "auth store list sorts first account");
+            AssertEqual("acct-b", bundles[1].AccountId, "auth store list sorts second account");
+        } finally {
+            try {
+                if (File.Exists(path)) {
+                    File.Delete(path);
+                }
+            } catch {
+                // best-effort cleanup
+            }
+        }
+    }
 #endif
 
     private enum FakeAccountMode {

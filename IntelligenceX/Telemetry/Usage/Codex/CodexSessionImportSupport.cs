@@ -150,7 +150,7 @@ internal static class CodexSessionImportSupport {
             TotalTokens: Math.Max(0, current.TotalTokens - (previous?.TotalTokens ?? 0)));
     }
 
-    public static string? ResolveProviderAccountId(string artifactPath, string rootPath) {
+    public static ResolvedUsageAccount ResolveAccount(string artifactPath, string rootPath) {
         var candidateDirectories = new List<string>();
         AddSearchDirectory(candidateDirectories, Path.GetDirectoryName(Path.GetFullPath(artifactPath)));
 
@@ -173,9 +173,12 @@ internal static class CodexSessionImportSupport {
                 }
 
                 var authPath = Path.Combine(current, "auth.json");
-                var accountId = TryReadAccountIdFromAuthJson(authPath);
-                if (!string.IsNullOrWhiteSpace(accountId)) {
-                    return accountId;
+                var profile = CodexAuthStore.TryReadProfile(authPath);
+                if (profile is not null) {
+                    return new ResolvedUsageAccount {
+                        ProviderAccountId = UsageTelemetryQuickReportSupport.NormalizeOptional(profile.AccountId),
+                        AccountLabel = UsageTelemetryQuickReportSupport.NormalizeOptional(profile.AccountLabel)
+                    };
                 }
 
                 var parent = Path.GetDirectoryName(current);
@@ -187,7 +190,11 @@ internal static class CodexSessionImportSupport {
             }
         }
 
-        return null;
+        return new ResolvedUsageAccount();
+    }
+
+    public static string? ResolveProviderAccountId(string artifactPath, string rootPath) {
+        return ResolveAccount(artifactPath, rootPath).ProviderAccountId;
     }
 
     private static IEnumerable<string> EnumerateFilesFromDirectory(string directory, bool preferRecentArtifacts) {
@@ -312,30 +319,6 @@ internal static class CodexSessionImportSupport {
         if (!string.IsNullOrWhiteSpace(path)) {
             directories.Add(path!);
         }
-    }
-
-    private static string? TryReadAccountIdFromAuthJson(string authPath) {
-        if (!File.Exists(authPath)) {
-            return null;
-        }
-
-        try {
-            var root = JsonLite.Parse(File.ReadAllText(authPath)).AsObject();
-            var tokens = root?.GetObject("tokens");
-            var directAccountId = UsageTelemetryQuickReportSupport.NormalizeOptional(tokens?.GetString("account_id"));
-            if (!string.IsNullOrWhiteSpace(directAccountId)) {
-                return directAccountId;
-            }
-
-            var accessToken = UsageTelemetryQuickReportSupport.NormalizeOptional(tokens?.GetString("access_token"));
-            if (!string.IsNullOrWhiteSpace(accessToken)) {
-                return UsageTelemetryQuickReportSupport.NormalizeOptional(JwtDecoder.TryGetAccountId(accessToken!));
-            }
-        } catch {
-            // Best-effort account discovery for recovered roots.
-        }
-
-        return null;
     }
 
     internal sealed record CodexNormalizedUsage(

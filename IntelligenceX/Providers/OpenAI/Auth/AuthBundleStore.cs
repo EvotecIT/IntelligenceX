@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -14,6 +15,12 @@ public interface IAuthBundleStore {
     /// <param name="accountId">Optional account id.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     Task<AuthBundle?> GetAsync(string provider, string? accountId = null, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Lists known bundles for the specified provider.
+    /// </summary>
+    /// <param name="provider">Provider identifier.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<IReadOnlyList<AuthBundle>> ListAsync(string provider, CancellationToken cancellationToken = default);
     /// <summary>
     /// Saves an authentication bundle.
     /// </summary>

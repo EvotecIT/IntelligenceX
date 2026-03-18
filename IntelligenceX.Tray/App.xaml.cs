@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Runtime.InteropServices;
+using System.IO;
 using H.NotifyIcon;
 using H.NotifyIcon.Core;
 using IntelligenceX.Telemetry.Limits;
@@ -7,6 +8,7 @@ using IntelligenceX.Telemetry.Usage;
 using IntelligenceX.Tray.Services;
 using IntelligenceX.Tray.ViewModels;
 using IntelligenceX.Tray.Views;
+using System.Windows.Threading;
 
 namespace IntelligenceX.Tray;
 
@@ -14,25 +16,29 @@ public partial class App : Application {
     private TaskbarIcon? _trayIcon;
     private TrayPopupWindow? _popupWindow;
     private MainViewModel? _viewModel;
+    private SqliteRawArtifactStore? _usageArtifactStore;
     private readonly List<(System.Windows.Controls.MenuItem Item, int Seconds)> _refreshIntervalItems = [];
     private System.Windows.Controls.MenuItem? _notificationsItem;
     private string? _pendingNotificationProviderId;
     private DateTimeOffset _suppressTrayToggleUntilUtc;
 
-    protected override async void OnStartup(StartupEventArgs e) {
+    protected override void OnStartup(StartupEventArgs e) {
         base.OnStartup(e);
 
         try {
-            var usageService = new UsageTelemetrySnapshotService();
+            _usageArtifactStore = new SqliteRawArtifactStore(ResolveTrayUsageCachePath());
+            var usageService = new UsageTelemetrySnapshotService(_usageArtifactStore);
             var limitService = new ProviderLimitSnapshotService();
             var gitHubService = new GitHubService();
             var preferencesStore = new TrayPreferencesStore();
-            _viewModel = new MainViewModel(usageService, limitService, gitHubService, preferencesStore);
+            var usageSnapshotStore = new TrayUsageSnapshotStore();
+            _viewModel = new MainViewModel(usageService, limitService, gitHubService, preferencesStore, usageSnapshotStore);
             _viewModel.NotificationRequested += OnNotificationRequested;
 
             _popupWindow = new TrayPopupWindow {
                 DataContext = _viewModel
             };
+            _popupWindow.PrimeForFastShow();
 
             // Create tray icon from XAML resource
             _trayIcon = (TaskbarIcon)FindResource("TrayIcon");
@@ -42,11 +48,29 @@ public partial class App : Application {
 
             // Build context menu
             _trayIcon.ContextMenu = CreateContextMenu();
-
-            await _viewModel.InitializeAsync();
+            Dispatcher.InvokeAsync(
+                async () => await StartBackgroundInitializationAsync(),
+                DispatcherPriority.Background);
         } catch (Exception ex) {
             MessageBox.Show(
                 $"IntelligenceX Tray failed to start:\n\n{ex}",
+                "Startup Error",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+            Shutdown(1);
+        }
+    }
+
+    private async Task StartBackgroundInitializationAsync() {
+        if (_viewModel is null) {
+            return;
+        }
+
+        try {
+            await _viewModel.InitializeAsync();
+        } catch (Exception ex) {
+            MessageBox.Show(
+                $"IntelligenceX Tray failed to initialize:\n\n{ex}",
                 "Startup Error",
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
@@ -245,8 +269,17 @@ public partial class App : Application {
         }
 
         _viewModel?.Dispose();
+        _usageArtifactStore?.Dispose();
+        _usageArtifactStore = null;
         _trayIcon?.Dispose();
         _popupWindow?.Close();
         base.OnExit(e);
+    }
+
+    private static string ResolveTrayUsageCachePath() {
+        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        var directory = Path.Combine(localAppData, "IntelligenceX", "Tray");
+        Directory.CreateDirectory(directory);
+        return Path.Combine(directory, "usage-artifacts.db");
     }
 }

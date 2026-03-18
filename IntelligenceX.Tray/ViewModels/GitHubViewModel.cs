@@ -6,9 +6,16 @@ namespace IntelligenceX.Tray.ViewModels;
 
 public sealed class GitHubViewModel : ViewModelBase {
     private string _login = "";
+    private string _displayName = "";
+    private string _bio = "";
+    private string _company = "";
+    private string _location = "";
+    private string _websiteUrl = "";
     private string _usernameInput = "";
     private bool _hasToken;
     private int _ownerCount;
+    private int _followers;
+    private int _following;
     private int _totalContributions;
     private int _totalCommits;
     private int _totalPRs;
@@ -20,6 +27,8 @@ public sealed class GitHubViewModel : ViewModelBase {
     private int _ownedRepositories;
     private int _organizationRepositories;
     private string _dominantLanguage = "Unknown";
+    private bool _hasContributionData = true;
+    private bool _showAccountSwitcher;
     private bool _hasData;
     private bool _isLoading;
     private string _errorMessage = "";
@@ -34,35 +43,67 @@ public sealed class GitHubViewModel : ViewModelBase {
         set {
             if (SetProperty(ref _login, value)) {
                 OnPropertyChanged(nameof(ProfileUrl));
+                OnPropertyChanged(nameof(CompactIdentityText));
             }
         }
     }
+    public string DisplayName { get => _displayName; set { if (SetProperty(ref _displayName, value)) OnPropertyChanged(nameof(HasDisplayName)); } }
+    public bool HasDisplayName => !string.IsNullOrWhiteSpace(DisplayName);
+    public string Bio { get => _bio; set { if (SetProperty(ref _bio, value)) OnPropertyChanged(nameof(HasBio)); } }
+    public bool HasBio => !string.IsNullOrWhiteSpace(Bio);
+    public string Company { get => _company; set { if (SetProperty(ref _company, value)) OnPropertyChanged(nameof(HasCompany)); } }
+    public bool HasCompany => !string.IsNullOrWhiteSpace(Company);
+    public string Location { get => _location; set { if (SetProperty(ref _location, value)) OnPropertyChanged(nameof(HasLocation)); } }
+    public bool HasLocation => !string.IsNullOrWhiteSpace(Location);
+    public string WebsiteUrl { get => _websiteUrl; set { if (SetProperty(ref _websiteUrl, value)) OnPropertyChanged(nameof(HasWebsiteUrl)); } }
+    public bool HasWebsiteUrl => !string.IsNullOrWhiteSpace(WebsiteUrl);
     public string UsernameInput { get => _usernameInput; set => SetProperty(ref _usernameInput, value); }
     public bool HasToken {
         get => _hasToken;
         set {
             if (SetProperty(ref _hasToken, value)) {
                 OnPropertyChanged(nameof(ShowUsernameInput));
+                OnPropertyChanged(nameof(ShowCompactIdentityBar));
                 OnPropertyChanged(nameof(UsernameHelpText));
+                OnPropertyChanged(nameof(CompactIdentityText));
             }
         }
     }
-    public bool ShowUsernameInput => true;
+    public bool ShowAccountSwitcher {
+        get => _showAccountSwitcher;
+        set {
+            if (SetProperty(ref _showAccountSwitcher, value)) {
+                OnPropertyChanged(nameof(ShowUsernameInput));
+                OnPropertyChanged(nameof(ShowCompactIdentityBar));
+                OnPropertyChanged(nameof(UsernameEditorTitle));
+            }
+        }
+    }
+    public bool ShowUsernameInput => !HasData || ShowAccountSwitcher;
+    public bool ShowCompactIdentityBar => HasData && !ShowUsernameInput;
+    public string UsernameEditorTitle => HasData ? "Switch GitHub profile" : "GitHub Username";
     public string UsernameHelpText => HasToken
         ? "Leave blank to load the authenticated account, or enter a username to inspect someone else."
-        : "Enter a username to view public repos. Set GITHUB_TOKEN or GH_TOKEN for full contribution data.";
+        : "Enter a username to view public repos. Run 'gh auth login' or set GITHUB_TOKEN/GH_TOKEN for full contribution data.";
+    public string CompactIdentityText => HasToken
+        ? "Authenticated as " + (string.IsNullOrWhiteSpace(Login) ? "GitHub account" : Login)
+        : "Viewing public profile " + (string.IsNullOrWhiteSpace(Login) ? string.Empty : Login);
     public int OwnerCount { get => _ownerCount; set { if (SetProperty(ref _ownerCount, value)) OnPropertyChanged(nameof(OwnerCountFormatted)); } }
     public string OwnerCountFormatted => FormatCount(OwnerCount);
+    public int Followers { get => _followers; set { if (SetProperty(ref _followers, value)) OnPropertyChanged(nameof(FollowersFormatted)); } }
+    public string FollowersFormatted => FormatCount(Followers);
+    public int Following { get => _following; set { if (SetProperty(ref _following, value)) OnPropertyChanged(nameof(FollowingFormatted)); } }
+    public string FollowingFormatted => FormatCount(Following);
     public int TotalContributions { get => _totalContributions; set { if (SetProperty(ref _totalContributions, value)) OnPropertyChanged(nameof(TotalContributionsFormatted)); } }
-    public string TotalContributionsFormatted => FormatCount(TotalContributions);
+    public string TotalContributionsFormatted => HasContributionData ? FormatCount(TotalContributions) : "--";
     public int TotalCommits { get => _totalCommits; set { if (SetProperty(ref _totalCommits, value)) OnPropertyChanged(nameof(TotalCommitsFormatted)); } }
-    public string TotalCommitsFormatted => FormatCount(TotalCommits);
+    public string TotalCommitsFormatted => HasContributionData ? FormatCount(TotalCommits) : "--";
     public int TotalPRs { get => _totalPRs; set { if (SetProperty(ref _totalPRs, value)) OnPropertyChanged(nameof(TotalPRsFormatted)); } }
-    public string TotalPRsFormatted => FormatCount(TotalPRs);
+    public string TotalPRsFormatted => HasContributionData ? FormatCount(TotalPRs) : "--";
     public int TotalReviews { get => _totalReviews; set { if (SetProperty(ref _totalReviews, value)) OnPropertyChanged(nameof(TotalReviewsFormatted)); } }
-    public string TotalReviewsFormatted => FormatCount(TotalReviews);
+    public string TotalReviewsFormatted => HasContributionData ? FormatCount(TotalReviews) : "--";
     public int TotalIssues { get => _totalIssues; set { if (SetProperty(ref _totalIssues, value)) OnPropertyChanged(nameof(TotalIssuesFormatted)); } }
-    public string TotalIssuesFormatted => FormatCount(TotalIssues);
+    public string TotalIssuesFormatted => HasContributionData ? FormatCount(TotalIssues) : "--";
     public int TotalStars { get => _totalStars; set { if (SetProperty(ref _totalStars, value)) OnPropertyChanged(nameof(TotalStarsFormatted)); } }
     public string TotalStarsFormatted => FormatCount(TotalStars);
     public int TotalForks { get => _totalForks; set { if (SetProperty(ref _totalForks, value)) OnPropertyChanged(nameof(TotalForksFormatted)); } }
@@ -75,11 +116,31 @@ public sealed class GitHubViewModel : ViewModelBase {
     public string OrganizationRepositoriesFormatted => FormatCount(OrganizationRepositories);
     public bool HasOrganizationRepositories => OrganizationRepositories > 0;
     public string DominantLanguage { get => _dominantLanguage; set => SetProperty(ref _dominantLanguage, value); }
+    public bool HasContributionData {
+        get => _hasContributionData;
+        set {
+            if (SetProperty(ref _hasContributionData, value)) {
+                OnPropertyChanged(nameof(TotalContributionsFormatted));
+                OnPropertyChanged(nameof(TotalCommitsFormatted));
+                OnPropertyChanged(nameof(TotalPRsFormatted));
+                OnPropertyChanged(nameof(TotalReviewsFormatted));
+                OnPropertyChanged(nameof(TotalIssuesFormatted));
+                OnPropertyChanged(nameof(ContributionAvailabilityText));
+                OnPropertyChanged(nameof(ShowContributionFallbackMessage));
+            }
+        }
+    }
+    public bool ShowContributionFallbackMessage => HasData && !HasContributionData;
+    public string ContributionAvailabilityText => HasContributionData
+        ? "Authenticated GitHub contribution history."
+        : "Public repo data loaded. Contribution history requires 'gh auth login', GITHUB_TOKEN, GH_TOKEN, or INTELLIGENCEX_GITHUB_TOKEN.";
     public bool HasData {
         get => _hasData;
         set {
             if (SetProperty(ref _hasData, value)) {
                 OnPropertyChanged(nameof(ShowUsernameInput));
+                OnPropertyChanged(nameof(ShowCompactIdentityBar));
+                OnPropertyChanged(nameof(UsernameEditorTitle));
             }
         }
     }
@@ -104,6 +165,13 @@ public sealed class GitHubViewModel : ViewModelBase {
 
     public void ClearData() {
         Login = string.Empty;
+        DisplayName = string.Empty;
+        Bio = string.Empty;
+        Company = string.Empty;
+        Location = string.Empty;
+        WebsiteUrl = string.Empty;
+        Followers = 0;
+        Following = 0;
         TotalContributions = 0;
         TotalCommits = 0;
         TotalPRs = 0;
@@ -116,6 +184,8 @@ public sealed class GitHubViewModel : ViewModelBase {
         OwnedRepositories = 0;
         OrganizationRepositories = 0;
         DominantLanguage = "Unknown";
+        HasContributionData = true;
+        ShowAccountSwitcher = false;
         ContribBars.Clear();
         Languages.Clear();
         Owners.Clear();
@@ -130,9 +200,20 @@ public sealed class GitHubViewModel : ViewModelBase {
             UsernameInput = data.Login;
         }
 
+        ShowAccountSwitcher = false;
+
         Login = data.Login;
         OnPropertyChanged(nameof(ProfileUrl));
+        var profile = data.Profile;
+        DisplayName = NormalizeOptional(profile.DisplayName) ?? string.Empty;
+        Bio = NormalizeOptional(profile.Bio) ?? string.Empty;
+        Company = NormalizeOptional(profile.Company) ?? string.Empty;
+        Location = NormalizeOptional(profile.Location) ?? string.Empty;
+        WebsiteUrl = NormalizeOptional(profile.WebsiteUrl) ?? string.Empty;
+        Followers = profile.Followers;
+        Following = profile.Following;
         var c = data.Contributions;
+        HasContributionData = data.HasContributionData;
         TotalContributions = c.TotalContributions;
         TotalCommits = c.TotalCommits;
         TotalPRs = c.TotalPRs;
@@ -172,7 +253,7 @@ public sealed class GitHubViewModel : ViewModelBase {
             .ThenBy(static group => group.Owner, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        PublicRepositories = allRepos.Count;
+        PublicRepositories = profile.PublicRepositories > 0 ? profile.PublicRepositories : allRepos.Count;
         OwnerCount = ownerGroups.Count;
         OwnedRepositories = allRepos.Count(repo => HasOwner(repo, login));
         OrganizationRepositories = Math.Max(0, allRepos.Count - OwnedRepositories);
@@ -180,24 +261,25 @@ public sealed class GitHubViewModel : ViewModelBase {
         TotalForks = allRepos.Sum(r => r.Forks);
         DominantLanguage = languageGroups.FirstOrDefault()?.Language ?? "Unknown";
 
-        // Contribution bars (last 30 days)
         ContribBars.Clear();
-        var last30 = c.DailyContributions
-            .OrderByDescending(d => d.Date)
-            .Take(30)
-            .OrderBy(d => d.Date)
-            .ToList();
-        var maxContrib = last30.Count > 0 ? Math.Max(1, last30.Max(d => d.Count)) : 1;
-        foreach (var day in last30) {
-            var brush = ParseColorOrDefault(day.Color, "#40c463");
-            ContribBars.Add(new GitHubContribBarViewModel {
-                Date = day.Date,
-                Count = day.Count,
-                BarHeight = Math.Max(2, 40.0 * day.Count / maxContrib),
-                BarBrush = brush,
-                DayLabel = day.Date.Day == 1 || day.Date == last30.First().Date
-                    ? day.Date.ToString("MMM d") : ""
-            });
+        if (HasContributionData) {
+            var last30 = c.DailyContributions
+                .OrderByDescending(d => d.Date)
+                .Take(30)
+                .OrderBy(d => d.Date)
+                .ToList();
+            var maxContrib = last30.Count > 0 ? Math.Max(1, last30.Max(d => d.Count)) : 1;
+            foreach (var day in last30) {
+                var brush = ParseColorOrDefault(day.Color, "#40c463");
+                ContribBars.Add(new GitHubContribBarViewModel {
+                    Date = day.Date,
+                    Count = day.Count,
+                    BarHeight = Math.Max(2, 40.0 * day.Count / maxContrib),
+                    BarBrush = brush,
+                    DayLabel = day.Date.Day == 1 || day.Date == last30.First().Date
+                        ? day.Date.ToString("MMM d") : ""
+                });
+            }
         }
 
         Owners.Clear();
@@ -287,6 +369,14 @@ public sealed class GitHubViewModel : ViewModelBase {
     private static string? NormalizeOptional(string? value) {
         var normalized = value?.Trim();
         return string.IsNullOrWhiteSpace(normalized) ? null : normalized;
+    }
+
+    public void BeginAccountSwitch() {
+        ShowAccountSwitcher = true;
+    }
+
+    public void EndAccountSwitch() {
+        ShowAccountSwitcher = false;
     }
 
     private static string ResolveLanguageColor(string? language) => language?.ToLowerInvariant() switch {

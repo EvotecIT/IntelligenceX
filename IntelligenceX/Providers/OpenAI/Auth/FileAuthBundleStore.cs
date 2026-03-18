@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
@@ -70,6 +71,26 @@ public sealed class FileAuthBundleStore : IAuthBundleStore {
             }
         }
         return best;
+    }
+
+    /// <summary>
+    /// Lists all bundles for the specified provider.
+    /// </summary>
+    public async Task<IReadOnlyList<AuthBundle>> ListAsync(string provider, CancellationToken cancellationToken = default) {
+        if (string.IsNullOrWhiteSpace(provider)) {
+            return Array.Empty<AuthBundle>();
+        }
+
+        var file = await ReadFileAsync(cancellationToken).ConfigureAwait(false);
+        if (file is null) {
+            return Array.Empty<AuthBundle>();
+        }
+
+        return file.Bundles.Values
+            .Where(entry => string.Equals(entry.Provider, provider, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(entry => entry.AccountId ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+            .ThenByDescending(entry => entry.ExpiresAt ?? DateTimeOffset.MinValue)
+            .ToArray();
     }
 
     /// <summary>

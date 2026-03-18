@@ -166,7 +166,7 @@ public sealed class UsageTelemetryQuickReportScanner {
         new UsageTelemetryQuickReportProviderDefinition(
             "claude",
             "claude.quick-report",
-            "claude.quick-report/v1",
+            "claude.quick-report/v2",
             ClaudeQuickReportImport.EnumerateCandidateFiles,
             static (root, filePath, options, cancellationToken, definition) =>
                 ClaudeQuickReportImport.ParseFile(root, filePath, options, definition.AdapterId, definition.ProviderId, cancellationToken)),
@@ -180,7 +180,7 @@ public sealed class UsageTelemetryQuickReportScanner {
         new UsageTelemetryQuickReportProviderDefinition(
             "lmstudio",
             "lmstudio.quick-report",
-            "lmstudio.quick-report/v1",
+            "lmstudio.quick-report/v2",
             LmStudio.LmStudioQuickReportImport.EnumerateCandidateFiles,
             static (root, filePath, options, cancellationToken, definition) =>
                 LmStudio.LmStudioQuickReportImport.ParseFile(root, filePath, options, definition.AdapterId, definition.ProviderId, cancellationToken))
@@ -202,6 +202,7 @@ public sealed class UsageTelemetryQuickReportScanner {
         var allRecords = new List<UsageEventRecord>();
         var providerDiagnostics = new Dictionary<string, UsageTelemetryQuickReportProviderDiagnostics>(StringComparer.OrdinalIgnoreCase);
         var parsedArtifacts = 0;
+        var scanPlans = new List<RootScanPlan>();
 
         foreach (var root in roots.Where(static root => root is not null && root.Enabled)) {
             cancellationToken.ThrowIfCancellationRequested();
@@ -220,8 +221,29 @@ public sealed class UsageTelemetryQuickReportScanner {
             });
 
             if (TryResolveQuickReportProvider(root.ProviderId, out var quickReportProvider)) {
-                ScanRoot(root, quickReportProvider, effectiveOptions, allRecords, providerDiagnostics, ref parsedArtifacts, result, cancellationToken);
+                var cachedArtifacts = effectiveOptions.ForceReimport || effectiveOptions.RawArtifactStore is null
+                    ? null
+                    : effectiveOptions.RawArtifactStore.GetBySourceRootAdapter(root.Id, quickReportProvider.AdapterId);
+                var candidateFiles = quickReportProvider.EnumerateCandidateFiles(root.Path, effectiveOptions.PreferRecentArtifacts).ToArray();
+                scanPlans.Add(new RootScanPlan(root, quickReportProvider, cachedArtifacts, candidateFiles));
             }
+        }
+
+        var totalArtifactCount = scanPlans.Sum(static plan => plan.CandidateFiles.Length);
+        var artifactOffset = 0;
+        foreach (var plan in scanPlans) {
+            cancellationToken.ThrowIfCancellationRequested();
+            ScanRoot(
+                plan,
+                effectiveOptions,
+                allRecords,
+                providerDiagnostics,
+                ref parsedArtifacts,
+                result,
+                artifactOffset,
+                totalArtifactCount,
+                cancellationToken);
+            artifactOffset += plan.CandidateFiles.Length;
 
             if (result.ArtifactBudgetReached) {
                 break;
@@ -239,23 +261,81 @@ public sealed class UsageTelemetryQuickReportScanner {
         return Task.FromResult(result);
     }
 
+    /// <summary>
+    /// Rehydrates cached quick-report artifacts into merged usage events.
+    /// </summary>
+    /// <param name="artifacts">Cached raw artifacts with quick-report state.</param>
+    /// <returns>Merged usage events restored from cached quick-report state.</returns>
+    internal static IReadOnlyList<UsageEventRecord> RestoreFromCachedArtifacts(IEnumerable<RawArtifactDescriptor> artifacts) {
+        if (artifacts is null) {
+            return Array.Empty<UsageEventRecord>();
+        }
+
+        var records = new List<UsageEventRecord>();
+        foreach (var artifact in artifacts) {
+            if (string.IsNullOrWhiteSpace(artifact.StateJson)) {
+                continue;
+            }
+
+            try {
+                records.AddRange(DeserializeQuickRecords(artifact.StateJson!));
+            } catch {
+                // Ignore malformed cached quick-report state and continue with the rest.
+            }
+        }
+
+        if (records.Count == 0) {
+            return Array.Empty<UsageEventRecord>();
+        }
+
+        return MergeRecords(DeduplicateRecords(records));
+    }
+
     private static void ScanRoot(
-        SourceRootRecord root,
-        UsageTelemetryQuickReportProviderDefinition provider,
+        RootScanPlan plan,
         UsageTelemetryQuickReportOptions options,
         List<UsageEventRecord> allRecords,
         IDictionary<string, UsageTelemetryQuickReportProviderDiagnostics> providerDiagnostics,
         ref int parsedArtifacts,
         UsageTelemetryQuickReportResult result,
+        int artifactOffset,
+        int totalArtifactCount,
         CancellationToken cancellationToken) {
+        var root = plan.Root;
+        var provider = plan.Provider;
         var metrics = GetOrCreateProviderDiagnostics(providerDiagnostics, provider.ProviderId);
-        foreach (var filePath in provider.EnumerateCandidateFiles(root.Path, options.PreferRecentArtifacts)) {
+        var cachedArtifacts = plan.CachedArtifacts;
+        var candidateFiles = plan.CandidateFiles;
+        var artifactOrdinal = 0;
+        foreach (var filePath in candidateFiles) {
             cancellationToken.ThrowIfCancellationRequested();
+            artifactOrdinal++;
+            var providerArtifactOrdinal = artifactOffset + artifactOrdinal;
             var artifact = RawArtifactDescriptor.CreateFile(root.Id, provider.AdapterId, filePath, provider.ParserVersion, options.UtcNow());
-            if (TryReuseCachedQuickRecords(options, artifact, out var cachedRecords)) {
+            ReportArtifactProgress(
+                options,
+                root,
+                provider,
+                artifact,
+                providerArtifactOrdinal,
+                totalArtifactCount,
+                result.ArtifactsParsed,
+                result.ArtifactsReused,
+                "artifact-start");
+            if (TryReuseCachedQuickRecords(options, artifact, cachedArtifacts, out var cachedRecords)) {
                 result.ArtifactsReused++;
                 metrics.ArtifactsReused++;
                 allRecords.AddRange(cachedRecords);
+                ReportArtifactProgress(
+                    options,
+                    root,
+                    provider,
+                    artifact,
+                    providerArtifactOrdinal,
+                    totalArtifactCount,
+                    result.ArtifactsParsed,
+                    result.ArtifactsReused,
+                    "artifact-cache");
                 continue;
             }
             if (!TryReserveArtifactBudget(options, ref parsedArtifacts, result)) {
@@ -269,7 +349,65 @@ public sealed class UsageTelemetryQuickReportScanner {
             result.ArtifactsParsed++;
             metrics.ArtifactsParsed++;
             allRecords.AddRange(records);
+            ReportArtifactProgress(
+                options,
+                root,
+                provider,
+                artifact,
+                providerArtifactOrdinal,
+                totalArtifactCount,
+                result.ArtifactsParsed,
+                result.ArtifactsReused,
+                "artifact");
         }
+    }
+
+    private static void ReportArtifactProgress(
+        UsageTelemetryQuickReportOptions options,
+        SourceRootRecord root,
+        UsageTelemetryQuickReportProviderDefinition provider,
+        RawArtifactDescriptor artifact,
+        int artifactOrdinal,
+        int artifactCount,
+        int parsedArtifacts,
+        int reusedArtifacts,
+        string phase) {
+        if (options.Progress is null || !ShouldReportArtifactProgress(artifactOrdinal, artifactCount, phase)) {
+            return;
+        }
+
+        options.Progress.Invoke(new UsageImportProgressUpdate {
+            Phase = phase,
+            ProviderId = root.ProviderId,
+            RootId = root.Id,
+            RootPath = root.Path,
+            AdapterId = provider.AdapterId,
+            ArtifactPath = artifact.Path,
+            ArtifactOrdinal = artifactOrdinal,
+            ArtifactCount = artifactCount,
+            ArtifactSizeBytes = artifact.SizeBytes,
+            ParsedArtifacts = parsedArtifacts,
+            ReusedArtifacts = reusedArtifacts,
+            Message = "Scanning " + provider.ProviderId + " artifact "
+                      + artifactOrdinal.ToString(CultureInfo.InvariantCulture)
+                      + " of " + artifactCount.ToString(CultureInfo.InvariantCulture)
+        });
+    }
+
+    private static bool ShouldReportArtifactProgress(int artifactOrdinal, int artifactCount, string phase) {
+        if (artifactCount <= 0) {
+            return false;
+        }
+
+        if (string.Equals(phase, "artifact-start", StringComparison.OrdinalIgnoreCase)) {
+            return true;
+        }
+
+        if (artifactOrdinal <= 3 || artifactOrdinal >= artifactCount) {
+            return true;
+        }
+
+        return artifactOrdinal % 25 == 0;
     }
 
     private static UsageTelemetryQuickReportProviderDiagnostics GetOrCreateProviderDiagnostics(
@@ -310,12 +448,13 @@ public sealed class UsageTelemetryQuickReportScanner {
     private static bool TryReuseCachedQuickRecords(
         UsageTelemetryQuickReportOptions options,
         RawArtifactDescriptor artifact,
+        IReadOnlyDictionary<string, RawArtifactDescriptor>? cachedArtifacts,
         out IReadOnlyList<UsageEventRecord> records) {
         records = Array.Empty<UsageEventRecord>();
-        if (options.ForceReimport || options.RawArtifactStore is null) {
+        if (options.ForceReimport || options.RawArtifactStore is null || cachedArtifacts is null) {
             return false;
         }
-        if (!options.RawArtifactStore.TryGet(artifact.SourceRootId, artifact.AdapterId, artifact.Path, out var existing)) {
+        if (!cachedArtifacts.TryGetValue(artifact.Path, out var existing)) {
             return false;
         }
         if (!string.Equals(existing.Fingerprint, artifact.Fingerprint, StringComparison.Ordinal) ||
@@ -572,22 +711,24 @@ public sealed class UsageTelemetryQuickReportScanner {
                 NormalizeOptional(record.AccountLabel) ?? string.Empty),
                 StringComparer.OrdinalIgnoreCase)
             .Select(group => {
-                var first = group.First();
+                var materialized = group.ToList();
+                var first = materialized[0];
+                var latestTimestampUtc = materialized.Max(static item => item.TimestampUtc);
                 return new UsageEventRecord(
                     "uev_" + UsageTelemetryIdentity.ComputeStableHash(group.Key),
                     first.ProviderId,
                     first.AdapterId,
                     first.SourceRootId,
-                    first.TimestampUtc) {
+                    latestTimestampUtc) {
                     AccountLabel = first.AccountLabel,
                     MachineId = first.MachineId,
                     Model = first.Model,
                     Surface = first.Surface,
-                    InputTokens = group.Sum(static item => item.InputTokens ?? 0L),
-                    CachedInputTokens = group.Sum(static item => item.CachedInputTokens ?? 0L),
-                    OutputTokens = group.Sum(static item => item.OutputTokens ?? 0L),
-                    ReasoningTokens = group.Sum(static item => item.ReasoningTokens ?? 0L),
-                    TotalTokens = group.Sum(static item => item.TotalTokens ?? 0L),
+                    InputTokens = materialized.Sum(static item => item.InputTokens ?? 0L),
+                    CachedInputTokens = materialized.Sum(static item => item.CachedInputTokens ?? 0L),
+                    OutputTokens = materialized.Sum(static item => item.OutputTokens ?? 0L),
+                    ReasoningTokens = materialized.Sum(static item => item.ReasoningTokens ?? 0L),
+                    TotalTokens = materialized.Sum(static item => item.TotalTokens ?? 0L),
                     TruthLevel = UsageTruthLevel.Exact
                 };
             })
@@ -619,4 +760,10 @@ public sealed class UsageTelemetryQuickReportScanner {
         string ParserVersion,
         Func<string, bool, IEnumerable<string>> EnumerateCandidateFiles,
         Func<SourceRootRecord, string, UsageTelemetryQuickReportOptions, CancellationToken, UsageTelemetryQuickReportProviderDefinition, IReadOnlyList<UsageEventRecord>> ParseFile);
+
+    private sealed record RootScanPlan(
+        SourceRootRecord Root,
+        UsageTelemetryQuickReportProviderDefinition Provider,
+        IReadOnlyDictionary<string, RawArtifactDescriptor>? CachedArtifacts,
+        string[] CandidateFiles);
 }

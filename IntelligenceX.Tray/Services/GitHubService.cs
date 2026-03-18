@@ -17,8 +17,10 @@ public sealed class GitHubService {
     /// <summary>
     /// Fetch GitHub data. Tries authenticated API first, then public API with explicit login.
     /// </summary>
-    public async Task<GitHubDashboardData?> FetchAsync(string? login = null, CancellationToken ct = default) {
-        var token = GitHubDashboardService.ResolveTokenFromEnvironment();
+    public async Task<GitHubDashboardData?> FetchAsync(string? login = null, string? token = null, CancellationToken ct = default) {
+        token = string.IsNullOrWhiteSpace(token)
+            ? (await GitHubCredentialResolver.ResolveAsync(ct).ConfigureAwait(false)).Token
+            : token;
         var normalizedLogin = string.IsNullOrWhiteSpace(login) ? null : login.Trim();
 
         // Authenticated path: full data (contributions + repos)
@@ -49,6 +51,7 @@ public sealed class GitHubService {
     /// </summary>
     private static async Task<GitHubDashboardData?> FetchPublicAsync(string login, CancellationToken ct) {
         var repos = new List<GitHubRepoInfo>();
+        var profile = await FetchPublicProfileAsync(login, ct).ConfigureAwait(false);
 
         // Fetch all owned public repos so totals reflect the full profile, not just the visible top slice.
         var userRepos = await FetchAllPublicReposAsync(
@@ -89,7 +92,17 @@ public sealed class GitHubService {
 
         // No contribution data available via public API (would need GraphQL + token)
         var contribs = new GitHubContribData();
-        return new GitHubDashboardData(login, contribs, topRepos, repos);
+        return new GitHubDashboardData(login, profile, contribs, topRepos, repos, hasContributionData: false);
+    }
+
+    private static async Task<GitHubProfileInfo> FetchPublicProfileAsync(string login, CancellationToken ct) {
+        var json = await GetPublicJsonAsync($"/users/{Uri.EscapeDataString(login)}", ct).ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(json)) {
+            return new GitHubProfileInfo(login);
+        }
+
+        using var document = JsonDocument.Parse(json);
+        return GitHubDashboardService.CreateProfileInfo(document.RootElement, login);
     }
 
     private static async Task<List<GitHubRepoInfo>> FetchAllPublicReposAsync(string endpoint, CancellationToken ct) {
@@ -152,7 +165,7 @@ public sealed class GitHubService {
                 }
 
                 if (status == System.Net.HttpStatusCode.Unauthorized) {
-                    throw new InvalidOperationException("GitHub rejected the public API request. Try again later or configure a GitHub token.");
+                    throw new InvalidOperationException("GitHub rejected the public API request. Try again later, run 'gh auth login', or configure a GitHub token.");
                 }
 
                 if (status == System.Net.HttpStatusCode.Forbidden) {
@@ -160,10 +173,10 @@ public sealed class GitHubService {
                         ? values.FirstOrDefault()
                         : null;
                     if (string.Equals(remaining, "0", StringComparison.OrdinalIgnoreCase)) {
-                        throw new InvalidOperationException("GitHub public API rate limit was exceeded. Try again later or set GITHUB_TOKEN for authenticated requests.");
+                        throw new InvalidOperationException("GitHub public API rate limit was exceeded. Try again later, run 'gh auth login', or set GITHUB_TOKEN for authenticated requests.");
                     }
 
-                    throw new InvalidOperationException("GitHub denied the public API request. Try again later or configure a GitHub token.");
+                    throw new InvalidOperationException("GitHub denied the public API request. Try again later, run 'gh auth login', or configure a GitHub token.");
                 }
 
                 if ((int)status >= 500) {

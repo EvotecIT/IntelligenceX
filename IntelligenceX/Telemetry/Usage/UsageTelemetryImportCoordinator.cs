@@ -344,6 +344,36 @@ public sealed class UsageTelemetryImportCoordinator {
                 .ToArray();
         }
 
+        public IReadOnlyDictionary<string, RawArtifactDescriptor> GetBySourceRootAdapter(string sourceRootId, string adapterId) {
+            var merged = _inner.GetBySourceRootAdapter(sourceRootId, adapterId)
+                .ToDictionary(
+                    pair => UsageTelemetryIdentity.NormalizePath(pair.Key),
+                    pair => pair.Value,
+                    StringComparer.OrdinalIgnoreCase);
+            foreach (var artifact in _pending.Values.Where(value =>
+                         string.Equals(value.SourceRootId, sourceRootId, StringComparison.OrdinalIgnoreCase) &&
+                         string.Equals(value.AdapterId, adapterId, StringComparison.OrdinalIgnoreCase))) {
+                merged[UsageTelemetryIdentity.NormalizePath(artifact.Path)] = artifact;
+            }
+
+            return merged;
+        }
+
+        public IReadOnlyList<RawArtifactDescriptor> GetRecentPerSourceRoot(int limitPerSourceRoot) {
+            if (limitPerSourceRoot <= 0) {
+                return Array.Empty<RawArtifactDescriptor>();
+            }
+
+            return GetAll()
+                .Where(static artifact => !string.IsNullOrWhiteSpace(artifact.StateJson))
+                .GroupBy(static artifact => string.Join("|", artifact.SourceRootId, artifact.AdapterId), StringComparer.OrdinalIgnoreCase)
+                .SelectMany(group => group
+                    .OrderByDescending(static artifact => artifact.ImportedAtUtc)
+                    .ThenByDescending(static artifact => artifact.LastWriteTimeUtc)
+                    .Take(limitPerSourceRoot))
+                .ToArray();
+        }
+
         public void Commit() {
             foreach (var artifact in _pending.Values) {
                 _inner.Upsert(artifact);

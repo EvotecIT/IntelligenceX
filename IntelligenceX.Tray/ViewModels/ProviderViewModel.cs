@@ -68,17 +68,20 @@ public sealed class ProviderViewModel : ViewModelBase {
     private long _todayCachedTokens;
     private long _todayReasoningTokens;
     private decimal _todayCostUsd;
+    private bool _todayCostUsesEstimate;
     private int _todayEventCount;
 
     // 7-day rolling
     private long _weeklyTotalTokens;
     private long _weeklyAvgPerDay;
     private decimal _weeklyCostUsd;
+    private bool _weeklyCostUsesEstimate;
 
     // 30-day rolling
     private long _monthlyTotalTokens;
     private long _monthlyAvgPerDay;
     private decimal _monthlyCostUsd;
+    private bool _monthlyCostUsesEstimate;
 
     private DateTimeOffset _lastUpdated;
     private string? _limitPlanLabel;
@@ -86,6 +89,8 @@ public sealed class ProviderViewModel : ViewModelBase {
     private string? _limitSummary;
     private string? _limitSourceLabel;
     private string? _limitStatusMessage;
+    private string? _recommendedLimitAccountLabel;
+    private string? _recommendedLimitAccountSummary;
     private string _todayLabel = "Today";
     private string _weeklyLabel = "7 days";
     private string _monthlyLabel = "30 days";
@@ -118,6 +123,13 @@ public sealed class ProviderViewModel : ViewModelBase {
         OpenDetailedReportCommand = new RelayCommand(OpenDetailedReportAsync);
         LimitWindows.CollectionChanged += (_, _) => {
             OnPropertyChanged(nameof(HasLiveLimitData));
+            OnPropertyChanged(nameof(ShowSharedLimitWindows));
+            OnPropertyChanged(nameof(HasLimitSection));
+        };
+        LimitAccounts.CollectionChanged += (_, _) => {
+            OnPropertyChanged(nameof(HasLimitAccounts));
+            OnPropertyChanged(nameof(HasMultipleLimitAccounts));
+            OnPropertyChanged(nameof(ShowSharedLimitWindows));
             OnPropertyChanged(nameof(HasLimitSection));
         };
         AccountBreakdown.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasAccountBreakdown));
@@ -441,7 +453,16 @@ public sealed class ProviderViewModel : ViewModelBase {
         }
     }
 
-    public string TodayCostFormatted => TodayCostUsd > 0 ? $"${TodayCostUsd:F4}" : "--";
+    public bool TodayCostUsesEstimate {
+        get => _todayCostUsesEstimate;
+        set {
+            if (SetProperty(ref _todayCostUsesEstimate, value)) {
+                OnPropertyChanged(nameof(TodayCostFormatted));
+            }
+        }
+    }
+
+    public string TodayCostFormatted => FormatCostDisplay(TodayCostUsd, TodayCostUsesEstimate);
     public bool HasTodayCost => TodayCostUsd > 0;
 
     public int TodayEventCount {
@@ -487,7 +508,16 @@ public sealed class ProviderViewModel : ViewModelBase {
         }
     }
 
-    public string WeeklyCostFormatted => WeeklyCostUsd > 0 ? $"${WeeklyCostUsd:F2}" : "--";
+    public bool WeeklyCostUsesEstimate {
+        get => _weeklyCostUsesEstimate;
+        set {
+            if (SetProperty(ref _weeklyCostUsesEstimate, value)) {
+                OnPropertyChanged(nameof(WeeklyCostFormatted));
+            }
+        }
+    }
+
+    public string WeeklyCostFormatted => FormatCostDisplay(WeeklyCostUsd, WeeklyCostUsesEstimate);
     public bool HasWeeklyCost => WeeklyCostUsd > 0;
 
     // -- 30-day --
@@ -528,7 +558,16 @@ public sealed class ProviderViewModel : ViewModelBase {
         }
     }
 
-    public string MonthlyCostFormatted => MonthlyCostUsd > 0 ? $"${MonthlyCostUsd:F2}" : "--";
+    public bool MonthlyCostUsesEstimate {
+        get => _monthlyCostUsesEstimate;
+        set {
+            if (SetProperty(ref _monthlyCostUsesEstimate, value)) {
+                OnPropertyChanged(nameof(MonthlyCostFormatted));
+            }
+        }
+    }
+
+    public string MonthlyCostFormatted => FormatCostDisplay(MonthlyCostUsd, MonthlyCostUsesEstimate);
     public bool HasMonthlyCost => MonthlyCostUsd > 0;
 
     public DateTimeOffset LastUpdated {
@@ -591,9 +630,31 @@ public sealed class ProviderViewModel : ViewModelBase {
         }
     }
 
+    public string? RecommendedLimitAccountLabel {
+        get => _recommendedLimitAccountLabel;
+        set {
+            if (SetProperty(ref _recommendedLimitAccountLabel, value)) {
+                OnPropertyChanged(nameof(HasRecommendedLimitAccount));
+            }
+        }
+    }
+
+    public string? RecommendedLimitAccountSummary {
+        get => _recommendedLimitAccountSummary;
+        set {
+            if (SetProperty(ref _recommendedLimitAccountSummary, value)) {
+                OnPropertyChanged(nameof(HasRecommendedLimitAccount));
+            }
+        }
+    }
+
     public bool HasLimitSummary => !string.IsNullOrWhiteSpace(LimitSummary);
     public bool HasLimitStatusMessage => !string.IsNullOrWhiteSpace(LimitStatusMessage);
+    public bool HasRecommendedLimitAccount => !string.IsNullOrWhiteSpace(RecommendedLimitAccountLabel);
     public bool HasLiveLimitData => LimitWindows.Count > 0;
+    public bool HasLimitAccounts => LimitAccounts.Count > 0;
+    public bool HasMultipleLimitAccounts => LimitAccounts.Count > 1;
+    public bool ShowSharedLimitWindows => HasLiveLimitData && !HasMultipleLimitAccounts;
     public bool HasAccountBreakdown => AccountBreakdown.Count > 0;
     public bool HasSurfaceBreakdown => SurfaceBreakdown.Count > 0;
     public bool HasRecentActivity => RecentActivity.Count > 0;
@@ -611,11 +672,13 @@ public sealed class ProviderViewModel : ViewModelBase {
         || !string.IsNullOrWhiteSpace(LimitPlanLabel)
         || !string.IsNullOrWhiteSpace(LimitAccountLabel)
         || HasLimitSummary
-        || !string.IsNullOrWhiteSpace(LimitSourceLabel);
+        || !string.IsNullOrWhiteSpace(LimitSourceLabel)
+        || HasLimitAccounts;
 
     public ObservableCollection<ModelUsageViewModel> ModelBreakdown { get; } = [];
     public ObservableCollection<DailyBarViewModel> DailyBars { get; } = [];
     public ObservableCollection<ProviderLimitWindowViewModel> LimitWindows { get; } = [];
+    public ObservableCollection<ProviderLimitAccountViewModel> LimitAccounts { get; } = [];
     public ObservableCollection<UsageBreakdownEntryViewModel> AccountBreakdown { get; } = [];
     public ObservableCollection<UsageBreakdownEntryViewModel> SurfaceBreakdown { get; } = [];
     public ObservableCollection<ProviderComparisonEntryViewModel> ProviderComparison { get; } = [];
@@ -795,12 +858,15 @@ public sealed class ProviderViewModel : ViewModelBase {
 
     public void ApplyLimitSnapshot(ProviderLimitSnapshot? snapshot) {
         LimitWindows.Clear();
+        LimitAccounts.Clear();
         if (snapshot is null) {
             LimitPlanLabel = null;
             LimitAccountLabel = null;
             LimitSummary = null;
             LimitSourceLabel = null;
             LimitStatusMessage = null;
+            RecommendedLimitAccountLabel = null;
+            RecommendedLimitAccountSummary = null;
             return;
         }
 
@@ -809,22 +875,125 @@ public sealed class ProviderViewModel : ViewModelBase {
         LimitSummary = snapshot.Summary;
         LimitSourceLabel = snapshot.SourceLabel;
         LimitStatusMessage = snapshot.DetailMessage;
+        RecommendedLimitAccountLabel = null;
+        RecommendedLimitAccountSummary = null;
+        var forecasts = ProviderLimitForecasting.BuildForecasts(snapshot);
+        var advisories = ProviderLimitForecasting.BuildAccountAdvisories(snapshot);
+        var accountSnapshots = snapshot.Accounts.Count > 0
+            ? snapshot.Accounts
+            : new[] {
+                new ProviderLimitAccountSnapshot(
+                    accountId: null,
+                    accountLabel: snapshot.AccountLabel,
+                    planLabel: snapshot.PlanLabel,
+                    windows: snapshot.Windows,
+                    summary: snapshot.Summary,
+                    detailMessage: snapshot.DetailMessage,
+                    retrievedAtUtc: snapshot.RetrievedAtUtc,
+                    isSelected: true)
+            };
 
-        foreach (var window in snapshot.Windows) {
-            LimitWindows.Add(new ProviderLimitWindowViewModel {
-                Label = window.Label,
-                UsedPercent = window.UsedPercent,
-                UsedPercentFormatted = window.UsedPercent.HasValue
-                    ? window.UsedPercent.Value.ToString("0.#", CultureInfo.InvariantCulture) + "%"
-                    : "--",
-                ResetText = FormatResetText(window.ResetsAt),
-                Detail = window.Detail,
-                Proportion = window.UsedPercent.HasValue
-                    ? Math.Min(1d, Math.Max(0d, window.UsedPercent.Value / 100d))
-                    : 0d,
-                BarBrush = FrozenBrush(OutputColor)
-            });
+        foreach (var advisory in advisories) {
+            var accountSnapshot = FindAccountSnapshot(accountSnapshots, advisory);
+            var accountViewModel = new ProviderLimitAccountViewModel {
+                Label = advisory.DisplayLabel,
+                PlanLabel = advisory.PlanLabel,
+                StatusLabel = advisory.StatusLabel,
+                Summary = advisory.Summary ?? "No live limit windows",
+                WindowSummaryText = accountSnapshot is { Windows.Count: > 0 }
+                    ? accountSnapshot.Windows.Count.ToString(CultureInfo.InvariantCulture) + " tracked windows"
+                    : null,
+                IsExpanded = advisory.IsRecommended || advisory.IsSelected,
+                BadgeText = advisory.IsRecommended
+                    ? (advisory.IsSelected ? "Best current" : "Recommended")
+                    : (advisory.IsSelected ? "Current" : null)
+            };
+            PopulateLimitWindows(
+                accountViewModel.Windows,
+                accountSnapshot?.Windows,
+                forecasts: null,
+                forecastNowUtc: accountSnapshot?.RetrievedAtUtc ?? snapshot.RetrievedAtUtc);
+            LimitAccounts.Add(accountViewModel);
         }
+
+        if (advisories.FirstOrDefault(static advisory => advisory.IsRecommended) is { } recommended) {
+            RecommendedLimitAccountLabel = recommended.IsSelected
+                ? "Best current choice: " + recommended.DisplayLabel
+                : "Recommended next: " + recommended.DisplayLabel;
+            RecommendedLimitAccountSummary = recommended.Summary;
+        }
+
+        if (snapshot.Accounts.Count <= 1) {
+            PopulateLimitWindows(LimitWindows, snapshot.Windows, forecasts);
+        }
+    }
+
+    private void PopulateLimitWindows(
+        ObservableCollection<ProviderLimitWindowViewModel> target,
+        IReadOnlyList<ProviderLimitWindow>? windows,
+        IReadOnlyDictionary<string, ProviderLimitWindowForecast>? forecasts = null,
+        DateTimeOffset? forecastNowUtc = null) {
+        if (windows is null || windows.Count == 0) {
+            return;
+        }
+
+        foreach (var window in windows) {
+            ProviderLimitWindowForecast? forecast = null;
+            if (forecasts is not null) {
+                forecasts.TryGetValue(window.Key, out forecast);
+            } else if (forecastNowUtc.HasValue) {
+                forecast = ProviderLimitForecasting.BuildForecast(window, forecastNowUtc.Value);
+            }
+
+            target.Add(CreateLimitWindowViewModel(window, forecast));
+        }
+    }
+
+    private ProviderLimitWindowViewModel CreateLimitWindowViewModel(
+        ProviderLimitWindow window,
+        ProviderLimitWindowForecast? forecast) {
+        var detail = window.Detail;
+        if (!string.IsNullOrWhiteSpace(forecast?.Summary)) {
+            detail = string.IsNullOrWhiteSpace(detail)
+                ? forecast!.Summary
+                : detail + " • " + forecast.Summary;
+        }
+
+        return new ProviderLimitWindowViewModel {
+            Label = window.Label,
+            UsedPercent = window.UsedPercent,
+            UsedPercentFormatted = window.UsedPercent.HasValue
+                ? window.UsedPercent.Value.ToString("0.#", CultureInfo.InvariantCulture) + "%"
+                : "--",
+            ResetText = FormatResetText(window.ResetsAt),
+            Detail = detail,
+            Proportion = window.UsedPercent.HasValue
+                ? Math.Min(1d, Math.Max(0d, window.UsedPercent.Value / 100d))
+                : 0d,
+            BarBrush = FrozenBrush(OutputColor)
+        };
+    }
+
+    private static ProviderLimitAccountSnapshot? FindAccountSnapshot(
+        IReadOnlyList<ProviderLimitAccountSnapshot> accounts,
+        ProviderLimitAccountAdvisory advisory) {
+        var advisoryKey = BuildLimitAccountKey(advisory.AccountId, advisory.DisplayLabel);
+        foreach (var account in accounts) {
+            if (string.Equals(
+                    advisoryKey,
+                    BuildLimitAccountKey(account.AccountId, account.AccountLabel),
+                    StringComparison.OrdinalIgnoreCase)) {
+                return account;
+            }
+        }
+
+        return null;
+    }
+
+    private static string BuildLimitAccountKey(string? accountId, string? accountLabel) {
+        return string.IsNullOrWhiteSpace(accountId)
+            ? accountLabel?.Trim() ?? string.Empty
+            : accountId.Trim();
     }
 
     private static string FormatTokens(long tokens) {
@@ -865,12 +1034,18 @@ public sealed class ProviderViewModel : ViewModelBase {
         var weeklyEvents = FilterByWindow(today.AddDays(-6), today);
         WeeklyTotalTokens = weeklyEvents.Sum(e => e.TotalTokens ?? 0L);
         WeeklyAvgPerDay = WeeklyTotalTokens > 0 ? WeeklyTotalTokens / 7 : 0;
-        WeeklyCostUsd = weeklyEvents.Sum(e => e.CostUsd ?? 0m);
+        ApplyDisplayCost(
+            UsageTelemetryApiPricing.BuildDisplayCost(weeklyEvents),
+            value => WeeklyCostUsd = value,
+            value => WeeklyCostUsesEstimate = value);
 
         var monthlyEvents = FilterByWindow(today.AddDays(-29), today);
         MonthlyTotalTokens = monthlyEvents.Sum(e => e.TotalTokens ?? 0L);
         MonthlyAvgPerDay = MonthlyTotalTokens > 0 ? MonthlyTotalTokens / 30 : 0;
-        MonthlyCostUsd = monthlyEvents.Sum(e => e.CostUsd ?? 0m);
+        ApplyDisplayCost(
+            UsageTelemetryApiPricing.BuildDisplayCost(monthlyEvents),
+            value => MonthlyCostUsd = value,
+            value => MonthlyCostUsesEstimate = value);
 
         var dailyTotals = new List<(DateTime Day, long Tokens)>();
         for (var i = 6; i >= 0; i--) {
@@ -901,7 +1076,7 @@ public sealed class ProviderViewModel : ViewModelBase {
             AccountFilterOptions,
             ProviderFilterDefaults.AllAccounts,
             _usageEvents
-                .Select(static e => NormalizeAccountLabel(e.AccountLabel))
+                .Select(static e => NormalizeAccountLabel(e.AccountLabel, e.ProviderAccountId))
                 .Where(static value => !string.IsNullOrWhiteSpace(value))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .OrderBy(static value => value, StringComparer.CurrentCultureIgnoreCase)
@@ -950,13 +1125,16 @@ public sealed class ProviderViewModel : ViewModelBase {
         TodayOutputTokens = rangeEvents.Sum(e => e.OutputTokens ?? 0L);
         TodayCachedTokens = rangeEvents.Sum(e => e.CachedInputTokens ?? 0L);
         TodayReasoningTokens = rangeEvents.Sum(e => e.ReasoningTokens ?? 0L);
-        TodayCostUsd = rangeEvents.Sum(e => e.CostUsd ?? 0m);
+        ApplyDisplayCost(
+            UsageTelemetryApiPricing.BuildDisplayCost(rangeEvents),
+            value => TodayCostUsd = value,
+            value => TodayCostUsesEstimate = value);
         TodayEventCount = rangeEvents.Count;
 
         PopulateModelBreakdown(rangeEvents);
         PopulateUsageBreakdown(
             AccountBreakdown,
-            BuildBreakdown(rangeEvents, e => NormalizeAccountLabel(e.AccountLabel)),
+            BuildBreakdown(rangeEvents, e => NormalizeAccountLabel(e.AccountLabel, e.ProviderAccountId)),
             OutputColor);
         PopulateUsageBreakdown(
             SurfaceBreakdown,
@@ -991,7 +1169,7 @@ public sealed class ProviderViewModel : ViewModelBase {
 
     private List<UsageEventRecord> ApplyFilters(IEnumerable<UsageEventRecord> events) {
         return events
-            .Where(e => MatchesFilter(SelectedAccountFilter, NormalizeAccountLabel(e.AccountLabel), ProviderFilterDefaults.AllAccounts))
+            .Where(e => MatchesFilter(SelectedAccountFilter, NormalizeAccountLabel(e.AccountLabel, e.ProviderAccountId), ProviderFilterDefaults.AllAccounts))
             .Where(e => MatchesFilter(SelectedModelFilter, NormalizeOptional(e.Model), ProviderFilterDefaults.AllModels))
             .Where(e => MatchesFilter(SelectedSurfaceFilter, NormalizeSurfaceLabel(e.Surface), ProviderFilterDefaults.AllSurfaces))
             .OrderByDescending(static e => e.TimestampUtc)
@@ -1067,7 +1245,8 @@ public sealed class ProviderViewModel : ViewModelBase {
                 subtitleParts.Add(surface);
             }
 
-            var account = NormalizeAccountLabel(usageEvent.AccountLabel);
+            var account = NormalizeAccountLabel(usageEvent.AccountLabel, usageEvent.ProviderAccountId);
+            var displayCost = UsageTelemetryApiPricing.BuildDisplayCost(usageEvent);
             if (!string.IsNullOrWhiteSpace(account)) {
                 subtitleParts.Add(account);
             }
@@ -1084,9 +1263,7 @@ public sealed class ProviderViewModel : ViewModelBase {
                 SurfaceText = surface ?? "Unknown surface",
                 AccountText = account ?? "Unknown account",
                 TokensText = FormatTokens(usageEvent.TotalTokens ?? 0L),
-                CostText = usageEvent.CostUsd is > 0m
-                    ? "$" + usageEvent.CostUsd.Value.ToString("0.####", CultureInfo.InvariantCulture)
-                    : "--",
+                CostText = FormatCostDisplay(displayCost.TotalCostUsd, displayCost.UsesEstimatedFallback),
                 InputText = FormatTokens(usageEvent.InputTokens ?? 0L),
                 OutputText = FormatTokens(usageEvent.OutputTokens ?? 0L),
                 CachedText = FormatTokens(usageEvent.CachedInputTokens ?? 0L),
@@ -1114,22 +1291,22 @@ public sealed class ProviderViewModel : ViewModelBase {
                 Info = ProviderMetadata.Resolve(group.Key),
                 Events = group.Count(),
                 Tokens = group.Sum(eventRecord => eventRecord.TotalTokens ?? 0L),
-                Cost = group.Sum(eventRecord => eventRecord.CostUsd ?? 0m)
+                CostRollup = UsageTelemetryApiPricing.BuildDisplayCost(group)
             });
 
         var orderedGroups = SelectedProviderComparisonSort switch {
             ProviderComparisonSort.Cost => providerGroups
-                .OrderByDescending(static group => group.Cost)
+                .OrderByDescending(static group => group.CostRollup.TotalCostUsd)
                 .ThenByDescending(static group => group.Tokens)
                 .ThenByDescending(static group => group.Events),
             ProviderComparisonSort.Events => providerGroups
                 .OrderByDescending(static group => group.Events)
                 .ThenByDescending(static group => group.Tokens)
-                .ThenByDescending(static group => group.Cost),
+                .ThenByDescending(static group => group.CostRollup.TotalCostUsd),
             _ => providerGroups
                 .OrderByDescending(static group => group.Tokens)
                 .ThenByDescending(static group => group.Events)
-                .ThenByDescending(static group => group.Cost)
+                .ThenByDescending(static group => group.CostRollup.TotalCostUsd)
         };
 
         var topGroups = orderedGroups.Take(8).ToList();
@@ -1149,7 +1326,7 @@ public sealed class ProviderViewModel : ViewModelBase {
                 DisplayName = group.Info.DisplayName,
                 ShortName = group.Info.ShortName,
                 TokensText = FormatTokens(group.Tokens),
-                CostText = group.Cost > 0m ? "$" + group.Cost.ToString("0.##", CultureInfo.InvariantCulture) : "--",
+                CostText = FormatCostDisplay(group.CostRollup.TotalCostUsd, group.CostRollup.UsesEstimatedFallback),
                 EventCountText = group.Events.ToString("N0", CultureInfo.CurrentCulture) + " events",
                 HealthText = healthInfo?.SummaryText ?? "Usage snapshot only",
                 HealthBrush = healthInfo?.SummaryBrush ?? FrozenBrush(Color.FromRgb(144, 144, 184)),
@@ -1348,20 +1525,25 @@ public sealed class ProviderViewModel : ViewModelBase {
                     outputTokens = TodayOutputTokens,
                     cachedTokens = TodayCachedTokens,
                     reasoningTokens = TodayReasoningTokens,
-                    costUsd = TodayCostUsd
+                    costUsd = TodayCostUsd,
+                    costApproximate = TodayCostUsesEstimate
                 },
-                events = events.Select(e => new {
-                    timestampLocal = e.TimestampUtc.ToLocalTime().ToString("O", CultureInfo.InvariantCulture),
-                    timestampUtc = e.TimestampUtc.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture),
-                    account = NormalizeAccountLabel(e.AccountLabel),
-                    model = NormalizeOptional(e.Model),
-                    surface = NormalizeSurfaceLabel(e.Surface),
-                    inputTokens = e.InputTokens,
-                    outputTokens = e.OutputTokens,
-                    cachedTokens = e.CachedInputTokens,
-                    reasoningTokens = e.ReasoningTokens,
-                    totalTokens = e.TotalTokens,
-                    costUsd = e.CostUsd
+                events = events.Select(e => {
+                    var displayCost = UsageTelemetryApiPricing.BuildDisplayCost(e);
+                    return new {
+                        timestampLocal = e.TimestampUtc.ToLocalTime().ToString("O", CultureInfo.InvariantCulture),
+                        timestampUtc = e.TimestampUtc.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture),
+                        account = NormalizeAccountLabel(e.AccountLabel, e.ProviderAccountId),
+                        model = NormalizeOptional(e.Model),
+                        surface = NormalizeSurfaceLabel(e.Surface),
+                        inputTokens = e.InputTokens,
+                        outputTokens = e.OutputTokens,
+                        cachedTokens = e.CachedInputTokens,
+                        reasoningTokens = e.ReasoningTokens,
+                        totalTokens = e.TotalTokens,
+                        costUsd = displayCost.TotalCostUsd,
+                        costApproximate = displayCost.UsesEstimatedFallback
+                    };
                 })
             };
 
@@ -1391,7 +1573,7 @@ public sealed class ProviderViewModel : ViewModelBase {
                 builder.AppendLine(string.Join(",",
                     EscapeCsv(usageEvent.TimestampUtc.ToLocalTime().ToString("O", CultureInfo.InvariantCulture)),
                     EscapeCsv(usageEvent.TimestampUtc.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture)),
-                    EscapeCsv(NormalizeAccountLabel(usageEvent.AccountLabel)),
+                    EscapeCsv(NormalizeAccountLabel(usageEvent.AccountLabel, usageEvent.ProviderAccountId)),
                     EscapeCsv(NormalizeOptional(usageEvent.Model)),
                     EscapeCsv(NormalizeSurfaceLabel(usageEvent.Surface)),
                     EscapeCsv(usageEvent.InputTokens),
@@ -1399,7 +1581,7 @@ public sealed class ProviderViewModel : ViewModelBase {
                     EscapeCsv(usageEvent.CachedInputTokens),
                     EscapeCsv(usageEvent.ReasoningTokens),
                     EscapeCsv(usageEvent.TotalTokens),
-                    EscapeCsv(usageEvent.CostUsd?.ToString("0.####", CultureInfo.InvariantCulture))));
+                    EscapeCsv(FormatExportCost(usageEvent))));
             }
 
             await File.WriteAllTextAsync(dialog.FileName, builder.ToString()).ConfigureAwait(true);
@@ -1453,8 +1635,9 @@ public sealed class ProviderViewModel : ViewModelBase {
             parts.Add(FormatMetricValue(usageEvent.TotalTokens.Value));
         }
 
-        if (usageEvent.CostUsd.HasValue && usageEvent.CostUsd.Value > 0m) {
-            parts.Add("$" + usageEvent.CostUsd.Value.ToString("0.####", CultureInfo.InvariantCulture));
+        var displayCost = UsageTelemetryApiPricing.BuildDisplayCost(usageEvent);
+        if (displayCost.HasAnyCost) {
+            parts.Add(FormatCostDisplay(displayCost.TotalCostUsd, displayCost.UsesEstimatedFallback));
         }
 
         return parts.Count == 0 ? "No token or cost data" : string.Join(" • ", parts);
@@ -1465,9 +1648,9 @@ public sealed class ProviderViewModel : ViewModelBase {
             usageEvent.TimestampUtc.ToUniversalTime().Ticks.ToString(CultureInfo.InvariantCulture),
             NormalizeOptional(usageEvent.Model) ?? "unknown-model",
             NormalizeSurfaceLabel(usageEvent.Surface) ?? "unknown-surface",
-            NormalizeAccountLabel(usageEvent.AccountLabel) ?? "unknown-account",
+            NormalizeAccountLabel(usageEvent.AccountLabel, usageEvent.ProviderAccountId) ?? "unknown-account",
             (usageEvent.TotalTokens ?? 0L).ToString(CultureInfo.InvariantCulture),
-            (usageEvent.CostUsd ?? 0m).ToString("0.####", CultureInfo.InvariantCulture));
+            FormatExportCost(usageEvent));
     }
 
     private static string? NormalizeOptional(string? value) {
@@ -1475,10 +1658,13 @@ public sealed class ProviderViewModel : ViewModelBase {
         return string.IsNullOrWhiteSpace(trimmed) ? null : trimmed;
     }
 
-    private static string? NormalizeAccountLabel(string? value) {
+    private static string? NormalizeAccountLabel(string? value, string? providerAccountId = null) {
         var normalized = NormalizeOptional(value);
         if (normalized is null || string.Equals(normalized, "unknown-account", StringComparison.OrdinalIgnoreCase)) {
-            return null;
+            normalized = NormalizeOptional(providerAccountId);
+            if (normalized is null || string.Equals(normalized, "unknown-account", StringComparison.OrdinalIgnoreCase)) {
+                return null;
+            }
         }
 
         if (normalized.StartsWith("acct:", StringComparison.OrdinalIgnoreCase)) {
@@ -1589,7 +1775,7 @@ public sealed class ProviderViewModel : ViewModelBase {
                 .OrderByDescending(static e => e.TotalTokens ?? 0L)
                 .ThenByDescending(static e => e.TimestampUtc),
             ProviderEventSort.HighestCost => events
-                .OrderByDescending(static e => e.CostUsd ?? 0m)
+                .OrderByDescending(static e => UsageTelemetryApiPricing.BuildDisplayCost(e).TotalCostUsd)
                 .ThenByDescending(static e => e.TotalTokens ?? 0L)
                 .ThenByDescending(static e => e.TimestampUtc),
             ProviderEventSort.Model => events
@@ -1597,6 +1783,40 @@ public sealed class ProviderViewModel : ViewModelBase {
                 .ThenByDescending(static e => e.TimestampUtc),
             _ => events.OrderByDescending(static e => e.TimestampUtc)
         };
+    }
+
+    private static void ApplyDisplayCost(UsageTelemetryDisplayCost cost, Action<decimal> assignValue, Action<bool> assignApproximate) {
+        assignValue(cost.TotalCostUsd);
+        assignApproximate(cost.UsesEstimatedFallback);
+    }
+
+    private static string FormatExportCost(UsageEventRecord usageEvent) {
+        var displayCost = UsageTelemetryApiPricing.BuildDisplayCost(usageEvent);
+        if (!displayCost.HasAnyCost) {
+            return string.Empty;
+        }
+
+        return (displayCost.UsesEstimatedFallback ? "~" : string.Empty)
+               + displayCost.TotalCostUsd.ToString("0.####", CultureInfo.InvariantCulture);
+    }
+
+    private static string FormatCostDisplay(decimal costUsd, bool approximate) {
+        if (costUsd <= 0m) {
+            return "--";
+        }
+
+        string value;
+        if (costUsd >= 1_000_000m) {
+            value = (costUsd / 1_000_000m).ToString("0.0", CultureInfo.InvariantCulture) + "M";
+        } else if (costUsd >= 1_000m) {
+            value = (costUsd / 1_000m).ToString("0.0", CultureInfo.InvariantCulture) + "K";
+        } else if (costUsd >= 1m) {
+            value = costUsd.ToString("0.##", CultureInfo.InvariantCulture);
+        } else {
+            value = costUsd.ToString("0.####", CultureInfo.InvariantCulture);
+        }
+
+        return (approximate ? "~$" : "$") + value;
     }
 
     private static Brush FrozenBrush(Color color) {

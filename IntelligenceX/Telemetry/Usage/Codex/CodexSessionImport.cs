@@ -27,7 +27,7 @@ internal static class CodexSessionImport {
         var records = new List<UsageEventRecord>();
         var currentModel = default(string);
         var sessionId = CodexSessionImportSupport.TryExtractSessionIdFromFileName(filePath);
-        var providerAccountId = CodexSessionImportSupport.ResolveProviderAccountId(filePath, root.Path);
+        var resolvedAccount = CodexSessionImportSupport.ResolveAccount(filePath, root.Path);
         CodexSessionImportSupport.CodexNormalizedUsage? previousTotals = null;
         CodexSessionImportSupport.CodexNormalizedUsage? previousLastUsage = null;
         var lineNumber = 0;
@@ -130,7 +130,9 @@ internal static class CodexSessionImport {
                 record,
                 root,
                 machineId,
-                providerAccountId: providerAccountId,
+                providerAccountId: resolvedAccount.ProviderAccountId,
+                accountLabel: resolvedAccount.AccountLabel,
+                personLabel: resolvedAccount.PersonLabel,
                 sessionId: sessionId,
                 threadId: sessionId,
                 turnId: turnId,

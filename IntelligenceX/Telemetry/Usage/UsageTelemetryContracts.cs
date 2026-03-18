@@ -126,6 +126,16 @@ public interface IRawArtifactStore {
     /// Returns all tracked raw artifacts.
     /// </summary>
     IReadOnlyList<RawArtifactDescriptor> GetAll();
+
+    /// <summary>
+    /// Returns tracked raw artifacts for one source root and adapter keyed by normalized artifact path.
+    /// </summary>
+    IReadOnlyDictionary<string, RawArtifactDescriptor> GetBySourceRootAdapter(string sourceRootId, string adapterId);
+
+    /// <summary>
+    /// Returns the most recently imported raw artifacts per source root and adapter.
+    /// </summary>
+    IReadOnlyList<RawArtifactDescriptor> GetRecentPerSourceRoot(int limitPerSourceRoot);
 }
 
 /// <summary>
@@ -267,6 +277,36 @@ public sealed class UsageImportProgressUpdate {
     /// Gets or sets the adapter identifier when known.
     /// </summary>
     public string? AdapterId { get; set; }
+
+    /// <summary>
+    /// Gets or sets the current artifact path when known.
+    /// </summary>
+    public string? ArtifactPath { get; set; }
+
+    /// <summary>
+    /// Gets or sets the 1-based artifact position within the current root scan.
+    /// </summary>
+    public int? ArtifactOrdinal { get; set; }
+
+    /// <summary>
+    /// Gets or sets the total artifacts discovered for the current root scan.
+    /// </summary>
+    public int? ArtifactCount { get; set; }
+
+    /// <summary>
+    /// Gets or sets the current artifact size in bytes when known.
+    /// </summary>
+    public long? ArtifactSizeBytes { get; set; }
+
+    /// <summary>
+    /// Gets or sets how many artifacts have been parsed from disk so far for the current root scan.
+    /// </summary>
+    public int? ParsedArtifacts { get; set; }
+
+    /// <summary>
+    /// Gets or sets how many artifacts have been reused from cached quick-report state so far for the current root scan.
+    /// </summary>
+    public int? ReusedArtifacts { get; set; }
 
     /// <summary>
     /// Gets or sets a human-readable message for the current phase.
