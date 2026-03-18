@@ -450,11 +450,11 @@ public class ToolPackInfoContractTests {
     }
 
     [Fact]
-    public async Task ADLifecycleEventLogAndSystemPackInfo_ShouldExposeRuntimeCapabilityGuidance() {
+    public async Task RuntimeGuidancePacks_ShouldExposeRuntimeCapabilityGuidance() {
         await AssertRuntimeCapabilityGuidanceAsync(
             tool: new AdPackInfoTool(new ActiveDirectoryToolOptions()),
             expectedEntryTools: new[] { "ad_environment_discover", "ad_scope_discovery", "ad_forest_discover" },
-            expectedProbeTools: new[] { "ad_monitoring_probe_catalog", "ad_monitoring_probe_run" },
+            expectedProbeTools: new[] { "ad_connectivity_probe", "ad_monitoring_probe_catalog", "ad_monitoring_probe_run" },
             expectedPrerequisiteSnippet: "AllowedMonitoringRoots",
             expectedProbeFreshnessWindowSeconds: 600,
             expectedSetupFreshnessWindowSeconds: 1800,
@@ -483,6 +483,24 @@ public class ToolPackInfoContractTests {
             expectedProbeFreshnessWindowSeconds: 600,
             expectedSetupFreshnessWindowSeconds: 1800,
             expectedRecipeFreshnessWindowSeconds: 900);
+
+        await AssertRuntimeCapabilityGuidanceAsync(
+            tool: new DnsClientXPackInfoTool(new DnsClientXToolOptions()),
+            expectedEntryTools: new[] { "dnsclientx_query" },
+            expectedProbeTools: new[] { "dnsclientx_ping" },
+            expectedPrerequisiteSnippet: "endpoint",
+            expectedProbeFreshnessWindowSeconds: 300,
+            expectedSetupFreshnessWindowSeconds: 900,
+            expectedRecipeFreshnessWindowSeconds: 300);
+
+        await AssertRuntimeCapabilityGuidanceAsync(
+            tool: new DomainDetectivePackInfoTool(new DomainDetectiveToolOptions()),
+            expectedEntryTools: new[] { "domaindetective_checks_catalog", "domaindetective_domain_summary" },
+            expectedProbeTools: new[] { "domaindetective_network_probe" },
+            expectedPrerequisiteSnippet: "checks[]",
+            expectedProbeFreshnessWindowSeconds: 300,
+            expectedSetupFreshnessWindowSeconds: 900,
+            expectedRecipeFreshnessWindowSeconds: 600);
     }
 
     [Fact]

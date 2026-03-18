@@ -22,6 +22,7 @@ namespace IntelligenceX.Tools.Tests;
 public sealed class ToolPackCatalogParityTests {
     private static readonly string[] RepresentativeToolNames = {
         "ad_pack_info",
+        "ad_connectivity_probe",
         "ad_environment_discover",
         "ad_scope_discovery",
         "ad_monitoring_probe_run",

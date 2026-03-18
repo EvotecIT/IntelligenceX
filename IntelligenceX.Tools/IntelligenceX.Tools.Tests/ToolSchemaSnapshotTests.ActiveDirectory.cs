@@ -12,6 +12,12 @@ public partial class ToolSchemaSnapshotTests {
         };
 
         yield return new object[] {
+            "ad_connectivity_probe",
+            new[] { "domain_controller", "search_base_dn", "include_domain_controllers", "max_domain_controllers" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
             "ad_delegation_audit",
             new[] { "kind", "enabled_only", "include_spns", "include_allowed_to_delegate_to", "max_values_per_attribute", "search_base_dn", "domain_controller", "max_results", "columns", "sort_by", "sort_direction", "top" },
             Array.Empty<string>()

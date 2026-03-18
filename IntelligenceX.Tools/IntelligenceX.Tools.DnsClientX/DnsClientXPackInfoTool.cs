@@ -68,6 +68,7 @@ public sealed class DnsClientXPackInfoTool : DnsClientXToolBase, ITool {
             engine: "DnsClientX",
             tools: ToolRegistryDnsClientXExtensions.GetRegisteredToolNames(Options),
             recommendedFlow: new[] {
+                "Use dnsclientx_ping first when endpoint reachability is uncertain so DNS timeouts are not misread as resolver-only failures.",
                 "Use dnsclientx_query to verify DNS records directly with explicit endpoint and record type.",
                 "Use dnsclientx_ping for a quick ICMP reachability baseline before deeper diagnostics.",
                 "When a domain-level security diagnosis is needed, hand off to domaindetective_domain_summary.",
@@ -97,7 +98,55 @@ public sealed class DnsClientXPackInfoTool : DnsClientXToolBase, ITool {
                     summary: "Run bounded ICMP ping probes to validate host reachability and latency.",
                     primaryTools: new[] { "dnsclientx_ping" })
             },
+            recipes: new[] {
+                ToolPackGuidance.Recipe(
+                    id: "resolver_disagreement_triage",
+                    summary: "Validate reachability first, then collect resolver-specific DNS evidence with explicit endpoint and record type controls.",
+                    whenToUse: "Use when the request mentions DNS disagreement, timeout ambiguity, or a specific resolver/server that may disagree with public results.",
+                    steps: new[] {
+                        ToolPackGuidance.FlowStep(
+                            goal: "Confirm resolver host reachability",
+                            suggestedTools: new[] { "dnsclientx_ping" },
+                            notes: "Ping the resolver endpoint or target host first so transport problems do not get mistaken for record-level DNS failures."),
+                        ToolPackGuidance.FlowStep(
+                            goal: "Collect explicit resolver DNS evidence",
+                            suggestedTools: new[] { "dnsclientx_query" },
+                            notes: "Specify name, type, and endpoint when comparing different resolvers or validating an override."),
+                        ToolPackGuidance.FlowStep(
+                            goal: "Escalate into broader domain posture if needed",
+                            suggestedTools: new[] { "domaindetective_domain_summary" },
+                            notes: "Use DomainDetective once the DNS evidence suggests a broader posture or policy problem.")
+                    },
+                    verificationTools: new[] { "dnsclientx_query", "domaindetective_domain_summary" }),
+                ToolPackGuidance.Recipe(
+                    id: "host_reachability_then_dns_followup",
+                    summary: "Establish host reachability before pivoting into resolver-specific DNS queries for the same target.",
+                    whenToUse: "Use when a hostname or server is mentioned first and the next step is deciding whether the issue is network reachability or DNS behavior.",
+                    steps: new[] {
+                        ToolPackGuidance.FlowStep(
+                            goal: "Collect bounded reachability evidence",
+                            suggestedTools: new[] { "dnsclientx_ping" }),
+                        ToolPackGuidance.FlowStep(
+                            goal: "Run the DNS query once the target is confirmed reachable",
+                            suggestedTools: new[] { "dnsclientx_query" },
+                            notes: "Use explicit timeout and endpoint values when the same target may be tested through multiple resolvers.")
+                    },
+                    verificationTools: new[] { "dnsclientx_ping", "dnsclientx_query" })
+            },
             toolCatalog: ToolRegistryDnsClientXExtensions.GetRegisteredToolCatalog(Options),
+            runtimeCapabilities: new ToolPackRuntimeCapabilitiesModel {
+                PreferredEntryTools = new[] { "dnsclientx_query" },
+                PreferredProbeTools = new[] { "dnsclientx_ping" },
+                ProbeHelperFreshnessWindowSeconds = 300,
+                SetupHelperFreshnessWindowSeconds = 900,
+                RecipeHelperFreshnessWindowSeconds = 300,
+                RuntimePrerequisites = new[] {
+                    "Use dnsclientx_ping when host reachability or resolver endpoint access is uncertain before treating a DNS timeout as a resolver-only failure.",
+                    "Pass endpoint when you need deterministic resolver comparison instead of relying on ambient DNS resolution.",
+                    "Use domaindetective_domain_summary when DNS evidence needs broader public-domain posture context rather than more raw resolver retries."
+                },
+                Notes = "Prefer dnsclientx_ping before deeper query retries when network path uncertainty is still unresolved, then use dnsclientx_query with explicit name/type/endpoint for deterministic DNS evidence."
+            },
             rawPayloadPolicy: "Preserve raw DNS sections (answers/authority/additional) for reasoning and evidence correlation.",
             viewProjectionPolicy: "Projection arguments are optional and view-only. This pack currently returns direct evidence payloads.",
             setupHints: new {

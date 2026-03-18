@@ -732,6 +732,7 @@ public class ToolDefinitionContractTests {
             .ToDictionary(static definition => definition.Name, StringComparer.OrdinalIgnoreCase);
 
         AssertRoutingRole(definitionsByName, "ad_pack_info", ToolRoutingTaxonomy.RolePackInfo);
+        AssertRoutingRole(definitionsByName, "ad_connectivity_probe", ToolRoutingTaxonomy.RoleOperational);
         AssertRoutingRole(definitionsByName, "ad_environment_discover", ToolRoutingTaxonomy.RoleEnvironmentDiscover);
         AssertRoutingRole(definitionsByName, "ad_scope_discovery", ToolRoutingTaxonomy.RoleEnvironmentDiscover);
         AssertRoutingRole(definitionsByName, "ad_forest_discover", ToolRoutingTaxonomy.RoleEnvironmentDiscover);

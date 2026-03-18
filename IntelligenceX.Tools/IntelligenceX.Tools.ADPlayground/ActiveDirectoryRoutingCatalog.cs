@@ -40,6 +40,12 @@ internal static class ActiveDirectoryRoutingCatalog {
 
     private static readonly IReadOnlyDictionary<string, SelectionDescriptor> ExplicitSelectionDescriptors =
         new Dictionary<string, SelectionDescriptor>(StringComparer.OrdinalIgnoreCase) {
+            ["ad_connectivity_probe"] = new(
+                Scope: "domain",
+                Operation: "probe",
+                Entity: "directory_context",
+                Risk: ToolRoutingTaxonomy.RiskLow,
+                AdditionalTags: new[] { "runtime_probe", "connectivity" }),
             ["ad_search"] = new(
                 Scope: "domain",
                 Operation: "search",
@@ -61,6 +67,7 @@ internal static class ActiveDirectoryRoutingCatalog {
         };
 
     private static readonly IReadOnlySet<string> OperationalToolNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
+        "ad_connectivity_probe",
         "ad_monitoring_probe_run",
         "ad_whoami",
         "ad_object_get",

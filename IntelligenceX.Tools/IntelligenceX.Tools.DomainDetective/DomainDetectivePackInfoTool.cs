@@ -69,6 +69,7 @@ public sealed class DomainDetectivePackInfoTool : DomainDetectiveToolBase, ITool
             tools: ToolRegistryDomainDetectiveExtensions.GetRegisteredToolNames(Options),
             recommendedFlow: new[] {
                 "Use domaindetective_checks_catalog first when you need canonical check names or alias normalization guidance.",
+                "Use domaindetective_network_probe when host reachability or path quality is uncertain before treating domain posture results as authoritative.",
                 "Use domaindetective_domain_summary for broad domain posture checks (DNS/email/security).",
                 "Use domaindetective_network_probe for host-level ping/traceroute diagnostics.",
                 "When you need resolver-specific evidence, pair with dnsclientx_query.",
@@ -128,7 +129,55 @@ public sealed class DomainDetectivePackInfoTool : DomainDetectiveToolBase, ITool
                     },
                     notes: "When user intent targets LDAP/DC/replication/GPO workflows, switch from DomainDetective to AD pack execution.")
             },
+            recipes: new[] {
+                ToolPackGuidance.Recipe(
+                    id: "public_domain_posture_triage",
+                    summary: "Start with check discovery, run a focused posture summary, and pivot into resolver or AD follow-up only when the evidence requires it.",
+                    whenToUse: "Use when a public-domain health or email-security question needs a bounded, explainable sequence rather than a broad unsupported sweep.",
+                    steps: new[] {
+                        ToolPackGuidance.FlowStep(
+                            goal: "Discover valid checks and aliases",
+                            suggestedTools: new[] { "domaindetective_checks_catalog" },
+                            notes: "Start here when checks[] names are uncertain or the user gave only high-level domain posture intent."),
+                        ToolPackGuidance.FlowStep(
+                            goal: "Run the focused domain posture summary",
+                            suggestedTools: new[] { "domaindetective_domain_summary" },
+                            notes: "Use a bounded checks[] set and explicit timeout_ms for deterministic runs."),
+                        ToolPackGuidance.FlowStep(
+                            goal: "Collect resolver-specific evidence only when needed",
+                            suggestedTools: new[] { "dnsclientx_query" },
+                            notes: "Use DnsClientX when summary findings need raw resolver comparisons or explicit endpoint validation.")
+                    },
+                    verificationTools: new[] { "domaindetective_domain_summary", "dnsclientx_query" }),
+                ToolPackGuidance.Recipe(
+                    id: "public_domain_to_ad_scope_handoff",
+                    summary: "Triage internet-domain posture first, then switch deliberately into AD tools when the user’s intent turns directory-scoped.",
+                    whenToUse: "Use when public-domain evidence points toward a directory-owned namespace, domain controller host, or LDAP/DC follow-up question.",
+                    steps: new[] {
+                        ToolPackGuidance.FlowStep(
+                            goal: "Validate public-domain posture or host reachability",
+                            suggestedTools: new[] { "domaindetective_domain_summary", "domaindetective_network_probe" }),
+                        ToolPackGuidance.FlowStep(
+                            goal: "Switch into AD directory context deliberately",
+                            suggestedTools: new[] { "ad_scope_discovery", "ad_directory_discovery_diagnostics" },
+                            notes: "Use AD tools once the question is about domains/DCs/LDAP rather than public DNS or email posture.")
+                    },
+                    verificationTools: new[] { "ad_scope_discovery", "ad_directory_discovery_diagnostics" })
+            },
             toolCatalog: ToolRegistryDomainDetectiveExtensions.GetRegisteredToolCatalog(Options),
+            runtimeCapabilities: new ToolPackRuntimeCapabilitiesModel {
+                PreferredEntryTools = new[] { "domaindetective_checks_catalog", "domaindetective_domain_summary" },
+                PreferredProbeTools = new[] { "domaindetective_network_probe" },
+                ProbeHelperFreshnessWindowSeconds = 300,
+                SetupHelperFreshnessWindowSeconds = 900,
+                RecipeHelperFreshnessWindowSeconds = 600,
+                RuntimePrerequisites = new[] {
+                    "Call domaindetective_checks_catalog first when checks[] names, aliases, or baseline defaults are not explicit yet.",
+                    "Use domaindetective_network_probe when host reachability or traceroute context matters before deeper public-domain escalation.",
+                    "Switch to AD pack tools once the question becomes LDAP, domain-controller, replication, or directory-topology scoped."
+                },
+                Notes = "Prefer checks_catalog before focused domain_summary runs, use domaindetective_network_probe for host-path validation, and treat AD follow-up as a deliberate pack handoff rather than more public-domain retries."
+            },
             rawPayloadPolicy: "Keep summary + analysis availability fields as authoritative evidence for domain posture reasoning.",
             viewProjectionPolicy: "Projection arguments are optional and view-only. This pack currently returns direct evidence payloads.",
             setupHints: new {

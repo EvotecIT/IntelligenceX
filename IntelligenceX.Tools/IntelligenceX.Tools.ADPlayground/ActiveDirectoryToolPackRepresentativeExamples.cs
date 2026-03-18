@@ -6,6 +6,9 @@ namespace IntelligenceX.Tools.ADPlayground;
 internal static class ActiveDirectoryToolPackRepresentativeExamples {
     internal static IReadOnlyDictionary<string, IReadOnlyList<string>> ByToolName { get; } =
         new Dictionary<string, IReadOnlyList<string>>(System.StringComparer.OrdinalIgnoreCase) {
+            ["ad_connectivity_probe"] = new[] {
+                "confirm Active Directory RootDSE reachability and effective domain controller context before deeper LDAP or monitoring work"
+            },
             ["ad_environment_discover"] = new[] {
                 "discover Active Directory environment scope, search directory objects, and target a specific domain controller or base DN",
                 "bootstrap AD work by finding domains, forest context, and viable domain controllers before narrower checks"
