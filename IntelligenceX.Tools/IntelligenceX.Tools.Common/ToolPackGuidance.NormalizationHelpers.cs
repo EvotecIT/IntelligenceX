@@ -20,7 +20,9 @@ public static partial class ToolPackGuidance {
     /// <param name="flowSteps">Optional structured flow steps.</param>
     /// <param name="capabilities">Optional structured capability descriptors.</param>
     /// <param name="entityHandoffs">Optional structured entity handoff descriptors.</param>
+    /// <param name="recipes">Optional structured recipe/playbook descriptors.</param>
     /// <param name="toolCatalog">Optional tool catalog derived from runtime registrations and schemas.</param>
+    /// <param name="runtimeCapabilities">Optional runtime capability hints layered on top of catalog-derived defaults.</param>
     /// <param name="rawPayloadPolicy">Optional raw payload policy override.</param>
     /// <param name="viewProjectionPolicy">Optional projection policy override.</param>
     /// <param name="correlationGuidance">Optional correlation guidance.</param>
@@ -38,7 +40,9 @@ public static partial class ToolPackGuidance {
         IEnumerable<ToolPackFlowStepModel>? flowSteps = null,
         IEnumerable<ToolPackCapabilityModel>? capabilities = null,
         IEnumerable<ToolPackEntityHandoffModel>? entityHandoffs = null,
+        IEnumerable<ToolPackRecipeModel>? recipes = null,
         IEnumerable<ToolPackToolCatalogEntryModel>? toolCatalog = null,
+        ToolPackRuntimeCapabilitiesModel? runtimeCapabilities = null,
         string? rawPayloadPolicy = null,
         string? viewProjectionPolicy = null,
         string? correlationGuidance = null,
@@ -59,12 +63,14 @@ public static partial class ToolPackGuidance {
         var resolvedFlowSteps = NormalizeFlowSteps(flowSteps);
         var resolvedCapabilities = NormalizeCapabilities(capabilities);
         var resolvedEntityHandoffs = NormalizeEntityHandoffs(entityHandoffs);
+        var resolvedRecipes = NormalizeRecipes(recipes);
         var resolvedToolCatalog = NormalizeToolCatalog(toolCatalog);
         var resolvedAutonomySummary = NormalizeAutonomySummary(
             new ToolPackAutonomySummaryModel {
                 TotalTools = resolvedTools.Count
             },
             resolvedToolCatalog);
+        var resolvedRuntimeCapabilities = NormalizeRuntimeCapabilities(runtimeCapabilities, resolvedToolCatalog);
 
         return new ToolPackInfoModel {
             Pack = pack.Trim(),
@@ -87,8 +93,10 @@ public static partial class ToolPackGuidance {
             RecommendedFlowSteps = resolvedFlowSteps,
             Capabilities = resolvedCapabilities,
             EntityHandoffs = resolvedEntityHandoffs,
+            RecommendedRecipes = resolvedRecipes,
             ToolCatalog = resolvedToolCatalog,
             AutonomySummary = resolvedAutonomySummary,
+            RuntimeCapabilities = resolvedRuntimeCapabilities,
             Tools = resolvedTools,
             Note = string.IsNullOrWhiteSpace(note) ? null : note.Trim()
         };
@@ -102,6 +110,7 @@ public static partial class ToolPackGuidance {
             return derived;
         }
 
+        var localCapableToolNames = NormalizeValueListOrFallback(summary.LocalCapableToolNames, derived.LocalCapableToolNames);
         var remoteCapableToolNames = NormalizeValueListOrFallback(summary.RemoteCapableToolNames, derived.RemoteCapableToolNames);
         var targetScopedToolNames = NormalizeValueListOrFallback(summary.TargetScopedToolNames, derived.TargetScopedToolNames);
         var remoteHostTargetingToolNames = NormalizeValueListOrFallback(summary.RemoteHostTargetingToolNames, derived.RemoteHostTargetingToolNames);
@@ -110,6 +119,7 @@ public static partial class ToolPackGuidance {
         var handoffAwareToolNames = NormalizeValueListOrFallback(summary.HandoffAwareToolNames, derived.HandoffAwareToolNames);
         var recoveryAwareToolNames = NormalizeValueListOrFallback(summary.RecoveryAwareToolNames, derived.RecoveryAwareToolNames);
         var writeCapableToolNames = NormalizeValueListOrFallback(summary.WriteCapableToolNames, derived.WriteCapableToolNames);
+        var governedWriteToolNames = NormalizeValueListOrFallback(summary.GovernedWriteToolNames, derived.GovernedWriteToolNames);
         var authenticationRequiredToolNames = NormalizeValueListOrFallback(summary.AuthenticationRequiredToolNames, derived.AuthenticationRequiredToolNames);
         var probeCapableToolNames = NormalizeValueListOrFallback(summary.ProbeCapableToolNames, derived.ProbeCapableToolNames);
         var crossPackHandoffToolNames = NormalizeValueListOrFallback(summary.CrossPackHandoffToolNames, derived.CrossPackHandoffToolNames);
@@ -117,6 +127,8 @@ public static partial class ToolPackGuidance {
 
         return new ToolPackAutonomySummaryModel {
             TotalTools = Math.Max(Math.Max(0, summary.TotalTools), derived.TotalTools),
+            LocalCapableTools = Math.Max(Math.Max(summary.LocalCapableTools, derived.LocalCapableTools), localCapableToolNames.Count),
+            LocalCapableToolNames = localCapableToolNames,
             RemoteCapableTools = Math.Max(Math.Max(summary.RemoteCapableTools, derived.RemoteCapableTools), remoteCapableToolNames.Count),
             RemoteCapableToolNames = remoteCapableToolNames,
             TargetScopedTools = Math.Max(Math.Max(summary.TargetScopedTools, derived.TargetScopedTools), targetScopedToolNames.Count),
@@ -135,6 +147,8 @@ public static partial class ToolPackGuidance {
             RecoveryAwareToolNames = recoveryAwareToolNames,
             WriteCapableTools = Math.Max(Math.Max(summary.WriteCapableTools, derived.WriteCapableTools), writeCapableToolNames.Count),
             WriteCapableToolNames = writeCapableToolNames,
+            GovernedWriteTools = Math.Max(Math.Max(summary.GovernedWriteTools, derived.GovernedWriteTools), governedWriteToolNames.Count),
+            GovernedWriteToolNames = governedWriteToolNames,
             AuthenticationRequiredTools = Math.Max(Math.Max(summary.AuthenticationRequiredTools, derived.AuthenticationRequiredTools), authenticationRequiredToolNames.Count),
             AuthenticationRequiredToolNames = authenticationRequiredToolNames,
             ProbeCapableTools = Math.Max(Math.Max(summary.ProbeCapableTools, derived.ProbeCapableTools), probeCapableToolNames.Count),
@@ -150,6 +164,60 @@ public static partial class ToolPackGuidance {
         IReadOnlyList<string> fallback) {
         var normalized = NormalizeValues(values);
         return normalized.Count > 0 ? normalized : fallback;
+    }
+
+    private static ToolPackRuntimeCapabilitiesModel NormalizeRuntimeCapabilities(
+        ToolPackRuntimeCapabilitiesModel? runtimeCapabilities,
+        IReadOnlyList<ToolPackToolCatalogEntryModel>? toolCatalog) {
+        var derived = BuildRuntimeCapabilities(toolCatalog);
+        if (runtimeCapabilities is null) {
+            return derived;
+        }
+
+        var targetScopeArguments = NormalizeValueListOrFallback(runtimeCapabilities.TargetScopeArguments, derived.TargetScopeArguments);
+        var remoteHostArguments = NormalizeValueListOrFallback(runtimeCapabilities.RemoteHostArguments, derived.RemoteHostArguments);
+        var preferredEntryTools = NormalizeValueListOrFallback(runtimeCapabilities.PreferredEntryTools, derived.PreferredEntryTools);
+        var preferredProbeTools = NormalizeValueListOrFallback(runtimeCapabilities.PreferredProbeTools, derived.PreferredProbeTools);
+        var runtimePrerequisites = NormalizeValues(runtimeCapabilities.RuntimePrerequisites);
+        var probeHelperFreshnessWindowSeconds = NormalizeOptionalPositiveIntOrFallback(
+            runtimeCapabilities.ProbeHelperFreshnessWindowSeconds,
+            derived.ProbeHelperFreshnessWindowSeconds);
+        var setupHelperFreshnessWindowSeconds = NormalizeOptionalPositiveIntOrFallback(
+            runtimeCapabilities.SetupHelperFreshnessWindowSeconds,
+            derived.SetupHelperFreshnessWindowSeconds);
+        var recipeHelperFreshnessWindowSeconds = NormalizeOptionalPositiveIntOrFallback(
+            runtimeCapabilities.RecipeHelperFreshnessWindowSeconds,
+            derived.RecipeHelperFreshnessWindowSeconds);
+
+        return new ToolPackRuntimeCapabilitiesModel {
+            SupportsLocalExecution = runtimeCapabilities.SupportsLocalExecution || derived.SupportsLocalExecution,
+            SupportsRemoteExecution = runtimeCapabilities.SupportsRemoteExecution || derived.SupportsRemoteExecution,
+            SupportsTargetScoping = runtimeCapabilities.SupportsTargetScoping || derived.SupportsTargetScoping,
+            SupportsRemoteHostTargeting = runtimeCapabilities.SupportsRemoteHostTargeting || derived.SupportsRemoteHostTargeting,
+            SupportsEnvironmentDiscovery = runtimeCapabilities.SupportsEnvironmentDiscovery || derived.SupportsEnvironmentDiscovery,
+            SupportsConnectivityProbe = runtimeCapabilities.SupportsConnectivityProbe || derived.SupportsConnectivityProbe,
+            SupportsGovernedWrites = runtimeCapabilities.SupportsGovernedWrites || derived.SupportsGovernedWrites,
+            SupportsAuthentication = runtimeCapabilities.SupportsAuthentication || derived.SupportsAuthentication,
+            TargetScopeArguments = targetScopeArguments,
+            RemoteHostArguments = remoteHostArguments,
+            PreferredEntryTools = preferredEntryTools,
+            PreferredProbeTools = preferredProbeTools,
+            RuntimePrerequisites = runtimePrerequisites,
+            ProbeHelperFreshnessWindowSeconds = probeHelperFreshnessWindowSeconds,
+            SetupHelperFreshnessWindowSeconds = setupHelperFreshnessWindowSeconds,
+            RecipeHelperFreshnessWindowSeconds = recipeHelperFreshnessWindowSeconds,
+            Notes = string.IsNullOrWhiteSpace(runtimeCapabilities.Notes) ? derived.Notes : runtimeCapabilities.Notes.Trim()
+        };
+    }
+
+    private static int? NormalizeOptionalPositiveIntOrFallback(int? value, int? fallback) {
+        if (value.HasValue && value.Value > 0) {
+            return value.Value;
+        }
+
+        return fallback.HasValue && fallback.Value > 0
+            ? fallback.Value
+            : null;
     }
 
     private static IReadOnlyList<string> NormalizeValues(IEnumerable<string>? values, bool distinct = true) {
@@ -250,6 +318,33 @@ public static partial class ToolPackGuidance {
                 SourceField = source,
                 TargetArgument = target,
                 Normalization = string.IsNullOrWhiteSpace(mapping.Normalization) ? null : mapping.Normalization.Trim()
+            });
+        }
+
+        return ToReadOnlyList(list);
+    }
+
+    private static IReadOnlyList<ToolPackRecipeModel> NormalizeRecipes(IEnumerable<ToolPackRecipeModel>? recipes) {
+        var list = new List<ToolPackRecipeModel>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var recipe in recipes ?? Array.Empty<ToolPackRecipeModel>()) {
+            if (recipe is null || string.IsNullOrWhiteSpace(recipe.Id) || string.IsNullOrWhiteSpace(recipe.Summary)) {
+                continue;
+            }
+
+            var id = recipe.Id.Trim();
+            if (!seen.Add(id)) {
+                continue;
+            }
+
+            list.Add(new ToolPackRecipeModel {
+                Id = id,
+                Summary = recipe.Summary.Trim(),
+                WhenToUse = string.IsNullOrWhiteSpace(recipe.WhenToUse) ? null : recipe.WhenToUse.Trim(),
+                Steps = NormalizeFlowSteps(recipe.Steps),
+                VerificationTools = NormalizeValues(recipe.VerificationTools),
+                Notes = string.IsNullOrWhiteSpace(recipe.Notes) ? null : recipe.Notes.Trim()
             });
         }
 
@@ -525,6 +620,10 @@ public static partial class ToolPackGuidance {
 
     private static ToolPackAutonomySummaryModel BuildAutonomySummary(IReadOnlyList<ToolPackToolCatalogEntryModel>? toolCatalog) {
         var catalog = toolCatalog ?? Array.Empty<ToolPackToolCatalogEntryModel>();
+        var localCapableToolNames = NormalizeValues(
+            catalog
+                .Where(static entry => IsLocalCapable(entry.Traits))
+                .Select(static entry => entry.Name));
         var remoteCapableToolNames = NormalizeValues(
             catalog
                 .Where(static entry => IsRemoteCapable(entry.Traits))
@@ -557,6 +656,10 @@ public static partial class ToolPackGuidance {
             catalog
                 .Where(static entry => entry.IsWriteCapable)
                 .Select(static entry => entry.Name));
+        var governedWriteToolNames = NormalizeValues(
+            catalog
+                .Where(static entry => entry.RequiresWriteGovernance || !string.IsNullOrWhiteSpace(entry.WriteGovernanceContractId))
+                .Select(static entry => entry.Name));
         var authenticationRequiredToolNames = NormalizeValues(
             catalog
                 .Where(static entry => entry.RequiresAuthentication)
@@ -576,6 +679,8 @@ public static partial class ToolPackGuidance {
 
         return new ToolPackAutonomySummaryModel {
             TotalTools = catalog.Count,
+            LocalCapableTools = localCapableToolNames.Count,
+            LocalCapableToolNames = localCapableToolNames,
             RemoteCapableTools = remoteCapableToolNames.Count,
             RemoteCapableToolNames = remoteCapableToolNames,
             TargetScopedTools = targetScopedToolNames.Count,
@@ -592,6 +697,8 @@ public static partial class ToolPackGuidance {
             RecoveryAwareToolNames = recoveryAwareToolNames,
             WriteCapableTools = writeCapableToolNames.Count,
             WriteCapableToolNames = writeCapableToolNames,
+            GovernedWriteTools = governedWriteToolNames.Count,
+            GovernedWriteToolNames = governedWriteToolNames,
             AuthenticationRequiredTools = authenticationRequiredToolNames.Count,
             AuthenticationRequiredToolNames = authenticationRequiredToolNames,
             ProbeCapableTools = probeCapableToolNames.Count,
@@ -599,6 +706,48 @@ public static partial class ToolPackGuidance {
             CrossPackHandoffTools = crossPackHandoffToolNames.Count,
             CrossPackHandoffToolNames = crossPackHandoffToolNames,
             CrossPackTargetPacks = crossPackTargetPacks
+        };
+    }
+
+    private static ToolPackRuntimeCapabilitiesModel BuildRuntimeCapabilities(IReadOnlyList<ToolPackToolCatalogEntryModel>? toolCatalog) {
+        var catalog = toolCatalog ?? Array.Empty<ToolPackToolCatalogEntryModel>();
+        var targetScopeArguments = NormalizeValues(
+            catalog.SelectMany(static entry => entry.Traits.TargetScopeArguments));
+        var remoteHostArguments = NormalizeValues(
+            catalog.SelectMany(static entry => entry.Traits.RemoteHostArguments));
+        var preferredEntryTools = NormalizeValues(
+            catalog
+                .Where(static entry => entry.IsEnvironmentDiscoverTool)
+                .Select(static entry => entry.Name));
+        var preferredProbeTools = NormalizeValues(
+            catalog
+                .Select(static entry => entry.ProbeToolName ?? string.Empty));
+
+        return new ToolPackRuntimeCapabilitiesModel {
+            SupportsLocalExecution = catalog.Any(static entry => IsLocalCapable(entry.Traits)),
+            SupportsRemoteExecution = catalog.Any(static entry => IsRemoteCapable(entry.Traits)),
+            SupportsTargetScoping = catalog.Any(static entry =>
+                entry.Traits.SupportsTargetScoping
+                || entry.Traits.TargetScopeArguments.Count > 0),
+            SupportsRemoteHostTargeting = catalog.Any(static entry =>
+                entry.Traits.SupportsRemoteHostTargeting
+                || entry.Traits.RemoteHostArguments.Count > 0),
+            SupportsEnvironmentDiscovery = catalog.Any(static entry => entry.IsEnvironmentDiscoverTool),
+            SupportsConnectivityProbe = preferredProbeTools.Count > 0
+                || catalog.Any(static entry => entry.SupportsConnectivityProbe),
+            SupportsGovernedWrites = catalog.Any(static entry =>
+                entry.RequiresWriteGovernance
+                || !string.IsNullOrWhiteSpace(entry.WriteGovernanceContractId)),
+            SupportsAuthentication = catalog.Any(static entry =>
+                entry.IsAuthenticationAware
+                || entry.RequiresAuthentication
+                || entry.Traits.SupportsAuthentication
+                || entry.AuthenticationArguments.Count > 0),
+            TargetScopeArguments = targetScopeArguments,
+            RemoteHostArguments = remoteHostArguments,
+            PreferredEntryTools = preferredEntryTools,
+            PreferredProbeTools = preferredProbeTools,
+            RuntimePrerequisites = Array.Empty<string>()
         };
     }
 
@@ -612,6 +761,18 @@ public static partial class ToolPackGuidance {
         }
 
         return ToolExecutionScopes.IsRemoteCapable(traits.ExecutionScope);
+    }
+
+    private static bool IsLocalCapable(ToolPackToolTraitsModel? traits) {
+        if (traits is null) {
+            return true;
+        }
+
+        if (traits.SupportsLocalExecution) {
+            return true;
+        }
+
+        return !string.Equals(traits.ExecutionScope, "remote_only", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool HasCrossPackHandoff(ToolPackToolHandoffModel? handoff) {
@@ -926,6 +1087,20 @@ public static partial class ToolPackGuidance {
         ToolPackAutonomySummaryModel? summary,
         IReadOnlyList<ToolPackToolCatalogEntryModel>? toolCatalog) {
         return NormalizeAutonomySummary(summary, toolCatalog);
+    }
+
+    internal static ToolPackRuntimeCapabilitiesModel NormalizeRuntimeCapabilitiesContract(
+        ToolPackRuntimeCapabilitiesModel? runtimeCapabilities,
+        IReadOnlyList<ToolPackToolCatalogEntryModel>? toolCatalog) {
+        return NormalizeRuntimeCapabilities(runtimeCapabilities, toolCatalog);
+    }
+
+    internal static IReadOnlyList<ToolPackRecipeModel> NormalizeRecipeContract(IEnumerable<ToolPackRecipeModel>? recipes) {
+        return NormalizeRecipes(recipes);
+    }
+
+    internal static IReadOnlyList<ToolPackFlowStepModel> NormalizeRecipeStepsContract(IEnumerable<ToolPackFlowStepModel>? steps) {
+        return NormalizeFlowSteps(steps);
     }
 
     internal static IReadOnlyList<string> NormalizeValueListContract(IEnumerable<string>? values) {

@@ -17,6 +17,7 @@ internal sealed partial class ChatServiceSession {
     private const int MaxBackgroundSchedulerRecentActivity = 6;
     private const int MaxBackgroundSchedulerRecentEvidenceTools = 3;
     private const int MaxBackgroundSchedulerActivityDetailLength = 160;
+    private const int BackgroundSchedulerAdaptiveIdleMinimumSeconds = 5;
     private static readonly TimeSpan BackgroundSchedulerBusyDelay = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan BackgroundSchedulerManualPausePollingDelay = TimeSpan.FromSeconds(5);
     internal enum BackgroundSchedulerIterationOutcomeKind {
@@ -52,6 +53,12 @@ internal sealed partial class ChatServiceSession {
         public bool WorkCompleted => Outcome == BackgroundSchedulerIterationOutcomeKind.Completed;
         public bool WorkRequeued => Outcome == BackgroundSchedulerIterationOutcomeKind.RequeuedAfterToolFailure;
     }
+
+    private readonly record struct BackgroundSchedulerAdaptiveIdleCandidate(
+        string ThreadId,
+        string PolicyName,
+        TimeSpan Delay,
+        int RemainingFreshnessSeconds);
 
     private readonly record struct BackgroundSchedulerSummaryOptions(
         string ScopeThreadId,
@@ -105,6 +112,9 @@ internal sealed partial class ChatServiceSession {
         long lastOutcomeUtcTicks;
         long lastSuccessUtcTicks;
         long lastFailureUtcTicks;
+        long lastAdaptiveIdleUtcTicks;
+        int lastAdaptiveIdleDelaySeconds;
+        string lastAdaptiveIdleReason;
         long pausedUntilUtcTicks;
         string pauseReason;
         int completedExecutionCount;
@@ -129,6 +139,9 @@ internal sealed partial class ChatServiceSession {
             lastOutcomeUtcTicks = _backgroundSchedulerLastOutcomeUtcTicks;
             lastSuccessUtcTicks = _backgroundSchedulerLastSuccessUtcTicks;
             lastFailureUtcTicks = _backgroundSchedulerLastFailureUtcTicks;
+            lastAdaptiveIdleUtcTicks = _backgroundSchedulerLastAdaptiveIdleUtcTicks;
+            lastAdaptiveIdleDelaySeconds = _backgroundSchedulerLastAdaptiveIdleDelaySeconds;
+            lastAdaptiveIdleReason = _backgroundSchedulerLastAdaptiveIdleReason;
             pausedUntilUtcTicks = _backgroundSchedulerPausedUntilUtcTicks;
             pauseReason = _backgroundSchedulerPauseReason;
             completedExecutionCount = _backgroundSchedulerCompletedExecutionCount;
@@ -238,6 +251,10 @@ internal sealed partial class ChatServiceSession {
         var activeMaintenanceWindowSpecs = _backgroundSchedulerControlState.GetActiveMaintenanceWindowSpecs(nowTicks);
         var activeMaintenanceWindows = _backgroundSchedulerControlState.GetActiveMaintenanceWindows(nowTicks);
         var scheduledPauseActive = manualPauseState.ScheduledPauseActive;
+        var adaptiveIdleActive = IsBackgroundSchedulerAdaptiveIdleActive(
+            lastAdaptiveIdleUtcTicks,
+            lastAdaptiveIdleDelaySeconds,
+            nowTicks);
         var effectivePauseReason = manualPauseState.ManualPauseActive || scheduledPauseActive
             ? manualPauseState.PauseReason
             : pauseReason;
@@ -300,6 +317,10 @@ internal sealed partial class ChatServiceSession {
             LastOutcomeUtcTicks = Math.Max(0, lastOutcomeUtcTicks),
             LastSuccessUtcTicks = Math.Max(0, lastSuccessUtcTicks),
             LastFailureUtcTicks = Math.Max(0, lastFailureUtcTicks),
+            AdaptiveIdleActive = adaptiveIdleActive,
+            LastAdaptiveIdleUtcTicks = Math.Max(0, lastAdaptiveIdleUtcTicks),
+            LastAdaptiveIdleDelaySeconds = Math.Max(0, lastAdaptiveIdleDelaySeconds),
+            LastAdaptiveIdleReason = NormalizeBackgroundSchedulerActivityText(lastAdaptiveIdleReason, maxLength: 160),
             CompletedExecutionCount = Math.Max(0, completedExecutionCount),
             RequeuedExecutionCount = Math.Max(0, requeuedExecutionCount),
             ReleasedExecutionCount = Math.Max(0, releasedExecutionCount),
@@ -387,6 +408,23 @@ internal sealed partial class ChatServiceSession {
                 availablePreviewTargetToolNames);
             if (priorityCompare != 0) {
                 return priorityCompare;
+            }
+
+            var reusedHelperPresenceComparison = right.Candidate.HasReusedHelperEvidence.CompareTo(left.Candidate.HasReusedHelperEvidence);
+            if (reusedHelperPresenceComparison != 0) {
+                return reusedHelperPresenceComparison;
+            }
+
+            if (left.Candidate.HasReusedHelperEvidence && right.Candidate.HasReusedHelperEvidence) {
+                var helperReuseAgeComparison = left.Candidate.ReusedHelperFreshestAgeSeconds.CompareTo(right.Candidate.ReusedHelperFreshestAgeSeconds);
+                if (helperReuseAgeComparison != 0) {
+                    return helperReuseAgeComparison;
+                }
+
+                var helperReuseCountComparison = right.Candidate.ReusedHelperCount.CompareTo(left.Candidate.ReusedHelperCount);
+                if (helperReuseCountComparison != 0) {
+                    return helperReuseCountComparison;
+                }
             }
 
             return StringComparer.Ordinal.Compare(left.ThreadId, right.ThreadId);
@@ -555,6 +593,8 @@ internal sealed partial class ChatServiceSession {
 
             TryArmBackgroundSchedulerAutoPauseNoLock(result, recordedTicks);
         }
+
+        PersistBackgroundSchedulerRuntimeStateNoThrow();
     }
 
     internal async Task RunBackgroundSchedulerDaemonAsync(CancellationToken cancellationToken) {
@@ -613,6 +653,14 @@ internal sealed partial class ChatServiceSession {
                 : processedAnyWork
                     ? BackgroundSchedulerBusyDelay
                     : idleDelay;
+            if (!processedAnyWork
+                && delay == idleDelay
+                && TryResolveBackgroundSchedulerAdaptiveIdleDelay(idleDelay, out var adaptiveIdleDelay, out var adaptiveIdleReason)) {
+                delay = adaptiveIdleDelay;
+                RememberBackgroundSchedulerAdaptiveIdleDecision(adaptiveIdleDelay, adaptiveIdleReason);
+                Trace.WriteLine(BuildBackgroundSchedulerAdaptiveIdleTraceLine(delay, adaptiveIdleReason));
+            }
+
             if (delay <= TimeSpan.Zero) {
                 continue;
             }
@@ -645,6 +693,37 @@ internal sealed partial class ChatServiceSession {
         var normalizedReason = NormalizeBackgroundSchedulerActivityText(pauseReason, maxLength: 160);
         var reasonSuffix = normalizedReason.Length == 0 ? string.Empty : $" reason='{normalizedReason}'";
         return $"[background-scheduler-daemon] status=paused remaining_seconds='{Math.Max(1, (int)Math.Ceiling(pauseDelay.TotalSeconds))}'{reasonSuffix}";
+    }
+
+    private static string BuildBackgroundSchedulerAdaptiveIdleTraceLine(TimeSpan delay, string reason) {
+        var normalizedReason = NormalizeBackgroundSchedulerActivityText(reason, maxLength: 160);
+        var reasonSuffix = normalizedReason.Length == 0 ? string.Empty : $" reason='{normalizedReason}'";
+        return $"[background-scheduler-daemon] status=adaptive_idle poll_seconds='{Math.Max(1, (int)Math.Ceiling(delay.TotalSeconds))}'{reasonSuffix}";
+    }
+
+    private void RememberBackgroundSchedulerAdaptiveIdleDecision(TimeSpan delay, string reason, long? utcTicks = null) {
+        var recordedTicks = utcTicks.GetValueOrDefault(DateTime.UtcNow.Ticks);
+        var normalizedDelaySeconds = Math.Max(0, (int)Math.Ceiling(Math.Max(0, delay.TotalSeconds)));
+        var normalizedReason = NormalizeBackgroundSchedulerActivityText(reason, maxLength: 160);
+        var shouldPersist = false;
+        lock (_backgroundSchedulerTelemetryLock) {
+            var activeAdaptiveIdleWindow = IsBackgroundSchedulerAdaptiveIdleActive(
+                _backgroundSchedulerLastAdaptiveIdleUtcTicks,
+                _backgroundSchedulerLastAdaptiveIdleDelaySeconds,
+                recordedTicks);
+            if (!activeAdaptiveIdleWindow
+                || _backgroundSchedulerLastAdaptiveIdleDelaySeconds != normalizedDelaySeconds
+                || !string.Equals(_backgroundSchedulerLastAdaptiveIdleReason, normalizedReason, StringComparison.Ordinal)) {
+                _backgroundSchedulerLastAdaptiveIdleUtcTicks = Math.Max(0, recordedTicks);
+                _backgroundSchedulerLastAdaptiveIdleDelaySeconds = normalizedDelaySeconds;
+                _backgroundSchedulerLastAdaptiveIdleReason = normalizedReason;
+                shouldPersist = true;
+            }
+        }
+
+        if (shouldPersist) {
+            PersistBackgroundSchedulerRuntimeStateNoThrow();
+        }
     }
 
     private SessionCapabilityBackgroundSchedulerDto SetBackgroundSchedulerManualPause(bool paused, int? pauseSeconds, string? reason) {
@@ -737,6 +816,95 @@ internal sealed partial class ChatServiceSession {
         return "consecutive_failure_threshold_reached:" + outcome + ":" + toolName;
     }
 
+    private static bool IsBackgroundSchedulerAdaptiveIdleActive(long lastAdaptiveIdleUtcTicks, int delaySeconds, long nowTicks) {
+        if (lastAdaptiveIdleUtcTicks <= 0 || delaySeconds <= 0 || nowTicks <= 0) {
+            return false;
+        }
+
+        try {
+            var expiresUtcTicks = checked(lastAdaptiveIdleUtcTicks + TimeSpan.FromSeconds(delaySeconds).Ticks);
+            return expiresUtcTicks > nowTicks;
+        } catch (OverflowException) {
+            return false;
+        }
+    }
+
+    private bool TryResolveBackgroundSchedulerAdaptiveIdleDelay(
+        TimeSpan defaultDelay,
+        out TimeSpan delay,
+        out string reason) {
+        delay = defaultDelay;
+        reason = string.Empty;
+        if (defaultDelay <= TimeSpan.FromSeconds(BackgroundSchedulerAdaptiveIdleMinimumSeconds)) {
+            return false;
+        }
+
+        BackgroundSchedulerAdaptiveIdleCandidate? bestCandidate = null;
+        var trackedThreadIds = EnumerateTrackedBackgroundWorkThreadIds();
+        for (var i = 0; i < trackedThreadIds.Length; i++) {
+            var threadId = trackedThreadIds[i];
+            if (!TryGetRememberedThreadBackgroundWorkSnapshot(threadId, out var snapshot)
+                || IsEmptyBackgroundWorkSnapshot(snapshot)) {
+                continue;
+            }
+
+            var dependencySummary = BuildBackgroundWorkDependencySummary(snapshot.Items);
+            var hasQueuedFollowUpWork = snapshot.QueuedCount > 0 || dependencySummary.BlockedItemCount > 0;
+            if (!hasQueuedFollowUpWork) {
+                continue;
+            }
+
+            var helperReuseSummary = BuildBackgroundWorkHelperReuseSummary(snapshot.Items);
+            if (helperReuseSummary.ReusedItemCount <= 0
+                || !helperReuseSummary.FreshestTtlSeconds.HasValue
+                || !helperReuseSummary.OldestAgeSeconds.HasValue) {
+                continue;
+            }
+
+            var remainingFreshnessSeconds = Math.Max(
+                0,
+                helperReuseSummary.FreshestTtlSeconds.Value - helperReuseSummary.OldestAgeSeconds.Value);
+            var candidateDelaySeconds = Math.Clamp(
+                (int)Math.Ceiling(remainingFreshnessSeconds / 4d),
+                BackgroundSchedulerAdaptiveIdleMinimumSeconds,
+                Math.Max(BackgroundSchedulerAdaptiveIdleMinimumSeconds, (int)Math.Ceiling(defaultDelay.TotalSeconds)));
+            var candidateDelay = TimeSpan.FromSeconds(candidateDelaySeconds);
+            if (candidateDelay >= defaultDelay) {
+                continue;
+            }
+
+            var policyName = helperReuseSummary.PolicyNames.FirstOrDefault(static value => !string.IsNullOrWhiteSpace(value)) ?? "helper_reuse_window";
+            var candidate = new BackgroundSchedulerAdaptiveIdleCandidate(
+                ThreadId: threadId,
+                PolicyName: policyName,
+                Delay: candidateDelay,
+                RemainingFreshnessSeconds: remainingFreshnessSeconds);
+            if (!bestCandidate.HasValue
+                || candidate.Delay < bestCandidate.Value.Delay
+                || (candidate.Delay == bestCandidate.Value.Delay
+                    && candidate.RemainingFreshnessSeconds < bestCandidate.Value.RemainingFreshnessSeconds)
+                || (candidate.Delay == bestCandidate.Value.Delay
+                    && candidate.RemainingFreshnessSeconds == bestCandidate.Value.RemainingFreshnessSeconds
+                    && string.Compare(candidate.ThreadId, bestCandidate.Value.ThreadId, StringComparison.Ordinal) < 0)) {
+                bestCandidate = candidate;
+            }
+        }
+
+        if (!bestCandidate.HasValue) {
+            return false;
+        }
+
+        delay = bestCandidate.Value.Delay;
+        reason = "background_scheduler_fresh_reuse_window:"
+                 + NormalizeBackgroundSchedulerActivityText(bestCandidate.Value.PolicyName, maxLength: 80)
+                 + ":thread="
+                 + NormalizeBackgroundSchedulerActivityText(bestCandidate.Value.ThreadId, maxLength: 48)
+                 + ":remaining="
+                 + Math.Max(0, bestCandidate.Value.RemainingFreshnessSeconds).ToString(System.Globalization.CultureInfo.InvariantCulture)
+                 + "s";
+        return true;
+    }
+
     private bool IsBackgroundSchedulerPackAllowed(
         ThreadBackgroundWorkItem item,
         ToolDefinition toolDefinition,
@@ -797,6 +965,7 @@ internal sealed partial class ChatServiceSession {
         ThreadBackgroundWorkSnapshot snapshot,
         IReadOnlyList<ToolDefinition> toolDefinitions) {
         var dependencySummary = BuildBackgroundWorkDependencySummary(snapshot.Items);
+        var helperReuseSummary = BuildBackgroundWorkHelperReuseSummary(snapshot.Items);
         var dependencyRecoverySummary = BuildBackgroundWorkDependencyRecoverySummary(snapshot.Items, toolDefinitions);
         var dependencyRecoveryReason = ResolveBackgroundWorkDependencyRecoveryReason(dependencyRecoverySummary);
         var dependencyNextAction = ResolveBackgroundWorkDependencyNextAction(dependencyRecoverySummary);
@@ -818,6 +987,29 @@ internal sealed partial class ChatServiceSession {
                 .Select(static toolName => NormalizeBackgroundSchedulerActivityText(toolName, maxLength: 80))
                 .Where(static toolName => toolName.Length > 0),
                 MaxBackgroundSchedulerRecentEvidenceTools),
+            ReusedHelperItemCount = Math.Max(0, helperReuseSummary.ReusedItemCount),
+            ReusedHelperToolNames = NormalizeDistinctStrings(
+                helperReuseSummary.HelperToolNames
+                    .Select(static toolName => NormalizeBackgroundSchedulerActivityText(toolName, maxLength: 80))
+                    .Where(static toolName => toolName.Length > 0),
+                MaxBackgroundSchedulerRecentEvidenceTools),
+            ReusedHelperPolicyNames = NormalizeDistinctStrings(
+                helperReuseSummary.PolicyNames
+                    .Select(static policyName => NormalizeBackgroundSchedulerActivityText(policyName, maxLength: 96))
+                    .Where(static policyName => policyName.Length > 0),
+                MaxBackgroundSchedulerRecentEvidenceTools),
+            ReusedHelperFreshestAgeSeconds = helperReuseSummary.FreshestAgeSeconds.HasValue
+                ? Math.Max(0, helperReuseSummary.FreshestAgeSeconds.Value)
+                : null,
+            ReusedHelperOldestAgeSeconds = helperReuseSummary.OldestAgeSeconds.HasValue
+                ? Math.Max(0, helperReuseSummary.OldestAgeSeconds.Value)
+                : null,
+            ReusedHelperFreshestTtlSeconds = helperReuseSummary.FreshestTtlSeconds.HasValue
+                ? Math.Max(0, helperReuseSummary.FreshestTtlSeconds.Value)
+                : null,
+            ReusedHelperOldestTtlSeconds = helperReuseSummary.OldestTtlSeconds.HasValue
+                ? Math.Max(0, helperReuseSummary.OldestTtlSeconds.Value)
+                : null,
             DependencyHelperToolNames = NormalizeDistinctStrings(
                 dependencySummary.HelperToolNames
                     .Select(static toolName => NormalizeBackgroundSchedulerActivityText(toolName, maxLength: 80))
@@ -1056,6 +1248,30 @@ internal sealed partial class ChatServiceSession {
 
         if (summary.DependencyHelperToolNames.Length > 0) {
             builder.Add("waiting_on=" + string.Join(",", summary.DependencyHelperToolNames));
+        }
+
+        if (summary.ReusedHelperToolNames.Length > 0) {
+            builder.Add("reused_helpers=" + string.Join(",", summary.ReusedHelperToolNames));
+        } else if (summary.ReusedHelperItemCount > 0) {
+            builder.Add("reused_helpers=" + summary.ReusedHelperItemCount);
+        }
+
+        if (summary.ReusedHelperPolicyNames.Length > 0) {
+            builder.Add("reuse_policy=" + string.Join(",", summary.ReusedHelperPolicyNames));
+        }
+
+        var helperReuseAgeSummary = BuildBackgroundWorkHelperReuseAgeSummary(
+            summary.ReusedHelperFreshestAgeSeconds,
+            summary.ReusedHelperOldestAgeSeconds);
+        if (helperReuseAgeSummary.Length > 0) {
+            builder.Add("reuse_age=" + helperReuseAgeSummary.Replace(" old", string.Empty, StringComparison.OrdinalIgnoreCase));
+        }
+
+        var helperReuseWindowSummary = BuildBackgroundWorkHelperReusePolicyWindowSummary(
+            summary.ReusedHelperFreshestTtlSeconds,
+            summary.ReusedHelperOldestTtlSeconds);
+        if (helperReuseWindowSummary.Length > 0) {
+            builder.Add("reuse_window=" + helperReuseWindowSummary);
         }
 
         if (summary.DependencyRecoveryReason.Length > 0) {

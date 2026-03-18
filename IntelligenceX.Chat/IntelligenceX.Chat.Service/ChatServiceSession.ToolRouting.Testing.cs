@@ -352,6 +352,21 @@ internal sealed partial class ChatServiceSession {
         return BuildBackgroundSchedulerSummary();
     }
 
+    internal bool TryResolveBackgroundSchedulerAdaptiveIdleDelayForTesting(
+        TimeSpan defaultDelay,
+        out TimeSpan delay,
+        out string reason) {
+        return TryResolveBackgroundSchedulerAdaptiveIdleDelay(defaultDelay, out delay, out reason);
+    }
+
+    internal void RememberBackgroundSchedulerAdaptiveIdleDecisionForTesting(
+        TimeSpan delay,
+        string reason,
+        long? utcTicks = null) {
+        ArgumentNullException.ThrowIfNull(reason);
+        RememberBackgroundSchedulerAdaptiveIdleDecision(delay, reason, utcTicks);
+    }
+
     internal bool TryReleaseScheduledBackgroundWorkReplayCandidateForTesting(string threadId, string itemId) {
         ArgumentNullException.ThrowIfNull(threadId);
         ArgumentNullException.ThrowIfNull(itemId);
@@ -382,6 +397,10 @@ internal sealed partial class ChatServiceSession {
 
     internal string ResolveBackgroundWorkStorePathForTesting() {
         return ResolveBackgroundWorkStorePath();
+    }
+
+    internal string ResolveBackgroundSchedulerRuntimeStorePathForTesting() {
+        return ResolveBackgroundSchedulerRuntimeStorePath();
     }
 
     internal static string BuildBackgroundWorkQueuedStatusMessageForTesting(

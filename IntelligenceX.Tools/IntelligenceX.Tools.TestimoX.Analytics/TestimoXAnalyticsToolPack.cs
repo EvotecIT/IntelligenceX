@@ -22,12 +22,14 @@ public sealed class TestimoXAnalyticsToolPack : IToolPack, IToolPackCatalogProvi
     public ToolPackDescriptor Descriptor { get; } = new() {
         Id = "testimox_analytics",
         Name = "TestimoX Analytics",
+        Aliases = new[] { "testimoxanalytics" },
         Tier = ToolCapabilityTier.SensitiveRead,
         IsDangerous = false,
         Description = "Persisted TestimoX analytics, report, and history artifact inspection.",
         SourceKind = "closed_source",
         EngineId = "testimox_analytics",
-        CapabilityTags = new[] { "analytics", "evidence", "posture", "reporting" },
+        Category = "testimox",
+        CapabilityTags = new[] { "analytics", "evidence", ToolPackCapabilityTags.LocalAnalysis, "posture", "reporting" },
         CapabilityParity = TestimoXAnalyticsToolPackParity.Slices
     };
 

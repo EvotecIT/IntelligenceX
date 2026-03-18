@@ -35,7 +35,7 @@ public static class SystemContractCatalog {
     /// </summary>
     public static ToolSetupContract CreateRemoteHostAccessSetup() {
         return ToolContractDefaults.CreateRequiredSetup(
-            setupToolName: "system_info",
+            setupToolName: "system_connectivity_probe",
             requirementId: "system_host_access",
             requirementKind: ToolSetupRequirementKinds.Connectivity,
             setupHintKeys: SetupHintKeys);
@@ -58,7 +58,7 @@ public static class SystemContractCatalog {
             supportsTransientRetry: true,
             maxRetryAttempts: 1,
             retryableErrorCodes: RetryableErrorCodes,
-            recoveryToolNames: new[] { "system_info" },
+            recoveryToolNames: new[] { "system_connectivity_probe", "system_info" },
             supportsAlternateEngines: supportsAlternateEngines,
             alternateEngineIds: supportsAlternateEngines ? new[] { "cim", "wmi" } : null);
     }

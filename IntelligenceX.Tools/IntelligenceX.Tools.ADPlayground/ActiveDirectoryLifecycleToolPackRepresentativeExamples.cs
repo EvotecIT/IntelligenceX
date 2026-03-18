@@ -15,6 +15,10 @@ internal static class ActiveDirectoryLifecycleToolPackRepresentativeExamples {
             ["ad_group_lifecycle"] = new[] {
                 "provision, rename, delete, and manage memberships for Active Directory groups with dry-run-first governance",
                 "prepare governed membership changes for onboarding, mover, and offboarding processes"
+            },
+            ["ad_ou_lifecycle"] = new[] {
+                "create, rename, move, protect, update, or delete Active Directory organizational units with dry-run-first governance",
+                "prepare quarantine, onboarding, and departmental OU changes without falling back to generic shell execution"
             }
         };
 }

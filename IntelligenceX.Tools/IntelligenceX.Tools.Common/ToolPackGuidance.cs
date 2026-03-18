@@ -12,8 +12,12 @@ namespace IntelligenceX.Tools.Common;
 /// </summary>
 public sealed class ToolPackInfoModel {
     private IReadOnlyList<ToolPackToolCatalogEntryModel> _toolCatalog = Array.Empty<ToolPackToolCatalogEntryModel>();
+    private IReadOnlyList<ToolPackRecipeModel> _recommendedRecipes = Array.Empty<ToolPackRecipeModel>();
     private ToolPackAutonomySummaryModel _autonomySummary = new();
+    private ToolPackRuntimeCapabilitiesModel _runtimeCapabilities = new();
+    private bool _recommendedRecipesExplicitlySet;
     private bool _autonomySummaryExplicitlySet;
+    private bool _runtimeCapabilitiesExplicitlySet;
 
     /// <summary>
     /// Pack identifier (for example: <c>active_directory</c>, <c>system</c>).
@@ -71,15 +75,32 @@ public sealed class ToolPackInfoModel {
     public IReadOnlyList<ToolPackEntityHandoffModel> EntityHandoffs { get; init; } = Array.Empty<ToolPackEntityHandoffModel>();
 
     /// <summary>
+    /// Structured recipe/playbook catalog for repeatable multi-step workflows within the pack.
+    /// </summary>
+    public IReadOnlyList<ToolPackRecipeModel> RecommendedRecipes {
+        get => _recommendedRecipes;
+        init {
+            _recommendedRecipes = ToolPackGuidance.NormalizeRecipeContract(value);
+            _recommendedRecipesExplicitlySet = true;
+        }
+    }
+
+    /// <summary>
     /// Tool-level catalog derived from runtime registrations and schemas.
     /// </summary>
     public IReadOnlyList<ToolPackToolCatalogEntryModel> ToolCatalog {
         get => _toolCatalog;
         init {
             _toolCatalog = ToolPackGuidance.NormalizeToolCatalogContract(value);
-            if (!_autonomySummaryExplicitlySet) {
-                _autonomySummary = ToolPackGuidance.NormalizeAutonomySummaryContract(summary: null, _toolCatalog);
-            }
+            _recommendedRecipes = _recommendedRecipesExplicitlySet
+                ? ToolPackGuidance.NormalizeRecipeContract(_recommendedRecipes)
+                : ToolPackGuidance.NormalizeRecipeContract(recipes: null);
+            _autonomySummary = _autonomySummaryExplicitlySet
+                ? ToolPackGuidance.NormalizeAutonomySummaryContract(_autonomySummary, _toolCatalog)
+                : ToolPackGuidance.NormalizeAutonomySummaryContract(summary: null, _toolCatalog);
+            _runtimeCapabilities = _runtimeCapabilitiesExplicitlySet
+                ? ToolPackGuidance.NormalizeRuntimeCapabilitiesContract(_runtimeCapabilities, _toolCatalog)
+                : ToolPackGuidance.NormalizeRuntimeCapabilitiesContract(runtimeCapabilities: null, _toolCatalog);
         }
     }
 
@@ -91,6 +112,17 @@ public sealed class ToolPackInfoModel {
         init {
             _autonomySummary = ToolPackGuidance.NormalizeAutonomySummaryContract(value, _toolCatalog);
             _autonomySummaryExplicitlySet = true;
+        }
+    }
+
+    /// <summary>
+    /// Runtime-oriented capability summary that helps the model choose local, remote, probe, and write-aware flows.
+    /// </summary>
+    public ToolPackRuntimeCapabilitiesModel RuntimeCapabilities {
+        get => _runtimeCapabilities;
+        init {
+            _runtimeCapabilities = ToolPackGuidance.NormalizeRuntimeCapabilitiesContract(value, _toolCatalog);
+            _runtimeCapabilitiesExplicitlySet = true;
         }
     }
 
@@ -109,6 +141,7 @@ public sealed class ToolPackInfoModel {
 /// Compact pack-level autonomy/readiness summary derived from tool contracts.
 /// </summary>
 public sealed class ToolPackAutonomySummaryModel {
+    private IReadOnlyList<string> _localCapableToolNames = Array.Empty<string>();
     private IReadOnlyList<string> _remoteCapableToolNames = Array.Empty<string>();
     private IReadOnlyList<string> _targetScopedToolNames = Array.Empty<string>();
     private IReadOnlyList<string> _remoteHostTargetingToolNames = Array.Empty<string>();
@@ -121,11 +154,25 @@ public sealed class ToolPackAutonomySummaryModel {
     private IReadOnlyList<string> _probeCapableToolNames = Array.Empty<string>();
     private IReadOnlyList<string> _crossPackHandoffToolNames = Array.Empty<string>();
     private IReadOnlyList<string> _crossPackTargetPacks = Array.Empty<string>();
+    private IReadOnlyList<string> _governedWriteToolNames = Array.Empty<string>();
 
     /// <summary>
     /// Total number of tools in the pack catalog.
     /// </summary>
     public int TotalTools { get; init; }
+
+    /// <summary>
+    /// Number of tools that can execute in the local runtime.
+    /// </summary>
+    public int LocalCapableTools { get; init; }
+
+    /// <summary>
+    /// Tool names that can execute in the local runtime.
+    /// </summary>
+    public IReadOnlyList<string> LocalCapableToolNames {
+        get => _localCapableToolNames;
+        init => _localCapableToolNames = ToolPackGuidance.NormalizeValueListContract(value);
+    }
 
     /// <summary>
     /// Number of tools that support local-or-remote execution.
@@ -232,6 +279,19 @@ public sealed class ToolPackAutonomySummaryModel {
     }
 
     /// <summary>
+    /// Number of tools that require explicit write governance.
+    /// </summary>
+    public int GovernedWriteTools { get; init; }
+
+    /// <summary>
+    /// Tool names that require explicit write governance.
+    /// </summary>
+    public IReadOnlyList<string> GovernedWriteToolNames {
+        get => _governedWriteToolNames;
+        init => _governedWriteToolNames = ToolPackGuidance.NormalizeValueListContract(value);
+    }
+
+    /// <summary>
     /// Number of tools that require authentication for normal operation.
     /// </summary>
     public int AuthenticationRequiredTools { get; init; }
@@ -277,6 +337,117 @@ public sealed class ToolPackAutonomySummaryModel {
         get => _crossPackTargetPacks;
         init => _crossPackTargetPacks = ToolPackGuidance.NormalizeValueListContract(value);
     }
+}
+
+/// <summary>
+/// Shared runtime capability summary exposed by <c>*_pack_info</c> tools.
+/// </summary>
+public sealed class ToolPackRuntimeCapabilitiesModel {
+    private IReadOnlyList<string> _targetScopeArguments = Array.Empty<string>();
+    private IReadOnlyList<string> _remoteHostArguments = Array.Empty<string>();
+    private IReadOnlyList<string> _preferredEntryTools = Array.Empty<string>();
+    private IReadOnlyList<string> _preferredProbeTools = Array.Empty<string>();
+    private IReadOnlyList<string> _runtimePrerequisites = Array.Empty<string>();
+
+    /// <summary>
+    /// Indicates whether the pack contains tools that can run in the local runtime.
+    /// </summary>
+    public bool SupportsLocalExecution { get; init; }
+
+    /// <summary>
+    /// Indicates whether the pack contains tools that support remote execution or remote host targeting.
+    /// </summary>
+    public bool SupportsRemoteExecution { get; init; }
+
+    /// <summary>
+    /// Indicates whether the pack exposes explicit target-scope arguments (for example domain or scope selectors).
+    /// </summary>
+    public bool SupportsTargetScoping { get; init; }
+
+    /// <summary>
+    /// Indicates whether the pack exposes explicit remote host/end-point targeting arguments.
+    /// </summary>
+    public bool SupportsRemoteHostTargeting { get; init; }
+
+    /// <summary>
+    /// Indicates whether the pack exposes discovery/bootstrap tools to learn the environment shape before deeper analysis.
+    /// </summary>
+    public bool SupportsEnvironmentDiscovery { get; init; }
+
+    /// <summary>
+    /// Indicates whether the pack exposes connectivity or authentication probe workflows.
+    /// </summary>
+    public bool SupportsConnectivityProbe { get; init; }
+
+    /// <summary>
+    /// Indicates whether the pack contains tools gated by write-governance contracts.
+    /// </summary>
+    public bool SupportsGovernedWrites { get; init; }
+
+    /// <summary>
+    /// Indicates whether the pack contains authentication-aware tools or contracts.
+    /// </summary>
+    public bool SupportsAuthentication { get; init; }
+
+    /// <summary>
+    /// Distinct argument names used for target scoping across the pack.
+    /// </summary>
+    public IReadOnlyList<string> TargetScopeArguments {
+        get => _targetScopeArguments;
+        init => _targetScopeArguments = ToolPackGuidance.NormalizeValueListContract(value);
+    }
+
+    /// <summary>
+    /// Distinct argument names used to target remote hosts/endpoints across the pack.
+    /// </summary>
+    public IReadOnlyList<string> RemoteHostArguments {
+        get => _remoteHostArguments;
+        init => _remoteHostArguments = ToolPackGuidance.NormalizeValueListContract(value);
+    }
+
+    /// <summary>
+    /// Pack-preferred first operational tools after calling <c>*_pack_info</c>.
+    /// </summary>
+    public IReadOnlyList<string> PreferredEntryTools {
+        get => _preferredEntryTools;
+        init => _preferredEntryTools = ToolPackGuidance.NormalizeValueListContract(value);
+    }
+
+    /// <summary>
+    /// Pack-preferred probe or preflight tools for connectivity/auth/runtime checks.
+    /// </summary>
+    public IReadOnlyList<string> PreferredProbeTools {
+        get => _preferredProbeTools;
+        init => _preferredProbeTools = ToolPackGuidance.NormalizeValueListContract(value);
+    }
+
+    /// <summary>
+    /// Human-readable runtime prerequisites or environmental constraints for this pack.
+    /// </summary>
+    public IReadOnlyList<string> RuntimePrerequisites {
+        get => _runtimePrerequisites;
+        init => _runtimePrerequisites = ToolPackGuidance.NormalizeValueListContract(value);
+    }
+
+    /// <summary>
+    /// Optional pack-published freshness window, in seconds, for probe-helper evidence reuse in background follow-up orchestration.
+    /// </summary>
+    public int? ProbeHelperFreshnessWindowSeconds { get; init; }
+
+    /// <summary>
+    /// Optional pack-published freshness window, in seconds, for setup-helper evidence reuse in background follow-up orchestration.
+    /// </summary>
+    public int? SetupHelperFreshnessWindowSeconds { get; init; }
+
+    /// <summary>
+    /// Optional pack-published freshness window, in seconds, for same-pack recipe-helper evidence reuse in background follow-up orchestration.
+    /// </summary>
+    public int? RecipeHelperFreshnessWindowSeconds { get; init; }
+
+    /// <summary>
+    /// Optional free-form runtime note.
+    /// </summary>
+    public string? Notes { get; init; }
 }
 
 /// <summary>
@@ -407,6 +578,50 @@ public sealed class ToolPackEntityFieldMappingModel {
     /// Optional normalization hint for model/tool routing.
     /// </summary>
     public string? Normalization { get; init; }
+}
+
+/// <summary>
+/// Structured recipe/playbook descriptor for repeatable multi-step workflows.
+/// </summary>
+public sealed class ToolPackRecipeModel {
+    private IReadOnlyList<ToolPackFlowStepModel> _steps = Array.Empty<ToolPackFlowStepModel>();
+    private IReadOnlyList<string> _verificationTools = Array.Empty<string>();
+
+    /// <summary>
+    /// Stable recipe identifier.
+    /// </summary>
+    public string Id { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Human-readable summary of the workflow.
+    /// </summary>
+    public string Summary { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Optional note describing when this recipe should be used.
+    /// </summary>
+    public string? WhenToUse { get; init; }
+
+    /// <summary>
+    /// Ordered multi-step plan for the recipe.
+    /// </summary>
+    public IReadOnlyList<ToolPackFlowStepModel> Steps {
+        get => _steps;
+        init => _steps = ToolPackGuidance.NormalizeRecipeStepsContract(value);
+    }
+
+    /// <summary>
+    /// Preferred verification/follow-up tools after the recipe completes.
+    /// </summary>
+    public IReadOnlyList<string> VerificationTools {
+        get => _verificationTools;
+        init => _verificationTools = ToolPackGuidance.NormalizeValueListContract(value);
+    }
+
+    /// <summary>
+    /// Optional notes for the recipe.
+    /// </summary>
+    public string? Notes { get; init; }
 }
 
 /// <summary>
@@ -963,6 +1178,33 @@ public static partial class ToolPackGuidance {
             Id = id.Trim(),
             Summary = summary.Trim(),
             PrimaryTools = NormalizeValues(primaryTools),
+            Notes = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim()
+        };
+    }
+
+    /// <summary>
+    /// Creates a structured recipe/playbook descriptor.
+    /// </summary>
+    public static ToolPackRecipeModel Recipe(
+        string id,
+        string summary,
+        IEnumerable<ToolPackFlowStepModel>? steps = null,
+        IEnumerable<string>? verificationTools = null,
+        string? whenToUse = null,
+        string? notes = null) {
+        if (string.IsNullOrWhiteSpace(id)) {
+            throw new ArgumentException("Recipe id is required.", nameof(id));
+        }
+        if (string.IsNullOrWhiteSpace(summary)) {
+            throw new ArgumentException("Recipe summary is required.", nameof(summary));
+        }
+
+        return new ToolPackRecipeModel {
+            Id = id.Trim(),
+            Summary = summary.Trim(),
+            WhenToUse = string.IsNullOrWhiteSpace(whenToUse) ? null : whenToUse.Trim(),
+            Steps = NormalizeRecipeStepsContract(steps),
+            VerificationTools = NormalizeValueListContract(verificationTools),
             Notes = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim()
         };
     }

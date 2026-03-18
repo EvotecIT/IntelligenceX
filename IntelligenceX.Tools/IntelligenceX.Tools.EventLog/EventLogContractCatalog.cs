@@ -46,7 +46,7 @@ public static class EventLogContractCatalog {
     /// </summary>
     public static ToolSetupContract CreateChannelAccessSetup() {
         return ToolContractDefaults.CreateRequiredSetup(
-            setupToolName: "eventlog_channels_list",
+            setupToolName: "eventlog_connectivity_probe",
             requirementId: "eventlog_channel_access",
             requirementKind: ToolSetupRequirementKinds.Connectivity,
             setupHintKeys: SetupHintKeys);
@@ -148,11 +148,14 @@ public static class EventLogContractCatalog {
         var supportsRetry = normalizedToolName.IndexOf("_query", StringComparison.OrdinalIgnoreCase) >= 0
                             || normalizedToolName.IndexOf("_find", StringComparison.OrdinalIgnoreCase) >= 0
                             || normalizedToolName.IndexOf("_top_events", StringComparison.OrdinalIgnoreCase) >= 0;
+        var recoveryToolNames = string.Equals(normalizedToolName, "eventlog_evtx_find", StringComparison.OrdinalIgnoreCase)
+            ? new[] { "eventlog_evtx_find" }
+            : new[] { "eventlog_connectivity_probe", "eventlog_channels_list" };
 
         return ToolContractDefaults.CreateRecovery(
             supportsTransientRetry: supportsRetry,
             maxRetryAttempts: supportsRetry ? 1 : 0,
             retryableErrorCodes: supportsRetry ? RetryableErrorCodes : Array.Empty<string>(),
-            recoveryToolNames: new[] { "eventlog_channels_list" });
+            recoveryToolNames: recoveryToolNames);
     }
 }

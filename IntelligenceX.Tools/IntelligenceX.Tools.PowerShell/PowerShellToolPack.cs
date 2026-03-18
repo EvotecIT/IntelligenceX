@@ -23,12 +23,14 @@ public sealed class PowerShellToolPack : IToolPack, IToolPackCatalogProvider {
     public ToolPackDescriptor Descriptor { get; } = new() {
         Id = "powershell",
         Name = "PowerShell Runtime",
+        Aliases = new[] { "powershell_runtime" },
         Tier = ToolCapabilityTier.DangerousWrite,
         IsDangerous = true,
         Description = "Opt-in shell runtime execution (windows_powershell / pwsh / cmd).",
         SourceKind = "builtin",
         EngineId = "powershell_runtime",
-        CapabilityTags = new[] { "local_execution", "remote_execution", "shell", "write_capable" }
+        Category = "powershell",
+        CapabilityTags = new[] { ToolPackCapabilityTags.LocalExecution, ToolPackCapabilityTags.RemoteExecution, "shell", ToolPackCapabilityTags.WriteCapable }
     };
 
     /// <inheritdoc />

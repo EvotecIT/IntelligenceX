@@ -21,6 +21,10 @@ internal sealed partial class ChatServiceSession {
     private const int PlannerCrossPackContinuationPriorityBoost = 120;
     private const int PlannerEnvironmentDiscoverPriorityBoost = 160;
     private const int PlannerSetupAwarePriorityBoost = 110;
+    private const int PlannerPackPreferredEntryPriorityBoost = 95;
+    private const int PlannerPackPreferredProbePriorityBoost = 125;
+    private const int PlannerPackRecipePriorityStep = 30;
+    private const int PlannerPackRecipePriorityMaxBoost = 90;
     private const int PlannerStructuredMutatingActionPriorityBoost = 140;
     private const int PlannerContractHelperPriorityStep = 45;
     private const int PlannerContractHelperPriorityMaxBoost = 180;
@@ -30,6 +34,10 @@ internal sealed partial class ChatServiceSession {
     private const double WeightedRoutingCrossPackContinuationScoreBoost = 1.75d;
     private const double WeightedRoutingEnvironmentDiscoverScoreBoost = 2.4d;
     private const double WeightedRoutingSetupAwareScoreBoost = 1.65d;
+    private const double WeightedRoutingPackPreferredEntryScoreBoost = 1.15d;
+    private const double WeightedRoutingPackPreferredProbeScoreBoost = 1.55d;
+    private const double WeightedRoutingPackRecipeScoreStep = 0.45d;
+    private const double WeightedRoutingPackRecipeScoreMaxBoost = 1.35d;
     private const double WeightedRoutingStructuredMutatingActionScoreBoost = 2.25d;
     private const double WeightedRoutingContractHelperScoreStep = 1.1d;
     private const double WeightedRoutingContractHelperScoreMaxBoost = 3.3d;
@@ -294,6 +302,9 @@ internal sealed partial class ChatServiceSession {
             }
             if (toolScore.SetupAwareBoost > 0.01d) {
                 reasons.Add("setup-aware preflight support");
+            }
+            if (toolScore.PackPreferredBoost > 0.01d) {
+                reasons.Add("pack-owned probe/recipe guidance");
             }
             if (toolScore.ContractHelperBoost > 0.01d) {
                 reasons.Add("probe/setup prerequisite support");
@@ -598,6 +609,28 @@ internal sealed partial class ChatServiceSession {
         if (entry.IsEnvironmentDiscoverTool) {
             sb.Append(" environment_discover");
         }
+
+        if (entry.IsPackPreferredEntryTool) {
+            sb.Append(" preferred_entry_tool");
+            sb.Append(" pack_preferred_entry");
+        }
+
+        if (entry.IsPackPreferredProbeTool) {
+            sb.Append(" preferred_probe_tool");
+            sb.Append(" pack_preferred_probe");
+        }
+
+        if (entry.PackRecommendedRecipeIds.Count > 0) {
+            for (var i = 0; i < entry.PackRecommendedRecipeIds.Count && i < 4; i++) {
+                var recipeId = (entry.PackRecommendedRecipeIds[i] ?? string.Empty).Trim();
+                if (recipeId.Length > 0) {
+                    sb.Append(" recipe ").Append(recipeId);
+                    sb.Append(" pack_recipe ").Append(recipeId);
+                }
+            }
+        }
+
+        AppendRepresentativeExamples(sb, entry.PackRecommendedRecipeHints, maxCount: 3);
 
         if (entry.IsSetupAware && !string.IsNullOrWhiteSpace(entry.SetupToolName)) {
             sb.Append(" setup_catalog ").Append(entry.SetupToolName.Trim());

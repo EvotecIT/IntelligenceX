@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -674,6 +675,57 @@ internal sealed partial class ChatServiceSession {
         return normalizedToolName.ToLowerInvariant() + "|" + normalizedArgs;
     }
 
+    private bool TryGetFreshThreadToolEvidenceEntry(
+        string threadId,
+        string toolName,
+        string argumentsJson,
+        out ThreadToolEvidenceEntry entry) {
+        return TryGetFreshThreadToolEvidenceEntry(threadId, toolName, argumentsJson, ThreadToolEvidenceContextMaxAge, out entry);
+    }
+
+    private bool TryGetFreshThreadToolEvidenceEntry(
+        string threadId,
+        string toolName,
+        string argumentsJson,
+        TimeSpan maxAge,
+        out ThreadToolEvidenceEntry entry) {
+        entry = default;
+        var normalizedThreadId = (threadId ?? string.Empty).Trim();
+        if (normalizedThreadId.Length == 0) {
+            return false;
+        }
+
+        var signature = BuildToolEvidenceSignature(toolName, argumentsJson);
+        if (signature.Length == 0) {
+            return false;
+        }
+
+        TryHydrateThreadToolEvidenceFromSnapshot(normalizedThreadId);
+
+        lock (_threadToolEvidenceLock) {
+            if (!_threadToolEvidenceByThreadId.TryGetValue(normalizedThreadId, out var bySignature)
+                || !bySignature.TryGetValue(signature, out var cachedEntry)) {
+                return false;
+            }
+
+            if (!IsFreshThreadToolEvidenceEntry(cachedEntry, maxAge, DateTime.UtcNow)) {
+                return false;
+            }
+
+            entry = cachedEntry;
+            return true;
+        }
+    }
+
+    private static bool IsFreshThreadToolEvidenceEntry(ThreadToolEvidenceEntry entry, TimeSpan maxAge, DateTime nowUtc) {
+        var boundedMaxAge = maxAge <= TimeSpan.Zero
+            ? TimeSpan.Zero
+            : maxAge;
+        return TryGetUtcDateTimeFromTicks(entry.SeenUtcTicks, out var seenUtc)
+               && seenUtc <= nowUtc
+               && nowUtc - seenUtc <= boundedMaxAge;
+    }
+
     private static string ResolveToolExecutionBackend(string? metaJson) {
         var normalizedMetaJson = (metaJson ?? string.Empty).Trim();
         if (normalizedMetaJson.Length == 0
@@ -1196,6 +1248,41 @@ internal sealed partial class ChatServiceSession {
         IReadOnlyList<ToolOutputDto> toolOutputs,
         IReadOnlyDictionary<string, bool> mutatingToolHintsByName) {
         RememberThreadToolEvidence(threadId, toolCalls, toolOutputs, mutatingToolHintsByName);
+    }
+
+    internal void SeedThreadToolEvidenceEntryForTesting(
+        string threadId,
+        string toolName,
+        string argumentsJson,
+        string output,
+        string summaryMarkdown,
+        long seenUtcTicks,
+        string executionBackend = "") {
+        var normalizedThreadId = (threadId ?? string.Empty).Trim();
+        var normalizedToolName = (toolName ?? string.Empty).Trim();
+        var signature = BuildToolEvidenceSignature(normalizedToolName, argumentsJson);
+        if (normalizedThreadId.Length == 0 || normalizedToolName.Length == 0 || signature.Length == 0) {
+            return;
+        }
+
+        ThreadToolEvidenceEntry[] snapshotEntries;
+        lock (_threadToolEvidenceLock) {
+            if (!_threadToolEvidenceByThreadId.TryGetValue(normalizedThreadId, out var bySignature)) {
+                bySignature = new Dictionary<string, ThreadToolEvidenceEntry>(StringComparer.Ordinal);
+                _threadToolEvidenceByThreadId[normalizedThreadId] = bySignature;
+            }
+
+            bySignature[signature] = new ThreadToolEvidenceEntry(
+                normalizedToolName,
+                NormalizeArgumentsJsonForReplayContract(argumentsJson),
+                output ?? string.Empty,
+                summaryMarkdown ?? string.Empty,
+                executionBackend ?? string.Empty,
+                Math.Max(0, seenUtcTicks));
+            snapshotEntries = bySignature.Values.ToArray();
+        }
+
+        PersistThreadToolEvidenceSnapshot(normalizedThreadId, snapshotEntries);
     }
 
     internal string[] CollectThreadHostCandidatesByDomainIntentFamilyForTesting(string threadId, string family) {

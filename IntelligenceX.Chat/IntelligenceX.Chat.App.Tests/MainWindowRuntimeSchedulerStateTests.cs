@@ -104,6 +104,10 @@ public sealed class MainWindowRuntimeSchedulerStateTests {
             BackgroundScheduler = new SessionCapabilityBackgroundSchedulerDto {
                 DaemonEnabled = true,
                 Paused = false,
+                AdaptiveIdleActive = true,
+                LastAdaptiveIdleUtcTicks = DateTime.UtcNow.AddSeconds(-5).Ticks,
+                LastAdaptiveIdleDelaySeconds = 12,
+                LastAdaptiveIdleReason = "background_scheduler_fresh_reuse_window:system_probe_reuse_window:thread=thread-1:remaining=36s",
                 QueuedItemCount = 4,
                 ReadyItemCount = 2,
                 RunningItemCount = 1,
@@ -184,6 +188,9 @@ public sealed class MainWindowRuntimeSchedulerStateTests {
         var root = document.RootElement;
         var scheduler = root.GetProperty("backgroundScheduler");
         Assert.Equal("Scoped maintenance active for 1 window(s).", scheduler.GetProperty("statusSummary").GetString());
+        Assert.True(scheduler.GetProperty("adaptiveIdleActive").GetBoolean());
+        Assert.Equal(12, scheduler.GetProperty("lastAdaptiveIdleDelaySeconds").GetInt32());
+        Assert.Contains("system_probe_reuse_window", scheduler.GetProperty("lastAdaptiveIdleReason").GetString(), StringComparison.OrdinalIgnoreCase);
         Assert.Equal("system", scheduler.GetProperty("activeMaintenanceWindows")[0].GetProperty("packId").GetString());
         Assert.Equal(2, scheduler.GetProperty("readyItemCount").GetInt32());
         Assert.Equal("system_disk_inventory", scheduler.GetProperty("recentActivity")[0].GetProperty("toolName").GetString());
@@ -213,6 +220,31 @@ public sealed class MainWindowRuntimeSchedulerStateTests {
 
         using var document = JsonDocument.Parse(JsonSerializer.Serialize(state));
         Assert.Equal("Paused: manual_pause:300s:maintenance", document.RootElement.GetProperty("statusSummary").GetString());
+    }
+
+    /// <summary>
+    /// Ensures idle scheduler state surfaces active adaptive-idle telemetry instead of generic idle text.
+    /// </summary>
+    [Fact]
+    public void BuildBackgroundSchedulerState_SummarizesAdaptiveIdleReason() {
+        var scheduler = new SessionCapabilityBackgroundSchedulerDto {
+            DaemonEnabled = true,
+            Paused = false,
+            AdaptiveIdleActive = true,
+            LastAdaptiveIdleUtcTicks = DateTime.UtcNow.AddSeconds(-3).Ticks,
+            LastAdaptiveIdleDelaySeconds = 9,
+            LastAdaptiveIdleReason = "background_scheduler_fresh_reuse_window:eventlog_probe_reuse_window:thread=thread-auth:remaining=24s"
+        };
+
+        var state = BuildBackgroundSchedulerStateMethod.Invoke(null, new object?[] { scheduler });
+        Assert.NotNull(state);
+
+        using var document = JsonDocument.Parse(JsonSerializer.Serialize(state));
+        Assert.Equal(
+            "Background scheduler is adaptively idle (9s poll): background_scheduler_fresh_reuse_window:eventlog_probe_reuse_window:thread=thread-auth:remaining=24s",
+            document.RootElement.GetProperty("statusSummary").GetString());
+        Assert.True(document.RootElement.GetProperty("adaptiveIdleActive").GetBoolean());
+        Assert.Equal(9, document.RootElement.GetProperty("lastAdaptiveIdleDelaySeconds").GetInt32());
     }
 
     /// <summary>

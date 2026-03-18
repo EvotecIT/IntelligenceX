@@ -320,6 +320,7 @@ internal sealed partial class ChatServiceSession {
             runtimeIdentity.AppendLine("routing_autonomy_readiness: " + string.Join(" | ", routingAutonomyReadiness));
         }
         if (snapshot.Autonomy is not null) {
+            runtimeIdentity.AppendLine("autonomy_local_capable_tools: " + snapshot.Autonomy.LocalCapableToolCount);
             runtimeIdentity.AppendLine("autonomy_remote_capable_tools: " + snapshot.Autonomy.RemoteCapableToolCount);
             runtimeIdentity.AppendLine("autonomy_target_scoped_tools: " + snapshot.Autonomy.TargetScopedToolCount);
             runtimeIdentity.AppendLine("autonomy_remote_host_targeting_tools: " + snapshot.Autonomy.RemoteHostTargetingToolCount);
@@ -328,9 +329,14 @@ internal sealed partial class ChatServiceSession {
             runtimeIdentity.AppendLine("autonomy_handoff_aware_tools: " + snapshot.Autonomy.HandoffAwareToolCount);
             runtimeIdentity.AppendLine("autonomy_recovery_aware_tools: " + snapshot.Autonomy.RecoveryAwareToolCount);
             runtimeIdentity.AppendLine("autonomy_write_capable_tools: " + snapshot.Autonomy.WriteCapableToolCount);
+            runtimeIdentity.AppendLine("autonomy_governed_write_tools: " + snapshot.Autonomy.GovernedWriteToolCount);
             runtimeIdentity.AppendLine("autonomy_auth_required_tools: " + snapshot.Autonomy.AuthenticationRequiredToolCount);
             runtimeIdentity.AppendLine("autonomy_probe_capable_tools: " + snapshot.Autonomy.ProbeCapableToolCount);
             runtimeIdentity.AppendLine("autonomy_cross_pack_handoff_tools: " + snapshot.Autonomy.CrossPackHandoffToolCount);
+            if (snapshot.Autonomy.LocalCapablePackIds.Length > 0) {
+                runtimeIdentity.AppendLine("autonomy_local_capable_packs: " + string.Join(", ", snapshot.Autonomy.LocalCapablePackIds));
+            }
+
             if (snapshot.Autonomy.RemoteCapablePackIds.Length > 0) {
                 runtimeIdentity.AppendLine("autonomy_remote_capable_packs: " + string.Join(", ", snapshot.Autonomy.RemoteCapablePackIds));
             }
@@ -349,6 +355,10 @@ internal sealed partial class ChatServiceSession {
 
             if (snapshot.Autonomy.WriteCapablePackIds.Length > 0) {
                 runtimeIdentity.AppendLine("autonomy_write_capable_packs: " + string.Join(", ", snapshot.Autonomy.WriteCapablePackIds));
+            }
+
+            if (snapshot.Autonomy.GovernedWritePackIds.Length > 0) {
+                runtimeIdentity.AppendLine("autonomy_governed_write_packs: " + string.Join(", ", snapshot.Autonomy.GovernedWritePackIds));
             }
 
             if (snapshot.Autonomy.AuthenticationRequiredPackIds.Length > 0) {
@@ -405,8 +415,18 @@ internal sealed partial class ChatServiceSession {
             runtimeIdentity.AppendLine("background_scheduler_requeued_executions: " + snapshot.BackgroundScheduler.RequeuedExecutionCount);
             runtimeIdentity.AppendLine("background_scheduler_released_executions: " + snapshot.BackgroundScheduler.ReleasedExecutionCount);
             runtimeIdentity.AppendLine("background_scheduler_consecutive_failures: " + snapshot.BackgroundScheduler.ConsecutiveFailureCount);
+            runtimeIdentity.AppendLine("background_scheduler_adaptive_idle_active: " + (snapshot.BackgroundScheduler.AdaptiveIdleActive ? "true" : "false"));
             if (!string.IsNullOrWhiteSpace(snapshot.BackgroundScheduler.LastOutcome)) {
                 runtimeIdentity.AppendLine("background_scheduler_last_outcome: " + snapshot.BackgroundScheduler.LastOutcome);
+            }
+            if (snapshot.BackgroundScheduler.LastAdaptiveIdleUtcTicks > 0) {
+                runtimeIdentity.AppendLine("background_scheduler_last_adaptive_idle_utc_ticks: " + snapshot.BackgroundScheduler.LastAdaptiveIdleUtcTicks);
+            }
+            if (snapshot.BackgroundScheduler.LastAdaptiveIdleDelaySeconds > 0) {
+                runtimeIdentity.AppendLine("background_scheduler_last_adaptive_idle_delay_seconds: " + snapshot.BackgroundScheduler.LastAdaptiveIdleDelaySeconds);
+            }
+            if (!string.IsNullOrWhiteSpace(snapshot.BackgroundScheduler.LastAdaptiveIdleReason)) {
+                runtimeIdentity.AppendLine("background_scheduler_last_adaptive_idle_reason: " + snapshot.BackgroundScheduler.LastAdaptiveIdleReason);
             }
             if (snapshot.BackgroundScheduler.PausedUntilUtcTicks > 0) {
                 runtimeIdentity.AppendLine("background_scheduler_paused_until_utc_ticks: " + snapshot.BackgroundScheduler.PausedUntilUtcTicks);

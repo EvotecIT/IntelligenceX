@@ -13,13 +13,14 @@ internal static class EventLogPackContractCatalog {
         var setup = CreateSetup(definition);
         var handoff = CreateHandoff(definition);
         var recovery = CreateRecovery(definition);
-        return ToolDefinitionOverlay.WithContracts(
+        var updatedDefinition = ToolDefinitionOverlay.WithContracts(
             definition: definition,
             execution: execution,
             routing: routing,
             setup: setup,
             handoff: handoff,
             recovery: recovery);
+        return EventLogRoutingCatalog.ApplySelectionMetadata(updatedDefinition);
     }
 
     private static ToolExecutionContract? CreateExecution(ToolDefinition definition, ToolRoutingContract routing) {

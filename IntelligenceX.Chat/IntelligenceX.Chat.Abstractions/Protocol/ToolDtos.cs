@@ -90,6 +90,14 @@ public sealed record ToolDefinitionDto {
     /// </summary>
     public bool IsWriteCapable { get; init; }
     /// <summary>
+    /// Indicates whether explicit write-governance authorization is required.
+    /// </summary>
+    public bool RequiresWriteGovernance { get; init; }
+    /// <summary>
+    /// Optional stable write-governance contract identifier.
+    /// </summary>
+    public string? WriteGovernanceContractId { get; init; }
+    /// <summary>
     /// Indicates whether the tool requires an authentication/runtime identity contract.
     /// </summary>
     public bool RequiresAuthentication { get; init; }

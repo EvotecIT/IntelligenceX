@@ -19,7 +19,10 @@ internal static class ActiveDirectoryLifecycleRoutingCatalog {
         "computer_account",
         "host_provisioning",
         "group_account",
-        "membership_management"
+        "membership_management",
+        "organizational_unit",
+        "ou",
+        "quarantine_ou"
     };
 
     private static readonly IReadOnlyDictionary<string, string> DeclaredRolesByToolName =
@@ -27,7 +30,8 @@ internal static class ActiveDirectoryLifecycleRoutingCatalog {
             ["ad_lifecycle_pack_info"] = ToolRoutingTaxonomy.RolePackInfo,
             ["ad_user_lifecycle"] = ToolRoutingTaxonomy.RoleOperational,
             ["ad_computer_lifecycle"] = ToolRoutingTaxonomy.RoleOperational,
-            ["ad_group_lifecycle"] = ToolRoutingTaxonomy.RoleOperational
+            ["ad_group_lifecycle"] = ToolRoutingTaxonomy.RoleOperational,
+            ["ad_ou_lifecycle"] = ToolRoutingTaxonomy.RoleOperational
         };
 
     private static readonly IReadOnlyDictionary<string, SelectionDescriptor> ExplicitSelectionDescriptors =
@@ -49,7 +53,13 @@ internal static class ActiveDirectoryLifecycleRoutingCatalog {
                 Operation: "write",
                 Entity: "group",
                 Risk: ToolRoutingTaxonomy.RiskHigh,
-                AdditionalTags: new[] { "provisioning", "membership", "decommissioning", "group_account" })
+                AdditionalTags: new[] { "provisioning", "membership", "decommissioning", "group_account" }),
+            ["ad_ou_lifecycle"] = new(
+                Scope: "directory",
+                Operation: "write",
+                Entity: "organizational_unit",
+                Risk: ToolRoutingTaxonomy.RiskHigh,
+                AdditionalTags: new[] { "organizational_unit", "ou", "quarantine_ou", "move" })
         };
 
     public static ToolDefinition ApplySelectionMetadata(ToolDefinition definition) {

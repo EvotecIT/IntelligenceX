@@ -46,11 +46,13 @@ internal sealed partial class ChatServiceSession {
         warning.Append(" tooling_available='").Append(snapshot.ToolingAvailable ? "true" : "false").Append('\'');
         warning.Append(" dangerous_tools_enabled='").Append(snapshot.DangerousToolsEnabled ? "true" : "false").Append('\'');
         warning.Append(" remote_reachability_mode='").Append(snapshot.RemoteReachabilityMode ?? "none").Append('\'');
+        warning.Append(" autonomy_local_capable_tools='").Append(snapshot.Autonomy?.LocalCapableToolCount ?? 0).Append('\'');
         warning.Append(" autonomy_remote_capable_tools='").Append(snapshot.Autonomy?.RemoteCapableToolCount ?? 0).Append('\'');
         warning.Append(" autonomy_target_scoped_tools='").Append(snapshot.Autonomy?.TargetScopedToolCount ?? 0).Append('\'');
         warning.Append(" autonomy_remote_host_targeting_tools='").Append(snapshot.Autonomy?.RemoteHostTargetingToolCount ?? 0).Append('\'');
         warning.Append(" autonomy_environment_discover_tools='").Append(snapshot.Autonomy?.EnvironmentDiscoverToolCount ?? 0).Append('\'');
         warning.Append(" autonomy_write_capable_tools='").Append(snapshot.Autonomy?.WriteCapableToolCount ?? 0).Append('\'');
+        warning.Append(" autonomy_governed_write_tools='").Append(snapshot.Autonomy?.GovernedWriteToolCount ?? 0).Append('\'');
         warning.Append(" autonomy_auth_required_tools='").Append(snapshot.Autonomy?.AuthenticationRequiredToolCount ?? 0).Append('\'');
         warning.Append(" autonomy_probe_capable_tools='").Append(snapshot.Autonomy?.ProbeCapableToolCount ?? 0).Append('\'');
         warning.Append(" autonomy_cross_pack_handoff_tools='").Append(snapshot.Autonomy?.CrossPackHandoffToolCount ?? 0).Append('\'');
@@ -113,6 +115,9 @@ internal sealed partial class ChatServiceSession {
         if (snapshot.HealthyTools.Length > 0) {
             warning.Append(" healthy_tools='").Append(string.Join(",", snapshot.HealthyTools)).Append('\'');
         }
+        if (snapshot.Autonomy?.LocalCapablePackIds is { Length: > 0 }) {
+            warning.Append(" autonomy_local_capable_packs='").Append(string.Join(",", snapshot.Autonomy.LocalCapablePackIds)).Append('\'');
+        }
         if (snapshot.Autonomy?.RemoteCapablePackIds is { Length: > 0 }) {
             warning.Append(" autonomy_remote_capable_packs='").Append(string.Join(",", snapshot.Autonomy.RemoteCapablePackIds)).Append('\'');
         }
@@ -127,6 +132,9 @@ internal sealed partial class ChatServiceSession {
         }
         if (snapshot.Autonomy?.WriteCapablePackIds is { Length: > 0 }) {
             warning.Append(" autonomy_write_capable_packs='").Append(string.Join(",", snapshot.Autonomy.WriteCapablePackIds)).Append('\'');
+        }
+        if (snapshot.Autonomy?.GovernedWritePackIds is { Length: > 0 }) {
+            warning.Append(" autonomy_governed_write_packs='").Append(string.Join(",", snapshot.Autonomy.GovernedWritePackIds)).Append('\'');
         }
         if (snapshot.Autonomy?.AuthenticationRequiredPackIds is { Length: > 0 }) {
             warning.Append(" autonomy_auth_required_packs='").Append(string.Join(",", snapshot.Autonomy.AuthenticationRequiredPackIds)).Append('\'');
@@ -146,8 +154,18 @@ internal sealed partial class ChatServiceSession {
             warning.Append(" background_scheduler_cross_thread='").Append(snapshot.BackgroundScheduler.SupportsCrossThreadScheduling ? "true" : "false").Append('\'');
             warning.Append(" background_scheduler_manual_pause_active='").Append(snapshot.BackgroundScheduler.ManualPauseActive ? "true" : "false").Append('\'');
             warning.Append(" background_scheduler_scheduled_pause_active='").Append(snapshot.BackgroundScheduler.ScheduledPauseActive ? "true" : "false").Append('\'');
+            warning.Append(" background_scheduler_adaptive_idle_active='").Append(snapshot.BackgroundScheduler.AdaptiveIdleActive ? "true" : "false").Append('\'');
             if (!string.IsNullOrWhiteSpace(snapshot.BackgroundScheduler.LastOutcome)) {
                 warning.Append(" background_scheduler_last_outcome='").Append(snapshot.BackgroundScheduler.LastOutcome).Append('\'');
+            }
+            if (snapshot.BackgroundScheduler.LastAdaptiveIdleUtcTicks > 0) {
+                warning.Append(" background_scheduler_last_adaptive_idle_utc_ticks='").Append(snapshot.BackgroundScheduler.LastAdaptiveIdleUtcTicks).Append('\'');
+            }
+            if (snapshot.BackgroundScheduler.LastAdaptiveIdleDelaySeconds > 0) {
+                warning.Append(" background_scheduler_last_adaptive_idle_delay_seconds='").Append(snapshot.BackgroundScheduler.LastAdaptiveIdleDelaySeconds).Append('\'');
+            }
+            if (!string.IsNullOrWhiteSpace(snapshot.BackgroundScheduler.LastAdaptiveIdleReason)) {
+                warning.Append(" background_scheduler_last_adaptive_idle_reason='").Append(snapshot.BackgroundScheduler.LastAdaptiveIdleReason).Append('\'');
             }
             if (snapshot.BackgroundScheduler.PausedUntilUtcTicks > 0) {
                 warning.Append(" background_scheduler_paused_until_utc_ticks='").Append(snapshot.BackgroundScheduler.PausedUntilUtcTicks).Append('\'');

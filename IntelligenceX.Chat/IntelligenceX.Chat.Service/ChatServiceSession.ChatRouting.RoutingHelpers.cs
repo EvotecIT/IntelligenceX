@@ -641,6 +641,18 @@ internal sealed partial class ChatServiceSession {
                 && contractTargeted) {
                 priority += PlannerSetupAwarePriorityBoost;
             }
+            if (contractTargeted && ToolIsPackPreferredEntryTool(definition, toolOrchestrationCatalog)) {
+                priority += PlannerPackPreferredEntryPriorityBoost;
+            }
+            if (prefersRemoteCapableTools
+                && contractTargeted
+                && ToolIsPackPreferredProbeTool(definition, toolOrchestrationCatalog)) {
+                priority += PlannerPackPreferredProbePriorityBoost;
+            }
+            var packRecipeCount = GetPackRecommendedRecipeCount(definition, toolOrchestrationCatalog);
+            if (contractTargeted && packRecipeCount > 0) {
+                priority += Math.Min(PlannerPackRecipePriorityMaxBoost, packRecipeCount * PlannerPackRecipePriorityStep);
+            }
             if (mutatingActionSelected
                 && ToolIsWriteCapable(definition, toolOrchestrationCatalog)) {
                 priority += PlannerStructuredMutatingActionPriorityBoost;
@@ -880,6 +892,24 @@ internal sealed partial class ChatServiceSession {
                     ? WeightedRoutingSetupAwareScoreBoost
                     : 0d;
             score += setupAwareBoost;
+            var packPreferredEntryBoost =
+                contractTargeted && ToolIsPackPreferredEntryTool(definition, _toolOrchestrationCatalog)
+                    ? WeightedRoutingPackPreferredEntryScoreBoost
+                    : 0d;
+            score += packPreferredEntryBoost;
+            var packPreferredProbeBoost =
+                prefersRemoteCapableTools
+                && contractTargeted
+                && ToolIsPackPreferredProbeTool(definition, _toolOrchestrationCatalog)
+                    ? WeightedRoutingPackPreferredProbeScoreBoost
+                    : 0d;
+            score += packPreferredProbeBoost;
+            var packRecipeCount = GetPackRecommendedRecipeCount(definition, _toolOrchestrationCatalog);
+            var packRecipeBoost =
+                contractTargeted && packRecipeCount > 0
+                    ? Math.Min(WeightedRoutingPackRecipeScoreMaxBoost, packRecipeCount * WeightedRoutingPackRecipeScoreStep)
+                    : 0d;
+            score += packRecipeBoost;
             var normalizedToolName = NormalizeToolNameForAnswerPlan(definition.Name);
             var contractHelperBoost = helperDemandByToolName.TryGetValue(normalizedToolName, out var helperDemand) && helperDemand > 0
                 ? Math.Min(WeightedRoutingContractHelperScoreMaxBoost, helperDemand * WeightedRoutingContractHelperScoreStep)
@@ -970,6 +1000,7 @@ internal sealed partial class ChatServiceSession {
                 CrossPackContinuationBoost: crossPackContinuationBoost,
                 EnvironmentDiscoverBoost: environmentDiscoverBoost,
                 SetupAwareBoost: setupAwareBoost,
+                PackPreferredBoost: packPreferredEntryBoost + packPreferredProbeBoost + packRecipeBoost,
                 ContractHelperBoost: contractHelperBoost,
                 WriteFollowUpPenalty: writeFollowUpPenalty,
                 AuthFollowUpPenalty: authFollowUpPenalty));
@@ -1194,7 +1225,12 @@ internal sealed partial class ChatServiceSession {
 
         if (toolOrchestrationCatalog is not null
             && toolOrchestrationCatalog.TryGetEntry(definition.Name, out var entry)) {
-            return NormalizeToolNameForAnswerPlan(entry.ProbeToolName);
+            var explicitProbeToolName = NormalizeToolNameForAnswerPlan(entry.ProbeToolName);
+            if (explicitProbeToolName.Length > 0) {
+                return explicitProbeToolName;
+            }
+
+            return ResolvePackPreferredProbeToolName(entry, toolOrchestrationCatalog);
         }
 
         return NormalizeToolNameForAnswerPlan(definition.Authentication?.ProbeToolName);
@@ -1211,6 +1247,158 @@ internal sealed partial class ChatServiceSession {
         }
 
         return NormalizeToolNameForAnswerPlan(definition.Setup?.SetupToolName);
+    }
+
+    private static bool ToolIsPackPreferredEntryTool(ToolDefinition definition, ToolOrchestrationCatalog? toolOrchestrationCatalog) {
+        return definition is not null
+               && toolOrchestrationCatalog is not null
+               && toolOrchestrationCatalog.TryGetEntry(definition.Name, out var entry)
+               && entry.IsPackPreferredEntryTool;
+    }
+
+    private static bool ToolIsPackPreferredProbeTool(ToolDefinition definition, ToolOrchestrationCatalog? toolOrchestrationCatalog) {
+        return definition is not null
+               && toolOrchestrationCatalog is not null
+               && toolOrchestrationCatalog.TryGetEntry(definition.Name, out var entry)
+               && entry.IsPackPreferredProbeTool;
+    }
+
+    private static int GetPackRecommendedRecipeCount(ToolDefinition definition, ToolOrchestrationCatalog? toolOrchestrationCatalog) {
+        return definition is not null
+               && toolOrchestrationCatalog is not null
+               && toolOrchestrationCatalog.TryGetEntry(definition.Name, out var entry)
+            ? entry.PackRecommendedRecipeIds.Count
+            : 0;
+    }
+
+    private static string[] ResolveContractHelperToolNames(
+        ToolDefinition definition,
+        ToolOrchestrationCatalog? toolOrchestrationCatalog) {
+        if (definition is null) {
+            return Array.Empty<string>();
+        }
+
+        var helperToolNames = new List<string>(4);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        AddResolvedContractHelperToolName(helperToolNames, seen, ResolveSetupToolName(definition, toolOrchestrationCatalog));
+        AddResolvedContractHelperToolName(helperToolNames, seen, ResolveProbeToolName(definition, toolOrchestrationCatalog));
+
+        if (toolOrchestrationCatalog is null
+            || !toolOrchestrationCatalog.TryGetEntry(definition.Name, out var entry)
+            || entry.PackRecommendedRecipeIds.Count == 0
+            || entry.PackId.Length == 0) {
+            return helperToolNames.Count == 0 ? Array.Empty<string>() : helperToolNames.ToArray();
+        }
+
+        var availableEntries = toolOrchestrationCatalog.GetByPackId(entry.PackId);
+        for (var i = 0; i < availableEntries.Count; i++) {
+            var candidate = availableEntries[i];
+            var candidateToolName = NormalizeToolNameForAnswerPlan(candidate.ToolName);
+            if (candidateToolName.Length == 0
+                || string.Equals(candidateToolName, NormalizeToolNameForAnswerPlan(definition.Name), StringComparison.OrdinalIgnoreCase)
+                || !PackRecipeEntriesOverlap(entry, candidate)
+                || !IsEligiblePackRecipeHelper(candidate)) {
+                continue;
+            }
+
+            AddResolvedContractHelperToolName(helperToolNames, seen, candidateToolName);
+        }
+
+        return helperToolNames.Count == 0 ? Array.Empty<string>() : helperToolNames.ToArray();
+    }
+
+    private static string ResolvePackPreferredProbeToolName(
+        ToolOrchestrationCatalogEntry entry,
+        ToolOrchestrationCatalog toolOrchestrationCatalog) {
+        if (toolOrchestrationCatalog is null
+            || entry.PackId.Length == 0) {
+            return string.Empty;
+        }
+
+        var preferredProbeEntries = toolOrchestrationCatalog
+            .GetByPackId(entry.PackId)
+            .Where(static candidate => candidate.IsPackPreferredProbeTool)
+            .Where(candidate => !string.Equals(candidate.ToolName, entry.ToolName, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(static candidate => candidate.SupportsConnectivityProbe)
+            .ThenBy(static candidate => GetPackRecipeHelperRoleSortOrder(candidate.Role))
+            .ThenBy(static candidate => candidate.ToolName, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (preferredProbeEntries.Length == 0) {
+            return string.Empty;
+        }
+
+        return NormalizeToolNameForAnswerPlan(preferredProbeEntries[0].ToolName);
+    }
+
+    private static bool IsEligiblePackRecipeHelper(ToolOrchestrationCatalogEntry candidateEntry) {
+        if (candidateEntry.IsWriteCapable
+            || candidateEntry.IsPackInfoTool
+            || candidateEntry.IsEnvironmentDiscoverTool) {
+            return false;
+        }
+
+        if (candidateEntry.IsPackPreferredProbeTool) {
+            return true;
+        }
+
+        if (string.Equals(candidateEntry.Role, ToolRoutingTaxonomy.RoleDiagnostic, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(candidateEntry.Role, ToolRoutingTaxonomy.RoleResolver, StringComparison.OrdinalIgnoreCase)) {
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool PackRecipeEntriesOverlap(
+        ToolOrchestrationCatalogEntry left,
+        ToolOrchestrationCatalogEntry right) {
+        if (left.PackRecommendedRecipeIds.Count == 0 || right.PackRecommendedRecipeIds.Count == 0) {
+            return false;
+        }
+
+        for (var i = 0; i < left.PackRecommendedRecipeIds.Count; i++) {
+            var recipeId = NormalizeToolNameForAnswerPlan(left.PackRecommendedRecipeIds[i]);
+            if (recipeId.Length == 0) {
+                continue;
+            }
+
+            for (var j = 0; j < right.PackRecommendedRecipeIds.Count; j++) {
+                if (string.Equals(recipeId, NormalizeToolNameForAnswerPlan(right.PackRecommendedRecipeIds[j]), StringComparison.OrdinalIgnoreCase)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static int GetPackRecipeHelperRoleSortOrder(string? role) {
+        var normalizedRole = (role ?? string.Empty).Trim();
+        if (string.Equals(normalizedRole, ToolRoutingTaxonomy.RoleDiagnostic, StringComparison.OrdinalIgnoreCase)) {
+            return 0;
+        }
+
+        if (string.Equals(normalizedRole, ToolRoutingTaxonomy.RoleResolver, StringComparison.OrdinalIgnoreCase)) {
+            return 1;
+        }
+
+        if (string.Equals(normalizedRole, ToolRoutingTaxonomy.RoleOperational, StringComparison.OrdinalIgnoreCase)) {
+            return 2;
+        }
+
+        return 3;
+    }
+
+    private static void AddResolvedContractHelperToolName(
+        ICollection<string> helperToolNames,
+        ISet<string> seen,
+        string? toolName) {
+        var normalizedToolName = NormalizeToolNameForAnswerPlan(toolName);
+        if (normalizedToolName.Length == 0 || !seen.Add(normalizedToolName)) {
+            return;
+        }
+
+        helperToolNames.Add(normalizedToolName);
     }
 
     private static bool ToolIsSetupAware(ToolDefinition definition, ToolOrchestrationCatalog? toolOrchestrationCatalog) {
@@ -1310,21 +1498,20 @@ internal sealed partial class ChatServiceSession {
                 handoffTargetPackIds);
             var demandWeight = targeted ? 3 : 1;
 
-            var probeToolName = ResolveProbeToolName(definition, toolOrchestrationCatalog);
-            if (probeToolName.Length > 0
-                && !string.Equals(probeToolName, toolName, StringComparison.OrdinalIgnoreCase)
-                && availableToolNames.Contains(probeToolName)) {
-                AddContractHelperDemand(
-                    helperDemandByToolName,
-                    probeToolName,
-                    ToolRequiresAuthentication(definition, toolOrchestrationCatalog) ? demandWeight + 1 : demandWeight);
-            }
+            var helperToolNames = ResolveContractHelperToolNames(definition, toolOrchestrationCatalog);
+            for (var helperIndex = 0; helperIndex < helperToolNames.Length; helperIndex++) {
+                var helperToolName = helperToolNames[helperIndex];
+                if (helperToolName.Length == 0
+                    || string.Equals(helperToolName, toolName, StringComparison.OrdinalIgnoreCase)
+                    || !availableToolNames.Contains(helperToolName)) {
+                    continue;
+                }
 
-            var setupToolName = ResolveSetupToolName(definition, toolOrchestrationCatalog);
-            if (setupToolName.Length > 0
-                && !string.Equals(setupToolName, toolName, StringComparison.OrdinalIgnoreCase)
-                && availableToolNames.Contains(setupToolName)) {
-                AddContractHelperDemand(helperDemandByToolName, setupToolName, demandWeight);
+                var helperWeight = string.Equals(helperToolName, ResolveProbeToolName(definition, toolOrchestrationCatalog), StringComparison.OrdinalIgnoreCase)
+                    && ToolRequiresAuthentication(definition, toolOrchestrationCatalog)
+                    ? demandWeight + 1
+                    : demandWeight;
+                AddContractHelperDemand(helperDemandByToolName, helperToolName, helperWeight);
             }
         }
 
@@ -1405,17 +1592,17 @@ internal sealed partial class ChatServiceSession {
         }
 
         var toolName = NormalizeToolNameForAnswerPlan(definition.Name);
-        var probeToolName = ResolveProbeToolName(definition, toolOrchestrationCatalog);
-        if (probeToolName.Length > 0
-            && !string.Equals(probeToolName, toolName, StringComparison.OrdinalIgnoreCase)
-            && availableToolNames.Contains(probeToolName)) {
-            return true;
+        var helperToolNames = ResolveContractHelperToolNames(definition, toolOrchestrationCatalog);
+        for (var i = 0; i < helperToolNames.Length; i++) {
+            var helperToolName = helperToolNames[i];
+            if (helperToolName.Length > 0
+                && !string.Equals(helperToolName, toolName, StringComparison.OrdinalIgnoreCase)
+                && availableToolNames.Contains(helperToolName)) {
+                return true;
+            }
         }
 
-        var setupToolName = ResolveSetupToolName(definition, toolOrchestrationCatalog);
-        return setupToolName.Length > 0
-               && !string.Equals(setupToolName, toolName, StringComparison.OrdinalIgnoreCase)
-               && availableToolNames.Contains(setupToolName);
+        return false;
     }
 
     private static void AddContractHelperDemand(IDictionary<string, int> helperDemandByToolName, string toolName, int weight) {

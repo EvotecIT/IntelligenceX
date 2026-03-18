@@ -235,6 +235,11 @@ internal sealed partial class ChatServiceSession {
             return selected;
         }
 
+        EnsureDeclaredContractHelpersSelected(allDefinitions, selected, selectedNames, minSelection, limit);
+        if (selected.Count >= minSelection) {
+            return selected;
+        }
+
         var rankedFallback = new List<(ToolDefinition Definition, double Score)>(allDefinitions.Count);
         for (var i = 0; i < allDefinitions.Count; i++) {
             var definition = allDefinitions[i];
@@ -272,6 +277,67 @@ internal sealed partial class ChatServiceSession {
 
         EnsureExplicitRequestedToolsSelected(explicitRequestedToolNames, allDefinitions, selected, selectedNames, limit);
         return selected.Count == 0 ? allDefinitions : selected;
+    }
+
+    private void EnsureDeclaredContractHelpersSelected(
+        IReadOnlyList<ToolDefinition> allDefinitions,
+        IList<ToolDefinition> selected,
+        ISet<string> selectedNames,
+        int minSelection,
+        int limit) {
+        if (allDefinitions.Count == 0
+            || selected.Count >= minSelection
+            || selected.Count >= limit) {
+            return;
+        }
+
+        var definitionsByName = new Dictionary<string, ToolDefinition>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < allDefinitions.Count; i++) {
+            var definition = allDefinitions[i];
+            var toolName = (definition?.Name ?? string.Empty).Trim();
+            if (toolName.Length > 0 && !definitionsByName.ContainsKey(toolName)) {
+                definitionsByName[toolName] = definition!;
+            }
+        }
+
+        if (definitionsByName.Count == 0) {
+            return;
+        }
+
+        var helperToolNames = new List<string>(Math.Min(allDefinitions.Count, 8));
+        var seenHelperToolNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < selected.Count; i++) {
+            var definition = selected[i];
+            if (definition is null) {
+                continue;
+            }
+
+            AddDeclaredContractHelperToolName(helperToolNames, seenHelperToolNames, ResolveSetupToolName(definition, _toolOrchestrationCatalog));
+            AddDeclaredContractHelperToolName(helperToolNames, seenHelperToolNames, ResolveProbeToolName(definition, _toolOrchestrationCatalog));
+        }
+
+        for (var i = 0; i < helperToolNames.Count && selected.Count < minSelection && selected.Count < limit; i++) {
+            var helperToolName = helperToolNames[i];
+            if (!definitionsByName.TryGetValue(helperToolName, out var helperDefinition)
+                || selectedNames.Contains(helperToolName)) {
+                continue;
+            }
+
+            selected.Add(helperDefinition);
+            selectedNames.Add(helperToolName);
+        }
+    }
+
+    private static void AddDeclaredContractHelperToolName(
+        ICollection<string> helperToolNames,
+        ISet<string> seenHelperToolNames,
+        string? toolName) {
+        var normalizedToolName = NormalizeToolNameForAnswerPlan(toolName);
+        if (normalizedToolName.Length == 0 || !seenHelperToolNames.Add(normalizedToolName)) {
+            return;
+        }
+
+        helperToolNames.Add(normalizedToolName);
     }
 
     private static HashSet<string>? BuildExplicitRequestedToolNameSet(string userRequest) {
@@ -575,11 +641,25 @@ internal sealed partial class ChatServiceSession {
         var hasWriteCapableTools = definitions.Any(static definition => definition.WriteGovernance?.IsWriteCapable == true);
         var hasAuthenticationAwareTools = definitions.Any(static definition => definition.Authentication?.IsAuthenticationAware == true);
         var hasProbeAwareTools = definitions.Any(static definition => definition.Authentication?.SupportsConnectivityProbe == true);
-        if (hasWriteCapableTools || hasAuthenticationAwareTools || hasProbeAwareTools) {
+        var hasPackPreferredProbeTools = definitions.Any(definition =>
+            definition is not null
+            && _toolOrchestrationCatalog.TryGetEntry(definition.Name, out var entry)
+            && entry.IsPackPreferredProbeTool);
+        var hasPackRecipeGuidance = definitions.Any(definition =>
+            definition is not null
+            && _toolOrchestrationCatalog.TryGetEntry(definition.Name, out var entry)
+            && entry.PackRecommendedRecipeIds.Count > 0);
+        if (hasWriteCapableTools || hasAuthenticationAwareTools || hasProbeAwareTools || hasPackPreferredProbeTools || hasPackRecipeGuidance) {
             sb.AppendLine();
             sb.AppendLine("Contract-backed planning rules:");
             if (hasProbeAwareTools) {
                 sb.AppendLine("Prefer declared probe/setup helpers before dependent remote or mutating follow-up tools.");
+            }
+            if (hasPackPreferredProbeTools) {
+                sb.AppendLine("Prefer pack-declared preferred probe tools when remote reachability, auth, or runtime readiness is still uncertain.");
+            }
+            if (hasPackRecipeGuidance) {
+                sb.AppendLine("Prefer tools that are explicitly called out by pack-owned recipes when the request matches that pack workflow.");
             }
             if (hasAuthenticationAwareTools) {
                 sb.AppendLine("Treat tools marked auth-required as needing a valid runtime auth/profile context.");
@@ -607,6 +687,8 @@ internal sealed partial class ChatServiceSession {
             var requiredArguments = ExtractToolSchemaRequiredNames(definition, maxCount: 4);
             var category = ResolvePlannerCategory(definition);
             var packId = NormalizePackId(definition.Routing?.PackId);
+            var packDisplayName = ResolvePlannerPackDisplayName(packId);
+            var packAliases = ResolvePlannerPackAliases(packId, maxCount: 4);
             var packEngineId = ResolvePlannerPackEngineId(packId);
             var packCapabilityTags = ResolvePlannerPackCapabilityTags(packId, maxCount: 3);
             var role = ResolvePlannerRole(definition);
@@ -614,12 +696,19 @@ internal sealed partial class ChatServiceSession {
             var plannerTags = ExtractPlannerTags(definition, maxCount: 4);
             var traitSummary = ToolSchemaTraitProjection.BuildTraitSummary(schemaTraits);
             var authentication = definition.Authentication;
+            var hasEntry = _toolOrchestrationCatalog.TryGetEntry(name, out var orchestrationEntry);
             sb.Append(i + 1).Append(". ").Append(name);
             if (description.Length > 0) {
                 sb.Append(" :: ").Append(description);
             }
             if (packId.Length > 0) {
                 sb.Append(" | pack: ").Append(packId);
+            }
+            if (packDisplayName.Length > 0) {
+                sb.Append(" | pack_name: ").Append(packDisplayName);
+            }
+            if (packAliases.Length > 0) {
+                sb.Append(" | pack_aliases: ").Append(string.Join(", ", packAliases));
             }
             if (packEngineId.Length > 0) {
                 sb.Append(" | engine: ").Append(packEngineId);
@@ -679,6 +768,15 @@ internal sealed partial class ChatServiceSession {
             if (recoveryToolNames.Length > 0) {
                 sb.Append(" | recovery: ").Append(string.Join(", ", recoveryToolNames));
             }
+            if (hasEntry && orchestrationEntry.IsPackPreferredEntryTool) {
+                sb.Append(" | pack_entry: preferred");
+            }
+            if (hasEntry && orchestrationEntry.IsPackPreferredProbeTool) {
+                sb.Append(" | pack_probe: preferred");
+            }
+            if (hasEntry && orchestrationEntry.PackRecommendedRecipeIds.Count > 0) {
+                sb.Append(" | pack_recipes: ").Append(string.Join(", ", orchestrationEntry.PackRecommendedRecipeIds.Take(2)));
+            }
             var handoffTargets = ExtractToolHandoffTargets(definition, maxCount: 3);
             if (handoffTargets.Length > 0) {
                 sb.Append(" | handoff: ").Append(string.Join(", ", handoffTargets));
@@ -736,6 +834,31 @@ internal sealed partial class ChatServiceSession {
         return (engineId ?? string.Empty).Trim();
     }
 
+    private string ResolvePlannerPackDisplayName(string normalizedPackId) {
+        normalizedPackId = ResolveRuntimePackId(normalizedPackId);
+        if (normalizedPackId.Length == 0
+            || !_packDisplayNamesById.TryGetValue(normalizedPackId, out var displayName)) {
+            return string.Empty;
+        }
+
+        return (displayName ?? string.Empty).Trim();
+    }
+
+    private string[] ResolvePlannerPackAliases(string normalizedPackId, int maxCount) {
+        normalizedPackId = ResolveRuntimePackId(normalizedPackId);
+        if (maxCount <= 0
+            || normalizedPackId.Length == 0
+            || !_packAliasesById.TryGetValue(normalizedPackId, out var aliases)
+            || aliases is not { Length: > 0 }) {
+            return Array.Empty<string>();
+        }
+
+        return aliases
+            .Where(static alias => !string.IsNullOrWhiteSpace(alias))
+            .Take(maxCount)
+            .ToArray();
+    }
+
     private string[] ResolvePlannerPackCapabilityTags(string normalizedPackId, int maxCount) {
         normalizedPackId = ResolveRuntimePackId(normalizedPackId);
         if (maxCount <= 0
@@ -745,10 +868,7 @@ internal sealed partial class ChatServiceSession {
             return Array.Empty<string>();
         }
 
-        return capabilityTags
-            .Where(static tag => !string.IsNullOrWhiteSpace(tag))
-            .Take(maxCount)
-            .ToArray();
+        return ToolPackCapabilityTags.PrioritizeForPlanner(capabilityTags, maxCount);
     }
 
     private static IReadOnlyList<ToolOrchestrationCatalogEntry> CollectPlannerPromptHintEntries(
@@ -1194,6 +1314,7 @@ internal sealed partial class ChatServiceSession {
         double CrossPackContinuationBoost,
         double EnvironmentDiscoverBoost,
         double SetupAwareBoost,
+        double PackPreferredBoost,
         double ContractHelperBoost,
         double WriteFollowUpPenalty,
         double AuthFollowUpPenalty);

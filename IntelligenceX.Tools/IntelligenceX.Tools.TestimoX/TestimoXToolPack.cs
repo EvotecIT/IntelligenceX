@@ -23,12 +23,14 @@ public sealed class TestimoXToolPack : IToolPack, IToolPackCatalogProvider {
     public ToolPackDescriptor Descriptor { get; } = new() {
         Id = "testimox",
         Name = "TestimoX",
+        Aliases = new[] { "testimoxpack" },
         Tier = ToolCapabilityTier.SensitiveRead,
         IsDangerous = false,
         Description = "TestimoX rule, profile, baseline, and stored-run diagnostics.",
         SourceKind = "closed_source",
         EngineId = "testimox",
-        CapabilityTags = new[] { "configuration", "evidence", "posture", "remote_analysis" },
+        Category = "testimox",
+        CapabilityTags = new[] { "configuration", "evidence", "posture", ToolPackCapabilityTags.RemoteAnalysis },
         CapabilityParity = TestimoXToolPackParity.Slices
     };
 

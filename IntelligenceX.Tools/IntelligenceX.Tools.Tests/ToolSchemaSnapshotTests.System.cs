@@ -6,6 +6,12 @@ namespace IntelligenceX.Tools.Tests;
 public partial class ToolSchemaSnapshotTests {
     private static IEnumerable<object[]> SystemSchemaSnapshots() {
         yield return new object[] {
+            "system_connectivity_probe",
+            new[] { "computer_name", "timeout_ms", "include_time_sync" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
             "system_installed_applications",
             new[] { "computer_name", "name_contains", "publisher_contains", "max_results", "columns", "sort_by", "sort_direction", "top" },
             Array.Empty<string>()

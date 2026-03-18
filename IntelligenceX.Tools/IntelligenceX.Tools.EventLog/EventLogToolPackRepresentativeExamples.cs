@@ -6,6 +6,10 @@ namespace IntelligenceX.Tools.EventLog;
 internal static class EventLogToolPackRepresentativeExamples {
     internal static IReadOnlyDictionary<string, IReadOnlyList<string>> ByToolName { get; } =
         new Dictionary<string, IReadOnlyList<string>>(System.StringComparer.OrdinalIgnoreCase) {
+            ["eventlog_connectivity_probe"] = new[] {
+                "preflight remote Event Log reachability and confirm channel access before deeper live queries",
+                "verify a host exposes the expected Security or System channels before running authentication triage"
+            },
             ["eventlog_live_query"] = new[] {
                 "inspect Windows event logs and summarize recurring failures on this machine or a reachable host",
                 "triage authentication, service, or update failures on remote servers before pivoting into AD or system tools"

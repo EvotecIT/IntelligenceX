@@ -232,6 +232,26 @@ public sealed record SessionCapabilityBackgroundSchedulerDto {
     public long LastFailureUtcTicks { get; init; }
 
     /// <summary>
+    /// Indicates whether a recent adaptive-idle decision is still active for the current scheduler poll window.
+    /// </summary>
+    public bool AdaptiveIdleActive { get; init; }
+
+    /// <summary>
+    /// Best-effort UTC ticks when the scheduler last shortened its idle poll due to fresh reused prerequisite evidence.
+    /// </summary>
+    public long LastAdaptiveIdleUtcTicks { get; init; }
+
+    /// <summary>
+    /// Poll delay selected for the most recent adaptive-idle decision.
+    /// </summary>
+    public int LastAdaptiveIdleDelaySeconds { get; init; }
+
+    /// <summary>
+    /// Normalized reason recorded for the most recent adaptive-idle decision.
+    /// </summary>
+    public string LastAdaptiveIdleReason { get; init; } = string.Empty;
+
+    /// <summary>
     /// Total successful background executions observed in this runtime.
     /// </summary>
     public int CompletedExecutionCount { get; init; }

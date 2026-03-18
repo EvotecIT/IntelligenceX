@@ -118,6 +118,9 @@ internal sealed partial class ChatServiceSession {
     private int _backgroundSchedulerConsecutiveFailureCount;
     private long _backgroundSchedulerPausedUntilUtcTicks;
     private string _backgroundSchedulerPauseReason = string.Empty;
+    private long _backgroundSchedulerLastAdaptiveIdleUtcTicks;
+    private int _backgroundSchedulerLastAdaptiveIdleDelaySeconds;
+    private string _backgroundSchedulerLastAdaptiveIdleReason = string.Empty;
     private readonly List<SessionCapabilityBackgroundSchedulerActivityDto> _backgroundSchedulerRecentActivity = new();
 
     private readonly object _modelListCacheLock = new();
@@ -175,6 +178,7 @@ internal sealed partial class ChatServiceSession {
             TypeInfoResolver = ChatServiceJsonContext.Default
         };
         TryRehydrateToolRoutingStats();
+        TryRehydrateBackgroundSchedulerRuntimeState();
     }
 
     private void UpdatePackMetadataIndexes(IReadOnlyList<ToolPackDescriptor> descriptors) {

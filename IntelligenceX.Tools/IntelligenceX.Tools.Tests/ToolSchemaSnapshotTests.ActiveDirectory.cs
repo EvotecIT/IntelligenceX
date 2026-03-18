@@ -217,6 +217,36 @@ public partial class ToolSchemaSnapshotTests {
         };
 
         yield return new object[] {
+            "ad_ou_lifecycle",
+            new[] {
+                "operation",
+                "identity",
+                "name",
+                "parent_distinguished_name",
+                "target_parent_distinguished_name",
+                "domain_name",
+                "new_name",
+                "description",
+                "display_name",
+                "managed_by",
+                "protect_from_accidental_deletion",
+                "block_inheritance",
+                "recursive",
+                "clear_attributes",
+                "additional_attributes",
+                "apply",
+                "write_execution_id",
+                "write_actor_id",
+                "write_audit_correlation_id",
+                "write_change_reason",
+                "write_operation_id",
+                "write_rollback_plan_id",
+                "write_rollback_provider_id"
+            },
+            new[] { "operation" }
+        };
+
+        yield return new object[] {
             "ad_scope_discovery",
             new[] { "forest_name", "domain_name", "domain_controller", "include_domains", "exclude_domains", "include_domain_controllers", "exclude_domain_controllers", "skip_rodc", "include_trusts", "discovery_fallback", "max_domains", "max_domain_controllers_total", "max_domain_controllers_per_domain", "rootdse_timeout_ms", "domain_enumeration_timeout_ms", "dc_source_timeout_ms" },
             new[] { "discovery_fallback" }

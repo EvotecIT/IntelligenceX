@@ -36,6 +36,8 @@ public sealed class ToolAutonomySummaryBuilderTests {
 
         var packSummary = ToolAutonomySummaryBuilder.BuildPackAutonomySummary("active_directory", orchestrationCatalog);
         Assert.NotNull(packSummary);
+        Assert.Equal(1, packSummary!.LocalCapableTools);
+        Assert.Contains("ad_domain_monitor", packSummary.LocalCapableToolNames, StringComparer.OrdinalIgnoreCase);
         Assert.Equal(1, packSummary!.EnvironmentDiscoverTools);
         Assert.Equal(1, packSummary.TargetScopedTools);
         Assert.Contains("ad_domain_monitor", packSummary.EnvironmentDiscoverToolNames, StringComparer.OrdinalIgnoreCase);
@@ -45,6 +47,7 @@ public sealed class ToolAutonomySummaryBuilderTests {
 
         var capabilitySummary = ToolAutonomySummaryBuilder.BuildCapabilityAutonomySummary(packAvailability, orchestrationCatalog);
         Assert.NotNull(capabilitySummary);
+        Assert.Equal(3, capabilitySummary!.LocalCapableToolCount);
         Assert.Equal(2, capabilitySummary!.RemoteCapableToolCount);
         Assert.Equal(3, capabilitySummary.TargetScopedToolCount);
         Assert.Equal(2, capabilitySummary.RemoteHostTargetingToolCount);
@@ -53,9 +56,13 @@ public sealed class ToolAutonomySummaryBuilderTests {
         Assert.Equal(2, capabilitySummary.HandoffAwareToolCount);
         Assert.Equal(1, capabilitySummary.RecoveryAwareToolCount);
         Assert.Equal(0, capabilitySummary.WriteCapableToolCount);
+        Assert.Equal(0, capabilitySummary.GovernedWriteToolCount);
         Assert.Equal(0, capabilitySummary.AuthenticationRequiredToolCount);
         Assert.Equal(0, capabilitySummary.ProbeCapableToolCount);
         Assert.Equal(2, capabilitySummary.CrossPackHandoffToolCount);
+        Assert.Contains("active_directory", capabilitySummary.LocalCapablePackIds, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("eventlog", capabilitySummary.LocalCapablePackIds, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("system", capabilitySummary.LocalCapablePackIds, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("eventlog", capabilitySummary.RemoteCapablePackIds, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("system", capabilitySummary.RemoteCapablePackIds, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("active_directory", capabilitySummary.TargetScopedPackIds, StringComparer.OrdinalIgnoreCase);
@@ -85,6 +92,8 @@ public sealed class ToolAutonomySummaryBuilderTests {
         var summary = ToolAutonomySummaryBuilder.BuildPackAutonomySummary("system", orchestrationCatalog, maxItems: 5);
 
         Assert.NotNull(summary);
+        Assert.Equal(20, summary!.LocalCapableTools);
+        Assert.Equal(5, summary.LocalCapableToolNames.Length);
         Assert.Equal(20, summary!.RemoteCapableTools);
         Assert.Equal(5, summary.RemoteCapableToolNames.Length);
         Assert.Equal(20, summary.RemoteHostTargetingTools);
@@ -113,8 +122,72 @@ public sealed class ToolAutonomySummaryBuilderTests {
         var summary = ToolAutonomySummaryBuilder.BuildPackAutonomySummary("system", orchestrationCatalog);
 
         Assert.NotNull(summary);
+        Assert.Equal(1, summary!.LocalCapableTools);
+        Assert.Equal(new[] { "system_local_trace_query" }, summary.LocalCapableToolNames);
         Assert.Equal(0, summary!.RemoteCapableTools);
         Assert.Empty(summary.RemoteCapableToolNames);
+    }
+
+    [Fact]
+    public void BuildPackAutonomySummary_TracksGovernedWriteToolsSeparatelyFromGeneralWrites() {
+        var definitions = new[] {
+            new ToolDefinition(
+                "ad_user_create",
+                "Create a governed AD user.",
+                ToolSchema.Object(("identity", ToolSchema.String("Identity."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "active_directory_lifecycle",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                },
+                writeGovernance: new ToolWriteGovernanceContract {
+                    IsWriteCapable = true,
+                    RequiresGovernanceAuthorization = true,
+                    GovernanceContractId = "ix:governance:v1"
+                }),
+            new ToolDefinition(
+                "ad_user_preview",
+                "Preview a lifecycle change.",
+                ToolSchema.Object(("identity", ToolSchema.String("Identity."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "active_directory_lifecycle",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                },
+                writeGovernance: new ToolWriteGovernanceContract {
+                    IsWriteCapable = true,
+                    RequiresGovernanceAuthorization = false,
+                    GovernanceContractId = string.Empty
+                })
+        };
+        var orchestrationCatalog = ToolOrchestrationCatalog.Build(definitions);
+
+        var summary = ToolAutonomySummaryBuilder.BuildPackAutonomySummary("active_directory_lifecycle", orchestrationCatalog);
+
+        Assert.NotNull(summary);
+        Assert.Equal(2, summary!.WriteCapableTools);
+        Assert.Equal(1, summary.GovernedWriteTools);
+        Assert.Equal(new[] { "ad_user_create" }, summary.GovernedWriteToolNames);
+
+        var capabilitySummary = ToolAutonomySummaryBuilder.BuildCapabilityAutonomySummary(
+            new[] {
+                new ToolPackAvailabilityInfo {
+                    Id = "active_directory_lifecycle",
+                    Name = "Active Directory Lifecycle",
+                    SourceKind = "closed_source",
+                    Enabled = true
+                }
+            },
+            orchestrationCatalog);
+
+        Assert.NotNull(capabilitySummary);
+        Assert.Equal(2, capabilitySummary!.WriteCapableToolCount);
+        Assert.Equal(1, capabilitySummary.GovernedWriteToolCount);
+        Assert.Equal(new[] { "active_directory_lifecycle" }, capabilitySummary.LocalCapablePackIds);
+        Assert.Equal(new[] { "active_directory_lifecycle" }, capabilitySummary.WriteCapablePackIds);
+        Assert.Equal(new[] { "active_directory_lifecycle" }, capabilitySummary.GovernedWritePackIds);
     }
 
     private static ToolDefinition[] CreateDefinitions() {

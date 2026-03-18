@@ -6,6 +6,10 @@ namespace IntelligenceX.Tools.System;
 internal static class SystemToolPackRepresentativeExamples {
     internal static IReadOnlyDictionary<string, IReadOnlyList<string>> ByToolName { get; } =
         new Dictionary<string, IReadOnlyList<string>>(global::System.StringComparer.OrdinalIgnoreCase) {
+            ["system_connectivity_probe"] = new[] {
+                "preflight remote ComputerX reachability before collecting deeper host inventory or posture data",
+                "confirm OS, hardware, and optional time-sync access on a server before running heavier diagnostics"
+            },
             ["system_metrics_summary"] = new[] {
                 "collect system inventory plus CPU, memory, and disk health locally or on reachable machines",
                 "baseline a server after AD or Event Log discovery before deeper host follow-up"

@@ -445,6 +445,8 @@ public sealed class ToolPackBootstrapMetadataTests {
     [InlineData("system", "system")]
     [InlineData("ad", "active_directory")]
     [InlineData("adplayground", "active_directory")]
+    [InlineData("ad_lifecycle", "active_directory_lifecycle")]
+    [InlineData("joiner leaver", "active_directory_lifecycle")]
     [InlineData("reviewer_setup", "reviewer_setup")]
     [InlineData("event-log", "eventlog")]
     [InlineData("file system", "filesystem")]
@@ -690,8 +692,11 @@ public sealed class ToolPackBootstrapMetadataTests {
         Assert.Equal(ToolCapabilityTier.DangerousWrite, lifecyclePack.Tier);
         Assert.Equal("active_directory", lifecyclePack.Category);
         Assert.Equal("adplayground", lifecyclePack.EngineId);
+        Assert.Contains("adlifecycle", lifecyclePack.Aliases, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("joiner_leaver", lifecyclePack.Aliases, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("governed_write", lifecyclePack.CapabilityTags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("dry_run", lifecyclePack.CapabilityTags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("joiner_leaver", lifecyclePack.SearchTokens, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("joiner", lifecyclePack.SearchTokens, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("mover", lifecyclePack.SearchTokens, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("offboarding", lifecyclePack.SearchTokens, StringComparer.OrdinalIgnoreCase);
@@ -747,6 +752,7 @@ public sealed class ToolPackBootstrapMetadataTests {
         var system = Assert.Single(result.PackAvailability, static pack =>
             string.Equals(pack.Id, "system", StringComparison.OrdinalIgnoreCase));
         Assert.Equal("system", system.Category);
+        Assert.Contains("computerx", system.Aliases, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("computerx", system.SearchTokens, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("cpu", system.SearchTokens, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("disk_space", system.SearchTokens, StringComparer.OrdinalIgnoreCase);
@@ -756,10 +762,68 @@ public sealed class ToolPackBootstrapMetadataTests {
         var eventLog = Assert.Single(result.PackAvailability, static pack =>
             string.Equals(pack.Id, "eventlog", StringComparison.OrdinalIgnoreCase));
         Assert.Equal("eventlog", eventLog.Category);
+        Assert.Contains("eventviewerx", eventLog.Aliases, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("event_log", eventLog.Aliases, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("auth", eventLog.SearchTokens, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("eventviewerx", eventLog.SearchTokens, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("evtx", eventLog.SearchTokens, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("windows_logs", eventLog.SearchTokens, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void CreateDefaultReadOnlyPacksWithAvailability_ExposesSelfDescribingCatalogMetadata_ForBuiltInPacks() {
+        var result = ToolPackBootstrap.CreateDefaultReadOnlyPacksWithAvailability(new ToolPackBootstrapOptions {
+            EnableDefaultPluginPaths = false,
+            EnablePluginFolderLoading = false
+        });
+
+        Assert.NotEmpty(result.PackAvailability);
+        Assert.All(result.PackAvailability, static pack => {
+            Assert.False(string.IsNullOrWhiteSpace(pack.Id));
+            Assert.False(string.IsNullOrWhiteSpace(pack.Name));
+            Assert.False(string.IsNullOrWhiteSpace(pack.SourceKind));
+            Assert.False(string.IsNullOrWhiteSpace(pack.Category));
+            Assert.NotEmpty(pack.CapabilityTags);
+            Assert.NotEmpty(pack.SearchTokens);
+        });
+
+        Assert.NotEmpty(result.Packs);
+        Assert.All(result.Packs, static pack => {
+            Assert.IsAssignableFrom<IToolPackCatalogProvider>(pack);
+            var catalogProvider = (IToolPackCatalogProvider)pack;
+            Assert.NotEmpty(catalogProvider.GetToolCatalog());
+        });
+    }
+
+    [Fact]
+    public void CreateDefaultReadOnlyPacksWithAvailability_DeclaresStructuredScopeTraits_ForBuiltInPacks() {
+        var result = ToolPackBootstrap.CreateDefaultReadOnlyPacksWithAvailability(new ToolPackBootstrapOptions {
+            EnableDefaultPluginPaths = false,
+            EnablePluginFolderLoading = false
+        });
+
+        Assert.NotEmpty(result.PackAvailability);
+        Assert.All(result.PackAvailability, static pack =>
+            Assert.True(
+                ToolPackCapabilityTags.HasExecutionOrAnalysisScope(pack.CapabilityTags),
+                $"Pack '{pack.Id}' should declare local/remote analysis or execution scope."));
+    }
+
+    [Fact]
+    public void CreateDefaultReadOnlyPacksWithAvailability_DangerousPacksDeclareWriteOrGovernanceTraits() {
+        var result = ToolPackBootstrap.CreateDefaultReadOnlyPacksWithAvailability(new ToolPackBootstrapOptions {
+            EnableDefaultPluginPaths = false,
+            EnablePluginFolderLoading = false
+        });
+
+        var dangerousPacks = result.PackAvailability
+            .Where(static pack => pack.IsDangerous || pack.Tier == ToolCapabilityTier.DangerousWrite)
+            .ToArray();
+        Assert.NotEmpty(dangerousPacks);
+        Assert.All(dangerousPacks, static pack =>
+            Assert.True(
+                ToolPackCapabilityTags.HasWriteOrGovernanceTag(pack.CapabilityTags),
+                $"Dangerous pack '{pack.Id}' should declare explicit write/governance capability tags."));
     }
 
     [Fact]
@@ -826,6 +890,36 @@ public sealed class ToolPackBootstrapMetadataTests {
             Assert.False(string.IsNullOrWhiteSpace(routing.PackId));
             Assert.Equal(ToolRoutingTaxonomy.RolePackInfo, routing.Role, ignoreCase: true);
         }
+    }
+
+    [Fact]
+    public void RegisterAll_DefaultLoadedPacks_ExposePackInfoTool_ForEveryLoadedPack() {
+        var packs = ToolPackBootstrap.CreateDefaultReadOnlyPacks(new ToolPackBootstrapOptions {
+            EnablePluginFolderLoading = false,
+            EnableDefaultPluginPaths = false
+        });
+        var registry = new ToolRegistry {
+            RequireExplicitRoutingMetadata = true
+        };
+
+        ToolPackBootstrap.RegisterAll(registry, packs);
+
+        var packIds = packs
+            .Select(static pack => ToolPackBootstrap.NormalizePackId(pack.Descriptor.Id))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(static packId => packId, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var packInfoPackIds = registry.GetDefinitions()
+            .Where(static definition => string.IsNullOrWhiteSpace(definition.AliasOf))
+            .Select(static definition => definition.Routing)
+            .OfType<ToolRoutingContract>()
+            .Where(static routing => string.Equals(routing.Role, ToolRoutingTaxonomy.RolePackInfo, StringComparison.OrdinalIgnoreCase))
+            .Select(static routing => ToolPackBootstrap.NormalizePackId(routing.PackId))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(static packId => packId, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        Assert.Equal(packIds, packInfoPackIds, StringComparer.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -1217,6 +1311,8 @@ public sealed class ToolPackBootstrapMetadataTests {
         Assert.Equal(entry.IsPackInfoTool, dto.IsPackInfoTool);
         Assert.Equal(entry.IsEnvironmentDiscoverTool, dto.IsEnvironmentDiscoverTool);
         Assert.Equal(entry.IsWriteCapable, dto.IsWriteCapable);
+        Assert.Equal(entry.RequiresWriteGovernance, dto.RequiresWriteGovernance);
+        Assert.Equal(string.IsNullOrWhiteSpace(entry.WriteGovernanceContractId) ? null : entry.WriteGovernanceContractId, dto.WriteGovernanceContractId);
         Assert.Equal(entry.RequiresAuthentication, dto.RequiresAuthentication);
         Assert.Equal(string.IsNullOrWhiteSpace(entry.AuthenticationContractId) ? null : entry.AuthenticationContractId, dto.AuthenticationContractId);
         Assert.Equal(entry.AuthenticationArguments, dto.AuthenticationArguments);

@@ -833,6 +833,10 @@ public sealed class ToolHealthContractTests {
                 LastOutcomeUtcTicks = DateTime.UtcNow.Ticks,
                 LastSuccessUtcTicks = DateTime.UtcNow.AddMinutes(-2).Ticks,
                 LastFailureUtcTicks = DateTime.UtcNow.AddMinutes(-1).Ticks,
+                AdaptiveIdleActive = true,
+                LastAdaptiveIdleUtcTicks = DateTime.UtcNow.AddSeconds(-8).Ticks,
+                LastAdaptiveIdleDelaySeconds = 12,
+                LastAdaptiveIdleReason = "background_scheduler_fresh_reuse_window:eventlog_probe_reuse_window:thread=thread-ready:remaining=48s",
                 CompletedExecutionCount = 5,
                 RequeuedExecutionCount = 2,
                 ReleasedExecutionCount = 1,
@@ -864,6 +868,13 @@ public sealed class ToolHealthContractTests {
                         PendingUnknownItemCount = 0,
                         RecentEvidenceTools = new[] { "remote_disk_inventory" },
                         DependencyHelperToolNames = Array.Empty<string>(),
+                        ReusedHelperItemCount = 1,
+                        ReusedHelperToolNames = new[] { "eventlog_channels_list" },
+                        ReusedHelperPolicyNames = new[] { "eventlog_probe_reuse_window" },
+                        ReusedHelperFreshestAgeSeconds = 42,
+                        ReusedHelperOldestAgeSeconds = 42,
+                        ReusedHelperFreshestTtlSeconds = 300,
+                        ReusedHelperOldestTtlSeconds = 300,
                         DependencyRecoveryReason = "background_prerequisite_auth_context_required",
                         DependencyNextAction = "request_runtime_auth_context",
                         ContinuationHint = new SessionCapabilityBackgroundSchedulerContinuationHintDto {
@@ -923,9 +934,19 @@ public sealed class ToolHealthContractTests {
         Assert.True(Assert.Single(typed.Scheduler.BlockedThreadSuppressions).Temporary);
         Assert.True(typed.Scheduler.Paused);
         Assert.Equal("requeued_after_tool_failure", typed.Scheduler.LastOutcome);
+        Assert.True(typed.Scheduler.AdaptiveIdleActive);
+        Assert.Equal(12, typed.Scheduler.LastAdaptiveIdleDelaySeconds);
+        Assert.Contains("eventlog_probe_reuse_window", typed.Scheduler.LastAdaptiveIdleReason, StringComparison.OrdinalIgnoreCase);
         Assert.Equal("thread-ready", Assert.Single(typed.Scheduler.ReadyThreadIds));
         Assert.Equal("remote_probe_failed", Assert.Single(typed.Scheduler.RecentActivity).FailureDetail);
         Assert.Equal("thread-ready", Assert.Single(typed.Scheduler.ThreadSummaries).ThreadId);
+        Assert.Equal(1, Assert.Single(typed.Scheduler.ThreadSummaries).ReusedHelperItemCount);
+        Assert.Equal("eventlog_channels_list", Assert.Single(Assert.Single(typed.Scheduler.ThreadSummaries).ReusedHelperToolNames));
+        Assert.Equal("eventlog_probe_reuse_window", Assert.Single(Assert.Single(typed.Scheduler.ThreadSummaries).ReusedHelperPolicyNames));
+        Assert.Equal(42, Assert.Single(typed.Scheduler.ThreadSummaries).ReusedHelperFreshestAgeSeconds);
+        Assert.Equal(42, Assert.Single(typed.Scheduler.ThreadSummaries).ReusedHelperOldestAgeSeconds);
+        Assert.Equal(300, Assert.Single(typed.Scheduler.ThreadSummaries).ReusedHelperFreshestTtlSeconds);
+        Assert.Equal(300, Assert.Single(typed.Scheduler.ThreadSummaries).ReusedHelperOldestTtlSeconds);
         Assert.Equal("request_runtime_auth_context", typed.Scheduler.DependencyNextAction);
         Assert.Equal("eventlog_channels_list", Assert.Single(typed.Scheduler.DependencyHelperToolNames));
         Assert.Equal("background_prerequisite_auth_context_required", Assert.Single(typed.Scheduler.ThreadSummaries).DependencyRecoveryReason);
@@ -955,6 +976,10 @@ public sealed class ToolHealthContractTests {
             DependencyAuthenticationHelperToolNames = new[] { "eventlog_channels_list" },
             DependencyAuthenticationArgumentNames = new[] { "profile_id" },
             DependencySetupHelperToolNames = Array.Empty<string>(),
+            AdaptiveIdleActive = true,
+            LastAdaptiveIdleUtcTicks = DateTime.UtcNow.AddSeconds(-6).Ticks,
+            LastAdaptiveIdleDelaySeconds = 15,
+            LastAdaptiveIdleReason = "background_scheduler_fresh_reuse_window:eventlog_probe_reuse_window:thread=thread-a:remaining=54s",
             BlockedPackIds = new[] { "system" },
             BlockedPackSuppressions = new[] {
                 new SessionCapabilityBackgroundSchedulerSuppressionDto {
@@ -983,6 +1008,9 @@ public sealed class ToolHealthContractTests {
         Assert.Equal("request_runtime_auth_context", parsed.DependencyNextAction);
         Assert.Equal("eventlog_channels_list", Assert.Single(parsed.DependencyHelperToolNames));
         Assert.Equal("profile_id", Assert.Single(parsed.DependencyAuthenticationArgumentNames));
+        Assert.True(parsed.AdaptiveIdleActive);
+        Assert.Equal(15, parsed.LastAdaptiveIdleDelaySeconds);
+        Assert.Contains("eventlog_probe_reuse_window", parsed.LastAdaptiveIdleReason, StringComparison.OrdinalIgnoreCase);
         Assert.Equal("system", Assert.Single(parsed.BlockedPackSuppressions).Id);
         Assert.Equal("persistent_runtime", Assert.Single(parsed.BlockedPackSuppressions).Mode);
         Assert.Equal("thread-a", Assert.Single(parsed.BlockedThreadSuppressions).Id);
@@ -1025,6 +1053,10 @@ public sealed class ToolHealthContractTests {
                 DependencyNextAction = "request_runtime_auth_context",
                 DependencyAuthenticationHelperToolNames = new[] { "eventlog_channels_list" },
                 DependencyAuthenticationArgumentNames = new[] { "profile_id" },
+                AdaptiveIdleActive = true,
+                LastAdaptiveIdleUtcTicks = DateTime.UtcNow.AddSeconds(-4).Ticks,
+                LastAdaptiveIdleDelaySeconds = 10,
+                LastAdaptiveIdleReason = "background_scheduler_fresh_reuse_window:eventlog_probe_reuse_window:thread=thread-a:remaining=36s",
                 QueuedItemCount = 3,
                 ReadyThreadIds = new[] { "thread-a" },
                 BlockedThreadSuppressions = new[] {
@@ -1058,6 +1090,9 @@ public sealed class ToolHealthContractTests {
         Assert.Equal(2, parsed.BackgroundScheduler.DependencyBlockedItemCount);
         Assert.Equal("request_runtime_auth_context", parsed.BackgroundScheduler.DependencyNextAction);
         Assert.Equal("profile_id", Assert.Single(parsed.BackgroundScheduler.DependencyAuthenticationArgumentNames));
+        Assert.True(parsed.BackgroundScheduler.AdaptiveIdleActive);
+        Assert.Equal(10, parsed.BackgroundScheduler.LastAdaptiveIdleDelaySeconds);
+        Assert.Contains("eventlog_probe_reuse_window", parsed.BackgroundScheduler.LastAdaptiveIdleReason, StringComparison.OrdinalIgnoreCase);
         Assert.Equal("thread-a", Assert.Single(parsed.BackgroundScheduler.ReadyThreadIds));
         Assert.Equal("temporary_runtime", Assert.Single(parsed.BackgroundScheduler.BlockedThreadSuppressions).Mode);
     }

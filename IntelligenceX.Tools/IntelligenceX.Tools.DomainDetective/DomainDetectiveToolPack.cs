@@ -22,12 +22,14 @@ public sealed class DomainDetectiveToolPack : IToolPack, IToolPackCatalogProvide
     public ToolPackDescriptor Descriptor { get; } = new() {
         Id = "domaindetective",
         Name = "DomainDetective",
+        Aliases = new[] { "domain_detective" },
         Tier = ToolCapabilityTier.ReadOnly,
         IsDangerous = false,
         Description = "Open-source domain, DNS, and network-path diagnostics.",
         SourceKind = "open_source",
         EngineId = "domaindetective",
-        CapabilityTags = new[] { "dns", "domain_scope", "network_path", "remote_analysis" }
+        Category = "dns",
+        CapabilityTags = new[] { "dns", "domain_scope", "network_path", ToolPackCapabilityTags.RemoteAnalysis }
     };
 
     /// <inheritdoc />

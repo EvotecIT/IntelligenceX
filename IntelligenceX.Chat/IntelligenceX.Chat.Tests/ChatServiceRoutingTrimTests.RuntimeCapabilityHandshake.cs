@@ -92,6 +92,8 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Contains("routing_families: ad_domain, public_domain", instructionsText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("representative_live_examples: discover effective AD scope and the reachable domain controllers before choosing deeper directory tools", instructionsText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("cross_pack_followup_targets: Event Log, System", instructionsText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("autonomy_local_capable_tools: 2", instructionsText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("autonomy_local_capable_packs: active_directory, eventlog", instructionsText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("autonomy_target_scoped_tools: 2", instructionsText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("autonomy_target_scoped_packs: active_directory, eventlog", instructionsText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("autonomy_remote_host_targeting_tools: 1", instructionsText, StringComparison.OrdinalIgnoreCase);
@@ -99,6 +101,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Contains("autonomy_environment_discover_tools: 1", instructionsText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("autonomy_environment_discover_packs: active_directory", instructionsText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("autonomy_write_capable_tools: 0", instructionsText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("autonomy_governed_write_tools: 0", instructionsText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("autonomy_auth_required_tools: 0", instructionsText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("autonomy_probe_capable_tools: 0", instructionsText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("skill_count: 2", instructionsText, StringComparison.OrdinalIgnoreCase);
@@ -617,12 +620,15 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Contains("enabled_capability_tags='directory,remote_analysis'", handshake, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("representative_examples='discover effective AD scope and the reachable domain controllers before choosing deeper directory tools'", handshake, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("cross_pack_followup_targets='Event Log,System'", handshake, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("autonomy_local_capable_tools='1'", handshake, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("autonomy_local_capable_packs='active_directory'", handshake, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("autonomy_target_scoped_tools='1'", handshake, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("autonomy_target_scoped_packs='active_directory'", handshake, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("autonomy_remote_host_targeting_tools='0'", handshake, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("autonomy_environment_discover_tools='1'", handshake, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("autonomy_environment_discover_packs='active_directory'", handshake, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("autonomy_write_capable_tools='0'", handshake, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("autonomy_governed_write_tools='0'", handshake, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("autonomy_auth_required_tools='0'", handshake, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("autonomy_probe_capable_tools='0'", handshake, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("routing_families='ad_domain,public_domain'", handshake, StringComparison.OrdinalIgnoreCase);

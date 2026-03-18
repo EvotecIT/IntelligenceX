@@ -347,7 +347,7 @@ internal static partial class Program {
         var autonomy = snapshot.Autonomy;
         var autonomySummary = autonomy is null
             ? "autonomy n/a"
-            : $"autonomy remote-capable {autonomy.RemoteCapableToolCount}, cross-pack {autonomy.CrossPackHandoffToolCount}";
+            : $"autonomy remote-capable {autonomy.RemoteCapableToolCount}, cross-pack {autonomy.CrossPackHandoffToolCount}, governed-write {autonomy.GovernedWriteToolCount}";
         return $"tools={snapshot.RegisteredTools}, enabled_packs={snapshot.EnabledPackCount}, plugins={snapshot.EnabledPluginCount}/{snapshot.PluginCount}, remote_reachability={snapshot.RemoteReachabilityMode ?? "unknown"}, {autonomySummary}";
     }
 
@@ -464,14 +464,24 @@ internal static partial class Program {
         var autonomy = snapshot.Autonomy;
         if (autonomy is not null) {
             highlights.Add(
-                "autonomy surface: remote-capable " + autonomy.RemoteCapableToolCount
+                "autonomy surface: local-capable " + autonomy.LocalCapableToolCount
+                + ", remote-capable " + autonomy.RemoteCapableToolCount
                 + ", setup-aware " + autonomy.SetupAwareToolCount
                 + ", environment-discover " + autonomy.EnvironmentDiscoverToolCount
                 + ", handoff-aware " + autonomy.HandoffAwareToolCount
                 + ", recovery-aware " + autonomy.RecoveryAwareToolCount
-                + ", cross-pack " + autonomy.CrossPackHandoffToolCount);
+                + ", cross-pack " + autonomy.CrossPackHandoffToolCount
+                + ", governed-write " + autonomy.GovernedWriteToolCount);
+            if (autonomy.LocalCapablePackIds.Length > 0) {
+                highlights.Add("local-capable packs: " + string.Join(", ", autonomy.LocalCapablePackIds));
+            }
+
             if (autonomy.RemoteCapablePackIds.Length > 0) {
                 highlights.Add("remote-capable packs: " + string.Join(", ", autonomy.RemoteCapablePackIds));
+            }
+
+            if (autonomy.GovernedWritePackIds.Length > 0) {
+                highlights.Add("governed-write packs: " + string.Join(", ", autonomy.GovernedWritePackIds));
             }
 
             if (autonomy.EnvironmentDiscoverPackIds.Length > 0) {

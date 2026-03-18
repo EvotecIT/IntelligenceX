@@ -8,6 +8,7 @@ internal static class ActiveDirectoryLifecycleContractCatalog {
     private const string UserLifecycleToolName = "ad_user_lifecycle";
     private const string ComputerLifecycleToolName = "ad_computer_lifecycle";
     private const string GroupLifecycleToolName = "ad_group_lifecycle";
+    private const string OuLifecycleToolName = "ad_ou_lifecycle";
 
     public static readonly string[] SetupHintKeys = {
         "domain_name",
@@ -58,6 +59,7 @@ internal static class ActiveDirectoryLifecycleContractCatalog {
         return string.Equals(normalizedToolName, UserLifecycleToolName, StringComparison.OrdinalIgnoreCase)
                || string.Equals(normalizedToolName, ComputerLifecycleToolName, StringComparison.OrdinalIgnoreCase)
                || string.Equals(normalizedToolName, GroupLifecycleToolName, StringComparison.OrdinalIgnoreCase)
+               || string.Equals(normalizedToolName, OuLifecycleToolName, StringComparison.OrdinalIgnoreCase)
             ? ToolContractDefaults.CreateHandoff(
                 new[] {
                     ToolContractDefaults.CreateSharedTargetRoute(

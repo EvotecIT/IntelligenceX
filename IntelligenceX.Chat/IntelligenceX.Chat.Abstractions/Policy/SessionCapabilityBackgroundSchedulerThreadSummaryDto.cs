@@ -57,6 +57,41 @@ public sealed record SessionCapabilityBackgroundSchedulerThreadSummaryDto {
     public string[] DependencyHelperToolNames { get; init; } = Array.Empty<string>();
 
     /// <summary>
+    /// Number of prerequisite helper items satisfied from fresh cached read-only evidence.
+    /// </summary>
+    public int ReusedHelperItemCount { get; init; }
+
+    /// <summary>
+    /// Sample of helper tool names satisfied from fresh cached read-only evidence.
+    /// </summary>
+    public string[] ReusedHelperToolNames { get; init; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Best-effort normalized helper-reuse policy names applied to cached prerequisite evidence in the thread.
+    /// </summary>
+    public string[] ReusedHelperPolicyNames { get; init; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Smallest observed cached-helper freshness age, in seconds, when available.
+    /// </summary>
+    public int? ReusedHelperFreshestAgeSeconds { get; init; }
+
+    /// <summary>
+    /// Largest observed cached-helper freshness age, in seconds, when available.
+    /// </summary>
+    public int? ReusedHelperOldestAgeSeconds { get; init; }
+
+    /// <summary>
+    /// Smallest observed cached-helper freshness window, in seconds, when available.
+    /// </summary>
+    public int? ReusedHelperFreshestTtlSeconds { get; init; }
+
+    /// <summary>
+    /// Largest observed cached-helper freshness window, in seconds, when available.
+    /// </summary>
+    public int? ReusedHelperOldestTtlSeconds { get; init; }
+
+    /// <summary>
     /// Best-effort normalized recovery reason for dependency-blocked work in the thread.
     /// </summary>
     public string DependencyRecoveryReason { get; init; } = string.Empty;

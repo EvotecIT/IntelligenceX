@@ -10,6 +10,12 @@ internal static class SystemRoutingCatalog {
 
     private static readonly IReadOnlyDictionary<string, SelectionDescriptor> ExplicitSelectionDescriptors =
         new Dictionary<string, SelectionDescriptor>(StringComparer.OrdinalIgnoreCase) {
+            ["system_connectivity_probe"] = new(
+                Scope: "host",
+                Operation: "probe",
+                Entity: "host",
+                Risk: ToolRoutingTaxonomy.RiskLow,
+                AdditionalTags: new[] { "probe", "preflight", "connectivity" }),
             ["system_info"] = new(
                 Scope: "host",
                 Operation: ToolRoutingTaxonomy.OperationRead,
@@ -56,6 +62,7 @@ internal static class SystemRoutingCatalog {
         AddRoleGroup(declared, ToolRoutingTaxonomy.RolePackInfo,
             "system_pack_info");
         AddRoleGroup(declared, ToolRoutingTaxonomy.RoleDiagnostic,
+            "system_connectivity_probe",
             "system_info",
             "system_hardware_identity",
             "system_process_list",

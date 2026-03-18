@@ -133,7 +133,7 @@ public sealed class ChatServiceToolingBootstrapTests {
         Assert.True(timeline.SupportsLocalExecution);
         Assert.True(timeline.SupportsRemoteExecution);
         Assert.True(timeline.IsSetupAware);
-        Assert.Equal("eventlog_channels_list", timeline.SetupToolName);
+        Assert.Equal("eventlog_connectivity_probe", timeline.SetupToolName);
         Assert.True(timeline.IsHandoffAware);
         Assert.Contains("system", timeline.HandoffTargetPackIds, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("system_info", timeline.HandoffTargetToolNames, StringComparer.OrdinalIgnoreCase);

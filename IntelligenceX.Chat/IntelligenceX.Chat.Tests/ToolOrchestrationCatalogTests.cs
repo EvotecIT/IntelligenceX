@@ -19,6 +19,11 @@ public sealed class ToolOrchestrationCatalogTests {
                     PackId = "CustomX",
                     Role = ToolRoutingTaxonomy.RolePackInfo
                 },
+                writeGovernance: new ToolWriteGovernanceContract {
+                    IsWriteCapable = true,
+                    RequiresGovernanceAuthorization = true,
+                    GovernanceContractId = "ix:governance:v1"
+                },
                 setup: new ToolSetupContract {
                     IsSetupAware = true,
                     SetupToolName = "custom_setup",
@@ -99,6 +104,9 @@ public sealed class ToolOrchestrationCatalogTests {
         Assert.Equal(2, entry.RecoveryToolCount);
         Assert.Equal(new[] { "custom_discover_scope", "custom_pack_info" }, entry.RecoveryToolNames);
         Assert.Equal("custom_setup", entry.SetupToolName);
+        Assert.True(entry.IsWriteCapable);
+        Assert.True(entry.RequiresWriteGovernance);
+        Assert.Equal("ix:governance:v1", entry.WriteGovernanceContractId);
 
         var byPack = catalog.GetByPackId("customx");
         Assert.Equal(2, byPack.Count);
@@ -732,10 +740,72 @@ public sealed class ToolOrchestrationCatalogTests {
         Assert.Equal(new[] { "custom_environment_discover" }, overlayEntry.RecoveryToolNames);
     }
 
+    [Fact]
+    public void Build_ProjectsPackGuidancePreferredProbeAndRecipeHints() {
+        var catalog = ToolOrchestrationCatalog.Build(
+            new[] {
+                CreateDefinition(
+                    name: "custom_connectivity_probe",
+                    routing: new ToolRoutingContract {
+                        IsRoutingAware = true,
+                        RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                        PackId = "customx",
+                        Role = ToolRoutingTaxonomy.RoleDiagnostic
+                    }),
+                CreateDefinition(
+                    name: "custom_followup",
+                    routing: new ToolRoutingContract {
+                        IsRoutingAware = true,
+                        RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                        PackId = "customx",
+                        Role = ToolRoutingTaxonomy.RoleOperational
+                    })
+            },
+            new IToolPack[] { new SyntheticGuidanceOverlayPack() });
+
+        Assert.True(catalog.TryGetEntry("custom_connectivity_probe", out var probeEntry));
+        Assert.True(probeEntry.IsPackPreferredProbeTool);
+        Assert.Equal(120, probeEntry.PackProbeHelperFreshnessWindowSeconds);
+        Assert.Equal(600, probeEntry.PackSetupHelperFreshnessWindowSeconds);
+        Assert.Equal(300, probeEntry.PackRecipeHelperFreshnessWindowSeconds);
+        Assert.Contains("custom_runtime_triage", probeEntry.PackRecommendedRecipeIds, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains(
+            probeEntry.PackRecommendedRecipeHints,
+            static hint => hint.Contains("stabilize the remote endpoint before deeper follow-up", StringComparison.OrdinalIgnoreCase)
+                           && hint.Contains("runtime reachability is still uncertain", StringComparison.OrdinalIgnoreCase));
+
+        Assert.True(catalog.TryGetEntry("custom_followup", out var followupEntry));
+        Assert.False(followupEntry.IsPackPreferredProbeTool);
+        Assert.Contains("custom_runtime_triage", followupEntry.PackRecommendedRecipeIds, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Build_AllowsGuidanceToClaimUniqueToolOwnershipByName() {
+        var catalog = ToolOrchestrationCatalog.Build(
+            new[] {
+                CreateDefinition(name: "custom_connectivity_probe"),
+                CreateDefinition(name: "custom_followup")
+            },
+            new IToolPack[] { new SyntheticGuidanceOverlayPack() });
+
+        Assert.True(catalog.TryGetEntry("custom_connectivity_probe", out var probeEntry));
+        Assert.Equal("customx", probeEntry.PackId);
+        Assert.True(probeEntry.IsPackPreferredProbeTool);
+        Assert.Equal(120, probeEntry.PackProbeHelperFreshnessWindowSeconds);
+
+        Assert.True(catalog.TryGetPackId("custom_connectivity_probe", out var packId));
+        Assert.Equal("customx", packId);
+
+        var byPack = catalog.GetByPackId("customx");
+        Assert.Contains(byPack, static entry => string.Equals(entry.ToolName, "custom_connectivity_probe", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(byPack, static entry => string.Equals(entry.ToolName, "custom_followup", StringComparison.OrdinalIgnoreCase));
+    }
+
     private static ToolDefinition CreateDefinition(
         string name,
         ToolExecutionContract? execution = null,
         ToolRoutingContract? routing = null,
+        ToolWriteGovernanceContract? writeGovernance = null,
         ToolSetupContract? setup = null,
         ToolHandoffContract? handoff = null,
         ToolRecoveryContract? recovery = null) {
@@ -744,6 +814,7 @@ public sealed class ToolOrchestrationCatalogTests {
             description: "test tool",
             execution: execution,
             routing: routing,
+            writeGovernance: writeGovernance,
             setup: setup,
             handoff: handoff,
             recovery: recovery);
@@ -811,6 +882,64 @@ public sealed class ToolOrchestrationCatalogTests {
                         MaxRetryAttempts = 2,
                         RetryableErrorCodes = new[] { "timeout" },
                         RecoveryToolNames = new[] { "custom_environment_discover" }
+                    }
+                }
+            };
+        }
+    }
+
+    private sealed class SyntheticGuidanceOverlayPack : IToolPack, IToolPackCatalogProvider, IToolPackGuidanceProvider {
+        public ToolPackDescriptor Descriptor { get; } = new() {
+            Id = "customx",
+            Name = "CustomX",
+            Tier = ToolCapabilityTier.ReadOnly,
+            Description = "Synthetic guidance overlay pack.",
+            SourceKind = "builtin"
+        };
+
+        public void Register(ToolRegistry registry) {
+            _ = registry;
+        }
+
+        public IReadOnlyList<ToolPackToolCatalogEntryModel> GetToolCatalog() {
+            return new[] {
+                new ToolPackToolCatalogEntryModel {
+                    Name = "custom_connectivity_probe",
+                    Description = "Probe custom runtime reachability."
+                },
+                new ToolPackToolCatalogEntryModel {
+                    Name = "custom_followup",
+                    Description = "Collect custom follow-up evidence."
+                }
+            };
+        }
+
+        public ToolPackInfoModel GetPackGuidance() {
+            return new ToolPackInfoModel {
+                Pack = "customx",
+                Engine = "CustomX",
+                Tools = new[] { "custom_connectivity_probe", "custom_followup" },
+                RuntimeCapabilities = new ToolPackRuntimeCapabilitiesModel {
+                    PreferredProbeTools = new[] { "custom_connectivity_probe" },
+                    ProbeHelperFreshnessWindowSeconds = 120,
+                    SetupHelperFreshnessWindowSeconds = 600,
+                    RecipeHelperFreshnessWindowSeconds = 300
+                },
+                RecommendedRecipes = new[] {
+                    new ToolPackRecipeModel {
+                        Id = "custom_runtime_triage",
+                        Summary = "Stabilize the remote endpoint before deeper follow-up.",
+                        WhenToUse = "Use when runtime reachability is still uncertain.",
+                        Steps = new[] {
+                            new ToolPackFlowStepModel {
+                                Goal = "Probe first",
+                                SuggestedTools = new[] { "custom_connectivity_probe" }
+                            },
+                            new ToolPackFlowStepModel {
+                                Goal = "Follow up",
+                                SuggestedTools = new[] { "custom_followup" }
+                            }
+                        }
                     }
                 }
             };

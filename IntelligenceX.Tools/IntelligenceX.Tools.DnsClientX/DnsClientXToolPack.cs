@@ -22,12 +22,14 @@ public sealed class DnsClientXToolPack : IToolPack, IToolPackCatalogProvider {
     public ToolPackDescriptor Descriptor { get; } = new() {
         Id = "dnsclientx",
         Name = "DnsClientX",
+        Aliases = new[] { "dns_client_x" },
         Tier = ToolCapabilityTier.ReadOnly,
         IsDangerous = false,
         Description = "Open-source DNS query and connectivity diagnostics.",
         SourceKind = "open_source",
         EngineId = "dnsclientx",
-        CapabilityTags = new[] { "dns", "network", "remote_analysis" }
+        Category = "dns",
+        CapabilityTags = new[] { "dns", "network", ToolPackCapabilityTags.RemoteAnalysis }
     };
 
     /// <inheritdoc />

@@ -80,7 +80,11 @@ public sealed class HostCapabilitySnapshotDiagnosticsTests {
         Assert.Contains("ad-ops", snapshot.Skills, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("remote_reachability=remote_capable", summary, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("autonomy remote-capable 2, cross-pack 2", summary, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("governed-write 1", summary, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(3, snapshot.Autonomy!.LocalCapableToolCount);
+        Assert.Equal(1, snapshot.Autonomy.GovernedWriteToolCount);
         Assert.Contains(highlights, static line => line.Contains("enabled packs: active_directory, eventlog, system", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(highlights, static line => line.Contains("local-capable packs: active_directory, eventlog, system", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(
             highlights,
             static line => line.Contains("enabled engines:", StringComparison.OrdinalIgnoreCase)
@@ -94,6 +98,7 @@ public sealed class HostCapabilitySnapshotDiagnosticsTests {
                 && line.Contains("host_inventory", StringComparison.OrdinalIgnoreCase)
                 && line.Contains("remote_analysis", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(highlights, static line => line.Contains("skills: ad-ops, event-triage", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(highlights, static line => line.Contains("governed-write packs: active_directory", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(highlights, static line => line.Contains("cross-pack targets: system", StringComparison.OrdinalIgnoreCase));
     }
 
@@ -417,6 +422,8 @@ public sealed class HostCapabilitySnapshotDiagnosticsTests {
         Assert.Equal(entry.IsPackInfoTool, dto.IsPackInfoTool);
         Assert.Equal(entry.IsEnvironmentDiscoverTool, dto.IsEnvironmentDiscoverTool);
         Assert.Equal(entry.IsWriteCapable, dto.IsWriteCapable);
+        Assert.Equal(entry.RequiresWriteGovernance, dto.RequiresWriteGovernance);
+        Assert.Equal(string.IsNullOrWhiteSpace(entry.WriteGovernanceContractId) ? null : entry.WriteGovernanceContractId, dto.WriteGovernanceContractId);
         Assert.Equal(entry.RequiresAuthentication, dto.RequiresAuthentication);
         Assert.Equal(string.IsNullOrWhiteSpace(entry.AuthenticationContractId) ? null : entry.AuthenticationContractId, dto.AuthenticationContractId);
         Assert.Equal(entry.AuthenticationArguments, dto.AuthenticationArguments);

@@ -88,28 +88,58 @@ public sealed class ToolCommonCollectionGuardrailTests {
                 Description = "System info"
             }
         };
+        var recipeSteps = new List<ToolPackFlowStepModel> {
+            ToolPackGuidance.FlowStep(" Discover scope ", new[] { " ad_environment_discover " })
+        };
+        var recipeVerificationTools = new List<string> { " ad_object_get " };
+        var recipes = new List<ToolPackRecipeModel> {
+            new() {
+                Id = " joiner_onboarding ",
+                Summary = " Create a user ",
+                Steps = recipeSteps,
+                VerificationTools = recipeVerificationTools
+            }
+        };
         var packInfo = new ToolPackInfoModel {
             Pack = "system",
             Engine = "ComputerX",
+            RecommendedRecipes = recipes,
             ToolCatalog = toolCatalog
         };
 
+        var localCapableToolNames = new List<string> { "system_info" };
         var remoteCapableToolNames = new List<string> { "system_info" };
         var targetScopedToolNames = new List<string> { "system_info" };
         var remoteHostTargetingToolNames = new List<string> { "system_info" };
         var environmentDiscoverToolNames = new List<string> { "system_pack_info" };
         var writeCapableToolNames = new List<string> { "ad_user_lifecycle" };
+        var governedWriteToolNames = new List<string> { "ad_user_lifecycle" };
         var authenticationRequiredToolNames = new List<string> { "email_imap_list" };
         var probeCapableToolNames = new List<string> { "email_imap_probe" };
         var autonomySummary = new ToolPackAutonomySummaryModel {
+            LocalCapableToolNames = localCapableToolNames,
             RemoteCapableToolNames = remoteCapableToolNames,
             TargetScopedToolNames = targetScopedToolNames,
             RemoteHostTargetingToolNames = remoteHostTargetingToolNames,
             EnvironmentDiscoverToolNames = environmentDiscoverToolNames
             ,
             WriteCapableToolNames = writeCapableToolNames,
+            GovernedWriteToolNames = governedWriteToolNames,
             AuthenticationRequiredToolNames = authenticationRequiredToolNames,
             ProbeCapableToolNames = probeCapableToolNames
+        };
+
+        var runtimeTargetScopeArguments = new List<string> { "domain_controller" };
+        var runtimeRemoteHostArguments = new List<string> { "computer_name" };
+        var runtimePreferredEntryTools = new List<string> { "ad_environment_discover" };
+        var runtimePreferredProbeTools = new List<string> { "ad_monitoring_probe_catalog" };
+        var runtimePrerequisites = new List<string> { "monitoring directory must be allowed" };
+        var runtimeCapabilities = new ToolPackRuntimeCapabilitiesModel {
+            TargetScopeArguments = runtimeTargetScopeArguments,
+            RemoteHostArguments = runtimeRemoteHostArguments,
+            PreferredEntryTools = runtimePreferredEntryTools,
+            PreferredProbeTools = runtimePreferredProbeTools,
+            RuntimePrerequisites = runtimePrerequisites
         };
 
         return new[] {
@@ -235,6 +265,30 @@ public sealed class ToolCommonCollectionGuardrailTests {
 
             new GuardCase(
                 ModelType: typeof(ToolPackInfoModel),
+                PropertyName: nameof(ToolPackInfoModel.RecommendedRecipes),
+                Model: packInfo,
+                MutateSource: () => recipes.Add(new ToolPackRecipeModel {
+                    Id = "leaver_offboarding",
+                    Summary = "Added later"
+                }),
+                AssertSnapshot: static value => {
+                    var list = Assert.IsAssignableFrom<IReadOnlyList<ToolPackRecipeModel>>(value);
+                    var recipe = Assert.Single(list);
+                    Assert.Equal("joiner_onboarding", recipe.Id);
+                },
+                AssertImmutable: static value => AssertReadOnlyList(
+                    value,
+                    addValue: new ToolPackRecipeModel {
+                        Id = "x",
+                        Summary = "x"
+                    },
+                    replaceValue: new ToolPackRecipeModel {
+                        Id = "y",
+                        Summary = "y"
+                    })),
+
+            new GuardCase(
+                ModelType: typeof(ToolPackInfoModel),
                 PropertyName: nameof(ToolPackInfoModel.ToolCatalog),
                 Model: packInfo,
                 MutateSource: () => toolCatalog.Add(new ToolPackToolCatalogEntryModel {
@@ -256,6 +310,43 @@ public sealed class ToolCommonCollectionGuardrailTests {
                         Name = "y",
                         Description = "y"
                     })),
+
+            new GuardCase(
+                ModelType: typeof(ToolPackRecipeModel),
+                PropertyName: nameof(ToolPackRecipeModel.Steps),
+                Model: recipes[0],
+                MutateSource: () => recipeSteps.Add(ToolPackGuidance.FlowStep("Apply write", new[] { "ad_user_lifecycle" })),
+                AssertSnapshot: static value => {
+                    var list = Assert.IsAssignableFrom<IReadOnlyList<ToolPackFlowStepModel>>(value);
+                    var step = Assert.Single(list);
+                    Assert.Equal("Discover scope", step.Goal);
+                },
+                AssertImmutable: static value => AssertReadOnlyList(
+                    value,
+                    addValue: ToolPackGuidance.FlowStep("x"),
+                    replaceValue: ToolPackGuidance.FlowStep("y"))),
+
+            new GuardCase(
+                ModelType: typeof(ToolPackRecipeModel),
+                PropertyName: nameof(ToolPackRecipeModel.VerificationTools),
+                Model: recipes[0],
+                MutateSource: () => recipeVerificationTools.Add("ad_object_resolve"),
+                AssertSnapshot: static value => {
+                    var list = Assert.IsAssignableFrom<IReadOnlyList<string>>(value);
+                    Assert.Equal(new[] { "ad_object_get" }, list);
+                },
+                AssertImmutable: static value => AssertReadOnlyList(value, addValue: "x", replaceValue: "y")),
+
+            new GuardCase(
+                ModelType: typeof(ToolPackAutonomySummaryModel),
+                PropertyName: nameof(ToolPackAutonomySummaryModel.LocalCapableToolNames),
+                Model: autonomySummary,
+                MutateSource: () => localCapableToolNames.Add("system_metrics_summary"),
+                AssertSnapshot: static value => {
+                    var list = Assert.IsAssignableFrom<IReadOnlyList<string>>(value);
+                    Assert.Equal(new[] { "system_info" }, list);
+                },
+                AssertImmutable: static value => AssertReadOnlyList(value, addValue: "x", replaceValue: "y")),
 
             new GuardCase(
                 ModelType: typeof(ToolPackAutonomySummaryModel),
@@ -314,6 +405,17 @@ public sealed class ToolCommonCollectionGuardrailTests {
 
             new GuardCase(
                 ModelType: typeof(ToolPackAutonomySummaryModel),
+                PropertyName: nameof(ToolPackAutonomySummaryModel.GovernedWriteToolNames),
+                Model: autonomySummary,
+                MutateSource: () => governedWriteToolNames.Add("ad_group_lifecycle"),
+                AssertSnapshot: static value => {
+                    var list = Assert.IsAssignableFrom<IReadOnlyList<string>>(value);
+                    Assert.Equal(new[] { "ad_user_lifecycle" }, list);
+                },
+                AssertImmutable: static value => AssertReadOnlyList(value, addValue: "x", replaceValue: "y")),
+
+            new GuardCase(
+                ModelType: typeof(ToolPackAutonomySummaryModel),
                 PropertyName: nameof(ToolPackAutonomySummaryModel.AuthenticationRequiredToolNames),
                 Model: autonomySummary,
                 MutateSource: () => authenticationRequiredToolNames.Add("email_smtp_send"),
@@ -331,6 +433,61 @@ public sealed class ToolCommonCollectionGuardrailTests {
                 AssertSnapshot: static value => {
                     var list = Assert.IsAssignableFrom<IReadOnlyList<string>>(value);
                     Assert.Equal(new[] { "email_imap_probe" }, list);
+                },
+                AssertImmutable: static value => AssertReadOnlyList(value, addValue: "x", replaceValue: "y")),
+
+            new GuardCase(
+                ModelType: typeof(ToolPackRuntimeCapabilitiesModel),
+                PropertyName: nameof(ToolPackRuntimeCapabilitiesModel.TargetScopeArguments),
+                Model: runtimeCapabilities,
+                MutateSource: () => runtimeTargetScopeArguments.Add("search_base_dn"),
+                AssertSnapshot: static value => {
+                    var list = Assert.IsAssignableFrom<IReadOnlyList<string>>(value);
+                    Assert.Equal(new[] { "domain_controller" }, list);
+                },
+                AssertImmutable: static value => AssertReadOnlyList(value, addValue: "x", replaceValue: "y")),
+
+            new GuardCase(
+                ModelType: typeof(ToolPackRuntimeCapabilitiesModel),
+                PropertyName: nameof(ToolPackRuntimeCapabilitiesModel.RemoteHostArguments),
+                Model: runtimeCapabilities,
+                MutateSource: () => runtimeRemoteHostArguments.Add("machine_name"),
+                AssertSnapshot: static value => {
+                    var list = Assert.IsAssignableFrom<IReadOnlyList<string>>(value);
+                    Assert.Equal(new[] { "computer_name" }, list);
+                },
+                AssertImmutable: static value => AssertReadOnlyList(value, addValue: "x", replaceValue: "y")),
+
+            new GuardCase(
+                ModelType: typeof(ToolPackRuntimeCapabilitiesModel),
+                PropertyName: nameof(ToolPackRuntimeCapabilitiesModel.PreferredEntryTools),
+                Model: runtimeCapabilities,
+                MutateSource: () => runtimePreferredEntryTools.Add("ad_scope_discovery"),
+                AssertSnapshot: static value => {
+                    var list = Assert.IsAssignableFrom<IReadOnlyList<string>>(value);
+                    Assert.Equal(new[] { "ad_environment_discover" }, list);
+                },
+                AssertImmutable: static value => AssertReadOnlyList(value, addValue: "x", replaceValue: "y")),
+
+            new GuardCase(
+                ModelType: typeof(ToolPackRuntimeCapabilitiesModel),
+                PropertyName: nameof(ToolPackRuntimeCapabilitiesModel.PreferredProbeTools),
+                Model: runtimeCapabilities,
+                MutateSource: () => runtimePreferredProbeTools.Add("ad_monitoring_probe_run"),
+                AssertSnapshot: static value => {
+                    var list = Assert.IsAssignableFrom<IReadOnlyList<string>>(value);
+                    Assert.Equal(new[] { "ad_monitoring_probe_catalog" }, list);
+                },
+                AssertImmutable: static value => AssertReadOnlyList(value, addValue: "x", replaceValue: "y")),
+
+            new GuardCase(
+                ModelType: typeof(ToolPackRuntimeCapabilitiesModel),
+                PropertyName: nameof(ToolPackRuntimeCapabilitiesModel.RuntimePrerequisites),
+                Model: runtimeCapabilities,
+                MutateSource: () => runtimePrerequisites.Add("host reachability required"),
+                AssertSnapshot: static value => {
+                    var list = Assert.IsAssignableFrom<IReadOnlyList<string>>(value);
+                    Assert.Equal(new[] { "monitoring directory must be allowed" }, list);
                 },
                 AssertImmutable: static value => AssertReadOnlyList(value, addValue: "x", replaceValue: "y"))
         };

@@ -162,6 +162,51 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void BuildHostPackPreflightCalls_UsesDeclaredSetupAndProbeHelperTools() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var registry = new ToolRegistry();
+        registry.Register(new PreflightStubTool(
+            "customx_pack_probe",
+            CreateRoutingContract("eventlog", ToolRoutingTaxonomy.RolePackInfo)));
+        registry.Register(new PreflightStubTool(
+            "customx_live_query",
+            CreateRoutingContract("eventlog", ToolRoutingTaxonomy.RoleOperational),
+            parameters: CreateRequiredSchema("profile_id", "auth_probe_id"),
+            authentication: new ToolAuthenticationContract {
+                IsAuthenticationAware = true,
+                RequiresAuthentication = true,
+                Mode = ToolAuthenticationMode.ProfileReference,
+                ProfileIdArgumentName = "profile_id",
+                SupportsConnectivityProbe = true,
+                ProbeToolName = "customx_connectivity_probe"
+            },
+            setup: new ToolSetupContract {
+                IsSetupAware = true,
+                SetupToolName = "customx_runtime_profile_validate"
+            }));
+        registry.Register(new PreflightStubTool(
+            "customx_runtime_profile_validate",
+            CreateRoutingContract("eventlog", ToolRoutingTaxonomy.RoleDiagnostic)));
+        registry.Register(new PreflightStubTool(
+            "customx_connectivity_probe",
+            CreateRoutingContract("eventlog", ToolRoutingTaxonomy.RoleDiagnostic)));
+        SetSessionRegistry(session, registry);
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(registry.GetDefinitions()));
+
+        var extractedCalls = new List<ToolCall> {
+            new("call_operational_4setup", "customx_live_query", "{}", new JsonObject(StringComparer.Ordinal), new JsonObject(StringComparer.Ordinal))
+        };
+
+        var result = BuildHostPackPreflightCallsMethod.Invoke(session, new object?[] { "thread-4setup", registry.GetDefinitions(), extractedCalls });
+        var preflightCalls = Assert.IsAssignableFrom<IReadOnlyList<ToolCall>>(result);
+
+        Assert.Equal(3, preflightCalls.Count);
+        Assert.Equal("customx_pack_probe", preflightCalls[0].Name);
+        Assert.Contains(preflightCalls.Skip(1), call => string.Equals(call.Name, "customx_runtime_profile_validate", StringComparison.Ordinal));
+        Assert.Contains(preflightCalls.Skip(1), call => string.Equals(call.Name, "customx_connectivity_probe", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void BuildHostPackPreflightCalls_DoesNotDuplicateExplicitRecoveryHelperCallsInSameRound() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var registry = new ToolRegistry();
@@ -190,6 +235,86 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         var preflightCall = Assert.Single(preflightCalls);
         Assert.Equal("customx_pack_probe", preflightCall.Name);
+    }
+
+    [Fact]
+    public void BuildHostPackPreflightCalls_DoesNotDuplicateExplicitSetupAndProbeHelperCallsInSameRound() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var registry = new ToolRegistry();
+        registry.Register(new PreflightStubTool(
+            "customx_pack_probe",
+            CreateRoutingContract("eventlog", ToolRoutingTaxonomy.RolePackInfo)));
+        registry.Register(new PreflightStubTool(
+            "customx_live_query",
+            CreateRoutingContract("eventlog", ToolRoutingTaxonomy.RoleOperational),
+            parameters: CreateRequiredSchema("profile_id", "auth_probe_id"),
+            authentication: new ToolAuthenticationContract {
+                IsAuthenticationAware = true,
+                RequiresAuthentication = true,
+                Mode = ToolAuthenticationMode.ProfileReference,
+                ProfileIdArgumentName = "profile_id",
+                SupportsConnectivityProbe = true,
+                ProbeToolName = "customx_connectivity_probe"
+            },
+            setup: new ToolSetupContract {
+                IsSetupAware = true,
+                SetupToolName = "customx_runtime_profile_validate"
+            }));
+        registry.Register(new PreflightStubTool(
+            "customx_runtime_profile_validate",
+            CreateRoutingContract("eventlog", ToolRoutingTaxonomy.RoleDiagnostic)));
+        registry.Register(new PreflightStubTool(
+            "customx_connectivity_probe",
+            CreateRoutingContract("eventlog", ToolRoutingTaxonomy.RoleDiagnostic)));
+        SetSessionRegistry(session, registry);
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(registry.GetDefinitions()));
+
+        var extractedCalls = new List<ToolCall> {
+            new("call_operational_4helper", "customx_live_query", "{}", new JsonObject(StringComparer.Ordinal), new JsonObject(StringComparer.Ordinal)),
+            new("call_setup_4helper", "customx_runtime_profile_validate", "{}", new JsonObject(StringComparer.Ordinal), new JsonObject(StringComparer.Ordinal)),
+            new("call_probe_4helper", "customx_connectivity_probe", "{}", new JsonObject(StringComparer.Ordinal), new JsonObject(StringComparer.Ordinal))
+        };
+
+        var result = BuildHostPackPreflightCallsMethod.Invoke(session, new object?[] { "thread-4helper", registry.GetDefinitions(), extractedCalls });
+        var preflightCalls = Assert.IsAssignableFrom<IReadOnlyList<ToolCall>>(result);
+
+        var preflightCall = Assert.Single(preflightCalls);
+        Assert.Equal("customx_pack_probe", preflightCall.Name);
+    }
+
+    [Fact]
+    public void BuildHostPackPreflightCalls_UsesPackOwnedPreferredProbeHelperWithoutExplicitContractProbe() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var registry = new ToolRegistry();
+        registry.Register(new PreflightStubTool(
+            "customx_pack_probe",
+            CreateRoutingContract("eventlog", ToolRoutingTaxonomy.RolePackInfo)));
+        registry.Register(new PreflightStubTool(
+            "customx_live_query",
+            CreateRoutingContract("eventlog", ToolRoutingTaxonomy.RoleOperational)));
+        registry.Register(new PreflightStubTool(
+            "customx_connectivity_probe",
+            CreateRoutingContract("eventlog", ToolRoutingTaxonomy.RoleDiagnostic)));
+        SetSessionRegistry(session, registry);
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(
+            registry.GetDefinitions(),
+            new IToolPack[] { new PreferredProbeGuidancePack() }));
+
+        var extractedCalls = new List<ToolCall> {
+            new(
+                "call_operational_preferred_probe",
+                "customx_live_query",
+                "{}",
+                new JsonObject(StringComparer.Ordinal),
+                new JsonObject(StringComparer.Ordinal))
+        };
+
+        var result = BuildHostPackPreflightCallsMethod.Invoke(session, new object?[] { "thread-preferred-probe", registry.GetDefinitions(), extractedCalls });
+        var preflightCalls = Assert.IsAssignableFrom<IReadOnlyList<ToolCall>>(result);
+
+        Assert.Equal(2, preflightCalls.Count);
+        Assert.Equal("customx_pack_probe", preflightCalls[0].Name);
+        Assert.Equal("customx_connectivity_probe", preflightCalls[1].Name);
     }
 
     [Fact]
@@ -236,19 +361,42 @@ public sealed partial class ChatServiceRoutingTrimTests {
         };
     }
 
-    private static JsonObject CreateRequiredSchema(string requiredPropertyName) {
+    private static JsonObject CreateRequiredSchema(params string[] requiredPropertyNames) {
+        var normalizedPropertyNames = (requiredPropertyNames ?? Array.Empty<string>())
+            .Where(static name => !string.IsNullOrWhiteSpace(name))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        var properties = new JsonObject(StringComparer.Ordinal);
+        var required = new JsonArray();
+        foreach (var propertyName in normalizedPropertyNames) {
+            properties.Add(propertyName, new JsonObject(StringComparer.Ordinal).Add("type", "string"));
+            required.Add(propertyName);
+        }
+
         return new JsonObject(StringComparer.Ordinal)
             .Add("type", "object")
-            .Add("properties", new JsonObject(StringComparer.Ordinal)
-                .Add(requiredPropertyName, new JsonObject(StringComparer.Ordinal).Add("type", "string")))
-            .Add("required", new JsonArray().Add(requiredPropertyName));
+            .Add("properties", properties)
+            .Add("required", required);
     }
 
     private sealed class PreflightStubTool : ITool {
         private readonly Func<JsonObject?, CancellationToken, Task<string>> _invoke;
 
-        public PreflightStubTool(string name, ToolRoutingContract routing, JsonObject? parameters = null, ToolRecoveryContract? recovery = null) {
-            Definition = new ToolDefinition(name, description: "preflight stub", parameters: parameters, routing: routing, recovery: recovery);
+        public PreflightStubTool(
+            string name,
+            ToolRoutingContract routing,
+            JsonObject? parameters = null,
+            ToolAuthenticationContract? authentication = null,
+            ToolSetupContract? setup = null,
+            ToolRecoveryContract? recovery = null) {
+            Definition = new ToolDefinition(
+                name,
+                description: "preflight stub",
+                parameters: parameters,
+                routing: routing,
+                authentication: authentication,
+                setup: setup,
+                recovery: recovery);
             _invoke = static (_, _) => Task.FromResult("""{"ok":true}""");
         }
 
@@ -290,6 +438,27 @@ public sealed partial class ChatServiceRoutingTrimTests {
                         Role = ToolRoutingTaxonomy.RoleOperational,
                         Source = ToolRoutingTaxonomy.SourceExplicit
                     }
+                }
+            };
+        }
+    }
+
+    private sealed class PreferredProbeGuidancePack : IToolPack, IToolPackGuidanceProvider {
+        public ToolPackDescriptor Descriptor { get; } = new() {
+            Id = "eventlog",
+            Name = "EventLog",
+            Tier = ToolCapabilityTier.ReadOnly,
+            Description = "Synthetic preferred probe guidance."
+        };
+
+        public void Register(ToolRegistry registry) {
+            _ = registry;
+        }
+
+        public ToolPackInfoModel GetPackGuidance() {
+            return new ToolPackInfoModel {
+                RuntimeCapabilities = new ToolPackRuntimeCapabilitiesModel {
+                    PreferredProbeTools = new[] { "customx_connectivity_probe" }
                 }
             };
         }

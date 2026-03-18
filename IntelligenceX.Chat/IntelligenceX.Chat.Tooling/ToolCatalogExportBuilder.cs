@@ -181,6 +181,10 @@ public static class ToolCatalogExportBuilder {
             IsPackInfoTool = orchestrationEntry?.IsPackInfoTool == true,
             IsEnvironmentDiscoverTool = orchestrationEntry?.IsEnvironmentDiscoverTool == true,
             IsWriteCapable = orchestrationEntry?.IsWriteCapable ?? definition.WriteGovernance?.IsWriteCapable == true,
+            RequiresWriteGovernance = orchestrationEntry?.RequiresWriteGovernance ?? definition.WriteGovernance?.RequiresGovernanceAuthorization == true,
+            WriteGovernanceContractId = string.IsNullOrWhiteSpace(orchestrationEntry?.WriteGovernanceContractId)
+                ? (string.IsNullOrWhiteSpace(definition.WriteGovernance?.GovernanceContractId) ? null : definition.WriteGovernance!.GovernanceContractId)
+                : orchestrationEntry!.WriteGovernanceContractId,
             RequiresAuthentication = orchestrationEntry?.RequiresAuthentication == true,
             AuthenticationContractId = string.IsNullOrWhiteSpace(orchestrationEntry?.AuthenticationContractId) ? null : orchestrationEntry!.AuthenticationContractId,
             AuthenticationArguments = orchestrationEntry?.AuthenticationArguments?.ToArray() ?? Array.Empty<string>(),

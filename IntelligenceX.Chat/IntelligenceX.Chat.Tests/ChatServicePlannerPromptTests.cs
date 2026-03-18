@@ -101,7 +101,7 @@ public sealed class ChatServicePlannerPromptTests {
     }
 
     [Fact]
-    public void BuildModelPlannerPrompt_IncludesPackEngineAndDeclaredPackTraits() {
+    public void BuildModelPlannerPrompt_IncludesPackEngineAliasesAndDeclaredPackTraits() {
         var definitions = new List<ToolDefinition> {
             new(
                 "ad_gpo_health",
@@ -125,14 +125,51 @@ public sealed class ChatServicePlannerPromptTests {
                     Name = "AD Playground",
                     SourceKind = "builtin",
                     EngineId = "ADPlayground",
+                    Aliases = new[] { "ad", "adplayground" },
                     CapabilityTags = new[] { "Remote Analysis", "Directory", "GPO" },
                     Enabled = true
                 }
             });
 
         Assert.Contains("pack: active_directory", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("pack_name: AD Playground", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("pack_aliases: ad, adplayground", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("engine: adplayground", prompt, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("pack_traits: directory, gpo, remote_analysis", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("pack_traits: remote_analysis, directory, gpo", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildModelPlannerPrompt_PrioritizesPackScopeTraitsAheadOfDomainLabels() {
+        var definitions = new List<ToolDefinition> {
+            new(
+                "system_inventory_summary",
+                "Inspect a host inventory snapshot.",
+                ToolSchema.Object(("computer_name", ToolSchema.String("Host name."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "System",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                })
+        };
+
+        var prompt = BuildModelPlannerPrompt(
+            "check cpu and memory on the same server",
+            definitions,
+            4,
+            packAvailability: new[] {
+                new ToolPackAvailabilityInfo {
+                    Id = "system",
+                    Name = "ComputerX",
+                    SourceKind = "builtin",
+                    EngineId = "computerx",
+                    Aliases = new[] { "computerx" },
+                    CapabilityTags = new[] { "CPU", "Remote Analysis", "Local Analysis" },
+                    Enabled = true
+                }
+            });
+
+        Assert.Contains("pack_traits: local_analysis, remote_analysis, cpu", prompt, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -669,6 +706,45 @@ public sealed class ChatServicePlannerPromptTests {
         Assert.Contains("inspect the custom endpoint state through pack-owned metadata", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("event logs", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("CPU, memory, and disk", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildModelPlannerPrompt_UsesPackOwnedPreferredProbeAndRecipeHintsWithoutChatHardcoding() {
+        var definitions = new List<ToolDefinition> {
+            new(
+                "custom_connectivity_probe",
+                "Probe custom runtime state.",
+                ToolSchema.Object(("endpoint", ToolSchema.String("Target endpoint."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "customx",
+                    Role = ToolRoutingTaxonomy.RoleDiagnostic
+                }),
+            new(
+                "custom_followup",
+                "Collect custom follow-up evidence.",
+                ToolSchema.Object(("endpoint", ToolSchema.String("Target endpoint."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "customx",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                })
+        };
+        var orchestrationCatalog = ToolOrchestrationCatalog.Build(definitions, new IToolPack[] { new SyntheticRepresentativeExamplePack() });
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        session.SetToolOrchestrationCatalogForTesting(orchestrationCatalog);
+
+        var prompt = session.BuildModelPlannerPromptForTesting(
+            "inspect the remote custom endpoint",
+            definitions,
+            limit: 4);
+
+        Assert.Contains("Prefer pack-declared preferred probe tools", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("pack_probe: preferred", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("pack_recipes: custom_runtime_triage", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("adplayground", prompt, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -1548,6 +1624,42 @@ public sealed class ChatServicePlannerPromptTests {
     }
 
     [Fact]
+    public void BuildToolRoutingSearchText_UsesPackOwnedPreferredProbeAndRecipeHintsWithoutChatHardcoding() {
+        var definitions = new[] {
+            new ToolDefinition(
+                "custom_connectivity_probe",
+                "Probe custom runtime state.",
+                ToolSchema.Object(("target", ToolSchema.String("Target."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "customx",
+                    Role = ToolRoutingTaxonomy.RoleDiagnostic
+                }),
+            new ToolDefinition(
+                "custom_followup",
+                "Collect custom follow-up evidence.",
+                ToolSchema.Object(("target", ToolSchema.String("Target."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "customx",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                })
+        };
+        var orchestrationCatalog = ToolOrchestrationCatalog.Build(definitions, new IToolPack[] { new SyntheticRepresentativeExamplePack() });
+
+        var searchText = BuildToolRoutingSearchText(
+            definitions[0],
+            orchestrationCatalog: orchestrationCatalog);
+
+        Assert.Contains("preferred_probe_tool", searchText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("custom_runtime_triage", searchText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("stabilize the remote endpoint before deeper follow-up", searchText, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("eventviewerx", searchText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void TokenizeRoutingTokens_PreservesSeparatorAwarePackAliasTokensAndCompactVariants() {
         var result = TokenizeRoutingTokensMethod.Invoke(
             null,
@@ -2254,6 +2366,66 @@ public sealed class ChatServicePlannerPromptTests {
     }
 
     [Fact]
+    public void BuildModelPlannerCandidates_PrefersPackOwnedPreferredProbeToolsForRemoteFocusedPack() {
+        var definitions = new List<ToolDefinition>();
+        for (var i = 0; i < 80; i++) {
+            definitions.Add(new ToolDefinition(
+                $"generic_probe_{i:D2}",
+                "Collect generic inventory details.",
+                ToolSchema.Object(("target", ToolSchema.String("Target host."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "generic",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                }));
+        }
+
+        definitions.Add(new ToolDefinition(
+            "custom_connectivity_probe",
+            "Probe custom runtime state.",
+            ToolSchema.Object(("endpoint", ToolSchema.String("Target endpoint."))).NoAdditionalProperties(),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "customx",
+                Role = ToolRoutingTaxonomy.RoleDiagnostic
+            }));
+        definitions.Add(new ToolDefinition(
+            "custom_followup",
+            "Collect custom follow-up evidence.",
+            ToolSchema.Object(("endpoint", ToolSchema.String("Target endpoint."))).NoAdditionalProperties(),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "customx",
+                Role = ToolRoutingTaxonomy.RoleOperational
+            }));
+        var orchestrationCatalog = ToolOrchestrationCatalog.Build(definitions, new IToolPack[] { new SyntheticRepresentativeExamplePack() });
+
+        var selected = BuildModelPlannerCandidates(
+            definitions,
+            """
+            [Planner context]
+            ix:planner-context:v1
+            requires_live_execution: true
+            preferred_pack_ids: customx
+            allow_cached_evidence_reuse: false
+
+            continue on the same remote endpoint and stabilize reachability first
+            """,
+            4,
+            orchestrationCatalog);
+
+        Assert.InRange(selected.Count, 24, 24);
+        var probeIndex = selected.ToList().FindIndex(static tool => string.Equals(tool.Name, "custom_connectivity_probe", StringComparison.OrdinalIgnoreCase));
+        var followupIndex = selected.ToList().FindIndex(static tool => string.Equals(tool.Name, "custom_followup", StringComparison.OrdinalIgnoreCase));
+        Assert.True(probeIndex >= 0, "Expected the pack-owned preferred probe to be included.");
+        Assert.True(followupIndex >= 0, "Expected the pack follow-up tool to be included.");
+        Assert.True(probeIndex < followupIndex, "Expected the pack-owned preferred probe to rank ahead of the follow-up tool.");
+    }
+
+    [Fact]
     public void BuildModelPlannerCandidates_DerivesHandoffTargetsFromSourceToolsInPlannerContext() {
         var definitions = new List<ToolDefinition>();
         for (var i = 0; i < 80; i++) {
@@ -2662,6 +2834,63 @@ public sealed class ChatServicePlannerPromptTests {
     }
 
     [Fact]
+    public void EnsureMinimumToolSelection_BackfillsDeclaredSetupAndProbeHelpersBeforeGenericFallback() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var allDefinitions = new List<ToolDefinition> {
+            new(
+                "eventlog_live_query",
+                "Inspect live logs after runtime validation.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties(),
+                authentication: new ToolAuthenticationContract {
+                    IsAuthenticationAware = true,
+                    RequiresAuthentication = true,
+                    Mode = ToolAuthenticationMode.ProfileReference,
+                    ProfileIdArgumentName = "profile_id",
+                    SupportsConnectivityProbe = true,
+                    ProbeToolName = "eventlog_connectivity_probe"
+                },
+                setup: new ToolSetupContract {
+                    IsSetupAware = true,
+                    SetupToolName = "eventlog_runtime_profile_validate"
+                }),
+            new(
+                "eventlog_runtime_profile_validate",
+                "Validate event log runtime profile readiness.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties()),
+            new(
+                "eventlog_connectivity_probe",
+                "Probe remote event log connectivity.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties())
+        };
+        for (var i = 0; i < 9; i++) {
+            allDefinitions.Add(new ToolDefinition(
+                $"ix_probe_tool_{i:D2}",
+                "Generic diagnostic probe.",
+                ToolSchema.Object(("target", ToolSchema.String("Target host."))).NoAdditionalProperties()));
+        }
+
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(allDefinitions));
+
+        var initialSelected = new List<ToolDefinition> {
+            allDefinitions[0]
+        };
+
+        var selected = Assert.IsAssignableFrom<IReadOnlyList<ToolDefinition>>(EnsureMinimumToolSelectionMethod.Invoke(
+            session,
+            new object?[] {
+                "check live event logs on the same machine",
+                allDefinitions,
+                initialSelected,
+                4
+            }));
+
+        Assert.Equal(4, selected.Count);
+        Assert.Equal("eventlog_live_query", selected[0].Name);
+        Assert.Equal("eventlog_runtime_profile_validate", selected[1].Name);
+        Assert.Equal("eventlog_connectivity_probe", selected[2].Name);
+    }
+
+    [Fact]
     public void ResolveMaxCandidateToolsSetting_DefaultsCompatibleHttpToEight() {
         var result = ResolveMaxCandidateToolsSettingMethod.Invoke(null, new object?[] { null, OpenAITransportKind.CompatibleHttp });
         var value = Assert.IsType<int>(result);
@@ -2883,7 +3112,7 @@ public sealed class ChatServicePlannerPromptTests {
         return session.BuildModelPlannerPromptForTesting(requestText, definitions, limit);
     }
 
-    private sealed class SyntheticRepresentativeExamplePack : IToolPack, IToolPackCatalogProvider {
+    private sealed class SyntheticRepresentativeExamplePack : IToolPack, IToolPackCatalogProvider, IToolPackGuidanceProvider {
         public ToolPackDescriptor Descriptor { get; } = new() {
             Id = "customx",
             Name = "CustomX",
@@ -2902,6 +3131,44 @@ public sealed class ChatServicePlannerPromptTests {
                     Description = "Probe custom runtime state.",
                     RepresentativeExamples = new[] {
                         "inspect the custom endpoint state through pack-owned metadata"
+                    }
+                },
+                new ToolPackToolCatalogEntryModel {
+                    Name = "custom_connectivity_probe",
+                    Description = "Probe custom runtime reachability."
+                },
+                new ToolPackToolCatalogEntryModel {
+                    Name = "custom_followup",
+                    Description = "Collect custom follow-up evidence."
+                }
+            };
+        }
+
+        public ToolPackInfoModel GetPackGuidance() {
+            return new ToolPackInfoModel {
+                Pack = "customx",
+                Engine = "CustomX",
+                Tools = new[] { "custom_probe", "custom_connectivity_probe", "custom_followup" },
+                RuntimeCapabilities = new ToolPackRuntimeCapabilitiesModel {
+                    PreferredEntryTools = new[] { "custom_probe" },
+                    PreferredProbeTools = new[] { "custom_connectivity_probe" }
+                },
+                RecommendedRecipes = new[] {
+                    new ToolPackRecipeModel {
+                        Id = "custom_runtime_triage",
+                        Summary = "Stabilize the remote endpoint before deeper follow-up.",
+                        WhenToUse = "Use when the remote endpoint is known but reachability or runtime readiness is still uncertain.",
+                        Steps = new[] {
+                            new ToolPackFlowStepModel {
+                                Goal = "Probe the endpoint first",
+                                SuggestedTools = new[] { "custom_connectivity_probe" }
+                            },
+                            new ToolPackFlowStepModel {
+                                Goal = "Collect follow-up evidence",
+                                SuggestedTools = new[] { "custom_followup" }
+                            }
+                        },
+                        VerificationTools = new[] { "custom_followup" }
                     }
                 }
             };

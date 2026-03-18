@@ -47,6 +47,7 @@ public static class ToolRegistrySystemExtensions {
 
     private static IEnumerable<ITool> CreateCoreTools(SystemToolOptions options) {
         yield return new SystemPackInfoTool(options);
+        yield return new SystemConnectivityProbeTool(options);
         yield return new SystemInfoTool(options);
         yield return new SystemHardwareIdentityTool(options);
         yield return new SystemWhoAmITool(options);

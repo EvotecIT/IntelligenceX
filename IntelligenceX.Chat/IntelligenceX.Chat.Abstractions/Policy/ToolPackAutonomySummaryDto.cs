@@ -9,6 +9,14 @@ public sealed record ToolPackAutonomySummaryDto {
     /// </summary>
     public int TotalTools { get; init; }
     /// <summary>
+    /// Number of tools that can execute in the local runtime.
+    /// </summary>
+    public int LocalCapableTools { get; init; }
+    /// <summary>
+    /// Local-capable tool names.
+    /// </summary>
+    public string[] LocalCapableToolNames { get; init; } = [];
+    /// <summary>
     /// Number of tools that can operate locally or remotely.
     /// </summary>
     public int RemoteCapableTools { get; init; }
@@ -72,6 +80,14 @@ public sealed record ToolPackAutonomySummaryDto {
     /// Write-capable tool names.
     /// </summary>
     public string[] WriteCapableToolNames { get; init; } = [];
+    /// <summary>
+    /// Number of tools that require explicit write governance.
+    /// </summary>
+    public int GovernedWriteTools { get; init; }
+    /// <summary>
+    /// Governed-write tool names.
+    /// </summary>
+    public string[] GovernedWriteToolNames { get; init; } = [];
     /// <summary>
     /// Number of tools that require authentication.
     /// </summary>

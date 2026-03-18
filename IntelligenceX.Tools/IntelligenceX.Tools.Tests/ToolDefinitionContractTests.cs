@@ -106,6 +106,8 @@ public class ToolDefinitionContractTests {
     [Fact]
     public void HighPriorityTools_ShouldKeepExplicitSelectionMetadataOverrides() {
         var required = new[] {
+            "eventlog_connectivity_probe",
+            "system_connectivity_probe",
             "system_info",
             "ad_search",
             "ad_object_resolve",
@@ -113,6 +115,7 @@ public class ToolDefinitionContractTests {
             "ad_user_lifecycle",
             "ad_computer_lifecycle",
             "ad_group_lifecycle",
+            "ad_ou_lifecycle",
             "powershell_run",
             "email_smtp_send"
         };
@@ -495,6 +498,7 @@ public class ToolDefinitionContractTests {
             "ad_stale_accounts",
             "ad_spn_stats",
             "eventlog_pack_info",
+            "eventlog_connectivity_probe",
             "eventlog_named_events_catalog",
             "eventlog_named_events_query",
             "eventlog_timeline_explain",
@@ -588,6 +592,7 @@ public class ToolDefinitionContractTests {
         var definitionsByName = registry.GetDefinitions()
             .ToDictionary(static definition => definition.Name, StringComparer.OrdinalIgnoreCase);
 
+        AssertRoutingRole(definitionsByName, "eventlog_connectivity_probe", ToolRoutingTaxonomy.RoleDiagnostic);
         AssertRoutingRole(definitionsByName, "eventlog_evtx_find", ToolRoutingTaxonomy.RoleResolver);
         AssertRoutingRole(definitionsByName, "eventlog_evtx_security_summary", ToolRoutingTaxonomy.RoleResolver);
         AssertRoutingRole(definitionsByName, "eventlog_evtx_query", ToolRoutingTaxonomy.RoleResolver);
@@ -1771,7 +1776,7 @@ public class ToolDefinitionContractTests {
             eventLogSetup.SetupToolName,
             EventLogContractCatalog.CreateSetup("eventlog_named_events_query")!.SetupToolName);
         Assert.Equal(
-            "eventlog_channels_list",
+            "eventlog_connectivity_probe",
             EventLogContractCatalog.CreateSetup("eventlog_live_query")!.SetupToolName);
         Assert.Null(EventLogContractCatalog.CreateSetup("eventlog_pack_info"));
 
@@ -1797,17 +1802,18 @@ public class ToolDefinitionContractTests {
 
         var eventLogRecovery = EventLogContractCatalog.CreateRecovery("eventlog_timeline_query");
         Assert.True(eventLogRecovery!.SupportsTransientRetry);
-        Assert.Equal(new[] { "eventlog_channels_list" }, eventLogRecovery.RecoveryToolNames);
+        Assert.Equal(new[] { "eventlog_connectivity_probe", "eventlog_channels_list" }, eventLogRecovery.RecoveryToolNames);
         Assert.Null(EventLogContractCatalog.CreateRecovery("eventlog_pack_info"));
 
         var systemSetup = SystemContractCatalog.CreateRemoteHostAccessSetup();
-        Assert.Equal("system_info", systemSetup.SetupToolName);
+        Assert.Equal("system_connectivity_probe", systemSetup.SetupToolName);
         Assert.Equal("system_host_access", Assert.Single(systemSetup.Requirements).RequirementId);
         Assert.Null(SystemContractCatalog.CreateSetup("system_pack_info"));
 
         var systemRecovery = SystemContractCatalog.CreateRecovery(supportsAlternateEngines: true);
         Assert.True(systemRecovery.SupportsAlternateEngines);
         Assert.Equal(new[] { "cim", "wmi" }, systemRecovery.AlternateEngineIds);
+        Assert.Equal(new[] { "system_connectivity_probe", "system_info" }, systemRecovery.RecoveryToolNames);
         Assert.Null(SystemContractCatalog.CreateRecovery("system_pack_info", parameters: null));
         Assert.Null(SystemContractCatalog.CreateHandoff("system_pack_info", parameters: null));
 
@@ -2497,6 +2503,37 @@ public class ToolDefinitionContractTests {
         Assert.Equal("active_directory_lifecycle", routing.PackId, ignoreCase: true);
         Assert.Contains("membership", updated.Tags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("group_account", updated.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Equal("ad_environment_discover", setup.SetupToolName, ignoreCase: true);
+        Assert.False(recovery.SupportsTransientRetry);
+    }
+
+    [Fact]
+    public void ActiveDirectoryLifecycleRoutingCatalog_ShouldApplyExplicitSelectionMetadataForOuLifecycle() {
+        var updated = ApplyInternalToolContract(
+            typeof(AdLifecyclePackInfoTool),
+            "IntelligenceX.Tools.ADPlayground.ActiveDirectoryLifecyclePackContractCatalog",
+            new ToolDefinition(
+                name: "ad_ou_lifecycle",
+                description: "AD OU lifecycle",
+                parameters: ToolSchema.Object(
+                        ("operation", ToolSchema.String().Enum("create", "move")),
+                        ("identity", ToolSchema.String()),
+                        ("apply", ToolSchema.Boolean()))
+                    .NoAdditionalProperties(),
+                writeGovernance: new ToolWriteGovernanceContract {
+                    IsWriteCapable = true
+                }));
+        var routing = Assert.IsType<ToolRoutingContract>(updated.Routing);
+        var setup = Assert.IsType<ToolSetupContract>(updated.Setup);
+        var recovery = Assert.IsType<ToolRecoveryContract>(updated.Recovery);
+
+        Assert.Equal("directory", routing.Scope, ignoreCase: true);
+        Assert.Equal("write", routing.Operation, ignoreCase: true);
+        Assert.Equal("organizational_unit", routing.Entity, ignoreCase: true);
+        Assert.Equal(ToolRoutingTaxonomy.RiskHigh, routing.Risk, ignoreCase: true);
+        Assert.Equal("active_directory_lifecycle", routing.PackId, ignoreCase: true);
+        Assert.Contains("organizational_unit", updated.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("quarantine_ou", updated.Tags, StringComparer.OrdinalIgnoreCase);
         Assert.Equal("ad_environment_discover", setup.SetupToolName, ignoreCase: true);
         Assert.False(recovery.SupportsTransientRetry);
     }
