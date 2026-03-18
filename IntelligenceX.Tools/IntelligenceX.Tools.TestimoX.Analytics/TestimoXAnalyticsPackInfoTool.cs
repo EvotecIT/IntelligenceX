@@ -129,7 +129,54 @@ public sealed class TestimoXAnalyticsPackInfoTool : TestimoXToolBase, ITool {
                     summary: "List monitoring report generation jobs, status, timing, and captured history/report metrics from an allowed monitoring history directory.",
                     primaryTools: new[] { "testimox_report_job_history" })
             },
+            recipes: new[] {
+                ToolPackGuidance.Recipe(
+                    id: "monitoring_health_triage",
+                    summary: "Start with compact monitoring diagnostics, then expand into freshness, probe, and maintenance evidence only where needed.",
+                    whenToUse: "Use when the user wants to know whether monitoring, dashboard generation, or rollups are healthy before opening larger history artifacts.",
+                    steps: new[] {
+                        ToolPackGuidance.FlowStep(
+                            goal: "Load the compact monitoring diagnostics snapshot",
+                            suggestedTools: new[] { "testimox_analytics_diagnostics_get", "testimox_dashboard_autogenerate_status_get" },
+                            notes: "Start here for queue, scheduler, maintenance, and report generation state."),
+                        ToolPackGuidance.FlowStep(
+                            goal: "Validate probe freshness and rollup recency",
+                            suggestedTools: new[] { "testimox_probe_index_status", "testimox_availability_rollup_status_get" },
+                            notes: "Use these as lightweight preflight before loading broader monitoring history."),
+                        ToolPackGuidance.FlowStep(
+                            goal: "Inspect maintenance and history detail only when the summary points there",
+                            suggestedTools: new[] { "testimox_maintenance_window_history", "testimox_history_query", "testimox_report_job_history" })
+                    },
+                    verificationTools: new[] { "testimox_analytics_diagnostics_get", "testimox_probe_index_status", "testimox_availability_rollup_status_get" }),
+                ToolPackGuidance.Recipe(
+                    id: "report_snapshot_followup",
+                    summary: "Validate report generation state first, then open only the specific cached data or HTML snapshot that matches the user’s report key.",
+                    whenToUse: "Use when the request is about a known report, dashboard artifact, or cached monitoring summary and you want to avoid opening the wrong snapshot.",
+                    steps: new[] {
+                        ToolPackGuidance.FlowStep(
+                            goal: "Confirm report job and dashboard state",
+                            suggestedTools: new[] { "testimox_dashboard_autogenerate_status_get", "testimox_report_job_history" }),
+                        ToolPackGuidance.FlowStep(
+                            goal: "Load the relevant report data or HTML snapshot",
+                            suggestedTools: new[] { "testimox_report_data_snapshot_get", "testimox_report_snapshot_get" },
+                            notes: "Use preview-first access until you know the exact report_key and artifact shape.")
+                    },
+                    verificationTools: new[] { "testimox_report_data_snapshot_get", "testimox_report_snapshot_get" })
+            },
             toolCatalog: ToolRegistryTestimoXAnalyticsExtensions.GetRegisteredToolCatalog(Options),
+            runtimeCapabilities: new ToolPackRuntimeCapabilitiesModel {
+                PreferredEntryTools = new[] { "testimox_analytics_diagnostics_get", "testimox_dashboard_autogenerate_status_get", "testimox_history_query" },
+                PreferredProbeTools = new[] { "testimox_probe_index_status", "testimox_availability_rollup_status_get" },
+                ProbeHelperFreshnessWindowSeconds = 300,
+                SetupHelperFreshnessWindowSeconds = 900,
+                RecipeHelperFreshnessWindowSeconds = 600,
+                RuntimePrerequisites = new[] {
+                    "Analytics and history tools require a history directory under the configured AllowedHistoryRoots.",
+                    "Use report_key when loading cached report data or HTML snapshots so artifact retrieval stays deterministic.",
+                    "Prefer the compact diagnostics and status tools before loading broader history or snapshot content."
+                },
+                Notes = "Treat probe index and rollup status tools as lightweight preflight for analytics freshness, then open only the specific history or snapshot artifacts the investigation needs."
+            },
             rawPayloadPolicy: "Preserve raw monitoring/history/report payloads. Do not rely only on preview fields.",
             viewProjectionPolicy: "Snapshot preview arguments are view-only and meant to keep artifact inspection safe by default.",
             correlationGuidance: "Use report keys, probe names, time windows, and maintenance identifiers to correlate monitoring artifacts before pivoting into core TestimoX, AD, or System follow-up.",

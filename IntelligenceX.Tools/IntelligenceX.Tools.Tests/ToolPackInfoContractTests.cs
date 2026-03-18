@@ -501,6 +501,24 @@ public class ToolPackInfoContractTests {
             expectedProbeFreshnessWindowSeconds: 300,
             expectedSetupFreshnessWindowSeconds: 900,
             expectedRecipeFreshnessWindowSeconds: 600);
+
+        await AssertRuntimeCapabilityGuidanceAsync(
+            tool: new TestimoXPackInfoTool(new TestimoXToolOptions()),
+            expectedEntryTools: new[] { "testimox_profiles_list", "testimox_rule_inventory", "testimox_rules_list" },
+            expectedProbeTools: Array.Empty<string>(),
+            expectedPrerequisiteSnippet: "include_domains",
+            expectedProbeFreshnessWindowSeconds: 900,
+            expectedSetupFreshnessWindowSeconds: 1800,
+            expectedRecipeFreshnessWindowSeconds: 900);
+
+        await AssertRuntimeCapabilityGuidanceAsync(
+            tool: new TestimoXAnalyticsPackInfoTool(new TestimoXToolOptions()),
+            expectedEntryTools: new[] { "testimox_analytics_diagnostics_get", "testimox_dashboard_autogenerate_status_get", "testimox_history_query" },
+            expectedProbeTools: new[] { "testimox_probe_index_status", "testimox_availability_rollup_status_get" },
+            expectedPrerequisiteSnippet: "AllowedHistoryRoots",
+            expectedProbeFreshnessWindowSeconds: 300,
+            expectedSetupFreshnessWindowSeconds: 900,
+            expectedRecipeFreshnessWindowSeconds: 600);
     }
 
     [Fact]
