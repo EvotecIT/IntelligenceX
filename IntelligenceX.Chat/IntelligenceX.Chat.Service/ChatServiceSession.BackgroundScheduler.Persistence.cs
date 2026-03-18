@@ -13,30 +13,11 @@ namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
     private const int BackgroundSchedulerRuntimeStoreVersion = 1;
-    private static readonly JsonSerializerOptions BackgroundSchedulerRuntimeStoreJsonOptions = new() {
-        WriteIndented = false,
-        PropertyNameCaseInsensitive = false
+    private static readonly JsonSerializerOptions BackgroundSchedulerRuntimeStoreReadJsonOptions = new() {
+        PropertyNameCaseInsensitive = true,
+        WriteIndented = false
     };
     private static Func<string, bool?>? BackgroundSchedulerRuntimeStoreLockAcquisitionOverrideForTesting;
-
-    private sealed class BackgroundSchedulerRuntimeStoreDto {
-        public int Version { get; set; } = BackgroundSchedulerRuntimeStoreVersion;
-        public long LastSchedulerTickUtcTicks { get; set; }
-        public string LastOutcome { get; set; } = string.Empty;
-        public long LastOutcomeUtcTicks { get; set; }
-        public long LastSuccessUtcTicks { get; set; }
-        public long LastFailureUtcTicks { get; set; }
-        public int CompletedExecutionCount { get; set; }
-        public int RequeuedExecutionCount { get; set; }
-        public int ReleasedExecutionCount { get; set; }
-        public int ConsecutiveFailureCount { get; set; }
-        public long PausedUntilUtcTicks { get; set; }
-        public string PauseReason { get; set; } = string.Empty;
-        public long LastAdaptiveIdleUtcTicks { get; set; }
-        public int LastAdaptiveIdleDelaySeconds { get; set; }
-        public string LastAdaptiveIdleReason { get; set; } = string.Empty;
-        public SessionCapabilityBackgroundSchedulerActivityDto[] RecentActivity { get; set; } = Array.Empty<SessionCapabilityBackgroundSchedulerActivityDto>();
-    }
 
     private static string ResolveDefaultBackgroundSchedulerRuntimeStorePath() {
         var root = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
@@ -201,10 +182,18 @@ internal sealed partial class ChatServiceSession {
                 return new BackgroundSchedulerRuntimeStoreDto();
             }
 
-            var store = JsonSerializer.Deserialize<BackgroundSchedulerRuntimeStoreDto>(json, BackgroundSchedulerRuntimeStoreJsonOptions);
-            return store is null || store.Version != BackgroundSchedulerRuntimeStoreVersion
-                ? new BackgroundSchedulerRuntimeStoreDto()
-                : store;
+            var store = JsonSerializer.Deserialize<BackgroundSchedulerRuntimeStoreDto>(json, BackgroundSchedulerRuntimeStoreReadJsonOptions);
+            if (store is null) {
+                return new BackgroundSchedulerRuntimeStoreDto();
+            }
+
+            if (store.Version != BackgroundSchedulerRuntimeStoreVersion) {
+                Trace.TraceWarning(
+                    $"Background scheduler runtime store version mismatch: expected {BackgroundSchedulerRuntimeStoreVersion}, found {store.Version}.");
+                return new BackgroundSchedulerRuntimeStoreDto();
+            }
+
+            return store;
         } catch (Exception ex) {
             Trace.TraceWarning($"Background scheduler runtime store read failed: {ex.GetType().Name}: {ex.Message}");
             return new BackgroundSchedulerRuntimeStoreDto();
@@ -223,7 +212,9 @@ internal sealed partial class ChatServiceSession {
                 Directory.CreateDirectory(directory);
             }
 
-            var json = JsonSerializer.Serialize(store, BackgroundSchedulerRuntimeStoreJsonOptions);
+            var json = JsonSerializer.Serialize(
+                store,
+                BackgroundSchedulerRuntimeStoreJsonContext.Default.BackgroundSchedulerRuntimeStoreDto);
             var fileName = Path.GetFileName(path);
             var tmpName = $"{fileName}.{Guid.NewGuid():N}.tmp";
             tmp = string.IsNullOrWhiteSpace(directory) ? tmpName : Path.Combine(directory!, tmpName);

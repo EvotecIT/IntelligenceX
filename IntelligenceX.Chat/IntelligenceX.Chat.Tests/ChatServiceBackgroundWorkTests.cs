@@ -3130,6 +3130,95 @@ public sealed class ChatServiceBackgroundWorkTests {
     }
 
     [Fact]
+    public void BackgroundSchedulerRuntimeState_PersistsPinnedCamelCaseContract() {
+        var (options, _, _) = ChatServiceTestSessionFactory.CreateIsolatedPersistenceOptions();
+
+        var writer = new ChatServiceSession(options, Stream.Null);
+        writer.RememberBackgroundSchedulerAdaptiveIdleDecisionForTesting(
+            TimeSpan.FromSeconds(150),
+            "policy=camel_case_contract");
+
+        var runtimeStorePath = writer.ResolveBackgroundSchedulerRuntimeStorePathForTesting();
+        Assert.True(File.Exists(runtimeStorePath));
+
+        using var document = JsonDocument.Parse(File.ReadAllText(runtimeStorePath));
+        var root = document.RootElement;
+        Assert.True(root.TryGetProperty("version", out var versionNode));
+        Assert.Equal(1, versionNode.GetInt32());
+        Assert.True(root.TryGetProperty("lastAdaptiveIdleDelaySeconds", out var delayNode));
+        Assert.Equal(150, delayNode.GetInt32());
+        Assert.True(root.TryGetProperty("lastAdaptiveIdleReason", out var reasonNode));
+        Assert.Equal("policy=camel_case_contract", reasonNode.GetString());
+        Assert.False(root.TryGetProperty("Version", out _));
+        Assert.False(root.TryGetProperty("LastAdaptiveIdleDelaySeconds", out _));
+    }
+
+    [Fact]
+    public void BackgroundSchedulerRuntimeState_RehydratesLegacyPascalCasePayload() {
+        var (options, _, _) = ChatServiceTestSessionFactory.CreateIsolatedPersistenceOptions();
+
+        var session = new ChatServiceSession(options, Stream.Null);
+        var runtimeStorePath = session.ResolveBackgroundSchedulerRuntimeStorePathForTesting();
+        var runtimeDirectory = Path.GetDirectoryName(runtimeStorePath);
+        Assert.False(string.IsNullOrWhiteSpace(runtimeDirectory));
+        Directory.CreateDirectory(runtimeDirectory!);
+        var activeTicks = DateTime.UtcNow.AddSeconds(-15).Ticks;
+        File.WriteAllText(
+            runtimeStorePath,
+            $$"""
+            {"Version":1,"LastAdaptiveIdleUtcTicks":{{activeTicks}},"LastAdaptiveIdleDelaySeconds":180,"LastAdaptiveIdleReason":"policy=legacy_pascal","RecentActivity":[]}
+            """);
+
+        var resumed = new ChatServiceSession(options, Stream.Null).BuildBackgroundSchedulerSummaryForTesting();
+
+        Assert.True(resumed.AdaptiveIdleActive);
+        Assert.Equal(180, resumed.LastAdaptiveIdleDelaySeconds);
+        Assert.Contains("policy=legacy_pascal", resumed.LastAdaptiveIdleReason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BackgroundSchedulerRuntimeState_IgnoresUnsupportedRuntimeStoreVersion() {
+        var (options, _, _) = ChatServiceTestSessionFactory.CreateIsolatedPersistenceOptions();
+
+        var session = new ChatServiceSession(options, Stream.Null);
+        var runtimeStorePath = session.ResolveBackgroundSchedulerRuntimeStorePathForTesting();
+        var runtimeDirectory = Path.GetDirectoryName(runtimeStorePath);
+        Assert.False(string.IsNullOrWhiteSpace(runtimeDirectory));
+        Directory.CreateDirectory(runtimeDirectory!);
+        File.WriteAllText(
+            runtimeStorePath,
+            """
+            {"version":2,"lastAdaptiveIdleUtcTicks":638770000000000000,"lastAdaptiveIdleDelaySeconds":180,"lastAdaptiveIdleReason":"policy=unsupported","recentActivity":[]}
+            """);
+
+        var resumed = new ChatServiceSession(options, Stream.Null).BuildBackgroundSchedulerSummaryForTesting();
+
+        Assert.False(resumed.AdaptiveIdleActive);
+        Assert.Equal(0, resumed.LastAdaptiveIdleUtcTicks);
+        Assert.Equal(0, resumed.LastAdaptiveIdleDelaySeconds);
+        Assert.Equal(string.Empty, resumed.LastAdaptiveIdleReason);
+    }
+
+    [Fact]
+    public void BackgroundSchedulerRuntimeState_IgnoresCorruptedRuntimeStorePayload() {
+        var (options, _, _) = ChatServiceTestSessionFactory.CreateIsolatedPersistenceOptions();
+
+        var session = new ChatServiceSession(options, Stream.Null);
+        var runtimeStorePath = session.ResolveBackgroundSchedulerRuntimeStorePathForTesting();
+        var runtimeDirectory = Path.GetDirectoryName(runtimeStorePath);
+        Assert.False(string.IsNullOrWhiteSpace(runtimeDirectory));
+        Directory.CreateDirectory(runtimeDirectory!);
+        File.WriteAllText(runtimeStorePath, "{ this is not valid json");
+
+        var resumed = new ChatServiceSession(options, Stream.Null).BuildBackgroundSchedulerSummaryForTesting();
+
+        Assert.False(resumed.AdaptiveIdleActive);
+        Assert.Equal(0, resumed.LastAdaptiveIdleUtcTicks);
+        Assert.Equal(0, resumed.LastAdaptiveIdleDelaySeconds);
+        Assert.Equal(string.Empty, resumed.LastAdaptiveIdleReason);
+    }
+
+    [Fact]
     public void BackgroundSchedulerRuntimeState_ClearsExpiredAdaptiveIdleMetadataAcrossRestart() {
         var (options, _, _) = ChatServiceTestSessionFactory.CreateIsolatedPersistenceOptions();
 
