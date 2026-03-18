@@ -12,9 +12,9 @@ permissions:
   contents: read
 
 env:
-  # Pinned to a release-hub-enabled PowerForge commit for this release stack.
+  # Pinned to the smallest PowerForge commit that clears the Magick.NET vulnerability gate in CI.
   POWERFORGE_REPOSITORY: EvotecIT/PSPublishModule
-  POWERFORGE_REF: 33d759d8e13b3b8b709789156fcedda7fe0ca4df
+  POWERFORGE_REF: 5df9df161d53b4ebfb65b5df6eb1756144de358c
 
 jobs:
   website-build:
