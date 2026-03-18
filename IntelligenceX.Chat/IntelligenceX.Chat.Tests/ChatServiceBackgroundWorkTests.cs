@@ -807,6 +807,114 @@ public sealed class ChatServiceBackgroundWorkTests {
     }
 
     [Fact]
+    public void TryResolveBackgroundSchedulerAdaptiveIdleDelayForTesting_UsesShortestRemainingFreshnessAcrossMixedHelpers() {
+        var options = ChatServiceTestSessionFactory.CreateIsolatedOptions();
+        options.BackgroundSchedulerPollSeconds = 300;
+        var session = new ChatServiceSession(options, Stream.Null);
+        const string threadId = "thread-background-adaptive-idle-mixed-helper-freshness";
+        var definitions = new[] {
+            new ToolDefinition(
+                name: "seed_customx_followup",
+                description: "seed custom follow-up",
+                handoff: new ToolHandoffContract {
+                    IsHandoffAware = true,
+                    OutboundRoutes = new[] {
+                        new ToolHandoffRoute {
+                            TargetPackId = "customx",
+                            TargetToolName = "customx_live_query",
+                            TargetRole = ToolRoutingTaxonomy.RoleOperational,
+                            FollowUpKind = ToolHandoffFollowUpKinds.Verification,
+                            FollowUpPriority = ToolHandoffFollowUpPriorities.High,
+                            Bindings = new[] {
+                                new ToolHandoffBinding {
+                                    SourceField = "computer_name",
+                                    TargetArgument = "machine_name"
+                                }
+                            }
+                        }
+                    }
+                }),
+            new ToolDefinition(
+                "customx_live_query",
+                "Inspect runtime state after validation.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties(),
+                authentication: new ToolAuthenticationContract {
+                    IsAuthenticationAware = true,
+                    RequiresAuthentication = true,
+                    AuthenticationContractId = "ix.auth.runtime.v1",
+                    Mode = ToolAuthenticationMode.ProfileReference,
+                    ProfileIdArgumentName = "profile_id",
+                    SupportsConnectivityProbe = true,
+                    ProbeToolName = "customx_connectivity_probe"
+                },
+                setup: new ToolSetupContract {
+                    IsSetupAware = true,
+                    SetupToolName = "customx_runtime_profile_validate"
+                }),
+            new ToolDefinition(
+                "customx_connectivity_probe",
+                "Validate runtime reachability.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties()),
+            new ToolDefinition(
+                "customx_runtime_profile_validate",
+                "Validate runtime profile readiness.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties())
+        };
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(
+            definitions,
+            new IToolPack[] { new PackSpecificProbeFreshnessGuidancePack() }));
+        session.SeedThreadToolEvidenceEntryForTesting(
+            threadId,
+            toolName: "customx_connectivity_probe",
+            argumentsJson: """{"machine_name":"srv-mixed.contoso.com"}""",
+            output: """{"ok":true}""",
+            summaryMarkdown: "Connectivity probe succeeded.",
+            seenUtcTicks: DateTime.UtcNow.AddSeconds(-10).Ticks);
+        session.SeedThreadToolEvidenceEntryForTesting(
+            threadId,
+            toolName: "customx_runtime_profile_validate",
+            argumentsJson: """{"machine_name":"srv-mixed.contoso.com"}""",
+            output: """{"ok":true}""",
+            summaryMarkdown: "Runtime profile validation succeeded.",
+            seenUtcTicks: DateTime.UtcNow.AddSeconds(-100).Ticks);
+
+        session.RememberToolHandoffBackgroundWorkForTesting(
+            threadId,
+            definitions,
+            new[] {
+                new ToolCallDto {
+                    CallId = "call-customx-followup-mixed",
+                    Name = "seed_customx_followup",
+                    ArgumentsJson = """{"computer_name":"srv-mixed.contoso.com"}"""
+                }
+            },
+            new[] {
+                new ToolOutputDto {
+                    CallId = "call-customx-followup-mixed",
+                    Ok = true,
+                    Output = """{"ok":true}"""
+                }
+            });
+
+        var dependentItem = Assert.Single(
+            session.ResolveThreadBackgroundWorkSnapshotForTesting(threadId).Items,
+            static item => string.Equals(item.TargetToolName, "customx_live_query", StringComparison.OrdinalIgnoreCase));
+        if (!string.Equals(dependentItem.State, "queued", StringComparison.OrdinalIgnoreCase)) {
+            Assert.True(session.TrySetThreadBackgroundWorkItemStateForTesting(threadId, dependentItem.Id, "queued"));
+        }
+
+        Assert.True(
+            session.TryResolveBackgroundSchedulerAdaptiveIdleDelayForTesting(
+                TimeSpan.FromSeconds(options.BackgroundSchedulerPollSeconds),
+                out var delay,
+                out var reason));
+
+        Assert.Equal(TimeSpan.FromSeconds(28), delay);
+        Assert.Contains("customx_probe_reuse_window", reason, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("remaining=110s", reason, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void RememberToolHandoffBackgroundWork_DoesNotReuseStaleProbeEvidenceOutsidePolicyWindow() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         const string threadId = "thread-background-work-helper-evidence-stale";
@@ -5519,7 +5627,8 @@ public sealed class ChatServiceBackgroundWorkTests {
             return new ToolPackInfoModel {
                 RuntimeCapabilities = new ToolPackRuntimeCapabilitiesModel {
                     PreferredProbeTools = new[] { "customx_connectivity_probe" },
-                    ProbeHelperFreshnessWindowSeconds = 120
+                    ProbeHelperFreshnessWindowSeconds = 120,
+                    SetupHelperFreshnessWindowSeconds = 600
                 }
             };
         }

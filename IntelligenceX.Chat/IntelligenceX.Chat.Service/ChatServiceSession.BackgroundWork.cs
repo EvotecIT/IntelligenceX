@@ -89,7 +89,8 @@ internal sealed partial class ChatServiceSession {
         int? FreshestAgeSeconds,
         int? OldestAgeSeconds,
         int? FreshestTtlSeconds,
-        int? OldestTtlSeconds);
+        int? OldestTtlSeconds,
+        int? MinRemainingFreshnessSeconds);
 
     private readonly record struct BackgroundWorkHelperReusePriority(
         bool HasReusedHelperEvidence,
@@ -2036,7 +2037,7 @@ internal sealed partial class ChatServiceSession {
 
     private static BackgroundWorkHelperReuseSummary BuildBackgroundWorkHelperReuseSummary(IReadOnlyList<ThreadBackgroundWorkItem>? items) {
         if (items is null || items.Count == 0) {
-            return new BackgroundWorkHelperReuseSummary(0, Array.Empty<string>(), Array.Empty<string>(), null, null, null, null);
+            return new BackgroundWorkHelperReuseSummary(0, Array.Empty<string>(), Array.Empty<string>(), null, null, null, null, null);
         }
 
         var reusedItemCount = 0;
@@ -2046,6 +2047,7 @@ internal sealed partial class ChatServiceSession {
         int? oldestAgeSeconds = null;
         int? freshestTtlSeconds = null;
         int? oldestTtlSeconds = null;
+        int? minRemainingFreshnessSeconds = null;
         foreach (var item in items) {
             if (!TryGetBackgroundWorkResultReferenceValue(item.ResultReference, "helper_reuse", out var helperReuseValue)
                 || !string.Equals(helperReuseValue, "cached_tool_evidence", StringComparison.OrdinalIgnoreCase)) {
@@ -2090,6 +2092,10 @@ internal sealed partial class ChatServiceSession {
             oldestTtlSeconds = oldestTtlSeconds.HasValue
                 ? Math.Max(oldestTtlSeconds.Value, helperReuseTtlSeconds)
                 : helperReuseTtlSeconds;
+            var remainingFreshnessSeconds = Math.Max(0, helperReuseTtlSeconds - helperReuseAgeSeconds);
+            minRemainingFreshnessSeconds = minRemainingFreshnessSeconds.HasValue
+                ? Math.Min(minRemainingFreshnessSeconds.Value, remainingFreshnessSeconds)
+                : remainingFreshnessSeconds;
         }
 
         return new BackgroundWorkHelperReuseSummary(
@@ -2099,7 +2105,8 @@ internal sealed partial class ChatServiceSession {
             FreshestAgeSeconds: freshestAgeSeconds,
             OldestAgeSeconds: oldestAgeSeconds,
             FreshestTtlSeconds: freshestTtlSeconds,
-            OldestTtlSeconds: oldestTtlSeconds);
+            OldestTtlSeconds: oldestTtlSeconds,
+            MinRemainingFreshnessSeconds: minRemainingFreshnessSeconds);
     }
 
     private static string BuildBackgroundWorkHelperReuseStatusSuffix(IReadOnlyList<ThreadBackgroundWorkItem>? items) {

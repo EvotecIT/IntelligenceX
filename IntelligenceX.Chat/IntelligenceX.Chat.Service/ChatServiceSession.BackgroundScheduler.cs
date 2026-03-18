@@ -891,18 +891,20 @@ internal sealed partial class ChatServiceSession {
 
             var helperReuseSummary = BuildBackgroundWorkHelperReuseSummary(snapshot.Items);
             if (helperReuseSummary.ReusedItemCount <= 0
-                || !helperReuseSummary.FreshestTtlSeconds.HasValue
-                || !helperReuseSummary.OldestAgeSeconds.HasValue) {
+                || !helperReuseSummary.MinRemainingFreshnessSeconds.HasValue) {
                 continue;
             }
 
-            var remainingFreshnessSeconds = Math.Max(
-                0,
-                helperReuseSummary.FreshestTtlSeconds.Value - helperReuseSummary.OldestAgeSeconds.Value);
+            var remainingFreshnessSeconds = Math.Max(0, helperReuseSummary.MinRemainingFreshnessSeconds.Value);
+            if (remainingFreshnessSeconds < BackgroundSchedulerAdaptiveIdleMinimumSeconds) {
+                continue;
+            }
+
             var candidateDelaySeconds = Math.Clamp(
                 (int)Math.Ceiling(remainingFreshnessSeconds / 4d),
                 BackgroundSchedulerAdaptiveIdleMinimumSeconds,
                 Math.Max(BackgroundSchedulerAdaptiveIdleMinimumSeconds, (int)Math.Ceiling(defaultDelay.TotalSeconds)));
+            candidateDelaySeconds = Math.Min(candidateDelaySeconds, remainingFreshnessSeconds);
             var candidateDelay = TimeSpan.FromSeconds(candidateDelaySeconds);
             if (candidateDelay >= defaultDelay) {
                 continue;
