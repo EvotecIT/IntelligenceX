@@ -2970,6 +2970,58 @@ public sealed class ChatServiceBackgroundWorkTests {
     }
 
     [Fact]
+    public void BackgroundSchedulerRuntimeState_RehydratesIndependentlyPerStorePath() {
+        var (optionsA, _, _) = ChatServiceTestSessionFactory.CreateIsolatedPersistenceOptions();
+        var (optionsB, _, _) = ChatServiceTestSessionFactory.CreateIsolatedPersistenceOptions();
+
+        var writerA = new ChatServiceSession(optionsA, Stream.Null);
+        var writerB = new ChatServiceSession(optionsB, Stream.Null);
+
+        var pathA = writerA.ResolveBackgroundSchedulerRuntimeStorePathForTesting();
+        var pathB = writerB.ResolveBackgroundSchedulerRuntimeStorePathForTesting();
+        Assert.NotEqual(pathA, pathB);
+
+        writerA.RememberBackgroundSchedulerAdaptiveIdleDecisionForTesting(
+            TimeSpan.FromSeconds(180),
+            "policy=path_a");
+        writerB.RememberBackgroundSchedulerAdaptiveIdleDecisionForTesting(
+            TimeSpan.FromSeconds(420),
+            "policy=path_b");
+
+        var resumedA = new ChatServiceSession(optionsA, Stream.Null).BuildBackgroundSchedulerSummaryForTesting();
+        var resumedB = new ChatServiceSession(optionsB, Stream.Null).BuildBackgroundSchedulerSummaryForTesting();
+
+        Assert.True(resumedA.AdaptiveIdleActive);
+        Assert.Equal(180, resumedA.LastAdaptiveIdleDelaySeconds);
+        Assert.Contains("policy=path_a", resumedA.LastAdaptiveIdleReason, StringComparison.OrdinalIgnoreCase);
+
+        Assert.True(resumedB.AdaptiveIdleActive);
+        Assert.Equal(420, resumedB.LastAdaptiveIdleDelaySeconds);
+        Assert.Contains("policy=path_b", resumedB.LastAdaptiveIdleReason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BackgroundSchedulerRuntimeState_RehydratesLatestPersistedSummaryForSharedStorePath() {
+        var (options, _, _) = ChatServiceTestSessionFactory.CreateIsolatedPersistenceOptions();
+
+        var writerA = new ChatServiceSession(options, Stream.Null);
+        var writerB = new ChatServiceSession(options, Stream.Null);
+
+        writerA.RememberBackgroundSchedulerAdaptiveIdleDecisionForTesting(
+            TimeSpan.FromSeconds(90),
+            "policy=first_writer");
+        writerB.RememberBackgroundSchedulerAdaptiveIdleDecisionForTesting(
+            TimeSpan.FromSeconds(240),
+            "policy=second_writer");
+
+        var resumed = new ChatServiceSession(options, Stream.Null).BuildBackgroundSchedulerSummaryForTesting();
+
+        Assert.True(resumed.AdaptiveIdleActive);
+        Assert.Equal(240, resumed.LastAdaptiveIdleDelaySeconds);
+        Assert.Contains("policy=second_writer", resumed.LastAdaptiveIdleReason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void ResolveThreadBackgroundWorkSnapshot_IgnoresNullPersistedItems() {
         var (options, _, _) = ChatServiceTestSessionFactory.CreateIsolatedPersistenceOptions();
         const string threadId = "thread-background-work-null-item";

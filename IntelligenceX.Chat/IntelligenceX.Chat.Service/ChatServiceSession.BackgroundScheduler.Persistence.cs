@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -12,7 +13,6 @@ namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
     private const int BackgroundSchedulerRuntimeStoreVersion = 1;
-    private static readonly object BackgroundSchedulerRuntimeStoreLock = new();
     private static readonly JsonSerializerOptions BackgroundSchedulerRuntimeStoreJsonOptions = new() {
         WriteIndented = false,
         PropertyNameCaseInsensitive = false
@@ -58,10 +58,7 @@ internal sealed partial class ChatServiceSession {
 
     private void TryRehydrateBackgroundSchedulerRuntimeState() {
         var path = ResolveBackgroundSchedulerRuntimeStorePath();
-        BackgroundSchedulerRuntimeStoreDto store;
-        lock (BackgroundSchedulerRuntimeStoreLock) {
-            store = ReadBackgroundSchedulerRuntimeStoreNoThrow(path);
-        }
+        var store = WithBackgroundSchedulerRuntimeStoreLock(path, static runtimeStorePath => ReadBackgroundSchedulerRuntimeStoreNoThrow(runtimeStorePath));
 
         if (string.IsNullOrWhiteSpace(store.LastOutcome)
             && store.LastOutcomeUtcTicks <= 0
@@ -124,9 +121,10 @@ internal sealed partial class ChatServiceSession {
         }
 
         var path = ResolveBackgroundSchedulerRuntimeStorePath();
-        lock (BackgroundSchedulerRuntimeStoreLock) {
-            WriteBackgroundSchedulerRuntimeStoreNoThrow(path, store);
-        }
+        WithBackgroundSchedulerRuntimeStoreLock(
+            path,
+            static state => WriteBackgroundSchedulerRuntimeStoreNoThrow(state.Path, state.Store),
+            (Path: path, Store: store));
     }
 
     private static SessionCapabilityBackgroundSchedulerActivityDto[] NormalizeBackgroundSchedulerActivities(
@@ -232,5 +230,83 @@ internal sealed partial class ChatServiceSession {
                 }
             }
         }
+    }
+
+    private static T WithBackgroundSchedulerRuntimeStoreLock<T>(string path, Func<string, T> action) {
+        ArgumentNullException.ThrowIfNull(action);
+        return WithBackgroundSchedulerRuntimeStoreLock(path, action, path);
+    }
+
+    private static TStateResult WithBackgroundSchedulerRuntimeStoreLock<TState, TStateResult>(
+        string path,
+        Func<TState, TStateResult> action,
+        TState state) {
+        ArgumentNullException.ThrowIfNull(action);
+
+        var mutexName = BuildBackgroundSchedulerRuntimeStoreMutexName(path);
+        Mutex? mutex = null;
+        var acquired = false;
+        try {
+            mutex = new Mutex(initiallyOwned: false, mutexName);
+            try {
+                acquired = mutex.WaitOne(TimeSpan.FromSeconds(15));
+            } catch (AbandonedMutexException) {
+                acquired = true;
+            }
+
+            if (!acquired) {
+                Trace.TraceWarning($"Background scheduler runtime store lock timeout for '{mutexName}'.");
+                return action(state);
+            }
+
+            return action(state);
+        } catch (Exception ex) {
+            Trace.TraceWarning($"Background scheduler runtime store lock failed: {ex.GetType().Name}: {ex.Message}");
+            return action(state);
+        } finally {
+            if (acquired && mutex is not null) {
+                try {
+                    mutex.ReleaseMutex();
+                } catch {
+                    // Best effort only.
+                }
+            }
+
+            mutex?.Dispose();
+        }
+    }
+
+    private static void WithBackgroundSchedulerRuntimeStoreLock<TState>(
+        string path,
+        Action<TState> action,
+        TState state) {
+        ArgumentNullException.ThrowIfNull(action);
+        _ = WithBackgroundSchedulerRuntimeStoreLock(
+            path,
+            static localState => {
+                localState.Action(localState.State);
+                return 0;
+            },
+            (Action: action, State: state));
+    }
+
+    private static string BuildBackgroundSchedulerRuntimeStoreMutexName(string path) {
+        var normalizedPath = NormalizeBackgroundSchedulerRuntimeStoreMutexPath(path);
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(normalizedPath));
+        return $"IntelligenceX.Chat.BackgroundSchedulerRuntimeStore.{Convert.ToHexString(hash)}";
+    }
+
+    private static string NormalizeBackgroundSchedulerRuntimeStoreMutexPath(string path) {
+        var candidate = string.IsNullOrWhiteSpace(path)
+            ? ResolveDefaultBackgroundSchedulerRuntimeStorePath()
+            : path.Trim();
+
+        try {
+            candidate = Path.GetFullPath(candidate);
+        } catch {
+            // Keep the original candidate when full path resolution fails.
+        }
+
+        return OperatingSystem.IsWindows() ? candidate.ToUpperInvariant() : candidate;
     }
 }
