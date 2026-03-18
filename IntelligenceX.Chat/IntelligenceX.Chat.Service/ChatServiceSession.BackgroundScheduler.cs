@@ -255,6 +255,11 @@ internal sealed partial class ChatServiceSession {
             lastAdaptiveIdleUtcTicks,
             lastAdaptiveIdleDelaySeconds,
             nowTicks);
+        if (!adaptiveIdleActive) {
+            lastAdaptiveIdleUtcTicks = 0;
+            lastAdaptiveIdleDelaySeconds = 0;
+            lastAdaptiveIdleReason = string.Empty;
+        }
         var effectivePauseReason = manualPauseState.ManualPauseActive || scheduledPauseActive
             ? manualPauseState.PauseReason
             : pauseReason;

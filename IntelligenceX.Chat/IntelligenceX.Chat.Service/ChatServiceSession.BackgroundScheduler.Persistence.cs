@@ -59,6 +59,13 @@ internal sealed partial class ChatServiceSession {
     private void TryRehydrateBackgroundSchedulerRuntimeState() {
         var path = ResolveBackgroundSchedulerRuntimeStorePath();
         var store = WithBackgroundSchedulerRuntimeStoreLock(path, static runtimeStorePath => ReadBackgroundSchedulerRuntimeStoreNoThrow(runtimeStorePath));
+        var nowTicks = DateTime.UtcNow.Ticks;
+        (store.LastAdaptiveIdleUtcTicks, store.LastAdaptiveIdleDelaySeconds, store.LastAdaptiveIdleReason) =
+            NormalizeBackgroundSchedulerAdaptiveIdleState(
+                store.LastAdaptiveIdleUtcTicks,
+                store.LastAdaptiveIdleDelaySeconds,
+                store.LastAdaptiveIdleReason,
+                nowTicks);
 
         if (string.IsNullOrWhiteSpace(store.LastOutcome)
             && store.LastOutcomeUtcTicks <= 0
@@ -118,6 +125,12 @@ internal sealed partial class ChatServiceSession {
                 LastAdaptiveIdleReason = NormalizeBackgroundSchedulerActivityText(_backgroundSchedulerLastAdaptiveIdleReason, maxLength: 160),
                 RecentActivity = NormalizeBackgroundSchedulerActivities(_backgroundSchedulerRecentActivity)
             };
+            (store.LastAdaptiveIdleUtcTicks, store.LastAdaptiveIdleDelaySeconds, store.LastAdaptiveIdleReason) =
+                NormalizeBackgroundSchedulerAdaptiveIdleState(
+                    store.LastAdaptiveIdleUtcTicks,
+                    store.LastAdaptiveIdleDelaySeconds,
+                    store.LastAdaptiveIdleReason,
+                    nowTicks);
         }
 
         var path = ResolveBackgroundSchedulerRuntimeStorePath();
@@ -308,5 +321,20 @@ internal sealed partial class ChatServiceSession {
         }
 
         return OperatingSystem.IsWindows() ? candidate.ToUpperInvariant() : candidate;
+    }
+
+    private static (long LastAdaptiveIdleUtcTicks, int LastAdaptiveIdleDelaySeconds, string LastAdaptiveIdleReason) NormalizeBackgroundSchedulerAdaptiveIdleState(
+        long lastAdaptiveIdleUtcTicks,
+        int lastAdaptiveIdleDelaySeconds,
+        string lastAdaptiveIdleReason,
+        long nowTicks) {
+        lastAdaptiveIdleUtcTicks = Math.Max(0, lastAdaptiveIdleUtcTicks);
+        lastAdaptiveIdleDelaySeconds = Math.Max(0, lastAdaptiveIdleDelaySeconds);
+        lastAdaptiveIdleReason = NormalizeBackgroundSchedulerActivityText(lastAdaptiveIdleReason, maxLength: 160);
+        if (IsBackgroundSchedulerAdaptiveIdleActive(lastAdaptiveIdleUtcTicks, lastAdaptiveIdleDelaySeconds, nowTicks)) {
+            return (lastAdaptiveIdleUtcTicks, lastAdaptiveIdleDelaySeconds, lastAdaptiveIdleReason);
+        }
+
+        return (0, 0, string.Empty);
     }
 }

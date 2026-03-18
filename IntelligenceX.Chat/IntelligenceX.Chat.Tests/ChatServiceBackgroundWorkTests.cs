@@ -3022,6 +3022,24 @@ public sealed class ChatServiceBackgroundWorkTests {
     }
 
     [Fact]
+    public void BackgroundSchedulerRuntimeState_ClearsExpiredAdaptiveIdleMetadataAcrossRestart() {
+        var (options, _, _) = ChatServiceTestSessionFactory.CreateIsolatedPersistenceOptions();
+
+        var writer = new ChatServiceSession(options, Stream.Null);
+        writer.RememberBackgroundSchedulerAdaptiveIdleDecisionForTesting(
+            TimeSpan.FromSeconds(30),
+            "policy=expired_writer",
+            utcTicks: DateTime.UtcNow.AddMinutes(-10).Ticks);
+
+        var resumed = new ChatServiceSession(options, Stream.Null).BuildBackgroundSchedulerSummaryForTesting();
+
+        Assert.False(resumed.AdaptiveIdleActive);
+        Assert.Equal(0, resumed.LastAdaptiveIdleUtcTicks);
+        Assert.Equal(0, resumed.LastAdaptiveIdleDelaySeconds);
+        Assert.Equal(string.Empty, resumed.LastAdaptiveIdleReason);
+    }
+
+    [Fact]
     public void ResolveThreadBackgroundWorkSnapshot_IgnoresNullPersistedItems() {
         var (options, _, _) = ChatServiceTestSessionFactory.CreateIsolatedPersistenceOptions();
         const string threadId = "thread-background-work-null-item";
