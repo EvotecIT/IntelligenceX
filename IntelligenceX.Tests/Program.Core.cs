@@ -667,6 +667,27 @@ internal static partial class Program {
         AssertEqual("gpt-5.4", OpenAIModelCatalog.NormalizeModelId("openai/gpt-5.4"),
             "openai model normalize provider prefix");
     }
+
+    private static void TestOpenAiModelCatalogNormalizesMiniAndNanoModelIds() {
+        AssertEqual("gpt-5-mini", OpenAIModelCatalog.NormalizeModelId("openai/gpt-5-mini"),
+            "openai model normalize mini provider prefix");
+        AssertEqual("gpt-5-nano", OpenAIModelCatalog.NormalizeModelId("openai/gpt-5-nano"),
+            "openai model normalize nano provider prefix");
+    }
+
+    private static void TestOpenAiModelCatalogBaselineFallbackIncludesMiniAndNano() {
+        var method = typeof(OpenAIModelCatalog).GetMethod("GetBaselineFallbackModels",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        AssertNotNull(method, "GetBaselineFallbackModels method");
+
+        var models = method!.Invoke(null, Array.Empty<object>()) as IReadOnlyList<string>;
+        AssertNotNull(models, "baseline fallback models");
+        var baselineModels = models!;
+        AssertEqual(true, baselineModels.Contains("gpt-5-mini", StringComparer.OrdinalIgnoreCase),
+            "baseline fallback models include gpt-5-mini");
+        AssertEqual(true, baselineModels.Contains("gpt-5-nano", StringComparer.OrdinalIgnoreCase),
+            "baseline fallback models include gpt-5-nano");
+    }
 #endif
 
     private static void TestEscapeHandling() {

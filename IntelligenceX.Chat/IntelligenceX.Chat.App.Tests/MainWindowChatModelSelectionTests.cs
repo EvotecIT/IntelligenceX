@@ -54,6 +54,22 @@ public sealed class MainWindowChatModelSelectionTests {
     }
 
     /// <summary>
+    /// Ensures the newer GPT-5 mini/nano ids are also treated as cloud-only ids before local discovery completes.
+    /// </summary>
+    [Theory]
+    [InlineData("gpt-5-mini")]
+    [InlineData("gpt-5-nano")]
+    public void ResolveChatRequestModelOverride_ClearsMiniAndNanoCloudModelsWhenLocalCatalogIsUnavailable(string configuredModel) {
+        var resolved = MainWindow.ResolveChatRequestModelOverride(
+            "compatible-http",
+            "http://127.0.0.1:1234/v1",
+            configuredModel,
+            Array.Empty<ModelInfoDto>());
+
+        Assert.Null(resolved);
+    }
+
+    /// <summary>
     /// Ensures compatible runtimes use a discovered default model when no model is configured.
     /// </summary>
     [Fact]
