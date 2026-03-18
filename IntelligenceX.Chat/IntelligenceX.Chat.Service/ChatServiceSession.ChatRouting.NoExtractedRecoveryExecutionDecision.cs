@@ -177,6 +177,7 @@ internal sealed partial class ChatServiceSession {
                 assistantDraft: assistantDraft)
             && priorToolCalls == 0
             && priorToolOutputs == 0) {
+            var backgroundWorkReason = string.Empty;
             if (TryBuildReadyBackgroundWorkToolCall(
                     threadId: threadId,
                     userRequest: userRequest,
@@ -184,7 +185,7 @@ internal sealed partial class ChatServiceSession {
                     mutatingToolHintsByName: mutatingToolHintsByName,
                     toolCall: out var backgroundWorkToolCall,
                     itemId: out var backgroundWorkItemId,
-                    reason: out var backgroundWorkReason)) {
+                    reason: out backgroundWorkReason)) {
                 return NoExtractedRecoveryExecutionDecision.BackgroundWorkReadyReplay(
                     backgroundWorkReason,
                     backgroundWorkItemId,

@@ -59,7 +59,7 @@ public sealed partial class MainWindow {
         }
 
         var normalizedAppProfileName = (appProfileName ?? string.Empty).Trim();
-        var normalizedServiceProfileNames = serviceProfileNames ?? Array.Empty<string>();
+        var normalizedServiceProfileNames = NormalizeProfileNames(serviceProfileNames);
         var normalizedActiveServiceProfileName = (activeServiceProfileName ?? string.Empty).Trim();
         var nextAction = (continuationHint.NextAction ?? string.Empty).Trim();
         var recoveryReason = (continuationHint.RecoveryReason ?? string.Empty).Trim();
