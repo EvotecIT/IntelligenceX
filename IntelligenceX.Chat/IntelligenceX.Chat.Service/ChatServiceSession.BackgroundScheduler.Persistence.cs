@@ -18,6 +18,7 @@ internal sealed partial class ChatServiceSession {
         WriteIndented = false
     };
     private static Func<string, bool?>? BackgroundSchedulerRuntimeStoreLockAcquisitionOverrideForTesting;
+    private int _backgroundSchedulerRuntimeStoreRehydratePending;
 
     private static string ResolveDefaultBackgroundSchedulerRuntimeStorePath() {
         var root = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
@@ -45,8 +46,10 @@ internal sealed partial class ChatServiceSession {
                 static runtimeStorePath => ReadBackgroundSchedulerRuntimeStoreNoThrow(runtimeStorePath),
                 path,
                 out var store)) {
+            Interlocked.Exchange(ref _backgroundSchedulerRuntimeStoreRehydratePending, 1);
             return;
         }
+        Interlocked.Exchange(ref _backgroundSchedulerRuntimeStoreRehydratePending, 0);
         var nowTicks = DateTime.UtcNow.Ticks;
         (store.LastAdaptiveIdleUtcTicks, store.LastAdaptiveIdleDelaySeconds, store.LastAdaptiveIdleReason) =
             NormalizeBackgroundSchedulerAdaptiveIdleState(
@@ -91,7 +94,20 @@ internal sealed partial class ChatServiceSession {
         }
     }
 
+    private void EnsureBackgroundSchedulerRuntimeStateRehydratedIfPending() {
+        if (Volatile.Read(ref _backgroundSchedulerRuntimeStoreRehydratePending) == 0) {
+            return;
+        }
+
+        TryRehydrateBackgroundSchedulerRuntimeState();
+    }
+
     private void PersistBackgroundSchedulerRuntimeStateNoThrow() {
+        EnsureBackgroundSchedulerRuntimeStateRehydratedIfPending();
+        if (Volatile.Read(ref _backgroundSchedulerRuntimeStoreRehydratePending) != 0) {
+            return;
+        }
+
         BackgroundSchedulerRuntimeStoreDto store;
         var nowTicks = DateTime.UtcNow.Ticks;
         lock (_backgroundSchedulerTelemetryLock) {

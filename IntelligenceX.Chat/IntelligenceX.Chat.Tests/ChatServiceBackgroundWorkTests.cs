@@ -3237,7 +3237,7 @@ public sealed class ChatServiceBackgroundWorkTests {
     }
 
     [Fact]
-    public void BackgroundSchedulerRuntimeState_DoesNotRehydrateWhenLockUnavailable() {
+    public void BackgroundSchedulerRuntimeState_RehydratesAfterStartupLockTimeoutResolves() {
         var (options, _, _) = ChatServiceTestSessionFactory.CreateIsolatedPersistenceOptions();
 
         var writer = new ChatServiceSession(options, Stream.Null);
@@ -3251,12 +3251,20 @@ public sealed class ChatServiceBackgroundWorkTests {
         ChatServiceSession.SetBackgroundSchedulerRuntimeStoreLockAcquisitionOverrideForTesting(
             path => string.Equals(path, runtimeStorePath, StringComparison.OrdinalIgnoreCase) ? false : null);
         try {
-            var resumed = new ChatServiceSession(options, Stream.Null).BuildBackgroundSchedulerSummaryForTesting();
+            var resumedSession = new ChatServiceSession(options, Stream.Null);
+            var blockedSummary = resumedSession.BuildBackgroundSchedulerSummaryForTesting();
 
-            Assert.False(resumed.AdaptiveIdleActive);
-            Assert.Equal(0, resumed.LastAdaptiveIdleUtcTicks);
-            Assert.Equal(0, resumed.LastAdaptiveIdleDelaySeconds);
-            Assert.Equal(string.Empty, resumed.LastAdaptiveIdleReason);
+            Assert.False(blockedSummary.AdaptiveIdleActive);
+            Assert.Equal(0, blockedSummary.LastAdaptiveIdleUtcTicks);
+            Assert.Equal(0, blockedSummary.LastAdaptiveIdleDelaySeconds);
+            Assert.Equal(string.Empty, blockedSummary.LastAdaptiveIdleReason);
+
+            ChatServiceSession.SetBackgroundSchedulerRuntimeStoreLockAcquisitionOverrideForTesting(null);
+
+            var recoveredSummary = resumedSession.BuildBackgroundSchedulerSummaryForTesting();
+            Assert.True(recoveredSummary.AdaptiveIdleActive);
+            Assert.Equal(45, recoveredSummary.LastAdaptiveIdleDelaySeconds);
+            Assert.Contains("policy=rehydrate_blocked", recoveredSummary.LastAdaptiveIdleReason, StringComparison.OrdinalIgnoreCase);
         } finally {
             ChatServiceSession.SetBackgroundSchedulerRuntimeStoreLockAcquisitionOverrideForTesting(null);
         }

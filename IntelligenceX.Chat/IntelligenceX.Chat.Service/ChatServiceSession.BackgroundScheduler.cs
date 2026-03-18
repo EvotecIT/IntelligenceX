@@ -81,6 +81,7 @@ internal sealed partial class ChatServiceSession {
     }
 
     private SessionCapabilityBackgroundSchedulerDto BuildBackgroundSchedulerSummary(BackgroundSchedulerSummaryOptions options) {
+        EnsureBackgroundSchedulerRuntimeStateRehydratedIfPending();
         RememberBackgroundSchedulerTick();
 
         var scopedThreadId = (options.ScopeThreadId ?? string.Empty).Trim();
