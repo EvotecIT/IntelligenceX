@@ -1,0 +1,12 @@
+IntelligenceX.Tools.ADPlayground
+IntelligenceX.Tools.DnsClientX
+IntelligenceX.Tools.DomainDetective
+IntelligenceX.Tools.Email
+IntelligenceX.Tools.EventLog
+IntelligenceX.Tools.FileSystem
+IntelligenceX.Tools.OfficeIMO
+IntelligenceX.Tools.PowerShell
+IntelligenceX.Tools.ReviewerSetup
+IntelligenceX.Tools.System
+IntelligenceX.Tools.TestimoX
+IntelligenceX.Tools.TestimoX.Analytics

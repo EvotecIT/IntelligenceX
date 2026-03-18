@@ -86,7 +86,14 @@ internal sealed partial class ChatServiceSession {
         var trackedThreadCount = 0;
         var readyThreadCount = 0;
         var runningThreadCount = 0;
+        var dependencyBlockedThreadCount = 0;
         var queuedItemCount = 0;
+        var dependencyBlockedItemCount = 0;
+        var dependencyHelperToolNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var dependencyRetryCooldownHelperToolNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var dependencyAuthenticationHelperToolNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var dependencyAuthenticationArgumentNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var dependencySetupHelperToolNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var readyItemCount = 0;
         var runningItemCount = 0;
         var completedItemCount = 0;
@@ -145,6 +152,42 @@ internal sealed partial class ChatServiceSession {
             completedItemCount += Math.Max(0, snapshot.CompletedCount);
             pendingReadOnlyItemCount += Math.Max(0, snapshot.PendingReadOnlyCount);
             pendingUnknownItemCount += Math.Max(0, snapshot.PendingUnknownCount);
+            var dependencySummary = BuildBackgroundWorkDependencySummary(snapshot.Items);
+            var dependencyRecoverySummary = BuildBackgroundWorkDependencyRecoverySummary(snapshot.Items, _registry.GetDefinitions());
+            dependencyBlockedItemCount += Math.Max(0, dependencySummary.BlockedItemCount);
+            foreach (var helperToolName in dependencyRecoverySummary.HelperToolNames) {
+                if (!string.IsNullOrWhiteSpace(helperToolName)) {
+                    dependencyHelperToolNames.Add(helperToolName);
+                }
+            }
+
+            foreach (var helperToolName in dependencyRecoverySummary.RetryCooldownHelperToolNames) {
+                if (!string.IsNullOrWhiteSpace(helperToolName)) {
+                    dependencyRetryCooldownHelperToolNames.Add(helperToolName);
+                }
+            }
+
+            foreach (var helperToolName in dependencyRecoverySummary.AuthenticationHelperToolNames) {
+                if (!string.IsNullOrWhiteSpace(helperToolName)) {
+                    dependencyAuthenticationHelperToolNames.Add(helperToolName);
+                }
+            }
+
+            foreach (var argumentName in dependencyRecoverySummary.AuthenticationArgumentNames) {
+                if (!string.IsNullOrWhiteSpace(argumentName)) {
+                    dependencyAuthenticationArgumentNames.Add(argumentName);
+                }
+            }
+
+            foreach (var helperToolName in dependencyRecoverySummary.SetupHelperToolNames) {
+                if (!string.IsNullOrWhiteSpace(helperToolName)) {
+                    dependencySetupHelperToolNames.Add(helperToolName);
+                }
+            }
+
+            if (dependencySummary.BlockedItemCount > 0) {
+                dependencyBlockedThreadCount++;
+            }
 
             if (snapshot.ReadyCount > 0) {
                 readyThreadCount++;
@@ -161,7 +204,7 @@ internal sealed partial class ChatServiceSession {
             }
 
             if (options.IncludeThreadSummaries) {
-                threadSummaries.Add(BuildBackgroundSchedulerThreadSummary(threadId, snapshot));
+                threadSummaries.Add(BuildBackgroundSchedulerThreadSummary(threadId, snapshot, _registry.GetDefinitions()));
             }
         }
 
@@ -201,6 +244,15 @@ internal sealed partial class ChatServiceSession {
         var effectivePausedUntilUtcTicks = manualPauseState.ManualPauseActive || scheduledPauseActive
             ? Math.Max(0, manualPauseState.PausedUntilUtcTicks)
             : Math.Max(0, pausedUntilUtcTicks);
+        var schedulerDependencyRecoverySummary = new BackgroundWorkDependencyRecoverySummary(
+            BlockedItemCount: Math.Max(0, dependencyBlockedItemCount),
+            HelperToolNames: dependencyHelperToolNames.Take(MaxBackgroundSchedulerRecentEvidenceTools).ToArray(),
+            RetryCooldownHelperToolNames: dependencyRetryCooldownHelperToolNames.Take(MaxBackgroundSchedulerRecentEvidenceTools).ToArray(),
+            AuthenticationHelperToolNames: dependencyAuthenticationHelperToolNames.Take(MaxBackgroundSchedulerRecentEvidenceTools).ToArray(),
+            AuthenticationArgumentNames: dependencyAuthenticationArgumentNames.Take(4).ToArray(),
+            SetupHelperToolNames: dependencySetupHelperToolNames.Take(MaxBackgroundSchedulerRecentEvidenceTools).ToArray());
+        var dependencyRecoveryReason = ResolveBackgroundWorkDependencyRecoveryReason(schedulerDependencyRecoverySummary);
+        var dependencyNextAction = ResolveBackgroundWorkDependencyNextAction(schedulerDependencyRecoverySummary);
 
         return new SessionCapabilityBackgroundSchedulerDto {
             ScopeThreadId = scopedThreadId,
@@ -229,7 +281,16 @@ internal sealed partial class ChatServiceSession {
             TrackedThreadCount = Math.Max(0, trackedThreadCount),
             ReadyThreadCount = Math.Max(0, readyThreadCount),
             RunningThreadCount = Math.Max(0, runningThreadCount),
+            DependencyBlockedThreadCount = Math.Max(0, dependencyBlockedThreadCount),
             QueuedItemCount = Math.Max(0, queuedItemCount),
+            DependencyBlockedItemCount = Math.Max(0, dependencyBlockedItemCount),
+            DependencyHelperToolNames = NormalizeDistinctStrings(schedulerDependencyRecoverySummary.HelperToolNames, MaxBackgroundSchedulerRecentEvidenceTools),
+            DependencyRecoveryReason = NormalizeBackgroundSchedulerActivityText(dependencyRecoveryReason, maxLength: 80),
+            DependencyNextAction = NormalizeBackgroundSchedulerActivityText(dependencyNextAction, maxLength: 80),
+            DependencyRetryCooldownHelperToolNames = NormalizeDistinctStrings(schedulerDependencyRecoverySummary.RetryCooldownHelperToolNames, MaxBackgroundSchedulerRecentEvidenceTools),
+            DependencyAuthenticationHelperToolNames = NormalizeDistinctStrings(schedulerDependencyRecoverySummary.AuthenticationHelperToolNames, MaxBackgroundSchedulerRecentEvidenceTools),
+            DependencyAuthenticationArgumentNames = NormalizeDistinctStrings(schedulerDependencyRecoverySummary.AuthenticationArgumentNames, 4),
+            DependencySetupHelperToolNames = NormalizeDistinctStrings(schedulerDependencyRecoverySummary.SetupHelperToolNames, MaxBackgroundSchedulerRecentEvidenceTools),
             ReadyItemCount = Math.Max(0, readyItemCount),
             RunningItemCount = Math.Max(0, runningItemCount),
             CompletedItemCount = Math.Max(0, completedItemCount),
@@ -303,8 +364,27 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
+        var previewTargetDefinitions = new List<ToolDefinition>(previews.Count);
+        for (var i = 0; i < previews.Count; i++) {
+            if (TryGetToolDefinitionByName(toolDefinitions, previews[i].Candidate.Item.TargetToolName, out var previewDefinition)) {
+                previewTargetDefinitions.Add(previewDefinition);
+            }
+        }
+
+        var helperDemandByToolName = BuildContractHelperDemandByToolName(previewTargetDefinitions, _toolOrchestrationCatalog);
+        var availablePreviewTargetToolNames = new HashSet<string>(
+            previewTargetDefinitions
+                .Select(static definition => NormalizeToolNameForAnswerPlan(definition?.Name))
+                .Where(static toolName => toolName.Length > 0),
+            StringComparer.OrdinalIgnoreCase);
+
         previews.Sort((left, right) => {
-            var priorityCompare = CompareBackgroundWorkReplayPriority(left.Candidate.Item, right.Candidate.Item);
+            var priorityCompare = CompareBackgroundWorkReplayPriority(
+                left.Candidate.Item,
+                right.Candidate.Item,
+                toolDefinitions,
+                helperDemandByToolName,
+                availablePreviewTargetToolNames);
             if (priorityCompare != 0) {
                 return priorityCompare;
             }
@@ -712,12 +792,22 @@ internal sealed partial class ChatServiceSession {
         };
     }
 
-    private static SessionCapabilityBackgroundSchedulerThreadSummaryDto BuildBackgroundSchedulerThreadSummary(
+    private SessionCapabilityBackgroundSchedulerThreadSummaryDto BuildBackgroundSchedulerThreadSummary(
         string threadId,
-        ThreadBackgroundWorkSnapshot snapshot) {
+        ThreadBackgroundWorkSnapshot snapshot,
+        IReadOnlyList<ToolDefinition> toolDefinitions) {
+        var dependencySummary = BuildBackgroundWorkDependencySummary(snapshot.Items);
+        var dependencyRecoverySummary = BuildBackgroundWorkDependencyRecoverySummary(snapshot.Items, toolDefinitions);
+        var dependencyRecoveryReason = ResolveBackgroundWorkDependencyRecoveryReason(dependencyRecoverySummary);
+        var dependencyNextAction = ResolveBackgroundWorkDependencyNextAction(dependencyRecoverySummary);
+        var continuationHint = BuildBackgroundSchedulerContinuationHint(
+            threadId,
+            dependencySummary.BlockedItemCount,
+            dependencyRecoverySummary);
         return new SessionCapabilityBackgroundSchedulerThreadSummaryDto {
             ThreadId = NormalizeBackgroundSchedulerActivityText(threadId, maxLength: 120),
             QueuedItemCount = Math.Max(0, snapshot.QueuedCount),
+            DependencyBlockedItemCount = Math.Max(0, dependencySummary.BlockedItemCount),
             ReadyItemCount = Math.Max(0, snapshot.ReadyCount),
             RunningItemCount = Math.Max(0, snapshot.RunningCount),
             CompletedItemCount = Math.Max(0, snapshot.CompletedCount),
@@ -727,8 +817,204 @@ internal sealed partial class ChatServiceSession {
                 (snapshot.RecentEvidenceTools ?? Array.Empty<string>())
                 .Select(static toolName => NormalizeBackgroundSchedulerActivityText(toolName, maxLength: 80))
                 .Where(static toolName => toolName.Length > 0),
+                MaxBackgroundSchedulerRecentEvidenceTools),
+            DependencyHelperToolNames = NormalizeDistinctStrings(
+                dependencySummary.HelperToolNames
+                    .Select(static toolName => NormalizeBackgroundSchedulerActivityText(toolName, maxLength: 80))
+                    .Where(static toolName => toolName.Length > 0),
+                MaxBackgroundSchedulerRecentEvidenceTools),
+            DependencyRecoveryReason = NormalizeBackgroundSchedulerActivityText(dependencyRecoveryReason, maxLength: 80),
+            DependencyNextAction = NormalizeBackgroundSchedulerActivityText(dependencyNextAction, maxLength: 80),
+            ContinuationHint = continuationHint,
+            DependencyRetryCooldownHelperToolNames = NormalizeDistinctStrings(
+                dependencyRecoverySummary.RetryCooldownHelperToolNames
+                    .Select(static toolName => NormalizeBackgroundSchedulerActivityText(toolName, maxLength: 80))
+                    .Where(static toolName => toolName.Length > 0),
+                MaxBackgroundSchedulerRecentEvidenceTools),
+            DependencyAuthenticationHelperToolNames = NormalizeDistinctStrings(
+                dependencyRecoverySummary.AuthenticationHelperToolNames
+                    .Select(static toolName => NormalizeBackgroundSchedulerActivityText(toolName, maxLength: 80))
+                    .Where(static toolName => toolName.Length > 0),
+                MaxBackgroundSchedulerRecentEvidenceTools),
+            DependencyAuthenticationArgumentNames = NormalizeDistinctStrings(
+                dependencyRecoverySummary.AuthenticationArgumentNames
+                    .Select(static argumentName => NormalizeBackgroundSchedulerActivityText(argumentName, maxLength: 64))
+                    .Where(static argumentName => argumentName.Length > 0),
+                4),
+            DependencySetupHelperToolNames = NormalizeDistinctStrings(
+                dependencyRecoverySummary.SetupHelperToolNames
+                    .Select(static toolName => NormalizeBackgroundSchedulerActivityText(toolName, maxLength: 80))
+                    .Where(static toolName => toolName.Length > 0),
                 MaxBackgroundSchedulerRecentEvidenceTools)
         };
+    }
+
+    private static SessionCapabilityBackgroundSchedulerContinuationHintDto? BuildBackgroundSchedulerContinuationHint(
+        string threadId,
+        int dependencyBlockedItemCount,
+        BackgroundWorkDependencyRecoverySummary summary) {
+        if (dependencyBlockedItemCount <= 0) {
+            return null;
+        }
+
+        var normalizedThreadId = NormalizeBackgroundSchedulerActivityText(threadId, maxLength: 120);
+        var helperToolNames = NormalizeDistinctStrings(
+            summary.HelperToolNames
+                .Select(static toolName => NormalizeBackgroundSchedulerActivityText(toolName, maxLength: 80))
+                .Where(static toolName => toolName.Length > 0),
+            MaxBackgroundSchedulerRecentEvidenceTools);
+        var inputArgumentNames = NormalizeDistinctStrings(
+            summary.AuthenticationArgumentNames
+                .Select(static argumentName => NormalizeBackgroundSchedulerActivityText(argumentName, maxLength: 64))
+                .Where(static argumentName => argumentName.Length > 0),
+            4);
+
+        var recoveryReason = ResolveBackgroundWorkDependencyRecoveryReason(summary);
+        var nextAction = ResolveBackgroundWorkDependencyNextAction(summary);
+        if (recoveryReason.Length == 0) {
+            recoveryReason = "background_prerequisite_pending";
+        }
+
+        if (nextAction.Length == 0) {
+            nextAction = "wait_for_prerequisites";
+        }
+
+        return new SessionCapabilityBackgroundSchedulerContinuationHintDto {
+            ThreadId = normalizedThreadId,
+            NextAction = NormalizeBackgroundSchedulerActivityText(nextAction, maxLength: 80),
+            RecoveryReason = NormalizeBackgroundSchedulerActivityText(recoveryReason, maxLength: 80),
+            HelperToolNames = helperToolNames,
+            InputArgumentNames = inputArgumentNames,
+            SuggestedRequests = BuildBackgroundSchedulerContinuationRequests(
+                normalizedThreadId,
+                nextAction,
+                helperToolNames,
+                inputArgumentNames),
+            StatusSummary = BuildBackgroundSchedulerContinuationHintStatusSummary(nextAction, helperToolNames, inputArgumentNames)
+        };
+    }
+
+    private static SessionCapabilityBackgroundSchedulerContinuationRequestDto[] BuildBackgroundSchedulerContinuationRequests(
+        string threadId,
+        string? nextAction,
+        string[] helperToolNames,
+        string[] inputArgumentNames) {
+        var normalizedThreadId = NormalizeBackgroundSchedulerActivityText(threadId, maxLength: 120);
+        var normalizedNextAction = NormalizeBackgroundSchedulerActivityText(nextAction, maxLength: 80);
+        var normalizedHelperToolNames = helperToolNames ?? Array.Empty<string>();
+        var normalizedInputArgumentNames = inputArgumentNames ?? Array.Empty<string>();
+
+        if (string.Equals(normalizedNextAction, "request_runtime_auth_context", StringComparison.OrdinalIgnoreCase)) {
+            return new[] {
+                new SessionCapabilityBackgroundSchedulerContinuationRequestDto {
+                    RequestKind = "list_profiles",
+                    Purpose = "discover_runtime_profiles"
+                },
+                new SessionCapabilityBackgroundSchedulerContinuationRequestDto {
+                    RequestKind = "set_profile",
+                    Purpose = "apply_runtime_auth_context",
+                    RequiredArgumentNames = new[] { "profileName" },
+                    SatisfiesInputArgumentNames = normalizedInputArgumentNames,
+                    SuggestedArguments = new[] {
+                        new SessionCapabilityBackgroundSchedulerContinuationRequestArgumentDto {
+                            Name = "newThread",
+                            Value = "false",
+                            ValueKind = "boolean"
+                        }
+                    }
+                }
+            };
+        }
+
+        if (string.Equals(normalizedNextAction, "wait_for_helper_retry", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(normalizedNextAction, "wait_for_prerequisites", StringComparison.OrdinalIgnoreCase)) {
+            var purpose = string.Equals(normalizedNextAction, "wait_for_helper_retry", StringComparison.OrdinalIgnoreCase)
+                ? "refresh_helper_retry_status"
+                : "refresh_blocked_thread_status";
+            return new[] {
+                new SessionCapabilityBackgroundSchedulerContinuationRequestDto {
+                    RequestKind = "get_background_scheduler_status",
+                    Purpose = purpose,
+                    SuggestedArguments = BuildBackgroundSchedulerStatusRequestTemplateArguments(normalizedThreadId)
+                }
+            };
+        }
+
+        if (string.Equals(normalizedNextAction, "request_setup_context", StringComparison.OrdinalIgnoreCase)) {
+            return new[] {
+                new SessionCapabilityBackgroundSchedulerContinuationRequestDto {
+                    RequestKind = "get_background_scheduler_status",
+                    Purpose = "refresh_setup_context_status",
+                    SuggestedArguments = BuildBackgroundSchedulerStatusRequestTemplateArguments(normalizedThreadId)
+                }
+            };
+        }
+
+        return Array.Empty<SessionCapabilityBackgroundSchedulerContinuationRequestDto>();
+    }
+
+    private static SessionCapabilityBackgroundSchedulerContinuationRequestArgumentDto[] BuildBackgroundSchedulerStatusRequestTemplateArguments(string normalizedThreadId) {
+        var arguments = new List<SessionCapabilityBackgroundSchedulerContinuationRequestArgumentDto>(5);
+        if (normalizedThreadId.Length > 0) {
+            arguments.Add(new SessionCapabilityBackgroundSchedulerContinuationRequestArgumentDto {
+                Name = "threadId",
+                Value = normalizedThreadId,
+                ValueKind = "string"
+            });
+        }
+
+        arguments.Add(new SessionCapabilityBackgroundSchedulerContinuationRequestArgumentDto {
+            Name = "includeRecentActivity",
+            Value = "true",
+            ValueKind = "boolean"
+        });
+        arguments.Add(new SessionCapabilityBackgroundSchedulerContinuationRequestArgumentDto {
+            Name = "includeThreadSummaries",
+            Value = "true",
+            ValueKind = "boolean"
+        });
+        arguments.Add(new SessionCapabilityBackgroundSchedulerContinuationRequestArgumentDto {
+            Name = "maxRecentActivity",
+            Value = "8",
+            ValueKind = "number"
+        });
+        arguments.Add(new SessionCapabilityBackgroundSchedulerContinuationRequestArgumentDto {
+            Name = "maxThreadSummaries",
+            Value = "1",
+            ValueKind = "number"
+        });
+        return arguments.ToArray();
+    }
+
+    private static string BuildBackgroundSchedulerContinuationHintStatusSummary(
+        string? nextAction,
+        string[] helperToolNames,
+        string[] inputArgumentNames) {
+        var normalizedNextAction = NormalizeBackgroundSchedulerActivityText(nextAction, maxLength: 80);
+        var normalizedHelperToolNames = helperToolNames ?? Array.Empty<string>();
+        var normalizedInputArgumentNames = inputArgumentNames ?? Array.Empty<string>();
+
+        if (string.Equals(normalizedNextAction, "request_runtime_auth_context", StringComparison.OrdinalIgnoreCase)) {
+            return normalizedInputArgumentNames.Length > 0
+                ? "Waiting on runtime auth context: " + string.Join(", ", normalizedInputArgumentNames) + "."
+                : "Waiting on runtime auth context for blocked background work.";
+        }
+
+        if (string.Equals(normalizedNextAction, "request_setup_context", StringComparison.OrdinalIgnoreCase)) {
+            return normalizedHelperToolNames.Length > 0
+                ? "Waiting on setup context for: " + string.Join(", ", normalizedHelperToolNames) + "."
+                : "Waiting on setup context for blocked background work.";
+        }
+
+        if (string.Equals(normalizedNextAction, "wait_for_helper_retry", StringComparison.OrdinalIgnoreCase)) {
+            return normalizedHelperToolNames.Length > 0
+                ? "Waiting on helper retry: " + string.Join(", ", normalizedHelperToolNames) + "."
+                : "Waiting on prerequisite helper retry.";
+        }
+
+        return normalizedHelperToolNames.Length > 0
+            ? "Waiting on prerequisites: " + string.Join(", ", normalizedHelperToolNames) + "."
+            : "Waiting on prerequisite helpers.";
     }
 
     private static string BuildBackgroundSchedulerActivitySummary(SessionCapabilityBackgroundSchedulerActivityDto activity) {
@@ -761,8 +1047,31 @@ internal sealed partial class ChatServiceSession {
         builder.Add("ready=" + summary.ReadyItemCount);
         builder.Add("running=" + summary.RunningItemCount);
         builder.Add("queued=" + summary.QueuedItemCount);
+        if (summary.DependencyBlockedItemCount > 0) {
+            builder.Add("blocked_dep=" + summary.DependencyBlockedItemCount);
+        }
         if (summary.PendingReadOnlyItemCount > 0) {
             builder.Add("pending_ro=" + summary.PendingReadOnlyItemCount);
+        }
+
+        if (summary.DependencyHelperToolNames.Length > 0) {
+            builder.Add("waiting_on=" + string.Join(",", summary.DependencyHelperToolNames));
+        }
+
+        if (summary.DependencyRecoveryReason.Length > 0) {
+            builder.Add("blocked_reason=" + summary.DependencyRecoveryReason);
+        }
+
+        if (summary.DependencyNextAction.Length > 0) {
+            builder.Add("next_action=" + summary.DependencyNextAction);
+        }
+
+        if (summary.DependencyAuthenticationArgumentNames.Length > 0) {
+            builder.Add("auth_args=" + string.Join(",", summary.DependencyAuthenticationArgumentNames));
+        }
+
+        if (summary.DependencySetupHelperToolNames.Length > 0) {
+            builder.Add("setup=" + string.Join(",", summary.DependencySetupHelperToolNames));
         }
 
         if (summary.RecentEvidenceTools.Length > 0) {

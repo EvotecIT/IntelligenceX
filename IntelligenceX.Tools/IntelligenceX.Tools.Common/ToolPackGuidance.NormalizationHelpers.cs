@@ -103,9 +103,15 @@ public static partial class ToolPackGuidance {
         }
 
         var remoteCapableToolNames = NormalizeValueListOrFallback(summary.RemoteCapableToolNames, derived.RemoteCapableToolNames);
+        var targetScopedToolNames = NormalizeValueListOrFallback(summary.TargetScopedToolNames, derived.TargetScopedToolNames);
+        var remoteHostTargetingToolNames = NormalizeValueListOrFallback(summary.RemoteHostTargetingToolNames, derived.RemoteHostTargetingToolNames);
         var setupAwareToolNames = NormalizeValueListOrFallback(summary.SetupAwareToolNames, derived.SetupAwareToolNames);
+        var environmentDiscoverToolNames = NormalizeValueListOrFallback(summary.EnvironmentDiscoverToolNames, derived.EnvironmentDiscoverToolNames);
         var handoffAwareToolNames = NormalizeValueListOrFallback(summary.HandoffAwareToolNames, derived.HandoffAwareToolNames);
         var recoveryAwareToolNames = NormalizeValueListOrFallback(summary.RecoveryAwareToolNames, derived.RecoveryAwareToolNames);
+        var writeCapableToolNames = NormalizeValueListOrFallback(summary.WriteCapableToolNames, derived.WriteCapableToolNames);
+        var authenticationRequiredToolNames = NormalizeValueListOrFallback(summary.AuthenticationRequiredToolNames, derived.AuthenticationRequiredToolNames);
+        var probeCapableToolNames = NormalizeValueListOrFallback(summary.ProbeCapableToolNames, derived.ProbeCapableToolNames);
         var crossPackHandoffToolNames = NormalizeValueListOrFallback(summary.CrossPackHandoffToolNames, derived.CrossPackHandoffToolNames);
         var crossPackTargetPacks = NormalizeValueListOrFallback(summary.CrossPackTargetPacks, derived.CrossPackTargetPacks);
 
@@ -113,12 +119,26 @@ public static partial class ToolPackGuidance {
             TotalTools = Math.Max(Math.Max(0, summary.TotalTools), derived.TotalTools),
             RemoteCapableTools = Math.Max(Math.Max(summary.RemoteCapableTools, derived.RemoteCapableTools), remoteCapableToolNames.Count),
             RemoteCapableToolNames = remoteCapableToolNames,
+            TargetScopedTools = Math.Max(Math.Max(summary.TargetScopedTools, derived.TargetScopedTools), targetScopedToolNames.Count),
+            TargetScopedToolNames = targetScopedToolNames,
+            RemoteHostTargetingTools = Math.Max(Math.Max(summary.RemoteHostTargetingTools, derived.RemoteHostTargetingTools), remoteHostTargetingToolNames.Count),
+            RemoteHostTargetingToolNames = remoteHostTargetingToolNames,
             SetupAwareTools = Math.Max(Math.Max(summary.SetupAwareTools, derived.SetupAwareTools), setupAwareToolNames.Count),
             SetupAwareToolNames = setupAwareToolNames,
+            EnvironmentDiscoverTools = Math.Max(
+                Math.Max(summary.EnvironmentDiscoverTools, derived.EnvironmentDiscoverTools),
+                environmentDiscoverToolNames.Count),
+            EnvironmentDiscoverToolNames = environmentDiscoverToolNames,
             HandoffAwareTools = Math.Max(Math.Max(summary.HandoffAwareTools, derived.HandoffAwareTools), handoffAwareToolNames.Count),
             HandoffAwareToolNames = handoffAwareToolNames,
             RecoveryAwareTools = Math.Max(Math.Max(summary.RecoveryAwareTools, derived.RecoveryAwareTools), recoveryAwareToolNames.Count),
             RecoveryAwareToolNames = recoveryAwareToolNames,
+            WriteCapableTools = Math.Max(Math.Max(summary.WriteCapableTools, derived.WriteCapableTools), writeCapableToolNames.Count),
+            WriteCapableToolNames = writeCapableToolNames,
+            AuthenticationRequiredTools = Math.Max(Math.Max(summary.AuthenticationRequiredTools, derived.AuthenticationRequiredTools), authenticationRequiredToolNames.Count),
+            AuthenticationRequiredToolNames = authenticationRequiredToolNames,
+            ProbeCapableTools = Math.Max(Math.Max(summary.ProbeCapableTools, derived.ProbeCapableTools), probeCapableToolNames.Count),
+            ProbeCapableToolNames = probeCapableToolNames,
             CrossPackHandoffTools = Math.Max(Math.Max(summary.CrossPackHandoffTools, derived.CrossPackHandoffTools), crossPackHandoffToolNames.Count),
             CrossPackHandoffToolNames = crossPackHandoffToolNames,
             CrossPackTargetPacks = crossPackTargetPacks
@@ -509,9 +529,21 @@ public static partial class ToolPackGuidance {
             catalog
                 .Where(static entry => IsRemoteCapable(entry.Traits))
                 .Select(static entry => entry.Name));
+        var targetScopedToolNames = NormalizeValues(
+            catalog
+                .Where(static entry => entry.Traits.SupportsTargetScoping || entry.Traits.TargetScopeArguments.Count > 0)
+                .Select(static entry => entry.Name));
+        var remoteHostTargetingToolNames = NormalizeValues(
+            catalog
+                .Where(static entry => entry.Traits.SupportsRemoteHostTargeting || entry.Traits.RemoteHostArguments.Count > 0)
+                .Select(static entry => entry.Name));
         var setupAwareToolNames = NormalizeValues(
             catalog
                 .Where(static entry => entry.Setup.IsSetupAware)
+                .Select(static entry => entry.Name));
+        var environmentDiscoverToolNames = NormalizeValues(
+            catalog
+                .Where(static entry => entry.IsEnvironmentDiscoverTool)
                 .Select(static entry => entry.Name));
         var handoffAwareToolNames = NormalizeValues(
             catalog
@@ -520,6 +552,18 @@ public static partial class ToolPackGuidance {
         var recoveryAwareToolNames = NormalizeValues(
             catalog
                 .Where(static entry => entry.Recovery.IsRecoveryAware)
+                .Select(static entry => entry.Name));
+        var writeCapableToolNames = NormalizeValues(
+            catalog
+                .Where(static entry => entry.IsWriteCapable)
+                .Select(static entry => entry.Name));
+        var authenticationRequiredToolNames = NormalizeValues(
+            catalog
+                .Where(static entry => entry.RequiresAuthentication)
+                .Select(static entry => entry.Name));
+        var probeCapableToolNames = NormalizeValues(
+            catalog
+                .Where(static entry => entry.SupportsConnectivityProbe)
                 .Select(static entry => entry.Name));
         var crossPackHandoffToolNames = NormalizeValues(
             catalog
@@ -534,12 +578,24 @@ public static partial class ToolPackGuidance {
             TotalTools = catalog.Count,
             RemoteCapableTools = remoteCapableToolNames.Count,
             RemoteCapableToolNames = remoteCapableToolNames,
+            TargetScopedTools = targetScopedToolNames.Count,
+            TargetScopedToolNames = targetScopedToolNames,
+            RemoteHostTargetingTools = remoteHostTargetingToolNames.Count,
+            RemoteHostTargetingToolNames = remoteHostTargetingToolNames,
             SetupAwareTools = setupAwareToolNames.Count,
             SetupAwareToolNames = setupAwareToolNames,
+            EnvironmentDiscoverTools = environmentDiscoverToolNames.Count,
+            EnvironmentDiscoverToolNames = environmentDiscoverToolNames,
             HandoffAwareTools = handoffAwareToolNames.Count,
             HandoffAwareToolNames = handoffAwareToolNames,
             RecoveryAwareTools = recoveryAwareToolNames.Count,
             RecoveryAwareToolNames = recoveryAwareToolNames,
+            WriteCapableTools = writeCapableToolNames.Count,
+            WriteCapableToolNames = writeCapableToolNames,
+            AuthenticationRequiredTools = authenticationRequiredToolNames.Count,
+            AuthenticationRequiredToolNames = authenticationRequiredToolNames,
+            ProbeCapableTools = probeCapableToolNames.Count,
+            ProbeCapableToolNames = probeCapableToolNames,
             CrossPackHandoffTools = crossPackHandoffToolNames.Count,
             CrossPackHandoffToolNames = crossPackHandoffToolNames,
             CrossPackTargetPacks = crossPackTargetPacks

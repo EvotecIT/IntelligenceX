@@ -46,6 +46,7 @@ internal sealed partial class ChatServiceSession {
             bool noTextToolOutputDirectRetryUsed,
             bool structuredNextActionRetryUsed,
             bool toolProgressRecoveryUsed,
+            bool backgroundDependencyRecoveryUsed,
             bool hostStructuredNextActionReplayUsed,
             bool hostDomainIntentBootstrapReplayUsed,
             bool noResultPhaseLoopWatchdogUsed,
@@ -81,6 +82,7 @@ internal sealed partial class ChatServiceSession {
             NoTextToolOutputDirectRetryUsed = noTextToolOutputDirectRetryUsed;
             StructuredNextActionRetryUsed = structuredNextActionRetryUsed;
             ToolProgressRecoveryUsed = toolProgressRecoveryUsed;
+            BackgroundDependencyRecoveryUsed = backgroundDependencyRecoveryUsed;
             HostStructuredNextActionReplayUsed = hostStructuredNextActionReplayUsed;
             HostDomainIntentBootstrapReplayUsed = hostDomainIntentBootstrapReplayUsed;
             NoResultPhaseLoopWatchdogUsed = noResultPhaseLoopWatchdogUsed;
@@ -142,6 +144,8 @@ internal sealed partial class ChatServiceSession {
 
         public bool ToolProgressRecoveryUsed { get; set; }
 
+        public bool BackgroundDependencyRecoveryUsed { get; set; }
+
         public bool HostStructuredNextActionReplayUsed { get; set; }
 
         public bool HostDomainIntentBootstrapReplayUsed { get; set; }
@@ -188,6 +192,7 @@ internal sealed partial class ChatServiceSession {
         ref bool noTextToolOutputDirectRetryUsed,
         ref bool structuredNextActionRetryUsed,
         ref bool toolProgressRecoveryUsed,
+        ref bool backgroundDependencyRecoveryUsed,
         ref bool hostStructuredNextActionReplayUsed,
         ref bool hostDomainIntentBootstrapReplayUsed,
         ref bool noResultPhaseLoopWatchdogUsed,
@@ -220,6 +225,7 @@ internal sealed partial class ChatServiceSession {
         noTextToolOutputDirectRetryUsed = state.NoTextToolOutputDirectRetryUsed;
         structuredNextActionRetryUsed = state.StructuredNextActionRetryUsed;
         toolProgressRecoveryUsed = state.ToolProgressRecoveryUsed;
+        backgroundDependencyRecoveryUsed = state.BackgroundDependencyRecoveryUsed;
         hostStructuredNextActionReplayUsed = state.HostStructuredNextActionReplayUsed;
         hostDomainIntentBootstrapReplayUsed = state.HostDomainIntentBootstrapReplayUsed;
         noResultPhaseLoopWatchdogUsed = state.NoResultPhaseLoopWatchdogUsed;

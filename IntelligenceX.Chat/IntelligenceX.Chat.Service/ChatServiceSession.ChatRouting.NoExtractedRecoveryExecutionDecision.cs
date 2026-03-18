@@ -176,19 +176,25 @@ internal sealed partial class ChatServiceSession {
                 userRequest: userRequest,
                 assistantDraft: assistantDraft)
             && priorToolCalls == 0
-            && priorToolOutputs == 0
-            && TryBuildReadyBackgroundWorkToolCall(
-                threadId: threadId,
-                userRequest: userRequest,
-                toolDefinitions: toolDefinitions,
-                mutatingToolHintsByName: mutatingToolHintsByName,
-                toolCall: out var backgroundWorkToolCall,
-                itemId: out var backgroundWorkItemId,
-                reason: out var backgroundWorkReason)) {
-            return NoExtractedRecoveryExecutionDecision.BackgroundWorkReadyReplay(
-                backgroundWorkReason,
-                backgroundWorkItemId,
-                backgroundWorkToolCall);
+            && priorToolOutputs == 0) {
+            var backgroundWorkReason = string.Empty;
+            if (TryBuildReadyBackgroundWorkToolCall(
+                    threadId: threadId,
+                    userRequest: userRequest,
+                    toolDefinitions: toolDefinitions,
+                    mutatingToolHintsByName: mutatingToolHintsByName,
+                    toolCall: out var backgroundWorkToolCall,
+                    itemId: out var backgroundWorkItemId,
+                    reason: out backgroundWorkReason)) {
+                return NoExtractedRecoveryExecutionDecision.BackgroundWorkReadyReplay(
+                    backgroundWorkReason,
+                    backgroundWorkItemId,
+                    backgroundWorkToolCall);
+            }
+
+            if (string.Equals(backgroundWorkReason, "background_work_waiting_on_prerequisites", StringComparison.OrdinalIgnoreCase)) {
+                return NoExtractedRecoveryExecutionDecision.None(backgroundWorkReason);
+            }
         }
 
         return NoExtractedRecoveryExecutionDecision.None("no_pre_prompt_execution_selected");

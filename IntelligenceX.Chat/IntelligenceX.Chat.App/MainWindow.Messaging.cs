@@ -129,6 +129,9 @@ public sealed partial class MainWindow : Window {
                 case "scheduler_refresh":
                     await RefreshBackgroundSchedulerFromUiAsync(TryGetString(root, "threadId")).ConfigureAwait(true);
                     break;
+                case "scheduler_continue_thread":
+                    await ContinueBackgroundSchedulerThreadFromUiAsync(TryGetString(root, "threadId")).ConfigureAwait(true);
+                    break;
                 case "scheduler_pause":
                     await SetBackgroundSchedulerPausedFromUiAsync(
                         paused: true,

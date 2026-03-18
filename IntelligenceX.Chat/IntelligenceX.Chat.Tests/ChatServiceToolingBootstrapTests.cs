@@ -540,6 +540,11 @@ public sealed class ChatServiceToolingBootstrapTests {
                             PackName = "ADPlayground",
                             PackSourceKind = ToolPackSourceKind.ClosedSource,
                             IsEnvironmentDiscoverTool = true,
+                            RequiresAuthentication = true,
+                            AuthenticationContractId = "ix.auth.runtime.v1",
+                            AuthenticationArguments = new[] { "domain_controller" },
+                            SupportsConnectivityProbe = true,
+                            ProbeToolName = "ad_environment_discover",
                             ExecutionScope = "local_or_remote",
                             SupportsTargetScoping = true,
                             TargetScopeArguments = new[] { "domain_controller", "search_base_dn" },
@@ -568,12 +573,22 @@ public sealed class ChatServiceToolingBootstrapTests {
                                 TotalTools = 1,
                                 RemoteCapableTools = 1,
                                 RemoteCapableToolNames = new[] { "ad_environment_discover" },
+                                TargetScopedTools = 1,
+                                TargetScopedToolNames = new[] { "ad_environment_discover" },
+                                RemoteHostTargetingTools = 1,
+                                RemoteHostTargetingToolNames = new[] { "ad_environment_discover" },
                                 SetupAwareTools = 1,
                                 SetupAwareToolNames = new[] { "ad_environment_discover" },
+                                EnvironmentDiscoverTools = 1,
+                                EnvironmentDiscoverToolNames = new[] { "ad_environment_discover" },
                                 HandoffAwareTools = 1,
                                 HandoffAwareToolNames = new[] { "ad_environment_discover" },
                                 RecoveryAwareTools = 1,
                                 RecoveryAwareToolNames = new[] { "ad_environment_discover" },
+                                AuthenticationRequiredTools = 1,
+                                AuthenticationRequiredToolNames = new[] { "ad_environment_discover" },
+                                ProbeCapableTools = 1,
+                                ProbeCapableToolNames = new[] { "ad_environment_discover" },
                                 CrossPackHandoffTools = 1,
                                 CrossPackHandoffToolNames = new[] { "ad_environment_discover" },
                                 CrossPackTargetPacks = new[] { "eventlog", "system" }
@@ -611,11 +626,21 @@ public sealed class ChatServiceToolingBootstrapTests {
                         RemoteReachabilityMode = "remote_capable",
                         Autonomy = new SessionCapabilityAutonomySummaryDto {
                             RemoteCapableToolCount = 1,
+                            TargetScopedToolCount = 1,
+                            RemoteHostTargetingToolCount = 1,
                             SetupAwareToolCount = 1,
+                            EnvironmentDiscoverToolCount = 1,
                             HandoffAwareToolCount = 1,
                             RecoveryAwareToolCount = 1,
+                            AuthenticationRequiredToolCount = 1,
+                            ProbeCapableToolCount = 1,
                             CrossPackHandoffToolCount = 1,
                             RemoteCapablePackIds = new[] { "active_directory" },
+                            TargetScopedPackIds = new[] { "active_directory" },
+                            RemoteHostTargetingPackIds = new[] { "active_directory" },
+                            EnvironmentDiscoverPackIds = new[] { "active_directory" },
+                            AuthenticationRequiredPackIds = new[] { "active_directory" },
+                            ProbeCapablePackIds = new[] { "active_directory" },
                             CrossPackReadyPackIds = new[] { "active_directory" },
                             CrossPackTargetPackIds = new[] { "eventlog", "system" }
                         }
@@ -655,6 +680,11 @@ public sealed class ChatServiceToolingBootstrapTests {
             var tool = Assert.Single(message.Tools);
             Assert.Equal("ad_environment_discover", tool.Name);
             Assert.True(tool.IsEnvironmentDiscoverTool);
+            Assert.True(tool.RequiresAuthentication);
+            Assert.Equal("ix.auth.runtime.v1", tool.AuthenticationContractId);
+            Assert.Equal(new[] { "domain_controller" }, tool.AuthenticationArguments);
+            Assert.True(tool.SupportsConnectivityProbe);
+            Assert.Equal("ad_environment_discover", tool.ProbeToolName);
             Assert.Equal("local_or_remote", tool.ExecutionScope);
             Assert.Equal(new[] { "domain_controller", "search_base_dn" }, tool.TargetScopeArguments);
             Assert.Equal(new[] { "domain_controller" }, tool.RemoteHostArguments);
@@ -668,12 +698,22 @@ public sealed class ChatServiceToolingBootstrapTests {
             var autonomySummary = Assert.IsType<ToolPackAutonomySummaryDto>(pack.AutonomySummary);
             Assert.Equal(1, autonomySummary.RemoteCapableTools);
             Assert.Equal(new[] { "ad_environment_discover" }, autonomySummary.RemoteCapableToolNames);
+            Assert.Equal(1, autonomySummary.TargetScopedTools);
+            Assert.Equal(1, autonomySummary.RemoteHostTargetingTools);
+            Assert.Equal(1, autonomySummary.EnvironmentDiscoverTools);
+            Assert.Equal(1, autonomySummary.AuthenticationRequiredTools);
+            Assert.Equal(1, autonomySummary.ProbeCapableTools);
             Assert.Equal(new[] { "eventlog", "system" }, autonomySummary.CrossPackTargetPacks);
 
             var capabilitySnapshot = Assert.IsType<SessionCapabilitySnapshotDto>(message.CapabilitySnapshot);
             Assert.Equal("remote_capable", capabilitySnapshot.RemoteReachabilityMode);
             Assert.NotNull(capabilitySnapshot.Autonomy);
             Assert.Equal(1, capabilitySnapshot.Autonomy!.RemoteCapableToolCount);
+            Assert.Equal(1, capabilitySnapshot.Autonomy.TargetScopedToolCount);
+            Assert.Equal(1, capabilitySnapshot.Autonomy.RemoteHostTargetingToolCount);
+            Assert.Equal(1, capabilitySnapshot.Autonomy.EnvironmentDiscoverToolCount);
+            Assert.Equal(1, capabilitySnapshot.Autonomy.AuthenticationRequiredToolCount);
+            Assert.Equal(1, capabilitySnapshot.Autonomy.ProbeCapableToolCount);
             Assert.Equal(new[] { "eventlog", "system" }, capabilitySnapshot.Autonomy.CrossPackTargetPackIds);
         } finally {
             try {

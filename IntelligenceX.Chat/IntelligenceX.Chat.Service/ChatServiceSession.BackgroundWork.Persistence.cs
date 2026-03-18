@@ -39,6 +39,7 @@ internal sealed partial class ChatServiceSession {
         public string Title { get; set; } = string.Empty;
         public string Request { get; set; } = string.Empty;
         public string State { get; set; } = string.Empty;
+        public string[] DependencyItemIds { get; set; } = Array.Empty<string>();
         public string[] EvidenceToolNames { get; set; } = Array.Empty<string>();
         public string Kind { get; set; } = string.Empty;
         public string Mutability { get; set; } = string.Empty;
@@ -110,6 +111,7 @@ internal sealed partial class ChatServiceSession {
                     Title = (item.Title ?? string.Empty).Trim(),
                     Request = NormalizeWorkingMemoryAnswerPlanFocus(item.Request),
                     State = NormalizeBackgroundWorkState(item.State),
+                    DependencyItemIds = NormalizeBackgroundWorkDependencyItemIds(item.DependencyItemIds),
                     EvidenceToolNames = NormalizeBackgroundWorkToolNames(item.EvidenceToolNames),
                     Kind = NormalizeBackgroundWorkKind(item.Kind),
                     Mutability = NormalizeBackgroundWorkMutability(item.Mutability),
@@ -202,6 +204,7 @@ internal sealed partial class ChatServiceSession {
                     Title: (persistedItem.Title ?? string.Empty).Trim(),
                     Request: NormalizeWorkingMemoryAnswerPlanFocus(persistedItem.Request),
                     State: NormalizeBackgroundWorkState(persistedItem.State),
+                    DependencyItemIds: NormalizeBackgroundWorkDependencyItemIds(persistedItem.DependencyItemIds),
                     EvidenceToolNames: NormalizeBackgroundWorkToolNames(persistedItem.EvidenceToolNames),
                     Kind: NormalizeBackgroundWorkKind(persistedItem.Kind),
                     Mutability: NormalizeBackgroundWorkMutability(persistedItem.Mutability),
@@ -291,6 +294,7 @@ internal sealed partial class ChatServiceSession {
                         Title: (persistedItem.Title ?? string.Empty).Trim(),
                         Request: NormalizeWorkingMemoryAnswerPlanFocus(persistedItem.Request),
                         State: NormalizeBackgroundWorkState(persistedItem.State),
+                        DependencyItemIds: NormalizeBackgroundWorkDependencyItemIds(persistedItem.DependencyItemIds),
                         EvidenceToolNames: NormalizeBackgroundWorkToolNames(persistedItem.EvidenceToolNames),
                         Kind: NormalizeBackgroundWorkKind(persistedItem.Kind),
                         Mutability: NormalizeBackgroundWorkMutability(persistedItem.Mutability),

@@ -5,6 +5,7 @@ using System.Text;
 using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Tooling;
 using IntelligenceX.Tools;
+using IntelligenceX.Tools.Common;
 
 namespace IntelligenceX.Chat.Service;
 
@@ -17,6 +18,8 @@ internal sealed partial class ChatServiceSession {
     private const int MaxCapabilitySnapshotCapabilityTags = 12;
     private const int MaxCapabilitySnapshotFamilies = 6;
     private const int MaxCapabilitySnapshotSkills = 8;
+    private const int MaxCapabilitySnapshotRepresentativeExamples = 4;
+    private const int MaxCapabilitySnapshotCrossPackTargetDisplays = 4;
     private const int MaxCapabilitySnapshotHealthyTools = 12;
     private const int MaxCapabilitySnapshotParityAttention = 4;
     private const int MaxCapabilitySnapshotParityDetail = 4;
@@ -86,6 +89,10 @@ internal sealed partial class ChatServiceSession {
             .Where(static pack => pack.Enabled)
             .Select(static pack => pack.EngineId),
             MaxCapabilitySnapshotEngineIds);
+        var dangerousPackIds = NormalizeCapabilitySnapshotEnabledPackIds(
+            (packAvailability ?? Array.Empty<ToolPackAvailabilityInfo>())
+            .Where(static pack => pack.Enabled && (pack.IsDangerous || pack.Tier == ToolCapabilityTier.DangerousWrite))
+            .Select(static pack => pack.Id));
         var enabledCapabilityTags = NormalizeCapabilitySnapshotDescriptorTokens(
             (packAvailability ?? Array.Empty<ToolPackAvailabilityInfo>())
             .Where(static pack => pack.Enabled)
@@ -95,6 +102,11 @@ internal sealed partial class ChatServiceSession {
         var familyActions = MapCapabilityFamilyActions(routingCatalog);
         var routingFamilies = NormalizeCapabilitySnapshotRoutingFamilies(
             familyActions.Select(static summary => summary.Family));
+        var orchestrationEntries = EnumerateCapabilitySnapshotOrchestrationEntries(orchestrationCatalog);
+        var representativeExamples = NormalizeCapabilitySnapshotRepresentativeExamples(
+            ToolContractPromptExamples.BuildRepresentativeExamples(orchestrationEntries));
+        var crossPackTargetPackDisplayNames = NormalizeCapabilitySnapshotCrossPackTargetPackDisplayNames(
+            ToolContractPromptExamples.BuildCrossPackTargetPackDisplayNames(orchestrationEntries));
         var skills = ResolveCapabilitySnapshotSkills(pluginAvailability, routingCatalog, connectedRuntimeSkills);
         var healthyTools = NormalizeCapabilitySnapshotHealthyToolNames(healthyToolNames ?? Array.Empty<string>());
         var registeredTools = Math.Max(0, routingCatalog?.TotalTools ?? 0);
@@ -118,11 +130,15 @@ internal sealed partial class ChatServiceSession {
             AllowedRootCount = allowedRootCount,
             EnabledPackIds = enabledPackIds,
             EnabledPluginIds = enabledPluginIds,
+            DangerousToolsEnabled = dangerousPackIds.Length > 0,
+            DangerousPackIds = dangerousPackIds,
             EnabledPackEngineIds = enabledPackEngineIds,
             EnabledCapabilityTags = enabledCapabilityTags,
             RoutingFamilies = routingFamilies,
             FamilyActions = familyActions,
             Skills = skills,
+            RepresentativeExamples = representativeExamples,
+            CrossPackTargetPackDisplayNames = crossPackTargetPackDisplayNames,
             HealthyTools = healthyTools,
             RemoteReachabilityMode = NormalizeCapabilitySnapshotRemoteReachabilityMode(remoteReachabilityMode),
             Autonomy = autonomy,
@@ -199,6 +215,33 @@ internal sealed partial class ChatServiceSession {
         return NormalizeSkillInventoryValues(skills, MaxCapabilitySnapshotSkills);
     }
 
+    private static IReadOnlyList<ToolOrchestrationCatalogEntry> EnumerateCapabilitySnapshotOrchestrationEntries(ToolOrchestrationCatalog? orchestrationCatalog) {
+        if (orchestrationCatalog?.EntriesByToolName is not { Count: > 0 } entriesByToolName) {
+            return Array.Empty<ToolOrchestrationCatalogEntry>();
+        }
+
+        return entriesByToolName.Values
+            .OrderBy(static entry => entry.PackId, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(static entry => entry.ToolName, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static string[] NormalizeCapabilitySnapshotRepresentativeExamples(IEnumerable<string> examples) {
+        return NormalizeDistinctStrings(
+            (examples ?? Array.Empty<string>())
+            .Select(static example => (example ?? string.Empty).Trim())
+            .Where(static example => example.Length > 0),
+            MaxCapabilitySnapshotRepresentativeExamples);
+    }
+
+    private static string[] NormalizeCapabilitySnapshotCrossPackTargetPackDisplayNames(IEnumerable<string> displayNames) {
+        return NormalizeDistinctStrings(
+            (displayNames ?? Array.Empty<string>())
+            .Select(static displayName => (displayName ?? string.Empty).Trim())
+            .Where(static displayName => displayName.Length > 0),
+            MaxCapabilitySnapshotCrossPackTargetDisplays);
+    }
+
     private static string[] NormalizeSkillInventoryValues(IEnumerable<string> skills, int maxItems) {
         return NormalizeDistinctStrings(
             (skills ?? Array.Empty<string>())
@@ -242,6 +285,11 @@ internal sealed partial class ChatServiceSession {
             runtimeIdentity.AppendLine("enabled_plugins: " + string.Join(", ", snapshot.EnabledPluginIds));
         }
 
+        runtimeIdentity.AppendLine("dangerous_tools_enabled: " + (snapshot.DangerousToolsEnabled ? "true" : "false"));
+        if (snapshot.DangerousPackIds.Length > 0) {
+            runtimeIdentity.AppendLine("dangerous_packs: " + string.Join(", ", snapshot.DangerousPackIds));
+        }
+
         if (snapshot.EnabledPackEngineIds.Length > 0) {
             runtimeIdentity.AppendLine("enabled_pack_engines: " + string.Join(", ", snapshot.EnabledPackEngineIds));
         }
@@ -252,6 +300,14 @@ internal sealed partial class ChatServiceSession {
 
         if (snapshot.RoutingFamilies.Length > 0) {
             runtimeIdentity.AppendLine("routing_families: " + string.Join(", ", snapshot.RoutingFamilies));
+        }
+
+        if (snapshot.RepresentativeExamples.Length > 0) {
+            runtimeIdentity.AppendLine("representative_live_examples: " + string.Join(" | ", snapshot.RepresentativeExamples));
+        }
+
+        if (snapshot.CrossPackTargetPackDisplayNames.Length > 0) {
+            runtimeIdentity.AppendLine("cross_pack_followup_targets: " + string.Join(", ", snapshot.CrossPackTargetPackDisplayNames));
         }
 
         if (snapshot.HealthyTools.Length > 0) {
@@ -265,12 +321,42 @@ internal sealed partial class ChatServiceSession {
         }
         if (snapshot.Autonomy is not null) {
             runtimeIdentity.AppendLine("autonomy_remote_capable_tools: " + snapshot.Autonomy.RemoteCapableToolCount);
+            runtimeIdentity.AppendLine("autonomy_target_scoped_tools: " + snapshot.Autonomy.TargetScopedToolCount);
+            runtimeIdentity.AppendLine("autonomy_remote_host_targeting_tools: " + snapshot.Autonomy.RemoteHostTargetingToolCount);
             runtimeIdentity.AppendLine("autonomy_setup_aware_tools: " + snapshot.Autonomy.SetupAwareToolCount);
+            runtimeIdentity.AppendLine("autonomy_environment_discover_tools: " + snapshot.Autonomy.EnvironmentDiscoverToolCount);
             runtimeIdentity.AppendLine("autonomy_handoff_aware_tools: " + snapshot.Autonomy.HandoffAwareToolCount);
             runtimeIdentity.AppendLine("autonomy_recovery_aware_tools: " + snapshot.Autonomy.RecoveryAwareToolCount);
+            runtimeIdentity.AppendLine("autonomy_write_capable_tools: " + snapshot.Autonomy.WriteCapableToolCount);
+            runtimeIdentity.AppendLine("autonomy_auth_required_tools: " + snapshot.Autonomy.AuthenticationRequiredToolCount);
+            runtimeIdentity.AppendLine("autonomy_probe_capable_tools: " + snapshot.Autonomy.ProbeCapableToolCount);
             runtimeIdentity.AppendLine("autonomy_cross_pack_handoff_tools: " + snapshot.Autonomy.CrossPackHandoffToolCount);
             if (snapshot.Autonomy.RemoteCapablePackIds.Length > 0) {
                 runtimeIdentity.AppendLine("autonomy_remote_capable_packs: " + string.Join(", ", snapshot.Autonomy.RemoteCapablePackIds));
+            }
+
+            if (snapshot.Autonomy.TargetScopedPackIds.Length > 0) {
+                runtimeIdentity.AppendLine("autonomy_target_scoped_packs: " + string.Join(", ", snapshot.Autonomy.TargetScopedPackIds));
+            }
+
+            if (snapshot.Autonomy.RemoteHostTargetingPackIds.Length > 0) {
+                runtimeIdentity.AppendLine("autonomy_remote_host_targeting_packs: " + string.Join(", ", snapshot.Autonomy.RemoteHostTargetingPackIds));
+            }
+
+            if (snapshot.Autonomy.EnvironmentDiscoverPackIds.Length > 0) {
+                runtimeIdentity.AppendLine("autonomy_environment_discover_packs: " + string.Join(", ", snapshot.Autonomy.EnvironmentDiscoverPackIds));
+            }
+
+            if (snapshot.Autonomy.WriteCapablePackIds.Length > 0) {
+                runtimeIdentity.AppendLine("autonomy_write_capable_packs: " + string.Join(", ", snapshot.Autonomy.WriteCapablePackIds));
+            }
+
+            if (snapshot.Autonomy.AuthenticationRequiredPackIds.Length > 0) {
+                runtimeIdentity.AppendLine("autonomy_auth_required_packs: " + string.Join(", ", snapshot.Autonomy.AuthenticationRequiredPackIds));
+            }
+
+            if (snapshot.Autonomy.ProbeCapablePackIds.Length > 0) {
+                runtimeIdentity.AppendLine("autonomy_probe_capable_packs: " + string.Join(", ", snapshot.Autonomy.ProbeCapablePackIds));
             }
 
             if (snapshot.Autonomy.CrossPackReadyPackIds.Length > 0) {
@@ -310,6 +396,8 @@ internal sealed partial class ChatServiceSession {
             runtimeIdentity.AppendLine("background_scheduler_tracked_threads: " + snapshot.BackgroundScheduler.TrackedThreadCount);
             runtimeIdentity.AppendLine("background_scheduler_ready_threads: " + snapshot.BackgroundScheduler.ReadyThreadCount);
             runtimeIdentity.AppendLine("background_scheduler_running_threads: " + snapshot.BackgroundScheduler.RunningThreadCount);
+            runtimeIdentity.AppendLine("background_scheduler_dependency_blocked_threads: " + snapshot.BackgroundScheduler.DependencyBlockedThreadCount);
+            runtimeIdentity.AppendLine("background_scheduler_dependency_blocked_items: " + snapshot.BackgroundScheduler.DependencyBlockedItemCount);
             runtimeIdentity.AppendLine("background_scheduler_ready_items: " + snapshot.BackgroundScheduler.ReadyItemCount);
             runtimeIdentity.AppendLine("background_scheduler_running_items: " + snapshot.BackgroundScheduler.RunningItemCount);
             runtimeIdentity.AppendLine("background_scheduler_pending_readonly_items: " + snapshot.BackgroundScheduler.PendingReadOnlyItemCount);

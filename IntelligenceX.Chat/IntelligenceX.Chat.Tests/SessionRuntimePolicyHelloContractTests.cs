@@ -357,6 +357,16 @@ public sealed class SessionRuntimePolicyHelloContractTests {
                     IsSetupAware = true,
                     SetupToolName = "eventlog_channels_list"
                 },
+                authentication: new ToolAuthenticationContract {
+                    IsAuthenticationAware = true,
+                    RequiresAuthentication = true,
+                    AuthenticationContractId = "ix.auth.runtime.v1",
+                    Mode = ToolAuthenticationMode.ProfileReference,
+                    ProfileIdArgumentName = "profile_id",
+                    SupportsConnectivityProbe = true,
+                    ProbeToolName = "eventlog_channels_list",
+                    ProbeIdArgumentName = "probe_id"
+                },
                 handoff: new ToolHandoffContract {
                     IsHandoffAware = true,
                     OutboundRoutes = new[] {
@@ -426,10 +436,18 @@ public sealed class SessionRuntimePolicyHelloContractTests {
         Assert.Equal(2, autonomySummary.TotalTools);
         Assert.Equal(1, autonomySummary.RemoteCapableTools);
         Assert.Equal(new[] { "eventlog_timeline_query" }, autonomySummary.RemoteCapableToolNames);
+        Assert.Equal(1, autonomySummary.TargetScopedTools);
+        Assert.Equal(new[] { "eventlog_timeline_query" }, autonomySummary.TargetScopedToolNames);
+        Assert.Equal(1, autonomySummary.RemoteHostTargetingTools);
+        Assert.Equal(new[] { "eventlog_timeline_query" }, autonomySummary.RemoteHostTargetingToolNames);
         Assert.Equal(1, autonomySummary.SetupAwareTools);
         Assert.Equal(0, autonomySummary.EnvironmentDiscoverTools);
         Assert.Equal(1, autonomySummary.HandoffAwareTools);
         Assert.Equal(1, autonomySummary.RecoveryAwareTools);
+        Assert.Equal(1, autonomySummary.AuthenticationRequiredTools);
+        Assert.Equal(new[] { "eventlog_timeline_query" }, autonomySummary.AuthenticationRequiredToolNames);
+        Assert.Equal(1, autonomySummary.ProbeCapableTools);
+        Assert.Equal(new[] { "eventlog_timeline_query" }, autonomySummary.ProbeCapableToolNames);
         Assert.Equal(1, autonomySummary.CrossPackHandoffTools);
         Assert.Equal(new[] { "system" }, autonomySummary.CrossPackTargetPacks);
 
@@ -455,9 +473,21 @@ public sealed class SessionRuntimePolicyHelloContractTests {
 
         Assert.Equal(2, serializedSummary.GetProperty("totalTools").GetInt32());
         Assert.Equal(1, serializedSummary.GetProperty("remoteCapableTools").GetInt32());
+        Assert.Equal(1, serializedSummary.GetProperty("targetScopedTools").GetInt32());
+        Assert.Equal(1, serializedSummary.GetProperty("remoteHostTargetingTools").GetInt32());
+        Assert.Equal(1, serializedSummary.GetProperty("authenticationRequiredTools").GetInt32());
+        Assert.Equal(1, serializedSummary.GetProperty("probeCapableTools").GetInt32());
         Assert.Equal("system", serializedSummary.GetProperty("crossPackTargetPacks")[0].GetString());
         Assert.Equal(1, serializedCapabilityAutonomy.GetProperty("remoteCapableToolCount").GetInt32());
+        Assert.Equal(1, serializedCapabilityAutonomy.GetProperty("targetScopedToolCount").GetInt32());
+        Assert.Equal(1, serializedCapabilityAutonomy.GetProperty("remoteHostTargetingToolCount").GetInt32());
+        Assert.Equal(1, serializedCapabilityAutonomy.GetProperty("authenticationRequiredToolCount").GetInt32());
+        Assert.Equal(1, serializedCapabilityAutonomy.GetProperty("probeCapableToolCount").GetInt32());
         Assert.Equal(1, serializedCapabilityAutonomy.GetProperty("crossPackHandoffToolCount").GetInt32());
         Assert.Equal("eventlog", serializedCapabilityAutonomy.GetProperty("remoteCapablePackIds")[0].GetString());
+        Assert.Equal("eventlog", serializedCapabilityAutonomy.GetProperty("targetScopedPackIds")[0].GetString());
+        Assert.Equal("eventlog", serializedCapabilityAutonomy.GetProperty("remoteHostTargetingPackIds")[0].GetString());
+        Assert.Equal("eventlog", serializedCapabilityAutonomy.GetProperty("authenticationRequiredPackIds")[0].GetString());
+        Assert.Equal("eventlog", serializedCapabilityAutonomy.GetProperty("probeCapablePackIds")[0].GetString());
     }
 }

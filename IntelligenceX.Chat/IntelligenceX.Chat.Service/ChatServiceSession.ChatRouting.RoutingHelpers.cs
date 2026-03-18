@@ -563,6 +563,8 @@ internal sealed partial class ChatServiceSession {
             plannerContext.HandoffTargetPackIds.Concat(derivedHandoffTargetPackIds),
             StringComparer.OrdinalIgnoreCase);
         var prefersRemoteCapableTools = HasRemoteHostRoutingHint(requestText, plannerContext);
+        var mutatingActionSelected = TryReadActionSelectionIntent(requestText, out _, out var actionSelectionMutability)
+                                     && actionSelectionMutability == ActionMutability.Mutating;
         var prefersCrossPackContinuation =
             handoffTargetPackIds.Count > 0
             || handoffTargetToolNames.Count > 0
@@ -580,6 +582,13 @@ internal sealed partial class ChatServiceSession {
             preferredToolNames,
             handoffTargetPackIds,
             handoffTargetToolNames);
+        var helperDemandByToolName = BuildContractHelperDemandByToolName(
+            definitions,
+            toolOrchestrationCatalog,
+            preferredToolNames,
+            handoffTargetToolNames,
+            preferredPackIds,
+            handoffTargetPackIds);
         if (focusTokens.Length == 0) {
             if (preferredToolNames.Count == 0
                 && handoffTargetToolNames.Count == 0
@@ -597,6 +606,13 @@ internal sealed partial class ChatServiceSession {
             var priority = 0;
             var toolName = (definition.Name ?? string.Empty).Trim();
             var packId = ResolveToolPackId(definition, toolOrchestrationCatalog);
+            var contractTargeted = ToolMatchesPlannerContractTargets(
+                toolName,
+                packId,
+                preferredToolNames,
+                handoffTargetToolNames,
+                preferredPackIds,
+                handoffTargetPackIds);
             if (preferredToolNames.Contains(toolName)) {
                 priority += 1000;
             }
@@ -622,8 +638,25 @@ internal sealed partial class ChatServiceSession {
             }
             if (prefersSetupAwareTools
                 && ToolIsSetupAware(definition, toolOrchestrationCatalog)
-                && ToolMatchesPlannerContractTargets(toolName, packId, preferredToolNames, handoffTargetToolNames, preferredPackIds, handoffTargetPackIds)) {
+                && contractTargeted) {
                 priority += PlannerSetupAwarePriorityBoost;
+            }
+            if (mutatingActionSelected
+                && ToolIsWriteCapable(definition, toolOrchestrationCatalog)) {
+                priority += PlannerStructuredMutatingActionPriorityBoost;
+            }
+            if (helperDemandByToolName.TryGetValue(toolName, out var helperDemand) && helperDemand > 0) {
+                priority += Math.Min(PlannerContractHelperPriorityMaxBoost, helperDemand * PlannerContractHelperPriorityStep);
+            }
+            if (!mutatingActionSelected
+                && !contractTargeted
+                && ToolIsWriteCapable(definition, toolOrchestrationCatalog)) {
+                priority -= PlannerWriteFollowUpPriorityPenalty;
+            }
+            if (!contractTargeted
+                && ToolRequiresAuthentication(definition, toolOrchestrationCatalog)
+                && ResolveProbeToolName(definition, toolOrchestrationCatalog).Length > 0) {
+                priority -= PlannerAuthFollowUpPriorityPenalty;
             }
             for (var t = 0; t < focusTokens.Length; t++) {
                 var token = focusTokens[t];
@@ -719,6 +752,8 @@ internal sealed partial class ChatServiceSession {
             plannerContext.HandoffTargetPackIds.Concat(derivedHandoffTargetPackIds),
             StringComparer.OrdinalIgnoreCase);
         var prefersRemoteCapableTools = HasRemoteHostRoutingHint(requestText, plannerContext);
+        var mutatingActionSelected = TryReadActionSelectionIntent(requestText, out _, out var actionSelectionMutability)
+                                     && actionSelectionMutability == ActionMutability.Mutating;
         var prefersCrossPackContinuation =
             handoffTargetPackIds.Count > 0
             || handoffTargetToolNames.Count > 0
@@ -736,6 +771,13 @@ internal sealed partial class ChatServiceSession {
             preferredToolNames,
             handoffTargetPackIds,
             handoffTargetToolNames);
+        var helperDemandByToolName = BuildContractHelperDemandByToolName(
+            definitions,
+            _toolOrchestrationCatalog,
+            preferredToolNames,
+            handoffTargetToolNames,
+            preferredPackIds,
+            handoffTargetPackIds);
         var routingTokenSupport = routingTokens.Length == 0 ? Array.Empty<int>() : new int[routingTokens.Length];
         var focusTokenSupport = focusTokens.Length == 0 ? Array.Empty<int>() : new int[focusTokens.Length];
         string[]? toolSearchTexts = null;
@@ -791,6 +833,13 @@ internal sealed partial class ChatServiceSession {
             var explicitToolMatch = IsExplicitRequestedToolMatch(definition.Name, explicitRequestedToolNames);
             var directNameMatch = userRequest.IndexOf(definition.Name, StringComparison.OrdinalIgnoreCase) >= 0;
             var packId = ResolveToolPackId(definition, _toolOrchestrationCatalog);
+            var contractTargeted = ToolMatchesPlannerContractTargets(
+                definition.Name,
+                packId,
+                preferredToolNames,
+                handoffTargetToolNames,
+                preferredPackIds,
+                handoffTargetPackIds);
             if (explicitToolMatch) {
                 score += 9d;
             }
@@ -827,10 +876,37 @@ internal sealed partial class ChatServiceSession {
             var setupAwareBoost =
                 prefersSetupAwareTools
                 && ToolIsSetupAware(definition, _toolOrchestrationCatalog)
-                && ToolMatchesPlannerContractTargets(definition.Name, packId, preferredToolNames, handoffTargetToolNames, preferredPackIds, handoffTargetPackIds)
+                && contractTargeted
                     ? WeightedRoutingSetupAwareScoreBoost
                     : 0d;
             score += setupAwareBoost;
+            var normalizedToolName = NormalizeToolNameForAnswerPlan(definition.Name);
+            var contractHelperBoost = helperDemandByToolName.TryGetValue(normalizedToolName, out var helperDemand) && helperDemand > 0
+                ? Math.Min(WeightedRoutingContractHelperScoreMaxBoost, helperDemand * WeightedRoutingContractHelperScoreStep)
+                : 0d;
+            score += contractHelperBoost;
+            if (mutatingActionSelected
+                && ToolIsWriteCapable(definition, _toolOrchestrationCatalog)) {
+                score += WeightedRoutingStructuredMutatingActionScoreBoost;
+            }
+            var writeFollowUpPenalty =
+                !mutatingActionSelected
+                && !explicitToolMatch
+                && !directNameMatch
+                && !contractTargeted
+                && ToolIsWriteCapable(definition, _toolOrchestrationCatalog)
+                    ? WeightedRoutingWriteFollowUpScorePenalty
+                    : 0d;
+            score -= writeFollowUpPenalty;
+            var authFollowUpPenalty =
+                !explicitToolMatch
+                && !directNameMatch
+                && !contractTargeted
+                && ToolRequiresAuthentication(definition, _toolOrchestrationCatalog)
+                && ResolveProbeToolName(definition, _toolOrchestrationCatalog).Length > 0
+                    ? WeightedRoutingAuthFollowUpScorePenalty
+                    : 0d;
+            score -= authFollowUpPenalty;
 
             if (routingTokens.Length > 0) {
                 var searchText = toolSearchTexts?[i] ?? BuildToolRoutingSearchText(definition);
@@ -893,7 +969,10 @@ internal sealed partial class ChatServiceSession {
                 RemoteCapableBoost: remoteCapableBoost,
                 CrossPackContinuationBoost: crossPackContinuationBoost,
                 EnvironmentDiscoverBoost: environmentDiscoverBoost,
-                SetupAwareBoost: setupAwareBoost));
+                SetupAwareBoost: setupAwareBoost,
+                ContractHelperBoost: contractHelperBoost,
+                WriteFollowUpPenalty: writeFollowUpPenalty,
+                AuthFollowUpPenalty: authFollowUpPenalty));
         }
 
         if (!hasSignal) {
@@ -1082,6 +1161,58 @@ internal sealed partial class ChatServiceSession {
         return string.Equals(definition.Routing?.Role, ToolRoutingTaxonomy.RoleEnvironmentDiscover, StringComparison.OrdinalIgnoreCase);
     }
 
+    private static bool ToolIsWriteCapable(ToolDefinition definition, ToolOrchestrationCatalog? toolOrchestrationCatalog) {
+        if (definition is null) {
+            return false;
+        }
+
+        if (toolOrchestrationCatalog is not null
+            && toolOrchestrationCatalog.TryGetEntry(definition.Name, out var entry)) {
+            return entry.IsWriteCapable;
+        }
+
+        return definition.WriteGovernance?.IsWriteCapable == true;
+    }
+
+    private static bool ToolRequiresAuthentication(ToolDefinition definition, ToolOrchestrationCatalog? toolOrchestrationCatalog) {
+        if (definition is null) {
+            return false;
+        }
+
+        if (toolOrchestrationCatalog is not null
+            && toolOrchestrationCatalog.TryGetEntry(definition.Name, out var entry)) {
+            return entry.RequiresAuthentication;
+        }
+
+        return definition.Authentication?.RequiresAuthentication == true;
+    }
+
+    private static string ResolveProbeToolName(ToolDefinition definition, ToolOrchestrationCatalog? toolOrchestrationCatalog) {
+        if (definition is null) {
+            return string.Empty;
+        }
+
+        if (toolOrchestrationCatalog is not null
+            && toolOrchestrationCatalog.TryGetEntry(definition.Name, out var entry)) {
+            return NormalizeToolNameForAnswerPlan(entry.ProbeToolName);
+        }
+
+        return NormalizeToolNameForAnswerPlan(definition.Authentication?.ProbeToolName);
+    }
+
+    private static string ResolveSetupToolName(ToolDefinition definition, ToolOrchestrationCatalog? toolOrchestrationCatalog) {
+        if (definition is null) {
+            return string.Empty;
+        }
+
+        if (toolOrchestrationCatalog is not null
+            && toolOrchestrationCatalog.TryGetEntry(definition.Name, out var entry)) {
+            return NormalizeToolNameForAnswerPlan(entry.SetupToolName);
+        }
+
+        return NormalizeToolNameForAnswerPlan(definition.Setup?.SetupToolName);
+    }
+
     private static bool ToolIsSetupAware(ToolDefinition definition, ToolOrchestrationCatalog? toolOrchestrationCatalog) {
         if (definition is null) {
             return false;
@@ -1136,6 +1267,171 @@ internal sealed partial class ChatServiceSession {
         }
 
         return false;
+    }
+
+    private static Dictionary<string, int> BuildContractHelperDemandByToolName(
+        IReadOnlyList<ToolDefinition> definitions,
+        ToolOrchestrationCatalog? toolOrchestrationCatalog,
+        IReadOnlyCollection<string> preferredToolNames,
+        IReadOnlyCollection<string> handoffTargetToolNames,
+        IReadOnlyCollection<string> preferredPackIds,
+        IReadOnlyCollection<string> handoffTargetPackIds) {
+        var availableToolNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < definitions.Count; i++) {
+            var toolName = NormalizeToolNameForAnswerPlan(definitions[i]?.Name);
+            if (toolName.Length > 0) {
+                availableToolNames.Add(toolName);
+            }
+        }
+
+        if (availableToolNames.Count == 0) {
+            return new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        var helperDemandByToolName = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < definitions.Count; i++) {
+            var definition = definitions[i];
+            if (definition is null) {
+                continue;
+            }
+
+            var toolName = NormalizeToolNameForAnswerPlan(definition.Name);
+            if (toolName.Length == 0) {
+                continue;
+            }
+
+            var packId = ResolveToolPackId(definition, toolOrchestrationCatalog);
+            var targeted = ToolMatchesPlannerContractTargets(
+                toolName,
+                packId,
+                preferredToolNames,
+                handoffTargetToolNames,
+                preferredPackIds,
+                handoffTargetPackIds);
+            var demandWeight = targeted ? 3 : 1;
+
+            var probeToolName = ResolveProbeToolName(definition, toolOrchestrationCatalog);
+            if (probeToolName.Length > 0
+                && !string.Equals(probeToolName, toolName, StringComparison.OrdinalIgnoreCase)
+                && availableToolNames.Contains(probeToolName)) {
+                AddContractHelperDemand(
+                    helperDemandByToolName,
+                    probeToolName,
+                    ToolRequiresAuthentication(definition, toolOrchestrationCatalog) ? demandWeight + 1 : demandWeight);
+            }
+
+            var setupToolName = ResolveSetupToolName(definition, toolOrchestrationCatalog);
+            if (setupToolName.Length > 0
+                && !string.Equals(setupToolName, toolName, StringComparison.OrdinalIgnoreCase)
+                && availableToolNames.Contains(setupToolName)) {
+                AddContractHelperDemand(helperDemandByToolName, setupToolName, demandWeight);
+            }
+        }
+
+        return helperDemandByToolName;
+    }
+
+    private static Dictionary<string, int> BuildContractHelperDemandByToolName(
+        IReadOnlyList<ToolDefinition> definitions,
+        ToolOrchestrationCatalog? toolOrchestrationCatalog) {
+        return BuildContractHelperDemandByToolName(
+            definitions,
+            toolOrchestrationCatalog,
+            Array.Empty<string>(),
+            Array.Empty<string>(),
+            Array.Empty<string>(),
+            Array.Empty<string>());
+    }
+
+    private List<ToolDefinition> ReorderDefinitionsForContractHelpers(IReadOnlyList<ToolDefinition> definitions) {
+        if (definitions is null || definitions.Count < 2) {
+            return definitions?.ToList() ?? new List<ToolDefinition>();
+        }
+
+        var helperDemandByToolName = BuildContractHelperDemandByToolName(definitions, _toolOrchestrationCatalog);
+        if (helperDemandByToolName.Count == 0) {
+            return definitions.ToList();
+        }
+
+        var availableToolNames = new HashSet<string>(
+            definitions.Select(static definition => NormalizeToolNameForAnswerPlan(definition?.Name))
+                .Where(static name => name.Length > 0),
+            StringComparer.OrdinalIgnoreCase);
+
+        var indexed = definitions
+            .Select((definition, index) => new {
+                Definition = definition,
+                Index = index,
+                Name = NormalizeToolNameForAnswerPlan(definition?.Name)
+            })
+            .ToList();
+
+        indexed.Sort((left, right) => {
+            var demandCompare = GetContractHelperDemand(right.Name, helperDemandByToolName)
+                .CompareTo(GetContractHelperDemand(left.Name, helperDemandByToolName));
+            if (demandCompare != 0) {
+                return demandCompare;
+            }
+
+            var dependencyCompare = HasAvailableContractHelper(right.Definition, availableToolNames, _toolOrchestrationCatalog)
+                .CompareTo(HasAvailableContractHelper(left.Definition, availableToolNames, _toolOrchestrationCatalog));
+            if (dependencyCompare != 0) {
+                return dependencyCompare;
+            }
+
+            return left.Index.CompareTo(right.Index);
+        });
+
+        return indexed.Select(static item => item.Definition).ToList();
+    }
+
+    private static int GetContractHelperDemand(string? toolName, IReadOnlyDictionary<string, int>? helperDemandByToolName) {
+        var normalizedToolName = NormalizeToolNameForAnswerPlan(toolName);
+        if (normalizedToolName.Length == 0 || helperDemandByToolName is null) {
+            return 0;
+        }
+
+        return helperDemandByToolName.TryGetValue(normalizedToolName, out var demand)
+            ? Math.Max(0, demand)
+            : 0;
+    }
+
+    private static bool HasAvailableContractHelper(
+        ToolDefinition? definition,
+        IReadOnlySet<string>? availableToolNames,
+        ToolOrchestrationCatalog? toolOrchestrationCatalog) {
+        if (definition is null || availableToolNames is null || availableToolNames.Count == 0) {
+            return false;
+        }
+
+        var toolName = NormalizeToolNameForAnswerPlan(definition.Name);
+        var probeToolName = ResolveProbeToolName(definition, toolOrchestrationCatalog);
+        if (probeToolName.Length > 0
+            && !string.Equals(probeToolName, toolName, StringComparison.OrdinalIgnoreCase)
+            && availableToolNames.Contains(probeToolName)) {
+            return true;
+        }
+
+        var setupToolName = ResolveSetupToolName(definition, toolOrchestrationCatalog);
+        return setupToolName.Length > 0
+               && !string.Equals(setupToolName, toolName, StringComparison.OrdinalIgnoreCase)
+               && availableToolNames.Contains(setupToolName);
+    }
+
+    private static void AddContractHelperDemand(IDictionary<string, int> helperDemandByToolName, string toolName, int weight) {
+        if (helperDemandByToolName is null) {
+            return;
+        }
+
+        var normalizedToolName = NormalizeToolNameForAnswerPlan(toolName);
+        if (normalizedToolName.Length == 0 || weight <= 0) {
+            return;
+        }
+
+        helperDemandByToolName[normalizedToolName] =
+            helperDemandByToolName.TryGetValue(normalizedToolName, out var existing)
+                ? existing + weight
+                : weight;
     }
 
     private static bool ShouldPreferEnvironmentBootstrap(

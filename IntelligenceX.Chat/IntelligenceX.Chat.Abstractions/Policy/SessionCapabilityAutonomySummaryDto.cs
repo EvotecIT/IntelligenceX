@@ -16,6 +16,14 @@ public sealed record SessionCapabilityAutonomySummaryDto {
     /// </summary>
     public int SetupAwareToolCount { get; init; }
     /// <summary>
+    /// Number of target-scoped tools in the enabled pack set.
+    /// </summary>
+    public int TargetScopedToolCount { get; init; }
+    /// <summary>
+    /// Number of remote-host-targeting tools in the enabled pack set.
+    /// </summary>
+    public int RemoteHostTargetingToolCount { get; init; }
+    /// <summary>
     /// Number of environment-discovery tools in the enabled pack set.
     /// </summary>
     public int EnvironmentDiscoverToolCount { get; init; }
@@ -29,6 +37,18 @@ public sealed record SessionCapabilityAutonomySummaryDto {
     /// Number of recovery-aware tools in the enabled pack set.
     /// </summary>
     public int RecoveryAwareToolCount { get; init; }
+    /// <summary>
+    /// Number of write-capable tools in the enabled pack set.
+    /// </summary>
+    public int WriteCapableToolCount { get; init; }
+    /// <summary>
+    /// Number of authentication-required tools in the enabled pack set.
+    /// </summary>
+    public int AuthenticationRequiredToolCount { get; init; }
+    /// <summary>
+    /// Number of probe-capable tools in the enabled pack set.
+    /// </summary>
+    public int ProbeCapableToolCount { get; init; }
 
     /// <summary>
     /// Number of tools that expose cross-pack handoffs in the enabled pack set.
@@ -40,9 +60,29 @@ public sealed record SessionCapabilityAutonomySummaryDto {
     /// </summary>
     public string[] RemoteCapablePackIds { get; init; } = Array.Empty<string>();
     /// <summary>
+    /// Enabled pack ids that currently expose at least one target-scoped tool.
+    /// </summary>
+    public string[] TargetScopedPackIds { get; init; } = Array.Empty<string>();
+    /// <summary>
+    /// Enabled pack ids that currently expose at least one remote-host-targeting tool.
+    /// </summary>
+    public string[] RemoteHostTargetingPackIds { get; init; } = Array.Empty<string>();
+    /// <summary>
     /// Enabled pack ids that currently expose at least one environment-discovery tool.
     /// </summary>
     public string[] EnvironmentDiscoverPackIds { get; init; } = Array.Empty<string>();
+    /// <summary>
+    /// Enabled pack ids that currently expose at least one write-capable tool.
+    /// </summary>
+    public string[] WriteCapablePackIds { get; init; } = Array.Empty<string>();
+    /// <summary>
+    /// Enabled pack ids that currently expose at least one authentication-required tool.
+    /// </summary>
+    public string[] AuthenticationRequiredPackIds { get; init; } = Array.Empty<string>();
+    /// <summary>
+    /// Enabled pack ids that currently expose at least one probe-capable tool.
+    /// </summary>
+    public string[] ProbeCapablePackIds { get; init; } = Array.Empty<string>();
 
     /// <summary>
     /// Enabled pack ids that currently expose at least one cross-pack handoff.

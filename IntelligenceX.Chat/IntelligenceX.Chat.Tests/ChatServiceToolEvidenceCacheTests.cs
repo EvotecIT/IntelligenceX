@@ -3,6 +3,9 @@ using System.Collections.Generic;
 using System.IO;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.Service;
+using IntelligenceX.Chat.Tooling;
+using IntelligenceX.Tools;
+using IntelligenceX.Tools.Common;
 using Xunit;
 
 namespace IntelligenceX.Chat.Tests;
@@ -92,6 +95,194 @@ public sealed class ChatServiceToolEvidenceCacheTests {
         Assert.Contains("### Active Directory: Environment Discovery", text, StringComparison.Ordinal);
         Assert.Contains("```json", text, StringComparison.Ordinal);
         Assert.Contains("{\"ok\":true}", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ToolEvidenceCache_ExplainsBlockedBackgroundPrerequisitesInFallback() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var calls = new[] {
+            new ToolCallDto {
+                CallId = "call-1",
+                Name = "eventlog_channels_list",
+                ArgumentsJson = """{"machine_name":"srv-eventlog.contoso.com"}"""
+            }
+        };
+        var outputs = new[] {
+            new ToolOutputDto {
+                CallId = "call-1",
+                Ok = true,
+                Output = """{"ok":true,"channels":["System"]}""",
+                SummaryMarkdown = "Event log channels are reachable on srv-eventlog.contoso.com."
+            }
+        };
+
+        session.RememberThreadToolEvidenceForTesting(
+            threadId: "thread-evidence-background-blocked",
+            toolCalls: calls,
+            toolOutputs: outputs,
+            mutatingToolHintsByName: new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase));
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(new[] {
+            new ToolDefinition(
+                "seed_eventlog_live_followup",
+                "seed live follow-up",
+                ToolSchema.Object().NoAdditionalProperties(),
+                handoff: new ToolHandoffContract {
+                    IsHandoffAware = true,
+                    OutboundRoutes = new[] {
+                        new ToolHandoffRoute {
+                            TargetPackId = "eventlog",
+                            TargetToolName = "eventlog_live_query",
+                            TargetRole = ToolRoutingTaxonomy.RoleOperational,
+                            Bindings = new[] {
+                                new ToolHandoffBinding {
+                                    SourceField = "computer_name",
+                                    TargetArgument = "machine_name"
+                                }
+                            }
+                        }
+                    }
+                }),
+            new ToolDefinition(
+                "eventlog_live_query",
+                "query live event log",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties(),
+                authentication: new ToolAuthenticationContract {
+                    IsAuthenticationAware = true,
+                    RequiresAuthentication = true,
+                    AuthenticationContractId = "ix.auth.runtime.v1",
+                    Mode = ToolAuthenticationMode.ProfileReference,
+                    ProfileIdArgumentName = "profile_id",
+                    SupportsConnectivityProbe = true,
+                    ProbeToolName = "eventlog_channels_list"
+                }),
+            new ToolDefinition(
+                "eventlog_channels_list",
+                "list event log channels",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties())
+        }));
+        session.RememberToolHandoffBackgroundWorkForTesting(
+            "thread-evidence-background-blocked",
+            new[] {
+                new ToolDefinition(
+                    "seed_eventlog_live_followup",
+                    "seed live follow-up",
+                    ToolSchema.Object().NoAdditionalProperties(),
+                    handoff: new ToolHandoffContract {
+                        IsHandoffAware = true,
+                        OutboundRoutes = new[] {
+                            new ToolHandoffRoute {
+                                TargetPackId = "eventlog",
+                                TargetToolName = "eventlog_live_query",
+                                TargetRole = ToolRoutingTaxonomy.RoleOperational,
+                                Bindings = new[] {
+                                    new ToolHandoffBinding {
+                                        SourceField = "computer_name",
+                                        TargetArgument = "machine_name"
+                                    }
+                                }
+                            }
+                        }
+                    }),
+                new ToolDefinition(
+                    "eventlog_live_query",
+                    "query live event log",
+                    ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties(),
+                    authentication: new ToolAuthenticationContract {
+                        IsAuthenticationAware = true,
+                        RequiresAuthentication = true,
+                        AuthenticationContractId = "ix.auth.runtime.v1",
+                        Mode = ToolAuthenticationMode.ProfileReference,
+                        ProfileIdArgumentName = "profile_id",
+                        SupportsConnectivityProbe = true,
+                        ProbeToolName = "eventlog_channels_list"
+                    }),
+                new ToolDefinition(
+                    "eventlog_channels_list",
+                    "list event log channels",
+                    ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties())
+            },
+            new[] {
+                new ToolCallDto {
+                    CallId = "call-seed",
+                    Name = "seed_eventlog_live_followup",
+                    ArgumentsJson = """{"computer_name":"srv-eventlog.contoso.com"}"""
+                }
+            },
+            new[] {
+                new ToolOutputDto {
+                    CallId = "call-seed",
+                    Ok = true,
+                    Output = """{"ok":true}"""
+                }
+            });
+        Assert.True(session.TryBuildReadyBackgroundWorkToolCallForTesting(
+            "thread-evidence-background-blocked",
+            "continue",
+            new[] {
+                new ToolDefinition(
+                    "seed_eventlog_live_followup",
+                    "seed live follow-up",
+                    ToolSchema.Object().NoAdditionalProperties(),
+                    handoff: new ToolHandoffContract {
+                        IsHandoffAware = true,
+                        OutboundRoutes = new[] {
+                            new ToolHandoffRoute {
+                                TargetPackId = "eventlog",
+                                TargetToolName = "eventlog_live_query",
+                                TargetRole = ToolRoutingTaxonomy.RoleOperational,
+                                Bindings = new[] {
+                                    new ToolHandoffBinding {
+                                        SourceField = "computer_name",
+                                        TargetArgument = "machine_name"
+                                    }
+                                }
+                            }
+                        }
+                    }),
+                new ToolDefinition(
+                    "eventlog_live_query",
+                    "query live event log",
+                    ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties(),
+                    authentication: new ToolAuthenticationContract {
+                        IsAuthenticationAware = true,
+                        RequiresAuthentication = true,
+                        AuthenticationContractId = "ix.auth.runtime.v1",
+                        Mode = ToolAuthenticationMode.ProfileReference,
+                        ProfileIdArgumentName = "profile_id",
+                        SupportsConnectivityProbe = true,
+                        ProbeToolName = "eventlog_channels_list"
+                    }),
+                new ToolDefinition(
+                    "eventlog_channels_list",
+                    "list event log channels",
+                    ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties())
+            },
+            new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase),
+            out var helperItemId,
+            out _,
+            out _,
+            out _));
+        session.RememberBackgroundWorkExecutionOutcomeForTesting(
+            "thread-evidence-background-blocked",
+            helperItemId,
+            "host_background_work_eventlog_channels_list_010",
+            new[] {
+                new ToolOutputDto {
+                    CallId = "host_background_work_eventlog_channels_list_010",
+                    Ok = false,
+                    ErrorCode = "remote_unavailable",
+                    Output = """{"ok":false}"""
+                }
+            });
+
+        var built = session.TryBuildToolEvidenceFallbackTextIgnoringLiveExecutionBypassForTesting(
+            "thread-evidence-background-blocked",
+            "continue eventlog review",
+            out var text);
+
+        Assert.True(built);
+        Assert.Contains("Prepared follow-up work is waiting on prerequisite helpers: eventlog_channels_list.", text, StringComparison.Ordinal);
+        Assert.Contains("ix:cached-tool-evidence:v1", text, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

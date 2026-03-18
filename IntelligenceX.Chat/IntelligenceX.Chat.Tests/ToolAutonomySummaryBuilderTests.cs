@@ -37,6 +37,7 @@ public sealed class ToolAutonomySummaryBuilderTests {
         var packSummary = ToolAutonomySummaryBuilder.BuildPackAutonomySummary("active_directory", orchestrationCatalog);
         Assert.NotNull(packSummary);
         Assert.Equal(1, packSummary!.EnvironmentDiscoverTools);
+        Assert.Equal(1, packSummary.TargetScopedTools);
         Assert.Contains("ad_domain_monitor", packSummary.EnvironmentDiscoverToolNames, StringComparer.OrdinalIgnoreCase);
         Assert.Equal(1, packSummary!.CrossPackHandoffTools);
         Assert.Contains("ad_domain_monitor", packSummary.CrossPackHandoffToolNames, StringComparer.OrdinalIgnoreCase);
@@ -45,13 +46,20 @@ public sealed class ToolAutonomySummaryBuilderTests {
         var capabilitySummary = ToolAutonomySummaryBuilder.BuildCapabilityAutonomySummary(packAvailability, orchestrationCatalog);
         Assert.NotNull(capabilitySummary);
         Assert.Equal(2, capabilitySummary!.RemoteCapableToolCount);
+        Assert.Equal(3, capabilitySummary.TargetScopedToolCount);
+        Assert.Equal(2, capabilitySummary.RemoteHostTargetingToolCount);
         Assert.Equal(1, capabilitySummary.SetupAwareToolCount);
         Assert.Equal(1, capabilitySummary.EnvironmentDiscoverToolCount);
         Assert.Equal(2, capabilitySummary.HandoffAwareToolCount);
         Assert.Equal(1, capabilitySummary.RecoveryAwareToolCount);
+        Assert.Equal(0, capabilitySummary.WriteCapableToolCount);
+        Assert.Equal(0, capabilitySummary.AuthenticationRequiredToolCount);
+        Assert.Equal(0, capabilitySummary.ProbeCapableToolCount);
         Assert.Equal(2, capabilitySummary.CrossPackHandoffToolCount);
         Assert.Contains("eventlog", capabilitySummary.RemoteCapablePackIds, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("system", capabilitySummary.RemoteCapablePackIds, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("active_directory", capabilitySummary.TargetScopedPackIds, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("eventlog", capabilitySummary.RemoteHostTargetingPackIds, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("active_directory", capabilitySummary.EnvironmentDiscoverPackIds, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("active_directory", capabilitySummary.CrossPackReadyPackIds, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("eventlog", capabilitySummary.CrossPackReadyPackIds, StringComparer.OrdinalIgnoreCase);
@@ -79,6 +87,8 @@ public sealed class ToolAutonomySummaryBuilderTests {
         Assert.NotNull(summary);
         Assert.Equal(20, summary!.RemoteCapableTools);
         Assert.Equal(5, summary.RemoteCapableToolNames.Length);
+        Assert.Equal(20, summary.RemoteHostTargetingTools);
+        Assert.Equal(5, summary.RemoteHostTargetingToolNames.Length);
     }
 
     [Fact]

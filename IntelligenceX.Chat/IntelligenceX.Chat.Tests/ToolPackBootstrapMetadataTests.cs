@@ -53,6 +53,7 @@ public sealed class ToolPackBootstrapMetadataTests {
                 EnableBuiltInPackLoading = false,
                 UseDefaultBuiltInToolAssemblyNames = false,
                 BuiltInToolAssemblyNames = new[] { "IntelligenceX.Tools.System", "IntelligenceX.Tools.EventLog" },
+                BuiltInToolProbePaths = new[] { "C:/tools/a", "C:/tools/b" },
                 EnableDefaultPluginPaths = false,
                 PluginPaths = new[] { "C:/plugins/a", "C:/plugins/b" },
                 DisabledPackIds = new[] { "officeimo", "testimox", "dnsclientx", "domaindetective" },
@@ -68,6 +69,7 @@ public sealed class ToolPackBootstrapMetadataTests {
         Assert.False(options.EnableBuiltInPackLoading);
         Assert.False(options.UseDefaultBuiltInToolAssemblyNames);
         Assert.Equal(new[] { "IntelligenceX.Tools.System", "IntelligenceX.Tools.EventLog" }, options.BuiltInToolAssemblyNames);
+        Assert.Equal(new[] { "C:/tools/a", "C:/tools/b" }, options.BuiltInToolProbePaths);
         Assert.False(options.EnableDefaultPluginPaths);
         Assert.Equal(new[] { "C:/plugins/a", "C:/plugins/b" }, options.PluginPaths);
         Assert.Equal(new[] { "officeimo", "testimox", "dnsclientx", "domaindetective" }, options.DisabledPackIds);
@@ -194,6 +196,40 @@ public sealed class ToolPackBootstrapMetadataTests {
     }
 
     [Fact]
+    public void TryOpenBuiltInToolAssemblyManifestStream_ReturnsEmbeddedManifestStream() {
+        var method = typeof(ToolPackBootstrap).GetMethod(
+            "TryOpenBuiltInToolAssemblyManifestStream",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+
+        using var stream = Assert.IsAssignableFrom<Stream?>(
+            method!.Invoke(null, new object[] { typeof(ToolPackBootstrap).Assembly }));
+        Assert.NotNull(stream);
+        Assert.True(stream.Length > 0);
+    }
+
+    [Fact]
+    public void GetBuiltInToolAssemblyProbePaths_IncludesExplicitAndEnvironmentProbeRoots() {
+        var explicitProbeRoot = Path.GetTempPath();
+        var environmentProbeRoot = AppContext.BaseDirectory;
+        var previousValue = Environment.GetEnvironmentVariable("INTELLIGENCEX_BUILTIN_TOOL_PROBE_PATHS");
+        Environment.SetEnvironmentVariable(
+            "INTELLIGENCEX_BUILTIN_TOOL_PROBE_PATHS",
+            environmentProbeRoot + Path.PathSeparator + environmentProbeRoot);
+        try {
+            var probePaths = ToolPackBootstrap.GetBuiltInToolAssemblyProbePaths(new ToolPackBootstrapOptions {
+                BuiltInToolProbePaths = new[] { explicitProbeRoot, explicitProbeRoot }
+            });
+
+            Assert.Contains(Path.GetFullPath(explicitProbeRoot), probePaths, StringComparer.OrdinalIgnoreCase);
+            Assert.Contains(Path.GetFullPath(environmentProbeRoot), probePaths, StringComparer.OrdinalIgnoreCase);
+            Assert.Equal(probePaths.Count, probePaths.Distinct(StringComparer.OrdinalIgnoreCase).Count());
+        } finally {
+            Environment.SetEnvironmentVariable("INTELLIGENCEX_BUILTIN_TOOL_PROBE_PATHS", previousValue);
+        }
+    }
+
+    [Fact]
     public void EnumerateToolAssemblyNamesForDiscovery_UsesConfiguredAssemblyNames_WhenDefaultAllowlistIsDisabled() {
         var method = typeof(ToolPackBootstrap).GetMethod(
             "EnumerateToolAssemblyNamesForDiscovery",
@@ -279,9 +315,9 @@ public sealed class ToolPackBootstrapMetadataTests {
         var options = new ToolPackBootstrapOptions();
         var discovered = Assert.IsAssignableFrom<IEnumerable<AssemblyName>>(enumerateAssembliesMethod!.Invoke(null, new object[] { options }));
         var assemblyName = Assert.Single(discovered.Take(1));
-        var invocationArguments = new object?[] { assemblyName, null };
+        var invocationArguments = new object?[] { assemblyName, options, null };
         var resolved = Assert.IsType<bool>(resolvePathMethod!.Invoke(null, invocationArguments));
-        var trustedAssemblyPath = Assert.IsType<string>(invocationArguments[1]);
+        var trustedAssemblyPath = Assert.IsType<string>(invocationArguments[2]);
 
         Assert.True(resolved);
         Assert.False(string.IsNullOrWhiteSpace(trustedAssemblyPath));
@@ -294,9 +330,9 @@ public sealed class ToolPackBootstrapMetadataTests {
             "TryResolveTrustedToolAssemblyPath",
             BindingFlags.NonPublic | BindingFlags.Static);
         Assert.NotNull(resolvePathMethod);
-        var invocationArguments = new object?[] { new AssemblyName(), null };
+        var invocationArguments = new object?[] { new AssemblyName(), new ToolPackBootstrapOptions(), null };
         var resolved = Assert.IsType<bool>(resolvePathMethod!.Invoke(null, invocationArguments));
-        var trustedAssemblyPath = invocationArguments[1] as string;
+        var trustedAssemblyPath = invocationArguments[2] as string;
 
         Assert.False(resolved);
         Assert.Equal(string.Empty, trustedAssemblyPath);
@@ -319,12 +355,41 @@ public sealed class ToolPackBootstrapMetadataTests {
         Assert.NotEmpty(discoveredAssemblyNames);
 
         foreach (var assemblyName in discoveredAssemblyNames) {
-            var invocationArguments = new object?[] { assemblyName, null };
+            var invocationArguments = new object?[] { assemblyName, options, null };
             var resolved = Assert.IsType<bool>(resolvePathMethod!.Invoke(null, invocationArguments));
-            var trustedAssemblyPath = invocationArguments[1] as string;
+            var trustedAssemblyPath = invocationArguments[2] as string;
             Assert.True(resolved, $"Failed to resolve trusted path for '{assemblyName.Name}'.");
             Assert.False(string.IsNullOrWhiteSpace(trustedAssemblyPath));
             Assert.True(File.Exists(trustedAssemblyPath), $"Resolved path '{trustedAssemblyPath}' for '{assemblyName.Name}' does not exist.");
+        }
+    }
+
+    [Fact]
+    public void TryResolveTrustedToolAssemblyPathFromProbeRoots_ResolvesMatchingAssemblyCopy() {
+        var resolvePathMethod = typeof(ToolPackBootstrap).GetMethod(
+            "TryResolveTrustedToolAssemblyPathFromProbeRoots",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(resolvePathMethod);
+
+        var tempRoot = Path.Combine(Path.GetTempPath(), "ix-chat-probe-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempRoot);
+        try {
+            var sourceAssemblyPath = typeof(SystemToolPack).Assembly.Location;
+            var destinationAssemblyPath = Path.Combine(tempRoot, Path.GetFileName(sourceAssemblyPath));
+            File.Copy(sourceAssemblyPath, destinationAssemblyPath, overwrite: true);
+
+            var invocationArguments = new object?[] {
+                new AssemblyName("IntelligenceX.Tools.System"),
+                new[] { tempRoot },
+                null
+            };
+            var resolved = Assert.IsType<bool>(resolvePathMethod!.Invoke(null, invocationArguments));
+            var trustedAssemblyPath = invocationArguments[2] as string;
+
+            Assert.True(resolved);
+            Assert.Equal(Path.GetFullPath(destinationAssemblyPath), trustedAssemblyPath, ignoreCase: true);
+        } finally {
+            Directory.Delete(tempRoot, recursive: true);
         }
     }
 
@@ -994,6 +1059,7 @@ public sealed class ToolPackBootstrapMetadataTests {
         public bool EnableBuiltInPackLoading { get; init; } = true;
         public bool UseDefaultBuiltInToolAssemblyNames { get; init; } = true;
         public IReadOnlyList<string> BuiltInToolAssemblyNames { get; init; } = Array.Empty<string>();
+        public IReadOnlyList<string> BuiltInToolProbePaths { get; init; } = Array.Empty<string>();
         public bool EnableDefaultPluginPaths { get; init; } = true;
         public IReadOnlyList<string> PluginPaths { get; init; } = Array.Empty<string>();
         public IReadOnlyList<string> DisabledPackIds { get; init; } = Array.Empty<string>();
@@ -1150,6 +1216,12 @@ public sealed class ToolPackBootstrapMetadataTests {
         Assert.Equal(string.IsNullOrWhiteSpace(entry.DomainIntentActionId) ? null : entry.DomainIntentActionId, dto.DomainIntentActionId);
         Assert.Equal(entry.IsPackInfoTool, dto.IsPackInfoTool);
         Assert.Equal(entry.IsEnvironmentDiscoverTool, dto.IsEnvironmentDiscoverTool);
+        Assert.Equal(entry.IsWriteCapable, dto.IsWriteCapable);
+        Assert.Equal(entry.RequiresAuthentication, dto.RequiresAuthentication);
+        Assert.Equal(string.IsNullOrWhiteSpace(entry.AuthenticationContractId) ? null : entry.AuthenticationContractId, dto.AuthenticationContractId);
+        Assert.Equal(entry.AuthenticationArguments, dto.AuthenticationArguments);
+        Assert.Equal(entry.SupportsConnectivityProbe, dto.SupportsConnectivityProbe);
+        Assert.Equal(string.IsNullOrWhiteSpace(entry.ProbeToolName) ? null : entry.ProbeToolName, dto.ProbeToolName);
         Assert.Equal(entry.ExecutionScope, dto.ExecutionScope);
         Assert.Equal(entry.SupportsTargetScoping, dto.SupportsTargetScoping);
         Assert.Equal(entry.TargetScopeArguments, dto.TargetScopeArguments);

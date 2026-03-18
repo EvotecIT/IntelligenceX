@@ -238,6 +238,47 @@ public sealed class ChatServicePlannerPromptTests {
     }
 
     [Fact]
+    public void BuildModelPlannerPrompt_IncludesWriteAuthenticationAndProbeContractHints() {
+        var definitions = new List<ToolDefinition> {
+            new(
+                "ad_user_disable",
+                "Disable an AD user.",
+                ToolSchema.Object(("identity", ToolSchema.String("Identity."))).NoAdditionalProperties(),
+                writeGovernance: new ToolWriteGovernanceContract {
+                    IsWriteCapable = true
+                }),
+            new(
+                "eventlog_live_query",
+                "Inspect live event logs on a host.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties(),
+                authentication: new ToolAuthenticationContract {
+                    IsAuthenticationAware = true,
+                    RequiresAuthentication = true,
+                    AuthenticationContractId = "ix.auth.runtime.v1",
+                    Mode = ToolAuthenticationMode.ProfileReference,
+                    ProfileIdArgumentName = "profile_id",
+                    SupportsConnectivityProbe = true,
+                    ProbeToolName = "eventlog_channels_list",
+                    ProbeIdArgumentName = "probe_id"
+                })
+        };
+
+        var prompt = BuildModelPlannerPrompt(
+            "inspect live event logs and only then disable the affected account if needed",
+            definitions,
+            4);
+
+        Assert.Contains("Contract-backed planning rules:", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Prefer declared probe/setup helpers before dependent remote or mutating follow-up tools.", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Treat tools marked auth-required as needing a valid runtime auth/profile context.", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Treat tools marked write-capable as confirmation-gated follow-up actions", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("write: mutating", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("auth: required(ix.auth.runtime.v1)", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("auth_args: profile_id, probe_id", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("probe: eventlog_channels_list", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void BuildModelPlannerPrompt_IncludesCategoryFamilyAndTagsHints() {
         var definitions = new List<ToolDefinition> {
             new(
@@ -2144,6 +2185,75 @@ public sealed class ChatServicePlannerPromptTests {
     }
 
     [Fact]
+    public void BuildModelPlannerCandidates_PrefersProbeHelpersBeforeAuthRequiredFollowUpTools() {
+        var definitions = new List<ToolDefinition>();
+        for (var i = 0; i < 80; i++) {
+            definitions.Add(new ToolDefinition(
+                $"generic_probe_{i:D2}",
+                "Collect generic inventory details.",
+                ToolSchema.Object(("target", ToolSchema.String("Target host."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "generic",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                }));
+        }
+
+        definitions.Add(new ToolDefinition(
+            "eventlog_channels_list",
+            "List available event log channels and validate access for the target machine.",
+            ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties(),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "eventlog",
+                Role = ToolRoutingTaxonomy.RoleOperational
+            }));
+        definitions.Add(new ToolDefinition(
+            "eventlog_live_query",
+            "Inspect live event logs on a remote machine after runtime profile validation.",
+            ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties(),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "eventlog",
+                Role = ToolRoutingTaxonomy.RoleOperational
+            },
+            authentication: new ToolAuthenticationContract {
+                IsAuthenticationAware = true,
+                RequiresAuthentication = true,
+                AuthenticationContractId = "ix.auth.runtime.v1",
+                Mode = ToolAuthenticationMode.ProfileReference,
+                ProfileIdArgumentName = "profile_id",
+                SupportsConnectivityProbe = true,
+                ProbeToolName = "eventlog_channels_list"
+            }));
+
+        var selected = BuildModelPlannerCandidates(
+            definitions,
+            """
+            [Planner context]
+            ix:planner-context:v1
+            requires_live_execution: true
+            preferred_pack_ids: eventlog
+            missing_live_evidence: runtime event log access on srv-01.contoso.com
+            allow_cached_evidence_reuse: false
+
+            continue on srv-01.contoso.com and inspect live event log evidence
+            """,
+            4,
+            ToolOrchestrationCatalog.Build(definitions));
+
+        Assert.InRange(selected.Count, 24, 24);
+        var helperIndex = selected.ToList().FindIndex(static tool => string.Equals(tool.Name, "eventlog_channels_list", StringComparison.OrdinalIgnoreCase));
+        var authToolIndex = selected.ToList().FindIndex(static tool => string.Equals(tool.Name, "eventlog_live_query", StringComparison.OrdinalIgnoreCase));
+        Assert.True(helperIndex >= 0, "Expected the probe helper to be included.");
+        Assert.True(authToolIndex >= 0, "Expected the auth-required dependent tool to be included.");
+        Assert.True(helperIndex < authToolIndex, "Expected the probe helper to rank ahead of the auth-required follow-up tool.");
+    }
+
+    [Fact]
     public void BuildModelPlannerCandidates_DerivesHandoffTargetsFromSourceToolsInPlannerContext() {
         var definitions = new List<ToolDefinition>();
         for (var i = 0; i < 80; i++) {
@@ -2311,6 +2421,176 @@ public sealed class ChatServicePlannerPromptTests {
             insights,
             insight => (insight.GetType().GetProperty("Reason", BindingFlags.Public | BindingFlags.Instance)?.GetValue(insight)?.ToString() ?? string.Empty)
                 .IndexOf("setup-aware preflight support", StringComparison.OrdinalIgnoreCase) >= 0);
+    }
+
+    [Fact]
+    public void SelectWeightedToolSubset_PrefersProbeHelpersBeforeAuthRequiredFollowUpTools() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var definitions = new List<ToolDefinition>();
+        for (var i = 0; i < 20; i++) {
+            definitions.Add(new ToolDefinition(
+                $"generic_local_probe_{i:D2}",
+                "Collect generic local inventory details.",
+                ToolSchema.Object(("path", ToolSchema.String("Path."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "generic",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                }));
+        }
+
+        definitions.Add(new ToolDefinition(
+            "eventlog_channels_list",
+            "List available event log channels and validate access for the target machine.",
+            ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties(),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "eventlog",
+                Role = ToolRoutingTaxonomy.RoleOperational
+            }));
+        definitions.Add(new ToolDefinition(
+            "eventlog_live_query",
+            "Inspect live event logs on a remote machine after runtime profile validation.",
+            ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties(),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "eventlog",
+                Role = ToolRoutingTaxonomy.RoleOperational
+            },
+            authentication: new ToolAuthenticationContract {
+                IsAuthenticationAware = true,
+                RequiresAuthentication = true,
+                AuthenticationContractId = "ix.auth.runtime.v1",
+                Mode = ToolAuthenticationMode.ProfileReference,
+                ProfileIdArgumentName = "profile_id",
+                SupportsConnectivityProbe = true,
+                ProbeToolName = "eventlog_channels_list"
+            }));
+
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(definitions));
+        var selected = session.SelectWeightedToolSubsetForTesting(
+            definitions,
+            "continue on srv-01.contoso.com and inspect live event log evidence there",
+            8,
+            out var insights);
+
+        Assert.Equal(8, selected.Count);
+        var helperIndex = selected.ToList().FindIndex(static tool => string.Equals(tool.Name, "eventlog_channels_list", StringComparison.OrdinalIgnoreCase));
+        var authToolIndex = selected.ToList().FindIndex(static tool => string.Equals(tool.Name, "eventlog_live_query", StringComparison.OrdinalIgnoreCase));
+        Assert.True(helperIndex >= 0, "Expected the probe helper to be selected.");
+        Assert.True(authToolIndex >= 0, "Expected the auth-required tool to be selected.");
+        Assert.True(helperIndex < authToolIndex, "Expected the probe helper to rank ahead of the auth-required follow-up tool.");
+        Assert.Contains(
+            insights,
+            insight => (insight.GetType().GetProperty("Reason", BindingFlags.Public | BindingFlags.Instance)?.GetValue(insight)?.ToString() ?? string.Empty)
+                .IndexOf("probe/setup prerequisite support", StringComparison.OrdinalIgnoreCase) >= 0);
+    }
+
+    [Fact]
+    public void SelectWeightedToolSubset_DeprioritizesWriteCapableFollowUpToolsWithoutStructuredMutatingIntent() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var definitions = new List<ToolDefinition>();
+        for (var i = 0; i < 20; i++) {
+            definitions.Add(new ToolDefinition(
+                $"generic_directory_probe_{i:D2}",
+                "Collect generic directory posture details for the current environment.",
+                ToolSchema.Object(("identity", ToolSchema.String("Target identity."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "active_directory",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                }));
+        }
+
+        definitions.Add(new ToolDefinition(
+            "aa_user_disable_followup",
+            "Inspect account state for the targeted directory identity.",
+            ToolSchema.Object(("identity", ToolSchema.String("Target identity."))).NoAdditionalProperties(),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "active_directory",
+                Role = ToolRoutingTaxonomy.RoleOperational
+            },
+            writeGovernance: new ToolWriteGovernanceContract {
+                IsWriteCapable = true
+            }));
+        definitions.Add(new ToolDefinition(
+            "zz_user_state_read",
+            "Inspect account state for the targeted directory identity.",
+            ToolSchema.Object(("identity", ToolSchema.String("Target identity."))).NoAdditionalProperties(),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "active_directory",
+                Role = ToolRoutingTaxonomy.RoleOperational
+            }));
+
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(definitions));
+        var selected = session.SelectWeightedToolSubsetForTesting(
+            definitions,
+            "inspect account state for the targeted directory identity",
+            1,
+            out _);
+
+        Assert.NotEmpty(selected);
+        Assert.Equal("zz_user_state_read", selected[0].Name);
+    }
+
+    [Fact]
+    public void BuildModelPlannerCandidates_PrefersWriteCapableFollowUpToolsWhenStructuredMutatingIntentIsPresent() {
+        var definitions = new List<ToolDefinition>();
+        for (var i = 0; i < 80; i++) {
+            definitions.Add(new ToolDefinition(
+                $"generic_directory_probe_{i:D2}",
+                "Collect generic directory posture details for the current environment.",
+                ToolSchema.Object(("identity", ToolSchema.String("Target identity."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "active_directory",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                }));
+        }
+
+        definitions.Add(new ToolDefinition(
+            "aa_user_disable_followup",
+            "Inspect account state for the targeted directory identity.",
+            ToolSchema.Object(("identity", ToolSchema.String("Target identity."))).NoAdditionalProperties(),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "active_directory",
+                Role = ToolRoutingTaxonomy.RoleOperational
+            },
+            writeGovernance: new ToolWriteGovernanceContract {
+                IsWriteCapable = true
+            }));
+        definitions.Add(new ToolDefinition(
+            "zz_user_state_read",
+            "Inspect account state for the targeted directory identity.",
+            ToolSchema.Object(("identity", ToolSchema.String("Target identity."))).NoAdditionalProperties(),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "active_directory",
+                Role = ToolRoutingTaxonomy.RoleOperational
+            }));
+
+        var selected = BuildModelPlannerCandidates(
+            definitions,
+            """
+            {"ix_action_selection":{"id":"act_001","title":"Disable the selected user","request":"Disable the selected directory account after reviewing its state on the same host and continue with the requested follow-up now.","mutating":true}}
+            """,
+            4,
+            ToolOrchestrationCatalog.Build(definitions));
+
+        Assert.InRange(selected.Count, 24, 24);
+        Assert.Equal("aa_user_disable_followup", selected[0].Name);
     }
 
     [Fact]

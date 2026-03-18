@@ -572,6 +572,22 @@ internal sealed partial class ChatServiceSession {
                 sb.AppendLine(ToolRepresentativeExamples.BuildCrossPackSummary(crossPackTargets));
             }
         }
+        var hasWriteCapableTools = definitions.Any(static definition => definition.WriteGovernance?.IsWriteCapable == true);
+        var hasAuthenticationAwareTools = definitions.Any(static definition => definition.Authentication?.IsAuthenticationAware == true);
+        var hasProbeAwareTools = definitions.Any(static definition => definition.Authentication?.SupportsConnectivityProbe == true);
+        if (hasWriteCapableTools || hasAuthenticationAwareTools || hasProbeAwareTools) {
+            sb.AppendLine();
+            sb.AppendLine("Contract-backed planning rules:");
+            if (hasProbeAwareTools) {
+                sb.AppendLine("Prefer declared probe/setup helpers before dependent remote or mutating follow-up tools.");
+            }
+            if (hasAuthenticationAwareTools) {
+                sb.AppendLine("Treat tools marked auth-required as needing a valid runtime auth/profile context.");
+            }
+            if (hasWriteCapableTools) {
+                sb.AppendLine("Treat tools marked write-capable as confirmation-gated follow-up actions, not default discovery steps.");
+            }
+        }
         sb.AppendLine();
         sb.AppendLine($"Return at most {Math.Max(1, limit)} tool names.");
         sb.AppendLine("Available tools:");
@@ -597,6 +613,7 @@ internal sealed partial class ChatServiceSession {
             var domainIntentFamily = ResolveDomainIntentFamily(definition);
             var plannerTags = ExtractPlannerTags(definition, maxCount: 4);
             var traitSummary = ToolSchemaTraitProjection.BuildTraitSummary(schemaTraits);
+            var authentication = definition.Authentication;
             sb.Append(i + 1).Append(". ").Append(name);
             if (description.Length > 0) {
                 sb.Append(" :: ").Append(description);
@@ -630,6 +647,29 @@ internal sealed partial class ChatServiceSession {
             }
             if (traitSummary.Length > 0) {
                 sb.Append(" | traits: ").Append(traitSummary);
+            }
+            if (definition.WriteGovernance?.IsWriteCapable == true) {
+                sb.Append(" | write: mutating");
+            }
+            if (authentication?.RequiresAuthentication == true) {
+                sb.Append(" | auth: required");
+                var authenticationContractId = (authentication.AuthenticationContractId ?? string.Empty).Trim();
+                if (authenticationContractId.Length > 0) {
+                    sb.Append('(').Append(authenticationContractId).Append(')');
+                }
+
+                var authenticationArguments = authentication.GetSchemaArgumentNames();
+                if (authenticationArguments.Count > 0) {
+                    sb.Append(" | auth_args: ").Append(string.Join(", ", authenticationArguments));
+                }
+            }
+            if (authentication?.SupportsConnectivityProbe == true) {
+                var probeToolName = (authentication.ProbeToolName ?? string.Empty).Trim();
+                if (probeToolName.Length > 0) {
+                    sb.Append(" | probe: ").Append(probeToolName);
+                } else {
+                    sb.Append(" | probe: supported");
+                }
             }
             var setupToolName = (definition.Setup?.SetupToolName ?? string.Empty).Trim();
             if (setupToolName.Length > 0) {
@@ -1153,7 +1193,10 @@ internal sealed partial class ChatServiceSession {
         double RemoteCapableBoost,
         double CrossPackContinuationBoost,
         double EnvironmentDiscoverBoost,
-        double SetupAwareBoost);
+        double SetupAwareBoost,
+        double ContractHelperBoost,
+        double WriteFollowUpPenalty,
+        double AuthFollowUpPenalty);
 
     private enum ToolRoutingInsightStrategy {
         Unknown = 0,

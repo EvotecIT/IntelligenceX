@@ -582,7 +582,8 @@ public class ToolPackGuidanceTests {
             toolCatalog: new[] {
                 new ToolPackToolCatalogEntryModel {
                     Name = "eventlog_pack_info",
-                    Description = "Pack info"
+                    Description = "Pack info",
+                    IsEnvironmentDiscoverTool = true
                 },
                 new ToolPackToolCatalogEntryModel {
                     Name = "eventlog_timeline_query",
@@ -621,12 +622,24 @@ public class ToolPackGuidanceTests {
         Assert.Equal(3, summary.TotalTools);
         Assert.Equal(1, summary.RemoteCapableTools);
         Assert.Equal(new[] { "eventlog_timeline_query" }, summary.RemoteCapableToolNames);
+        Assert.Equal(1, summary.TargetScopedTools);
+        Assert.Equal(new[] { "eventlog_timeline_query" }, summary.TargetScopedToolNames);
+        Assert.Equal(1, summary.RemoteHostTargetingTools);
+        Assert.Equal(new[] { "eventlog_timeline_query" }, summary.RemoteHostTargetingToolNames);
         Assert.Equal(1, summary.SetupAwareTools);
         Assert.Equal(new[] { "eventlog_timeline_query" }, summary.SetupAwareToolNames);
+        Assert.Equal(1, summary.EnvironmentDiscoverTools);
+        Assert.Equal(new[] { "eventlog_pack_info" }, summary.EnvironmentDiscoverToolNames);
         Assert.Equal(1, summary.HandoffAwareTools);
         Assert.Equal(new[] { "eventlog_timeline_query" }, summary.HandoffAwareToolNames);
         Assert.Equal(1, summary.RecoveryAwareTools);
         Assert.Equal(new[] { "eventlog_timeline_query" }, summary.RecoveryAwareToolNames);
+        Assert.Equal(0, summary.WriteCapableTools);
+        Assert.Empty(summary.WriteCapableToolNames);
+        Assert.Equal(0, summary.AuthenticationRequiredTools);
+        Assert.Empty(summary.AuthenticationRequiredToolNames);
+        Assert.Equal(0, summary.ProbeCapableTools);
+        Assert.Empty(summary.ProbeCapableToolNames);
         Assert.Equal(1, summary.CrossPackHandoffTools);
         Assert.Equal(new[] { "eventlog_timeline_query" }, summary.CrossPackHandoffToolNames);
         Assert.Equal(new[] { "system" }, summary.CrossPackTargetPacks);

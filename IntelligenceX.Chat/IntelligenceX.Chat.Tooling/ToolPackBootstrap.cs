@@ -77,6 +77,11 @@ public sealed record ToolPackBootstrapOptions {
     public IReadOnlyList<string> BuiltInToolAssemblyNames { get; init; } = Array.Empty<string>();
 
     /// <summary>
+    /// Additional trusted probe roots searched when built-in tool assemblies are not resolvable from the dependency graph.
+    /// </summary>
+    public IReadOnlyList<string> BuiltInToolProbePaths { get; init; } = Array.Empty<string>();
+
+    /// <summary>
     /// Shared authentication probe store used by probe-aware packs.
     /// </summary>
     public IToolAuthenticationProbeStore? AuthenticationProbeStore { get; init; }
@@ -191,6 +196,11 @@ public interface IToolPackRuntimeSettings {
     /// Additional built-in tool assembly names to include in discovery (repeatable).
     /// </summary>
     IReadOnlyList<string> BuiltInToolAssemblyNames { get; }
+
+    /// <summary>
+    /// Additional trusted probe roots searched when built-in tool assemblies are not resolvable from the dependency graph.
+    /// </summary>
+    IReadOnlyList<string> BuiltInToolProbePaths { get; }
 
     /// <summary>
     /// Enables default plugin search roots.
@@ -416,6 +426,7 @@ public static partial class ToolPackBootstrap {
 
         var allowedRoots = settings.AllowedRoots?.ToArray() ?? Array.Empty<string>();
         var builtInToolAssemblyNames = settings.BuiltInToolAssemblyNames?.ToArray() ?? Array.Empty<string>();
+        var builtInToolProbePaths = settings.BuiltInToolProbePaths?.ToArray() ?? Array.Empty<string>();
         var pluginPaths = settings.PluginPaths?.ToArray() ?? Array.Empty<string>();
         var disabledPackIds = settings.DisabledPackIds?.ToArray() ?? Array.Empty<string>();
         var enabledPackIds = settings.EnabledPackIds?.ToArray() ?? Array.Empty<string>();
@@ -428,6 +439,7 @@ public static partial class ToolPackBootstrap {
             EnableBuiltInPackLoading = settings.EnableBuiltInPackLoading,
             UseDefaultBuiltInToolAssemblyNames = settings.UseDefaultBuiltInToolAssemblyNames,
             BuiltInToolAssemblyNames = builtInToolAssemblyNames,
+            BuiltInToolProbePaths = builtInToolProbePaths,
             EnableDefaultPluginPaths = settings.EnableDefaultPluginPaths,
             PluginPaths = pluginPaths,
             DisabledPackIds = disabledPackIds,

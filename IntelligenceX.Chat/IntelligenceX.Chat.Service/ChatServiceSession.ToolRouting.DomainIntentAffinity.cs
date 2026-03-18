@@ -587,7 +587,7 @@ internal sealed partial class ChatServiceSession {
         }
         PersistWeightedToolSubsetSnapshot(normalizedThreadId, refreshedTicks, previousNames!);
 
-        subset = selected;
+        subset = ReorderDefinitionsForContractHelpers(selected);
         return true;
     }
 
@@ -733,7 +733,7 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        subset = selected;
+        subset = ReorderDefinitionsForContractHelpers(selected);
         selectedToolNames = selectedNames.ToArray();
         seenUtcTicks = checkpoint.SeenUtcTicks;
         return true;

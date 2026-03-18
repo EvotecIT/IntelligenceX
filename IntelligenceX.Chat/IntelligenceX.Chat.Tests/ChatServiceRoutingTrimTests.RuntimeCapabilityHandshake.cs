@@ -18,6 +18,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     public void RuntimeCapabilityHandshake_IncludesCapabilitySnapshotWhenRuntimeMetadataPresent() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var nowTicks = DateTime.UtcNow.Ticks;
+        session.SetToolOrchestrationCatalogForTesting(CreateCapabilityHandshakeOrchestrationCatalog());
         session.SetCapabilitySnapshotContextForTesting(
             new[] {
                 new ToolPackAvailabilityInfo {
@@ -85,9 +86,21 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Contains("enabled_plugin_count: 2", instructionsText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("enabled_packs: active_directory, eventlog", instructionsText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("enabled_plugins: active_directory, eventlog", instructionsText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("dangerous_tools_enabled: false", instructionsText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("enabled_pack_engines: adplayground, eventviewerx", instructionsText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("enabled_capability_tags: directory, remote_analysis, event_logs, evtx", instructionsText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("routing_families: ad_domain, public_domain", instructionsText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("representative_live_examples: discover effective AD scope and the reachable domain controllers before choosing deeper directory tools", instructionsText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("cross_pack_followup_targets: Event Log, System", instructionsText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("autonomy_target_scoped_tools: 2", instructionsText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("autonomy_target_scoped_packs: active_directory, eventlog", instructionsText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("autonomy_remote_host_targeting_tools: 1", instructionsText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("autonomy_remote_host_targeting_packs: eventlog", instructionsText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("autonomy_environment_discover_tools: 1", instructionsText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("autonomy_environment_discover_packs: active_directory", instructionsText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("autonomy_write_capable_tools: 0", instructionsText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("autonomy_auth_required_tools: 0", instructionsText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("autonomy_probe_capable_tools: 0", instructionsText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("skill_count: 2", instructionsText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("skills: ad_domain.scope_hosts, public_domain.query_whois", instructionsText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("healthy_tools:", instructionsText, StringComparison.OrdinalIgnoreCase);
@@ -194,6 +207,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     public void RuntimeCapabilityHandshake_BuildRuntimeCapabilitySnapshot_ProducesStructuredCapabilityArtifact() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var nowTicks = DateTime.UtcNow.Ticks;
+        session.SetToolOrchestrationCatalogForTesting(CreateCapabilityHandshakeOrchestrationCatalog());
         session.SetCapabilitySnapshotContextForTesting(
             new[] {
                 new ToolPackAvailabilityInfo {
@@ -243,10 +257,103 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Equal("adplayground", Assert.Single(snapshot.EnabledPackEngineIds));
         Assert.Contains("directory", snapshot.EnabledCapabilityTags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("remote_analysis", snapshot.EnabledCapabilityTags, StringComparer.OrdinalIgnoreCase);
+        Assert.False(snapshot.DangerousToolsEnabled);
+        Assert.Empty(snapshot.DangerousPackIds);
         Assert.Equal(2, snapshot.RoutingFamilies.Length);
         Assert.Equal(2, snapshot.FamilyActions.Length);
         Assert.Equal("ad_domain.scope_hosts", snapshot.Skills[0]);
+        Assert.Equal(
+            "discover effective AD scope and the reachable domain controllers before choosing deeper directory tools",
+            Assert.Single(snapshot.RepresentativeExamples));
+        Assert.Equal(new[] { "Event Log", "System" }, snapshot.CrossPackTargetPackDisplayNames);
         Assert.Equal("ad_replication_summary", Assert.Single(snapshot.HealthyTools));
+        Assert.NotNull(snapshot.Autonomy);
+        Assert.Equal(1, snapshot.Autonomy!.TargetScopedToolCount);
+        Assert.Equal(0, snapshot.Autonomy.RemoteHostTargetingToolCount);
+        Assert.Equal(1, snapshot.Autonomy!.EnvironmentDiscoverToolCount);
+        Assert.Equal(0, snapshot.Autonomy.WriteCapableToolCount);
+        Assert.Equal(0, snapshot.Autonomy.AuthenticationRequiredToolCount);
+        Assert.Equal(0, snapshot.Autonomy.ProbeCapableToolCount);
+        Assert.Equal(new[] { "active_directory" }, snapshot.Autonomy.TargetScopedPackIds);
+        Assert.Empty(snapshot.Autonomy.RemoteHostTargetingPackIds);
+        Assert.Equal(new[] { "active_directory" }, snapshot.Autonomy.EnvironmentDiscoverPackIds);
+    }
+
+    [Fact]
+    public void RuntimeCapabilityHandshake_BuildRuntimeCapabilitySnapshot_ExposesDangerousPackVisibility() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        session.SetCapabilitySnapshotContextForTesting(
+            new[] {
+                new ToolPackAvailabilityInfo {
+                    Id = "active_directory_lifecycle",
+                    Name = "Active Directory Lifecycle",
+                    SourceKind = "builtin",
+                    Enabled = true,
+                    IsDangerous = true,
+                    Tier = ToolCapabilityTier.DangerousWrite
+                }
+            },
+            new ToolRoutingCatalogDiagnostics {
+                TotalTools = 3,
+                RoutingAwareTools = 3,
+                MissingRoutingContractTools = 0,
+                DomainFamilyTools = 1,
+                ExpectedDomainFamilyMissingTools = 0,
+                DomainFamilyMissingActionTools = 0,
+                ActionWithoutFamilyTools = 0,
+                FamilyActionConflictFamilies = 0,
+                FamilyActions = new[] {
+                    new ToolRoutingFamilyActionSummary {
+                        Family = "ad_domain",
+                        ActionId = "identity_lifecycle",
+                        ToolCount = 3
+                    }
+                }
+            });
+
+        var snapshot = session.BuildRuntimeCapabilitySnapshotForTesting();
+
+        Assert.True(snapshot.DangerousToolsEnabled);
+        Assert.Equal(new[] { "active_directory_lifecycle" }, snapshot.DangerousPackIds);
+    }
+
+    [Fact]
+    public void RuntimeCapabilityHandshake_IncludesDangerousPackVisibilityWhenDangerousToolsAreEnabled() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        session.SetCapabilitySnapshotContextForTesting(
+            new[] {
+                new ToolPackAvailabilityInfo {
+                    Id = "active_directory_lifecycle",
+                    Name = "Active Directory Lifecycle",
+                    SourceKind = "builtin",
+                    Enabled = true,
+                    IsDangerous = true,
+                    Tier = ToolCapabilityTier.DangerousWrite
+                }
+            },
+            new ToolRoutingCatalogDiagnostics {
+                TotalTools = 3,
+                RoutingAwareTools = 3,
+                MissingRoutingContractTools = 0,
+                DomainFamilyTools = 1,
+                ExpectedDomainFamilyMissingTools = 0,
+                DomainFamilyMissingActionTools = 0,
+                ActionWithoutFamilyTools = 0,
+                FamilyActionConflictFamilies = 0,
+                FamilyActions = new[] {
+                    new ToolRoutingFamilyActionSummary {
+                        Family = "ad_domain",
+                        ActionId = "identity_lifecycle",
+                        ToolCount = 3
+                    }
+                }
+            });
+
+        var instructions = session.BuildTurnInstructionsWithRuntimeIdentityForTesting("gpt-5");
+        var instructionsText = Assert.IsType<string>(instructions);
+
+        Assert.Contains("dangerous_tools_enabled: true", instructionsText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("dangerous_packs: active_directory_lifecycle", instructionsText, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -433,6 +540,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
         options.BackgroundSchedulerAllowedThreadIds.Add("thread-capability-scheduler-ready");
         options.BackgroundSchedulerBlockedThreadIds.Add("thread-capability-scheduler-blocked");
         var session = new ChatServiceSession(options, System.IO.Stream.Null);
+        session.SetToolOrchestrationCatalogForTesting(CreateCapabilityHandshakeOrchestrationCatalog());
         session.SetCapabilitySnapshotContextForTesting(
             new[] {
                 new ToolPackAvailabilityInfo {
@@ -480,6 +588,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Contains("registered_tools='9'", handshake, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("allowed_roots='2'", handshake, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("tooling_available='true'", handshake, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("dangerous_tools_enabled='false'", handshake, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("remote_reachability_mode='", handshake, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("background_scheduler_daemon_enabled='false'", handshake, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("background_scheduler_auto_pause_enabled='false'", handshake, StringComparison.OrdinalIgnoreCase);
@@ -506,8 +615,59 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Contains("enabled_plugins='active_directory'", handshake, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("enabled_pack_engines='adplayground'", handshake, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("enabled_capability_tags='directory,remote_analysis'", handshake, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("representative_examples='discover effective AD scope and the reachable domain controllers before choosing deeper directory tools'", handshake, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("cross_pack_followup_targets='Event Log,System'", handshake, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("autonomy_target_scoped_tools='1'", handshake, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("autonomy_target_scoped_packs='active_directory'", handshake, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("autonomy_remote_host_targeting_tools='0'", handshake, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("autonomy_environment_discover_tools='1'", handshake, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("autonomy_environment_discover_packs='active_directory'", handshake, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("autonomy_write_capable_tools='0'", handshake, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("autonomy_auth_required_tools='0'", handshake, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("autonomy_probe_capable_tools='0'", handshake, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("routing_families='ad_domain,public_domain'", handshake, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("skills='ad_domain.scope_hosts,public_domain.query_whois'", handshake, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void RuntimeCapabilityHandshake_HelloWarningsExposeDangerousPackVisibility() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        session.SetCapabilitySnapshotContextForTesting(
+            new[] {
+                new ToolPackAvailabilityInfo {
+                    Id = "active_directory_lifecycle",
+                    Name = "Active Directory Lifecycle",
+                    SourceKind = "builtin",
+                    Enabled = true,
+                    IsDangerous = true,
+                    Tier = ToolCapabilityTier.DangerousWrite
+                }
+            },
+            new ToolRoutingCatalogDiagnostics {
+                TotalTools = 2,
+                RoutingAwareTools = 2,
+                MissingRoutingContractTools = 0,
+                DomainFamilyTools = 1,
+                ExpectedDomainFamilyMissingTools = 0,
+                DomainFamilyMissingActionTools = 0,
+                ActionWithoutFamilyTools = 0,
+                FamilyActionConflictFamilies = 0,
+                FamilyActions = new[] {
+                    new ToolRoutingFamilyActionSummary {
+                        Family = "ad_domain",
+                        ActionId = "identity_lifecycle",
+                        ToolCount = 2
+                    }
+                }
+            });
+
+        var warnings = session.BuildHelloStartupWarningsForTesting(Task.CompletedTask);
+        var handshake = Assert.Single(
+            warnings,
+            static warning => warning.StartsWith("[startup] capability_handshake", StringComparison.OrdinalIgnoreCase));
+
+        Assert.Contains("dangerous_tools_enabled='true'", handshake, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("dangerous_packs='active_directory_lifecycle'", handshake, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -945,5 +1105,88 @@ public sealed partial class ChatServiceRoutingTrimTests {
         }
 
         return value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Length;
+    }
+
+    private static ToolOrchestrationCatalog CreateCapabilityHandshakeOrchestrationCatalog() {
+        return ToolOrchestrationCatalog.Build(
+            CreateCapabilityHandshakeAutonomyDefinitions(),
+            new IToolPack[] { new SyntheticCapabilityHandshakePack() });
+    }
+
+    private static ToolDefinition[] CreateCapabilityHandshakeAutonomyDefinitions() {
+        return new[] {
+            new ToolDefinition(
+                "ad_scope_discovery",
+                "Discover AD scope.",
+                ToolSchema.Object(("domain_name", ToolSchema.String("Domain."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "active_directory",
+                    Role = ToolRoutingTaxonomy.RoleEnvironmentDiscover,
+                    DomainIntentFamily = ToolSelectionMetadata.DomainIntentFamilyAd,
+                    DomainIntentActionId = "scope_hosts"
+                },
+                execution: new ToolExecutionContract {
+                    IsExecutionAware = true,
+                    ExecutionScope = ToolExecutionScopes.LocalOnly,
+                    TargetScopeArguments = new[] { "domain_name" }
+                }),
+            new ToolDefinition(
+                "eventlog_live_query",
+                "Query remote event logs.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "eventlog",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                },
+                execution: new ToolExecutionContract {
+                    IsExecutionAware = true,
+                    ExecutionScope = ToolExecutionScopes.LocalOrRemote,
+                    TargetScopeArguments = new[] { "machine_name" },
+                    RemoteHostArguments = new[] { "machine_name" }
+                })
+        };
+    }
+
+    private sealed class SyntheticCapabilityHandshakePack : IToolPack, IToolPackCatalogProvider {
+        public ToolPackDescriptor Descriptor { get; } = new() {
+            Id = "active_directory",
+            Name = "Active Directory",
+            Tier = ToolCapabilityTier.ReadOnly,
+            SourceKind = "builtin"
+        };
+
+        public void Register(ToolRegistry registry) {
+            _ = registry;
+        }
+
+        public IReadOnlyList<ToolPackToolCatalogEntryModel> GetToolCatalog() {
+            return new[] {
+                new ToolPackToolCatalogEntryModel {
+                    Name = "ad_scope_discovery",
+                    Description = "Discover AD scope.",
+                    IsEnvironmentDiscoverTool = true,
+                    RepresentativeExamples = new[] {
+                        "discover effective AD scope and the reachable domain controllers before choosing deeper directory tools"
+                    },
+                    Handoff = new ToolPackToolHandoffModel {
+                        IsHandoffAware = true,
+                        Routes = new[] {
+                            new ToolPackToolHandoffRouteModel {
+                                TargetPackId = "eventlog",
+                                TargetToolName = "eventlog_live_query"
+                            },
+                            new ToolPackToolHandoffRouteModel {
+                                TargetPackId = "system",
+                                TargetToolName = "system_info"
+                            }
+                        }
+                    }
+                }
+            };
+        }
     }
 }

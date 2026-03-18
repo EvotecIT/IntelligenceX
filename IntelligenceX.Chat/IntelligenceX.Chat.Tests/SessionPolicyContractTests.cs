@@ -40,6 +40,10 @@ public sealed class SessionPolicyContractTests {
                             TotalTools = 3,
                             RemoteCapableTools = 1,
                             RemoteCapableToolNames = new[] { "testimox_rules_run" },
+                            TargetScopedTools = 2,
+                            TargetScopedToolNames = new[] { "testimox_pack_info", "testimox_rules_run" },
+                            RemoteHostTargetingTools = 1,
+                            RemoteHostTargetingToolNames = new[] { "testimox_rules_run" },
                             SetupAwareTools = 1,
                             EnvironmentDiscoverTools = 1,
                             SetupAwareToolNames = new[] { "testimox_pack_info" },
@@ -48,6 +52,12 @@ public sealed class SessionPolicyContractTests {
                             HandoffAwareToolNames = new[] { "testimox_rules_run", "testimox_run_summary" },
                             RecoveryAwareTools = 1,
                             RecoveryAwareToolNames = new[] { "testimox_rules_run" },
+                            WriteCapableTools = 1,
+                            WriteCapableToolNames = new[] { "testimox_rules_run" },
+                            AuthenticationRequiredTools = 1,
+                            AuthenticationRequiredToolNames = new[] { "testimox_rules_run" },
+                            ProbeCapableTools = 1,
+                            ProbeCapableToolNames = new[] { "testimox_rules_run" },
                             CrossPackHandoffTools = 2,
                             CrossPackHandoffToolNames = new[] { "testimox_rules_run", "testimox_run_summary" },
                             CrossPackTargetPacks = new[] { "active_directory", "eventlog", "system" }
@@ -126,6 +136,8 @@ public sealed class SessionPolicyContractTests {
                     AllowedRootCount = 0,
                     EnabledPackIds = System.Array.Empty<string>(),
                     EnabledPluginIds = System.Array.Empty<string>(),
+                    DangerousToolsEnabled = true,
+                    DangerousPackIds = new[] { "active_directory_lifecycle" },
                     RoutingFamilies = new[] { "ad_domain", "public_domain" },
                     FamilyActions = new[] {
                         new SessionRoutingFamilyActionSummaryDto {
@@ -135,17 +147,29 @@ public sealed class SessionPolicyContractTests {
                         }
                     },
                     Skills = new[] { "ad_domain.act_domain_scope_ad" },
+                    RepresentativeExamples = new[] { "discover AD scope before querying remote evidence" },
+                    CrossPackTargetPackDisplayNames = new[] { "System", "Event Log" },
                     HealthyTools = new[] { "unit_test_tool" },
                     RemoteReachabilityMode = "remote_capable",
                     Autonomy = new SessionCapabilityAutonomySummaryDto {
                         RemoteCapableToolCount = 2,
+                        TargetScopedToolCount = 3,
+                        RemoteHostTargetingToolCount = 1,
                         SetupAwareToolCount = 1,
                         EnvironmentDiscoverToolCount = 1,
                         HandoffAwareToolCount = 2,
                         RecoveryAwareToolCount = 1,
+                        WriteCapableToolCount = 1,
+                        AuthenticationRequiredToolCount = 1,
+                        ProbeCapableToolCount = 1,
                         CrossPackHandoffToolCount = 1,
                         RemoteCapablePackIds = new[] { "testimox" },
+                        TargetScopedPackIds = new[] { "testimox" },
+                        RemoteHostTargetingPackIds = new[] { "testimox" },
                         EnvironmentDiscoverPackIds = new[] { "testimox" },
+                        WriteCapablePackIds = new[] { "testimox" },
+                        AuthenticationRequiredPackIds = new[] { "testimox" },
+                        ProbeCapablePackIds = new[] { "testimox" },
                         CrossPackReadyPackIds = new[] { "testimox" },
                         CrossPackTargetPackIds = new[] { "system", "eventlog" }
                     }
@@ -196,10 +220,19 @@ public sealed class SessionPolicyContractTests {
         Assert.Equal(8, capabilitySnapshot.RegisteredTools);
         Assert.Empty(capabilitySnapshot.EnabledPackIds);
         Assert.Empty(capabilitySnapshot.EnabledPluginIds);
+        Assert.True(capabilitySnapshot.DangerousToolsEnabled);
+        Assert.Equal(new[] { "active_directory_lifecycle" }, capabilitySnapshot.DangerousPackIds);
+        Assert.Equal("discover AD scope before querying remote evidence", Assert.Single(capabilitySnapshot.RepresentativeExamples));
+        Assert.Equal(new[] { "System", "Event Log" }, capabilitySnapshot.CrossPackTargetPackDisplayNames);
         Assert.Equal("unit_test_tool", capabilitySnapshot.HealthyTools[0]);
         var autonomy = Assert.IsType<SessionCapabilityAutonomySummaryDto>(capabilitySnapshot.Autonomy);
         Assert.Equal(2, autonomy.RemoteCapableToolCount);
+        Assert.Equal(3, autonomy.TargetScopedToolCount);
+        Assert.Equal(1, autonomy.RemoteHostTargetingToolCount);
         Assert.Equal(1, autonomy.EnvironmentDiscoverToolCount);
+        Assert.Equal(1, autonomy.WriteCapableToolCount);
+        Assert.Equal(1, autonomy.AuthenticationRequiredToolCount);
+        Assert.Equal(1, autonomy.ProbeCapableToolCount);
         Assert.Equal(new[] { "system", "eventlog" }, autonomy.CrossPackTargetPackIds);
         var startupBootstrap = Assert.IsType<SessionStartupBootstrapTelemetryDto>(policy.StartupBootstrap);
         Assert.Equal(4120, startupBootstrap.TotalMs);
@@ -225,7 +258,12 @@ public sealed class SessionPolicyContractTests {
         Assert.Equal(new[] { "testimox", "testimo_x", "reporting" }, policy.Packs[0].SearchTokens);
         var autonomySummary = Assert.IsType<ToolPackAutonomySummaryDto>(policy.Packs[0].AutonomySummary);
         Assert.Equal(3, autonomySummary.TotalTools);
+        Assert.Equal(2, autonomySummary.TargetScopedTools);
+        Assert.Equal(1, autonomySummary.RemoteHostTargetingTools);
         Assert.Equal(1, autonomySummary.EnvironmentDiscoverTools);
+        Assert.Equal(1, autonomySummary.WriteCapableTools);
+        Assert.Equal(1, autonomySummary.AuthenticationRequiredTools);
+        Assert.Equal(1, autonomySummary.ProbeCapableTools);
         Assert.Equal(new[] { "active_directory", "eventlog", "system" }, autonomySummary.CrossPackTargetPacks);
         Assert.Single(policy.Plugins);
         Assert.Equal("ix-testimox", policy.Plugins[0].Id);

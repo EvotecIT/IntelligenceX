@@ -814,7 +814,16 @@ public sealed class ToolHealthContractTests {
                 TrackedThreadCount = 2,
                 ReadyThreadCount = 1,
                 RunningThreadCount = 1,
+                DependencyBlockedThreadCount = 1,
                 QueuedItemCount = 2,
+                DependencyBlockedItemCount = 1,
+                DependencyHelperToolNames = new[] { "eventlog_channels_list" },
+                DependencyRecoveryReason = "background_prerequisite_auth_context_required",
+                DependencyNextAction = "request_runtime_auth_context",
+                DependencyRetryCooldownHelperToolNames = Array.Empty<string>(),
+                DependencyAuthenticationHelperToolNames = new[] { "eventlog_channels_list" },
+                DependencyAuthenticationArgumentNames = new[] { "profile_id" },
+                DependencySetupHelperToolNames = Array.Empty<string>(),
                 ReadyItemCount = 1,
                 RunningItemCount = 1,
                 CompletedItemCount = 4,
@@ -847,12 +856,47 @@ public sealed class ToolHealthContractTests {
                     new SessionCapabilityBackgroundSchedulerThreadSummaryDto {
                         ThreadId = "thread-ready",
                         QueuedItemCount = 0,
+                        DependencyBlockedItemCount = 0,
                         ReadyItemCount = 1,
                         RunningItemCount = 0,
                         CompletedItemCount = 0,
                         PendingReadOnlyItemCount = 1,
                         PendingUnknownItemCount = 0,
-                        RecentEvidenceTools = new[] { "remote_disk_inventory" }
+                        RecentEvidenceTools = new[] { "remote_disk_inventory" },
+                        DependencyHelperToolNames = Array.Empty<string>(),
+                        DependencyRecoveryReason = "background_prerequisite_auth_context_required",
+                        DependencyNextAction = "request_runtime_auth_context",
+                        ContinuationHint = new SessionCapabilityBackgroundSchedulerContinuationHintDto {
+                            ThreadId = "thread-ready",
+                            NextAction = "request_runtime_auth_context",
+                            RecoveryReason = "background_prerequisite_auth_context_required",
+                            HelperToolNames = new[] { "eventlog_channels_list" },
+                            InputArgumentNames = new[] { "profile_id" },
+                            SuggestedRequests = new[] {
+                                new SessionCapabilityBackgroundSchedulerContinuationRequestDto {
+                                    RequestKind = "list_profiles",
+                                    Purpose = "discover_runtime_profiles"
+                                },
+                                new SessionCapabilityBackgroundSchedulerContinuationRequestDto {
+                                    RequestKind = "set_profile",
+                                    Purpose = "apply_runtime_auth_context",
+                                    RequiredArgumentNames = new[] { "profileName" },
+                                    SatisfiesInputArgumentNames = new[] { "profile_id" },
+                                    SuggestedArguments = new[] {
+                                        new SessionCapabilityBackgroundSchedulerContinuationRequestArgumentDto {
+                                            Name = "newThread",
+                                            Value = "false",
+                                            ValueKind = "boolean"
+                                        }
+                                    }
+                                }
+                            },
+                            StatusSummary = "Waiting on runtime auth context: profile_id."
+                        },
+                        DependencyRetryCooldownHelperToolNames = Array.Empty<string>(),
+                        DependencyAuthenticationHelperToolNames = new[] { "eventlog_channels_list" },
+                        DependencyAuthenticationArgumentNames = new[] { "profile_id" },
+                        DependencySetupHelperToolNames = Array.Empty<string>()
                     }
                 }
             }
@@ -882,11 +926,35 @@ public sealed class ToolHealthContractTests {
         Assert.Equal("thread-ready", Assert.Single(typed.Scheduler.ReadyThreadIds));
         Assert.Equal("remote_probe_failed", Assert.Single(typed.Scheduler.RecentActivity).FailureDetail);
         Assert.Equal("thread-ready", Assert.Single(typed.Scheduler.ThreadSummaries).ThreadId);
+        Assert.Equal("request_runtime_auth_context", typed.Scheduler.DependencyNextAction);
+        Assert.Equal("eventlog_channels_list", Assert.Single(typed.Scheduler.DependencyHelperToolNames));
+        Assert.Equal("background_prerequisite_auth_context_required", Assert.Single(typed.Scheduler.ThreadSummaries).DependencyRecoveryReason);
+        Assert.Equal("request_runtime_auth_context", Assert.Single(typed.Scheduler.ThreadSummaries).DependencyNextAction);
+        Assert.Equal("request_runtime_auth_context", Assert.Single(typed.Scheduler.ThreadSummaries).ContinuationHint!.NextAction);
+        Assert.Equal("profile_id", Assert.Single(Assert.Single(typed.Scheduler.ThreadSummaries).ContinuationHint!.InputArgumentNames));
+        Assert.Equal(2, Assert.Single(typed.Scheduler.ThreadSummaries).ContinuationHint!.SuggestedRequests.Length);
+        Assert.Equal(
+            "set_profile",
+            Assert.Single(
+                Assert.Single(typed.Scheduler.ThreadSummaries).ContinuationHint!.SuggestedRequests,
+                static request => string.Equals(request.Purpose, "apply_runtime_auth_context", StringComparison.Ordinal)).RequestKind);
+        Assert.Equal("profile_id", Assert.Single(typed.Scheduler.ThreadSummaries).DependencyAuthenticationArgumentNames[0]);
+        Assert.Equal(1, typed.Scheduler.DependencyBlockedThreadCount);
+        Assert.Equal(1, typed.Scheduler.DependencyBlockedItemCount);
     }
 
     [Fact]
     public void SessionCapabilityBackgroundSchedulerDto_SourceGenRoundTripsSuppressionArrays() {
         var scheduler = new SessionCapabilityBackgroundSchedulerDto {
+            DependencyBlockedThreadCount = 1,
+            DependencyBlockedItemCount = 2,
+            DependencyHelperToolNames = new[] { "eventlog_channels_list" },
+            DependencyRecoveryReason = "background_prerequisite_auth_context_required",
+            DependencyNextAction = "request_runtime_auth_context",
+            DependencyRetryCooldownHelperToolNames = Array.Empty<string>(),
+            DependencyAuthenticationHelperToolNames = new[] { "eventlog_channels_list" },
+            DependencyAuthenticationArgumentNames = new[] { "profile_id" },
+            DependencySetupHelperToolNames = Array.Empty<string>(),
             BlockedPackIds = new[] { "system" },
             BlockedPackSuppressions = new[] {
                 new SessionCapabilityBackgroundSchedulerSuppressionDto {
@@ -910,6 +978,11 @@ public sealed class ToolHealthContractTests {
         var parsed = JsonSerializer.Deserialize(json, ChatServiceJsonContext.Default.SessionCapabilityBackgroundSchedulerDto);
 
         Assert.NotNull(parsed);
+        Assert.Equal(1, parsed.DependencyBlockedThreadCount);
+        Assert.Equal(2, parsed.DependencyBlockedItemCount);
+        Assert.Equal("request_runtime_auth_context", parsed.DependencyNextAction);
+        Assert.Equal("eventlog_channels_list", Assert.Single(parsed.DependencyHelperToolNames));
+        Assert.Equal("profile_id", Assert.Single(parsed.DependencyAuthenticationArgumentNames));
         Assert.Equal("system", Assert.Single(parsed.BlockedPackSuppressions).Id);
         Assert.Equal("persistent_runtime", Assert.Single(parsed.BlockedPackSuppressions).Mode);
         Assert.Equal("thread-a", Assert.Single(parsed.BlockedThreadSuppressions).Id);
@@ -925,8 +998,33 @@ public sealed class ToolHealthContractTests {
             EnabledPluginCount = 0,
             ToolingAvailable = true,
             AllowedRootCount = 1,
+            DangerousToolsEnabled = true,
+            DangerousPackIds = new[] { "active_directory_lifecycle" },
+            RepresentativeExamples = new[] { "inspect host posture before expanding into remote follow-up" },
+            CrossPackTargetPackDisplayNames = new[] { "Event Log", "System" },
+            Autonomy = new SessionCapabilityAutonomySummaryDto {
+                RemoteCapableToolCount = 2,
+                TargetScopedToolCount = 3,
+                RemoteHostTargetingToolCount = 1,
+                WriteCapableToolCount = 1,
+                AuthenticationRequiredToolCount = 1,
+                ProbeCapableToolCount = 1,
+                RemoteCapablePackIds = new[] { "eventlog", "system" },
+                TargetScopedPackIds = new[] { "active_directory", "eventlog" },
+                RemoteHostTargetingPackIds = new[] { "eventlog" },
+                WriteCapablePackIds = new[] { "active_directory_lifecycle" },
+                AuthenticationRequiredPackIds = new[] { "eventlog" },
+                ProbeCapablePackIds = new[] { "eventlog" }
+            },
             BackgroundScheduler = new SessionCapabilityBackgroundSchedulerDto {
                 DaemonEnabled = true,
+                DependencyBlockedThreadCount = 1,
+                DependencyBlockedItemCount = 2,
+                DependencyHelperToolNames = new[] { "eventlog_channels_list" },
+                DependencyRecoveryReason = "background_prerequisite_auth_context_required",
+                DependencyNextAction = "request_runtime_auth_context",
+                DependencyAuthenticationHelperToolNames = new[] { "eventlog_channels_list" },
+                DependencyAuthenticationArgumentNames = new[] { "profile_id" },
                 QueuedItemCount = 3,
                 ReadyThreadIds = new[] { "thread-a" },
                 BlockedThreadSuppressions = new[] {
@@ -945,7 +1043,21 @@ public sealed class ToolHealthContractTests {
 
         Assert.NotNull(parsed);
         Assert.NotNull(parsed.BackgroundScheduler);
+        Assert.True(parsed.DangerousToolsEnabled);
+        Assert.Equal(new[] { "active_directory_lifecycle" }, parsed.DangerousPackIds);
+        Assert.Equal("inspect host posture before expanding into remote follow-up", Assert.Single(parsed.RepresentativeExamples));
+        Assert.Equal(new[] { "Event Log", "System" }, parsed.CrossPackTargetPackDisplayNames);
+        Assert.NotNull(parsed.Autonomy);
+        Assert.Equal(3, parsed.Autonomy!.TargetScopedToolCount);
+        Assert.Equal(1, parsed.Autonomy.RemoteHostTargetingToolCount);
+        Assert.Equal(1, parsed.Autonomy.WriteCapableToolCount);
+        Assert.Equal(1, parsed.Autonomy.AuthenticationRequiredToolCount);
+        Assert.Equal(1, parsed.Autonomy.ProbeCapableToolCount);
         Assert.True(parsed.BackgroundScheduler.DaemonEnabled);
+        Assert.Equal(1, parsed.BackgroundScheduler.DependencyBlockedThreadCount);
+        Assert.Equal(2, parsed.BackgroundScheduler.DependencyBlockedItemCount);
+        Assert.Equal("request_runtime_auth_context", parsed.BackgroundScheduler.DependencyNextAction);
+        Assert.Equal("profile_id", Assert.Single(parsed.BackgroundScheduler.DependencyAuthenticationArgumentNames));
         Assert.Equal("thread-a", Assert.Single(parsed.BackgroundScheduler.ReadyThreadIds));
         Assert.Equal("temporary_runtime", Assert.Single(parsed.BackgroundScheduler.BlockedThreadSuppressions).Mode);
     }

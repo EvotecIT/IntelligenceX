@@ -110,9 +110,15 @@ public sealed class ToolPackInfoModel {
 /// </summary>
 public sealed class ToolPackAutonomySummaryModel {
     private IReadOnlyList<string> _remoteCapableToolNames = Array.Empty<string>();
+    private IReadOnlyList<string> _targetScopedToolNames = Array.Empty<string>();
+    private IReadOnlyList<string> _remoteHostTargetingToolNames = Array.Empty<string>();
     private IReadOnlyList<string> _setupAwareToolNames = Array.Empty<string>();
+    private IReadOnlyList<string> _environmentDiscoverToolNames = Array.Empty<string>();
     private IReadOnlyList<string> _handoffAwareToolNames = Array.Empty<string>();
     private IReadOnlyList<string> _recoveryAwareToolNames = Array.Empty<string>();
+    private IReadOnlyList<string> _writeCapableToolNames = Array.Empty<string>();
+    private IReadOnlyList<string> _authenticationRequiredToolNames = Array.Empty<string>();
+    private IReadOnlyList<string> _probeCapableToolNames = Array.Empty<string>();
     private IReadOnlyList<string> _crossPackHandoffToolNames = Array.Empty<string>();
     private IReadOnlyList<string> _crossPackTargetPacks = Array.Empty<string>();
 
@@ -135,6 +141,32 @@ public sealed class ToolPackAutonomySummaryModel {
     }
 
     /// <summary>
+    /// Number of tools that expose explicit target-scope arguments.
+    /// </summary>
+    public int TargetScopedTools { get; init; }
+
+    /// <summary>
+    /// Tool names that expose explicit target-scope arguments.
+    /// </summary>
+    public IReadOnlyList<string> TargetScopedToolNames {
+        get => _targetScopedToolNames;
+        init => _targetScopedToolNames = ToolPackGuidance.NormalizeValueListContract(value);
+    }
+
+    /// <summary>
+    /// Number of tools that directly target remote hosts/endpoints.
+    /// </summary>
+    public int RemoteHostTargetingTools { get; init; }
+
+    /// <summary>
+    /// Tool names that directly target remote hosts/endpoints.
+    /// </summary>
+    public IReadOnlyList<string> RemoteHostTargetingToolNames {
+        get => _remoteHostTargetingToolNames;
+        init => _remoteHostTargetingToolNames = ToolPackGuidance.NormalizeValueListContract(value);
+    }
+
+    /// <summary>
     /// Number of tools that expose setup-aware metadata.
     /// </summary>
     public int SetupAwareTools { get; init; }
@@ -145,6 +177,19 @@ public sealed class ToolPackAutonomySummaryModel {
     public IReadOnlyList<string> SetupAwareToolNames {
         get => _setupAwareToolNames;
         init => _setupAwareToolNames = ToolPackGuidance.NormalizeValueListContract(value);
+    }
+
+    /// <summary>
+    /// Number of tools that explicitly perform environment discovery/bootstrap.
+    /// </summary>
+    public int EnvironmentDiscoverTools { get; init; }
+
+    /// <summary>
+    /// Tool names that explicitly perform environment discovery/bootstrap.
+    /// </summary>
+    public IReadOnlyList<string> EnvironmentDiscoverToolNames {
+        get => _environmentDiscoverToolNames;
+        init => _environmentDiscoverToolNames = ToolPackGuidance.NormalizeValueListContract(value);
     }
 
     /// <summary>
@@ -171,6 +216,45 @@ public sealed class ToolPackAutonomySummaryModel {
     public IReadOnlyList<string> RecoveryAwareToolNames {
         get => _recoveryAwareToolNames;
         init => _recoveryAwareToolNames = ToolPackGuidance.NormalizeValueListContract(value);
+    }
+
+    /// <summary>
+    /// Number of tools that can perform mutating/write actions.
+    /// </summary>
+    public int WriteCapableTools { get; init; }
+
+    /// <summary>
+    /// Tool names that can perform mutating/write actions.
+    /// </summary>
+    public IReadOnlyList<string> WriteCapableToolNames {
+        get => _writeCapableToolNames;
+        init => _writeCapableToolNames = ToolPackGuidance.NormalizeValueListContract(value);
+    }
+
+    /// <summary>
+    /// Number of tools that require authentication for normal operation.
+    /// </summary>
+    public int AuthenticationRequiredTools { get; init; }
+
+    /// <summary>
+    /// Tool names that require authentication for normal operation.
+    /// </summary>
+    public IReadOnlyList<string> AuthenticationRequiredToolNames {
+        get => _authenticationRequiredToolNames;
+        init => _authenticationRequiredToolNames = ToolPackGuidance.NormalizeValueListContract(value);
+    }
+
+    /// <summary>
+    /// Number of tools that expose connectivity/auth probe workflows.
+    /// </summary>
+    public int ProbeCapableTools { get; init; }
+
+    /// <summary>
+    /// Tool names that expose connectivity/auth probe workflows.
+    /// </summary>
+    public IReadOnlyList<string> ProbeCapableToolNames {
+        get => _probeCapableToolNames;
+        init => _probeCapableToolNames = ToolPackGuidance.NormalizeValueListContract(value);
     }
 
     /// <summary>

@@ -660,6 +660,17 @@ public sealed partial class ServiceOptionsProfileBootstrapTests {
     }
 
     [Fact]
+    public void Parse_Applies_BuiltInToolProbePaths_AsRuntimeOnlyOverrides() {
+        var options = ServiceOptions.Parse(new[] {
+            "--built-in-tool-probe-path", "C:\\tools\\a",
+            "--built-in-tool-probe-path", "D:\\shared\\tools"
+        }, out var error);
+
+        Assert.True(string.IsNullOrWhiteSpace(error));
+        Assert.Equal(new[] { "C:\\tools\\a", "D:\\shared\\tools" }, options.BuiltInToolProbePaths);
+    }
+
+    [Fact]
     public void Parse_AcceptsMaxToolRoundsUpperBoundary() {
         var options = ServiceOptions.Parse(
             new[] { "--max-tool-rounds", ChatRequestOptionLimits.MaxToolRounds.ToString() },

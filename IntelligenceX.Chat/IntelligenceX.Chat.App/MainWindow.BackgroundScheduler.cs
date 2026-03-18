@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Chat.Abstractions.Policy;
@@ -10,12 +11,154 @@ using IntelligenceX.Chat.Client;
 namespace IntelligenceX.Chat.App;
 
 public sealed partial class MainWindow {
+    private sealed record BackgroundSchedulerContinuationPlan {
+        public string ThreadId { get; init; } = string.Empty;
+        public string NextAction { get; init; } = string.Empty;
+        public string RecoveryReason { get; init; } = string.Empty;
+        public bool RefreshServiceProfiles { get; init; }
+        public bool ApplyServiceProfile { get; init; }
+        public bool RefreshSchedulerThread { get; init; }
+        public string? ProfileName { get; init; }
+        public string[] MissingArgumentNames { get; init; } = Array.Empty<string>();
+        public string StatusSummary { get; init; } = string.Empty;
+    }
+
     private static void ValidateBackgroundSchedulerMaintenanceWindowScope(string? packId, string? threadId) {
         var hasPackId = !string.IsNullOrWhiteSpace(packId);
         var hasThreadId = !string.IsNullOrWhiteSpace(threadId);
         if (hasPackId && hasThreadId) {
             throw new ArgumentException("Choose either packId or threadId for a maintenance window scope, not both.", nameof(threadId));
         }
+    }
+
+    internal static object? BuildBackgroundSchedulerContinuationPlan(
+        SessionCapabilityBackgroundSchedulerDto? scheduler,
+        string? threadId,
+        string? appProfileName,
+        string[]? serviceProfileNames,
+        string? activeServiceProfileName) {
+        var normalizedThreadId = (threadId ?? string.Empty).Trim();
+        if (normalizedThreadId.Length == 0
+            || scheduler?.ThreadSummaries is not { Length: > 0 } threadSummaries) {
+            return null;
+        }
+
+        SessionCapabilityBackgroundSchedulerThreadSummaryDto? threadSummary = null;
+        for (var i = 0; i < threadSummaries.Length; i++) {
+            var candidate = threadSummaries[i];
+            if (candidate is not null
+                && string.Equals((candidate.ThreadId ?? string.Empty).Trim(), normalizedThreadId, StringComparison.OrdinalIgnoreCase)) {
+                threadSummary = candidate;
+                break;
+            }
+        }
+
+        var continuationHint = threadSummary?.ContinuationHint;
+        if (continuationHint is null) {
+            return null;
+        }
+
+        var normalizedAppProfileName = (appProfileName ?? string.Empty).Trim();
+        var normalizedServiceProfileNames = NormalizeProfileNames(serviceProfileNames);
+        var normalizedActiveServiceProfileName = (activeServiceProfileName ?? string.Empty).Trim();
+        var nextAction = (continuationHint.NextAction ?? string.Empty).Trim();
+        var recoveryReason = (continuationHint.RecoveryReason ?? string.Empty).Trim();
+        var requestKinds = (continuationHint.SuggestedRequests ?? Array.Empty<SessionCapabilityBackgroundSchedulerContinuationRequestDto>())
+            .Select(static request => (request.RequestKind ?? string.Empty).Trim())
+            .Where(static requestKind => requestKind.Length > 0)
+            .ToArray();
+
+        var hasListProfilesRequest = Array.Exists(requestKinds, static requestKind => string.Equals(requestKind, "list_profiles", StringComparison.OrdinalIgnoreCase));
+        var hasSetProfileRequest = Array.Exists(requestKinds, static requestKind => string.Equals(requestKind, "set_profile", StringComparison.OrdinalIgnoreCase));
+        var hasSchedulerRefreshRequest = Array.Exists(requestKinds, static requestKind => string.Equals(requestKind, "get_background_scheduler_status", StringComparison.OrdinalIgnoreCase));
+
+        if (hasSetProfileRequest) {
+            if (normalizedServiceProfileNames.Length == 0 && hasListProfilesRequest) {
+                return new BackgroundSchedulerContinuationPlan {
+                    ThreadId = normalizedThreadId,
+                    NextAction = nextAction,
+                    RecoveryReason = recoveryReason,
+                    RefreshServiceProfiles = true,
+                    StatusSummary = "Refresh service profiles before applying runtime auth context for blocked thread '" + normalizedThreadId + "'."
+                };
+            }
+
+            if (normalizedAppProfileName.Length == 0 || !ContainsProfileName(normalizedServiceProfileNames, normalizedAppProfileName)) {
+                return new BackgroundSchedulerContinuationPlan {
+                    ThreadId = normalizedThreadId,
+                    NextAction = nextAction,
+                    RecoveryReason = recoveryReason,
+                    MissingArgumentNames = new[] { "profileName" },
+                    StatusSummary = "Blocked thread '" + normalizedThreadId + "' needs a saved app profile before runtime auth continuation can run."
+                };
+            }
+
+            if (string.Equals(normalizedActiveServiceProfileName, normalizedAppProfileName, StringComparison.OrdinalIgnoreCase)) {
+                return new BackgroundSchedulerContinuationPlan {
+                    ThreadId = normalizedThreadId,
+                    NextAction = nextAction,
+                    RecoveryReason = recoveryReason,
+                    RefreshSchedulerThread = true,
+                    ProfileName = normalizedAppProfileName,
+                    StatusSummary = "Refresh blocked thread '" + normalizedThreadId + "' after confirming runtime profile '" + normalizedAppProfileName + "'."
+                };
+            }
+
+            return new BackgroundSchedulerContinuationPlan {
+                ThreadId = normalizedThreadId,
+                NextAction = nextAction,
+                RecoveryReason = recoveryReason,
+                ApplyServiceProfile = true,
+                RefreshSchedulerThread = true,
+                ProfileName = normalizedAppProfileName,
+                StatusSummary = "Apply runtime profile '" + normalizedAppProfileName + "' and refresh blocked thread '" + normalizedThreadId + "'."
+            };
+        }
+
+        if (hasSchedulerRefreshRequest) {
+            return new BackgroundSchedulerContinuationPlan {
+                ThreadId = normalizedThreadId,
+                NextAction = nextAction,
+                RecoveryReason = recoveryReason,
+                RefreshSchedulerThread = true,
+                StatusSummary = "Refresh blocked thread '" + normalizedThreadId + "' to continue background scheduler recovery."
+            };
+        }
+
+        return new BackgroundSchedulerContinuationPlan {
+            ThreadId = normalizedThreadId,
+            NextAction = nextAction,
+            RecoveryReason = recoveryReason,
+            StatusSummary = continuationHint.StatusSummary
+        };
+    }
+
+    private BackgroundSchedulerContinuationPlan? ResolveBackgroundSchedulerContinuationPlan(string threadId) {
+        var normalizedThreadId = (threadId ?? string.Empty).Trim();
+        if (normalizedThreadId.Length == 0) {
+            return null;
+        }
+
+        var snapshots = new[] {
+            _backgroundSchedulerScopedStatusSnapshot,
+            _backgroundSchedulerStatusSnapshot,
+            _backgroundSchedulerGlobalStatusSnapshot,
+            _sessionPolicy?.CapabilitySnapshot?.BackgroundScheduler,
+            _toolCatalogCapabilitySnapshot?.BackgroundScheduler
+        };
+
+        for (var i = 0; i < snapshots.Length; i++) {
+            if (BuildBackgroundSchedulerContinuationPlan(
+                    snapshots[i],
+                    normalizedThreadId,
+                    _appProfileName,
+                    _serviceProfileNames,
+                    _serviceActiveProfileName) is BackgroundSchedulerContinuationPlan plan) {
+                return plan;
+            }
+        }
+
+        return null;
     }
 
     private void ApplyBackgroundSchedulerSnapshot(SessionCapabilityBackgroundSchedulerDto? scheduler, bool scoped) {
@@ -78,6 +221,82 @@ public sealed partial class MainWindow {
             : _backgroundSchedulerScopedStatusSnapshot;
         if (refreshedSnapshot is not null) {
             await SetStatusAsync("Background scheduler refreshed. " + BuildBackgroundSchedulerSummaryText(refreshedSnapshot)).ConfigureAwait(false);
+        }
+    }
+
+    private async Task ContinueBackgroundSchedulerThreadFromUiAsync(string? threadId) {
+        if (!await EnsureConnectedAsync().ConfigureAwait(false)) {
+            return;
+        }
+
+        var client = _client;
+        if (client is null) {
+            return;
+        }
+
+        var normalizedThreadId = (threadId ?? string.Empty).Trim();
+        if (normalizedThreadId.Length == 0) {
+            await SetStatusAsync("Background scheduler continuation failed: threadId must be provided.", SessionStatusTone.Warn).ConfigureAwait(false);
+            return;
+        }
+
+        try {
+            var plan = ResolveBackgroundSchedulerContinuationPlan(normalizedThreadId);
+            if (plan is null) {
+                await SetStatusAsync("Background scheduler continuation failed: no continuation hint is available for thread '" + normalizedThreadId + "'.", SessionStatusTone.Warn).ConfigureAwait(false);
+                return;
+            }
+
+            if (plan.RefreshServiceProfiles) {
+                await RefreshServiceProfilesAsync(client, publishOptions: false, appendWarnings: true).ConfigureAwait(false);
+                plan = ResolveBackgroundSchedulerContinuationPlan(normalizedThreadId);
+                if (plan is null) {
+                    await SetStatusAsync("Background scheduler continuation failed: no continuation hint is available for thread '" + normalizedThreadId + "' after refreshing profiles.", SessionStatusTone.Warn).ConfigureAwait(false);
+                    return;
+                }
+            }
+
+            if (plan.MissingArgumentNames.Length > 0) {
+                await PublishOptionsStateAsync().ConfigureAwait(false);
+                await SetStatusAsync(
+                    "Background scheduler continuation is blocked for thread '" + normalizedThreadId + "': missing " + string.Join(", ", plan.MissingArgumentNames) + ".",
+                    SessionStatusTone.Warn).ConfigureAwait(false);
+                return;
+            }
+
+            if (plan.ApplyServiceProfile) {
+                using var setProfileCts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
+                _ = await client.SetProfileAsync(plan.ProfileName ?? string.Empty, newThread: false, setProfileCts.Token).ConfigureAwait(false);
+                _serviceActiveProfileName = plan.ProfileName;
+            }
+
+            if (plan.RefreshSchedulerThread) {
+                await RefreshBackgroundSchedulerStatusAsync(
+                    client,
+                    publishOptions: true,
+                    appendWarnings: true,
+                    threadId: normalizedThreadId,
+                    includeRecentActivity: true,
+                    includeThreadSummaries: true,
+                    maxRecentActivity: 8,
+                    maxThreadSummaries: 8).ConfigureAwait(false);
+                var refreshedSnapshot = _backgroundSchedulerScopedStatusSnapshot ?? _backgroundSchedulerStatusSnapshot;
+                if (refreshedSnapshot is not null) {
+                    await SetStatusAsync("Background scheduler continuation completed. " + BuildBackgroundSchedulerSummaryText(refreshedSnapshot)).ConfigureAwait(false);
+                    return;
+                }
+            } else {
+                await PublishOptionsStateAsync().ConfigureAwait(false);
+            }
+
+            await SetStatusAsync(plan.StatusSummary.Length > 0
+                ? plan.StatusSummary
+                : "Background scheduler continuation completed for thread '" + normalizedThreadId + "'.").ConfigureAwait(false);
+        } catch (Exception ex) {
+            if (VerboseServiceLogs || _debugMode) {
+                AppendSystem("Couldn't continue blocked background scheduler thread '" + normalizedThreadId + "': " + ex.Message);
+            }
+            await SetStatusAsync("Background scheduler continuation failed: " + ex.Message, SessionStatusTone.Warn).ConfigureAwait(false);
         }
     }
 
