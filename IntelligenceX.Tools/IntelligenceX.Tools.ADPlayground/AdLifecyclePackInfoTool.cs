@@ -97,14 +97,14 @@ public sealed class AdLifecyclePackInfoTool : ActiveDirectoryToolBase, ITool {
                     notes: "Dry-run first. Supports typed user-profile changes, planned group additions/removals, OU moves, and offboard attribute cleanup in one dangerous write-capable capability."),
                 ToolPackGuidance.Capability(
                     id: "computer_account_lifecycle",
-                    summary: "Governed computer account lifecycle writes covering create, update, enable/disable, delete, and machine password reset actions.",
+                    summary: "Governed computer account lifecycle writes covering create, update, move/rename, enable/disable, delete, and machine password reset actions.",
                     primaryTools: new[] { "ad_computer_lifecycle" },
-                    notes: "Dry-run first. Supports typed host attributes, SPNs, and computer-account cleanup without falling back to generic shell execution."),
+                    notes: "Dry-run first. Supports typed host attributes, SPNs, computer-account relocation/rename, and cleanup without falling back to generic shell execution."),
                 ToolPackGuidance.Capability(
                     id: "group_account_lifecycle",
-                    summary: "Governed group lifecycle writes covering create, update, delete, and member add/remove actions.",
+                    summary: "Governed group lifecycle writes covering create, update, move/rename, delete, and member add/remove actions.",
                     primaryTools: new[] { "ad_group_lifecycle" },
-                    notes: "Dry-run first. Supports typed group metadata and membership changes without requiring generic shell execution."),
+                    notes: "Dry-run first. Supports typed group metadata, group relocation/rename, and membership changes without requiring generic shell execution."),
                 ToolPackGuidance.Capability(
                     id: "organizational_unit_lifecycle",
                     summary: "Governed organizational-unit lifecycle writes covering create, update, move/rename, delete, accidental-deletion protection, and block-inheritance changes.",

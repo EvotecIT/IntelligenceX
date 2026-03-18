@@ -13,7 +13,7 @@ internal static class ActiveDirectoryLifecycleToolPackRepresentativeExamples {
                 "provision, rename, update, enable, disable, delete, or reset passwords for Active Directory computer accounts with dry-run-first governance"
             },
             ["ad_group_lifecycle"] = new[] {
-                "provision, rename, delete, and manage memberships for Active Directory groups with dry-run-first governance",
+                "provision, move or rename, delete, and manage memberships for Active Directory groups with dry-run-first governance",
                 "prepare governed membership changes for onboarding, mover, and offboarding processes"
             },
             ["ad_ou_lifecycle"] = new[] {

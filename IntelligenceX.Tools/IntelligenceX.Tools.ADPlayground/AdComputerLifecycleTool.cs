@@ -23,8 +23,10 @@ public sealed class AdComputerLifecycleTool : ActiveDirectoryToolBase, ITool {
         string? Identity,
         string? SamAccountName,
         string? OrganizationalUnit,
+        string? TargetOrganizationalUnit,
         string? DomainName,
         string? CommonName,
+        string? NewCommonName,
         string? DnsHostName,
         string? Description,
         string? ManagedBy,
@@ -50,6 +52,7 @@ public sealed class AdComputerLifecycleTool : ActiveDirectoryToolBase, ITool {
         bool Apply,
         string Message,
         string? OrganizationalUnit,
+        string? TargetOrganizationalUnit,
         string? SamAccountName,
         bool? Enabled,
         IReadOnlyList<string> UpdatedAttributes,
@@ -61,14 +64,16 @@ public sealed class AdComputerLifecycleTool : ActiveDirectoryToolBase, ITool {
 
     private static readonly ToolDefinition DefinitionValue = new(
         "ad_computer_lifecycle",
-        "Governed Active Directory computer lifecycle actions for create/update/enable/disable/delete/reset_password. Dry-run by default; apply=true performs the write.",
+        "Governed Active Directory computer lifecycle actions for create/update/move/enable/disable/delete/reset_password. Dry-run by default; apply=true performs the write.",
         ToolSchema.Object(
-                ("operation", ToolSchema.String("Lifecycle action to perform.").Enum("create", "update", "enable", "disable", "delete", "reset_password")),
-                ("identity", ToolSchema.String("Existing computer identity for update/enable/disable/delete/reset_password (DN, sAMAccountName, dNSHostName, or name).")),
+                ("operation", ToolSchema.String("Lifecycle action to perform.").Enum("create", "update", "move", "enable", "disable", "delete", "reset_password")),
+                ("identity", ToolSchema.String("Existing computer identity for update/move/enable/disable/delete/reset_password (DN, sAMAccountName, dNSHostName, or name).")),
                 ("sam_account_name", ToolSchema.String("sAMAccountName for create operations.")),
                 ("organizational_unit", ToolSchema.String("Target OU distinguished name for create operations.")),
+                ("target_organizational_unit", ToolSchema.String("Target OU distinguished name for move operations. Use the current OU with new_common_name to perform a rename.")),
                 ("domain_name", ToolSchema.String("Optional domain DNS name for write operations.")),
                 ("common_name", ToolSchema.String("Optional common name (CN) for create operations.")),
+                ("new_common_name", ToolSchema.String("Optional replacement common name for move/rename operations.")),
                 ("dns_host_name", ToolSchema.String("Optional dNSHostName for create or update operations.")),
                 ("description", ToolSchema.String("Optional description for create or update operations.")),
                 ("managed_by", ToolSchema.String("Optional managedBy distinguished name for create or update operations.")),
@@ -132,8 +137,10 @@ public sealed class AdComputerLifecycleTool : ActiveDirectoryToolBase, ITool {
                 Identity: reader.OptionalString("identity"),
                 SamAccountName: reader.OptionalString("sam_account_name"),
                 OrganizationalUnit: reader.OptionalString("organizational_unit"),
+                TargetOrganizationalUnit: reader.OptionalString("target_organizational_unit"),
                 DomainName: reader.OptionalString("domain_name"),
                 CommonName: reader.OptionalString("common_name"),
+                NewCommonName: reader.OptionalString("new_common_name"),
                 DnsHostName: reader.OptionalString("dns_host_name"),
                 Description: reader.OptionalString("description"),
                 ManagedBy: reader.OptionalString("managed_by"),
@@ -165,6 +172,7 @@ public sealed class AdComputerLifecycleTool : ActiveDirectoryToolBase, ITool {
             var result = request.Operation switch {
                 "create" => ExecuteCreate(request),
                 "update" => ExecuteUpdate(request),
+                "move" => ExecuteMove(request),
                 "enable" => MapMutationResult(new DirectoryAccountHelper().EnableComputer(request.Identity!, request.DomainName), request),
                 "disable" => MapMutationResult(new DirectoryAccountHelper().DisableComputer(request.Identity!, request.DomainName), request),
                 "delete" => MapMutationResult(new DirectoryAccountHelper().DeleteComputer(request.Identity!, request.DomainName), request),
@@ -205,13 +213,19 @@ public sealed class AdComputerLifecycleTool : ActiveDirectoryToolBase, ITool {
                     return ToolRequestBindingResult<ComputerLifecycleRequest>.Failure("clear_attributes is only supported for update.");
                 }
 
+                if (!string.IsNullOrWhiteSpace(request.TargetOrganizationalUnit) || !string.IsNullOrWhiteSpace(request.NewCommonName)) {
+                    return ToolRequestBindingResult<ComputerLifecycleRequest>.Failure("target_organizational_unit and new_common_name are only supported for move.");
+                }
+
                 return ToolRequestBindingResult<ComputerLifecycleRequest>.Success(request);
             case "update":
                 if (string.IsNullOrWhiteSpace(request.Identity)) {
                     return ToolRequestBindingResult<ComputerLifecycleRequest>.Failure("identity is required for update.");
                 }
 
-                if (HasCreateOnlyFields(request)) {
+                if (HasCreateOnlyFields(request)
+                    || !string.IsNullOrWhiteSpace(request.TargetOrganizationalUnit)
+                    || !string.IsNullOrWhiteSpace(request.NewCommonName)) {
                     return ToolRequestBindingResult<ComputerLifecycleRequest>.Failure("create-only provisioning fields are not supported for update.");
                 }
 
@@ -224,6 +238,22 @@ public sealed class AdComputerLifecycleTool : ActiveDirectoryToolBase, ITool {
                 }
 
                 return ToolRequestBindingResult<ComputerLifecycleRequest>.Success(request);
+            case "move":
+                if (string.IsNullOrWhiteSpace(request.Identity)) {
+                    return ToolRequestBindingResult<ComputerLifecycleRequest>.Failure("identity is required for move.");
+                }
+
+                if (string.IsNullOrWhiteSpace(request.TargetOrganizationalUnit) && string.IsNullOrWhiteSpace(request.NewCommonName)) {
+                    return ToolRequestBindingResult<ComputerLifecycleRequest>.Failure("move requires target_organizational_unit, new_common_name, or both.");
+                }
+
+                if (HasCreateOnlyFields(request)
+                    || HasUpdatePayload(request)
+                    || !string.IsNullOrWhiteSpace(request.NewPassword)) {
+                    return ToolRequestBindingResult<ComputerLifecycleRequest>.Failure("move only supports identity, target_organizational_unit, new_common_name, domain_name, and apply.");
+                }
+
+                return ToolRequestBindingResult<ComputerLifecycleRequest>.Success(request);
             case "enable":
             case "disable":
             case "delete":
@@ -231,7 +261,11 @@ public sealed class AdComputerLifecycleTool : ActiveDirectoryToolBase, ITool {
                     return ToolRequestBindingResult<ComputerLifecycleRequest>.Failure($"identity is required for {request.Operation}.");
                 }
 
-                if (HasCreateOnlyFields(request) || HasUpdatePayload(request) || !string.IsNullOrWhiteSpace(request.NewPassword)) {
+                if (HasCreateOnlyFields(request)
+                    || HasUpdatePayload(request)
+                    || !string.IsNullOrWhiteSpace(request.TargetOrganizationalUnit)
+                    || !string.IsNullOrWhiteSpace(request.NewCommonName)
+                    || !string.IsNullOrWhiteSpace(request.NewPassword)) {
                     return ToolRequestBindingResult<ComputerLifecycleRequest>.Failure($"{request.Operation} does not support create, update, or password-reset fields.");
                 }
 
@@ -245,14 +279,17 @@ public sealed class AdComputerLifecycleTool : ActiveDirectoryToolBase, ITool {
                     return ToolRequestBindingResult<ComputerLifecycleRequest>.Failure("new_password is required for reset_password.");
                 }
 
-                if (HasCreateOnlyFields(request) || HasUpdatePayload(request)) {
+                if (HasCreateOnlyFields(request)
+                    || HasUpdatePayload(request)
+                    || !string.IsNullOrWhiteSpace(request.TargetOrganizationalUnit)
+                    || !string.IsNullOrWhiteSpace(request.NewCommonName)) {
                     return ToolRequestBindingResult<ComputerLifecycleRequest>.Failure("reset_password does not support create or update fields.");
                 }
 
                 return ToolRequestBindingResult<ComputerLifecycleRequest>.Success(request);
             default:
                 return ToolRequestBindingResult<ComputerLifecycleRequest>.Failure(
-                    "operation must be one of create, update, enable, disable, delete, or reset_password.");
+                    "operation must be one of create, update, move, enable, disable, delete, or reset_password.");
         }
     }
 
@@ -261,6 +298,7 @@ public sealed class AdComputerLifecycleTool : ActiveDirectoryToolBase, ITool {
         switch (normalized) {
             case "create":
             case "update":
+            case "move":
             case "enable":
             case "disable":
             case "delete":
@@ -382,6 +420,7 @@ public sealed class AdComputerLifecycleTool : ActiveDirectoryToolBase, ITool {
             Apply: true,
             Message: "Computer account created.",
             OrganizationalUnit: request.OrganizationalUnit,
+            TargetOrganizationalUnit: null,
             SamAccountName: NormalizeComputerIdentity(request.SamAccountName!),
             Enabled: request.Enabled,
             UpdatedAttributes: updatedAttributes.OrderBy(static value => value, StringComparer.OrdinalIgnoreCase).ToArray(),
@@ -405,8 +444,37 @@ public sealed class AdComputerLifecycleTool : ActiveDirectoryToolBase, ITool {
             Apply: true,
             Message: mutation.Message ?? string.Empty,
             OrganizationalUnit: request.OrganizationalUnit,
+            TargetOrganizationalUnit: null,
             SamAccountName: request.SamAccountName,
             Enabled: request.Enabled,
+            UpdatedAttributes: mutation.UpdatedAttributes ?? Array.Empty<string>(),
+            ClearedAttributes: mutation.ClearedAttributes ?? Array.Empty<string>(),
+            ServicePrincipalNames: request.ServicePrincipalNames,
+            PasswordReset: false,
+            AdditionalAttributes: request.AdditionalAttributes,
+            TimestampUtc: mutation.TimestampUtc);
+    }
+
+    private ComputerLifecycleResult ExecuteMove(ComputerLifecycleRequest request) {
+        var mutation = MoveComputer(
+            request.Identity!,
+            request.TargetOrganizationalUnit,
+            request.NewCommonName,
+            request.DomainName);
+
+        return new ComputerLifecycleResult(
+            Operation: mutation.Operation,
+            ObjectType: mutation.ObjectType,
+            Identity: string.IsNullOrWhiteSpace(mutation.Identity) ? request.Identity! : mutation.Identity,
+            DistinguishedName: mutation.DistinguishedName ?? string.Empty,
+            DomainName: mutation.DomainName ?? request.DomainName ?? string.Empty,
+            Changed: mutation.Changed,
+            Apply: true,
+            Message: mutation.Message ?? string.Empty,
+            OrganizationalUnit: null,
+            TargetOrganizationalUnit: request.TargetOrganizationalUnit,
+            SamAccountName: request.SamAccountName,
+            Enabled: null,
             UpdatedAttributes: mutation.UpdatedAttributes ?? Array.Empty<string>(),
             ClearedAttributes: mutation.ClearedAttributes ?? Array.Empty<string>(),
             ServicePrincipalNames: request.ServicePrincipalNames,
@@ -466,6 +534,7 @@ public sealed class AdComputerLifecycleTool : ActiveDirectoryToolBase, ITool {
             Apply: true,
             Message: mutation.Message ?? string.Empty,
             OrganizationalUnit: request.OrganizationalUnit,
+            TargetOrganizationalUnit: request.TargetOrganizationalUnit,
             SamAccountName: request.SamAccountName,
             Enabled: request.Operation switch {
                 "enable" => true,
@@ -482,9 +551,13 @@ public sealed class AdComputerLifecycleTool : ActiveDirectoryToolBase, ITool {
 
     private static ComputerLifecycleResult CreateDryRunResult(ComputerLifecycleRequest request) {
         var identity = request.Identity ?? NormalizeComputerIdentity(request.SamAccountName ?? string.Empty);
-        var distinguishedName = request.Operation == "create" && !string.IsNullOrWhiteSpace(request.OrganizationalUnit) && !string.IsNullOrWhiteSpace(identity)
-            ? BuildPredictedDistinguishedName(request.CommonName, identity, request.OrganizationalUnit!)
-            : string.Empty;
+        var distinguishedName = request.Operation switch {
+            "create" when !string.IsNullOrWhiteSpace(request.OrganizationalUnit) && !string.IsNullOrWhiteSpace(identity)
+                => BuildPredictedDistinguishedName(request.CommonName, identity, request.OrganizationalUnit!),
+            "move" when !string.IsNullOrWhiteSpace(identity)
+                => BuildPredictedMoveDistinguishedName(identity, request.TargetOrganizationalUnit, request.NewCommonName),
+            _ => string.Empty
+        };
         var domainName = !string.IsNullOrWhiteSpace(request.DomainName)
             ? request.DomainName!
             : InferDomainNameFromDistinguishedName(distinguishedName);
@@ -499,6 +572,7 @@ public sealed class AdComputerLifecycleTool : ActiveDirectoryToolBase, ITool {
             Apply: false,
             Message: "Dry-run only. Set apply=true to execute the lifecycle action.",
             OrganizationalUnit: request.OrganizationalUnit,
+            TargetOrganizationalUnit: request.TargetOrganizationalUnit,
             SamAccountName: request.SamAccountName,
             Enabled: request.Operation switch {
                 "enable" => true,
@@ -543,6 +617,12 @@ public sealed class AdComputerLifecycleTool : ActiveDirectoryToolBase, ITool {
             AddIfPresent(attributes, "operatingSystemServicePack", request.OperatingSystemServicePack);
             if (request.Enabled.HasValue) {
                 attributes.Add("userAccountControl");
+            }
+        } else if (string.Equals(request.Operation, "move", StringComparison.OrdinalIgnoreCase)) {
+            attributes.Add("distinguishedName");
+            if (!string.IsNullOrWhiteSpace(request.NewCommonName)) {
+                attributes.Add("cn");
+                attributes.Add("name");
             }
         } else if (string.Equals(request.Operation, "enable", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(request.Operation, "disable", StringComparison.OrdinalIgnoreCase)) {
@@ -592,6 +672,122 @@ public sealed class AdComputerLifecycleTool : ActiveDirectoryToolBase, ITool {
         return $"CN={cn},{organizationalUnit}";
     }
 
+    private static string BuildPredictedMoveDistinguishedName(string identity, string? targetOrganizationalUnit, string? newCommonName) {
+        var normalizedIdentity = (identity ?? string.Empty).Trim();
+        var currentDistinguishedName = DistinguishedNameHelper.LooksLikeDistinguishedName(normalizedIdentity)
+            ? normalizedIdentity
+            : null;
+
+        var leafName = !string.IsNullOrWhiteSpace(newCommonName)
+            ? newCommonName!.Trim()
+            : TryResolveComputerLeafName(normalizedIdentity);
+        var parent = !string.IsNullOrWhiteSpace(targetOrganizationalUnit)
+            ? targetOrganizationalUnit!.Trim()
+            : ExtractParentDistinguishedName(currentDistinguishedName);
+
+        return string.IsNullOrWhiteSpace(parent) || string.IsNullOrWhiteSpace(leafName)
+            ? string.Empty
+            : $"CN={leafName},{parent}";
+    }
+
+    private static string? TryResolveComputerLeafName(string? identity) {
+        var normalized = (identity ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return null;
+        }
+
+        if (normalized.StartsWith("CN=", StringComparison.OrdinalIgnoreCase)) {
+            var separatorIndex = normalized.IndexOf(',');
+            return separatorIndex > 3
+                ? normalized.Substring(3, separatorIndex - 3).Trim()
+                : normalized.Substring(3).Trim();
+        }
+
+        var slashIndex = normalized.IndexOf('\\');
+        if (slashIndex >= 0 && slashIndex < normalized.Length - 1) {
+            normalized = normalized.Substring(slashIndex + 1).Trim();
+        }
+
+        return normalized.EndsWith("$", StringComparison.Ordinal)
+            ? normalized.Substring(0, normalized.Length - 1)
+            : normalized;
+    }
+
+    private static string? ExtractParentDistinguishedName(string? distinguishedName) {
+        if (string.IsNullOrWhiteSpace(distinguishedName)) {
+            return null;
+        }
+
+        var separatorIndex = distinguishedName.IndexOf(',');
+        return separatorIndex >= 0 && separatorIndex < distinguishedName.Length - 1
+            ? distinguishedName.Substring(separatorIndex + 1).Trim()
+            : null;
+    }
+
+    private static DirectoryMutationResult MoveComputer(
+        string identity,
+        string? targetOrganizationalUnit,
+        string? newCommonName,
+        string? domainName) {
+        var objectHelper = new DirectoryObjectHelper();
+        var snapshot = objectHelper.GetComputer(identity, domainName, new[] { "cn", "distinguishedName" });
+        var sourceDistinguishedName = snapshot.DistinguishedName;
+        if (string.IsNullOrWhiteSpace(sourceDistinguishedName)) {
+            throw new InvalidOperationException("Unable to resolve a distinguished name for the requested computer move.");
+        }
+
+        var currentParent = ExtractParentDistinguishedName(sourceDistinguishedName);
+        var resolvedTargetParent = !string.IsNullOrWhiteSpace(targetOrganizationalUnit)
+            ? targetOrganizationalUnit!.Trim()
+            : currentParent;
+        if (string.IsNullOrWhiteSpace(resolvedTargetParent)) {
+            throw new InvalidOperationException("Unable to resolve the target organizational unit for the requested computer move.");
+        }
+
+        var currentLeafName = snapshot.Attributes.TryGetValue("cn", out var rawCn)
+            ? ToolArgs.NormalizeOptional(rawCn?.ToString())
+            : TryResolveComputerLeafName(identity);
+        var resolvedLeafName = !string.IsNullOrWhiteSpace(newCommonName) ? newCommonName!.Trim() : currentLeafName;
+        if (string.IsNullOrWhiteSpace(resolvedLeafName)) {
+            throw new InvalidOperationException("Unable to resolve the computer common name for the requested move.");
+        }
+
+        var newRdn = string.Equals(currentLeafName, resolvedLeafName, StringComparison.OrdinalIgnoreCase)
+            ? null
+            : "CN=" + resolvedLeafName;
+        var resolvedDomainName = !string.IsNullOrWhiteSpace(snapshot.DomainName)
+            ? snapshot.DomainName
+            : (domainName ?? InferDomainNameFromDistinguishedName(resolvedTargetParent));
+
+        using var targetParent = new DirectoryEntry($"LDAP://{resolvedTargetParent}");
+        using var entry = new DirectoryEntry($"LDAP://{sourceDistinguishedName}");
+        if (string.IsNullOrWhiteSpace(newRdn)) {
+            entry.MoveTo(targetParent);
+        } else {
+            entry.MoveTo(targetParent, newRdn);
+        }
+
+        targetParent.CommitChanges();
+        entry.CommitChanges();
+
+        var movedDistinguishedName = ToolArgs.NormalizeOptional(entry.Properties["distinguishedName"]?.Value?.ToString())
+                                   ?? $"CN={resolvedLeafName},{resolvedTargetParent}";
+
+        return new DirectoryMutationResult {
+            Operation = "move",
+            ObjectType = "computer",
+            Identity = identity,
+            DistinguishedName = movedDistinguishedName,
+            DomainName = resolvedDomainName ?? string.Empty,
+            Changed = !string.Equals(sourceDistinguishedName, movedDistinguishedName, StringComparison.OrdinalIgnoreCase),
+            Message = string.IsNullOrWhiteSpace(newRdn) ? "Computer moved." : "Computer moved and renamed.",
+            UpdatedAttributes = string.IsNullOrWhiteSpace(newRdn)
+                ? new[] { "distinguishedName" }
+                : new[] { "cn", "distinguishedName", "name" },
+            TimestampUtc = DateTime.UtcNow
+        };
+    }
+
     private static string InferDomainNameFromDistinguishedName(string? distinguishedName) {
         if (string.IsNullOrWhiteSpace(distinguishedName)) {
             return string.Empty;
@@ -629,6 +825,10 @@ public sealed class AdComputerLifecycleTool : ActiveDirectoryToolBase, ITool {
             facts.Add(("Organizational unit", result.OrganizationalUnit));
         }
 
+        if (!string.IsNullOrWhiteSpace(result.TargetOrganizationalUnit)) {
+            facts.Add(("Target organizational unit", result.TargetOrganizationalUnit));
+        }
+
         if (!string.IsNullOrWhiteSpace(result.Message)) {
             facts.Add(("Message", result.Message));
         }
@@ -647,6 +847,10 @@ public sealed class AdComputerLifecycleTool : ActiveDirectoryToolBase, ITool {
             .Add("write_candidate", true);
         if (!string.IsNullOrWhiteSpace(result.DomainName)) {
             meta.Add("domain_name", result.DomainName);
+        }
+
+        if (!string.IsNullOrWhiteSpace(result.TargetOrganizationalUnit)) {
+            meta.Add("target_organizational_unit", result.TargetOrganizationalUnit);
         }
 
         if (result.ServicePrincipalNames.Count > 0) {
