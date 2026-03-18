@@ -312,8 +312,10 @@ internal sealed partial class ChatServiceSession {
                 continue;
             }
 
-            AddDeclaredContractHelperToolName(helperToolNames, seenHelperToolNames, ResolveSetupToolName(definition, _toolOrchestrationCatalog));
-            AddDeclaredContractHelperToolName(helperToolNames, seenHelperToolNames, ResolveProbeToolName(definition, _toolOrchestrationCatalog));
+            var resolvedHelperToolNames = ResolveContractHelperToolNames(definition, _toolOrchestrationCatalog);
+            for (var helperIndex = 0; helperIndex < resolvedHelperToolNames.Length; helperIndex++) {
+                AddDeclaredContractHelperToolName(helperToolNames, seenHelperToolNames, resolvedHelperToolNames[helperIndex]);
+            }
         }
 
         for (var i = 0; i < helperToolNames.Count && selected.Count < minSelection && selected.Count < limit; i++) {
