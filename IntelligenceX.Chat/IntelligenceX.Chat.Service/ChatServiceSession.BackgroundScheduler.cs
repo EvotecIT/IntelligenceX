@@ -566,6 +566,7 @@ internal sealed partial class ChatServiceSession {
 
         var recordedTicks = utcTicks.GetValueOrDefault(DateTime.UtcNow.Ticks);
         lock (_backgroundSchedulerTelemetryLock) {
+            ClearBackgroundSchedulerAdaptiveIdleDecisionNoLock();
             _backgroundSchedulerLastOutcome = NormalizeBackgroundSchedulerOutcome(result.Outcome);
             _backgroundSchedulerLastOutcomeUtcTicks = recordedTicks;
             _backgroundSchedulerRecentActivity.Insert(0, BuildBackgroundSchedulerActivity(result, recordedTicks));
@@ -658,12 +659,17 @@ internal sealed partial class ChatServiceSession {
                 : processedAnyWork
                     ? BackgroundSchedulerBusyDelay
                     : idleDelay;
+            var adaptiveIdleDelaySelected = false;
             if (!processedAnyWork
                 && delay == idleDelay
                 && TryResolveBackgroundSchedulerAdaptiveIdleDelay(idleDelay, out var adaptiveIdleDelay, out var adaptiveIdleReason)) {
                 delay = adaptiveIdleDelay;
+                adaptiveIdleDelaySelected = true;
                 RememberBackgroundSchedulerAdaptiveIdleDecision(adaptiveIdleDelay, adaptiveIdleReason);
                 Trace.WriteLine(BuildBackgroundSchedulerAdaptiveIdleTraceLine(delay, adaptiveIdleReason));
+            }
+            if (!adaptiveIdleDelaySelected) {
+                ClearBackgroundSchedulerAdaptiveIdleDecision();
             }
 
             if (delay <= TimeSpan.Zero) {
@@ -729,6 +735,30 @@ internal sealed partial class ChatServiceSession {
         if (shouldPersist) {
             PersistBackgroundSchedulerRuntimeStateNoThrow();
         }
+    }
+
+    private void ClearBackgroundSchedulerAdaptiveIdleDecision() {
+        var shouldPersist = false;
+        lock (_backgroundSchedulerTelemetryLock) {
+            shouldPersist = ClearBackgroundSchedulerAdaptiveIdleDecisionNoLock();
+        }
+
+        if (shouldPersist) {
+            PersistBackgroundSchedulerRuntimeStateNoThrow();
+        }
+    }
+
+    private bool ClearBackgroundSchedulerAdaptiveIdleDecisionNoLock() {
+        if (_backgroundSchedulerLastAdaptiveIdleUtcTicks <= 0
+            && _backgroundSchedulerLastAdaptiveIdleDelaySeconds <= 0
+            && string.IsNullOrWhiteSpace(_backgroundSchedulerLastAdaptiveIdleReason)) {
+            return false;
+        }
+
+        _backgroundSchedulerLastAdaptiveIdleUtcTicks = 0;
+        _backgroundSchedulerLastAdaptiveIdleDelaySeconds = 0;
+        _backgroundSchedulerLastAdaptiveIdleReason = string.Empty;
+        return true;
     }
 
     private SessionCapabilityBackgroundSchedulerDto SetBackgroundSchedulerManualPause(bool paused, int? pauseSeconds, string? reason) {

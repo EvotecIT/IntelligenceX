@@ -3089,6 +3089,81 @@ public sealed class ChatServiceBackgroundWorkTests {
     }
 
     [Fact]
+    public async Task BackgroundSchedulerRuntimeState_ClearsAdaptiveIdleMetadataAfterWorkResumesAcrossRestart() {
+        var (options, _, _) = ChatServiceTestSessionFactory.CreateIsolatedPersistenceOptions();
+        const string threadId = "thread-background-scheduler-adaptive-idle-clear-after-work";
+        var definitions = new[] {
+            CreateDefinition(
+                name: "remote_disk_inventory",
+                handoff: new ToolHandoffContract {
+                    IsHandoffAware = true,
+                    OutboundRoutes = new[] {
+                        new ToolHandoffRoute {
+                            TargetPackId = "system",
+                            TargetToolName = "system_info",
+                            TargetRole = ToolRoutingTaxonomy.RoleOperational,
+                            Bindings = new[] {
+                                new ToolHandoffBinding {
+                                    SourceField = "computer_name",
+                                    TargetArgument = "computer_name"
+                                }
+                            }
+                        }
+                    }
+                }),
+            new ToolDefinition(
+                "system_info",
+                "system info",
+                ToolSchema.Object(("computer_name", ToolSchema.String("Remote computer."))).NoAdditionalProperties())
+        };
+
+        var writer = new ChatServiceSession(options, Stream.Null);
+        writer.RememberBackgroundSchedulerAdaptiveIdleDecisionForTesting(
+            TimeSpan.FromSeconds(45),
+            "policy=clear_after_work");
+        writer.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(definitions));
+        writer.RememberToolHandoffBackgroundWorkForTesting(
+            threadId,
+            definitions,
+            new[] {
+                new ToolCallDto {
+                    CallId = "call-clear-after-work",
+                    Name = "remote_disk_inventory",
+                    ArgumentsJson = """{"computer_name":"srv-clear.contoso.com"}"""
+                }
+            },
+            new[] {
+                new ToolOutputDto {
+                    CallId = "call-clear-after-work",
+                    Ok = true,
+                    Output = """{"ok":true}"""
+                }
+            });
+
+        var initialSummary = writer.BuildBackgroundSchedulerSummaryForTesting();
+        Assert.True(initialSummary.AdaptiveIdleActive);
+
+        var result = await writer.RunBackgroundSchedulerIterationAsyncForTesting(
+            definitions,
+            new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase),
+            (scheduledThreadId, toolCall, _) => Task.FromResult<IReadOnlyList<ToolOutputDto>>(new[] {
+                new ToolOutputDto {
+                    CallId = toolCall.CallId,
+                    Ok = true,
+                    Output = """{"computer_name":"srv-clear.contoso.com","ok":true}"""
+                }
+            }));
+
+        Assert.Equal(ChatServiceSession.BackgroundSchedulerIterationOutcomeKind.Completed, result.Outcome);
+
+        var resumed = new ChatServiceSession(options, Stream.Null).BuildBackgroundSchedulerSummaryForTesting();
+        Assert.False(resumed.AdaptiveIdleActive);
+        Assert.Equal(0, resumed.LastAdaptiveIdleUtcTicks);
+        Assert.Equal(0, resumed.LastAdaptiveIdleDelaySeconds);
+        Assert.Equal(string.Empty, resumed.LastAdaptiveIdleReason);
+    }
+
+    [Fact]
     public void ResolveThreadBackgroundWorkSnapshot_IgnoresNullPersistedItems() {
         var (options, _, _) = ChatServiceTestSessionFactory.CreateIsolatedPersistenceOptions();
         const string threadId = "thread-background-work-null-item";
