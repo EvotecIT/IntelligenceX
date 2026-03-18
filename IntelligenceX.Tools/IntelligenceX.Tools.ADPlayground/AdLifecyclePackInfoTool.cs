@@ -92,9 +92,9 @@ public sealed class AdLifecyclePackInfoTool : ActiveDirectoryToolBase, ITool {
             capabilities: new[] {
                 ToolPackGuidance.Capability(
                     id: "user_joiner_leaver",
-                    summary: "Governed user lifecycle writes covering create with memberships, enable/disable, offboard cleanup, delete, and password reset actions.",
+                    summary: "Governed user lifecycle writes covering create, update, move, enable/disable, offboard cleanup, delete, and password reset actions.",
                     primaryTools: new[] { "ad_user_lifecycle" },
-                    notes: "Dry-run first. Supports planned group additions/removals and offboard attribute cleanup in one dangerous write-capable capability."),
+                    notes: "Dry-run first. Supports typed user-profile changes, planned group additions/removals, OU moves, and offboard attribute cleanup in one dangerous write-capable capability."),
                 ToolPackGuidance.Capability(
                     id: "computer_account_lifecycle",
                     summary: "Governed computer account lifecycle writes covering create, update, enable/disable, delete, and machine password reset actions.",
@@ -158,20 +158,20 @@ public sealed class AdLifecyclePackInfoTool : ActiveDirectoryToolBase, ITool {
                             suggestedTools: new[] { "ad_object_resolve", "ad_object_get" },
                             notes: "Capture the current distinguished name, manager, and group-related context before changing memberships."),
                         ToolPackGuidance.FlowStep(
-                            goal: "Preview governed group membership changes",
-                            suggestedTools: new[] { "ad_group_lifecycle" },
-                            notes: "Use apply=false on the affected groups when the mover plan needs explicit member add/remove changes without falling back to generic shell execution."),
+                            goal: "Preview governed user profile and membership changes",
+                            suggestedTools: new[] { "ad_user_lifecycle" },
+                            notes: "Use operation=update with apply=false when the mover plan needs typed profile updates plus groups_to_add/groups_to_remove on the user itself."),
                         ToolPackGuidance.FlowStep(
-                            goal: "Preview OU or staging-container changes when required",
-                            suggestedTools: new[] { "ad_ou_lifecycle" },
-                            notes: "Use ad_ou_lifecycle when the mover workflow also requires quarantine, departmental, or staging OU preparation or refactoring."),
+                            goal: "Preview governed user OU moves when required",
+                            suggestedTools: new[] { "ad_user_lifecycle", "ad_ou_lifecycle" },
+                            notes: "Use operation=move with apply=false when the user account itself needs to land in a different OU, and use ad_ou_lifecycle only when the target container also needs governed preparation or refactoring."),
                         ToolPackGuidance.FlowStep(
                             goal: "Preview account re-enable steps when access is being restored",
                             suggestedTools: new[] { "ad_user_lifecycle" },
                             notes: "Use operation=enable with apply=false only when the mover workflow includes reactivating a disabled account and optionally reapplying initial groups_to_add."),
                         ToolPackGuidance.FlowStep(
                             goal: "Apply the approved access transition and verify",
-                            suggestedTools: new[] { "ad_group_lifecycle", "ad_ou_lifecycle", "ad_user_lifecycle", "ad_object_get" },
+                            suggestedTools: new[] { "ad_user_lifecycle", "ad_group_lifecycle", "ad_ou_lifecycle", "ad_object_get" },
                             notes: "Apply only the approved writes, then confirm the final account state and resulting group footprint.")
                     },
                     verificationTools: new[] { "ad_object_get", "ad_object_resolve" },

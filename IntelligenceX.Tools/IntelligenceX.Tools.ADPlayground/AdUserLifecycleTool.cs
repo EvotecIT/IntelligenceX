@@ -23,11 +23,19 @@ public sealed class AdUserLifecycleTool : ActiveDirectoryToolBase, ITool {
         string? Identity,
         string? SamAccountName,
         string? OrganizationalUnit,
+        string? TargetOrganizationalUnit,
         string? DomainName,
         string? CommonName,
         string? UserPrincipalName,
         string? GivenName,
         string? Surname,
+        string? Initials,
+        string? Department,
+        string? Title,
+        string? Company,
+        string? Office,
+        string? TelephoneNumber,
+        string? Mobile,
         string? DisplayName,
         string? Mail,
         string? Description,
@@ -53,6 +61,7 @@ public sealed class AdUserLifecycleTool : ActiveDirectoryToolBase, ITool {
         bool Apply,
         string Message,
         string? OrganizationalUnit,
+        string? TargetOrganizationalUnit,
         string? SamAccountName,
         string? UserPrincipalName,
         bool? Enabled,
@@ -68,48 +77,56 @@ public sealed class AdUserLifecycleTool : ActiveDirectoryToolBase, ITool {
 
     private static readonly ToolDefinition DefinitionValue = new(
         "ad_user_lifecycle",
-        "Governed Active Directory user lifecycle actions for create/enable/disable/delete/reset_password/offboard. Dry-run by default; apply=true performs the write.",
+        "Governed Active Directory user lifecycle actions for create/update/move/enable/disable/delete/reset_password/offboard. Dry-run by default; apply=true performs the write.",
         ToolSchema.Object(
-                ("operation", ToolSchema.String("Lifecycle action to perform.").Enum("create", "enable", "disable", "delete", "reset_password", "offboard")),
-                ("identity", ToolSchema.String("Existing user identity for enable/disable/delete/reset_password (DN, sAMAccountName, UPN, mail, or name).")),
+                ("operation", ToolSchema.String("Lifecycle action to perform.").Enum("create", "update", "move", "enable", "disable", "delete", "reset_password", "offboard")),
+                ("identity", ToolSchema.String("Existing user identity for update/move/enable/disable/delete/reset_password/offboard (DN, sAMAccountName, UPN, mail, or name).")),
                 ("sam_account_name", ToolSchema.String("sAMAccountName for create operations.")),
                 ("organizational_unit", ToolSchema.String("Target OU distinguished name for create operations.")),
+                ("target_organizational_unit", ToolSchema.String("Target OU distinguished name for move operations.")),
                 ("domain_name", ToolSchema.String("Optional domain DNS name for write operations.")),
                 ("common_name", ToolSchema.String("Optional common name (CN) for create.")),
-                ("user_principal_name", ToolSchema.String("Optional UPN for create.")),
-                ("given_name", ToolSchema.String("Optional givenName for create.")),
-                ("surname", ToolSchema.String("Optional sn/surname for create.")),
-                ("display_name", ToolSchema.String("Optional displayName for create or offboard cleanup updates.")),
-                ("mail", ToolSchema.String("Optional mail attribute for create or offboard cleanup updates.")),
-                ("description", ToolSchema.String("Optional description for create or offboard cleanup updates.")),
-                ("manager", ToolSchema.String("Optional manager DN for create.")),
+                ("user_principal_name", ToolSchema.String("Optional UPN for create or update operations.")),
+                ("given_name", ToolSchema.String("Optional givenName for create or update operations.")),
+                ("surname", ToolSchema.String("Optional sn/surname for create or update operations.")),
+                ("initials", ToolSchema.String("Optional initials for create or update operations.")),
+                ("department", ToolSchema.String("Optional department for create or update operations.")),
+                ("title", ToolSchema.String("Optional title for create or update operations.")),
+                ("company", ToolSchema.String("Optional company for create or update operations.")),
+                ("office", ToolSchema.String("Optional office/physicalDeliveryOfficeName for create or update operations.")),
+                ("telephone_number", ToolSchema.String("Optional telephoneNumber for create or update operations.")),
+                ("mobile", ToolSchema.String("Optional mobile number for create or update operations.")),
+                ("display_name", ToolSchema.String("Optional displayName for create, update, or offboard cleanup updates.")),
+                ("mail", ToolSchema.String("Optional mail attribute for create, update, or offboard cleanup updates.")),
+                ("description", ToolSchema.String("Optional description for create, update, or offboard cleanup updates.")),
+                ("manager", ToolSchema.String("Optional manager DN for create, update, or offboard cleanup updates.")),
                 ("initial_password", ToolSchema.String("Optional initial password for create.")),
                 ("new_password", ToolSchema.String("New password for reset_password or offboard operations.")),
                 ("enabled", ToolSchema.Boolean("Optional enabled state for create. When omitted, AD defaults are preserved.")),
                 ("must_change_password_at_logon", ToolSchema.Boolean("Optional password-change-at-next-logon flag for create/reset_password/offboard password resets.")),
                 ("groups_to_add", ToolSchema.Array(
                     ToolSchema.String("Group identity to add the user to."),
-                    "Optional groups to add during create or enable workflows.")),
+                    "Optional groups to add during create, update, or enable workflows.")),
                 ("groups_to_remove", ToolSchema.Array(
                     ToolSchema.String("Group identity to remove the user from."),
-                    "Optional groups to remove during disable or offboard workflows.")),
+                    "Optional groups to remove during update, disable, or offboard workflows.")),
                 ("clear_attributes", ToolSchema.Array(
                     ToolSchema.String("LDAP attribute name to clear."),
-                    "Optional LDAP attributes to clear during offboard cleanup.")),
+                    "Optional LDAP attributes to clear during update or offboard cleanup.")),
                 ("extension_attributes", ToolSchema.Array(
                     ToolSchema.Object(
                             ("key", ToolSchema.String("Extension attribute number or name (for example 1 or extensionAttribute1).")),
                             ("value", ToolSchema.String("Extension attribute value.")))
                         .Required("key", "value")
                         .NoAdditionalProperties(),
-                    "Optional extension attributes to set during create or offboard cleanup.")),
+                    "Optional extension attributes to set during create, update, or offboard cleanup.")),
                 ("additional_attributes", ToolSchema.Array(
                     ToolSchema.Object(
                             ("key", ToolSchema.String("LDAP attribute name.")),
                             ("value", ToolSchema.String("LDAP attribute value.")))
                         .Required("key", "value")
                         .NoAdditionalProperties(),
-                    "Optional additional LDAP attributes to set during create or offboard cleanup.")),
+                    "Optional additional LDAP attributes to set during create, update, or offboard cleanup.")),
                 ("apply", ToolSchema.Boolean("When true, performs the lifecycle write. Otherwise returns a dry-run preview.")))
             .Required("operation")
             .WithWriteGovernanceDefaults(),
@@ -150,11 +167,19 @@ public sealed class AdUserLifecycleTool : ActiveDirectoryToolBase, ITool {
                 Identity: reader.OptionalString("identity"),
                 SamAccountName: reader.OptionalString("sam_account_name"),
                 OrganizationalUnit: reader.OptionalString("organizational_unit"),
+                TargetOrganizationalUnit: reader.OptionalString("target_organizational_unit"),
                 DomainName: reader.OptionalString("domain_name"),
                 CommonName: reader.OptionalString("common_name"),
                 UserPrincipalName: reader.OptionalString("user_principal_name"),
                 GivenName: reader.OptionalString("given_name"),
                 Surname: reader.OptionalString("surname"),
+                Initials: reader.OptionalString("initials"),
+                Department: reader.OptionalString("department"),
+                Title: reader.OptionalString("title"),
+                Company: reader.OptionalString("company"),
+                Office: reader.OptionalString("office"),
+                TelephoneNumber: reader.OptionalString("telephone_number"),
+                Mobile: reader.OptionalString("mobile"),
                 DisplayName: reader.OptionalString("display_name"),
                 Mail: reader.OptionalString("mail"),
                 Description: reader.OptionalString("description"),
@@ -185,6 +210,8 @@ public sealed class AdUserLifecycleTool : ActiveDirectoryToolBase, ITool {
         try {
             var result = request.Operation switch {
                 "create" => ExecuteCreate(request),
+                "update" => ExecuteUpdate(request),
+                "move" => ExecuteMove(request),
                 "enable" => ExecuteEnable(request),
                 "disable" => ExecuteDisable(request),
                 "delete" => MapMutationResult(new DirectoryAccountHelper().DeleteUser(request.Identity!, request.DomainName), request),
@@ -224,6 +251,10 @@ public sealed class AdUserLifecycleTool : ActiveDirectoryToolBase, ITool {
                     return ToolRequestBindingResult<UserLifecycleRequest>.Failure("organizational_unit is required for create.");
                 }
 
+                if (!string.IsNullOrWhiteSpace(request.TargetOrganizationalUnit)) {
+                    return ToolRequestBindingResult<UserLifecycleRequest>.Failure("target_organizational_unit is only supported for move.");
+                }
+
                 if (!string.IsNullOrWhiteSpace(request.NewPassword)) {
                     return ToolRequestBindingResult<UserLifecycleRequest>.Failure("new_password is not supported for create. Use initial_password for provisioning.");
                 }
@@ -233,7 +264,47 @@ public sealed class AdUserLifecycleTool : ActiveDirectoryToolBase, ITool {
                 }
 
                 if (request.ClearAttributes.Count > 0) {
-                    return ToolRequestBindingResult<UserLifecycleRequest>.Failure("clear_attributes is only supported for offboard.");
+                    return ToolRequestBindingResult<UserLifecycleRequest>.Failure("clear_attributes is only supported for update or offboard.");
+                }
+
+                return ToolRequestBindingResult<UserLifecycleRequest>.Success(request);
+            case "update":
+                if (string.IsNullOrWhiteSpace(request.Identity)) {
+                    return ToolRequestBindingResult<UserLifecycleRequest>.Failure("identity is required for update.");
+                }
+
+                if (HasProvisioningOnlyFields(request)) {
+                    return ToolRequestBindingResult<UserLifecycleRequest>.Failure("create-only provisioning fields are not supported for update.");
+                }
+
+                if (!string.IsNullOrWhiteSpace(request.TargetOrganizationalUnit)) {
+                    return ToolRequestBindingResult<UserLifecycleRequest>.Failure("target_organizational_unit is only supported for move.");
+                }
+
+                if (!string.IsNullOrWhiteSpace(request.NewPassword) || request.MustChangePasswordAtLogon.HasValue || request.Enabled.HasValue) {
+                    return ToolRequestBindingResult<UserLifecycleRequest>.Failure("update does not support password-reset or enable/disable fields.");
+                }
+
+                if (!HasUserUpdatePayload(request)) {
+                    return ToolRequestBindingResult<UserLifecycleRequest>.Failure("update requires at least one typed attribute, membership change, clear_attributes entry, or additional attribute mutation.");
+                }
+
+                return ToolRequestBindingResult<UserLifecycleRequest>.Success(request);
+            case "move":
+                if (string.IsNullOrWhiteSpace(request.Identity)) {
+                    return ToolRequestBindingResult<UserLifecycleRequest>.Failure("identity is required for move.");
+                }
+
+                if (string.IsNullOrWhiteSpace(request.TargetOrganizationalUnit)) {
+                    return ToolRequestBindingResult<UserLifecycleRequest>.Failure("target_organizational_unit is required for move.");
+                }
+
+                if (HasProvisioningOnlyFields(request)
+                    || HasUserUpdatePayload(request)
+                    || !string.IsNullOrWhiteSpace(request.NewPassword)
+                    || request.MustChangePasswordAtLogon.HasValue
+                    || request.Enabled.HasValue) {
+                    return ToolRequestBindingResult<UserLifecycleRequest>.Failure("move only supports identity, target_organizational_unit, domain_name, and apply.");
                 }
 
                 return ToolRequestBindingResult<UserLifecycleRequest>.Success(request);
@@ -242,7 +313,7 @@ public sealed class AdUserLifecycleTool : ActiveDirectoryToolBase, ITool {
                     return ToolRequestBindingResult<UserLifecycleRequest>.Failure("identity is required for enable.");
                 }
 
-                if (HasProvisioningOnlyFields(request)) {
+                if (HasProvisioningOnlyFields(request) || !string.IsNullOrWhiteSpace(request.TargetOrganizationalUnit)) {
                     return ToolRequestBindingResult<UserLifecycleRequest>.Failure("create-only provisioning fields are not supported for enable.");
                 }
 
@@ -255,7 +326,7 @@ public sealed class AdUserLifecycleTool : ActiveDirectoryToolBase, ITool {
                 }
 
                 if (HasAttributeCleanupPayload(request)) {
-                    return ToolRequestBindingResult<UserLifecycleRequest>.Failure("Attribute cleanup fields are only supported for create or offboard.");
+                    return ToolRequestBindingResult<UserLifecycleRequest>.Failure("Attribute cleanup fields are only supported for create, update, or offboard.");
                 }
 
                 return ToolRequestBindingResult<UserLifecycleRequest>.Success(request);
@@ -264,7 +335,7 @@ public sealed class AdUserLifecycleTool : ActiveDirectoryToolBase, ITool {
                     return ToolRequestBindingResult<UserLifecycleRequest>.Failure("identity is required for disable.");
                 }
 
-                if (HasProvisioningOnlyFields(request)) {
+                if (HasProvisioningOnlyFields(request) || !string.IsNullOrWhiteSpace(request.TargetOrganizationalUnit)) {
                     return ToolRequestBindingResult<UserLifecycleRequest>.Failure("create-only provisioning fields are not supported for disable.");
                 }
 
@@ -277,7 +348,7 @@ public sealed class AdUserLifecycleTool : ActiveDirectoryToolBase, ITool {
                 }
 
                 if (HasAttributeCleanupPayload(request)) {
-                    return ToolRequestBindingResult<UserLifecycleRequest>.Failure("Attribute cleanup fields are only supported for create or offboard.");
+                    return ToolRequestBindingResult<UserLifecycleRequest>.Failure("Attribute cleanup fields are only supported for create, update, or offboard.");
                 }
 
                 return ToolRequestBindingResult<UserLifecycleRequest>.Success(request);
@@ -286,7 +357,7 @@ public sealed class AdUserLifecycleTool : ActiveDirectoryToolBase, ITool {
                     return ToolRequestBindingResult<UserLifecycleRequest>.Failure("identity is required for delete.");
                 }
 
-                if (HasProvisioningOnlyFields(request)) {
+                if (HasProvisioningOnlyFields(request) || !string.IsNullOrWhiteSpace(request.TargetOrganizationalUnit)) {
                     return ToolRequestBindingResult<UserLifecycleRequest>.Failure("create-only provisioning fields are not supported for delete.");
                 }
 
@@ -308,7 +379,7 @@ public sealed class AdUserLifecycleTool : ActiveDirectoryToolBase, ITool {
                     return ToolRequestBindingResult<UserLifecycleRequest>.Failure("new_password is required for reset_password.");
                 }
 
-                if (HasProvisioningOnlyFields(request)) {
+                if (HasProvisioningOnlyFields(request) || !string.IsNullOrWhiteSpace(request.TargetOrganizationalUnit)) {
                     return ToolRequestBindingResult<UserLifecycleRequest>.Failure("create-only provisioning fields are not supported for reset_password.");
                 }
 
@@ -322,7 +393,7 @@ public sealed class AdUserLifecycleTool : ActiveDirectoryToolBase, ITool {
                     return ToolRequestBindingResult<UserLifecycleRequest>.Failure("identity is required for offboard.");
                 }
 
-                if (HasProvisioningOnlyFields(request)) {
+                if (HasProvisioningOnlyFields(request) || !string.IsNullOrWhiteSpace(request.TargetOrganizationalUnit)) {
                     return ToolRequestBindingResult<UserLifecycleRequest>.Failure("create-only provisioning fields are not supported for offboard.");
                 }
 
@@ -337,7 +408,7 @@ public sealed class AdUserLifecycleTool : ActiveDirectoryToolBase, ITool {
                 return ToolRequestBindingResult<UserLifecycleRequest>.Success(request);
             default:
                 return ToolRequestBindingResult<UserLifecycleRequest>.Failure(
-                    "operation must be one of create, enable, disable, delete, reset_password, or offboard.");
+                    "operation must be one of create, update, move, enable, disable, delete, reset_password, or offboard.");
         }
     }
 
@@ -345,6 +416,8 @@ public sealed class AdUserLifecycleTool : ActiveDirectoryToolBase, ITool {
         var normalized = (value ?? string.Empty).Trim().ToLowerInvariant();
         switch (normalized) {
             case "create":
+            case "update":
+            case "move":
             case "enable":
             case "disable":
             case "delete":
@@ -406,21 +479,34 @@ public sealed class AdUserLifecycleTool : ActiveDirectoryToolBase, ITool {
         return !string.IsNullOrWhiteSpace(request.SamAccountName)
                || !string.IsNullOrWhiteSpace(request.OrganizationalUnit)
                || !string.IsNullOrWhiteSpace(request.CommonName)
-               || !string.IsNullOrWhiteSpace(request.UserPrincipalName)
-               || !string.IsNullOrWhiteSpace(request.GivenName)
-               || !string.IsNullOrWhiteSpace(request.Surname)
-               || !string.IsNullOrWhiteSpace(request.Manager)
                || !string.IsNullOrWhiteSpace(request.InitialPassword)
-               || request.Enabled.HasValue;
+               || request.MustChangePasswordAtLogon.HasValue;
     }
 
-    private static bool HasAttributeCleanupPayload(UserLifecycleRequest request) {
-        return !string.IsNullOrWhiteSpace(request.DisplayName)
+    private static bool HasUserUpdatePayload(UserLifecycleRequest request) {
+        return !string.IsNullOrWhiteSpace(request.UserPrincipalName)
+               || !string.IsNullOrWhiteSpace(request.GivenName)
+               || !string.IsNullOrWhiteSpace(request.Surname)
+               || !string.IsNullOrWhiteSpace(request.Initials)
+               || !string.IsNullOrWhiteSpace(request.Department)
+               || !string.IsNullOrWhiteSpace(request.Title)
+               || !string.IsNullOrWhiteSpace(request.Company)
+               || !string.IsNullOrWhiteSpace(request.Office)
+               || !string.IsNullOrWhiteSpace(request.TelephoneNumber)
+               || !string.IsNullOrWhiteSpace(request.Mobile)
+               || !string.IsNullOrWhiteSpace(request.DisplayName)
                || !string.IsNullOrWhiteSpace(request.Mail)
                || !string.IsNullOrWhiteSpace(request.Description)
+               || !string.IsNullOrWhiteSpace(request.Manager)
+               || request.GroupsToAdd.Count > 0
+               || request.GroupsToRemove.Count > 0
                || request.ExtensionAttributes.Count > 0
                || request.AdditionalAttributes.Count > 0
                || request.ClearAttributes.Count > 0;
+    }
+
+    private static bool HasAttributeCleanupPayload(UserLifecycleRequest request) {
+        return HasUserUpdatePayload(request);
     }
 
     private UserLifecycleResult ExecuteCreate(UserLifecycleRequest request) {
@@ -437,6 +523,14 @@ public sealed class AdUserLifecycleTool : ActiveDirectoryToolBase, ITool {
             Enabled = request.Enabled,
             MustChangePasswordAtLogon = request.MustChangePasswordAtLogon
         };
+
+        AddIfPresent(createOptions.Attribute, "initials", request.Initials);
+        AddIfPresent(createOptions.Attribute, "department", request.Department);
+        AddIfPresent(createOptions.Attribute, "title", request.Title);
+        AddIfPresent(createOptions.Attribute, "company", request.Company);
+        AddIfPresent(createOptions.Attribute, "physicalDeliveryOfficeName", request.Office);
+        AddIfPresent(createOptions.Attribute, "telephoneNumber", request.TelephoneNumber);
+        AddIfPresent(createOptions.Attribute, "mobile", request.Mobile);
 
         for (var i = 0; i < request.ExtensionAttributes.Count; i++) {
             var entry = request.ExtensionAttributes[i];
@@ -489,6 +583,7 @@ public sealed class AdUserLifecycleTool : ActiveDirectoryToolBase, ITool {
             Apply: true,
             Message: string.Join(" ", messages.Where(static message => !string.IsNullOrWhiteSpace(message))),
             OrganizationalUnit: request.OrganizationalUnit,
+            TargetOrganizationalUnit: null,
             SamAccountName: request.SamAccountName,
             UserPrincipalName: request.UserPrincipalName,
             Enabled: request.Enabled,
@@ -501,6 +596,104 @@ public sealed class AdUserLifecycleTool : ActiveDirectoryToolBase, ITool {
             ExtensionAttributes: request.ExtensionAttributes,
             AdditionalAttributes: request.AdditionalAttributes,
             TimestampUtc: DateTime.UtcNow);
+    }
+
+    private UserLifecycleResult ExecuteUpdate(UserLifecycleRequest request) {
+        var messages = new List<string>();
+        var updatedAttributes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var clearedAttributes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        IReadOnlyList<string> groupsAdded = Array.Empty<string>();
+        IReadOnlyList<string> groupsRemoved = Array.Empty<string>();
+        var changed = false;
+        var completedSteps = 0;
+        var domainName = request.DomainName ?? string.Empty;
+        var distinguishedName = string.Empty;
+
+        try {
+            var update = BuildUserUpdate(request);
+            if (update is not null) {
+                var setResult = new DirectoryObjectHelper().SetUser(request.Identity!, update, request.DomainName);
+                changed |= setResult.Changed;
+                completedSteps += setResult.Changed ? 1 : 0;
+                MergeUserMutation(setResult, messages, updatedAttributes, clearedAttributes, ref distinguishedName, ref domainName);
+            }
+
+            var accountHelper = new DirectoryAccountHelper();
+            if (request.GroupsToAdd.Count > 0) {
+                groupsAdded = ApplyGroupMembershipChanges(
+                    request.GroupsToAdd,
+                    groupIdentity => accountHelper.AddGroupMember(groupIdentity, request.Identity!, request.DomainName),
+                    messages,
+                    updatedAttributes,
+                    ref completedSteps);
+                changed |= groupsAdded.Count > 0;
+            }
+
+            if (request.GroupsToRemove.Count > 0) {
+                groupsRemoved = ApplyGroupMembershipChanges(
+                    request.GroupsToRemove,
+                    groupIdentity => accountHelper.RemoveGroupMember(groupIdentity, request.Identity!, request.DomainName),
+                    messages,
+                    updatedAttributes,
+                    ref completedSteps);
+                changed |= groupsRemoved.Count > 0;
+            }
+        } catch (Exception ex) {
+            throw new InvalidOperationException(
+                $"Update workflow partially applied {completedSteps} change step(s) before failing: {ex.Message}",
+                ex);
+        }
+
+        return new UserLifecycleResult(
+            Operation: "update",
+            ObjectType: "user",
+            Identity: request.Identity!,
+            DistinguishedName: distinguishedName,
+            DomainName: domainName,
+            Changed: changed,
+            Apply: true,
+            Message: string.Join(" ", messages.Where(static message => !string.IsNullOrWhiteSpace(message))),
+            OrganizationalUnit: request.OrganizationalUnit,
+            TargetOrganizationalUnit: null,
+            SamAccountName: request.SamAccountName,
+            UserPrincipalName: request.UserPrincipalName,
+            Enabled: null,
+            MustChangePasswordAtLogon: null,
+            UpdatedAttributes: updatedAttributes.OrderBy(static value => value, StringComparer.OrdinalIgnoreCase).ToArray(),
+            ClearedAttributes: clearedAttributes.OrderBy(static value => value, StringComparer.OrdinalIgnoreCase).ToArray(),
+            GroupsAdded: groupsAdded,
+            GroupsRemoved: groupsRemoved,
+            PasswordReset: false,
+            ExtensionAttributes: request.ExtensionAttributes,
+            AdditionalAttributes: request.AdditionalAttributes,
+            TimestampUtc: DateTime.UtcNow);
+    }
+
+    private UserLifecycleResult ExecuteMove(UserLifecycleRequest request) {
+        var mutation = MoveUser(request.Identity!, request.TargetOrganizationalUnit!, request.DomainName);
+        return new UserLifecycleResult(
+            Operation: mutation.Operation,
+            ObjectType: mutation.ObjectType,
+            Identity: string.IsNullOrWhiteSpace(mutation.Identity) ? request.Identity! : mutation.Identity,
+            DistinguishedName: mutation.DistinguishedName ?? string.Empty,
+            DomainName: mutation.DomainName ?? request.DomainName ?? string.Empty,
+            Changed: mutation.Changed,
+            Apply: true,
+            Message: mutation.Message ?? string.Empty,
+            OrganizationalUnit: null,
+            TargetOrganizationalUnit: request.TargetOrganizationalUnit,
+            SamAccountName: request.SamAccountName,
+            UserPrincipalName: request.UserPrincipalName,
+            Enabled: null,
+            MustChangePasswordAtLogon: null,
+            UpdatedAttributes: mutation.UpdatedAttributes ?? Array.Empty<string>(),
+            ClearedAttributes: mutation.ClearedAttributes ?? Array.Empty<string>(),
+            GroupsAdded: Array.Empty<string>(),
+            GroupsRemoved: Array.Empty<string>(),
+            PasswordReset: false,
+            ExtensionAttributes: request.ExtensionAttributes,
+            AdditionalAttributes: request.AdditionalAttributes,
+            TimestampUtc: mutation.TimestampUtc);
     }
 
     private UserLifecycleResult ExecuteEnable(UserLifecycleRequest request) {
@@ -542,6 +735,7 @@ public sealed class AdUserLifecycleTool : ActiveDirectoryToolBase, ITool {
             Apply: true,
             Message: string.Join(" ", messages.Where(static message => !string.IsNullOrWhiteSpace(message))),
             OrganizationalUnit: request.OrganizationalUnit,
+            TargetOrganizationalUnit: null,
             SamAccountName: request.SamAccountName,
             UserPrincipalName: request.UserPrincipalName,
             Enabled: true,
@@ -595,6 +789,7 @@ public sealed class AdUserLifecycleTool : ActiveDirectoryToolBase, ITool {
             Apply: true,
             Message: string.Join(" ", messages.Where(static message => !string.IsNullOrWhiteSpace(message))),
             OrganizationalUnit: request.OrganizationalUnit,
+            TargetOrganizationalUnit: null,
             SamAccountName: request.SamAccountName,
             UserPrincipalName: request.UserPrincipalName,
             Enabled: false,
@@ -648,7 +843,7 @@ public sealed class AdUserLifecycleTool : ActiveDirectoryToolBase, ITool {
                 changed |= groupsRemoved.Count > 0;
             }
 
-            var update = BuildAttributeCleanupUpdate(request);
+            var update = BuildUserUpdate(request);
             if (update is not null) {
                 var setResult = objectHelper.SetUser(request.Identity!, update, request.DomainName);
                 changed |= setResult.Changed;
@@ -671,6 +866,7 @@ public sealed class AdUserLifecycleTool : ActiveDirectoryToolBase, ITool {
             Apply: true,
             Message: string.Join(" ", messages.Where(static message => !string.IsNullOrWhiteSpace(message))),
             OrganizationalUnit: request.OrganizationalUnit,
+            TargetOrganizationalUnit: null,
             SamAccountName: request.SamAccountName,
             UserPrincipalName: request.UserPrincipalName,
             Enabled: false,
@@ -700,6 +896,7 @@ public sealed class AdUserLifecycleTool : ActiveDirectoryToolBase, ITool {
             Apply: true,
             Message: mutation.Message ?? string.Empty,
             OrganizationalUnit: request.OrganizationalUnit,
+            TargetOrganizationalUnit: request.TargetOrganizationalUnit,
             SamAccountName: request.SamAccountName,
             UserPrincipalName: request.UserPrincipalName,
             Enabled: request.Operation switch {
@@ -727,9 +924,16 @@ public sealed class AdUserLifecycleTool : ActiveDirectoryToolBase, ITool {
 
     private static UserLifecycleResult CreateDryRunResult(UserLifecycleRequest request) {
         var identity = request.Identity ?? request.SamAccountName ?? string.Empty;
-        var distinguishedName = request.Operation == "create" && !string.IsNullOrWhiteSpace(request.OrganizationalUnit) && !string.IsNullOrWhiteSpace(identity)
-            ? BuildPredictedDistinguishedName(request.CommonName, identity, request.OrganizationalUnit!)
-            : string.Empty;
+        var distinguishedName = request.Operation switch {
+            "create" when !string.IsNullOrWhiteSpace(request.OrganizationalUnit) && !string.IsNullOrWhiteSpace(identity)
+                => BuildPredictedDistinguishedName(request.CommonName, identity, request.OrganizationalUnit!),
+            "move" when !string.IsNullOrWhiteSpace(request.TargetOrganizationalUnit)
+                => BuildPredictedDistinguishedName(
+                    TryResolveMoveLeafName(request.Identity, request.CommonName),
+                    identity,
+                    request.TargetOrganizationalUnit!),
+            _ => string.Empty
+        };
         var domainName = !string.IsNullOrWhiteSpace(request.DomainName)
             ? request.DomainName!
             : InferDomainNameFromDistinguishedName(distinguishedName);
@@ -744,6 +948,7 @@ public sealed class AdUserLifecycleTool : ActiveDirectoryToolBase, ITool {
             Apply: false,
             Message: "Dry-run only. Set apply=true to execute the lifecycle action.",
             OrganizationalUnit: request.OrganizationalUnit,
+            TargetOrganizationalUnit: request.TargetOrganizationalUnit,
             SamAccountName: request.SamAccountName,
             UserPrincipalName: request.UserPrincipalName,
             Enabled: request.Operation switch {
@@ -776,6 +981,13 @@ public sealed class AdUserLifecycleTool : ActiveDirectoryToolBase, ITool {
             AddIfPresent(attributes, "userPrincipalName", request.UserPrincipalName);
             AddIfPresent(attributes, "givenName", request.GivenName);
             AddIfPresent(attributes, "sn", request.Surname);
+            AddIfPresent(attributes, "initials", request.Initials);
+            AddIfPresent(attributes, "department", request.Department);
+            AddIfPresent(attributes, "title", request.Title);
+            AddIfPresent(attributes, "company", request.Company);
+            AddIfPresent(attributes, "physicalDeliveryOfficeName", request.Office);
+            AddIfPresent(attributes, "telephoneNumber", request.TelephoneNumber);
+            AddIfPresent(attributes, "mobile", request.Mobile);
             AddIfPresent(attributes, "displayName", request.DisplayName);
             AddIfPresent(attributes, "mail", request.Mail);
             AddIfPresent(attributes, "description", request.Description);
@@ -794,14 +1006,33 @@ public sealed class AdUserLifecycleTool : ActiveDirectoryToolBase, ITool {
 
             AddMutationKeys(attributes, request.ExtensionAttributes);
             AddMutationKeys(attributes, request.AdditionalAttributes);
+        } else if (string.Equals(request.Operation, "update", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(request.Operation, "offboard", StringComparison.OrdinalIgnoreCase)) {
+            AddIfPresent(attributes, "userPrincipalName", request.UserPrincipalName);
+            AddIfPresent(attributes, "givenName", request.GivenName);
+            AddIfPresent(attributes, "sn", request.Surname);
+            AddIfPresent(attributes, "initials", request.Initials);
+            AddIfPresent(attributes, "department", request.Department);
+            AddIfPresent(attributes, "title", request.Title);
+            AddIfPresent(attributes, "company", request.Company);
+            AddIfPresent(attributes, "physicalDeliveryOfficeName", request.Office);
+            AddIfPresent(attributes, "telephoneNumber", request.TelephoneNumber);
+            AddIfPresent(attributes, "mobile", request.Mobile);
+            AddIfPresent(attributes, "displayName", request.DisplayName);
+            AddIfPresent(attributes, "mail", request.Mail);
+            AddIfPresent(attributes, "description", request.Description);
+            AddIfPresent(attributes, "manager", request.Manager);
+            AddMutationKeys(attributes, request.ExtensionAttributes);
+            AddMutationKeys(attributes, request.AdditionalAttributes);
         } else if (string.Equals(request.Operation, "reset_password", StringComparison.OrdinalIgnoreCase)) {
             attributes.Add("unicodePwd");
             if (request.MustChangePasswordAtLogon.HasValue) {
                 attributes.Add("pwdLastSet");
             }
+        } else if (string.Equals(request.Operation, "move", StringComparison.OrdinalIgnoreCase)) {
+            attributes.Add("distinguishedName");
         } else if (string.Equals(request.Operation, "enable", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(request.Operation, "disable", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(request.Operation, "offboard", StringComparison.OrdinalIgnoreCase)) {
+                   || string.Equals(request.Operation, "disable", StringComparison.OrdinalIgnoreCase)) {
             attributes.Add("userAccountControl");
             if (!string.IsNullOrWhiteSpace(request.NewPassword)) {
                 attributes.Add("unicodePwd");
@@ -810,12 +1041,6 @@ public sealed class AdUserLifecycleTool : ActiveDirectoryToolBase, ITool {
             if (request.MustChangePasswordAtLogon.HasValue) {
                 attributes.Add("pwdLastSet");
             }
-
-            AddIfPresent(attributes, "displayName", request.DisplayName);
-            AddIfPresent(attributes, "mail", request.Mail);
-            AddIfPresent(attributes, "description", request.Description);
-            AddMutationKeys(attributes, request.ExtensionAttributes);
-            AddMutationKeys(attributes, request.AdditionalAttributes);
         }
 
         if (request.GroupsToAdd.Count > 0 || request.GroupsToRemove.Count > 0) {
@@ -840,9 +1065,45 @@ public sealed class AdUserLifecycleTool : ActiveDirectoryToolBase, ITool {
         }
     }
 
+    private static void AddIfPresent(IDictionary<string, object?> attributes, string key, string? value) {
+        if (!string.IsNullOrWhiteSpace(value)) {
+            attributes[key] = value;
+        }
+    }
+
     private static string BuildPredictedDistinguishedName(string? commonName, string samAccountName, string organizationalUnit) {
         var cn = string.IsNullOrWhiteSpace(commonName) ? samAccountName : commonName.Trim();
         return $"CN={cn},{organizationalUnit}";
+    }
+
+    private static string? TryResolveMoveLeafName(string? identity, string? commonName) {
+        if (!string.IsNullOrWhiteSpace(commonName)) {
+            return commonName!.Trim();
+        }
+
+        var normalizedIdentity = (identity ?? string.Empty).Trim();
+        if (normalizedIdentity.Length == 0) {
+            return null;
+        }
+
+        if (normalizedIdentity.StartsWith("CN=", StringComparison.OrdinalIgnoreCase)) {
+            var separatorIndex = normalizedIdentity.IndexOf(',');
+            return separatorIndex > 3
+                ? normalizedIdentity.Substring(3, separatorIndex - 3).Trim()
+                : normalizedIdentity.Substring(3).Trim();
+        }
+
+        var slashIndex = normalizedIdentity.IndexOf('\\');
+        if (slashIndex >= 0 && slashIndex < normalizedIdentity.Length - 1) {
+            normalizedIdentity = normalizedIdentity.Substring(slashIndex + 1).Trim();
+        }
+
+        var atIndex = normalizedIdentity.IndexOf('@');
+        if (atIndex > 0) {
+            normalizedIdentity = normalizedIdentity.Substring(0, atIndex).Trim();
+        }
+
+        return normalizedIdentity.Length == 0 ? null : normalizedIdentity;
     }
 
     private static IReadOnlyList<string> ApplyGroupMembershipChanges(
@@ -879,11 +1140,22 @@ public sealed class AdUserLifecycleTool : ActiveDirectoryToolBase, ITool {
             .ToArray();
     }
 
-    private static DirectoryObjectUpdate? BuildAttributeCleanupUpdate(UserLifecycleRequest request) {
+    private static DirectoryObjectUpdate? BuildUserUpdate(UserLifecycleRequest request) {
         var update = new DirectoryObjectUpdate {
+            UserPrincipalName = request.UserPrincipalName,
+            GivenName = request.GivenName,
+            Surname = request.Surname,
+            Initials = request.Initials,
+            Department = request.Department,
+            Title = request.Title,
+            Company = request.Company,
+            Office = request.Office,
+            TelephoneNumber = request.TelephoneNumber,
+            Mobile = request.Mobile,
             DisplayName = request.DisplayName,
             Description = request.Description,
-            Mail = request.Mail
+            Mail = request.Mail,
+            ManagedBy = request.Manager
         };
 
         for (var i = 0; i < request.ExtensionAttributes.Count; i++) {
@@ -901,6 +1173,43 @@ public sealed class AdUserLifecycleTool : ActiveDirectoryToolBase, ITool {
         }
 
         return update.HasChanges() ? update : null;
+    }
+
+    private static DirectoryMutationResult MoveUser(string identity, string targetOrganizationalUnit, string? domainName) {
+        var objectHelper = new DirectoryObjectHelper();
+        var snapshot = objectHelper.GetUser(identity, domainName, new[] { "cn", "distinguishedName" });
+        var sourceDistinguishedName = snapshot.DistinguishedName;
+        if (string.IsNullOrWhiteSpace(sourceDistinguishedName)) {
+            throw new InvalidOperationException("Unable to resolve a distinguished name for the requested user move.");
+        }
+
+        var leafName = snapshot.Attributes.TryGetValue("cn", out var rawCn)
+            ? ToolArgs.NormalizeOptional(rawCn?.ToString())
+            : TryResolveMoveLeafName(identity, commonName: null);
+        var resolvedDomainName = !string.IsNullOrWhiteSpace(snapshot.DomainName)
+            ? snapshot.DomainName
+            : (domainName ?? InferDomainNameFromDistinguishedName(targetOrganizationalUnit));
+
+        using var targetParent = new DirectoryEntry($"LDAP://{targetOrganizationalUnit}");
+        using var entry = new DirectoryEntry($"LDAP://{sourceDistinguishedName}");
+        entry.MoveTo(targetParent);
+        targetParent.CommitChanges();
+        entry.CommitChanges();
+
+        var movedDistinguishedName = ToolArgs.NormalizeOptional(entry.Properties["distinguishedName"]?.Value?.ToString())
+                                   ?? BuildPredictedDistinguishedName(leafName, identity, targetOrganizationalUnit);
+
+        return new DirectoryMutationResult {
+            Operation = "move",
+            ObjectType = "user",
+            Identity = identity,
+            DistinguishedName = movedDistinguishedName,
+            DomainName = resolvedDomainName ?? string.Empty,
+            Changed = !string.Equals(sourceDistinguishedName, movedDistinguishedName, StringComparison.OrdinalIgnoreCase),
+            Message = "User moved.",
+            UpdatedAttributes = new[] { "distinguishedName" },
+            TimestampUtc = DateTime.UtcNow
+        };
     }
 
     private static void MergeUserMutation(
@@ -972,6 +1281,10 @@ public sealed class AdUserLifecycleTool : ActiveDirectoryToolBase, ITool {
             facts.Add(("Organizational unit", result.OrganizationalUnit));
         }
 
+        if (!string.IsNullOrWhiteSpace(result.TargetOrganizationalUnit)) {
+            facts.Add(("Target organizational unit", result.TargetOrganizationalUnit));
+        }
+
         if (!string.IsNullOrWhiteSpace(result.Message)) {
             facts.Add(("Message", result.Message));
         }
@@ -994,6 +1307,10 @@ public sealed class AdUserLifecycleTool : ActiveDirectoryToolBase, ITool {
             .Add("write_candidate", true);
         if (!string.IsNullOrWhiteSpace(result.DomainName)) {
             meta.Add("domain_name", result.DomainName);
+        }
+
+        if (!string.IsNullOrWhiteSpace(result.TargetOrganizationalUnit)) {
+            meta.Add("target_organizational_unit", result.TargetOrganizationalUnit);
         }
 
         if (result.GroupsAdded.Count > 0) {
