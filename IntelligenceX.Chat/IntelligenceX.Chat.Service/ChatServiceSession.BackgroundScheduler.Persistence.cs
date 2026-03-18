@@ -17,6 +17,7 @@ internal sealed partial class ChatServiceSession {
         WriteIndented = false,
         PropertyNameCaseInsensitive = false
     };
+    private static Func<string, bool?>? BackgroundSchedulerRuntimeStoreLockAcquisitionOverrideForTesting;
 
     private sealed class BackgroundSchedulerRuntimeStoreDto {
         public int Version { get; set; } = BackgroundSchedulerRuntimeStoreVersion;
@@ -58,7 +59,13 @@ internal sealed partial class ChatServiceSession {
 
     private void TryRehydrateBackgroundSchedulerRuntimeState() {
         var path = ResolveBackgroundSchedulerRuntimeStorePath();
-        var store = WithBackgroundSchedulerRuntimeStoreLock(path, static runtimeStorePath => ReadBackgroundSchedulerRuntimeStoreNoThrow(runtimeStorePath));
+        if (!TryWithBackgroundSchedulerRuntimeStoreLock(
+                path,
+                static runtimeStorePath => ReadBackgroundSchedulerRuntimeStoreNoThrow(runtimeStorePath),
+                path,
+                out var store)) {
+            return;
+        }
         var nowTicks = DateTime.UtcNow.Ticks;
         (store.LastAdaptiveIdleUtcTicks, store.LastAdaptiveIdleDelaySeconds, store.LastAdaptiveIdleReason) =
             NormalizeBackgroundSchedulerAdaptiveIdleState(
@@ -134,10 +141,14 @@ internal sealed partial class ChatServiceSession {
         }
 
         var path = ResolveBackgroundSchedulerRuntimeStorePath();
-        WithBackgroundSchedulerRuntimeStoreLock(
+        _ = TryWithBackgroundSchedulerRuntimeStoreLock(
             path,
-            static state => WriteBackgroundSchedulerRuntimeStoreNoThrow(state.Path, state.Store),
-            (Path: path, Store: store));
+            static state => {
+                WriteBackgroundSchedulerRuntimeStoreNoThrow(state.Path, state.Store);
+                return true;
+            },
+            (Path: path, Store: store),
+            out _);
     }
 
     private static SessionCapabilityBackgroundSchedulerActivityDto[] NormalizeBackgroundSchedulerActivities(
@@ -245,18 +256,29 @@ internal sealed partial class ChatServiceSession {
         }
     }
 
-    private static T WithBackgroundSchedulerRuntimeStoreLock<T>(string path, Func<string, T> action) {
-        ArgumentNullException.ThrowIfNull(action);
-        return WithBackgroundSchedulerRuntimeStoreLock(path, action, path);
-    }
-
-    private static TStateResult WithBackgroundSchedulerRuntimeStoreLock<TState, TStateResult>(
+    private static bool TryWithBackgroundSchedulerRuntimeStoreLock<TState, TStateResult>(
         string path,
         Func<TState, TStateResult> action,
-        TState state) {
+        TState state,
+        out TStateResult result) {
         ArgumentNullException.ThrowIfNull(action);
+        result = default!;
 
         var mutexName = BuildBackgroundSchedulerRuntimeStoreMutexName(path);
+        var acquisitionOverride = BackgroundSchedulerRuntimeStoreLockAcquisitionOverrideForTesting;
+        if (acquisitionOverride is not null) {
+            var overrideResult = acquisitionOverride(path);
+            if (overrideResult.HasValue) {
+                if (!overrideResult.Value) {
+                    Trace.TraceWarning($"Background scheduler runtime store lock timeout for '{mutexName}'.");
+                    return false;
+                }
+
+                result = action(state);
+                return true;
+            }
+        }
+
         Mutex? mutex = null;
         var acquired = false;
         try {
@@ -269,13 +291,14 @@ internal sealed partial class ChatServiceSession {
 
             if (!acquired) {
                 Trace.TraceWarning($"Background scheduler runtime store lock timeout for '{mutexName}'.");
-                return action(state);
+                return false;
             }
 
-            return action(state);
+            result = action(state);
+            return true;
         } catch (Exception ex) {
             Trace.TraceWarning($"Background scheduler runtime store lock failed: {ex.GetType().Name}: {ex.Message}");
-            return action(state);
+            return false;
         } finally {
             if (acquired && mutex is not null) {
                 try {
@@ -287,20 +310,6 @@ internal sealed partial class ChatServiceSession {
 
             mutex?.Dispose();
         }
-    }
-
-    private static void WithBackgroundSchedulerRuntimeStoreLock<TState>(
-        string path,
-        Action<TState> action,
-        TState state) {
-        ArgumentNullException.ThrowIfNull(action);
-        _ = WithBackgroundSchedulerRuntimeStoreLock(
-            path,
-            static localState => {
-                localState.Action(localState.State);
-                return 0;
-            },
-            (Action: action, State: state));
     }
 
     private static string BuildBackgroundSchedulerRuntimeStoreMutexName(string path) {

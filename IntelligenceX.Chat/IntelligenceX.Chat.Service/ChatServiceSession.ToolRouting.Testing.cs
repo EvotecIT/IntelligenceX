@@ -403,6 +403,10 @@ internal sealed partial class ChatServiceSession {
         return ResolveBackgroundSchedulerRuntimeStorePath();
     }
 
+    internal static void SetBackgroundSchedulerRuntimeStoreLockAcquisitionOverrideForTesting(Func<string, bool?>? overrideFunc) {
+        BackgroundSchedulerRuntimeStoreLockAcquisitionOverrideForTesting = overrideFunc;
+    }
+
     internal static string BuildBackgroundWorkQueuedStatusMessageForTesting(
         int queuedCount,
         IReadOnlyList<ThreadBackgroundWorkItem>? items = null) {

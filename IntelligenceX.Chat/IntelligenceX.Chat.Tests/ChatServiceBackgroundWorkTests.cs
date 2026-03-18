@@ -3040,6 +3040,55 @@ public sealed class ChatServiceBackgroundWorkTests {
     }
 
     [Fact]
+    public void BackgroundSchedulerRuntimeState_DoesNotRehydrateWhenLockUnavailable() {
+        var (options, _, _) = ChatServiceTestSessionFactory.CreateIsolatedPersistenceOptions();
+
+        var writer = new ChatServiceSession(options, Stream.Null);
+        writer.RememberBackgroundSchedulerAdaptiveIdleDecisionForTesting(
+            TimeSpan.FromSeconds(45),
+            "policy=rehydrate_blocked");
+
+        var runtimeStorePath = writer.ResolveBackgroundSchedulerRuntimeStorePathForTesting();
+        Assert.True(File.Exists(runtimeStorePath));
+
+        ChatServiceSession.SetBackgroundSchedulerRuntimeStoreLockAcquisitionOverrideForTesting(
+            path => string.Equals(path, runtimeStorePath, StringComparison.OrdinalIgnoreCase) ? false : null);
+        try {
+            var resumed = new ChatServiceSession(options, Stream.Null).BuildBackgroundSchedulerSummaryForTesting();
+
+            Assert.False(resumed.AdaptiveIdleActive);
+            Assert.Equal(0, resumed.LastAdaptiveIdleUtcTicks);
+            Assert.Equal(0, resumed.LastAdaptiveIdleDelaySeconds);
+            Assert.Equal(string.Empty, resumed.LastAdaptiveIdleReason);
+        } finally {
+            ChatServiceSession.SetBackgroundSchedulerRuntimeStoreLockAcquisitionOverrideForTesting(null);
+        }
+    }
+
+    [Fact]
+    public void BackgroundSchedulerRuntimeState_DoesNotPersistWhenLockUnavailable() {
+        var (options, _, _) = ChatServiceTestSessionFactory.CreateIsolatedPersistenceOptions();
+
+        var session = new ChatServiceSession(options, Stream.Null);
+        var runtimeStorePath = session.ResolveBackgroundSchedulerRuntimeStorePathForTesting();
+        if (File.Exists(runtimeStorePath)) {
+            File.Delete(runtimeStorePath);
+        }
+
+        ChatServiceSession.SetBackgroundSchedulerRuntimeStoreLockAcquisitionOverrideForTesting(
+            path => string.Equals(path, runtimeStorePath, StringComparison.OrdinalIgnoreCase) ? false : null);
+        try {
+            session.RememberBackgroundSchedulerAdaptiveIdleDecisionForTesting(
+                TimeSpan.FromSeconds(45),
+                "policy=write_blocked");
+        } finally {
+            ChatServiceSession.SetBackgroundSchedulerRuntimeStoreLockAcquisitionOverrideForTesting(null);
+        }
+
+        Assert.False(File.Exists(runtimeStorePath));
+    }
+
+    [Fact]
     public void ResolveThreadBackgroundWorkSnapshot_IgnoresNullPersistedItems() {
         var (options, _, _) = ChatServiceTestSessionFactory.CreateIsolatedPersistenceOptions();
         const string threadId = "thread-background-work-null-item";
