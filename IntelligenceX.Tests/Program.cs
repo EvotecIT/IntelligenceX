@@ -89,6 +89,12 @@ internal static partial class Program {
             TestGitHubWrappedCardHtmlRendererBuildsCompactCard);
         failed += Run("Usage overview html renderer builds provider diagnostics",
             TestUsageTelemetryOverviewHtmlRendererBuildsProviderDiagnostics);
+        failed += Run("Popup placement math converts pixels to DIPs",
+            TestPopupPlacementMathConvertsPixelsToDips);
+        failed += Run("Popup placement math clamps within work area",
+            TestPopupPlacementMathClampsWithinWorkArea);
+        failed += Run("GitHub dashboard service explicit self lookup keeps authenticated organizations",
+            TestGitHubDashboardServiceExplicitSelfLookupKeepsAuthenticatedOrganizations);
         failed += Run("GitHub dashboard repository ranking deduplicates overlapping repositories",
             TestGitHubDashboardRepositoryRankingDeduplicatesOverlappingRepositories);
         failed += Run("GitHub dashboard repository ranking orders and caps repositories",

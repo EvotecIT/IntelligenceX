@@ -38,24 +38,23 @@ public sealed class GitHubDashboardService : IDisposable {
     /// <returns>GitHub dashboard data.</returns>
     public async Task<GitHubDashboardData> FetchAsync(string? login = null, CancellationToken cancellationToken = default) {
         var explicitLogin = NormalizeOptional(login);
-        var authenticatedLogin = explicitLogin is null
-            ? await GetAuthenticatedLoginAsync(cancellationToken).ConfigureAwait(false)
-            : null;
+        var authenticatedLogin = await GetAuthenticatedLoginAsync(cancellationToken).ConfigureAwait(false);
         var effectiveLogin = explicitLogin ?? authenticatedLogin;
         if (string.IsNullOrWhiteSpace(effectiveLogin)) {
             throw new InvalidOperationException("Unable to determine authenticated GitHub login.");
         }
         var normalizedLogin = effectiveLogin!;
+        var isAuthenticatedSelfLookup = !string.IsNullOrWhiteSpace(authenticatedLogin)
+                                        && string.Equals(normalizedLogin, authenticatedLogin, StringComparison.OrdinalIgnoreCase);
 
         var profileTask = FetchProfileAsync(
             normalizedLogin,
-            explicitLogin is null || string.Equals(explicitLogin, authenticatedLogin, StringComparison.OrdinalIgnoreCase),
+            isAuthenticatedSelfLookup,
             cancellationToken);
         var contributionsTask = FetchContributionsAsync(normalizedLogin, cancellationToken);
         var repositoriesTask = FetchRepositoriesAsync(
             normalizedLogin,
-            includeAuthenticatedOrganizations: explicitLogin is null
-                                              || string.Equals(explicitLogin, authenticatedLogin, StringComparison.OrdinalIgnoreCase),
+            includeAuthenticatedOrganizations: isAuthenticatedSelfLookup,
             cancellationToken);
         await Task.WhenAll(profileTask, contributionsTask, repositoriesTask).ConfigureAwait(false);
 

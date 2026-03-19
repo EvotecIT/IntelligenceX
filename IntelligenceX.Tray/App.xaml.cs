@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Runtime.InteropServices;
 using System.IO;
+using IntelligenceX.Presentation;
 using H.NotifyIcon;
 using H.NotifyIcon.Core;
 using IntelligenceX.Telemetry.Limits;
@@ -312,17 +313,23 @@ public partial class App : Application {
     private void PositionPopupNearTray() {
         if (_popupWindow is null) return;
 
-        var workArea = SystemParameters.WorkArea;
-        if (!TryGetCursorPosition(out var cursorX, out var cursorY)) {
-            cursorX = workArea.Right - 8;
-            cursorY = workArea.Bottom - 8;
+        if (!TryGetPopupPlacementContext(out var workArea, out var cursor)) {
+            workArea = new PopupBounds(
+                SystemParameters.WorkArea.Left,
+                SystemParameters.WorkArea.Top,
+                SystemParameters.WorkArea.Right,
+                SystemParameters.WorkArea.Bottom);
+            cursor = new PopupPoint(workArea.Right - 8, workArea.Bottom - 8);
         }
 
-        var targetLeft = cursorX - _popupWindow.Width + 18;
-        var targetTop = cursorY - _popupWindow.Height - 12;
-
-        _popupWindow.Left = Math.Max(workArea.Left + 8, Math.Min(targetLeft, workArea.Right - _popupWindow.Width - 8));
-        _popupWindow.Top = Math.Max(workArea.Top + 8, Math.Min(targetTop, workArea.Bottom - _popupWindow.Height - 8));
+        var placement = PopupPlacementMath.PlaceNearCursor(
+            workArea,
+            _popupWindow.Width,
+            _popupWindow.Height,
+            cursor.X,
+            cursor.Y);
+        _popupWindow.Left = placement.Left;
+        _popupWindow.Top = placement.Top;
     }
 
     private static bool TryGetCursorPosition(out double x, out double y) {
@@ -335,6 +342,46 @@ public partial class App : Application {
         x = 0;
         y = 0;
         return false;
+    }
+
+    private static bool TryGetPopupPlacementContext(out PopupBounds workArea, out PopupPoint cursor) {
+        workArea = default;
+        cursor = default;
+        if (!GetCursorPos(out var point)) {
+            return false;
+        }
+
+        var monitor = MonitorFromPoint(point, MonitorDefaultToNearest);
+        if (monitor == IntPtr.Zero) {
+            return false;
+        }
+
+        var monitorInfo = new NativeMonitorInfo();
+        monitorInfo.CbSize = Marshal.SizeOf<NativeMonitorInfo>();
+        if (!GetMonitorInfo(monitor, ref monitorInfo)) {
+            return false;
+        }
+
+        var dpiX = 96d;
+        var dpiY = 96d;
+        try {
+            if (GetDpiForMonitor(monitor, MonitorDpiTypeEffective, out var monitorDpiX, out var monitorDpiY) == 0) {
+                dpiX = monitorDpiX;
+                dpiY = monitorDpiY;
+            }
+        } catch (DllNotFoundException) {
+        } catch (EntryPointNotFoundException) {
+        }
+
+        workArea = PopupPlacementMath.ConvertPixelBoundsToDips(
+            monitorInfo.Work.Left,
+            monitorInfo.Work.Top,
+            monitorInfo.Work.Right,
+            monitorInfo.Work.Bottom,
+            dpiX,
+            dpiY);
+        cursor = PopupPlacementMath.ConvertPixelsToDips(point.X, point.Y, dpiX, dpiY);
+        return true;
     }
 
     private void OnNotificationRequested(object? sender, TrayNotificationRequestedEventArgs e) {
@@ -358,9 +405,38 @@ public partial class App : Application {
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GetCursorPos(out NativePoint point);
 
+    [DllImport("user32.dll")]
+    private static extern IntPtr MonitorFromPoint(NativePoint point, uint flags);
+
+    [DllImport("user32.dll", CharSet = CharSet.Auto)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetMonitorInfo(IntPtr monitor, ref NativeMonitorInfo monitorInfo);
+
+    [DllImport("Shcore.dll")]
+    private static extern int GetDpiForMonitor(IntPtr monitor, int dpiType, out uint dpiX, out uint dpiY);
+
+    private const uint MonitorDefaultToNearest = 2;
+    private const int MonitorDpiTypeEffective = 0;
+
     private struct NativePoint {
         public int X;
         public int Y;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
+    private struct NativeMonitorInfo {
+        public int CbSize;
+        public NativeRect Monitor;
+        public NativeRect Work;
+        public uint Flags;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeRect {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
     }
 
     protected override void OnExit(ExitEventArgs e) {

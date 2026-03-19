@@ -35,12 +35,27 @@ public sealed class TrayPreferencesStore {
     public void Save(TrayPreferences preferences) {
         ArgumentNullException.ThrowIfNull(preferences);
 
-        var directory = Path.GetDirectoryName(PreferencesPath);
-        if (!string.IsNullOrWhiteSpace(directory)) {
-            Directory.CreateDirectory(directory);
-        }
+        try {
+            var directory = Path.GetDirectoryName(PreferencesPath);
+            if (!string.IsNullOrWhiteSpace(directory)) {
+                Directory.CreateDirectory(directory);
+            }
 
-        var json = JsonSerializer.Serialize(preferences, SerializerOptions);
-        File.WriteAllText(PreferencesPath, json);
+            var json = JsonSerializer.Serialize(preferences, SerializerOptions);
+            var temporaryPath = PreferencesPath + ".tmp";
+            File.WriteAllText(temporaryPath, json);
+
+            if (File.Exists(PreferencesPath)) {
+                File.Replace(temporaryPath, PreferencesPath, null);
+            } else {
+                File.Move(temporaryPath, PreferencesPath);
+            }
+        } catch {
+            try {
+                File.Delete(PreferencesPath + ".tmp");
+            } catch {
+                // Best effort cleanup only.
+            }
+        }
     }
 }

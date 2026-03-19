@@ -107,7 +107,7 @@ public sealed class GitHubService {
 
     private static async Task<List<GitHubRepoInfo>> FetchAllPublicReposAsync(string endpoint, CancellationToken ct) {
         var repositories = new List<GitHubRepoInfo>();
-        for (var page = 1; page <= 20; page++) {
+        for (var page = 1;; page++) {
             var separator = endpoint.Contains('?') ? "&" : "?";
             var pageEndpoint = endpoint + separator + "per_page=" + PublicRepoPageSize.ToString(System.Globalization.CultureInfo.InvariantCulture)
                                + "&page=" + page.ToString(System.Globalization.CultureInfo.InvariantCulture);
