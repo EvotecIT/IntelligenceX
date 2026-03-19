@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.IO;
+using System.Reflection;
 using Microsoft.Win32;
 
 namespace IntelligenceX.Tray.Services;
@@ -49,6 +51,29 @@ public sealed class WindowsStartupRegistrationService {
     }
 
     private static string ResolveProcessPath() {
+        var entryAssembly = Assembly.GetEntryAssembly();
+        var entryAssemblyLocation = entryAssembly?.Location;
+        if (!string.IsNullOrWhiteSpace(entryAssemblyLocation)) {
+            if (entryAssemblyLocation.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) {
+                return entryAssemblyLocation;
+            }
+
+            if (entryAssemblyLocation.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)) {
+                var appHostPath = Path.ChangeExtension(entryAssemblyLocation, ".exe");
+                if (File.Exists(appHostPath)) {
+                    return appHostPath;
+                }
+            }
+        }
+
+        var entryAssemblyName = entryAssembly?.GetName().Name;
+        if (!string.IsNullOrWhiteSpace(entryAssemblyName) && !string.IsNullOrWhiteSpace(AppContext.BaseDirectory)) {
+            var appHostPath = Path.Combine(AppContext.BaseDirectory, entryAssemblyName + ".exe");
+            if (File.Exists(appHostPath)) {
+                return appHostPath;
+            }
+        }
+
         var processPath = Environment.ProcessPath;
         if (string.IsNullOrWhiteSpace(processPath)) {
             processPath = Process.GetCurrentProcess().MainModule?.FileName;
