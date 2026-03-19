@@ -3478,6 +3478,65 @@ public sealed class ChatServiceBackgroundWorkTests {
     }
 
     [Fact]
+    public void BackgroundSchedulerRuntimeState_PreservesPersistedStoreWhenDeferredRehydrateSkipsInitialPersist() {
+        var (options, _, _) = ChatServiceTestSessionFactory.CreateIsolatedPersistenceOptions();
+
+        var seedSession = new ChatServiceSession(options, Stream.Null);
+        var runtimeStorePath = seedSession.ResolveBackgroundSchedulerRuntimeStorePathForTesting();
+        var runtimeDirectory = Path.GetDirectoryName(runtimeStorePath);
+        Assert.False(string.IsNullOrWhiteSpace(runtimeDirectory));
+        Directory.CreateDirectory(runtimeDirectory!);
+
+        var persistedOutcomeTicks = DateTime.UtcNow.AddMinutes(-2).Ticks;
+        File.WriteAllText(
+            runtimeStorePath,
+            $$"""
+            {"version":1,"lastOutcome":"completed","lastOutcomeUtcTicks":{{persistedOutcomeTicks}},"completedExecutionCount":7,"recentActivity":[{"recordedUtcTicks":{{persistedOutcomeTicks}},"outcome":"completed","threadId":"thread-persisted","itemId":"item-persisted","toolName":"system_info","reason":"persisted_seed","outputCount":1,"failureDetail":""}]}
+            """);
+
+        ChatServiceSession? resumedSession = null;
+        ChatServiceSession.SetBackgroundSchedulerRuntimeStoreLockAcquisitionOverrideForTesting(
+            path => string.Equals(path, runtimeStorePath, StringComparison.OrdinalIgnoreCase) ? false : null);
+        try {
+            resumedSession = new ChatServiceSession(options, Stream.Null);
+            resumedSession.RememberBackgroundSchedulerAdaptiveIdleDecisionForTesting(
+                TimeSpan.FromSeconds(45),
+                "policy=deferred_merge");
+
+            var blockedSummary = resumedSession.BuildBackgroundSchedulerSummaryForTesting();
+            Assert.True(blockedSummary.RuntimeStoreRehydratePending);
+            Assert.Equal("deferred", blockedSummary.RuntimeStoreLoadState);
+            Assert.True(blockedSummary.AdaptiveIdleActive);
+            Assert.Equal(45, blockedSummary.LastAdaptiveIdleDelaySeconds);
+        } finally {
+            ChatServiceSession.SetBackgroundSchedulerRuntimeStoreLockAcquisitionOverrideForTesting(null);
+        }
+
+        Assert.NotNull(resumedSession);
+        var recoveredSummary = resumedSession!.BuildBackgroundSchedulerSummaryForTesting();
+
+        Assert.False(recoveredSummary.RuntimeStoreRehydratePending);
+        Assert.Equal("loaded", recoveredSummary.RuntimeStoreLoadState);
+        Assert.True(recoveredSummary.AdaptiveIdleActive);
+        Assert.Equal(45, recoveredSummary.LastAdaptiveIdleDelaySeconds);
+        Assert.Contains("policy=deferred_merge", recoveredSummary.LastAdaptiveIdleReason, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("completed", recoveredSummary.LastOutcome);
+        Assert.Equal(7, recoveredSummary.CompletedExecutionCount);
+        Assert.Contains(recoveredSummary.RecentActivity, activity => string.Equals(activity.Reason, "persisted_seed", StringComparison.Ordinal));
+
+        var rehydratedSession = new ChatServiceSession(options, Stream.Null);
+        var rehydratedSummary = rehydratedSession.BuildBackgroundSchedulerSummaryForTesting();
+        Assert.False(rehydratedSummary.RuntimeStoreRehydratePending);
+        Assert.Equal("loaded", rehydratedSummary.RuntimeStoreLoadState);
+        Assert.True(rehydratedSummary.AdaptiveIdleActive);
+        Assert.Equal(45, rehydratedSummary.LastAdaptiveIdleDelaySeconds);
+        Assert.Contains("policy=deferred_merge", rehydratedSummary.LastAdaptiveIdleReason, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("completed", rehydratedSummary.LastOutcome);
+        Assert.Equal(7, rehydratedSummary.CompletedExecutionCount);
+        Assert.Contains(rehydratedSummary.RecentActivity, activity => string.Equals(activity.Reason, "persisted_seed", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void BuildBackgroundSchedulerSummary_DoesNotRewriteRuntimeStoreWhenDeferredRehydrateRecovers() {
         var (options, _, _) = ChatServiceTestSessionFactory.CreateIsolatedPersistenceOptions();
 
