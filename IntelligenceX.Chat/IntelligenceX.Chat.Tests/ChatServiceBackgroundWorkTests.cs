@@ -3175,6 +3175,8 @@ public sealed class ChatServiceBackgroundWorkTests {
 
         var resumed = new ChatServiceSession(options, Stream.Null).BuildBackgroundSchedulerSummaryForTesting();
 
+        Assert.False(resumed.RuntimeStoreRehydratePending);
+        Assert.Equal("loaded", resumed.RuntimeStoreLoadState);
         Assert.True(resumed.AdaptiveIdleActive);
         Assert.Equal(180, resumed.LastAdaptiveIdleDelaySeconds);
         Assert.Contains("policy=legacy_pascal", resumed.LastAdaptiveIdleReason, StringComparison.OrdinalIgnoreCase);
@@ -3197,6 +3199,8 @@ public sealed class ChatServiceBackgroundWorkTests {
 
         var resumed = new ChatServiceSession(options, Stream.Null).BuildBackgroundSchedulerSummaryForTesting();
 
+        Assert.False(resumed.RuntimeStoreRehydratePending);
+        Assert.Equal("invalid", resumed.RuntimeStoreLoadState);
         Assert.False(resumed.AdaptiveIdleActive);
         Assert.Equal(0, resumed.LastAdaptiveIdleUtcTicks);
         Assert.Equal(0, resumed.LastAdaptiveIdleDelaySeconds);
@@ -3216,6 +3220,8 @@ public sealed class ChatServiceBackgroundWorkTests {
 
         var resumed = new ChatServiceSession(options, Stream.Null).BuildBackgroundSchedulerSummaryForTesting();
 
+        Assert.False(resumed.RuntimeStoreRehydratePending);
+        Assert.Equal("invalid", resumed.RuntimeStoreLoadState);
         Assert.False(resumed.AdaptiveIdleActive);
         Assert.Equal(0, resumed.LastAdaptiveIdleUtcTicks);
         Assert.Equal(0, resumed.LastAdaptiveIdleDelaySeconds);
@@ -3258,6 +3264,8 @@ public sealed class ChatServiceBackgroundWorkTests {
             var resumedSession = new ChatServiceSession(options, Stream.Null);
             var blockedSummary = resumedSession.BuildBackgroundSchedulerSummaryForTesting();
 
+            Assert.True(blockedSummary.RuntimeStoreRehydratePending);
+            Assert.Equal("deferred", blockedSummary.RuntimeStoreLoadState);
             Assert.False(blockedSummary.AdaptiveIdleActive);
             Assert.Equal(0, blockedSummary.LastAdaptiveIdleUtcTicks);
             Assert.Equal(0, blockedSummary.LastAdaptiveIdleDelaySeconds);
@@ -3266,6 +3274,8 @@ public sealed class ChatServiceBackgroundWorkTests {
             ChatServiceSession.SetBackgroundSchedulerRuntimeStoreLockAcquisitionOverrideForTesting(null);
 
             var recoveredSummary = resumedSession.BuildBackgroundSchedulerSummaryForTesting();
+            Assert.False(recoveredSummary.RuntimeStoreRehydratePending);
+            Assert.Equal("loaded", recoveredSummary.RuntimeStoreLoadState);
             Assert.True(recoveredSummary.AdaptiveIdleActive);
             Assert.Equal(45, recoveredSummary.LastAdaptiveIdleDelaySeconds);
             Assert.Contains("policy=rehydrate_blocked", recoveredSummary.LastAdaptiveIdleReason, StringComparison.OrdinalIgnoreCase);

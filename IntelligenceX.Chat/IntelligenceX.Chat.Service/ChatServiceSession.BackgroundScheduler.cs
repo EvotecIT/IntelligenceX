@@ -113,6 +113,8 @@ internal sealed partial class ChatServiceSession {
         long lastOutcomeUtcTicks;
         long lastSuccessUtcTicks;
         long lastFailureUtcTicks;
+        string runtimeStoreLoadState;
+        bool runtimeStoreRehydratePending;
         long lastAdaptiveIdleUtcTicks;
         int lastAdaptiveIdleDelaySeconds;
         string lastAdaptiveIdleReason;
@@ -140,6 +142,8 @@ internal sealed partial class ChatServiceSession {
             lastOutcomeUtcTicks = _backgroundSchedulerLastOutcomeUtcTicks;
             lastSuccessUtcTicks = _backgroundSchedulerLastSuccessUtcTicks;
             lastFailureUtcTicks = _backgroundSchedulerLastFailureUtcTicks;
+            runtimeStoreLoadState = NormalizeBackgroundSchedulerActivityText(_backgroundSchedulerRuntimeStoreLoadState, maxLength: 32);
+            runtimeStoreRehydratePending = Volatile.Read(ref _backgroundSchedulerRuntimeStoreRehydratePending) != 0;
             lastAdaptiveIdleUtcTicks = _backgroundSchedulerLastAdaptiveIdleUtcTicks;
             lastAdaptiveIdleDelaySeconds = _backgroundSchedulerLastAdaptiveIdleDelaySeconds;
             lastAdaptiveIdleReason = _backgroundSchedulerLastAdaptiveIdleReason;
@@ -280,6 +284,8 @@ internal sealed partial class ChatServiceSession {
         return new SessionCapabilityBackgroundSchedulerDto {
             ScopeThreadId = scopedThreadId,
             SupportsPersistentQueue = true,
+            RuntimeStoreLoadState = runtimeStoreLoadState,
+            RuntimeStoreRehydratePending = runtimeStoreRehydratePending,
             SupportsReadOnlyAutoReplay = true,
             SupportsCrossThreadScheduling = true,
             DaemonEnabled = _options.EnableBackgroundSchedulerDaemon,

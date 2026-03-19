@@ -760,6 +760,8 @@ public sealed class ToolHealthContractTests {
             Scheduler = new SessionCapabilityBackgroundSchedulerDto {
                 ScopeThreadId = "thread-ready",
                 SupportsPersistentQueue = true,
+                RuntimeStoreLoadState = "loaded",
+                RuntimeStoreRehydratePending = false,
                 SupportsReadOnlyAutoReplay = true,
                 SupportsCrossThreadScheduling = true,
                 DaemonEnabled = true,
@@ -922,6 +924,8 @@ public sealed class ToolHealthContractTests {
         Assert.True(typed.Scheduler.ManualPauseActive);
         Assert.False(typed.Scheduler.ScheduledPauseActive);
         Assert.Equal("thread-ready", typed.Scheduler.ScopeThreadId);
+        Assert.Equal("loaded", typed.Scheduler.RuntimeStoreLoadState);
+        Assert.False(typed.Scheduler.RuntimeStoreRehydratePending);
         Assert.Equal(new[] { "mon@02:00/60" }, typed.Scheduler.MaintenanceWindowSpecs);
         Assert.Equal("02:00", Assert.Single(typed.Scheduler.MaintenanceWindows).StartTimeLocal);
         Assert.Equal(new[] { "mon@02:00/60;pack=system" }, typed.Scheduler.ActiveMaintenanceWindowSpecs);
@@ -967,6 +971,8 @@ public sealed class ToolHealthContractTests {
     [Fact]
     public void SessionCapabilityBackgroundSchedulerDto_SourceGenRoundTripsSuppressionArrays() {
         var scheduler = new SessionCapabilityBackgroundSchedulerDto {
+            RuntimeStoreLoadState = "deferred",
+            RuntimeStoreRehydratePending = true,
             DependencyBlockedThreadCount = 1,
             DependencyBlockedItemCount = 2,
             DependencyHelperToolNames = new[] { "eventlog_channels_list" },
@@ -1006,6 +1012,8 @@ public sealed class ToolHealthContractTests {
         Assert.Equal(1, parsed.DependencyBlockedThreadCount);
         Assert.Equal(2, parsed.DependencyBlockedItemCount);
         Assert.Equal("request_runtime_auth_context", parsed.DependencyNextAction);
+        Assert.Equal("deferred", parsed.RuntimeStoreLoadState);
+        Assert.True(parsed.RuntimeStoreRehydratePending);
         Assert.Equal("eventlog_channels_list", Assert.Single(parsed.DependencyHelperToolNames));
         Assert.Equal("profile_id", Assert.Single(parsed.DependencyAuthenticationArgumentNames));
         Assert.True(parsed.AdaptiveIdleActive);

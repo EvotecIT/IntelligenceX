@@ -17,6 +17,16 @@ public sealed record SessionCapabilityBackgroundSchedulerDto {
     public bool SupportsPersistentQueue { get; init; }
 
     /// <summary>
+    /// Normalized persisted runtime-store load state.
+    /// </summary>
+    public string RuntimeStoreLoadState { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Indicates whether persisted runtime-store rehydration is deferred due to transient lock contention.
+    /// </summary>
+    public bool RuntimeStoreRehydratePending { get; init; }
+
+    /// <summary>
     /// Indicates whether the runtime can auto-replay safe read-only follow-up work.
     /// </summary>
     public bool SupportsReadOnlyAutoReplay { get; init; }

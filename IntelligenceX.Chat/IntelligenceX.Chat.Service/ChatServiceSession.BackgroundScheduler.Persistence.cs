@@ -12,6 +12,10 @@ using IntelligenceX.Chat.Abstractions.Policy;
 namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
+    private const string BackgroundSchedulerRuntimeStoreLoadStateEmpty = "empty";
+    private const string BackgroundSchedulerRuntimeStoreLoadStateLoaded = "loaded";
+    private const string BackgroundSchedulerRuntimeStoreLoadStateInvalid = "invalid";
+    private const string BackgroundSchedulerRuntimeStoreLoadStateDeferred = "deferred";
     private const int BackgroundSchedulerRuntimeStoreVersion = 1;
     private static readonly JsonSerializerOptions BackgroundSchedulerRuntimeStoreReadJsonOptions = new() {
         PropertyNameCaseInsensitive = true,
@@ -19,6 +23,7 @@ internal sealed partial class ChatServiceSession {
     };
     private static Func<string, bool?>? BackgroundSchedulerRuntimeStoreLockAcquisitionOverrideForTesting;
     private int _backgroundSchedulerRuntimeStoreRehydratePending;
+    private string _backgroundSchedulerRuntimeStoreLoadState = BackgroundSchedulerRuntimeStoreLoadStateEmpty;
 
     private static string ResolveDefaultBackgroundSchedulerRuntimeStorePath() {
         var root = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
@@ -45,12 +50,25 @@ internal sealed partial class ChatServiceSession {
                 path,
                 static runtimeStorePath => ReadBackgroundSchedulerRuntimeStoreNoThrow(runtimeStorePath),
                 path,
-                out var store)) {
+                out var readResult)) {
             Interlocked.Exchange(ref _backgroundSchedulerRuntimeStoreRehydratePending, 1);
+            lock (_backgroundSchedulerTelemetryLock) {
+                _backgroundSchedulerRuntimeStoreLoadState = BackgroundSchedulerRuntimeStoreLoadStateDeferred;
+            }
             return;
         }
+
         Interlocked.Exchange(ref _backgroundSchedulerRuntimeStoreRehydratePending, 0);
+        lock (_backgroundSchedulerTelemetryLock) {
+            _backgroundSchedulerRuntimeStoreLoadState = readResult.LoadState;
+        }
+
+        if (readResult.Store is null) {
+            return;
+        }
+
         var nowTicks = DateTime.UtcNow.Ticks;
+        var store = readResult.Store;
         (store.LastAdaptiveIdleUtcTicks, store.LastAdaptiveIdleDelaySeconds, store.LastAdaptiveIdleReason) =
             NormalizeBackgroundSchedulerAdaptiveIdleState(
                 store.LastAdaptiveIdleUtcTicks,
@@ -182,37 +200,37 @@ internal sealed partial class ChatServiceSession {
         };
     }
 
-    private static BackgroundSchedulerRuntimeStoreDto ReadBackgroundSchedulerRuntimeStoreNoThrow(string path) {
+    private static BackgroundSchedulerRuntimeStoreReadResult ReadBackgroundSchedulerRuntimeStoreNoThrow(string path) {
         try {
             if (string.IsNullOrWhiteSpace(path) || !File.Exists(path)) {
-                return new BackgroundSchedulerRuntimeStoreDto();
+                return BackgroundSchedulerRuntimeStoreReadResult.Empty();
             }
 
             var info = new FileInfo(path);
             if (info.Length <= 0 || info.Length > 512 * 1024) {
-                return new BackgroundSchedulerRuntimeStoreDto();
+                return BackgroundSchedulerRuntimeStoreReadResult.Invalid();
             }
 
             var json = File.ReadAllText(path, Encoding.UTF8);
             if (string.IsNullOrWhiteSpace(json)) {
-                return new BackgroundSchedulerRuntimeStoreDto();
+                return BackgroundSchedulerRuntimeStoreReadResult.Empty();
             }
 
             var store = JsonSerializer.Deserialize<BackgroundSchedulerRuntimeStoreDto>(json, BackgroundSchedulerRuntimeStoreReadJsonOptions);
             if (store is null) {
-                return new BackgroundSchedulerRuntimeStoreDto();
+                return BackgroundSchedulerRuntimeStoreReadResult.Invalid();
             }
 
             if (store.Version != BackgroundSchedulerRuntimeStoreVersion) {
                 Trace.TraceWarning(
                     $"Background scheduler runtime store version mismatch: expected {BackgroundSchedulerRuntimeStoreVersion}, found {store.Version}.");
-                return new BackgroundSchedulerRuntimeStoreDto();
+                return BackgroundSchedulerRuntimeStoreReadResult.Invalid();
             }
 
-            return store;
+            return BackgroundSchedulerRuntimeStoreReadResult.Loaded(store);
         } catch (Exception ex) {
             Trace.TraceWarning($"Background scheduler runtime store read failed: {ex.GetType().Name}: {ex.Message}");
-            return new BackgroundSchedulerRuntimeStoreDto();
+            return BackgroundSchedulerRuntimeStoreReadResult.Invalid();
         }
     }
 
@@ -352,5 +370,21 @@ internal sealed partial class ChatServiceSession {
         }
 
         return (0, 0, string.Empty);
+    }
+
+    private readonly record struct BackgroundSchedulerRuntimeStoreReadResult(
+        string LoadState,
+        BackgroundSchedulerRuntimeStoreDto? Store) {
+        public static BackgroundSchedulerRuntimeStoreReadResult Empty() {
+            return new(BackgroundSchedulerRuntimeStoreLoadStateEmpty, null);
+        }
+
+        public static BackgroundSchedulerRuntimeStoreReadResult Invalid() {
+            return new(BackgroundSchedulerRuntimeStoreLoadStateInvalid, null);
+        }
+
+        public static BackgroundSchedulerRuntimeStoreReadResult Loaded(BackgroundSchedulerRuntimeStoreDto store) {
+            return new(BackgroundSchedulerRuntimeStoreLoadStateLoaded, store);
+        }
     }
 }
