@@ -12,7 +12,8 @@
         Topmost="True"
         ResizeMode="NoResize"
         SizeChanged="OnWindowSizeChanged"
-        Deactivated="OnDeactivated">
+        Deactivated="OnDeactivated"
+        Closing="OnWindowClosing">
 
     <Window.Resources>
         <conv:BoolToVisibilityConverter x:Key="BoolToVis" />
@@ -48,33 +49,39 @@
             </Grid.RowDefinitions>
 
             <!-- ═══ HEADER ═══ -->
-            <Border Grid.Row="0" Padding="16,12,16,8">
+            <Border Grid.Row="0"
+                    Padding="16,12,16,8">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                        <Border Width="26" Height="26" CornerRadius="7" Margin="0,0,10,0"
-                                ToolTip="{Binding AccentToolTip}">
-                            <Border.Background>
-                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                                    <GradientStop Color="{StaticResource BrandStartColor}" Offset="0" />
-                                    <GradientStop Color="{StaticResource BrandEndColor}" Offset="1" />
-                                </LinearGradientBrush>
-                            </Border.Background>
-                            <TextBlock Text="IX" FontFamily="{StaticResource AppFont}"
-                                       FontSize="11" FontWeight="ExtraBold"
-                                       Foreground="White"
-                                       HorizontalAlignment="Center"
-                                       VerticalAlignment="Center" />
-                        </Border>
-                        <TextBlock FontFamily="{StaticResource AppFont}"
-                                   FontSize="15" FontWeight="SemiBold"
-                                   VerticalAlignment="Center"
-                                   Foreground="{StaticResource PrimaryTextBrush}"
-                                   Text="{Binding HeaderTitle}" />
-                    </StackPanel>
+                    <Border Grid.Column="0"
+                            Background="Transparent"
+                            Cursor="SizeAll"
+                            MouseLeftButtonDown="OnHeaderMouseLeftButtonDown">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <Border Width="26" Height="26" CornerRadius="7" Margin="0,0,10,0"
+                                    ToolTip="{Binding AccentToolTip}">
+                                <Border.Background>
+                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                        <GradientStop Color="{StaticResource BrandStartColor}" Offset="0" />
+                                        <GradientStop Color="{StaticResource BrandEndColor}" Offset="1" />
+                                    </LinearGradientBrush>
+                                </Border.Background>
+                                <TextBlock Text="IX" FontFamily="{StaticResource AppFont}"
+                                           FontSize="11" FontWeight="ExtraBold"
+                                           Foreground="White"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center" />
+                            </Border>
+                            <TextBlock FontFamily="{StaticResource AppFont}"
+                                       FontSize="15" FontWeight="SemiBold"
+                                       VerticalAlignment="Center"
+                                       Foreground="{StaticResource PrimaryTextBrush}"
+                                       Text="{Binding HeaderTitle}" />
+                        </StackPanel>
+                    </Border>
                     <StackPanel Grid.Column="1" Orientation="Horizontal">
                         <Button Style="{StaticResource RefreshButtonStyle}"
                                 Command="{Binding ToggleSelectedProviderFavoriteCommand}"
@@ -104,6 +111,22 @@
                                 VerticalAlignment="Center">
                             <TextBlock FontFamily="{StaticResource AppFont}" FontSize="11"
                                        Text="{Binding HeaderRefreshLabel}" />
+                        </Button>
+                        <Button Style="{StaticResource RefreshButtonStyle}"
+                                Click="OnMinimizeButtonClick"
+                                ToolTip="Hide to tray"
+                                VerticalAlignment="Center"
+                                Margin="6,0,0,0">
+                            <TextBlock FontFamily="{StaticResource AppFont}" FontSize="14"
+                                       Text="−" />
+                        </Button>
+                        <Button Style="{StaticResource RefreshButtonStyle}"
+                                Click="OnCloseButtonClick"
+                                ToolTip="Close tray app"
+                                VerticalAlignment="Center"
+                                Margin="6,0,0,0">
+                            <TextBlock FontFamily="{StaticResource AppFont}" FontSize="13"
+                                       Text="×" />
                         </Button>
                     </StackPanel>
                 </Grid>

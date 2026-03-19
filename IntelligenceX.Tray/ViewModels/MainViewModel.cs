@@ -60,6 +60,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     private string _accentPreset = TrayThemeService.DefaultAccentPreset;
     private int _autoRefreshIntervalSeconds;
     private bool _notificationsEnabled;
+    private bool _closeHidesToTray;
+    private bool _startWithWindows;
     private bool _hasCompletedInitialRefresh;
     private DateTimeOffset _lastUsageSnapshotScannedAtUtc;
     private DateTimeOffset _lastUsageRootDiscoveryUtc;
@@ -84,6 +86,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         _preferences.AccentPreset = _accentPreset;
         _autoRefreshIntervalSeconds = NormalizeRefreshIntervalSeconds(_preferences.AutoRefreshIntervalSeconds);
         _notificationsEnabled = _preferences.NotificationsEnabled;
+        _closeHidesToTray = _preferences.CloseHidesToTray;
+        _startWithWindows = _preferences.StartWithWindows;
         _favoriteProviderIds = new HashSet<string>(
             (_preferences.FavoriteProviderIds ?? [])
             .Where(static providerId => !string.IsNullOrWhiteSpace(providerId)),
@@ -282,6 +286,16 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     public bool NotificationsEnabled {
         get => _notificationsEnabled;
         private set => SetProperty(ref _notificationsEnabled, value);
+    }
+
+    public bool CloseHidesToTray {
+        get => _closeHidesToTray;
+        private set => SetProperty(ref _closeHidesToTray, value);
+    }
+
+    public bool StartWithWindows {
+        get => _startWithWindows;
+        private set => SetProperty(ref _startWithWindows, value);
     }
 
     public string RefreshModeLabel => AutoRefreshIntervalSeconds <= 0
@@ -698,6 +712,42 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         StatusText = enabled ? "Limit notifications enabled." : "Limit notifications paused.";
     }
 
+    public void SetCloseHidesToTray(bool enabled) {
+        if (CloseHidesToTray == enabled) {
+            return;
+        }
+
+        CloseHidesToTray = enabled;
+        _preferences.CloseHidesToTray = enabled;
+        SavePreferences();
+        StatusText = enabled
+            ? "Close button now hides the tray popup instead of exiting."
+            : "Close button now exits the tray app.";
+    }
+
+    public void SetStartWithWindows(bool enabled) {
+        if (StartWithWindows == enabled) {
+            return;
+        }
+
+        StartWithWindows = enabled;
+        _preferences.StartWithWindows = enabled;
+        SavePreferences();
+        StatusText = enabled
+            ? "Tray app will start with Windows."
+            : "Tray app will no longer start with Windows.";
+    }
+
+    public void SyncStartWithWindowsState(bool enabled) {
+        if (StartWithWindows == enabled) {
+            return;
+        }
+
+        StartWithWindows = enabled;
+        _preferences.StartWithWindows = enabled;
+        SavePreferences();
+    }
+
     public void SetThemeMode(string mode) {
         var normalizedMode = TrayThemeService.NormalizeThemeMode(mode);
         if (string.Equals(ThemeMode, normalizedMode, StringComparison.Ordinal)) {
@@ -946,6 +996,35 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     private Task CycleThemeModeAsync() {
         SetThemeMode(GetNextThemeMode(ThemeMode));
         return Task.CompletedTask;
+    }
+
+    public TrayWindowPlacement? GetSavedWindowPlacement() {
+        if (_preferences.WindowPlacement is not { } placement) {
+            return null;
+        }
+
+        return new TrayWindowPlacement {
+            Left = placement.Left,
+            Top = placement.Top
+        };
+    }
+
+    public void SaveWindowPlacement(double left, double top) {
+        if (!double.IsFinite(left) || !double.IsFinite(top)) {
+            return;
+        }
+
+        if (_preferences.WindowPlacement is { } existingPlacement
+            && Math.Abs(existingPlacement.Left - left) < 0.5d
+            && Math.Abs(existingPlacement.Top - top) < 0.5d) {
+            return;
+        }
+
+        _preferences.WindowPlacement = new TrayWindowPlacement {
+            Left = left,
+            Top = top
+        };
+        SavePreferences();
     }
 
     private void SavePreferences() {

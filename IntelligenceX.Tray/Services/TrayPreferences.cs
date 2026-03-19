@@ -7,8 +7,16 @@ public sealed class TrayPreferences {
     public string AccentPreset { get; set; } = TrayThemeService.DefaultAccentPreset;
     public int AutoRefreshIntervalSeconds { get; set; } = 120;
     public bool NotificationsEnabled { get; set; } = true;
+    public bool CloseHidesToTray { get; set; }
+    public bool StartWithWindows { get; set; }
+    public TrayWindowPlacement? WindowPlacement { get; set; }
     public List<string> FavoriteProviderIds { get; set; } = [];
     public Dictionary<string, ProviderExplorerPreferences> Providers { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+}
+
+public sealed class TrayWindowPlacement {
+    public double Left { get; set; }
+    public double Top { get; set; }
 }
 
 public sealed class ProviderExplorerPreferences {
