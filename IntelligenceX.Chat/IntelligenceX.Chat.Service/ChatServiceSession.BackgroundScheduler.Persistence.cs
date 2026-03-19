@@ -131,6 +131,7 @@ internal sealed partial class ChatServiceSession {
         lock (_backgroundSchedulerTelemetryLock) {
             NormalizeBackgroundSchedulerPauseStateNoLock(nowTicks);
             store = new BackgroundSchedulerRuntimeStoreDto {
+                Version = BackgroundSchedulerRuntimeStoreVersion,
                 LastSchedulerTickUtcTicks = Math.Max(0, Interlocked.Read(ref _backgroundSchedulerLastTickUtcTicks)),
                 LastOutcome = NormalizeBackgroundSchedulerActivityText(_backgroundSchedulerLastOutcome, maxLength: 80),
                 LastOutcomeUtcTicks = Math.Max(0, _backgroundSchedulerLastOutcomeUtcTicks),

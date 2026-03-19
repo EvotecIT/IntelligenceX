@@ -3183,6 +3183,33 @@ public sealed class ChatServiceBackgroundWorkTests {
     }
 
     [Fact]
+    public void BackgroundSchedulerRuntimeState_RehydratesPersistedRuntimeStorePayload() {
+        var (options, _, _) = ChatServiceTestSessionFactory.CreateIsolatedPersistenceOptions();
+
+        var writer = new ChatServiceSession(options, Stream.Null);
+        writer.RememberBackgroundSchedulerAdaptiveIdleDecisionForTesting(
+            TimeSpan.FromSeconds(180),
+            "policy=write_roundtrip");
+
+        var runtimeStorePath = writer.ResolveBackgroundSchedulerRuntimeStorePathForTesting();
+        Assert.True(File.Exists(runtimeStorePath));
+
+        using (var document = JsonDocument.Parse(File.ReadAllText(runtimeStorePath))) {
+            var root = document.RootElement;
+            Assert.True(root.TryGetProperty("version", out var versionNode));
+            Assert.Equal(1, versionNode.GetInt32());
+        }
+
+        var resumed = new ChatServiceSession(options, Stream.Null).BuildBackgroundSchedulerSummaryForTesting();
+
+        Assert.False(resumed.RuntimeStoreRehydratePending);
+        Assert.Equal("loaded", resumed.RuntimeStoreLoadState);
+        Assert.True(resumed.AdaptiveIdleActive);
+        Assert.Equal(180, resumed.LastAdaptiveIdleDelaySeconds);
+        Assert.Contains("policy=write_roundtrip", resumed.LastAdaptiveIdleReason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void BackgroundSchedulerRuntimeState_IgnoresUnsupportedRuntimeStoreVersion() {
         var (options, _, _) = ChatServiceTestSessionFactory.CreateIsolatedPersistenceOptions();
 
