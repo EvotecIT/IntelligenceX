@@ -15,7 +15,7 @@ public sealed class WindowsStartupRegistrationService {
         try {
             using var runKey = Registry.CurrentUser.OpenSubKey(RunKeyPath, writable: false);
             var value = runKey?.GetValue(EntryName) as string;
-            return CommandTargetsCurrentProcess(value);
+            return CommandTargetsProcessPath(value, ResolveProcessPath());
         } catch {
             return false;
         }
@@ -61,29 +61,18 @@ public sealed class WindowsStartupRegistrationService {
         return processPath;
     }
 
-    private static bool CommandTargetsCurrentProcess(string? commandValue) {
-        var processPath = ResolveProcessPath();
-        var candidate = ExtractExecutablePath(commandValue);
-        return !string.IsNullOrWhiteSpace(candidate)
-               && string.Equals(candidate, processPath, StringComparison.OrdinalIgnoreCase);
-    }
+    internal static bool CommandTargetsProcessPath(string? commandValue, string processPath) {
+        if (string.IsNullOrWhiteSpace(processPath)) {
+            return false;
+        }
 
-    private static string? ExtractExecutablePath(string? commandValue) {
         var trimmed = commandValue?.Trim();
         if (string.IsNullOrWhiteSpace(trimmed)) {
-            return null;
+            return false;
         }
 
-        if (trimmed[0] == '"') {
-            var closingQuoteIndex = trimmed.IndexOf('"', 1);
-            if (closingQuoteIndex > 1) {
-                return trimmed[1..closingQuoteIndex];
-            }
-
-            return trimmed.Trim('"');
-        }
-
-        var separatorIndex = trimmed.IndexOf(' ');
-        return separatorIndex > 0 ? trimmed[..separatorIndex] : trimmed;
+        var quotedProcessPath = "\"" + processPath + "\"";
+        return trimmed.StartsWith(quotedProcessPath, StringComparison.OrdinalIgnoreCase)
+               || trimmed.StartsWith(processPath, StringComparison.OrdinalIgnoreCase);
     }
 }
