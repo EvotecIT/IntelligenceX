@@ -21,6 +21,8 @@ internal static partial class Program {
         failed += Run("Thread triage fallback summary", TestThreadTriageFallbackSummary);
         failed += Run("Thread assessment candidates skip static analysis inline threads",
             TestThreadAssessmentCandidatesSkipStaticAnalysisInlineThreads);
+        failed += Run("Reply-to-kept-threads skips static analysis inline threads",
+            TestReplyToKeptThreadsSkipsStaticAnalysisInlineThreads);
         failed += Run("Review thread inline key allowlist", TestReviewThreadInlineKeyAllowlist);
         failed += Run("Review thread inline key codex connector default", TestReviewThreadInlineKeyCodexConnectorDefault);
         failed += Run("Thread auto-resolve summary comment", TestThreadAutoResolveSummaryComment);

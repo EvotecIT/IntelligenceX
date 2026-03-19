@@ -234,29 +234,6 @@ internal static partial class Program {
         AssertEqual(string.Empty, summary ?? string.Empty, "summary empty");
     }
 
-    private static void TestThreadAssessmentCandidatesSkipStaticAnalysisInlineThreads() {
-        var settings = new ReviewSettings {
-            ReviewThreadsAutoResolveBotsOnly = true,
-            ReviewThreadsAutoResolveMax = 10
-        };
-        var staticAnalysisThread = new PullRequestReviewThread("thread-static", false, false, 1, new[] {
-            new PullRequestReviewThreadComment(
-                1,
-                null,
-                $"{ReviewFormatter.InlineMarker}\nStatic analysis (warning): File has 2799 lines (limit 700). Split into smaller units. (rule IXLOC001)",
-                "intelligencex-review",
-                "src/Foo.cs",
-                10)
-        });
-        var actionableThread = new PullRequestReviewThread("thread-real", false, false, 1, new[] {
-            new PullRequestReviewThreadComment(2, null, "Please add a null guard.", "intelligencex-review", "src/Bar.cs", 12)
-        });
-
-        var candidates = CallSelectAssessmentCandidates(new[] { staticAnalysisThread, actionableThread }, settings);
-        AssertEqual(1, candidates.Count, "thread assessment skips static analysis inline thread");
-        AssertEqual("thread-real", candidates[0].Id, "thread assessment keeps actionable thread");
-    }
-
     private static void TestThreadAutoResolveSummaryComment() {
         var method = typeof(ReviewerApp).GetMethod("BuildThreadAutoResolveSummaryComment",
             BindingFlags.NonPublic | BindingFlags.Static);

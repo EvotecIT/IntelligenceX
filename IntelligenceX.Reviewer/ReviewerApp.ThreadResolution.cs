@@ -486,18 +486,13 @@ public static partial class ReviewerApp {
                 !comment.Body.Contains(ReviewFormatter.InlineMarker, StringComparison.OrdinalIgnoreCase)) {
                 continue;
             }
-
-            var lines = comment.Body.Replace("\r\n", "\n").Split('\n');
-            foreach (var line in lines) {
-                var trimmed = line.Trim();
-                if (trimmed.Length == 0 ||
-                    trimmed.Contains(ReviewFormatter.InlineMarker, StringComparison.OrdinalIgnoreCase) ||
-                    trimmed.Contains(InlineSignatureMarkerPrefix, StringComparison.OrdinalIgnoreCase)) {
-                    continue;
-                }
-
-                return trimmed.StartsWith("Static analysis (", StringComparison.OrdinalIgnoreCase);
+            if (comment.Body.Contains(ReviewFormatter.StaticAnalysisInlineMarker, StringComparison.OrdinalIgnoreCase)) {
+                return true;
             }
+
+            var firstVisibleLine = TryGetFirstVisibleInlineBodyLine(comment.Body);
+            return !string.IsNullOrWhiteSpace(firstVisibleLine) &&
+                   firstVisibleLine.StartsWith("Static analysis (", StringComparison.OrdinalIgnoreCase);
         }
 
         return false;

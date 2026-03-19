@@ -531,20 +531,41 @@ public static partial class ReviewerApp {
         if (string.IsNullOrWhiteSpace(body)) {
             return null;
         }
-        var lines = body.Replace("\r\n", "\n").Split('\n');
-        foreach (var line in lines) {
-            var trimmed = line.Trim();
-            if (trimmed.Length == 0) {
-                continue;
-            }
-            if (trimmed.Contains(ReviewFormatter.InlineMarker, StringComparison.OrdinalIgnoreCase)) {
-                continue;
-            }
-            if (trimmed.Contains(InlineSignatureMarkerPrefix, StringComparison.OrdinalIgnoreCase)) {
-                continue;
-            }
-            return trimmed;
+        return TryGetFirstVisibleInlineBodyLine(body);
+    }
+
+    private static string? TryGetFirstVisibleInlineBodyLine(string? body) {
+        if (string.IsNullOrWhiteSpace(body)) {
+            return null;
         }
+
+        var span = body.AsSpan();
+        var start = 0;
+        while (start < span.Length) {
+            var end = start;
+            while (end < span.Length && span[end] != '\r' && span[end] != '\n') {
+                end++;
+            }
+
+            var trimmed = span.Slice(start, end - start).Trim();
+            if (!trimmed.IsEmpty) {
+                var line = trimmed.ToString();
+                if (!line.Contains(ReviewFormatter.InlineMarker, StringComparison.OrdinalIgnoreCase) &&
+                    !line.Contains(InlineSignatureMarkerPrefix, StringComparison.OrdinalIgnoreCase) &&
+                    !line.Contains(ReviewFormatter.StaticAnalysisInlineMarker, StringComparison.OrdinalIgnoreCase)) {
+                    return line;
+                }
+            }
+
+            if (end < span.Length && span[end] == '\r') {
+                end++;
+            }
+            if (end < span.Length && span[end] == '\n') {
+                end++;
+            }
+            start = end;
+        }
+
         return null;
     }
 

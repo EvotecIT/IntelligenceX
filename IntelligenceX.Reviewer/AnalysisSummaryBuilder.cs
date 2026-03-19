@@ -109,7 +109,7 @@ internal static class AnalysisSummaryBuilder {
                 continue;
             }
             var rule = string.IsNullOrWhiteSpace(finding.RuleId) ? string.Empty : $" (rule {finding.RuleId})";
-            var body = $"Static analysis ({severity}): {message}{rule}";
+            var body = $"{ReviewFormatter.StaticAnalysisInlineMarker}\nStatic analysis ({severity}): {message}{rule}";
             list.Add(new InlineReviewComment(finding.Path, finding.Line, body));
         }
 
