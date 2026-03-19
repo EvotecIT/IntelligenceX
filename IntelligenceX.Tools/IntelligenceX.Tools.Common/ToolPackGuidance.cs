@@ -871,6 +871,11 @@ public sealed class ToolPackToolHandoffRouteModel {
     /// Declared binding pairs in <c>source-&gt;target</c> form.
     /// </summary>
     public IReadOnlyList<string> BindingPairs { get; init; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Declared route conditions in <c>source==expected</c> form.
+    /// </summary>
+    public IReadOnlyList<string> ConditionPairs { get; init; } = Array.Empty<string>();
 }
 
 /// <summary>
@@ -1399,11 +1404,26 @@ public static partial class ToolPackGuidance {
                 }
             }
 
+            var conditionPairs = new List<string>();
+            if (route.Conditions is { Count: > 0 }) {
+                for (var conditionIndex = 0; conditionIndex < route.Conditions.Count; conditionIndex++) {
+                    var condition = route.Conditions[conditionIndex];
+                    var source = condition?.SourceField?.Trim();
+                    var expected = condition?.ExpectedValue?.Trim();
+                    if (string.IsNullOrWhiteSpace(source) || string.IsNullOrWhiteSpace(expected)) {
+                        continue;
+                    }
+
+                    conditionPairs.Add(source + "==" + expected);
+                }
+            }
+
             routes.Add(new ToolPackToolHandoffRouteModel {
                 TargetPackId = route.TargetPackId,
                 TargetToolName = route.TargetToolName,
                 TargetRole = route.TargetRole,
-                BindingPairs = bindingPairs
+                BindingPairs = bindingPairs,
+                ConditionPairs = conditionPairs
             });
         }
 

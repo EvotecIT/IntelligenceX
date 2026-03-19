@@ -45,12 +45,20 @@ public sealed partial class AdMonitoringProbeRunTool {
     private static ToolChainContractModel BuildChainContract(
         string normalizedKind,
         string? directoryProbeKind,
+        JsonObject? arguments,
         ProbeResult result,
         IReadOnlyList<string> resolvedTargets,
         string? domainName,
         string? forestName,
         bool includeTrusts,
         DirectoryDiscoveryFallback discoveryFallback) {
+        var activeFollowUpProfileIds = ResolveActiveFollowUpProfileIds(
+            normalizedKind: normalizedKind,
+            directoryProbeKind: directoryProbeKind,
+            arguments: arguments,
+            resolvedTargets: resolvedTargets,
+            domainName: domainName,
+            forestName: forestName);
         var nextActions = BuildNextActions(
             normalizedKind: normalizedKind,
             directoryProbeKind: directoryProbeKind,
@@ -98,15 +106,107 @@ public sealed partial class AdMonitoringProbeRunTool {
                 ("forest_name", forestName ?? string.Empty),
                 ("domain_name", domainName ?? string.Empty),
                 ("discovery_fallback", fallbackName),
-                ("targets_preview", string.Join(";", resolvedTargets.Take(10)))),
+                ("targets_preview", string.Join(";", resolvedTargets.Take(10))),
+                ("active_follow_up_profiles", string.Join(";", activeFollowUpProfileIds))),
             checkpoint: ToolChainingHints.Map(
                 ("current_tool", "ad_monitoring_probe_run"),
                 ("probe_kind", normalizedKind),
                 ("directory_probe_kind", directoryProbeKind ?? string.Empty),
                 ("status", result.Status.ToString()),
                 ("row_targets", resolvedTargets.Count),
-                ("include_trusts", includeTrusts)),
+                ("include_trusts", includeTrusts),
+                ("active_follow_up_profiles", string.Join(";", activeFollowUpProfileIds))),
             confidence: confidence);
+    }
+
+    internal static string[] ResolveActiveFollowUpProfileIds(
+        string normalizedKind,
+        string? directoryProbeKind,
+        JsonObject? arguments,
+        IReadOnlyList<string> resolvedTargets,
+        string? domainName,
+        string? forestName) {
+        var activeProfileIds = new List<string>();
+        var hasResolvedScope = (resolvedTargets?.Count ?? 0) > 0
+                               || !string.IsNullOrWhiteSpace(domainName)
+                               || !string.IsNullOrWhiteSpace(forestName);
+
+        switch (normalizedKind) {
+            case "ldap":
+                if (ToolArgs.GetBoolean(arguments, "verify_certificate", defaultValue: true)) {
+                    activeProfileIds.Add("ldaps_certificate_focus");
+                }
+
+                if (!string.IsNullOrWhiteSpace(ToolArgs.GetOptionalTrimmed(arguments, "identity"))) {
+                    activeProfileIds.Add("identity_or_bind_focus");
+                }
+
+                if (hasResolvedScope) {
+                    activeProfileIds.Add("host_policy_focus");
+                }
+                break;
+            case "kerberos":
+                if (string.Equals(ToolArgs.GetOptionalTrimmed(arguments, "protocol"), "both", StringComparison.OrdinalIgnoreCase)
+                    || ToolArgs.GetBoolean(arguments, "split_protocol_results", defaultValue: false)) {
+                    activeProfileIds.Add("transport_split");
+                }
+
+                if (hasResolvedScope) {
+                    activeProfileIds.Add("time_skew_and_kdc_health");
+                }
+
+                if (!string.IsNullOrWhiteSpace(ToolArgs.GetOptionalTrimmed(arguments, "realm"))) {
+                    activeProfileIds.Add("realm_override_validation");
+                }
+                break;
+            case "https":
+                if (ToolArgs.GetBoolean(arguments, "verify_certificate", defaultValue: true)) {
+                    activeProfileIds.Add("certificate_validation_focus");
+                }
+
+                if (ToolArgs.ToPositiveInt32OrNull(arguments?.GetInt64("degraded_above_ms")).HasValue || hasResolvedScope) {
+                    activeProfileIds.Add("latency_and_runtime_focus");
+                }
+                break;
+            case "replication":
+                if (ToolArgs.GetBoolean(arguments, "include_sysvol", defaultValue: false)
+                    || ToolArgs.GetBoolean(arguments, "test_sysvol_shares", defaultValue: false)) {
+                    activeProfileIds.Add("sysvol_follow_through");
+                }
+
+                if (ToolArgs.GetBoolean(arguments, "test_ports", defaultValue: false)
+                    || ToolArgs.GetBoolean(arguments, "test_ping", defaultValue: false)
+                    || !string.IsNullOrWhiteSpace(ToolArgs.GetOptionalTrimmed(arguments, "query_mode"))) {
+                    activeProfileIds.Add("connectivity_preflight");
+                }
+
+                if (ToolArgs.ToPositiveInt32OrNull(arguments?.GetInt64("stale_threshold_hours")).HasValue
+                    || !string.IsNullOrWhiteSpace(ToolArgs.GetOptionalTrimmed(arguments, "domain_controller"))
+                    || hasResolvedScope) {
+                    activeProfileIds.Add("resource_pressure");
+                }
+                break;
+            case "windows_update":
+                if (ToolArgs.GetBoolean(arguments, "require_wsus", defaultValue: false)) {
+                    activeProfileIds.Add("wsus_management_focus");
+                }
+
+                if (hasResolvedScope) {
+                    activeProfileIds.Add("patch_inventory_focus");
+                }
+                break;
+            case "directory":
+                var normalizedDirectoryKind = NormalizeProbeKind(directoryProbeKind ?? string.Empty);
+                if (normalizedDirectoryKind.Length > 0) {
+                    activeProfileIds.Add("directory_probe_kind:" + normalizedDirectoryKind);
+                }
+                break;
+        }
+
+        return activeProfileIds
+            .Where(static id => !string.IsNullOrWhiteSpace(id))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
     }
 
     private static IReadOnlyList<ToolNextActionModel> BuildNextActions(

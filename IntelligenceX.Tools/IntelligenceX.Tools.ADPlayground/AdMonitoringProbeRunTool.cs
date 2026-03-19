@@ -157,12 +157,20 @@ public sealed partial class AdMonitoringProbeRunTool : ActiveDirectoryToolBase, 
         var chain = BuildChainContract(
             normalizedKind: normalizedKind,
             directoryProbeKind: directoryProbeKind,
+            arguments: arguments,
             result: result,
             resolvedTargets: resolvedTargets,
             domainName: domainName,
             forestName: forestName,
             includeTrusts: includeTrusts,
             discoveryFallback: discoveryFallback);
+        var activeFollowUpProfileIds = ResolveActiveFollowUpProfileIds(
+            normalizedKind: normalizedKind,
+            directoryProbeKind: directoryProbeKind,
+            arguments: arguments,
+            resolvedTargets: resolvedTargets,
+            domainName: domainName,
+            forestName: forestName);
         var model = new {
             ProbeKind = normalizedKind,
             ProbeResult = result,
@@ -175,6 +183,7 @@ public sealed partial class AdMonitoringProbeRunTool : ActiveDirectoryToolBase, 
             Checkpoint = chain.Checkpoint,
             Handoff = chain.Handoff,
             Confidence = chain.Confidence,
+            ActiveFollowUpProfileIds = activeFollowUpProfileIds,
             NormalizedRequest = new {
                 Name = name,
                 DomainName = domainName,
@@ -218,6 +227,15 @@ public sealed partial class AdMonitoringProbeRunTool : ActiveDirectoryToolBase, 
 
                     meta.Add("next_actions", nextActionsJson);
                     meta.Add("chain_confidence", chain.Confidence);
+                }
+
+                if (activeFollowUpProfileIds.Length > 0) {
+                    var activeProfilesJson = new JsonArray();
+                    for (var i = 0; i < activeFollowUpProfileIds.Length; i++) {
+                        activeProfilesJson.Add(activeFollowUpProfileIds[i]);
+                    }
+
+                    meta.Add("active_follow_up_profile_ids", activeProfilesJson);
                 }
             });
         return response;

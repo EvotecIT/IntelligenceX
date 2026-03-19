@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -9,7 +10,10 @@ using IntelligenceX.Chat.Abstractions.Serialization;
 using IntelligenceX.Chat.Service;
 using IntelligenceX.Chat.Tooling;
 using IntelligenceX.Tools;
+using IntelligenceX.Tools.ADPlayground;
 using IntelligenceX.Tools.Common;
+using IntelligenceX.Tools.EventLog;
+using IntelligenceX.Tools.System;
 using Xunit;
 
 namespace IntelligenceX.Chat.Tests;
@@ -3557,6 +3561,303 @@ public sealed class ChatServiceBackgroundWorkTests {
     }
 
     [Fact]
+    public void RememberToolHandoffBackgroundWork_SeedsComputerLifecycleSystemVerificationFromComputerName() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        const string threadId = "thread-background-work-handoff-computer-lifecycle";
+        var definitions = new[] {
+            CreateDefinition(
+                name: "ad_computer_lifecycle",
+                handoff: new ToolHandoffContract {
+                    IsHandoffAware = true,
+                    OutboundRoutes = new[] {
+                        new ToolHandoffRoute {
+                            TargetPackId = "active_directory",
+                            TargetToolName = "ad_object_get",
+                            TargetRole = ToolRoutingTaxonomy.RoleResolver,
+                            FollowUpKind = ToolHandoffFollowUpKinds.Verification,
+                            FollowUpPriority = ToolHandoffFollowUpPriorities.Critical,
+                            Bindings = new[] {
+                                new ToolHandoffBinding {
+                                    SourceField = "distinguished_name",
+                                    TargetArgument = "identity"
+                                }
+                            }
+                        },
+                        new ToolHandoffRoute {
+                            TargetPackId = "active_directory",
+                            TargetToolName = "ad_object_resolve",
+                            TargetRole = ToolRoutingTaxonomy.RoleResolver,
+                            FollowUpKind = ToolHandoffFollowUpKinds.Normalization,
+                            FollowUpPriority = ToolHandoffFollowUpPriorities.Normal,
+                            Bindings = new[] {
+                                new ToolHandoffBinding {
+                                    SourceField = "distinguished_name",
+                                    TargetArgument = "identity"
+                                }
+                            }
+                        },
+                        new ToolHandoffRoute {
+                            TargetPackId = "system",
+                            TargetToolName = "system_info",
+                            TargetRole = ToolRoutingTaxonomy.RoleOperational,
+                            FollowUpKind = ToolHandoffFollowUpKinds.Verification,
+                            FollowUpPriority = ToolHandoffFollowUpPriorities.High,
+                            Bindings = new[] {
+                                new ToolHandoffBinding {
+                                    SourceField = "computer_name",
+                                    TargetArgument = "computer_name"
+                                }
+                            }
+                        },
+                        new ToolHandoffRoute {
+                            TargetPackId = "system",
+                            TargetToolName = "system_metrics_summary",
+                            TargetRole = ToolRoutingTaxonomy.RoleOperational,
+                            FollowUpKind = ToolHandoffFollowUpKinds.Investigation,
+                            FollowUpPriority = ToolHandoffFollowUpPriorities.Normal,
+                            Bindings = new[] {
+                                new ToolHandoffBinding {
+                                    SourceField = "computer_name",
+                                    TargetArgument = "computer_name"
+                                }
+                            }
+                        },
+                        new ToolHandoffRoute {
+                            TargetPackId = "eventlog",
+                            TargetToolName = "eventlog_channels_list",
+                            TargetRole = ToolRoutingTaxonomy.RoleOperational,
+                            FollowUpKind = ToolHandoffFollowUpKinds.Verification,
+                            FollowUpPriority = ToolHandoffFollowUpPriorities.Normal,
+                            Bindings = new[] {
+                                new ToolHandoffBinding {
+                                    SourceField = "computer_name",
+                                    TargetArgument = "machine_name"
+                                }
+                            }
+                        }
+                    }
+                },
+                writeGovernance: new ToolWriteGovernanceContract {
+                    IsWriteCapable = true
+                }),
+            new ToolDefinition("ad_object_get", "AD object get", ToolSchema.Object(("identity", ToolSchema.String("Identity."))).NoAdditionalProperties()),
+            new ToolDefinition("ad_object_resolve", "AD object resolve", ToolSchema.Object(("identity", ToolSchema.String("Identity."))).NoAdditionalProperties()),
+            new ToolDefinition("system_info", "system info", ToolSchema.Object(("computer_name", ToolSchema.String("Remote computer."))).NoAdditionalProperties()),
+            new ToolDefinition("system_metrics_summary", "system metrics", ToolSchema.Object(("computer_name", ToolSchema.String("Remote computer."))).NoAdditionalProperties()),
+            new ToolDefinition("eventlog_channels_list", "event log channels", ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties())
+        };
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(definitions));
+
+        session.RememberToolHandoffBackgroundWorkForTesting(
+            threadId,
+            definitions,
+            new List<ToolCallDto> {
+                new() {
+                    CallId = "call-ad-computer-write",
+                    Name = "ad_computer_lifecycle",
+                    ArgumentsJson = """{"identity":"CN=SRV-SQL-01,OU=Servers,DC=contoso,DC=com","operation":"move","apply":true}"""
+                }
+            },
+            new List<ToolOutputDto> {
+                new() {
+                    CallId = "call-ad-computer-write",
+                    Ok = true,
+                    Output = """{"ok":true,"identity":"SRV-SQL-01$","distinguished_name":"CN=SRV-SQL-01,OU=Tier0,DC=contoso,DC=com","computer_name":"srv-sql-01.contoso.com"}""",
+                    MetaJson = """{"write_applied":true}"""
+                }
+            });
+
+        var snapshot = session.ResolveThreadBackgroundWorkSnapshotForTesting(threadId);
+
+        Assert.Equal(5, snapshot.ReadyCount);
+        Assert.Equal(0, snapshot.QueuedCount);
+        Assert.Contains(snapshot.Items, static item => string.Equals(item.TargetToolName, "system_info", StringComparison.OrdinalIgnoreCase)
+                                                       && item.PreparedArgumentsJson.Contains("\"computer_name\":\"srv-sql-01.contoso.com\"", StringComparison.Ordinal));
+        Assert.Contains(snapshot.Items, static item => string.Equals(item.TargetToolName, "system_metrics_summary", StringComparison.OrdinalIgnoreCase)
+                                                       && item.PreparedArgumentsJson.Contains("\"computer_name\":\"srv-sql-01.contoso.com\"", StringComparison.Ordinal));
+        Assert.Contains(snapshot.Items, static item => string.Equals(item.TargetToolName, "eventlog_channels_list", StringComparison.OrdinalIgnoreCase)
+                                                       && item.PreparedArgumentsJson.Contains("\"machine_name\":\"srv-sql-01.contoso.com\"", StringComparison.Ordinal));
+        Assert.Contains(snapshot.Items, static item => string.Equals(item.TargetToolName, "ad_object_get", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(snapshot.Items, static item => string.Equals(item.TargetToolName, "ad_object_resolve", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void RememberToolHandoffBackgroundWork_SeedsUserLifecycleMembershipVerification() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        const string threadId = "thread-background-work-handoff-user-membership";
+        var definitions = new[] {
+            CreateDefinition(
+                name: "ad_user_lifecycle",
+                handoff: new ToolHandoffContract {
+                    IsHandoffAware = true,
+                    OutboundRoutes = new[] {
+                        new ToolHandoffRoute {
+                            TargetPackId = "active_directory",
+                            TargetToolName = "ad_object_get",
+                            TargetRole = ToolRoutingTaxonomy.RoleResolver,
+                            FollowUpKind = ToolHandoffFollowUpKinds.Verification,
+                            FollowUpPriority = ToolHandoffFollowUpPriorities.Critical,
+                            Bindings = new[] {
+                                new ToolHandoffBinding {
+                                    SourceField = "distinguished_name",
+                                    TargetArgument = "identity"
+                                }
+                            }
+                        },
+                        new ToolHandoffRoute {
+                            TargetPackId = "active_directory",
+                            TargetToolName = "ad_object_resolve",
+                            TargetRole = ToolRoutingTaxonomy.RoleResolver,
+                            FollowUpKind = ToolHandoffFollowUpKinds.Normalization,
+                            FollowUpPriority = ToolHandoffFollowUpPriorities.Normal,
+                            Bindings = new[] {
+                                new ToolHandoffBinding {
+                                    SourceField = "distinguished_name",
+                                    TargetArgument = "identity"
+                                }
+                            }
+                        },
+                        new ToolHandoffRoute {
+                            TargetPackId = "active_directory",
+                            TargetToolName = "ad_user_groups_resolved",
+                            TargetRole = ToolRoutingTaxonomy.RoleOperational,
+                            FollowUpKind = ToolHandoffFollowUpKinds.Verification,
+                            FollowUpPriority = ToolHandoffFollowUpPriorities.High,
+                            Bindings = new[] {
+                                new ToolHandoffBinding {
+                                    SourceField = "distinguished_name",
+                                    TargetArgument = "identity"
+                                }
+                            }
+                        }
+                    }
+                },
+                writeGovernance: new ToolWriteGovernanceContract {
+                    IsWriteCapable = true
+                }),
+            new ToolDefinition("ad_object_get", "AD object get", ToolSchema.Object(("identity", ToolSchema.String("Identity."))).NoAdditionalProperties()),
+            new ToolDefinition("ad_object_resolve", "AD object resolve", ToolSchema.Object(("identity", ToolSchema.String("Identity."))).NoAdditionalProperties()),
+            new ToolDefinition("ad_user_groups_resolved", "AD user groups resolved", ToolSchema.Object(("identity", ToolSchema.String("User identity."))).NoAdditionalProperties())
+        };
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(definitions));
+
+        session.RememberToolHandoffBackgroundWorkForTesting(
+            threadId,
+            definitions,
+            new List<ToolCallDto> {
+                new() {
+                    CallId = "call-ad-user-write",
+                    Name = "ad_user_lifecycle",
+                    ArgumentsJson = """{"identity":"alice","operation":"update","groups_to_add":["GG-SQL-Users"],"apply":true}"""
+                }
+            },
+            new List<ToolOutputDto> {
+                new() {
+                    CallId = "call-ad-user-write",
+                    Ok = true,
+                    Output = """{"ok":true,"identity":"alice","distinguished_name":"CN=Alice Smith,OU=Users,DC=contoso,DC=com"}""",
+                    MetaJson = """{"write_applied":true}"""
+                }
+            });
+
+        var snapshot = session.ResolveThreadBackgroundWorkSnapshotForTesting(threadId);
+
+        Assert.Equal(3, snapshot.ReadyCount);
+        Assert.Equal(0, snapshot.QueuedCount);
+        Assert.Contains(snapshot.Items, static item => string.Equals(item.TargetToolName, "ad_user_groups_resolved", StringComparison.OrdinalIgnoreCase)
+                                                       && item.PreparedArgumentsJson.Contains("\"identity\":\"CN=Alice Smith,OU=Users,DC=contoso,DC=com\"", StringComparison.Ordinal));
+        Assert.Contains(snapshot.Items, static item => string.Equals(item.TargetToolName, "ad_object_get", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(snapshot.Items, static item => string.Equals(item.TargetToolName, "ad_object_resolve", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void RememberToolHandoffBackgroundWork_SeedsGroupLifecycleMembershipVerification() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        const string threadId = "thread-background-work-handoff-group-lifecycle";
+        var definitions = new[] {
+            CreateDefinition(
+                name: "ad_group_lifecycle",
+                handoff: new ToolHandoffContract {
+                    IsHandoffAware = true,
+                    OutboundRoutes = new[] {
+                        new ToolHandoffRoute {
+                            TargetPackId = "active_directory",
+                            TargetToolName = "ad_object_get",
+                            TargetRole = ToolRoutingTaxonomy.RoleResolver,
+                            FollowUpKind = ToolHandoffFollowUpKinds.Verification,
+                            FollowUpPriority = ToolHandoffFollowUpPriorities.Critical,
+                            Bindings = new[] {
+                                new ToolHandoffBinding {
+                                    SourceField = "distinguished_name",
+                                    TargetArgument = "identity"
+                                }
+                            }
+                        },
+                        new ToolHandoffRoute {
+                            TargetPackId = "active_directory",
+                            TargetToolName = "ad_object_resolve",
+                            TargetRole = ToolRoutingTaxonomy.RoleResolver,
+                            FollowUpKind = ToolHandoffFollowUpKinds.Normalization,
+                            FollowUpPriority = ToolHandoffFollowUpPriorities.Normal,
+                            Bindings = new[] {
+                                new ToolHandoffBinding {
+                                    SourceField = "distinguished_name",
+                                    TargetArgument = "identity"
+                                }
+                            }
+                        },
+                        new ToolHandoffRoute {
+                            TargetPackId = "active_directory",
+                            TargetToolName = "ad_group_members_resolved",
+                            TargetRole = ToolRoutingTaxonomy.RoleOperational,
+                            FollowUpKind = ToolHandoffFollowUpKinds.Verification,
+                            FollowUpPriority = ToolHandoffFollowUpPriorities.High,
+                            Bindings = new[] {
+                                new ToolHandoffBinding {
+                                    SourceField = "distinguished_name",
+                                    TargetArgument = "identity"
+                                }
+                            }
+                        }
+                    }
+                },
+                writeGovernance: new ToolWriteGovernanceContract {
+                    IsWriteCapable = true
+                }),
+            new ToolDefinition("ad_object_get", "AD object get", ToolSchema.Object(("identity", ToolSchema.String("Identity."))).NoAdditionalProperties()),
+            new ToolDefinition("ad_object_resolve", "AD object resolve", ToolSchema.Object(("identity", ToolSchema.String("Identity."))).NoAdditionalProperties()),
+            new ToolDefinition("ad_group_members_resolved", "AD group members resolved", ToolSchema.Object(("identity", ToolSchema.String("Group identity."))).NoAdditionalProperties())
+        };
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(definitions));
+
+        session.RememberToolHandoffBackgroundWorkForTesting(
+            threadId,
+            definitions,
+            new List<ToolCallDto> {
+                new() {
+                    CallId = "call-ad-group-write",
+                    Name = "ad_group_lifecycle",
+                    ArgumentsJson = """{"identity":"GG-SQL-Admins","operation":"update","members_to_add":["alice"],"apply":true}"""
+                }
+            },
+            new List<ToolOutputDto> {
+                new() {
+                    CallId = "call-ad-group-write",
+                    Ok = true,
+                    Output = """{"ok":true,"identity":"GG-SQL-Admins","distinguished_name":"CN=GG-SQL-Admins,OU=Groups,DC=contoso,DC=com"}""",
+                    MetaJson = """{"write_applied":true}"""
+                }
+            });
+
+        var snapshot = session.ResolveThreadBackgroundWorkSnapshotForTesting(threadId);
+
+        Assert.Equal(3, snapshot.ReadyCount);
+        Assert.Equal(0, snapshot.QueuedCount);
+        Assert.Contains(snapshot.Items, static item => string.Equals(item.TargetToolName, "ad_group_members_resolved", StringComparison.OrdinalIgnoreCase)
+                                                       && item.PreparedArgumentsJson.Contains("\"identity\":\"CN=GG-SQL-Admins,OU=Groups,DC=contoso,DC=com\"", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void RememberToolHandoffBackgroundWork_UsesCallArgumentsForRemoteHostFollowUp() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         const string threadId = "thread-background-work-handoff-host";
@@ -3608,6 +3909,307 @@ public sealed class ChatServiceBackgroundWorkTests {
         Assert.Equal("system_info", item.TargetToolName);
         Assert.Contains("\"computer_name\":\"srv1.contoso.com\"", item.PreparedArgumentsJson, StringComparison.Ordinal);
         Assert.Contains("target_value=srv1.contoso.com", item.ResultReference, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RememberToolHandoffBackgroundWork_UsesNestedSourcePathsForPreparedFollowUp() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        const string threadId = "thread-background-work-handoff-nested-paths";
+        var definitions = new[] {
+            CreateDefinition(
+                name: "eventlog_timeline_query",
+                handoff: new ToolHandoffContract {
+                    IsHandoffAware = true,
+                    OutboundRoutes = new[] {
+                        new ToolHandoffRoute {
+                            TargetPackId = "system",
+                            TargetToolName = "system_info",
+                            TargetRole = ToolRoutingTaxonomy.RoleOperational,
+                            Bindings = new[] {
+                                new ToolHandoffBinding {
+                                    SourceField = "meta/entity_handoff/computer_candidates/0/value",
+                                    TargetArgument = "computer_name"
+                                }
+                            }
+                        }
+                    }
+                }),
+            new ToolDefinition("system_info", "system info", ToolSchema.Object(("computer_name", ToolSchema.String("Remote computer."))).NoAdditionalProperties())
+        };
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(definitions));
+
+        session.RememberToolHandoffBackgroundWorkForTesting(
+            threadId,
+            definitions,
+            new List<ToolCallDto> {
+                new() {
+                    CallId = "call-eventlog-timeline",
+                    Name = "eventlog_timeline_query",
+                    ArgumentsJson = """{"machine_name":"srv-eventlog-01.contoso.com","log_name":"Security"}"""
+                }
+            },
+            new List<ToolOutputDto> {
+                new() {
+                    CallId = "call-eventlog-timeline",
+                    Ok = true,
+                    Output = """{"ok":true,"meta":{"entity_handoff":{"computer_candidates":[{"value":"srv-eventlog-01.contoso.com"}]}}}"""
+                }
+            });
+
+        var snapshot = session.ResolveThreadBackgroundWorkSnapshotForTesting(threadId);
+
+        var item = Assert.Single(snapshot.Items);
+        Assert.Equal("system_info", item.TargetToolName);
+        Assert.Contains("\"computer_name\":\"srv-eventlog-01.contoso.com\"", item.PreparedArgumentsJson, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RememberToolHandoffBackgroundWork_SeedsMultiArgumentProbeFollowUpFromProbeMeta() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        const string threadId = "thread-background-work-handoff-eventlog-probe";
+        var definitions = new[] {
+            CreateDefinition(
+                name: "eventlog_connectivity_probe",
+                handoff: EventLogContractCatalog.CreateConnectivityProbeHandoffContract()),
+            new ToolDefinition(
+                "eventlog_top_events",
+                "event log top events",
+                ToolSchema.Object(
+                        ("machine_name", ToolSchema.String("Remote machine.")),
+                        ("log_name", ToolSchema.String("Log name.")))
+                    .NoAdditionalProperties())
+        };
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(definitions));
+
+        session.RememberToolHandoffBackgroundWorkForTesting(
+            threadId,
+            definitions,
+            new List<ToolCallDto> {
+                new() {
+                    CallId = "call-eventlog-probe",
+                    Name = "eventlog_connectivity_probe",
+                    ArgumentsJson = """{"machine_name":"srv-eventlog-02.contoso.com","log_name":"Security"}"""
+                }
+            },
+            new List<ToolOutputDto> {
+                new() {
+                    CallId = "call-eventlog-probe",
+                    Ok = true,
+                    Output = """{"ok":true,"probe_status":"healthy"}""",
+                    MetaJson = """{"machine_name":"srv-eventlog-02.contoso.com","requested_log_name":"Security"}"""
+                }
+            });
+
+        var snapshot = session.ResolveThreadBackgroundWorkSnapshotForTesting(threadId);
+
+        Assert.Contains(snapshot.Items, static item => string.Equals(item.TargetToolName, "eventlog_live_query", StringComparison.OrdinalIgnoreCase)
+                                                       && item.PreparedArgumentsJson.Contains("\"log_name\":\"Security\"", StringComparison.Ordinal)
+                                                       && item.PreparedArgumentsJson.Contains("\"machine_name\":\"srv-eventlog-02.contoso.com\"", StringComparison.Ordinal));
+        Assert.Contains(snapshot.Items, static item => string.Equals(item.TargetToolName, "eventlog_top_events", StringComparison.OrdinalIgnoreCase)
+                                                       && item.PreparedArgumentsJson.Contains("\"log_name\":\"Security\"", StringComparison.Ordinal)
+                                                       && item.PreparedArgumentsJson.Contains("\"machine_name\":\"srv-eventlog-02.contoso.com\"", StringComparison.Ordinal)
+                                                       && item.ResultReference.Contains("prepared_arg_log_name=Security", StringComparison.Ordinal)
+                                                       && item.ResultReference.Contains("prepared_arg_machine_name=srv-eventlog-02.contoso.com", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void RememberToolHandoffBackgroundWork_SkipsPartialMultiArgumentProbeFollowUpWhenLogNameMissing() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        const string threadId = "thread-background-work-handoff-eventlog-probe-missing-log";
+        var definitions = new[] {
+            CreateDefinition(
+                name: "eventlog_connectivity_probe",
+                handoff: EventLogContractCatalog.CreateConnectivityProbeHandoffContract()),
+            new ToolDefinition(
+                "eventlog_top_events",
+                "event log top events",
+                ToolSchema.Object(
+                        ("machine_name", ToolSchema.String("Remote machine.")),
+                        ("log_name", ToolSchema.String("Log name.")))
+                    .NoAdditionalProperties())
+        };
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(definitions));
+
+        session.RememberToolHandoffBackgroundWorkForTesting(
+            threadId,
+            definitions,
+            new List<ToolCallDto> {
+                new() {
+                    CallId = "call-eventlog-probe-missing-log",
+                    Name = "eventlog_connectivity_probe",
+                    ArgumentsJson = """{"machine_name":"srv-eventlog-03.contoso.com"}"""
+                }
+            },
+            new List<ToolOutputDto> {
+                new() {
+                    CallId = "call-eventlog-probe-missing-log",
+                    Ok = true,
+                    Output = """{"ok":true,"probe_status":"healthy"}""",
+                    MetaJson = """{"machine_name":"srv-eventlog-03.contoso.com"}"""
+                }
+            });
+
+        var snapshot = session.ResolveThreadBackgroundWorkSnapshotForTesting(threadId);
+
+        Assert.Empty(snapshot.Items);
+        Assert.Equal(0, snapshot.ReadyCount);
+    }
+
+    [Fact]
+    public void RememberToolHandoffBackgroundWork_SeedsAdProbeEnvironmentDiscoverFollowUp() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        const string threadId = "thread-background-work-handoff-ad-probe";
+        var definitions = new[] {
+            CreateDefinition(
+                name: "ad_connectivity_probe",
+                handoff: ActiveDirectoryContractCatalog.CreateConnectivityProbeHandoff()),
+            new ToolDefinition(
+                "ad_environment_discover",
+                "AD environment discover",
+                ToolSchema.Object(
+                        ("domain_controller", ToolSchema.String("Domain controller.")),
+                        ("search_base_dn", ToolSchema.String("Search base DN.")),
+                        ("include_domain_controllers", ToolSchema.Boolean("Include DCs.")),
+                        ("max_domain_controllers", ToolSchema.Integer("Max DCs.")),
+                        ("include_forest_domains", ToolSchema.Boolean("Include forest domains.")),
+                        ("include_trusts", ToolSchema.Boolean("Include trusts.")))
+                    .NoAdditionalProperties())
+        };
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(definitions));
+
+        session.RememberToolHandoffBackgroundWorkForTesting(
+            threadId,
+            definitions,
+            new List<ToolCallDto> {
+                new() {
+                    CallId = "call-ad-probe",
+                    Name = "ad_connectivity_probe",
+                    ArgumentsJson = """{"domain_controller":"dc01.contoso.com","search_base_dn":"DC=contoso,DC=com"}"""
+                }
+            },
+            new List<ToolOutputDto> {
+                new() {
+                    CallId = "call-ad-probe",
+                    Ok = true,
+                    Output = """{"ok":true,"probe_status":"healthy"}""",
+                    MetaJson = """{"effective_domain_controller":"dc01.contoso.com","effective_search_base_dn":"DC=contoso,DC=com"}"""
+                }
+            });
+
+        var snapshot = session.ResolveThreadBackgroundWorkSnapshotForTesting(threadId);
+
+        var item = Assert.Single(snapshot.Items);
+        Assert.Equal("ad_environment_discover", item.TargetToolName);
+        Assert.Contains("\"domain_controller\":\"dc01.contoso.com\"", item.PreparedArgumentsJson, StringComparison.Ordinal);
+        Assert.Contains("\"search_base_dn\":\"DC=contoso,DC=com\"", item.PreparedArgumentsJson, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RememberToolHandoffBackgroundWork_SeedsSystemProbeRuntimeFollowUps() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        const string threadId = "thread-background-work-handoff-system-probe";
+        var definitions = new[] {
+            CreateDefinition(
+                name: "system_connectivity_probe",
+                handoff: SystemContractCatalog.CreateConnectivityProbeHandoff()),
+            new ToolDefinition("system_info", "system info", ToolSchema.Object(("computer_name", ToolSchema.String("Remote computer."))).NoAdditionalProperties()),
+            new ToolDefinition("system_metrics_summary", "system metrics", ToolSchema.Object(("computer_name", ToolSchema.String("Remote computer."))).NoAdditionalProperties())
+        };
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(definitions));
+
+        session.RememberToolHandoffBackgroundWorkForTesting(
+            threadId,
+            definitions,
+            new List<ToolCallDto> {
+                new() {
+                    CallId = "call-system-probe",
+                    Name = "system_connectivity_probe",
+                    ArgumentsJson = """{"computer_name":"srv-runtime-01.contoso.com"}"""
+                }
+            },
+            new List<ToolOutputDto> {
+                new() {
+                    CallId = "call-system-probe",
+                    Ok = true,
+                    Output = """{"ok":true,"target":"srv-runtime-01.contoso.com","probe_status":"healthy"}"""
+                }
+            });
+
+        var snapshot = session.ResolveThreadBackgroundWorkSnapshotForTesting(threadId);
+
+        Assert.Equal(2, snapshot.ReadyCount);
+        Assert.Contains(snapshot.Items, static item => string.Equals(item.TargetToolName, "system_info", StringComparison.OrdinalIgnoreCase)
+                                                       && item.PreparedArgumentsJson.Contains("\"computer_name\":\"srv-runtime-01.contoso.com\"", StringComparison.Ordinal));
+        Assert.Contains(snapshot.Items, static item => string.Equals(item.TargetToolName, "system_metrics_summary", StringComparison.OrdinalIgnoreCase)
+                                                       && item.PreparedArgumentsJson.Contains("\"computer_name\":\"srv-runtime-01.contoso.com\"", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void RememberToolHandoffBackgroundWork_UsesSourceToolEvidenceForSetupHelpers() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        const string threadId = "thread-background-work-handoff-source-helper-credit";
+        var definitions = new[] {
+            new ToolDefinition(
+                "seed_runtime_probe",
+                "Seed runtime probe helper.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties(),
+                handoff: new ToolHandoffContract {
+                    IsHandoffAware = true,
+                    OutboundRoutes = new[] {
+                        new ToolHandoffRoute {
+                            TargetPackId = "custom",
+                            TargetToolName = "dependent_diagnostic",
+                            TargetRole = ToolRoutingTaxonomy.RoleOperational,
+                            FollowUpKind = ToolHandoffFollowUpKinds.Verification,
+                            FollowUpPriority = ToolHandoffFollowUpPriorities.High,
+                            Bindings = new[] {
+                                new ToolHandoffBinding {
+                                    SourceField = "machine_name",
+                                    TargetArgument = "machine_name"
+                                }
+                            }
+                        }
+                    }
+                }),
+            new ToolDefinition(
+                "dependent_diagnostic",
+                "Inspect runtime after a setup preflight succeeds.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties(),
+                setup: new ToolSetupContract {
+                    IsSetupAware = true,
+                    SetupToolName = "seed_runtime_probe"
+                })
+        };
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(definitions));
+
+        session.RememberToolHandoffBackgroundWorkForTesting(
+            threadId,
+            definitions,
+            new List<ToolCallDto> {
+                new() {
+                    CallId = "call-runtime-probe",
+                    Name = "seed_runtime_probe",
+                    ArgumentsJson = """{"machine_name":"srv-runtime-setup-01.contoso.com"}"""
+                }
+            },
+            new List<ToolOutputDto> {
+                new() {
+                    CallId = "call-runtime-probe",
+                    Ok = true,
+                    Output = """{"ok":true,"machine_name":"srv-runtime-setup-01.contoso.com"}"""
+                }
+            });
+
+        var snapshot = session.ResolveThreadBackgroundWorkSnapshotForTesting(threadId);
+
+        Assert.Contains(snapshot.Items, static item => string.Equals(item.TargetToolName, "dependent_diagnostic", StringComparison.OrdinalIgnoreCase)
+                                                       && string.Equals(item.State, "ready", StringComparison.OrdinalIgnoreCase)
+                                                       && item.PreparedArgumentsJson.Contains("\"machine_name\":\"srv-runtime-setup-01.contoso.com\"", StringComparison.Ordinal));
+
+        var helperItem = Assert.Single(snapshot.Items, static item => string.Equals(item.TargetToolName, "seed_runtime_probe", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal("completed", helperItem.State);
+        Assert.Contains("helper_reuse=source_tool_evidence", helperItem.ResultReference, StringComparison.Ordinal);
+        Assert.Contains("dependent_tool=dependent_diagnostic", helperItem.ResultReference, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -5622,6 +6224,204 @@ public sealed class ChatServiceBackgroundWorkTests {
         Assert.Equal("background_prerequisite_retry_cooldown", blockerReason);
         Assert.Contains("ix:execution-contract:v1", blockerText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("helper retry is still pending", blockerText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void RememberToolHandoffBackgroundWork_SeedsProbeKindSpecificMonitoringFollowUpsForLdap() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        const string threadId = "thread-background-work-monitoring-ldap";
+        var registry = new ToolRegistry();
+        registry.RegisterActiveDirectoryPack(new ActiveDirectoryToolOptions());
+        var definitions = registry.GetDefinitions();
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(definitions));
+
+        session.RememberToolHandoffBackgroundWorkForTesting(
+            threadId,
+            definitions,
+            new[] {
+                new ToolCallDto {
+                    CallId = "call-monitoring-ldap",
+                    Name = "ad_monitoring_probe_run",
+                    ArgumentsJson = """{"probe_kind":"ldap","domain_controller":"dc1.contoso.com","targets":["dc1.contoso.com"]}"""
+                }
+            },
+            new[] {
+                new ToolOutputDto {
+                    CallId = "call-monitoring-ldap",
+                    Ok = true,
+                    Output = """{"probe_kind":"ldap","normalized_request":{"domain_controller":"dc1.contoso.com","targets":["dc1.contoso.com"]},"ok":true}"""
+                }
+            });
+
+        var snapshot = session.ResolveThreadBackgroundWorkSnapshotForTesting(threadId);
+        var targetToolNames = snapshot.Items
+            .Select(static item => item.TargetToolName)
+            .Where(static toolName => !string.IsNullOrWhiteSpace(toolName))
+            .ToArray();
+
+        Assert.Contains("system_info", targetToolNames, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("eventlog_channels_list", targetToolNames, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("ad_ldap_diagnostics", targetToolNames, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("system_ldap_policy_posture", targetToolNames, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("system_time_sync", targetToolNames, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("system_network_client_posture", targetToolNames, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void RememberToolHandoffBackgroundWork_SeedsDirectoryMonitoringFollowUpsOnlyForMatchingDirectoryProbeKind() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        const string threadId = "thread-background-work-monitoring-directory-rpc";
+        var registry = new ToolRegistry();
+        registry.RegisterActiveDirectoryPack(new ActiveDirectoryToolOptions());
+        var definitions = registry.GetDefinitions();
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(definitions));
+
+        session.RememberToolHandoffBackgroundWorkForTesting(
+            threadId,
+            definitions,
+            new[] {
+                new ToolCallDto {
+                    CallId = "call-monitoring-directory",
+                    Name = "ad_monitoring_probe_run",
+                    ArgumentsJson = """{"probe_kind":"directory","directory_probe_kind":"rpc_endpoint","domain_controller":"dc2.contoso.com","targets":["dc2.contoso.com"]}"""
+                }
+            },
+            new[] {
+                new ToolOutputDto {
+                    CallId = "call-monitoring-directory",
+                    Ok = true,
+                    Output = """{"probe_kind":"directory","normalized_request":{"domain_controller":"dc2.contoso.com","targets":["dc2.contoso.com"]},"ok":true}"""
+                }
+            });
+
+        var snapshot = session.ResolveThreadBackgroundWorkSnapshotForTesting(threadId);
+        var targetToolNames = snapshot.Items
+            .Select(static item => item.TargetToolName)
+            .Where(static toolName => !string.IsNullOrWhiteSpace(toolName))
+            .ToArray();
+
+        Assert.Contains("system_info", targetToolNames, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("eventlog_channels_list", targetToolNames, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("system_ports_list", targetToolNames, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("system_service_list", targetToolNames, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("ad_ldap_diagnostics", targetToolNames, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("system_network_client_posture", targetToolNames, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void RememberToolHandoffBackgroundWork_SeedsKerberosTransportSplitMonitoringFollowUpsWhenProfileActive() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        const string threadId = "thread-background-work-monitoring-kerberos-transport-split";
+        var registry = new ToolRegistry();
+        registry.RegisterActiveDirectoryPack(new ActiveDirectoryToolOptions());
+        var definitions = registry.GetDefinitions();
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(definitions));
+
+        session.RememberToolHandoffBackgroundWorkForTesting(
+            threadId,
+            definitions,
+            new[] {
+                new ToolCallDto {
+                    CallId = "call-monitoring-kerberos",
+                    Name = "ad_monitoring_probe_run",
+                    ArgumentsJson = """{"probe_kind":"kerberos","protocol":"both","domain_controller":"dc3.contoso.com","targets":["dc3.contoso.com"]}"""
+                }
+            },
+            new[] {
+                new ToolOutputDto {
+                    CallId = "call-monitoring-kerberos",
+                    Ok = true,
+                    Output = """{"probe_kind":"kerberos","normalized_request":{"domain_controller":"dc3.contoso.com","targets":["dc3.contoso.com"]},"ok":true}""",
+                    MetaJson = """{"active_follow_up_profile_ids":["transport_split"]}"""
+                }
+            });
+
+        var snapshot = session.ResolveThreadBackgroundWorkSnapshotForTesting(threadId);
+        var targetToolNames = snapshot.Items
+            .Select(static item => item.TargetToolName)
+            .Where(static toolName => !string.IsNullOrWhiteSpace(toolName))
+            .ToArray();
+
+        Assert.Contains("system_time_sync", targetToolNames, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("system_metrics_summary", targetToolNames, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("system_ports_list", targetToolNames, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void RememberToolHandoffBackgroundWork_DoesNotSeedWindowsUpdateInventoryFollowUpWithoutProfile() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        const string threadId = "thread-background-work-monitoring-windows-update-without-profile";
+        var registry = new ToolRegistry();
+        registry.RegisterActiveDirectoryPack(new ActiveDirectoryToolOptions());
+        var definitions = registry.GetDefinitions();
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(definitions));
+
+        session.RememberToolHandoffBackgroundWorkForTesting(
+            threadId,
+            definitions,
+            new[] {
+                new ToolCallDto {
+                    CallId = "call-monitoring-windows-update",
+                    Name = "ad_monitoring_probe_run",
+                    ArgumentsJson = """{"probe_kind":"windows_update","domain_controller":"dc4.contoso.com","targets":["dc4.contoso.com"]}"""
+                }
+            },
+            new[] {
+                new ToolOutputDto {
+                    CallId = "call-monitoring-windows-update",
+                    Ok = true,
+                    Output = """{"probe_kind":"windows_update","normalized_request":{"domain_controller":"dc4.contoso.com","targets":["dc4.contoso.com"]},"ok":true}"""
+                }
+            });
+
+        var snapshot = session.ResolveThreadBackgroundWorkSnapshotForTesting(threadId);
+        var targetToolNames = snapshot.Items
+            .Select(static item => item.TargetToolName)
+            .Where(static toolName => !string.IsNullOrWhiteSpace(toolName))
+            .ToArray();
+
+        Assert.Contains("system_windows_update_client_status", targetToolNames, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("system_windows_update_telemetry", targetToolNames, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("system_patch_compliance", targetToolNames, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("system_updates_installed", targetToolNames, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void RememberToolHandoffBackgroundWork_SeedsWindowsUpdateInventoryFollowUpWhenProfileActive() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        const string threadId = "thread-background-work-monitoring-windows-update-with-profile";
+        var registry = new ToolRegistry();
+        registry.RegisterActiveDirectoryPack(new ActiveDirectoryToolOptions());
+        var definitions = registry.GetDefinitions();
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(definitions));
+
+        session.RememberToolHandoffBackgroundWorkForTesting(
+            threadId,
+            definitions,
+            new[] {
+                new ToolCallDto {
+                    CallId = "call-monitoring-windows-update-profile",
+                    Name = "ad_monitoring_probe_run",
+                    ArgumentsJson = """{"probe_kind":"windows_update","domain_controller":"dc5.contoso.com","targets":["dc5.contoso.com"]}"""
+                }
+            },
+            new[] {
+                new ToolOutputDto {
+                    CallId = "call-monitoring-windows-update-profile",
+                    Ok = true,
+                    Output = """{"probe_kind":"windows_update","normalized_request":{"domain_controller":"dc5.contoso.com","targets":["dc5.contoso.com"]},"ok":true}""",
+                    MetaJson = """{"active_follow_up_profile_ids":["patch_inventory_focus"]}"""
+                }
+            });
+
+        var snapshot = session.ResolveThreadBackgroundWorkSnapshotForTesting(threadId);
+        var targetToolNames = snapshot.Items
+            .Select(static item => item.TargetToolName)
+            .Where(static toolName => !string.IsNullOrWhiteSpace(toolName))
+            .ToArray();
+
+        Assert.Contains("system_updates_installed", targetToolNames, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("system_windows_update_client_status", targetToolNames, StringComparer.OrdinalIgnoreCase);
     }
 
     private static ToolDefinition CreateDefinition(

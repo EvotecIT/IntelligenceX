@@ -299,6 +299,12 @@ public partial class ToolSchemaSnapshotTests {
         };
 
         yield return new object[] {
+            "ad_user_groups_resolved",
+            new[] { "identity", "domain_name", "include_recursive", "max_results", "attributes", "columns", "sort_by", "sort_direction", "top" },
+            new[] { "identity" }
+        };
+
+        yield return new object[] {
             "ad_groups_list",
             new[] { "name_contains", "name_prefix", "search_base_dn", "domain_controller", "attributes", "max_values_per_attribute", "max_results", "page_size", "offset", "columns", "sort_by", "sort_direction", "top" },
             Array.Empty<string>()

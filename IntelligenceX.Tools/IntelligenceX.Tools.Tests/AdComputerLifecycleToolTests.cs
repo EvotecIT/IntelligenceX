@@ -27,6 +27,7 @@ public sealed class AdComputerLifecycleToolTests {
         Assert.Equal("move", root.GetProperty("operation").GetString());
         Assert.Equal("OU=Staging,DC=lab,DC=local", root.GetProperty("target_organizational_unit").GetString());
         Assert.Equal("CN=SRV-SQL-01,OU=Staging,DC=lab,DC=local", root.GetProperty("distinguished_name").GetString());
+        Assert.Equal("SRV-SQL-01", root.GetProperty("computer_name").GetString());
 
         var updatedAttributes = root.GetProperty("updated_attributes")
             .EnumerateArray()
@@ -54,6 +55,7 @@ public sealed class AdComputerLifecycleToolTests {
         Assert.True(root.GetProperty("ok").GetBoolean());
         Assert.Equal("move", root.GetProperty("operation").GetString());
         Assert.Equal("CN=SRV-SQL-02,OU=Servers,DC=lab,DC=local", root.GetProperty("distinguished_name").GetString());
+        Assert.Equal("SRV-SQL-02", root.GetProperty("computer_name").GetString());
 
         var updatedAttributes = root.GetProperty("updated_attributes")
             .EnumerateArray()

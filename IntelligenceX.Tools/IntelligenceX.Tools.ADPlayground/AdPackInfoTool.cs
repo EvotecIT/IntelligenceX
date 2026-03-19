@@ -87,6 +87,7 @@ public sealed class AdPackInfoTool : ActiveDirectoryToolBase, ITool {
                 "Use ad_forest_discover to make forest scope explicit and get a receipt (domains/trusts/DCs discovered and how).",
                 "Use ad_forest_functional for forest-level functional posture and recommended target-level planning.",
                 "Use ad_search/ad_groups_list/ad_spn_search for broad discovery.",
+                "Use ad_user_groups_resolved when the question is specifically about a user's effective access footprint or when lifecycle changes need read-only membership verification without looping over ad_object_get calls.",
                 "Use ad_password_policy/ad_password_policy_rollup/ad_password_policy_length and ad_trust for policy and trust-posture diagnostics.",
                 "Use ad_domain_statistics/ad_domain_controller_facts/ad_dc_fleet_posture/ad_fsmo_roles/ad_krbtgt_health/ad_system_state_backup for domain resilience posture checks.",
                 "Use ad_domain_container_defaults/ad_machine_account_quota for domain default and join-governance posture.",
@@ -147,7 +148,7 @@ public sealed class AdPackInfoTool : ActiveDirectoryToolBase, ITool {
                     suggestedTools: new[] { "ad_pki_templates", "ad_pki_posture" }),
                 ToolPackGuidance.FlowStep(
                     goal: "Resolve/expand identities for correlation",
-                    suggestedTools: new[] { "ad_handoff_prepare", "ad_scope_discovery", "ad_object_resolve", "ad_object_get", "ad_group_members_resolved" }),
+                    suggestedTools: new[] { "ad_handoff_prepare", "ad_scope_discovery", "ad_object_resolve", "ad_object_get", "ad_group_members_resolved", "ad_user_groups_resolved" }),
                 ToolPackGuidance.FlowStep(
                     goal: "Confirm authoritative user/computer logon recency across DCs",
                     suggestedTools: new[] { "ad_scope_discovery", "ad_forest_discover", "ad_ldap_query", "ad_ldap_query_paged" }),
@@ -170,7 +171,7 @@ public sealed class AdPackInfoTool : ActiveDirectoryToolBase, ITool {
                 ToolPackGuidance.Capability(
                     id: "identity_resolution",
                     summary: "Resolve identities and membership details for cross-tool correlation.",
-                    primaryTools: new[] { "ad_handoff_prepare", "ad_object_resolve", "ad_object_get", "ad_group_members", "ad_group_members_resolved" }),
+                    primaryTools: new[] { "ad_handoff_prepare", "ad_object_resolve", "ad_object_get", "ad_group_members", "ad_group_members_resolved", "ad_user_groups_resolved" }),
                 ToolPackGuidance.Capability(
                     id: "authoritative_logon_correlation",
                     summary: "Correlate last-logon evidence per-DC using direct LDAP reads and forest/domain discovery context.",

@@ -218,18 +218,16 @@ public sealed class ToolPackCatalogParityTests {
         Assert.True(entry.Handoff.IsHandoffAware);
         Assert.Equal(handoff.OutboundRoutes.Count, entry.Handoff.Routes.Count);
 
-        var expectedRoutes = handoff.OutboundRoutes.ToDictionary(
-            static route => CreateRouteKey(route.TargetPackId, route.TargetToolName, route.TargetRole),
-            StringComparer.OrdinalIgnoreCase);
+        var expectedRouteSignatures = handoff.OutboundRoutes
+            .Select(CreateDefinitionRouteSignature)
+            .OrderBy(static value => value, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var actualRouteSignatures = entry.Handoff.Routes
+            .Select(CreateCatalogRouteSignature)
+            .OrderBy(static value => value, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
 
-        foreach (var route in entry.Handoff.Routes) {
-            Assert.True(
-                expectedRoutes.TryGetValue(CreateRouteKey(route.TargetPackId, route.TargetToolName, route.TargetRole), out var expectedRoute),
-                $"Unexpected catalog handoff route for '{definition.Name}'.");
-            Assert.Equal(
-                expectedRoute.Bindings.Select(static binding => binding.SourceField + "->" + binding.TargetArgument),
-                route.BindingPairs);
-        }
+        Assert.Equal(expectedRouteSignatures, actualRouteSignatures);
     }
 
     private static void AssertRecoveryParity(ToolPackToolCatalogEntryModel entry, ToolDefinition definition) {
@@ -321,6 +319,22 @@ public sealed class ToolPackCatalogParityTests {
             NormalizeSchemaToken(packId),
             NormalizeSchemaToken(toolName),
             NormalizeSchemaToken(role));
+    }
+
+    private static string CreateDefinitionRouteSignature(ToolHandoffRoute route) {
+        return string.Join(
+            "|",
+            CreateRouteKey(route.TargetPackId, route.TargetToolName, route.TargetRole),
+            string.Join(";", route.Bindings.Select(static binding => binding.SourceField + "->" + binding.TargetArgument).OrderBy(static value => value, StringComparer.OrdinalIgnoreCase)),
+            string.Join(";", route.Conditions.Select(static condition => condition.SourceField + "==" + condition.ExpectedValue).OrderBy(static value => value, StringComparer.OrdinalIgnoreCase)));
+    }
+
+    private static string CreateCatalogRouteSignature(ToolPackToolHandoffRouteModel route) {
+        return string.Join(
+            "|",
+            CreateRouteKey(route.TargetPackId, route.TargetToolName, route.TargetRole),
+            string.Join(";", route.BindingPairs.OrderBy(static value => value, StringComparer.OrdinalIgnoreCase)),
+            string.Join(";", route.ConditionPairs.OrderBy(static value => value, StringComparer.OrdinalIgnoreCase)));
     }
 
     private static string NormalizeSchemaToken(string? value) {

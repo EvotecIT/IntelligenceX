@@ -23,6 +23,9 @@ internal static class ActiveDirectoryToolPackRepresentativeExamples {
             ["ad_object_resolve"] = new[] {
                 "resolve a known identity, computer, or distinguished name into focused Active Directory evidence for follow-up checks"
             },
+            ["ad_user_groups_resolved"] = new[] {
+                "verify a user's direct or recursive Active Directory group footprint after joiner, mover, leaver, or access-transition changes"
+            },
             ["ad_monitoring_probe_run"] = new[] {
                 "run live AD monitoring probes such as ldap, dns, kerberos, ntp, replication, ping, or windows_update against domain controllers"
             },

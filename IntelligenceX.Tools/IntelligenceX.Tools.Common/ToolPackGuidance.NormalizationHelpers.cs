@@ -1021,7 +1021,8 @@ public static partial class ToolPackGuidance {
             var targetToolName = string.IsNullOrWhiteSpace(route.TargetToolName) ? null : route.TargetToolName.Trim();
             var targetRole = string.IsNullOrWhiteSpace(route.TargetRole) ? null : route.TargetRole.Trim();
             var bindingPairs = NormalizeValues(route.BindingPairs);
-            if (targetPackId is null && targetToolName is null && targetRole is null && bindingPairs.Count == 0) {
+            var conditionPairs = NormalizeValues(route.ConditionPairs);
+            if (targetPackId is null && targetToolName is null && targetRole is null && bindingPairs.Count == 0 && conditionPairs.Count == 0) {
                 continue;
             }
 
@@ -1029,7 +1030,8 @@ public static partial class ToolPackGuidance {
                 TargetPackId = targetPackId,
                 TargetToolName = targetToolName,
                 TargetRole = targetRole,
-                BindingPairs = bindingPairs
+                BindingPairs = bindingPairs,
+                ConditionPairs = conditionPairs
             });
         }
 

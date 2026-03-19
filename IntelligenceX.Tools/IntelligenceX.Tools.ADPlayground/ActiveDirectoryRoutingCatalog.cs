@@ -58,6 +58,12 @@ internal static class ActiveDirectoryRoutingCatalog {
                 Entity: "directory_object",
                 Risk: ToolRoutingTaxonomy.RiskMedium,
                 AdditionalTags: new[] { "identity", "handoff_consumer" }),
+            ["ad_user_groups_resolved"] = new(
+                Scope: "domain",
+                Operation: "resolve",
+                Entity: "group_membership",
+                Risk: ToolRoutingTaxonomy.RiskMedium,
+                AdditionalTags: new[] { "identity", "membership", "handoff_consumer" }),
             ["ad_handoff_prepare"] = new(
                 Scope: "domain",
                 Operation: "transform",
@@ -73,7 +79,8 @@ internal static class ActiveDirectoryRoutingCatalog {
         "ad_object_get",
         "ad_handoff_prepare",
         "ad_group_members",
-        "ad_group_members_resolved"
+        "ad_group_members_resolved",
+        "ad_user_groups_resolved"
     };
 
     private static readonly IReadOnlySet<string> KnownToolNames = BuildKnownToolNames();

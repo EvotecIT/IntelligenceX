@@ -550,11 +550,26 @@ public class ToolPackInfoContractTests {
         Assert.Contains("ad_user_lifecycle", ReadStringArray(joinerSteps[1].GetProperty("suggested_tools")), StringComparer.OrdinalIgnoreCase);
         Assert.Contains("ad_object_get", ReadStringArray(joiner.GetProperty("verification_tools")), StringComparer.OrdinalIgnoreCase);
         Assert.Contains("ad_object_resolve", ReadStringArray(joiner.GetProperty("verification_tools")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("ad_user_groups_resolved", ReadStringArray(joiner.GetProperty("verification_tools")), StringComparer.OrdinalIgnoreCase);
 
         var quarantine = recipes
             .EnumerateArray()
             .First(node => string.Equals(node.GetProperty("id").GetString(), "quarantine_ou_preparation", StringComparison.OrdinalIgnoreCase));
         Assert.Contains("ad_ou_lifecycle", quarantine.ToString(), StringComparison.OrdinalIgnoreCase);
+
+        var handoffs = document.RootElement.GetProperty("entity_handoffs");
+        Assert.Contains(
+            handoffs.EnumerateArray().Select(static node => node.GetProperty("id").GetString()),
+            static id => string.Equals(id, "computer_lifecycle_to_host_followup", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(
+            handoffs.EnumerateArray().Select(static node => node.GetProperty("id").GetString()),
+            static id => string.Equals(id, "computer_lifecycle_to_eventlog_followup", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(
+            handoffs.EnumerateArray().Select(static node => node.GetProperty("id").GetString()),
+            static id => string.Equals(id, "group_lifecycle_to_membership_verification", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(
+            handoffs.EnumerateArray().Select(static node => node.GetProperty("id").GetString()),
+            static id => string.Equals(id, "lifecycle_to_readonly_verification", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]

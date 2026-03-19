@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 using JsonValueKind = System.Text.Json.JsonValueKind;
@@ -794,42 +795,46 @@ internal sealed partial class ChatServiceSession {
             yield break;
         }
 
-        var valuesByTargetArgument = ExtractBackgroundWorkBindingValuesByTargetArgument(
+        if (!BackgroundWorkRouteConditionsMatch(callArgumentsJson, output.Output, output.MetaJson, edge.ConditionPairs)) {
+            yield break;
+        }
+
+        var preparedArgumentSets = BuildBackgroundWorkPreparedArgumentSets(
             callArgumentsJson,
             output.Output,
+            output.MetaJson,
             edge.BindingPairs);
-        foreach (var pair in valuesByTargetArgument) {
-            for (var i = 0; i < pair.Value.Length; i++) {
-                var value = pair.Value[i];
-                if (string.IsNullOrWhiteSpace(value)) {
-                    continue;
-                }
-
-                yield return new ThreadBackgroundWorkItem(
-                    Id: BuildToolHandoffBackgroundWorkItemId(sourceToolName, targetToolName, pair.Key, value),
-                    Title: BuildToolHandoffBackgroundWorkTitle(targetToolName, value),
-                    Request: BuildToolHandoffBackgroundWorkRequest(targetToolName, pair.Key, value, sourceToolName),
-                    State: BackgroundWorkStateReady,
-                    DependencyItemIds: Array.Empty<string>(),
-                    EvidenceToolNames: NormalizeBackgroundWorkToolNames(new[] { sourceToolName }),
-                    Kind: BackgroundWorkKindToolHandoff,
-                    Mutability: BackgroundWorkMutabilityReadOnly,
-                    SourceToolName: NormalizeToolNameForAnswerPlan(sourceToolName),
-                    SourceCallId: sourceCallId,
-                    TargetPackId: targetPackId,
-                    TargetToolName: NormalizeToolNameForAnswerPlan(targetToolName),
-                    FollowUpKind: ToolHandoffFollowUpKinds.Normalize(edge.FollowUpKind),
-                    FollowUpPriority: ToolHandoffFollowUpPriorities.Normalize(edge.FollowUpPriority),
-                    PreparedArgumentsJson: BuildBackgroundWorkPreparedArgumentsJson(pair.Key, value),
-                    ResultReference: BuildBackgroundWorkResultReference(sourceToolName, sourceCallId, targetToolName, pair.Key, value),
-                    ExecutionAttemptCount: 0,
-                    LastExecutionCallId: string.Empty,
-                    LastExecutionStartedUtcTicks: 0,
-                    LastExecutionFinishedUtcTicks: 0,
-                    LeaseExpiresUtcTicks: 0,
-                    CreatedUtcTicks: createdUtcTicks,
-                    UpdatedUtcTicks: updatedUtcTicks);
+        for (var i = 0; i < preparedArgumentSets.Count; i++) {
+            var preparedArguments = preparedArgumentSets[i];
+            if (preparedArguments.Count == 0
+                || !TryResolvePrimaryBackgroundWorkArgument(preparedArguments, out var primaryArgumentName, out var primaryArgumentValue)) {
+                continue;
             }
+
+            yield return new ThreadBackgroundWorkItem(
+                Id: BuildToolHandoffBackgroundWorkItemId(sourceToolName, targetToolName, preparedArguments),
+                Title: BuildToolHandoffBackgroundWorkTitle(targetToolName, primaryArgumentValue),
+                Request: BuildToolHandoffBackgroundWorkRequest(targetToolName, preparedArguments, sourceToolName),
+                State: BackgroundWorkStateReady,
+                DependencyItemIds: Array.Empty<string>(),
+                EvidenceToolNames: NormalizeBackgroundWorkToolNames(new[] { sourceToolName }),
+                Kind: BackgroundWorkKindToolHandoff,
+                Mutability: BackgroundWorkMutabilityReadOnly,
+                SourceToolName: NormalizeToolNameForAnswerPlan(sourceToolName),
+                SourceCallId: sourceCallId,
+                TargetPackId: targetPackId,
+                TargetToolName: NormalizeToolNameForAnswerPlan(targetToolName),
+                FollowUpKind: ToolHandoffFollowUpKinds.Normalize(edge.FollowUpKind),
+                FollowUpPriority: ToolHandoffFollowUpPriorities.Normalize(edge.FollowUpPriority),
+                PreparedArgumentsJson: BuildBackgroundWorkPreparedArgumentsJson(preparedArguments),
+                ResultReference: BuildBackgroundWorkResultReference(sourceToolName, sourceCallId, targetToolName, primaryArgumentName, primaryArgumentValue, preparedArguments),
+                ExecutionAttemptCount: 0,
+                LastExecutionCallId: string.Empty,
+                LastExecutionStartedUtcTicks: 0,
+                LastExecutionFinishedUtcTicks: 0,
+                LeaseExpiresUtcTicks: 0,
+                CreatedUtcTicks: createdUtcTicks,
+                UpdatedUtcTicks: updatedUtcTicks);
         }
     }
 
@@ -880,7 +885,11 @@ internal sealed partial class ChatServiceSession {
                 helperKind);
             var helperReusePolicy = ResolveBackgroundWorkHelperReusePolicy(helperKind, helperToolName, _toolOrchestrationCatalog);
             var helperLastExecutionFinishedUtcTicks = 0L;
-            if (TryGetFreshThreadToolEvidenceEntry(
+            if (string.Equals(helperToolName, dependentItem.SourceToolName, StringComparison.OrdinalIgnoreCase)) {
+                helperState = BackgroundWorkStateCompleted;
+                helperResultReference += ";helper_reuse=source_tool_evidence";
+                helperLastExecutionFinishedUtcTicks = Math.Max(0, updatedUtcTicks);
+            } else if (TryGetFreshThreadToolEvidenceEntry(
                     threadId,
                     helperToolName,
                     helperPreparedArgumentsJson,
@@ -933,14 +942,19 @@ internal sealed partial class ChatServiceSession {
         }
     }
 
-    private static Dictionary<string, string[]> ExtractBackgroundWorkBindingValuesByTargetArgument(
+    private static IReadOnlyList<Dictionary<string, string>> BuildBackgroundWorkPreparedArgumentSets(
         string? callArgumentsJson,
         string outputJson,
+        string? metaJson,
         IReadOnlyList<string> bindingPairs) {
         var valuesByTargetArgument = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+        var declaredTargetArguments = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var roots = new List<JsonElement>(capacity: 2);
         if (TryParseJsonObject(outputJson, out var outputRoot)) {
             roots.Add(outputRoot);
+        }
+        if (TryParseJsonObject(metaJson, out var metaRoot)) {
+            roots.Add(metaRoot);
         }
         if (TryParseJsonObject(callArgumentsJson, out var argumentsRoot)) {
             roots.Add(argumentsRoot);
@@ -951,6 +965,7 @@ internal sealed partial class ChatServiceSession {
                 continue;
             }
 
+            declaredTargetArguments.Add(targetArgument);
             for (var rootIndex = 0; rootIndex < roots.Count; rootIndex++) {
                 var candidates = ExtractBackgroundWorkFieldValues(roots[rootIndex], sourceField);
                 for (var candidateIndex = 0; candidateIndex < candidates.Length; candidateIndex++) {
@@ -966,12 +981,105 @@ internal sealed partial class ChatServiceSession {
             }
         }
 
-        return valuesByTargetArgument
+        var orderedArguments = valuesByTargetArgument
             .Where(static pair => pair.Value.Count > 0)
-            .ToDictionary(
-                static pair => pair.Key,
-                static pair => pair.Value.Take(MaxBackgroundWorkItems).ToArray(),
-                StringComparer.OrdinalIgnoreCase);
+            .Select(static pair => (
+                Argument: pair.Key,
+                Values: pair.Value
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .Take(MaxBackgroundWorkItems)
+                    .ToArray()))
+            .Where(static pair => pair.Values.Length > 0)
+            .ToArray();
+        if (orderedArguments.Length == 0) {
+            return Array.Empty<Dictionary<string, string>>();
+        }
+        if (orderedArguments.Length < declaredTargetArguments.Count) {
+            return Array.Empty<Dictionary<string, string>>();
+        }
+
+        var preparedSets = new List<Dictionary<string, string>> {
+            new(StringComparer.OrdinalIgnoreCase)
+        };
+        for (var argumentIndex = 0; argumentIndex < orderedArguments.Length; argumentIndex++) {
+            var argument = orderedArguments[argumentIndex];
+            var nextPreparedSets = new List<Dictionary<string, string>>();
+            for (var setIndex = 0; setIndex < preparedSets.Count; setIndex++) {
+                var existing = preparedSets[setIndex];
+                for (var valueIndex = 0; valueIndex < argument.Values.Length; valueIndex++) {
+                    var next = new Dictionary<string, string>(existing, StringComparer.OrdinalIgnoreCase) {
+                        [argument.Argument] = argument.Values[valueIndex]
+                    };
+                    nextPreparedSets.Add(next);
+                    if (nextPreparedSets.Count >= MaxBackgroundWorkItems) {
+                        break;
+                    }
+                }
+
+                if (nextPreparedSets.Count >= MaxBackgroundWorkItems) {
+                    break;
+                }
+            }
+
+            if (nextPreparedSets.Count == 0) {
+                return Array.Empty<Dictionary<string, string>>();
+            }
+
+            preparedSets = nextPreparedSets;
+        }
+
+        return preparedSets;
+    }
+
+    private static bool BackgroundWorkRouteConditionsMatch(
+        string? callArgumentsJson,
+        string outputJson,
+        string? metaJson,
+        IReadOnlyList<string> conditionPairs) {
+        if (conditionPairs is not { Count: > 0 }) {
+            return true;
+        }
+
+        var roots = new List<JsonElement>(capacity: 3);
+        if (TryParseJsonObject(outputJson, out var outputRoot)) {
+            roots.Add(outputRoot);
+        }
+        if (TryParseJsonObject(metaJson, out var metaRoot)) {
+            roots.Add(metaRoot);
+        }
+        if (TryParseJsonObject(callArgumentsJson, out var argumentsRoot)) {
+            roots.Add(argumentsRoot);
+        }
+
+        if (roots.Count == 0) {
+            return false;
+        }
+
+        for (var i = 0; i < conditionPairs.Count; i++) {
+            if (!TryParseBackgroundWorkConditionPair(conditionPairs[i], out var sourceField, out var expectedValue)) {
+                return false;
+            }
+
+            var matched = false;
+            for (var rootIndex = 0; rootIndex < roots.Count && !matched; rootIndex++) {
+                var candidates = ExtractBackgroundWorkFieldValues(roots[rootIndex], sourceField);
+                for (var candidateIndex = 0; candidateIndex < candidates.Length; candidateIndex++) {
+                    if (string.Equals(
+                            NormalizeBackgroundWorkToken(candidates[candidateIndex]),
+                            expectedValue,
+                            StringComparison.OrdinalIgnoreCase)) {
+                        matched = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!matched) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static bool TryParseBackgroundWorkBindingPair(string bindingPair, out string sourceField, out string targetArgument) {
@@ -983,9 +1091,23 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        sourceField = NormalizeBackgroundWorkToken(normalized[..separator]);
+        sourceField = NormalizeBackgroundWorkSourceField(normalized[..separator]);
         targetArgument = NormalizeBackgroundWorkToken(normalized[(separator + 2)..]);
         return sourceField.Length > 0 && targetArgument.Length > 0;
+    }
+
+    private static bool TryParseBackgroundWorkConditionPair(string conditionPair, out string sourceField, out string expectedValue) {
+        sourceField = string.Empty;
+        expectedValue = string.Empty;
+        var normalized = (conditionPair ?? string.Empty).Trim();
+        var separator = normalized.IndexOf("==", StringComparison.Ordinal);
+        if (separator <= 0 || separator >= normalized.Length - 2) {
+            return false;
+        }
+
+        sourceField = NormalizeBackgroundWorkSourceField(normalized[..separator]);
+        expectedValue = NormalizeBackgroundWorkToken(normalized[(separator + 2)..]);
+        return sourceField.Length > 0 && expectedValue.Length > 0;
     }
 
     private static string[] ExtractBackgroundWorkFieldValues(JsonElement root, string sourceField) {
@@ -995,11 +1117,9 @@ internal sealed partial class ChatServiceSession {
 
         var values = new List<string>();
         foreach (var candidateField in EnumerateBackgroundWorkFieldCandidates(sourceField)) {
-            if (!TryGetBackgroundWorkProperty(root, candidateField, out var value)) {
-                continue;
+            foreach (var value in EnumerateBackgroundWorkPathMatches(root, candidateField)) {
+                AppendBackgroundWorkJsonValues(value, values);
             }
-
-            AppendBackgroundWorkJsonValues(value, values);
         }
 
         return values.Count == 0
@@ -1011,38 +1131,149 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static IEnumerable<string> EnumerateBackgroundWorkFieldCandidates(string sourceField) {
-        var normalizedField = NormalizeBackgroundWorkToken(sourceField);
+        var normalizedField = NormalizeBackgroundWorkSourceField(sourceField);
         if (normalizedField.Length == 0) {
             yield break;
         }
 
         yield return normalizedField;
 
-        var lastDotIndex = normalizedField.LastIndexOf('.', normalizedField.Length - 1);
-        if (lastDotIndex >= 0 && lastDotIndex < normalizedField.Length - 1) {
-            var leaf = normalizedField[(lastDotIndex + 1)..];
-            if (leaf.Length > 0 && !string.Equals(leaf, normalizedField, StringComparison.OrdinalIgnoreCase)) {
-                yield return leaf;
-            }
+        var segments = TokenizeBackgroundWorkSourceField(normalizedField);
+        if (segments.Count == 0) {
+            yield break;
+        }
+
+        var leaf = NormalizeBackgroundWorkToken(segments[^1]);
+        if (leaf.Length > 0 && !string.Equals(leaf, NormalizeBackgroundWorkToken(normalizedField), StringComparison.OrdinalIgnoreCase)) {
+            yield return leaf;
         }
     }
 
-    private static bool TryGetBackgroundWorkProperty(JsonElement root, string fieldName, out JsonElement value) {
-        value = default;
-        if (root.ValueKind != JsonValueKind.Object) {
-            return false;
+    private static IReadOnlyList<string> TokenizeBackgroundWorkSourceField(string sourceField) {
+        var normalizedField = NormalizeBackgroundWorkSourceField(sourceField);
+        if (normalizedField.Length == 0) {
+            return Array.Empty<string>();
         }
 
-        foreach (var property in root.EnumerateObject()) {
-            if (!string.Equals(NormalizeBackgroundWorkToken(property.Name), fieldName, StringComparison.OrdinalIgnoreCase)) {
+        var tokens = new List<string>();
+        var builder = new StringBuilder();
+        for (var i = 0; i < normalizedField.Length; i++) {
+            var current = normalizedField[i];
+            if (current is '/' or '.') {
+                AppendBackgroundWorkPathToken(builder, tokens);
                 continue;
             }
 
-            value = property.Value;
-            return true;
+            if (current == '[') {
+                AppendBackgroundWorkPathToken(builder, tokens);
+                var closeIndex = normalizedField.IndexOf(']', i + 1);
+                if (closeIndex > i) {
+                    var bracketToken = normalizedField[(i + 1)..closeIndex].Trim();
+                    tokens.Add(bracketToken.Length == 0 ? "*" : bracketToken.ToLowerInvariant());
+                    i = closeIndex;
+                    continue;
+                }
+            }
+
+            builder.Append(char.ToLowerInvariant(current));
         }
 
-        return false;
+        AppendBackgroundWorkPathToken(builder, tokens);
+        return tokens;
+    }
+
+    private static void AppendBackgroundWorkPathToken(StringBuilder builder, ICollection<string> tokens) {
+        if (builder.Length == 0) {
+            return;
+        }
+
+        var token = builder.ToString().Trim();
+        builder.Clear();
+        if (token.Length == 0) {
+            return;
+        }
+
+        if (token.EndsWith("[]", StringComparison.Ordinal)) {
+            var propertyToken = token[..^2].Trim();
+            if (propertyToken.Length > 0) {
+                tokens.Add(propertyToken.ToLowerInvariant());
+            }
+
+            tokens.Add("*");
+            return;
+        }
+
+        tokens.Add(token.ToLowerInvariant());
+    }
+
+    private static IEnumerable<JsonElement> EnumerateBackgroundWorkPathMatches(JsonElement root, string sourceField) {
+        var pathTokens = TokenizeBackgroundWorkSourceField(sourceField);
+        if (pathTokens.Count == 0) {
+            yield break;
+        }
+
+        var current = new List<JsonElement> { root };
+        for (var tokenIndex = 0; tokenIndex < pathTokens.Count; tokenIndex++) {
+            var token = pathTokens[tokenIndex];
+            var next = new List<JsonElement>();
+            for (var currentIndex = 0; currentIndex < current.Count; currentIndex++) {
+                AppendBackgroundWorkPathMatches(current[currentIndex], token, next);
+            }
+
+            if (next.Count == 0) {
+                yield break;
+            }
+
+            current = next;
+        }
+
+        for (var i = 0; i < current.Count; i++) {
+            yield return current[i];
+        }
+    }
+
+    private static void AppendBackgroundWorkPathMatches(JsonElement current, string token, ICollection<JsonElement> next) {
+        if (token == "*") {
+            if (current.ValueKind != JsonValueKind.Array) {
+                return;
+            }
+
+            foreach (var item in current.EnumerateArray()) {
+                next.Add(item);
+            }
+
+            return;
+        }
+
+        if (int.TryParse(token, NumberStyles.None, CultureInfo.InvariantCulture, out var index)) {
+            if (current.ValueKind != JsonValueKind.Array || index < 0 || index >= current.GetArrayLength()) {
+                return;
+            }
+
+            next.Add(current[index]);
+            return;
+        }
+
+        if (current.ValueKind != JsonValueKind.Object) {
+            return;
+        }
+
+        foreach (var property in current.EnumerateObject()) {
+            if (!string.Equals(NormalizeBackgroundWorkToken(property.Name), NormalizeBackgroundWorkToken(token), StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            next.Add(property.Value);
+        }
+    }
+
+    private static string NormalizeBackgroundWorkSourceField(string? value) {
+        var normalized = (value ?? string.Empty).Trim().ToLowerInvariant();
+        if (normalized.Length == 0) {
+            return string.Empty;
+        }
+
+        return normalized.Replace("\\", "/", StringComparison.Ordinal);
     }
 
     private ThreadBackgroundWorkSnapshot NormalizeThreadBackgroundWorkLeases(string threadId, ThreadBackgroundWorkSnapshot snapshot) {
@@ -1177,15 +1408,31 @@ internal sealed partial class ChatServiceSession {
     private static string BuildToolHandoffBackgroundWorkItemId(
         string sourceToolName,
         string targetToolName,
-        string targetArgument,
-        string value) {
-        return string.Join(
-            ":",
+        IReadOnlyDictionary<string, string> preparedArguments) {
+        var segments = new List<string> {
             "handoff",
             NormalizeBackgroundWorkToken(sourceToolName),
-            NormalizeBackgroundWorkToken(targetToolName),
-            NormalizeBackgroundWorkToken(targetArgument),
-            NormalizeBackgroundWorkToken(value));
+            NormalizeBackgroundWorkToken(targetToolName)
+        };
+        foreach (var pair in preparedArguments.OrderBy(static pair => pair.Key, StringComparer.OrdinalIgnoreCase)) {
+            segments.Add(NormalizeBackgroundWorkToken(pair.Key));
+            segments.Add(NormalizeBackgroundWorkToken(pair.Value));
+        }
+
+        return string.Join(":", segments);
+    }
+
+    private static string BuildToolHandoffBackgroundWorkItemId(
+        string sourceToolName,
+        string targetToolName,
+        string targetArgument,
+        string value) {
+        return BuildToolHandoffBackgroundWorkItemId(
+            sourceToolName,
+            targetToolName,
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
+                [targetArgument] = value
+            });
     }
 
     private static string BuildToolHandoffBackgroundWorkTitle(string targetToolName, string value) {
@@ -1196,22 +1443,37 @@ internal sealed partial class ChatServiceSession {
             : "Prepared " + normalizedToolName + " follow-up for " + normalizedValue;
     }
 
-    private static string BuildToolHandoffBackgroundWorkRequest(string targetToolName, string targetArgument, string value, string sourceToolName) {
+    private static string BuildToolHandoffBackgroundWorkRequest(
+        string targetToolName,
+        IReadOnlyDictionary<string, string> preparedArguments,
+        string sourceToolName) {
+        var argumentSummary = string.Join(
+            ", ",
+            preparedArguments
+                .OrderBy(static pair => pair.Key, StringComparer.OrdinalIgnoreCase)
+                .Select(static pair => NormalizeBackgroundWorkToken(pair.Key) + "=" + (pair.Value ?? string.Empty).Trim()));
         return "Run "
                + NormalizeToolNameForAnswerPlan(targetToolName)
                + " with "
-               + NormalizeBackgroundWorkToken(targetArgument)
-               + "="
-               + (value ?? string.Empty).Trim()
+               + argumentSummary
                + " using the latest "
                + NormalizeToolNameForAnswerPlan(sourceToolName)
                + " evidence.";
     }
 
-    private static string BuildBackgroundWorkPreparedArgumentsJson(string targetArgument, string value) {
-        return JsonSerializer.Serialize(new Dictionary<string, string>(StringComparer.Ordinal) {
-            [(targetArgument ?? string.Empty).Trim()] = (value ?? string.Empty).Trim()
-        });
+    private static string BuildBackgroundWorkPreparedArgumentsJson(IReadOnlyDictionary<string, string> preparedArguments) {
+        var ordered = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var pair in preparedArguments.OrderBy(static pair => pair.Key, StringComparer.OrdinalIgnoreCase)) {
+            var key = (pair.Key ?? string.Empty).Trim();
+            var value = (pair.Value ?? string.Empty).Trim();
+            if (key.Length == 0 || value.Length == 0) {
+                continue;
+            }
+
+            ordered[key] = value;
+        }
+
+        return JsonSerializer.Serialize(ordered);
     }
 
     private static bool TryBuildBackgroundWorkContractHelperPreparedArguments(
@@ -1328,19 +1590,56 @@ internal sealed partial class ChatServiceSession {
         return false;
     }
 
+    private static bool TryResolvePrimaryBackgroundWorkArgument(
+        IReadOnlyDictionary<string, string> preparedArguments,
+        out string argumentName,
+        out string argumentValue) {
+        argumentName = string.Empty;
+        argumentValue = string.Empty;
+        if (preparedArguments is null || preparedArguments.Count == 0) {
+            return false;
+        }
+
+        foreach (var pair in preparedArguments) {
+            var normalizedArgumentName = NormalizeBackgroundWorkToken(pair.Key);
+            var candidateValue = (pair.Value ?? string.Empty).Trim();
+            if (normalizedArgumentName.Length == 0 || candidateValue.Length == 0) {
+                continue;
+            }
+
+            argumentName = normalizedArgumentName;
+            argumentValue = candidateValue;
+            return true;
+        }
+
+        return false;
+    }
+
     private static string BuildBackgroundWorkResultReference(
         string sourceToolName,
         string sourceCallId,
         string targetToolName,
         string targetArgument,
-        string value) {
-        return string.Join(
-            ";",
+        string value,
+        IReadOnlyDictionary<string, string> preparedArguments) {
+        var segments = new List<string> {
             "source_tool=" + NormalizeToolNameForAnswerPlan(sourceToolName),
             "source_call_id=" + (sourceCallId ?? string.Empty).Trim(),
             "target_tool=" + NormalizeToolNameForAnswerPlan(targetToolName),
             "target_argument=" + NormalizeBackgroundWorkToken(targetArgument),
-            "target_value=" + (value ?? string.Empty).Trim());
+            "target_value=" + (value ?? string.Empty).Trim()
+        };
+        foreach (var pair in preparedArguments.OrderBy(static pair => pair.Key, StringComparer.OrdinalIgnoreCase)) {
+            var normalizedKey = NormalizeBackgroundWorkToken(pair.Key);
+            var normalizedValue = (pair.Value ?? string.Empty).Trim();
+            if (normalizedKey.Length == 0 || normalizedValue.Length == 0) {
+                continue;
+            }
+
+            segments.Add("prepared_arg_" + normalizedKey + "=" + normalizedValue);
+        }
+
+        return string.Join(";", segments);
     }
 
     private static string BuildContractHelperBackgroundWorkTitle(string helperToolName, string dependentToolName, string value) {

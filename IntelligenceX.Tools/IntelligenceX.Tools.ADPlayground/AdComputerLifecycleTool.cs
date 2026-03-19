@@ -54,6 +54,7 @@ public sealed class AdComputerLifecycleTool : ActiveDirectoryToolBase, ITool {
         string? OrganizationalUnit,
         string? TargetOrganizationalUnit,
         string? SamAccountName,
+        string? ComputerName,
         bool? Enabled,
         IReadOnlyList<string> UpdatedAttributes,
         IReadOnlyList<string> ClearedAttributes,
@@ -422,6 +423,12 @@ public sealed class AdComputerLifecycleTool : ActiveDirectoryToolBase, ITool {
             OrganizationalUnit: request.OrganizationalUnit,
             TargetOrganizationalUnit: null,
             SamAccountName: NormalizeComputerIdentity(request.SamAccountName!),
+            ComputerName: ResolveComputerName(
+                identity: NormalizeComputerIdentity(request.SamAccountName!),
+                distinguishedName: distinguishedName,
+                samAccountName: request.SamAccountName,
+                dnsHostName: request.DnsHostName,
+                commonName: request.CommonName),
             Enabled: request.Enabled,
             UpdatedAttributes: updatedAttributes.OrderBy(static value => value, StringComparer.OrdinalIgnoreCase).ToArray(),
             ClearedAttributes: Array.Empty<string>(),
@@ -446,6 +453,12 @@ public sealed class AdComputerLifecycleTool : ActiveDirectoryToolBase, ITool {
             OrganizationalUnit: request.OrganizationalUnit,
             TargetOrganizationalUnit: null,
             SamAccountName: request.SamAccountName,
+            ComputerName: ResolveComputerName(
+                identity: string.IsNullOrWhiteSpace(mutation.Identity) ? request.Identity! : mutation.Identity,
+                distinguishedName: mutation.DistinguishedName,
+                samAccountName: request.SamAccountName,
+                dnsHostName: request.DnsHostName,
+                commonName: request.CommonName),
             Enabled: request.Enabled,
             UpdatedAttributes: mutation.UpdatedAttributes ?? Array.Empty<string>(),
             ClearedAttributes: mutation.ClearedAttributes ?? Array.Empty<string>(),
@@ -474,6 +487,12 @@ public sealed class AdComputerLifecycleTool : ActiveDirectoryToolBase, ITool {
             OrganizationalUnit: null,
             TargetOrganizationalUnit: request.TargetOrganizationalUnit,
             SamAccountName: request.SamAccountName,
+            ComputerName: ResolveComputerName(
+                identity: string.IsNullOrWhiteSpace(mutation.Identity) ? request.Identity! : mutation.Identity,
+                distinguishedName: mutation.DistinguishedName,
+                samAccountName: request.SamAccountName,
+                dnsHostName: request.DnsHostName,
+                commonName: request.NewCommonName ?? request.CommonName),
             Enabled: null,
             UpdatedAttributes: mutation.UpdatedAttributes ?? Array.Empty<string>(),
             ClearedAttributes: mutation.ClearedAttributes ?? Array.Empty<string>(),
@@ -536,6 +555,14 @@ public sealed class AdComputerLifecycleTool : ActiveDirectoryToolBase, ITool {
             OrganizationalUnit: request.OrganizationalUnit,
             TargetOrganizationalUnit: request.TargetOrganizationalUnit,
             SamAccountName: request.SamAccountName,
+            ComputerName: ResolveComputerName(
+                identity: string.IsNullOrWhiteSpace(mutation.Identity)
+                    ? request.Identity ?? request.SamAccountName ?? string.Empty
+                    : mutation.Identity,
+                distinguishedName: mutation.DistinguishedName,
+                samAccountName: request.SamAccountName,
+                dnsHostName: request.DnsHostName,
+                commonName: request.NewCommonName ?? request.CommonName),
             Enabled: request.Operation switch {
                 "enable" => true,
                 "disable" => false,
@@ -574,6 +601,12 @@ public sealed class AdComputerLifecycleTool : ActiveDirectoryToolBase, ITool {
             OrganizationalUnit: request.OrganizationalUnit,
             TargetOrganizationalUnit: request.TargetOrganizationalUnit,
             SamAccountName: request.SamAccountName,
+            ComputerName: ResolveComputerName(
+                identity: identity,
+                distinguishedName: distinguishedName,
+                samAccountName: request.SamAccountName,
+                dnsHostName: request.DnsHostName,
+                commonName: request.NewCommonName ?? request.CommonName),
             Enabled: request.Operation switch {
                 "enable" => true,
                 "disable" => false,
@@ -661,6 +694,37 @@ public sealed class AdComputerLifecycleTool : ActiveDirectoryToolBase, ITool {
 
         var trimmed = samAccountName.Trim();
         return trimmed.EndsWith("$", StringComparison.Ordinal) ? trimmed : trimmed + "$";
+    }
+
+    private static string ResolveComputerName(
+        string? identity,
+        string? distinguishedName,
+        string? samAccountName,
+        string? dnsHostName,
+        string? commonName) {
+        if (!string.IsNullOrWhiteSpace(dnsHostName)) {
+            return dnsHostName.Trim();
+        }
+
+        var normalizedSam = NormalizeComputerIdentity(samAccountName ?? string.Empty);
+        var resolvedFromSam = TryResolveComputerLeafName(normalizedSam);
+        if (!string.IsNullOrWhiteSpace(resolvedFromSam)) {
+            return resolvedFromSam!;
+        }
+
+        var resolvedFromDistinguishedName = TryResolveComputerLeafName(distinguishedName);
+        if (!string.IsNullOrWhiteSpace(resolvedFromDistinguishedName)) {
+            return resolvedFromDistinguishedName!;
+        }
+
+        var resolvedFromIdentity = TryResolveComputerLeafName(identity);
+        if (!string.IsNullOrWhiteSpace(resolvedFromIdentity)) {
+            return resolvedFromIdentity!;
+        }
+
+        return string.IsNullOrWhiteSpace(commonName)
+            ? string.Empty
+            : commonName.Trim();
     }
 
     private static string BuildPredictedDistinguishedName(string? commonName, string samAccountName, string organizationalUnit) {
@@ -829,6 +893,10 @@ public sealed class AdComputerLifecycleTool : ActiveDirectoryToolBase, ITool {
             facts.Add(("Target organizational unit", result.TargetOrganizationalUnit));
         }
 
+        if (!string.IsNullOrWhiteSpace(result.ComputerName)) {
+            facts.Add(("Computer name", result.ComputerName));
+        }
+
         if (!string.IsNullOrWhiteSpace(result.Message)) {
             facts.Add(("Message", result.Message));
         }
@@ -851,6 +919,10 @@ public sealed class AdComputerLifecycleTool : ActiveDirectoryToolBase, ITool {
 
         if (!string.IsNullOrWhiteSpace(result.TargetOrganizationalUnit)) {
             meta.Add("target_organizational_unit", result.TargetOrganizationalUnit);
+        }
+
+        if (!string.IsNullOrWhiteSpace(result.ComputerName)) {
+            meta.Add("computer_name", result.ComputerName);
         }
 
         if (result.ServicePrincipalNames.Count > 0) {

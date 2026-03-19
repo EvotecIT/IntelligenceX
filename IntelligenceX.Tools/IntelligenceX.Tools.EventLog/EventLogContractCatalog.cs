@@ -114,6 +114,36 @@ public static class EventLogContractCatalog {
     }
 
     /// <summary>
+    /// Builds the standard EventLog probe handoff contract into safe live triage.
+    /// </summary>
+    public static ToolHandoffContract CreateConnectivityProbeHandoffContract() {
+        return ToolContractDefaults.CreateHandoff(new[] {
+            ToolContractDefaults.CreateRoute(
+                targetPackId: "eventlog",
+                targetToolName: "eventlog_top_events",
+                reason: "Promote a validated EventLog connectivity probe into a capped live triage follow-up using the same machine and requested log.",
+                targetRole: ToolRoutingTaxonomy.RoleOperational,
+                followUpKind: ToolHandoffFollowUpKinds.Investigation,
+                followUpPriority: ToolHandoffFollowUpPriorities.Normal,
+                bindings: new[] {
+                    ToolContractDefaults.CreateBinding("machine_name", "machine_name", isRequired: true),
+                    ToolContractDefaults.CreateBinding("requested_log_name", "log_name", isRequired: true)
+                }),
+            ToolContractDefaults.CreateRoute(
+                targetPackId: "eventlog",
+                targetToolName: "eventlog_live_query",
+                reason: "Promote a validated EventLog connectivity probe into a live log query using the same machine and requested log.",
+                targetRole: ToolRoutingTaxonomy.RoleOperational,
+                followUpKind: ToolHandoffFollowUpKinds.Investigation,
+                followUpPriority: ToolHandoffFollowUpPriorities.High,
+                bindings: new[] {
+                    ToolContractDefaults.CreateBinding("machine_name", "machine_name", isRequired: true),
+                    ToolContractDefaults.CreateBinding("requested_log_name", "log_name", isRequired: true)
+                })
+        });
+    }
+
+    /// <summary>
     /// Resolves the default EventLog handoff contract for a tool name when the tool does not declare one explicitly.
     /// </summary>
     public static ToolHandoffContract? CreateHandoff(string toolName) {
@@ -131,6 +161,10 @@ public static class EventLogContractCatalog {
             || string.Equals(normalizedToolName, "eventlog_timeline_query", StringComparison.OrdinalIgnoreCase)
             || string.Equals(normalizedToolName, "eventlog_evtx_security_summary", StringComparison.OrdinalIgnoreCase)) {
             return CreateQueryHandoffContract();
+        }
+
+        if (string.Equals(normalizedToolName, "eventlog_connectivity_probe", StringComparison.OrdinalIgnoreCase)) {
+            return CreateConnectivityProbeHandoffContract();
         }
 
         return null;

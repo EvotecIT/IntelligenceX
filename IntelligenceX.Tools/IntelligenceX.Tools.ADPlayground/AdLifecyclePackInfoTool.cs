@@ -73,7 +73,7 @@ public sealed class AdLifecyclePackInfoTool : ActiveDirectoryToolBase, ITool {
                 "Use ad_user_lifecycle, ad_computer_lifecycle, ad_group_lifecycle, or ad_ou_lifecycle with apply=false first to preview the intended change, related memberships, and required fields.",
                 "Switch apply=true only after the requested mutation, identity, and rollback context are explicit.",
                 "Use ad_ou_lifecycle for create/update/move/delete and accidental-deletion protection changes on organizational units.",
-                "Follow lifecycle writes with ad_object_get or ad_object_resolve in the read-only AD pack to verify resulting state."
+                "Follow lifecycle writes with ad_object_get, ad_object_resolve, or ad_user_groups_resolved in the read-only AD pack to verify resulting state, and reuse computer_name or group identity follow-up pivots when the lifecycle result exposes them for System or EventLog checks."
             },
             flowSteps: new[] {
                 ToolPackGuidance.FlowStep(
@@ -86,7 +86,7 @@ public sealed class AdLifecyclePackInfoTool : ActiveDirectoryToolBase, ITool {
                     notes: "Keep apply=false for preview/dry-run mode, including joiner memberships, offboard cleanup plans, computer account provisioning, group membership changes, or OU create/move/protection changes."),
                 ToolPackGuidance.FlowStep(
                     goal: "Apply the approved mutation and verify state",
-                    suggestedTools: new[] { "ad_user_lifecycle", "ad_computer_lifecycle", "ad_group_lifecycle", "ad_ou_lifecycle", "ad_object_get", "ad_object_resolve" },
+                    suggestedTools: new[] { "ad_user_lifecycle", "ad_computer_lifecycle", "ad_group_lifecycle", "ad_ou_lifecycle", "ad_object_get", "ad_object_resolve", "ad_user_groups_resolved" },
                     notes: "Use apply=true only with explicit governance metadata and clear operator intent.")
             },
             capabilities: new[] {
@@ -114,13 +114,42 @@ public sealed class AdLifecyclePackInfoTool : ActiveDirectoryToolBase, ITool {
             entityHandoffs: new[] {
                 ToolPackGuidance.EntityHandoff(
                     id: "lifecycle_to_readonly_verification",
-                    summary: "Promote changed user identities into the read-only AD pack for verification and follow-up evidence.",
+                    summary: "Promote changed user identities into the read-only AD pack for identity and membership verification after governed writes.",
                     entityKinds: new[] { "identity", "user" },
                     sourceTools: new[] { "ad_user_lifecycle" },
-                    targetTools: new[] { "ad_object_get", "ad_object_resolve" },
+                    targetTools: new[] { "ad_object_get", "ad_object_resolve", "ad_user_groups_resolved" },
                     fieldMappings: new[] {
                         ToolPackGuidance.EntityFieldMapping("distinguished_name", "identity", "Prefer the distinguished name when available for direct post-change verification."),
                         ToolPackGuidance.EntityFieldMapping("identity", "identity", "Fallback to the original identity when the write result did not produce a DN.")
+                    }),
+                ToolPackGuidance.EntityHandoff(
+                    id: "computer_lifecycle_to_host_followup",
+                    summary: "Promote changed computer accounts into ComputerX/System follow-up using the lifecycle result's resolved computer_name.",
+                    entityKinds: new[] { "computer", "host" },
+                    sourceTools: new[] { "ad_computer_lifecycle" },
+                    targetTools: new[] { "system_info", "system_metrics_summary" },
+                    fieldMappings: new[] {
+                        ToolPackGuidance.EntityFieldMapping("computer_name", "computer_name", "Prefer the lifecycle result's resolved computer_name so ComputerX follow-up reuses the same governed target."),
+                        ToolPackGuidance.EntityFieldMapping("distinguished_name", "identity", "Keep the distinguished name available for AD-side verification in parallel.")
+                    }),
+                ToolPackGuidance.EntityHandoff(
+                    id: "computer_lifecycle_to_eventlog_followup",
+                    summary: "Promote changed computer accounts into EventLog channel discovery using the lifecycle result's resolved computer_name.",
+                    entityKinds: new[] { "computer", "host", "event_source" },
+                    sourceTools: new[] { "ad_computer_lifecycle" },
+                    targetTools: new[] { "eventlog_channels_list" },
+                    fieldMappings: new[] {
+                        ToolPackGuidance.EntityFieldMapping("computer_name", "machine_name", "Prefer the lifecycle result's resolved computer_name so EventViewerX follow-up stays on the same governed host.")
+                    }),
+                ToolPackGuidance.EntityHandoff(
+                    id: "group_lifecycle_to_membership_verification",
+                    summary: "Promote changed groups into resolved membership verification after governed group updates.",
+                    entityKinds: new[] { "group", "membership" },
+                    sourceTools: new[] { "ad_group_lifecycle" },
+                    targetTools: new[] { "ad_group_members_resolved", "ad_object_get" },
+                    fieldMappings: new[] {
+                        ToolPackGuidance.EntityFieldMapping("distinguished_name", "identity", "Prefer the distinguished name when verifying the post-change membership set."),
+                        ToolPackGuidance.EntityFieldMapping("identity", "identity", "Fallback to the original group identity when the write result did not produce a DN.")
                     })
             },
             recipes: new[] {
@@ -143,10 +172,10 @@ public sealed class AdLifecyclePackInfoTool : ActiveDirectoryToolBase, ITool {
                             notes: "Switch apply=true only after the operator confirms the identity, OU, initial password handling, and membership plan."),
                         ToolPackGuidance.FlowStep(
                             goal: "Verify the resulting account and access state",
-                            suggestedTools: new[] { "ad_object_get", "ad_object_resolve" },
-                            notes: "Use the returned distinguished name when available to confirm the account landed in the expected OU with the expected attributes.")
+                            suggestedTools: new[] { "ad_object_get", "ad_object_resolve", "ad_user_groups_resolved" },
+                            notes: "Use the returned distinguished name when available to confirm the account landed in the expected OU with the expected attributes and the intended group footprint.")
                     },
-                    verificationTools: new[] { "ad_object_get", "ad_object_resolve" },
+                    verificationTools: new[] { "ad_object_get", "ad_object_resolve", "ad_user_groups_resolved" },
                     notes: "Prefer user-centric membership changes in ad_user_lifecycle unless the request specifically needs governed group-side updates."),
                 ToolPackGuidance.Recipe(
                     id: "mover_access_transition",
@@ -171,10 +200,10 @@ public sealed class AdLifecyclePackInfoTool : ActiveDirectoryToolBase, ITool {
                             notes: "Use operation=enable with apply=false only when the mover workflow includes reactivating a disabled account and optionally reapplying initial groups_to_add."),
                         ToolPackGuidance.FlowStep(
                             goal: "Apply the approved access transition and verify",
-                            suggestedTools: new[] { "ad_user_lifecycle", "ad_group_lifecycle", "ad_ou_lifecycle", "ad_object_get" },
+                            suggestedTools: new[] { "ad_user_lifecycle", "ad_group_lifecycle", "ad_ou_lifecycle", "ad_object_get", "ad_user_groups_resolved", "ad_group_members_resolved" },
                             notes: "Apply only the approved writes, then confirm the final account state and resulting group footprint.")
                     },
-                    verificationTools: new[] { "ad_object_get", "ad_object_resolve" },
+                    verificationTools: new[] { "ad_object_get", "ad_object_resolve", "ad_user_groups_resolved", "ad_group_members_resolved" },
                     notes: "Keep the mover workflow dry-run-first and preserve the pre-change group list in case rollback is needed."),
                 ToolPackGuidance.Recipe(
                     id: "leaver_offboarding",
@@ -195,10 +224,10 @@ public sealed class AdLifecyclePackInfoTool : ActiveDirectoryToolBase, ITool {
                             notes: "Switch apply=true only after rollback context, cleanup scope, and the exact identity are explicit."),
                         ToolPackGuidance.FlowStep(
                             goal: "Verify the disabled state and residual access",
-                            suggestedTools: new[] { "ad_object_get", "ad_object_resolve" },
+                            suggestedTools: new[] { "ad_object_get", "ad_object_resolve", "ad_user_groups_resolved" },
                             notes: "Confirm the account state, remaining memberships, and whether any cleanup follow-up is still required.")
                     },
-                    verificationTools: new[] { "ad_object_get", "ad_object_resolve" },
+                    verificationTools: new[] { "ad_object_get", "ad_object_resolve", "ad_user_groups_resolved" },
                     notes: "For emergency disables, prefer operation=disable first, then use operation=offboard when the broader cleanup plan is ready."),
                 ToolPackGuidance.Recipe(
                     id: "quarantine_ou_preparation",

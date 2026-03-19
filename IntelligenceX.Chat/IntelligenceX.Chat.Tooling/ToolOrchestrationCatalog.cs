@@ -38,6 +38,11 @@ public sealed record ToolOrchestrationHandoffEdge {
     public IReadOnlyList<string> BindingPairs { get; init; } = Array.Empty<string>();
 
     /// <summary>
+    /// Normalized route conditions ("source==expected") that must match before this handoff is eligible.
+    /// </summary>
+    public IReadOnlyList<string> ConditionPairs { get; init; } = Array.Empty<string>();
+
+    /// <summary>
     /// Optional normalized follow-up kind token for this handoff edge.
     /// </summary>
     public string FollowUpKind { get; init; } = string.Empty;
@@ -496,6 +501,21 @@ public sealed class ToolOrchestrationCatalog {
                         continue;
                     }
 
+                    var conditionPairs = new List<string>(route?.Conditions?.Count ?? 0);
+                    if (route?.Conditions is { Count: > 0 }) {
+                        for (var conditionIndex = 0; conditionIndex < route.Conditions.Count; conditionIndex++) {
+                            var condition = route.Conditions[conditionIndex];
+                            var normalizedCondition = NormalizeHandoffConditionPair(condition?.SourceField, condition?.ExpectedValue);
+                            if (normalizedCondition.Length == 0) {
+                                continue;
+                            }
+
+                            conditionPairs.Add(normalizedCondition);
+                        }
+                    }
+
+                    var normalizedConditionPairs = NormalizeTokensPreserveMultiplicity(conditionPairs);
+
                     handoffBindingCount += normalizedBindingPairs.Count;
                     handoffEdges.Add(new ToolOrchestrationHandoffEdge {
                         TargetPackId = NormalizePackId(route?.TargetPackId),
@@ -503,6 +523,7 @@ public sealed class ToolOrchestrationCatalog {
                         TargetRole = NormalizeToken(route?.TargetRole),
                         BindingCount = normalizedBindingPairs.Count,
                         BindingPairs = FreezeStringList(normalizedBindingPairs),
+                        ConditionPairs = FreezeStringList(normalizedConditionPairs),
                         FollowUpKind = ToolHandoffFollowUpKinds.Normalize(route?.FollowUpKind),
                         FollowUpPriority = ToolHandoffFollowUpPriorities.Normalize(route?.FollowUpPriority ?? 0)
                     });
@@ -1117,10 +1138,12 @@ public sealed class ToolOrchestrationCatalog {
             var targetToolName = NormalizeToken(route?.TargetToolName);
             var targetRole = NormalizeToken(route?.TargetRole);
             var bindingPairs = NormalizeTokensPreserveMultiplicity(route?.BindingPairs);
+            var conditionPairs = NormalizeTokensPreserveMultiplicity(route?.ConditionPairs);
             if (targetPackId.Length == 0
                 && targetToolName.Length == 0
                 && targetRole.Length == 0
-                && bindingPairs.Count == 0) {
+                && bindingPairs.Count == 0
+                && conditionPairs.Count == 0) {
                 continue;
             }
 
@@ -1129,7 +1152,8 @@ public sealed class ToolOrchestrationCatalog {
                 TargetToolName = targetToolName,
                 TargetRole = targetRole,
                 BindingCount = bindingPairs.Count,
-                BindingPairs = FreezeStringList(bindingPairs)
+                BindingPairs = FreezeStringList(bindingPairs),
+                ConditionPairs = FreezeStringList(conditionPairs)
             });
         }
 
@@ -1170,6 +1194,21 @@ public sealed class ToolOrchestrationCatalog {
     private static string NormalizeOverlayRole(string? value, string fallback) {
         var normalized = NormalizeToken(value);
         return ToolRoutingTaxonomy.IsAllowedRole(normalized) ? normalized : fallback;
+    }
+
+    private static string NormalizeHandoffConditionPair(string? sourceField, string? expectedValue) {
+        var normalizedSource = NormalizeHandoffConditionSourceField(sourceField);
+        var normalizedExpected = NormalizeToken(expectedValue);
+        return normalizedSource.Length > 0 && normalizedExpected.Length > 0
+            ? normalizedSource + "==" + normalizedExpected
+            : string.Empty;
+    }
+
+    private static string NormalizeHandoffConditionSourceField(string? value) {
+        var normalized = (value ?? string.Empty).Trim().ToLowerInvariant();
+        return normalized.Length == 0
+            ? string.Empty
+            : normalized.Replace("\\", "/", StringComparison.Ordinal);
     }
 
     private static string NormalizeOverlayDomainIntentFamily(string? value, string fallback) {
