@@ -37,9 +37,7 @@ internal static class UsageTelemetryReportPageModelBuilders {
                     heatmap.Document)))
             .ToArray();
 
-        var bootstrap = new JsonObject()
-            .Add("themeKey", "ix-usage-report-theme")
-            .Add("defaultTheme", "system")
+        var bootstrap = UsageTelemetryReportAppearanceDefaults.AddBootstrap(new JsonObject())
             .Add("defaultSectionTarget", "all")
             .Add("defaultSupportingMode", "preview");
 
@@ -54,6 +52,7 @@ internal static class UsageTelemetryReportPageModelBuilders {
             SectionSwitches: sectionSwitches,
             Sections: sections,
             SupportingBreakdowns: supportingBreakdowns,
+            Diagnostics: UsageTelemetryReportDiagnosticsBuilder.Build(overview.Summary, overview.Metadata, overview.ProviderSections.Count),
             BootstrapJson: JsonLite.Serialize(JsonValue.From(bootstrap)),
             Footnote: "Built from the provider-neutral telemetry ledger, so the same report format can work for Codex, Claude, IX-native usage, and future compatible providers.");
     }
@@ -63,15 +62,16 @@ internal static class UsageTelemetryReportPageModelBuilders {
         string breakdownKey,
         string breakdownLabel,
         string? subtitle,
-        HeatmapDocument document) {
+        HeatmapDocument document,
+        UsageSummarySnapshot? summary = null,
+        JsonObject? metadata = null,
+        int providerSectionsCount = 0) {
         var safeTitle = string.IsNullOrWhiteSpace(reportTitle) ? "Usage Overview" : reportTitle.Trim();
         var safeLabel = string.IsNullOrWhiteSpace(breakdownLabel) ? "Breakdown" : breakdownLabel.Trim();
         var safeKey = string.IsNullOrWhiteSpace(breakdownKey) ? "breakdown" : breakdownKey.Trim();
         var summaryHint = UsageTelemetryBreakdownDisplayText.FormatSummaryHint(safeLabel, subtitle);
 
-        var bootstrap = new JsonObject()
-            .Add("themeKey", "ix-usage-report-theme")
-            .Add("defaultTheme", "system");
+        var bootstrap = UsageTelemetryReportAppearanceDefaults.AddBootstrap(new JsonObject());
 
         return new UsageTelemetryBreakdownPageModel(
             ReportTitle: safeTitle,
@@ -79,6 +79,7 @@ internal static class UsageTelemetryReportPageModelBuilders {
             FileStem: UsageTelemetryBreakdownFileNames.ResolveFileStem(safeKey, safeLabel),
             BreakdownLabel: safeLabel,
             SummaryHint: summaryHint,
+            Diagnostics: summary is null ? null : UsageTelemetryReportDiagnosticsBuilder.Build(summary, metadata, providerSectionsCount),
             BootstrapJson: JsonLite.Serialize(JsonValue.From(bootstrap)),
             Summary: BuildBreakdownSummary(safeKey, summaryHint, document));
     }
@@ -105,6 +106,9 @@ internal static class UsageTelemetryReportPageModelBuilders {
             Flags: flags,
             DatasetTabs: datasetTabs,
             AccentColors: ResolveProviderAccentColors(section.ProviderId),
+            Diagnostics: UsageTelemetryReportDiagnosticsBuilder.BuildForProviderSection(section),
+            HealthAccountLabels: section.AccountLabels,
+            HealthInsights: BuildProviderHealthInsights(section),
             GitHub: isGitHub ? BuildGitHubSection(section) : null);
     }
 
@@ -145,6 +149,15 @@ internal static class UsageTelemetryReportPageModelBuilders {
             TopRepositoriesByHealth: topRepositoriesByHealth,
             TopLanguages: topLanguages,
             OwnerSections: ownerSections);
+    }
+
+    private static IReadOnlyList<UsageTelemetryOverviewInsightSection> BuildProviderHealthInsights(
+        UsageTelemetryOverviewProviderSection section) {
+        return section.AdditionalInsights
+            .Where(static insight =>
+                string.Equals(insight.Key, "source-roots", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(insight.Key, "quick-scan-dedupe", StringComparison.OrdinalIgnoreCase))
+            .ToArray();
     }
 
     private static UsageTelemetryToggleOptionModel[] BuildDatasetTabs(UsageTelemetryOverviewSectionFlags flags) {
@@ -218,7 +231,11 @@ internal static class UsageTelemetryReportPageModelBuilders {
         return scopes.ToArray();
     }
 
-    public static UsageTelemetryGitHubWrappedPageModel BuildGitHubWrapped(UsageTelemetryOverviewProviderSection section) {
+    public static UsageTelemetryGitHubWrappedPageModel BuildGitHubWrapped(
+        UsageTelemetryOverviewProviderSection section,
+        UsageSummarySnapshot? summary = null,
+        JsonObject? metadata = null,
+        int providerSectionsCount = 0) {
         if (section is null) {
             throw new ArgumentNullException(nameof(section));
         }
@@ -233,13 +250,14 @@ internal static class UsageTelemetryReportPageModelBuilders {
                 insight))
             .ToArray();
 
-        var bootstrap = new JsonObject()
+        var bootstrap = UsageTelemetryReportAppearanceDefaults.AddBootstrap(new JsonObject())
             .Add("defaultOwnerPanel", "all");
 
         return new UsageTelemetryGitHubWrappedPageModel(
             Title: section.Title,
             Subtitle: section.Subtitle,
             Note: section.Note,
+            Diagnostics: summary is null ? null : UsageTelemetryReportDiagnosticsBuilder.Build(summary, metadata, providerSectionsCount),
             BootstrapJson: JsonLite.Serialize(JsonValue.From(bootstrap)),
             Metrics: section.Metrics,
             SpotlightCards: section.SpotlightCards,
@@ -257,7 +275,11 @@ internal static class UsageTelemetryReportPageModelBuilders {
             OwnerPanels: ownerPanels);
     }
 
-    public static UsageTelemetryGitHubWrappedCardPageModel BuildGitHubWrappedCard(UsageTelemetryOverviewProviderSection section) {
+    public static UsageTelemetryGitHubWrappedCardPageModel BuildGitHubWrappedCard(
+        UsageTelemetryOverviewProviderSection section,
+        UsageSummarySnapshot? summary = null,
+        JsonObject? metadata = null,
+        int providerSectionsCount = 0) {
         if (section is null) {
             throw new ArgumentNullException(nameof(section));
         }
@@ -275,7 +297,9 @@ internal static class UsageTelemetryReportPageModelBuilders {
         return new UsageTelemetryGitHubWrappedCardPageModel(
             Title: section.Title,
             Subtitle: section.Subtitle,
-            BootstrapJson: "{}",
+            Diagnostics: summary is null ? null : UsageTelemetryReportDiagnosticsBuilder.Build(summary, metadata, providerSectionsCount),
+            BootstrapJson: JsonLite.Serialize(JsonValue.From(
+                UsageTelemetryReportAppearanceDefaults.AddBootstrap(new JsonObject()))),
             Metrics: new[] {
                 new UsageTelemetryGitHubWrappedMetricModel(
                     section.Metrics.ElementAtOrDefault(0)?.Label ?? "Contributions",

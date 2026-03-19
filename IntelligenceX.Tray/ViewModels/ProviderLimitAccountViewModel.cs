@@ -13,6 +13,7 @@ public sealed class ProviderLimitAccountViewModel : ViewModelBase {
     public string? PlanLabel { get; set; }
     public string? StatusLabel { get; set; }
     public string Summary { get; set; } = string.Empty;
+    public string? DetailText { get; set; }
     public string? BadgeText { get; set; }
     public string? WindowSummaryText { get; set; }
     public ObservableCollection<ProviderLimitWindowViewModel> Windows { get; } = [];
@@ -24,6 +25,7 @@ public sealed class ProviderLimitAccountViewModel : ViewModelBase {
 
     public bool HasPlanLabel => !string.IsNullOrWhiteSpace(PlanLabel);
     public bool HasStatusLabel => !string.IsNullOrWhiteSpace(StatusLabel);
+    public bool HasDetailText => !string.IsNullOrWhiteSpace(DetailText);
     public bool HasBadge => !string.IsNullOrWhiteSpace(BadgeText);
     public bool HasWindowSummary => !string.IsNullOrWhiteSpace(WindowSummaryText);
     public bool HasWindows => Windows.Count > 0;

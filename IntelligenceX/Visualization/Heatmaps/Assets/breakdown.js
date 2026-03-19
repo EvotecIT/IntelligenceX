@@ -15,6 +15,7 @@
       compactMode: 'summary'
     })
     : null;
+  let ixBreakdownAccentController = null;
 
   function ixBreakdownApplyMode(mode) {
     ixBreakdownModeButtons.forEach((button) => {
@@ -41,9 +42,19 @@
   });
 
   if (window.IntelligenceXReportRuntime) {
-    window.IntelligenceXReportRuntime.initThemeController({
+    const ixBreakdownThemeController = window.IntelligenceXReportRuntime.initThemeController({
       themeKey: ixBreakdownThemeKey,
-      defaultTheme: ixBreakdownDefaultTheme
+      defaultTheme: ixBreakdownDefaultTheme,
+      onApply: () => {
+        if (ixBreakdownAccentController) {
+          ixBreakdownAccentController.reapply();
+        }
+      }
+    });
+    ixBreakdownAccentController = window.IntelligenceXReportRuntime.initAccentController({
+      accentKey: ixBreakdownBootstrap.accentKey || 'ix-usage-report-accent',
+      defaultAccent: ixBreakdownBootstrap.defaultAccent || 'violet',
+      resolveTheme: () => document.documentElement.getAttribute('data-theme') || ixBreakdownThemeController.resolveTheme(ixBreakdownDefaultTheme)
     });
   }
 

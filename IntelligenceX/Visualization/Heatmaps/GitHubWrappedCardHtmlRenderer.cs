@@ -1,5 +1,7 @@
 using System;
 using System.Text;
+using IntelligenceX.Json;
+using IntelligenceX.Telemetry.Usage;
 using static IntelligenceX.Visualization.Heatmaps.UsageTelemetryGitHubWrappedHtmlFragments;
 
 namespace IntelligenceX.Visualization.Heatmaps;
@@ -7,12 +9,16 @@ namespace IntelligenceX.Visualization.Heatmaps;
 #pragma warning disable CS1591
 
 internal static class GitHubWrappedCardHtmlRenderer {
-    public static string Render(UsageTelemetryOverviewProviderSection section) {
+    public static string Render(
+        UsageTelemetryOverviewProviderSection section,
+        UsageSummarySnapshot? summary = null,
+        JsonObject? metadata = null,
+        int providerSectionsCount = 0) {
         if (section is null) {
             throw new ArgumentNullException(nameof(section));
         }
 
-        var page = UsageTelemetryReportPageModelBuilders.BuildGitHubWrappedCard(section);
+        var page = UsageTelemetryReportPageModelBuilders.BuildGitHubWrappedCard(section, summary, metadata, providerSectionsCount);
 
         var sb = new StringBuilder(16 * 1024);
         sb.AppendLine("  <article class=\"card wrapped-panel\">");
@@ -28,8 +34,9 @@ internal static class GitHubWrappedCardHtmlRenderer {
         }
         sb.AppendLine("      </div>");
         sb.AppendLine("    </div>");
+        UsageTelemetryReportDiagnosticsHtmlRenderer.Append(sb, page.Diagnostics, indentLevel: 2);
         sb.AppendLine("    <div class=\"heatmap\">");
-        sb.AppendLine("      <img src=\"provider-github.dark.svg\" alt=\"GitHub activity heatmap\">");
+        sb.AppendLine("      <img src=\"provider-github.light.svg\" data-light-src=\"provider-github.light.svg\" data-dark-src=\"provider-github.dark.svg\" alt=\"GitHub activity heatmap\">");
         sb.AppendLine("    </div>");
         sb.AppendLine("    <div class=\"stats\">");
         foreach (var stat in page.Stats) {

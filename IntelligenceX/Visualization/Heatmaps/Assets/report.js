@@ -16,10 +16,21 @@
       compactMode: 'summary'
     })
     : null;
+  let ixAccentController = null;
   if (window.IntelligenceXReportRuntime) {
-    window.IntelligenceXReportRuntime.initThemeController({
+    const ixThemeController = window.IntelligenceXReportRuntime.initThemeController({
       themeKey: ixBootstrap.themeKey || 'ix-usage-report-theme',
-      defaultTheme: ixBootstrap.defaultTheme || 'system'
+      defaultTheme: ixBootstrap.defaultTheme || 'system',
+      onApply: () => {
+        if (ixAccentController) {
+          ixAccentController.reapply();
+        }
+      }
+    });
+    ixAccentController = window.IntelligenceXReportRuntime.initAccentController({
+      accentKey: ixBootstrap.accentKey || 'ix-usage-report-accent',
+      defaultAccent: ixBootstrap.defaultAccent || 'violet',
+      resolveTheme: () => document.documentElement.getAttribute('data-theme') || ixThemeController.resolveTheme(ixBootstrap.defaultTheme || 'system')
     });
   }
   function ixApplySectionTarget(target) {

@@ -26,7 +26,7 @@
             CornerRadius="14"
             Margin="6">
         <Border.Effect>
-            <DropShadowEffect BlurRadius="20" ShadowDepth="4" Opacity="0.6" Color="#000000" />
+            <DropShadowEffect BlurRadius="20" ShadowDepth="4" Opacity="0.6" Color="{StaticResource PopupShadowColor}" />
         </Border.Effect>
 
         <!-- Clip content to rounded corners -->
@@ -54,11 +54,12 @@
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                        <Border Width="26" Height="26" CornerRadius="7" Margin="0,0,10,0">
+                        <Border Width="26" Height="26" CornerRadius="7" Margin="0,0,10,0"
+                                ToolTip="{Binding AccentToolTip}">
                             <Border.Background>
                                 <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                                    <GradientStop Color="#7c6ff5" Offset="0" />
-                                    <GradientStop Color="#50d880" Offset="1" />
+                                    <GradientStop Color="{StaticResource BrandStartColor}" Offset="0" />
+                                    <GradientStop Color="{StaticResource BrandEndColor}" Offset="1" />
                                 </LinearGradientBrush>
                             </Border.Background>
                             <TextBlock Text="IX" FontFamily="{StaticResource AppFont}"
@@ -90,6 +91,14 @@
                                        Text="Cache" />
                         </Button>
                         <Button Style="{StaticResource RefreshButtonStyle}"
+                                Command="{Binding CycleThemeModeCommand}"
+                                ToolTip="{Binding ThemeToolTip}"
+                                VerticalAlignment="Center"
+                                Margin="0,0,6,0">
+                            <TextBlock FontFamily="{StaticResource AppFont}" FontSize="11"
+                                       Text="{Binding ThemeButtonLabel}" />
+                        </Button>
+                        <Button Style="{StaticResource RefreshButtonStyle}"
                                 Command="{Binding HeaderRefreshCommand}"
                                 VerticalAlignment="Center">
                             <TextBlock FontFamily="{StaticResource AppFont}" FontSize="11"
@@ -101,7 +110,7 @@
 
             <!-- ═══ PROVIDER TABS ═══ -->
             <Border Grid.Row="1"
-                    Background="#08ffffff"
+                    Background="{StaticResource SectionStripBrush}"
                     BorderBrush="{StaticResource BorderBrush}"
                     BorderThickness="0,1,0,1"
                     Padding="6,2">
@@ -133,13 +142,13 @@
                                         <TextBlock Text="★"
                                                    Margin="5,0,0,0"
                                                    FontSize="10"
-                                                   Foreground="#f0c040"
+                                                   Foreground="{StaticResource FavoriteBadgeBrush}"
                                                    VerticalAlignment="Center"
                                                    Visibility="{Binding IsFavorite, Converter={StaticResource BoolToVis}}" />
                                         <Border Margin="6,0,0,0"
                                                 Padding="5,1"
                                                 CornerRadius="8"
-                                                Background="#2050d880"
+                                                Background="{StaticResource SuccessBadgeBrush}"
                                                 VerticalAlignment="Center"
                                                 ToolTip="{Binding RefreshBadgeToolTip}"
                                                 Visibility="{Binding HasRefreshBadge, Converter={StaticResource BoolToVis}}">
@@ -147,7 +156,7 @@
                                                        FontFamily="{StaticResource AppFont}"
                                                        FontSize="9.5"
                                                        FontWeight="Bold"
-                                                       Foreground="#f3fff6"
+                                                       Foreground="{StaticResource SuccessBadgeTextBrush}"
                                                        VerticalAlignment="Center" />
                                         </Border>
                                     </StackPanel>
@@ -280,6 +289,40 @@
                                            Foreground="{StaticResource SecondaryTextBrush}"
                                            Margin="0,6,0,0"
                                            Visibility="{Binding HasActionStatusMessage, Converter={StaticResource BoolToVis}}" />
+                                <Border Margin="0,10,0,0"
+                                        Padding="10,8"
+                                        CornerRadius="8"
+                                        Background="{StaticResource InsetPanelBrush}"
+                                        Visibility="{Binding HasUsageHealthSection, Converter={StaticResource BoolToVis}}">
+                                    <StackPanel>
+                                        <TextBlock Text="DATA HEALTH"
+                                                   FontFamily="{StaticResource AppFont}"
+                                                   FontSize="10"
+                                                   Foreground="{StaticResource TertiaryTextBrush}" />
+                                        <TextBlock Text="{Binding UsageHealthSummary}"
+                                                   Margin="0,4,0,0"
+                                                   FontFamily="{StaticResource AppFont}"
+                                                   FontSize="10.5"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{StaticResource PrimaryTextBrush}"
+                                                   TextWrapping="Wrap"
+                                                   Visibility="{Binding HasUsageHealthSummary, Converter={StaticResource BoolToVis}}" />
+                                        <TextBlock Text="{Binding UsageHealthDetail}"
+                                                   Margin="0,4,0,0"
+                                                   FontFamily="{StaticResource AppFont}"
+                                                   FontSize="10"
+                                                   Foreground="{StaticResource SecondaryTextBrush}"
+                                                   TextWrapping="Wrap"
+                                                   Visibility="{Binding HasUsageHealthDetail, Converter={StaticResource BoolToVis}}" />
+                                        <TextBlock Text="{Binding UsageHealthAccountsText}"
+                                                   Margin="0,4,0,0"
+                                                   FontFamily="{StaticResource AppFont}"
+                                                   FontSize="10"
+                                                   Foreground="{StaticResource SecondaryTextBrush}"
+                                                   TextWrapping="Wrap"
+                                                   Visibility="{Binding HasUsageHealthAccounts, Converter={StaticResource BoolToVis}}" />
+                                    </StackPanel>
+                                </Border>
                             </StackPanel>
                         </Border>
 
@@ -311,7 +354,7 @@
 
                                 <!-- Token Bars (stacked Input + Output) -->
                                 <Grid Height="10" Margin="0,6,0,12">
-                                    <Border CornerRadius="5" Background="#15ffffff" />
+                                    <Border CornerRadius="5" Background="{StaticResource SubtleSurfaceBrush}" />
                                     <StackPanel Orientation="Horizontal">
                                         <Border CornerRadius="5,0,0,5"
                                                 Height="10"
@@ -424,7 +467,7 @@
                                 <ItemsControl ItemsSource="{Binding ProviderComparison}">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate DataType="{x:Type vm:ProviderComparisonEntryViewModel}">
-                                            <Border Background="#10ffffff"
+                                            <Border Background="{StaticResource SubtleSurfaceMutedBrush}"
                                                     BorderBrush="{StaticResource BorderBrush}"
                                                     BorderThickness="1"
                                                     CornerRadius="10"
@@ -501,7 +544,7 @@
                                                     </Grid>
                                                     <Grid Grid.Row="1">
                                                         <Border CornerRadius="3" Height="5"
-                                                                Background="#12ffffff" />
+                                                                Background="{StaticResource SubtleSurfaceStrongBrush}" />
                                                         <Border CornerRadius="3" Height="5"
                                                                 Background="{Binding BarBrush}"
                                                                 Opacity="0.8"
@@ -578,13 +621,20 @@
                                 <Border Margin="0,0,0,8"
                                         Padding="10,8"
                                         CornerRadius="10"
-                                        Background="#12000000"
+                                        Background="{StaticResource InsetPanelBrush}"
                                         Visibility="{Binding HasMultipleLimitAccounts, Converter={StaticResource BoolToVis}}">
                                     <StackPanel>
                                         <TextBlock FontFamily="{StaticResource AppFont}"
                                                    FontSize="10"
                                                    Foreground="{StaticResource TertiaryTextBrush}"
                                                    Text="ACCOUNT RUNWAY" />
+                                        <TextBlock Margin="0,4,0,0"
+                                                   FontFamily="{StaticResource AppFont}"
+                                                   FontSize="10"
+                                                   Foreground="{StaticResource SecondaryTextBrush}"
+                                                   TextWrapping="Wrap"
+                                                   Text="{Binding LimitAccountsOverviewText}"
+                                                   Visibility="{Binding HasLimitAccountsOverview, Converter={StaticResource BoolToVis}}" />
                                         <TextBlock Margin="0,4,0,8"
                                                    FontFamily="{StaticResource AppFont}"
                                                    FontSize="11"
@@ -602,7 +652,7 @@
                                                     <Border Margin="0,0,0,6"
                                                             Padding="10,8"
                                                             CornerRadius="8"
-                                                            Background="#120F1F30">
+                                                            Background="{StaticResource InsetPanelStrongBrush}">
                                                         <StackPanel>
                                                             <ToggleButton IsChecked="{Binding IsExpanded}"
                                                                           Background="Transparent"
@@ -630,7 +680,7 @@
                                                                         <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
                                                                             <Border Padding="6,1"
                                                                                     CornerRadius="7"
-                                                                                    Background="#16FFFFFF"
+                                                                                    Background="{StaticResource SubtleSurfaceEmphasisBrush}"
                                                                                     Margin="0,0,6,0">
                                                                                 <Border.Style>
                                                                                     <Style TargetType="Border">
@@ -670,13 +720,20 @@
                                                                                    Foreground="{StaticResource SecondaryTextBrush}"
                                                                                    TextWrapping="Wrap"
                                                                                    Margin="0,4,0,0" />
+                                                                        <TextBlock Text="{Binding DetailText}"
+                                                                                   FontFamily="{StaticResource AppFont}"
+                                                                                   FontSize="9.5"
+                                                                                   Foreground="{StaticResource TertiaryTextBrush}"
+                                                                                   TextWrapping="Wrap"
+                                                                                   Margin="0,4,0,0"
+                                                                                   Visibility="{Binding HasDetailText, Converter={StaticResource BoolToVis}}" />
                                                                     </StackPanel>
                                                                     <StackPanel Grid.Column="1"
                                                                                 Margin="10,0,0,0"
                                                                                 HorizontalAlignment="Right">
                                                                         <Border Padding="8,2"
                                                                                 CornerRadius="8"
-                                                                                Background="#16FFFFFF"
+                                                                                Background="{StaticResource SubtleSurfaceEmphasisBrush}"
                                                                                 HorizontalAlignment="Right">
                                                                             <Border.Style>
                                                                                 <Style TargetType="Border">
@@ -735,7 +792,7 @@
                                                             <Border Margin="0,8,0,0"
                                                                     Padding="10,8"
                                                                     CornerRadius="8"
-                                                                    Background="#0EFFFFFF"
+                                                                    Background="{StaticResource SubtleSurfaceMutedBrush}"
                                                                     Visibility="{Binding IsExpanded, Converter={StaticResource BoolToVis}}">
                                                                 <ItemsControl ItemsSource="{Binding Windows}"
                                                                               Visibility="{Binding HasWindows, Converter={StaticResource BoolToVis}}">
@@ -762,7 +819,7 @@
                                                                                 </Grid>
 
                                                                                 <Grid Height="6" Margin="0,0,0,4">
-                                                                                    <Border CornerRadius="3" Background="#12ffffff" />
+                                                                                    <Border CornerRadius="3" Background="{StaticResource SubtleSurfaceStrongBrush}" />
                                                                                     <Border CornerRadius="3"
                                                                                             Background="{Binding BarBrush}"
                                                                                             Opacity="0.8"
@@ -835,7 +892,7 @@
                                                 </Grid>
 
                                                 <Grid Height="6" Margin="0,0,0,4">
-                                                    <Border CornerRadius="3" Background="#12ffffff" />
+                                                    <Border CornerRadius="3" Background="{StaticResource SubtleSurfaceStrongBrush}" />
                                                     <Border CornerRadius="3"
                                                             Background="{Binding BarBrush}"
                                                             Opacity="0.8"
@@ -946,7 +1003,7 @@
                                             <StackPanel HorizontalAlignment="Center" Margin="2,0">
                                                 <Grid Height="50" VerticalAlignment="Bottom">
                                                     <Border CornerRadius="3"
-                                                            Background="#10ffffff"
+                                                            Background="{StaticResource SubtleSurfaceMutedBrush}"
                                                             VerticalAlignment="Stretch" />
                                                     <Border CornerRadius="3"
                                                             Background="{Binding BarBrush}"
@@ -1004,7 +1061,7 @@
                                                 </Grid>
                                                 <Grid Grid.Row="1">
                                                     <Border CornerRadius="3" Height="5"
-                                                            Background="#12ffffff" />
+                                                            Background="{StaticResource SubtleSurfaceStrongBrush}" />
                                                     <Border CornerRadius="3" Height="5"
                                                             Background="{Binding BarBrush}"
                                                             Opacity="0.7"
@@ -1073,7 +1130,7 @@
                                                     </Grid>
                                                     <Grid Grid.Row="1">
                                                         <Border CornerRadius="3" Height="5"
-                                                                Background="#12ffffff" />
+                                                                Background="{StaticResource SubtleSurfaceStrongBrush}" />
                                                         <Border CornerRadius="3" Height="5"
                                                                 Background="{Binding BarBrush}"
                                                                 Opacity="0.7"
@@ -1125,7 +1182,7 @@
                                                     </Grid>
                                                     <Grid Grid.Row="1">
                                                         <Border CornerRadius="3" Height="5"
-                                                                Background="#12ffffff" />
+                                                                Background="{StaticResource SubtleSurfaceStrongBrush}" />
                                                         <Border CornerRadius="3" Height="5"
                                                                 Background="{Binding BarBrush}"
                                                                 Opacity="0.7"
@@ -1317,7 +1374,7 @@
                                            HorizontalAlignment="Center"
                                            Margin="0,4"
                                            Visibility="{Binding HasRecentActivity, Converter={StaticResource InverseBoolToVis}}" />
-                                <Border Background="#10ffffff"
+                                <Border Background="{StaticResource SubtleSurfaceMutedBrush}"
                                         BorderBrush="{StaticResource BorderBrush}"
                                         BorderThickness="1"
                                         CornerRadius="10"
@@ -1526,7 +1583,7 @@
                                              Text="{Binding UsernameInput, UpdateSourceTrigger=PropertyChanged}"
                                              FontFamily="{StaticResource AppFont}"
                                              FontSize="12"
-                                             Background="#15ffffff"
+                                             Background="{StaticResource SubtleSurfaceBrush}"
                                              Foreground="{StaticResource PrimaryTextBrush}"
                                              BorderBrush="{StaticResource BorderBrush}"
                                              BorderThickness="1"
@@ -1583,7 +1640,7 @@
                                 <TextBlock Text="{Binding ErrorMessage}"
                                            FontFamily="{StaticResource AppFont}"
                                            FontSize="11"
-                                           Foreground="#f0c040"
+                                           Foreground="{StaticResource FavoriteBadgeBrush}"
                                            TextWrapping="Wrap"
                                            Margin="0,8,0,0" />
                             </StackPanel>
@@ -1625,7 +1682,7 @@
                                                    Margin="0,4,0,0"
                                                    Visibility="{Binding HasBio, Converter={StaticResource BoolToVis}}" />
                                         <WrapPanel Margin="0,8,0,0">
-                                            <Border Background="#18ffffff"
+                                            <Border Background="{StaticResource SubtleSurfaceEmphasisBrush}"
                                                     BorderBrush="{StaticResource BorderBrush}"
                                                     BorderThickness="1"
                                                     CornerRadius="8"
@@ -1636,7 +1693,7 @@
                                                            FontSize="9.5"
                                                            Foreground="{StaticResource SecondaryTextBrush}" />
                                             </Border>
-                                            <Border Background="#18ffffff"
+                                            <Border Background="{StaticResource SubtleSurfaceEmphasisBrush}"
                                                     BorderBrush="{StaticResource BorderBrush}"
                                                     BorderThickness="1"
                                                     CornerRadius="8"
@@ -1647,7 +1704,7 @@
                                                            FontSize="9.5"
                                                            Foreground="{StaticResource SecondaryTextBrush}" />
                                             </Border>
-                                            <Border Background="#18ffffff"
+                                            <Border Background="{StaticResource SubtleSurfaceEmphasisBrush}"
                                                     BorderBrush="{StaticResource BorderBrush}"
                                                     BorderThickness="1"
                                                     CornerRadius="8"
@@ -1659,7 +1716,7 @@
                                                            FontSize="9.5"
                                                            Foreground="{StaticResource SecondaryTextBrush}" />
                                             </Border>
-                                            <Border Background="#18ffffff"
+                                            <Border Background="{StaticResource SubtleSurfaceEmphasisBrush}"
                                                     BorderBrush="{StaticResource BorderBrush}"
                                                     BorderThickness="1"
                                                     CornerRadius="8"
@@ -1676,7 +1733,7 @@
                                                     Tag="{Binding WebsiteUrl}"
                                                     Margin="0,0,6,6"
                                                     Visibility="{Binding HasWebsiteUrl, Converter={StaticResource BoolToVis}}">
-                                                <Border Background="#18ffffff"
+                                                <Border Background="{StaticResource SubtleSurfaceEmphasisBrush}"
                                                         BorderBrush="{StaticResource BorderBrush}"
                                                         BorderThickness="1"
                                                         CornerRadius="8"
@@ -1770,7 +1827,7 @@
                                                                            FontWeight="SemiBold"
                                                                            Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
                                                             </Button>
-                                                            <Border Background="#18ffffff"
+                                                            <Border Background="{StaticResource SubtleSurfaceEmphasisBrush}"
                                                                     BorderBrush="{StaticResource BorderBrush}"
                                                                     BorderThickness="1"
                                                                     CornerRadius="8"
@@ -1794,7 +1851,7 @@
                                                         <TextBlock Text="★"
                                                                    FontFamily="{StaticResource AppFont}"
                                                                    FontSize="10"
-                                                                   Foreground="#f0c040" />
+                                                                   Foreground="{StaticResource FavoriteBadgeBrush}" />
                                                         <TextBlock Text="{Binding StarsFormatted}"
                                                                    FontFamily="{StaticResource AppFont}"
                                                                    FontSize="10"
@@ -1839,7 +1896,7 @@
                                                                Margin="0,0,10,0"
                                                                VerticalAlignment="Center" />
                                                     <Grid Grid.Column="1" Height="6" VerticalAlignment="Center">
-                                                        <Border CornerRadius="3" Background="#12ffffff" />
+                                                        <Border CornerRadius="3" Background="{StaticResource SubtleSurfaceStrongBrush}" />
                                                         <Border CornerRadius="3"
                                                                 Background="{Binding BarBrush}"
                                                                 HorizontalAlignment="Left"
@@ -1931,7 +1988,7 @@
                                                 <Grid Height="42" VerticalAlignment="Bottom" Margin="0.5,0"
                                                       ToolTip="{Binding Count}">
                                                     <Border CornerRadius="2"
-                                                            Background="#08ffffff"
+                                                            Background="{StaticResource SectionStripBrush}"
                                                             VerticalAlignment="Stretch" />
                                                     <Border CornerRadius="2"
                                                             Background="{Binding BarBrush}"
@@ -1959,7 +2016,7 @@
                                     <ItemsControl ItemsSource="{Binding TopRepos}">
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate DataType="{x:Type vm:GitHubRepoViewModel}">
-                                                <Border Background="#10ffffff"
+                                                <Border Background="{StaticResource SubtleSurfaceMutedBrush}"
                                                         BorderBrush="{StaticResource BorderBrush}"
                                                         BorderThickness="1"
                                                         CornerRadius="10"
@@ -1988,7 +2045,7 @@
                                                                                TextTrimming="CharacterEllipsis"
                                                                                VerticalAlignment="Center" />
                                                                 </Button>
-                                                                <Border Background="#18ffffff"
+                                                                <Border Background="{StaticResource SubtleSurfaceEmphasisBrush}"
                                                                         BorderBrush="{StaticResource BorderBrush}"
                                                                         BorderThickness="1"
                                                                         CornerRadius="8"
@@ -2005,7 +2062,7 @@
                                                                 <TextBlock Text="★"
                                                                            FontFamily="{StaticResource AppFont}"
                                                                            FontSize="10"
-                                                                           Foreground="#f0c040" />
+                                                                           Foreground="{StaticResource FavoriteBadgeBrush}" />
                                                                 <TextBlock Text="{Binding StarsFormatted}"
                                                                            FontFamily="{StaticResource AppFont}"
                                                                            FontSize="10"
@@ -2048,12 +2105,12 @@
 
                 <!-- Loading overlay -->
                 <Grid Panel.ZIndex="20"
-                      Background="#28080a12"
+                      Background="{StaticResource OverlayScrimBrush}"
                       Visibility="{Binding ShowLoadingOverlay, Converter={StaticResource BoolToVis}}">
-                    <Border Background="#f1ffffff"
+                    <Border Background="{StaticResource OverlayGlowBrush}"
                             Opacity="0.08"
                             Margin="10,8" />
-                    <Border Background="#1f101826"
+                    <Border Background="{StaticResource OverlayCardBrush}"
                             BorderBrush="{StaticResource BorderBrush}"
                             BorderThickness="1"
                             CornerRadius="12"
@@ -2068,7 +2125,7 @@
                                          Maximum="{Binding LoadingProgressMaximum}"
                                          Value="{Binding LoadingProgressValue}"
                                          Foreground="{StaticResource AccentBrush}"
-                                         Background="#18ffffff" />
+                                         Background="{StaticResource SubtleSurfaceEmphasisBrush}" />
                             <TextBlock Text="{Binding StatusText}"
                                        Foreground="{StaticResource PrimaryTextBrush}"
                                        FontFamily="{StaticResource AppFont}"
@@ -2091,7 +2148,7 @@
 
             <!-- ═══ FOOTER ═══ -->
             <Border Grid.Row="3"
-                    Background="#0affffff"
+                    Background="{StaticResource FooterBrush}"
                     Padding="16,8">
                 <Grid>
                     <Grid.ColumnDefinitions>

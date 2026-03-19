@@ -77,6 +77,8 @@ internal static partial class Program {
             TestProviderLimitForecastingRanksBestAccount);
         failed += Run("Provider limit forecasting describes account runway",
             TestProviderLimitForecastingDescribesAccountRunway);
+        failed += Run("Provider limit forecasting keeps unavailable accounts visible",
+            TestProviderLimitForecastingKeepsUnavailableAccountsVisible);
         failed += Run("Usage telemetry overview builder builds cards and heatmaps",
             TestUsageTelemetryOverviewBuilderBuildsCardsAndHeatmaps);
         failed += Run("Usage telemetry overview builder estimates API cost for mini and nano models",
@@ -85,6 +87,8 @@ internal static partial class Program {
             TestGitHubWrappedHtmlRendererBuildsShareablePage);
         failed += Run("GitHub wrapped card html renderer builds compact card",
             TestGitHubWrappedCardHtmlRendererBuildsCompactCard);
+        failed += Run("Usage overview html renderer builds provider diagnostics",
+            TestUsageTelemetryOverviewHtmlRendererBuildsProviderDiagnostics);
         failed += Run("GitHub dashboard repository ranking deduplicates overlapping repositories",
             TestGitHubDashboardRepositoryRankingDeduplicatesOverlappingRepositories);
         failed += Run("GitHub dashboard repository ranking orders and caps repositories",

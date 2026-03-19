@@ -24,6 +24,8 @@ public sealed class TrayPreferencesStore {
             var json = File.ReadAllText(PreferencesPath);
             var preferences = JsonSerializer.Deserialize<TrayPreferences>(json, SerializerOptions) ?? new TrayPreferences();
             preferences.Providers ??= new Dictionary<string, ProviderExplorerPreferences>(StringComparer.OrdinalIgnoreCase);
+            preferences.ThemeMode = TrayThemeService.NormalizeThemeMode(preferences.ThemeMode);
+            preferences.AccentPreset = TrayThemeService.NormalizeAccentPreset(preferences.AccentPreset);
             return preferences;
         } catch {
             return new TrayPreferences();

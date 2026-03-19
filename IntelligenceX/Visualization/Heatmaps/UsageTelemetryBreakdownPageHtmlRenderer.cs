@@ -7,6 +7,7 @@ internal static class UsageTelemetryBreakdownPageHtmlRenderer {
     public static string RenderBody(UsageTelemetryBreakdownPageModel page) {
         var sb = new StringBuilder(16 * 1024);
         UsageTelemetryReportPageShellHtmlRenderer.AppendBreakdownHeader(sb, page);
+        UsageTelemetryReportDiagnosticsHtmlRenderer.Append(sb, page.Diagnostics);
         sb.AppendLine("    <section class=\"panel\">");
         sb.AppendLine("      <div class=\"panel-toolbar\">");
         sb.AppendLine("        <div class=\"mode-switcher\" role=\"tablist\" aria-label=\"Breakdown display mode\">");

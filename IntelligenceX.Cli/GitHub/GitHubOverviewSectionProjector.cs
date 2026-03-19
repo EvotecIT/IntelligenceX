@@ -153,6 +153,14 @@ internal static class GitHubOverviewSectionProjector {
             title: "GitHub",
             subtitle: subtitle,
             heatmap: heatmap,
+            rangeStartUtc: startUtc.Date,
+            rangeEndUtc: endUtc.Date,
+            latestEventUtc: new DateTimeOffset(endUtc.Date, TimeSpan.Zero),
+            activeDays: calendar.Days.Count(day => day.Date >= startUtc.Date && day.Date <= endUtc.Date && day.ContributionCount > 0),
+            totalDays: Math.Max(1, (endUtc.Date - startUtc.Date).Days + 1),
+            accountCount: 1,
+            sourceRootCount: 1,
+            accountLabels: new[] { snapshot.RequestedLogin?.Trim() ?? calendar.Login },
             metrics: metrics,
             composition: composition,
             spotlightCards: spotlight,
@@ -264,12 +272,32 @@ internal static class GitHubOverviewSectionProjector {
         };
 
         var subtitle = "Owner scope: " + string.Join(", ", repositoryImpact.Owners.Select(static owner => owner.Owner));
+        var ownerRangeStartUtc = recentRepositories.LastOrDefault()?.ParsedPushedAt?.UtcDateTime.Date;
+        var ownerRangeEndUtc = recentRepositories.FirstOrDefault()?.ParsedPushedAt?.UtcDateTime.Date;
+        var ownerLatestEventUtc = recentRepositories.FirstOrDefault()?.ParsedPushedAt;
+        var ownerActiveDays = recentRepositories
+            .Select(static entry => entry.ParsedPushedAt?.UtcDateTime.Date)
+            .Where(static day => day.HasValue)
+            .Select(static day => day!.Value)
+            .Distinct()
+            .Count();
+        var ownerTotalDays = ownerRangeStartUtc.HasValue && ownerRangeEndUtc.HasValue
+            ? Math.Max(1, (ownerRangeEndUtc.Value - ownerRangeStartUtc.Value).Days + 1)
+            : 0;
         return new UsageTelemetryOverviewProviderSection(
             key: "provider-github",
             providerId: "github",
             title: "GitHub",
             subtitle: subtitle,
             heatmap: BuildOwnerImpactHeatmap(repositoryImpact),
+            rangeStartUtc: ownerRangeStartUtc,
+            rangeEndUtc: ownerRangeEndUtc,
+            latestEventUtc: ownerLatestEventUtc,
+            activeDays: ownerActiveDays,
+            totalDays: ownerTotalDays,
+            accountCount: 1,
+            sourceRootCount: 1,
+            accountLabels: new[] { snapshot.RequestedLogin?.Trim() ?? repositoryImpact.Owners.FirstOrDefault()?.Owner ?? "GitHub" },
             metrics: metrics,
             composition: null,
             spotlightCards: spotlight,

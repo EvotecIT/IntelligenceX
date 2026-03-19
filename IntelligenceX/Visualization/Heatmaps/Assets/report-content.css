@@ -1,0 +1,15 @@
+    :is(.hero-card, .panel, .stat-card, .compare-card, .summary-stat, .summary-card, .provider-metric, .provider-feature-card, .provider-compare-card, .mini-card, .insight-card, .metric, .stat, .footer-card) { min-width:0; overflow:hidden; }
+    :is(.row, .provider-feature-row) { display:grid; gap:6px; }
+    :is(.row-head, .provider-feature-row-head) { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:12px; align-items:baseline; }
+    :is(.row-label, .provider-feature-row-label) { min-width:0; font-weight:700; overflow-wrap:anywhere; }
+    :is(.row-value, .provider-feature-row-value) { color:var(--muted); text-align:right; overflow-wrap:anywhere; }
+    :is(.row-copy, .provider-feature-row-copy) { color:var(--muted); font-size:12px; }
+    :is(.row-bar, .provider-feature-row-bar) { width:100%; height:8px; border-radius:999px; overflow:hidden; }
+    :is(.row-fill, .provider-feature-row-fill) { height:100%; border-radius:999px; min-width:4px; }
+    .diagnostics-title { margin:0 0 10px; color:var(--muted, var(--wrapped-muted)); font-size:12px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; }
+    .diagnostics-strip { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:14px; margin:0 0 22px; }
+    .diagnostics-card { padding:16px; border:1px solid var(--line, var(--wrapped-line)); border-radius:var(--report-radius-card); background:linear-gradient(180deg, var(--panel, var(--wrapped-panel)) 0%, var(--panel-soft, var(--wrapped-panel-soft)) 100%); box-shadow:var(--panel-shadow, var(--wrapped-shadow)); }
+    .diagnostics-kicker { color:var(--muted, var(--wrapped-muted)); font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; }
+    .diagnostics-value { margin-top:8px; font-size:18px; font-weight:800; letter-spacing:-.02em; overflow-wrap:anywhere; }
+    .diagnostics-copy { margin-top:8px; color:var(--muted, var(--wrapped-muted)); font-size:12px; line-height:1.45; }
+    .diagnostics-note { margin:-8px 0 22px; color:var(--muted, var(--wrapped-muted)); font-size:12px; }

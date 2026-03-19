@@ -1,5 +1,7 @@
 using System;
 using System.Text;
+using IntelligenceX.Json;
+using IntelligenceX.Telemetry.Usage;
 using static IntelligenceX.Visualization.Heatmaps.UsageTelemetryGitHubWrappedHtmlFragments;
 
 namespace IntelligenceX.Visualization.Heatmaps;
@@ -7,15 +9,20 @@ namespace IntelligenceX.Visualization.Heatmaps;
 #pragma warning disable CS1591
 
 internal static class GitHubWrappedHtmlRenderer {
-    public static string Render(UsageTelemetryOverviewProviderSection section) {
+    public static string Render(
+        UsageTelemetryOverviewProviderSection section,
+        UsageSummarySnapshot? summary = null,
+        JsonObject? metadata = null,
+        int providerSectionsCount = 0) {
         if (section is null) {
             throw new ArgumentNullException(nameof(section));
         }
 
-        var page = UsageTelemetryReportPageModelBuilders.BuildGitHubWrapped(section);
+        var page = UsageTelemetryReportPageModelBuilders.BuildGitHubWrapped(section, summary, metadata, providerSectionsCount);
 
         var sb = new StringBuilder(24 * 1024);
         AppendHero(sb, page);
+        UsageTelemetryReportDiagnosticsHtmlRenderer.Append(sb, page.Diagnostics);
         AppendBody(sb, page);
         sb.AppendLine("    <div class=\"footer-note\">Built from the GitHub section inside the IntelligenceX telemetry report bundle, so this wrapped view stays consistent with the main contribution and owner-impact data.</div>");
 
@@ -27,6 +34,10 @@ internal static class GitHubWrappedHtmlRenderer {
     }
 
     private static void AppendHero(StringBuilder sb, UsageTelemetryGitHubWrappedPageModel page) {
+        sb.AppendLine("    <div class=\"page-toolbar\">");
+        sb.AppendLine("      <div class=\"toolbar-copy\">Interactive GitHub wrapped view with the same appearance controls as the main usage reports.</div>");
+        UsageTelemetryReportChromeHtmlFragments.AppendThemeSwitcher(sb, indentLevel: 3);
+        sb.AppendLine("    </div>");
         sb.AppendLine("    <section class=\"hero\">");
         sb.AppendLine("      <article class=\"hero-card wrapped-panel\">");
         sb.AppendLine("        <div class=\"eyebrow wrapped-label\">GitHub Wrapped</div>");
@@ -69,7 +80,7 @@ internal static class GitHubWrappedHtmlRenderer {
         sb.AppendLine("      <article class=\"panel heatmap-panel wrapped-panel\">");
         sb.AppendLine("        <h2 class=\"section-title\">Contribution Graph</h2>");
         sb.AppendLine("        <p class=\"section-copy\">Trailing-year contribution heatmap from the same GitHub section used in the main report.</p>");
-        sb.AppendLine("        <img src=\"provider-github.dark.svg\" alt=\"GitHub activity heatmap\">");
+        sb.AppendLine("        <img src=\"provider-github.light.svg\" data-light-src=\"provider-github.light.svg\" data-dark-src=\"provider-github.dark.svg\" alt=\"GitHub activity heatmap\">");
         sb.AppendLine("      </article>");
 
         sb.AppendLine("      <div class=\"card-grid\">");

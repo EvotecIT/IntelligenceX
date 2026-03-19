@@ -58,6 +58,7 @@ internal static partial class UsageTelemetryProviderSectionHtmlRenderer {
         if (model.Flags.IsGitHub) {
             UsageTelemetryGitHubSectionHtmlRenderer.AppendSummaryStrip(sb, model.GitHub);
         }
+        AppendProviderHealthExplorer(sb, model);
 
         if (model.Flags.UseSummaryGrid) {
             AppendSummaryGrid(sb, model);
@@ -199,5 +200,64 @@ internal static partial class UsageTelemetryProviderSectionHtmlRenderer {
                 .AppendLine("</span>");
         }
         sb.AppendLine("          </div>");
+    }
+
+    private static void AppendProviderHealthExplorer(StringBuilder sb, UsageTelemetryOverviewSectionPageModel model) {
+        if (model.HealthAccountLabels.Count == 0 && model.HealthInsights.Count == 0) {
+            return;
+        }
+
+        sb.AppendLine("            <details class=\"provider-health-details\">");
+        sb.AppendLine("              <summary class=\"provider-health-summary\">");
+        sb.AppendLine("                <span class=\"provider-health-summary-title\">Inspect roots and account scope</span>");
+        sb.Append("                <span class=\"provider-health-summary-copy\">")
+            .Append(Html(BuildProviderHealthSummaryCopy(model)))
+            .AppendLine("</span>");
+        sb.AppendLine("              </summary>");
+        sb.AppendLine("              <div class=\"provider-health-body\">");
+
+        if (model.HealthAccountLabels.Count > 0) {
+            sb.AppendLine("                <article class=\"insight-card provider-health-card\">");
+            sb.AppendLine("                  <div class=\"insight-title\">Accounts detected</div>");
+            sb.Append("                  <div class=\"estimate-note\">")
+                .Append(Html(HeatmapDisplayText.FormatCount(model.HealthAccountLabels.Count, "account visible in this provider slice", "accounts visible in this provider slice")))
+                .AppendLine("</div>");
+            sb.AppendLine("                  <div class=\"provider-note provider-note-chips provider-health-chips\">");
+            foreach (var accountLabel in model.HealthAccountLabels) {
+                sb.Append("                    <span class=\"provider-note-chip\">")
+                    .Append(Html(accountLabel))
+                    .AppendLine("</span>");
+            }
+            sb.AppendLine("                  </div>");
+            sb.AppendLine("                </article>");
+        }
+
+        if (model.HealthInsights.Count > 0) {
+            sb.AppendLine("                <div class=\"provider-insights provider-health-insights\">");
+            foreach (var insight in model.HealthInsights) {
+                AppendInsightSection(sb, insight);
+            }
+            sb.AppendLine("                </div>");
+        }
+
+        sb.AppendLine("              </div>");
+        sb.AppendLine("            </details>");
+    }
+
+    private static string BuildProviderHealthSummaryCopy(UsageTelemetryOverviewSectionPageModel model) {
+        var parts = new List<string>();
+        if (model.HealthAccountLabels.Count > 0) {
+            parts.Add(HeatmapDisplayText.FormatCount(model.HealthAccountLabels.Count, "account", "accounts"));
+        }
+        if (model.HealthInsights.Any(static insight => string.Equals(insight.Key, "source-roots", StringComparison.OrdinalIgnoreCase))) {
+            parts.Add("roots");
+        }
+        if (model.HealthInsights.Any(static insight => string.Equals(insight.Key, "quick-scan-dedupe", StringComparison.OrdinalIgnoreCase))) {
+            parts.Add("dedupe");
+        }
+
+        return parts.Count == 0
+            ? "Open provider scan details."
+            : "Open " + string.Join(" • ", parts) + " details.";
     }
 }

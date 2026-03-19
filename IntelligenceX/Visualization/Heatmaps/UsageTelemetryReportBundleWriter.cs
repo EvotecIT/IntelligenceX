@@ -49,7 +49,10 @@ internal static class UsageTelemetryReportBundleWriter {
                     heatmap.Key,
                     heatmap.Label,
                     heatmap.Document.Subtitle,
-                    heatmap.Document));
+                    heatmap.Document,
+                    overview.Summary,
+                    overview.Metadata,
+                    overview.ProviderSections.Count));
             pages.Add(fileStem + ".html");
         }
 
@@ -69,8 +72,8 @@ internal static class UsageTelemetryReportBundleWriter {
         var githubSection = overview.ProviderSections.FirstOrDefault(section =>
             string.Equals(section.ProviderId, "github", StringComparison.OrdinalIgnoreCase));
         if (githubSection is not null && HasHeatmapActivity(githubSection.Heatmap)) {
-            WriteTextFile(outputDirectory, "github-wrapped.html", GitHubWrappedHtmlRenderer.Render(githubSection));
-            WriteTextFile(outputDirectory, "github-wrapped-card.html", GitHubWrappedCardHtmlRenderer.Render(githubSection));
+            WriteTextFile(outputDirectory, "github-wrapped.html", GitHubWrappedHtmlRenderer.Render(githubSection, overview.Summary, overview.Metadata, overview.ProviderSections.Count));
+            WriteTextFile(outputDirectory, "github-wrapped-card.html", GitHubWrappedCardHtmlRenderer.Render(githubSection, overview.Summary, overview.Metadata, overview.ProviderSections.Count));
             pages.Add("github-wrapped.html");
             pages.Add("github-wrapped-card.html");
         }

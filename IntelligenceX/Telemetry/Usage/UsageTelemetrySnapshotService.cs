@@ -81,7 +81,8 @@ public sealed class UsageTelemetrySnapshotService {
                 .Concat(enabledRoots.Select(static root => root.ProviderId))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray(),
-            sourceRoots: enabledRoots);
+            sourceRoots: enabledRoots,
+            health: BuildCachedSnapshotHealth(allRoots, enabledRoots, artifacts, events));
     }
 
     /// <summary>
@@ -127,6 +128,7 @@ public sealed class UsageTelemetrySnapshotService {
             totalProviderCount: rootsByProvider.Length));
 
         var allEvents = new List<UsageEventRecord>();
+        var providerResults = new List<ProviderScanResult>();
         var stopwatch = Stopwatch.StartNew();
 
         var providerTasks = rootsByProvider
@@ -139,6 +141,7 @@ public sealed class UsageTelemetrySnapshotService {
             providerTasks.Remove(completedTask);
 
             var result = await completedTask.ConfigureAwait(false);
+            providerResults.Add(result);
             completedProviders++;
             var providerTitle = UsageTelemetryProviderCatalog.ResolveDisplayTitle(result.ProviderId);
             if (result.ErrorMessage is null) {
@@ -169,7 +172,13 @@ public sealed class UsageTelemetrySnapshotService {
             stopwatch.ElapsedMilliseconds,
             errors,
             discoveredProviderIds: rootsByProvider.Select(static group => group.Key).ToArray(),
-            sourceRoots: rootsByProvider.SelectMany(static group => group).ToArray());
+            sourceRoots: rootsByProvider.SelectMany(static group => group).ToArray(),
+            health: BuildLiveSnapshotHealth(
+                rootsByProvider.SelectMany(static group => group).ToArray(),
+                allEvents,
+                providerResults,
+                errors,
+                rootsByProvider.Select(static group => group.Key).ToArray()));
     }
 
     private IReadOnlyList<SourceRootRecord> DiscoverAllRoots() {
@@ -322,6 +331,131 @@ public sealed class UsageTelemetrySnapshotService {
         return scaled >= 10d || unitIndex == 0
             ? scaled.ToString("0", CultureInfo.InvariantCulture) + units[unitIndex]
             : scaled.ToString("0.0", CultureInfo.InvariantCulture) + units[unitIndex];
+    }
+
+    private static UsageTelemetrySnapshotHealth BuildCachedSnapshotHealth(
+        IReadOnlyList<SourceRootRecord> allRoots,
+        IReadOnlyList<SourceRootRecord> enabledRoots,
+        IReadOnlyList<RawArtifactDescriptor> artifacts,
+        IReadOnlyList<UsageEventRecord> events) {
+        var providerIds = enabledRoots
+            .Select(static root => root.ProviderId)
+            .Concat(events.Select(static item => item.ProviderId))
+            .Where(static providerId => !string.IsNullOrWhiteSpace(providerId))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var rootLookup = enabledRoots.ToDictionary(static root => root.Id, StringComparer.OrdinalIgnoreCase);
+        var providerHealth = new List<UsageTelemetryProviderHealth>(providerIds.Length);
+        foreach (var providerId in providerIds) {
+            var providerEvents = events
+                .Where(item => string.Equals(item.ProviderId, providerId, StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+            var providerRoots = enabledRoots
+                .Where(root => string.Equals(root.ProviderId, providerId, StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+            var reusedArtifacts = artifacts.Count(artifact =>
+                rootLookup.TryGetValue(artifact.SourceRootId, out var root)
+                && string.Equals(root.ProviderId, providerId, StringComparison.OrdinalIgnoreCase));
+            providerHealth.Add(new UsageTelemetryProviderHealth(
+                providerId,
+                providerRoots.Length,
+                BuildDistinctAccountLabels(providerEvents, providerRoots),
+                providerEvents.Length,
+                parsedArtifacts: 0,
+                reusedArtifacts,
+                duplicateRecordsCollapsed: 0,
+                latestEventUtc: GetLatestEventTimestampUtc(providerEvents),
+                isPartialScan: false));
+        }
+
+        return new UsageTelemetrySnapshotHealth(
+            isCachedSnapshot: true,
+            isPartialScan: false,
+            providerCount: providerIds.Length,
+            rootsCount: enabledRoots.Count,
+            accountLabels: BuildDistinctAccountLabels(events, enabledRoots),
+            eventsCount: events.Count,
+            parsedArtifacts: 0,
+            reusedArtifacts: artifacts.Count,
+            duplicateRecordsCollapsed: 0,
+            latestEventUtc: GetLatestEventTimestampUtc(events),
+            issueCount: 0,
+            providerHealth: providerHealth);
+    }
+
+    private static UsageTelemetrySnapshotHealth BuildLiveSnapshotHealth(
+        IReadOnlyList<SourceRootRecord> enabledRoots,
+        IReadOnlyList<UsageEventRecord> events,
+        IReadOnlyList<ProviderScanResult> providerResults,
+        IReadOnlyList<string> errors,
+        IReadOnlyList<string> discoveredProviderIds) {
+        var providerIds = discoveredProviderIds
+            .Concat(enabledRoots.Select(static root => root.ProviderId))
+            .Concat(events.Select(static item => item.ProviderId))
+            .Where(static providerId => !string.IsNullOrWhiteSpace(providerId))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var providerHealth = new List<UsageTelemetryProviderHealth>(providerIds.Length);
+        foreach (var providerId in providerIds) {
+            var result = providerResults.FirstOrDefault(item =>
+                string.Equals(item.ProviderId, providerId, StringComparison.OrdinalIgnoreCase));
+            var diagnostics = result?.ScannerResult.ProviderDiagnostics.FirstOrDefault(item =>
+                string.Equals(item.ProviderId, providerId, StringComparison.OrdinalIgnoreCase));
+            var providerEvents = events
+                .Where(item => string.Equals(item.ProviderId, providerId, StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+            var providerRoots = enabledRoots
+                .Where(root => string.Equals(root.ProviderId, providerId, StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+            providerHealth.Add(new UsageTelemetryProviderHealth(
+                providerId,
+                diagnostics?.RootsConsidered ?? providerRoots.Length,
+                BuildDistinctAccountLabels(providerEvents, providerRoots),
+                providerEvents.Length,
+                diagnostics?.ArtifactsParsed ?? result?.ScannerResult.ArtifactsParsed ?? 0,
+                diagnostics?.ArtifactsReused ?? result?.ScannerResult.ArtifactsReused ?? 0,
+                diagnostics?.DuplicateRecordsCollapsed ?? result?.ScannerResult.DuplicateRecordsCollapsed ?? 0,
+                latestEventUtc: GetLatestEventTimestampUtc(providerEvents),
+                isPartialScan: result?.ScannerResult.ArtifactBudgetReached ?? false));
+        }
+
+        return new UsageTelemetrySnapshotHealth(
+            isCachedSnapshot: false,
+            isPartialScan: providerResults.Any(static item => item.ScannerResult.ArtifactBudgetReached),
+            providerCount: providerIds.Length,
+            rootsCount: enabledRoots.Count,
+            accountLabels: BuildDistinctAccountLabels(events, enabledRoots),
+            eventsCount: events.Count,
+            parsedArtifacts: providerResults.Sum(static item => item.ScannerResult.ArtifactsParsed),
+            reusedArtifacts: providerResults.Sum(static item => item.ScannerResult.ArtifactsReused),
+            duplicateRecordsCollapsed: providerResults.Sum(static item => item.ScannerResult.DuplicateRecordsCollapsed),
+            latestEventUtc: GetLatestEventTimestampUtc(events),
+            issueCount: errors.Count,
+            providerHealth: providerHealth);
+    }
+
+    private static IReadOnlyList<string> BuildDistinctAccountLabels(
+        IEnumerable<UsageEventRecord> events,
+        IEnumerable<SourceRootRecord> roots) {
+        return events
+            .SelectMany(static item => new[] { item.AccountLabel, item.ProviderAccountId })
+            .Concat(roots.Select(static root => root.AccountHint))
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .Select(static value => value!.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(static value => value, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static DateTimeOffset? GetLatestEventTimestampUtc(IEnumerable<UsageEventRecord> events) {
+        var latest = DateTimeOffset.MinValue;
+        foreach (var usageEvent in events) {
+            if (usageEvent.TimestampUtc > latest) {
+                latest = usageEvent.TimestampUtc;
+            }
+        }
+
+        return latest == DateTimeOffset.MinValue ? null : latest;
     }
 }
 
@@ -511,7 +645,8 @@ public sealed class UsageTelemetrySnapshot {
         long scanDurationMs,
         IReadOnlyList<string> errors,
         IReadOnlyList<string>? discoveredProviderIds = null,
-        IReadOnlyList<SourceRootRecord>? sourceRoots = null) {
+        IReadOnlyList<SourceRootRecord>? sourceRoots = null,
+        UsageTelemetrySnapshotHealth? health = null) {
         Events = events ?? Array.Empty<UsageEventRecord>();
         ScannedAtUtc = scannedAtUtc;
         RootsFound = Math.Max(0, rootsFound);
@@ -519,6 +654,7 @@ public sealed class UsageTelemetrySnapshot {
         Errors = errors ?? Array.Empty<string>();
         DiscoveredProviderIds = discoveredProviderIds ?? Array.Empty<string>();
         SourceRoots = sourceRoots ?? Array.Empty<SourceRootRecord>();
+        Health = health;
     }
 
     /// <summary>
@@ -555,4 +691,211 @@ public sealed class UsageTelemetrySnapshot {
     /// Gets the enabled source roots that were discovered for this snapshot.
     /// </summary>
     public IReadOnlyList<SourceRootRecord> SourceRoots { get; }
+
+    /// <summary>
+    /// Gets derived health and freshness details for the snapshot when available.
+    /// </summary>
+    public UsageTelemetrySnapshotHealth? Health { get; }
+}
+
+/// <summary>
+/// Shared snapshot health summary used by tray and reports.
+/// </summary>
+public sealed class UsageTelemetrySnapshotHealth {
+    /// <summary>
+    /// Initializes a new instance of the <see cref="UsageTelemetrySnapshotHealth"/> class.
+    /// </summary>
+    /// <param name="isCachedSnapshot">Indicates whether the snapshot came from persisted cache instead of a live scan.</param>
+    /// <param name="isPartialScan">Indicates whether some providers or roots were only partially scanned.</param>
+    /// <param name="providerCount">The number of providers represented by the snapshot.</param>
+    /// <param name="rootsCount">The number of discovered source roots represented by the snapshot.</param>
+    /// <param name="accountLabels">The distinct account labels detected across providers.</param>
+    /// <param name="eventsCount">The total number of usage events represented by the snapshot.</param>
+    /// <param name="parsedArtifacts">The number of artifacts parsed during the scan.</param>
+    /// <param name="reusedArtifacts">The number of cached artifacts reused during the scan.</param>
+    /// <param name="duplicateRecordsCollapsed">The number of duplicate records collapsed during aggregation.</param>
+    /// <param name="latestEventUtc">The latest event timestamp represented by the snapshot, when known.</param>
+    /// <param name="issueCount">The number of non-fatal scan or discovery issues recorded for the snapshot.</param>
+    /// <param name="providerHealth">Provider-scoped health details that compose this snapshot.</param>
+    public UsageTelemetrySnapshotHealth(
+        bool isCachedSnapshot,
+        bool isPartialScan,
+        int providerCount,
+        int rootsCount,
+        IReadOnlyList<string> accountLabels,
+        int eventsCount,
+        int parsedArtifacts,
+        int reusedArtifacts,
+        int duplicateRecordsCollapsed,
+        DateTimeOffset? latestEventUtc,
+        int issueCount,
+        IReadOnlyList<UsageTelemetryProviderHealth>? providerHealth = null) {
+        IsCachedSnapshot = isCachedSnapshot;
+        IsPartialScan = isPartialScan;
+        ProviderCount = Math.Max(0, providerCount);
+        RootsCount = Math.Max(0, rootsCount);
+        AccountLabels = accountLabels ?? Array.Empty<string>();
+        AccountCount = AccountLabels.Count;
+        EventsCount = Math.Max(0, eventsCount);
+        ParsedArtifacts = Math.Max(0, parsedArtifacts);
+        ReusedArtifacts = Math.Max(0, reusedArtifacts);
+        DuplicateRecordsCollapsed = Math.Max(0, duplicateRecordsCollapsed);
+        LatestEventUtc = latestEventUtc;
+        IssueCount = Math.Max(0, issueCount);
+        ProviderHealth = providerHealth ?? Array.Empty<UsageTelemetryProviderHealth>();
+    }
+
+    /// <summary>
+    /// Gets a value indicating whether the snapshot was loaded from persisted cache.
+    /// </summary>
+    public bool IsCachedSnapshot { get; }
+
+    /// <summary>
+    /// Gets a value indicating whether one or more providers were only partially scanned.
+    /// </summary>
+    public bool IsPartialScan { get; }
+
+    /// <summary>
+    /// Gets the number of providers represented by the snapshot.
+    /// </summary>
+    public int ProviderCount { get; }
+
+    /// <summary>
+    /// Gets the number of discovered roots represented by the snapshot.
+    /// </summary>
+    public int RootsCount { get; }
+
+    /// <summary>
+    /// Gets the distinct account labels detected across providers.
+    /// </summary>
+    public IReadOnlyList<string> AccountLabels { get; }
+
+    /// <summary>
+    /// Gets the number of distinct account labels detected across providers.
+    /// </summary>
+    public int AccountCount { get; }
+
+    /// <summary>
+    /// Gets the total number of usage events represented by the snapshot.
+    /// </summary>
+    public int EventsCount { get; }
+
+    /// <summary>
+    /// Gets the number of artifacts parsed during the scan.
+    /// </summary>
+    public int ParsedArtifacts { get; }
+
+    /// <summary>
+    /// Gets the number of cached artifacts reused during the scan.
+    /// </summary>
+    public int ReusedArtifacts { get; }
+
+    /// <summary>
+    /// Gets the number of duplicate records collapsed during aggregation.
+    /// </summary>
+    public int DuplicateRecordsCollapsed { get; }
+
+    /// <summary>
+    /// Gets the latest event timestamp represented by the snapshot, when known.
+    /// </summary>
+    public DateTimeOffset? LatestEventUtc { get; }
+
+    /// <summary>
+    /// Gets the number of non-fatal discovery or scan issues recorded for the snapshot.
+    /// </summary>
+    public int IssueCount { get; }
+
+    /// <summary>
+    /// Gets provider-scoped health details that compose the snapshot.
+    /// </summary>
+    public IReadOnlyList<UsageTelemetryProviderHealth> ProviderHealth { get; }
+}
+
+/// <summary>
+/// Provider-scoped health summary for one snapshot.
+/// </summary>
+public sealed class UsageTelemetryProviderHealth {
+    /// <summary>
+    /// Initializes a new instance of the <see cref="UsageTelemetryProviderHealth"/> class.
+    /// </summary>
+    /// <param name="providerId">The provider identifier represented by this health entry.</param>
+    /// <param name="rootsCount">The number of discovered roots that produced data for the provider.</param>
+    /// <param name="accountLabels">The distinct account labels detected for the provider.</param>
+    /// <param name="eventsCount">The number of usage events represented for the provider.</param>
+    /// <param name="parsedArtifacts">The number of artifacts parsed for the provider.</param>
+    /// <param name="reusedArtifacts">The number of cached artifacts reused for the provider.</param>
+    /// <param name="duplicateRecordsCollapsed">The number of duplicate records collapsed for the provider.</param>
+    /// <param name="latestEventUtc">The latest provider event timestamp, when known.</param>
+    /// <param name="isPartialScan">Indicates whether the provider data came from a partial scan.</param>
+    public UsageTelemetryProviderHealth(
+        string providerId,
+        int rootsCount,
+        IReadOnlyList<string> accountLabels,
+        int eventsCount,
+        int parsedArtifacts,
+        int reusedArtifacts,
+        int duplicateRecordsCollapsed,
+        DateTimeOffset? latestEventUtc,
+        bool isPartialScan) {
+        ProviderId = string.IsNullOrWhiteSpace(providerId) ? "unknown" : providerId.Trim();
+        RootsCount = Math.Max(0, rootsCount);
+        AccountLabels = accountLabels ?? Array.Empty<string>();
+        AccountCount = AccountLabels.Count;
+        EventsCount = Math.Max(0, eventsCount);
+        ParsedArtifacts = Math.Max(0, parsedArtifacts);
+        ReusedArtifacts = Math.Max(0, reusedArtifacts);
+        DuplicateRecordsCollapsed = Math.Max(0, duplicateRecordsCollapsed);
+        LatestEventUtc = latestEventUtc;
+        IsPartialScan = isPartialScan;
+    }
+
+    /// <summary>
+    /// Gets the provider identifier represented by this health entry.
+    /// </summary>
+    public string ProviderId { get; }
+
+    /// <summary>
+    /// Gets the number of discovered roots that produced data for the provider.
+    /// </summary>
+    public int RootsCount { get; }
+
+    /// <summary>
+    /// Gets the distinct account labels detected for the provider.
+    /// </summary>
+    public IReadOnlyList<string> AccountLabels { get; }
+
+    /// <summary>
+    /// Gets the number of distinct account labels detected for the provider.
+    /// </summary>
+    public int AccountCount { get; }
+
+    /// <summary>
+    /// Gets the number of usage events represented for the provider.
+    /// </summary>
+    public int EventsCount { get; }
+
+    /// <summary>
+    /// Gets the number of artifacts parsed for the provider.
+    /// </summary>
+    public int ParsedArtifacts { get; }
+
+    /// <summary>
+    /// Gets the number of cached artifacts reused for the provider.
+    /// </summary>
+    public int ReusedArtifacts { get; }
+
+    /// <summary>
+    /// Gets the number of duplicate records collapsed for the provider.
+    /// </summary>
+    public int DuplicateRecordsCollapsed { get; }
+
+    /// <summary>
+    /// Gets the latest provider event timestamp, when known.
+    /// </summary>
+    public DateTimeOffset? LatestEventUtc { get; }
+
+    /// <summary>
+    /// Gets a value indicating whether the provider data came from a partial scan.
+    /// </summary>
+    public bool IsPartialScan { get; }
 }

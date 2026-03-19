@@ -9,6 +9,7 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Media;
+using IntelligenceX.Json;
 using IntelligenceX.Telemetry.Limits;
 using IntelligenceX.Telemetry.Usage;
 using IntelligenceX.Tray.Services;
@@ -91,6 +92,10 @@ public sealed class ProviderViewModel : ViewModelBase {
     private string? _limitStatusMessage;
     private string? _recommendedLimitAccountLabel;
     private string? _recommendedLimitAccountSummary;
+    private string? _limitAccountsOverviewText;
+    private string? _usageHealthSummary;
+    private string? _usageHealthDetail;
+    private string? _usageHealthAccountsText;
     private string _todayLabel = "Today";
     private string _weeklyLabel = "7 days";
     private string _monthlyLabel = "30 days";
@@ -648,9 +653,54 @@ public sealed class ProviderViewModel : ViewModelBase {
         }
     }
 
+    public string? LimitAccountsOverviewText {
+        get => _limitAccountsOverviewText;
+        set {
+            if (SetProperty(ref _limitAccountsOverviewText, value)) {
+                OnPropertyChanged(nameof(HasLimitAccountsOverview));
+                OnPropertyChanged(nameof(HasLimitSection));
+            }
+        }
+    }
+
+    public string? UsageHealthSummary {
+        get => _usageHealthSummary;
+        set {
+            if (SetProperty(ref _usageHealthSummary, value)) {
+                OnPropertyChanged(nameof(HasUsageHealthSummary));
+                OnPropertyChanged(nameof(HasUsageHealthSection));
+            }
+        }
+    }
+
+    public string? UsageHealthDetail {
+        get => _usageHealthDetail;
+        set {
+            if (SetProperty(ref _usageHealthDetail, value)) {
+                OnPropertyChanged(nameof(HasUsageHealthDetail));
+                OnPropertyChanged(nameof(HasUsageHealthSection));
+            }
+        }
+    }
+
+    public string? UsageHealthAccountsText {
+        get => _usageHealthAccountsText;
+        set {
+            if (SetProperty(ref _usageHealthAccountsText, value)) {
+                OnPropertyChanged(nameof(HasUsageHealthAccounts));
+                OnPropertyChanged(nameof(HasUsageHealthSection));
+            }
+        }
+    }
+
     public bool HasLimitSummary => !string.IsNullOrWhiteSpace(LimitSummary);
     public bool HasLimitStatusMessage => !string.IsNullOrWhiteSpace(LimitStatusMessage);
     public bool HasRecommendedLimitAccount => !string.IsNullOrWhiteSpace(RecommendedLimitAccountLabel);
+    public bool HasLimitAccountsOverview => !string.IsNullOrWhiteSpace(LimitAccountsOverviewText);
+    public bool HasUsageHealthSummary => !string.IsNullOrWhiteSpace(UsageHealthSummary);
+    public bool HasUsageHealthDetail => !string.IsNullOrWhiteSpace(UsageHealthDetail);
+    public bool HasUsageHealthAccounts => !string.IsNullOrWhiteSpace(UsageHealthAccountsText);
+    public bool HasUsageHealthSection => HasUsageHealthSummary || HasUsageHealthDetail || HasUsageHealthAccounts;
     public bool HasLiveLimitData => LimitWindows.Count > 0;
     public bool HasLimitAccounts => LimitAccounts.Count > 0;
     public bool HasMultipleLimitAccounts => LimitAccounts.Count > 1;
@@ -867,6 +917,7 @@ public sealed class ProviderViewModel : ViewModelBase {
             LimitStatusMessage = null;
             RecommendedLimitAccountLabel = null;
             RecommendedLimitAccountSummary = null;
+            LimitAccountsOverviewText = null;
             return;
         }
 
@@ -877,6 +928,7 @@ public sealed class ProviderViewModel : ViewModelBase {
         LimitStatusMessage = snapshot.DetailMessage;
         RecommendedLimitAccountLabel = null;
         RecommendedLimitAccountSummary = null;
+        LimitAccountsOverviewText = null;
         var forecasts = ProviderLimitForecasting.BuildForecasts(snapshot);
         var advisories = ProviderLimitForecasting.BuildAccountAdvisories(snapshot);
         var accountSnapshots = snapshot.Accounts.Count > 0
@@ -900,8 +952,11 @@ public sealed class ProviderViewModel : ViewModelBase {
                 PlanLabel = advisory.PlanLabel,
                 StatusLabel = advisory.StatusLabel,
                 Summary = advisory.Summary ?? "No live limit windows",
+                DetailText = NormalizeLimitAccountDetail(accountSnapshot?.DetailMessage, advisory.Summary),
                 WindowSummaryText = accountSnapshot is { Windows.Count: > 0 }
                     ? accountSnapshot.Windows.Count.ToString(CultureInfo.InvariantCulture) + " tracked windows"
+                    : accountSnapshot is { IsAvailable: false }
+                        ? "Live limits unavailable"
                     : null,
                 IsExpanded = advisory.IsRecommended || advisory.IsSelected,
                 BadgeText = advisory.IsRecommended
@@ -923,9 +978,49 @@ public sealed class ProviderViewModel : ViewModelBase {
             RecommendedLimitAccountSummary = recommended.Summary;
         }
 
+        if (accountSnapshots.Count > 1) {
+            LimitAccountsOverviewText = BuildLimitAccountsOverviewText(accountSnapshots);
+        }
+
         if (snapshot.Accounts.Count <= 1) {
             PopulateLimitWindows(LimitWindows, snapshot.Windows, forecasts);
         }
+    }
+
+    private static string? NormalizeLimitAccountDetail(string? detail, string? summary) {
+        if (string.IsNullOrWhiteSpace(detail)) {
+            return null;
+        }
+
+        if (!string.IsNullOrWhiteSpace(summary)
+            && string.Equals(detail.Trim(), summary.Trim(), StringComparison.OrdinalIgnoreCase)) {
+            return null;
+        }
+
+        return detail.Trim();
+    }
+
+    private static string BuildLimitAccountsOverviewText(IReadOnlyList<ProviderLimitAccountSnapshot> accounts) {
+        var detectedCount = accounts.Count;
+        var liveCount = accounts.Count(static account => account.IsAvailable);
+        var unavailableCount = detectedCount - liveCount;
+        var selected = accounts.FirstOrDefault(static account => account.IsSelected);
+
+        var parts = new List<string> {
+            detectedCount.ToString(CultureInfo.InvariantCulture) + " detected locally",
+            liveCount.ToString(CultureInfo.InvariantCulture) + " live"
+        };
+        if (unavailableCount > 0) {
+            parts.Add(unavailableCount.ToString(CultureInfo.InvariantCulture) + " unavailable");
+        }
+        if (selected is not null) {
+            var label = selected.AccountLabel ?? selected.AccountId;
+            if (!string.IsNullOrWhiteSpace(label)) {
+                parts.Add("current " + label.Trim());
+            }
+        }
+
+        return string.Join(" • ", parts);
     }
 
     private void PopulateLimitWindows(
@@ -1615,7 +1710,8 @@ public sealed class ProviderViewModel : ViewModelBase {
                 new UsageTelemetryOverviewOptions {
                     Metric = UsageSummaryMetric.TotalTokens,
                     Title = title,
-                    Subtitle = "Tray explorer: " + TodayLabel + " | " + BuildFilterSummary()
+                    Subtitle = "Tray explorer: " + TodayLabel + " | " + BuildFilterSummary(),
+                    Metadata = BuildReportMetadata()
                 })).ConfigureAwait(true);
             var reportPath = await Task.Run(() => UsageTelemetryOverviewReportExporter.WriteBundle(overview, outputDirectory)).ConfigureAwait(true);
 
@@ -1656,6 +1752,28 @@ public sealed class ProviderViewModel : ViewModelBase {
     private static string? NormalizeOptional(string? value) {
         var trimmed = value?.Trim();
         return string.IsNullOrWhiteSpace(trimmed) ? null : trimmed;
+    }
+
+    private JsonObject? BuildReportMetadata() {
+        if (!HasUsageHealthSection) {
+            return null;
+        }
+
+        var reportHealth = new JsonObject()
+            .Add("source", "tray-explorer");
+        if (!string.IsNullOrWhiteSpace(UsageHealthSummary)) {
+            reportHealth.Add("summary", UsageHealthSummary);
+        }
+        if (!string.IsNullOrWhiteSpace(UsageHealthDetail)) {
+            reportHealth.Add("detail", UsageHealthDetail);
+        }
+        if (!string.IsNullOrWhiteSpace(UsageHealthAccountsText)) {
+            reportHealth.Add("accountsText", UsageHealthAccountsText);
+        }
+        reportHealth.Add("generatedAtLocal", LastUpdated.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.CurrentCulture));
+
+        return new JsonObject()
+            .Add("reportHealth", reportHealth);
     }
 
     private static string? NormalizeAccountLabel(string? value, string? providerAccountId = null) {

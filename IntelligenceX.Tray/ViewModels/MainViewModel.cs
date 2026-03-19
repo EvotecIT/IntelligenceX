@@ -41,6 +41,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     private Dictionary<string, List<UsageEventRecord>> _displayedProviderEvents = new(StringComparer.OrdinalIgnoreCase);
     private Dictionary<string, ProviderRefreshSnapshot> _previousProviderSnapshots = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, Queue<ProviderRefreshSnapshot>> _providerRefreshHistory = new(StringComparer.OrdinalIgnoreCase);
+    private UsageTelemetrySnapshotHealth? _latestUsageHealth;
     private ProviderViewModel? _selectedProvider;
     private bool _isLoading;
     private string _statusText = "Initializing...";
@@ -55,6 +56,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     private CancellationTokenSource? _gitHubRefreshCts;
     private int _limitRefreshVersion;
     private CancellationTokenSource? _limitRefreshCts;
+    private string _themeMode = TrayThemeService.SystemMode;
+    private string _accentPreset = TrayThemeService.DefaultAccentPreset;
     private int _autoRefreshIntervalSeconds;
     private bool _notificationsEnabled;
     private bool _hasCompletedInitialRefresh;
@@ -75,6 +78,10 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         _preferencesStore = preferencesStore;
         _usageSnapshotStore = usageSnapshotStore;
         _preferences = _preferencesStore.Load();
+        _themeMode = TrayThemeService.NormalizeThemeMode(_preferences.ThemeMode);
+        _preferences.ThemeMode = _themeMode;
+        _accentPreset = TrayThemeService.NormalizeAccentPreset(_preferences.AccentPreset);
+        _preferences.AccentPreset = _accentPreset;
         _autoRefreshIntervalSeconds = NormalizeRefreshIntervalSeconds(_preferences.AutoRefreshIntervalSeconds);
         _notificationsEnabled = _preferences.NotificationsEnabled;
         _favoriteProviderIds = new HashSet<string>(
@@ -90,6 +97,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         RefreshCommand = new RelayCommand(() => RefreshAsync());
         RefreshGitHubCommand = new RelayCommand(RefreshGitHubCurrentAsync);
         OpenOpenAiCacheCommand = new RelayCommand(OpenOpenAiCacheAsync);
+        CycleThemeModeCommand = new RelayCommand(CycleThemeModeAsync);
         ToggleSelectedProviderFavoriteCommand = new RelayCommand(ToggleSelectedProviderFavoriteAsync, () => CanToggleFavoriteSelectedProvider);
 
         _refreshTimer = new DispatcherTimer {
@@ -119,6 +127,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     }
 
     public event EventHandler<TrayNotificationRequestedEventArgs>? NotificationRequested;
+    public event EventHandler? ThemeModeChanged;
+    public event EventHandler? AccentPresetChanged;
 
     public ObservableCollection<ProviderViewModel> Providers { get; } = [];
     public GitHubViewModel GitHub { get; }
@@ -249,6 +259,26 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         }
     }
 
+    public string ThemeMode {
+        get => _themeMode;
+        private set {
+            if (SetProperty(ref _themeMode, value)) {
+                OnPropertyChanged(nameof(ThemeButtonLabel));
+                OnPropertyChanged(nameof(ThemeToolTip));
+            }
+        }
+    }
+
+    public string AccentPreset {
+        get => _accentPreset;
+        private set {
+            if (SetProperty(ref _accentPreset, value)) {
+                OnPropertyChanged(nameof(AccentSummaryLabel));
+                OnPropertyChanged(nameof(AccentToolTip));
+            }
+        }
+    }
+
     public bool NotificationsEnabled {
         get => _notificationsEnabled;
         private set => SetProperty(ref _notificationsEnabled, value);
@@ -257,10 +287,15 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     public string RefreshModeLabel => AutoRefreshIntervalSeconds <= 0
         ? "Manual refresh"
         : "Auto " + FormatRefreshInterval(AutoRefreshIntervalSeconds);
+    public string ThemeButtonLabel => TrayThemeService.GetDisplayName(ThemeMode);
+    public string ThemeToolTip => "Theme: " + TrayThemeService.GetDisplayName(ThemeMode) + ". Click to cycle Auto, Dark, Light.";
+    public string AccentSummaryLabel => TrayThemeService.GetAccentDisplayName(AccentPreset);
+    public string AccentToolTip => "Accent: " + TrayThemeService.GetAccentDisplayName(AccentPreset) + ". Use the tray context menu to switch presets.";
 
     public RelayCommand RefreshCommand { get; }
     public RelayCommand RefreshGitHubCommand { get; }
     public RelayCommand OpenOpenAiCacheCommand { get; }
+    public RelayCommand CycleThemeModeCommand { get; }
     public RelayCommand ToggleSelectedProviderFavoriteCommand { get; }
 
     public async Task InitializeAsync() {
@@ -437,7 +472,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
                     snapshot.ScannedAtUtc,
                     info,
                     snapshot.DiscoveredProviderIds,
-                    snapshot.SourceRoots);
+                    snapshot.SourceRoots,
+                    snapshot.Health);
             });
             ScheduleScanProgressFlush();
             var mergedProviderData = BuildMergedProviderData(
@@ -458,10 +494,12 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
                 mergedProviderData,
                 refreshData.AllEvents,
                 refreshData.ScannedAtUtc,
+                refreshData.Health,
                 providerDelta,
                 providerHistory);
             ReplaceProviders(newProviders);
             UpdateDisplayedProviderEvents(mergedProviderData);
+            _latestUsageHealth = refreshData.Health;
             LastRefreshed = refreshData.ScannedAtUtc.ToLocalTime();
             _lastUsageSnapshotScannedAtUtc = refreshData.ScannedAtUtc;
             _lastUsageRootDiscoveryUtc = DateTimeOffset.UtcNow;
@@ -477,7 +515,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
                 refreshData.ScannedAtUtc,
                 refreshData.AllEvents,
                 refreshData.DiscoveredProviderIds,
-                refreshData.SourceRoots);
+                refreshData.SourceRoots,
+                refreshData.Health);
 
             _previousProviderSnapshots = new Dictionary<string, ProviderRefreshSnapshot>(currentProviderSnapshots, StringComparer.OrdinalIgnoreCase);
             if (!startupWarmup) {
@@ -657,6 +696,32 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         }
 
         StatusText = enabled ? "Limit notifications enabled." : "Limit notifications paused.";
+    }
+
+    public void SetThemeMode(string mode) {
+        var normalizedMode = TrayThemeService.NormalizeThemeMode(mode);
+        if (string.Equals(ThemeMode, normalizedMode, StringComparison.Ordinal)) {
+            return;
+        }
+
+        ThemeMode = normalizedMode;
+        _preferences.ThemeMode = normalizedMode;
+        SavePreferences();
+        ThemeModeChanged?.Invoke(this, EventArgs.Empty);
+        StatusText = "Theme set to " + TrayThemeService.GetDisplayName(normalizedMode) + ".";
+    }
+
+    public void SetAccentPreset(string accentPreset) {
+        var normalizedPreset = TrayThemeService.NormalizeAccentPreset(accentPreset);
+        if (string.Equals(AccentPreset, normalizedPreset, StringComparison.Ordinal)) {
+            return;
+        }
+
+        AccentPreset = normalizedPreset;
+        _preferences.AccentPreset = normalizedPreset;
+        SavePreferences();
+        AccentPresetChanged?.Invoke(this, EventArgs.Empty);
+        StatusText = "Accent set to " + TrayThemeService.GetAccentDisplayName(normalizedPreset) + ".";
     }
 
     public Task OpenOpenAiCacheAsync() {
@@ -840,6 +905,14 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
                || string.Equals(propertyName, nameof(ProviderViewModel.SelectedSurfaceFilter), StringComparison.Ordinal);
     }
 
+    private static string GetNextThemeMode(string mode) {
+        return TrayThemeService.NormalizeThemeMode(mode) switch {
+            TrayThemeService.SystemMode => TrayThemeService.DarkMode,
+            TrayThemeService.DarkMode => TrayThemeService.LightMode,
+            _ => TrayThemeService.SystemMode
+        };
+    }
+
     private void ConfigureRefreshTimer() {
         if (AutoRefreshIntervalSeconds <= 0) {
             _refreshTimer.Stop();
@@ -868,6 +941,11 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     private void SaveSelectedProviderPreference(string? providerId) {
         _preferences.SelectedProviderId = providerId;
         SavePreferences();
+    }
+
+    private Task CycleThemeModeAsync() {
+        SetThemeMode(GetNextThemeMode(ThemeMode));
+        return Task.CompletedTask;
     }
 
     private void SavePreferences() {
@@ -1209,14 +1287,16 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
                 serviceSnapshot.ScannedAtUtc,
                 serviceSnapshot.DiscoveredProviderIds.ToList(),
                 serviceSnapshot.SourceRoots.ToList(),
-                serviceSnapshot.Events.ToList());
+                serviceSnapshot.Events.ToList(),
+                serviceSnapshot.Health);
             if (ShouldPreferCachedSnapshot(serviceCache, cachedSnapshot)) {
                 cachedSnapshot = serviceCache;
                 _usageSnapshotStore.Save(
                     serviceSnapshot.ScannedAtUtc,
                     serviceSnapshot.Events,
                     serviceSnapshot.DiscoveredProviderIds,
-                    serviceSnapshot.SourceRoots);
+                    serviceSnapshot.SourceRoots,
+                    serviceSnapshot.Health);
             }
         }
 
@@ -1239,11 +1319,13 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
             mergedProviderData,
             cachedSnapshot.Events,
             cachedSnapshot.ScannedAtUtc,
+            cachedSnapshot.Health,
             providerDelta: null,
             providerHistory: null);
         ReplaceProviders(cachedProviders);
         UpdateDisplayedProviderEvents(mergedProviderData);
         _previousProviderSnapshots = new Dictionary<string, ProviderRefreshSnapshot>(providerSnapshots, StringComparer.OrdinalIgnoreCase);
+        _latestUsageHealth = cachedSnapshot.Health;
         _lastUsageSnapshotScannedAtUtc = cachedSnapshot.ScannedAtUtc;
         _lastUsageRootDiscoveryUtc = cachedSnapshot.ScannedAtUtc;
         _usageChangeWatcher.SetRoots(cachedSnapshot.SourceRoots);
@@ -1331,6 +1413,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
             providerData,
             allEvents,
             DateTimeOffset.UtcNow,
+            _latestUsageHealth,
             providerHistory: null,
             providerDelta: null);
         ReplaceProviders(progressiveProviders);
@@ -1348,12 +1431,14 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         IReadOnlyList<ProviderRefreshData> providerData,
         List<UsageEventRecord> allEvents,
         DateTimeOffset scannedAtUtc,
+        UsageTelemetrySnapshotHealth? usageHealth,
         IReadOnlyDictionary<string, ProviderComparisonDeltaInfo>? providerDelta,
         IReadOnlyDictionary<string, ProviderComparisonHistoryInfo>? providerHistory) {
         var newProviders = new List<ProviderViewModel>();
         var shouldShowCombinedProvider = providerData.Count > 0 || allEvents.Count > 0;
         if (shouldShowCombinedProvider) {
             var allVm = BuildCombinedProviderViewModel(allEvents, scannedAtUtc);
+            ApplyUsageHealth(allVm, usageHealth, providerId: null);
             allVm.ApplyRefreshDelta(
                 providerDelta?.Values.Where(static delta => delta.TokenDelta > 0L).Sum(static delta => delta.TokenDelta) ?? 0L,
                 providerDelta?.Values.Where(static delta => delta.EventDelta > 0).Sum(static delta => delta.EventDelta) ?? 0);
@@ -1365,6 +1450,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
             var vm = BuildProviderViewModel(group.ProviderId, group.Events);
             vm.LastUpdated = scannedAtUtc;
             vm.IsFavorite = IsFavoriteProvider(group.ProviderId);
+            ApplyUsageHealth(vm, usageHealth, group.ProviderId);
             if (providerDelta is not null && providerDelta.TryGetValue(group.ProviderId, out var deltaInfo)) {
                 vm.ApplyRefreshDelta(deltaInfo.TokenDelta, deltaInfo.EventDelta);
             } else {
@@ -1449,6 +1535,137 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         };
         gitHubProvider.ApplyRefreshDelta(0L, 0);
         return gitHubProvider;
+    }
+
+    private static void ApplyUsageHealth(
+        ProviderViewModel provider,
+        UsageTelemetrySnapshotHealth? health,
+        string? providerId) {
+        if (provider is null) {
+            return;
+        }
+
+        if (health is null) {
+            provider.UsageHealthSummary = null;
+            provider.UsageHealthDetail = null;
+            provider.UsageHealthAccountsText = null;
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(providerId)) {
+            provider.UsageHealthSummary = BuildOverallUsageHealthSummary(health);
+            provider.UsageHealthDetail = BuildOverallUsageHealthDetail(health);
+            provider.UsageHealthAccountsText = BuildUsageHealthAccountsText(health.AccountLabels);
+            return;
+        }
+
+        var providerHealth = health.ProviderHealth.FirstOrDefault(item =>
+            string.Equals(item.ProviderId, providerId, StringComparison.OrdinalIgnoreCase));
+        if (providerHealth is null) {
+            provider.UsageHealthSummary = null;
+            provider.UsageHealthDetail = null;
+            provider.UsageHealthAccountsText = null;
+            return;
+        }
+
+        provider.UsageHealthSummary = BuildProviderUsageHealthSummary(health, providerHealth);
+        provider.UsageHealthDetail = BuildProviderUsageHealthDetail(providerHealth);
+        provider.UsageHealthAccountsText = BuildUsageHealthAccountsText(providerHealth.AccountLabels);
+    }
+
+    private static string BuildOverallUsageHealthSummary(UsageTelemetrySnapshotHealth health) {
+        var parts = new List<string> {
+            health.IsCachedSnapshot ? "Cached snapshot" : "Live scan",
+            health.ProviderCount.ToString(CultureInfo.InvariantCulture) + " providers",
+            health.RootsCount.ToString(CultureInfo.InvariantCulture) + " roots",
+            health.AccountCount.ToString(CultureInfo.InvariantCulture) + " accounts"
+        };
+        if (health.LatestEventUtc.HasValue) {
+            parts.Add("latest " + health.LatestEventUtc.Value.ToLocalTime().ToString("MMM d HH:mm", CultureInfo.CurrentCulture));
+        }
+
+        return string.Join(" • ", parts);
+    }
+
+    private static string BuildOverallUsageHealthDetail(UsageTelemetrySnapshotHealth health) {
+        var parts = new List<string> {
+            health.EventsCount.ToString(CultureInfo.InvariantCulture) + " events"
+        };
+        if (health.ReusedArtifacts > 0) {
+            parts.Add(health.ReusedArtifacts.ToString(CultureInfo.InvariantCulture) + " cached artifacts");
+        }
+        if (health.ParsedArtifacts > 0) {
+            parts.Add(health.ParsedArtifacts.ToString(CultureInfo.InvariantCulture) + " parsed");
+        }
+        if (health.DuplicateRecordsCollapsed > 0) {
+            parts.Add(health.DuplicateRecordsCollapsed.ToString(CultureInfo.InvariantCulture) + " deduped");
+        }
+        if (health.IsPartialScan) {
+            parts.Add("partial scan");
+        }
+        if (health.IssueCount > 0) {
+            parts.Add(health.IssueCount.ToString(CultureInfo.InvariantCulture) + " issues");
+        }
+
+        return string.Join(" • ", parts);
+    }
+
+    private static string BuildProviderUsageHealthSummary(
+        UsageTelemetrySnapshotHealth overallHealth,
+        UsageTelemetryProviderHealth providerHealth) {
+        var parts = new List<string> {
+            overallHealth.IsCachedSnapshot ? "Cached snapshot" : "Live scan",
+            providerHealth.RootsCount.ToString(CultureInfo.InvariantCulture) + " roots",
+            providerHealth.AccountCount.ToString(CultureInfo.InvariantCulture) + " accounts"
+        };
+        if (providerHealth.LatestEventUtc.HasValue) {
+            parts.Add("latest " + providerHealth.LatestEventUtc.Value.ToLocalTime().ToString("MMM d HH:mm", CultureInfo.CurrentCulture));
+        }
+
+        return string.Join(" • ", parts);
+    }
+
+    private static string BuildProviderUsageHealthDetail(UsageTelemetryProviderHealth providerHealth) {
+        var parts = new List<string> {
+            providerHealth.EventsCount.ToString(CultureInfo.InvariantCulture) + " events"
+        };
+        if (providerHealth.ReusedArtifacts > 0) {
+            parts.Add(providerHealth.ReusedArtifacts.ToString(CultureInfo.InvariantCulture) + " cached artifacts");
+        }
+        if (providerHealth.ParsedArtifacts > 0) {
+            parts.Add(providerHealth.ParsedArtifacts.ToString(CultureInfo.InvariantCulture) + " parsed");
+        }
+        if (providerHealth.DuplicateRecordsCollapsed > 0) {
+            parts.Add(providerHealth.DuplicateRecordsCollapsed.ToString(CultureInfo.InvariantCulture) + " deduped");
+        }
+        if (providerHealth.IsPartialScan) {
+            parts.Add("partial scan");
+        }
+
+        return string.Join(" • ", parts);
+    }
+
+    private static string? BuildUsageHealthAccountsText(IReadOnlyList<string>? accountLabels) {
+        if (accountLabels is not { Count: > 0 }) {
+            return null;
+        }
+
+        const int maxVisible = 3;
+        var visible = accountLabels
+            .Where(static label => !string.IsNullOrWhiteSpace(label))
+            .Take(maxVisible)
+            .ToArray();
+        if (visible.Length == 0) {
+            return null;
+        }
+
+        var text = "Accounts: " + string.Join(", ", visible);
+        var hiddenCount = accountLabels.Count - visible.Length;
+        if (hiddenCount > 0) {
+            text += " +" + hiddenCount.ToString(CultureInfo.InvariantCulture) + " more";
+        }
+
+        return text;
     }
 
     private static List<ProviderRefreshData> BuildMergedProviderData(
@@ -1697,7 +1914,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         DateTimeOffset ScannedAtUtc,
         string ScanInfo,
         IReadOnlyList<string> DiscoveredProviderIds,
-        IReadOnlyList<SourceRootRecord> SourceRoots);
+        IReadOnlyList<SourceRootRecord> SourceRoots,
+        UsageTelemetrySnapshotHealth? Health);
 
     private enum LimitNotificationLevel {
         Warning,

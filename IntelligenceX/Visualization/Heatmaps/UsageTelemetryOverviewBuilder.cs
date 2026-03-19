@@ -46,6 +46,11 @@ public sealed class UsageTelemetryOverviewOptions {
     public IReadOnlyDictionary<string, string>? SourceRootLabels { get; set; }
 
     /// <summary>
+    /// Gets or sets optional report metadata carried into exported report bundles.
+    /// </summary>
+    public JsonObject? Metadata { get; set; }
+
+    /// <summary>
     /// Gets or sets the maximum number of legend entries emitted per heatmap.
     /// </summary>
     public int LegendLimit { get; set; } = 5;
@@ -457,6 +462,14 @@ public sealed class UsageTelemetryOverviewProviderSection {
         string title,
         string subtitle,
         HeatmapDocument heatmap,
+        DateTime? rangeStartUtc,
+        DateTime? rangeEndUtc,
+        DateTimeOffset? latestEventUtc,
+        int activeDays,
+        int totalDays,
+        int accountCount,
+        int sourceRootCount,
+        IReadOnlyList<string>? accountLabels,
         IReadOnlyList<UsageTelemetryOverviewSectionMetric> metrics,
         UsageTelemetryOverviewComposition? composition,
         IReadOnlyList<UsageTelemetryOverviewCard> spotlightCards,
@@ -479,6 +492,18 @@ public sealed class UsageTelemetryOverviewProviderSection {
         Title = string.IsNullOrWhiteSpace(title) ? ProviderId : title.Trim();
         Subtitle = string.IsNullOrWhiteSpace(subtitle) ? "No range" : subtitle.Trim();
         Heatmap = heatmap ?? throw new ArgumentNullException(nameof(heatmap));
+        RangeStartUtc = rangeStartUtc?.Date;
+        RangeEndUtc = rangeEndUtc?.Date;
+        LatestEventUtc = latestEventUtc;
+        ActiveDays = Math.Max(0, activeDays);
+        TotalDays = Math.Max(0, totalDays);
+        AccountCount = Math.Max(0, accountCount);
+        SourceRootCount = Math.Max(0, sourceRootCount);
+        AccountLabels = accountLabels?
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .Select(static value => value.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray() ?? Array.Empty<string>();
         Metrics = metrics ?? Array.Empty<UsageTelemetryOverviewSectionMetric>();
         Composition = composition;
         SpotlightCards = spotlightCards ?? Array.Empty<UsageTelemetryOverviewCard>();
@@ -503,6 +528,14 @@ public sealed class UsageTelemetryOverviewProviderSection {
     public string Title { get; }
     public string Subtitle { get; }
     public HeatmapDocument Heatmap { get; }
+    public DateTime? RangeStartUtc { get; }
+    public DateTime? RangeEndUtc { get; }
+    public DateTimeOffset? LatestEventUtc { get; }
+    public int ActiveDays { get; }
+    public int TotalDays { get; }
+    public int AccountCount { get; }
+    public int SourceRootCount { get; }
+    public IReadOnlyList<string> AccountLabels { get; }
     public IReadOnlyList<UsageTelemetryOverviewSectionMetric> Metrics { get; }
     public UsageTelemetryOverviewComposition? Composition { get; }
     public IReadOnlyList<UsageTelemetryOverviewCard> SpotlightCards { get; }
@@ -527,6 +560,14 @@ public sealed class UsageTelemetryOverviewProviderSection {
             .Add("providerId", ProviderId)
             .Add("title", Title)
             .Add("subtitle", Subtitle)
+            .Add("rangeStartUtc", RangeStartUtc?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture))
+            .Add("rangeEndUtc", RangeEndUtc?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture))
+            .Add("latestEventUtc", LatestEventUtc?.ToString("O", CultureInfo.InvariantCulture))
+            .Add("activeDays", ActiveDays)
+            .Add("totalDays", TotalDays)
+            .Add("accountCount", AccountCount)
+            .Add("sourceRootCount", SourceRootCount)
+            .Add("accountLabels", ToJsonArray(AccountLabels, static value => value))
             .Add("metrics", ToJsonArray(Metrics, static metric => metric.ToJson()))
             .Add("spotlightCards", ToJsonArray(SpotlightCards, static card => card.ToJson()))
             .Add("inputTokens", InputTokens)
@@ -565,6 +606,14 @@ public sealed class UsageTelemetryOverviewProviderSection {
         var array = new JsonArray();
         foreach (var value in values) {
             array.Add(JsonValue.From(projector(value)));
+        }
+        return array;
+    }
+
+    private static JsonArray ToJsonArray(IReadOnlyList<string> values, Func<string, string> projector) {
+        var array = new JsonArray();
+        foreach (var value in values) {
+            array.Add(projector(value));
         }
         return array;
     }
@@ -747,7 +796,8 @@ public sealed class UsageTelemetryOverviewBuilder {
             summary,
             cards,
             heatmaps,
-            providerSections);
+            providerSections,
+            effectiveOptions.Metadata);
     }
 
     private static IReadOnlyList<UsageTelemetryOverviewProviderSection> BuildProviderSections(
@@ -776,6 +826,32 @@ public sealed class UsageTelemetryOverviewBuilder {
             .Where(record => record.TimestampUtc.UtcDateTime.Date >= rangeStartUtc
                              && record.TimestampUtc.UtcDateTime.Date <= rangeEndUtc)
             .ToArray();
+        var latestEventUtc = events.Length == 0
+            ? (DateTimeOffset?)null
+            : events[events.Length - 1].TimestampUtc;
+        var activeDays = events
+            .Select(static record => record.TimestampUtc.UtcDateTime.Date)
+            .Distinct()
+            .Count();
+        var totalDays = Math.Max(1, (rangeEndUtc - rangeStartUtc).Days + 1);
+        var accountCount = events
+            .Select(static record => NormalizeOptional(record.AccountLabel))
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Count();
+        var accountLabels = events
+            .Select(static record => NormalizeOptional(record.AccountLabel))
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .Select(static value => value!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(static value => value, StringComparer.OrdinalIgnoreCase)
+            .Take(8)
+            .ToArray();
+        var sourceRootCount = events
+            .Select(static record => NormalizeOptional(record.SourceRootId))
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Count();
 
         var title = ResolveProviderTitle(providerId);
         var subtitle = BuildRangeLabel(rangeStartUtc, rangeEndUtc);
@@ -824,6 +900,14 @@ public sealed class UsageTelemetryOverviewBuilder {
             title: title,
             subtitle: subtitle,
             heatmap: heatmap,
+            rangeStartUtc: rangeStartUtc,
+            rangeEndUtc: rangeEndUtc,
+            latestEventUtc: latestEventUtc,
+            activeDays: activeDays,
+            totalDays: totalDays,
+            accountCount: accountCount,
+            sourceRootCount: sourceRootCount,
+            accountLabels: accountLabels,
             metrics: metrics,
             composition: composition,
             spotlightCards: spotlightCards,

@@ -783,7 +783,8 @@ internal static class UsageTelemetryCliRunner {
             sections
                 .OrderBy(static section => UsageTelemetryProviderCatalog.ResolveSortOrder(section.ProviderId))
                 .ThenBy(static section => section.Title, StringComparer.OrdinalIgnoreCase)
-                .ToArray());
+                .ToArray(),
+            overview.Metadata);
     }
 
     internal static async Task<UsageTelemetryOverviewDocument> AppendCopilotQuotaInsightsAsync(
@@ -846,7 +847,8 @@ internal static class UsageTelemetryCliRunner {
             overview.Summary,
             overview.Cards,
             overview.Heatmaps,
-            sections);
+            sections,
+            overview.Metadata);
     }
 
     internal static IReadOnlyList<GitHubSectionRequest> BuildGitHubSectionRequests(
@@ -1270,6 +1272,14 @@ internal static class UsageTelemetryCliRunner {
             section.Title,
             section.Subtitle,
             section.Heatmap,
+            section.RangeStartUtc,
+            section.RangeEndUtc,
+            section.LatestEventUtc,
+            section.ActiveDays,
+            section.TotalDays,
+            section.AccountCount,
+            section.SourceRootCount,
+            section.AccountLabels,
             section.Metrics,
             section.Composition,
             section.SpotlightCards,
@@ -1310,6 +1320,14 @@ internal static class UsageTelemetryCliRunner {
             section.Title,
             section.Subtitle,
             section.Heatmap,
+            section.RangeStartUtc,
+            section.RangeEndUtc,
+            section.LatestEventUtc,
+            section.ActiveDays,
+            section.TotalDays,
+            section.AccountCount,
+            section.SourceRootCount,
+            section.AccountLabels,
             section.Metrics,
             section.Composition,
             section.SpotlightCards,
@@ -1706,6 +1724,14 @@ internal static class UsageTelemetryCliRunner {
             section.Title,
             section.Subtitle,
             section.Heatmap,
+            section.RangeStartUtc,
+            section.RangeEndUtc,
+            section.LatestEventUtc,
+            section.ActiveDays,
+            section.TotalDays,
+            section.AccountCount,
+            section.SourceRootCount,
+            section.AccountLabels,
             section.Metrics,
             section.Composition,
             section.SpotlightCards,

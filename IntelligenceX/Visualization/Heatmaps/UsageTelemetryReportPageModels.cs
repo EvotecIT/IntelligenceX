@@ -10,6 +10,7 @@ internal sealed record UsageTelemetryOverviewPageModel(
     IReadOnlyList<UsageTelemetrySectionSwitchModel> SectionSwitches,
     IReadOnlyList<UsageTelemetryOverviewSectionPageModel> Sections,
     IReadOnlyList<UsageTelemetrySupportingBreakdownModel> SupportingBreakdowns,
+    UsageTelemetryReportDiagnosticsModel? Diagnostics,
     string BootstrapJson,
     string Footnote);
 
@@ -26,6 +27,9 @@ internal sealed record UsageTelemetryOverviewSectionPageModel(
     UsageTelemetryOverviewSectionFlags Flags,
     IReadOnlyList<UsageTelemetryToggleOptionModel> DatasetTabs,
     UsageTelemetryProviderAccentColors AccentColors,
+    UsageTelemetryReportDiagnosticsModel? Diagnostics,
+    IReadOnlyList<string> HealthAccountLabels,
+    IReadOnlyList<UsageTelemetryOverviewInsightSection> HealthInsights,
     UsageTelemetryGitHubSectionPageModel? GitHub);
 
 internal sealed record UsageTelemetryOverviewSectionFlags(
@@ -52,8 +56,19 @@ internal sealed record UsageTelemetryBreakdownPageModel(
     string FileStem,
     string BreakdownLabel,
     string SummaryHint,
+    UsageTelemetryReportDiagnosticsModel? Diagnostics,
     string BootstrapJson,
     UsageTelemetryBreakdownSummaryPageModel Summary);
+
+internal sealed record UsageTelemetryReportDiagnosticsModel(
+    string Title,
+    IReadOnlyList<UsageTelemetryReportDiagnosticsItemModel> Items,
+    string? Note);
+
+internal sealed record UsageTelemetryReportDiagnosticsItemModel(
+    string Label,
+    string Value,
+    string? Copy);
 
 internal sealed record UsageTelemetryBreakdownSummaryPageModel(
     bool IsSourceRoot,
@@ -103,6 +118,7 @@ internal sealed record UsageTelemetryGitHubWrappedPageModel(
     string Title,
     string Subtitle,
     string? Note,
+    UsageTelemetryReportDiagnosticsModel? Diagnostics,
     string BootstrapJson,
     IReadOnlyList<UsageTelemetryOverviewSectionMetric> Metrics,
     IReadOnlyList<UsageTelemetryOverviewCard> SpotlightCards,
@@ -127,6 +143,7 @@ internal sealed record UsageTelemetryGitHubWrappedOwnerPanelModel(
 internal sealed record UsageTelemetryGitHubWrappedCardPageModel(
     string Title,
     string Subtitle,
+    UsageTelemetryReportDiagnosticsModel? Diagnostics,
     string BootstrapJson,
     IReadOnlyList<UsageTelemetryGitHubWrappedMetricModel> Metrics,
     IReadOnlyList<UsageTelemetryGitHubWrappedMetricModel> Stats,

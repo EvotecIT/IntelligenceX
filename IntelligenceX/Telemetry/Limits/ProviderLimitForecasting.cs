@@ -200,6 +200,22 @@ public static class ProviderLimitForecasting {
             return null;
         }
 
+        var displayLabel = NormalizeOptional(account.AccountLabel)
+                           ?? NormalizeOptional(account.AccountId)
+                           ?? "Unknown account";
+        if (!account.IsAvailable) {
+            return new ProviderLimitAccountAdvisory(
+                account.AccountId,
+                displayLabel,
+                account.PlanLabel,
+                hottestWindowLabel: null,
+                statusLabel: "Unavailable",
+                summary: BuildAccountSummary(account, hottestWindow: null, hottestForecast: null, riskScore: double.MaxValue, nowUtc),
+                riskScore: double.MaxValue,
+                isRecommended: false,
+                isSelected: account.IsSelected);
+        }
+
         ProviderLimitWindow? hottestWindow = null;
         ProviderLimitWindowForecast? hottestForecast = null;
         var riskScore = double.MaxValue;
@@ -216,9 +232,6 @@ public static class ProviderLimitForecasting {
             }
         }
 
-        var displayLabel = NormalizeOptional(account.AccountLabel)
-                           ?? NormalizeOptional(account.AccountId)
-                           ?? "Unknown account";
         var statusLabel = BuildAccountStatusLabel(hottestWindow, hottestForecast, riskScore);
         var summary = BuildAccountSummary(account, hottestWindow, hottestForecast, riskScore, nowUtc);
 
@@ -320,6 +333,10 @@ public static class ProviderLimitForecasting {
         ProviderLimitWindowForecast? hottestForecast,
         double riskScore,
         DateTimeOffset nowUtc) {
+        if (!account.IsAvailable) {
+            return NormalizeOptional(account.Summary) ?? "Detected locally, but live limits are unavailable.";
+        }
+
         if (hottestWindow is null) {
             return NormalizeOptional(account.DetailMessage)
                    ?? NormalizeOptional(account.Summary)

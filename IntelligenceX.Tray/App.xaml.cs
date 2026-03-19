@@ -17,7 +17,10 @@ public partial class App : Application {
     private TrayPopupWindow? _popupWindow;
     private MainViewModel? _viewModel;
     private SqliteRawArtifactStore? _usageArtifactStore;
+    private TrayThemeService? _themeService;
     private readonly List<(System.Windows.Controls.MenuItem Item, int Seconds)> _refreshIntervalItems = [];
+    private readonly List<(System.Windows.Controls.MenuItem Item, string Mode)> _themeModeItems = [];
+    private readonly List<(System.Windows.Controls.MenuItem Item, string Preset)> _accentPresetItems = [];
     private System.Windows.Controls.MenuItem? _notificationsItem;
     private string? _pendingNotificationProviderId;
     private DateTimeOffset _suppressTrayToggleUntilUtc;
@@ -34,11 +37,14 @@ public partial class App : Application {
             var usageSnapshotStore = new TrayUsageSnapshotStore();
             _viewModel = new MainViewModel(usageService, limitService, gitHubService, preferencesStore, usageSnapshotStore);
             _viewModel.NotificationRequested += OnNotificationRequested;
+            _viewModel.ThemeModeChanged += OnThemeModeChanged;
+            _viewModel.AccentPresetChanged += OnAccentPresetChanged;
 
-            _popupWindow = new TrayPopupWindow {
-                DataContext = _viewModel
-            };
-            _popupWindow.PrimeForFastShow();
+            _themeService = new TrayThemeService(this);
+            _themeService.ThemeChanged += OnThemeChanged;
+            _themeService.ApplyAppearance(_viewModel.ThemeMode, _viewModel.AccentPreset);
+
+            _popupWindow = CreatePopupWindow();
 
             // Create tray icon from XAML resource
             _trayIcon = (TaskbarIcon)FindResource("TrayIcon");
@@ -78,7 +84,60 @@ public partial class App : Application {
         }
     }
 
+    private TrayPopupWindow CreatePopupWindow() {
+        if (_viewModel is null) {
+            throw new InvalidOperationException("The tray popup cannot be created before the view model is ready.");
+        }
+
+        var popupWindow = new TrayPopupWindow {
+            DataContext = _viewModel
+        };
+        popupWindow.PrimeForFastShow();
+        return popupWindow;
+    }
+
+    private void OnThemeModeChanged(object? sender, EventArgs e) {
+        _themeService?.ApplyAppearance(_viewModel?.ThemeMode, _viewModel?.AccentPreset);
+    }
+
+    private void OnAccentPresetChanged(object? sender, EventArgs e) {
+        _themeService?.ApplyAppearance(_viewModel?.ThemeMode, _viewModel?.AccentPreset);
+    }
+
+    private void OnThemeChanged(object? sender, EventArgs e) {
+        if (_trayIcon is null && _popupWindow is null) {
+            return;
+        }
+
+        RebuildThemedShell(reopenPopup: _popupWindow?.IsVisible == true);
+    }
+
+    private void RebuildThemedShell(bool reopenPopup) {
+        if (_viewModel is null) {
+            return;
+        }
+
+        if (_popupWindow is not null) {
+            _popupWindow.Hide();
+            _popupWindow.Close();
+            _popupWindow = null;
+        }
+
+        _popupWindow = CreatePopupWindow();
+
+        if (_trayIcon is not null) {
+            _trayIcon.ContextMenu = CreateContextMenu();
+        }
+
+        if (reopenPopup) {
+            ShowPopup();
+        }
+    }
+
     private System.Windows.Controls.ContextMenu CreateContextMenu() {
+        _refreshIntervalItems.Clear();
+        _themeModeItems.Clear();
+        _accentPresetItems.Clear();
         var menu = new System.Windows.Controls.ContextMenu();
         if (TryFindResource("DarkContextMenuStyle") is Style cmStyle) {
             menu.Style = cmStyle;
@@ -95,6 +154,19 @@ public partial class App : Application {
         refreshItem.Click += async (_, _) => {
             if (_viewModel is not null) await _viewModel.RefreshAsync();
         };
+
+        var themeItem = new System.Windows.Controls.MenuItem { Header = "Theme" };
+        if (itemStyle is not null) themeItem.Style = itemStyle;
+        AddThemeModeItem(themeItem, itemStyle, "Auto", TrayThemeService.SystemMode);
+        AddThemeModeItem(themeItem, itemStyle, "Dark", TrayThemeService.DarkMode);
+        AddThemeModeItem(themeItem, itemStyle, "Light", TrayThemeService.LightMode);
+
+        var accentItem = new System.Windows.Controls.MenuItem { Header = "Accent" };
+        if (itemStyle is not null) accentItem.Style = itemStyle;
+        AddAccentPresetItem(accentItem, itemStyle, "Violet", TrayThemeService.DefaultAccentPreset);
+        AddAccentPresetItem(accentItem, itemStyle, "Ocean", TrayThemeService.OceanAccentPreset);
+        AddAccentPresetItem(accentItem, itemStyle, "Forest", TrayThemeService.ForestAccentPreset);
+        AddAccentPresetItem(accentItem, itemStyle, "Sunset", TrayThemeService.SunsetAccentPreset);
 
         var autoRefreshItem = new System.Windows.Controls.MenuItem { Header = "Auto Refresh" };
         if (itemStyle is not null) autoRefreshItem.Style = itemStyle;
@@ -142,6 +214,8 @@ public partial class App : Application {
 
         menu.Items.Add(openItem);
         menu.Items.Add(refreshItem);
+        menu.Items.Add(themeItem);
+        menu.Items.Add(accentItem);
         menu.Items.Add(autoRefreshItem);
         menu.Items.Add(cacheItem);
         menu.Items.Add(_notificationsItem);
@@ -164,6 +238,28 @@ public partial class App : Application {
         _refreshIntervalItems.Add((item, seconds));
     }
 
+    private void AddThemeModeItem(System.Windows.Controls.MenuItem parent, Style? itemStyle, string header, string mode) {
+        var item = new System.Windows.Controls.MenuItem {
+            Header = header,
+            IsCheckable = true
+        };
+        if (itemStyle is not null) item.Style = itemStyle;
+        item.Click += (_, _) => _viewModel?.SetThemeMode(mode);
+        parent.Items.Add(item);
+        _themeModeItems.Add((item, mode));
+    }
+
+    private void AddAccentPresetItem(System.Windows.Controls.MenuItem parent, Style? itemStyle, string header, string preset) {
+        var item = new System.Windows.Controls.MenuItem {
+            Header = header,
+            IsCheckable = true
+        };
+        if (itemStyle is not null) item.Style = itemStyle;
+        item.Click += (_, _) => _viewModel?.SetAccentPreset(preset);
+        parent.Items.Add(item);
+        _accentPresetItems.Add((item, preset));
+    }
+
     private void UpdateContextMenuState() {
         if (_viewModel is null) {
             return;
@@ -171,6 +267,14 @@ public partial class App : Application {
 
         foreach (var (item, seconds) in _refreshIntervalItems) {
             item.IsChecked = _viewModel.AutoRefreshIntervalSeconds == seconds;
+        }
+
+        foreach (var (item, mode) in _themeModeItems) {
+            item.IsChecked = string.Equals(_viewModel.ThemeMode, mode, StringComparison.Ordinal);
+        }
+
+        foreach (var (item, preset) in _accentPresetItems) {
+            item.IsChecked = string.Equals(_viewModel.AccentPreset, preset, StringComparison.Ordinal);
         }
 
         if (_notificationsItem is not null) {
@@ -262,6 +366,14 @@ public partial class App : Application {
     protected override void OnExit(ExitEventArgs e) {
         if (_viewModel is not null) {
             _viewModel.NotificationRequested -= OnNotificationRequested;
+            _viewModel.ThemeModeChanged -= OnThemeModeChanged;
+            _viewModel.AccentPresetChanged -= OnAccentPresetChanged;
+        }
+
+        if (_themeService is not null) {
+            _themeService.ThemeChanged -= OnThemeChanged;
+            _themeService.Dispose();
+            _themeService = null;
         }
 
         if (_trayIcon is not null) {

@@ -2,20 +2,20 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <!-- Color Palette -->
-    <Color x:Key="BackgroundColor">#1e1e2e</Color>
-    <Color x:Key="CardColor">#282840</Color>
-    <Color x:Key="CardHoverColor">#313150</Color>
-    <Color x:Key="SurfaceColor">#2a2a45</Color>
-    <Color x:Key="BorderColor">#3a3a5c</Color>
-    <Color x:Key="PrimaryTextColor">#e0e0f0</Color>
-    <Color x:Key="SecondaryTextColor">#9090b8</Color>
-    <Color x:Key="TertiaryTextColor">#606088</Color>
-    <Color x:Key="AccentColor">#7c6ff5</Color>
-    <Color x:Key="AccentDimColor">#5a50d0</Color>
-    <Color x:Key="GreenColor">#50d880</Color>
-    <Color x:Key="BrandStartColor">#7c6ff5</Color>
-    <Color x:Key="BrandEndColor">#50d880</Color>
-    <Color x:Key="PopupShadowColor">#000000</Color>
+    <Color x:Key="BackgroundColor">#edf2f8</Color>
+    <Color x:Key="CardColor">#ffffff</Color>
+    <Color x:Key="CardHoverColor">#f7f9fd</Color>
+    <Color x:Key="SurfaceColor">#eef3fb</Color>
+    <Color x:Key="BorderColor">#d7deea</Color>
+    <Color x:Key="PrimaryTextColor">#1a2540</Color>
+    <Color x:Key="SecondaryTextColor">#55627d</Color>
+    <Color x:Key="TertiaryTextColor">#8390aa</Color>
+    <Color x:Key="AccentColor">#5b63e8</Color>
+    <Color x:Key="AccentDimColor">#454fcf</Color>
+    <Color x:Key="GreenColor">#1f9c69</Color>
+    <Color x:Key="BrandStartColor">#5b63e8</Color>
+    <Color x:Key="BrandEndColor">#1f9c69</Color>
+    <Color x:Key="PopupShadowColor">#1f3048</Color>
 
     <SolidColorBrush x:Key="BackgroundBrush" Color="{StaticResource BackgroundColor}" />
     <SolidColorBrush x:Key="CardBrush" Color="{StaticResource CardColor}" />
@@ -28,20 +28,20 @@
     <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource AccentColor}" />
     <SolidColorBrush x:Key="AccentDimBrush" Color="{StaticResource AccentDimColor}" />
     <SolidColorBrush x:Key="GreenBrush" Color="{StaticResource GreenColor}" />
-    <SolidColorBrush x:Key="SectionStripBrush" Color="#08ffffff" />
-    <SolidColorBrush x:Key="FavoriteBadgeBrush" Color="#f0c040" />
-    <SolidColorBrush x:Key="SuccessBadgeBrush" Color="#2050d880" />
-    <SolidColorBrush x:Key="SuccessBadgeTextBrush" Color="#f3fff6" />
-    <SolidColorBrush x:Key="InsetPanelBrush" Color="#12000000" />
-    <SolidColorBrush x:Key="InsetPanelStrongBrush" Color="#120F1F30" />
-    <SolidColorBrush x:Key="SubtleSurfaceBrush" Color="#15ffffff" />
-    <SolidColorBrush x:Key="SubtleSurfaceMutedBrush" Color="#10ffffff" />
-    <SolidColorBrush x:Key="SubtleSurfaceStrongBrush" Color="#12ffffff" />
-    <SolidColorBrush x:Key="SubtleSurfaceEmphasisBrush" Color="#18ffffff" />
-    <SolidColorBrush x:Key="OverlayScrimBrush" Color="#28080a12" />
-    <SolidColorBrush x:Key="OverlayGlowBrush" Color="#f1ffffff" />
-    <SolidColorBrush x:Key="OverlayCardBrush" Color="#1f101826" />
-    <SolidColorBrush x:Key="FooterBrush" Color="#0affffff" />
+    <SolidColorBrush x:Key="SectionStripBrush" Color="#0a182541" />
+    <SolidColorBrush x:Key="FavoriteBadgeBrush" Color="#b98307" />
+    <SolidColorBrush x:Key="SuccessBadgeBrush" Color="#141f9c69" />
+    <SolidColorBrush x:Key="SuccessBadgeTextBrush" Color="#0e5839" />
+    <SolidColorBrush x:Key="InsetPanelBrush" Color="#08182541" />
+    <SolidColorBrush x:Key="InsetPanelStrongBrush" Color="#0d223558" />
+    <SolidColorBrush x:Key="SubtleSurfaceBrush" Color="#0a182541" />
+    <SolidColorBrush x:Key="SubtleSurfaceMutedBrush" Color="#08182541" />
+    <SolidColorBrush x:Key="SubtleSurfaceStrongBrush" Color="#0d182541" />
+    <SolidColorBrush x:Key="SubtleSurfaceEmphasisBrush" Color="#10182541" />
+    <SolidColorBrush x:Key="OverlayScrimBrush" Color="#200b1220" />
+    <SolidColorBrush x:Key="OverlayGlowBrush" Color="#ffffffff" />
+    <SolidColorBrush x:Key="OverlayCardBrush" Color="#f6f9fe" />
+    <SolidColorBrush x:Key="FooterBrush" Color="#0cf7fbff" />
 
     <FontFamily x:Key="AppFont">Segoe UI Variable Display, Segoe UI, Arial</FontFamily>
 
@@ -54,15 +54,15 @@
             <Setter.Value>
                 <ControlTemplate TargetType="Thumb">
                     <Border x:Name="ThumbBorder"
-                            Background="#30ffffff"
+                            Background="#30000000"
                             CornerRadius="3"
                             Margin="1" />
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="ThumbBorder" Property="Background" Value="#50ffffff" />
+                            <Setter TargetName="ThumbBorder" Property="Background" Value="#50000000" />
                         </Trigger>
                         <Trigger Property="IsDragging" Value="True">
-                            <Setter TargetName="ThumbBorder" Property="Background" Value="#70ffffff" />
+                            <Setter TargetName="ThumbBorder" Property="Background" Value="#70000000" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -168,7 +168,7 @@
                                     CornerRadius="4"
                                     BorderBrush="{StaticResource AccentBrush}"
                                     BorderThickness="1"
-                                    Background="#187c6ff5"
+                                    Background="#185b63e8"
                                     Visibility="Collapsed"
                                     VerticalAlignment="Center"
                                     HorizontalAlignment="Center">
@@ -215,7 +215,7 @@
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsHighlighted" Value="True">
-                            <Setter TargetName="ItemBorder" Property="Background" Value="#203a6ea5" />
+                            <Setter TargetName="ItemBorder" Property="Background" Value="#105b63e8" />
                             <Setter Property="Foreground" Value="{StaticResource PrimaryTextBrush}" />
                         </Trigger>
                         <Trigger Property="IsChecked" Value="True">
@@ -225,7 +225,7 @@
                             <Setter TargetName="SubmenuArrow" Property="Visibility" Value="Visible" />
                         </Trigger>
                         <Trigger Property="IsSubmenuOpen" Value="True">
-                            <Setter TargetName="ItemBorder" Property="Background" Value="#1affffff" />
+                            <Setter TargetName="ItemBorder" Property="Background" Value="#0a000000" />
                             <Setter TargetName="SubmenuArrow" Property="Foreground" Value="{StaticResource AccentBrush}" />
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
@@ -268,10 +268,10 @@
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="TabBorder" Property="Background" Value="#18ffffff" />
+                            <Setter TargetName="TabBorder" Property="Background" Value="#105b63e8" />
                         </Trigger>
                         <Trigger Property="IsChecked" Value="True">
-                            <Setter TargetName="TabBorder" Property="Background" Value="#12ffffff" />
+                            <Setter TargetName="TabBorder" Property="Background" Value="#125b63e8" />
                             <Setter TargetName="TabBorder" Property="BorderBrush"
                                     Value="{StaticResource AccentBrush}" />
                         </Trigger>
@@ -338,7 +338,7 @@
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
                     <Border x:Name="Bd"
-                            Background="#15ffffff"
+                            Background="#0c182541"
                             BorderBrush="{StaticResource BorderBrush}"
                             BorderThickness="1"
                             CornerRadius="8"
@@ -348,11 +348,11 @@
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Bd" Property="Background" Value="#25ffffff" />
+                            <Setter TargetName="Bd" Property="Background" Value="#145b63e8" />
                             <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
                         </Trigger>
                         <Trigger Property="IsPressed" Value="True">
-                            <Setter TargetName="Bd" Property="Background" Value="#35ffffff" />
+                            <Setter TargetName="Bd" Property="Background" Value="#1c5b63e8" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -390,7 +390,7 @@
     </Style>
 
     <Style x:Key="RangeChipStyle" TargetType="ToggleButton">
-        <Setter Property="Background" Value="#10ffffff" />
+        <Setter Property="Background" Value="#08182541" />
         <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="Padding" Value="10,4" />
@@ -413,12 +413,12 @@
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="ChipBorder" Property="Background" Value="#20ffffff" />
+                            <Setter TargetName="ChipBorder" Property="Background" Value="#105b63e8" />
                             <Setter TargetName="ChipBorder" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
                         </Trigger>
                         <Trigger Property="IsChecked" Value="True">
                             <Setter Property="Foreground" Value="{StaticResource PrimaryTextBrush}" />
-                            <Setter TargetName="ChipBorder" Property="Background" Value="#1bffffff" />
+                            <Setter TargetName="ChipBorder" Property="Background" Value="#125b63e8" />
                             <Setter TargetName="ChipBorder" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
                         </Trigger>
                     </ControlTemplate.Triggers>
@@ -429,7 +429,7 @@
 
     <Style x:Key="FilterComboBoxStyle" TargetType="ComboBox">
         <Setter Property="Foreground" Value="{StaticResource PrimaryTextBrush}" />
-        <Setter Property="Background" Value="#15ffffff" />
+        <Setter Property="Background" Value="#0a182541" />
         <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="Padding" Value="8,4" />
@@ -469,7 +469,7 @@
                                                               ContentTemplate="{Binding SelectionBoxItemTemplate, RelativeSource={RelativeSource AncestorType=ComboBox}}"
                                                               ContentStringFormat="{Binding SelectionBoxItemStringFormat, RelativeSource={RelativeSource AncestorType=ComboBox}}" />
                                             <Border Grid.Column="1"
-                                                    Background="#10ffffff"
+                                                    Background="#08182541"
                                                     BorderBrush="{StaticResource BorderBrush}"
                                                     BorderThickness="1,0,0,0"
                                                     CornerRadius="0,8,8,0">
@@ -484,11 +484,11 @@
                                     <ControlTemplate.Triggers>
                                         <Trigger Property="IsMouseOver" Value="True">
                                             <Setter TargetName="ComboBorder" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
-                                            <Setter TargetName="ComboBorder" Property="Background" Value="#20ffffff" />
+                                            <Setter TargetName="ComboBorder" Property="Background" Value="#105b63e8" />
                                         </Trigger>
                                         <Trigger Property="IsChecked" Value="True">
                                             <Setter TargetName="ComboBorder" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
-                                            <Setter TargetName="ComboBorder" Property="Background" Value="#20ffffff" />
+                                            <Setter TargetName="ComboBorder" Property="Background" Value="#125b63e8" />
                                         </Trigger>
                                         <Trigger Property="IsEnabled" Value="False">
                                             <Setter TargetName="ComboBorder" Property="Opacity" Value="0.75" />
@@ -550,10 +550,10 @@
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsHighlighted" Value="True">
-                            <Setter TargetName="ItemBorder" Property="Background" Value="#18ffffff" />
+                            <Setter TargetName="ItemBorder" Property="Background" Value="#105b63e8" />
                         </Trigger>
                         <Trigger Property="IsSelected" Value="True">
-                            <Setter TargetName="ItemBorder" Property="Background" Value="#247c6ff5" />
+                            <Setter TargetName="ItemBorder" Property="Background" Value="#245b63e8" />
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="Foreground" Value="{StaticResource TertiaryTextBrush}" />
@@ -582,7 +582,7 @@
             <Setter.Value>
                 <ControlTemplate TargetType="ListBoxItem">
                     <Border x:Name="RowBorder"
-                            Background="#10ffffff"
+                            Background="#06182541"
                             BorderBrush="{TemplateBinding BorderBrush}"
                             BorderThickness="{TemplateBinding BorderThickness}"
                             CornerRadius="8"
@@ -592,11 +592,11 @@
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="RowBorder" Property="Background" Value="#18ffffff" />
+                            <Setter TargetName="RowBorder" Property="Background" Value="#105b63e8" />
                             <Setter TargetName="RowBorder" Property="BorderBrush" Value="{StaticResource BorderBrush}" />
                         </Trigger>
                         <Trigger Property="IsSelected" Value="True">
-                            <Setter TargetName="RowBorder" Property="Background" Value="#1fffffff" />
+                            <Setter TargetName="RowBorder" Property="Background" Value="#125b63e8" />
                             <Setter TargetName="RowBorder" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
                         </Trigger>
                     </ControlTemplate.Triggers>

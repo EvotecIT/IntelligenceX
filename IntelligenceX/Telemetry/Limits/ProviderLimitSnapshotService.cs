@@ -211,6 +211,7 @@ public sealed partial class ProviderLimitSnapshotService {
 
             var accountId = NormalizeOptional(bundle.AccountId) ?? NormalizeOptional(JwtDecoder.TryGetAccountId(bundle.AccessToken));
             var email = NormalizeOptional(JwtDecoder.TryGetEmail(bundle.IdToken ?? bundle.AccessToken));
+            var detectedAccountLabel = email ?? accountId;
             var key = BuildOpenAiAccountKey(accountId, email, bundle.AccessToken);
             if (!seenKeys.Add(key)) {
                 continue;
@@ -228,7 +229,16 @@ public sealed partial class ProviderLimitSnapshotService {
                             options.UserAgent,
                             cancellationToken)
                         .ConfigureAwait(false);
-                } catch {
+                } catch (Exception ex) {
+                    results.Add(new ProviderLimitAccountSnapshot(
+                        accountId: accountId,
+                        accountLabel: detectedAccountLabel,
+                        planLabel: null,
+                        windows: Array.Empty<ProviderLimitWindow>(),
+                        summary: "Detected locally, but live limits are unavailable.",
+                        detailMessage: BuildUnavailableOpenAiAccountDetail(bundle, ex),
+                        retrievedAtUtc: DateTimeOffset.UtcNow,
+                        isSelected: selectedAccountKey is not null && string.Equals(selectedAccountKey, key, StringComparison.OrdinalIgnoreCase)));
                     continue;
                 }
             }
@@ -296,6 +306,21 @@ public sealed partial class ProviderLimitSnapshotService {
             windows,
             summaryParts.Count == 0 ? null : string.Join(" • ", summaryParts),
             windows.Count == 0 ? "No live rate-limit windows were returned by OpenAI." : null);
+    }
+
+    private static string BuildUnavailableOpenAiAccountDetail(AuthBundle bundle, Exception ex) {
+        if (bundle.ExpiresAt.HasValue && bundle.ExpiresAt.Value <= DateTimeOffset.UtcNow) {
+            return "Local login expired on "
+                   + bundle.ExpiresAt.Value.ToLocalTime().ToString("MMM d HH:mm", CultureInfo.CurrentCulture)
+                   + ". Reauthenticate this account to load live limits.";
+        }
+
+        var message = NormalizeOptional(ex.Message);
+        if (!string.IsNullOrWhiteSpace(message)) {
+            return "Live limits request failed: " + message;
+        }
+
+        return "Live limits request failed for this account.";
     }
 
     private static string BuildOpenAiAccountKey(string? accountId, string? email, string? accessToken) {
