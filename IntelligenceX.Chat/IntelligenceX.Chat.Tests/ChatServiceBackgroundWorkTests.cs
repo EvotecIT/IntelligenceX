@@ -383,7 +383,7 @@ public sealed class ChatServiceBackgroundWorkTests {
         Assert.Equal(2, summary.ThreadSummaries.Length);
         Assert.Contains(summary.ThreadSummaries, static thread => string.Equals(thread.ThreadId, readyThreadId, StringComparison.Ordinal));
         Assert.Contains(summary.ThreadSummaries, static thread => string.Equals(thread.ThreadId, runningThreadId, StringComparison.Ordinal));
-        Assert.True(summary.LastSchedulerTickUtcTicks > 0);
+        Assert.Equal(0, summary.LastSchedulerTickUtcTicks);
     }
 
     [Fact]
@@ -3279,6 +3279,45 @@ public sealed class ChatServiceBackgroundWorkTests {
             Assert.True(recoveredSummary.AdaptiveIdleActive);
             Assert.Equal(45, recoveredSummary.LastAdaptiveIdleDelaySeconds);
             Assert.Contains("policy=rehydrate_blocked", recoveredSummary.LastAdaptiveIdleReason, StringComparison.OrdinalIgnoreCase);
+        } finally {
+            ChatServiceSession.SetBackgroundSchedulerRuntimeStoreLockAcquisitionOverrideForTesting(null);
+        }
+    }
+
+    [Fact]
+    public void BuildBackgroundSchedulerSummary_DoesNotRewriteRuntimeStoreWhenDeferredRehydrateRecovers() {
+        var (options, _, _) = ChatServiceTestSessionFactory.CreateIsolatedPersistenceOptions();
+
+        var writer = new ChatServiceSession(options, Stream.Null);
+        writer.RememberBackgroundSchedulerAdaptiveIdleDecisionForTesting(
+            TimeSpan.FromSeconds(45),
+            "policy=summary_read_only");
+
+        var runtimeStorePath = writer.ResolveBackgroundSchedulerRuntimeStorePathForTesting();
+        Assert.True(File.Exists(runtimeStorePath));
+        var initialContents = File.ReadAllText(runtimeStorePath);
+        var initialWriteUtc = File.GetLastWriteTimeUtc(runtimeStorePath);
+
+        ChatServiceSession.SetBackgroundSchedulerRuntimeStoreLockAcquisitionOverrideForTesting(
+            path => string.Equals(path, runtimeStorePath, StringComparison.OrdinalIgnoreCase) ? false : null);
+        try {
+            var resumedSession = new ChatServiceSession(options, Stream.Null);
+            var blockedSummary = resumedSession.BuildBackgroundSchedulerSummaryForTesting();
+
+            Assert.True(blockedSummary.RuntimeStoreRehydratePending);
+            Assert.Equal("deferred", blockedSummary.RuntimeStoreLoadState);
+            Assert.Equal(initialContents, File.ReadAllText(runtimeStorePath));
+            Assert.Equal(initialWriteUtc, File.GetLastWriteTimeUtc(runtimeStorePath));
+
+            ChatServiceSession.SetBackgroundSchedulerRuntimeStoreLockAcquisitionOverrideForTesting(null);
+            Thread.Sleep(1100);
+
+            var recoveredSummary = resumedSession.BuildBackgroundSchedulerSummaryForTesting();
+
+            Assert.False(recoveredSummary.RuntimeStoreRehydratePending);
+            Assert.Equal("loaded", recoveredSummary.RuntimeStoreLoadState);
+            Assert.Equal(initialContents, File.ReadAllText(runtimeStorePath));
+            Assert.Equal(initialWriteUtc, File.GetLastWriteTimeUtc(runtimeStorePath));
         } finally {
             ChatServiceSession.SetBackgroundSchedulerRuntimeStoreLockAcquisitionOverrideForTesting(null);
         }
