@@ -2339,6 +2339,24 @@ internal sealed partial class ChatServiceSession {
             return new BackgroundWorkHelperReuseSummary(0, Array.Empty<string>(), Array.Empty<string>(), null, null, null, null, null);
         }
 
+        var referencedDependencyIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var item in items) {
+            if (item.DependencyItemIds is not { Length: > 0 }) {
+                continue;
+            }
+
+            for (var i = 0; i < item.DependencyItemIds.Length; i++) {
+                var dependencyId = (item.DependencyItemIds[i] ?? string.Empty).Trim();
+                if (dependencyId.Length > 0) {
+                    referencedDependencyIds.Add(dependencyId);
+                }
+            }
+        }
+
+        if (referencedDependencyIds.Count == 0) {
+            return new BackgroundWorkHelperReuseSummary(0, Array.Empty<string>(), Array.Empty<string>(), null, null, null, null, null);
+        }
+
         var reusedItemCount = 0;
         var helperToolNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var policyNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -2348,6 +2366,10 @@ internal sealed partial class ChatServiceSession {
         int? oldestTtlSeconds = null;
         int? minRemainingFreshnessSeconds = null;
         foreach (var item in items) {
+            if (!referencedDependencyIds.Contains((item.Id ?? string.Empty).Trim())) {
+                continue;
+            }
+
             if (!TryGetBackgroundWorkResultReferenceValue(item.ResultReference, "helper_reuse", out var helperReuseValue)
                 || !string.Equals(helperReuseValue, "cached_tool_evidence", StringComparison.OrdinalIgnoreCase)) {
                 continue;

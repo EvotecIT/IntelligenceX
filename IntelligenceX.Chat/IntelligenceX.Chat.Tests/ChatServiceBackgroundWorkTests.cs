@@ -637,6 +637,172 @@ public sealed class ChatServiceBackgroundWorkTests {
     }
 
     [Fact]
+    public void BuildBackgroundSchedulerSummary_IgnoresUnlinkedReuseMetadataWhenAggregatingHelperReuse() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        const string threadId = "thread-background-scheduler-helper-reuse-unlinked";
+        var definitions = new[] {
+            new ToolDefinition(
+                name: "seed_eventlog_live_followup",
+                description: "seed live event log follow-up",
+                handoff: new ToolHandoffContract {
+                    IsHandoffAware = true,
+                    OutboundRoutes = new[] {
+                        new ToolHandoffRoute {
+                            TargetPackId = "eventlog",
+                            TargetToolName = "eventlog_live_query",
+                            TargetRole = ToolRoutingTaxonomy.RoleOperational,
+                            FollowUpKind = ToolHandoffFollowUpKinds.Verification,
+                            FollowUpPriority = ToolHandoffFollowUpPriorities.High,
+                            Bindings = new[] {
+                                new ToolHandoffBinding {
+                                    SourceField = "computer_name",
+                                    TargetArgument = "machine_name"
+                                }
+                            }
+                        }
+                    }
+                }),
+            new ToolDefinition(
+                name: "seed_unrelated_followup",
+                description: "seed unrelated follow-up",
+                handoff: new ToolHandoffContract {
+                    IsHandoffAware = true,
+                    OutboundRoutes = new[] {
+                        new ToolHandoffRoute {
+                            TargetPackId = "eventlog",
+                            TargetToolName = "eventlog_top_events",
+                            TargetRole = ToolRoutingTaxonomy.RoleOperational,
+                            FollowUpKind = ToolHandoffFollowUpKinds.Verification,
+                            FollowUpPriority = ToolHandoffFollowUpPriorities.Normal,
+                            Bindings = new[] {
+                                new ToolHandoffBinding {
+                                    SourceField = "computer_name",
+                                    TargetArgument = "machine_name"
+                                }
+                            }
+                        }
+                    }
+                }),
+            new ToolDefinition(
+                "eventlog_live_query",
+                "Inspect live event logs on a remote machine after validation.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties(),
+                authentication: new ToolAuthenticationContract {
+                    IsAuthenticationAware = true,
+                    RequiresAuthentication = true,
+                    AuthenticationContractId = "ix.auth.runtime.v1",
+                    Mode = ToolAuthenticationMode.ProfileReference,
+                    ProfileIdArgumentName = "profile_id",
+                    SupportsConnectivityProbe = true,
+                    ProbeToolName = "eventlog_channels_list"
+                }),
+            new ToolDefinition(
+                "eventlog_channels_list",
+                "List available event log channels and validate access for the target machine.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties()),
+            new ToolDefinition(
+                "eventlog_top_events",
+                "List common top events for a remote machine.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties())
+        };
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(definitions));
+        session.RememberThreadToolEvidenceForTesting(
+            threadId,
+            new[] {
+                new ToolCallDto {
+                    CallId = "call-cached-probe-linked",
+                    Name = "eventlog_channels_list",
+                    ArgumentsJson = """{"machine_name":"srv-eventlog-linked.contoso.com"}"""
+                }
+            },
+            new[] {
+                new ToolOutputDto {
+                    CallId = "call-cached-probe-linked",
+                    Ok = true,
+                    Output = """{"ok":true,"channels":["System"]}""",
+                    SummaryMarkdown = "Event log channels are reachable on srv-eventlog-linked.contoso.com."
+                }
+            },
+            new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase));
+        session.RememberToolHandoffBackgroundWorkForTesting(
+            threadId,
+            definitions,
+            new[] {
+                new ToolCallDto {
+                    CallId = "call-live-followup",
+                    Name = "seed_eventlog_live_followup",
+                    ArgumentsJson = """{"computer_name":"srv-eventlog-linked.contoso.com"}"""
+                }
+            },
+            new[] {
+                new ToolOutputDto {
+                    CallId = "call-live-followup",
+                    Ok = true,
+                    Output = """{"ok":true}"""
+                }
+            });
+        session.RememberToolHandoffBackgroundWorkForTesting(
+            threadId,
+            definitions,
+            new[] {
+                new ToolCallDto {
+                    CallId = "call-unrelated-followup",
+                    Name = "seed_unrelated_followup",
+                    ArgumentsJson = """{"computer_name":"srv-unrelated.contoso.com"}"""
+                }
+            },
+            new[] {
+                new ToolOutputDto {
+                    CallId = "call-unrelated-followup",
+                    Ok = true,
+                    Output = """{"ok":true}"""
+                }
+            });
+
+        var snapshot = session.ResolveThreadBackgroundWorkSnapshotForTesting(threadId);
+        var linkedDependentItem = Assert.Single(
+            snapshot.Items,
+            static item => string.Equals(item.TargetToolName, "eventlog_live_query", StringComparison.OrdinalIgnoreCase));
+        if (!string.Equals(linkedDependentItem.State, "queued", StringComparison.OrdinalIgnoreCase)) {
+            Assert.True(session.TrySetThreadBackgroundWorkItemStateForTesting(threadId, linkedDependentItem.Id, "queued"));
+        }
+
+        var unrelatedItem = Assert.Single(
+            snapshot.Items,
+            static item => string.Equals(item.TargetToolName, "eventlog_top_events", StringComparison.OrdinalIgnoreCase));
+        Assert.True(
+            session.TrySetThreadBackgroundWorkItemStateForTesting(
+                threadId,
+                unrelatedItem.Id,
+                "completed",
+                "helper_reuse=cached_tool_evidence;helper_reuse_age_seconds=5;helper_reuse_ttl_seconds=1200;helper_reuse_policy=unrelated_reuse_window"));
+
+        Assert.True(
+            session.TryResolveBackgroundSchedulerAdaptiveIdleDelayForTesting(
+                TimeSpan.FromSeconds(300),
+                out var delay,
+                out var reason));
+
+        var summary = session.BuildBackgroundSchedulerSummaryForTesting();
+        var threadSummary = Assert.Single(summary.ThreadSummaries, static item => string.Equals(item.ThreadId, threadId, StringComparison.Ordinal));
+
+        Assert.Equal(1, threadSummary.ReusedHelperItemCount);
+        Assert.Contains("eventlog_channels_list", threadSummary.ReusedHelperToolNames, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("eventlog_top_events", threadSummary.ReusedHelperToolNames, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("probe_reuse_window", threadSummary.ReusedHelperPolicyNames, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("unrelated_reuse_window", threadSummary.ReusedHelperPolicyNames, StringComparer.OrdinalIgnoreCase);
+        Assert.NotNull(threadSummary.ReusedHelperFreshestAgeSeconds);
+        Assert.NotNull(threadSummary.ReusedHelperOldestAgeSeconds);
+        Assert.True(threadSummary.ReusedHelperFreshestAgeSeconds >= 0);
+        Assert.True(threadSummary.ReusedHelperOldestAgeSeconds >= threadSummary.ReusedHelperFreshestAgeSeconds);
+        Assert.Equal(900, threadSummary.ReusedHelperFreshestTtlSeconds);
+        Assert.Equal(900, threadSummary.ReusedHelperOldestTtlSeconds);
+        Assert.True(delay > TimeSpan.Zero);
+        Assert.True(delay < TimeSpan.FromSeconds(300));
+        Assert.DoesNotContain("unrelated_reuse_window", reason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void TryResolveBackgroundSchedulerAdaptiveIdleDelayForTesting_ShortensIdlePollForFreshPackScopedReuseWindow() {
         var options = ChatServiceTestSessionFactory.CreateIsolatedOptions();
         options.BackgroundSchedulerPollSeconds = 300;
