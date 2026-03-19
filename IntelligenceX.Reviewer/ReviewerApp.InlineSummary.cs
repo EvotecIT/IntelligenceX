@@ -528,32 +528,44 @@ public static partial class ReviewerApp {
     }
 
     private static string? ExtractInlineBodySignatureSource(string? body) {
-        if (string.IsNullOrWhiteSpace(body)) {
+        if (!TryGetFirstVisibleInlineBodyLineBounds(body, out var start, out var length) || body is null) {
             return null;
         }
-        return TryGetFirstVisibleInlineBodyLine(body);
+
+        return body.Substring(start, length);
     }
 
-    private static string? TryGetFirstVisibleInlineBodyLine(string? body) {
+    private static bool TryGetFirstVisibleInlineBodyLineBounds(string? body, out int start, out int length) {
+        start = 0;
+        length = 0;
         if (string.IsNullOrWhiteSpace(body)) {
-            return null;
+            return false;
         }
 
         var span = body.AsSpan();
-        var start = 0;
-        while (start < span.Length) {
-            var end = start;
+        var lineStart = 0;
+        while (lineStart < span.Length) {
+            var end = lineStart;
             while (end < span.Length && span[end] != '\r' && span[end] != '\n') {
                 end++;
             }
 
-            var trimmed = span.Slice(start, end - start).Trim();
-            if (!trimmed.IsEmpty) {
-                var line = trimmed.ToString();
-                if (!line.Contains(ReviewFormatter.InlineMarker, StringComparison.OrdinalIgnoreCase) &&
-                    !line.Contains(InlineSignatureMarkerPrefix, StringComparison.OrdinalIgnoreCase) &&
-                    !line.Contains(ReviewFormatter.StaticAnalysisInlineMarker, StringComparison.OrdinalIgnoreCase)) {
-                    return line;
+            var contentStart = lineStart;
+            while (contentStart < end && char.IsWhiteSpace(span[contentStart])) {
+                contentStart++;
+            }
+
+            var contentEnd = end;
+            while (contentEnd > contentStart && char.IsWhiteSpace(span[contentEnd - 1])) {
+                contentEnd--;
+            }
+
+            if (contentStart < contentEnd) {
+                var trimmed = span.Slice(contentStart, contentEnd - contentStart);
+                if (!IsInlineMetadataLine(trimmed)) {
+                    start = contentStart;
+                    length = contentEnd - contentStart;
+                    return true;
                 }
             }
 
@@ -563,10 +575,16 @@ public static partial class ReviewerApp {
             if (end < span.Length && span[end] == '\n') {
                 end++;
             }
-            start = end;
+            lineStart = end;
         }
 
-        return null;
+        return false;
+    }
+
+    private static bool IsInlineMetadataLine(ReadOnlySpan<char> line) {
+        return line.IndexOf(ReviewFormatter.InlineMarker.AsSpan(), StringComparison.OrdinalIgnoreCase) >= 0 ||
+               line.IndexOf(InlineSignatureMarkerPrefix.AsSpan(), StringComparison.OrdinalIgnoreCase) >= 0 ||
+               line.IndexOf(ReviewFormatter.StaticAnalysisInlineMarker.AsSpan(), StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
     private static string? TryBuildInlineSignatureMarker(string path, int line, string? body, string? snippet,

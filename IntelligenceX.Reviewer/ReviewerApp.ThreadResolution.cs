@@ -1,6 +1,8 @@
 namespace IntelligenceX.Reviewer;
 
 public static partial class ReviewerApp {
+    private static ReadOnlySpan<char> LegacyStaticAnalysisInlinePrefix => "Static analysis (".AsSpan();
+
     private static string ShortSha(string? sha) {
         if (string.IsNullOrWhiteSpace(sha)) {
             return "?";
@@ -481,21 +483,53 @@ public static partial class ReviewerApp {
     }
 
     private static bool IsStaticAnalysisInlineThread(PullRequestReviewThread thread) {
+        var sawInlineComment = false;
         foreach (var comment in thread.Comments) {
             if (string.IsNullOrWhiteSpace(comment.Body) ||
                 !comment.Body.Contains(ReviewFormatter.InlineMarker, StringComparison.OrdinalIgnoreCase)) {
                 continue;
             }
+
+            sawInlineComment = true;
             if (comment.Body.Contains(ReviewFormatter.StaticAnalysisInlineMarker, StringComparison.OrdinalIgnoreCase)) {
                 return true;
             }
+        }
 
-            var firstVisibleLine = TryGetFirstVisibleInlineBodyLine(comment.Body);
-            return !string.IsNullOrWhiteSpace(firstVisibleLine) &&
-                   firstVisibleLine.StartsWith("Static analysis (", StringComparison.OrdinalIgnoreCase);
+        if (!sawInlineComment) {
+            return false;
+        }
+
+        foreach (var comment in thread.Comments) {
+            if (IsLegacyStaticAnalysisInlineComment(comment)) {
+                return true;
+            }
         }
 
         return false;
+    }
+
+    // Legacy compatibility for pre-marker static-analysis comments that were already posted.
+    private static bool IsLegacyStaticAnalysisInlineComment(PullRequestReviewThreadComment comment) {
+        if (string.IsNullOrWhiteSpace(comment.Body) ||
+            !comment.Body.Contains(ReviewFormatter.InlineMarker, StringComparison.OrdinalIgnoreCase) ||
+            !IsTrustedStaticAnalysisThreadAuthor(comment.Author) ||
+            !TryGetFirstVisibleInlineBodyLineBounds(comment.Body, out var start, out var length)) {
+            return false;
+        }
+
+        return comment.Body.AsSpan(start, length).StartsWith(LegacyStaticAnalysisInlinePrefix, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsTrustedStaticAnalysisThreadAuthor(string? author) {
+        if (string.IsNullOrWhiteSpace(author)) {
+            return false;
+        }
+
+        var normalizedAuthor = NormalizeBotLogin(author);
+        return string.Equals(normalizedAuthor, "intelligencex-review", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(normalizedAuthor, "app/intelligencex-review", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(normalizedAuthor, "github-actions", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool ThreadHasAutoReply(PullRequestReviewThread thread) {
