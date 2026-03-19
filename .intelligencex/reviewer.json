@@ -26,7 +26,7 @@
         "artifacts/intelligencex.findings.json"
       ],
       "minSeverity": "warning",
-      "maxInline": 20,
+      "maxInline": 0,
       "summary": true,
       "summaryMaxItems": 10,
       "summaryPlacement": "bottom",

@@ -336,7 +336,7 @@ When context is truncated, the note explains impact directly in the PR comment:
 
 ## Static analysis (preview)
 
-Enable analysis summaries and inline findings sourced from SARIF or IntelligenceX findings JSON.
+Enable analysis summaries sourced from SARIF or IntelligenceX findings JSON.
 
 ```json
 {
@@ -361,7 +361,7 @@ Enable analysis summaries and inline findings sourced from SARIF or Intelligence
     "results": {
       "inputs": ["artifacts/**/*.sarif", "artifacts/intelligencex.findings.json"],
       "minSeverity": "warning",
-      "maxInline": 20,
+      "maxInline": 0,
       "summary": true,
       "summaryMaxItems": 10,
       "summaryPlacement": "bottom",
@@ -376,6 +376,8 @@ Enable analysis summaries and inline findings sourced from SARIF or Intelligence
 - `0`: hide per-rule lists and keep counts only
 - `10` (default): compact preview
 - `50`, `100`, `500`: progressively fuller visibility (schema max: `500`)
+
+`analysis.results.maxInline` defaults to `0`, which keeps static-analysis output in the summary only. Set it to a positive value only if you explicitly want the legacy inline-comment behavior.
 
 `analysis.gate` enables a deterministic CI gate via `intelligencex analyze gate`:
 - `minSeverity`: minimum severity to consider for gating.

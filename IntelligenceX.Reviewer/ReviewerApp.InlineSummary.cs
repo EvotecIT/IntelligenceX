@@ -528,24 +528,63 @@ public static partial class ReviewerApp {
     }
 
     private static string? ExtractInlineBodySignatureSource(string? body) {
-        if (string.IsNullOrWhiteSpace(body)) {
+        if (!TryGetFirstVisibleInlineBodyLineBounds(body, out var start, out var length) || body is null) {
             return null;
         }
-        var lines = body.Replace("\r\n", "\n").Split('\n');
-        foreach (var line in lines) {
-            var trimmed = line.Trim();
-            if (trimmed.Length == 0) {
-                continue;
-            }
-            if (trimmed.Contains(ReviewFormatter.InlineMarker, StringComparison.OrdinalIgnoreCase)) {
-                continue;
-            }
-            if (trimmed.Contains(InlineSignatureMarkerPrefix, StringComparison.OrdinalIgnoreCase)) {
-                continue;
-            }
-            return trimmed;
+
+        return body.Substring(start, length);
+    }
+
+    private static bool TryGetFirstVisibleInlineBodyLineBounds(string? body, out int start, out int length) {
+        start = 0;
+        length = 0;
+        if (string.IsNullOrWhiteSpace(body)) {
+            return false;
         }
-        return null;
+
+        var span = body.AsSpan();
+        var lineStart = 0;
+        while (lineStart < span.Length) {
+            var end = lineStart;
+            while (end < span.Length && span[end] != '\r' && span[end] != '\n') {
+                end++;
+            }
+
+            var contentStart = lineStart;
+            while (contentStart < end && char.IsWhiteSpace(span[contentStart])) {
+                contentStart++;
+            }
+
+            var contentEnd = end;
+            while (contentEnd > contentStart && char.IsWhiteSpace(span[contentEnd - 1])) {
+                contentEnd--;
+            }
+
+            if (contentStart < contentEnd) {
+                var trimmed = span.Slice(contentStart, contentEnd - contentStart);
+                if (!IsInlineMetadataLine(trimmed)) {
+                    start = contentStart;
+                    length = contentEnd - contentStart;
+                    return true;
+                }
+            }
+
+            if (end < span.Length && span[end] == '\r') {
+                end++;
+            }
+            if (end < span.Length && span[end] == '\n') {
+                end++;
+            }
+            lineStart = end;
+        }
+
+        return false;
+    }
+
+    private static bool IsInlineMetadataLine(ReadOnlySpan<char> line) {
+        return line.IndexOf(ReviewFormatter.InlineMarker.AsSpan(), StringComparison.OrdinalIgnoreCase) >= 0 ||
+               line.IndexOf(InlineSignatureMarkerPrefix.AsSpan(), StringComparison.OrdinalIgnoreCase) >= 0 ||
+               line.IndexOf(ReviewFormatter.StaticAnalysisInlineMarker.AsSpan(), StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
     private static string? TryBuildInlineSignatureMarker(string path, int line, string? body, string? snippet,

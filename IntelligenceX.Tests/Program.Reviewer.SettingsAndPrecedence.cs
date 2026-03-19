@@ -223,6 +223,7 @@ internal static partial class Program {
             AssertEqual(true, settings.ReviewUsageSummary, "setup config runtime usage summary");
             AssertEqual(true, settings.ReviewUsageBudgetGuard, "setup config runtime usage budget guard");
             AssertEqual(false, settings.IncludeRelatedPrs, "setup config runtime includeRelatedPrs");
+            AssertEqual(0, settings.Analysis.Results.MaxInline, "setup config runtime analysis inline default");
         } finally {
             Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", previousConfigPath);
             if (File.Exists(configPath)) {

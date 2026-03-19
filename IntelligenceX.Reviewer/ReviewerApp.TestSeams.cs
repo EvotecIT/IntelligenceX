@@ -134,4 +134,13 @@ public static partial class ReviewerApp {
     internal static string AppendConversationResolutionPermissionBlockerForTests(string summaryBody,
         AutoResolvePermissionDiagnostics diagnostics, bool? requiresConversationResolution) =>
         AppendConversationResolutionPermissionBlocker(summaryBody, diagnostics, requiresConversationResolution);
+
+    internal static IReadOnlyList<PullRequestReviewThread> SelectAssessmentCandidatesForTests(
+        IReadOnlyList<PullRequestReviewThread> threads, ReviewSettings settings) =>
+        SelectAssessmentCandidates(threads, settings);
+
+    internal static Task ReplyToKeptThreadsForTestsAsync(GitHubClient github, PullRequestContext context,
+        IReadOnlyList<PullRequestReviewThread> candidates, IReadOnlyDictionary<string, ThreadAssessment> assessments,
+        string? headSha, string? diffNote, ReviewSettings settings, CancellationToken cancellationToken = default) =>
+        ReplyToKeptThreadsAsync(github, context, candidates, assessments, headSha, diffNote, settings, cancellationToken);
 }

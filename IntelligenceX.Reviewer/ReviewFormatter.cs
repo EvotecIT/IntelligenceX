@@ -8,6 +8,7 @@ namespace IntelligenceX.Reviewer;
 internal static class ReviewFormatter {
     public const string SummaryMarker = "<!-- intelligencex:summary -->";
     public const string InlineMarker = "<!-- intelligencex:inline -->";
+    public const string StaticAnalysisInlineMarker = "<!-- intelligencex:analysis-inline -->";
     public const string ReviewedCommitMarker = "Reviewed commit:";
     private const string ProgressTemplateName = "ReviewProgress.md";
 
