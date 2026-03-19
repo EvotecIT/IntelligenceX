@@ -25,7 +25,7 @@ internal static partial class Program {
         AssertEqual("thread-real", candidates[0].Id, "thread assessment keeps actionable thread");
     }
 
-    private static void TestThreadAssessmentCandidatesScanAllInlineCommentsForStaticAnalysisMarker() {
+    private static void TestThreadAssessmentCandidatesUseOriginalInlineCommentForStaticAnalysisClassification() {
         var settings = new ReviewSettings {
             ReviewThreadsAutoResolveBotsOnly = true,
             ReviewThreadsAutoResolveMax = 10
@@ -51,8 +51,8 @@ internal static partial class Program {
         });
 
         var candidates = CallSelectAssessmentCandidates(new[] { mixedInlineThread, actionableThread }, settings);
-        AssertEqual(1, candidates.Count, "thread assessment scans all inline comments for marker");
-        AssertEqual("thread-real", candidates[0].Id, "thread assessment keeps actionable thread when mixed thread is skipped");
+        AssertEqual(2, candidates.Count, "thread assessment classifies from original inline comment");
+        AssertEqual("thread-static", candidates[0].Id, "mixed thread stays actionable when original inline comment is not analysis");
     }
 
     private static void TestThreadAssessmentCandidatesLegacyStaticAnalysisRequiresTrustedAuthor() {
@@ -77,6 +77,24 @@ internal static partial class Program {
         AssertEqual(2, candidates.Count, "legacy static analysis fallback requires trusted author");
     }
 
+    private static void TestThreadAssessmentCandidatesLegacyStaticAnalysisUsesSharedTrustedAuthorDetection() {
+        var settings = new ReviewSettings {
+            ReviewThreadsAutoResolveBotsOnly = false,
+            ReviewThreadsAutoResolveMax = 10
+        };
+        var trustedLegacyThread = new PullRequestReviewThread("thread-trusted", false, false, 1, new[] {
+            new PullRequestReviewThreadComment(
+                1,
+                null,
+                $"{ReviewFormatter.InlineMarker}\nStatic analysis (warning): File has 2799 lines (limit 700). Split into smaller units. (rule IXLOC001)",
+                "intelligencex-review[bot]",
+                "src/Foo.cs",
+                10)
+        });
+        var candidates = CallSelectAssessmentCandidates(new[] { trustedLegacyThread }, settings);
+        AssertEqual(0, candidates.Count, "legacy static analysis uses shared trusted-author detection");
+    }
+
     private static void TestReplyToKeptThreadsSkipsStaticAnalysisInlineThreads() {
         var replyRequests = 0;
         using var server = new LocalHttpServer(request => {
@@ -97,14 +115,14 @@ internal static partial class Program {
             new PullRequestReviewThreadComment(
                 41,
                 DateTimeOffset.UtcNow.AddMinutes(-1),
-                $"{ReviewFormatter.InlineMarker}\nPlease add a null guard.",
+                $"{ReviewFormatter.InlineMarker}\n{ReviewFormatter.StaticAnalysisInlineMarker}\nStatic analysis (warning): File has 2799 lines (limit 700). Split into smaller units. (rule IXLOC001)",
                 "intelligencex-review",
                 "src/Foo.cs",
                 10),
             new PullRequestReviewThreadComment(
                 42,
                 DateTimeOffset.UtcNow,
-                $"{ReviewFormatter.InlineMarker}\n{ReviewFormatter.StaticAnalysisInlineMarker}\nStatic analysis (warning): File has 2799 lines (limit 700). Split into smaller units. (rule IXLOC001)",
+                "Please add a null guard when you refactor this area.",
                 "intelligencex-review",
                 "src/Foo.cs",
                 10)
@@ -116,6 +134,18 @@ internal static partial class Program {
         CallReplyToKeptThreads(github, context, new[] { staticAnalysisThread }, assessments, context.HeadSha, "current PR files",
             settings);
         AssertEqual(0, replyRequests, "reply path skips static analysis inline thread");
+    }
+
+    private static void TestStaticAnalysisInlineSignatureStaysStableWithAnalysisMarker() {
+        const string path = "src/Foo.cs";
+        const int line = 10;
+        const string visibleBody = "Static analysis (warning): File has 2799 lines (limit 700). Split into smaller units. (rule IXLOC001)";
+        var markerlessSignature = CallBuildInlineSignatureMarker(path, line, visibleBody, null, null);
+        var markedSignature = CallBuildInlineSignatureMarker(path, line,
+            $"{ReviewFormatter.StaticAnalysisInlineMarker}\n{visibleBody}", null, null);
+
+        AssertNotNull(markerlessSignature, "markerless signature");
+        AssertEqual(markerlessSignature, markedSignature, "analysis marker preserves inline signature stability");
     }
 }
 #endif
