@@ -1374,7 +1374,14 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        var available = new HashSet<string>(source, StringComparer.OrdinalIgnoreCase);
+        var available = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < source.Count; i++) {
+            var token = NormalizeToolNameForAnswerPlan(source[i]);
+            if (token.Length > 0) {
+                available.Add(token);
+            }
+        }
+
         for (var i = 0; i < required.Count; i++) {
             var token = NormalizeToolNameForAnswerPlan(required[i]);
             if (token.Length == 0) {

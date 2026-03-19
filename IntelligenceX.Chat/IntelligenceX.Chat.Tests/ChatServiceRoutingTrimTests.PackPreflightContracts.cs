@@ -318,6 +318,43 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void BuildHostPackPreflightCalls_AcceptsRecipeHelperWhenSourceArgumentShapeDiffersOnlyByCase() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var registry = new ToolRegistry();
+        registry.Register(new PreflightStubTool(
+            "customx_pack_probe",
+            CreateRoutingContract("eventlog", ToolRoutingTaxonomy.RolePackInfo)));
+        registry.Register(new PreflightStubTool(
+            "customx_live_query",
+            CreateRoutingContract("eventlog", ToolRoutingTaxonomy.RoleOperational),
+            parameters: ToolSchema.Object(("Machine_Name", ToolSchema.String("Remote machine."))).NoAdditionalProperties()));
+        registry.Register(new PreflightStubTool(
+            "customx_recipe_resolver",
+            CreateRoutingContract("eventlog", ToolRoutingTaxonomy.RoleResolver),
+            parameters: ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties()));
+        SetSessionRegistry(session, registry);
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(
+            registry.GetDefinitions(),
+            new IToolPack[] { new RecipeOverlapGuidancePack() }));
+
+        var extractedCalls = new List<ToolCall> {
+            new(
+                "call_operational_recipe_case",
+                "customx_live_query",
+                "{}",
+                new JsonObject(StringComparer.Ordinal),
+                new JsonObject(StringComparer.Ordinal))
+        };
+
+        var result = BuildHostPackPreflightCallsMethod.Invoke(session, new object?[] { "thread-recipe-case", registry.GetDefinitions(), extractedCalls });
+        var preflightCalls = Assert.IsAssignableFrom<IReadOnlyList<ToolCall>>(result);
+
+        Assert.Equal(2, preflightCalls.Count);
+        Assert.Equal("customx_pack_probe", preflightCalls[0].Name);
+        Assert.Equal("customx_recipe_resolver", preflightCalls[1].Name);
+    }
+
+    [Fact]
     public void BuildHostPackPreflightCalls_SkipsRecipeOverlapHelperWhenContractShapeDiffers() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var registry = new ToolRegistry();
