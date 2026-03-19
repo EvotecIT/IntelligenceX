@@ -39,6 +39,7 @@ internal static partial class UsageTelemetryProviderSectionHtmlRenderer {
         }
         sb.AppendLine("        </div>");
         sb.AppendLine("      </div>");
+        UsageTelemetryReportDiagnosticsHtmlRenderer.Append(sb, model.Diagnostics, indentLevel: 3);
         sb.AppendLine("      <div class=\"provider-datasets\">");
         AppendDatasetTabs(sb, model);
         AppendSummaryPanel(sb, model);

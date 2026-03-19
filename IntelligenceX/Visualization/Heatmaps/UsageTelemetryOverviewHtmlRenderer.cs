@@ -16,6 +16,7 @@ internal static class UsageTelemetryOverviewHtmlRenderer {
         var page = UsageTelemetryReportPageModelBuilders.BuildOverview(overview);
         var sb = new StringBuilder(24 * 1024);
         UsageTelemetryReportPageShellHtmlRenderer.AppendOverviewHeader(sb, page);
+        UsageTelemetryReportDiagnosticsHtmlRenderer.Append(sb, page.Diagnostics);
 
         foreach (var providerSection in page.Sections) {
             AppendProviderSection(sb, providerSection);

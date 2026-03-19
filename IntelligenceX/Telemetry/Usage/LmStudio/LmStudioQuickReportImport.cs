@@ -32,6 +32,7 @@ internal static class LmStudioQuickReportImport {
                 providerId: providerId,
                 sourceRootId: root.Id,
                 dayUtc: record.TimestampUtc.UtcDateTime.Date,
+                timestampUtc: record.TimestampUtc,
                 model: record.Model ?? "unknown-model",
                 surface: record.Surface ?? "chat",
                 machineId: record.MachineId,

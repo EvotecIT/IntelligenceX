@@ -2,12 +2,362 @@ using System;
 using System.IO;
 using System.Linq;
 using IntelligenceX.Json;
+using IntelligenceX.Telemetry.Limits;
 using IntelligenceX.Telemetry.Usage;
 using IntelligenceX.Visualization.Heatmaps;
 
 namespace IntelligenceX.Tests;
 
 internal static partial class Program {
+    private static void TestUsageTelemetryApiPricingBlendsExactAndEstimatedCosts() {
+        var events = new[] {
+            new UsageEventRecord("evt-priced", "codex", "codex.logs", "src-1", new DateTimeOffset(2026, 03, 10, 9, 0, 0, TimeSpan.Zero)) {
+                Model = "gpt-5.4",
+                InputTokens = 1_000_000,
+                CachedInputTokens = 200_000,
+                OutputTokens = 100_000,
+                TotalTokens = 1_300_000,
+                CostUsd = 4.20m,
+                TruthLevel = UsageTruthLevel.Exact
+            },
+            new UsageEventRecord("evt-estimated", "codex", "codex.logs", "src-1", new DateTimeOffset(2026, 03, 10, 10, 0, 0, TimeSpan.Zero)) {
+                Model = "gpt-5.3-codex",
+                InputTokens = 2_000_000,
+                CachedInputTokens = 500_000,
+                OutputTokens = 300_000,
+                TotalTokens = 2_800_000,
+                TruthLevel = UsageTruthLevel.Exact
+            }
+        };
+
+        var displayCost = UsageTelemetryApiPricing.BuildDisplayCost(events);
+        AssertEqual(4.20m, displayCost.ExactCostUsd, "api pricing exact cost portion");
+        AssertEqual(7.7875m, displayCost.EstimatedFallbackCostUsd, "api pricing estimated fallback portion");
+        AssertEqual(11.9875m, displayCost.TotalCostUsd, "api pricing blended total");
+        AssertEqual(true, displayCost.UsesEstimatedFallback, "api pricing indicates approximation");
+
+        var estimate = UsageTelemetryApiPricing.Estimate(events);
+        AssertNotNull(estimate, "api pricing estimate exists");
+        AssertEqual(11.8375m, estimate!.TotalEstimatedCostUsd, "api pricing pure estimate total");
+        AssertEqual(4_100_000L, estimate.CoveredTokens, "api pricing covered tokens");
+    }
+
+    private static void TestProviderLimitForecastingFlagsOverLimitPace() {
+        var now = new DateTimeOffset(2026, 03, 18, 12, 00, 00, TimeSpan.Zero);
+        var snapshot = new ProviderLimitSnapshot(
+            "codex",
+            "Codex",
+            "OpenAI usage API",
+            "pro",
+            "codex@example.com",
+            new[] {
+                new ProviderLimitWindow(
+                    "global-primary",
+                    "Global 5-hour",
+                    60d,
+                    now.AddHours(2.5),
+                    windowDuration: TimeSpan.FromHours(5))
+            },
+            null,
+            null,
+            now);
+
+        var forecasts = ProviderLimitForecasting.BuildForecasts(snapshot, now);
+        AssertEqual(1, forecasts.Count, "forecast count");
+        AssertEqual(true, forecasts.TryGetValue("global-primary", out var forecast), "forecast exists");
+        AssertNotNull(forecast, "forecast value");
+        AssertEqual(true, forecast!.ExhaustsBeforeReset, "forecast flags exhaustion");
+        AssertEqual(1.2d, Math.Round(forecast.PaceMultiple, 1), "forecast pace multiple");
+        AssertEqual(120d, Math.Round(forecast.ProjectedUsedPercentAtReset, 0), "forecast projected percent");
+        AssertContainsText(forecast.Summary ?? string.Empty, "1.2x sustainable pace", "forecast summary pace");
+    }
+
+    private static void TestProviderLimitForecastingRecognizesOnPaceWindow() {
+        var now = new DateTimeOffset(2026, 03, 18, 12, 00, 00, TimeSpan.Zero);
+        var snapshot = new ProviderLimitSnapshot(
+            "codex",
+            "Codex",
+            "OpenAI usage API",
+            "pro",
+            "codex@example.com",
+            new[] {
+                new ProviderLimitWindow(
+                    "global-primary",
+                    "Global 5-hour",
+                    50d,
+                    now.AddHours(2.5),
+                    windowDuration: TimeSpan.FromHours(5))
+            },
+            null,
+            null,
+            now);
+
+        var forecasts = ProviderLimitForecasting.BuildForecasts(snapshot, now);
+        AssertEqual(true, forecasts.TryGetValue("global-primary", out var forecast), "forecast exists on pace");
+        AssertNotNull(forecast, "forecast value on pace");
+        AssertEqual(false, forecast!.ExhaustsBeforeReset, "forecast avoids false exhaustion");
+        AssertEqual(1.0d, Math.Round(forecast.PaceMultiple, 1), "forecast on pace multiple");
+        AssertContainsText(forecast.Summary ?? string.Empty, "On pace", "forecast on pace summary");
+    }
+
+    private static void TestProviderLimitForecastingRanksBestAccount() {
+        var now = new DateTimeOffset(2026, 03, 18, 12, 00, 00, TimeSpan.Zero);
+        var snapshot = new ProviderLimitSnapshot(
+            "codex",
+            "Codex",
+            "OpenAI usage API",
+            "pro",
+            "acct-a@example.com",
+            new[] {
+                new ProviderLimitWindow(
+                    "global-primary",
+                    "Global 5-hour",
+                    70d,
+                    now.AddHours(1),
+                    windowDuration: TimeSpan.FromHours(5))
+            },
+            null,
+            null,
+            now,
+            new[] {
+                new ProviderLimitAccountSnapshot(
+                    "acct-a",
+                    "acct-a@example.com",
+                    "pro",
+                    new[] {
+                        new ProviderLimitWindow("global-primary", "Global 5-hour", 95d, now.AddMinutes(30), windowDuration: TimeSpan.FromHours(5))
+                    },
+                    null,
+                    null,
+                    now,
+                    isSelected: true),
+                new ProviderLimitAccountSnapshot(
+                    "acct-b",
+                    "acct-b@example.com",
+                    "pro",
+                    new[] {
+                        new ProviderLimitWindow("global-primary", "Global 5-hour", 15d, now.AddHours(4), windowDuration: TimeSpan.FromHours(5))
+                    },
+                    null,
+                    null,
+                    now)
+            });
+
+        var advisories = ProviderLimitForecasting.BuildAccountAdvisories(snapshot, now);
+        AssertEqual(2, advisories.Count, "account advisory count");
+        AssertEqual(true, advisories[0].IsRecommended, "first advisory recommended");
+        AssertEqual("acct-b@example.com", advisories[0].DisplayLabel, "lower-risk account recommended");
+        AssertEqual(false, advisories[1].IsRecommended, "second advisory not recommended");
+    }
+
+    private static void TestProviderLimitForecastingDescribesAccountRunway() {
+        var now = new DateTimeOffset(2026, 03, 18, 12, 00, 00, TimeSpan.Zero);
+        var snapshot = new ProviderLimitSnapshot(
+            "codex",
+            "Codex",
+            "OpenAI usage API",
+            "pro",
+            "acct-a@example.com",
+            new[] {
+                new ProviderLimitWindow(
+                    "global-primary",
+                    "Global 5-hour",
+                    60d,
+                    now.AddHours(2.5),
+                    windowDuration: TimeSpan.FromHours(5))
+            },
+            null,
+            null,
+            now,
+            new[] {
+                new ProviderLimitAccountSnapshot(
+                    "acct-a",
+                    "acct-a@example.com",
+                    "pro",
+                    new[] {
+                        new ProviderLimitWindow("global-primary", "Global 5-hour", 60d, now.AddHours(2.5), windowDuration: TimeSpan.FromHours(5))
+                    },
+                    null,
+                    null,
+                    now,
+                    isSelected: true)
+            });
+
+        var advisories = ProviderLimitForecasting.BuildAccountAdvisories(snapshot, now);
+        AssertEqual(1, advisories.Count, "account runway advisory count");
+        AssertContainsText(advisories[0].Summary ?? string.Empty, "If you keep this pace", "account runway summary prefix");
+        AssertContainsText(advisories[0].Summary ?? string.Empty, "runs out in", "account runway summary runout");
+    }
+
+    private static void TestProviderLimitForecastingKeepsUnavailableAccountsVisible() {
+        var now = new DateTimeOffset(2026, 03, 18, 12, 00, 00, TimeSpan.Zero);
+        var snapshot = new ProviderLimitSnapshot(
+            "codex",
+            "Codex",
+            "OpenAI usage API",
+            "pro",
+            "acct-a@example.com",
+            new[] {
+                new ProviderLimitWindow(
+                    "global-primary",
+                    "Global 5-hour",
+                    60d,
+                    now.AddHours(2.5),
+                    windowDuration: TimeSpan.FromHours(5))
+            },
+            null,
+            null,
+            now,
+            new[] {
+                new ProviderLimitAccountSnapshot(
+                    "acct-a",
+                    "acct-a@example.com",
+                    "pro",
+                    new[] {
+                        new ProviderLimitWindow("global-primary", "Global 5-hour", 60d, now.AddHours(2.5), windowDuration: TimeSpan.FromHours(5))
+                    },
+                    null,
+                    null,
+                    now,
+                    isSelected: true),
+                new ProviderLimitAccountSnapshot(
+                    "acct-b",
+                    "acct-b@example.com",
+                    "pro",
+                    Array.Empty<ProviderLimitWindow>(),
+                    "Detected locally, but live limits are unavailable.",
+                    "Local login expired on Mar 17 22:05. Reauthenticate this account to load live limits.",
+                    now)
+            });
+
+        var advisories = ProviderLimitForecasting.BuildAccountAdvisories(snapshot, now);
+        AssertEqual(2, advisories.Count, "unavailable account advisory count");
+        AssertEqual("acct-a@example.com", advisories[0].DisplayLabel, "available account stays first");
+        AssertEqual("acct-b@example.com", advisories[1].DisplayLabel, "unavailable account remains visible");
+        AssertEqual("Unavailable", advisories[1].StatusLabel, "unavailable account status");
+        AssertContainsText(advisories[1].Summary ?? string.Empty, "Detected locally", "unavailable account summary keeps detection context");
+    }
+
+    private static void TestProviderLimitForecastingPrefersCodingWindowsOverReviewWindows() {
+        var now = new DateTimeOffset(2026, 03, 18, 12, 00, 00, TimeSpan.Zero);
+        var snapshot = new ProviderLimitSnapshot(
+            "codex",
+            "Codex",
+            "OpenAI usage API",
+            "pro",
+            "acct-a@example.com",
+            Array.Empty<ProviderLimitWindow>(),
+            null,
+            null,
+            now,
+            new[] {
+                new ProviderLimitAccountSnapshot(
+                    "acct-a",
+                    "acct-a@example.com",
+                    "pro",
+                    new[] {
+                        new ProviderLimitWindow("global-primary", "Global 5-hour", 55d, now.AddHours(2), windowDuration: TimeSpan.FromHours(5)),
+                        new ProviderLimitWindow("code-review-secondary", "Code review Weekly", 100d, now.AddHours(24), windowDuration: TimeSpan.FromDays(7))
+                    },
+                    null,
+                    null,
+                    now,
+                    isSelected: true),
+                new ProviderLimitAccountSnapshot(
+                    "acct-b",
+                    "acct-b@example.com",
+                    "pro",
+                    new[] {
+                        new ProviderLimitWindow("global-primary", "Global 5-hour", 70d, now.AddHours(2), windowDuration: TimeSpan.FromHours(5)),
+                        new ProviderLimitWindow("code-review-secondary", "Code review Weekly", 0d, now.AddHours(24), windowDuration: TimeSpan.FromDays(7))
+                    },
+                    null,
+                    null,
+                    now)
+            });
+
+        var advisories = ProviderLimitForecasting.BuildAccountAdvisories(snapshot, now);
+        AssertEqual(2, advisories.Count, "coding-vs-review advisory count");
+        AssertEqual("acct-a@example.com", advisories[0].DisplayLabel, "review-only exhaustion does not dominate account choice");
+        AssertEqual(true, advisories[0].IsRecommended, "coding-healthier account stays recommended");
+        AssertContainsText(advisories[0].Summary ?? string.Empty, "Global 5-hour", "coding window drives runway summary");
+    }
+
+    private static void TestProviderLimitForecastingUsesWatchCloselyForPaceRisk() {
+        var now = new DateTimeOffset(2026, 03, 19, 10, 00, 00, TimeSpan.Zero);
+        var snapshot = new ProviderLimitSnapshot(
+            "codex",
+            "Codex",
+            "OpenAI usage API",
+            "pro",
+            "acct-a@example.com",
+            Array.Empty<ProviderLimitWindow>(),
+            null,
+            null,
+            now,
+            new[] {
+                new ProviderLimitAccountSnapshot(
+                    "acct-a",
+                    "acct-a@example.com",
+                    "pro",
+                    new[] {
+                        new ProviderLimitWindow("global-secondary", "Global Weekly", 80d, now.AddDays(2), windowDuration: TimeSpan.FromDays(7))
+                    },
+                    null,
+                    null,
+                    now,
+                    isSelected: true)
+            });
+
+        var advisories = ProviderLimitForecasting.BuildAccountAdvisories(snapshot, now);
+        AssertEqual(1, advisories.Count, "pace-risk advisory count");
+        AssertEqual("Watch closely", advisories[0].StatusLabel, "pace-risk status is watch closely");
+        AssertContainsText(advisories[0].Summary ?? string.Empty, "runs out in", "pace-risk summary keeps runway wording");
+    }
+
+    private static void TestProviderLimitForecastingKeepsCurrentAccountWhenNotHardAvoid() {
+        var now = new DateTimeOffset(2026, 03, 19, 10, 00, 00, TimeSpan.Zero);
+        var snapshot = new ProviderLimitSnapshot(
+            "codex",
+            "Codex",
+            "OpenAI usage API",
+            "pro",
+            "acct-a@example.com",
+            Array.Empty<ProviderLimitWindow>(),
+            null,
+            null,
+            now,
+            new[] {
+                new ProviderLimitAccountSnapshot(
+                    "acct-a",
+                    "acct-a@example.com",
+                    "pro",
+                    new[] {
+                        new ProviderLimitWindow("global-secondary", "Global Weekly", 14d, now.AddDays(6), windowDuration: TimeSpan.FromDays(7))
+                    },
+                    null,
+                    null,
+                    now,
+                    isSelected: true),
+                new ProviderLimitAccountSnapshot(
+                    "acct-b",
+                    "acct-b@example.com",
+                    "pro",
+                    new[] {
+                        new ProviderLimitWindow("global-secondary", "Global Weekly", 0d, now.AddDays(6), windowDuration: TimeSpan.FromDays(7))
+                    },
+                    null,
+                    null,
+                    now)
+            });
+
+        var advisories = ProviderLimitForecasting.BuildAccountAdvisories(snapshot, now);
+        AssertEqual(2, advisories.Count, "keep-current advisory count");
+        AssertEqual("acct-a@example.com", advisories[0].DisplayLabel, "selected account stays first when not hard avoid");
+        AssertEqual(true, advisories[0].IsRecommended, "selected account remains recommended");
+        AssertEqual("Tight", advisories[0].StatusLabel, "selected account stays in tight state");
+    }
+
     private static void TestUsageTelemetryOverviewBuilderBuildsCopilotActivitySectionWithoutTokens() {
         var builder = new UsageTelemetryOverviewBuilder();
         var events = new[] {
@@ -209,6 +559,107 @@ internal static partial class Program {
         AssertContainsText(html, "8.99K stars", "github wrapped card owner scope");
         AssertContainsText(html, "2026 YTD +1989.1% vs 2025", "github wrapped card year comparison");
         AssertEqual(false, html.Contains("<style>", StringComparison.Ordinal), "github wrapped card no inline style block");
+    }
+
+    private static void TestUsageTelemetryOverviewHtmlRendererBuildsProviderDiagnostics() {
+        var section = new UsageTelemetryOverviewProviderSection(
+            key: "provider-codex",
+            providerId: "codex",
+            title: "Codex",
+            subtitle: "2026-02-18 to 2026-03-18",
+            heatmap: new HeatmapDocument(
+                title: "Codex activity",
+                subtitle: null,
+                palette: HeatmapPalette.ChatGptDark(),
+                sections: new[] {
+                    new HeatmapSection(
+                        "2026",
+                        null,
+                        new[] {
+                            new HeatmapDay(new DateTime(2026, 03, 17), 12, level: 3),
+                            new HeatmapDay(new DateTime(2026, 03, 18), 18, level: 4)
+                        })
+                }),
+            rangeStartUtc: new DateTime(2026, 02, 18),
+            rangeEndUtc: new DateTime(2026, 03, 18),
+            latestEventUtc: new DateTimeOffset(2026, 03, 18, 14, 23, 0, TimeSpan.Zero),
+            activeDays: 17,
+            totalDays: 29,
+            accountCount: 2,
+            sourceRootCount: 3,
+            accountLabels: new[] { "work@evotec.pl", "lab@evotec.pl" },
+            metrics: new[] {
+                new UsageTelemetryOverviewSectionMetric("total", "Total tokens", "42.3B", "30-day window", 1d, "#6268f1")
+            },
+            composition: null,
+            spotlightCards: Array.Empty<UsageTelemetryOverviewCard>(),
+            inputTokens: 4200,
+            outputTokens: 120,
+            totalTokens: 4320,
+            monthlyUsageTitle: "Monthly usage",
+            monthlyUsageUnitsLabel: "tokens",
+            monthlyUsage: new[] {
+                new UsageTelemetryOverviewMonthlyUsage(new DateTime(2026, 03, 1, 0, 0, 0, DateTimeKind.Utc), 4320, 17)
+            },
+            additionalInsights: new[] {
+                new UsageTelemetryOverviewInsightSection(
+                    "source-roots",
+                    "Scanned roots",
+                    "3 root(s) included in this quick scan",
+                    "Includes current, WSL, and recovered roots.",
+                    new[] {
+                        new UsageTelemetryOverviewInsightRow("Local", "1", ".codex/sessions"),
+                        new UsageTelemetryOverviewInsightRow("WSL", "1", "Ubuntu/.codex/sessions"),
+                        new UsageTelemetryOverviewInsightRow("Recovered", "1", "Windows.old/.codex/sessions")
+                    }),
+                new UsageTelemetryOverviewInsightSection(
+                    "quick-scan-dedupe",
+                    "Quick-scan dedupe",
+                    "2 duplicate records collapsed before aggregation",
+                    "Useful when copied session logs exist across roots.",
+                    new[] {
+                        new UsageTelemetryOverviewInsightRow("Duplicates collapsed", "2", "Cross-root copies merged"),
+                        new UsageTelemetryOverviewInsightRow("Raw events", "14", "Before dedupe")
+                    })
+            },
+            topModels: new[] {
+                new UsageTelemetryOverviewTopModel("gpt-5.4", 4200, 0.97d)
+            },
+            apiCostEstimate: null,
+            mostUsedModel: new UsageTelemetryOverviewModelHighlight("gpt-5.4", 4200),
+            recentModel: new UsageTelemetryOverviewModelHighlight("gpt-5.4", 1200),
+            longestStreakDays: 7,
+            currentStreakDays: 3,
+            note: "Scanned roots: 1 local, 1 wsl, 1 recovered");
+        var summary = new UsageSummarySnapshot {
+            Metric = UsageSummaryMetric.TotalTokens,
+            StartDayUtc = new DateTime(2025, 03, 14),
+            EndDayUtc = new DateTime(2026, 03, 12),
+            TotalValue = 0m,
+            TotalDays = 365,
+            ActiveDays = 71,
+            PeakDayUtc = new DateTime(2026, 03, 11),
+            PeakValue = 18m
+        };
+
+        var overview = new UsageTelemetryOverviewDocument(
+            title: "Usage Overview",
+            subtitle: "@przemyslawklys",
+            metric: UsageSummaryMetric.TotalTokens,
+            units: "tokens",
+            summary: summary,
+            cards: Array.Empty<UsageTelemetryOverviewCard>(),
+            heatmaps: Array.Empty<UsageTelemetryOverviewHeatmap>(),
+            providerSections: new[] { section });
+
+        var html = UsageTelemetryOverviewHtmlRenderer.Render(overview);
+        AssertContainsText(html, "Provider health", "overview provider diagnostics title");
+        AssertContainsText(html, "Telemetry mode", "overview provider diagnostics mode label");
+        AssertContainsText(html, "Latest provider day", "overview provider diagnostics latest label");
+        AssertContainsText(html, "Inspect roots and account scope", "overview provider diagnostics explorer title");
+        AssertContainsText(html, "work@evotec.pl", "overview provider diagnostics account chip");
+        AssertContainsText(html, "Scanned roots", "overview provider diagnostics roots insight");
+        AssertContainsText(html, "Quick-scan dedupe", "overview provider diagnostics dedupe insight");
     }
 
     private static void TestUsageTelemetryBreakdownHtmlRendererUsesSharedAssets() {
@@ -794,6 +1245,14 @@ internal static partial class Program {
                             new HeatmapDay(new DateTime(2026, 03, 11), 18, level: 4)
                         })
                 }),
+            rangeStartUtc: new DateTime(2025, 03, 14),
+            rangeEndUtc: new DateTime(2026, 03, 12),
+            latestEventUtc: new DateTimeOffset(2026, 03, 12, 10, 30, 0, TimeSpan.Zero),
+            activeDays: 71,
+            totalDays: 364,
+            accountCount: 1,
+            sourceRootCount: 1,
+            accountLabels: new[] { "przemyslawklys" },
             metrics: new[] {
                 new UsageTelemetryOverviewSectionMetric("contributions", "Total contributions", "11.8K", "71 active days", 1d, "#216e39")
             },

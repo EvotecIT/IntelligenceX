@@ -37,22 +37,35 @@ public sealed class GitHubDashboardService : IDisposable {
     /// <param name="cancellationToken">Optional cancellation token.</param>
     /// <returns>GitHub dashboard data.</returns>
     public async Task<GitHubDashboardData> FetchAsync(string? login = null, CancellationToken cancellationToken = default) {
-        var effectiveLogin = string.IsNullOrWhiteSpace(login)
-            ? await GetAuthenticatedLoginAsync(cancellationToken).ConfigureAwait(false)
-            : login!.Trim();
+        var explicitLogin = NormalizeOptional(login);
+        var authenticatedLogin = await GetAuthenticatedLoginAsync(cancellationToken).ConfigureAwait(false);
+        var effectiveLogin = explicitLogin ?? authenticatedLogin;
         if (string.IsNullOrWhiteSpace(effectiveLogin)) {
             throw new InvalidOperationException("Unable to determine authenticated GitHub login.");
         }
         var normalizedLogin = effectiveLogin!;
+        var isAuthenticatedSelfLookup = !string.IsNullOrWhiteSpace(authenticatedLogin)
+                                        && string.Equals(normalizedLogin, authenticatedLogin, StringComparison.OrdinalIgnoreCase);
 
+        var profileTask = FetchProfileAsync(
+            normalizedLogin,
+            isAuthenticatedSelfLookup,
+            cancellationToken);
         var contributionsTask = FetchContributionsAsync(normalizedLogin, cancellationToken);
-        var topRepositoriesTask = FetchTopRepositoriesAsync(normalizedLogin, cancellationToken);
-        await Task.WhenAll(contributionsTask, topRepositoriesTask).ConfigureAwait(false);
+        var repositoriesTask = FetchRepositoriesAsync(
+            normalizedLogin,
+            includeAuthenticatedOrganizations: isAuthenticatedSelfLookup,
+            cancellationToken);
+        await Task.WhenAll(profileTask, contributionsTask, repositoriesTask).ConfigureAwait(false);
+
+        var allRepos = repositoriesTask.Result;
 
         return new GitHubDashboardData(
             normalizedLogin,
+            profileTask.Result,
             contributionsTask.Result,
-            topRepositoriesTask.Result);
+            GitHubDashboardRepositoryRanking.BuildTopRepositories(allRepos, limit: 8),
+            allRepos);
     }
 
     /// <summary>
@@ -69,9 +82,15 @@ public sealed class GitHubDashboardService : IDisposable {
     /// Returns a GitHub token from common environment variables when available.
     /// </summary>
     public static string? ResolveTokenFromEnvironment() {
-        return NormalizeOptional(Environment.GetEnvironmentVariable("INTELLIGENCEX_GITHUB_TOKEN"))
-               ?? NormalizeOptional(Environment.GetEnvironmentVariable("GITHUB_TOKEN"))
-               ?? NormalizeOptional(Environment.GetEnvironmentVariable("GH_TOKEN"));
+        return GitHubCredentialResolver.ResolveFromEnvironment();
+    }
+
+    /// <summary>
+    /// Returns a GitHub token from common environment variables or the local GitHub CLI login when available.
+    /// </summary>
+    public static async Task<string?> ResolveTokenAsync(CancellationToken cancellationToken = default) {
+        var resolution = await GitHubCredentialResolver.ResolveAsync(cancellationToken).ConfigureAwait(false);
+        return resolution.Token;
     }
 
     /// <inheritdoc />
@@ -79,6 +98,17 @@ public sealed class GitHubDashboardService : IDisposable {
         if (_disposeHttpClient) {
             _http.Dispose();
         }
+    }
+
+    private async Task<GitHubProfileInfo> FetchProfileAsync(
+        string login,
+        bool useAuthenticatedEndpoint,
+        CancellationToken cancellationToken) {
+        var path = useAuthenticatedEndpoint
+            ? "/user"
+            : "/users/" + Uri.EscapeDataString(login);
+        using var document = await GetJsonAsync(path, cancellationToken).ConfigureAwait(false);
+        return CreateProfileInfo(document.RootElement, login);
     }
 
     private async Task<GitHubContribData> FetchContributionsAsync(string login, CancellationToken cancellationToken) {
@@ -160,9 +190,12 @@ query($login: String!, $from: DateTime!, $to: DateTime!) {
                 .ToArray());
     }
 
-    private async Task<IReadOnlyList<GitHubRepoInfo>> FetchTopRepositoriesAsync(string login, CancellationToken cancellationToken) {
+    private async Task<IReadOnlyList<GitHubRepoInfo>> FetchRepositoriesAsync(
+        string login,
+        bool includeAuthenticatedOrganizations,
+        CancellationToken cancellationToken) {
         var owners = new List<string> { login };
-        owners.AddRange(await FetchUserOrganizationsAsync(cancellationToken).ConfigureAwait(false));
+        owners.AddRange(await FetchUserOrganizationsAsync(login, includeAuthenticatedOrganizations, cancellationToken).ConfigureAwait(false));
 
         var repositories = new List<GitHubRepoInfo>();
         foreach (var owner in owners
@@ -171,11 +204,27 @@ query($login: String!, $from: DateTime!, $to: DateTime!) {
             repositories.AddRange(await FetchOwnerRepositoriesAsync(owner, cancellationToken).ConfigureAwait(false));
         }
 
-        return GitHubDashboardRepositoryRanking.BuildTopRepositories(repositories, limit: 8);
+        return repositories
+            .Where(static repository => !string.IsNullOrWhiteSpace(repository?.NameWithOwner))
+            .GroupBy(
+                static repository => GitHubRepositoryIdentity.NormalizeNameWithOwner(repository.NameWithOwner),
+                StringComparer.OrdinalIgnoreCase)
+            .Select(static group => group
+                .OrderByDescending(static repository => repository.Stars)
+                .ThenByDescending(static repository => repository.Forks)
+                .ThenBy(static repository => repository.NameWithOwner, StringComparer.OrdinalIgnoreCase)
+                .First())
+            .ToArray();
     }
 
-    private async Task<IReadOnlyList<string>> FetchUserOrganizationsAsync(CancellationToken cancellationToken) {
-        using var document = await GetJsonAsync("/user/orgs", cancellationToken).ConfigureAwait(false);
+    private async Task<IReadOnlyList<string>> FetchUserOrganizationsAsync(
+        string login,
+        bool includeAuthenticatedOrganizations,
+        CancellationToken cancellationToken) {
+        var path = includeAuthenticatedOrganizations
+            ? "/user/orgs"
+            : "/users/" + Uri.EscapeDataString(login) + "/orgs";
+        using var document = await GetJsonAsync(path, cancellationToken).ConfigureAwait(false);
         if (document.RootElement.ValueKind != JsonValueKind.Array) {
             return Array.Empty<string>();
         }
@@ -190,13 +239,18 @@ query($login: String!, $from: DateTime!, $to: DateTime!) {
 
     private async Task<IReadOnlyList<GitHubRepoInfo>> FetchOwnerRepositoriesAsync(string owner, CancellationToken cancellationToken) {
         const string query = """
-query($login: String!) {
+query($login: String!, $cursor: String) {
   repositoryOwner(login: $login) {
     repositories(
-      first: 10
+      first: 100
+      after: $cursor
       orderBy: { field: STARGAZERS, direction: DESC }
       privacy: PUBLIC
     ) {
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
       nodes {
         nameWithOwner
         stargazerCount
@@ -212,46 +266,55 @@ query($login: String!) {
 }
 """;
 
-        using var document = await QueryGraphQlAsync(
-            query,
-            new Dictionary<string, object?> {
-                ["login"] = owner
-            },
-            cancellationToken).ConfigureAwait(false);
-
-        var root = document.RootElement;
-        if (!TryGetProperty(root, "data", out var data) ||
-            !TryGetProperty(data, "repositoryOwner", out var ownerNode) ||
-            ownerNode.ValueKind == JsonValueKind.Null ||
-            !TryGetProperty(ownerNode, "repositories", out var repositoriesConnection) ||
-            !TryGetProperty(repositoriesConnection, "nodes", out var nodes) ||
-            nodes.ValueKind != JsonValueKind.Array) {
-            return Array.Empty<GitHubRepoInfo>();
-        }
-
         var repositories = new List<GitHubRepoInfo>();
-        foreach (var node in nodes.EnumerateArray()) {
-            var nameWithOwner = NormalizeOptional(ReadString(node, "nameWithOwner"));
-            if (string.IsNullOrWhiteSpace(nameWithOwner)) {
-                continue;
+        string? cursor = null;
+        do {
+            using var document = await QueryGraphQlAsync(
+                query,
+                new Dictionary<string, object?> {
+                    ["login"] = owner,
+                    ["cursor"] = cursor
+                },
+                cancellationToken).ConfigureAwait(false);
+
+            var root = document.RootElement;
+            if (!TryGetProperty(root, "data", out var data) ||
+                !TryGetProperty(data, "repositoryOwner", out var ownerNode) ||
+                ownerNode.ValueKind == JsonValueKind.Null ||
+                !TryGetProperty(ownerNode, "repositories", out var repositoriesConnection) ||
+                !TryGetProperty(repositoriesConnection, "nodes", out var nodes) ||
+                nodes.ValueKind != JsonValueKind.Array) {
+                break;
             }
 
-            string? language = null;
-            string? languageColor = null;
-            if (TryGetProperty(node, "primaryLanguage", out var primaryLanguage) &&
-                primaryLanguage.ValueKind == JsonValueKind.Object) {
-                language = NormalizeOptional(ReadString(primaryLanguage, "name"));
-                languageColor = NormalizeOptional(ReadString(primaryLanguage, "color"));
+            foreach (var node in nodes.EnumerateArray()) {
+                var nameWithOwner = NormalizeOptional(ReadString(node, "nameWithOwner"));
+                if (string.IsNullOrWhiteSpace(nameWithOwner)) {
+                    continue;
+                }
+
+                string? language = null;
+                string? languageColor = null;
+                if (TryGetProperty(node, "primaryLanguage", out var primaryLanguage) &&
+                    primaryLanguage.ValueKind == JsonValueKind.Object) {
+                    language = NormalizeOptional(ReadString(primaryLanguage, "name"));
+                    languageColor = NormalizeOptional(ReadString(primaryLanguage, "color"));
+                }
+
+                repositories.Add(new GitHubRepoInfo(
+                    nameWithOwner!,
+                    ReadInt(node, "stargazerCount"),
+                    ReadInt(node, "forkCount"),
+                    NormalizeOptional(ReadString(node, "description")),
+                    language,
+                    languageColor));
             }
 
-            repositories.Add(new GitHubRepoInfo(
-                nameWithOwner!,
-                ReadInt(node, "stargazerCount"),
-                ReadInt(node, "forkCount"),
-                NormalizeOptional(ReadString(node, "description")),
-                language,
-                languageColor));
-        }
+            cursor = TryGetProperty(repositoriesConnection, "pageInfo", out var pageInfo) &&
+                     ReadBool(pageInfo, "hasNextPage")
+                ? NormalizeOptional(ReadString(pageInfo, "endCursor"))
+                : null;
+        } while (!string.IsNullOrWhiteSpace(cursor));
 
         return repositories;
     }
@@ -327,6 +390,12 @@ query($login: String!) {
             : 0;
     }
 
+    private static bool ReadBool(JsonElement obj, string name) {
+        return TryGetProperty(obj, name, out var value)
+               && (value.ValueKind == JsonValueKind.True || value.ValueKind == JsonValueKind.False)
+               && value.GetBoolean();
+    }
+
     private static bool TryGetProperty(JsonElement obj, string name, out JsonElement value) {
         value = default;
         return obj.ValueKind == JsonValueKind.Object && obj.TryGetProperty(name, out value);
@@ -354,6 +423,26 @@ query($login: String!) {
     private static string? NormalizeOptional(string? value) {
         return string.IsNullOrWhiteSpace(value) ? null : value!.Trim();
     }
+
+    /// <summary>
+    /// Creates profile details from a GitHub REST user payload.
+    /// </summary>
+    public static GitHubProfileInfo CreateProfileInfo(JsonElement user, string? fallbackLogin = null) {
+        var login = NormalizeOptional(ReadString(user, "login"))
+                    ?? NormalizeOptional(fallbackLogin)
+                    ?? string.Empty;
+        return new GitHubProfileInfo(
+            login,
+            NormalizeOptional(ReadString(user, "name")),
+            NormalizeOptional(ReadString(user, "bio")),
+            NormalizeOptional(ReadString(user, "company")),
+            NormalizeOptional(ReadString(user, "location")),
+            NormalizeOptional(ReadString(user, "blog")),
+            NormalizeOptional(ReadString(user, "avatar_url")),
+            ReadInt(user, "followers"),
+            ReadInt(user, "following"),
+            ReadInt(user, "public_repos"));
+    }
 }
 
 /// <summary>
@@ -363,16 +452,30 @@ public sealed class GitHubDashboardData {
     /// <summary>
     /// Initializes dashboard data.
     /// </summary>
-    public GitHubDashboardData(string login, GitHubContribData contributions, IReadOnlyList<GitHubRepoInfo> topRepos) {
+    public GitHubDashboardData(
+        string login,
+        GitHubProfileInfo? profile,
+        GitHubContribData contributions,
+        IReadOnlyList<GitHubRepoInfo> topRepos,
+        IReadOnlyList<GitHubRepoInfo>? allRepos = null,
+        bool hasContributionData = true) {
         Login = string.IsNullOrWhiteSpace(login) ? string.Empty : login.Trim();
+        Profile = profile ?? new GitHubProfileInfo(Login);
         Contributions = contributions ?? new GitHubContribData();
         TopRepos = topRepos ?? Array.Empty<GitHubRepoInfo>();
+        AllRepos = allRepos ?? TopRepos;
+        HasContributionData = hasContributionData;
     }
 
     /// <summary>
     /// Gets the login this dashboard represents.
     /// </summary>
     public string Login { get; }
+
+    /// <summary>
+    /// Gets profile details for the requested user.
+    /// </summary>
+    public GitHubProfileInfo Profile { get; }
 
     /// <summary>
     /// Gets aggregated contribution data.
@@ -383,6 +486,97 @@ public sealed class GitHubDashboardData {
     /// Gets top repositories by stars/forks.
     /// </summary>
     public IReadOnlyList<GitHubRepoInfo> TopRepos { get; }
+
+    /// <summary>
+    /// Gets the full repository set used to build ownership and totals.
+    /// </summary>
+    public IReadOnlyList<GitHubRepoInfo> AllRepos { get; }
+
+    /// <summary>
+    /// Gets whether contribution totals came from the authenticated GitHub dashboard path.
+    /// </summary>
+    public bool HasContributionData { get; }
+}
+
+/// <summary>
+/// Profile details for the GitHub dashboard window.
+/// </summary>
+public sealed class GitHubProfileInfo {
+    /// <summary>
+    /// Initializes profile details.
+    /// </summary>
+    public GitHubProfileInfo(
+        string login,
+        string? displayName = null,
+        string? bio = null,
+        string? company = null,
+        string? location = null,
+        string? websiteUrl = null,
+        string? avatarUrl = null,
+        int followers = 0,
+        int following = 0,
+        int publicRepositories = 0) {
+        Login = string.IsNullOrWhiteSpace(login) ? string.Empty : login.Trim();
+        DisplayName = displayName;
+        Bio = bio;
+        Company = company;
+        Location = location;
+        WebsiteUrl = websiteUrl;
+        AvatarUrl = avatarUrl;
+        Followers = Math.Max(0, followers);
+        Following = Math.Max(0, following);
+        PublicRepositories = Math.Max(0, publicRepositories);
+    }
+
+    /// <summary>
+    /// Gets the canonical login.
+    /// </summary>
+    public string Login { get; }
+
+    /// <summary>
+    /// Gets the display name when available.
+    /// </summary>
+    public string? DisplayName { get; }
+
+    /// <summary>
+    /// Gets the public bio text.
+    /// </summary>
+    public string? Bio { get; }
+
+    /// <summary>
+    /// Gets the company field when available.
+    /// </summary>
+    public string? Company { get; }
+
+    /// <summary>
+    /// Gets the public location field when available.
+    /// </summary>
+    public string? Location { get; }
+
+    /// <summary>
+    /// Gets the website or blog URL when available.
+    /// </summary>
+    public string? WebsiteUrl { get; }
+
+    /// <summary>
+    /// Gets the avatar URL when available.
+    /// </summary>
+    public string? AvatarUrl { get; }
+
+    /// <summary>
+    /// Gets follower count.
+    /// </summary>
+    public int Followers { get; }
+
+    /// <summary>
+    /// Gets following count.
+    /// </summary>
+    public int Following { get; }
+
+    /// <summary>
+    /// Gets the public repository count.
+    /// </summary>
+    public int PublicRepositories { get; }
 }
 
 /// <summary>

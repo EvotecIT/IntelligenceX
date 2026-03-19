@@ -4,10 +4,16 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{TITLE}}</title>
+  {{APPEARANCE_INIT_SCRIPT}}
+  <link rel="stylesheet" href="report-appearance.css">
+  <link rel="stylesheet" href="report-content.css">
   <link rel="stylesheet" href="github-wrapped-shared.css">
   <link rel="stylesheet" href="github-wrapped-card.css">
 </head>
 <body data-page-kind="github-wrapped-card">
 {{CONTENT}}
+  <script id="ix-report-bootstrap" type="application/json">{{BOOTSTRAP_JSON}}</script>
+  <script src="report-runtime.js"></script>
+  <script src="github-wrapped.js"></script>
 </body>
 </html>

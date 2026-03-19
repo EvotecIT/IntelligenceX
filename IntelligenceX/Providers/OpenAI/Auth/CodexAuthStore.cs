@@ -4,6 +4,26 @@ using IntelligenceX.Json;
 
 namespace IntelligenceX.OpenAI.Auth;
 
+#pragma warning disable CS1591
+
+public sealed class CodexAuthProfile {
+    public CodexAuthProfile(string? accountId, string? email, string? planType) {
+        AccountId = NormalizeOptional(accountId);
+        Email = NormalizeOptional(email);
+        PlanType = NormalizeOptional(planType);
+    }
+
+    public string? AccountId { get; }
+    public string? Email { get; }
+    public string? PlanType { get; }
+    public string? AccountLabel => Email;
+
+    private static string? NormalizeOptional(string? value) {
+        var trimmed = value?.Trim();
+        return string.IsNullOrWhiteSpace(trimmed) ? null : trimmed;
+    }
+}
+
 /// <summary>
 /// Utilities for working with Codex auth.json files.
 /// </summary>
@@ -30,6 +50,37 @@ public static class CodexAuthStore {
     public static string ResolveAuthPath(string? codexHome = null) {
         var home = string.IsNullOrWhiteSpace(codexHome) ? ResolveCodexHome() : codexHome!;
         return Path.Combine(home, "auth.json");
+    }
+
+    /// <summary>
+    /// Reads a best-effort Codex auth profile from auth.json.
+    /// </summary>
+    public static CodexAuthProfile? TryReadProfile(string authPath) {
+        if (string.IsNullOrWhiteSpace(authPath) || !File.Exists(authPath)) {
+            return null;
+        }
+
+        try {
+            var root = JsonLite.Parse(File.ReadAllText(authPath)).AsObject();
+            var tokens = root?.GetObject("tokens");
+            var accessToken = NormalizeOptional(tokens?.GetString("access_token"));
+            var idToken = NormalizeOptional(tokens?.GetString("id_token"));
+            var accountId = NormalizeOptional(tokens?.GetString("account_id"))
+                            ?? (accessToken is null ? null : JwtDecoder.TryGetAccountId(accessToken))
+                            ?? (idToken is null ? null : JwtDecoder.TryGetAccountId(idToken));
+            var email = NormalizeOptional(root?.GetString("email"))
+                        ?? (idToken is null ? null : JwtDecoder.TryGetEmail(idToken))
+                        ?? (accessToken is null ? null : JwtDecoder.TryGetEmail(accessToken));
+            var planType = NormalizeOptional(root?.GetString("plan_type"))
+                           ?? (accessToken is null ? null : JwtDecoder.TryGetPlanType(accessToken));
+            if (accountId is null && email is null && planType is null) {
+                return null;
+            }
+
+            return new CodexAuthProfile(accountId, email, planType);
+        } catch {
+            return null;
+        }
     }
 
     /// <summary>
@@ -83,4 +134,11 @@ public static class CodexAuthStore {
         var content = BuildAuthJson(bundle, lastRefresh, openAiApiKey);
         File.WriteAllText(path, content);
     }
+
+    private static string? NormalizeOptional(string? value) {
+        var trimmed = value?.Trim();
+        return string.IsNullOrWhiteSpace(trimmed) ? null : trimmed;
+    }
 }
+
+#pragma warning restore CS1591

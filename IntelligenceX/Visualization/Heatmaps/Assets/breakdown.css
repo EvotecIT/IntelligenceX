@@ -1,6 +1,6 @@
-    .preview { padding:14px; border-radius:18px; border:1px solid var(--line); background:var(--panel-muted); overflow:auto; }
+    .preview { padding:14px; border-radius:var(--report-radius-soft); border:1px solid var(--line); background:var(--panel-muted); overflow:auto; }
     .preview img { width:100%; min-width:960px; height:auto; display:block; border-radius:12px; background:var(--bg); }
-    .summary { display:none; padding:18px; border-radius:18px; border:1px solid var(--line); background:var(--panel-soft); }
+    .summary { display:none; padding:18px; border-radius:var(--report-radius-soft); border:1px solid var(--line); background:var(--panel-soft); }
     .summary.active { display:block; }
     .preview.hidden { display:none; }
     .summary-row { display:grid; grid-template-columns:minmax(0,1fr); gap:10px; }

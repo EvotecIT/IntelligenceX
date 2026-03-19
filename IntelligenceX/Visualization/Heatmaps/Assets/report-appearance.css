@@ -1,0 +1,18 @@
+    .appearance-switchers, .theme-switcher, .accent-switcher { display:flex; flex-wrap:wrap; gap:10px; }
+    .appearance-switchers { justify-content:flex-end; align-items:center; }
+    .theme-switch, .accent-switch { width:42px; height:42px; padding:0; display:inline-flex; align-items:center; justify-content:center; border-radius:999px; border:1px solid var(--appearance-line); background:var(--appearance-button-bg); color:var(--appearance-ink); cursor:pointer; transition:background-color .18s ease,border-color .18s ease,color .18s ease,transform .18s ease,box-shadow .18s ease; }
+    .theme-switch:hover, .accent-switch:hover { background:var(--appearance-button-hover); transform:translateY(-1px); box-shadow:var(--appearance-button-shadow); }
+    .theme-switch.active, .accent-switch.active { background:var(--appearance-button-active); color:var(--appearance-button-active-text); border-color:var(--appearance-button-active-border); }
+    .theme-icon { font-size:18px; line-height:1; }
+    .accent-dot { width:14px; height:14px; border-radius:999px; display:inline-block; box-shadow:inset 0 0 0 1px rgba(255,255,255,.35); }
+    .accent-dot-violet { background:linear-gradient(135deg,#7c6ff5 0%, #50d880 100%); }
+    .accent-dot-ocean { background:linear-gradient(135deg,#2f86ff 0%, #27c7b8 100%); }
+    .accent-dot-forest { background:linear-gradient(135deg,#2aa06d 0%, #84c441 100%); }
+    .accent-dot-sunset { background:linear-gradient(135deg,#dc6a3c 0%, #f0b24a 100%); }
+    :is(.back-link, .asset-link, .mode-button, .hero-switch, .provider-dataset-tab, .github-lens-tab, .github-owner-chip, .github-repo-sort-tab, .supporting-tab, .supporting-mode, .supporting-link) { display:inline-flex; align-items:center; justify-content:center; padding:10px 14px; border:1px solid var(--line); border-radius:var(--report-radius-pill); background:var(--button-bg); color:var(--ink); text-decoration:none; font-size:13px; font-weight:700; cursor:pointer; transition:background-color .18s ease,border-color .18s ease,color .18s ease,transform .18s ease,box-shadow .18s ease; }
+    :is(.back-link, .asset-link, .mode-button, .hero-switch, .provider-dataset-tab, .github-lens-tab, .github-owner-chip, .github-repo-sort-tab, .supporting-tab, .supporting-mode, .supporting-link):hover { background:var(--button-hover); transform:translateY(-1px); box-shadow:0 8px 18px rgba(17,24,39,.08); }
+    :is(.mode-button, .hero-switch, .provider-dataset-tab, .github-lens-tab, .github-owner-chip, .github-repo-sort-tab, .supporting-tab, .supporting-mode).active { background:var(--button-active); color:var(--button-active-text); border-color:var(--button-active); }
+    :is(.provider-dataset-tab, .github-lens-tab, .github-repo-sort-tab, .supporting-mode, .supporting-link) { font-size:12px; letter-spacing:.04em; text-transform:uppercase; }
+    .hero-switch, .supporting-tab { letter-spacing:.01em; }
+    .supporting-link { min-width:92px; padding:8px 12px; }
+    .provider-note-chip, .legend-item { display:inline-flex; align-items:center; min-height:28px; padding:6px 10px; border-radius:var(--report-radius-pill); background:var(--pill-bg); border:1px solid var(--line); color:var(--muted); font-size:12px; line-height:1.35; }

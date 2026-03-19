@@ -67,6 +67,24 @@ internal static partial class Program {
             TestUsageSummaryBuilderBuildsTopBreakdowns);
         failed += Run("Usage telemetry overview builder builds Copilot activity section without tokens",
             TestUsageTelemetryOverviewBuilderBuildsCopilotActivitySectionWithoutTokens);
+        failed += Run("Usage telemetry API pricing blends exact and estimated costs",
+            TestUsageTelemetryApiPricingBlendsExactAndEstimatedCosts);
+        failed += Run("Provider limit forecasting flags over-limit pace",
+            TestProviderLimitForecastingFlagsOverLimitPace);
+        failed += Run("Provider limit forecasting recognizes on-pace window",
+            TestProviderLimitForecastingRecognizesOnPaceWindow);
+        failed += Run("Provider limit forecasting ranks best account",
+            TestProviderLimitForecastingRanksBestAccount);
+        failed += Run("Provider limit forecasting describes account runway",
+            TestProviderLimitForecastingDescribesAccountRunway);
+        failed += Run("Provider limit forecasting keeps unavailable accounts visible",
+            TestProviderLimitForecastingKeepsUnavailableAccountsVisible);
+        failed += Run("Provider limit forecasting prefers coding windows over review windows",
+            TestProviderLimitForecastingPrefersCodingWindowsOverReviewWindows);
+        failed += Run("Provider limit forecasting uses watch closely for pace risk",
+            TestProviderLimitForecastingUsesWatchCloselyForPaceRisk);
+        failed += Run("Provider limit forecasting keeps current account when not hard avoid",
+            TestProviderLimitForecastingKeepsCurrentAccountWhenNotHardAvoid);
         failed += Run("Usage telemetry overview builder builds cards and heatmaps",
             TestUsageTelemetryOverviewBuilderBuildsCardsAndHeatmaps);
         failed += Run("Usage telemetry overview builder estimates API cost for mini and nano models",
@@ -75,10 +93,22 @@ internal static partial class Program {
             TestGitHubWrappedHtmlRendererBuildsShareablePage);
         failed += Run("GitHub wrapped card html renderer builds compact card",
             TestGitHubWrappedCardHtmlRendererBuildsCompactCard);
+        failed += Run("Usage overview html renderer builds provider diagnostics",
+            TestUsageTelemetryOverviewHtmlRendererBuildsProviderDiagnostics);
+        failed += Run("Popup placement math converts pixels to DIPs",
+            TestPopupPlacementMathConvertsPixelsToDips);
+        failed += Run("Popup placement math clamps within work area",
+            TestPopupPlacementMathClampsWithinWorkArea);
+#if !NET472
+        failed += Run("GitHub dashboard service explicit self lookup keeps authenticated organizations",
+            TestGitHubDashboardServiceExplicitSelfLookupKeepsAuthenticatedOrganizations);
+#endif
+#if !NET472
         failed += Run("GitHub dashboard repository ranking deduplicates overlapping repositories",
             TestGitHubDashboardRepositoryRankingDeduplicatesOverlappingRepositories);
         failed += Run("GitHub dashboard repository ranking orders and caps repositories",
             TestGitHubDashboardRepositoryRankingOrdersAndCapsRepositories);
+#endif
         failed += Run("Provider limit snapshot batch keeps healthy providers when one fails",
             TestProviderLimitSnapshotServiceBatchKeepsHealthyProvidersWhenOneFails);
         failed += Run("Provider limit snapshot batch propagates caller cancellation",
@@ -287,6 +317,7 @@ internal static partial class Program {
         failed += Run("Auth store invalid key throws", TestAuthStoreInvalidKeyThrows);
         failed += Run("Auth store encrypted roundtrip", TestAuthStoreEncryptedRoundtrip);
         failed += Run("Auth store decrypt with explicit key override", TestAuthStoreDecryptWithExplicitKeyOverride);
+        failed += Run("Auth store list filters provider and orders accounts", TestAuthStoreListAsyncFiltersProviderAndOrdersAccounts);
         failed += Run("Path safety blocks symlink traversal", TestPathSafetyBlocksSymlinkTraversal);
 #endif
         failed += Run("Native tool schema fallback detects tools[n]", TestNativeToolSchemaFallbackDetectsIndex);

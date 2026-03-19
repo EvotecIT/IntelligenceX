@@ -14,6 +14,8 @@ internal static class UsageTelemetryReportStaticAssets {
         ["breakdown.html"] = LoadText("IntelligenceX.Visualization.Heatmaps.Assets.breakdown.html"),
         ["github-wrapped.html"] = LoadText("IntelligenceX.Visualization.Heatmaps.Assets.github-wrapped.html"),
         ["github-wrapped-card.html"] = LoadText("IntelligenceX.Visualization.Heatmaps.Assets.github-wrapped-card.html"),
+        ["report-appearance.css"] = LoadText("IntelligenceX.Visualization.Heatmaps.Assets.report-appearance.css"),
+        ["report-content.css"] = LoadText("IntelligenceX.Visualization.Heatmaps.Assets.report-content.css"),
         ["report-shell.css"] = LoadText("IntelligenceX.Visualization.Heatmaps.Assets.report-shell.css"),
         ["report.css"] = LoadText("IntelligenceX.Visualization.Heatmaps.Assets.report.css"),
         ["report-runtime.js"] = LoadText("IntelligenceX.Visualization.Heatmaps.Assets.report-runtime.js"),
@@ -27,6 +29,8 @@ internal static class UsageTelemetryReportStaticAssets {
     };
 
     private static readonly string[] PublishableAssets = [
+        "report-appearance.css",
+        "report-content.css",
         "report-shell.css",
         "report.css",
         "report-runtime.js",
@@ -48,7 +52,8 @@ internal static class UsageTelemetryReportStaticAssets {
         return UsageTelemetryHtmlTemplateBinder.Bind(template, new Dictionary<string, string?>(StringComparer.Ordinal) {
             ["TITLE"] = WebUtility.HtmlEncode(title ?? string.Empty),
             ["CONTENT"] = bodyContent ?? string.Empty,
-            ["BOOTSTRAP_JSON"] = EscapeJsonForInlineScript(bootstrapJson)
+            ["BOOTSTRAP_JSON"] = EscapeJsonForInlineScript(bootstrapJson),
+            ["APPEARANCE_INIT_SCRIPT"] = UsageTelemetryReportAppearanceDefaults.BuildInitialAppearanceScript()
         });
     }
 

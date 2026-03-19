@@ -85,6 +85,8 @@ internal static class UsageTelemetryImportSupport {
         SourceRootRecord root,
         string? machineId,
         string? providerAccountId = null,
+        string? accountLabel = null,
+        string? personLabel = null,
         string? sessionId = null,
         string? threadId = null,
         string? turnId = null,
@@ -102,7 +104,10 @@ internal static class UsageTelemetryImportSupport {
         }
 
         record.ProviderAccountId = UsageTelemetryQuickReportSupport.NormalizeOptional(providerAccountId) ?? record.ProviderAccountId;
-        record.AccountLabel = UsageTelemetryQuickReportSupport.NormalizeOptional(root.AccountHint) ?? record.AccountLabel;
+        record.AccountLabel = UsageTelemetryQuickReportSupport.NormalizeOptional(root.AccountHint)
+                              ?? UsageTelemetryQuickReportSupport.NormalizeOptional(accountLabel)
+                              ?? record.AccountLabel;
+        record.PersonLabel = UsageTelemetryQuickReportSupport.NormalizeOptional(personLabel) ?? record.PersonLabel;
         record.MachineId = UsageTelemetryQuickReportSupport.NormalizeOptional(machineId)
                            ?? UsageTelemetryQuickReportSupport.NormalizeOptional(root.MachineLabel)
                            ?? record.MachineId;

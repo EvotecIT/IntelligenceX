@@ -79,6 +79,38 @@ public sealed class InMemoryRawArtifactStore : IRawArtifactStore {
             .ToArray();
     }
 
+    /// <inheritdoc />
+    public IReadOnlyDictionary<string, RawArtifactDescriptor> GetBySourceRootAdapter(string sourceRootId, string adapterId) {
+        if (string.IsNullOrWhiteSpace(sourceRootId) || string.IsNullOrWhiteSpace(adapterId)) {
+            return new Dictionary<string, RawArtifactDescriptor>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        return _artifacts.Values
+            .Where(value =>
+                string.Equals(value.SourceRootId, sourceRootId.Trim(), StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(value.AdapterId, adapterId.Trim(), StringComparison.OrdinalIgnoreCase))
+            .ToDictionary(
+                static value => UsageTelemetryIdentity.NormalizePath(value.Path),
+                static value => value,
+                StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <inheritdoc />
+    public IReadOnlyList<RawArtifactDescriptor> GetRecentPerSourceRoot(int limitPerSourceRoot) {
+        if (limitPerSourceRoot <= 0) {
+            return Array.Empty<RawArtifactDescriptor>();
+        }
+
+        return _artifacts.Values
+            .Where(static artifact => !string.IsNullOrWhiteSpace(artifact.StateJson))
+            .GroupBy(static artifact => string.Join("|", artifact.SourceRootId, artifact.AdapterId), StringComparer.OrdinalIgnoreCase)
+            .SelectMany(group => group
+                .OrderByDescending(static artifact => artifact.ImportedAtUtc)
+                .ThenByDescending(static artifact => artifact.LastWriteTimeUtc)
+                .Take(limitPerSourceRoot))
+            .ToArray();
+    }
+
     private static string BuildKey(string sourceRootId, string adapterId, string path) {
         return sourceRootId + "|" + adapterId + "|" + UsageTelemetryIdentity.NormalizePath(path);
     }

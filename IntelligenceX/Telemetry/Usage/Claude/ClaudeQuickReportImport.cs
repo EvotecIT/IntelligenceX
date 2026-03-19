@@ -83,6 +83,7 @@ internal static class ClaudeQuickReportImport {
                 providerId: providerId,
                 sourceRootId: root.Id,
                 dayUtc: candidate.TimestampUtc.UtcDateTime.Date,
+                timestampUtc: candidate.TimestampUtc,
                 model: candidate.Model,
                 surface: "cli",
                 machineId: UsageTelemetryQuickReportSupport.NormalizeOptional(options.MachineId) ?? UsageTelemetryQuickReportSupport.NormalizeOptional(root.MachineLabel),

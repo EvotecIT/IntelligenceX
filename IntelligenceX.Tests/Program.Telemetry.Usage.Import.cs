@@ -137,6 +137,7 @@ internal static partial class Program {
             var events = eventStore.GetAll();
             AssertEqual(1, events.Count, "direct auth imported event count");
             AssertEqual("acct_codex_import", events[0].ProviderAccountId, "direct auth imported account id");
+            AssertEqual("direct-auth", events[0].AccountLabel, "direct auth imported account label preserves manual hint");
             AssertEqual("thread-direct-auth", events[0].SessionId, "direct auth imported session id");
         } finally {
             TryDeleteUsageTelemetryImportTempDirectory(tempDir);
@@ -186,6 +187,7 @@ internal static partial class Program {
             var events = eventStore.GetAll();
             AssertEqual(1, events.Count, "env imported event count");
             AssertEqual("acct_codex_import", events[0].ProviderAccountId, "env imported account id");
+            AssertEqual("codex@example.com", events[0].AccountLabel, "env imported account label");
             AssertEqual("machine-env", events[0].MachineId, "env imported machine id");
         } finally {
             Environment.SetEnvironmentVariable("CODEX_HOME", originalCodexHome);
@@ -487,7 +489,17 @@ internal static partial class Program {
         if (includeAuth) {
             File.WriteAllText(
                 Path.Combine(authRoot, "auth.json"),
-                "{\"tokens\":{\"account_id\":\"acct_codex_import\"}}");
+                "{\"tokens\":{\"account_id\":\"acct_codex_import\",\"access_token\":\"header."
+                + EncodeJwtPayload(new JsonObject()
+                    .Add("https://api.openai.com/auth", new JsonObject()
+                        .Add("chatgpt_account_id", "acct_codex_import")
+                        .Add("chatgpt_plan_type", "pro")))
+                + ".sig\",\"id_token\":\"header."
+                + EncodeJwtPayload(new JsonObject()
+                    .Add("email", "codex@example.com")
+                    .Add("https://api.openai.com/auth", new JsonObject()
+                        .Add("chatgpt_account_id", "acct_codex_import")))
+                + ".sig\"}}");
         }
 
         File.WriteAllText(
@@ -523,6 +535,12 @@ internal static partial class Program {
 
     private static string SerializeUsageTelemetryJsonLine(JsonObject obj) {
         return JsonLite.Serialize(JsonValue.From(obj));
+    }
+
+    private static string EncodeJwtPayload(JsonObject payload) {
+        var json = JsonLite.Serialize(JsonValue.From(payload));
+        var bytes = System.Text.Encoding.UTF8.GetBytes(json);
+        return Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
     }
 
     private sealed class ThrowingUsageTelemetryProviderDescriptor : IUsageTelemetryProviderDescriptor {
