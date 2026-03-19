@@ -23,12 +23,14 @@ public sealed class EmailToolPack : IToolPack, IToolPackCatalogProvider {
     public ToolPackDescriptor Descriptor { get; } = new() {
         Id = "email",
         Name = "Email (Mailozaurr)",
+        Aliases = new[] { "mailozaurr" },
         Tier = ToolCapabilityTier.SensitiveRead,
         IsDangerous = false,
         Description = "IMAP/SMTP workflows (search/get/probe/send) via Mailozaurr.",
         SourceKind = "builtin",
         EngineId = "mailozaurr",
-        CapabilityTags = new[] { "email", "imap", "smtp" }
+        Category = "email",
+        CapabilityTags = new[] { "email", "imap", ToolPackCapabilityTags.RemoteAnalysis, "smtp" }
     };
 
     /// <inheritdoc />

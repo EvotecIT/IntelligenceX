@@ -7,6 +7,15 @@ namespace IntelligenceX.Tools.EventLog;
 
 internal static class EventLogRoutingCatalog {
     private static readonly IReadOnlyDictionary<string, string> DeclaredRolesByToolName = BuildDeclaredRolesByToolName();
+    private static readonly IReadOnlyDictionary<string, SelectionDescriptor> ExplicitSelectionDescriptors =
+        new Dictionary<string, SelectionDescriptor>(StringComparer.OrdinalIgnoreCase) {
+            ["eventlog_connectivity_probe"] = new(
+                Scope: "host",
+                Operation: "probe",
+                Entity: "eventlog",
+                Risk: ToolRoutingTaxonomy.RiskLow,
+                AdditionalTags: new[] { "probe", "preflight", "connectivity" })
+        };
 
     public static readonly IReadOnlyList<string> SignalTokens = new[] {
         "eventlog",
@@ -16,6 +25,20 @@ internal static class EventLogRoutingCatalog {
         "ad_domain",
         "dc"
     };
+
+    public static ToolDefinition ApplySelectionMetadata(ToolDefinition definition) {
+        ArgumentNullException.ThrowIfNull(definition);
+
+        return ExplicitSelectionDescriptors.TryGetValue((definition.Name ?? string.Empty).Trim(), out var descriptor)
+            ? ToolExplicitSelectionMetadata.Apply(
+                definition,
+                scope: descriptor.Scope,
+                operation: descriptor.Operation,
+                entity: descriptor.Entity,
+                risk: descriptor.Risk,
+                additionalTags: descriptor.AdditionalTags)
+            : definition;
+    }
 
     public static string ResolveRole(string toolName, string? explicitRole) {
         return ToolRoutingRoleResolver.ResolveExplicitOrDeclared(
@@ -30,6 +53,7 @@ internal static class EventLogRoutingCatalog {
         AddRoleGroup(declared, ToolRoutingTaxonomy.RolePackInfo,
             "eventlog_pack_info");
         AddRoleGroup(declared, ToolRoutingTaxonomy.RoleDiagnostic,
+            "eventlog_connectivity_probe",
             "eventlog_channels_list",
             "eventlog_providers_list",
             "eventlog_named_events_catalog",
@@ -55,4 +79,11 @@ internal static class EventLogRoutingCatalog {
             declared[toolName] = role;
         }
     }
+
+    private sealed record SelectionDescriptor(
+        string Scope,
+        string Operation,
+        string Entity,
+        string Risk,
+        string[] AdditionalTags);
 }

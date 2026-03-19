@@ -53,6 +53,33 @@ public sealed class ToolContractValidationTests {
     }
 
     [Fact]
+    public void ToolHandoffContract_Validate_ShouldRejectRouteConditionWithoutExpectedValue() {
+        var contract = new ToolHandoffContract {
+            IsHandoffAware = true,
+            OutboundRoutes = new[] {
+                new ToolHandoffRoute {
+                    TargetPackId = "system",
+                    TargetToolName = "system_info",
+                    Bindings = new[] {
+                        new ToolHandoffBinding {
+                            SourceField = "computer_name",
+                            TargetArgument = "computer_name"
+                        }
+                    },
+                    Conditions = new[] {
+                        new ToolHandoffCondition {
+                            SourceField = "probe_kind"
+                        }
+                    }
+                }
+            }
+        };
+
+        var ex = Assert.Throws<InvalidOperationException>(contract.Validate);
+        Assert.Contains("ExpectedValue", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void Register_ShouldRejectHandoffAwareTool_WhenSourcePackIdIsMissing() {
         var registry = new ToolRegistry();
         var definition = new ToolDefinition(

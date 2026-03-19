@@ -173,7 +173,58 @@ public sealed class TestimoXPackInfoTool : TestimoXToolBase, ITool {
                     },
                     notes: "Prefer ad_object_resolve first for identity normalization, then query host/event evidence.")
             },
+            recipes: new[] {
+                ToolPackGuidance.Recipe(
+                    id: "focused_rule_execution_from_ad_scope",
+                    summary: "Convert AD discovery receipts into explicit TestimoX execution scope before running a focused rules subset.",
+                    whenToUse: "Use when the user wants deterministic AD or domain-controller analysis without a broad TestimoX sweep.",
+                    steps: new[] {
+                        ToolPackGuidance.FlowStep(
+                            goal: "Make directory scope explicit first",
+                            suggestedTools: new[] { "ad_environment_discover", "ad_scope_discovery", "ad_forest_discover" },
+                            notes: "Start here so include_domains and include_domain_controllers are seeded from real AD discovery receipts."),
+                        ToolPackGuidance.FlowStep(
+                            goal: "Inspect available rules or curated profiles",
+                            suggestedTools: new[] { "testimox_profiles_list", "testimox_rule_inventory", "testimox_rules_list" },
+                            notes: "Use profiles or metadata filters to keep the eventual rule set bounded."),
+                        ToolPackGuidance.FlowStep(
+                            goal: "Run only the selected rules against the explicit scope",
+                            suggestedTools: new[] { "testimox_rules_run" },
+                            notes: "Use names/selectors together with include_domains/include_domain_controllers instead of broad default execution.")
+                    },
+                    verificationTools: new[] { "testimox_rules_run", "testimox_run_summary" }),
+                ToolPackGuidance.Recipe(
+                    id: "baseline_gap_investigation",
+                    summary: "Compare vendor baselines, map rules, and then execute only the rules needed to confirm a specific posture gap.",
+                    whenToUse: "Use when a baseline or operator delta question needs both authoritative mapping and targeted rule confirmation.",
+                    steps: new[] {
+                        ToolPackGuidance.FlowStep(
+                            goal: "Discover the relevant baseline catalog slice",
+                            suggestedTools: new[] { "testimox_baselines_list", "testimox_baseline_compare" }),
+                        ToolPackGuidance.FlowStep(
+                            goal: "Map rules and provenance for the suspected gap",
+                            suggestedTools: new[] { "testimox_baseline_crosswalk", "testimox_source_query", "testimox_rule_inventory" },
+                            notes: "Use crosswalk and provenance metadata before deciding which rules actually need execution."),
+                        ToolPackGuidance.FlowStep(
+                            goal: "Run targeted rules and correlate the finding",
+                            suggestedTools: new[] { "testimox_rules_run", "ad_object_resolve", "system_info", "eventlog_live_stats" },
+                            notes: "Route identities and hosts into AD/System/EventLog only after a concrete rule result exists.")
+                    },
+                    verificationTools: new[] { "testimox_rules_run", "testimox_baseline_compare", "testimox_baseline_crosswalk" })
+            },
             toolCatalog: ToolRegistryTestimoXExtensions.GetRegisteredToolCatalog(Options),
+            runtimeCapabilities: new ToolPackRuntimeCapabilitiesModel {
+                PreferredEntryTools = new[] { "testimox_profiles_list", "testimox_rule_inventory", "testimox_rules_list" },
+                ProbeHelperFreshnessWindowSeconds = 900,
+                SetupHelperFreshnessWindowSeconds = 1800,
+                RecipeHelperFreshnessWindowSeconds = 900,
+                RuntimePrerequisites = new[] {
+                    "Use AD discovery receipts to prefill include_domains and include_domain_controllers before TestimoX execution whenever directory scope is known.",
+                    "Keep execution focused with explicit names, selectors, and scope arguments instead of broad full-catalog runs.",
+                    "Stored-run and history-oriented tools require directories under the configured AllowedStoreRoots."
+                },
+                Notes = "Prefer metadata-first entry tools before testimox_rules_run, then route concrete identities and hosts into AD/System/EventLog follow-up rather than running wider rule batches."
+            },
             rawPayloadPolicy: "Preserve raw typed run payloads (rules and test outcomes). Do not rely only on *_view fields.",
             viewProjectionPolicy: "Projection arguments are view-only and intended for display shaping (columns/sort_by/sort_direction/top).",
             correlationGuidance: "Correlate rule outcomes by rule_name/category/scope with outputs from AD/System/EventLog packs.",

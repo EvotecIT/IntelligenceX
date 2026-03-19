@@ -125,18 +125,16 @@ public sealed class DnsClientXQueryTool : DnsClientXToolBase, ITool {
             response = await ClientX.QueryDns(
                 request.Name,
                 recordType,
-                new DnsQueryOptions {
-                    DnsEndpoint = endpoint,
-                    DnsSelectionStrategy = DnsSelectionStrategy.First,
-                    TimeOutMilliseconds = request.TimeoutMs,
-                    RetryOnTransient = request.RetryOnTransient,
-                    MaxRetries = request.MaxRetries,
-                    RetryDelayMs = 200,
-                    RequestDnsSec = request.RequestDnsSec,
-                    ValidateDnsSec = request.ValidateDnsSec,
-                    TypedRecords = request.TypedRecords,
-                    ParseTypedTxtRecords = request.ParseTypedTxtRecords
-                },
+                endpoint,
+                DnsSelectionStrategy.First,
+                request.TimeoutMs,
+                request.RetryOnTransient,
+                request.MaxRetries,
+                200,
+                request.RequestDnsSec,
+                request.ValidateDnsSec,
+                request.TypedRecords,
+                request.ParseTypedTxtRecords,
                 cancellationToken);
         } catch (OperationCanceledException) {
             return ToolResultV2.Error(
@@ -165,7 +163,7 @@ public sealed class DnsClientXQueryTool : DnsClientXToolBase, ITool {
         var truncated = answersTruncated || authoritiesTruncated || additionalTruncated;
 
         if (response.ErrorCode == DnsQueryErrorCode.None
-            && DnsQueryDiagnostics.IsSuspiciousEmptySuccess(response)) {
+            && IsSuspiciousEmptySuccess(response)) {
             return ToolResultV2.Error(
                 errorCode: "query_failed",
                 error: "Resolver returned an empty response envelope without question/answer sections.",
@@ -305,6 +303,19 @@ public sealed class DnsClientXQueryTool : DnsClientXToolBase, ITool {
         }
 
         return rows;
+    }
+
+    private static bool IsSuspiciousEmptySuccess(DnsResponse? response) {
+        if (response is null
+            || response.ErrorCode != DnsQueryErrorCode.None
+            || response.Status != DnsResponseCode.NoError) {
+            return false;
+        }
+
+        return (response.Questions?.Length ?? 0) == 0
+               && (response.Answers?.Length ?? 0) == 0
+               && (response.Authorities?.Length ?? 0) == 0
+               && (response.Additional?.Length ?? 0) == 0;
     }
 #endif
 

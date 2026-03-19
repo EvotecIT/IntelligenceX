@@ -46,7 +46,7 @@ public static class EventLogContractCatalog {
     /// </summary>
     public static ToolSetupContract CreateChannelAccessSetup() {
         return ToolContractDefaults.CreateRequiredSetup(
-            setupToolName: "eventlog_channels_list",
+            setupToolName: "eventlog_connectivity_probe",
             requirementId: "eventlog_channel_access",
             requirementKind: ToolSetupRequirementKinds.Connectivity,
             setupHintKeys: SetupHintKeys);
@@ -114,6 +114,36 @@ public static class EventLogContractCatalog {
     }
 
     /// <summary>
+    /// Builds the standard EventLog probe handoff contract into safe live triage.
+    /// </summary>
+    public static ToolHandoffContract CreateConnectivityProbeHandoffContract() {
+        return ToolContractDefaults.CreateHandoff(new[] {
+            ToolContractDefaults.CreateRoute(
+                targetPackId: "eventlog",
+                targetToolName: "eventlog_top_events",
+                reason: "Promote a validated EventLog connectivity probe into a capped live triage follow-up using the same machine and requested log.",
+                targetRole: ToolRoutingTaxonomy.RoleOperational,
+                followUpKind: ToolHandoffFollowUpKinds.Investigation,
+                followUpPriority: ToolHandoffFollowUpPriorities.Normal,
+                bindings: new[] {
+                    ToolContractDefaults.CreateBinding("machine_name", "machine_name", isRequired: true),
+                    ToolContractDefaults.CreateBinding("requested_log_name", "log_name", isRequired: true)
+                }),
+            ToolContractDefaults.CreateRoute(
+                targetPackId: "eventlog",
+                targetToolName: "eventlog_live_query",
+                reason: "Promote a validated EventLog connectivity probe into a live log query using the same machine and requested log.",
+                targetRole: ToolRoutingTaxonomy.RoleOperational,
+                followUpKind: ToolHandoffFollowUpKinds.Investigation,
+                followUpPriority: ToolHandoffFollowUpPriorities.High,
+                bindings: new[] {
+                    ToolContractDefaults.CreateBinding("machine_name", "machine_name", isRequired: true),
+                    ToolContractDefaults.CreateBinding("requested_log_name", "log_name", isRequired: true)
+                })
+        });
+    }
+
+    /// <summary>
     /// Resolves the default EventLog handoff contract for a tool name when the tool does not declare one explicitly.
     /// </summary>
     public static ToolHandoffContract? CreateHandoff(string toolName) {
@@ -133,6 +163,10 @@ public static class EventLogContractCatalog {
             return CreateQueryHandoffContract();
         }
 
+        if (string.Equals(normalizedToolName, "eventlog_connectivity_probe", StringComparison.OrdinalIgnoreCase)) {
+            return CreateConnectivityProbeHandoffContract();
+        }
+
         return null;
     }
 
@@ -148,11 +182,14 @@ public static class EventLogContractCatalog {
         var supportsRetry = normalizedToolName.IndexOf("_query", StringComparison.OrdinalIgnoreCase) >= 0
                             || normalizedToolName.IndexOf("_find", StringComparison.OrdinalIgnoreCase) >= 0
                             || normalizedToolName.IndexOf("_top_events", StringComparison.OrdinalIgnoreCase) >= 0;
+        var recoveryToolNames = string.Equals(normalizedToolName, "eventlog_evtx_find", StringComparison.OrdinalIgnoreCase)
+            ? new[] { "eventlog_evtx_find" }
+            : new[] { "eventlog_connectivity_probe", "eventlog_channels_list" };
 
         return ToolContractDefaults.CreateRecovery(
             supportsTransientRetry: supportsRetry,
             maxRetryAttempts: supportsRetry ? 1 : 0,
             retryableErrorCodes: supportsRetry ? RetryableErrorCodes : Array.Empty<string>(),
-            recoveryToolNames: new[] { "eventlog_channels_list" });
+            recoveryToolNames: recoveryToolNames);
     }
 }

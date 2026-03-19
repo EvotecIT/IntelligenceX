@@ -7,6 +7,11 @@ namespace IntelligenceX.Chat.Abstractions.Policy;
 /// </summary>
 public sealed record SessionCapabilityAutonomySummaryDto {
     /// <summary>
+    /// Number of local-capable tools in the enabled pack set.
+    /// </summary>
+    public int LocalCapableToolCount { get; init; }
+
+    /// <summary>
     /// Number of remote-capable tools in the enabled pack set.
     /// </summary>
     public int RemoteCapableToolCount { get; init; }
@@ -42,6 +47,10 @@ public sealed record SessionCapabilityAutonomySummaryDto {
     /// </summary>
     public int WriteCapableToolCount { get; init; }
     /// <summary>
+    /// Number of governed-write tools in the enabled pack set.
+    /// </summary>
+    public int GovernedWriteToolCount { get; init; }
+    /// <summary>
     /// Number of authentication-required tools in the enabled pack set.
     /// </summary>
     public int AuthenticationRequiredToolCount { get; init; }
@@ -55,6 +64,10 @@ public sealed record SessionCapabilityAutonomySummaryDto {
     /// </summary>
     public int CrossPackHandoffToolCount { get; init; }
 
+    /// <summary>
+    /// Enabled pack ids that currently expose at least one local-capable tool.
+    /// </summary>
+    public string[] LocalCapablePackIds { get; init; } = Array.Empty<string>();
     /// <summary>
     /// Enabled pack ids that currently expose at least one remote-capable tool.
     /// </summary>
@@ -75,6 +88,10 @@ public sealed record SessionCapabilityAutonomySummaryDto {
     /// Enabled pack ids that currently expose at least one write-capable tool.
     /// </summary>
     public string[] WriteCapablePackIds { get; init; } = Array.Empty<string>();
+    /// <summary>
+    /// Enabled pack ids that currently expose at least one governed-write tool.
+    /// </summary>
+    public string[] GovernedWritePackIds { get; init; } = Array.Empty<string>();
     /// <summary>
     /// Enabled pack ids that currently expose at least one authentication-required tool.
     /// </summary>

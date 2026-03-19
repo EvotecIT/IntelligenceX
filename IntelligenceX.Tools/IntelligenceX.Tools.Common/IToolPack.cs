@@ -29,6 +29,17 @@ public interface IToolPackCatalogProvider {
 }
 
 /// <summary>
+/// Optional pack-owned planner guidance projection used by hosts to bootstrap planner-safe
+/// pack hints without hardcoding pack-specific recipes or probe choices in Chat.
+/// </summary>
+public interface IToolPackGuidanceProvider {
+    /// <summary>
+    /// Returns the normalized pack guidance published by this pack's <c>*_pack_info</c> tool.
+    /// </summary>
+    ToolPackInfoModel GetPackGuidance();
+}
+
+/// <summary>
 /// Optional runtime option key provider used to map host bootstrap option bags onto pack option instances.
 /// </summary>
 public interface IToolPackRuntimeOptionTarget {

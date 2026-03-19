@@ -61,6 +61,9 @@ public class ToolPackInfoContractTests {
             Assert.Equal(JsonValueKind.Object, autonomySummary.ValueKind);
             Assert.Equal(@case.ExpectedCatalog.Count, autonomySummary.GetProperty("total_tools").GetInt32());
             Assert.Equal(
+                CountExpectedLocalCapableTools(@case.ExpectedCatalog),
+                autonomySummary.GetProperty("local_capable_tools").GetInt32());
+            Assert.Equal(
                 CountExpectedRemoteCapableTools(@case.ExpectedCatalog),
                 autonomySummary.GetProperty("remote_capable_tools").GetInt32());
             Assert.Equal(
@@ -85,6 +88,9 @@ public class ToolPackInfoContractTests {
                 CountExpectedWriteCapableTools(@case.ExpectedCatalog),
                 autonomySummary.GetProperty("write_capable_tools").GetInt32());
             Assert.Equal(
+                CountExpectedGovernedWriteTools(@case.ExpectedCatalog),
+                autonomySummary.GetProperty("governed_write_tools").GetInt32());
+            Assert.Equal(
                 CountExpectedAuthenticationRequiredTools(@case.ExpectedCatalog),
                 autonomySummary.GetProperty("authentication_required_tools").GetInt32());
             Assert.Equal(
@@ -94,8 +100,14 @@ public class ToolPackInfoContractTests {
                 CountExpectedCrossPackHandoffTools(@case.ExpectedCatalog),
                 autonomySummary.GetProperty("cross_pack_handoff_tools").GetInt32());
             Assert.Equal(
+                ReadExpectedLocalCapableToolNames(@case.ExpectedCatalog),
+                ReadStringArray(autonomySummary.GetProperty("local_capable_tool_names")));
+            Assert.Equal(
                 ReadExpectedRemoteCapableToolNames(@case.ExpectedCatalog),
                 ReadStringArray(autonomySummary.GetProperty("remote_capable_tool_names")));
+            Assert.Equal(
+                ReadExpectedGovernedWriteToolNames(@case.ExpectedCatalog),
+                ReadStringArray(autonomySummary.GetProperty("governed_write_tool_names")));
             Assert.Equal(
                 ReadExpectedTargetScopedToolNames(@case.ExpectedCatalog),
                 ReadStringArray(autonomySummary.GetProperty("target_scoped_tool_names")));
@@ -129,6 +141,44 @@ public class ToolPackInfoContractTests {
             Assert.Equal(
                 ReadExpectedCrossPackTargetPacks(@case.ExpectedCatalog),
                 ReadStringArray(autonomySummary.GetProperty("cross_pack_target_packs")));
+
+            var runtimeCapabilities = root.GetProperty("runtime_capabilities");
+            Assert.Equal(JsonValueKind.Object, runtimeCapabilities.ValueKind);
+            Assert.Equal(
+                CountExpectedLocalCapableTools(@case.ExpectedCatalog) > 0,
+                runtimeCapabilities.GetProperty("supports_local_execution").GetBoolean());
+            Assert.Equal(
+                CountExpectedRemoteCapableTools(@case.ExpectedCatalog) > 0,
+                runtimeCapabilities.GetProperty("supports_remote_execution").GetBoolean());
+            Assert.Equal(
+                CountExpectedTargetScopedTools(@case.ExpectedCatalog) > 0,
+                runtimeCapabilities.GetProperty("supports_target_scoping").GetBoolean());
+            Assert.Equal(
+                CountExpectedRemoteHostTargetingTools(@case.ExpectedCatalog) > 0,
+                runtimeCapabilities.GetProperty("supports_remote_host_targeting").GetBoolean());
+            Assert.Equal(
+                CountExpectedEnvironmentDiscoverTools(@case.ExpectedCatalog) > 0,
+                runtimeCapabilities.GetProperty("supports_environment_discovery").GetBoolean());
+            Assert.Equal(
+                CountExpectedGovernedWriteTools(@case.ExpectedCatalog) > 0,
+                runtimeCapabilities.GetProperty("supports_governed_writes").GetBoolean());
+            Assert.Equal(
+                CountExpectedAuthenticationRequiredTools(@case.ExpectedCatalog) > 0
+                || @case.ExpectedCatalog.Any(static entry =>
+                    entry.IsAuthenticationAware
+                    || entry.Traits.SupportsAuthentication
+                    || entry.AuthenticationArguments.Count > 0),
+                runtimeCapabilities.GetProperty("supports_authentication").GetBoolean());
+            Assert.Equal(
+                CountExpectedProbeCapableTools(@case.ExpectedCatalog) > 0
+                || @case.ExpectedCatalog.Any(static entry => !string.IsNullOrWhiteSpace(entry.ProbeToolName)),
+                runtimeCapabilities.GetProperty("supports_connectivity_probe").GetBoolean());
+            Assert.Equal(
+                ReadExpectedTargetScopeArguments(@case.ExpectedCatalog),
+                ReadStringArray(runtimeCapabilities.GetProperty("target_scope_arguments")));
+            Assert.Equal(
+                ReadExpectedRemoteHostArguments(@case.ExpectedCatalog),
+                ReadStringArray(runtimeCapabilities.GetProperty("remote_host_arguments")));
 
             var expectedCatalogByName = @case.ExpectedCatalog.ToDictionary(
                 static x => x.Name,
@@ -302,6 +352,32 @@ public class ToolPackInfoContractTests {
                 }
             }
 
+            var recommendedRecipes = root.GetProperty("recommended_recipes");
+            Assert.Equal(JsonValueKind.Array, recommendedRecipes.ValueKind);
+            foreach (var recipe in recommendedRecipes.EnumerateArray()) {
+                var recipeId = recipe.GetProperty("id").GetString() ?? string.Empty;
+                var summary = recipe.GetProperty("summary").GetString() ?? string.Empty;
+                Assert.False(string.IsNullOrWhiteSpace(recipeId));
+                Assert.False(string.IsNullOrWhiteSpace(summary));
+
+                if (recipe.TryGetProperty("when_to_use", out var whenToUse) && whenToUse.ValueKind != JsonValueKind.Null) {
+                    Assert.False(string.IsNullOrWhiteSpace(whenToUse.GetString()));
+                }
+
+                var recipeSteps = recipe.GetProperty("steps");
+                Assert.Equal(JsonValueKind.Array, recipeSteps.ValueKind);
+                Assert.True(recipeSteps.GetArrayLength() > 0);
+                foreach (var step in recipeSteps.EnumerateArray()) {
+                    var goal = step.GetProperty("goal").GetString() ?? string.Empty;
+                    Assert.False(string.IsNullOrWhiteSpace(goal));
+                    var suggestedTools = ReadStringArray(step.GetProperty("suggested_tools"));
+                    Assert.True(suggestedTools.Length > 0);
+                }
+
+                var verificationTools = ReadStringArray(recipe.GetProperty("verification_tools"));
+                Assert.True(verificationTools.Length > 0);
+            }
+
             if (string.Equals(@case.Pack, "active_directory", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(@case.Pack, "eventlog", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(@case.Pack, "domaindetective", StringComparison.OrdinalIgnoreCase)
@@ -371,6 +447,156 @@ public class ToolPackInfoContractTests {
         Assert.Equal(JsonValueKind.Object, patchFollowUp.ValueKind);
         Assert.Contains("system_patch_compliance", ReadStringArray(patchFollowUp.GetProperty("source_tools")), StringComparer.OrdinalIgnoreCase);
         Assert.Contains("ad_object_resolve", ReadStringArray(patchFollowUp.GetProperty("target_tools")), StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task RuntimeGuidancePacks_ShouldExposeRuntimeCapabilityGuidance() {
+        await AssertRuntimeCapabilityGuidanceAsync(
+            tool: new AdPackInfoTool(new ActiveDirectoryToolOptions()),
+            expectedEntryTools: new[] { "ad_environment_discover", "ad_scope_discovery", "ad_forest_discover" },
+            expectedProbeTools: new[] { "ad_connectivity_probe", "ad_monitoring_probe_catalog", "ad_monitoring_probe_run" },
+            expectedPrerequisiteSnippet: "AllowedMonitoringRoots",
+            expectedProbeFreshnessWindowSeconds: 600,
+            expectedSetupFreshnessWindowSeconds: 1800,
+            expectedRecipeFreshnessWindowSeconds: 900);
+
+        await AssertRuntimeCapabilityGuidanceAsync(
+            tool: new AdLifecyclePackInfoTool(new ActiveDirectoryToolOptions()),
+            expectedEntryTools: new[] { "ad_environment_discover", "ad_user_lifecycle", "ad_group_lifecycle", "ad_ou_lifecycle" },
+            expectedProbeTools: Array.Empty<string>(),
+            expectedPrerequisiteSnippet: "apply=false");
+
+        await AssertRuntimeCapabilityGuidanceAsync(
+            tool: new EventLogPackInfoTool(new EventLogToolOptions()),
+            expectedEntryTools: new[] { "eventlog_channels_list", "eventlog_top_events", "eventlog_live_query" },
+            expectedProbeTools: new[] { "eventlog_connectivity_probe" },
+            expectedPrerequisiteSnippet: "AllowedRoots",
+            expectedProbeFreshnessWindowSeconds: 300,
+            expectedSetupFreshnessWindowSeconds: 900,
+            expectedRecipeFreshnessWindowSeconds: 300);
+
+        await AssertRuntimeCapabilityGuidanceAsync(
+            tool: new SystemPackInfoTool(new SystemToolOptions()),
+            expectedEntryTools: new[] { "system_info", "system_hardware_summary", "system_metrics_summary" },
+            expectedProbeTools: new[] { "system_connectivity_probe" },
+            expectedPrerequisiteSnippet: "computer_name",
+            expectedProbeFreshnessWindowSeconds: 600,
+            expectedSetupFreshnessWindowSeconds: 1800,
+            expectedRecipeFreshnessWindowSeconds: 900);
+
+        await AssertRuntimeCapabilityGuidanceAsync(
+            tool: new DnsClientXPackInfoTool(new DnsClientXToolOptions()),
+            expectedEntryTools: new[] { "dnsclientx_query" },
+            expectedProbeTools: new[] { "dnsclientx_ping" },
+            expectedPrerequisiteSnippet: "endpoint",
+            expectedProbeFreshnessWindowSeconds: 300,
+            expectedSetupFreshnessWindowSeconds: 900,
+            expectedRecipeFreshnessWindowSeconds: 300);
+
+        await AssertRuntimeCapabilityGuidanceAsync(
+            tool: new DomainDetectivePackInfoTool(new DomainDetectiveToolOptions()),
+            expectedEntryTools: new[] { "domaindetective_checks_catalog", "domaindetective_domain_summary" },
+            expectedProbeTools: new[] { "domaindetective_network_probe" },
+            expectedPrerequisiteSnippet: "checks[]",
+            expectedProbeFreshnessWindowSeconds: 300,
+            expectedSetupFreshnessWindowSeconds: 900,
+            expectedRecipeFreshnessWindowSeconds: 600);
+
+        await AssertRuntimeCapabilityGuidanceAsync(
+            tool: new TestimoXPackInfoTool(new TestimoXToolOptions()),
+            expectedEntryTools: new[] { "testimox_profiles_list", "testimox_rule_inventory", "testimox_rules_list" },
+            expectedProbeTools: Array.Empty<string>(),
+            expectedPrerequisiteSnippet: "include_domains",
+            expectedProbeFreshnessWindowSeconds: 900,
+            expectedSetupFreshnessWindowSeconds: 1800,
+            expectedRecipeFreshnessWindowSeconds: 900);
+
+        await AssertRuntimeCapabilityGuidanceAsync(
+            tool: new TestimoXAnalyticsPackInfoTool(new TestimoXToolOptions()),
+            expectedEntryTools: new[] { "testimox_analytics_diagnostics_get", "testimox_dashboard_autogenerate_status_get", "testimox_history_query" },
+            expectedProbeTools: new[] { "testimox_probe_index_status", "testimox_availability_rollup_status_get" },
+            expectedPrerequisiteSnippet: "AllowedHistoryRoots",
+            expectedProbeFreshnessWindowSeconds: 300,
+            expectedSetupFreshnessWindowSeconds: 900,
+            expectedRecipeFreshnessWindowSeconds: 600);
+    }
+
+    [Fact]
+    public async Task ADLifecyclePackInfo_ShouldExposeGovernedLifecycleRecipes() {
+        var json = await new AdLifecyclePackInfoTool(new ActiveDirectoryToolOptions())
+            .InvokeAsync(arguments: null, cancellationToken: CancellationToken.None);
+        using var document = JsonDocument.Parse(json);
+        var recipes = document.RootElement.GetProperty("recommended_recipes");
+
+        Assert.Equal(
+            new[] {
+                "joiner_onboarding",
+                "leaver_offboarding",
+                "mover_access_transition",
+                "quarantine_ou_preparation"
+            },
+            recipes
+                .EnumerateArray()
+                .Select(static node => node.GetProperty("id").GetString())
+                .Where(static id => !string.IsNullOrWhiteSpace(id))
+                .Select(static id => id!)
+                .OrderBy(static id => id, StringComparer.OrdinalIgnoreCase));
+
+        var joiner = recipes
+            .EnumerateArray()
+            .First(node => string.Equals(node.GetProperty("id").GetString(), "joiner_onboarding", StringComparison.OrdinalIgnoreCase));
+        var joinerSteps = joiner.GetProperty("steps").EnumerateArray().ToArray();
+        Assert.True(joinerSteps.Length >= 3);
+        Assert.Contains("ad_user_lifecycle", ReadStringArray(joinerSteps[1].GetProperty("suggested_tools")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("ad_object_get", ReadStringArray(joiner.GetProperty("verification_tools")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("ad_object_resolve", ReadStringArray(joiner.GetProperty("verification_tools")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("ad_user_groups_resolved", ReadStringArray(joiner.GetProperty("verification_tools")), StringComparer.OrdinalIgnoreCase);
+
+        var quarantine = recipes
+            .EnumerateArray()
+            .First(node => string.Equals(node.GetProperty("id").GetString(), "quarantine_ou_preparation", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("ad_ou_lifecycle", quarantine.ToString(), StringComparison.OrdinalIgnoreCase);
+
+        var handoffs = document.RootElement.GetProperty("entity_handoffs");
+        Assert.Contains(
+            handoffs.EnumerateArray().Select(static node => node.GetProperty("id").GetString()),
+            static id => string.Equals(id, "computer_lifecycle_to_host_followup", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(
+            handoffs.EnumerateArray().Select(static node => node.GetProperty("id").GetString()),
+            static id => string.Equals(id, "computer_lifecycle_to_eventlog_followup", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(
+            handoffs.EnumerateArray().Select(static node => node.GetProperty("id").GetString()),
+            static id => string.Equals(id, "group_lifecycle_to_membership_verification", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(
+            handoffs.EnumerateArray().Select(static node => node.GetProperty("id").GetString()),
+            static id => string.Equals(id, "lifecycle_to_readonly_verification", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task ADSystemAndEventLogPackInfo_ShouldExposeOperationalRecipes() {
+        await AssertRecipeIdsAsync(
+            tool: new AdPackInfoTool(new ActiveDirectoryToolOptions()),
+            expectedRecipeIds: new[] {
+                "authoritative_last_logon_investigation",
+                "dc_runtime_health_followup",
+                "forest_scope_bootstrap"
+            });
+
+        await AssertRecipeIdsAsync(
+            tool: new EventLogPackInfoTool(new EventLogToolOptions()),
+            expectedRecipeIds: new[] {
+                "event_host_followup",
+                "live_authentication_triage",
+                "offline_evtx_timeline"
+            });
+
+        await AssertRecipeIdsAsync(
+            tool: new SystemPackInfoTool(new SystemToolOptions()),
+            expectedRecipeIds: new[] {
+                "host_security_posture_review",
+                "patch_exposure_review",
+                "remote_host_runtime_triage"
+            });
     }
 
     [Fact]
@@ -621,7 +847,7 @@ public class ToolPackInfoContractTests {
 
         var setup = timelineEntry.GetProperty("setup");
         Assert.True(setup.GetProperty("is_setup_aware").GetBoolean());
-        Assert.Equal("eventlog_channels_list", setup.GetProperty("setup_tool_name").GetString());
+        Assert.Equal("eventlog_connectivity_probe", setup.GetProperty("setup_tool_name").GetString());
 
         var handoff = timelineEntry.GetProperty("handoff");
         Assert.True(handoff.GetProperty("is_handoff_aware").GetBoolean());
@@ -632,6 +858,7 @@ public class ToolPackInfoContractTests {
 
         var recovery = timelineEntry.GetProperty("recovery");
         Assert.True(recovery.GetProperty("is_recovery_aware").GetBoolean());
+        Assert.Contains("eventlog_connectivity_probe", ReadStringArray(recovery.GetProperty("recovery_tool_names")), StringComparer.OrdinalIgnoreCase);
         Assert.Contains("eventlog_channels_list", ReadStringArray(recovery.GetProperty("recovery_tool_names")), StringComparer.OrdinalIgnoreCase);
 
         var autonomySummary = root.GetProperty("autonomy_summary");
@@ -889,6 +1116,12 @@ public class ToolPackInfoContractTests {
             || ToolExecutionScopes.IsRemoteCapable(entry.Traits.ExecutionScope));
     }
 
+    private static int CountExpectedLocalCapableTools(IReadOnlyList<ToolPackToolCatalogEntryModel> catalog) {
+        return catalog.Count(static entry =>
+            entry.Traits.SupportsLocalExecution
+            || !string.Equals(entry.Traits.ExecutionScope, "remote_only", StringComparison.OrdinalIgnoreCase));
+    }
+
     private static int CountExpectedTargetScopedTools(IReadOnlyList<ToolPackToolCatalogEntryModel> catalog) {
         return catalog.Count(static entry =>
             entry.Traits.SupportsTargetScoping
@@ -921,6 +1154,12 @@ public class ToolPackInfoContractTests {
         return catalog.Count(static entry => entry.IsWriteCapable);
     }
 
+    private static int CountExpectedGovernedWriteTools(IReadOnlyList<ToolPackToolCatalogEntryModel> catalog) {
+        return catalog.Count(static entry =>
+            entry.RequiresWriteGovernance
+            || !string.IsNullOrWhiteSpace(entry.WriteGovernanceContractId));
+    }
+
     private static int CountExpectedAuthenticationRequiredTools(IReadOnlyList<ToolPackToolCatalogEntryModel> catalog) {
         return catalog.Count(static entry => entry.RequiresAuthentication);
     }
@@ -934,12 +1173,54 @@ public class ToolPackInfoContractTests {
             entry.Handoff.Routes.Any(static route => !string.IsNullOrWhiteSpace(route.TargetPackId)));
     }
 
+    private static string[] ReadExpectedTargetScopeArguments(IReadOnlyList<ToolPackToolCatalogEntryModel> catalog) {
+        return catalog
+            .SelectMany(static entry => entry.Traits.TargetScopeArguments)
+            .Where(static name => !string.IsNullOrWhiteSpace(name))
+            .Select(static name => name.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(static name => name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static string[] ReadExpectedRemoteHostArguments(IReadOnlyList<ToolPackToolCatalogEntryModel> catalog) {
+        return catalog
+            .SelectMany(static entry => entry.Traits.RemoteHostArguments)
+            .Where(static name => !string.IsNullOrWhiteSpace(name))
+            .Select(static name => name.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(static name => name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
     private static string[] ReadExpectedRemoteCapableToolNames(IReadOnlyList<ToolPackToolCatalogEntryModel> catalog) {
         return catalog
             .Where(static entry =>
                 entry.Traits.SupportsRemoteHostTargeting
                 || entry.Traits.RemoteHostArguments.Count > 0
                 || ToolExecutionScopes.IsRemoteCapable(entry.Traits.ExecutionScope))
+            .Select(static entry => entry.Name)
+            .Where(static name => !string.IsNullOrWhiteSpace(name))
+            .OrderBy(static name => name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static string[] ReadExpectedLocalCapableToolNames(IReadOnlyList<ToolPackToolCatalogEntryModel> catalog) {
+        return catalog
+            .Where(static entry =>
+                entry.Traits.SupportsLocalExecution
+                || !string.Equals(entry.Traits.ExecutionScope, "remote_only", StringComparison.OrdinalIgnoreCase))
+            .Select(static entry => entry.Name)
+            .Where(static name => !string.IsNullOrWhiteSpace(name))
+            .OrderBy(static name => name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static string[] ReadExpectedGovernedWriteToolNames(IReadOnlyList<ToolPackToolCatalogEntryModel> catalog) {
+        return catalog
+            .Where(static entry =>
+                entry.RequiresWriteGovernance
+                || !string.IsNullOrWhiteSpace(entry.WriteGovernanceContractId))
             .Select(static entry => entry.Name)
             .Where(static name => !string.IsNullOrWhiteSpace(name))
             .OrderBy(static name => name, StringComparer.OrdinalIgnoreCase)
@@ -1053,6 +1334,74 @@ public class ToolPackInfoContractTests {
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(static packId => packId, StringComparer.OrdinalIgnoreCase)
             .ToArray();
+    }
+
+    private static async Task AssertRuntimeCapabilityGuidanceAsync(
+        ITool tool,
+        string[] expectedEntryTools,
+        string[] expectedProbeTools,
+        string expectedPrerequisiteSnippet,
+        int? expectedProbeFreshnessWindowSeconds = null,
+        int? expectedSetupFreshnessWindowSeconds = null,
+        int? expectedRecipeFreshnessWindowSeconds = null) {
+        var json = await tool.InvokeAsync(arguments: null, cancellationToken: CancellationToken.None);
+        using var document = JsonDocument.Parse(json);
+        var runtimeCapabilities = document.RootElement.GetProperty("runtime_capabilities");
+
+        Assert.Equal(expectedEntryTools, ReadStringArrayPreserveOrder(runtimeCapabilities.GetProperty("preferred_entry_tools")));
+        Assert.Equal(expectedProbeTools, ReadStringArrayPreserveOrder(runtimeCapabilities.GetProperty("preferred_probe_tools")));
+
+        var prerequisites = ReadStringArrayPreserveOrder(runtimeCapabilities.GetProperty("runtime_prerequisites"));
+        Assert.NotEmpty(prerequisites);
+        Assert.Contains(
+            prerequisites,
+            item => item.Contains(expectedPrerequisiteSnippet, StringComparison.OrdinalIgnoreCase));
+
+        AssertOptionalIntProperty(
+            runtimeCapabilities,
+            "probe_helper_freshness_window_seconds",
+            expectedProbeFreshnessWindowSeconds);
+        AssertOptionalIntProperty(
+            runtimeCapabilities,
+            "setup_helper_freshness_window_seconds",
+            expectedSetupFreshnessWindowSeconds);
+        AssertOptionalIntProperty(
+            runtimeCapabilities,
+            "recipe_helper_freshness_window_seconds",
+            expectedRecipeFreshnessWindowSeconds);
+
+        var notes = runtimeCapabilities.GetProperty("notes").GetString();
+        Assert.False(string.IsNullOrWhiteSpace(notes));
+    }
+
+    private static void AssertOptionalIntProperty(JsonElement parent, string propertyName, int? expectedValue) {
+        if (expectedValue.HasValue) {
+            Assert.True(parent.TryGetProperty(propertyName, out var property));
+            Assert.Equal(JsonValueKind.Number, property.ValueKind);
+            Assert.Equal(expectedValue.Value, property.GetInt32());
+            return;
+        }
+
+        if (!parent.TryGetProperty(propertyName, out var optionalProperty)) {
+            return;
+        }
+
+        Assert.Equal(JsonValueKind.Null, optionalProperty.ValueKind);
+    }
+
+    private static async Task AssertRecipeIdsAsync(ITool tool, string[] expectedRecipeIds) {
+        var json = await tool.InvokeAsync(arguments: null, cancellationToken: CancellationToken.None);
+        using var document = JsonDocument.Parse(json);
+        var recipes = document.RootElement.GetProperty("recommended_recipes");
+
+        Assert.Equal(
+            expectedRecipeIds.OrderBy(static id => id, StringComparer.OrdinalIgnoreCase),
+            recipes
+                .EnumerateArray()
+                .Select(static node => node.GetProperty("id").GetString())
+                .Where(static id => !string.IsNullOrWhiteSpace(id))
+                .Select(static id => id!)
+                .OrderBy(static id => id, StringComparer.OrdinalIgnoreCase));
     }
 
     private sealed record PackCase(

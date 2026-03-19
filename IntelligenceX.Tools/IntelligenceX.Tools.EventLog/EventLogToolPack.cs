@@ -7,7 +7,7 @@ namespace IntelligenceX.Tools.EventLog;
 /// <summary>
 /// Event log tool pack (self-describing + self-registering).
 /// </summary>
-public sealed class EventLogToolPack : IToolPack, IToolPackCatalogProvider {
+public sealed class EventLogToolPack : IToolPack, IToolPackCatalogProvider, IToolPackGuidanceProvider {
     private readonly EventLogToolOptions _options;
 
     /// <summary>
@@ -23,6 +23,7 @@ public sealed class EventLogToolPack : IToolPack, IToolPackCatalogProvider {
     public ToolPackDescriptor Descriptor { get; } = new() {
         Id = "eventlog",
         Name = "Event Log (EventViewerX)",
+        Aliases = new[] { "eventviewerx", "event_log" },
         Tier = ToolCapabilityTier.SensitiveRead,
         IsDangerous = false,
         Description = "Windows Event Log and EVTX analysis (restricted to AllowedRoots for EVTX file access).",
@@ -35,8 +36,8 @@ public sealed class EventLogToolPack : IToolPack, IToolPackCatalogProvider {
             "evtx",
             "forensics",
             "kerberos",
-            "local_analysis",
-            "remote_analysis",
+            ToolPackCapabilityTags.LocalAnalysis,
+            ToolPackCapabilityTags.RemoteAnalysis,
             "security_events"
         },
         SearchTokens = new[] {
@@ -63,5 +64,10 @@ public sealed class EventLogToolPack : IToolPack, IToolPackCatalogProvider {
     /// <inheritdoc />
     public IReadOnlyList<ToolPackToolCatalogEntryModel> GetToolCatalog() {
         return ToolRegistryEventLogExtensions.GetRegisteredToolCatalog(_options);
+    }
+
+    /// <inheritdoc />
+    public ToolPackInfoModel GetPackGuidance() {
+        return EventLogPackInfoTool.BuildGuidance(_options);
     }
 }

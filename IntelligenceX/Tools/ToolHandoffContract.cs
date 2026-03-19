@@ -80,6 +80,11 @@ public sealed class ToolHandoffRoute {
     public IReadOnlyList<ToolHandoffBinding> Bindings { get; set; } = Array.Empty<ToolHandoffBinding>();
 
     /// <summary>
+    /// Optional route conditions that must match before this handoff is eligible.
+    /// </summary>
+    public IReadOnlyList<ToolHandoffCondition> Conditions { get; set; } = Array.Empty<ToolHandoffCondition>();
+
+    /// <summary>
     /// Optional short reason describing when this handoff is appropriate.
     /// </summary>
     public string Reason { get; set; } = string.Empty;
@@ -129,6 +134,15 @@ public sealed class ToolHandoffRoute {
 
             binding.Validate();
         }
+
+        for (var i = 0; i < Conditions.Count; i++) {
+            var condition = Conditions[i];
+            if (condition is null) {
+                throw new InvalidOperationException("Conditions cannot contain null entries.");
+            }
+
+            condition.Validate();
+        }
     }
 }
 
@@ -166,6 +180,34 @@ public sealed class ToolHandoffBinding {
 
         if (string.IsNullOrWhiteSpace(TargetArgument)) {
             throw new InvalidOperationException("TargetArgument is required for handoff bindings.");
+        }
+    }
+}
+
+/// <summary>
+/// Typed equality condition that must match before a route can be prepared.
+/// </summary>
+public sealed class ToolHandoffCondition {
+    /// <summary>
+    /// Source field name produced by current tool output, metadata, or request context.
+    /// </summary>
+    public string SourceField { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Expected normalized value for the source field.
+    /// </summary>
+    public string ExpectedValue { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Validates the condition descriptor.
+    /// </summary>
+    public void Validate() {
+        if (string.IsNullOrWhiteSpace(SourceField)) {
+            throw new InvalidOperationException("SourceField is required for handoff conditions.");
+        }
+
+        if (string.IsNullOrWhiteSpace(ExpectedValue)) {
+            throw new InvalidOperationException("ExpectedValue is required for handoff conditions.");
         }
     }
 }

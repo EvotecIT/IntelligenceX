@@ -422,6 +422,14 @@ public static partial class ToolPackBootstrap {
             return true;
         }
 
+        if (TryResolveTrustedToolAssemblyPathFromWorkspaceProjectOutputs(
+                assemblyName,
+                typeof(ToolPackBootstrap).Assembly,
+                out var workspaceProjectOutputPath)) {
+            trustedAssemblyPath = workspaceProjectOutputPath;
+            return true;
+        }
+
         return false;
     }
 
@@ -511,6 +519,88 @@ public static partial class ToolPackBootstrap {
         }
 
         return false;
+    }
+
+    private static bool TryResolveTrustedToolAssemblyPathFromWorkspaceProjectOutputs(
+        AssemblyName assemblyName,
+        Assembly bootstrapAssembly,
+        out string trustedAssemblyPath) {
+        trustedAssemblyPath = string.Empty;
+        var assemblyNameValue = (assemblyName.Name ?? string.Empty).Trim();
+        if (assemblyNameValue.Length == 0) {
+            return false;
+        }
+
+        var repoRoot = TryFindWorkspaceRepoRoot(bootstrapAssembly.Location);
+        if (string.IsNullOrWhiteSpace(repoRoot)) {
+            return false;
+        }
+
+        var projectDirectory = Path.Combine(repoRoot, "IntelligenceX.Tools", assemblyNameValue);
+        if (!Directory.Exists(projectDirectory)) {
+            return false;
+        }
+
+        var fileName = assemblyNameValue + ".dll";
+        IEnumerable<string> candidatePaths;
+        try {
+            candidatePaths = Directory.EnumerateFiles(projectDirectory, fileName, SearchOption.AllDirectories)
+                .Where(static path => path.IndexOf($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase) >= 0
+                                      || path.IndexOf($"{Path.AltDirectorySeparatorChar}bin{Path.AltDirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase) >= 0)
+                .Where(static path => path.IndexOf($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase) < 0
+                                      && path.IndexOf($"{Path.AltDirectorySeparatorChar}obj{Path.AltDirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase) < 0)
+                .Select(Path.GetFullPath)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderByDescending(static path => path.IndexOf($"{Path.DirectorySeparatorChar}Release{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase) >= 0
+                                                || path.IndexOf($"{Path.AltDirectorySeparatorChar}Release{Path.AltDirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase) >= 0)
+                .ThenByDescending(static path => path.IndexOf("net10.0", StringComparison.OrdinalIgnoreCase) >= 0)
+                .ThenByDescending(static path => path.IndexOf("net9.0", StringComparison.OrdinalIgnoreCase) >= 0)
+                .ThenByDescending(static path => path.IndexOf("net8.0", StringComparison.OrdinalIgnoreCase) >= 0);
+        } catch (Exception) {
+            return false;
+        }
+
+        foreach (var candidatePath in candidatePaths) {
+            try {
+                var candidateAssemblyName = AssemblyName.GetAssemblyName(candidatePath);
+                if (!string.Equals(candidateAssemblyName.Name, assemblyNameValue, StringComparison.OrdinalIgnoreCase)) {
+                    continue;
+                }
+
+                trustedAssemblyPath = candidatePath;
+                return true;
+            } catch (Exception) {
+                // Ignore malformed candidate outputs and continue scanning known project outputs.
+            }
+        }
+
+        return false;
+    }
+
+    private static string TryFindWorkspaceRepoRoot(string? bootstrapAssemblyPath) {
+        if (string.IsNullOrWhiteSpace(bootstrapAssemblyPath)) {
+            return string.Empty;
+        }
+
+        DirectoryInfo? directory;
+        try {
+            var fullAssemblyPath = Path.GetFullPath(bootstrapAssemblyPath);
+            directory = new FileInfo(fullAssemblyPath).Directory;
+        } catch (Exception) {
+            return string.Empty;
+        }
+
+        while (directory is not null) {
+            var solutionPath = Path.Combine(directory.FullName, "IntelligenceX.sln");
+            var toolsDirectory = Path.Combine(directory.FullName, "IntelligenceX.Tools");
+            if (File.Exists(solutionPath) && Directory.Exists(toolsDirectory)) {
+                return directory.FullName;
+            }
+
+            directory = directory.Parent;
+        }
+
+        return string.Empty;
     }
 
     private static IReadOnlyList<Type> EnumerateLoadableTypes(Assembly assembly, Action<string>? onWarning) {

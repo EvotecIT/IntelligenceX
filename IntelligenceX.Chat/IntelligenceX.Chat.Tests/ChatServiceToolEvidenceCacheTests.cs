@@ -104,7 +104,7 @@ public sealed class ChatServiceToolEvidenceCacheTests {
             new ToolCallDto {
                 CallId = "call-1",
                 Name = "eventlog_channels_list",
-                ArgumentsJson = """{"machine_name":"srv-eventlog.contoso.com"}"""
+                ArgumentsJson = """{"machine_name":"srv-cached.contoso.com"}"""
             }
         };
         var outputs = new[] {
@@ -112,7 +112,7 @@ public sealed class ChatServiceToolEvidenceCacheTests {
                 CallId = "call-1",
                 Ok = true,
                 Output = """{"ok":true,"channels":["System"]}""",
-                SummaryMarkdown = "Event log channels are reachable on srv-eventlog.contoso.com."
+                SummaryMarkdown = "Event log channels are reachable on srv-cached.contoso.com."
             }
         };
 

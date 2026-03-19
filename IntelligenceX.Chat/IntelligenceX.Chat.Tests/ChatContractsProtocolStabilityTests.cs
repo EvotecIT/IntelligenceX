@@ -239,6 +239,8 @@ public sealed class ChatContractsProtocolStabilityTests {
                     IsPackInfoTool = false,
                     IsEnvironmentDiscoverTool = true,
                     IsWriteCapable = false,
+                    RequiresWriteGovernance = false,
+                    WriteGovernanceContractId = null,
                     RequiresAuthentication = true,
                     AuthenticationContractId = "ix.auth.runtime.v1",
                     AuthenticationArguments = new[] { "machine_name" },
@@ -299,6 +301,8 @@ public sealed class ChatContractsProtocolStabilityTests {
         Assert.Equal("ix.tool-execution.v1", tool.ExecutionContractId);
         Assert.False(tool.IsPackInfoTool);
         Assert.True(tool.IsEnvironmentDiscoverTool);
+        Assert.False(tool.RequiresWriteGovernance);
+        Assert.Null(tool.WriteGovernanceContractId);
         Assert.True(tool.RequiresAuthentication);
         Assert.Equal("ix.auth.runtime.v1", tool.AuthenticationContractId);
         Assert.Equal(new[] { "machine_name" }, tool.AuthenticationArguments);

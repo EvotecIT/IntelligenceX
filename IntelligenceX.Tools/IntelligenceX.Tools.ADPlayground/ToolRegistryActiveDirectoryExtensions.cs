@@ -46,6 +46,7 @@ public static class ToolRegistryActiveDirectoryExtensions {
 
     private static IEnumerable<ITool> CreateCoreTools(ActiveDirectoryToolOptions options) {
         yield return new AdPackInfoTool(options);
+        yield return new AdConnectivityProbeTool(options);
         yield return new AdEnvironmentDiscoverTool(options);
         yield return new AdScopeDiscoveryTool(options);
         yield return new AdForestDiscoverTool(options);
@@ -170,6 +171,7 @@ public static class ToolRegistryActiveDirectoryExtensions {
         yield return new AdSearchTool(options);
         yield return new AdGroupMembersTool(options);
         yield return new AdGroupMembersResolvedTool(options);
+        yield return new AdUserGroupsResolvedTool(options);
         yield return new AdUsersExpiredTool(options);
     }
 }

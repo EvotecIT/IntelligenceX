@@ -17,6 +17,16 @@ public sealed record SessionCapabilityBackgroundSchedulerDto {
     public bool SupportsPersistentQueue { get; init; }
 
     /// <summary>
+    /// Normalized persisted runtime-store load state.
+    /// </summary>
+    public string RuntimeStoreLoadState { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Indicates whether persisted runtime-store rehydration is deferred due to transient lock contention.
+    /// </summary>
+    public bool RuntimeStoreRehydratePending { get; init; }
+
+    /// <summary>
     /// Indicates whether the runtime can auto-replay safe read-only follow-up work.
     /// </summary>
     public bool SupportsReadOnlyAutoReplay { get; init; }
@@ -230,6 +240,26 @@ public sealed record SessionCapabilityBackgroundSchedulerDto {
     /// Best-effort UTC ticks of the last non-success outcome.
     /// </summary>
     public long LastFailureUtcTicks { get; init; }
+
+    /// <summary>
+    /// Indicates whether a recent adaptive-idle decision is still active for the current scheduler poll window.
+    /// </summary>
+    public bool AdaptiveIdleActive { get; init; }
+
+    /// <summary>
+    /// Best-effort UTC ticks when the scheduler last shortened its idle poll due to fresh reused prerequisite evidence.
+    /// </summary>
+    public long LastAdaptiveIdleUtcTicks { get; init; }
+
+    /// <summary>
+    /// Poll delay selected for the most recent adaptive-idle decision.
+    /// </summary>
+    public int LastAdaptiveIdleDelaySeconds { get; init; }
+
+    /// <summary>
+    /// Normalized reason recorded for the most recent adaptive-idle decision.
+    /// </summary>
+    public string LastAdaptiveIdleReason { get; init; } = string.Empty;
 
     /// <summary>
     /// Total successful background executions observed in this runtime.

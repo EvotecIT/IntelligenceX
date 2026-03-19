@@ -44,11 +44,23 @@ public sealed class SystemPackInfoTool : SystemToolBase, ITool {
         _ = context;
         cancellationToken.ThrowIfCancellationRequested();
 
-        var root = ToolPackGuidance.Create(
+        var root = BuildGuidance(Options);
+
+        var summary = ToolMarkdown.SummaryText(
+            title: "System Pack",
+            "Use raw payload fields for reasoning and correlation.",
+            "Use `*_view` fields only for presentation filtering/sorting.");
+
+        return Task.FromResult(ToolResultV2.OkModel(root, summaryMarkdown: summary));
+    }
+
+    internal static ToolPackInfoModel BuildGuidance(SystemToolOptions options) {
+        return ToolPackGuidance.Create(
             pack: "system",
             engine: "ComputerX",
-            tools: ToolRegistrySystemExtensions.GetRegisteredToolNames(Options),
+            tools: ToolRegistrySystemExtensions.GetRegisteredToolNames(options),
             recommendedFlow: new[] {
+                "Use system_connectivity_probe first when remote reachability, permissions, or time-sync health are uncertain before deeper ComputerX diagnostics.",
                 "Call system_info, system_hardware_summary, or system_metrics_summary for baseline host context.",
                 "Use list tools (processes/services/ports/adapters/firewall/disks/features/apps/updates/bitlocker/local identities) for evidence collection.",
                 "Use system_privacy_posture, system_exploit_protection, system_office_posture, system_browser_posture, system_backup_posture, system_certificate_posture, system_credential_posture, system_tls_posture, system_winrm_posture, system_powershell_logging_posture, system_platform_security_posture, system_app_control_posture, system_uac_posture, system_ldap_policy_posture, system_network_client_posture, system_account_policy_posture, system_interactive_logon_posture, system_audit_options, system_builtin_accounts, system_remote_access_posture, system_device_guard_posture, and system_defender_asr_posture for host privacy, hardening, firmware trust, app-control, audit/built-in account state, remote-access, backup, trust-store, crypto, remote-management, elevation, LDAP signing, password/lockout, virtualization security, ASR, and interactive-logon posture.",
@@ -66,7 +78,8 @@ public sealed class SystemPackInfoTool : SystemToolBase, ITool {
             flowSteps: new[] {
                 ToolPackGuidance.FlowStep(
                     goal: "Collect baseline host context",
-                    suggestedTools: new[] { "system_info", "system_hardware_summary", "system_metrics_summary", "system_whoami" }),
+                    suggestedTools: new[] { "system_connectivity_probe", "system_info", "system_hardware_summary", "system_metrics_summary", "system_whoami" },
+                    notes: "Start with the connectivity probe when the host is remote or reachability/permissions are still uncertain."),
                 ToolPackGuidance.FlowStep(
                     goal: "Collect process/network/security evidence",
                     suggestedTools: new[] { "system_process_list", "system_ports_list", "system_network_adapters", "system_firewall_rules", "system_firewall_profiles", "system_security_options", "system_rdp_posture", "system_smb_posture", "system_time_sync", "system_bitlocker_status", "system_local_identity_inventory", "system_privacy_posture", "system_exploit_protection", "system_office_posture", "system_browser_posture", "system_backup_posture", "system_credential_posture", "system_certificate_posture", "system_tls_posture", "system_winrm_posture", "system_powershell_logging_posture", "system_platform_security_posture", "system_app_control_posture", "system_uac_posture", "system_ldap_policy_posture", "system_network_client_posture", "system_account_policy_posture", "system_interactive_logon_posture", "system_audit_options", "system_builtin_accounts", "system_remote_access_posture", "system_device_guard_posture", "system_defender_asr_posture" }),
@@ -129,21 +142,91 @@ public sealed class SystemPackInfoTool : SystemToolBase, ITool {
                     },
                     notes: "After patch gap detection, pivot into AD ownership context and EventLog timeline evidence.")
             },
-            toolCatalog: ToolRegistrySystemExtensions.GetRegisteredToolCatalog(Options),
+            recipes: new[] {
+                ToolPackGuidance.Recipe(
+                    id: "remote_host_runtime_triage",
+                    summary: "Run a focused remote host triage workflow for CPU, memory, disk, and service/process evidence.",
+                    whenToUse: "Use when AD, EventLog, or TestimoX already identified a host and the next step is targeted ComputerX follow-up rather than a broad host sweep.",
+                    steps: new[] {
+                        ToolPackGuidance.FlowStep(
+                            goal: "Establish remote host baseline context",
+                            suggestedTools: new[] { "system_info", "system_hardware_summary", "system_metrics_summary" },
+                            notes: "Pass computer_name so the baseline is anchored to the discovered remote host."),
+                        ToolPackGuidance.FlowStep(
+                            goal: "Collect runtime and network evidence",
+                            suggestedTools: new[] { "system_process_list", "system_service_list", "system_ports_list", "system_network_adapters" },
+                            notes: "Add only the slices needed for the investigation to keep remote collection targeted."),
+                        ToolPackGuidance.FlowStep(
+                            goal: "Confirm storage pressure and scheduling posture",
+                            suggestedTools: new[] { "system_logical_disks_list", "system_disks_list", "system_scheduled_tasks_list" },
+                            notes: "Use these when CPU or memory symptoms may be downstream from disk pressure, backup drift, or scheduled-task behavior.")
+                    },
+                    verificationTools: new[] { "system_info", "system_metrics_summary", "system_logical_disks_list" },
+                    notes: "Prefer a single host or a small deduplicated host set so metrics and evidence remain attributable."),
+                ToolPackGuidance.Recipe(
+                    id: "patch_exposure_review",
+                    summary: "Review remote Windows Update posture and month-scoped patch exposure with prioritized CVE/KB gaps.",
+                    whenToUse: "Use when the question is about missing patches, exploited CVEs, WSUS/client drift, or reboot pressure on a local or remote host.",
+                    steps: new[] {
+                        ToolPackGuidance.FlowStep(
+                            goal: "Collect current update client and telemetry state",
+                            suggestedTools: new[] { "system_windows_update_client_status", "system_windows_update_telemetry" },
+                            notes: "Start here for reboot pressure, freshness, WSUS registration, and low-privilege client-state evidence."),
+                        ToolPackGuidance.FlowStep(
+                            goal: "Resolve month-scoped patch intelligence and compliance",
+                            suggestedTools: new[] { "system_patch_details", "system_patch_compliance" },
+                            notes: "Use current UTC month by default unless the investigation names a different patch cycle."),
+                        ToolPackGuidance.FlowStep(
+                            goal: "Verify installed update reality on the host",
+                            suggestedTools: new[] { "system_updates_installed" },
+                            notes: "Use installed update evidence to confirm whether a missing KB finding is genuine or a catalog-mapping gap."),
+                        ToolPackGuidance.FlowStep(
+                            goal: "Pivot into ownership or timeline evidence when needed",
+                            suggestedTools: new[] { "ad_object_resolve", "eventlog_live_query", "eventlog_named_events_query" },
+                            notes: "Use AD for host ownership or EventLog when patch gaps need incident or remediation timeline evidence.")
+                    },
+                    verificationTools: new[] { "system_updates_installed", "system_patch_compliance" }),
+                ToolPackGuidance.Recipe(
+                    id: "host_security_posture_review",
+                    summary: "Review hardening, remote-access, crypto, and identity posture on a local or remote Windows host.",
+                    whenToUse: "Use when the request is about exposure, baseline hardening, certificate/TLS posture, WinRM, UAC, account policy, or credential risk.",
+                    steps: new[] {
+                        ToolPackGuidance.FlowStep(
+                            goal: "Capture baseline identity and platform context",
+                            suggestedTools: new[] { "system_info", "system_whoami", "system_local_identity_inventory" }),
+                        ToolPackGuidance.FlowStep(
+                            goal: "Collect core security posture evidence",
+                            suggestedTools: new[] { "system_privacy_posture", "system_exploit_protection", "system_tls_posture", "system_certificate_posture", "system_credential_posture" },
+                            notes: "These tools cover privacy, exploit mitigation, crypto, trust-store, and credential-hardening posture."),
+                        ToolPackGuidance.FlowStep(
+                            goal: "Collect remote-management and policy controls",
+                            suggestedTools: new[] { "system_winrm_posture", "system_uac_posture", "system_ldap_policy_posture", "system_network_client_posture", "system_account_policy_posture", "system_interactive_logon_posture", "system_device_guard_posture", "system_defender_asr_posture" },
+                            notes: "Focus on the subset that matches the user’s security question instead of running the whole catalog every time.")
+                    },
+                    verificationTools: new[] { "system_tls_posture", "system_winrm_posture", "system_account_policy_posture" })
+            },
+            toolCatalog: ToolRegistrySystemExtensions.GetRegisteredToolCatalog(options),
+            runtimeCapabilities: new ToolPackRuntimeCapabilitiesModel {
+                PreferredEntryTools = new[] { "system_info", "system_hardware_summary", "system_metrics_summary" },
+                PreferredProbeTools = new[] { "system_connectivity_probe" },
+                ProbeHelperFreshnessWindowSeconds = 600,
+                SetupHelperFreshnessWindowSeconds = 1800,
+                RecipeHelperFreshnessWindowSeconds = 900,
+                RuntimePrerequisites = new[] {
+                    "Use computer_name for remote host scope whenever AD, EventLog, or TestimoX already identified the target host.",
+                    "Some posture and inventory tools are Windows-oriented, so prefer the platform-neutral baseline tools first when host platform is uncertain.",
+                    "Remote host checks depend on normal ComputerX reachability and the caller having permission to query the target host.",
+                    "Use system_connectivity_probe before heavier remote collection when WMI/CIM reachability, permissions, or time skew are unknown."
+                },
+                Notes = "Keep follow-up focused on a single host or a small deduplicated host set so CPU, memory, disk, update, and posture checks stay targeted."
+            },
             rawPayloadPolicy: "Preserve raw engine arrays/objects. Do not rely only on *_view fields.",
             viewProjectionPolicy: "Projection arguments are view-only and intended for display shaping (columns/sort_by/sort_direction/top).",
             correlationGuidance: "Correlate using raw payload fields across multiple tool calls.",
             setupHints: new {
-                MaxResults = Options.MaxResults,
+                MaxResults = options.MaxResults,
                 SupportedPlatforms = Environment.OSVersion.Platform.ToString(),
                 Note = "Some tools are Windows-only; if unavailable, use platform-neutral tools first."
             });
-
-        var summary = ToolMarkdown.SummaryText(
-            title: "System Pack",
-            "Use raw payload fields for reasoning and correlation.",
-            "Use `*_view` fields only for presentation filtering/sorting.");
-
-        return Task.FromResult(ToolResultV2.OkModel(root, summaryMarkdown: summary));
     }
 }

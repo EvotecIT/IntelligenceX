@@ -6,6 +6,12 @@ namespace IntelligenceX.Tools.Tests;
 public partial class ToolSchemaSnapshotTests {
     private static IEnumerable<object[]> EventLogAndPowerShellSchemaSnapshots() {
         yield return new object[] {
+            "eventlog_connectivity_probe",
+            new[] { "machine_name", "log_name", "session_timeout_ms" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
             "eventlog_evtx_find",
             new[] { "query", "log_name", "max_results" },
             Array.Empty<string>()

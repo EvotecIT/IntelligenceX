@@ -18,7 +18,7 @@ internal sealed partial class ChatServiceSession {
         Dictionary<string, ToolDefinition> EnvironmentDiscoverByPackId,
         Dictionary<string, ToolDefinition> DefinitionsByToolName,
         Dictionary<string, string> OperationalPackIdByToolName,
-        Dictionary<string, string[]> RecoveryToolNamesByToolName,
+        Dictionary<string, string[]> ContractHelperToolNamesByToolName,
         HashSet<string> PreflightToolNames);
 
     private IReadOnlyList<ToolCall> BuildHostPackPreflightCalls(
@@ -36,7 +36,7 @@ internal sealed partial class ChatServiceSession {
         }
 
         var operationalPackIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var recoveryHelperToolNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var contractHelperToolNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var explicitRoundPreflightNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var extractedRoundToolNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         for (var i = 0; i < extractedCalls.Count; i++) {
@@ -55,22 +55,20 @@ internal sealed partial class ChatServiceSession {
                 operationalPackIds.Add(packId);
             }
 
-            var helperToolNames = catalog.RecoveryToolNamesByToolName.TryGetValue(callName, out var cachedHelperToolNames)
+            var helperToolNames = catalog.ContractHelperToolNamesByToolName.TryGetValue(callName, out var cachedHelperToolNames)
                 ? cachedHelperToolNames
-                : NormalizePackPreflightRecoveryToolNames(catalog.DefinitionsByToolName.TryGetValue(callName, out var callDefinition)
-                    ? callDefinition.Recovery?.RecoveryToolNames
-                    : null);
+                : Array.Empty<string>();
             if (helperToolNames is { Length: > 0 }) {
                 for (var helperIndex = 0; helperIndex < helperToolNames.Length; helperIndex++) {
                     var helperToolName = (helperToolNames[helperIndex] ?? string.Empty).Trim();
                     if (helperToolName.Length > 0) {
-                        recoveryHelperToolNames.Add(helperToolName);
+                        contractHelperToolNames.Add(helperToolName);
                     }
                 }
             }
         }
 
-        if (operationalPackIds.Count == 0 && recoveryHelperToolNames.Count == 0) {
+        if (operationalPackIds.Count == 0 && contractHelperToolNames.Count == 0) {
             return Array.Empty<ToolCall>();
         }
 
@@ -116,20 +114,20 @@ internal sealed partial class ChatServiceSession {
             }
         }
 
-        var excludedRecoveryHelperToolNames = new HashSet<string>(extractedRoundToolNames, StringComparer.OrdinalIgnoreCase);
+        var excludedContractHelperToolNames = new HashSet<string>(extractedRoundToolNames, StringComparer.OrdinalIgnoreCase);
         foreach (var rememberedToolName in rememberedPreflightTools) {
-            excludedRecoveryHelperToolNames.Add(rememberedToolName);
+            excludedContractHelperToolNames.Add(rememberedToolName);
         }
         foreach (var selectedToolName in selectedPreflightToolNames) {
-            excludedRecoveryHelperToolNames.Add(selectedToolName);
+            excludedContractHelperToolNames.Add(selectedToolName);
         }
 
-        var orderedRecoveryHelperToolNames = OrderBootstrapToolNamesByHealth(
-            recoveryHelperToolNames,
+        var orderedContractHelperToolNames = OrderBootstrapToolNamesByHealth(
+            contractHelperToolNames,
             suppressedPreflightTools,
-            excludedRecoveryHelperToolNames);
-        for (var i = 0; i < orderedRecoveryHelperToolNames.Length; i++) {
-            var helperToolName = orderedRecoveryHelperToolNames[i];
+            excludedContractHelperToolNames);
+        for (var i = 0; i < orderedContractHelperToolNames.Length; i++) {
+            var helperToolName = orderedContractHelperToolNames[i];
             if (!catalog.DefinitionsByToolName.TryGetValue(helperToolName, out var helperDefinition)
                 || ToolDefinitionHasRequiredArguments(helperDefinition)
                 || helperDefinition.WriteGovernance?.IsWriteCapable == true) {
@@ -353,7 +351,7 @@ internal sealed partial class ChatServiceSession {
         var discoverByPackId = new Dictionary<string, ToolDefinition>(StringComparer.OrdinalIgnoreCase);
         var definitionsByToolName = new Dictionary<string, ToolDefinition>(StringComparer.OrdinalIgnoreCase);
         var operationalPackIdByToolName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        var recoveryToolNamesByToolName = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+        var contractHelperToolNamesByToolName = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
         var preflightToolNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         for (var i = 0; i < definitions.Count; i++) {
             var definition = definitions[i];
@@ -397,12 +395,10 @@ internal sealed partial class ChatServiceSession {
                 operationalPackIdByToolName[name] = orchestrationEntry.PackId;
             }
 
-            if (!recoveryToolNamesByToolName.ContainsKey(name)) {
-                var recoveryToolNames = orchestrationEntry.RecoveryToolNames.Count > 0
-                    ? orchestrationEntry.RecoveryToolNames.ToArray()
-                    : NormalizePackPreflightRecoveryToolNames(definition.Recovery?.RecoveryToolNames);
-                if (recoveryToolNames.Length > 0) {
-                    recoveryToolNamesByToolName[name] = recoveryToolNames;
+            if (!contractHelperToolNamesByToolName.ContainsKey(name)) {
+                var contractHelperToolNames = BuildPackPreflightContractHelperToolNames(definition, orchestrationEntry);
+                if (contractHelperToolNames.Length > 0) {
+                    contractHelperToolNamesByToolName[name] = contractHelperToolNames;
                 }
             }
         }
@@ -412,7 +408,7 @@ internal sealed partial class ChatServiceSession {
             EnvironmentDiscoverByPackId: discoverByPackId,
             DefinitionsByToolName: definitionsByToolName,
             OperationalPackIdByToolName: operationalPackIdByToolName,
-            RecoveryToolNamesByToolName: recoveryToolNamesByToolName,
+            ContractHelperToolNamesByToolName: contractHelperToolNamesByToolName,
             PreflightToolNames: preflightToolNames);
     }
 
@@ -506,6 +502,39 @@ internal sealed partial class ChatServiceSession {
         return output.Ok != false
                && string.IsNullOrWhiteSpace(output.ErrorCode)
                && string.IsNullOrWhiteSpace(output.Error);
+    }
+
+    private string[] BuildPackPreflightContractHelperToolNames(
+        ToolDefinition definition,
+        ToolOrchestrationCatalogEntry orchestrationEntry) {
+        var helperToolNames = new List<string>(6);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        var resolvedHelperToolNames = ResolveContractHelperToolNames(definition, _toolOrchestrationCatalog);
+        for (var helperIndex = 0; helperIndex < resolvedHelperToolNames.Length; helperIndex++) {
+            AddPackPreflightContractHelperToolName(helperToolNames, seen, resolvedHelperToolNames[helperIndex]);
+        }
+
+        var recoveryToolNames = orchestrationEntry.RecoveryToolNames.Count > 0
+            ? orchestrationEntry.RecoveryToolNames.ToArray()
+            : NormalizePackPreflightRecoveryToolNames(definition.Recovery?.RecoveryToolNames);
+        for (var i = 0; i < recoveryToolNames.Length; i++) {
+            AddPackPreflightContractHelperToolName(helperToolNames, seen, recoveryToolNames[i]);
+        }
+
+        return helperToolNames.Count == 0 ? Array.Empty<string>() : helperToolNames.ToArray();
+    }
+
+    private static void AddPackPreflightContractHelperToolName(
+        ICollection<string> helperToolNames,
+        ISet<string> seen,
+        string? toolName) {
+        var normalizedToolName = (toolName ?? string.Empty).Trim();
+        if (normalizedToolName.Length == 0 || !seen.Add(normalizedToolName)) {
+            return;
+        }
+
+        helperToolNames.Add(normalizedToolName);
     }
 
     private static string[] NormalizePackPreflightRecoveryToolNames(IReadOnlyList<string>? values) {

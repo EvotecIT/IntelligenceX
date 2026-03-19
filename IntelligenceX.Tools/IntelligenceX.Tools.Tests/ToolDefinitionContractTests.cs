@@ -106,6 +106,8 @@ public class ToolDefinitionContractTests {
     [Fact]
     public void HighPriorityTools_ShouldKeepExplicitSelectionMetadataOverrides() {
         var required = new[] {
+            "eventlog_connectivity_probe",
+            "system_connectivity_probe",
             "system_info",
             "ad_search",
             "ad_object_resolve",
@@ -113,6 +115,7 @@ public class ToolDefinitionContractTests {
             "ad_user_lifecycle",
             "ad_computer_lifecycle",
             "ad_group_lifecycle",
+            "ad_ou_lifecycle",
             "powershell_run",
             "email_smtp_send"
         };
@@ -495,6 +498,7 @@ public class ToolDefinitionContractTests {
             "ad_stale_accounts",
             "ad_spn_stats",
             "eventlog_pack_info",
+            "eventlog_connectivity_probe",
             "eventlog_named_events_catalog",
             "eventlog_named_events_query",
             "eventlog_timeline_explain",
@@ -588,6 +592,7 @@ public class ToolDefinitionContractTests {
         var definitionsByName = registry.GetDefinitions()
             .ToDictionary(static definition => definition.Name, StringComparer.OrdinalIgnoreCase);
 
+        AssertRoutingRole(definitionsByName, "eventlog_connectivity_probe", ToolRoutingTaxonomy.RoleDiagnostic);
         AssertRoutingRole(definitionsByName, "eventlog_evtx_find", ToolRoutingTaxonomy.RoleResolver);
         AssertRoutingRole(definitionsByName, "eventlog_evtx_security_summary", ToolRoutingTaxonomy.RoleResolver);
         AssertRoutingRole(definitionsByName, "eventlog_evtx_query", ToolRoutingTaxonomy.RoleResolver);
@@ -727,6 +732,7 @@ public class ToolDefinitionContractTests {
             .ToDictionary(static definition => definition.Name, StringComparer.OrdinalIgnoreCase);
 
         AssertRoutingRole(definitionsByName, "ad_pack_info", ToolRoutingTaxonomy.RolePackInfo);
+        AssertRoutingRole(definitionsByName, "ad_connectivity_probe", ToolRoutingTaxonomy.RoleOperational);
         AssertRoutingRole(definitionsByName, "ad_environment_discover", ToolRoutingTaxonomy.RoleEnvironmentDiscover);
         AssertRoutingRole(definitionsByName, "ad_scope_discovery", ToolRoutingTaxonomy.RoleEnvironmentDiscover);
         AssertRoutingRole(definitionsByName, "ad_forest_discover", ToolRoutingTaxonomy.RoleEnvironmentDiscover);
@@ -744,6 +750,7 @@ public class ToolDefinitionContractTests {
         AssertRoutingRole(definitionsByName, "ad_monitoring_probe_run", ToolRoutingTaxonomy.RoleOperational);
         AssertRoutingRole(definitionsByName, "ad_object_get", ToolRoutingTaxonomy.RoleOperational);
         AssertRoutingRole(definitionsByName, "ad_handoff_prepare", ToolRoutingTaxonomy.RoleOperational);
+        AssertRoutingRole(definitionsByName, "ad_user_groups_resolved", ToolRoutingTaxonomy.RoleOperational);
 
         var handoffPrepare = Assert.IsType<ToolHandoffContract>(definitionsByName["ad_handoff_prepare"].Handoff);
         Assert.Contains(
@@ -796,6 +803,58 @@ public class ToolDefinitionContractTests {
                                 string.Equals(binding.SourceField, "domain_controllers/0/value", StringComparison.OrdinalIgnoreCase)
                                 && string.Equals(binding.TargetArgument, "computer_name", StringComparison.OrdinalIgnoreCase)
                                 && !binding.IsRequired));
+
+        var monitoringProbeRunHandoff = Assert.IsType<ToolHandoffContract>(definitionsByName["ad_monitoring_probe_run"].Handoff);
+        Assert.Contains(
+            monitoringProbeRunHandoff.OutboundRoutes,
+            static route => string.Equals(route.TargetPackId, "active_directory", StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(route.TargetToolName, "ad_ldap_diagnostics", StringComparison.OrdinalIgnoreCase)
+                            && route.Bindings.Count == 4
+                            && route.Conditions.Count == 1
+                            && route.Conditions.Any(static condition =>
+                                string.Equals(condition.SourceField, "probe_kind", StringComparison.OrdinalIgnoreCase)
+                                && string.Equals(condition.ExpectedValue, "ldap", StringComparison.OrdinalIgnoreCase)));
+        Assert.Contains(
+            monitoringProbeRunHandoff.OutboundRoutes,
+            static route => string.Equals(route.TargetPackId, "system", StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(route.TargetToolName, "system_time_sync", StringComparison.OrdinalIgnoreCase)
+                            && route.Conditions.Count == 1
+                            && route.Conditions.Any(static condition =>
+                                string.Equals(condition.SourceField, "probe_kind", StringComparison.OrdinalIgnoreCase)
+                                && string.Equals(condition.ExpectedValue, "kerberos", StringComparison.OrdinalIgnoreCase)));
+        Assert.Contains(
+            monitoringProbeRunHandoff.OutboundRoutes,
+            static route => string.Equals(route.TargetPackId, "system", StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(route.TargetToolName, "system_ports_list", StringComparison.OrdinalIgnoreCase)
+                            && route.Conditions.Count == 2
+                            && route.Conditions.Any(static condition =>
+                                string.Equals(condition.SourceField, "probe_kind", StringComparison.OrdinalIgnoreCase)
+                                && string.Equals(condition.ExpectedValue, "kerberos", StringComparison.OrdinalIgnoreCase))
+                            && route.Conditions.Any(static condition =>
+                                string.Equals(condition.SourceField, "active_follow_up_profile_ids", StringComparison.OrdinalIgnoreCase)
+                                && string.Equals(condition.ExpectedValue, "transport_split", StringComparison.OrdinalIgnoreCase)));
+        Assert.Contains(
+            monitoringProbeRunHandoff.OutboundRoutes,
+            static route => string.Equals(route.TargetPackId, "system", StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(route.TargetToolName, "system_updates_installed", StringComparison.OrdinalIgnoreCase)
+                            && route.Conditions.Count == 2
+                            && route.Conditions.Any(static condition =>
+                                string.Equals(condition.SourceField, "probe_kind", StringComparison.OrdinalIgnoreCase)
+                                && string.Equals(condition.ExpectedValue, "windows_update", StringComparison.OrdinalIgnoreCase))
+                            && route.Conditions.Any(static condition =>
+                                string.Equals(condition.SourceField, "active_follow_up_profile_ids", StringComparison.OrdinalIgnoreCase)
+                                && string.Equals(condition.ExpectedValue, "patch_inventory_focus", StringComparison.OrdinalIgnoreCase)));
+        Assert.Contains(
+            monitoringProbeRunHandoff.OutboundRoutes,
+            static route => string.Equals(route.TargetPackId, "system", StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(route.TargetToolName, "system_ports_list", StringComparison.OrdinalIgnoreCase)
+                            && route.Conditions.Count == 2
+                            && route.Conditions.Any(static condition =>
+                                string.Equals(condition.SourceField, "probe_kind", StringComparison.OrdinalIgnoreCase)
+                                && string.Equals(condition.ExpectedValue, "directory", StringComparison.OrdinalIgnoreCase))
+                            && route.Conditions.Any(static condition =>
+                                string.Equals(condition.SourceField, "directory_probe_kind", StringComparison.OrdinalIgnoreCase)
+                                && string.Equals(condition.ExpectedValue, "rpc_endpoint", StringComparison.OrdinalIgnoreCase)));
     }
 
     [Fact]
@@ -1771,7 +1830,7 @@ public class ToolDefinitionContractTests {
             eventLogSetup.SetupToolName,
             EventLogContractCatalog.CreateSetup("eventlog_named_events_query")!.SetupToolName);
         Assert.Equal(
-            "eventlog_channels_list",
+            "eventlog_connectivity_probe",
             EventLogContractCatalog.CreateSetup("eventlog_live_query")!.SetupToolName);
         Assert.Null(EventLogContractCatalog.CreateSetup("eventlog_pack_info"));
 
@@ -1780,6 +1839,25 @@ public class ToolDefinitionContractTests {
         Assert.Contains(
             eventLogQueryHandoff!.OutboundRoutes,
             static route => string.Equals(route.TargetToolName, "ad_handoff_prepare", StringComparison.OrdinalIgnoreCase));
+        var eventLogProbeHandoff = EventLogContractCatalog.CreateHandoff("eventlog_connectivity_probe");
+        Assert.NotNull(eventLogProbeHandoff);
+        Assert.Contains(
+            eventLogProbeHandoff!.OutboundRoutes,
+            static route => string.Equals(route.TargetToolName, "eventlog_top_events", StringComparison.OrdinalIgnoreCase)
+                            && route.Bindings.Any(static binding => string.Equals(binding.TargetArgument, "machine_name", StringComparison.OrdinalIgnoreCase))
+                            && route.Bindings.Any(static binding => string.Equals(binding.TargetArgument, "log_name", StringComparison.OrdinalIgnoreCase)));
+        Assert.Contains(
+            eventLogProbeHandoff.OutboundRoutes,
+            static route => string.Equals(route.TargetToolName, "eventlog_live_query", StringComparison.OrdinalIgnoreCase)
+                            && route.Bindings.Any(static binding => string.Equals(binding.TargetArgument, "machine_name", StringComparison.OrdinalIgnoreCase))
+                            && route.Bindings.Any(static binding => string.Equals(binding.TargetArgument, "log_name", StringComparison.OrdinalIgnoreCase)));
+        var adProbeHandoff = ActiveDirectoryContractCatalog.CreateHandoff("ad_connectivity_probe");
+        Assert.NotNull(adProbeHandoff);
+        Assert.Contains(
+            adProbeHandoff!.OutboundRoutes,
+            static route => string.Equals(route.TargetToolName, "ad_environment_discover", StringComparison.OrdinalIgnoreCase)
+                            && route.Bindings.Any(static binding => string.Equals(binding.TargetArgument, "domain_controller", StringComparison.OrdinalIgnoreCase))
+                            && route.Bindings.Any(static binding => string.Equals(binding.TargetArgument, "search_base_dn", StringComparison.OrdinalIgnoreCase)));
         Assert.Null(EventLogContractCatalog.CreateHandoff("eventlog_pack_info"));
 
         var lifecycleHandoff = ActiveDirectoryLifecycleContractCatalog.CreateHandoff("ad_user_lifecycle");
@@ -1789,25 +1867,72 @@ public class ToolDefinitionContractTests {
             static route => string.Equals(route.TargetToolName, "ad_object_get", StringComparison.OrdinalIgnoreCase));
         Assert.Equal(ToolHandoffFollowUpKinds.Verification, verificationRoute.FollowUpKind);
         Assert.Equal(ToolHandoffFollowUpPriorities.Critical, verificationRoute.FollowUpPriority);
+        Assert.Contains(
+            lifecycleHandoff.OutboundRoutes,
+            static route => string.Equals(route.TargetToolName, "ad_user_groups_resolved", StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(route.TargetPackId, "active_directory", StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(route.FollowUpKind, ToolHandoffFollowUpKinds.Verification, StringComparison.OrdinalIgnoreCase)
+                            && route.Bindings.Any(static binding => string.Equals(binding.TargetArgument, "identity", StringComparison.OrdinalIgnoreCase)));
         var normalizationRoute = Assert.Single(
             lifecycleHandoff.OutboundRoutes,
             static route => string.Equals(route.TargetToolName, "ad_object_resolve", StringComparison.OrdinalIgnoreCase));
         Assert.Equal(ToolHandoffFollowUpKinds.Normalization, normalizationRoute.FollowUpKind);
         Assert.Equal(ToolHandoffFollowUpPriorities.Normal, normalizationRoute.FollowUpPriority);
 
+        var computerLifecycleHandoff = ActiveDirectoryLifecycleContractCatalog.CreateHandoff("ad_computer_lifecycle");
+        Assert.NotNull(computerLifecycleHandoff);
+        Assert.Contains(
+            computerLifecycleHandoff!.OutboundRoutes,
+            static route => string.Equals(route.TargetToolName, "system_info", StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(route.TargetPackId, "system", StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(route.FollowUpKind, ToolHandoffFollowUpKinds.Verification, StringComparison.OrdinalIgnoreCase)
+                            && route.Bindings.Any(static binding => string.Equals(binding.TargetArgument, "computer_name", StringComparison.OrdinalIgnoreCase)));
+        Assert.Contains(
+            computerLifecycleHandoff.OutboundRoutes,
+            static route => string.Equals(route.TargetToolName, "system_metrics_summary", StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(route.TargetPackId, "system", StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(route.FollowUpKind, ToolHandoffFollowUpKinds.Investigation, StringComparison.OrdinalIgnoreCase)
+                            && route.Bindings.Any(static binding => string.Equals(binding.SourceField, "computer_name", StringComparison.OrdinalIgnoreCase)));
+        Assert.Contains(
+            computerLifecycleHandoff.OutboundRoutes,
+            static route => string.Equals(route.TargetToolName, "eventlog_channels_list", StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(route.TargetPackId, "eventlog", StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(route.FollowUpKind, ToolHandoffFollowUpKinds.Verification, StringComparison.OrdinalIgnoreCase)
+                            && route.Bindings.Any(static binding => string.Equals(binding.TargetArgument, "machine_name", StringComparison.OrdinalIgnoreCase)));
+
+        var groupLifecycleHandoff = ActiveDirectoryLifecycleContractCatalog.CreateHandoff("ad_group_lifecycle");
+        Assert.NotNull(groupLifecycleHandoff);
+        Assert.Contains(
+            groupLifecycleHandoff!.OutboundRoutes,
+            static route => string.Equals(route.TargetToolName, "ad_group_members_resolved", StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(route.TargetPackId, "active_directory", StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(route.FollowUpKind, ToolHandoffFollowUpKinds.Verification, StringComparison.OrdinalIgnoreCase)
+                            && route.Bindings.Any(static binding => string.Equals(binding.TargetArgument, "identity", StringComparison.OrdinalIgnoreCase)));
+
         var eventLogRecovery = EventLogContractCatalog.CreateRecovery("eventlog_timeline_query");
         Assert.True(eventLogRecovery!.SupportsTransientRetry);
-        Assert.Equal(new[] { "eventlog_channels_list" }, eventLogRecovery.RecoveryToolNames);
+        Assert.Equal(new[] { "eventlog_connectivity_probe", "eventlog_channels_list" }, eventLogRecovery.RecoveryToolNames);
         Assert.Null(EventLogContractCatalog.CreateRecovery("eventlog_pack_info"));
 
         var systemSetup = SystemContractCatalog.CreateRemoteHostAccessSetup();
-        Assert.Equal("system_info", systemSetup.SetupToolName);
+        Assert.Equal("system_connectivity_probe", systemSetup.SetupToolName);
         Assert.Equal("system_host_access", Assert.Single(systemSetup.Requirements).RequirementId);
+        var systemProbeHandoff = SystemContractCatalog.CreateHandoff("system_connectivity_probe", parameters: null);
+        Assert.NotNull(systemProbeHandoff);
+        Assert.Contains(
+            systemProbeHandoff!.OutboundRoutes,
+            static route => string.Equals(route.TargetToolName, "system_info", StringComparison.OrdinalIgnoreCase)
+                            && route.Bindings.Any(static binding => string.Equals(binding.TargetArgument, "computer_name", StringComparison.OrdinalIgnoreCase)));
+        Assert.Contains(
+            systemProbeHandoff.OutboundRoutes,
+            static route => string.Equals(route.TargetToolName, "system_metrics_summary", StringComparison.OrdinalIgnoreCase)
+                            && route.Bindings.Any(static binding => string.Equals(binding.TargetArgument, "computer_name", StringComparison.OrdinalIgnoreCase)));
         Assert.Null(SystemContractCatalog.CreateSetup("system_pack_info"));
 
         var systemRecovery = SystemContractCatalog.CreateRecovery(supportsAlternateEngines: true);
         Assert.True(systemRecovery.SupportsAlternateEngines);
         Assert.Equal(new[] { "cim", "wmi" }, systemRecovery.AlternateEngineIds);
+        Assert.Equal(new[] { "system_connectivity_probe", "system_info" }, systemRecovery.RecoveryToolNames);
         Assert.Null(SystemContractCatalog.CreateRecovery("system_pack_info", parameters: null));
         Assert.Null(SystemContractCatalog.CreateHandoff("system_pack_info", parameters: null));
 
@@ -2497,6 +2622,37 @@ public class ToolDefinitionContractTests {
         Assert.Equal("active_directory_lifecycle", routing.PackId, ignoreCase: true);
         Assert.Contains("membership", updated.Tags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("group_account", updated.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Equal("ad_environment_discover", setup.SetupToolName, ignoreCase: true);
+        Assert.False(recovery.SupportsTransientRetry);
+    }
+
+    [Fact]
+    public void ActiveDirectoryLifecycleRoutingCatalog_ShouldApplyExplicitSelectionMetadataForOuLifecycle() {
+        var updated = ApplyInternalToolContract(
+            typeof(AdLifecyclePackInfoTool),
+            "IntelligenceX.Tools.ADPlayground.ActiveDirectoryLifecyclePackContractCatalog",
+            new ToolDefinition(
+                name: "ad_ou_lifecycle",
+                description: "AD OU lifecycle",
+                parameters: ToolSchema.Object(
+                        ("operation", ToolSchema.String().Enum("create", "move")),
+                        ("identity", ToolSchema.String()),
+                        ("apply", ToolSchema.Boolean()))
+                    .NoAdditionalProperties(),
+                writeGovernance: new ToolWriteGovernanceContract {
+                    IsWriteCapable = true
+                }));
+        var routing = Assert.IsType<ToolRoutingContract>(updated.Routing);
+        var setup = Assert.IsType<ToolSetupContract>(updated.Setup);
+        var recovery = Assert.IsType<ToolRecoveryContract>(updated.Recovery);
+
+        Assert.Equal("directory", routing.Scope, ignoreCase: true);
+        Assert.Equal("write", routing.Operation, ignoreCase: true);
+        Assert.Equal("organizational_unit", routing.Entity, ignoreCase: true);
+        Assert.Equal(ToolRoutingTaxonomy.RiskHigh, routing.Risk, ignoreCase: true);
+        Assert.Equal("active_directory_lifecycle", routing.PackId, ignoreCase: true);
+        Assert.Contains("organizational_unit", updated.Tags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("quarantine_ou", updated.Tags, StringComparer.OrdinalIgnoreCase);
         Assert.Equal("ad_environment_discover", setup.SetupToolName, ignoreCase: true);
         Assert.False(recovery.SupportsTransientRetry);
     }

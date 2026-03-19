@@ -69,11 +69,22 @@ public sealed class EventLogPackInfoTool : EventLogToolBase, ITool {
         _ = context;
         cancellationToken.ThrowIfCancellationRequested();
 
-        var root = ToolPackGuidance.Create(
+        var root = BuildGuidance(Options);
+
+        var summary = ToolMarkdown.SummaryText(
+            title: "EventLog Pack",
+            "Use raw event payloads for reasoning/correlation; use `*_view` fields for presentation.");
+
+        return Task.FromResult(ToolResultV2.OkModel(model: root, summaryMarkdown: summary));
+    }
+
+    internal static ToolPackInfoModel BuildGuidance(EventLogToolOptions options) {
+        return ToolPackGuidance.Create(
             pack: "eventlog",
             engine: "EventViewerX",
-            tools: ToolRegistryEventLogExtensions.GetRegisteredToolNames(Options),
+            tools: ToolRegistryEventLogExtensions.GetRegisteredToolNames(options),
             recommendedFlow: new[] {
+                "Use eventlog_connectivity_probe first when remote channel visibility, machine reachability, or live log access is uncertain before deeper EventViewerX queries.",
                 "Use eventlog_top_events for quick triage (top N most recent events from a live channel, local or remote).",
                 "Use eventlog_evtx_query or eventlog_live_query for event evidence.",
                 "Use eventlog_evtx_stats/eventlog_live_stats for top-level aggregation.",
@@ -89,6 +100,10 @@ public sealed class EventLogPackInfoTool : EventLogToolBase, ITool {
                 "For AD identity correlation: call ad_handoff_prepare first, then ad_scope_discovery and ad_search/ad_object_resolve."
             },
             flowSteps: new[] {
+                ToolPackGuidance.FlowStep(
+                    goal: "Validate local or remote channel reachability",
+                    suggestedTools: new[] { "eventlog_connectivity_probe", "eventlog_channels_list" },
+                    notes: "Start here when machine reachability, channel visibility, or live Security/System log access is still uncertain."),
                 ToolPackGuidance.FlowStep(
                     goal: "Quickly triage most recent events",
                     suggestedTools: new[] { "eventlog_top_events" },
@@ -177,22 +192,96 @@ public sealed class EventLogPackInfoTool : EventLogToolBase, ITool {
                     },
                     notes: "Use structured field correlation (not incident-specific templates) and de-duplicate identities before AD calls.")
             },
-            toolCatalog: ToolRegistryEventLogExtensions.GetRegisteredToolCatalog(Options),
+            recipes: new[] {
+                ToolPackGuidance.Recipe(
+                    id: "live_authentication_triage",
+                    summary: "Run a live authentication-focused investigation on local or remote event channels.",
+                    whenToUse: "Use when the question is about current or recent logons, lockouts, Kerberos signals, or security-channel activity on a live host.",
+                    steps: new[] {
+                        ToolPackGuidance.FlowStep(
+                            goal: "Quickly inspect the latest channel activity",
+                            suggestedTools: new[] { "eventlog_top_events", "eventlog_live_query" },
+                            notes: "Pass machine_name for remote live investigation and use a wider session_timeout_ms only when the remote query needs it."),
+                        ToolPackGuidance.FlowStep(
+                            goal: "Select reusable named detections and authentication summaries",
+                            suggestedTools: new[] { "eventlog_named_events_catalog", "eventlog_named_events_query", "eventlog_evtx_security_summary" },
+                            notes: "Use named-event rules and authentication summaries before hand-building filters so follow-up stays reusable."),
+                        ToolPackGuidance.FlowStep(
+                            goal: "Build a correlation timeline from the detected evidence",
+                            suggestedTools: new[] { "eventlog_timeline_explain", "eventlog_timeline_query" },
+                            notes: "Use correlation_profile first, then override correlation_keys only when the incident shape demands it."),
+                        ToolPackGuidance.FlowStep(
+                            goal: "Promote identities into AD verification",
+                            suggestedTools: new[] { "ad_handoff_prepare", "ad_scope_discovery", "ad_object_resolve" },
+                            notes: "Normalize the identity and host fields before AD lookups so the same workflow works for DOMAIN\\user, UPN, and hostname evidence.")
+                    },
+                    verificationTools: new[] { "eventlog_timeline_query", "ad_object_resolve" }),
+                ToolPackGuidance.Recipe(
+                    id: "offline_evtx_timeline",
+                    summary: "Triage EVTX files and turn the evidence into reusable event timelines and pivots.",
+                    whenToUse: "Use when the source is an EVTX export rather than a live machine, especially for offline incident review or evidence packaging.",
+                    steps: new[] {
+                        ToolPackGuidance.FlowStep(
+                            goal: "Inspect EVTX volume and authentication shape",
+                            suggestedTools: new[] { "eventlog_evtx_stats", "eventlog_evtx_security_summary" },
+                            notes: "Start with stats or security summary before running heavier EVTX evidence queries."),
+                        ToolPackGuidance.FlowStep(
+                            goal: "Collect raw EVTX evidence",
+                            suggestedTools: new[] { "eventlog_evtx_query", "eventlog_evtx_find" }),
+                        ToolPackGuidance.FlowStep(
+                            goal: "Build the timeline and correlation plan",
+                            suggestedTools: new[] { "eventlog_timeline_explain", "eventlog_timeline_query" },
+                            notes: "Use timeline explain to choose the next correlation profile or explicit keys before rerunning the timeline."),
+                        ToolPackGuidance.FlowStep(
+                            goal: "Pivot the resulting identities or hosts into follow-up packs",
+                            suggestedTools: new[] { "ad_handoff_prepare", "ad_object_resolve", "system_info", "system_metrics_summary" },
+                            notes: "Use AD for identity ownership and System for same-host runtime follow-up when the EVTX evidence points to a concrete machine.")
+                    },
+                    verificationTools: new[] { "eventlog_evtx_query", "eventlog_timeline_query" }),
+                ToolPackGuidance.Recipe(
+                    id: "event_host_followup",
+                    summary: "Promote correlated event hosts into targeted remote ComputerX diagnostics.",
+                    whenToUse: "Use when EventLog already identified the interesting host and the next step is CPU, memory, disk, or posture follow-up on that same machine.",
+                    steps: new[] {
+                        ToolPackGuidance.FlowStep(
+                            goal: "Collect host-linked event evidence",
+                            suggestedTools: new[] { "eventlog_named_events_query", "eventlog_timeline_query" },
+                            notes: "Prefer queries that preserve computer or host fields so the handoff to System stays explicit."),
+                        ToolPackGuidance.FlowStep(
+                            goal: "Run focused remote host diagnostics",
+                            suggestedTools: new[] { "system_info", "system_metrics_summary", "system_logical_disks_list", "system_windows_update_client_status" },
+                            notes: "Reuse the event-derived host as computer_name rather than asking the planner to infer a new target."),
+                        ToolPackGuidance.FlowStep(
+                            goal: "Return to EventLog only if host state suggests a narrower rerun",
+                            suggestedTools: new[] { "eventlog_live_query", "eventlog_timeline_query" },
+                            notes: "Use the host diagnostics outcome to focus the next channel, time range, or named-event rerun.")
+                    },
+                    verificationTools: new[] { "system_info", "system_metrics_summary", "eventlog_timeline_query" })
+            },
+            toolCatalog: ToolRegistryEventLogExtensions.GetRegisteredToolCatalog(options),
+            runtimeCapabilities: new ToolPackRuntimeCapabilitiesModel {
+                PreferredEntryTools = new[] { "eventlog_channels_list", "eventlog_top_events", "eventlog_live_query" },
+                PreferredProbeTools = new[] { "eventlog_connectivity_probe" },
+                ProbeHelperFreshnessWindowSeconds = 300,
+                SetupHelperFreshnessWindowSeconds = 900,
+                RecipeHelperFreshnessWindowSeconds = 300,
+                RuntimePrerequisites = new[] {
+                    "EVTX file workflows require target files to be inside the configured AllowedRoots locations.",
+                    "Remote live-channel queries require machine_name plus target log access on the remote host.",
+                    "Use session_timeout_ms when long-running remote live queries need a larger execution window.",
+                    "Use eventlog_connectivity_probe before deeper remote queries when host reachability or channel access is uncertain."
+                },
+                Notes = "For authentication or AD investigations, call eventlog_named_events_catalog before eventlog_timeline_query so the timeline uses reusable named-event evidence rather than ad hoc filtering."
+            },
             rawPayloadPolicy: "Preserve raw event arrays and report objects for model reasoning.",
             viewProjectionPolicy: "Projection arguments are optional and view-only.",
             correlationGuidance: "Use eventlog_timeline_query with correlation_profile presets or explicit correlation_keys, then normalize entity_handoff via ad_handoff_prepare and run ad_scope_discovery before AD lookups.",
             setupHints: new {
                 Platform = Environment.OSVersion.Platform.ToString(),
-                MaxResults = Options.MaxResults,
-                MaxMessageChars = Options.MaxMessageChars,
-                AllowedRootsCount = Options.AllowedRoots.Count
+                MaxResults = options.MaxResults,
+                MaxMessageChars = options.MaxMessageChars,
+                AllowedRootsCount = options.AllowedRoots.Count
             },
             note: "EVTX and live-channel workflows are available. Use raw payload fields for correlation across tools.");
-
-        var summary = ToolMarkdown.SummaryText(
-            title: "EventLog Pack",
-            "Use raw event payloads for reasoning/correlation; use `*_view` fields for presentation.");
-
-        return Task.FromResult(ToolResultV2.OkModel(model: root, summaryMarkdown: summary));
     }
 }

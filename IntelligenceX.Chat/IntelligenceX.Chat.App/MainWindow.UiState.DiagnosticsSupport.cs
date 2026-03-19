@@ -190,6 +190,10 @@ public sealed partial class MainWindow {
             paused = scheduler.Paused,
             pausedUntilUtcTicks = scheduler.PausedUntilUtcTicks,
             pauseReason = scheduler.PauseReason,
+            adaptiveIdleActive = scheduler.AdaptiveIdleActive,
+            lastAdaptiveIdleUtcTicks = scheduler.LastAdaptiveIdleUtcTicks,
+            lastAdaptiveIdleDelaySeconds = scheduler.LastAdaptiveIdleDelaySeconds,
+            lastAdaptiveIdleReason = scheduler.LastAdaptiveIdleReason,
             failureThreshold = scheduler.FailureThreshold,
             failurePauseSeconds = scheduler.FailurePauseSeconds,
             trackedThreadCount = scheduler.TrackedThreadCount,
@@ -350,6 +354,10 @@ public sealed partial class MainWindow {
             paused = scheduler.Paused,
             pausedUntilUtcTicks = scheduler.PausedUntilUtcTicks,
             pauseReason = scheduler.PauseReason,
+            adaptiveIdleActive = scheduler.AdaptiveIdleActive,
+            lastAdaptiveIdleUtcTicks = scheduler.LastAdaptiveIdleUtcTicks,
+            lastAdaptiveIdleDelaySeconds = scheduler.LastAdaptiveIdleDelaySeconds,
+            lastAdaptiveIdleReason = scheduler.LastAdaptiveIdleReason,
             failureThreshold = scheduler.FailureThreshold,
             failurePauseSeconds = scheduler.FailurePauseSeconds,
             trackedThreadCount = scheduler.TrackedThreadCount,
@@ -489,49 +497,149 @@ public sealed partial class MainWindow {
             return "Background scheduler daemon is disabled.";
         }
 
+        if (scheduler.AdaptiveIdleActive && scheduler.LastAdaptiveIdleDelaySeconds > 0) {
+            var reason = scheduler.LastAdaptiveIdleReason ?? string.Empty;
+            return string.IsNullOrWhiteSpace(reason)
+                ? $"Background scheduler is adaptively idle ({scheduler.LastAdaptiveIdleDelaySeconds}s poll)."
+                : $"Background scheduler is adaptively idle ({scheduler.LastAdaptiveIdleDelaySeconds}s poll): {reason}";
+        }
+
         return "Background scheduler is idle.";
     }
 
     private static string BuildBackgroundSchedulerThreadSummaryText(SessionCapabilityBackgroundSchedulerThreadSummaryDto summary) {
         ArgumentNullException.ThrowIfNull(summary);
 
+        var helperReuseSuffix = BuildBackgroundSchedulerHelperReuseSummaryText(
+            summary.ReusedHelperItemCount,
+            summary.ReusedHelperToolNames,
+            summary.ReusedHelperPolicyNames,
+            summary.ReusedHelperFreshestAgeSeconds,
+            summary.ReusedHelperOldestAgeSeconds,
+            summary.ReusedHelperFreshestTtlSeconds,
+            summary.ReusedHelperOldestTtlSeconds);
         if (summary.ReadyItemCount > 0 || summary.RunningItemCount > 0) {
-            return $"Ready={summary.ReadyItemCount}, running={summary.RunningItemCount}, queued={summary.QueuedItemCount}.";
+            return helperReuseSuffix.Length > 0
+                ? $"Ready={summary.ReadyItemCount}, running={summary.RunningItemCount}, queued={summary.QueuedItemCount}.{helperReuseSuffix}"
+                : $"Ready={summary.ReadyItemCount}, running={summary.RunningItemCount}, queued={summary.QueuedItemCount}.";
         }
 
         if (summary.DependencyBlockedItemCount > 0) {
             if (string.Equals(summary.DependencyNextAction, "request_runtime_auth_context", StringComparison.OrdinalIgnoreCase)) {
                 var authArgs = summary.DependencyAuthenticationArgumentNames ?? Array.Empty<string>();
-                return authArgs.Length > 0
+                var status = authArgs.Length > 0
                     ? $"Waiting on runtime auth context: {string.Join(", ", authArgs)}."
                     : "Waiting on runtime auth context for blocked follow-up work.";
+                return helperReuseSuffix.Length > 0
+                    ? status + helperReuseSuffix
+                    : status;
             }
 
             if (string.Equals(summary.DependencyNextAction, "request_setup_context", StringComparison.OrdinalIgnoreCase)) {
                 var setupHelpers = summary.DependencySetupHelperToolNames ?? Array.Empty<string>();
-                return setupHelpers.Length > 0
+                var status = setupHelpers.Length > 0
                     ? $"Waiting on setup context for: {string.Join(", ", setupHelpers)}."
                     : "Waiting on setup context for blocked follow-up work.";
+                return helperReuseSuffix.Length > 0
+                    ? status + helperReuseSuffix
+                    : status;
             }
 
             if (string.Equals(summary.DependencyNextAction, "wait_for_helper_retry", StringComparison.OrdinalIgnoreCase)) {
                 var retryHelpers = summary.DependencyRetryCooldownHelperToolNames ?? Array.Empty<string>();
-                return retryHelpers.Length > 0
+                var status = retryHelpers.Length > 0
                     ? $"Waiting on helper retry: {string.Join(", ", retryHelpers)}."
                     : "Waiting on prerequisite helper retry.";
+                return helperReuseSuffix.Length > 0
+                    ? status + helperReuseSuffix
+                    : status;
             }
 
             var helperTools = summary.DependencyHelperToolNames ?? Array.Empty<string>();
-            return helperTools.Length > 0
+            var blockedStatus = helperTools.Length > 0
                 ? $"Waiting on prerequisites: {string.Join(", ", helperTools)}."
                 : "Waiting on prerequisite helpers.";
+            return helperReuseSuffix.Length > 0
+                ? blockedStatus + helperReuseSuffix
+                : blockedStatus;
         }
 
         if (summary.QueuedItemCount > 0) {
-            return $"Queued={summary.QueuedItemCount}, completed={summary.CompletedItemCount}.";
+            return helperReuseSuffix.Length > 0
+                ? $"Queued={summary.QueuedItemCount}, completed={summary.CompletedItemCount}.{helperReuseSuffix}"
+                : $"Queued={summary.QueuedItemCount}, completed={summary.CompletedItemCount}.";
         }
 
-        return $"Completed={summary.CompletedItemCount}.";
+        return helperReuseSuffix.Length > 0
+            ? $"Completed={summary.CompletedItemCount}.{helperReuseSuffix}"
+            : $"Completed={summary.CompletedItemCount}.";
+    }
+
+    private static string BuildBackgroundSchedulerHelperReuseSummaryText(
+        int reusedHelperItemCount,
+        string[]? reusedHelperToolNames,
+        string[]? reusedHelperPolicyNames,
+        int? reusedHelperFreshestAgeSeconds,
+        int? reusedHelperOldestAgeSeconds,
+        int? reusedHelperFreshestTtlSeconds,
+        int? reusedHelperOldestTtlSeconds) {
+        if (reusedHelperItemCount <= 0) {
+            return string.Empty;
+        }
+
+        var normalizedHelperToolNames = reusedHelperToolNames ?? Array.Empty<string>();
+        var normalizedPolicyNames = reusedHelperPolicyNames ?? Array.Empty<string>();
+        var prefix = normalizedHelperToolNames.Length > 0
+            ? " Reused fresh prerequisite evidence: " + string.Join(", ", normalizedHelperToolNames)
+            : reusedHelperItemCount == 1
+                ? " Reused fresh prerequisite evidence for 1 helper"
+                : " Reused fresh prerequisite evidence for " + reusedHelperItemCount + " helpers";
+        var ageSummary = BuildBackgroundSchedulerHelperReuseAgeSummary(reusedHelperFreshestAgeSeconds, reusedHelperOldestAgeSeconds);
+        var windowSummary = BuildBackgroundSchedulerHelperReuseAgeSummary(reusedHelperFreshestTtlSeconds, reusedHelperOldestTtlSeconds);
+        var suffixParts = new List<string>(3);
+        if (ageSummary.Length > 0) {
+            suffixParts.Add(ageSummary);
+        }
+
+        if (windowSummary.Length > 0) {
+            suffixParts.Add("window " + windowSummary);
+        }
+
+        if (normalizedPolicyNames.Length > 0) {
+            suffixParts.Add("policy " + string.Join(", ", normalizedPolicyNames));
+        }
+
+        return suffixParts.Count > 0
+            ? prefix + " (" + string.Join(", ", suffixParts) + ")."
+            : prefix + ".";
+    }
+
+    private static string BuildBackgroundSchedulerHelperReuseAgeSummary(int? freshestAgeSeconds, int? oldestAgeSeconds) {
+        if (!freshestAgeSeconds.HasValue || !oldestAgeSeconds.HasValue) {
+            return string.Empty;
+        }
+
+        var normalizedFreshestAgeSeconds = Math.Max(0, freshestAgeSeconds.Value);
+        var normalizedOldestAgeSeconds = Math.Max(normalizedFreshestAgeSeconds, oldestAgeSeconds.Value);
+        return normalizedFreshestAgeSeconds == normalizedOldestAgeSeconds
+            ? FormatBackgroundSchedulerHelperReuseAge(normalizedOldestAgeSeconds) + " old"
+            : FormatBackgroundSchedulerHelperReuseAge(normalizedFreshestAgeSeconds)
+              + "-"
+              + FormatBackgroundSchedulerHelperReuseAge(normalizedOldestAgeSeconds)
+              + " old";
+    }
+
+    private static string FormatBackgroundSchedulerHelperReuseAge(int ageSeconds) {
+        var normalizedAgeSeconds = Math.Max(0, ageSeconds);
+        if (normalizedAgeSeconds < 60) {
+            return normalizedAgeSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture) + "s";
+        }
+
+        if (normalizedAgeSeconds < 3600) {
+            return (normalizedAgeSeconds / 60).ToString(System.Globalization.CultureInfo.InvariantCulture) + "m";
+        }
+
+        return (normalizedAgeSeconds / 3600).ToString(System.Globalization.CultureInfo.InvariantCulture) + "h";
     }
 
     private static int CountActiveMaintenanceSpecsByScope(string[]? specs, bool scoped) {

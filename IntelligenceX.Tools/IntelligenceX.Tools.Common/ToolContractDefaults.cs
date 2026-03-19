@@ -222,6 +222,16 @@ public static class ToolContractDefaults {
     }
 
     /// <summary>
+    /// Creates a single handoff route condition descriptor.
+    /// </summary>
+    public static ToolHandoffCondition CreateCondition(string sourceField, string expectedValue) {
+        return new ToolHandoffCondition {
+            SourceField = sourceField ?? string.Empty,
+            ExpectedValue = expectedValue ?? string.Empty
+        };
+    }
+
+    /// <summary>
     /// Creates a single outbound handoff route descriptor.
     /// </summary>
     public static ToolHandoffRoute CreateRoute(
@@ -231,7 +241,8 @@ public static class ToolContractDefaults {
         IReadOnlyList<ToolHandoffBinding> bindings,
         string? targetRole = null,
         string? followUpKind = null,
-        int followUpPriority = 0) {
+        int followUpPriority = 0,
+        IReadOnlyList<ToolHandoffCondition>? conditions = null) {
         return new ToolHandoffRoute {
             TargetPackId = targetPackId ?? string.Empty,
             TargetToolName = targetToolName ?? string.Empty,
@@ -239,7 +250,8 @@ public static class ToolContractDefaults {
             Reason = reason ?? string.Empty,
             FollowUpKind = ToolHandoffFollowUpKinds.Normalize(followUpKind),
             FollowUpPriority = ToolHandoffFollowUpPriorities.Normalize(followUpPriority),
-            Bindings = CloneBindingsOrEmpty(bindings)
+            Bindings = CloneBindingsOrEmpty(bindings),
+            Conditions = CloneConditionsOrEmpty(conditions)
         };
     }
 
@@ -268,7 +280,8 @@ public static class ToolContractDefaults {
             bindings: bindings,
             targetRole: targetRole,
             followUpKind: followUpKind,
-            followUpPriority: followUpPriority);
+            followUpPriority: followUpPriority,
+            conditions: null);
     }
 
     /// <summary>
@@ -399,6 +412,25 @@ public static class ToolContractDefaults {
         return cloned;
     }
 
+    private static ToolHandoffCondition[] CloneConditionsOrEmpty(IReadOnlyList<ToolHandoffCondition>? conditions) {
+        if (conditions is null || conditions.Count == 0) {
+            return Array.Empty<ToolHandoffCondition>();
+        }
+
+        var cloned = new ToolHandoffCondition[conditions.Count];
+        for (var i = 0; i < conditions.Count; i++) {
+            var condition = conditions[i];
+            cloned[i] = condition is null
+                ? new ToolHandoffCondition()
+                : new ToolHandoffCondition {
+                    SourceField = condition.SourceField,
+                    ExpectedValue = condition.ExpectedValue
+                };
+        }
+
+        return cloned;
+    }
+
     private static ToolHandoffRoute[] CloneRoutesOrEmpty(IReadOnlyList<ToolHandoffRoute>? routes) {
         if (routes is null || routes.Count == 0) {
             return Array.Empty<ToolHandoffRoute>();
@@ -416,7 +448,8 @@ public static class ToolContractDefaults {
                     Reason = route.Reason,
                     FollowUpKind = ToolHandoffFollowUpKinds.Normalize(route.FollowUpKind),
                     FollowUpPriority = ToolHandoffFollowUpPriorities.Normalize(route.FollowUpPriority),
-                    Bindings = CloneBindingsOrEmpty(route.Bindings)
+                    Bindings = CloneBindingsOrEmpty(route.Bindings),
+                    Conditions = CloneConditionsOrEmpty(route.Conditions)
                 };
         }
 

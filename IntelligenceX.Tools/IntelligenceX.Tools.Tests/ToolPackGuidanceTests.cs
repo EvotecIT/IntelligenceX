@@ -85,6 +85,82 @@ public class ToolPackGuidanceTests {
     }
 
     [Fact]
+    public void Create_ShouldDeriveRuntimeCapabilitiesFromToolCatalog() {
+        var model = ToolPackGuidance.Create(
+            pack: "active_directory",
+            engine: "ADPlayground",
+            tools: new[] { "ad_pack_info", "ad_environment_discover", "ad_scope_discovery", "ad_user_lifecycle", "email_imap_list" },
+            toolCatalog: new[] {
+                new ToolPackToolCatalogEntryModel {
+                    Name = "ad_environment_discover",
+                    Description = "Discover environment",
+                    IsEnvironmentDiscoverTool = true,
+                    Traits = new ToolPackToolTraitsModel {
+                        ExecutionScope = ToolExecutionScopes.LocalOrRemote,
+                        SupportsLocalExecution = true,
+                        SupportsRemoteExecution = true,
+                        SupportsTargetScoping = true,
+                        TargetScopeArguments = new[] { "domain_name", "domain_controller" },
+                        SupportsRemoteHostTargeting = true,
+                        RemoteHostArguments = new[] { "domain_controller" }
+                    }
+                },
+                new ToolPackToolCatalogEntryModel {
+                    Name = "ad_user_lifecycle",
+                    Description = "Governed lifecycle write",
+                    IsWriteCapable = true,
+                    RequiresWriteGovernance = true,
+                    WriteGovernanceContractId = ToolWriteGovernanceContract.DefaultContractId
+                },
+                new ToolPackToolCatalogEntryModel {
+                    Name = "email_imap_list",
+                    Description = "Authentication-aware list",
+                    IsAuthenticationAware = true,
+                    RequiresAuthentication = true,
+                    AuthenticationArguments = new[] { ToolAuthenticationArgumentNames.ProfileId },
+                    SupportsConnectivityProbe = true,
+                    ProbeToolName = "email_imap_probe"
+                }
+            });
+
+        Assert.NotNull(model.RuntimeCapabilities);
+        Assert.True(model.RuntimeCapabilities.SupportsLocalExecution);
+        Assert.True(model.RuntimeCapabilities.SupportsRemoteExecution);
+        Assert.True(model.RuntimeCapabilities.SupportsTargetScoping);
+        Assert.True(model.RuntimeCapabilities.SupportsRemoteHostTargeting);
+        Assert.True(model.RuntimeCapabilities.SupportsEnvironmentDiscovery);
+        Assert.True(model.RuntimeCapabilities.SupportsConnectivityProbe);
+        Assert.True(model.RuntimeCapabilities.SupportsGovernedWrites);
+        Assert.True(model.RuntimeCapabilities.SupportsAuthentication);
+        Assert.Equal(new[] { "domain_name", "domain_controller" }, model.RuntimeCapabilities.TargetScopeArguments);
+        Assert.Equal(new[] { "domain_controller" }, model.RuntimeCapabilities.RemoteHostArguments);
+        Assert.Equal(new[] { "ad_environment_discover" }, model.RuntimeCapabilities.PreferredEntryTools);
+        Assert.Equal(new[] { "email_imap_probe" }, model.RuntimeCapabilities.PreferredProbeTools);
+        Assert.Empty(model.RuntimeCapabilities.RuntimePrerequisites);
+        Assert.Null(model.RuntimeCapabilities.ProbeHelperFreshnessWindowSeconds);
+        Assert.Null(model.RuntimeCapabilities.SetupHelperFreshnessWindowSeconds);
+        Assert.Null(model.RuntimeCapabilities.RecipeHelperFreshnessWindowSeconds);
+    }
+
+    [Fact]
+    public void Create_ShouldPreserveExplicitRuntimeFreshnessWindows() {
+        var model = ToolPackGuidance.Create(
+            pack: "system",
+            engine: "ComputerX",
+            tools: new[] { "system_pack_info", "system_connectivity_probe" },
+            runtimeCapabilities: new ToolPackRuntimeCapabilitiesModel {
+                PreferredProbeTools = new[] { "system_connectivity_probe" },
+                ProbeHelperFreshnessWindowSeconds = 600,
+                SetupHelperFreshnessWindowSeconds = 1800,
+                RecipeHelperFreshnessWindowSeconds = 900
+            });
+
+        Assert.Equal(600, model.RuntimeCapabilities.ProbeHelperFreshnessWindowSeconds);
+        Assert.Equal(1800, model.RuntimeCapabilities.SetupHelperFreshnessWindowSeconds);
+        Assert.Equal(900, model.RuntimeCapabilities.RecipeHelperFreshnessWindowSeconds);
+    }
+
+    [Fact]
     public void EntityHandoff_ShouldNormalizeFieldsAndTools() {
         var handoff = ToolPackGuidance.EntityHandoff(
             id: " identity_bridge ",
@@ -134,6 +210,53 @@ public class ToolPackGuidanceTests {
         Assert.Equal(new[] { "eventlog_named_events_query" }, handoff.SourceTools);
         Assert.Equal(new[] { "ad_object_resolve" }, handoff.TargetTools);
         Assert.Single(handoff.FieldMappings);
+    }
+
+    [Fact]
+    public void Recipe_ShouldNormalizeStepsAndVerificationTools() {
+        var recipe = ToolPackGuidance.Recipe(
+            id: " joiner_onboarding ",
+            summary: " create a user ",
+            whenToUse: " new starter ",
+            steps: new[] {
+                ToolPackGuidance.FlowStep(" Discover scope ", new[] { " ad_environment_discover ", "AD_ENVIRONMENT_DISCOVER" }, " first "),
+                ToolPackGuidance.FlowStep(" Apply write ", new[] { " ad_user_lifecycle " }, " second ")
+            },
+            verificationTools: new[] { " ad_object_get ", "AD_OBJECT_GET", " ad_object_resolve " },
+            notes: " note ");
+
+        Assert.Equal("joiner_onboarding", recipe.Id);
+        Assert.Equal("create a user", recipe.Summary);
+        Assert.Equal("new starter", recipe.WhenToUse);
+        Assert.Equal(2, recipe.Steps.Count);
+        Assert.Equal("Discover scope", recipe.Steps[0].Goal);
+        Assert.Equal(new[] { "ad_environment_discover" }, recipe.Steps[0].SuggestedTools);
+        Assert.Equal(new[] { "ad_object_get", "ad_object_resolve" }, recipe.VerificationTools);
+        Assert.Equal("note", recipe.Notes);
+    }
+
+    [Fact]
+    public void Create_ShouldExposeStructuredRecipes() {
+        var model = ToolPackGuidance.Create(
+            pack: "active_directory_lifecycle",
+            engine: "ADPlayground",
+            tools: new[] { "ad_lifecycle_pack_info", "ad_user_lifecycle" },
+            recipes: new[] {
+                ToolPackGuidance.Recipe(
+                    id: "joiner_onboarding",
+                    summary: "Create a governed onboarding workflow.",
+                    steps: new[] {
+                        ToolPackGuidance.FlowStep("Discover scope", new[] { "ad_environment_discover" }),
+                        ToolPackGuidance.FlowStep("Preview write", new[] { "ad_user_lifecycle" })
+                    },
+                    verificationTools: new[] { "ad_object_get", "ad_object_resolve" })
+            });
+
+        var recipe = Assert.Single(model.RecommendedRecipes);
+        Assert.Equal("joiner_onboarding", recipe.Id);
+        Assert.Equal("Create a governed onboarding workflow.", recipe.Summary);
+        Assert.Equal(2, recipe.Steps.Count);
+        Assert.Equal(new[] { "ad_object_get", "ad_object_resolve" }, recipe.VerificationTools);
     }
 
     [Fact]
@@ -590,6 +713,8 @@ public class ToolPackGuidanceTests {
                     Description = "Timeline",
                     Traits = new ToolPackToolTraitsModel {
                         ExecutionScope = "local_or_remote",
+                        SupportsTargetScoping = true,
+                        TargetScopeArguments = new[] { "machine_name" },
                         SupportsRemoteHostTargeting = true,
                         RemoteHostArguments = new[] { "machine_name" }
                     },
@@ -620,6 +745,8 @@ public class ToolPackGuidanceTests {
 
         var summary = model.AutonomySummary;
         Assert.Equal(3, summary.TotalTools);
+        Assert.Equal(3, summary.LocalCapableTools);
+        Assert.Equal(new[] { "eventlog_pack_info", "eventlog_timeline_query", "eventlog_channels_list" }, summary.LocalCapableToolNames);
         Assert.Equal(1, summary.RemoteCapableTools);
         Assert.Equal(new[] { "eventlog_timeline_query" }, summary.RemoteCapableToolNames);
         Assert.Equal(1, summary.TargetScopedTools);
@@ -636,6 +763,8 @@ public class ToolPackGuidanceTests {
         Assert.Equal(new[] { "eventlog_timeline_query" }, summary.RecoveryAwareToolNames);
         Assert.Equal(0, summary.WriteCapableTools);
         Assert.Empty(summary.WriteCapableToolNames);
+        Assert.Equal(0, summary.GovernedWriteTools);
+        Assert.Empty(summary.GovernedWriteToolNames);
         Assert.Equal(0, summary.AuthenticationRequiredTools);
         Assert.Empty(summary.AuthenticationRequiredToolNames);
         Assert.Equal(0, summary.ProbeCapableTools);

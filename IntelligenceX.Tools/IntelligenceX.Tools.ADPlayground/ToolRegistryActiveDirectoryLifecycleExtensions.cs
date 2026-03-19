@@ -49,5 +49,6 @@ public static class ToolRegistryActiveDirectoryLifecycleExtensions {
         yield return new AdUserLifecycleTool(options);
         yield return new AdComputerLifecycleTool(options);
         yield return new AdGroupLifecycleTool(options);
+        yield return new AdOuLifecycleTool(options);
     }
 }

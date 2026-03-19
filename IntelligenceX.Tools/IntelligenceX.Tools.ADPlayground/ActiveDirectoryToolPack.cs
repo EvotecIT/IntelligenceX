@@ -7,7 +7,7 @@ namespace IntelligenceX.Tools.ADPlayground;
 /// <summary>
 /// Active Directory tool pack (self-describing + self-registering).
 /// </summary>
-public sealed class ActiveDirectoryToolPack : IToolPack, IToolPackCatalogProvider {
+public sealed class ActiveDirectoryToolPack : IToolPack, IToolPackCatalogProvider, IToolPackGuidanceProvider {
     private readonly ActiveDirectoryToolOptions _options;
 
     /// <summary>
@@ -37,7 +37,7 @@ public sealed class ActiveDirectoryToolPack : IToolPack, IToolPackCatalogProvide
             "identity",
             "kerberos",
             "replication",
-            "remote_analysis"
+            ToolPackCapabilityTags.RemoteAnalysis
         },
         SearchTokens = new[] {
             "ad",
@@ -63,5 +63,10 @@ public sealed class ActiveDirectoryToolPack : IToolPack, IToolPackCatalogProvide
     /// <inheritdoc />
     public IReadOnlyList<ToolPackToolCatalogEntryModel> GetToolCatalog() {
         return ToolRegistryActiveDirectoryExtensions.GetRegisteredToolCatalog(_options);
+    }
+
+    /// <inheritdoc />
+    public ToolPackInfoModel GetPackGuidance() {
+        return AdPackInfoTool.BuildGuidance(_options);
     }
 }

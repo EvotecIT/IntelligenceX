@@ -65,16 +65,29 @@ public sealed class AdPackInfoTool : ActiveDirectoryToolBase, ITool {
         _ = context;
         cancellationToken.ThrowIfCancellationRequested();
 
-        var root = ToolPackGuidance.Create(
+        var root = BuildGuidance(Options);
+
+        var summary = ToolMarkdown.SummaryText(
+            title: "Active Directory Pack",
+            "Use raw payloads for reasoning/correlation; use `*_view` only for presentation.",
+            "Prefer `ad_object_resolve` and paged queries to reduce repeated lookups.");
+
+        return Task.FromResult(ToolResultV2.OkModel(root, summaryMarkdown: summary));
+    }
+
+    internal static ToolPackInfoModel BuildGuidance(ActiveDirectoryToolOptions options) {
+        return ToolPackGuidance.Create(
             pack: "active_directory",
             engine: "ADPlayground",
-            tools: ToolRegistryActiveDirectoryExtensions.GetRegisteredToolNames(Options),
+            tools: ToolRegistryActiveDirectoryExtensions.GetRegisteredToolNames(options),
             recommendedFlow: new[] {
+                "Use ad_connectivity_probe first when RootDSE reachability, effective domain_controller/search_base_dn resolution, or basic domain-controller discovery is uncertain before broader AD discovery or monitoring work.",
                 "Call ad_environment_discover first to learn effective domain_controller/search_base_dn and candidate DCs.",
                 "Use ad_scope_discovery for explicit scope + receipt output (forest/domain, naming contexts, domains/DCs, and missing-reason diagnostics).",
                 "Use ad_forest_discover to make forest scope explicit and get a receipt (domains/trusts/DCs discovered and how).",
                 "Use ad_forest_functional for forest-level functional posture and recommended target-level planning.",
                 "Use ad_search/ad_groups_list/ad_spn_search for broad discovery.",
+                "Use ad_user_groups_resolved when the question is specifically about a user's effective access footprint or when lifecycle changes need read-only membership verification without looping over ad_object_get calls.",
                 "Use ad_password_policy/ad_password_policy_rollup/ad_password_policy_length and ad_trust for policy and trust-posture diagnostics.",
                 "Use ad_domain_statistics/ad_domain_controller_facts/ad_dc_fleet_posture/ad_fsmo_roles/ad_krbtgt_health/ad_system_state_backup for domain resilience posture checks.",
                 "Use ad_domain_container_defaults/ad_machine_account_quota for domain default and join-governance posture.",
@@ -99,6 +112,10 @@ public sealed class AdPackInfoTool : ActiveDirectoryToolBase, ITool {
                 "When AD discovery or monitoring results identify specific domain controllers or hosts, pivot into system_info/system_time_sync/system_metrics_summary/system_hardware_summary/system_logical_disks_list/system_backup_posture/system_office_posture/system_browser_posture/system_tls_posture/system_winrm_posture/system_powershell_logging_posture/system_uac_posture/system_ldap_policy_posture/system_network_client_posture/system_account_policy_posture/system_interactive_logon_posture/system_device_guard_posture/system_defender_asr_posture with computer_name instead of asking the model to improvise the cross-pack jump."
             },
             flowSteps: new[] {
+                ToolPackGuidance.FlowStep(
+                    goal: "Validate AD context and basic LDAP reachability",
+                    suggestedTools: new[] { "ad_connectivity_probe", "ad_environment_discover", "ad_scope_discovery" },
+                    notes: "Start here when the effective domain controller, search base, or basic RootDSE reachability is still uncertain."),
                 ToolPackGuidance.FlowStep(
                     goal: "Discover candidate AD objects",
                     suggestedTools: new[] { "ad_search", "ad_groups_list", "ad_spn_search" }),
@@ -131,7 +148,7 @@ public sealed class AdPackInfoTool : ActiveDirectoryToolBase, ITool {
                     suggestedTools: new[] { "ad_pki_templates", "ad_pki_posture" }),
                 ToolPackGuidance.FlowStep(
                     goal: "Resolve/expand identities for correlation",
-                    suggestedTools: new[] { "ad_handoff_prepare", "ad_scope_discovery", "ad_object_resolve", "ad_object_get", "ad_group_members_resolved" }),
+                    suggestedTools: new[] { "ad_handoff_prepare", "ad_scope_discovery", "ad_object_resolve", "ad_object_get", "ad_group_members_resolved", "ad_user_groups_resolved" }),
                 ToolPackGuidance.FlowStep(
                     goal: "Confirm authoritative user/computer logon recency across DCs",
                     suggestedTools: new[] { "ad_scope_discovery", "ad_forest_discover", "ad_ldap_query", "ad_ldap_query_paged" }),
@@ -144,13 +161,17 @@ public sealed class AdPackInfoTool : ActiveDirectoryToolBase, ITool {
             },
             capabilities: new[] {
                 ToolPackGuidance.Capability(
+                    id: "connectivity_preflight",
+                    summary: "Validate RootDSE/context reachability and gather a small domain-controller sample before broader AD discovery, monitoring, or LDAP reads.",
+                    primaryTools: new[] { "ad_connectivity_probe", "ad_environment_discover", "ad_scope_discovery" }),
+                ToolPackGuidance.Capability(
                     id: "directory_discovery",
                     summary: "Search and list AD users/groups/computers with optional dynamic attribute bags.",
                     primaryTools: new[] { "ad_search", "ad_groups_list", "ad_spn_search" }),
                 ToolPackGuidance.Capability(
                     id: "identity_resolution",
                     summary: "Resolve identities and membership details for cross-tool correlation.",
-                    primaryTools: new[] { "ad_handoff_prepare", "ad_object_resolve", "ad_object_get", "ad_group_members", "ad_group_members_resolved" }),
+                    primaryTools: new[] { "ad_handoff_prepare", "ad_object_resolve", "ad_object_get", "ad_group_members", "ad_group_members_resolved", "ad_user_groups_resolved" }),
                 ToolPackGuidance.Capability(
                     id: "authoritative_logon_correlation",
                     summary: "Correlate last-logon evidence per-DC using direct LDAP reads and forest/domain discovery context.",
@@ -237,22 +258,88 @@ public sealed class AdPackInfoTool : ActiveDirectoryToolBase, ITool {
                     },
                     notes: "Prefer one host or a small deduplicated host batch at a time; use computer_name for all remote System pack follow-up tools. LDAP/LDAPS certificate requests should normally stay in the AD tools unless the user explicitly asks for machine-store or trust-store posture on the same host. For NTP/time-skew follow-up prefer system_time_sync; for host backup coverage prefer system_backup_posture; for host application hardening prefer system_office_posture or system_browser_posture; for crypto, remote-management, script-auditing, elevation, host LDAP/network client policy, effective host account/logon policy, or virtualization/ASR follow-up prefer system_tls_posture, system_winrm_posture, system_powershell_logging_posture, system_uac_posture, system_ldap_policy_posture, system_network_client_posture, system_account_policy_posture, system_interactive_logon_posture, system_device_guard_posture, or system_defender_asr_posture.")
             },
-            toolCatalog: ToolRegistryActiveDirectoryExtensions.GetRegisteredToolCatalog(Options),
+            recipes: new[] {
+                ToolPackGuidance.Recipe(
+                    id: "forest_scope_bootstrap",
+                    summary: "Bootstrap forest/domain scope before deeper AD analysis or cross-pack pivots.",
+                    whenToUse: "Use when the domain controller, naming context, forest boundary, or candidate DC list is not explicit yet.",
+                    steps: new[] {
+                        ToolPackGuidance.FlowStep(
+                            goal: "Validate connectivity and discover effective local AD context",
+                            suggestedTools: new[] { "ad_connectivity_probe", "ad_environment_discover", "ad_scope_discovery" },
+                            notes: "Start here to confirm RootDSE reachability, effective domain controller, naming contexts, and missing-reason diagnostics."),
+                        ToolPackGuidance.FlowStep(
+                            goal: "Expand scope to forest-level context",
+                            suggestedTools: new[] { "ad_forest_discover", "ad_forest_functional" },
+                            notes: "Use these when trusts, multiple domains, or forest-wide posture matter."),
+                        ToolPackGuidance.FlowStep(
+                            goal: "Capture domain controller and resilience facts",
+                            suggestedTools: new[] { "ad_domain_controller_facts", "ad_dc_fleet_posture", "ad_fsmo_roles" },
+                            notes: "Use this step before operational follow-up when the investigation depends on which DCs matter most.")
+                    },
+                    verificationTools: new[] { "ad_scope_discovery", "ad_forest_discover", "ad_domain_controller_facts" }),
+                ToolPackGuidance.Recipe(
+                    id: "authoritative_last_logon_investigation",
+                    summary: "Investigate authoritative last-logon activity by enumerating DCs and comparing per-DC LDAP results.",
+                    whenToUse: "Use when lastLogonTimestamp is too approximate and the question needs an authoritative per-DC lastLogon answer.",
+                    steps: new[] {
+                        ToolPackGuidance.FlowStep(
+                            goal: "Enumerate the effective DC scope",
+                            suggestedTools: new[] { "ad_scope_discovery", "ad_forest_discover" },
+                            notes: "Identify the domains and DCs that must participate in the per-DC comparison."),
+                        ToolPackGuidance.FlowStep(
+                            goal: "Resolve the target identity and gather direct LDAP values",
+                            suggestedTools: new[] { "ad_object_resolve", "ad_ldap_query", "ad_ldap_query_paged" },
+                            notes: "Query each DC for lastLogon and compare the maximum value rather than trusting replicated approximation fields."),
+                        ToolPackGuidance.FlowStep(
+                            goal: "Confirm final object context and interpretation",
+                            suggestedTools: new[] { "ad_object_get", "ad_search" },
+                            notes: "Use direct object detail to verify the final identity, DN, and any adjacent posture needed for the report.")
+                    },
+                    verificationTools: new[] { "ad_object_get", "ad_ldap_query" },
+                    notes: "Treat lastLogonTimestamp as replicated approximation; use the per-DC lastLogon values for the authoritative answer."),
+                ToolPackGuidance.Recipe(
+                    id: "dc_runtime_health_followup",
+                    summary: "Move from discovered AD scope into runtime health probes and same-host system diagnostics for domain controllers.",
+                    whenToUse: "Use when AD scope discovery or diagnostics identified a concrete DC and the next step is LDAP/DNS/Kerberos/replication/runtime follow-up.",
+                    steps: new[] {
+                        ToolPackGuidance.FlowStep(
+                            goal: "Validate connectivity and confirm the target DC scope",
+                            suggestedTools: new[] { "ad_connectivity_probe", "ad_scope_discovery", "ad_domain_controller_facts", "ad_directory_discovery_diagnostics" }),
+                        ToolPackGuidance.FlowStep(
+                            goal: "Select and run the appropriate AD monitoring probes",
+                            suggestedTools: new[] { "ad_monitoring_probe_catalog", "ad_monitoring_probe_run" },
+                            notes: "Use the catalog first when the probe kind depends on the failure shape or when directory sub-kinds matter."),
+                        ToolPackGuidance.FlowStep(
+                            goal: "Pivot the same host into focused system diagnostics",
+                            suggestedTools: new[] { "system_time_sync", "system_metrics_summary", "system_logical_disks_list", "system_backup_posture" },
+                            notes: "Reuse the discovered DC host as computer_name so time, runtime, disk, and backup checks stay tied to the same machine.")
+                    },
+                    verificationTools: new[] { "ad_monitoring_probe_run", "system_time_sync", "system_metrics_summary" })
+            },
+            toolCatalog: ToolRegistryActiveDirectoryExtensions.GetRegisteredToolCatalog(options),
+            runtimeCapabilities: new ToolPackRuntimeCapabilitiesModel {
+                PreferredEntryTools = new[] { "ad_environment_discover", "ad_scope_discovery", "ad_forest_discover" },
+                PreferredProbeTools = new[] { "ad_connectivity_probe", "ad_monitoring_probe_catalog", "ad_monitoring_probe_run" },
+                ProbeHelperFreshnessWindowSeconds = 600,
+                SetupHelperFreshnessWindowSeconds = 1800,
+                RecipeHelperFreshnessWindowSeconds = 900,
+                RuntimePrerequisites = new[] {
+                    "Use ad_connectivity_probe when RootDSE reachability, effective LDAP context resolution, or a small DC sample is still uncertain.",
+                    "Call ad_environment_discover or ad_scope_discovery first when domain_controller, search_base_dn, or forest/domain boundaries are not explicit yet.",
+                    "Persisted AD monitoring state tools require monitoring_directory under one of the configured AllowedMonitoringRoots locations.",
+                    "When discovery or monitoring output identifies specific DCs or hosts, reuse those values as computer_name in ComputerX/System follow-up tools instead of improvising a new host scope."
+                },
+                Notes = "Use ad_connectivity_probe before broader AD discovery when LDAP context is uncertain, then use ad_monitoring_probe_catalog before ad_monitoring_probe_run when the next step depends on probe-specific preflight, follow_up_profiles, or result_signal_profiles."
+            },
             rawPayloadPolicy: "Preserve raw engine payloads (including dynamic LDAP attribute bags and nested objects).",
             viewProjectionPolicy: "Projection arguments are optional and view-only; they must not replace raw payload.",
             correlationGuidance: "Correlate users/groups/computers via raw payload fields across multiple AD tools.",
             setupHints: new {
-                DomainController = Options.DomainController ?? string.Empty,
-                SearchBaseDn = Options.DefaultSearchBaseDn ?? string.Empty,
-                AllowedMonitoringRootsCount = Options.AllowedMonitoringRoots.Count,
+                DomainController = options.DomainController ?? string.Empty,
+                SearchBaseDn = options.DefaultSearchBaseDn ?? string.Empty,
+                AllowedMonitoringRootsCount = options.AllowedMonitoringRoots.Count,
                 Note = "Use ad_environment_discover first to bootstrap context; provide domain_controller/search_base_dn only when discovery cannot reach your target. Persisted monitoring-state tools require monitoring_directory inside AllowedMonitoringRoots."
             });
-
-        var summary = ToolMarkdown.SummaryText(
-            title: "Active Directory Pack",
-            "Use raw payloads for reasoning/correlation; use `*_view` only for presentation.",
-            "Prefer `ad_object_resolve` and paged queries to reduce repeated lookups.");
-
-        return Task.FromResult(ToolResultV2.OkModel(root, summaryMarkdown: summary));
     }
 }

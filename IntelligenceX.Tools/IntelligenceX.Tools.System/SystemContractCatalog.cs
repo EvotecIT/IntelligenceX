@@ -35,7 +35,7 @@ public static class SystemContractCatalog {
     /// </summary>
     public static ToolSetupContract CreateRemoteHostAccessSetup() {
         return ToolContractDefaults.CreateRequiredSetup(
-            setupToolName: "system_info",
+            setupToolName: "system_connectivity_probe",
             requirementId: "system_host_access",
             requirementKind: ToolSetupRequirementKinds.Connectivity,
             setupHintKeys: SetupHintKeys);
@@ -58,7 +58,7 @@ public static class SystemContractCatalog {
             supportsTransientRetry: true,
             maxRetryAttempts: 1,
             retryableErrorCodes: RetryableErrorCodes,
-            recoveryToolNames: new[] { "system_info" },
+            recoveryToolNames: new[] { "system_connectivity_probe", "system_info" },
             supportsAlternateEngines: supportsAlternateEngines,
             alternateEngineIds: supportsAlternateEngines ? new[] { "cim", "wmi" } : null);
     }
@@ -82,11 +82,38 @@ public static class SystemContractCatalog {
     }
 
     /// <summary>
+    /// Builds the standard System probe follow-up contract into deeper same-host diagnostics.
+    /// </summary>
+    public static ToolHandoffContract CreateConnectivityProbeHandoff() {
+        return ToolContractDefaults.CreateHandoff(
+            ToolContractDefaults.CreateSharedTargetRoutes(
+                targetPackId: "system",
+                targetArgument: "computer_name",
+                sourceFields: new[] { "computer_name", "target" },
+                routeDescriptors: new (string TargetToolName, string Reason)[] {
+                    ("system_info", "Promote a successful ComputerX connectivity probe into fuller runtime identity and OS collection for the same host."),
+                    ("system_metrics_summary", "Promote a successful ComputerX connectivity probe into CPU and memory follow-up for the same host.")
+                },
+                isRequired: true,
+                targetRole: ToolRoutingTaxonomy.RoleOperational,
+                followUpKind: ToolHandoffFollowUpKinds.Verification,
+                followUpPriority: ToolHandoffFollowUpPriorities.Normal));
+    }
+
+    /// <summary>
     /// Resolves the default System cross-pack handoff contract for a tool name when the tool does not declare one explicitly.
     /// </summary>
     public static ToolHandoffContract? CreateHandoff(string toolName, JsonObject? parameters) {
-        return string.Equals((toolName ?? string.Empty).Trim(), PackInfoToolName, StringComparison.OrdinalIgnoreCase)
-               || !ToolParametersExposeRemoteComputerName(parameters)
+        var normalizedToolName = (toolName ?? string.Empty).Trim();
+        if (string.Equals(normalizedToolName, PackInfoToolName, StringComparison.OrdinalIgnoreCase)) {
+            return null;
+        }
+
+        if (string.Equals(normalizedToolName, "system_connectivity_probe", StringComparison.OrdinalIgnoreCase)) {
+            return CreateConnectivityProbeHandoff();
+        }
+
+        return !ToolParametersExposeRemoteComputerName(parameters)
             ? null
             : CreateHostContextHandoff();
     }

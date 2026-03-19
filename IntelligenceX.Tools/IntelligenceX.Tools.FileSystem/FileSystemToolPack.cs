@@ -29,7 +29,8 @@ public sealed class FileSystemToolPack : IToolPack, IToolPackCatalogProvider {
         Description = "Safe-by-default file system reads (restricted to AllowedRoots).",
         SourceKind = "builtin",
         EngineId = "filesystem",
-        CapabilityTags = new[] { "disk", "filesystem", "local_analysis" }
+        Category = "filesystem",
+        CapabilityTags = new[] { "disk", "filesystem", ToolPackCapabilityTags.LocalAnalysis }
     };
 
     /// <inheritdoc />

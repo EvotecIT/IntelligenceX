@@ -12,6 +12,12 @@ public partial class ToolSchemaSnapshotTests {
         };
 
         yield return new object[] {
+            "ad_connectivity_probe",
+            new[] { "domain_controller", "search_base_dn", "include_domain_controllers", "max_domain_controllers" },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
             "ad_delegation_audit",
             new[] { "kind", "enabled_only", "include_spns", "include_allowed_to_delegate_to", "max_values_per_attribute", "search_base_dn", "domain_controller", "max_results", "columns", "sort_by", "sort_direction", "top" },
             Array.Empty<string>()
@@ -120,11 +126,19 @@ public partial class ToolSchemaSnapshotTests {
                 "identity",
                 "sam_account_name",
                 "organizational_unit",
+                "target_organizational_unit",
                 "domain_name",
                 "common_name",
                 "user_principal_name",
                 "given_name",
                 "surname",
+                "initials",
+                "department",
+                "title",
+                "company",
+                "office",
+                "telephone_number",
+                "mobile",
                 "display_name",
                 "mail",
                 "description",
@@ -157,8 +171,10 @@ public partial class ToolSchemaSnapshotTests {
                 "identity",
                 "sam_account_name",
                 "organizational_unit",
+                "target_organizational_unit",
                 "domain_name",
                 "common_name",
+                "new_common_name",
                 "dns_host_name",
                 "description",
                 "managed_by",
@@ -191,8 +207,10 @@ public partial class ToolSchemaSnapshotTests {
                 "identity",
                 "sam_account_name",
                 "organizational_unit",
+                "target_organizational_unit",
                 "domain_name",
                 "common_name",
+                "new_common_name",
                 "display_name",
                 "description",
                 "mail",
@@ -202,6 +220,36 @@ public partial class ToolSchemaSnapshotTests {
                 "security_enabled",
                 "members_to_add",
                 "members_to_remove",
+                "clear_attributes",
+                "additional_attributes",
+                "apply",
+                "write_execution_id",
+                "write_actor_id",
+                "write_audit_correlation_id",
+                "write_change_reason",
+                "write_operation_id",
+                "write_rollback_plan_id",
+                "write_rollback_provider_id"
+            },
+            new[] { "operation" }
+        };
+
+        yield return new object[] {
+            "ad_ou_lifecycle",
+            new[] {
+                "operation",
+                "identity",
+                "name",
+                "parent_distinguished_name",
+                "target_parent_distinguished_name",
+                "domain_name",
+                "new_name",
+                "description",
+                "display_name",
+                "managed_by",
+                "protect_from_accidental_deletion",
+                "block_inheritance",
+                "recursive",
                 "clear_attributes",
                 "additional_attributes",
                 "apply",
@@ -247,6 +295,12 @@ public partial class ToolSchemaSnapshotTests {
         yield return new object[] {
             "ad_group_members_resolved",
             new[] { "identity", "search_base_dn", "domain_controller", "include_nested", "max_results", "attributes", "max_values_per_attribute", "columns", "sort_by", "sort_direction", "top" },
+            new[] { "identity" }
+        };
+
+        yield return new object[] {
+            "ad_user_groups_resolved",
+            new[] { "identity", "domain_name", "include_recursive", "max_results", "attributes", "columns", "sort_by", "sort_direction", "top" },
             new[] { "identity" }
         };
 

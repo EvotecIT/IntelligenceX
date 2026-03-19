@@ -29,19 +29,17 @@ public class SystemAdMonitoringParityTests {
         string expectedTargetArgument,
         params string[] expectedSourceFields) {
         var handoff = Assert.IsType<ToolHandoffContract>(definition.Handoff);
-        var route = Assert.Single(
+        Assert.Contains(
             handoff.OutboundRoutes,
-            candidate => string.Equals(candidate.TargetPackId, expectedPackId, StringComparison.OrdinalIgnoreCase)
-                         && string.Equals(candidate.TargetToolName, expectedToolName, StringComparison.OrdinalIgnoreCase));
-
-        Assert.Equal(expectedSourceFields.Length, route.Bindings.Count);
-        foreach (var sourceField in expectedSourceFields) {
-            Assert.Contains(
-                route.Bindings,
-                binding => string.Equals(binding.SourceField, sourceField, StringComparison.OrdinalIgnoreCase)
-                           && string.Equals(binding.TargetArgument, expectedTargetArgument, StringComparison.OrdinalIgnoreCase)
-                           && !binding.IsRequired);
-        }
+            route =>
+                string.Equals(route.TargetPackId, expectedPackId, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(route.TargetToolName, expectedToolName, StringComparison.OrdinalIgnoreCase)
+                && expectedSourceFields.All(sourceField =>
+                    route.Bindings.Any(
+                        binding =>
+                            string.Equals(binding.SourceField, sourceField, StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(binding.TargetArgument, expectedTargetArgument, StringComparison.OrdinalIgnoreCase)
+                            && !binding.IsRequired)));
     }
 
     [Theory]
@@ -214,19 +212,11 @@ public class SystemAdMonitoringParityTests {
         Assert.Contains(
             monitoringProbeRun.Handoff?.OutboundRoutes ?? Array.Empty<ToolHandoffRoute>(),
             static route => string.Equals(route.TargetPackId, "system", StringComparison.OrdinalIgnoreCase)
+                            && string.Equals(route.TargetToolName, "system_updates_installed", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(
+            monitoringProbeRun.Handoff?.OutboundRoutes ?? Array.Empty<ToolHandoffRoute>(),
+            static route => string.Equals(route.TargetPackId, "system", StringComparison.OrdinalIgnoreCase)
                             && string.Equals(route.TargetToolName, "system_tls_posture", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains(
-            monitoringProbeRun.Handoff?.OutboundRoutes ?? Array.Empty<ToolHandoffRoute>(),
-            static route => string.Equals(route.TargetPackId, "system", StringComparison.OrdinalIgnoreCase)
-                            && string.Equals(route.TargetToolName, "system_winrm_posture", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains(
-            monitoringProbeRun.Handoff?.OutboundRoutes ?? Array.Empty<ToolHandoffRoute>(),
-            static route => string.Equals(route.TargetPackId, "system", StringComparison.OrdinalIgnoreCase)
-                            && string.Equals(route.TargetToolName, "system_powershell_logging_posture", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains(
-            monitoringProbeRun.Handoff?.OutboundRoutes ?? Array.Empty<ToolHandoffRoute>(),
-            static route => string.Equals(route.TargetPackId, "system", StringComparison.OrdinalIgnoreCase)
-                            && string.Equals(route.TargetToolName, "system_uac_posture", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(
             monitoringProbeRun.Handoff?.OutboundRoutes ?? Array.Empty<ToolHandoffRoute>(),
             static route => string.Equals(route.TargetPackId, "system", StringComparison.OrdinalIgnoreCase)
@@ -238,23 +228,15 @@ public class SystemAdMonitoringParityTests {
         Assert.Contains(
             monitoringProbeRun.Handoff?.OutboundRoutes ?? Array.Empty<ToolHandoffRoute>(),
             static route => string.Equals(route.TargetPackId, "system", StringComparison.OrdinalIgnoreCase)
-                            && string.Equals(route.TargetToolName, "system_account_policy_posture", StringComparison.OrdinalIgnoreCase));
+                            && string.Equals(route.TargetToolName, "system_patch_compliance", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(
             monitoringProbeRun.Handoff?.OutboundRoutes ?? Array.Empty<ToolHandoffRoute>(),
             static route => string.Equals(route.TargetPackId, "system", StringComparison.OrdinalIgnoreCase)
-                            && string.Equals(route.TargetToolName, "system_interactive_logon_posture", StringComparison.OrdinalIgnoreCase));
+                            && string.Equals(route.TargetToolName, "system_hardware_summary", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(
             monitoringProbeRun.Handoff?.OutboundRoutes ?? Array.Empty<ToolHandoffRoute>(),
             static route => string.Equals(route.TargetPackId, "system", StringComparison.OrdinalIgnoreCase)
-                            && string.Equals(route.TargetToolName, "system_device_guard_posture", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains(
-            monitoringProbeRun.Handoff?.OutboundRoutes ?? Array.Empty<ToolHandoffRoute>(),
-            static route => string.Equals(route.TargetPackId, "system", StringComparison.OrdinalIgnoreCase)
-                            && string.Equals(route.TargetToolName, "system_defender_asr_posture", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains(
-            monitoringProbeRun.Handoff?.OutboundRoutes ?? Array.Empty<ToolHandoffRoute>(),
-            static route => string.Equals(route.TargetPackId, "system", StringComparison.OrdinalIgnoreCase)
-                            && string.Equals(route.TargetToolName, "system_certificate_posture", StringComparison.OrdinalIgnoreCase));
+                            && string.Equals(route.TargetToolName, "system_service_list", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -556,6 +538,7 @@ public class SystemAdMonitoringParityTests {
             new object?[] {
                 "ldap",
                 null,
+                null,
                 new ProbeResult { Status = ProbeStatus.Degraded, Target = "dc01.contoso.com" },
                 new[] { "dc01.contoso.com" },
                 "contoso.com",
@@ -575,6 +558,7 @@ public class SystemAdMonitoringParityTests {
             null,
             new object?[] {
                 "windows_update",
+                null,
                 null,
                 new ProbeResult { Status = ProbeStatus.Down, Target = "dc02.contoso.com" },
                 new[] { "dc02.contoso.com" },
@@ -597,6 +581,7 @@ public class SystemAdMonitoringParityTests {
             new object?[] {
                 "directory",
                 "rpc_endpoint",
+                null,
                 new ProbeResult { Status = ProbeStatus.Down, Target = "dc03.contoso.com" },
                 new[] { "dc03.contoso.com" },
                 "contoso.com",
@@ -609,6 +594,35 @@ public class SystemAdMonitoringParityTests {
                                                             && string.Equals(action.SuggestedArguments["computer_name"], "dc03.contoso.com", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(chain.NextActions, static action => string.Equals(action.Tool, "system_service_list", StringComparison.OrdinalIgnoreCase)
                                                             && string.Equals(action.SuggestedArguments["computer_name"], "dc03.contoso.com", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void ResolveActiveFollowUpProfileIds_ShouldIncludeKerberosTransportSplitProfile() {
+        var profiles = AdMonitoringProbeRunTool.ResolveActiveFollowUpProfileIds(
+            normalizedKind: "kerberos",
+            directoryProbeKind: null,
+            arguments: new JsonObject()
+                .Add("protocol", "both"),
+            resolvedTargets: new[] { "dc05.contoso.com" },
+            domainName: "contoso.com",
+            forestName: string.Empty);
+
+        Assert.Contains("transport_split", profiles, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("time_skew_and_kdc_health", profiles, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ResolveActiveFollowUpProfileIds_ShouldIncludeWindowsUpdatePatchInventoryFocusWhenScopeResolved() {
+        var profiles = AdMonitoringProbeRunTool.ResolveActiveFollowUpProfileIds(
+            normalizedKind: "windows_update",
+            directoryProbeKind: null,
+            arguments: new JsonObject(),
+            resolvedTargets: new[] { "dc06.contoso.com" },
+            domainName: "contoso.com",
+            forestName: string.Empty);
+
+        Assert.Contains("patch_inventory_focus", profiles, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("wsus_management_focus", profiles, StringComparer.OrdinalIgnoreCase);
     }
 
     [Fact]
