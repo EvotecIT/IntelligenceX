@@ -15,6 +15,9 @@ public static partial class ReviewerApp {
             if (thread.IsResolved) {
                 continue;
             }
+            if (IsStaticAnalysisInlineThread(thread)) {
+                continue;
+            }
             if (settings.ReviewThreadsAutoResolveBotsOnly && !ThreadHasOnlyBotComments(thread, settings)) {
                 continue;
             }
@@ -455,6 +458,9 @@ public static partial class ReviewerApp {
             if (assessment.Action == "resolve") {
                 continue;
             }
+            if (IsStaticAnalysisInlineThread(thread)) {
+                continue;
+            }
             if (ThreadHasAutoReply(thread)) {
                 continue;
             }
@@ -472,6 +478,29 @@ public static partial class ReviewerApp {
                 Console.Error.WriteLine($"Failed to reply to thread {thread.Id}: {ex.Message}");
             }
         }
+    }
+
+    private static bool IsStaticAnalysisInlineThread(PullRequestReviewThread thread) {
+        foreach (var comment in thread.Comments) {
+            if (string.IsNullOrWhiteSpace(comment.Body) ||
+                !comment.Body.Contains(ReviewFormatter.InlineMarker, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            var lines = comment.Body.Replace("\r\n", "\n").Split('\n');
+            foreach (var line in lines) {
+                var trimmed = line.Trim();
+                if (trimmed.Length == 0 ||
+                    trimmed.Contains(ReviewFormatter.InlineMarker, StringComparison.OrdinalIgnoreCase) ||
+                    trimmed.Contains(InlineSignatureMarkerPrefix, StringComparison.OrdinalIgnoreCase)) {
+                    continue;
+                }
+
+                return trimmed.StartsWith("Static analysis (", StringComparison.OrdinalIgnoreCase);
+            }
+        }
+
+        return false;
     }
 
     private static bool ThreadHasAutoReply(PullRequestReviewThread thread) {

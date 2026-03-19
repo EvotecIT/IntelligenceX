@@ -32,7 +32,8 @@ internal static class SetupAnalysisConfig {
             ["results"] = new JsonObject {
                 ["inputs"] = new JsonArray("artifacts/**/*.sarif", "artifacts/intelligencex.findings.json"),
                 ["minSeverity"] = "warning",
-                ["maxInline"] = 20,
+                // Keep analysis in the summary by default; inline reviewer threads are noisy for static-analysis findings.
+                ["maxInline"] = 0,
                 ["summary"] = true,
                 ["summaryMaxItems"] = 10,
                 ["summaryPlacement"] = "bottom",

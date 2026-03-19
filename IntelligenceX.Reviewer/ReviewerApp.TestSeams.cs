@@ -134,4 +134,8 @@ public static partial class ReviewerApp {
     internal static string AppendConversationResolutionPermissionBlockerForTests(string summaryBody,
         AutoResolvePermissionDiagnostics diagnostics, bool? requiresConversationResolution) =>
         AppendConversationResolutionPermissionBlocker(summaryBody, diagnostics, requiresConversationResolution);
+
+    internal static IReadOnlyList<PullRequestReviewThread> SelectAssessmentCandidatesForTests(
+        IReadOnlyList<PullRequestReviewThread> threads, ReviewSettings settings) =>
+        SelectAssessmentCandidates(threads, settings);
 }

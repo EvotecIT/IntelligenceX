@@ -19,6 +19,8 @@ internal static partial class Program {
         failed += Run("Owned summary comment requires trusted author", TestOwnedSummaryCommentRequiresTrustedAuthor);
         failed += Run("Thread assessment evidence parse", TestThreadAssessmentEvidenceParse);
         failed += Run("Thread triage fallback summary", TestThreadTriageFallbackSummary);
+        failed += Run("Thread assessment candidates skip static analysis inline threads",
+            TestThreadAssessmentCandidatesSkipStaticAnalysisInlineThreads);
         failed += Run("Review thread inline key allowlist", TestReviewThreadInlineKeyAllowlist);
         failed += Run("Review thread inline key codex connector default", TestReviewThreadInlineKeyCodexConnectorDefault);
         failed += Run("Thread auto-resolve summary comment", TestThreadAutoResolveSummaryComment);

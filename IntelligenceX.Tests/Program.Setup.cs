@@ -445,6 +445,9 @@ internal static partial class Program {
         var run = analysis!["run"] as System.Text.Json.Nodes.JsonObject;
         AssertNotNull(run, "analysis.run object");
         AssertEqual(true, run!["strict"]?.GetValue<bool>(), "analysis.run.strict value");
+        var results = analysis["results"] as System.Text.Json.Nodes.JsonObject;
+        AssertNotNull(results, "analysis.results object");
+        AssertEqual(0, results!["maxInline"]?.GetValue<int>(), "analysis.results.maxInline default");
     }
 
     private static void TestSetupBuildConfigJsonIncludesOpenAiAccountRouting() {

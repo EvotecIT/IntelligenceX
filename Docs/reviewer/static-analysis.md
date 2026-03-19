@@ -48,7 +48,7 @@ All enablement decisions live in `.intelligencex/reviewer.json`. Analyzer tool c
     "results": {
       "inputs": ["artifacts/**/*.sarif", "artifacts/intelligencex.findings.json"],
       "minSeverity": "warning",
-      "maxInline": 20,
+      "maxInline": 0,
       "summary": true,
       "showPolicy": true,
       "policyRulePreviewItems": 10
@@ -338,7 +338,7 @@ Example:
 ```
 
 ## Workflow Integration (Example)
-Analysis runs before review and publishes findings as artifacts. The reviewer reads those artifacts and merges findings into the summary and optional inline comments.
+Analysis runs before review and publishes findings as artifacts. The reviewer reads those artifacts and merges findings into the summary.
 
 ```yaml
 jobs:
@@ -395,8 +395,8 @@ jobs:
 ## Reviewer Behavior
 - The reviewer reads `analysis.results.inputs` for JSON or SARIF findings.
 - Findings are merged into the existing summary format and structured findings block.
-- Inline comments follow `maxInline` and severity thresholds.
- - When `showPolicy` is enabled, a policy block lists packs, counts, and overrides.
+- Inline comments are disabled by default (`analysis.results.maxInline: 0`) because static-analysis findings are usually better handled in the summary; set a positive value only if you explicitly want the legacy inline behavior.
+- When `showPolicy` is enabled, a policy block lists packs, counts, and overrides.
 
 ## Future Extensions
 - Language detection and auto-pack selection.

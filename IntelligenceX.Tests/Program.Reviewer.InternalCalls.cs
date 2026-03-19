@@ -177,5 +177,10 @@ internal static partial class Program {
     private static bool CallIsOwnedSummaryComment(IssueComment comment) {
         return ReviewerApp.IsOwnedSummaryCommentForTests(comment);
     }
+
+    private static IReadOnlyList<PullRequestReviewThread> CallSelectAssessmentCandidates(
+        IReadOnlyList<PullRequestReviewThread> threads, ReviewSettings settings) {
+        return ReviewerApp.SelectAssessmentCandidatesForTests(threads, settings);
+    }
 }
 #endif

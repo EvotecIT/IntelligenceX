@@ -48,8 +48,9 @@ public sealed class AnalysisResultsSettings {
     public string MinSeverity { get; set; } = "warning";
     /// <summary>
     /// Maximum inline analysis comments to emit.
+    /// Defaults to <c>0</c> so static analysis stays in the summary unless a repository opts into legacy inline comments.
     /// </summary>
-    public int MaxInline { get; set; } = 20;
+    public int MaxInline { get; set; } = 0;
     /// <summary>
     /// Whether to emit a summary block for analysis findings.
     /// </summary>
