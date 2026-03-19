@@ -72,16 +72,16 @@ public sealed class WindowsStartupRegistrationService {
         }
 
         var quotedProcessPath = "\"" + processPath + "\"";
-        return StartsWithCommandPath(trimmed, quotedProcessPath)
-               || StartsWithCommandPath(trimmed, processPath);
-    }
+        if (trimmed.StartsWith(quotedProcessPath, StringComparison.OrdinalIgnoreCase)) {
+            return trimmed.Length == quotedProcessPath.Length
+                   || char.IsWhiteSpace(trimmed[quotedProcessPath.Length]);
+        }
 
-    private static bool StartsWithCommandPath(string commandValue, string candidatePath) {
-        if (!commandValue.StartsWith(candidatePath, StringComparison.OrdinalIgnoreCase)) {
+        if (!trimmed.StartsWith(processPath, StringComparison.OrdinalIgnoreCase)) {
             return false;
         }
 
-        return commandValue.Length == candidatePath.Length
-               || char.IsWhiteSpace(commandValue[candidatePath.Length]);
+        return trimmed.Length == processPath.Length
+               || char.IsWhiteSpace(trimmed[processPath.Length]);
     }
 }
