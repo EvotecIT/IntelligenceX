@@ -83,6 +83,8 @@ internal static partial class Program {
             TestProviderLimitForecastingPrefersCodingWindowsOverReviewWindows);
         failed += Run("Provider limit forecasting uses watch closely for pace risk",
             TestProviderLimitForecastingUsesWatchCloselyForPaceRisk);
+        failed += Run("Provider limit forecasting keeps early weekly pace as tight",
+            TestProviderLimitForecastingKeepsEarlyWeeklyPaceAsTight);
         failed += Run("Provider limit forecasting keeps current account when not hard avoid",
             TestProviderLimitForecastingKeepsCurrentAccountWhenNotHardAvoid);
         failed += Run("Usage telemetry overview builder builds cards and heatmaps",

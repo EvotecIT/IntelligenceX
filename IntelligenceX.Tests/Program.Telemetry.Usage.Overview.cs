@@ -315,6 +315,38 @@ internal static partial class Program {
         AssertContainsText(advisories[0].Summary ?? string.Empty, "runs out in", "pace-risk summary keeps runway wording");
     }
 
+    private static void TestProviderLimitForecastingKeepsEarlyWeeklyPaceAsTight() {
+        var now = new DateTimeOffset(2026, 03, 23, 12, 00, 00, TimeSpan.Zero);
+        var snapshot = new ProviderLimitSnapshot(
+            "codex",
+            "Codex",
+            "OpenAI usage API",
+            "pro",
+            "acct-a@example.com",
+            Array.Empty<ProviderLimitWindow>(),
+            null,
+            null,
+            now,
+            new[] {
+                new ProviderLimitAccountSnapshot(
+                    "acct-a",
+                    "acct-a@example.com",
+                    "pro",
+                    new[] {
+                        new ProviderLimitWindow("global-secondary", "Global Weekly", 18d, now.AddDays(6), windowDuration: TimeSpan.FromDays(7))
+                    },
+                    null,
+                    null,
+                    now,
+                    isSelected: true)
+            });
+
+        var advisories = ProviderLimitForecasting.BuildAccountAdvisories(snapshot, now);
+        AssertEqual(1, advisories.Count, "early-weekly advisory count");
+        AssertEqual("Tight", advisories[0].StatusLabel, "early weekly pace stays tight instead of watch closely");
+        AssertContainsText(advisories[0].Summary ?? string.Empty, "Recent pace projects", "early weekly pace uses softer forecast wording");
+    }
+
     private static void TestProviderLimitForecastingKeepsCurrentAccountWhenNotHardAvoid() {
         var now = new DateTimeOffset(2026, 03, 19, 10, 00, 00, TimeSpan.Zero);
         var snapshot = new ProviderLimitSnapshot(

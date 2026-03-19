@@ -323,11 +323,13 @@ public static class ProviderLimitForecasting {
             return "Avoid now";
         }
 
-        if (hottestForecast?.ExhaustsBeforeReset == true || usedPercent >= 95d) {
+        if (usedPercent >= 95d
+            || (hottestForecast?.ExhaustsBeforeReset == true && usedPercent >= 70d)
+            || (riskScore >= 95d && usedPercent >= 60d)) {
             return "Watch closely";
         }
 
-        if (riskScore >= 80d) {
+        if (hottestForecast?.ExhaustsBeforeReset == true || riskScore >= 80d) {
             return "Tight";
         }
 
@@ -361,16 +363,19 @@ public static class ProviderLimitForecasting {
         }
 
         if (hottestForecast?.ExhaustsBeforeReset == true) {
+            var prefix = (hottestWindow.UsedPercent ?? 0d) < 35d
+                ? "Recent pace projects "
+                : "If you keep this pace, ";
             if (hottestForecast.EstimatedExhaustionAtUtc.HasValue) {
                 var remaining = hottestForecast.EstimatedExhaustionAtUtc.Value - nowUtc;
-                return "If you keep this pace, "
+                return prefix
                        + hottestWindow.Label
                        + " runs out in "
                        + FormatDuration(remaining)
                        + ".";
             }
 
-            return "If you keep this pace, "
+            return prefix
                    + hottestWindow.Label
                    + " runs out before reset.";
         }

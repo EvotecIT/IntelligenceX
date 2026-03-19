@@ -10,6 +10,7 @@ using IntelligenceX.Tray.Services;
 using IntelligenceX.Tray.ViewModels;
 using IntelligenceX.Tray.Views;
 using System.Windows.Threading;
+using System.ComponentModel;
 
 namespace IntelligenceX.Tray;
 
@@ -23,8 +24,13 @@ public partial class App : Application {
     private readonly List<(System.Windows.Controls.MenuItem Item, string Mode)> _themeModeItems = [];
     private readonly List<(System.Windows.Controls.MenuItem Item, string Preset)> _accentPresetItems = [];
     private System.Windows.Controls.MenuItem? _notificationsItem;
+    private System.Windows.Controls.MenuItem? _startWithWindowsItem;
+    private System.Windows.Controls.MenuItem? _closeHidesToTrayItem;
     private string? _pendingNotificationProviderId;
     private DateTimeOffset _suppressTrayToggleUntilUtc;
+    private bool _restoringPopupPlacement;
+    private bool _isExiting;
+    private readonly WindowsStartupRegistrationService _startupRegistrationService = new();
 
     protected override void OnStartup(StartupEventArgs e) {
         base.OnStartup(e);
@@ -40,6 +46,7 @@ public partial class App : Application {
             _viewModel.NotificationRequested += OnNotificationRequested;
             _viewModel.ThemeModeChanged += OnThemeModeChanged;
             _viewModel.AccentPresetChanged += OnAccentPresetChanged;
+            _startupRegistrationService.SetEnabled(_viewModel.StartWithWindows);
 
             _themeService = new TrayThemeService(this);
             _themeService.ThemeChanged += OnThemeChanged;
@@ -93,6 +100,10 @@ public partial class App : Application {
         var popupWindow = new TrayPopupWindow {
             DataContext = _viewModel
         };
+        popupWindow.ManualPlacementCommitted += OnPopupManualPlacementCommitted;
+        popupWindow.MinimizeRequested += OnPopupMinimizeRequested;
+        popupWindow.CloseRequested += OnPopupCloseRequested;
+        popupWindow.CloseInterceptRequested += OnPopupCloseInterceptRequested;
         popupWindow.PrimeForFastShow();
         return popupWindow;
     }
@@ -119,6 +130,10 @@ public partial class App : Application {
         }
 
         if (_popupWindow is not null) {
+            _popupWindow.ManualPlacementCommitted -= OnPopupManualPlacementCommitted;
+            _popupWindow.MinimizeRequested -= OnPopupMinimizeRequested;
+            _popupWindow.CloseRequested -= OnPopupCloseRequested;
+            _popupWindow.CloseInterceptRequested -= OnPopupCloseInterceptRequested;
             _popupWindow.Hide();
             _popupWindow.Close();
             _popupWindow = null;
@@ -194,6 +209,24 @@ public partial class App : Application {
             }
         };
 
+        _startWithWindowsItem = new System.Windows.Controls.MenuItem {
+            Header = "Start With Windows",
+            IsCheckable = true
+        };
+        if (itemStyle is not null) _startWithWindowsItem.Style = itemStyle;
+        _startWithWindowsItem.Click += (_, _) => ToggleStartWithWindows();
+
+        _closeHidesToTrayItem = new System.Windows.Controls.MenuItem {
+            Header = "Close Button Hides To Tray",
+            IsCheckable = true
+        };
+        if (itemStyle is not null) _closeHidesToTrayItem.Style = itemStyle;
+        _closeHidesToTrayItem.Click += (_, _) => {
+            if (_viewModel is not null && _closeHidesToTrayItem is not null) {
+                _viewModel.SetCloseHidesToTray(_closeHidesToTrayItem.IsChecked);
+            }
+        };
+
         var separator = new System.Windows.Controls.Separator();
         if (TryFindResource("DarkSeparatorStyle") is Style separatorStyle) {
             separator.Style = separatorStyle;
@@ -211,7 +244,7 @@ public partial class App : Application {
 
         var quitItem = new System.Windows.Controls.MenuItem { Header = "Quit" };
         if (itemStyle is not null) quitItem.Style = itemStyle;
-        quitItem.Click += (_, _) => Shutdown();
+        quitItem.Click += (_, _) => ExitApplication();
 
         menu.Items.Add(openItem);
         menu.Items.Add(refreshItem);
@@ -220,6 +253,8 @@ public partial class App : Application {
         menu.Items.Add(autoRefreshItem);
         menu.Items.Add(cacheItem);
         menu.Items.Add(_notificationsItem);
+        menu.Items.Add(_startWithWindowsItem);
+        menu.Items.Add(_closeHidesToTrayItem);
         menu.Items.Add(separator);
         menu.Items.Add(aboutItem);
         menu.Items.Add(quitItem);
@@ -281,6 +316,14 @@ public partial class App : Application {
         if (_notificationsItem is not null) {
             _notificationsItem.IsChecked = _viewModel.NotificationsEnabled;
         }
+
+        if (_closeHidesToTrayItem is not null) {
+            _closeHidesToTrayItem.IsChecked = _viewModel.CloseHidesToTray;
+        }
+
+        if (_startWithWindowsItem is not null) {
+            _startWithWindowsItem.IsChecked = _startupRegistrationService.IsEnabled();
+        }
     }
 
     private void OnTrayLeftClick(object? sender, RoutedEventArgs e) {
@@ -305,9 +348,15 @@ public partial class App : Application {
 
         _popupWindow.PrepareForTrayOpen();
         _suppressTrayToggleUntilUtc = DateTimeOffset.UtcNow.AddMilliseconds(500);
-        PositionPopupNearTray();
+        PositionPopupForOpen();
         _popupWindow.Show();
         _popupWindow.Activate();
+    }
+
+    private void PositionPopupForOpen() {
+        if (!TryRestoreSavedPopupPlacement()) {
+            PositionPopupNearTray();
+        }
     }
 
     private void PositionPopupNearTray() {
@@ -328,8 +377,121 @@ public partial class App : Application {
             _popupWindow.Height,
             cursor.X,
             cursor.Y);
-        _popupWindow.Left = placement.Left;
-        _popupWindow.Top = placement.Top;
+        ApplyPopupPlacement(placement.Left, placement.Top);
+    }
+
+    private bool TryRestoreSavedPopupPlacement() {
+        if (_popupWindow is null || _viewModel is null) {
+            return false;
+        }
+
+        var placement = _viewModel.GetSavedWindowPlacement();
+        if (placement is null) {
+            return false;
+        }
+
+        var clampedPlacement = ClampPopupPlacement(placement.Left, placement.Top);
+        ApplyPopupPlacement(clampedPlacement.X, clampedPlacement.Y);
+        _viewModel.SaveWindowPlacement(clampedPlacement.X, clampedPlacement.Y);
+        return true;
+    }
+
+    private void ApplyPopupPlacement(double left, double top) {
+        if (_popupWindow is null) {
+            return;
+        }
+
+        _restoringPopupPlacement = true;
+        try {
+            _popupWindow.Left = left;
+            _popupWindow.Top = top;
+        } finally {
+            _restoringPopupPlacement = false;
+        }
+    }
+
+    private PopupPoint ClampPopupPlacement(double left, double top) {
+        if (_popupWindow is null) {
+            return new PopupPoint(left, top);
+        }
+
+        var virtualLeft = SystemParameters.VirtualScreenLeft;
+        var virtualTop = SystemParameters.VirtualScreenTop;
+        var virtualRight = virtualLeft + SystemParameters.VirtualScreenWidth;
+        var virtualBottom = virtualTop + SystemParameters.VirtualScreenHeight;
+        var maxLeft = Math.Max(virtualLeft, virtualRight - _popupWindow.Width);
+        var maxTop = Math.Max(virtualTop, virtualBottom - _popupWindow.Height);
+
+        return new PopupPoint(
+            Math.Clamp(left, virtualLeft, maxLeft),
+            Math.Clamp(top, virtualTop, maxTop));
+    }
+
+    private void OnPopupManualPlacementCommitted(object? sender, EventArgs e) {
+        if (_popupWindow is null || _viewModel is null || _restoringPopupPlacement) {
+            return;
+        }
+
+        var clampedPlacement = ClampPopupPlacement(_popupWindow.Left, _popupWindow.Top);
+        ApplyPopupPlacement(clampedPlacement.X, clampedPlacement.Y);
+        _viewModel.SaveWindowPlacement(clampedPlacement.X, clampedPlacement.Y);
+    }
+
+    private void OnPopupMinimizeRequested(object? sender, EventArgs e) {
+        _popupWindow?.Hide();
+    }
+
+    private void OnPopupCloseRequested(object? sender, EventArgs e) {
+        if (_viewModel?.CloseHidesToTray == true) {
+            _popupWindow?.Hide();
+            return;
+        }
+
+        ExitApplication();
+    }
+
+    private void OnPopupCloseInterceptRequested(object? sender, CancelEventArgs e) {
+        if (_isExiting) {
+            return;
+        }
+
+        e.Cancel = true;
+        if (_viewModel?.CloseHidesToTray == true) {
+            _popupWindow?.Hide();
+            return;
+        }
+
+        ExitApplication();
+    }
+
+    private void ToggleStartWithWindows() {
+        if (_viewModel is null) {
+            return;
+        }
+
+        var targetEnabled = _startWithWindowsItem?.IsChecked ?? false;
+        var applied = _startupRegistrationService.SetEnabled(targetEnabled);
+        if (applied) {
+            _viewModel.SetStartWithWindows(targetEnabled);
+            UpdateContextMenuState();
+            return;
+        }
+
+        MessageBox.Show(
+            "Unable to update the Windows startup registration for the tray app.",
+            "Startup Registration",
+            MessageBoxButton.OK,
+            MessageBoxImage.Warning);
+        UpdateContextMenuState();
+    }
+
+    private void ExitApplication() {
+        if (_isExiting) {
+            return;
+        }
+
+        _isExiting = true;
+        Shutdown();
     }
 
     private static bool TryGetCursorPosition(out double x, out double y) {
@@ -460,7 +622,13 @@ public partial class App : Application {
         _usageArtifactStore?.Dispose();
         _usageArtifactStore = null;
         _trayIcon?.Dispose();
-        _popupWindow?.Close();
+        if (_popupWindow is not null) {
+            _popupWindow.ManualPlacementCommitted -= OnPopupManualPlacementCommitted;
+            _popupWindow.MinimizeRequested -= OnPopupMinimizeRequested;
+            _popupWindow.CloseRequested -= OnPopupCloseRequested;
+            _popupWindow.CloseInterceptRequested -= OnPopupCloseInterceptRequested;
+            _popupWindow.Close();
+        }
         base.OnExit(e);
     }
 

@@ -1,6 +1,10 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Diagnostics;
+using System.ComponentModel;
+using System.Windows.Input;
+using System.Windows.Media;
 using IntelligenceX.Tray.ViewModels;
 
 namespace IntelligenceX.Tray.Views;
@@ -13,6 +17,11 @@ public partial class TrayPopupWindow : Window {
 
     private bool _isPrimed;
     private DateTimeOffset _suppressDeactivateUntilUtc;
+
+    public event EventHandler? ManualPlacementCommitted;
+    public event EventHandler? MinimizeRequested;
+    public event EventHandler? CloseRequested;
+    public event EventHandler<CancelEventArgs>? CloseInterceptRequested;
 
     public TrayPopupWindow() {
         InitializeComponent();
@@ -151,6 +160,32 @@ public partial class TrayPopupWindow : Window {
         UpdateClipGeometry();
     }
 
+    private void OnHeaderMouseLeftButtonDown(object sender, MouseButtonEventArgs e) {
+        if (e.ChangedButton != MouseButton.Left || IsDragSourceInteractive(e.OriginalSource as DependencyObject)) {
+            return;
+        }
+
+        try {
+            DragMove();
+            ManualPlacementCommitted?.Invoke(this, EventArgs.Empty);
+            e.Handled = true;
+        } catch (InvalidOperationException) {
+            // Ignore clicks that do not turn into a drag.
+        }
+    }
+
+    private void OnMinimizeButtonClick(object sender, RoutedEventArgs e) {
+        MinimizeRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void OnCloseButtonClick(object sender, RoutedEventArgs e) {
+        CloseRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void OnWindowClosing(object? sender, CancelEventArgs e) {
+        CloseInterceptRequested?.Invoke(this, e);
+    }
+
     private void ApplyAdaptiveSizing() {
         var workArea = SystemParameters.WorkArea;
         Width = Clamp(workArea.Width * 0.38, MinimumPopupWidth, MaximumPopupWidth);
@@ -170,5 +205,15 @@ public partial class TrayPopupWindow : Window {
 
     private static double Clamp(double value, double minimum, double maximum) {
         return Math.Max(minimum, Math.Min(maximum, value));
+    }
+
+    private static bool IsDragSourceInteractive(DependencyObject? source) {
+        for (var current = source; current is not null; current = VisualTreeHelper.GetParent(current)) {
+            if (current is ButtonBase or TextBoxBase or ScrollBar or Slider) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

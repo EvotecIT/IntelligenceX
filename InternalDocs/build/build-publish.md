@@ -104,6 +104,13 @@ pwsh ./Build/Publish-Chat.ps1 -Runtime win-x64 -Configuration Release -IncludeSe
 pwsh ./Build/Publish-Chat.ps1 -Runtime win-x64 -Configuration Release -IncludePrivateToolPacks -TestimoXRoot C:\Support\GitHub\TestimoX
 ```
 
+Tray app:
+
+```powershell
+pwsh ./Build/Publish-Tray.ps1 -Runtime win-x64 -Configuration Release
+pwsh ./Build/Publish-Tray.ps1 -Runtime win-x64 -Configuration Release -SingleFile
+```
+
 Portable app bundle (recommended for end users):
 
 ```powershell

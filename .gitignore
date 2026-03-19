@@ -382,6 +382,7 @@ build/*
 !Build/Compare-ChatScenarioReports.ps1
 !Build/Get-ChatScenarioCoverage.ps1
 !Build/Export-ProjectManifest.ps1
+!Build/Publish-Tray.ps1
 
 # Allow release command sources under IntelligenceX.Cli/Release
 !IntelligenceX.Cli/Release/
