@@ -801,6 +801,30 @@ public sealed class ToolOrchestrationCatalogTests {
         Assert.Contains(byPack, static entry => string.Equals(entry.ToolName, "custom_followup", StringComparison.OrdinalIgnoreCase));
     }
 
+    [Fact]
+    public void Build_UsesGuidancePackIdentityInsteadOfProviderDescriptorIdWhenTheyDiffer() {
+        var catalog = ToolOrchestrationCatalog.Build(
+            new[] {
+                CreateDefinition(name: "custom_connectivity_probe"),
+                CreateDefinition(name: "custom_followup")
+            },
+            new IToolPack[] { new SyntheticMismatchedDescriptorGuidancePack() });
+
+        Assert.True(catalog.TryGetEntry("custom_connectivity_probe", out var probeEntry));
+        Assert.Equal("customx", probeEntry.PackId);
+        Assert.True(probeEntry.IsPackPreferredProbeTool);
+
+        Assert.True(catalog.TryGetEntry("custom_followup", out var followupEntry));
+        Assert.Equal("customx", followupEntry.PackId);
+        Assert.Contains("custom_runtime_triage", followupEntry.PackRecommendedRecipeIds, StringComparer.OrdinalIgnoreCase);
+
+        Assert.True(catalog.TryGetPackId("custom_connectivity_probe", out var packId));
+        Assert.Equal("customx", packId);
+        Assert.DoesNotContain(
+            catalog.GetByPackId("eventlog"),
+            static entry => string.Equals(entry.ToolName, "custom_connectivity_probe", StringComparison.OrdinalIgnoreCase));
+    }
+
     private static ToolDefinition CreateDefinition(
         string name,
         ToolExecutionContract? execution = null,
@@ -933,6 +957,46 @@ public sealed class ToolOrchestrationCatalogTests {
                         Steps = new[] {
                             new ToolPackFlowStepModel {
                                 Goal = "Probe first",
+                                SuggestedTools = new[] { "custom_connectivity_probe" }
+                            },
+                            new ToolPackFlowStepModel {
+                                Goal = "Follow up",
+                                SuggestedTools = new[] { "custom_followup" }
+                            }
+                        }
+                    }
+                }
+            };
+        }
+    }
+
+    private sealed class SyntheticMismatchedDescriptorGuidancePack : IToolPack, IToolPackGuidanceProvider {
+        public ToolPackDescriptor Descriptor { get; } = new() {
+            Id = "eventlog",
+            Name = "EventLog",
+            Tier = ToolCapabilityTier.ReadOnly,
+            Description = "Synthetic mismatched guidance descriptor.",
+            SourceKind = "builtin"
+        };
+
+        public void Register(ToolRegistry registry) {
+            _ = registry;
+        }
+
+        public ToolPackInfoModel GetPackGuidance() {
+            return new ToolPackInfoModel {
+                Pack = "customx",
+                RuntimeCapabilities = new ToolPackRuntimeCapabilitiesModel {
+                    PreferredProbeTools = new[] { "custom_connectivity_probe" }
+                },
+                RecommendedRecipes = new[] {
+                    new ToolPackRecipeModel {
+                        Id = "custom_runtime_triage",
+                        Summary = "Probe the runtime before follow-up.",
+                        WhenToUse = "Use when provider identity differs from pack ownership.",
+                        Steps = new[] {
+                            new ToolPackFlowStepModel {
+                                Goal = "Probe",
                                 SuggestedTools = new[] { "custom_connectivity_probe" }
                             },
                             new ToolPackFlowStepModel {

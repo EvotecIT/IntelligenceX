@@ -721,7 +721,8 @@ public sealed class ToolOrchestrationCatalog {
         }
 
         var packCatalogEntriesByToolName = BuildPackCatalogEntryIndex(packs);
-        var packGuidanceByPackId = BuildPackGuidanceIndex(packs);
+        var resolvedPackIdsByToolName = BuildResolvedPackIdIndex(definitions, packCatalogEntriesByToolName);
+        var packGuidanceByPackId = BuildPackGuidanceIndex(packs, resolvedPackIdsByToolName);
         var packGuidanceByToolName = BuildPackGuidanceToolIndex(packGuidanceByPackId);
         return Build(definitions, packCatalogEntriesByToolName, packGuidanceByPackId, packGuidanceByToolName);
     }
@@ -828,7 +829,39 @@ public sealed class ToolOrchestrationCatalog {
         return index.Count == 0 ? null : index;
     }
 
-    private static IReadOnlyDictionary<string, PackGuidanceMetadata>? BuildPackGuidanceIndex(IEnumerable<IToolPack>? packs) {
+    private static IReadOnlyDictionary<string, string>? BuildResolvedPackIdIndex(
+        IReadOnlyList<ToolDefinition> definitions,
+        IReadOnlyDictionary<string, PackCatalogToolMetadata>? packCatalogEntriesByToolName) {
+        var index = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < definitions.Count; i++) {
+            var definition = definitions[i];
+            if (definition is null) {
+                continue;
+            }
+
+            var toolName = NormalizeToken(definition.Name);
+            if (toolName.Length == 0 || index.ContainsKey(toolName)) {
+                continue;
+            }
+
+            var packId = NormalizePackId(definition.Routing?.PackId);
+            if (packId.Length == 0
+                && packCatalogEntriesByToolName is not null
+                && packCatalogEntriesByToolName.TryGetValue(toolName, out var packCatalogEntry)) {
+                packId = NormalizePackId(packCatalogEntry.PackId);
+            }
+
+            if (packId.Length > 0) {
+                index[toolName] = packId;
+            }
+        }
+
+        return index.Count == 0 ? null : index;
+    }
+
+    private static IReadOnlyDictionary<string, PackGuidanceMetadata>? BuildPackGuidanceIndex(
+        IEnumerable<IToolPack>? packs,
+        IReadOnlyDictionary<string, string>? resolvedPackIdsByToolName) {
         if (packs is null) {
             return null;
         }
@@ -839,8 +872,8 @@ public sealed class ToolOrchestrationCatalog {
                 continue;
             }
 
-            var normalizedPackId = NormalizePackId(pack.Descriptor.Id);
-            if (normalizedPackId.Length == 0 || index.ContainsKey(normalizedPackId)) {
+            var descriptorPackId = NormalizePackId(pack.Descriptor.Id);
+            if (descriptorPackId.Length == 0) {
                 continue;
             }
 
@@ -889,7 +922,7 @@ public sealed class ToolOrchestrationCatalog {
                 }
             }
 
-            index[normalizedPackId] = new PackGuidanceMetadata(
+            var guidanceMetadata = new PackGuidanceMetadata(
                 PreferredEntryToolNames: preferredEntryToolNames,
                 PreferredProbeToolNames: preferredProbeToolNames,
                 RecipeIdsByToolName: FreezeStringListDictionary(recipeIdsByToolName),
@@ -897,9 +930,73 @@ public sealed class ToolOrchestrationCatalog {
                 ProbeHelperFreshnessWindowSeconds: NormalizeOptionalPositiveInt(guidance.RuntimeCapabilities?.ProbeHelperFreshnessWindowSeconds),
                 SetupHelperFreshnessWindowSeconds: NormalizeOptionalPositiveInt(guidance.RuntimeCapabilities?.SetupHelperFreshnessWindowSeconds),
                 RecipeHelperFreshnessWindowSeconds: NormalizeOptionalPositiveInt(guidance.RuntimeCapabilities?.RecipeHelperFreshnessWindowSeconds));
+
+            var effectivePackId = ResolveGuidancePackId(
+                descriptorPackId,
+                guidance,
+                guidanceMetadata,
+                resolvedPackIdsByToolName);
+            if (effectivePackId.Length == 0) {
+                continue;
+            }
+
+            if (index.TryGetValue(effectivePackId, out var existingMetadata)) {
+                index[effectivePackId] = MergePackGuidanceMetadata(existingMetadata, guidanceMetadata);
+                continue;
+            }
+
+            index[effectivePackId] = guidanceMetadata;
         }
 
         return index.Count == 0 ? null : index;
+    }
+
+    private static string ResolveGuidancePackId(
+        string descriptorPackId,
+        ToolPackInfoModel guidance,
+        PackGuidanceMetadata guidanceMetadata,
+        IReadOnlyDictionary<string, string>? resolvedPackIdsByToolName) {
+        var guidancePackId = NormalizePackId(guidance.Pack);
+        if (guidancePackId.Length > 0) {
+            return guidancePackId;
+        }
+
+        if (resolvedPackIdsByToolName is not null && resolvedPackIdsByToolName.Count > 0) {
+            var claimedPackIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var toolName in EnumerateGuidanceToolNames(guidanceMetadata)) {
+                if (!resolvedPackIdsByToolName.TryGetValue(toolName, out var packId)) {
+                    continue;
+                }
+
+                var normalizedPackId = NormalizePackId(packId);
+                if (normalizedPackId.Length > 0) {
+                    claimedPackIds.Add(normalizedPackId);
+                }
+            }
+
+            if (claimedPackIds.Count == 1) {
+                return claimedPackIds.First();
+            }
+        }
+
+        return descriptorPackId;
+    }
+
+    private static PackGuidanceMetadata MergePackGuidanceMetadata(
+        PackGuidanceMetadata existing,
+        PackGuidanceMetadata incoming) {
+        return new PackGuidanceMetadata(
+            PreferredEntryToolNames: new HashSet<string>(
+                existing.PreferredEntryToolNames.Concat(incoming.PreferredEntryToolNames),
+                StringComparer.OrdinalIgnoreCase),
+            PreferredProbeToolNames: new HashSet<string>(
+                existing.PreferredProbeToolNames.Concat(incoming.PreferredProbeToolNames),
+                StringComparer.OrdinalIgnoreCase),
+            RecipeIdsByToolName: MergeStringListDictionary(existing.RecipeIdsByToolName, incoming.RecipeIdsByToolName),
+            RecipeHintsByToolName: MergeStringListDictionary(existing.RecipeHintsByToolName, incoming.RecipeHintsByToolName),
+            ProbeHelperFreshnessWindowSeconds: MergeOptionalPositiveInt(existing.ProbeHelperFreshnessWindowSeconds, incoming.ProbeHelperFreshnessWindowSeconds),
+            SetupHelperFreshnessWindowSeconds: MergeOptionalPositiveInt(existing.SetupHelperFreshnessWindowSeconds, incoming.SetupHelperFreshnessWindowSeconds),
+            RecipeHelperFreshnessWindowSeconds: MergeOptionalPositiveInt(existing.RecipeHelperFreshnessWindowSeconds, incoming.RecipeHelperFreshnessWindowSeconds));
     }
 
     private static IReadOnlyDictionary<string, PackGuidanceToolMetadata>? BuildPackGuidanceToolIndex(
@@ -1139,6 +1236,13 @@ public sealed class ToolOrchestrationCatalog {
         return value.HasValue && value.Value > 0
             ? value.Value
             : null;
+    }
+
+    private static int? MergeOptionalPositiveInt(int? left, int? right) {
+        return Math.Max(left.GetValueOrDefault(), right.GetValueOrDefault()) switch {
+            > 0 and var value => value,
+            _ => null
+        };
     }
 
     private static IReadOnlyList<string> ReadSchemaArgumentNames(JsonObject? schema) {
@@ -1409,6 +1513,49 @@ public sealed class ToolOrchestrationCatalog {
         }
 
         return new ReadOnlyDictionary<string, IReadOnlyList<string>>(copy);
+    }
+
+    private static IReadOnlyDictionary<string, IReadOnlyList<string>> MergeStringListDictionary(
+        IReadOnlyDictionary<string, IReadOnlyList<string>> left,
+        IReadOnlyDictionary<string, IReadOnlyList<string>> right) {
+        if (left.Count == 0) {
+            return right.Count == 0
+                ? new ReadOnlyDictionary<string, IReadOnlyList<string>>(
+                    new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase))
+                : right;
+        }
+
+        if (right.Count == 0) {
+            return left;
+        }
+
+        var merged = new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var pair in left) {
+            merged[pair.Key] = FreezeStringList(pair.Value);
+        }
+
+        foreach (var pair in right) {
+            var key = NormalizeToken(pair.Key);
+            if (key.Length == 0) {
+                continue;
+            }
+
+            if (!merged.TryGetValue(key, out var existingValues)) {
+                merged[key] = FreezeStringList(pair.Value);
+                continue;
+            }
+
+            merged[key] = FreezeStringList(
+                existingValues
+                    .Concat(pair.Value)
+                    .Select(static value => NormalizeToken(value))
+                    .Where(static value => value.Length > 0)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(static value => value, StringComparer.OrdinalIgnoreCase)
+                    .ToArray());
+        }
+
+        return new ReadOnlyDictionary<string, IReadOnlyList<string>>(merged);
     }
 
     private static string BuildPackRecipeHint(ToolPackRecipeModel? recipe) {
