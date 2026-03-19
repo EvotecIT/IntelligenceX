@@ -1578,7 +1578,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
             health.IsCachedSnapshot ? "Cached snapshot" : "Live scan",
             health.ProviderCount.ToString(CultureInfo.InvariantCulture) + " providers",
             health.RootsCount.ToString(CultureInfo.InvariantCulture) + " roots",
-            health.AccountCount.ToString(CultureInfo.InvariantCulture) + " accounts"
+            health.AccountCount.ToString(CultureInfo.InvariantCulture) + " usage accounts"
         };
         if (health.LatestEventUtc.HasValue) {
             parts.Add("latest " + health.LatestEventUtc.Value.ToLocalTime().ToString("MMM d HH:mm", CultureInfo.CurrentCulture));
@@ -1616,7 +1616,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         var parts = new List<string> {
             overallHealth.IsCachedSnapshot ? "Cached snapshot" : "Live scan",
             providerHealth.RootsCount.ToString(CultureInfo.InvariantCulture) + " roots",
-            providerHealth.AccountCount.ToString(CultureInfo.InvariantCulture) + " accounts"
+            providerHealth.AccountCount.ToString(CultureInfo.InvariantCulture) + " usage accounts"
         };
         if (providerHealth.LatestEventUtc.HasValue) {
             parts.Add("latest " + providerHealth.LatestEventUtc.Value.ToLocalTime().ToString("MMM d HH:mm", CultureInfo.CurrentCulture));
@@ -1659,7 +1659,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
             return null;
         }
 
-        var text = "Accounts: " + string.Join(", ", visible);
+        var text = "Usage accounts: " + string.Join(", ", visible);
         var hiddenCount = accountLabels.Count - visible.Length;
         if (hiddenCount > 0) {
             text += " +" + hiddenCount.ToString(CultureInfo.InvariantCulture) + " more";

@@ -174,7 +174,7 @@ public static class ProviderLimitForecasting {
             return Array.Empty<ProviderLimitAccountAdvisory>();
         }
 
-        var recommendedIndex = advisories.FindIndex(static advisory => advisory.RiskScore < double.MaxValue);
+        var recommendedIndex = SelectRecommendedIndex(advisories);
         if (recommendedIndex < 0) {
             recommendedIndex = 0;
         }
@@ -190,7 +190,11 @@ public static class ProviderLimitForecasting {
             recommended.RiskScore,
             isRecommended: true,
             recommended.IsSelected);
-        return advisories;
+        return advisories
+            .OrderBy(static advisory => GetDisplayPriority(advisory))
+            .ThenBy(static advisory => advisory.RiskScore)
+            .ThenBy(static advisory => advisory.DisplayLabel, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
     }
 
     private static ProviderLimitAccountAdvisory? BuildAccountAdvisory(
@@ -219,8 +223,9 @@ public static class ProviderLimitForecasting {
         ProviderLimitWindow? hottestWindow = null;
         ProviderLimitWindowForecast? hottestForecast = null;
         var riskScore = double.MaxValue;
+        var advisoryWindows = GetAdvisoryWindows(account.Windows);
 
-        foreach (var window in account.Windows) {
+        foreach (var window in advisoryWindows) {
             var forecast = BuildForecast(window, nowUtc);
             var windowRisk = forecast?.ProjectedUsedPercentAtReset
                              ?? window.UsedPercent
@@ -232,7 +237,7 @@ public static class ProviderLimitForecasting {
             }
         }
 
-        var statusLabel = BuildAccountStatusLabel(hottestWindow, hottestForecast, riskScore);
+        var statusLabel = BuildAccountStatusLabel(hottestWindow, hottestForecast, riskScore, nowUtc);
         var summary = BuildAccountSummary(account, hottestWindow, hottestForecast, riskScore, nowUtc);
 
         return new ProviderLimitAccountAdvisory(
@@ -307,20 +312,26 @@ public static class ProviderLimitForecasting {
     private static string BuildAccountStatusLabel(
         ProviderLimitWindow? hottestWindow,
         ProviderLimitWindowForecast? hottestForecast,
-        double riskScore) {
+        double riskScore,
+        DateTimeOffset nowUtc) {
         if (hottestWindow is null) {
             return "Unknown";
         }
 
-        if (hottestForecast?.ExhaustsBeforeReset == true || (hottestWindow.UsedPercent ?? 0d) >= 95d) {
+        var usedPercent = hottestWindow.UsedPercent ?? 0d;
+        if (usedPercent >= 100d || IsImminent(hottestForecast, nowUtc)) {
             return "Avoid now";
+        }
+
+        if (hottestForecast?.ExhaustsBeforeReset == true || usedPercent >= 95d) {
+            return "Watch closely";
         }
 
         if (riskScore >= 80d) {
             return "Tight";
         }
 
-        if ((hottestWindow.UsedPercent ?? 0d) <= 0.05d) {
+        if (usedPercent <= 0.05d) {
             return "Clear";
         }
 
@@ -344,7 +355,9 @@ public static class ProviderLimitForecasting {
         }
 
         if ((hottestWindow.UsedPercent ?? 0d) <= 0.05d) {
-            return "No usage yet across the tracked windows.";
+            return IsSupplementalWindow(hottestWindow)
+                ? "No live API usage yet in this account's tracked windows."
+                : "No live API usage yet in this account's coding windows.";
         }
 
         if (hottestForecast?.ExhaustsBeforeReset == true) {
@@ -375,6 +388,89 @@ public static class ProviderLimitForecasting {
                + " reaches about "
                + riskScore.ToString("0.#", CultureInfo.InvariantCulture)
                + "% by reset.";
+    }
+
+    private static int SelectRecommendedIndex(IReadOnlyList<ProviderLimitAccountAdvisory> advisories) {
+        var bestIndex = advisories
+            .Select((advisory, index) => new { advisory, index })
+            .Where(static item => item.advisory.RiskScore < double.MaxValue)
+            .OrderBy(static item => item.advisory.RiskScore)
+            .ThenBy(static item => item.advisory.DisplayLabel, StringComparer.OrdinalIgnoreCase)
+            .Select(static item => item.index)
+            .DefaultIfEmpty(-1)
+            .First();
+        if (bestIndex < 0) {
+            return -1;
+        }
+
+        var selectedIndex = advisories
+            .Select((advisory, index) => new { advisory, index })
+            .Where(static item => item.advisory.IsSelected)
+            .Select(static item => item.index)
+            .DefaultIfEmpty(-1)
+            .First();
+        if (selectedIndex < 0) {
+            return bestIndex;
+        }
+
+        var selected = advisories[selectedIndex];
+        var best = advisories[bestIndex];
+        if (selected.RiskScore == double.MaxValue) {
+            return bestIndex;
+        }
+
+        if (!IsHardAvoid(selected.StatusLabel)) {
+            return selectedIndex;
+        }
+
+        return bestIndex;
+    }
+
+    private static int GetDisplayPriority(ProviderLimitAccountAdvisory advisory) {
+        if (advisory.IsRecommended) {
+            return 0;
+        }
+
+        if (advisory.IsSelected) {
+            return 1;
+        }
+
+        return advisory.RiskScore < double.MaxValue ? 2 : 3;
+    }
+
+    private static bool IsHardAvoid(string? statusLabel) {
+        return string.Equals(statusLabel, "Avoid now", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsImminent(ProviderLimitWindowForecast? forecast, DateTimeOffset nowUtc) {
+        if (forecast?.EstimatedExhaustionAtUtc is null) {
+            return false;
+        }
+
+        return forecast.EstimatedExhaustionAtUtc.Value <= nowUtc.AddHours(1);
+    }
+
+    private static IReadOnlyList<ProviderLimitWindow> GetAdvisoryWindows(IReadOnlyList<ProviderLimitWindow> windows) {
+        if (windows.Count == 0) {
+            return windows;
+        }
+
+        var primaryWindows = windows
+            .Where(static window => !IsSupplementalWindow(window))
+            .ToArray();
+        return primaryWindows.Length > 0 ? primaryWindows : windows;
+    }
+
+    private static bool IsSupplementalWindow(ProviderLimitWindow window) {
+        if (window is null) {
+            return false;
+        }
+
+        if (window.Key.StartsWith("code-review", StringComparison.OrdinalIgnoreCase)) {
+            return true;
+        }
+
+        return window.Label.StartsWith("Code review", StringComparison.OrdinalIgnoreCase);
     }
 }
 

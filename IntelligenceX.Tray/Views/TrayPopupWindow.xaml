@@ -18,6 +18,7 @@
         <conv:BoolToVisibilityConverter x:Key="BoolToVis" />
         <conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVis" />
         <conv:ProportionToWidthConverter x:Key="PropToWidth" />
+        <conv:ProportionAndWidthToWidthConverter x:Key="PropToActualWidth" />
     </Window.Resources>
 
     <Border Background="{StaticResource BackgroundBrush}"
@@ -823,8 +824,14 @@
                                                                                     <Border CornerRadius="3"
                                                                                             Background="{Binding BarBrush}"
                                                                                             Opacity="0.8"
-                                                                                            HorizontalAlignment="Left"
-                                                                                            Width="{Binding Proportion, Converter={StaticResource PropToWidth}, ConverterParameter=290}" />
+                                                                                            HorizontalAlignment="Left">
+                                                                                        <Border.Width>
+                                                                                            <MultiBinding Converter="{StaticResource PropToActualWidth}">
+                                                                                                <Binding Path="Proportion" />
+                                                                                                <Binding RelativeSource="{RelativeSource AncestorType=Grid}" Path="ActualWidth" />
+                                                                                            </MultiBinding>
+                                                                                        </Border.Width>
+                                                                                    </Border>
                                                                                 </Grid>
 
                                                                                 <Grid>
@@ -896,8 +903,14 @@
                                                     <Border CornerRadius="3"
                                                             Background="{Binding BarBrush}"
                                                             Opacity="0.8"
-                                                            HorizontalAlignment="Left"
-                                                            Width="{Binding Proportion, Converter={StaticResource PropToWidth}, ConverterParameter=310}" />
+                                                            HorizontalAlignment="Left">
+                                                        <Border.Width>
+                                                            <MultiBinding Converter="{StaticResource PropToActualWidth}">
+                                                                <Binding Path="Proportion" />
+                                                                <Binding RelativeSource="{RelativeSource AncestorType=Grid}" Path="ActualWidth" />
+                                                            </MultiBinding>
+                                                        </Border.Width>
+                                                    </Border>
                                                 </Grid>
 
                                                 <Grid>

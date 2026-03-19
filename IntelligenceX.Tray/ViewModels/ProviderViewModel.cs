@@ -954,7 +954,7 @@ public sealed class ProviderViewModel : ViewModelBase {
                 Summary = advisory.Summary ?? "No live limit windows",
                 DetailText = NormalizeLimitAccountDetail(accountSnapshot?.DetailMessage, advisory.Summary),
                 WindowSummaryText = accountSnapshot is { Windows.Count: > 0 }
-                    ? accountSnapshot.Windows.Count.ToString(CultureInfo.InvariantCulture) + " tracked windows"
+                    ? BuildLimitWindowSummaryText(accountSnapshot.Windows)
                     : accountSnapshot is { IsAvailable: false }
                         ? "Live limits unavailable"
                     : null,
@@ -1008,7 +1008,7 @@ public sealed class ProviderViewModel : ViewModelBase {
 
         var parts = new List<string> {
             detectedCount.ToString(CultureInfo.InvariantCulture) + " detected locally",
-            liveCount.ToString(CultureInfo.InvariantCulture) + " live"
+            liveCount.ToString(CultureInfo.InvariantCulture) + " live limit accounts"
         };
         if (unavailableCount > 0) {
             parts.Add(unavailableCount.ToString(CultureInfo.InvariantCulture) + " unavailable");
@@ -1021,6 +1021,29 @@ public sealed class ProviderViewModel : ViewModelBase {
         }
 
         return string.Join(" • ", parts);
+    }
+
+    private static string BuildLimitWindowSummaryText(IReadOnlyList<ProviderLimitWindow> windows) {
+        if (windows.Count == 0) {
+            return "No live windows";
+        }
+
+        var reviewCount = windows.Count(static window => window.Key.StartsWith("code-review", StringComparison.OrdinalIgnoreCase));
+        var codingCount = windows.Count - reviewCount;
+        if (codingCount > 0 && reviewCount > 0) {
+            return codingCount.ToString(CultureInfo.InvariantCulture)
+                   + " coding + "
+                   + reviewCount.ToString(CultureInfo.InvariantCulture)
+                   + " review";
+        }
+
+        if (codingCount > 0) {
+            return codingCount.ToString(CultureInfo.InvariantCulture)
+                   + (codingCount == 1 ? " coding window" : " coding windows");
+        }
+
+        return reviewCount.ToString(CultureInfo.InvariantCulture)
+               + (reviewCount == 1 ? " review window" : " review windows");
     }
 
     private void PopulateLimitWindows(

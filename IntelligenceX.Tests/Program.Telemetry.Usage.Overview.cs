@@ -125,7 +125,7 @@ internal static partial class Program {
                     "acct-a@example.com",
                     "pro",
                     new[] {
-                        new ProviderLimitWindow("global-primary", "Global 5-hour", 70d, now.AddHours(1), windowDuration: TimeSpan.FromHours(5))
+                        new ProviderLimitWindow("global-primary", "Global 5-hour", 95d, now.AddMinutes(30), windowDuration: TimeSpan.FromHours(5))
                     },
                     null,
                     null,
@@ -236,6 +236,126 @@ internal static partial class Program {
         AssertEqual("acct-b@example.com", advisories[1].DisplayLabel, "unavailable account remains visible");
         AssertEqual("Unavailable", advisories[1].StatusLabel, "unavailable account status");
         AssertContainsText(advisories[1].Summary ?? string.Empty, "Detected locally", "unavailable account summary keeps detection context");
+    }
+
+    private static void TestProviderLimitForecastingPrefersCodingWindowsOverReviewWindows() {
+        var now = new DateTimeOffset(2026, 03, 18, 12, 00, 00, TimeSpan.Zero);
+        var snapshot = new ProviderLimitSnapshot(
+            "codex",
+            "Codex",
+            "OpenAI usage API",
+            "pro",
+            "acct-a@example.com",
+            Array.Empty<ProviderLimitWindow>(),
+            null,
+            null,
+            now,
+            new[] {
+                new ProviderLimitAccountSnapshot(
+                    "acct-a",
+                    "acct-a@example.com",
+                    "pro",
+                    new[] {
+                        new ProviderLimitWindow("global-primary", "Global 5-hour", 55d, now.AddHours(2), windowDuration: TimeSpan.FromHours(5)),
+                        new ProviderLimitWindow("code-review-secondary", "Code review Weekly", 100d, now.AddHours(24), windowDuration: TimeSpan.FromDays(7))
+                    },
+                    null,
+                    null,
+                    now,
+                    isSelected: true),
+                new ProviderLimitAccountSnapshot(
+                    "acct-b",
+                    "acct-b@example.com",
+                    "pro",
+                    new[] {
+                        new ProviderLimitWindow("global-primary", "Global 5-hour", 70d, now.AddHours(2), windowDuration: TimeSpan.FromHours(5)),
+                        new ProviderLimitWindow("code-review-secondary", "Code review Weekly", 0d, now.AddHours(24), windowDuration: TimeSpan.FromDays(7))
+                    },
+                    null,
+                    null,
+                    now)
+            });
+
+        var advisories = ProviderLimitForecasting.BuildAccountAdvisories(snapshot, now);
+        AssertEqual(2, advisories.Count, "coding-vs-review advisory count");
+        AssertEqual("acct-a@example.com", advisories[0].DisplayLabel, "review-only exhaustion does not dominate account choice");
+        AssertEqual(true, advisories[0].IsRecommended, "coding-healthier account stays recommended");
+        AssertContainsText(advisories[0].Summary ?? string.Empty, "Global 5-hour", "coding window drives runway summary");
+    }
+
+    private static void TestProviderLimitForecastingUsesWatchCloselyForPaceRisk() {
+        var now = new DateTimeOffset(2026, 03, 19, 10, 00, 00, TimeSpan.Zero);
+        var snapshot = new ProviderLimitSnapshot(
+            "codex",
+            "Codex",
+            "OpenAI usage API",
+            "pro",
+            "acct-a@example.com",
+            Array.Empty<ProviderLimitWindow>(),
+            null,
+            null,
+            now,
+            new[] {
+                new ProviderLimitAccountSnapshot(
+                    "acct-a",
+                    "acct-a@example.com",
+                    "pro",
+                    new[] {
+                        new ProviderLimitWindow("global-secondary", "Global Weekly", 80d, now.AddDays(2), windowDuration: TimeSpan.FromDays(7))
+                    },
+                    null,
+                    null,
+                    now,
+                    isSelected: true)
+            });
+
+        var advisories = ProviderLimitForecasting.BuildAccountAdvisories(snapshot, now);
+        AssertEqual(1, advisories.Count, "pace-risk advisory count");
+        AssertEqual("Watch closely", advisories[0].StatusLabel, "pace-risk status is watch closely");
+        AssertContainsText(advisories[0].Summary ?? string.Empty, "runs out in", "pace-risk summary keeps runway wording");
+    }
+
+    private static void TestProviderLimitForecastingKeepsCurrentAccountWhenNotHardAvoid() {
+        var now = new DateTimeOffset(2026, 03, 19, 10, 00, 00, TimeSpan.Zero);
+        var snapshot = new ProviderLimitSnapshot(
+            "codex",
+            "Codex",
+            "OpenAI usage API",
+            "pro",
+            "acct-a@example.com",
+            Array.Empty<ProviderLimitWindow>(),
+            null,
+            null,
+            now,
+            new[] {
+                new ProviderLimitAccountSnapshot(
+                    "acct-a",
+                    "acct-a@example.com",
+                    "pro",
+                    new[] {
+                        new ProviderLimitWindow("global-secondary", "Global Weekly", 14d, now.AddDays(6), windowDuration: TimeSpan.FromDays(7))
+                    },
+                    null,
+                    null,
+                    now,
+                    isSelected: true),
+                new ProviderLimitAccountSnapshot(
+                    "acct-b",
+                    "acct-b@example.com",
+                    "pro",
+                    new[] {
+                        new ProviderLimitWindow("global-secondary", "Global Weekly", 0d, now.AddDays(6), windowDuration: TimeSpan.FromDays(7))
+                    },
+                    null,
+                    null,
+                    now)
+            });
+
+        var advisories = ProviderLimitForecasting.BuildAccountAdvisories(snapshot, now);
+        AssertEqual(2, advisories.Count, "keep-current advisory count");
+        AssertEqual("acct-a@example.com", advisories[0].DisplayLabel, "selected account stays first when not hard avoid");
+        AssertEqual(true, advisories[0].IsRecommended, "selected account remains recommended");
+        AssertEqual("Tight", advisories[0].StatusLabel, "selected account stays in tight state");
     }
 
     private static void TestUsageTelemetryOverviewBuilderBuildsCopilotActivitySectionWithoutTokens() {

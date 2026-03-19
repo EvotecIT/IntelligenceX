@@ -137,9 +137,8 @@ public sealed partial class ProviderLimitSnapshotService {
         var options = new OpenAINativeOptions {
             UserAgent = "IntelligenceX/0.1.0"
         };
-
-        using var usageService = new ChatGptUsageService(options);
-        var snapshot = await usageService.GetUsageSnapshotAsync(cancellationToken).ConfigureAwait(false);
+        options.AuthAccountId = TryResolveCurrentCodexAccountId(options.CodexHome);
+        var snapshot = await FetchPreferredOpenAiSnapshotAsync(options, cancellationToken).ConfigureAwait(false);
         var primary = BuildOpenAiLimitPresentation(snapshot);
         var selectedAccountKey = BuildOpenAiAccountKey(snapshot.AccountId, snapshot.Email, accessToken: null);
         var accountSnapshots = await FetchCodexAccountSnapshotsAsync(options, snapshot, selectedAccountKey, cancellationToken).ConfigureAwait(false);
@@ -274,8 +273,8 @@ public sealed partial class ProviderLimitSnapshotService {
     private static OpenAiLimitPresentation BuildOpenAiLimitPresentation(ChatGptUsageSnapshot snapshot) {
         var windows = new List<ProviderLimitWindow>();
         AddOpenAiStatusWindows(windows, "global", "Global", snapshot.RateLimit);
-        AddOpenAiStatusWindows(windows, "code-review", "Code review", snapshot.CodeReviewRateLimit);
         AddOpenAiAdditionalRateLimitWindows(windows, snapshot.AdditionalRateLimits);
+        AddOpenAiStatusWindows(windows, "code-review", "Code review", snapshot.CodeReviewRateLimit);
 
         var summaryParts = new List<string>();
         if (snapshot.Credits is not null) {
@@ -306,6 +305,29 @@ public sealed partial class ProviderLimitSnapshotService {
             windows,
             summaryParts.Count == 0 ? null : string.Join(" • ", summaryParts),
             windows.Count == 0 ? "No live rate-limit windows were returned by OpenAI." : null);
+    }
+
+    private static async Task<ChatGptUsageSnapshot> FetchPreferredOpenAiSnapshotAsync(
+        OpenAINativeOptions options,
+        CancellationToken cancellationToken) {
+        if (!string.IsNullOrWhiteSpace(options.AuthAccountId)) {
+            try {
+                using var preferredUsageService = new ChatGptUsageService(options);
+                return await preferredUsageService.GetUsageSnapshotAsync(cancellationToken).ConfigureAwait(false);
+            } catch (OperationCanceledException) {
+                throw;
+            } catch {
+                options.AuthAccountId = null;
+            }
+        }
+
+        using var fallbackUsageService = new ChatGptUsageService(options);
+        return await fallbackUsageService.GetUsageSnapshotAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private static string? TryResolveCurrentCodexAccountId(string? codexHome) {
+        var authPath = CodexAuthStore.ResolveAuthPath(codexHome);
+        return NormalizeOptional(CodexAuthStore.TryReadProfile(authPath)?.AccountId);
     }
 
     private static string BuildUnavailableOpenAiAccountDetail(AuthBundle bundle, Exception ex) {
