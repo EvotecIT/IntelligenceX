@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using IntelligenceX.Json;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.Common;
 
@@ -153,6 +154,16 @@ public sealed record ToolOrchestrationCatalogEntry {
     /// Canonical remote-host targeting arguments projected from the tool schema.
     /// </summary>
     public IReadOnlyList<string> RemoteHostArguments { get; init; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Canonical schema argument names projected from the tool schema.
+    /// </summary>
+    public IReadOnlyList<string> SchemaArgumentNames { get; init; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Canonical required schema argument names projected from the tool schema.
+    /// </summary>
+    public IReadOnlyList<string> RequiredSchemaArgumentNames { get; init; } = Array.Empty<string>();
 
     /// <summary>
     /// Optional representative task examples published by the owning pack catalog.
@@ -446,6 +457,8 @@ public sealed class ToolOrchestrationCatalog {
             var routing = definition.Routing;
             var packId = NormalizePackId(routing?.PackId);
             var schemaTraits = ToolSchemaTraitProjection.Project(definition);
+            var normalizedSchemaArgumentNames = NormalizeDistinctTokens(ReadSchemaArgumentNames(definition.Parameters));
+            var normalizedRequiredSchemaArgumentNames = NormalizeDistinctTokens(ReadRequiredSchemaArgumentNames(definition.Parameters));
             var execution = definition.Execution;
             var normalizedExecutionContractId = NormalizeToken(execution?.ExecutionContractId);
             var executionScope = ToolExecutionScopes.Resolve(schemaTraits.ExecutionScope, schemaTraits.SupportsRemoteHostTargeting);
@@ -619,6 +632,8 @@ public sealed class ToolOrchestrationCatalog {
                 TargetScopeArguments = FreezeStringList(schemaTraits.TargetScopeArguments),
                 SupportsRemoteHostTargeting = schemaTraits.SupportsRemoteHostTargeting,
                 RemoteHostArguments = FreezeStringList(schemaTraits.RemoteHostArguments),
+                SchemaArgumentNames = FreezeStringList(normalizedSchemaArgumentNames),
+                RequiredSchemaArgumentNames = FreezeStringList(normalizedRequiredSchemaArgumentNames),
                 IsWriteCapable = writeGovernance?.IsWriteCapable == true,
                 RequiresWriteGovernance = writeGovernance?.RequiresGovernanceAuthorization == true,
                 WriteGovernanceContractId = normalizedWriteGovernanceContractId,
@@ -1124,6 +1139,48 @@ public sealed class ToolOrchestrationCatalog {
         return value.HasValue && value.Value > 0
             ? value.Value
             : null;
+    }
+
+    private static IReadOnlyList<string> ReadSchemaArgumentNames(JsonObject? schema) {
+        if (schema is null) {
+            return Array.Empty<string>();
+        }
+
+        var properties = schema.GetObject("properties");
+        if (properties is null || properties.Count == 0) {
+            return Array.Empty<string>();
+        }
+
+        var names = new List<string>(properties.Count);
+        foreach (var pair in properties) {
+            var normalized = NormalizeToken(pair.Key);
+            if (normalized.Length > 0) {
+                names.Add(normalized);
+            }
+        }
+
+        return names;
+    }
+
+    private static IReadOnlyList<string> ReadRequiredSchemaArgumentNames(JsonObject? schema) {
+        if (schema is null) {
+            return Array.Empty<string>();
+        }
+
+        var required = schema.GetArray("required");
+        if (required is null || required.Count == 0) {
+            return Array.Empty<string>();
+        }
+
+        var names = new List<string>(required.Count);
+        for (var i = 0; i < required.Count; i++) {
+            var normalized = NormalizeToken(required[i]?.ToString());
+            if (normalized.Length > 0) {
+                names.Add(normalized);
+            }
+        }
+
+        return names;
     }
 
     private static IReadOnlyList<ToolOrchestrationHandoffEdge> BuildOverlayHandoffEdges(ToolPackToolHandoffModel? handoff) {

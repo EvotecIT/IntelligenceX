@@ -318,6 +318,48 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void BuildHostPackPreflightCalls_SkipsRecipeOverlapHelperWhenContractShapeDiffers() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var registry = new ToolRegistry();
+        registry.Register(new PreflightStubTool(
+            "customx_pack_probe",
+            CreateRoutingContract("eventlog", ToolRoutingTaxonomy.RolePackInfo)));
+        registry.Register(new PreflightStubTool(
+            "customx_live_query",
+            CreateRoutingContract("eventlog", ToolRoutingTaxonomy.RoleOperational),
+            parameters: ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties()));
+        registry.Register(new PreflightStubTool(
+            "customx_recipe_resolver",
+            CreateRoutingContract("eventlog", ToolRoutingTaxonomy.RoleResolver),
+            parameters: ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties()));
+        registry.Register(new PreflightStubTool(
+            "customx_directory_probe",
+            CreateRoutingContract("eventlog", ToolRoutingTaxonomy.RoleDiagnostic),
+            parameters: ToolSchema.Object(("directory_id", ToolSchema.String("Directory identifier."))).NoAdditionalProperties()));
+        SetSessionRegistry(session, registry);
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(
+            registry.GetDefinitions(),
+            new IToolPack[] { new RecipeOverlapGuidancePack() }));
+
+        var extractedCalls = new List<ToolCall> {
+            new(
+                "call_operational_recipe_overlap",
+                "customx_live_query",
+                "{}",
+                new JsonObject(StringComparer.Ordinal),
+                new JsonObject(StringComparer.Ordinal))
+        };
+
+        var result = BuildHostPackPreflightCallsMethod.Invoke(session, new object?[] { "thread-recipe-overlap", registry.GetDefinitions(), extractedCalls });
+        var preflightCalls = Assert.IsAssignableFrom<IReadOnlyList<ToolCall>>(result);
+
+        Assert.Equal(2, preflightCalls.Count);
+        Assert.Equal("customx_pack_probe", preflightCalls[0].Name);
+        Assert.Equal("customx_recipe_resolver", preflightCalls[1].Name);
+        Assert.DoesNotContain(preflightCalls, static call => string.Equals(call.Name, "customx_directory_probe", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void BuildHostPackPreflightCalls_PrefersHealthyAlternatePackRoleCandidateWhenDefaultPathIsSuppressed() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         session.RememberHostBootstrapFailureForTesting("thread-5", "customx_pack_probe_remote", "pack_preflight");
@@ -459,6 +501,45 @@ public sealed partial class ChatServiceRoutingTrimTests {
             return new ToolPackInfoModel {
                 RuntimeCapabilities = new ToolPackRuntimeCapabilitiesModel {
                     PreferredProbeTools = new[] { "customx_connectivity_probe" }
+                }
+            };
+        }
+    }
+
+    private sealed class RecipeOverlapGuidancePack : IToolPack, IToolPackGuidanceProvider {
+        public ToolPackDescriptor Descriptor { get; } = new() {
+            Id = "eventlog",
+            Name = "EventLog",
+            Tier = ToolCapabilityTier.ReadOnly,
+            Description = "Synthetic recipe overlap guidance."
+        };
+
+        public void Register(ToolRegistry registry) {
+            _ = registry;
+        }
+
+        public ToolPackInfoModel GetPackGuidance() {
+            return new ToolPackInfoModel {
+                RecommendedRecipes = new[] {
+                    new ToolPackRecipeModel {
+                        Id = "custom_runtime_triage",
+                        Summary = "Synthetic runtime triage recipe.",
+                        WhenToUse = "Use when runtime validation is needed before a live query.",
+                        Steps = new[] {
+                            new ToolPackFlowStepModel {
+                                Goal = "Resolve runtime details",
+                                SuggestedTools = new[] { "customx_recipe_resolver" }
+                            },
+                            new ToolPackFlowStepModel {
+                                Goal = "Probe unrelated directory details",
+                                SuggestedTools = new[] { "customx_directory_probe" }
+                            },
+                            new ToolPackFlowStepModel {
+                                Goal = "Run the live query",
+                                SuggestedTools = new[] { "customx_live_query" }
+                            }
+                        }
+                    }
                 }
             };
         }

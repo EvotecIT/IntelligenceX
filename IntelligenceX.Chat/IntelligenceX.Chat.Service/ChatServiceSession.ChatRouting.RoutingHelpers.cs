@@ -1297,7 +1297,8 @@ internal sealed partial class ChatServiceSession {
             if (candidateToolName.Length == 0
                 || string.Equals(candidateToolName, NormalizeToolNameForAnswerPlan(definition.Name), StringComparison.OrdinalIgnoreCase)
                 || !PackRecipeEntriesOverlap(entry, candidate)
-                || !IsEligiblePackRecipeHelper(candidate)) {
+                || !IsEligiblePackRecipeHelper(candidate)
+                || !PackRecipeHelperMatchesContractShape(entry, candidate)) {
                 continue;
             }
 
@@ -1347,6 +1348,45 @@ internal sealed partial class ChatServiceSession {
         }
 
         return false;
+    }
+
+    private static bool PackRecipeHelperMatchesContractShape(
+        ToolOrchestrationCatalogEntry sourceEntry,
+        ToolOrchestrationCatalogEntry candidateEntry) {
+        if (candidateEntry.SchemaArgumentNames.Count == 0 && candidateEntry.RequiredSchemaArgumentNames.Count == 0) {
+            return true;
+        }
+
+        if (sourceEntry.SchemaArgumentNames.Count == 0) {
+            return false;
+        }
+
+        return ContainsAllTokens(sourceEntry.SchemaArgumentNames, candidateEntry.SchemaArgumentNames)
+               && ContainsAllTokens(sourceEntry.SchemaArgumentNames, candidateEntry.RequiredSchemaArgumentNames);
+    }
+
+    private static bool ContainsAllTokens(IReadOnlyList<string> source, IReadOnlyList<string> required) {
+        if (required.Count == 0) {
+            return true;
+        }
+
+        if (source.Count == 0) {
+            return false;
+        }
+
+        var available = new HashSet<string>(source, StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < required.Count; i++) {
+            var token = NormalizeToolNameForAnswerPlan(required[i]);
+            if (token.Length == 0) {
+                continue;
+            }
+
+            if (!available.Contains(token)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static bool PackRecipeEntriesOverlap(

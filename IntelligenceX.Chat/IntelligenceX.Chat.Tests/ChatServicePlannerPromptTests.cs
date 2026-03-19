@@ -2948,6 +2948,79 @@ public sealed class ChatServicePlannerPromptTests {
     }
 
     [Fact]
+    public void EnsureMinimumToolSelection_DoesNotBackfillRecipeOverlapHelperWhenContractShapeDiffers() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var allDefinitions = new List<ToolDefinition> {
+            new(
+                "custom_followup",
+                "Collect custom follow-up evidence.",
+                ToolSchema.Object(("endpoint", ToolSchema.String("Target endpoint."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "customx",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                }),
+            new(
+                "custom_connectivity_probe",
+                "Probe custom runtime reachability.",
+                ToolSchema.Object(("endpoint", ToolSchema.String("Target endpoint."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "customx",
+                    Role = ToolRoutingTaxonomy.RoleDiagnostic
+                }),
+            new(
+                "custom_recipe_resolver",
+                "Resolve recipe-scoped runtime context.",
+                ToolSchema.Object(("endpoint", ToolSchema.String("Target endpoint."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "customx",
+                    Role = ToolRoutingTaxonomy.RoleResolver
+                }),
+            new(
+                "custom_recipe_directory_probe",
+                "Probe unrelated directory recipe context.",
+                ToolSchema.Object(("directory_id", ToolSchema.String("Directory target."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "customx",
+                    Role = ToolRoutingTaxonomy.RoleDiagnostic
+                })
+        };
+        for (var i = 0; i < 9; i++) {
+            allDefinitions.Add(new ToolDefinition(
+                $"ix_probe_tool_{i:D2}",
+                "Generic diagnostic probe.",
+                ToolSchema.Object(("target", ToolSchema.String("Target host."))).NoAdditionalProperties()));
+        }
+
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(allDefinitions, new IToolPack[] { new SyntheticRecipeHelperPack() }));
+
+        var initialSelected = new List<ToolDefinition> {
+            allDefinitions[0]
+        };
+
+        var selected = Assert.IsAssignableFrom<IReadOnlyList<ToolDefinition>>(EnsureMinimumToolSelectionMethod.Invoke(
+            session,
+            new object?[] {
+                "continue the remote custom endpoint follow-up",
+                allDefinitions,
+                initialSelected,
+                3
+            }));
+
+        Assert.Equal(3, selected.Count);
+        Assert.Contains(selected, static item => string.Equals(item.Name, "custom_connectivity_probe", StringComparison.Ordinal));
+        Assert.Contains(selected, static item => string.Equals(item.Name, "custom_recipe_resolver", StringComparison.Ordinal));
+        Assert.DoesNotContain(selected, static item => string.Equals(item.Name, "custom_recipe_directory_probe", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void ResolveMaxCandidateToolsSetting_DefaultsCompatibleHttpToEight() {
         var result = ResolveMaxCandidateToolsSettingMethod.Invoke(null, new object?[] { null, OpenAITransportKind.CompatibleHttp });
         var value = Assert.IsType<int>(result);
@@ -3255,6 +3328,10 @@ public sealed class ChatServicePlannerPromptTests {
                     Description = "Resolve recipe-scoped runtime context."
                 },
                 new ToolPackToolCatalogEntryModel {
+                    Name = "custom_recipe_directory_probe",
+                    Description = "Probe unrelated directory recipe context."
+                },
+                new ToolPackToolCatalogEntryModel {
                     Name = "custom_followup",
                     Description = "Collect custom follow-up evidence."
                 }
@@ -3282,6 +3359,10 @@ public sealed class ChatServicePlannerPromptTests {
                             new ToolPackFlowStepModel {
                                 Goal = "Resolve recipe-scoped runtime context",
                                 SuggestedTools = new[] { "custom_recipe_resolver" }
+                            },
+                            new ToolPackFlowStepModel {
+                                Goal = "Probe unrelated directory recipe context",
+                                SuggestedTools = new[] { "custom_recipe_directory_probe" }
                             },
                             new ToolPackFlowStepModel {
                                 Goal = "Collect follow-up evidence",
