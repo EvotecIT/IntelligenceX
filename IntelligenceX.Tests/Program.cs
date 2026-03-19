@@ -99,12 +99,16 @@ internal static partial class Program {
             TestPopupPlacementMathConvertsPixelsToDips);
         failed += Run("Popup placement math clamps within work area",
             TestPopupPlacementMathClampsWithinWorkArea);
+#if !NET472
         failed += Run("GitHub dashboard service explicit self lookup keeps authenticated organizations",
             TestGitHubDashboardServiceExplicitSelfLookupKeepsAuthenticatedOrganizations);
+#endif
+#if !NET472
         failed += Run("GitHub dashboard repository ranking deduplicates overlapping repositories",
             TestGitHubDashboardRepositoryRankingDeduplicatesOverlappingRepositories);
         failed += Run("GitHub dashboard repository ranking orders and caps repositories",
             TestGitHubDashboardRepositoryRankingOrdersAndCapsRepositories);
+#endif
         failed += Run("Provider limit snapshot batch keeps healthy providers when one fails",
             TestProviderLimitSnapshotServiceBatchKeepsHealthyProvidersWhenOneFails);
         failed += Run("Provider limit snapshot batch propagates caller cancellation",

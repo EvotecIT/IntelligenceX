@@ -1,17 +1,20 @@
 using System;
 using System.Collections.Generic;
+#if !NET472
 using System.Net;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+#endif
 using System.Linq;
 using IntelligenceX.Telemetry.GitHub;
 
 namespace IntelligenceX.Tests;
 
 internal static partial class Program {
+#if !NET472
     private static void TestGitHubDashboardServiceExplicitSelfLookupKeepsAuthenticatedOrganizations() {
         var graphqlPayload = JsonSerializer.Serialize(new {
             data = new {
@@ -115,4 +118,5 @@ internal static partial class Program {
             return _sendAsync(request, cancellationToken);
         }
     }
+#endif
 }
