@@ -1296,6 +1296,7 @@ internal sealed partial class ChatServiceSession {
             var candidateToolName = NormalizeToolNameForAnswerPlan(candidate.ToolName);
             if (candidateToolName.Length == 0
                 || string.Equals(candidateToolName, NormalizeToolNameForAnswerPlan(definition.Name), StringComparison.OrdinalIgnoreCase)
+                || !string.Equals(candidate.PackId, entry.PackId, StringComparison.OrdinalIgnoreCase)
                 || !PackRecipeEntriesOverlap(entry, candidate)
                 || !IsEligiblePackRecipeHelper(candidate)
                 || !PackRecipeHelperMatchesContractShape(entry, candidate)) {

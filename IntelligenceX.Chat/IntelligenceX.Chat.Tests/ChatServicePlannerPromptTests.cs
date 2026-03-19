@@ -3021,6 +3021,81 @@ public sealed class ChatServicePlannerPromptTests {
     }
 
     [Fact]
+    public void EnsureMinimumToolSelection_DoesNotBackfillRecipeOverlapHelperFromDifferentPack() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var allDefinitions = new List<ToolDefinition> {
+            new(
+                "custom_followup",
+                "Collect custom follow-up evidence.",
+                ToolSchema.Object(("endpoint", ToolSchema.String("Target endpoint."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "customx",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                }),
+            new(
+                "custom_connectivity_probe",
+                "Probe custom runtime reachability.",
+                ToolSchema.Object(("endpoint", ToolSchema.String("Target endpoint."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "customx",
+                    Role = ToolRoutingTaxonomy.RoleDiagnostic
+                }),
+            new(
+                "custom_recipe_resolver",
+                "Resolve recipe-scoped runtime context.",
+                ToolSchema.Object(("endpoint", ToolSchema.String("Target endpoint."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "customx",
+                    Role = ToolRoutingTaxonomy.RoleResolver
+                }),
+            new(
+                "foreign_recipe_resolver",
+                "Resolve the same recipe from another pack.",
+                ToolSchema.Object(("endpoint", ToolSchema.String("Target endpoint."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "foreignx",
+                    Role = ToolRoutingTaxonomy.RoleResolver
+                })
+        };
+        for (var i = 0; i < 9; i++) {
+            allDefinitions.Add(new ToolDefinition(
+                $"ix_probe_tool_{i:D2}",
+                "Generic diagnostic probe.",
+                ToolSchema.Object(("target", ToolSchema.String("Target host."))).NoAdditionalProperties()));
+        }
+
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(
+            allDefinitions,
+            new IToolPack[] { new SyntheticRecipeHelperPack(), new SyntheticForeignRecipeHelperPack() }));
+
+        var initialSelected = new List<ToolDefinition> {
+            allDefinitions[0]
+        };
+
+        var selected = Assert.IsAssignableFrom<IReadOnlyList<ToolDefinition>>(EnsureMinimumToolSelectionMethod.Invoke(
+            session,
+            new object?[] {
+                "continue the remote custom endpoint follow-up",
+                allDefinitions,
+                initialSelected,
+                3
+            }));
+
+        Assert.Equal(3, selected.Count);
+        Assert.Contains(selected, static item => string.Equals(item.Name, "custom_connectivity_probe", StringComparison.Ordinal));
+        Assert.Contains(selected, static item => string.Equals(item.Name, "custom_recipe_resolver", StringComparison.Ordinal));
+        Assert.DoesNotContain(selected, static item => string.Equals(item.Name, "foreign_recipe_resolver", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void ResolveMaxCandidateToolsSetting_DefaultsCompatibleHttpToEight() {
         var result = ResolveMaxCandidateToolsSettingMethod.Invoke(null, new object?[] { null, OpenAITransportKind.CompatibleHttp });
         var value = Assert.IsType<int>(result);
@@ -3370,6 +3445,49 @@ public sealed class ChatServicePlannerPromptTests {
                             }
                         },
                         VerificationTools = new[] { "custom_followup" }
+                    }
+                }
+            };
+        }
+    }
+
+    private sealed class SyntheticForeignRecipeHelperPack : IToolPack, IToolPackCatalogProvider, IToolPackGuidanceProvider {
+        public ToolPackDescriptor Descriptor { get; } = new() {
+            Id = "foreignx",
+            Name = "ForeignX",
+            Tier = ToolCapabilityTier.ReadOnly,
+            SourceKind = "open_source"
+        };
+
+        public void Register(ToolRegistry registry) {
+            _ = registry;
+        }
+
+        public IReadOnlyList<ToolPackToolCatalogEntryModel> GetToolCatalog() {
+            return new[] {
+                new ToolPackToolCatalogEntryModel {
+                    Name = "foreign_recipe_resolver",
+                    Description = "Resolve foreign recipe-scoped runtime context."
+                }
+            };
+        }
+
+        public ToolPackInfoModel GetPackGuidance() {
+            return new ToolPackInfoModel {
+                Pack = "foreignx",
+                Engine = "ForeignX",
+                Tools = new[] { "foreign_recipe_resolver" },
+                RecommendedRecipes = new[] {
+                    new ToolPackRecipeModel {
+                        Id = "custom_runtime_triage",
+                        Summary = "Cross-pack recipe reuse.",
+                        WhenToUse = "Use when another pack reuses the same recipe identifier.",
+                        Steps = new[] {
+                            new ToolPackFlowStepModel {
+                                Goal = "Resolve foreign runtime context",
+                                SuggestedTools = new[] { "foreign_recipe_resolver" }
+                            }
+                        }
                     }
                 }
             };

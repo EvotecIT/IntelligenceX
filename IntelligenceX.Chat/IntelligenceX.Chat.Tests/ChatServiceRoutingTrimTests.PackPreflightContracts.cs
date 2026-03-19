@@ -397,6 +397,48 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void BuildHostPackPreflightCalls_SkipsRecipeOverlapHelperFromDifferentPack() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var registry = new ToolRegistry();
+        registry.Register(new PreflightStubTool(
+            "customx_pack_probe",
+            CreateRoutingContract("eventlog", ToolRoutingTaxonomy.RolePackInfo)));
+        registry.Register(new PreflightStubTool(
+            "customx_live_query",
+            CreateRoutingContract("eventlog", ToolRoutingTaxonomy.RoleOperational),
+            parameters: ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties()));
+        registry.Register(new PreflightStubTool(
+            "customx_recipe_resolver",
+            CreateRoutingContract("eventlog", ToolRoutingTaxonomy.RoleResolver),
+            parameters: ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties()));
+        registry.Register(new PreflightStubTool(
+            "customy_recipe_resolver",
+            CreateRoutingContract("active_directory", ToolRoutingTaxonomy.RoleResolver),
+            parameters: ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties()));
+        SetSessionRegistry(session, registry);
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(
+            registry.GetDefinitions(),
+            new IToolPack[] { new RecipeOverlapGuidancePack(), new CrossPackRecipeOverlapGuidancePack() }));
+
+        var extractedCalls = new List<ToolCall> {
+            new(
+                "call_operational_recipe_cross_pack",
+                "customx_live_query",
+                "{}",
+                new JsonObject(StringComparer.Ordinal),
+                new JsonObject(StringComparer.Ordinal))
+        };
+
+        var result = BuildHostPackPreflightCallsMethod.Invoke(session, new object?[] { "thread-recipe-cross-pack", registry.GetDefinitions(), extractedCalls });
+        var preflightCalls = Assert.IsAssignableFrom<IReadOnlyList<ToolCall>>(result);
+
+        Assert.Equal(2, preflightCalls.Count);
+        Assert.Equal("customx_pack_probe", preflightCalls[0].Name);
+        Assert.Equal("customx_recipe_resolver", preflightCalls[1].Name);
+        Assert.DoesNotContain(preflightCalls, static call => string.Equals(call.Name, "customy_recipe_resolver", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void BuildHostPackPreflightCalls_PrefersHealthyAlternatePackRoleCandidateWhenDefaultPathIsSuppressed() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         session.RememberHostBootstrapFailureForTesting("thread-5", "customx_pack_probe_remote", "pack_preflight");
@@ -574,6 +616,38 @@ public sealed partial class ChatServiceRoutingTrimTests {
                             new ToolPackFlowStepModel {
                                 Goal = "Run the live query",
                                 SuggestedTools = new[] { "customx_live_query" }
+                            }
+                        }
+                    }
+                }
+            };
+        }
+    }
+
+    private sealed class CrossPackRecipeOverlapGuidancePack : IToolPack, IToolPackGuidanceProvider {
+        public ToolPackDescriptor Descriptor { get; } = new() {
+            Id = "active_directory",
+            Name = "Active Directory",
+            Tier = ToolCapabilityTier.ReadOnly,
+            Description = "Synthetic cross-pack recipe overlap guidance."
+        };
+
+        public void Register(ToolRegistry registry) {
+            _ = registry;
+        }
+
+        public ToolPackInfoModel GetPackGuidance() {
+            return new ToolPackInfoModel {
+                Pack = "active_directory",
+                RecommendedRecipes = new[] {
+                    new ToolPackRecipeModel {
+                        Id = "custom_runtime_triage",
+                        Summary = "Synthetic cross-pack runtime triage recipe.",
+                        WhenToUse = "Use when a different pack reuses the same recipe id.",
+                        Steps = new[] {
+                            new ToolPackFlowStepModel {
+                                Goal = "Resolve cross-pack runtime details",
+                                SuggestedTools = new[] { "customy_recipe_resolver" }
                             }
                         }
                     }
