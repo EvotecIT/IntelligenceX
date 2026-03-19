@@ -15,7 +15,7 @@ public sealed class WindowsStartupRegistrationService {
         try {
             using var runKey = Registry.CurrentUser.OpenSubKey(RunKeyPath, writable: false);
             var value = runKey?.GetValue(EntryName) as string;
-            return string.Equals(value, BuildCommand(), StringComparison.OrdinalIgnoreCase);
+            return CommandTargetsCurrentProcess(value);
         } catch {
             return false;
         }
@@ -45,6 +45,10 @@ public sealed class WindowsStartupRegistrationService {
     }
 
     private static string BuildCommand() {
+        return "\"" + ResolveProcessPath() + "\"";
+    }
+
+    private static string ResolveProcessPath() {
         var processPath = Environment.ProcessPath;
         if (string.IsNullOrWhiteSpace(processPath)) {
             processPath = Process.GetCurrentProcess().MainModule?.FileName;
@@ -54,6 +58,32 @@ public sealed class WindowsStartupRegistrationService {
             throw new InvalidOperationException("Unable to resolve the current tray executable path for startup registration.");
         }
 
-        return "\"" + processPath + "\"";
+        return processPath;
+    }
+
+    private static bool CommandTargetsCurrentProcess(string? commandValue) {
+        var processPath = ResolveProcessPath();
+        var candidate = ExtractExecutablePath(commandValue);
+        return !string.IsNullOrWhiteSpace(candidate)
+               && string.Equals(candidate, processPath, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string? ExtractExecutablePath(string? commandValue) {
+        var trimmed = commandValue?.Trim();
+        if (string.IsNullOrWhiteSpace(trimmed)) {
+            return null;
+        }
+
+        if (trimmed[0] == '"') {
+            var closingQuoteIndex = trimmed.IndexOf('"', 1);
+            if (closingQuoteIndex > 1) {
+                return trimmed[1..closingQuoteIndex];
+            }
+
+            return trimmed.Trim('"');
+        }
+
+        var separatorIndex = trimmed.IndexOf(' ');
+        return separatorIndex > 0 ? trimmed[..separatorIndex] : trimmed;
     }
 }

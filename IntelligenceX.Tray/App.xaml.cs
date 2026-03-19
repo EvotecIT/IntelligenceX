@@ -46,7 +46,7 @@ public partial class App : Application {
             _viewModel.NotificationRequested += OnNotificationRequested;
             _viewModel.ThemeModeChanged += OnThemeModeChanged;
             _viewModel.AccentPresetChanged += OnAccentPresetChanged;
-            _startupRegistrationService.SetEnabled(_viewModel.StartWithWindows);
+            _viewModel.SyncStartWithWindowsState(_startupRegistrationService.IsEnabled());
 
             _themeService = new TrayThemeService(this);
             _themeService.ThemeChanged += OnThemeChanged;

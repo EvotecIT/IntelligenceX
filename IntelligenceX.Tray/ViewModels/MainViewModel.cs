@@ -738,6 +738,16 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
             : "Tray app will no longer start with Windows.";
     }
 
+    public void SyncStartWithWindowsState(bool enabled) {
+        if (StartWithWindows == enabled) {
+            return;
+        }
+
+        StartWithWindows = enabled;
+        _preferences.StartWithWindows = enabled;
+        SavePreferences();
+    }
+
     public void SetThemeMode(string mode) {
         var normalizedMode = TrayThemeService.NormalizeThemeMode(mode);
         if (string.Equals(ThemeMode, normalizedMode, StringComparison.Ordinal)) {
