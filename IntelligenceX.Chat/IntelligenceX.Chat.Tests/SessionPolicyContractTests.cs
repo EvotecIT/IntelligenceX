@@ -137,7 +137,7 @@ public sealed class SessionPolicyContractTests {
                     EnabledPackIds = System.Array.Empty<string>(),
                     EnabledPluginIds = System.Array.Empty<string>(),
                     DangerousToolsEnabled = true,
-                    DangerousPackIds = new[] { "active_directory_lifecycle" },
+                    DangerousPackIds = new[] { "active_directory" },
                     RoutingFamilies = new[] { "ad_domain", "public_domain" },
                     FamilyActions = new[] {
                         new SessionRoutingFamilyActionSummaryDto {
@@ -221,7 +221,7 @@ public sealed class SessionPolicyContractTests {
         Assert.Empty(capabilitySnapshot.EnabledPackIds);
         Assert.Empty(capabilitySnapshot.EnabledPluginIds);
         Assert.True(capabilitySnapshot.DangerousToolsEnabled);
-        Assert.Equal(new[] { "active_directory_lifecycle" }, capabilitySnapshot.DangerousPackIds);
+        Assert.Equal(new[] { "active_directory" }, capabilitySnapshot.DangerousPackIds);
         Assert.Equal("discover AD scope before querying remote evidence", Assert.Single(capabilitySnapshot.RepresentativeExamples));
         Assert.Equal(new[] { "System", "Event Log" }, capabilitySnapshot.CrossPackTargetPackDisplayNames);
         Assert.Equal("unit_test_tool", capabilitySnapshot.HealthyTools[0]);

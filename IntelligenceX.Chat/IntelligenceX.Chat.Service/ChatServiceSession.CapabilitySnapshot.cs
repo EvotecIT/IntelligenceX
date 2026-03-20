@@ -89,10 +89,6 @@ internal sealed partial class ChatServiceSession {
             .Where(static pack => pack.Enabled)
             .Select(static pack => pack.EngineId),
             MaxCapabilitySnapshotEngineIds);
-        var dangerousPackIds = NormalizeCapabilitySnapshotEnabledPackIds(
-            (packAvailability ?? Array.Empty<ToolPackAvailabilityInfo>())
-            .Where(static pack => pack.Enabled && (pack.IsDangerous || pack.Tier == ToolCapabilityTier.DangerousWrite))
-            .Select(static pack => pack.Id));
         var enabledCapabilityTags = NormalizeCapabilitySnapshotDescriptorTokens(
             (packAvailability ?? Array.Empty<ToolPackAvailabilityInfo>())
             .Where(static pack => pack.Enabled)
@@ -114,6 +110,7 @@ internal sealed partial class ChatServiceSession {
         var autonomy = ToolAutonomySummaryBuilder.BuildCapabilityAutonomySummary(
             packAvailability ?? Array.Empty<ToolPackAvailabilityInfo>(),
             orchestrationCatalog);
+        var dangerousPackIds = NormalizeCapabilitySnapshotDangerousPackIds(packAvailability, autonomy);
         var parityEntries = ToolCapabilityParityInventoryBuilder.Build(toolDefinitions, packAvailability);
         var parityAttentionCount = parityEntries.Count(static entry =>
             !string.Equals(entry.Status, ToolCapabilityParityInventoryBuilder.HealthyStatus, StringComparison.OrdinalIgnoreCase)
@@ -192,6 +189,16 @@ internal sealed partial class ChatServiceSession {
             .Select(static value => ToolPackMetadataNormalizer.NormalizeDescriptorToken(value))
             .Where(static value => value.Length > 0),
             maxItems);
+    }
+
+    private static string[] NormalizeCapabilitySnapshotDangerousPackIds(
+        IEnumerable<ToolPackAvailabilityInfo>? packAvailability,
+        SessionCapabilityAutonomySummaryDto? autonomy) {
+        return NormalizeCapabilitySnapshotEnabledPackIds(
+            (packAvailability ?? Array.Empty<ToolPackAvailabilityInfo>())
+            .Where(static pack => pack.Enabled && (pack.IsDangerous || pack.Tier == ToolCapabilityTier.DangerousWrite))
+            .Select(static pack => pack.Id)
+            .Concat(autonomy?.WriteCapablePackIds ?? Array.Empty<string>()));
     }
 
     private static string[] NormalizeCapabilitySnapshotRoutingFamilies(IEnumerable<string> routingFamilies) {

@@ -14,7 +14,37 @@ internal static class EventLogRoutingCatalog {
                 Operation: "probe",
                 Entity: "eventlog",
                 Risk: ToolRoutingTaxonomy.RiskLow,
-                AdditionalTags: new[] { "probe", "preflight", "connectivity" })
+                AdditionalTags: new[] { "probe", "preflight", "connectivity" }),
+            ["eventlog_channel_policy_set"] = new(
+                Scope: "host",
+                Operation: "write",
+                Entity: "eventlog_channel",
+                Risk: ToolRoutingTaxonomy.RiskHigh,
+                AdditionalTags: new[] { "channel_policy", "governed_write", "retention", "lifecycle" }),
+            ["eventlog_classic_log_ensure"] = new(
+                Scope: "host",
+                Operation: "write",
+                Entity: "eventlog_classic_log",
+                Risk: ToolRoutingTaxonomy.RiskHigh,
+                AdditionalTags: new[] { "classic_log", "governed_write", "provisioning", "source" }),
+            ["eventlog_classic_log_remove"] = new(
+                Scope: "host",
+                Operation: "write",
+                Entity: "eventlog_classic_log",
+                Risk: ToolRoutingTaxonomy.RiskHigh,
+                AdditionalTags: new[] { "classic_log", "governed_write", "cleanup", "source" }),
+            ["eventlog_collector_subscriptions_list"] = new(
+                Scope: "host",
+                Operation: "list",
+                Entity: "eventlog_subscription",
+                Risk: ToolRoutingTaxonomy.RiskLow,
+                AdditionalTags: new[] { "collector_subscription", "inventory", "subscription", "wec" }),
+            ["eventlog_collector_subscription_set"] = new(
+                Scope: "host",
+                Operation: "write",
+                Entity: "eventlog_subscription",
+                Risk: ToolRoutingTaxonomy.RiskHigh,
+                AdditionalTags: new[] { "collector_subscription", "governed_write", "subscription", "wec" })
         };
 
     public static readonly IReadOnlyList<string> SignalTokens = new[] {
@@ -54,12 +84,18 @@ internal static class EventLogRoutingCatalog {
             "eventlog_pack_info");
         AddRoleGroup(declared, ToolRoutingTaxonomy.RoleDiagnostic,
             "eventlog_connectivity_probe",
+            "eventlog_collector_subscriptions_list",
             "eventlog_channels_list",
             "eventlog_providers_list",
             "eventlog_named_events_catalog",
             "eventlog_timeline_explain",
             "eventlog_live_stats",
             "eventlog_evtx_stats");
+        AddRoleGroup(declared, ToolRoutingTaxonomy.RoleOperational,
+            "eventlog_channel_policy_set",
+            "eventlog_classic_log_ensure",
+            "eventlog_classic_log_remove",
+            "eventlog_collector_subscription_set");
         AddRoleGroup(declared, ToolRoutingTaxonomy.RoleResolver,
             "eventlog_named_events_query",
             "eventlog_timeline_query",

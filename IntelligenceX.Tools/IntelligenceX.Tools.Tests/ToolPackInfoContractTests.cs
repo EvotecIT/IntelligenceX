@@ -447,6 +447,22 @@ public class ToolPackInfoContractTests {
         Assert.Equal(JsonValueKind.Object, patchFollowUp.ValueKind);
         Assert.Contains("system_patch_compliance", ReadStringArray(patchFollowUp.GetProperty("source_tools")), StringComparer.OrdinalIgnoreCase);
         Assert.Contains("ad_object_resolve", ReadStringArray(patchFollowUp.GetProperty("target_tools")), StringComparer.OrdinalIgnoreCase);
+
+        var serviceLifecycleFollowUp = entityHandoffs
+            .EnumerateArray()
+            .FirstOrDefault(node => string.Equals(node.GetProperty("id").GetString(), "service_lifecycle_to_verification", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(JsonValueKind.Object, serviceLifecycleFollowUp.ValueKind);
+        Assert.Contains("system_service_lifecycle", ReadStringArray(serviceLifecycleFollowUp.GetProperty("source_tools")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("system_service_list", ReadStringArray(serviceLifecycleFollowUp.GetProperty("target_tools")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("system_info", ReadStringArray(serviceLifecycleFollowUp.GetProperty("target_tools")), StringComparer.OrdinalIgnoreCase);
+
+        var scheduledTaskLifecycleFollowUp = entityHandoffs
+            .EnumerateArray()
+            .FirstOrDefault(node => string.Equals(node.GetProperty("id").GetString(), "scheduled_task_lifecycle_to_verification", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(JsonValueKind.Object, scheduledTaskLifecycleFollowUp.ValueKind);
+        Assert.Contains("system_scheduled_task_lifecycle", ReadStringArray(scheduledTaskLifecycleFollowUp.GetProperty("source_tools")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("system_scheduled_tasks_list", ReadStringArray(scheduledTaskLifecycleFollowUp.GetProperty("target_tools")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("system_info", ReadStringArray(scheduledTaskLifecycleFollowUp.GetProperty("target_tools")), StringComparer.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -585,6 +601,10 @@ public class ToolPackInfoContractTests {
         await AssertRecipeIdsAsync(
             tool: new EventLogPackInfoTool(new EventLogToolOptions()),
             expectedRecipeIds: new[] {
+                "channel_policy_governance",
+                "classic_log_cleanup_governance",
+                "classic_log_governance",
+                "collector_subscription_governance",
                 "event_host_followup",
                 "live_authentication_triage",
                 "offline_evtx_timeline"
@@ -595,7 +615,9 @@ public class ToolPackInfoContractTests {
             expectedRecipeIds: new[] {
                 "host_security_posture_review",
                 "patch_exposure_review",
-                "remote_host_runtime_triage"
+                "remote_host_runtime_triage",
+                "scheduled_task_change",
+                "service_recovery_change"
             });
     }
 
@@ -861,10 +883,99 @@ public class ToolPackInfoContractTests {
         Assert.Contains("eventlog_connectivity_probe", ReadStringArray(recovery.GetProperty("recovery_tool_names")), StringComparer.OrdinalIgnoreCase);
         Assert.Contains("eventlog_channels_list", ReadStringArray(recovery.GetProperty("recovery_tool_names")), StringComparer.OrdinalIgnoreCase);
 
+        var channelPolicyEntry = toolCatalog
+            .EnumerateArray()
+            .First(static node => string.Equals(node.GetProperty("name").GetString(), "eventlog_channel_policy_set", StringComparison.OrdinalIgnoreCase));
+        Assert.True(channelPolicyEntry.GetProperty("is_write_capable").GetBoolean());
+        Assert.True(channelPolicyEntry.GetProperty("requires_write_governance").GetBoolean());
+        var channelPolicySetup = channelPolicyEntry.GetProperty("setup");
+        Assert.Equal("eventlog_connectivity_probe", channelPolicySetup.GetProperty("setup_tool_name").GetString());
+        var channelPolicyHandoff = channelPolicyEntry.GetProperty("handoff");
+        Assert.Contains(
+            channelPolicyHandoff.GetProperty("routes").EnumerateArray(),
+            static route => string.Equals(route.GetProperty("target_tool_name").GetString(), "eventlog_channels_list", StringComparison.OrdinalIgnoreCase));
+        var channelPolicyRecovery = channelPolicyEntry.GetProperty("recovery");
+        Assert.Contains("eventlog_channels_list", ReadStringArray(channelPolicyRecovery.GetProperty("recovery_tool_names")), StringComparer.OrdinalIgnoreCase);
+
+        var classicLogEnsureEntry = toolCatalog
+            .EnumerateArray()
+            .First(static node => string.Equals(node.GetProperty("name").GetString(), "eventlog_classic_log_ensure", StringComparison.OrdinalIgnoreCase));
+        Assert.True(classicLogEnsureEntry.GetProperty("is_write_capable").GetBoolean());
+        Assert.True(classicLogEnsureEntry.GetProperty("requires_write_governance").GetBoolean());
+        var classicLogEnsureSetup = classicLogEnsureEntry.GetProperty("setup");
+        Assert.Equal("eventlog_connectivity_probe", classicLogEnsureSetup.GetProperty("setup_tool_name").GetString());
+        var classicLogEnsureHandoff = classicLogEnsureEntry.GetProperty("handoff");
+        Assert.Contains(
+            classicLogEnsureHandoff.GetProperty("routes").EnumerateArray(),
+            static route => string.Equals(route.GetProperty("target_tool_name").GetString(), "eventlog_channels_list", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(
+            classicLogEnsureHandoff.GetProperty("routes").EnumerateArray(),
+            static route => string.Equals(route.GetProperty("target_tool_name").GetString(), "eventlog_providers_list", StringComparison.OrdinalIgnoreCase));
+        var classicLogEnsureRecovery = classicLogEnsureEntry.GetProperty("recovery");
+        Assert.Contains("eventlog_channels_list", ReadStringArray(classicLogEnsureRecovery.GetProperty("recovery_tool_names")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("eventlog_providers_list", ReadStringArray(classicLogEnsureRecovery.GetProperty("recovery_tool_names")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("eventlog_connectivity_probe", ReadStringArray(classicLogEnsureRecovery.GetProperty("recovery_tool_names")), StringComparer.OrdinalIgnoreCase);
+
+        var classicLogRemoveEntry = toolCatalog
+            .EnumerateArray()
+            .First(static node => string.Equals(node.GetProperty("name").GetString(), "eventlog_classic_log_remove", StringComparison.OrdinalIgnoreCase));
+        Assert.True(classicLogRemoveEntry.GetProperty("is_write_capable").GetBoolean());
+        Assert.True(classicLogRemoveEntry.GetProperty("requires_write_governance").GetBoolean());
+        var classicLogRemoveSetup = classicLogRemoveEntry.GetProperty("setup");
+        Assert.Equal("eventlog_connectivity_probe", classicLogRemoveSetup.GetProperty("setup_tool_name").GetString());
+        var classicLogRemoveHandoff = classicLogRemoveEntry.GetProperty("handoff");
+        Assert.Contains(
+            classicLogRemoveHandoff.GetProperty("routes").EnumerateArray(),
+            static route => string.Equals(route.GetProperty("target_tool_name").GetString(), "eventlog_channels_list", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(
+            classicLogRemoveHandoff.GetProperty("routes").EnumerateArray(),
+            static route => string.Equals(route.GetProperty("target_tool_name").GetString(), "eventlog_providers_list", StringComparison.OrdinalIgnoreCase));
+        var classicLogRemoveRecovery = classicLogRemoveEntry.GetProperty("recovery");
+        Assert.Contains("eventlog_classic_log_ensure", ReadStringArray(classicLogRemoveRecovery.GetProperty("recovery_tool_names")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("eventlog_channels_list", ReadStringArray(classicLogRemoveRecovery.GetProperty("recovery_tool_names")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("eventlog_providers_list", ReadStringArray(classicLogRemoveRecovery.GetProperty("recovery_tool_names")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("eventlog_connectivity_probe", ReadStringArray(classicLogRemoveRecovery.GetProperty("recovery_tool_names")), StringComparer.OrdinalIgnoreCase);
+
+        var collectorSubscriptionEntry = toolCatalog
+            .EnumerateArray()
+            .First(static node => string.Equals(node.GetProperty("name").GetString(), "eventlog_collector_subscription_set", StringComparison.OrdinalIgnoreCase));
+        Assert.True(collectorSubscriptionEntry.GetProperty("is_write_capable").GetBoolean());
+        Assert.True(collectorSubscriptionEntry.GetProperty("requires_write_governance").GetBoolean());
+        var collectorSubscriptionSetup = collectorSubscriptionEntry.GetProperty("setup");
+        Assert.Equal("eventlog_connectivity_probe", collectorSubscriptionSetup.GetProperty("setup_tool_name").GetString());
+        var collectorSubscriptionHandoff = collectorSubscriptionEntry.GetProperty("handoff");
+        Assert.Contains(
+            collectorSubscriptionHandoff.GetProperty("routes").EnumerateArray(),
+            static route => string.Equals(route.GetProperty("target_tool_name").GetString(), "eventlog_collector_subscriptions_list", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(
+            collectorSubscriptionHandoff.GetProperty("routes").EnumerateArray(),
+            static route => string.Equals(route.GetProperty("target_tool_name").GetString(), "eventlog_connectivity_probe", StringComparison.OrdinalIgnoreCase));
+        var collectorSubscriptionRecovery = collectorSubscriptionEntry.GetProperty("recovery");
+        Assert.Contains("eventlog_collector_subscriptions_list", ReadStringArray(collectorSubscriptionRecovery.GetProperty("recovery_tool_names")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("eventlog_connectivity_probe", ReadStringArray(collectorSubscriptionRecovery.GetProperty("recovery_tool_names")), StringComparer.OrdinalIgnoreCase);
+
+        var collectorSubscriptionListEntry = toolCatalog
+            .EnumerateArray()
+            .First(static node => string.Equals(node.GetProperty("name").GetString(), "eventlog_collector_subscriptions_list", StringComparison.OrdinalIgnoreCase));
+        Assert.False(collectorSubscriptionListEntry.GetProperty("is_write_capable").GetBoolean());
+        Assert.False(collectorSubscriptionListEntry.GetProperty("requires_write_governance").GetBoolean());
+        var collectorSubscriptionListSetup = collectorSubscriptionListEntry.GetProperty("setup");
+        Assert.Equal("eventlog_connectivity_probe", collectorSubscriptionListSetup.GetProperty("setup_tool_name").GetString());
+
         var autonomySummary = root.GetProperty("autonomy_summary");
         Assert.Contains("eventlog_timeline_query", ReadStringArray(autonomySummary.GetProperty("remote_capable_tool_names")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("eventlog_collector_subscriptions_list", ReadStringArray(autonomySummary.GetProperty("remote_capable_tool_names")), StringComparer.OrdinalIgnoreCase);
         Assert.Contains("eventlog_timeline_query", ReadStringArray(autonomySummary.GetProperty("setup_aware_tool_names")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("eventlog_collector_subscriptions_list", ReadStringArray(autonomySummary.GetProperty("setup_aware_tool_names")), StringComparer.OrdinalIgnoreCase);
         Assert.Contains("eventlog_timeline_query", ReadStringArray(autonomySummary.GetProperty("cross_pack_handoff_tool_names")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("eventlog_channel_policy_set", ReadStringArray(autonomySummary.GetProperty("governed_write_tool_names")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("eventlog_classic_log_ensure", ReadStringArray(autonomySummary.GetProperty("governed_write_tool_names")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("eventlog_classic_log_remove", ReadStringArray(autonomySummary.GetProperty("governed_write_tool_names")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("eventlog_collector_subscription_set", ReadStringArray(autonomySummary.GetProperty("governed_write_tool_names")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("eventlog_channel_policy_set", ReadStringArray(autonomySummary.GetProperty("write_capable_tool_names")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("eventlog_classic_log_ensure", ReadStringArray(autonomySummary.GetProperty("write_capable_tool_names")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("eventlog_classic_log_remove", ReadStringArray(autonomySummary.GetProperty("write_capable_tool_names")), StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("eventlog_collector_subscription_set", ReadStringArray(autonomySummary.GetProperty("write_capable_tool_names")), StringComparer.OrdinalIgnoreCase);
         Assert.Contains("system", ReadStringArray(autonomySummary.GetProperty("cross_pack_target_packs")), StringComparer.OrdinalIgnoreCase);
     }
 
@@ -889,7 +1000,7 @@ public class ToolPackInfoContractTests {
                 ExpectedTools: ToolRegistryActiveDirectoryExtensions.GetRegisteredToolNames(adOptions),
                 ExpectedCatalog: ToolRegistryActiveDirectoryExtensions.GetRegisteredToolCatalog(adOptions)),
             new PackCase(
-                Pack: "active_directory_lifecycle",
+                Pack: "active_directory",
                 Engine: "ADPlayground",
                 Tool: new AdLifecyclePackInfoTool(adLifecycleOptions),
                 ExpectedTools: ToolRegistryActiveDirectoryLifecycleExtensions.GetRegisteredToolNames(adLifecycleOptions),

@@ -37,6 +37,8 @@ public sealed class SystemAlternateEngineContractTests {
             .ToDictionary(static definition => definition.Name, StringComparer.OrdinalIgnoreCase);
 
         var serviceList = Assert.IsType<ToolDefinition>(definitionsByName["system_service_list"]);
+        var serviceLifecycle = Assert.IsType<ToolDefinition>(definitionsByName["system_service_lifecycle"]);
+        var scheduledTaskLifecycle = Assert.IsType<ToolDefinition>(definitionsByName["system_scheduled_task_lifecycle"]);
         var biosSummary = Assert.IsType<ToolDefinition>(definitionsByName["system_bios_summary"]);
 
         var serviceRecovery = Assert.IsType<ToolRecoveryContract>(serviceList.Recovery);
@@ -44,6 +46,16 @@ public sealed class SystemAlternateEngineContractTests {
         Assert.True(
             new[] { "cim", "wmi" }.SequenceEqual(serviceRecovery.AlternateEngineIds, StringComparer.OrdinalIgnoreCase),
             $"Unexpected alternate engines: {string.Join(", ", serviceRecovery.AlternateEngineIds)}");
+
+        var serviceLifecycleRecovery = Assert.IsType<ToolRecoveryContract>(serviceLifecycle.Recovery);
+        Assert.False(serviceLifecycleRecovery.SupportsTransientRetry);
+        Assert.False(serviceLifecycleRecovery.SupportsAlternateEngines);
+        Assert.Empty(serviceLifecycleRecovery.AlternateEngineIds);
+
+        var scheduledTaskLifecycleRecovery = Assert.IsType<ToolRecoveryContract>(scheduledTaskLifecycle.Recovery);
+        Assert.False(scheduledTaskLifecycleRecovery.SupportsTransientRetry);
+        Assert.False(scheduledTaskLifecycleRecovery.SupportsAlternateEngines);
+        Assert.Empty(scheduledTaskLifecycleRecovery.AlternateEngineIds);
 
         var biosRecovery = Assert.IsType<ToolRecoveryContract>(biosSummary.Recovery);
         Assert.False(biosRecovery.SupportsAlternateEngines);

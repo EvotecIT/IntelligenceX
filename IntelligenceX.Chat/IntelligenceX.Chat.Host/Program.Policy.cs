@@ -70,7 +70,6 @@ internal static partial class Program {
         ToolOrchestrationCatalog orchestrationCatalog,
         IReadOnlyList<string>? bootstrapWarnings = null) {
         var descriptors = ToolPackBootstrap.GetDescriptors(packs);
-        var dangerousEnabled = descriptors.Any(static p => p.IsDangerous || p.Tier == ToolCapabilityTier.DangerousWrite);
         var pluginPaths = GetPluginSearchPaths(options, runtimePolicyContext);
         var familySummaries = ToolRoutingCatalogDiagnosticsBuilder.FormatFamilySummaries(routingCatalogDiagnostics, maxItems: 8);
         var routingWarnings = ToolRoutingCatalogDiagnosticsBuilder.BuildWarnings(routingCatalogDiagnostics, maxWarnings: 12);
@@ -87,6 +86,7 @@ internal static partial class Program {
             pluginAvailability,
             routingCatalogDiagnostics,
             orchestrationCatalog);
+        var dangerousEnabled = capabilitySnapshot.DangerousToolsEnabled;
         var capabilityHighlights = BuildCapabilitySnapshotHighlights(capabilitySnapshot);
 
         Console.WriteLine("Policy:");
@@ -309,6 +309,9 @@ internal static partial class Program {
             normalizedPackAvailability,
             orchestrationCatalog,
             MaxHostCapabilitySnapshotIds);
+        var dangerousPackIds = NormalizeHostCapabilitySnapshotDangerousPackIds(
+            normalizedPackAvailability,
+            autonomy);
         var parityEntries = ToolCapabilityParityInventoryBuilder.Build(toolDefinitions, normalizedPackAvailability);
         var parityAttentionCount = parityEntries.Count(static entry =>
             !string.Equals(entry.Status, ToolCapabilityParityInventoryBuilder.HealthyStatus, StringComparison.OrdinalIgnoreCase)
@@ -325,6 +328,8 @@ internal static partial class Program {
             AllowedRootCount = Math.Max(0, allowedRootCount),
             EnabledPackIds = enabledPackIds,
             EnabledPluginIds = enabledPluginIds,
+            DangerousToolsEnabled = dangerousPackIds.Length > 0,
+            DangerousPackIds = dangerousPackIds,
             EnabledPackEngineIds = enabledPackEngineIds,
             EnabledCapabilityTags = enabledCapabilityTags,
             RoutingFamilies = routingFamilies,
@@ -337,6 +342,18 @@ internal static partial class Program {
             ParityAttentionCount = Math.Max(0, parityAttentionCount),
             ParityMissingCapabilityCount = Math.Max(0, parityMissingCapabilityCount)
         };
+    }
+
+    private static string[] NormalizeHostCapabilitySnapshotDangerousPackIds(
+        IEnumerable<ToolPackAvailabilityInfo>? packAvailability,
+        SessionCapabilityAutonomySummaryDto? autonomy) {
+        return NormalizeDistinctStrings(
+            (packAvailability ?? Array.Empty<ToolPackAvailabilityInfo>())
+                .Where(static pack => pack.Enabled && (pack.IsDangerous || pack.Tier == ToolCapabilityTier.DangerousWrite))
+                .Select(static pack => ToolPackBootstrap.NormalizePackId(pack.Id))
+                .Where(static packId => packId.Length > 0)
+                .Concat(autonomy?.WriteCapablePackIds ?? Array.Empty<string>()),
+            MaxHostCapabilitySnapshotIds);
     }
 
     internal static string FormatCapabilitySnapshotSummary(SessionCapabilitySnapshotDto? snapshot) {

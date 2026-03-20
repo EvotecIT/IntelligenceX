@@ -40,16 +40,10 @@ public static class ToolPackIdentityCatalog {
             canonicalPackId: "active_directory",
             displayName: "Active Directory",
             category: "active_directory",
-            aliases: new[] { "ad", "adplayground" },
-            searchTokens: new[] { "active_directory", "ad_playground" },
+            aliases: new[] { "ad", "adplayground", "ad_lifecycle", "adlifecycle", "joiner_leaver", "adplayground_lifecycle" },
+            searchTokens: new[] { "active_directory", "ad_playground", "identity_lifecycle", "joiner_leaver", "governed_write" },
             toolNamePrefixes: new[] { "ad" },
             runtimeNamespaceMarkers: new[] { ".ADPlayground" }),
-        new PackIdentityDescriptor(
-            canonicalPackId: "active_directory_lifecycle",
-            displayName: "AD Lifecycle",
-            category: "active_directory",
-            aliases: new[] { "ad_lifecycle", "adlifecycle", "joiner_leaver", "adplayground_lifecycle" },
-            searchTokens: new[] { "identity_lifecycle", "joiner_leaver", "governed_write" }),
         new PackIdentityDescriptor(
             canonicalPackId: "eventlog",
             displayName: "Event Log",

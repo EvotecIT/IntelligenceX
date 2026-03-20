@@ -47,6 +47,11 @@ public static class ToolRegistryEventLogExtensions {
     private static IEnumerable<ITool> CreateCoreTools(EventLogToolOptions options) {
         yield return new EventLogPackInfoTool(options);
         yield return new EventLogConnectivityProbeTool(options);
+        yield return new EventLogChannelPolicySetTool(options);
+        yield return new EventLogClassicLogEnsureTool(options);
+        yield return new EventLogClassicLogRemoveTool(options);
+        yield return new EventLogCollectorSubscriptionsListTool(options);
+        yield return new EventLogCollectorSubscriptionSetTool(options);
         yield return new EventLogChannelListTool(options);
         yield return new EventLogProviderListTool(options);
         yield return new EventLogNamedEventsCatalogTool(options);

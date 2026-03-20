@@ -7,18 +7,18 @@ using IntelligenceX.Tools.Common;
 namespace IntelligenceX.Tools.ADPlayground;
 
 /// <summary>
-/// Returns Active Directory lifecycle pack capabilities and usage guidance for model-driven planning.
+/// Returns lifecycle-focused Active Directory capabilities and usage guidance for model-driven planning.
 /// </summary>
 public sealed class AdLifecyclePackInfoTool : ActiveDirectoryToolBase, ITool {
     private sealed record PackInfoRequest;
 
     private static readonly ToolDefinition DefinitionValue = ToolPackDefinitionFactory.CreatePackInfoDefinition(
         toolName: "ad_lifecycle_pack_info",
-        description: "Return Active Directory lifecycle/write-pack capabilities, output contract, and dry-run-first guidance for joiner/leaver workflows.",
-        packId: "active_directory_lifecycle",
+        description: "Return governed Active Directory lifecycle capabilities, output contract, and dry-run-first guidance inside the active_directory pack.",
+        packId: "active_directory",
         category: "active_directory",
         tags: new[] {
-            "pack:active_directory_lifecycle",
+            "pack:active_directory",
             "domain_family:ad_domain",
             "domain_signals:dc,ldap,active_directory,adplayground,identity_lifecycle,joiner,leaver,offboarding,password_reset"
         },
@@ -55,31 +55,30 @@ public sealed class AdLifecyclePackInfoTool : ActiveDirectoryToolBase, ITool {
         var root = BuildGuidance(Options);
 
         var summary = ToolMarkdown.SummaryText(
-            title: "AD Lifecycle Pack",
-            "This pack is dangerous and should stay disabled by default until lifecycle writes are explicitly needed.",
-            "Use ad_user_lifecycle, ad_computer_lifecycle, ad_group_lifecycle, or ad_ou_lifecycle in dry-run mode first, then verify the resulting identity and state with the read-only AD pack.");
+            title: "AD Lifecycle Helper",
+            "This helper focuses on the governed identity lifecycle slice inside the Active Directory pack.",
+            "Use ad_user_lifecycle, ad_computer_lifecycle, ad_group_lifecycle, or ad_ou_lifecycle in dry-run mode first, then verify the resulting identity and state with the AD read/verification tools in the same pack.");
 
         return Task.FromResult(ToolResultV2.OkModel(root, summaryMarkdown: summary));
     }
 
     internal static ToolPackInfoModel BuildGuidance(ActiveDirectoryToolOptions options) {
         return ToolPackGuidance.Create(
-            pack: "active_directory_lifecycle",
+            pack: "active_directory",
             engine: "ADPlayground",
             tools: ToolRegistryActiveDirectoryLifecycleExtensions.GetRegisteredToolNames(options),
             recommendedFlow: new[] {
-                "Enable the active_directory_lifecycle pack explicitly before using write-capable AD workflows.",
-                "Call ad_environment_discover from the read-only AD pack first when domain scope or controller context is unclear.",
+                "Call ad_environment_discover or ad_scope_discovery first when domain scope or controller context is unclear before governed lifecycle changes.",
                 "Use ad_user_lifecycle, ad_computer_lifecycle, ad_group_lifecycle, or ad_ou_lifecycle with apply=false first to preview the intended change, related memberships, and required fields.",
                 "Switch apply=true only after the requested mutation, identity, and rollback context are explicit.",
                 "Use ad_ou_lifecycle for create/update/move/delete and accidental-deletion protection changes on organizational units.",
-                "Follow lifecycle writes with ad_object_get, ad_object_resolve, or ad_user_groups_resolved in the read-only AD pack to verify resulting state, and reuse computer_name or group identity follow-up pivots when the lifecycle result exposes them for System or EventLog checks."
+                "Follow lifecycle writes with ad_object_get, ad_object_resolve, or ad_user_groups_resolved to verify resulting state, and reuse computer_name or group identity follow-up pivots when the lifecycle result exposes them for System or EventLog checks."
             },
             flowSteps: new[] {
                 ToolPackGuidance.FlowStep(
                     goal: "Discover scope and validate AD context",
                     suggestedTools: new[] { "ad_environment_discover", "ad_scope_discovery" },
-                    notes: "These tools live in the read-only Active Directory pack."),
+                    notes: "Use these same-pack discovery tools first when the target domain controller, naming context, or forest scope is still ambiguous."),
                 ToolPackGuidance.FlowStep(
                     goal: "Preview the lifecycle action",
                     suggestedTools: new[] { "ad_user_lifecycle", "ad_computer_lifecycle", "ad_group_lifecycle", "ad_ou_lifecycle" },
@@ -258,11 +257,10 @@ public sealed class AdLifecyclePackInfoTool : ActiveDirectoryToolBase, ITool {
             runtimeCapabilities: new ToolPackRuntimeCapabilitiesModel {
                 PreferredEntryTools = new[] { "ad_environment_discover", "ad_user_lifecycle", "ad_group_lifecycle", "ad_ou_lifecycle" },
                 RuntimePrerequisites = new[] {
-                    "Enable the active_directory_lifecycle pack explicitly before invoking governed AD write workflows.",
                     "Use apply=false first so the lifecycle tools return preview, validation, and rollback context before any mutation is attempted.",
                     "Provide explicit write-governance metadata and operator intent before switching a lifecycle action to apply=true."
                 },
-                Notes = "Treat this pack as a governed write surface: discover scope in the read-only AD pack first, preview the mutation, then verify the resulting state with ad_object_get or ad_object_resolve."
+                Notes = "Treat this helper as the governed write slice of Active Directory: discover scope first, preview the mutation, then verify the resulting state with ad_object_get or ad_object_resolve."
             },
             rawPayloadPolicy: "Preserve the lifecycle action payload, requested attributes, and mutation result fields for audit-friendly reasoning.",
             viewProjectionPolicy: "Projection arguments are optional and view-only.",
@@ -271,7 +269,7 @@ public sealed class AdLifecyclePackInfoTool : ActiveDirectoryToolBase, ITool {
                 DomainController = options.DomainController,
                 DefaultSearchBaseDn = options.DefaultSearchBaseDn,
                 MaxResults = options.MaxResults,
-                DangerLevel = "dangerous_write",
+                DangerLevel = "governed_write",
                 RecommendedVerificationPack = "active_directory"
             });
     }

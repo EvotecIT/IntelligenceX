@@ -285,78 +285,154 @@ public sealed partial class ChatServiceRoutingTrimTests {
     [Fact]
     public void RuntimeCapabilityHandshake_BuildRuntimeCapabilitySnapshot_ExposesDangerousPackVisibility() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var definitions = new[] {
+            new ToolDefinition(
+                name: "ad_user_lifecycle",
+                description: "Governed AD lifecycle write.",
+                parameters: ToolSchema.Object(
+                        ("identity", ToolSchema.String("Identity.")),
+                        ("apply", ToolSchema.Boolean("Apply.")))
+                    .WithWriteGovernanceDefaults(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "active_directory",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                },
+                writeGovernance: ToolWriteGovernanceConventions.BooleanFlagTrue("apply"))
+        };
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(definitions));
         session.SetCapabilitySnapshotContextForTesting(
             new[] {
                 new ToolPackAvailabilityInfo {
-                    Id = "active_directory_lifecycle",
-                    Name = "Active Directory Lifecycle",
+                    Id = "active_directory",
+                    Name = "Active Directory",
                     SourceKind = "builtin",
                     Enabled = true,
-                    IsDangerous = true,
-                    Tier = ToolCapabilityTier.DangerousWrite
+                    IsDangerous = false,
+                    Tier = ToolCapabilityTier.SensitiveRead
                 }
             },
             new ToolRoutingCatalogDiagnostics {
-                TotalTools = 3,
-                RoutingAwareTools = 3,
+                TotalTools = 1,
+                RoutingAwareTools = 1,
                 MissingRoutingContractTools = 0,
-                DomainFamilyTools = 1,
+                DomainFamilyTools = 0,
                 ExpectedDomainFamilyMissingTools = 0,
                 DomainFamilyMissingActionTools = 0,
                 ActionWithoutFamilyTools = 0,
                 FamilyActionConflictFamilies = 0,
-                FamilyActions = new[] {
-                    new ToolRoutingFamilyActionSummary {
-                        Family = "ad_domain",
-                        ActionId = "identity_lifecycle",
-                        ToolCount = 3
-                    }
-                }
+                FamilyActions = Array.Empty<ToolRoutingFamilyActionSummary>()
             });
 
         var snapshot = session.BuildRuntimeCapabilitySnapshotForTesting();
 
         Assert.True(snapshot.DangerousToolsEnabled);
-        Assert.Equal(new[] { "active_directory_lifecycle" }, snapshot.DangerousPackIds);
+        Assert.Equal(new[] { "active_directory" }, snapshot.DangerousPackIds);
+    }
+
+    [Fact]
+    public void RuntimeCapabilityHandshake_BuildRuntimeCapabilitySnapshot_TracksWriteCapableNonDangerousPackVisibility() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var definitions = new[] {
+            new ToolDefinition(
+                name: "email_smtp_send",
+                description: "Send SMTP mail.",
+                parameters: ToolSchema.Object(
+                        ("send", ToolSchema.Boolean("Apply send.")))
+                    .WithWriteGovernanceDefaults(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "email",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                },
+                writeGovernance: ToolWriteGovernanceConventions.BooleanFlagTrue("send"))
+        };
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(definitions));
+        session.SetCapabilitySnapshotContextForTesting(
+            new[] {
+                new ToolPackAvailabilityInfo {
+                    Id = "email",
+                    Name = "Email",
+                    SourceKind = "builtin",
+                    Enabled = true,
+                    IsDangerous = false,
+                    Tier = ToolCapabilityTier.SensitiveRead
+                }
+            },
+            new ToolRoutingCatalogDiagnostics {
+                TotalTools = 1,
+                RoutingAwareTools = 1,
+                ExplicitRoutingTools = 1,
+                MissingRoutingContractTools = 0,
+                MissingPackIdTools = 0,
+                MissingRoleTools = 0,
+                DomainFamilyTools = 0,
+                ExpectedDomainFamilyMissingTools = 0,
+                DomainFamilyMissingActionTools = 0,
+                ActionWithoutFamilyTools = 0,
+                FamilyActionConflictFamilies = 0,
+                FamilyActions = Array.Empty<ToolRoutingFamilyActionSummary>()
+            });
+
+        var snapshot = session.BuildRuntimeCapabilitySnapshotForTesting();
+
+        Assert.True(snapshot.DangerousToolsEnabled);
+        Assert.Equal(new[] { "email" }, snapshot.DangerousPackIds);
+        Assert.NotNull(snapshot.Autonomy);
+        Assert.Equal(1, snapshot.Autonomy!.WriteCapableToolCount);
+        Assert.Equal(new[] { "email" }, snapshot.Autonomy.WriteCapablePackIds);
     }
 
     [Fact]
     public void RuntimeCapabilityHandshake_IncludesDangerousPackVisibilityWhenDangerousToolsAreEnabled() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var definitions = new[] {
+            new ToolDefinition(
+                name: "ad_user_lifecycle",
+                description: "Governed AD lifecycle write.",
+                parameters: ToolSchema.Object(
+                        ("identity", ToolSchema.String("Identity.")),
+                        ("apply", ToolSchema.Boolean("Apply.")))
+                    .WithWriteGovernanceDefaults(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "active_directory",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                },
+                writeGovernance: ToolWriteGovernanceConventions.BooleanFlagTrue("apply"))
+        };
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(definitions));
         session.SetCapabilitySnapshotContextForTesting(
             new[] {
                 new ToolPackAvailabilityInfo {
-                    Id = "active_directory_lifecycle",
-                    Name = "Active Directory Lifecycle",
+                    Id = "active_directory",
+                    Name = "Active Directory",
                     SourceKind = "builtin",
                     Enabled = true,
-                    IsDangerous = true,
-                    Tier = ToolCapabilityTier.DangerousWrite
+                    IsDangerous = false,
+                    Tier = ToolCapabilityTier.SensitiveRead
                 }
             },
             new ToolRoutingCatalogDiagnostics {
-                TotalTools = 3,
-                RoutingAwareTools = 3,
+                TotalTools = 1,
+                RoutingAwareTools = 1,
                 MissingRoutingContractTools = 0,
-                DomainFamilyTools = 1,
+                DomainFamilyTools = 0,
                 ExpectedDomainFamilyMissingTools = 0,
                 DomainFamilyMissingActionTools = 0,
                 ActionWithoutFamilyTools = 0,
                 FamilyActionConflictFamilies = 0,
-                FamilyActions = new[] {
-                    new ToolRoutingFamilyActionSummary {
-                        Family = "ad_domain",
-                        ActionId = "identity_lifecycle",
-                        ToolCount = 3
-                    }
-                }
+                FamilyActions = Array.Empty<ToolRoutingFamilyActionSummary>()
             });
 
         var instructions = session.BuildTurnInstructionsWithRuntimeIdentityForTesting("gpt-5");
         var instructionsText = Assert.IsType<string>(instructions);
 
         Assert.Contains("dangerous_tools_enabled: true", instructionsText, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("dangerous_packs: active_directory_lifecycle", instructionsText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("dangerous_packs: active_directory", instructionsText, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -638,33 +714,44 @@ public sealed partial class ChatServiceRoutingTrimTests {
     [Fact]
     public void RuntimeCapabilityHandshake_HelloWarningsExposeDangerousPackVisibility() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var definitions = new[] {
+            new ToolDefinition(
+                name: "ad_user_lifecycle",
+                description: "Governed AD lifecycle write.",
+                parameters: ToolSchema.Object(
+                        ("identity", ToolSchema.String("Identity.")),
+                        ("apply", ToolSchema.Boolean("Apply.")))
+                    .WithWriteGovernanceDefaults(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "active_directory",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                },
+                writeGovernance: ToolWriteGovernanceConventions.BooleanFlagTrue("apply"))
+        };
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(definitions));
         session.SetCapabilitySnapshotContextForTesting(
             new[] {
                 new ToolPackAvailabilityInfo {
-                    Id = "active_directory_lifecycle",
-                    Name = "Active Directory Lifecycle",
+                    Id = "active_directory",
+                    Name = "Active Directory",
                     SourceKind = "builtin",
                     Enabled = true,
-                    IsDangerous = true,
-                    Tier = ToolCapabilityTier.DangerousWrite
+                    IsDangerous = false,
+                    Tier = ToolCapabilityTier.SensitiveRead
                 }
             },
             new ToolRoutingCatalogDiagnostics {
-                TotalTools = 2,
-                RoutingAwareTools = 2,
+                TotalTools = 1,
+                RoutingAwareTools = 1,
                 MissingRoutingContractTools = 0,
-                DomainFamilyTools = 1,
+                DomainFamilyTools = 0,
                 ExpectedDomainFamilyMissingTools = 0,
                 DomainFamilyMissingActionTools = 0,
                 ActionWithoutFamilyTools = 0,
                 FamilyActionConflictFamilies = 0,
-                FamilyActions = new[] {
-                    new ToolRoutingFamilyActionSummary {
-                        Family = "ad_domain",
-                        ActionId = "identity_lifecycle",
-                        ToolCount = 2
-                    }
-                }
+                FamilyActions = Array.Empty<ToolRoutingFamilyActionSummary>()
             });
 
         var warnings = session.BuildHelloStartupWarningsForTesting(Task.CompletedTask);
@@ -673,7 +760,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             static warning => warning.StartsWith("[startup] capability_handshake", StringComparison.OrdinalIgnoreCase));
 
         Assert.Contains("dangerous_tools_enabled='true'", handshake, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("dangerous_packs='active_directory_lifecycle'", handshake, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("dangerous_packs='active_directory'", handshake, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

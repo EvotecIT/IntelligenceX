@@ -88,6 +88,7 @@ public sealed class AdPackInfoTool : ActiveDirectoryToolBase, ITool {
                 "Use ad_forest_functional for forest-level functional posture and recommended target-level planning.",
                 "Use ad_search/ad_groups_list/ad_spn_search for broad discovery.",
                 "Use ad_user_groups_resolved when the question is specifically about a user's effective access footprint or when lifecycle changes need read-only membership verification without looping over ad_object_get calls.",
+                "Use ad_lifecycle_pack_info/ad_user_lifecycle/ad_computer_lifecycle/ad_group_lifecycle/ad_ou_lifecycle for dry-run-first governed joiner, mover, leaver, group, computer, and OU changes inside the same Active Directory pack.",
                 "Use ad_password_policy/ad_password_policy_rollup/ad_password_policy_length and ad_trust for policy and trust-posture diagnostics.",
                 "Use ad_domain_statistics/ad_domain_controller_facts/ad_dc_fleet_posture/ad_fsmo_roles/ad_krbtgt_health/ad_system_state_backup for domain resilience posture checks.",
                 "Use ad_domain_container_defaults/ad_machine_account_quota for domain default and join-governance posture.",
@@ -150,6 +151,10 @@ public sealed class AdPackInfoTool : ActiveDirectoryToolBase, ITool {
                     goal: "Resolve/expand identities for correlation",
                     suggestedTools: new[] { "ad_handoff_prepare", "ad_scope_discovery", "ad_object_resolve", "ad_object_get", "ad_group_members_resolved", "ad_user_groups_resolved" }),
                 ToolPackGuidance.FlowStep(
+                    goal: "Preview and apply governed identity lifecycle changes",
+                    suggestedTools: new[] { "ad_lifecycle_pack_info", "ad_user_lifecycle", "ad_computer_lifecycle", "ad_group_lifecycle", "ad_ou_lifecycle" },
+                    notes: "Use apply=false first, then switch to apply=true only after the requested mutation, rollback context, and post-change verification plan are explicit."),
+                ToolPackGuidance.FlowStep(
                     goal: "Confirm authoritative user/computer logon recency across DCs",
                     suggestedTools: new[] { "ad_scope_discovery", "ad_forest_discover", "ad_ldap_query", "ad_ldap_query_paged" }),
                 ToolPackGuidance.FlowStep(
@@ -172,6 +177,10 @@ public sealed class AdPackInfoTool : ActiveDirectoryToolBase, ITool {
                     id: "identity_resolution",
                     summary: "Resolve identities and membership details for cross-tool correlation.",
                     primaryTools: new[] { "ad_handoff_prepare", "ad_object_resolve", "ad_object_get", "ad_group_members", "ad_group_members_resolved", "ad_user_groups_resolved" }),
+                ToolPackGuidance.Capability(
+                    id: "identity_lifecycle",
+                    summary: "Perform governed dry-run-first lifecycle changes for users, computers, groups, and organizational units without leaving the Active Directory pack.",
+                    primaryTools: new[] { "ad_lifecycle_pack_info", "ad_user_lifecycle", "ad_computer_lifecycle", "ad_group_lifecycle", "ad_ou_lifecycle" }),
                 ToolPackGuidance.Capability(
                     id: "authoritative_logon_correlation",
                     summary: "Correlate last-logon evidence per-DC using direct LDAP reads and forest/domain discovery context.",
@@ -327,6 +336,7 @@ public sealed class AdPackInfoTool : ActiveDirectoryToolBase, ITool {
                 RuntimePrerequisites = new[] {
                     "Use ad_connectivity_probe when RootDSE reachability, effective LDAP context resolution, or a small DC sample is still uncertain.",
                     "Call ad_environment_discover or ad_scope_discovery first when domain_controller, search_base_dn, or forest/domain boundaries are not explicit yet.",
+                    "For governed lifecycle writes, start with ad_lifecycle_pack_info and preview the intended mutation with apply=false before switching to apply=true.",
                     "Persisted AD monitoring state tools require monitoring_directory under one of the configured AllowedMonitoringRoots locations.",
                     "When discovery or monitoring output identifies specific DCs or hosts, reuse those values as computer_name in ComputerX/System follow-up tools instead of improvising a new host scope."
                 },

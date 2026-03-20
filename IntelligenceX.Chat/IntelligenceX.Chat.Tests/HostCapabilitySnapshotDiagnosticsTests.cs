@@ -103,6 +103,34 @@ public sealed class HostCapabilitySnapshotDiagnosticsTests {
     }
 
     [Fact]
+    public void BuildHostCapabilitySnapshot_TracksWriteCapableNonDangerousPackVisibility() {
+        var definitions = CreateDefinitions();
+        var orchestrationCatalog = ToolOrchestrationCatalog.Build(definitions);
+        var routingCatalog = ToolRoutingCatalogDiagnosticsBuilder.Build(definitions);
+        var packAvailability = new[] {
+            new ToolPackAvailabilityInfo {
+                Id = "active_directory",
+                Name = "Active Directory",
+                Tier = ToolCapabilityTier.SensitiveRead,
+                IsDangerous = false,
+                SourceKind = "closed_source",
+                Enabled = true
+            }
+        };
+
+        var snapshot = HostProgram.BuildHostCapabilitySnapshot(
+            allowedRootCount: 0,
+            toolDefinitions: definitions,
+            packAvailability: packAvailability,
+            pluginAvailability: Array.Empty<ToolPluginAvailabilityInfo>(),
+            routingCatalogDiagnostics: routingCatalog,
+            orchestrationCatalog: orchestrationCatalog);
+
+        Assert.True(snapshot.DangerousToolsEnabled);
+        Assert.Equal(new[] { "active_directory" }, snapshot.DangerousPackIds);
+    }
+
+    [Fact]
     public void BuildToolsInspectionLines_ExposeCapabilityRoutingAndPackAutonomyForLightweightHostInspection() {
         var definitions = CreateDefinitions();
         var orchestrationCatalog = ToolOrchestrationCatalog.Build(definitions);
@@ -279,6 +307,37 @@ public sealed class HostCapabilitySnapshotDiagnosticsTests {
         Assert.Equal(1, eventLogPack.AutonomySummary!.RemoteCapableTools);
         Assert.Equal(1, eventLogPack.AutonomySummary.CrossPackHandoffTools);
         Assert.Contains("system", eventLogPack.AutonomySummary.CrossPackTargetPacks, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildHostToolsExportMessage_ProjectsWriteCapableNonDangerousPackAsDangerous() {
+        var definitions = CreateDefinitions();
+        var orchestrationCatalog = ToolOrchestrationCatalog.Build(definitions);
+        var routingCatalog = ToolRoutingCatalogDiagnosticsBuilder.Build(definitions);
+        var packAvailability = new[] {
+            new ToolPackAvailabilityInfo {
+                Id = "active_directory",
+                Name = "Active Directory",
+                Tier = ToolCapabilityTier.SensitiveRead,
+                IsDangerous = false,
+                SourceKind = "closed_source",
+                Enabled = true
+            }
+        };
+
+        var message = HostProgram.BuildHostToolsExportMessage(
+            allowedRootCount: 0,
+            toolDefinitions: definitions,
+            packAvailability: packAvailability,
+            pluginAvailability: Array.Empty<ToolPluginAvailabilityInfo>(),
+            routingCatalogDiagnostics: routingCatalog,
+            orchestrationCatalog: orchestrationCatalog);
+
+        var activeDirectoryPack = Assert.Single(message.Packs, static pack =>
+            string.Equals(pack.Id, "active_directory", StringComparison.OrdinalIgnoreCase));
+        Assert.True(activeDirectoryPack.IsDangerous);
+        Assert.NotNull(activeDirectoryPack.AutonomySummary);
+        Assert.Equal(1, activeDirectoryPack.AutonomySummary!.WriteCapableTools);
     }
 
     [Fact]

@@ -61,7 +61,6 @@ public partial class ToolSchemaSnapshotTests {
     public void AllRegisteredAdToolSchemas_ShouldBeCoveredBySnapshots() {
         var registry = new ToolRegistry();
         registry.RegisterActiveDirectoryPack(new ActiveDirectoryToolOptions());
-        registry.RegisterActiveDirectoryLifecyclePack(new ActiveDirectoryToolOptions());
 
         var snapshotNames = new HashSet<string>(
             SchemaSnapshots()
@@ -99,7 +98,6 @@ public partial class ToolSchemaSnapshotTests {
         registry.RegisterSystemPack(new SystemToolOptions());
         registry.RegisterEventLogPack(new EventLogToolOptions());
         registry.RegisterActiveDirectoryPack(new ActiveDirectoryToolOptions());
-        registry.RegisterActiveDirectoryLifecyclePack(new ActiveDirectoryToolOptions());
         registry.RegisterPowerShellPack(new PowerShellToolOptions { Enabled = true });
 
         return registry.GetDefinitions()

@@ -418,6 +418,7 @@ public static class ToolCapabilityParityCatalog {
     public static IReadOnlyList<ToolCapabilityParityExpectationDescriptor> EventViewerXReadOnlyExpectations { get; } = new[] {
         ToolCapabilityParityExpectationDescriptor.ForToolParameterProperty("remote_channel_catalog", "eventlog_channels_list", RemoteMachineNameParameterName, "EventViewerX.Reports.Inventory.EventCatalogQueryRequest", "MachineName", EventViewerXAssemblyName),
         ToolCapabilityParityExpectationDescriptor.ForToolParameterProperty("remote_provider_catalog", "eventlog_providers_list", RemoteMachineNameParameterName, "EventViewerX.Reports.Inventory.EventCatalogQueryRequest", "MachineName", EventViewerXAssemblyName),
+        ToolCapabilityParityExpectationDescriptor.ForToolParameterStaticMethod("remote_collector_subscription_catalog", "eventlog_collector_subscriptions_list", RemoteMachineNameParameterName, "EventViewerX.SearchEvents", "GetCollectorSubscriptions", EventViewerXAssemblyName),
         ToolCapabilityParityExpectationDescriptor.ForToolParameterProperty("remote_live_event_query", "eventlog_live_query", RemoteMachineNameParameterName, "EventViewerX.Reports.Live.LiveEventQueryRequest", "MachineName", EventViewerXAssemblyName),
         ToolCapabilityParityExpectationDescriptor.ForToolParameterProperty("remote_live_event_stats", "eventlog_live_stats", RemoteMachineNameParameterName, "EventViewerX.Reports.Live.LiveStatsQueryRequest", "MachineName", EventViewerXAssemblyName),
         ToolCapabilityParityExpectationDescriptor.ForToolParameterProperty("remote_top_events", "eventlog_top_events", RemoteMachineNameParameterName, "EventViewerX.Reports.Live.LiveEventQueryRequest", "MachineName", EventViewerXAssemblyName),
@@ -427,6 +428,18 @@ public static class ToolCapabilityParityCatalog {
         ToolCapabilityParityExpectationDescriptor.ForToolType("evtx_event_query", "eventlog_evtx_query", "EventViewerX.Reports.Evtx.EvtxEventReportResult", EventViewerXAssemblyName),
         ToolCapabilityParityExpectationDescriptor.ForToolType("evtx_event_stats", "eventlog_evtx_stats", "EventViewerX.Reports.Stats.EvtxStatsReport", EventViewerXAssemblyName),
         ToolCapabilityParityExpectationDescriptor.ForToolType("evtx_security_summary", "eventlog_evtx_security_summary", "EventViewerX.Reports.Security.SecurityEvtxQueryRequest", EventViewerXAssemblyName)
+    };
+
+    /// <summary>
+    /// Shared EventViewerX governed-write capability expectations.
+    /// </summary>
+    public static IReadOnlyList<ToolCapabilityParityExpectationDescriptor> EventViewerXGovernedWriteExpectations { get; } = new[] {
+        ToolCapabilityParityExpectationDescriptor.ForToolStaticMethod("channel_policy_write", "eventlog_channel_policy_set", "EventViewerX.SearchEvents", "SetChannelPolicyDetailed", EventViewerXAssemblyName),
+        ToolCapabilityParityExpectationDescriptor.ForToolStaticMethod("classic_log_ensure_write", "eventlog_classic_log_ensure", "EventViewerX.SearchEvents", "CreateLog", EventViewerXAssemblyName),
+        ToolCapabilityParityExpectationDescriptor.ForToolStaticMethod("classic_log_source_remove_write", "eventlog_classic_log_remove", "EventViewerX.SearchEvents", "RemoveSource", EventViewerXAssemblyName),
+        ToolCapabilityParityExpectationDescriptor.ForToolStaticMethod("classic_log_remove_write", "eventlog_classic_log_remove", "EventViewerX.SearchEvents", "RemoveLog", EventViewerXAssemblyName),
+        ToolCapabilityParityExpectationDescriptor.ForToolStaticMethod("collector_subscription_enabled_write", "eventlog_collector_subscription_set", "EventViewerX.SearchEvents", "SetCollectorSubscriptionEnabled", EventViewerXAssemblyName),
+        ToolCapabilityParityExpectationDescriptor.ForToolStaticMethod("collector_subscription_xml_write", "eventlog_collector_subscription_set", "EventViewerX.SearchEvents", "SetCollectorSubscriptionXml", EventViewerXAssemblyName)
     };
 
     /// <summary>

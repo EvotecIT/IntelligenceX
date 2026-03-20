@@ -124,7 +124,8 @@ public sealed partial class PluginFolderLoaderTests {
             Assert.DoesNotContain(
                 warnings,
                 static w => w.Contains("plugin-loader-test", StringComparison.OrdinalIgnoreCase)
-                            && !w.Contains("load_progress", StringComparison.OrdinalIgnoreCase));
+                            && !w.Contains("load_progress", StringComparison.OrdinalIgnoreCase)
+                            && !w.Contains("load_timing", StringComparison.OrdinalIgnoreCase));
         } finally {
             if (Directory.Exists(tempRoot)) {
                 Directory.Delete(tempRoot, recursive: true);

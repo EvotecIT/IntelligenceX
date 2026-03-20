@@ -50,7 +50,10 @@ internal static class SystemPackContractCatalog {
     private static ToolRecoveryContract? CreateRecovery(ToolDefinition definition) {
         return ToolContractDefaults.ResolveRecoveryContract(
             definition,
-            static current => SystemContractCatalog.CreateRecovery(current.Name, current.Parameters));
+            static current => SystemContractCatalog.CreateRecovery(
+                current.Name,
+                current.Parameters,
+                isWriteCapable: current.WriteGovernance?.IsWriteCapable == true));
     }
 
     private static ToolHandoffContract? CreateHandoff(ToolDefinition definition) {

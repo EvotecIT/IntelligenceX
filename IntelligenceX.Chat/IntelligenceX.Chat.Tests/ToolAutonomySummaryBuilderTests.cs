@@ -138,7 +138,7 @@ public sealed class ToolAutonomySummaryBuilderTests {
                 routing: new ToolRoutingContract {
                     IsRoutingAware = true,
                     RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
-                    PackId = "active_directory_lifecycle",
+                    PackId = "active_directory",
                     Role = ToolRoutingTaxonomy.RoleOperational
                 },
                 writeGovernance: new ToolWriteGovernanceContract {
@@ -153,7 +153,7 @@ public sealed class ToolAutonomySummaryBuilderTests {
                 routing: new ToolRoutingContract {
                     IsRoutingAware = true,
                     RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
-                    PackId = "active_directory_lifecycle",
+                    PackId = "active_directory",
                     Role = ToolRoutingTaxonomy.RoleOperational
                 },
                 writeGovernance: new ToolWriteGovernanceContract {
@@ -164,7 +164,7 @@ public sealed class ToolAutonomySummaryBuilderTests {
         };
         var orchestrationCatalog = ToolOrchestrationCatalog.Build(definitions);
 
-        var summary = ToolAutonomySummaryBuilder.BuildPackAutonomySummary("active_directory_lifecycle", orchestrationCatalog);
+        var summary = ToolAutonomySummaryBuilder.BuildPackAutonomySummary("active_directory", orchestrationCatalog);
 
         Assert.NotNull(summary);
         Assert.Equal(2, summary!.WriteCapableTools);
@@ -174,8 +174,8 @@ public sealed class ToolAutonomySummaryBuilderTests {
         var capabilitySummary = ToolAutonomySummaryBuilder.BuildCapabilityAutonomySummary(
             new[] {
                 new ToolPackAvailabilityInfo {
-                    Id = "active_directory_lifecycle",
-                    Name = "Active Directory Lifecycle",
+                    Id = "active_directory",
+                    Name = "Active Directory",
                     SourceKind = "closed_source",
                     Enabled = true
                 }
@@ -185,9 +185,9 @@ public sealed class ToolAutonomySummaryBuilderTests {
         Assert.NotNull(capabilitySummary);
         Assert.Equal(2, capabilitySummary!.WriteCapableToolCount);
         Assert.Equal(1, capabilitySummary.GovernedWriteToolCount);
-        Assert.Equal(new[] { "active_directory_lifecycle" }, capabilitySummary.LocalCapablePackIds);
-        Assert.Equal(new[] { "active_directory_lifecycle" }, capabilitySummary.WriteCapablePackIds);
-        Assert.Equal(new[] { "active_directory_lifecycle" }, capabilitySummary.GovernedWritePackIds);
+        Assert.Equal(new[] { "active_directory" }, capabilitySummary.LocalCapablePackIds);
+        Assert.Equal(new[] { "active_directory" }, capabilitySummary.WriteCapablePackIds);
+        Assert.Equal(new[] { "active_directory" }, capabilitySummary.GovernedWritePackIds);
     }
 
     private static ToolDefinition[] CreateDefinitions() {

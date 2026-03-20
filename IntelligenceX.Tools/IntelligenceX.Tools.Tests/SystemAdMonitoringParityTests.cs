@@ -92,6 +92,8 @@ public class SystemAdMonitoringParityTests {
 
         Assert.Contains("system_metrics_summary", names, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("system_local_identity_inventory", names, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("system_service_lifecycle", names, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("system_scheduled_task_lifecycle", names, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("system_privacy_posture", names, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("system_exploit_protection", names, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("system_office_posture", names, StringComparer.OrdinalIgnoreCase);

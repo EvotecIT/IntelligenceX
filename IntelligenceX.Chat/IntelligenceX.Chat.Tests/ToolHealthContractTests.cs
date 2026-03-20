@@ -1035,7 +1035,7 @@ public sealed class ToolHealthContractTests {
             ToolingAvailable = true,
             AllowedRootCount = 1,
             DangerousToolsEnabled = true,
-            DangerousPackIds = new[] { "active_directory_lifecycle" },
+            DangerousPackIds = new[] { "active_directory" },
             RepresentativeExamples = new[] { "inspect host posture before expanding into remote follow-up" },
             CrossPackTargetPackDisplayNames = new[] { "Event Log", "System" },
             Autonomy = new SessionCapabilityAutonomySummaryDto {
@@ -1048,7 +1048,7 @@ public sealed class ToolHealthContractTests {
                 RemoteCapablePackIds = new[] { "eventlog", "system" },
                 TargetScopedPackIds = new[] { "active_directory", "eventlog" },
                 RemoteHostTargetingPackIds = new[] { "eventlog" },
-                WriteCapablePackIds = new[] { "active_directory_lifecycle" },
+                WriteCapablePackIds = new[] { "active_directory" },
                 AuthenticationRequiredPackIds = new[] { "eventlog" },
                 ProbeCapablePackIds = new[] { "eventlog" }
             },
@@ -1084,7 +1084,7 @@ public sealed class ToolHealthContractTests {
         Assert.NotNull(parsed);
         Assert.NotNull(parsed.BackgroundScheduler);
         Assert.True(parsed.DangerousToolsEnabled);
-        Assert.Equal(new[] { "active_directory_lifecycle" }, parsed.DangerousPackIds);
+        Assert.Equal(new[] { "active_directory" }, parsed.DangerousPackIds);
         Assert.Equal("inspect host posture before expanding into remote follow-up", Assert.Single(parsed.RepresentativeExamples));
         Assert.Equal(new[] { "Event Log", "System" }, parsed.CrossPackTargetPackDisplayNames);
         Assert.NotNull(parsed.Autonomy);

@@ -58,7 +58,9 @@ public static class ToolRegistrySystemExtensions {
         if (OperatingSystem.IsWindows()) {
             yield return new SystemPortsListTool(options);
             yield return new SystemServiceListTool(options);
+            yield return new SystemServiceLifecycleTool(options);
             yield return new SystemScheduledTasksListTool(options);
+            yield return new SystemScheduledTaskLifecycleTool(options);
             yield return new SystemFirewallRulesTool(options);
             yield return new SystemFirewallProfilesTool(options);
             yield return new SystemSecurityOptionsTool(options);

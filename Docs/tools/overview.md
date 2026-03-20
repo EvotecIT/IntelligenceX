@@ -63,6 +63,10 @@ The table below reflects the actual bootstrap in `IntelligenceX.Chat.Tooling/Too
 | ADPlayground | `ad` | `closed_source` | Yes (when available) | SensitiveRead | Windows (domain environments) |
 | TestimoX | `testimox` | `closed_source` | Yes (when available) | SensitiveRead | Windows |
 
+`Tier` is a pack-summary signal, not a per-tool mutability contract.
+Individual tools remain the source of truth for read vs governed-write behavior through their routing, execution, and write-governance metadata.
+Mixed-mode governed-write examples in the current runtime include `eventlog_channel_policy_set` / `eventlog_classic_log_ensure` / `eventlog_classic_log_remove` in `eventlog`, `system_service_lifecycle` / `system_scheduled_task_lifecycle` in `system`, and `ad_user_lifecycle` / `ad_computer_lifecycle` in `active_directory`.
+
 ## IX Chat vs .NET Integration
 
 ### IX Chat
@@ -71,6 +75,7 @@ The table below reflects the actual bootstrap in `IntelligenceX.Chat.Tooling/Too
 - Some packs are always available in OSS (`eventlog`, `fs`, `reviewersetup`).
 - Some are optional/conditional for runtime reasons (`email` dependency gating, `powershell` safety opt-in), while still being OSS-oriented packs.
 - Some are enabled by default but may not exist in OSS environments (`system`, `ad`, `testimox`).
+- Mixed-mode packs are normal: IX Chat can expose mostly-read packs that still contain governed-write tools when runtime policy allows them.
 - Closed-source packs are intended for IX Chat private/licensed usage by default.
 
 ### .NET library (custom apps)

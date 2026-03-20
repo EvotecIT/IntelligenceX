@@ -490,4 +490,69 @@ public sealed class SessionRuntimePolicyHelloContractTests {
         Assert.Equal("eventlog", serializedCapabilityAutonomy.GetProperty("authenticationRequiredPackIds")[0].GetString());
         Assert.Equal("eventlog", serializedCapabilityAutonomy.GetProperty("probeCapablePackIds")[0].GetString());
     }
+
+    [Fact]
+    public void BuildSessionPolicy_TreatsWriteCapableNonDangerousPackAsNonReadOnly() {
+        var definitions = new[] {
+            new ToolDefinition(
+                name: "email_smtp_send",
+                description: "Send SMTP mail.",
+                parameters: ToolSchema.Object(
+                        ("send", ToolSchema.Boolean("Apply send.")))
+                    .WithWriteGovernanceDefaults(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "email",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                },
+                writeGovernance: ToolWriteGovernanceConventions.BooleanFlagTrue("send"))
+        };
+
+        var policy = ChatServiceSession.BuildSessionPolicy(
+            new ServiceOptions(),
+            new[] {
+                new ToolPackAvailabilityInfo {
+                    Id = "email",
+                    Name = "Email",
+                    SourceKind = "builtin",
+                    Enabled = true,
+                    IsDangerous = false,
+                    Tier = ToolCapabilityTier.SensitiveRead
+                }
+            },
+            Array.Empty<ToolPluginAvailabilityInfo>(),
+            Array.Empty<string>(),
+            null,
+            Array.Empty<string>(),
+            new ToolRuntimePolicyDiagnostics {
+                WriteGovernanceMode = ToolWriteGovernanceMode.Enforced,
+                RequireWriteGovernanceRuntime = true,
+                WriteGovernanceRuntimeConfigured = true,
+                RequireWriteAuditSinkForWriteOperations = true,
+                WriteAuditSinkMode = ToolWriteAuditSinkMode.FileAppendOnly,
+                WriteAuditSinkConfigured = true,
+                WriteAuditSinkPath = "C:\\audit\\write.jsonl",
+                AuthenticationPreset = ToolAuthenticationRuntimePreset.Strict,
+                RequireExplicitRoutingMetadata = true,
+                RequireAuthenticationRuntime = true,
+                AuthenticationRuntimeConfigured = true,
+                RequireSuccessfulSmtpProbeForSend = true,
+                SmtpProbeMaxAgeSeconds = 600
+            },
+            orchestrationCatalog: ToolOrchestrationCatalog.Build(definitions));
+
+        Assert.False(policy.ReadOnly);
+        Assert.True(policy.DangerousToolsEnabled);
+
+        var pack = Assert.Single(policy.Packs);
+        Assert.True(pack.IsDangerous);
+
+        var snapshot = Assert.IsType<SessionCapabilitySnapshotDto>(policy.CapabilitySnapshot);
+        Assert.True(snapshot.DangerousToolsEnabled);
+        Assert.Equal(new[] { "email" }, snapshot.DangerousPackIds);
+        Assert.NotNull(snapshot.Autonomy);
+        Assert.Equal(new[] { "email" }, snapshot.Autonomy!.WriteCapablePackIds);
+        Assert.Equal(new[] { "email" }, snapshot.Autonomy.GovernedWritePackIds);
+    }
 }

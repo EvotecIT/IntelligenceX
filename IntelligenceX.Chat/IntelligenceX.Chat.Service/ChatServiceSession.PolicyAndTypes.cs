@@ -34,13 +34,6 @@ internal sealed partial class ChatServiceSession {
         SessionCapabilitySnapshotDto? capabilitySnapshot = null) {
         var roots = options.AllowedRoots.Count == 0 ? Array.Empty<string>() : options.AllowedRoots.ToArray();
 
-        var packList = BuildPackPolicyList(packAvailability, orchestrationCatalog);
-
-        var pluginList = MapPluginPolicyList(pluginAvailability, packAvailability);
-
-        var dangerousEnabled = Array.Exists(
-            packList,
-            static p => p.Enabled && (p.IsDangerous || p.Tier == CapabilityTier.DangerousWrite));
         var resolvedCapabilitySnapshot = capabilitySnapshot ?? BuildCapabilitySnapshot(
             options,
             toolDefinitions: null,
@@ -51,6 +44,14 @@ internal sealed partial class ChatServiceSession {
             connectedRuntimeSkills,
             healthyToolNames,
             remoteReachabilityMode);
+        var packList = BuildPackPolicyList(packAvailability, orchestrationCatalog);
+
+        var pluginList = MapPluginPolicyList(pluginAvailability, packAvailability);
+
+        var dangerousEnabled = resolvedCapabilitySnapshot.DangerousToolsEnabled
+            || Array.Exists(
+                packList,
+                static p => p.Enabled && (p.IsDangerous || p.Tier == CapabilityTier.DangerousWrite));
 
         return new SessionPolicyDto {
             ReadOnly = !dangerousEnabled,

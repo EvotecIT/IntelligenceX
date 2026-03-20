@@ -27,6 +27,10 @@ Required descriptor fields:
 
 Host/app code should consume descriptor metadata and avoid pack-name hardcoding.
 
+`Tier` and `IsDangerous` are pack-summary metadata, not the sole source of truth for individual tool mutability.
+Hosts should treat tool contracts and orchestration/autonomy inventories as authoritative for whether a specific tool is read-only, governed-write, or otherwise mutating.
+Mixed-mode packs are valid: a pack may contain mostly read-only tools while still exposing governed-write tools with explicit write intent, audit metadata, and rollback references.
+
 ## 2. Pack ID Rules
 
 - Use lowercase canonical ids in descriptors.

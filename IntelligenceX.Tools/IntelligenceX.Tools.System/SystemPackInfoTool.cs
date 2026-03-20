@@ -71,6 +71,8 @@ public sealed class SystemPackInfoTool : SystemToolBase, ITool {
                 "Use system_windows_update_client_status and system_windows_update_telemetry for low-privilege remote Windows Update/WSUS state, reboot pressure, and freshness diagnostics.",
                 "Use system_patch_details for monthly MSRC patch intelligence (CVE/KB/severity details, defaulting to current UTC month).",
                 "Use system_patch_compliance to correlate monthly MSRC KB coverage with installed updates and prioritize missing exploited CVEs.",
+                "Use system_service_lifecycle for governed service start/stop/restart/startup-type changes. Preview first with apply=false, then verify with system_service_list or system_info.",
+                "Use system_scheduled_task_lifecycle for governed scheduled-task enable/disable/run_now/delete changes. Preview first with apply=false, then verify with system_scheduled_tasks_list or system_info.",
                 "Use AD/TestimoX/EventLog handoff evidence (computer/host identifiers) to drive focused ComputerX follow-up rather than broad host scans.",
                 "When a tool schema exposes computer_name, use it for remote host scope instead of assuming local-only execution.",
                 "Use optional projection arguments only when the user asks for specific columns or sorting."
@@ -86,6 +88,10 @@ public sealed class SystemPackInfoTool : SystemToolBase, ITool {
                 ToolPackGuidance.FlowStep(
                     goal: "Collect storage/feature configuration evidence",
                     suggestedTools: new[] { "system_logical_disks_list", "system_disks_list", "system_features_list", "system_scheduled_tasks_list", "system_service_list", "system_installed_applications", "system_updates_installed", "system_boot_configuration", "system_bios_summary" }),
+                ToolPackGuidance.FlowStep(
+                    goal: "Preview or apply governed service and scheduled-task recovery actions",
+                    suggestedTools: new[] { "system_service_list", "system_service_lifecycle", "system_scheduled_tasks_list", "system_scheduled_task_lifecycle", "system_info" },
+                    notes: "Use the list tools first when the exact service_name or task_path is uncertain. Keep apply=false until the requested mutation, audit metadata, and rollback context are approved."),
                 ToolPackGuidance.FlowStep(
                     goal: "Assess monthly patch exposure and prioritization",
                     suggestedTools: new[] { "system_windows_update_client_status", "system_windows_update_telemetry", "system_patch_details", "system_patch_compliance", "system_updates_installed" })
@@ -103,6 +109,16 @@ public sealed class SystemPackInfoTool : SystemToolBase, ITool {
                     id: "platform_configuration",
                     summary: "Inventory disks, devices, features, scheduled tasks, installed applications/updates, and optional WSL state.",
                     primaryTools: new[] { "system_logical_disks_list", "system_disks_list", "system_devices_summary", "system_features_list", "system_scheduled_tasks_list", "system_installed_applications", "system_updates_installed", "system_boot_configuration", "system_bios_summary", "wsl_status" }),
+                ToolPackGuidance.Capability(
+                    id: "service_lifecycle",
+                    summary: "Preview and apply governed Windows service start/stop/restart/startup-type changes with explicit write intent and verification follow-up.",
+                    primaryTools: new[] { "system_service_lifecycle", "system_service_list" },
+                    notes: "Dry-run first. Useful for service recovery, startup-type corrections, and same-host remediation without falling back to generic shell execution."),
+                ToolPackGuidance.Capability(
+                    id: "scheduled_task_lifecycle",
+                    summary: "Preview and apply governed scheduled-task enable/disable/run_now/delete changes with explicit write intent and same-host verification follow-up.",
+                    primaryTools: new[] { "system_scheduled_task_lifecycle", "system_scheduled_tasks_list" },
+                    notes: "Dry-run first. Useful for task scheduler recovery and containment actions without falling back to generic shell execution."),
                 ToolPackGuidance.Capability(
                     id: "security_posture",
                     summary: "Summarize privacy policy, exploit mitigation, office/browser hardening, backup/recovery readiness, local identity exposure, credential hardening, certificate-store posture, TLS crypto posture, WinRM remote-management posture, firmware trust, app-control, PowerShell logging posture, UAC posture, LDAP policy posture, network-client hardening, effective account policy, interactive-logon posture, audit-policy options, built-in account state, OpenSSH/Remote Assistance exposure, Device Guard posture, and Defender ASR posture for the local or remote host.",
@@ -140,7 +156,29 @@ public sealed class SystemPackInfoTool : SystemToolBase, ITool {
                         ToolPackGuidance.EntityFieldMapping("rows[].missing_kbs[]", "query", "Use KB identifiers for follow-up evidence searches and ticket correlation."),
                         ToolPackGuidance.EntityFieldMapping("rows[].cve_id", "query", "Use CVE identifiers to correlate host telemetry and incident timelines.")
                     },
-                    notes: "After patch gap detection, pivot into AD ownership context and EventLog timeline evidence.")
+                    notes: "After patch gap detection, pivot into AD ownership context and EventLog timeline evidence."),
+                ToolPackGuidance.EntityHandoff(
+                    id: "service_lifecycle_to_verification",
+                    summary: "Promote governed service lifecycle results into same-host verification and baseline follow-up.",
+                    entityKinds: new[] { "service", "host" },
+                    sourceTools: new[] { "system_service_lifecycle" },
+                    targetTools: new[] { "system_service_list", "system_info" },
+                    fieldMappings: new[] {
+                        ToolPackGuidance.EntityFieldMapping("computer_name", "computer_name", "Reuse the resolved host scope from the governed lifecycle result."),
+                        ToolPackGuidance.EntityFieldMapping("service_name", "name_contains", "Reuse the exact service name for focused verification in system_service_list.")
+                    },
+                    notes: "After a governed service change, verify the service state and keep host-level context attached to the same machine."),
+                ToolPackGuidance.EntityHandoff(
+                    id: "scheduled_task_lifecycle_to_verification",
+                    summary: "Promote governed scheduled-task lifecycle results into same-host verification and baseline follow-up.",
+                    entityKinds: new[] { "scheduled_task", "host" },
+                    sourceTools: new[] { "system_scheduled_task_lifecycle" },
+                    targetTools: new[] { "system_scheduled_tasks_list", "system_info" },
+                    fieldMappings: new[] {
+                        ToolPackGuidance.EntityFieldMapping("computer_name", "computer_name", "Reuse the resolved host scope from the governed lifecycle result."),
+                        ToolPackGuidance.EntityFieldMapping("task_path", "name_contains", "Reuse the exact task path for focused verification in system_scheduled_tasks_list.")
+                    },
+                    notes: "After a governed scheduled-task change, verify the task state and keep host-level context attached to the same machine.")
             },
             recipes: new[] {
                 ToolPackGuidance.Recipe(
@@ -187,6 +225,52 @@ public sealed class SystemPackInfoTool : SystemToolBase, ITool {
                     },
                     verificationTools: new[] { "system_updates_installed", "system_patch_compliance" }),
                 ToolPackGuidance.Recipe(
+                    id: "service_recovery_change",
+                    summary: "Preview and apply a governed Windows service recovery change with focused same-host verification.",
+                    whenToUse: "Use when the problem is a known Windows service that must be started, stopped, restarted, or have its startup type corrected on a local or remote host.",
+                    steps: new[] {
+                        ToolPackGuidance.FlowStep(
+                            goal: "Confirm the exact service identity and current state",
+                            suggestedTools: new[] { "system_service_list", "system_info" },
+                            notes: "Use system_service_list first when the exact service_name or host context still needs confirmation."),
+                        ToolPackGuidance.FlowStep(
+                            goal: "Preview the governed lifecycle action",
+                            suggestedTools: new[] { "system_service_lifecycle" },
+                            notes: "Keep apply=false so the preview returns current state, predicted post-change state, and precondition warnings before any write is attempted."),
+                        ToolPackGuidance.FlowStep(
+                            goal: "Apply the approved service mutation",
+                            suggestedTools: new[] { "system_service_lifecycle" },
+                            notes: "Repeat the same request with apply=true only after the service action, audit metadata, and rollback plan are approved."),
+                        ToolPackGuidance.FlowStep(
+                            goal: "Verify the post-change host and service state",
+                            suggestedTools: new[] { "system_service_list", "system_info" },
+                            notes: "Confirm the target service state and keep same-host runtime context attached for any remaining remediation.")
+                    },
+                    verificationTools: new[] { "system_service_list", "system_info" }),
+                ToolPackGuidance.Recipe(
+                    id: "scheduled_task_change",
+                    summary: "Preview and apply a governed scheduled-task control change with focused same-host verification.",
+                    whenToUse: "Use when the problem is a known Windows scheduled task that must be enabled, disabled, run immediately, or deleted on a local or remote host.",
+                    steps: new[] {
+                        ToolPackGuidance.FlowStep(
+                            goal: "Confirm the exact scheduled-task identity and current state",
+                            suggestedTools: new[] { "system_scheduled_tasks_list", "system_info" },
+                            notes: "Use system_scheduled_tasks_list first when the exact task_path or host context still needs confirmation."),
+                        ToolPackGuidance.FlowStep(
+                            goal: "Preview the governed scheduled-task action",
+                            suggestedTools: new[] { "system_scheduled_task_lifecycle" },
+                            notes: "Keep apply=false so the preview returns current state, predicted post-change state, and precondition warnings before any write is attempted."),
+                        ToolPackGuidance.FlowStep(
+                            goal: "Apply the approved scheduled-task mutation",
+                            suggestedTools: new[] { "system_scheduled_task_lifecycle" },
+                            notes: "Repeat the same request with apply=true only after the task action, audit metadata, and rollback plan are approved."),
+                        ToolPackGuidance.FlowStep(
+                            goal: "Verify the post-change task and host state",
+                            suggestedTools: new[] { "system_scheduled_tasks_list", "system_info" },
+                            notes: "Confirm the target task state and keep same-host runtime context attached for any remaining remediation.")
+                    },
+                    verificationTools: new[] { "system_scheduled_tasks_list", "system_info" }),
+                ToolPackGuidance.Recipe(
                     id: "host_security_posture_review",
                     summary: "Review hardening, remote-access, crypto, and identity posture on a local or remote Windows host.",
                     whenToUse: "Use when the request is about exposure, baseline hardening, certificate/TLS posture, WinRM, UAC, account policy, or credential risk.",
@@ -216,7 +300,8 @@ public sealed class SystemPackInfoTool : SystemToolBase, ITool {
                     "Use computer_name for remote host scope whenever AD, EventLog, or TestimoX already identified the target host.",
                     "Some posture and inventory tools are Windows-oriented, so prefer the platform-neutral baseline tools first when host platform is uncertain.",
                     "Remote host checks depend on normal ComputerX reachability and the caller having permission to query the target host.",
-                    "Use system_connectivity_probe before heavier remote collection when WMI/CIM reachability, permissions, or time skew are unknown."
+                    "Use system_connectivity_probe before heavier remote collection when WMI/CIM reachability, permissions, or time skew are unknown.",
+                    "Governed service and scheduled-task writes require explicit apply=true plus the shared write_* audit and rollback metadata required by the current runtime policy."
                 },
                 Notes = "Keep follow-up focused on a single host or a small deduplicated host set so CPU, memory, disk, update, and posture checks stay targeted."
             },
