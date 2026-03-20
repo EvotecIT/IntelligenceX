@@ -43,6 +43,10 @@ public static class ToolCatalogExportBuilder {
         ToolOrchestrationCatalog? orchestrationCatalog) {
         var list = new List<ToolPackInfoDto>();
         foreach (var pack in packAvailability ?? Array.Empty<ToolPackAvailabilityInfo>()) {
+            var autonomySummary = ToolAutonomySummaryBuilder.BuildPackAutonomySummary(pack.Id, orchestrationCatalog);
+            var exposesWriteCapability =
+                autonomySummary is not null
+                && (autonomySummary.WriteCapableTools > 0 || autonomySummary.GovernedWriteTools > 0);
             list.Add(new ToolPackInfoDto {
                 Id = pack.Id,
                 Name = ToolPackMetadataNormalizer.ResolveDisplayName(pack.Id, pack.Name),
@@ -50,14 +54,14 @@ public static class ToolCatalogExportBuilder {
                 Tier = MapTier(pack.Tier),
                 Enabled = pack.Enabled,
                 DisabledReason = pack.Enabled || string.IsNullOrWhiteSpace(pack.DisabledReason) ? null : pack.DisabledReason.Trim(),
-                IsDangerous = pack.IsDangerous || pack.Tier == ToolCapabilityTier.DangerousWrite,
+                IsDangerous = pack.IsDangerous || pack.Tier == ToolCapabilityTier.DangerousWrite || exposesWriteCapability,
                 SourceKind = ToolPackMetadataNormalizer.ResolveSourceKind(pack.SourceKind),
                 Category = string.IsNullOrWhiteSpace(pack.Category) ? null : pack.Category.Trim(),
                 EngineId = string.IsNullOrWhiteSpace(pack.EngineId) ? null : pack.EngineId.Trim(),
                 Aliases = pack.Aliases?.Where(static alias => !string.IsNullOrWhiteSpace(alias)).ToArray() ?? Array.Empty<string>(),
                 CapabilityTags = pack.CapabilityTags?.Where(static tag => !string.IsNullOrWhiteSpace(tag)).ToArray() ?? Array.Empty<string>(),
                 SearchTokens = pack.SearchTokens?.Where(static token => !string.IsNullOrWhiteSpace(token)).ToArray() ?? Array.Empty<string>(),
-                AutonomySummary = ToolAutonomySummaryBuilder.BuildPackAutonomySummary(pack.Id, orchestrationCatalog)
+                AutonomySummary = autonomySummary
             });
         }
 

@@ -1080,6 +1080,128 @@ public sealed class ToolCapabilityParityInventoryBuilderTests {
     }
 
     /// <summary>
+    /// Ensures EventViewerX parity reports a gap when the collector-subscription inventory wrapper is absent.
+    /// </summary>
+    [Fact]
+    public void Build_WhenEventLogCollectorSubscriptionsListWrapperMissing_ReportsEventViewerXParityGap() {
+        var registry = new ToolRegistry();
+        registry.RegisterEventLogPack(new EventLogToolOptions());
+
+        var filteredDefinitions = registry.GetDefinitions()
+            .Where(static definition => !string.Equals(definition.Name, "eventlog_collector_subscriptions_list", StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+
+        var entries = ToolCapabilityParityInventoryBuilder.Build(
+            filteredDefinitions,
+            new[] {
+                CreateEnabledPack("eventlog", "Event Log")
+            });
+
+        var eventLog = Assert.Single(entries, static entry => string.Equals(entry.EngineId, "eventviewerx", StringComparison.OrdinalIgnoreCase));
+
+        Assert.Equal(ToolCapabilityParityInventoryBuilder.GapStatus, eventLog.Status);
+        Assert.Contains("remote_collector_subscription_catalog", eventLog.MissingCapabilities, StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Ensures EventViewerX parity reports a gap when the governed channel-policy wrapper is absent.
+    /// </summary>
+    [Fact]
+    public void Build_WhenEventLogChannelPolicyWriteWrapperMissing_ReportsEventViewerXParityGap() {
+        var registry = new ToolRegistry();
+        registry.RegisterEventLogPack(new EventLogToolOptions());
+
+        var filteredDefinitions = registry.GetDefinitions()
+            .Where(static definition => !string.Equals(definition.Name, "eventlog_channel_policy_set", StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+
+        var entries = ToolCapabilityParityInventoryBuilder.Build(
+            filteredDefinitions,
+            new[] {
+                CreateEnabledPack("eventlog", "Event Log")
+            });
+
+        var eventLog = Assert.Single(entries, static entry => string.Equals(entry.EngineId, "eventviewerx", StringComparison.OrdinalIgnoreCase));
+
+        Assert.Equal(ToolCapabilityParityInventoryBuilder.GapStatus, eventLog.Status);
+        Assert.Contains("channel_policy_write", eventLog.MissingCapabilities, StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Ensures EventViewerX parity reports a gap when the classic-log ensure wrapper is absent.
+    /// </summary>
+    [Fact]
+    public void Build_WhenEventLogClassicLogEnsureWrapperMissing_ReportsEventViewerXParityGap() {
+        var registry = new ToolRegistry();
+        registry.RegisterEventLogPack(new EventLogToolOptions());
+
+        var filteredDefinitions = registry.GetDefinitions()
+            .Where(static definition => !string.Equals(definition.Name, "eventlog_classic_log_ensure", StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+
+        var entries = ToolCapabilityParityInventoryBuilder.Build(
+            filteredDefinitions,
+            new[] {
+                CreateEnabledPack("eventlog", "Event Log")
+            });
+
+        var eventLog = Assert.Single(entries, static entry => string.Equals(entry.EngineId, "eventviewerx", StringComparison.OrdinalIgnoreCase));
+
+        Assert.Equal(ToolCapabilityParityInventoryBuilder.GapStatus, eventLog.Status);
+        Assert.Contains("classic_log_ensure_write", eventLog.MissingCapabilities, StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Ensures EventViewerX parity reports a gap when the classic-log cleanup wrapper is absent.
+    /// </summary>
+    [Fact]
+    public void Build_WhenEventLogClassicLogRemoveWrapperMissing_ReportsEventViewerXParityGap() {
+        var registry = new ToolRegistry();
+        registry.RegisterEventLogPack(new EventLogToolOptions());
+
+        var filteredDefinitions = registry.GetDefinitions()
+            .Where(static definition => !string.Equals(definition.Name, "eventlog_classic_log_remove", StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+
+        var entries = ToolCapabilityParityInventoryBuilder.Build(
+            filteredDefinitions,
+            new[] {
+                CreateEnabledPack("eventlog", "Event Log")
+            });
+
+        var eventLog = Assert.Single(entries, static entry => string.Equals(entry.EngineId, "eventviewerx", StringComparison.OrdinalIgnoreCase));
+
+        Assert.Equal(ToolCapabilityParityInventoryBuilder.GapStatus, eventLog.Status);
+        Assert.Contains("classic_log_source_remove_write", eventLog.MissingCapabilities, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("classic_log_remove_write", eventLog.MissingCapabilities, StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Ensures EventViewerX parity reports a gap when the governed collector-subscription wrapper is absent.
+    /// </summary>
+    [Fact]
+    public void Build_WhenEventLogCollectorSubscriptionWriteWrapperMissing_ReportsEventViewerXParityGap() {
+        var registry = new ToolRegistry();
+        registry.RegisterEventLogPack(new EventLogToolOptions());
+
+        var filteredDefinitions = registry.GetDefinitions()
+            .Where(static definition => !string.Equals(definition.Name, "eventlog_collector_subscription_set", StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+
+        var entries = ToolCapabilityParityInventoryBuilder.Build(
+            filteredDefinitions,
+            new[] {
+                CreateEnabledPack("eventlog", "Event Log")
+            });
+
+        var eventLog = Assert.Single(entries, static entry => string.Equals(entry.EngineId, "eventviewerx", StringComparison.OrdinalIgnoreCase));
+
+        Assert.Equal(ToolCapabilityParityInventoryBuilder.GapStatus, eventLog.Status);
+        Assert.Contains("collector_subscription_enabled_write", eventLog.MissingCapabilities, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("collector_subscription_xml_write", eventLog.MissingCapabilities, StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
     /// Ensures custom packs can publish their own parity slices without Chat-side engine hardcoding.
     /// </summary>
     [Fact]

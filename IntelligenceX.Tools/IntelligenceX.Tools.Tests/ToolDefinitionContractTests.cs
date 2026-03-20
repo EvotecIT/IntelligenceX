@@ -31,7 +31,6 @@ public class ToolDefinitionContractTests {
         registry.RegisterFileSystemPack(new FileSystemToolOptions());
         registry.RegisterEventLogPack(new EventLogToolOptions());
         registry.RegisterActiveDirectoryPack(new ActiveDirectoryToolOptions());
-        registry.RegisterActiveDirectoryLifecyclePack(new ActiveDirectoryToolOptions());
         registry.RegisterPowerShellPack(new PowerShellToolOptions { Enabled = true });
         registry.RegisterTestimoXPack(new TestimoXToolOptions());
         registry.RegisterTestimoXAnalyticsPack(new TestimoXToolOptions());
@@ -66,7 +65,6 @@ public class ToolDefinitionContractTests {
         registry.RegisterFileSystemPack(new FileSystemToolOptions());
         registry.RegisterEventLogPack(new EventLogToolOptions());
         registry.RegisterActiveDirectoryPack(new ActiveDirectoryToolOptions());
-        registry.RegisterActiveDirectoryLifecyclePack(new ActiveDirectoryToolOptions());
         registry.RegisterPowerShellPack(new PowerShellToolOptions { Enabled = true });
         registry.RegisterEmailPack(new EmailToolOptions());
         registry.RegisterTestimoXPack(new TestimoXToolOptions { Enabled = true });
@@ -116,6 +114,10 @@ public class ToolDefinitionContractTests {
             "ad_computer_lifecycle",
             "ad_group_lifecycle",
             "ad_ou_lifecycle",
+            "system_service_lifecycle",
+            "system_scheduled_task_lifecycle",
+            "eventlog_classic_log_remove",
+            "eventlog_collector_subscription_set",
             "powershell_run",
             "email_smtp_send"
         };
@@ -126,7 +128,6 @@ public class ToolDefinitionContractTests {
         registry.RegisterFileSystemPack(new FileSystemToolOptions());
         registry.RegisterEventLogPack(new EventLogToolOptions());
         registry.RegisterActiveDirectoryPack(new ActiveDirectoryToolOptions());
-        registry.RegisterActiveDirectoryLifecyclePack(new ActiveDirectoryToolOptions());
         registry.RegisterPowerShellPack(new PowerShellToolOptions { Enabled = true });
         registry.RegisterEmailPack(new EmailToolOptions());
 
@@ -499,6 +500,11 @@ public class ToolDefinitionContractTests {
             "ad_spn_stats",
             "eventlog_pack_info",
             "eventlog_connectivity_probe",
+            "eventlog_channel_policy_set",
+            "eventlog_classic_log_ensure",
+            "eventlog_classic_log_remove",
+            "eventlog_collector_subscriptions_list",
+            "eventlog_collector_subscription_set",
             "eventlog_named_events_catalog",
             "eventlog_named_events_query",
             "eventlog_timeline_explain",
@@ -593,10 +599,39 @@ public class ToolDefinitionContractTests {
             .ToDictionary(static definition => definition.Name, StringComparer.OrdinalIgnoreCase);
 
         AssertRoutingRole(definitionsByName, "eventlog_connectivity_probe", ToolRoutingTaxonomy.RoleDiagnostic);
+        AssertRoutingRole(definitionsByName, "eventlog_channel_policy_set", ToolRoutingTaxonomy.RoleOperational);
+        AssertRoutingRole(definitionsByName, "eventlog_classic_log_ensure", ToolRoutingTaxonomy.RoleOperational);
+        AssertRoutingRole(definitionsByName, "eventlog_classic_log_remove", ToolRoutingTaxonomy.RoleOperational);
+        AssertRoutingRole(definitionsByName, "eventlog_collector_subscriptions_list", ToolRoutingTaxonomy.RoleDiagnostic);
+        AssertRoutingRole(definitionsByName, "eventlog_collector_subscription_set", ToolRoutingTaxonomy.RoleOperational);
         AssertRoutingRole(definitionsByName, "eventlog_evtx_find", ToolRoutingTaxonomy.RoleResolver);
         AssertRoutingRole(definitionsByName, "eventlog_evtx_security_summary", ToolRoutingTaxonomy.RoleResolver);
         AssertRoutingRole(definitionsByName, "eventlog_evtx_query", ToolRoutingTaxonomy.RoleResolver);
         AssertRoutingRole(definitionsByName, "eventlog_evtx_stats", ToolRoutingTaxonomy.RoleDiagnostic);
+        var eventLogChannelPolicySet = Assert.IsType<ToolDefinition>(definitionsByName["eventlog_channel_policy_set"]);
+        Assert.NotNull(eventLogChannelPolicySet.WriteGovernance);
+        Assert.Equal("apply", eventLogChannelPolicySet.WriteGovernance!.IntentArgumentName);
+        var eventLogChannelPolicyRouting = Assert.IsType<ToolRoutingContract>(eventLogChannelPolicySet.Routing);
+        Assert.Equal(ToolRoutingTaxonomy.RiskHigh, eventLogChannelPolicyRouting.Risk, ignoreCase: true);
+        var eventLogClassicLogEnsure = Assert.IsType<ToolDefinition>(definitionsByName["eventlog_classic_log_ensure"]);
+        Assert.NotNull(eventLogClassicLogEnsure.WriteGovernance);
+        Assert.Equal("apply", eventLogClassicLogEnsure.WriteGovernance!.IntentArgumentName);
+        var eventLogClassicLogEnsureRouting = Assert.IsType<ToolRoutingContract>(eventLogClassicLogEnsure.Routing);
+        Assert.Equal(ToolRoutingTaxonomy.RiskHigh, eventLogClassicLogEnsureRouting.Risk, ignoreCase: true);
+        var eventLogClassicLogRemove = Assert.IsType<ToolDefinition>(definitionsByName["eventlog_classic_log_remove"]);
+        Assert.NotNull(eventLogClassicLogRemove.WriteGovernance);
+        Assert.Equal("apply", eventLogClassicLogRemove.WriteGovernance!.IntentArgumentName);
+        var eventLogClassicLogRemoveRouting = Assert.IsType<ToolRoutingContract>(eventLogClassicLogRemove.Routing);
+        Assert.Equal(ToolRoutingTaxonomy.RiskHigh, eventLogClassicLogRemoveRouting.Risk, ignoreCase: true);
+        var eventLogCollectorSubscriptionSet = Assert.IsType<ToolDefinition>(definitionsByName["eventlog_collector_subscription_set"]);
+        Assert.NotNull(eventLogCollectorSubscriptionSet.WriteGovernance);
+        Assert.Equal("apply", eventLogCollectorSubscriptionSet.WriteGovernance!.IntentArgumentName);
+        var eventLogCollectorSubscriptionRouting = Assert.IsType<ToolRoutingContract>(eventLogCollectorSubscriptionSet.Routing);
+        Assert.Equal(ToolRoutingTaxonomy.RiskHigh, eventLogCollectorSubscriptionRouting.Risk, ignoreCase: true);
+        var eventLogCollectorSubscriptionsList = Assert.IsType<ToolDefinition>(definitionsByName["eventlog_collector_subscriptions_list"]);
+        Assert.Null(eventLogCollectorSubscriptionsList.WriteGovernance);
+        var eventLogCollectorSubscriptionsListRouting = Assert.IsType<ToolRoutingContract>(eventLogCollectorSubscriptionsList.Routing);
+        Assert.Equal(ToolRoutingTaxonomy.RiskLow, eventLogCollectorSubscriptionsListRouting.Risk, ignoreCase: true);
 
         var evtxFindHandoff = Assert.IsType<ToolHandoffContract>(definitionsByName["eventlog_evtx_find"].Handoff);
         Assert.Contains(
@@ -1832,6 +1867,21 @@ public class ToolDefinitionContractTests {
         Assert.Equal(
             "eventlog_connectivity_probe",
             EventLogContractCatalog.CreateSetup("eventlog_live_query")!.SetupToolName);
+        Assert.Equal(
+            "eventlog_connectivity_probe",
+            EventLogContractCatalog.CreateSetup("eventlog_channel_policy_set")!.SetupToolName);
+        Assert.Equal(
+            "eventlog_connectivity_probe",
+            EventLogContractCatalog.CreateSetup("eventlog_classic_log_ensure")!.SetupToolName);
+        Assert.Equal(
+            "eventlog_connectivity_probe",
+            EventLogContractCatalog.CreateSetup("eventlog_classic_log_remove")!.SetupToolName);
+        Assert.Equal(
+            "eventlog_connectivity_probe",
+            EventLogContractCatalog.CreateSetup("eventlog_collector_subscriptions_list")!.SetupToolName);
+        Assert.Equal(
+            "eventlog_connectivity_probe",
+            EventLogContractCatalog.CreateSetup("eventlog_collector_subscription_set")!.SetupToolName);
         Assert.Null(EventLogContractCatalog.CreateSetup("eventlog_pack_info"));
 
         var eventLogQueryHandoff = EventLogContractCatalog.CreateHandoff("eventlog_timeline_query");
@@ -1851,6 +1901,54 @@ public class ToolDefinitionContractTests {
             static route => string.Equals(route.TargetToolName, "eventlog_live_query", StringComparison.OrdinalIgnoreCase)
                             && route.Bindings.Any(static binding => string.Equals(binding.TargetArgument, "machine_name", StringComparison.OrdinalIgnoreCase))
                             && route.Bindings.Any(static binding => string.Equals(binding.TargetArgument, "log_name", StringComparison.OrdinalIgnoreCase)));
+        var eventLogChannelPolicyHandoff = EventLogContractCatalog.CreateHandoff("eventlog_channel_policy_set");
+        Assert.NotNull(eventLogChannelPolicyHandoff);
+        Assert.Contains(
+            eventLogChannelPolicyHandoff!.OutboundRoutes,
+            static route => string.Equals(route.TargetToolName, "eventlog_channels_list", StringComparison.OrdinalIgnoreCase)
+                            && route.Bindings.Any(static binding => string.Equals(binding.TargetArgument, "name_contains", StringComparison.OrdinalIgnoreCase)));
+        Assert.Contains(
+            eventLogChannelPolicyHandoff.OutboundRoutes,
+            static route => string.Equals(route.TargetToolName, "eventlog_connectivity_probe", StringComparison.OrdinalIgnoreCase)
+                            && route.Bindings.Any(static binding => string.Equals(binding.TargetArgument, "log_name", StringComparison.OrdinalIgnoreCase)));
+        var eventLogClassicLogEnsureHandoff = EventLogContractCatalog.CreateHandoff("eventlog_classic_log_ensure");
+        Assert.NotNull(eventLogClassicLogEnsureHandoff);
+        Assert.Contains(
+            eventLogClassicLogEnsureHandoff!.OutboundRoutes,
+            static route => string.Equals(route.TargetToolName, "eventlog_channels_list", StringComparison.OrdinalIgnoreCase)
+                            && route.Bindings.Any(static binding => string.Equals(binding.TargetArgument, "name_contains", StringComparison.OrdinalIgnoreCase)));
+        Assert.Contains(
+            eventLogClassicLogEnsureHandoff.OutboundRoutes,
+            static route => string.Equals(route.TargetToolName, "eventlog_providers_list", StringComparison.OrdinalIgnoreCase)
+                            && route.Bindings.Any(static binding => string.Equals(binding.TargetArgument, "name_contains", StringComparison.OrdinalIgnoreCase)));
+        Assert.Contains(
+            eventLogClassicLogEnsureHandoff.OutboundRoutes,
+            static route => string.Equals(route.TargetToolName, "eventlog_connectivity_probe", StringComparison.OrdinalIgnoreCase)
+                            && route.Bindings.Any(static binding => string.Equals(binding.TargetArgument, "log_name", StringComparison.OrdinalIgnoreCase)));
+        var eventLogClassicLogRemoveHandoff = EventLogContractCatalog.CreateHandoff("eventlog_classic_log_remove");
+        Assert.NotNull(eventLogClassicLogRemoveHandoff);
+        Assert.Contains(
+            eventLogClassicLogRemoveHandoff!.OutboundRoutes,
+            static route => string.Equals(route.TargetToolName, "eventlog_channels_list", StringComparison.OrdinalIgnoreCase)
+                            && route.Bindings.Any(static binding => string.Equals(binding.TargetArgument, "name_contains", StringComparison.OrdinalIgnoreCase)));
+        Assert.Contains(
+            eventLogClassicLogRemoveHandoff.OutboundRoutes,
+            static route => string.Equals(route.TargetToolName, "eventlog_providers_list", StringComparison.OrdinalIgnoreCase)
+                            && route.Bindings.Any(static binding => string.Equals(binding.TargetArgument, "name_contains", StringComparison.OrdinalIgnoreCase)));
+        Assert.Contains(
+            eventLogClassicLogRemoveHandoff.OutboundRoutes,
+            static route => string.Equals(route.TargetToolName, "eventlog_connectivity_probe", StringComparison.OrdinalIgnoreCase)
+                            && route.Bindings.Any(static binding => string.Equals(binding.TargetArgument, "log_name", StringComparison.OrdinalIgnoreCase)));
+        var eventLogCollectorSubscriptionHandoff = EventLogContractCatalog.CreateHandoff("eventlog_collector_subscription_set");
+        Assert.NotNull(eventLogCollectorSubscriptionHandoff);
+        Assert.Contains(
+            eventLogCollectorSubscriptionHandoff!.OutboundRoutes,
+            static route => string.Equals(route.TargetToolName, "eventlog_collector_subscriptions_list", StringComparison.OrdinalIgnoreCase)
+                            && route.Bindings.Any(static binding => string.Equals(binding.TargetArgument, "name_contains", StringComparison.OrdinalIgnoreCase)));
+        Assert.Contains(
+            eventLogCollectorSubscriptionHandoff.OutboundRoutes,
+            static route => string.Equals(route.TargetToolName, "eventlog_connectivity_probe", StringComparison.OrdinalIgnoreCase)
+                            && route.Bindings.Any(static binding => string.Equals(binding.TargetArgument, "machine_name", StringComparison.OrdinalIgnoreCase)));
         var adProbeHandoff = ActiveDirectoryContractCatalog.CreateHandoff("ad_connectivity_probe");
         Assert.NotNull(adProbeHandoff);
         Assert.Contains(
@@ -1912,6 +2010,22 @@ public class ToolDefinitionContractTests {
         var eventLogRecovery = EventLogContractCatalog.CreateRecovery("eventlog_timeline_query");
         Assert.True(eventLogRecovery!.SupportsTransientRetry);
         Assert.Equal(new[] { "eventlog_connectivity_probe", "eventlog_channels_list" }, eventLogRecovery.RecoveryToolNames);
+        var eventLogWriteRecovery = EventLogContractCatalog.CreateRecovery("eventlog_channel_policy_set");
+        Assert.NotNull(eventLogWriteRecovery);
+        Assert.False(eventLogWriteRecovery!.SupportsTransientRetry);
+        Assert.Equal(new[] { "eventlog_connectivity_probe", "eventlog_channels_list" }, eventLogWriteRecovery.RecoveryToolNames);
+        var eventLogClassicLogEnsureRecovery = EventLogContractCatalog.CreateRecovery("eventlog_classic_log_ensure");
+        Assert.NotNull(eventLogClassicLogEnsureRecovery);
+        Assert.False(eventLogClassicLogEnsureRecovery!.SupportsTransientRetry);
+        Assert.Equal(new[] { "eventlog_channels_list", "eventlog_providers_list", "eventlog_connectivity_probe" }, eventLogClassicLogEnsureRecovery.RecoveryToolNames);
+        var eventLogClassicLogRemoveRecovery = EventLogContractCatalog.CreateRecovery("eventlog_classic_log_remove");
+        Assert.NotNull(eventLogClassicLogRemoveRecovery);
+        Assert.False(eventLogClassicLogRemoveRecovery!.SupportsTransientRetry);
+        Assert.Equal(new[] { "eventlog_classic_log_ensure", "eventlog_channels_list", "eventlog_providers_list", "eventlog_connectivity_probe" }, eventLogClassicLogRemoveRecovery.RecoveryToolNames);
+        var eventLogCollectorSubscriptionRecovery = EventLogContractCatalog.CreateRecovery("eventlog_collector_subscription_set");
+        Assert.NotNull(eventLogCollectorSubscriptionRecovery);
+        Assert.False(eventLogCollectorSubscriptionRecovery!.SupportsTransientRetry);
+        Assert.Equal(new[] { "eventlog_collector_subscriptions_list", "eventlog_connectivity_probe" }, eventLogCollectorSubscriptionRecovery.RecoveryToolNames);
         Assert.Null(EventLogContractCatalog.CreateRecovery("eventlog_pack_info"));
 
         var systemSetup = SystemContractCatalog.CreateRemoteHostAccessSetup();
@@ -1933,6 +2047,34 @@ public class ToolDefinitionContractTests {
         Assert.True(systemRecovery.SupportsAlternateEngines);
         Assert.Equal(new[] { "cim", "wmi" }, systemRecovery.AlternateEngineIds);
         Assert.Equal(new[] { "system_connectivity_probe", "system_info" }, systemRecovery.RecoveryToolNames);
+        var systemWriteRecovery = SystemContractCatalog.CreateRecovery(
+            toolName: "system_service_lifecycle",
+            parameters: null,
+            isWriteCapable: true);
+        Assert.NotNull(systemWriteRecovery);
+        Assert.False(systemWriteRecovery!.SupportsTransientRetry);
+        Assert.Contains("system_service_list", systemWriteRecovery.RecoveryToolNames, StringComparer.OrdinalIgnoreCase);
+        var systemServiceLifecycleHandoff = SystemContractCatalog.CreateHandoff("system_service_lifecycle", parameters: null);
+        Assert.NotNull(systemServiceLifecycleHandoff);
+        Assert.Contains(
+            systemServiceLifecycleHandoff!.OutboundRoutes,
+            static route => string.Equals(route.TargetToolName, "system_service_list", StringComparison.OrdinalIgnoreCase)
+                            && route.Bindings.Any(static binding => string.Equals(binding.TargetArgument, "name_contains", StringComparison.OrdinalIgnoreCase))
+                            && route.Bindings.Any(static binding => string.Equals(binding.TargetArgument, "computer_name", StringComparison.OrdinalIgnoreCase)));
+        var systemScheduledTaskWriteRecovery = SystemContractCatalog.CreateRecovery(
+            toolName: "system_scheduled_task_lifecycle",
+            parameters: null,
+            isWriteCapable: true);
+        Assert.NotNull(systemScheduledTaskWriteRecovery);
+        Assert.False(systemScheduledTaskWriteRecovery!.SupportsTransientRetry);
+        Assert.Contains("system_scheduled_tasks_list", systemScheduledTaskWriteRecovery.RecoveryToolNames, StringComparer.OrdinalIgnoreCase);
+        var systemScheduledTaskLifecycleHandoff = SystemContractCatalog.CreateHandoff("system_scheduled_task_lifecycle", parameters: null);
+        Assert.NotNull(systemScheduledTaskLifecycleHandoff);
+        Assert.Contains(
+            systemScheduledTaskLifecycleHandoff!.OutboundRoutes,
+            static route => string.Equals(route.TargetToolName, "system_scheduled_tasks_list", StringComparison.OrdinalIgnoreCase)
+                            && route.Bindings.Any(static binding => string.Equals(binding.TargetArgument, "name_contains", StringComparison.OrdinalIgnoreCase))
+                            && route.Bindings.Any(static binding => string.Equals(binding.TargetArgument, "computer_name", StringComparison.OrdinalIgnoreCase)));
         Assert.Null(SystemContractCatalog.CreateRecovery("system_pack_info", parameters: null));
         Assert.Null(SystemContractCatalog.CreateHandoff("system_pack_info", parameters: null));
 
@@ -2557,7 +2699,7 @@ public class ToolDefinitionContractTests {
         Assert.Equal("write", routing.Operation, ignoreCase: true);
         Assert.Equal("user", routing.Entity, ignoreCase: true);
         Assert.Equal(ToolRoutingTaxonomy.RiskHigh, routing.Risk, ignoreCase: true);
-        Assert.Equal("active_directory_lifecycle", routing.PackId, ignoreCase: true);
+        Assert.Equal("active_directory", routing.PackId, ignoreCase: true);
         Assert.Contains("joiner", updated.Tags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("offboarding", updated.Tags, StringComparer.OrdinalIgnoreCase);
         Assert.Equal("ad_environment_discover", setup.SetupToolName, ignoreCase: true);
@@ -2588,7 +2730,7 @@ public class ToolDefinitionContractTests {
         Assert.Equal("write", routing.Operation, ignoreCase: true);
         Assert.Equal("computer", routing.Entity, ignoreCase: true);
         Assert.Equal(ToolRoutingTaxonomy.RiskHigh, routing.Risk, ignoreCase: true);
-        Assert.Equal("active_directory_lifecycle", routing.PackId, ignoreCase: true);
+        Assert.Equal("active_directory", routing.PackId, ignoreCase: true);
         Assert.Contains("decommissioning", updated.Tags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("host_account", updated.Tags, StringComparer.OrdinalIgnoreCase);
         Assert.Equal("ad_environment_discover", setup.SetupToolName, ignoreCase: true);
@@ -2619,7 +2761,7 @@ public class ToolDefinitionContractTests {
         Assert.Equal("write", routing.Operation, ignoreCase: true);
         Assert.Equal("group", routing.Entity, ignoreCase: true);
         Assert.Equal(ToolRoutingTaxonomy.RiskHigh, routing.Risk, ignoreCase: true);
-        Assert.Equal("active_directory_lifecycle", routing.PackId, ignoreCase: true);
+        Assert.Equal("active_directory", routing.PackId, ignoreCase: true);
         Assert.Contains("membership", updated.Tags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("group_account", updated.Tags, StringComparer.OrdinalIgnoreCase);
         Assert.Equal("ad_environment_discover", setup.SetupToolName, ignoreCase: true);
@@ -2650,7 +2792,7 @@ public class ToolDefinitionContractTests {
         Assert.Equal("write", routing.Operation, ignoreCase: true);
         Assert.Equal("organizational_unit", routing.Entity, ignoreCase: true);
         Assert.Equal(ToolRoutingTaxonomy.RiskHigh, routing.Risk, ignoreCase: true);
-        Assert.Equal("active_directory_lifecycle", routing.PackId, ignoreCase: true);
+        Assert.Equal("active_directory", routing.PackId, ignoreCase: true);
         Assert.Contains("organizational_unit", updated.Tags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("quarantine_ou", updated.Tags, StringComparer.OrdinalIgnoreCase);
         Assert.Equal("ad_environment_discover", setup.SetupToolName, ignoreCase: true);

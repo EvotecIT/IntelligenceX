@@ -21,7 +21,19 @@ internal static class SystemRoutingCatalog {
                 Operation: ToolRoutingTaxonomy.OperationRead,
                 Entity: "host",
                 Risk: ToolRoutingTaxonomy.RiskLow,
-                AdditionalTags: new[] { "inventory", "baseline" })
+                AdditionalTags: new[] { "inventory", "baseline" }),
+            ["system_service_lifecycle"] = new(
+                Scope: "host",
+                Operation: "write",
+                Entity: "service",
+                Risk: ToolRoutingTaxonomy.RiskHigh,
+                AdditionalTags: new[] { "service", "governed_write", "lifecycle" }),
+            ["system_scheduled_task_lifecycle"] = new(
+                Scope: "host",
+                Operation: "write",
+                Entity: "scheduled_task",
+                Risk: ToolRoutingTaxonomy.RiskHigh,
+                AdditionalTags: new[] { "scheduled_task", "task_scheduler", "governed_write", "lifecycle" })
         };
 
     public static readonly IReadOnlyList<string> SignalTokens = new[] {
@@ -30,6 +42,7 @@ internal static class SystemRoutingCatalog {
         "computer",
         "process",
         "services",
+        "scheduled_tasks",
         "firewall",
         "patch",
         "wsl"
@@ -107,6 +120,8 @@ internal static class SystemRoutingCatalog {
         AddRoleGroup(declared, ToolRoutingTaxonomy.RoleOperational,
             "system_whoami",
             "system_network_adapters",
+            "system_service_lifecycle",
+            "system_scheduled_task_lifecycle",
             "system_firewall_rules",
             "system_firewall_profiles",
             "system_security_options",

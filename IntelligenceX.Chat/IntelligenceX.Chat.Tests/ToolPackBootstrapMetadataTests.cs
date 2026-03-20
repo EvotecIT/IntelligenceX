@@ -445,8 +445,8 @@ public sealed class ToolPackBootstrapMetadataTests {
     [InlineData("system", "system")]
     [InlineData("ad", "active_directory")]
     [InlineData("adplayground", "active_directory")]
-    [InlineData("ad_lifecycle", "active_directory_lifecycle")]
-    [InlineData("joiner leaver", "active_directory_lifecycle")]
+    [InlineData("ad_lifecycle", "active_directory")]
+    [InlineData("joiner leaver", "active_directory")]
     [InlineData("reviewer_setup", "reviewer_setup")]
     [InlineData("event-log", "eventlog")]
     [InlineData("file system", "filesystem")]
@@ -604,16 +604,16 @@ public sealed class ToolPackBootstrapMetadataTests {
     }
 
     [Fact]
-    public void CreateDefaultReadOnlyPacks_EnabledPackIds_LoadsDangerousActiveDirectoryLifecyclePack_OnExplicitOptIn() {
+    public void CreateDefaultReadOnlyPacks_EnabledPackIds_LoadsActiveDirectoryPack_ForLifecycleAlias() {
         var packs = ToolPackBootstrap.CreateDefaultReadOnlyPacks(new ToolPackBootstrapOptions {
             EnableDefaultPluginPaths = false,
-            EnabledPackIds = new[] { "active_directory_lifecycle" }
+            EnabledPackIds = new[] { "ad_lifecycle" }
         });
 
-        var lifecyclePack = Assert.Single(packs, static pack =>
-            string.Equals(pack.Descriptor.Id, "active_directory_lifecycle", StringComparison.OrdinalIgnoreCase));
-        Assert.True(lifecyclePack.Descriptor.IsDangerous);
-        Assert.Equal(ToolCapabilityTier.DangerousWrite, lifecyclePack.Descriptor.Tier);
+        var activeDirectoryPack = Assert.Single(packs, static pack =>
+            string.Equals(pack.Descriptor.Id, "active_directory", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("ad_lifecycle", activeDirectoryPack.Descriptor.Aliases, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("joiner_leaver", activeDirectoryPack.Descriptor.Aliases, StringComparer.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -638,6 +638,8 @@ public sealed class ToolPackBootstrapMetadataTests {
             string.Equals(pack.Descriptor.Id, "active_directory", StringComparison.OrdinalIgnoreCase));
         Assert.Contains("ad", activeDirectory.Descriptor.Aliases, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("adplayground", activeDirectory.Descriptor.Aliases, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("ad_lifecycle", activeDirectory.Descriptor.Aliases, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("joiner_leaver", activeDirectory.Descriptor.Aliases, StringComparer.OrdinalIgnoreCase);
 
         var fileSystem = Assert.Single(packs, static pack =>
             string.Equals(pack.Descriptor.Id, "filesystem", StringComparison.OrdinalIgnoreCase));
@@ -677,30 +679,30 @@ public sealed class ToolPackBootstrapMetadataTests {
     }
 
     [Fact]
-    public void CreateDefaultReadOnlyPacksWithAvailability_ReportsDangerousActiveDirectoryLifecyclePackDisabledByDefault() {
+    public void CreateDefaultReadOnlyPacksWithAvailability_ProjectsLifecycleMetadataOntoActiveDirectoryPack() {
         var result = ToolPackBootstrap.CreateDefaultReadOnlyPacksWithAvailability(new ToolPackBootstrapOptions {
             EnableDefaultPluginPaths = false
         });
 
-        Assert.DoesNotContain(result.Packs, static pack =>
-            string.Equals(pack.Descriptor.Id, "active_directory_lifecycle", StringComparison.OrdinalIgnoreCase));
-
-        var lifecyclePack = Assert.Single(result.PackAvailability, static pack =>
+        Assert.DoesNotContain(result.PackAvailability, static pack =>
             string.Equals(pack.Id, "active_directory_lifecycle", StringComparison.OrdinalIgnoreCase));
-        Assert.False(lifecyclePack.Enabled);
-        Assert.True(lifecyclePack.IsDangerous);
-        Assert.Equal(ToolCapabilityTier.DangerousWrite, lifecyclePack.Tier);
-        Assert.Equal("active_directory", lifecyclePack.Category);
-        Assert.Equal("adplayground", lifecyclePack.EngineId);
-        Assert.Contains("adlifecycle", lifecyclePack.Aliases, StringComparer.OrdinalIgnoreCase);
-        Assert.Contains("joiner_leaver", lifecyclePack.Aliases, StringComparer.OrdinalIgnoreCase);
-        Assert.Contains("governed_write", lifecyclePack.CapabilityTags, StringComparer.OrdinalIgnoreCase);
-        Assert.Contains("dry_run", lifecyclePack.CapabilityTags, StringComparer.OrdinalIgnoreCase);
-        Assert.Contains("joiner_leaver", lifecyclePack.SearchTokens, StringComparer.OrdinalIgnoreCase);
-        Assert.Contains("joiner", lifecyclePack.SearchTokens, StringComparer.OrdinalIgnoreCase);
-        Assert.Contains("mover", lifecyclePack.SearchTokens, StringComparer.OrdinalIgnoreCase);
-        Assert.Contains("offboarding", lifecyclePack.SearchTokens, StringComparer.OrdinalIgnoreCase);
-        Assert.Equal("Disabled by runtime configuration.", lifecyclePack.DisabledReason);
+
+        var activeDirectoryPack = Assert.Single(result.PackAvailability, static pack =>
+            string.Equals(pack.Id, "active_directory", StringComparison.OrdinalIgnoreCase));
+        Assert.True(activeDirectoryPack.Enabled);
+        Assert.Equal(ToolCapabilityTier.SensitiveRead, activeDirectoryPack.Tier);
+        Assert.False(activeDirectoryPack.IsDangerous);
+        Assert.Equal("active_directory", activeDirectoryPack.Category);
+        Assert.Equal("adplayground", activeDirectoryPack.EngineId);
+        Assert.Contains("adlifecycle", activeDirectoryPack.Aliases, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("joiner_leaver", activeDirectoryPack.Aliases, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("governed_write", activeDirectoryPack.CapabilityTags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("identity_lifecycle", activeDirectoryPack.CapabilityTags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("joiner_leaver", activeDirectoryPack.SearchTokens, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("joiner", activeDirectoryPack.SearchTokens, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("mover", activeDirectoryPack.SearchTokens, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("offboarding", activeDirectoryPack.SearchTokens, StringComparer.OrdinalIgnoreCase);
+        Assert.True(string.IsNullOrWhiteSpace(activeDirectoryPack.DisabledReason));
     }
 
     [Fact]
@@ -714,6 +716,7 @@ public sealed class ToolPackBootstrapMetadataTests {
             string.Equals(pack.Id, "active_directory", StringComparison.OrdinalIgnoreCase));
         Assert.Equal("adplayground", activeDirectory.EngineId);
         Assert.Contains("directory", activeDirectory.CapabilityTags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("governed_write", activeDirectory.CapabilityTags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("replication", activeDirectory.CapabilityTags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("remote_analysis", activeDirectory.CapabilityTags, StringComparer.OrdinalIgnoreCase);
 
@@ -721,15 +724,23 @@ public sealed class ToolPackBootstrapMetadataTests {
             string.Equals(pack.Id, "system", StringComparison.OrdinalIgnoreCase));
         Assert.Equal("computerx", system.EngineId);
         Assert.Contains("cpu", system.CapabilityTags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("governed_write", system.CapabilityTags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("host_inventory", system.CapabilityTags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("local_analysis", system.CapabilityTags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("remote_execution", system.CapabilityTags, StringComparer.OrdinalIgnoreCase);
 
         var eventLog = Assert.Single(result.PackAvailability, static pack =>
             string.Equals(pack.Id, "eventlog", StringComparison.OrdinalIgnoreCase));
         Assert.Equal("eventviewerx", eventLog.EngineId);
         Assert.Contains("auth", eventLog.CapabilityTags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("channel_policy", eventLog.CapabilityTags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("classic_log", eventLog.CapabilityTags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("classic_log_cleanup", eventLog.CapabilityTags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("collector_subscription", eventLog.CapabilityTags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("event_logs", eventLog.CapabilityTags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("evtx", eventLog.CapabilityTags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("governed_write", eventLog.CapabilityTags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("write_capable", eventLog.CapabilityTags, StringComparer.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -758,6 +769,10 @@ public sealed class ToolPackBootstrapMetadataTests {
         Assert.Contains("disk_space", system.SearchTokens, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("memory", system.SearchTokens, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("disk", system.SearchTokens, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("service_lifecycle", system.SearchTokens, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("service_control", system.SearchTokens, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("scheduled_task_lifecycle", system.SearchTokens, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("scheduled_task_control", system.SearchTokens, StringComparer.OrdinalIgnoreCase);
 
         var eventLog = Assert.Single(result.PackAvailability, static pack =>
             string.Equals(pack.Id, "eventlog", StringComparison.OrdinalIgnoreCase));
@@ -765,8 +780,21 @@ public sealed class ToolPackBootstrapMetadataTests {
         Assert.Contains("eventviewerx", eventLog.Aliases, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("event_log", eventLog.Aliases, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("auth", eventLog.SearchTokens, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("channel_policy", eventLog.SearchTokens, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("classic_log", eventLog.SearchTokens, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("custom_log_cleanup", eventLog.SearchTokens, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("collector_subscription", eventLog.SearchTokens, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("custom_log", eventLog.SearchTokens, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("ensure_log_source", eventLog.SearchTokens, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("eventviewerx", eventLog.SearchTokens, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("evtx", eventLog.SearchTokens, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("governed_write", eventLog.SearchTokens, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("log_provisioning", eventLog.SearchTokens, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("log_cleanup", eventLog.SearchTokens, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("remove_log_source", eventLog.SearchTokens, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("set_collector_subscription", eventLog.SearchTokens, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("set_channel_policy", eventLog.SearchTokens, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("wec", eventLog.SearchTokens, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("windows_logs", eventLog.SearchTokens, StringComparer.OrdinalIgnoreCase);
     }
 

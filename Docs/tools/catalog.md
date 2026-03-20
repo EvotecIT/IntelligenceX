@@ -21,6 +21,10 @@ This catalog is generated from what the codebase currently registers in tool-pac
 | ADPlayground | `ad` | `closed_source` | SensitiveRead | Internal/private builds |
 | TestimoX | `testimox` | `closed_source` | SensitiveRead | Internal/private builds |
 
+`Tier` is a pack-summary classification.
+Tool-level contracts remain authoritative for whether a given tool is read-only, probe-aware, or write-capable.
+Mixed-mode governed-write examples in the current runtime include `eventlog_channel_policy_set` / `eventlog_classic_log_ensure` / `eventlog_classic_log_remove` in `eventlog`, `system_service_lifecycle` / `system_scheduled_task_lifecycle` in `system`, and `ad_user_lifecycle` / `ad_computer_lifecycle` in `active_directory`.
+
 ## Builtin / OSS-Oriented Packs
 
 ### Event Log (`eventlog`)
@@ -29,6 +33,9 @@ Representative tools:
 
 - `eventlog_pack_info`
 - `eventlog_channels_list`
+- `eventlog_channel_policy_set`
+- `eventlog_classic_log_ensure`
+- `eventlog_classic_log_remove`
 - `eventlog_live_query`
 - `eventlog_evtx_find`
 - `eventlog_evtx_query`
@@ -83,6 +90,8 @@ Representative tools:
 
 - `ad_pack_info`
 - `ad_environment_discover`
+- `ad_user_lifecycle`
+- `ad_computer_lifecycle`
 - `ad_domain_info`
 - `ad_group_members`
 - `ad_users_expired`
@@ -94,6 +103,8 @@ Representative tools:
 
 - `system_pack_info`
 - `system_info`
+- `system_service_lifecycle`
+- `system_scheduled_task_lifecycle`
 - `system_process_list`
 - `system_network_adapters`
 - `system_service_list` (Windows)

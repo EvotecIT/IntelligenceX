@@ -28,6 +28,12 @@ internal static class SystemToolPackRepresentativeExamples {
             ["system_service_list"] = new[] {
                 "inspect service state on a local or remote Windows host when a workflow needs host-level follow-up"
             },
+            ["system_service_lifecycle"] = new[] {
+                "preview or apply a governed service start, stop, restart, or startup-type change on a Windows host"
+            },
+            ["system_scheduled_task_lifecycle"] = new[] {
+                "preview or apply a governed scheduled-task enable, disable, run-now, or delete change on a Windows host"
+            },
             ["system_time_sync"] = new[] {
                 "check time skew, time source, and w32time posture locally or on remote domain controllers"
             },

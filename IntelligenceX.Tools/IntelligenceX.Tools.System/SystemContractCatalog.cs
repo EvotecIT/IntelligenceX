@@ -64,12 +64,35 @@ public static class SystemContractCatalog {
     }
 
     /// <summary>
+    /// Builds the standard System recovery contract with write-aware retry behavior.
+    /// </summary>
+    public static ToolRecoveryContract CreateRecovery(bool supportsAlternateEngines, bool isWriteCapable) {
+        return isWriteCapable
+            ? ToolContractDefaults.CreateNoRetryRecovery(
+                recoveryToolNames: new[] { "system_connectivity_probe", "system_info" })
+            : CreateRecovery(supportsAlternateEngines);
+    }
+
+    /// <summary>
     /// Resolves the default System retry and recovery contract for a tool name when the tool does not declare one explicitly.
     /// </summary>
-    public static ToolRecoveryContract? CreateRecovery(string toolName, JsonObject? parameters) {
-        return string.Equals((toolName ?? string.Empty).Trim(), PackInfoToolName, StringComparison.OrdinalIgnoreCase)
-            ? null
-            : CreateRecovery(ToolParametersExposeAlternateEngineSelector(parameters));
+    public static ToolRecoveryContract? CreateRecovery(string toolName, JsonObject? parameters, bool isWriteCapable = false) {
+        var normalizedToolName = (toolName ?? string.Empty).Trim();
+        if (string.Equals(normalizedToolName, PackInfoToolName, StringComparison.OrdinalIgnoreCase)) {
+            return null;
+        }
+
+        if (isWriteCapable && string.Equals(normalizedToolName, "system_service_lifecycle", StringComparison.OrdinalIgnoreCase)) {
+            return ToolContractDefaults.CreateNoRetryRecovery(
+                recoveryToolNames: new[] { "system_connectivity_probe", "system_service_list", "system_info" });
+        }
+
+        if (isWriteCapable && string.Equals(normalizedToolName, "system_scheduled_task_lifecycle", StringComparison.OrdinalIgnoreCase)) {
+            return ToolContractDefaults.CreateNoRetryRecovery(
+                recoveryToolNames: new[] { "system_connectivity_probe", "system_scheduled_tasks_list", "system_info" });
+        }
+
+        return CreateRecovery(ToolParametersExposeAlternateEngineSelector(parameters), isWriteCapable);
     }
 
     /// <summary>
@@ -111,6 +134,58 @@ public static class SystemContractCatalog {
 
         if (string.Equals(normalizedToolName, "system_connectivity_probe", StringComparison.OrdinalIgnoreCase)) {
             return CreateConnectivityProbeHandoff();
+        }
+
+        if (string.Equals(normalizedToolName, "system_service_lifecycle", StringComparison.OrdinalIgnoreCase)) {
+            return ToolContractDefaults.CreateHandoff(new[] {
+                ToolContractDefaults.CreateRoute(
+                    targetPackId: "system",
+                    targetToolName: "system_service_list",
+                    reason: "Verify the affected service state on the same host after the governed service lifecycle action.",
+                    bindings: new[] {
+                        ToolContractDefaults.CreateBinding("computer_name", "computer_name", isRequired: false),
+                        ToolContractDefaults.CreateBinding("service_name", "name_contains", isRequired: false)
+                    },
+                    targetRole: ToolRoutingTaxonomy.RoleOperational,
+                    followUpKind: ToolHandoffFollowUpKinds.Verification,
+                    followUpPriority: ToolHandoffFollowUpPriorities.High),
+                ToolContractDefaults.CreateSharedTargetRoute(
+                    targetPackId: "system",
+                    targetToolName: "system_info",
+                    reason: "Reconfirm same-host runtime identity and OS context after the governed service lifecycle action.",
+                    targetArgument: "computer_name",
+                    sourceFields: new[] { "computer_name" },
+                    isRequired: false,
+                    targetRole: ToolRoutingTaxonomy.RoleOperational,
+                    followUpKind: ToolHandoffFollowUpKinds.Verification,
+                    followUpPriority: ToolHandoffFollowUpPriorities.Normal)
+            });
+        }
+
+        if (string.Equals(normalizedToolName, "system_scheduled_task_lifecycle", StringComparison.OrdinalIgnoreCase)) {
+            return ToolContractDefaults.CreateHandoff(new[] {
+                ToolContractDefaults.CreateRoute(
+                    targetPackId: "system",
+                    targetToolName: "system_scheduled_tasks_list",
+                    reason: "Verify the affected scheduled task state on the same host after the governed scheduled-task lifecycle action.",
+                    bindings: new[] {
+                        ToolContractDefaults.CreateBinding("computer_name", "computer_name", isRequired: false),
+                        ToolContractDefaults.CreateBinding("task_path", "name_contains", isRequired: false)
+                    },
+                    targetRole: ToolRoutingTaxonomy.RoleOperational,
+                    followUpKind: ToolHandoffFollowUpKinds.Verification,
+                    followUpPriority: ToolHandoffFollowUpPriorities.High),
+                ToolContractDefaults.CreateSharedTargetRoute(
+                    targetPackId: "system",
+                    targetToolName: "system_info",
+                    reason: "Reconfirm same-host runtime identity and OS context after the governed scheduled-task lifecycle action.",
+                    targetArgument: "computer_name",
+                    sourceFields: new[] { "computer_name" },
+                    isRequired: false,
+                    targetRole: ToolRoutingTaxonomy.RoleOperational,
+                    followUpKind: ToolHandoffFollowUpKinds.Verification,
+                    followUpPriority: ToolHandoffFollowUpPriorities.Normal)
+            });
         }
 
         return !ToolParametersExposeRemoteComputerName(parameters)

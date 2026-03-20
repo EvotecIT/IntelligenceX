@@ -12,6 +12,101 @@ public partial class ToolSchemaSnapshotTests {
         };
 
         yield return new object[] {
+            "eventlog_channel_policy_set",
+            new[] {
+                "machine_name",
+                "log_name",
+                "is_enabled",
+                "maximum_size_bytes",
+                "mode",
+                "apply",
+                "write_operation_id",
+                "write_execution_id",
+                "write_actor_id",
+                "write_change_reason",
+                "write_rollback_plan_id",
+                "write_rollback_provider_id",
+                "write_audit_correlation_id"
+            },
+            new[] { "log_name" }
+        };
+
+        yield return new object[] {
+            "eventlog_classic_log_ensure",
+            new[] {
+                "machine_name",
+                "log_name",
+                "source_name",
+                "maximum_kilobytes",
+                "overflow_action",
+                "retention_days",
+                "apply",
+                "write_operation_id",
+                "write_execution_id",
+                "write_actor_id",
+                "write_change_reason",
+                "write_rollback_plan_id",
+                "write_rollback_provider_id",
+                "write_audit_correlation_id"
+            },
+            new[] { "log_name" }
+        };
+
+        yield return new object[] {
+            "eventlog_classic_log_remove",
+            new[] {
+                "machine_name",
+                "log_name",
+                "source_name",
+                "remove_source",
+                "remove_log",
+                "apply",
+                "write_operation_id",
+                "write_execution_id",
+                "write_actor_id",
+                "write_change_reason",
+                "write_rollback_plan_id",
+                "write_rollback_provider_id",
+                "write_audit_correlation_id"
+            },
+            new[] { "log_name", "source_name" }
+        };
+
+        yield return new object[] {
+            "eventlog_collector_subscriptions_list",
+            new[] {
+                "machine_name",
+                "name_contains",
+                "enabled_only",
+                "max_results",
+                "columns",
+                "sort_by",
+                "sort_direction",
+                "top"
+            },
+            Array.Empty<string>()
+        };
+
+        yield return new object[] {
+            "eventlog_collector_subscription_set",
+            new[] {
+                "machine_name",
+                "subscription_name",
+                "is_enabled",
+                "subscription_xml",
+                "apply",
+                "write_operation_id",
+                "write_execution_id",
+                "write_actor_id",
+                "write_change_reason",
+                "write_rollback_plan_id",
+                "write_rollback_provider_id",
+                "write_audit_correlation_id"
+            },
+            new[] { "subscription_name" }
+        };
+
+        yield return new object[] {
             "eventlog_evtx_find",
             new[] { "query", "log_name", "max_results" },
             Array.Empty<string>()

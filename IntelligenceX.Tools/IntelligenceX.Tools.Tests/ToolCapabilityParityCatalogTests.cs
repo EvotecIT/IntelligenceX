@@ -9,6 +9,8 @@ public sealed class ToolCapabilityParityCatalogTests {
     [Fact]
     public void ReadOnlyExpectations_ShouldBeWellFormedAndUseUniqueCapabilityIds() {
         var descriptors = ToolCapabilityParityCatalog.ComputerXReadOnlyExpectations
+            .Concat(ToolCapabilityParityCatalog.EventViewerXReadOnlyExpectations)
+            .Concat(ToolCapabilityParityCatalog.EventViewerXGovernedWriteExpectations)
             .Concat(ToolCapabilityParityCatalog.TestimoXCoreReadOnlyExpectations)
             .Concat(ToolCapabilityParityCatalog.TestimoXAnalyticsReadOnlyExpectations)
             .Concat(ToolCapabilityParityCatalog.AdMonitoringReadOnlyExpectations)
@@ -72,7 +74,8 @@ public sealed class ToolCapabilityParityCatalogTests {
 
     [Fact]
     public void NonComputerXExpectations_ShouldUsePlainToolPresence() {
-        var descriptors = ToolCapabilityParityCatalog.TestimoXCoreReadOnlyExpectations
+        var descriptors = ToolCapabilityParityCatalog.EventViewerXGovernedWriteExpectations
+            .Concat(ToolCapabilityParityCatalog.TestimoXCoreReadOnlyExpectations)
             .Concat(ToolCapabilityParityCatalog.TestimoXAnalyticsReadOnlyExpectations)
             .Concat(ToolCapabilityParityCatalog.AdMonitoringReadOnlyExpectations);
 
@@ -80,5 +83,38 @@ public sealed class ToolCapabilityParityCatalogTests {
             Assert.Equal(ToolCapabilityParitySurfaceContractKind.ToolPresent, descriptor.SurfaceContractKind);
             Assert.True(string.IsNullOrWhiteSpace(descriptor.SurfaceParameterName));
         });
+    }
+
+    [Fact]
+    public void EventViewerXReadOnlyExpectations_ShouldRequireMachineNameWhenRemote() {
+        Assert.All(ToolCapabilityParityCatalog.EventViewerXReadOnlyExpectations, static descriptor => {
+            if (descriptor.CapabilityId.StartsWith("remote_", StringComparison.OrdinalIgnoreCase)) {
+                Assert.Equal(ToolCapabilityParitySurfaceContractKind.ToolParameterPresent, descriptor.SurfaceContractKind);
+                Assert.Equal(ToolCapabilityParityCatalog.RemoteMachineNameParameterName, descriptor.SurfaceParameterName);
+                return;
+            }
+
+            Assert.Equal(ToolCapabilityParitySurfaceContractKind.ToolPresent, descriptor.SurfaceContractKind);
+        });
+    }
+
+    [Fact]
+    public void EventViewerXReadOnlyExpectations_ShouldIncludeCollectorSubscriptionInventory() {
+        Assert.Contains(
+            ToolCapabilityParityCatalog.EventViewerXReadOnlyExpectations,
+            static descriptor => string.Equals(descriptor.CapabilityId, "remote_collector_subscription_catalog", StringComparison.OrdinalIgnoreCase)
+                                 && string.Equals(descriptor.ToolName, "eventlog_collector_subscriptions_list", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void EventViewerXGovernedWriteExpectations_ShouldIncludeClassicLogCleanup() {
+        Assert.Contains(
+            ToolCapabilityParityCatalog.EventViewerXGovernedWriteExpectations,
+            static descriptor => string.Equals(descriptor.CapabilityId, "classic_log_source_remove_write", StringComparison.OrdinalIgnoreCase)
+                                 && string.Equals(descriptor.ToolName, "eventlog_classic_log_remove", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(
+            ToolCapabilityParityCatalog.EventViewerXGovernedWriteExpectations,
+            static descriptor => string.Equals(descriptor.CapabilityId, "classic_log_remove_write", StringComparison.OrdinalIgnoreCase)
+                                 && string.Equals(descriptor.ToolName, "eventlog_classic_log_remove", StringComparison.OrdinalIgnoreCase));
     }
 }

@@ -5,7 +5,7 @@ using IntelligenceX.Tools.Common;
 namespace IntelligenceX.Tools.ADPlayground;
 
 /// <summary>
-/// Convenience registration helpers for the Active Directory lifecycle tool pack.
+/// Convenience registration helpers for the Active Directory lifecycle slice.
 /// </summary>
 public static class ToolRegistryActiveDirectoryLifecycleExtensions {
     /// <summary>
@@ -38,13 +38,13 @@ public static class ToolRegistryActiveDirectoryLifecycleExtensions {
         return ToolPackRegistry.RegisterPack(registry, options, CreateTools);
     }
 
-    private static IEnumerable<ITool> CreateTools(ActiveDirectoryToolOptions options) {
+    internal static IEnumerable<ITool> CreateTools(ActiveDirectoryToolOptions options) {
         foreach (var tool in CreateCoreTools(options)) {
             yield return ToolDefinitionOverlay.WithDefinition(tool, ActiveDirectoryLifecyclePackContractCatalog.Apply(tool.Definition));
         }
     }
 
-    private static IEnumerable<ITool> CreateCoreTools(ActiveDirectoryToolOptions options) {
+    internal static IEnumerable<ITool> CreateCoreTools(ActiveDirectoryToolOptions options) {
         yield return new AdLifecyclePackInfoTool(options);
         yield return new AdUserLifecycleTool(options);
         yield return new AdComputerLifecycleTool(options);

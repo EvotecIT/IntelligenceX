@@ -252,9 +252,47 @@ public partial class ToolSchemaSnapshotTests {
         };
 
         yield return new object[] {
+            "system_service_lifecycle",
+            new[] {
+                "computer_name",
+                "service_name",
+                "operation",
+                "startup_type",
+                "timeout_ms",
+                "apply",
+                "write_operation_id",
+                "write_execution_id",
+                "write_actor_id",
+                "write_change_reason",
+                "write_rollback_plan_id",
+                "write_rollback_provider_id",
+                "write_audit_correlation_id"
+            },
+            new[] { "service_name", "operation" }
+        };
+
+        yield return new object[] {
             "system_scheduled_tasks_list",
             new[] { "computer_name", "name_contains", "max_tasks", "suspicious", "only_suspicious", "columns", "sort_by", "sort_direction", "top" },
             Array.Empty<string>()
+        };
+
+        yield return new object[] {
+            "system_scheduled_task_lifecycle",
+            new[] {
+                "computer_name",
+                "task_path",
+                "operation",
+                "apply",
+                "write_operation_id",
+                "write_execution_id",
+                "write_actor_id",
+                "write_change_reason",
+                "write_rollback_plan_id",
+                "write_rollback_provider_id",
+                "write_audit_correlation_id"
+            },
+            new[] { "task_path", "operation" }
         };
 
         yield return new object[] {

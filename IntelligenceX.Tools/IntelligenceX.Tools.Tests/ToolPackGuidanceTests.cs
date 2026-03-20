@@ -238,7 +238,7 @@ public class ToolPackGuidanceTests {
     [Fact]
     public void Create_ShouldExposeStructuredRecipes() {
         var model = ToolPackGuidance.Create(
-            pack: "active_directory_lifecycle",
+            pack: "active_directory",
             engine: "ADPlayground",
             tools: new[] { "ad_lifecycle_pack_info", "ad_user_lifecycle" },
             recipes: new[] {

@@ -49,8 +49,7 @@ public static class ToolCapabilityParityInventoryBuilder {
 
         var definitionsByPackId = BuildDefinitionsByPackId(definitions);
         var availability = (packAvailability ?? Array.Empty<ToolPackAvailabilityInfo>()).ToArray();
-        var entries = new List<SessionCapabilityParityEntryDto>();
-        var seenEntries = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var entryStates = new Dictionary<string, AggregatedEntryState>(StringComparer.OrdinalIgnoreCase);
 
         for (var packIndex = 0; packIndex < availability.Length; packIndex++) {
             var pack = availability[packIndex];
@@ -82,15 +81,24 @@ public static class ToolCapabilityParityInventoryBuilder {
                 }
 
                 var entryKey = engineId + "::" + slicePackId;
-                if (!seenEntries.Add(entryKey)) {
-                    continue;
+                if (!entryStates.TryGetValue(entryKey, out var state)) {
+                    state = new AggregatedEntryState(engineId, slicePackId, registeredToolCount);
+                    entryStates[entryKey] = state;
                 }
 
-                entries.Add(CreateEntry(engineId, slicePackId, registeredToolCount, evaluation));
+                state.RegisteredToolCount = Math.Max(state.RegisteredToolCount, registeredToolCount);
+                state.SourceAvailable &= evaluation.SourceAvailable;
+                state.ExpectedCapabilities.AddRange(evaluation.ExpectedCapabilities ?? Array.Empty<string>());
+                state.SurfacedCapabilities.AddRange(evaluation.SurfacedCapabilities ?? Array.Empty<string>());
+                state.Status = ChooseMoreSevereStatus(state.Status, evaluation.Status, evaluation.ExpectedCapabilities, evaluation.SurfacedCapabilities);
+                if (!string.IsNullOrWhiteSpace(evaluation.Note)) {
+                    state.Notes.Add(evaluation.Note!.Trim());
+                }
             }
         }
 
-        return entries
+        return entryStates.Values
+            .Select(CreateEntry)
             .OrderBy(static entry => entry.EngineId, StringComparer.OrdinalIgnoreCase)
             .ToArray();
     }
@@ -233,29 +241,41 @@ public static class ToolCapabilityParityInventoryBuilder {
             : 0;
     }
 
-    private static SessionCapabilityParityEntryDto CreateEntry(
-        string engineId,
-        string packId,
-        int registeredToolCount,
-        ToolCapabilityParitySliceEvaluation evaluation) {
-        var expected = NormalizeDistinctValues(evaluation.ExpectedCapabilities, maxItems: 0);
-        var surfaced = NormalizeDistinctValues(evaluation.SurfacedCapabilities, maxItems: 0);
+    private static SessionCapabilityParityEntryDto CreateEntry(AggregatedEntryState state) {
+        var expected = NormalizeDistinctValues(state.ExpectedCapabilities, maxItems: 0);
+        var surfaced = NormalizeDistinctValues(state.SurfacedCapabilities, maxItems: 0);
         var missing = expected
             .Except(surfaced, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
         return new SessionCapabilityParityEntryDto {
-            EngineId = engineId,
-            PackId = packId,
-            Status = NormalizeStatus(evaluation.Status, missing.Length),
-            SourceAvailable = evaluation.SourceAvailable,
-            RegisteredToolCount = Math.Max(0, registeredToolCount),
+            EngineId = state.EngineId,
+            PackId = state.PackId,
+            Status = NormalizeStatus(state.Status, missing.Length),
+            SourceAvailable = state.SourceAvailable,
+            RegisteredToolCount = Math.Max(0, state.RegisteredToolCount),
             ExpectedCapabilityCount = expected.Length,
             SurfacedCapabilityCount = surfaced.Length,
             MissingCapabilityCount = missing.Length,
             MissingCapabilities = NormalizeDistinctValues(missing, MaxMissingCapabilities),
-            Note = evaluation.Note
+            Note = state.Notes.Count == 0 ? null : string.Join(" | ", state.Notes)
         };
+    }
+
+    private static string ChooseMoreSevereStatus(
+        string? currentStatus,
+        string? candidateStatus,
+        IReadOnlyList<string>? expectedCapabilities,
+        IReadOnlyList<string>? surfacedCapabilities) {
+        var normalizedCurrent = NormalizeStatus(currentStatus, missingCount: 0);
+        var candidateMissing = NormalizeDistinctValues(expectedCapabilities ?? Array.Empty<string>(), maxItems: 0)
+            .Except(NormalizeDistinctValues(surfacedCapabilities ?? Array.Empty<string>(), maxItems: 0), StringComparer.OrdinalIgnoreCase)
+            .Count();
+        var normalizedCandidate = NormalizeStatus(candidateStatus, candidateMissing);
+
+        return GetStatusPriority(normalizedCandidate) > GetStatusPriority(normalizedCurrent)
+            ? normalizedCandidate
+            : normalizedCurrent;
     }
 
     private static string NormalizeStatus(string? status, int missingCount) {
@@ -270,6 +290,27 @@ public static class ToolCapabilityParityInventoryBuilder {
         }
 
         return normalized;
+    }
+
+    private static int GetStatusPriority(string? status) {
+        var normalized = (status ?? string.Empty).Trim();
+        if (string.Equals(normalized, GapStatus, StringComparison.OrdinalIgnoreCase)) {
+            return 4;
+        }
+
+        if (string.Equals(normalized, GovernedBacklogStatus, StringComparison.OrdinalIgnoreCase)) {
+            return 3;
+        }
+
+        if (string.Equals(normalized, SourceUnavailableStatus, StringComparison.OrdinalIgnoreCase)) {
+            return 2;
+        }
+
+        if (string.Equals(normalized, PackUnavailableStatus, StringComparison.OrdinalIgnoreCase)) {
+            return 1;
+        }
+
+        return 0;
     }
 
     private static string FormatCapabilityList(IReadOnlyList<string> capabilities, int totalCount) {
@@ -298,5 +339,29 @@ public static class ToolCapabilityParityInventoryBuilder {
         }
 
         return result.Count == 0 ? Array.Empty<string>() : result.ToArray();
+    }
+
+    private sealed class AggregatedEntryState {
+        public AggregatedEntryState(string engineId, string packId, int registeredToolCount) {
+            EngineId = engineId;
+            PackId = packId;
+            RegisteredToolCount = registeredToolCount;
+        }
+
+        public string EngineId { get; }
+
+        public string PackId { get; }
+
+        public int RegisteredToolCount { get; set; }
+
+        public bool SourceAvailable { get; set; } = true;
+
+        public string Status { get; set; } = HealthyStatus;
+
+        public List<string> ExpectedCapabilities { get; } = new();
+
+        public List<string> SurfacedCapabilities { get; } = new();
+
+        public HashSet<string> Notes { get; } = new(StringComparer.OrdinalIgnoreCase);
     }
 }

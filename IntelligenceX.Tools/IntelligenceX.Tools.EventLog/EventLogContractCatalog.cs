@@ -25,6 +25,23 @@ public static class EventLogContractCatalog {
     };
 
     /// <summary>
+    /// Stable setup hint keys for collector-subscription administration.
+    /// </summary>
+    public static readonly string[] CollectorSubscriptionSetupHintKeys = {
+        "machine_name",
+        "subscription_name"
+    };
+
+    /// <summary>
+    /// Stable setup hint keys for classic Event Log provisioning.
+    /// </summary>
+    public static readonly string[] ClassicLogSetupHintKeys = {
+        "machine_name",
+        "log_name",
+        "source_name"
+    };
+
+    /// <summary>
     /// Stable setup hint keys for named-event discovery and query.
     /// </summary>
     public static readonly string[] NamedEventCatalogSetupHintKeys = {
@@ -74,6 +91,28 @@ public static class EventLogContractCatalog {
     }
 
     /// <summary>
+    /// Builds the governed collector-subscription setup contract.
+    /// </summary>
+    public static ToolSetupContract CreateCollectorSubscriptionSetup() {
+        return ToolContractDefaults.CreateRequiredSetup(
+            setupToolName: "eventlog_connectivity_probe",
+            requirementId: "eventlog_collector_subscription_access",
+            requirementKind: ToolSetupRequirementKinds.Connectivity,
+            setupHintKeys: CollectorSubscriptionSetupHintKeys);
+    }
+
+    /// <summary>
+    /// Builds the governed classic-log administration setup contract.
+    /// </summary>
+    public static ToolSetupContract CreateClassicLogSetup() {
+        return ToolContractDefaults.CreateRequiredSetup(
+            setupToolName: "eventlog_connectivity_probe",
+            requirementId: "eventlog_classic_log_access",
+            requirementKind: ToolSetupRequirementKinds.Connectivity,
+            setupHintKeys: ClassicLogSetupHintKeys);
+    }
+
+    /// <summary>
     /// Resolves the default EventLog setup contract for a tool name when the tool does not declare one explicitly.
     /// </summary>
     public static ToolSetupContract? CreateSetup(string toolName) {
@@ -84,6 +123,14 @@ public static class EventLogContractCatalog {
 
         return string.Equals(normalizedToolName, "eventlog_named_events_query", StringComparison.OrdinalIgnoreCase)
             ? CreateNamedEventQuerySetup()
+            : string.Equals(normalizedToolName, "eventlog_classic_log_ensure", StringComparison.OrdinalIgnoreCase)
+                ? CreateClassicLogSetup()
+            : string.Equals(normalizedToolName, "eventlog_classic_log_remove", StringComparison.OrdinalIgnoreCase)
+                ? CreateClassicLogSetup()
+            : string.Equals(normalizedToolName, "eventlog_collector_subscriptions_list", StringComparison.OrdinalIgnoreCase)
+                ? CreateCollectorSubscriptionSetup()
+            : string.Equals(normalizedToolName, "eventlog_collector_subscription_set", StringComparison.OrdinalIgnoreCase)
+                ? CreateCollectorSubscriptionSetup()
             : CreateChannelAccessSetup();
     }
 
@@ -144,6 +191,147 @@ public static class EventLogContractCatalog {
     }
 
     /// <summary>
+    /// Builds the governed Event Log channel-policy verification handoff contract.
+    /// </summary>
+    public static ToolHandoffContract CreateChannelPolicyWriteHandoffContract() {
+        return ToolContractDefaults.CreateHandoff(new[] {
+            ToolContractDefaults.CreateRoute(
+                targetPackId: "eventlog",
+                targetToolName: "eventlog_channels_list",
+                reason: "Verify the affected Event Log channel remains visible on the same host after the governed channel policy write.",
+                targetRole: ToolRoutingTaxonomy.RoleDiagnostic,
+                followUpKind: ToolHandoffFollowUpKinds.Verification,
+                followUpPriority: ToolHandoffFollowUpPriorities.High,
+                bindings: new[] {
+                    ToolContractDefaults.CreateBinding("machine_name", "machine_name", isRequired: false),
+                    ToolContractDefaults.CreateBinding("log_name", "name_contains", isRequired: true)
+                }),
+            ToolContractDefaults.CreateRoute(
+                targetPackId: "eventlog",
+                targetToolName: "eventlog_connectivity_probe",
+                reason: "Reconfirm Event Log reachability and same-host channel access after the governed channel policy write.",
+                targetRole: ToolRoutingTaxonomy.RoleDiagnostic,
+                followUpKind: ToolHandoffFollowUpKinds.Verification,
+                followUpPriority: ToolHandoffFollowUpPriorities.Normal,
+                bindings: new[] {
+                    ToolContractDefaults.CreateBinding("machine_name", "machine_name", isRequired: false),
+                    ToolContractDefaults.CreateBinding("log_name", "log_name", isRequired: true)
+                })
+        });
+    }
+
+    /// <summary>
+    /// Builds the governed collector-subscription verification handoff contract.
+    /// </summary>
+    public static ToolHandoffContract CreateCollectorSubscriptionWriteHandoffContract() {
+        return ToolContractDefaults.CreateHandoff(new[] {
+            ToolContractDefaults.CreateRoute(
+                targetPackId: "eventlog",
+                targetToolName: "eventlog_collector_subscriptions_list",
+                reason: "Verify the affected collector subscription remains visible with updated state after the governed write.",
+                targetRole: ToolRoutingTaxonomy.RoleDiagnostic,
+                followUpKind: ToolHandoffFollowUpKinds.Verification,
+                followUpPriority: ToolHandoffFollowUpPriorities.High,
+                bindings: new[] {
+                    ToolContractDefaults.CreateBinding("machine_name", "machine_name", isRequired: false),
+                    ToolContractDefaults.CreateBinding("subscription_name", "name_contains", isRequired: true)
+                }),
+            ToolContractDefaults.CreateRoute(
+                targetPackId: "eventlog",
+                targetToolName: "eventlog_connectivity_probe",
+                reason: "Reconfirm collector-host reachability after the governed collector subscription write.",
+                targetRole: ToolRoutingTaxonomy.RoleDiagnostic,
+                followUpKind: ToolHandoffFollowUpKinds.Verification,
+                followUpPriority: ToolHandoffFollowUpPriorities.High,
+                bindings: new[] {
+                    ToolContractDefaults.CreateBinding("machine_name", "machine_name", isRequired: false)
+                })
+        });
+    }
+
+    /// <summary>
+    /// Builds the governed classic-log ensure verification handoff contract.
+    /// </summary>
+    public static ToolHandoffContract CreateClassicLogEnsureHandoffContract() {
+        return ToolContractDefaults.CreateHandoff(new[] {
+            ToolContractDefaults.CreateRoute(
+                targetPackId: "eventlog",
+                targetToolName: "eventlog_channels_list",
+                reason: "Verify the affected classic Event Log is visible after the governed ensure write.",
+                targetRole: ToolRoutingTaxonomy.RoleDiagnostic,
+                followUpKind: ToolHandoffFollowUpKinds.Verification,
+                followUpPriority: ToolHandoffFollowUpPriorities.High,
+                bindings: new[] {
+                    ToolContractDefaults.CreateBinding("machine_name", "machine_name", isRequired: false),
+                    ToolContractDefaults.CreateBinding("log_name", "name_contains", isRequired: true)
+                }),
+            ToolContractDefaults.CreateRoute(
+                targetPackId: "eventlog",
+                targetToolName: "eventlog_providers_list",
+                reason: "Verify the requested event source/provider name is visible after the governed ensure write.",
+                targetRole: ToolRoutingTaxonomy.RoleDiagnostic,
+                followUpKind: ToolHandoffFollowUpKinds.Verification,
+                followUpPriority: ToolHandoffFollowUpPriorities.Normal,
+                bindings: new[] {
+                    ToolContractDefaults.CreateBinding("machine_name", "machine_name", isRequired: false),
+                    ToolContractDefaults.CreateBinding("source_name", "name_contains", isRequired: true)
+                }),
+            ToolContractDefaults.CreateRoute(
+                targetPackId: "eventlog",
+                targetToolName: "eventlog_connectivity_probe",
+                reason: "Reconfirm Event Log reachability after the governed classic-log ensure write.",
+                targetRole: ToolRoutingTaxonomy.RoleDiagnostic,
+                followUpKind: ToolHandoffFollowUpKinds.Verification,
+                followUpPriority: ToolHandoffFollowUpPriorities.Normal,
+                bindings: new[] {
+                    ToolContractDefaults.CreateBinding("machine_name", "machine_name", isRequired: false),
+                    ToolContractDefaults.CreateBinding("log_name", "log_name", isRequired: true)
+                })
+        });
+    }
+
+    /// <summary>
+    /// Builds the governed classic-log cleanup verification handoff contract.
+    /// </summary>
+    public static ToolHandoffContract CreateClassicLogRemoveHandoffContract() {
+        return ToolContractDefaults.CreateHandoff(new[] {
+            ToolContractDefaults.CreateRoute(
+                targetPackId: "eventlog",
+                targetToolName: "eventlog_channels_list",
+                reason: "Verify the affected classic Event Log no longer appears after the governed cleanup write.",
+                targetRole: ToolRoutingTaxonomy.RoleDiagnostic,
+                followUpKind: ToolHandoffFollowUpKinds.Verification,
+                followUpPriority: ToolHandoffFollowUpPriorities.High,
+                bindings: new[] {
+                    ToolContractDefaults.CreateBinding("machine_name", "machine_name", isRequired: false),
+                    ToolContractDefaults.CreateBinding("log_name", "name_contains", isRequired: true)
+                }),
+            ToolContractDefaults.CreateRoute(
+                targetPackId: "eventlog",
+                targetToolName: "eventlog_providers_list",
+                reason: "Verify the requested event source/provider name no longer appears after the governed cleanup write.",
+                targetRole: ToolRoutingTaxonomy.RoleDiagnostic,
+                followUpKind: ToolHandoffFollowUpKinds.Verification,
+                followUpPriority: ToolHandoffFollowUpPriorities.Normal,
+                bindings: new[] {
+                    ToolContractDefaults.CreateBinding("machine_name", "machine_name", isRequired: false),
+                    ToolContractDefaults.CreateBinding("source_name", "name_contains", isRequired: true)
+                }),
+            ToolContractDefaults.CreateRoute(
+                targetPackId: "eventlog",
+                targetToolName: "eventlog_connectivity_probe",
+                reason: "Reconfirm Event Log reachability after the governed classic-log cleanup write.",
+                targetRole: ToolRoutingTaxonomy.RoleDiagnostic,
+                followUpKind: ToolHandoffFollowUpKinds.Verification,
+                followUpPriority: ToolHandoffFollowUpPriorities.Normal,
+                bindings: new[] {
+                    ToolContractDefaults.CreateBinding("machine_name", "machine_name", isRequired: false),
+                    ToolContractDefaults.CreateBinding("log_name", "log_name", isRequired: true)
+                })
+        });
+    }
+
+    /// <summary>
     /// Resolves the default EventLog handoff contract for a tool name when the tool does not declare one explicitly.
     /// </summary>
     public static ToolHandoffContract? CreateHandoff(string toolName) {
@@ -167,6 +355,22 @@ public static class EventLogContractCatalog {
             return CreateConnectivityProbeHandoffContract();
         }
 
+        if (string.Equals(normalizedToolName, "eventlog_channel_policy_set", StringComparison.OrdinalIgnoreCase)) {
+            return CreateChannelPolicyWriteHandoffContract();
+        }
+
+        if (string.Equals(normalizedToolName, "eventlog_classic_log_ensure", StringComparison.OrdinalIgnoreCase)) {
+            return CreateClassicLogEnsureHandoffContract();
+        }
+
+        if (string.Equals(normalizedToolName, "eventlog_classic_log_remove", StringComparison.OrdinalIgnoreCase)) {
+            return CreateClassicLogRemoveHandoffContract();
+        }
+
+        if (string.Equals(normalizedToolName, "eventlog_collector_subscription_set", StringComparison.OrdinalIgnoreCase)) {
+            return CreateCollectorSubscriptionWriteHandoffContract();
+        }
+
         return null;
     }
 
@@ -182,6 +386,26 @@ public static class EventLogContractCatalog {
         var supportsRetry = normalizedToolName.IndexOf("_query", StringComparison.OrdinalIgnoreCase) >= 0
                             || normalizedToolName.IndexOf("_find", StringComparison.OrdinalIgnoreCase) >= 0
                             || normalizedToolName.IndexOf("_top_events", StringComparison.OrdinalIgnoreCase) >= 0;
+        if (string.Equals(normalizedToolName, "eventlog_channel_policy_set", StringComparison.OrdinalIgnoreCase)) {
+            return ToolContractDefaults.CreateNoRetryRecovery(
+                recoveryToolNames: new[] { "eventlog_connectivity_probe", "eventlog_channels_list" });
+        }
+
+        if (string.Equals(normalizedToolName, "eventlog_classic_log_ensure", StringComparison.OrdinalIgnoreCase)) {
+            return ToolContractDefaults.CreateNoRetryRecovery(
+                recoveryToolNames: new[] { "eventlog_channels_list", "eventlog_providers_list", "eventlog_connectivity_probe" });
+        }
+
+        if (string.Equals(normalizedToolName, "eventlog_classic_log_remove", StringComparison.OrdinalIgnoreCase)) {
+            return ToolContractDefaults.CreateNoRetryRecovery(
+                recoveryToolNames: new[] { "eventlog_classic_log_ensure", "eventlog_channels_list", "eventlog_providers_list", "eventlog_connectivity_probe" });
+        }
+
+        if (string.Equals(normalizedToolName, "eventlog_collector_subscription_set", StringComparison.OrdinalIgnoreCase)) {
+            return ToolContractDefaults.CreateNoRetryRecovery(
+                recoveryToolNames: new[] { "eventlog_collector_subscriptions_list", "eventlog_connectivity_probe" });
+        }
+
         var recoveryToolNames = string.Equals(normalizedToolName, "eventlog_evtx_find", StringComparison.OrdinalIgnoreCase)
             ? new[] { "eventlog_evtx_find" }
             : new[] { "eventlog_connectivity_probe", "eventlog_channels_list" };

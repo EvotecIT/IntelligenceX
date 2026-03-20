@@ -25,12 +25,14 @@ public sealed record ToolPackDescriptor {
     public IReadOnlyList<string> Aliases { get; init; } = Array.Empty<string>();
 
     /// <summary>
-    /// Capability tier.
+    /// Pack-level capability summary tier.
+    /// Tool-level contracts remain authoritative for whether a specific tool is read-only or mutating.
     /// </summary>
     public required ToolCapabilityTier Tier { get; init; }
 
     /// <summary>
-    /// True when the pack includes tools that can change system state.
+    /// True when the pack is known to expose state-changing capability at the pack-summary level.
+    /// Tool-level contracts remain authoritative for individual mutating behavior.
     /// </summary>
     public bool IsDangerous { get; init; }
 

@@ -31,7 +31,7 @@ internal static class ActiveDirectoryLifecyclePackContractCatalog {
         var existing = definition.Routing;
         return ToolContractDefaults.CreateExplicitRoutingContract(
             existing: existing,
-            packId: "active_directory_lifecycle",
+            packId: "active_directory",
             role: ActiveDirectoryLifecycleRoutingCatalog.ResolveRole(definition.Name, existing?.Role),
             domainIntentFamily: ToolSelectionMetadata.DomainIntentFamilyAd,
             domainIntentActionId: ToolSelectionMetadata.DomainIntentActionIdAd,

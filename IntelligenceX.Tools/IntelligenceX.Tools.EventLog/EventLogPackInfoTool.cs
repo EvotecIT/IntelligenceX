@@ -85,6 +85,11 @@ public sealed class EventLogPackInfoTool : EventLogToolBase, ITool {
             tools: ToolRegistryEventLogExtensions.GetRegisteredToolNames(options),
             recommendedFlow: new[] {
                 "Use eventlog_connectivity_probe first when remote channel visibility, machine reachability, or live log access is uncertain before deeper EventViewerX queries.",
+                "Use eventlog_channel_policy_set for governed Event Log channel administration (preview first, then apply=true only when the write is intentional).",
+                "Use eventlog_classic_log_ensure to preview or apply governed classic custom Event Log and source provisioning on local or remote hosts.",
+                "Use eventlog_classic_log_remove to preview or apply governed cleanup for a classic custom Event Log source and optional custom log removal.",
+                "Use eventlog_collector_subscriptions_list to inspect current Windows Event Collector subscriptions before previewing or applying a subscription write.",
+                "Use eventlog_collector_subscription_set for governed Windows Event Collector subscription administration (preview first, then apply=true only when the write is intentional).",
                 "Use eventlog_top_events for quick triage (top N most recent events from a live channel, local or remote).",
                 "Use eventlog_evtx_query or eventlog_live_query for event evidence.",
                 "Use eventlog_evtx_stats/eventlog_live_stats for top-level aggregation.",
@@ -102,8 +107,24 @@ public sealed class EventLogPackInfoTool : EventLogToolBase, ITool {
             flowSteps: new[] {
                 ToolPackGuidance.FlowStep(
                     goal: "Validate local or remote channel reachability",
-                    suggestedTools: new[] { "eventlog_connectivity_probe", "eventlog_channels_list" },
+                    suggestedTools: new[] { "eventlog_connectivity_probe", "eventlog_channels_list", "eventlog_channel_policy_set" },
                     notes: "Start here when machine reachability, channel visibility, or live Security/System log access is still uncertain."),
+                ToolPackGuidance.FlowStep(
+                    goal: "Preview or apply governed channel policy changes",
+                    suggestedTools: new[] { "eventlog_connectivity_probe", "eventlog_channel_policy_set", "eventlog_channels_list" },
+                    notes: "Use preview mode first to inspect enabled state, retention mode, and maximum size before applying an Event Log write."),
+                ToolPackGuidance.FlowStep(
+                    goal: "Preview or apply governed classic custom log provisioning",
+                    suggestedTools: new[] { "eventlog_connectivity_probe", "eventlog_channels_list", "eventlog_providers_list", "eventlog_classic_log_ensure" },
+                    notes: "Use preview mode first to inspect current classic log/source state before ensuring a custom log or provider registration."),
+                ToolPackGuidance.FlowStep(
+                    goal: "Preview or apply governed classic custom log cleanup",
+                    suggestedTools: new[] { "eventlog_connectivity_probe", "eventlog_channels_list", "eventlog_providers_list", "eventlog_classic_log_remove" },
+                    notes: "Use preview mode first to confirm the custom log/source state and block built-in standard logs before cleanup."),
+                ToolPackGuidance.FlowStep(
+                    goal: "Preview or apply governed collector subscription changes",
+                    suggestedTools: new[] { "eventlog_connectivity_probe", "eventlog_collector_subscriptions_list", "eventlog_collector_subscription_set" },
+                    notes: "Inspect current WEC subscriptions first, then use preview mode to capture rollback-ready state before applying a collector write."),
                 ToolPackGuidance.FlowStep(
                     goal: "Quickly triage most recent events",
                     suggestedTools: new[] { "eventlog_top_events" },
@@ -143,6 +164,25 @@ public sealed class EventLogPackInfoTool : EventLogToolBase, ITool {
                     notes: "Use computer candidates from EventLog handoff metadata to continue with ComputerX-backed host diagnostics.")
             },
             capabilities: new[] {
+                ToolPackGuidance.Capability(
+                    id: "channel_policy_admin",
+                    summary: "Preview and apply governed Event Log channel policy updates for enablement, retention mode, and channel size.",
+                    primaryTools: new[] { "eventlog_connectivity_probe", "eventlog_channel_policy_set", "eventlog_channels_list" }),
+                ToolPackGuidance.Capability(
+                    id: "classic_log_admin",
+                    summary: "Preview and apply governed classic custom Event Log provisioning for log and source creation plus size and overflow settings.",
+                    primaryTools: new[] { "eventlog_connectivity_probe", "eventlog_channels_list", "eventlog_providers_list", "eventlog_classic_log_ensure" },
+                    notes: "Prefer this for additive custom log provisioning rather than destructive Event Log cleanup operations."),
+                ToolPackGuidance.Capability(
+                    id: "classic_log_cleanup_admin",
+                    summary: "Preview and apply governed cleanup for classic custom Event Log sources and optional custom log removal.",
+                    primaryTools: new[] { "eventlog_connectivity_probe", "eventlog_channels_list", "eventlog_providers_list", "eventlog_classic_log_remove", "eventlog_classic_log_ensure" },
+                    notes: "Use preview mode first and keep rollback arguments ready because built-in standard logs remain intentionally blocked."),
+                ToolPackGuidance.Capability(
+                    id: "collector_subscription_admin",
+                    summary: "Preview and apply governed Windows Event Collector subscription updates for enablement and subscription XML payload changes.",
+                    primaryTools: new[] { "eventlog_connectivity_probe", "eventlog_collector_subscriptions_list", "eventlog_collector_subscription_set" },
+                    notes: "Use this for WEC collector-side administration when the subscription itself needs a reversible change."),
                 ToolPackGuidance.Capability(
                     id: "event_evidence",
                     summary: "Query EVTX files and live channels while preserving raw event payloads.",
@@ -193,6 +233,102 @@ public sealed class EventLogPackInfoTool : EventLogToolBase, ITool {
                     notes: "Use structured field correlation (not incident-specific templates) and de-duplicate identities before AD calls.")
             },
             recipes: new[] {
+                ToolPackGuidance.Recipe(
+                    id: "channel_policy_governance",
+                    summary: "Preview and apply a governed Event Log channel policy change with verification on the same host.",
+                    whenToUse: "Use when the task is to enable or disable a channel, change its maximum size, or change retention mode while keeping the write auditable and reversible.",
+                    steps: new[] {
+                        ToolPackGuidance.FlowStep(
+                            goal: "Confirm host reachability and channel visibility",
+                            suggestedTools: new[] { "eventlog_connectivity_probe", "eventlog_channels_list" },
+                            notes: "Use the same machine_name and exact log_name you plan to manage."),
+                        ToolPackGuidance.FlowStep(
+                            goal: "Preview the governed write and capture rollback context",
+                            suggestedTools: new[] { "eventlog_channel_policy_set" },
+                            notes: "Leave apply=false first; the preview returns before/after policy state and rollback-ready arguments."),
+                        ToolPackGuidance.FlowStep(
+                            goal: "Apply the write only after explicit confirmation",
+                            suggestedTools: new[] { "eventlog_channel_policy_set" },
+                            notes: "Set apply=true only when the change is intentional and write governance metadata is ready."),
+                        ToolPackGuidance.FlowStep(
+                            goal: "Verify the managed channel is still reachable",
+                            suggestedTools: new[] { "eventlog_channels_list", "eventlog_connectivity_probe" },
+                            notes: "Use the same machine_name/log_name to confirm the post-change channel is visible and reachable.")
+                    },
+                    verificationTools: new[] { "eventlog_channel_policy_set", "eventlog_channels_list", "eventlog_connectivity_probe" }),
+                ToolPackGuidance.Recipe(
+                    id: "classic_log_governance",
+                    summary: "Preview and apply a governed classic custom Event Log and source ensure workflow with verification.",
+                    whenToUse: "Use when the task is to create or standardize a classic custom Event Log and its source while keeping the write auditable and previewable.",
+                    steps: new[] {
+                        ToolPackGuidance.FlowStep(
+                            goal: "Confirm host reachability and inspect current log visibility",
+                            suggestedTools: new[] { "eventlog_connectivity_probe", "eventlog_channels_list", "eventlog_providers_list" },
+                            notes: "Inspect both the target log_name and source_name before planning the ensure write, especially on remote hosts."),
+                        ToolPackGuidance.FlowStep(
+                            goal: "Preview the governed write and capture rollback guidance",
+                            suggestedTools: new[] { "eventlog_classic_log_ensure" },
+                            notes: "Leave apply=false first; the preview reports whether the log or source already exists and what config would change."),
+                        ToolPackGuidance.FlowStep(
+                            goal: "Apply the write only after explicit confirmation",
+                            suggestedTools: new[] { "eventlog_classic_log_ensure" },
+                            notes: "Set apply=true only when the change is intentional and write governance metadata is ready."),
+                        ToolPackGuidance.FlowStep(
+                            goal: "Verify the log and provider visibility after the write",
+                            suggestedTools: new[] { "eventlog_channels_list", "eventlog_providers_list", "eventlog_connectivity_probe" },
+                            notes: "Use the same machine_name/log_name/source_name to confirm both log and provider visibility.")
+                    },
+                    verificationTools: new[] { "eventlog_classic_log_ensure", "eventlog_channels_list", "eventlog_providers_list", "eventlog_connectivity_probe" }),
+                ToolPackGuidance.Recipe(
+                    id: "classic_log_cleanup_governance",
+                    summary: "Preview and apply governed cleanup for a classic custom Event Log source and optional custom log removal.",
+                    whenToUse: "Use when the task is to remove a custom classic Event Log source and, when explicitly requested, remove the associated custom log while keeping the write auditable and rollback-ready.",
+                    steps: new[] {
+                        ToolPackGuidance.FlowStep(
+                            goal: "Confirm host reachability and inspect current classic log/source visibility",
+                            suggestedTools: new[] { "eventlog_connectivity_probe", "eventlog_channels_list", "eventlog_providers_list" },
+                            notes: "Inspect both the target log_name and source_name before previewing cleanup, especially on remote hosts."),
+                        ToolPackGuidance.FlowStep(
+                            goal: "Preview the governed cleanup and capture rollback guidance",
+                            suggestedTools: new[] { "eventlog_classic_log_remove" },
+                            notes: "Leave apply=false first; the preview reports whether source removal, log removal, or both would execute and blocks built-in standard logs."),
+                        ToolPackGuidance.FlowStep(
+                            goal: "Apply the cleanup only after explicit confirmation",
+                            suggestedTools: new[] { "eventlog_classic_log_remove" },
+                            notes: "Set apply=true only when the cleanup is intentional and write governance metadata is ready."),
+                        ToolPackGuidance.FlowStep(
+                            goal: "Verify absence and keep rollback ready",
+                            suggestedTools: new[] { "eventlog_channels_list", "eventlog_providers_list", "eventlog_classic_log_ensure", "eventlog_connectivity_probe" },
+                            notes: "Use eventlog_classic_log_ensure with the returned rollback arguments if the cleanup must be reverted.")
+                    },
+                    verificationTools: new[] { "eventlog_classic_log_remove", "eventlog_channels_list", "eventlog_providers_list", "eventlog_connectivity_probe", "eventlog_classic_log_ensure" }),
+                ToolPackGuidance.Recipe(
+                    id: "collector_subscription_governance",
+                    summary: "Preview and apply a governed Windows Event Collector subscription change with rollback-ready context.",
+                    whenToUse: "Use when the task is to enable or disable a collector subscription or replace its XML definition while keeping the write auditable and reversible.",
+                    steps: new[] {
+                        ToolPackGuidance.FlowStep(
+                            goal: "Confirm collector-host reachability",
+                            suggestedTools: new[] { "eventlog_connectivity_probe" },
+                            notes: "Use the same machine_name you plan to manage, especially for remote collector hosts."),
+                        ToolPackGuidance.FlowStep(
+                            goal: "Inspect current collector subscriptions",
+                            suggestedTools: new[] { "eventlog_collector_subscriptions_list" },
+                            notes: "Filter by subscription_name first so the preview/apply step uses the exact collector subscription identity."),
+                        ToolPackGuidance.FlowStep(
+                            goal: "Preview the governed write and capture rollback context",
+                            suggestedTools: new[] { "eventlog_collector_subscription_set" },
+                            notes: "Leave apply=false first; the preview returns current enabled state, XML presence, query details, and rollback-ready arguments."),
+                        ToolPackGuidance.FlowStep(
+                            goal: "Apply the write only after explicit confirmation",
+                            suggestedTools: new[] { "eventlog_collector_subscription_set" },
+                            notes: "Set apply=true only when the change is intentional and write governance metadata is ready."),
+                        ToolPackGuidance.FlowStep(
+                            goal: "Reconfirm collector access after the write",
+                            suggestedTools: new[] { "eventlog_collector_subscriptions_list", "eventlog_connectivity_probe" },
+                            notes: "Subscription changes can require WecSvc restart before all subscribers observe the new configuration.")
+                    },
+                    verificationTools: new[] { "eventlog_collector_subscriptions_list", "eventlog_collector_subscription_set", "eventlog_connectivity_probe" }),
                 ToolPackGuidance.Recipe(
                     id: "live_authentication_triage",
                     summary: "Run a live authentication-focused investigation on local or remote event channels.",
@@ -268,6 +404,10 @@ public sealed class EventLogPackInfoTool : EventLogToolBase, ITool {
                 RuntimePrerequisites = new[] {
                     "EVTX file workflows require target files to be inside the configured AllowedRoots locations.",
                     "Remote live-channel queries require machine_name plus target log access on the remote host.",
+                    "Governed channel-policy writes use the current runtime identity and require Event Log administrative rights on the target host.",
+                    "Governed classic custom log writes require Event Log administrative rights and can provision classic log and source registrations on the target host.",
+                    "Governed classic custom log cleanup requires Event Log administrative rights, explicit source_name context, and will not remove built-in standard logs.",
+                    "Governed collector-subscription writes require collector-host administrative rights and remote registry access when machine_name targets a remote host.",
                     "Use session_timeout_ms when long-running remote live queries need a larger execution window.",
                     "Use eventlog_connectivity_probe before deeper remote queries when host reachability or channel access is uncertain."
                 },
