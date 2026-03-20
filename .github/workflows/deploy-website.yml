@@ -20,9 +20,9 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  # Pinned to a release-hub-enabled PowerForge commit for this release stack.
+  # Pinned to a PowerForge commit that keeps release-hub support and clears current NuGet vulnerability gates.
   POWERFORGE_REPOSITORY: EvotecIT/PSPublishModule
-  POWERFORGE_REF: 33d759d8e13b3b8b709789156fcedda7fe0ca4df
+  POWERFORGE_REF: 228ee7214bb3286402ec695580a82cc37d1daf9d
 
 jobs:
   build:
