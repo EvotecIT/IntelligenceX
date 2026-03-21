@@ -54,9 +54,14 @@ public sealed partial class MainWindow {
         IReadOnlyCollection<ToolDefinitionDto>? toolCatalogTools = null,
         bool runtimeIntrospectionMode = false) {
         var lines = new List<string>();
-        var snapshot = sessionPolicy?.CapabilitySnapshot ?? toolCatalogCapabilitySnapshot;
-        var effectivePacks = ResolveCapabilityPacks(sessionPolicy, snapshot, toolCatalogPacks, toolCatalogCapabilitySnapshot);
-        var effectivePlugins = ResolveCapabilityPlugins(sessionPolicy, snapshot, toolCatalogPlugins, toolCatalogCapabilitySnapshot);
+        var toolingMetadata = RuntimeToolingMetadataResolver.Resolve(
+            sessionPolicy,
+            toolCatalogPacks,
+            toolCatalogPlugins,
+            toolCatalogCapabilitySnapshot);
+        var snapshot = toolingMetadata.CapabilitySnapshot;
+        var effectivePacks = toolingMetadata.Packs;
+        var effectivePlugins = toolingMetadata.Plugins;
         var routingCatalog = sessionPolicy?.RoutingCatalog ?? toolCatalogRoutingCatalog;
         var enabledPackNames = BuildEnabledPackDisplayNames(effectivePacks);
         if (enabledPackNames.Count > 0) {
@@ -90,7 +95,7 @@ public sealed partial class MainWindow {
                 }
             }
 
-            if (snapshot.Autonomy is null && effectivePacks.Count > 0) {
+            if (snapshot.Autonomy is null && effectivePacks.Length > 0) {
                 var remoteCapablePackNames = BuildRemoteCapablePackDisplayNames(effectivePacks);
                 if (remoteCapablePackNames.Count > 0) {
                     lines.Add(ToolCapabilityGuidanceText.BuildRemoteReadyAreasLine(remoteCapablePackNames));
@@ -171,50 +176,6 @@ public sealed partial class MainWindow {
         }
 
         return lines;
-    }
-
-    private static IReadOnlyList<ToolPackInfoDto> ResolveCapabilityPacks(
-        SessionPolicyDto? sessionPolicy,
-        SessionCapabilitySnapshotDto? effectiveCapabilitySnapshot,
-        IReadOnlyList<ToolPackInfoDto>? toolCatalogPacks,
-        SessionCapabilitySnapshotDto? toolCatalogCapabilitySnapshot) {
-        if (effectiveCapabilitySnapshot?.ToolingSnapshot?.Packs is { Length: > 0 } effectiveSnapshotPacks) {
-            return effectiveSnapshotPacks;
-        }
-
-        if (sessionPolicy?.Packs is { Length: > 0 } sessionPacks) {
-            return sessionPacks;
-        }
-
-        if (toolCatalogCapabilitySnapshot?.ToolingSnapshot?.Packs is { Length: > 0 } previewSnapshotPacks) {
-            return previewSnapshotPacks;
-        }
-
-        return toolCatalogPacks is { Count: > 0 }
-            ? toolCatalogPacks
-            : Array.Empty<ToolPackInfoDto>();
-    }
-
-    private static IReadOnlyList<PluginInfoDto> ResolveCapabilityPlugins(
-        SessionPolicyDto? sessionPolicy,
-        SessionCapabilitySnapshotDto? effectiveCapabilitySnapshot,
-        IReadOnlyList<PluginInfoDto>? toolCatalogPlugins,
-        SessionCapabilitySnapshotDto? toolCatalogCapabilitySnapshot) {
-        if (effectiveCapabilitySnapshot?.ToolingSnapshot?.Plugins is { Length: > 0 } effectiveSnapshotPlugins) {
-            return effectiveSnapshotPlugins;
-        }
-
-        if (sessionPolicy?.Plugins is { Length: > 0 } sessionPlugins) {
-            return sessionPlugins;
-        }
-
-        if (toolCatalogCapabilitySnapshot?.ToolingSnapshot?.Plugins is { Length: > 0 } previewSnapshotPlugins) {
-            return previewSnapshotPlugins;
-        }
-
-        return toolCatalogPlugins is { Count: > 0 }
-            ? toolCatalogPlugins
-            : Array.Empty<PluginInfoDto>();
     }
 
     private static List<string> BuildEnabledPackDisplayNames(IReadOnlyList<ToolPackInfoDto>? packs) {
@@ -588,7 +549,11 @@ public sealed partial class MainWindow {
         IReadOnlyList<ToolPackInfoDto>? packs,
         bool runtimeIntrospectionMode) {
         ArgumentNullException.ThrowIfNull(lines);
-        var summaries = BuildPluginSourceSummaries(plugins, packs, runtimeIntrospectionMode ? 3 : 2);
+        var summaries = BuildPluginSourceSummaries(
+            plugins,
+            packs,
+            runtimeIntrospectionMode ? 3 : 2,
+            includeDisabledPlugins: runtimeIntrospectionMode);
         if (summaries.Count == 0) {
             return;
         }
@@ -604,15 +569,17 @@ public sealed partial class MainWindow {
     private static List<string> BuildPluginSourceSummaries(
         IReadOnlyList<PluginInfoDto>? plugins,
         IReadOnlyList<ToolPackInfoDto>? packs,
-        int maxItems) {
+        int maxItems,
+        bool includeDisabledPlugins) {
         var summaries = new List<string>();
         if (plugins is not { Count: > 0 }) {
             return summaries;
         }
 
         var orderedPlugins = plugins
-            .Where(static plugin => plugin.Enabled)
-            .OrderBy(static plugin => plugin.Name ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+            .Where(plugin => includeDisabledPlugins || plugin.Enabled)
+            .OrderByDescending(static plugin => plugin.Enabled)
+            .ThenBy(static plugin => plugin.Name ?? string.Empty, StringComparer.OrdinalIgnoreCase)
             .ThenBy(static plugin => plugin.Id ?? string.Empty, StringComparer.OrdinalIgnoreCase)
             .ToArray();
         for (var i = 0; i < orderedPlugins.Length; i++) {
@@ -630,6 +597,9 @@ public sealed partial class MainWindow {
             var summary = displayName + " from " + DescribePluginOrigin(plugin.Origin, plugin.SourceKind);
             if (coverage.Count > 0) {
                 summary += " covering " + string.Join(", ", coverage);
+            }
+            if (!plugin.Enabled) {
+                summary += " (disabled)";
             }
 
             if (!ContainsIgnoreCase(summaries, summary)) {

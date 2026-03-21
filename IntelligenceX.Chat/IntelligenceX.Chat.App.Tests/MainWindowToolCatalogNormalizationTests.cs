@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.App;
@@ -33,10 +34,25 @@ public sealed class MainWindowToolCatalogNormalizationTests {
         BindingFlags.NonPublic | BindingFlags.Instance)
         ?? throw new InvalidOperationException("ClearToolCatalogCache not found.");
 
+    private static readonly MethodInfo BuildOptionsStateJsonMethod = typeof(MainWindow).GetMethod(
+        "BuildOptionsStateJson",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("BuildOptionsStateJson not found.");
+
+    private static readonly FieldInfo SessionPolicyField = typeof(MainWindow).GetField(
+        "_sessionPolicy",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_sessionPolicy field not found.");
+
     private static readonly FieldInfo ToolCatalogPacksField = typeof(MainWindow).GetField(
         "_toolCatalogPacks",
         BindingFlags.NonPublic | BindingFlags.Instance)
         ?? throw new InvalidOperationException("_toolCatalogPacks field not found.");
+
+    private static readonly FieldInfo ToolCatalogPluginsField = typeof(MainWindow).GetField(
+        "_toolCatalogPlugins",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_toolCatalogPlugins field not found.");
 
     private static readonly FieldInfo ToolCatalogRoutingCatalogField = typeof(MainWindow).GetField(
         "_toolCatalogRoutingCatalog",
@@ -137,6 +153,81 @@ public sealed class MainWindowToolCatalogNormalizationTests {
         "_toolRoutingScore",
         BindingFlags.NonPublic | BindingFlags.Instance)
         ?? throw new InvalidOperationException("_toolRoutingScore field not found.");
+
+    private static readonly FieldInfo NativeAccountSlotsField = typeof(MainWindow).GetField(
+        "_nativeAccountSlots",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_nativeAccountSlots field not found.");
+
+    private static readonly FieldInfo ServiceProfileNamesField = typeof(MainWindow).GetField(
+        "_serviceProfileNames",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_serviceProfileNames field not found.");
+
+    private static readonly FieldInfo AppProfileNameField = typeof(MainWindow).GetField(
+        "_appProfileName",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_appProfileName field not found.");
+
+    private static readonly FieldInfo AvailableModelsField = typeof(MainWindow).GetField(
+        "_availableModels",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_availableModels field not found.");
+
+    private static readonly FieldInfo FavoriteModelsField = typeof(MainWindow).GetField(
+        "_favoriteModels",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_favoriteModels field not found.");
+
+    private static readonly FieldInfo RecentModelsField = typeof(MainWindow).GetField(
+        "_recentModels",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_recentModels field not found.");
+
+    private static readonly FieldInfo TurnDiagnosticsSyncField = typeof(MainWindow).GetField(
+        "_turnDiagnosticsSync",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_turnDiagnosticsSync field not found.");
+
+    private static readonly FieldInfo AccountUsageByKeyField = typeof(MainWindow).GetField(
+        "_accountUsageByKey",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_accountUsageByKey field not found.");
+
+    private static readonly FieldInfo MemoryDiagnosticsSyncField = typeof(MainWindow).GetField(
+        "_memoryDiagnosticsSync",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_memoryDiagnosticsSync field not found.");
+
+    private static readonly FieldInfo StartupMetadataSyncLockField = typeof(MainWindow).GetField(
+        "_startupMetadataSyncLock",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_startupMetadataSyncLock field not found.");
+
+    private static readonly FieldInfo MemoryDebugHistoryField = typeof(MainWindow).GetField(
+        "_memoryDebugHistory",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_memoryDebugHistory field not found.");
+
+    private static readonly FieldInfo AppStateField = typeof(MainWindow).GetField(
+        "_appState",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_appState field not found.");
+
+    private static readonly FieldInfo KnownProfilesField = typeof(MainWindow).GetField(
+        "_knownProfiles",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_knownProfiles field not found.");
+
+    private static readonly FieldInfo ConversationsField = typeof(MainWindow).GetField(
+        "_conversations",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_conversations field not found.");
+
+    private static readonly FieldInfo MessagesField = typeof(MainWindow).GetField(
+        "_messages",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_messages field not found.");
 
     /// <summary>
     /// Ensures tool catalog ingest stores canonical shared Chat pack ids instead of raw alias labels.
@@ -485,11 +576,94 @@ public sealed class MainWindowToolCatalogNormalizationTests {
         Assert.Null(ToolCatalogCapabilitySnapshotField.GetValue(window));
     }
 
+    /// <summary>
+    /// Ensures options-state fallback plugins use the same resolved metadata source as session policy plugins.
+    /// </summary>
+    [Fact]
+    public void BuildOptionsStateJson_UsesResolvedPluginMetadata_ForToolCatalogFallback() {
+        var window = CreateWindow();
+        SetField(
+            SessionPolicyField,
+            window,
+            new SessionPolicyDto {
+                ReadOnly = true,
+                DangerousToolsEnabled = false,
+                MaxToolRounds = 4,
+                ParallelTools = true,
+                AllowMutatingParallelToolCalls = false,
+                CapabilitySnapshot = new SessionCapabilitySnapshotDto {
+                    RegisteredTools = 1,
+                    EnabledPackCount = 0,
+                    PluginCount = 1,
+                    EnabledPluginCount = 1,
+                    ToolingAvailable = true,
+                    AllowedRootCount = 0,
+                    ToolingSnapshot = new SessionCapabilityToolingSnapshotDto {
+                        Source = "service_runtime",
+                        Packs = Array.Empty<ToolPackInfoDto>(),
+                        Plugins = new[] {
+                            new PluginInfoDto {
+                                Id = "ops_bundle",
+                                Name = "Ops Bundle",
+                                Enabled = true,
+                                DefaultEnabled = true,
+                                Origin = "plugin_folder",
+                                SourceKind = ToolPackSourceKind.ClosedSource,
+                                IsDangerous = false
+                            }
+                        }
+                    }
+                }
+            });
+        SetField(
+            ToolCatalogPluginsField,
+            window,
+            new[] {
+                new PluginInfoDto {
+                    Id = "preview_plugin",
+                    Name = "Preview Plugin",
+                    Enabled = true,
+                    DefaultEnabled = false,
+                    Origin = "preview",
+                    IsDangerous = false
+                }
+            });
+
+        string json;
+        try {
+            json = Assert.IsType<string>(BuildOptionsStateJsonMethod.Invoke(window, Array.Empty<object>()));
+        } catch (TargetInvocationException ex) {
+            throw ex.InnerException ?? ex;
+        }
+
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+        Assert.Equal("ops_bundle", root.GetProperty("toolCatalogPlugins")[0].GetProperty("id").GetString());
+        Assert.Equal("ops_bundle", root.GetProperty("policy").GetProperty("plugins")[0].GetProperty("id").GetString());
+        Assert.DoesNotContain("preview_plugin", json, StringComparison.Ordinal);
+    }
+
     private static MainWindow CreateWindow() {
         var window = (MainWindow)RuntimeHelpers.GetUninitializedObject(typeof(MainWindow));
+        SetField(NativeAccountSlotsField, window, new[] { string.Empty });
+        SetField(AppProfileNameField, window, "default");
+        SetField(ServiceProfileNamesField, window, Array.Empty<string>());
+        SetField(AvailableModelsField, window, Array.Empty<ModelInfoDto>());
+        SetField(FavoriteModelsField, window, Array.Empty<string>());
+        SetField(RecentModelsField, window, Array.Empty<string>());
         SetField(ToolCatalogPacksField, window, Array.Empty<ToolPackInfoDto>());
+        SetField(ToolCatalogPluginsField, window, Array.Empty<PluginInfoDto>());
         SetField(ToolCatalogRoutingCatalogField, window, null!);
         SetField(ToolCatalogCapabilitySnapshotField, window, null!);
+        SetField(TurnDiagnosticsSyncField, window, new object());
+        SetField(AccountUsageByKeyField, window, Activator.CreateInstance(AccountUsageByKeyField.FieldType)!);
+        SetField(MemoryDiagnosticsSyncField, window, new object());
+        SetField(StartupMetadataSyncLockField, window, new object());
+        SetField(MemoryDebugHistoryField, window, Activator.CreateInstance(MemoryDebugHistoryField.FieldType)!);
+        SetField(AppStateField, window, new ChatAppState());
+        SetField(KnownProfilesField, window, new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+        SetField(ConversationsField, window, Activator.CreateInstance(ConversationsField.FieldType)!);
+        SetField(MessagesField, window, Activator.CreateInstance(MessagesField.FieldType)!);
         SetField(ToolDescriptionsField, window, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
         SetField(ToolDisplayNamesField, window, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
         SetField(ToolCategoriesField, window, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
@@ -516,9 +690,10 @@ public sealed class MainWindowToolCatalogNormalizationTests {
         ToolDefinitionDto[] tools,
         SessionRoutingCatalogDiagnosticsDto? routingCatalog = null,
         ToolPackInfoDto[]? packs = null,
+        PluginInfoDto[]? plugins = null,
         SessionCapabilitySnapshotDto? capabilitySnapshot = null) {
         try {
-            UpdateToolCatalogMethod.Invoke(window, new object?[] { tools, routingCatalog, packs, capabilitySnapshot });
+            UpdateToolCatalogMethod.Invoke(window, new object?[] { tools, routingCatalog, packs, plugins, capabilitySnapshot });
         } catch (TargetInvocationException ex) {
             throw ex.InnerException ?? ex;
         }

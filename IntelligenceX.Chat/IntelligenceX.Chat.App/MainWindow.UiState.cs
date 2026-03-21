@@ -489,14 +489,13 @@ public sealed partial class MainWindow : Window {
         // metadata flags so stale queued state cannot pin loading UI forever.
         _ = ApplyStartupMetadataSyncWatchdog();
 
-        var effectivePacks = RuntimeToolingMetadataResolver.ResolveEffectivePacks(
+        var toolingMetadata = RuntimeToolingMetadataResolver.Resolve(
             _sessionPolicy,
             _toolCatalogPacks,
-            _toolCatalogCapabilitySnapshot);
-        var effectivePlugins = RuntimeToolingMetadataResolver.ResolveEffectivePlugins(
-            _sessionPolicy,
             _toolCatalogPlugins,
             _toolCatalogCapabilitySnapshot);
+        var effectivePacks = toolingMetadata.Packs;
+        var effectivePlugins = toolingMetadata.Plugins;
         var packs = effectivePacks.Length > 0
             ? BuildPackState(effectivePacks)
             : Array.Empty<object>();
@@ -613,7 +612,7 @@ public sealed partial class MainWindow : Window {
             tools,
             toolsLoading,
             toolCatalogRoutingCatalog = BuildRoutingCatalogState(_toolCatalogRoutingCatalog),
-            toolCatalogPlugins = BuildPluginState(_toolCatalogPlugins),
+            toolCatalogPlugins = BuildPluginState(effectivePlugins),
             toolCatalogCapabilitySnapshot = BuildCapabilitySnapshotState(_toolCatalogCapabilitySnapshot),
             policy = _sessionPolicy is null ? null : new {
                 readOnly = _sessionPolicy.ReadOnly,

@@ -1,9 +1,43 @@
 using System;
+using System.Collections.Generic;
 using IntelligenceX.Chat.Abstractions.Policy;
 
 namespace IntelligenceX.Chat.App;
 
+internal sealed class RuntimeToolingMetadataResolution {
+    public string Source { get; init; } = "unknown";
+    public SessionCapabilitySnapshotDto? CapabilitySnapshot { get; init; }
+    public ToolPackInfoDto[] Packs { get; init; } = Array.Empty<ToolPackInfoDto>();
+    public PluginInfoDto[] Plugins { get; init; } = Array.Empty<PluginInfoDto>();
+}
+
 internal static class RuntimeToolingMetadataResolver {
+    internal static RuntimeToolingMetadataResolution Resolve(
+        SessionPolicyDto? sessionPolicy,
+        IReadOnlyList<ToolPackInfoDto>? toolCatalogPacks,
+        IReadOnlyList<PluginInfoDto>? toolCatalogPlugins,
+        SessionCapabilitySnapshotDto? toolCatalogCapabilitySnapshot) {
+        return Resolve(
+            sessionPolicy,
+            ToArray(toolCatalogPacks),
+            ToArray(toolCatalogPlugins),
+            toolCatalogCapabilitySnapshot);
+    }
+
+    internal static RuntimeToolingMetadataResolution Resolve(
+        SessionPolicyDto? sessionPolicy,
+        ToolPackInfoDto[]? toolCatalogPacks,
+        PluginInfoDto[]? toolCatalogPlugins,
+        SessionCapabilitySnapshotDto? toolCatalogCapabilitySnapshot) {
+        var effectiveCapabilitySnapshot = ResolveEffectiveCapabilitySnapshot(sessionPolicy, toolCatalogCapabilitySnapshot);
+        return new RuntimeToolingMetadataResolution {
+            Source = ResolveEffectiveSource(sessionPolicy, toolCatalogPacks, toolCatalogPlugins, toolCatalogCapabilitySnapshot),
+            CapabilitySnapshot = effectiveCapabilitySnapshot,
+            Packs = ResolveEffectivePacks(sessionPolicy, toolCatalogPacks, toolCatalogCapabilitySnapshot),
+            Plugins = ResolveEffectivePlugins(sessionPolicy, toolCatalogPlugins, toolCatalogCapabilitySnapshot)
+        };
+    }
+
     internal static string ResolveEffectiveSource(
         SessionPolicyDto? sessionPolicy,
         ToolPackInfoDto[]? toolCatalogPacks,
@@ -74,9 +108,36 @@ internal static class RuntimeToolingMetadataResolver {
             : Array.Empty<PluginInfoDto>();
     }
 
+    internal static SessionCapabilitySnapshotDto? ResolveEffectiveCapabilitySnapshot(
+        SessionPolicyDto? sessionPolicy,
+        SessionCapabilitySnapshotDto? toolCatalogCapabilitySnapshot) {
+        return sessionPolicy?.CapabilitySnapshot ?? toolCatalogCapabilitySnapshot;
+    }
+
     private static bool HasToolingSnapshotData(SessionCapabilityToolingSnapshotDto? toolingSnapshot) {
         return toolingSnapshot?.Packs is { Length: > 0 }
                || toolingSnapshot?.Plugins is { Length: > 0 };
+    }
+
+    private static T[]? ToArray<T>(IReadOnlyList<T>? values) {
+        if (values is null) {
+            return null;
+        }
+
+        if (values is T[] array) {
+            return array;
+        }
+
+        if (values.Count == 0) {
+            return Array.Empty<T>();
+        }
+
+        var copy = new T[values.Count];
+        for (var i = 0; i < values.Count; i++) {
+            copy[i] = values[i];
+        }
+
+        return copy;
     }
 
     private static string NormalizeSource(string? source, string fallback) {

@@ -649,6 +649,53 @@ public sealed class MainWindowCapabilitySelfKnowledgeTests {
     }
 
     /// <summary>
+    /// Ensures runtime introspection can still report disabled registered plugin sources for support/provenance answers.
+    /// </summary>
+    [Fact]
+    public void BuildCapabilitySelfKnowledgeLines_RuntimeMode_IncludesDisabledPluginSources() {
+        var lines = MainWindow.BuildCapabilitySelfKnowledgeLines(
+            sessionPolicy: null,
+            toolCatalogPacks: new[] {
+                new ToolPackInfoDto {
+                    Id = "system",
+                    Name = "System",
+                    Tier = CapabilityTier.ReadOnly,
+                    Enabled = true,
+                    IsDangerous = false
+                }
+            },
+            toolCatalogPlugins: new[] {
+                new PluginInfoDto {
+                    Id = "ops_bundle",
+                    Name = "Ops Bundle",
+                    Origin = "plugin_folder",
+                    SourceKind = ToolPackSourceKind.ClosedSource,
+                    DefaultEnabled = true,
+                    Enabled = false,
+                    DisabledReason = "disabled for maintenance",
+                    IsDangerous = false,
+                    PackIds = new[] { "system" }
+                }
+            },
+            toolCatalogCapabilitySnapshot: new SessionCapabilitySnapshotDto {
+                RegisteredTools = 1,
+                EnabledPackCount = 1,
+                PluginCount = 1,
+                EnabledPluginCount = 0,
+                ToolingAvailable = true,
+                AllowedRootCount = 1,
+                RemoteReachabilityMode = "local_only",
+                FamilyActions = Array.Empty<SessionRoutingFamilyActionSummaryDto>()
+            },
+            runtimeIntrospectionMode: true);
+
+        Assert.Contains(lines, line => line.Contains("Registered tool sources currently visible include", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(lines, line => line.Contains("Ops Bundle", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(lines, line => line.Contains("plugin folder", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(lines, line => line.Contains("(disabled)", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
     /// Ensures plugin/source guidance can come from capability-snapshot tooling provenance even when legacy plugin arrays are empty.
     /// </summary>
     [Fact]
