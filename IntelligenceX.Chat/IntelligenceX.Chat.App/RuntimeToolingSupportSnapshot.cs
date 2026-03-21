@@ -25,9 +25,11 @@ internal static class RuntimeToolingSupportSnapshotBuilder {
             return null;
         }
 
-        var source = sessionPolicy is not null
-            ? "session_policy"
-            : "tool_catalog_preview";
+        var source = RuntimeToolingMetadataResolver.ResolveEffectiveSource(
+            sessionPolicy,
+            toolCatalogPacks as ToolPackInfoDto[] ?? toolCatalogPacks?.ToArray(),
+            toolCatalogPlugins as PluginInfoDto[] ?? toolCatalogPlugins?.ToArray(),
+            toolCatalogCapabilitySnapshot);
         var packSnapshots = new List<RuntimeToolingPackSnapshot>(packs.Length);
         for (var i = 0; i < packs.Length; i++) {
             var pack = packs[i];

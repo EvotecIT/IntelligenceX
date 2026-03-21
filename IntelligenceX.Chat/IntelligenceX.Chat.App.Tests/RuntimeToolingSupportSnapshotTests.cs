@@ -101,7 +101,7 @@ public sealed class RuntimeToolingSupportSnapshotTests {
             });
 
         Assert.NotNull(snapshot);
-        Assert.Equal("session_policy", snapshot!.Source);
+        Assert.Equal("service_runtime", snapshot!.Source);
         Assert.Single(snapshot.Packs);
         Assert.Single(snapshot.Plugins);
         Assert.Equal("eventlog", snapshot.Packs[0].Id);
@@ -152,11 +152,74 @@ public sealed class RuntimeToolingSupportSnapshotTests {
             });
 
         Assert.NotNull(snapshot);
-        Assert.Equal("tool_catalog_preview", snapshot!.Source);
+        Assert.Equal("service_runtime", snapshot!.Source);
         Assert.Single(snapshot.Packs);
         Assert.Single(snapshot.Plugins);
         Assert.Equal("eventlog", snapshot.Packs[0].Id);
         Assert.Equal("ops_bundle", snapshot.Plugins[0].Id);
+    }
+
+    /// <summary>
+    /// Verifies sparse session policy does not override the actual fallback tooling provenance.
+    /// </summary>
+    [Fact]
+    public void Build_UsesToolCatalogCapabilitySnapshotSourceWhenSessionPolicyIsSparse() {
+        var snapshot = RuntimeToolingSupportSnapshotBuilder.Build(
+            new SessionPolicyDto {
+                ReadOnly = true,
+                DangerousToolsEnabled = false,
+                MaxToolRounds = 4,
+                ParallelTools = true,
+                AllowMutatingParallelToolCalls = false,
+                Packs = Array.Empty<ToolPackInfoDto>(),
+                Plugins = Array.Empty<PluginInfoDto>(),
+                CapabilitySnapshot = new SessionCapabilitySnapshotDto {
+                    RegisteredTools = 0,
+                    EnabledPackCount = 0,
+                    PluginCount = 0,
+                    EnabledPluginCount = 0,
+                    ToolingAvailable = false,
+                    AllowedRootCount = 0
+                }
+            },
+            toolCatalogPacks: Array.Empty<ToolPackInfoDto>(),
+            toolCatalogPlugins: Array.Empty<PluginInfoDto>(),
+            toolCatalogCapabilitySnapshot: new SessionCapabilitySnapshotDto {
+                RegisteredTools = 1,
+                EnabledPackCount = 1,
+                PluginCount = 1,
+                EnabledPluginCount = 1,
+                ToolingAvailable = true,
+                AllowedRootCount = 0,
+                ToolingSnapshot = new SessionCapabilityToolingSnapshotDto {
+                    Source = "service_runtime",
+                    Packs = new[] {
+                        new ToolPackInfoDto {
+                            Id = "eventlog",
+                            Name = "Event Viewer",
+                            Tier = CapabilityTier.ReadOnly,
+                            Enabled = true,
+                            IsDangerous = false
+                        }
+                    },
+                    Plugins = new[] {
+                        new PluginInfoDto {
+                            Id = "ops_bundle",
+                            Name = "Ops Bundle",
+                            Enabled = true,
+                            DefaultEnabled = true,
+                            Origin = "plugin_folder",
+                            IsDangerous = false,
+                            PackIds = new[] { "eventlog" }
+                        }
+                    }
+                }
+            });
+
+        Assert.NotNull(snapshot);
+        Assert.Equal("service_runtime", snapshot!.Source);
+        Assert.Single(snapshot.Packs);
+        Assert.Single(snapshot.Plugins);
     }
 
     /// <summary>
