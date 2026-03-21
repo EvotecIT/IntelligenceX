@@ -32,6 +32,7 @@ internal sealed partial class ChatServiceSession {
         public string PriorAnswerPlanMissingLiveEvidence { get; set; } = string.Empty;
         public string[] PriorAnswerPlanPreferredPackIds { get; set; } = Array.Empty<string>();
         public string[] PriorAnswerPlanPreferredToolNames { get; set; } = Array.Empty<string>();
+        public string[] PriorAnswerPlanPreferredDeferredWorkCapabilityIds { get; set; } = Array.Empty<string>();
         public bool PriorAnswerPlanAllowCachedEvidenceReuse { get; set; }
         public bool PriorAnswerPlanPreferCachedEvidenceReuse { get; set; }
         public string PriorAnswerPlanCachedEvidenceReuseReason { get; set; } = string.Empty;
@@ -90,6 +91,11 @@ internal sealed partial class ChatServiceSession {
                 PriorAnswerPlanPreferredToolNames = NormalizeDistinctStrings(
                     checkpoint.PriorAnswerPlanPreferredToolNames ?? Array.Empty<string>(),
                     maxItems: 8),
+                PriorAnswerPlanPreferredDeferredWorkCapabilityIds = NormalizeDistinctStrings(
+                    (checkpoint.PriorAnswerPlanPreferredDeferredWorkCapabilityIds ?? Array.Empty<string>())
+                    .Select(static capabilityId => NormalizeDeferredWorkCapabilityId(capabilityId))
+                    .Where(static capabilityId => capabilityId.Length > 0),
+                    maxItems: 6),
                 PriorAnswerPlanAllowCachedEvidenceReuse = checkpoint.PriorAnswerPlanAllowCachedEvidenceReuse,
                 PriorAnswerPlanPreferCachedEvidenceReuse = checkpoint.PriorAnswerPlanPreferCachedEvidenceReuse,
                 PriorAnswerPlanCachedEvidenceReuseReason = checkpoint.PriorAnswerPlanPreferCachedEvidenceReuse
@@ -145,6 +151,11 @@ internal sealed partial class ChatServiceSession {
             var priorAnswerPlanPreferredToolNames = NormalizeDistinctStrings(
                 entry.PriorAnswerPlanPreferredToolNames ?? Array.Empty<string>(),
                 maxItems: 8);
+            var priorAnswerPlanPreferredDeferredWorkCapabilityIds = NormalizeDistinctStrings(
+                (entry.PriorAnswerPlanPreferredDeferredWorkCapabilityIds ?? Array.Empty<string>())
+                .Select(static capabilityId => NormalizeDeferredWorkCapabilityId(capabilityId))
+                .Where(static capabilityId => capabilityId.Length > 0),
+                maxItems: 6);
             var priorAnswerPlanAllowCachedEvidenceReuse = entry.PriorAnswerPlanAllowCachedEvidenceReuse;
             var priorAnswerPlanPreferCachedEvidenceReuse = entry.PriorAnswerPlanPreferCachedEvidenceReuse;
             var priorAnswerPlanCachedEvidenceReuseReason = priorAnswerPlanPreferCachedEvidenceReuse
@@ -171,6 +182,7 @@ internal sealed partial class ChatServiceSession {
                 && priorAnswerPlanMissingLiveEvidence.Length == 0
                 && priorAnswerPlanPreferredPackIds.Length == 0
                 && priorAnswerPlanPreferredToolNames.Length == 0
+                && priorAnswerPlanPreferredDeferredWorkCapabilityIds.Length == 0
                 && !priorAnswerPlanAllowCachedEvidenceReuse
                 && !priorAnswerPlanPreferCachedEvidenceReuse
                 && priorAnswerPlanCachedEvidenceReuseReason.Length == 0
@@ -208,6 +220,7 @@ internal sealed partial class ChatServiceSession {
                 PriorAnswerPlanMissingLiveEvidence: priorAnswerPlanMissingLiveEvidence,
                 PriorAnswerPlanPreferredPackIds: priorAnswerPlanPreferredPackIds,
                 PriorAnswerPlanPreferredToolNames: priorAnswerPlanPreferredToolNames,
+                PriorAnswerPlanPreferredDeferredWorkCapabilityIds: priorAnswerPlanPreferredDeferredWorkCapabilityIds,
                 PriorAnswerPlanAllowCachedEvidenceReuse: priorAnswerPlanAllowCachedEvidenceReuse,
                 PriorAnswerPlanPreferCachedEvidenceReuse: priorAnswerPlanPreferCachedEvidenceReuse,
                 PriorAnswerPlanCachedEvidenceReuseReason: priorAnswerPlanCachedEvidenceReuseReason,

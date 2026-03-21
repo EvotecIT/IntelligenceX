@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
 using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Tools;
@@ -20,6 +22,7 @@ public sealed partial class MainWindow {
         return BuildCapabilitySelfKnowledgeLines(
             _sessionPolicy,
             _toolCatalogPacks,
+            _toolCatalogPlugins,
             _toolCatalogRoutingCatalog,
             _toolCatalogCapabilitySnapshot,
             BuildToolCatalogExecutionSummary(),
@@ -33,6 +36,7 @@ public sealed partial class MainWindow {
         return BuildCapabilitySelfKnowledgeLines(
             sessionPolicy,
             toolCatalogPacks: null,
+            toolCatalogPlugins: null,
             toolCatalogRoutingCatalog: null,
             toolCatalogCapabilitySnapshot: null,
             toolCatalogExecutionSummary: null,
@@ -43,6 +47,7 @@ public sealed partial class MainWindow {
     internal static IReadOnlyList<string> BuildCapabilitySelfKnowledgeLines(
         SessionPolicyDto? sessionPolicy,
         IReadOnlyList<ToolPackInfoDto>? toolCatalogPacks,
+        IReadOnlyList<PluginInfoDto>? toolCatalogPlugins = null,
         SessionRoutingCatalogDiagnosticsDto? toolCatalogRoutingCatalog = null,
         SessionCapabilitySnapshotDto? toolCatalogCapabilitySnapshot = null,
         ToolCatalogExecutionSummary? toolCatalogExecutionSummary = null,
@@ -50,7 +55,8 @@ public sealed partial class MainWindow {
         bool runtimeIntrospectionMode = false) {
         var lines = new List<string>();
         var snapshot = sessionPolicy?.CapabilitySnapshot ?? toolCatalogCapabilitySnapshot;
-        var effectivePacks = ResolveCapabilityPacks(sessionPolicy, toolCatalogPacks);
+        var effectivePacks = ResolveCapabilityPacks(sessionPolicy, snapshot, toolCatalogPacks, toolCatalogCapabilitySnapshot);
+        var effectivePlugins = ResolveCapabilityPlugins(sessionPolicy, snapshot, toolCatalogPlugins, toolCatalogCapabilitySnapshot);
         var routingCatalog = sessionPolicy?.RoutingCatalog ?? toolCatalogRoutingCatalog;
         var enabledPackNames = BuildEnabledPackDisplayNames(effectivePacks);
         if (enabledPackNames.Count > 0) {
@@ -105,6 +111,9 @@ public sealed partial class MainWindow {
                 lines.Add("Routing autonomy right now includes " + string.Join("; ", routingReadinessHighlights) + ".");
             }
 
+            AddPluginSourceGuidance(lines, effectivePlugins, effectivePacks, runtimeIntrospectionMode);
+            AddDeferredWorkAffordanceGuidance(lines, snapshot, runtimeIntrospectionMode);
+
             if (snapshot.ParityMissingCapabilityCount > 0) {
                 lines.Add($"There are {snapshot.ParityMissingCapabilityCount} upstream read-only capability gaps still not surfaced through chat, so do not promise them as live tools yet.");
             } else if (snapshot.ParityAttentionCount > 0) {
@@ -136,6 +145,9 @@ public sealed partial class MainWindow {
             if (routingReadinessHighlights.Count > 0) {
                 lines.Add("Routing autonomy right now includes " + string.Join("; ", routingReadinessHighlights) + ".");
             }
+
+            AddPluginSourceGuidance(lines, effectivePlugins, effectivePacks, runtimeIntrospectionMode);
+            AddDeferredWorkAffordanceGuidance(lines, snapshot, runtimeIntrospectionMode);
         }
 
         var representativeExamples = runtimeIntrospectionMode
@@ -163,14 +175,46 @@ public sealed partial class MainWindow {
 
     private static IReadOnlyList<ToolPackInfoDto> ResolveCapabilityPacks(
         SessionPolicyDto? sessionPolicy,
-        IReadOnlyList<ToolPackInfoDto>? toolCatalogPacks) {
+        SessionCapabilitySnapshotDto? effectiveCapabilitySnapshot,
+        IReadOnlyList<ToolPackInfoDto>? toolCatalogPacks,
+        SessionCapabilitySnapshotDto? toolCatalogCapabilitySnapshot) {
+        if (effectiveCapabilitySnapshot?.ToolingSnapshot?.Packs is { Length: > 0 } effectiveSnapshotPacks) {
+            return effectiveSnapshotPacks;
+        }
+
         if (sessionPolicy?.Packs is { Length: > 0 } sessionPacks) {
             return sessionPacks;
+        }
+
+        if (toolCatalogCapabilitySnapshot?.ToolingSnapshot?.Packs is { Length: > 0 } previewSnapshotPacks) {
+            return previewSnapshotPacks;
         }
 
         return toolCatalogPacks is { Count: > 0 }
             ? toolCatalogPacks
             : Array.Empty<ToolPackInfoDto>();
+    }
+
+    private static IReadOnlyList<PluginInfoDto> ResolveCapabilityPlugins(
+        SessionPolicyDto? sessionPolicy,
+        SessionCapabilitySnapshotDto? effectiveCapabilitySnapshot,
+        IReadOnlyList<PluginInfoDto>? toolCatalogPlugins,
+        SessionCapabilitySnapshotDto? toolCatalogCapabilitySnapshot) {
+        if (effectiveCapabilitySnapshot?.ToolingSnapshot?.Plugins is { Length: > 0 } effectiveSnapshotPlugins) {
+            return effectiveSnapshotPlugins;
+        }
+
+        if (sessionPolicy?.Plugins is { Length: > 0 } sessionPlugins) {
+            return sessionPlugins;
+        }
+
+        if (toolCatalogCapabilitySnapshot?.ToolingSnapshot?.Plugins is { Length: > 0 } previewSnapshotPlugins) {
+            return previewSnapshotPlugins;
+        }
+
+        return toolCatalogPlugins is { Count: > 0 }
+            ? toolCatalogPlugins
+            : Array.Empty<PluginInfoDto>();
     }
 
     private static List<string> BuildEnabledPackDisplayNames(IReadOnlyList<ToolPackInfoDto>? packs) {
@@ -506,6 +550,197 @@ public sealed partial class MainWindow {
         }
 
         return normalized.Length == 0 ? "unknown" : normalized;
+    }
+
+    private static void AddDeferredWorkAffordanceGuidance(
+        List<string> lines,
+        SessionCapabilitySnapshotDto? snapshot,
+        bool runtimeIntrospectionMode) {
+        ArgumentNullException.ThrowIfNull(lines);
+        if (snapshot?.DeferredWorkAffordances is not { Length: > 0 } affordances) {
+            return;
+        }
+
+        var displayNames = BuildDeferredWorkAffordanceDisplayNames(affordances);
+        if (displayNames.Count == 0) {
+            return;
+        }
+
+        if (runtimeIntrospectionMode) {
+            lines.Add("Deferred follow-up affordances currently registered: " + string.Join(", ", displayNames) + ".");
+            return;
+        }
+
+        lines.Add("Deferred follow-up work currently registered includes " + string.Join(", ", displayNames) + ".");
+        if (HasBackgroundCapableDeferredWork(affordances)) {
+            lines.Add("Some of those deferred affordances explicitly support background follow-up, so longer reporting-style work can continue beyond a single answer when the runtime chooses it.");
+        }
+
+        var representativeExamples = BuildDeferredWorkRepresentativeExamples(affordances, maxItems: 3);
+        if (representativeExamples.Count > 0) {
+            lines.Add("Deferred follow-up examples you can mention: " + string.Join("; ", representativeExamples) + ".");
+        }
+    }
+
+    private static void AddPluginSourceGuidance(
+        List<string> lines,
+        IReadOnlyList<PluginInfoDto>? plugins,
+        IReadOnlyList<ToolPackInfoDto>? packs,
+        bool runtimeIntrospectionMode) {
+        ArgumentNullException.ThrowIfNull(lines);
+        var summaries = BuildPluginSourceSummaries(plugins, packs, runtimeIntrospectionMode ? 3 : 2);
+        if (summaries.Count == 0) {
+            return;
+        }
+
+        lines.Add(
+            (runtimeIntrospectionMode
+                ? "Registered tool sources currently visible include "
+                : "Registered tool sources currently active include ")
+            + string.Join("; ", summaries)
+            + ".");
+    }
+
+    private static List<string> BuildPluginSourceSummaries(
+        IReadOnlyList<PluginInfoDto>? plugins,
+        IReadOnlyList<ToolPackInfoDto>? packs,
+        int maxItems) {
+        var summaries = new List<string>();
+        if (plugins is not { Count: > 0 }) {
+            return summaries;
+        }
+
+        var orderedPlugins = plugins
+            .Where(static plugin => plugin.Enabled)
+            .OrderBy(static plugin => plugin.Name ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(static plugin => plugin.Id ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        for (var i = 0; i < orderedPlugins.Length; i++) {
+            if (maxItems > 0 && summaries.Count >= maxItems) {
+                break;
+            }
+
+            var plugin = orderedPlugins[i];
+            var displayName = ResolvePluginDisplayName(plugin);
+            if (displayName.Length == 0) {
+                continue;
+            }
+
+            var coverage = BuildPackDisplayNamesForIds(packs, plugin.PackIds);
+            var summary = displayName + " from " + DescribePluginOrigin(plugin.Origin, plugin.SourceKind);
+            if (coverage.Count > 0) {
+                summary += " covering " + string.Join(", ", coverage);
+            }
+
+            if (!ContainsIgnoreCase(summaries, summary)) {
+                summaries.Add(summary);
+            }
+        }
+
+        return summaries;
+    }
+
+    private static string ResolvePluginDisplayName(PluginInfoDto plugin) {
+        var displayName = (plugin.Name ?? string.Empty).Trim();
+        if (displayName.Length > 0) {
+            return displayName;
+        }
+
+        return ToolPackMetadataNormalizer.ResolveDisplayName(plugin.Id, fallbackName: plugin.Id);
+    }
+
+    private static string DescribePluginOrigin(string? origin, ToolPackSourceKind sourceKind) {
+        var normalizedOrigin = (origin ?? string.Empty).Trim();
+        if (normalizedOrigin.Equals("folder", StringComparison.OrdinalIgnoreCase)
+            || normalizedOrigin.Equals("plugin_folder", StringComparison.OrdinalIgnoreCase)) {
+            return "a plugin folder";
+        }
+
+        if (normalizedOrigin.Equals("builtin", StringComparison.OrdinalIgnoreCase)) {
+            return "the built-in runtime";
+        }
+
+        if (normalizedOrigin.Length > 0) {
+            return normalizedOrigin.Replace('_', ' ');
+        }
+
+        return sourceKind switch {
+            ToolPackSourceKind.Builtin => "the built-in runtime",
+            ToolPackSourceKind.ClosedSource => "a closed-source plugin source",
+            _ => "a registered plugin source"
+        };
+    }
+
+    private static bool HasBackgroundCapableDeferredWork(
+        IReadOnlyList<SessionCapabilityDeferredWorkAffordanceDto> affordances) {
+        for (var i = 0; i < affordances.Count; i++) {
+            if (affordances[i].SupportsBackgroundExecution) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static List<string> BuildDeferredWorkAffordanceDisplayNames(
+        IReadOnlyList<SessionCapabilityDeferredWorkAffordanceDto> affordances) {
+        var names = new List<string>();
+        for (var i = 0; i < affordances.Count; i++) {
+            var displayName = ResolveDeferredWorkAffordanceDisplayName(affordances[i]);
+            if (displayName.Length == 0 || ContainsIgnoreCase(names, displayName)) {
+                continue;
+            }
+
+            names.Add(displayName);
+        }
+
+        names.Sort(StringComparer.OrdinalIgnoreCase);
+        return names;
+    }
+
+    private static List<string> BuildDeferredWorkRepresentativeExamples(
+        IReadOnlyList<SessionCapabilityDeferredWorkAffordanceDto> affordances,
+        int maxItems) {
+        var examples = new List<string>();
+        for (var i = 0; i < affordances.Count; i++) {
+            var affordanceExamples = affordances[i].RepresentativeExamples ?? Array.Empty<string>();
+            for (var j = 0; j < affordanceExamples.Length; j++) {
+                var example = (affordanceExamples[j] ?? string.Empty).Trim();
+                if (example.Length == 0 || ContainsIgnoreCase(examples, example)) {
+                    continue;
+                }
+
+                examples.Add(example);
+                if (examples.Count >= maxItems) {
+                    return examples;
+                }
+            }
+        }
+
+        return examples;
+    }
+
+    private static string ResolveDeferredWorkAffordanceDisplayName(SessionCapabilityDeferredWorkAffordanceDto affordance) {
+        var displayName = (affordance.DisplayName ?? string.Empty).Trim();
+        if (displayName.Length > 0) {
+            return displayName;
+        }
+
+        var capabilityId = (affordance.CapabilityId ?? string.Empty).Trim();
+        if (capabilityId.Length == 0) {
+            return string.Empty;
+        }
+
+        var tokens = capabilityId.Split(new[] { '_', '-', ' ' }, StringSplitOptions.RemoveEmptyEntries);
+        if (tokens.Length == 0) {
+            return capabilityId;
+        }
+
+        for (var i = 0; i < tokens.Length; i++) {
+            tokens[i] = CultureInfo.InvariantCulture.TextInfo.ToTitleCase(tokens[i].ToLowerInvariant());
+        }
+
+        return string.Join(" ", tokens);
     }
 
     private static List<string> BuildRepresentativeCapabilityExamples(

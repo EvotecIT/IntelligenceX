@@ -42,33 +42,116 @@ public static class ToolCatalogExportBuilder {
         IEnumerable<ToolPackAvailabilityInfo>? packAvailability,
         ToolOrchestrationCatalog? orchestrationCatalog) {
         var list = new List<ToolPackInfoDto>();
+        var seenPackIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var pack in packAvailability ?? Array.Empty<ToolPackAvailabilityInfo>()) {
-            var autonomySummary = ToolAutonomySummaryBuilder.BuildPackAutonomySummary(pack.Id, orchestrationCatalog);
-            var exposesWriteCapability =
-                autonomySummary is not null
-                && (autonomySummary.WriteCapableTools > 0 || autonomySummary.GovernedWriteTools > 0);
-            list.Add(new ToolPackInfoDto {
-                Id = pack.Id,
-                Name = ToolPackMetadataNormalizer.ResolveDisplayName(pack.Id, pack.Name),
-                Description = string.IsNullOrWhiteSpace(pack.Description) ? null : pack.Description.Trim(),
-                Tier = MapTier(pack.Tier),
-                Enabled = pack.Enabled,
-                DisabledReason = pack.Enabled || string.IsNullOrWhiteSpace(pack.DisabledReason) ? null : pack.DisabledReason.Trim(),
-                IsDangerous = pack.IsDangerous || pack.Tier == ToolCapabilityTier.DangerousWrite || exposesWriteCapability,
-                SourceKind = ToolPackMetadataNormalizer.ResolveSourceKind(pack.SourceKind),
-                Category = string.IsNullOrWhiteSpace(pack.Category) ? null : pack.Category.Trim(),
-                EngineId = string.IsNullOrWhiteSpace(pack.EngineId) ? null : pack.EngineId.Trim(),
-                Aliases = pack.Aliases?.Where(static alias => !string.IsNullOrWhiteSpace(alias)).ToArray() ?? Array.Empty<string>(),
-                CapabilityTags = pack.CapabilityTags?.Where(static tag => !string.IsNullOrWhiteSpace(tag)).ToArray() ?? Array.Empty<string>(),
-                SearchTokens = pack.SearchTokens?.Where(static token => !string.IsNullOrWhiteSpace(token)).ToArray() ?? Array.Empty<string>(),
-                AutonomySummary = autonomySummary
-            });
+            var normalizedPackId = ToolPackMetadataNormalizer.NormalizePackId(pack.Id);
+            if (normalizedPackId.Length > 0) {
+                seenPackIds.Add(normalizedPackId);
+            }
+
+            list.Add(BuildPackInfoDto(pack, orchestrationCatalog));
+        }
+
+        if (orchestrationCatalog is not null) {
+            foreach (var packId in orchestrationCatalog.GetKnownPackIds()) {
+                if (!seenPackIds.Add(packId)
+                    || !orchestrationCatalog.TryGetPackMetadata(packId, out var packMetadata)) {
+                    continue;
+                }
+
+                list.Add(BuildPackInfoDtoFromMetadata(packMetadata, orchestrationCatalog));
+            }
         }
 
         return list
             .OrderBy(static pack => pack.Name, StringComparer.OrdinalIgnoreCase)
             .ThenBy(static pack => pack.Id, StringComparer.OrdinalIgnoreCase)
             .ToArray();
+    }
+
+    /// <summary>
+    /// Builds plugin DTOs from runtime plugin availability, falling back to exported pack summaries when plugin metadata is unavailable.
+    /// </summary>
+    public static PluginInfoDto[] BuildPluginInfoDtos(
+        IEnumerable<ToolPluginAvailabilityInfo>? pluginAvailability,
+        IReadOnlyList<ToolPackInfoDto>? packs,
+        IEnumerable<ToolPluginCatalogInfo>? pluginCatalog = null) {
+        var pluginList = new List<PluginInfoDto>();
+        var normalizedPlugins = (pluginAvailability ?? Array.Empty<ToolPluginAvailabilityInfo>())
+            .Where(static plugin => plugin is not null)
+            .ToArray();
+        var normalizedCatalog = (pluginCatalog ?? Array.Empty<ToolPluginCatalogInfo>())
+            .Where(static plugin => plugin is not null)
+            .ToArray();
+        var packLookup = BuildPackInfoLookup(packs);
+        var availabilityLookup = BuildPluginAvailabilityLookup(normalizedPlugins);
+        var seenPluginIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        if (normalizedPlugins.Length == 0 && normalizedCatalog.Length == 0) {
+            foreach (var pack in packs ?? Array.Empty<ToolPackInfoDto>()) {
+                pluginList.Add(new PluginInfoDto {
+                    Id = pack.Id,
+                    Name = pack.Name,
+                    Origin = ResolveSyntheticPluginOrigin(pack.SourceKind),
+                    SourceKind = pack.SourceKind,
+                    DefaultEnabled = pack.Enabled,
+                    Enabled = pack.Enabled,
+                    DisabledReason = pack.Enabled ? null : pack.DisabledReason,
+                    IsDangerous = pack.IsDangerous || pack.Tier == CapabilityTier.DangerousWrite,
+                    PackIds = string.IsNullOrWhiteSpace(pack.Id) ? Array.Empty<string>() : new[] { ToolPackMetadataNormalizer.NormalizePackId(pack.Id) },
+                    SkillDirectories = Array.Empty<string>(),
+                    SkillIds = Array.Empty<string>()
+                });
+            }
+        } else {
+            foreach (var catalogEntry in normalizedCatalog) {
+                var normalizedPluginId = ToolPackMetadataNormalizer.NormalizePackId(catalogEntry.Id);
+                if (normalizedPluginId.Length == 0 || !seenPluginIds.Add(normalizedPluginId)) {
+                    continue;
+                }
+
+                availabilityLookup.TryGetValue(normalizedPluginId, out var availability);
+                pluginList.Add(BuildPluginInfoDto(catalogEntry, availability, packLookup));
+            }
+
+            foreach (var plugin in normalizedPlugins) {
+                var normalizedPluginId = ToolPackMetadataNormalizer.NormalizePackId(plugin.Id);
+                if (normalizedPluginId.Length > 0 && !seenPluginIds.Add(normalizedPluginId)) {
+                    continue;
+                }
+
+                pluginList.Add(BuildPluginInfoDto(plugin, packLookup));
+            }
+        }
+
+        return pluginList
+            .OrderBy(static plugin => plugin.Name, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(static plugin => plugin.Id, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    /// <summary>
+    /// Builds a nested runtime tooling snapshot from normalized pack/plugin export DTOs.
+    /// </summary>
+    public static SessionCapabilityToolingSnapshotDto? BuildCapabilityToolingSnapshotDto(
+        IReadOnlyList<ToolPackInfoDto>? packs,
+        IReadOnlyList<PluginInfoDto>? plugins,
+        string? source = null) {
+        var normalizedPacks = (packs ?? Array.Empty<ToolPackInfoDto>())
+            .Where(static pack => pack is not null)
+            .ToArray();
+        var normalizedPlugins = (plugins ?? Array.Empty<PluginInfoDto>())
+            .Where(static plugin => plugin is not null)
+            .ToArray();
+        if (normalizedPacks.Length == 0 && normalizedPlugins.Length == 0) {
+            return null;
+        }
+
+        return new SessionCapabilityToolingSnapshotDto {
+            Source = string.IsNullOrWhiteSpace(source) ? null : source.Trim(),
+            Packs = normalizedPacks,
+            Plugins = normalizedPlugins
+        };
     }
 
     /// <summary>
@@ -85,7 +168,11 @@ public static class ToolCatalogExportBuilder {
                 .Select(static item => new SessionRoutingFamilyActionSummaryDto {
                     Family = item.Family,
                     ActionId = item.ActionId,
-                    ToolCount = Math.Max(0, item.ToolCount)
+                    ToolCount = Math.Max(0, item.ToolCount),
+                    DisplayName = string.IsNullOrWhiteSpace(item.DisplayName) ? null : item.DisplayName.Trim(),
+                    ReplyExample = string.IsNullOrWhiteSpace(item.ReplyExample) ? null : item.ReplyExample.Trim(),
+                    ChoiceDescription = string.IsNullOrWhiteSpace(item.ChoiceDescription) ? null : item.ChoiceDescription.Trim(),
+                    RepresentativePackIds = item.RepresentativePackIds is { Length: > 0 } ? item.RepresentativePackIds : null
                 })
                 .ToArray();
         var autonomyReadinessHighlights = ToolRoutingCatalogDiagnosticsBuilder.BuildAutonomyReadinessHighlights(diagnostics, maxItems: 6);
@@ -179,6 +266,9 @@ public static class ToolCatalogExportBuilder {
             RoutingSource = string.IsNullOrWhiteSpace(orchestrationEntry?.RoutingSource) ? null : orchestrationEntry!.RoutingSource,
             DomainIntentFamily = string.IsNullOrWhiteSpace(orchestrationEntry?.DomainIntentFamily) ? null : orchestrationEntry!.DomainIntentFamily,
             DomainIntentActionId = string.IsNullOrWhiteSpace(orchestrationEntry?.DomainIntentActionId) ? null : orchestrationEntry!.DomainIntentActionId,
+            DomainIntentFamilyDisplayName = string.IsNullOrWhiteSpace(orchestrationEntry?.DomainIntentFamilyDisplayName) ? null : orchestrationEntry!.DomainIntentFamilyDisplayName,
+            DomainIntentFamilyReplyExample = string.IsNullOrWhiteSpace(orchestrationEntry?.DomainIntentFamilyReplyExample) ? null : orchestrationEntry!.DomainIntentFamilyReplyExample,
+            DomainIntentFamilyChoiceDescription = string.IsNullOrWhiteSpace(orchestrationEntry?.DomainIntentFamilyChoiceDescription) ? null : orchestrationEntry!.DomainIntentFamilyChoiceDescription,
             PackName = string.IsNullOrWhiteSpace(packName) ? null : packName,
             PackDescription = string.IsNullOrWhiteSpace(packDescription) ? null : packDescription,
             PackSourceKind = packSourceKind,
@@ -471,6 +561,391 @@ public static class ToolCatalogExportBuilder {
     private static string? NormalizeSchemaJsonSnippet(string? value) {
         var normalized = (value ?? string.Empty).Trim();
         return normalized.Length == 0 ? null : normalized;
+    }
+
+    private static ToolPackInfoDto BuildPackInfoDto(
+        ToolPackAvailabilityInfo pack,
+        ToolOrchestrationCatalog? orchestrationCatalog) {
+        var autonomySummary = ToolAutonomySummaryBuilder.BuildPackAutonomySummary(pack.Id, orchestrationCatalog);
+        var exposesWriteCapability = ExposesWriteCapability(autonomySummary);
+        var packMetadata = TryResolvePackMetadata(pack.Id, orchestrationCatalog);
+        var displayName = !string.IsNullOrWhiteSpace(pack.Name)
+            ? ToolPackMetadataNormalizer.ResolveDisplayName(pack.Id, pack.Name)
+            : ResolvePackDisplayName(pack.Id, packMetadata);
+        var sourceKind = !string.IsNullOrWhiteSpace(pack.SourceKind)
+            ? ToolPackMetadataNormalizer.ResolveSourceKind(pack.SourceKind)
+            : ResolvePackSourceKind(packMetadata);
+        var category = !string.IsNullOrWhiteSpace(pack.Category)
+            ? pack.Category.Trim()
+            : ResolvePackCategory(packMetadata);
+        var engineId = !string.IsNullOrWhiteSpace(pack.EngineId)
+            ? pack.EngineId.Trim()
+            : ResolvePackEngineId(packMetadata);
+        var capabilityTags = NormalizeDistinctNonEmptyStrings(pack.CapabilityTags);
+        if (capabilityTags.Length == 0) {
+            capabilityTags = ResolvePackCapabilityTags(packMetadata);
+        }
+
+        return new ToolPackInfoDto {
+            Id = pack.Id,
+            Name = displayName,
+            Description = string.IsNullOrWhiteSpace(pack.Description) ? null : pack.Description.Trim(),
+            Tier = MapTier(pack.Tier),
+            Enabled = pack.Enabled,
+            DisabledReason = pack.Enabled || string.IsNullOrWhiteSpace(pack.DisabledReason) ? null : pack.DisabledReason.Trim(),
+            IsDangerous = pack.IsDangerous || pack.Tier == ToolCapabilityTier.DangerousWrite || exposesWriteCapability,
+            SourceKind = sourceKind,
+            Category = category,
+            EngineId = engineId,
+            Aliases = NormalizeDistinctNonEmptyStrings(pack.Aliases),
+            CapabilityTags = capabilityTags,
+            SearchTokens = NormalizeDistinctNonEmptyStrings(pack.SearchTokens),
+            AutonomySummary = autonomySummary
+        };
+    }
+
+    private static ToolPackInfoDto BuildPackInfoDtoFromMetadata(
+        ToolOrchestrationPackMetadata packMetadata,
+        ToolOrchestrationCatalog orchestrationCatalog) {
+        var autonomySummary = ToolAutonomySummaryBuilder.BuildPackAutonomySummary(packMetadata.PackId, orchestrationCatalog);
+        var exposesWriteCapability = ExposesWriteCapability(autonomySummary);
+        var isDangerous = packMetadata.IsDangerous || exposesWriteCapability;
+        return new ToolPackInfoDto {
+            Id = packMetadata.PackId,
+            Name = ResolvePackDisplayName(packMetadata.PackId, packMetadata),
+            Tier = MapTier(packMetadata.Tier),
+            Enabled = true,
+            IsDangerous = isDangerous,
+            SourceKind = ResolvePackSourceKind(packMetadata),
+            Category = ResolvePackCategory(packMetadata),
+            EngineId = ResolvePackEngineId(packMetadata),
+            Aliases = Array.Empty<string>(),
+            CapabilityTags = ResolvePackCapabilityTags(packMetadata),
+            SearchTokens = Array.Empty<string>(),
+            AutonomySummary = autonomySummary
+        };
+    }
+
+    private static ToolOrchestrationPackMetadata? TryResolvePackMetadata(
+        string? packId,
+        ToolOrchestrationCatalog? orchestrationCatalog) {
+        if (orchestrationCatalog is null || !orchestrationCatalog.TryGetPackMetadata(packId, out var metadata)) {
+            return null;
+        }
+
+        return metadata;
+    }
+
+    private static bool ExposesWriteCapability(ToolPackAutonomySummaryDto? autonomySummary) {
+        return autonomySummary is not null
+               && (autonomySummary.WriteCapableTools > 0 || autonomySummary.GovernedWriteTools > 0);
+    }
+
+    private static string ResolvePackDisplayName(string? packId, ToolOrchestrationPackMetadata? packMetadata) {
+        if (packMetadata is not null && !string.IsNullOrWhiteSpace(packMetadata.DisplayName)) {
+            return packMetadata.DisplayName.Trim();
+        }
+
+        return ToolPackMetadataNormalizer.ResolveDisplayName(packId, fallbackName: null);
+    }
+
+    private static ToolPackSourceKind ResolvePackSourceKind(ToolOrchestrationPackMetadata? packMetadata) {
+        return ToolPackMetadataNormalizer.ResolveSourceKind(packMetadata?.SourceKind);
+    }
+
+    private static string? ResolvePackCategory(ToolOrchestrationPackMetadata? packMetadata) {
+        return string.IsNullOrWhiteSpace(packMetadata?.Category)
+            ? null
+            : packMetadata.Category.Trim();
+    }
+
+    private static string? ResolvePackEngineId(ToolOrchestrationPackMetadata? packMetadata) {
+        return string.IsNullOrWhiteSpace(packMetadata?.EngineId)
+            ? null
+            : packMetadata.EngineId.Trim();
+    }
+
+    private static string[] ResolvePackCapabilityTags(ToolOrchestrationPackMetadata? packMetadata) {
+        return NormalizeDistinctNonEmptyStrings(packMetadata?.CapabilityTags);
+    }
+
+    private static string ResolveSyntheticPluginOrigin(ToolPackSourceKind sourceKind) {
+        return sourceKind switch {
+            ToolPackSourceKind.Builtin => "builtin",
+            ToolPackSourceKind.ClosedSource => "closed_source",
+            _ => "open_source"
+        };
+    }
+
+    private static PluginInfoDto BuildPluginInfoDto(
+        ToolPluginCatalogInfo catalog,
+        ToolPluginAvailabilityInfo? availability,
+        IReadOnlyDictionary<string, ToolPackInfoDto> packLookup) {
+        var normalizedCatalogPluginId = ToolPackMetadataNormalizer.NormalizePackId(catalog.Id);
+        var resolvedPackIds = ResolvePluginPackIds(availability, catalog, packLookup);
+        var resolvedPacks = ResolvePluginPacks(resolvedPackIds, packLookup);
+        var enabled = availability?.Enabled
+            ?? resolvedPacks.Any(static pack => pack.Enabled)
+            || catalog.DefaultEnabled;
+        var origin = !string.IsNullOrWhiteSpace(availability?.Origin)
+            ? availability!.Origin.Trim()
+            : !string.IsNullOrWhiteSpace(catalog.Origin)
+                ? catalog.Origin.Trim()
+                : (resolvedPacks.Length > 0 ? ResolveSyntheticPluginOrigin(resolvedPacks[0].SourceKind) : "unknown");
+        var resolvedDangerous = (availability?.IsDangerous ?? false)
+            || catalog.IsDangerous
+            || resolvedPacks.Any(static pack => pack.IsDangerous || pack.Tier == CapabilityTier.DangerousWrite);
+
+        return new PluginInfoDto {
+            Id = normalizedCatalogPluginId.Length == 0 ? catalog.Id : normalizedCatalogPluginId,
+            Name = ResolvePluginName(availability, catalog, resolvedPacks),
+            Version = ResolvePluginVersion(availability?.Version, catalog.Version),
+            Origin = origin,
+            SourceKind = ResolvePluginSourceKind(availability?.SourceKind, catalog.SourceKind, resolvedPacks),
+            DefaultEnabled = availability?.DefaultEnabled ?? catalog.DefaultEnabled,
+            Enabled = enabled,
+            DisabledReason = enabled ? null : availability?.DisabledReason,
+            IsDangerous = resolvedDangerous,
+            PackIds = resolvedPackIds,
+            RootPath = ResolvePluginRootPath(availability?.RootPath, catalog.RootPath),
+            SkillDirectories = NormalizeDistinctNonEmptyStrings(
+                (availability?.SkillDirectories ?? Array.Empty<string>())
+                .Concat(catalog.SkillDirectories ?? Array.Empty<string>())),
+            SkillIds = NormalizePluginSkillIds(
+                (availability?.SkillIds ?? Array.Empty<string>())
+                .Concat(catalog.SkillIds ?? Array.Empty<string>()))
+        };
+    }
+
+    private static PluginInfoDto BuildPluginInfoDto(
+        ToolPluginAvailabilityInfo plugin,
+        IReadOnlyDictionary<string, ToolPackInfoDto> packLookup) {
+        var resolvedPackIds = ResolvePluginPackIds(plugin, packLookup);
+        var resolvedPacks = ResolvePluginPacks(resolvedPackIds, packLookup);
+        var resolvedDangerous = plugin.IsDangerous || resolvedPacks.Any(static pack => pack.IsDangerous || pack.Tier == CapabilityTier.DangerousWrite);
+        return new PluginInfoDto {
+            Id = plugin.Id,
+            Name = ResolvePluginName(plugin, resolvedPacks),
+            Version = string.IsNullOrWhiteSpace(plugin.Version) ? null : plugin.Version.Trim(),
+            Origin = string.IsNullOrWhiteSpace(plugin.Origin) ? "unknown" : plugin.Origin.Trim(),
+            SourceKind = ResolvePluginSourceKind(plugin, resolvedPacks),
+            DefaultEnabled = plugin.DefaultEnabled,
+            Enabled = plugin.Enabled,
+            DisabledReason = plugin.Enabled ? null : plugin.DisabledReason,
+            IsDangerous = resolvedDangerous,
+            PackIds = resolvedPackIds,
+            RootPath = string.IsNullOrWhiteSpace(plugin.RootPath) ? null : plugin.RootPath.Trim(),
+            SkillDirectories = NormalizeDistinctNonEmptyStrings(plugin.SkillDirectories),
+            SkillIds = NormalizePluginSkillIds(plugin.SkillIds)
+        };
+    }
+
+    private static Dictionary<string, ToolPackInfoDto> BuildPackInfoLookup(IReadOnlyList<ToolPackInfoDto>? packs) {
+        return (packs ?? Array.Empty<ToolPackInfoDto>())
+            .Where(static pack => pack is not null)
+            .Select(static pack => new KeyValuePair<string, ToolPackInfoDto>(ToolPackMetadataNormalizer.NormalizePackId(pack.Id), pack))
+            .Where(static pair => pair.Key.Length > 0)
+            .GroupBy(static pair => pair.Key, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(static group => group.Key, static group => group.First().Value, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static Dictionary<string, ToolPluginAvailabilityInfo> BuildPluginAvailabilityLookup(
+        IEnumerable<ToolPluginAvailabilityInfo>? plugins) {
+        return (plugins ?? Array.Empty<ToolPluginAvailabilityInfo>())
+            .Where(static plugin => plugin is not null)
+            .Select(static plugin => new KeyValuePair<string, ToolPluginAvailabilityInfo>(
+                ToolPackMetadataNormalizer.NormalizePackId(plugin.Id),
+                plugin))
+            .Where(static pair => pair.Key.Length > 0)
+            .GroupBy(static pair => pair.Key, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(static group => group.Key, static group => group.First().Value, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static string[] ResolvePluginPackIds(
+        ToolPluginAvailabilityInfo plugin,
+        IReadOnlyDictionary<string, ToolPackInfoDto> packLookup) {
+        var normalizedPackIds = NormalizePluginPackIds(plugin.PackIds);
+        if (normalizedPackIds.Length > 0) {
+            return normalizedPackIds;
+        }
+
+        var normalizedPluginId = ToolPackMetadataNormalizer.NormalizePackId(plugin.Id);
+        if (normalizedPluginId.Length > 0 && packLookup.ContainsKey(normalizedPluginId)) {
+            return new[] { normalizedPluginId };
+        }
+
+        return Array.Empty<string>();
+    }
+
+    private static string[] ResolvePluginPackIds(
+        ToolPluginAvailabilityInfo? availability,
+        ToolPluginCatalogInfo catalog,
+        IReadOnlyDictionary<string, ToolPackInfoDto> packLookup) {
+        var normalizedPackIds = NormalizePluginPackIds(availability?.PackIds);
+        if (normalizedPackIds.Length > 0) {
+            return normalizedPackIds;
+        }
+
+        normalizedPackIds = NormalizePluginPackIds(catalog.PackIds);
+        if (normalizedPackIds.Length > 0) {
+            return normalizedPackIds;
+        }
+
+        var normalizedPluginId = ToolPackMetadataNormalizer.NormalizePackId(availability?.Id ?? catalog.Id);
+        if (normalizedPluginId.Length > 0 && packLookup.ContainsKey(normalizedPluginId)) {
+            return new[] { normalizedPluginId };
+        }
+
+        return Array.Empty<string>();
+    }
+
+    private static ToolPackInfoDto[] ResolvePluginPacks(
+        IReadOnlyList<string> packIds,
+        IReadOnlyDictionary<string, ToolPackInfoDto> packLookup) {
+        if (packIds.Count == 0) {
+            return Array.Empty<ToolPackInfoDto>();
+        }
+
+        var resolved = new List<ToolPackInfoDto>(packIds.Count);
+        for (var i = 0; i < packIds.Count; i++) {
+            if (packLookup.TryGetValue(packIds[i], out var pack)) {
+                resolved.Add(pack);
+            }
+        }
+
+        return resolved.Count == 0 ? Array.Empty<ToolPackInfoDto>() : resolved.ToArray();
+    }
+
+    private static string ResolvePluginName(ToolPluginAvailabilityInfo plugin, IReadOnlyList<ToolPackInfoDto> resolvedPacks) {
+        if (!string.IsNullOrWhiteSpace(plugin.Name)) {
+            return plugin.Name.Trim();
+        }
+
+        if (resolvedPacks.Count == 1) {
+            return resolvedPacks[0].Name;
+        }
+
+        var normalizedPluginId = ToolPackMetadataNormalizer.NormalizePackId(plugin.Id);
+        return ToolPackMetadataNormalizer.ResolveDisplayName(plugin.Id, normalizedPluginId.Length == 0 ? plugin.Id : normalizedPluginId);
+    }
+
+    private static string ResolvePluginName(
+        ToolPluginAvailabilityInfo? availability,
+        ToolPluginCatalogInfo catalog,
+        IReadOnlyList<ToolPackInfoDto> resolvedPacks) {
+        if (!string.IsNullOrWhiteSpace(availability?.Name)) {
+            return availability!.Name.Trim();
+        }
+
+        if (!string.IsNullOrWhiteSpace(catalog.Name)) {
+            return catalog.Name.Trim();
+        }
+
+        if (resolvedPacks.Count == 1) {
+            return resolvedPacks[0].Name;
+        }
+
+        var rawPluginId = availability?.Id ?? catalog.Id;
+        var normalizedPluginId = ToolPackMetadataNormalizer.NormalizePackId(rawPluginId);
+        return ToolPackMetadataNormalizer.ResolveDisplayName(rawPluginId, normalizedPluginId.Length == 0 ? rawPluginId : normalizedPluginId);
+    }
+
+    private static ToolPackSourceKind ResolvePluginSourceKind(ToolPluginAvailabilityInfo plugin, IReadOnlyList<ToolPackInfoDto> resolvedPacks) {
+        if (!string.IsNullOrWhiteSpace(plugin.SourceKind)) {
+            return ToolPackMetadataNormalizer.ResolveSourceKind(plugin.SourceKind);
+        }
+
+        if (resolvedPacks.Count > 0) {
+            return resolvedPacks[0].SourceKind;
+        }
+
+        return ToolPackSourceKind.OpenSource;
+    }
+
+    private static ToolPackSourceKind ResolvePluginSourceKind(
+        string? availabilitySourceKind,
+        string? catalogSourceKind,
+        IReadOnlyList<ToolPackInfoDto> resolvedPacks) {
+        if (!string.IsNullOrWhiteSpace(availabilitySourceKind)) {
+            return ToolPackMetadataNormalizer.ResolveSourceKind(availabilitySourceKind);
+        }
+
+        if (!string.IsNullOrWhiteSpace(catalogSourceKind)) {
+            return ToolPackMetadataNormalizer.ResolveSourceKind(catalogSourceKind);
+        }
+
+        if (resolvedPacks.Count > 0) {
+            return resolvedPacks[0].SourceKind;
+        }
+
+        return ToolPackSourceKind.OpenSource;
+    }
+
+    private static string? ResolvePluginVersion(string? availabilityVersion, string? catalogVersion) {
+        if (!string.IsNullOrWhiteSpace(availabilityVersion)) {
+            return availabilityVersion.Trim();
+        }
+
+        return string.IsNullOrWhiteSpace(catalogVersion) ? null : catalogVersion.Trim();
+    }
+
+    private static string? ResolvePluginRootPath(string? availabilityRootPath, string? catalogRootPath) {
+        if (!string.IsNullOrWhiteSpace(availabilityRootPath)) {
+            return availabilityRootPath.Trim();
+        }
+
+        return string.IsNullOrWhiteSpace(catalogRootPath) ? null : catalogRootPath.Trim();
+    }
+
+    private static string[] NormalizePluginPackIds(IEnumerable<string>? values) {
+        if (values is null) {
+            return Array.Empty<string>();
+        }
+
+        return values
+            .Select(static value => ToolPackMetadataNormalizer.NormalizePackId(value))
+            .Where(static value => value.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static string[] NormalizePluginSkillIds(IEnumerable<string>? values) {
+        if (values is null) {
+            return Array.Empty<string>();
+        }
+
+        return values
+            .Select(static value => NormalizePluginSkillId(value))
+            .Where(static value => value.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static string NormalizePluginSkillId(string? value) {
+        var normalized = (value ?? string.Empty).Trim().ToLowerInvariant();
+        if (normalized.Length == 0 || normalized.Length > 128) {
+            return string.Empty;
+        }
+
+        foreach (var ch in normalized) {
+            if (char.IsWhiteSpace(ch) || char.IsControl(ch)) {
+                return string.Empty;
+            }
+        }
+
+        return normalized;
+    }
+
+    private static string[] NormalizeDistinctNonEmptyStrings(IEnumerable<string>? values) {
+        if (values is null) {
+            return Array.Empty<string>();
+        }
+
+        return values
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .Select(static value => value.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
     }
 
     private static CapabilityTier MapTier(ToolCapabilityTier tier) {

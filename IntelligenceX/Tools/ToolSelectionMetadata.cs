@@ -885,6 +885,9 @@ public static class ToolSelectionMetadata {
             Risk = NormalizeRoutingToken(existing?.Risk, ToolRoutingTaxonomy.IsAllowedRisk, routing.Risk),
             DomainIntentFamily = family,
             DomainIntentActionId = actionId,
+            DomainIntentFamilyDisplayName = NormalizeOptionalText(existing?.DomainIntentFamilyDisplayName),
+            DomainIntentFamilyReplyExample = NormalizeOptionalText(existing?.DomainIntentFamilyReplyExample),
+            DomainIntentFamilyChoiceDescription = NormalizeOptionalText(existing?.DomainIntentFamilyChoiceDescription),
             DomainSignalTokens = domainSignals,
             RequiresSelectionForFallback = requiresSelection,
             FallbackSelectionKeys = fallbackSelectionKeys,
@@ -912,6 +915,9 @@ public static class ToolSelectionMetadata {
                && string.Equals(left.Risk, right.Risk, StringComparison.OrdinalIgnoreCase)
                && string.Equals(left.DomainIntentFamily, right.DomainIntentFamily, StringComparison.OrdinalIgnoreCase)
                && string.Equals(left.DomainIntentActionId, right.DomainIntentActionId, StringComparison.OrdinalIgnoreCase)
+               && string.Equals(left.DomainIntentFamilyDisplayName, right.DomainIntentFamilyDisplayName, StringComparison.Ordinal)
+               && string.Equals(left.DomainIntentFamilyReplyExample, right.DomainIntentFamilyReplyExample, StringComparison.Ordinal)
+               && string.Equals(left.DomainIntentFamilyChoiceDescription, right.DomainIntentFamilyChoiceDescription, StringComparison.Ordinal)
                && SequenceEqual(left.DomainSignalTokens, right.DomainSignalTokens)
                && left.RequiresSelectionForFallback == right.RequiresSelectionForFallback
                && SequenceEqual(left.FallbackSelectionKeys, right.FallbackSelectionKeys)
@@ -1131,6 +1137,10 @@ public static class ToolSelectionMetadata {
         }
 
         return normalized.ToLowerInvariant();
+    }
+
+    private static string NormalizeOptionalText(string? value) {
+        return (value ?? string.Empty).Trim();
     }
 
     private static string NormalizeRoutingToken(

@@ -23,6 +23,7 @@ internal sealed partial class ChatServiceSession {
     private const int PlannerSetupAwarePriorityBoost = 110;
     private const int PlannerPackPreferredEntryPriorityBoost = 95;
     private const int PlannerPackPreferredProbePriorityBoost = 125;
+    private const int PlannerDeferredWorkCapabilityPriorityBoost = 150;
     private const int PlannerPackRecipePriorityStep = 30;
     private const int PlannerPackRecipePriorityMaxBoost = 90;
     private const int PlannerStructuredMutatingActionPriorityBoost = 140;
@@ -36,6 +37,7 @@ internal sealed partial class ChatServiceSession {
     private const double WeightedRoutingSetupAwareScoreBoost = 1.65d;
     private const double WeightedRoutingPackPreferredEntryScoreBoost = 1.15d;
     private const double WeightedRoutingPackPreferredProbeScoreBoost = 1.55d;
+    private const double WeightedRoutingDeferredWorkCapabilityScoreBoost = 1.9d;
     private const double WeightedRoutingPackRecipeScoreStep = 0.45d;
     private const double WeightedRoutingPackRecipeScoreMaxBoost = 1.35d;
     private const double WeightedRoutingStructuredMutatingActionScoreBoost = 2.25d;
@@ -46,6 +48,224 @@ internal sealed partial class ChatServiceSession {
 
     private IReadOnlyList<ToolDefinition> SelectDeterministicToolSubset(IReadOnlyList<ToolDefinition> definitions, int limit) {
         return SelectDeterministicToolSubset(definitions, limit, _toolOrchestrationCatalog);
+    }
+
+    private static IReadOnlyList<ToolDefinition> SelectContractAwareDeterministicSubset(
+        IReadOnlyList<ToolDefinition> definitions,
+        int limit,
+        ToolOrchestrationCatalog toolOrchestrationCatalog,
+        IReadOnlyCollection<string> preferredToolNames,
+        IReadOnlyCollection<string> handoffTargetToolNames,
+        IReadOnlyCollection<string> preferredPackIds,
+        IReadOnlyCollection<string> handoffTargetPackIds) {
+        if (definitions.Count == 0 || limit <= 0) {
+            return Array.Empty<ToolDefinition>();
+        }
+
+        var targetedDefinitions = new List<ToolDefinition>(definitions.Count);
+        for (var i = 0; i < definitions.Count; i++) {
+            var definition = definitions[i];
+            if (definition is null) {
+                continue;
+            }
+
+            var packId = ResolveToolPackId(definition, toolOrchestrationCatalog);
+            if (!ToolMatchesPlannerContractTargets(
+                    definition.Name,
+                    packId,
+                    preferredToolNames,
+                    handoffTargetToolNames,
+                    preferredPackIds,
+                    handoffTargetPackIds)) {
+                continue;
+            }
+
+            targetedDefinitions.Add(definition);
+        }
+
+        if (targetedDefinitions.Count == 0) {
+            return SelectDeterministicToolSubset(definitions, limit, toolOrchestrationCatalog);
+        }
+
+        var selected = new List<ToolDefinition>(limit);
+        var selectedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var targetedOrdered = SelectDeterministicToolSubset(targetedDefinitions, limit, toolOrchestrationCatalog);
+        for (var i = 0; i < targetedOrdered.Count && selected.Count < limit; i++) {
+            var definition = targetedOrdered[i];
+            var name = (definition.Name ?? string.Empty).Trim();
+            if (name.Length == 0 || !selectedNames.Add(name)) {
+                continue;
+            }
+
+            selected.Add(definition);
+        }
+
+        if (selected.Count >= limit) {
+            return selected;
+        }
+
+        var globalOrdered = SelectDeterministicToolSubset(definitions, limit, toolOrchestrationCatalog);
+        for (var i = 0; i < globalOrdered.Count && selected.Count < limit; i++) {
+            var definition = globalOrdered[i];
+            var name = (definition.Name ?? string.Empty).Trim();
+            if (name.Length == 0 || !selectedNames.Add(name)) {
+                continue;
+            }
+
+            selected.Add(definition);
+        }
+
+        return selected.Count == 0 ? Array.Empty<ToolDefinition>() : selected;
+    }
+
+    private static IReadOnlyList<ToolDefinition> EnsureContractTargetedToolSelection(
+        IReadOnlyList<ToolDefinition> selectedDefinitions,
+        IReadOnlyList<ToolScore> scoredDefinitions,
+        int limit,
+        ToolOrchestrationCatalog toolOrchestrationCatalog,
+        IReadOnlyCollection<string> preferredToolNames,
+        IReadOnlyCollection<string> handoffTargetToolNames,
+        IReadOnlyCollection<string> preferredPackIds,
+        IReadOnlyCollection<string> handoffTargetPackIds) {
+        if (selectedDefinitions.Count == 0
+            || scoredDefinitions.Count == 0
+            || limit <= 0
+            || (preferredToolNames.Count == 0
+                && handoffTargetToolNames.Count == 0
+                && preferredPackIds.Count == 0
+                && handoffTargetPackIds.Count == 0)) {
+            return selectedDefinitions;
+        }
+
+        static bool MatchesPlannerTargets(
+            ToolDefinition definition,
+            ToolOrchestrationCatalog catalog,
+            IReadOnlyCollection<string> preferredTools,
+            IReadOnlyCollection<string> handoffTools,
+            IReadOnlyCollection<string> preferredPacks,
+            IReadOnlyCollection<string> handoffPacks) {
+            var toolName = (definition.Name ?? string.Empty).Trim();
+            var packId = ResolveToolPackId(definition, catalog);
+            return ToolMatchesPlannerContractTargets(
+                toolName,
+                packId,
+                preferredTools,
+                handoffTools,
+                preferredPacks,
+                handoffPacks);
+        }
+
+        for (var i = 0; i < selectedDefinitions.Count; i++) {
+            if (MatchesPlannerTargets(
+                    selectedDefinitions[i],
+                    toolOrchestrationCatalog,
+                    preferredToolNames,
+                    handoffTargetToolNames,
+                    preferredPackIds,
+                    handoffTargetPackIds)) {
+                return selectedDefinitions;
+            }
+        }
+
+        ToolScore? replacementCandidate = null;
+        for (var i = 0; i < scoredDefinitions.Count; i++) {
+            var scored = scoredDefinitions[i];
+            if (!MatchesPlannerTargets(
+                    scored.Definition,
+                    toolOrchestrationCatalog,
+                    preferredToolNames,
+                    handoffTargetToolNames,
+                    preferredPackIds,
+                    handoffTargetPackIds)) {
+                continue;
+            }
+
+            replacementCandidate = scored;
+            break;
+        }
+
+        if (!replacementCandidate.HasValue) {
+            return selectedDefinitions;
+        }
+
+        var selectedByName = new HashSet<string>(
+            selectedDefinitions
+                .Select(static definition => (definition.Name ?? string.Empty).Trim())
+                .Where(static name => name.Length > 0),
+            StringComparer.OrdinalIgnoreCase);
+        var replacementName = (replacementCandidate.Value.Definition.Name ?? string.Empty).Trim();
+        if (replacementName.Length == 0 || selectedByName.Contains(replacementName)) {
+            return selectedDefinitions;
+        }
+
+        if (selectedByName.Count < limit) {
+            selectedByName.Add(replacementName);
+        } else {
+            var replaced = false;
+            for (var i = selectedDefinitions.Count - 1; i >= 0; i--) {
+                var selected = selectedDefinitions[i];
+                var selectedName = (selected.Name ?? string.Empty).Trim();
+                if (selectedName.Length == 0) {
+                    continue;
+                }
+
+                if (MatchesPlannerTargets(
+                        selected,
+                        toolOrchestrationCatalog,
+                        preferredToolNames,
+                        handoffTargetToolNames,
+                        preferredPackIds,
+                        handoffTargetPackIds)) {
+                    continue;
+                }
+
+                if (TryGetToolScore(scoredDefinitions, selectedName, out var selectedScore)
+                    && (selectedScore.DirectNameMatch || selectedScore.ExplicitToolMatch)) {
+                    continue;
+                }
+
+                selectedByName.Remove(selectedName);
+                selectedByName.Add(replacementName);
+                replaced = true;
+                break;
+            }
+
+            if (!replaced) {
+                return selectedDefinitions;
+            }
+        }
+
+        var rebuiltSelection = new List<ToolDefinition>(Math.Min(limit, selectedByName.Count));
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < scoredDefinitions.Count && rebuiltSelection.Count < limit; i++) {
+            var definition = scoredDefinitions[i].Definition;
+            var toolName = (definition.Name ?? string.Empty).Trim();
+            if (toolName.Length == 0
+                || !selectedByName.Contains(toolName)
+                || !seen.Add(toolName)) {
+                continue;
+            }
+
+            rebuiltSelection.Add(definition);
+        }
+
+        return rebuiltSelection.Count == 0 ? selectedDefinitions : rebuiltSelection;
+    }
+
+    private static bool TryGetToolScore(
+        IReadOnlyList<ToolScore> scoredDefinitions,
+        string toolName,
+        out ToolScore toolScore) {
+        for (var i = 0; i < scoredDefinitions.Count; i++) {
+            var scored = scoredDefinitions[i];
+            if (string.Equals(scored.Definition.Name, toolName, StringComparison.OrdinalIgnoreCase)) {
+                toolScore = scored;
+                return true;
+            }
+        }
+
+        toolScore = default;
+        return false;
     }
 
     private static IReadOnlyList<ToolDefinition> SelectDeterministicToolSubset(

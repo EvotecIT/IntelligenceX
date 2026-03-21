@@ -11,8 +11,8 @@ using IntelligenceX.Tools.Common;
 namespace IntelligenceX.Chat.Tooling;
 
 internal static partial class PluginFolderToolPackLoader {
-    private const string ManifestFileName = "ix-plugin.json";
-    private const string PluginArchiveSuffix = ".ix-plugin.zip";
+    internal const string ManifestFileName = "ix-plugin.json";
+    internal const string PluginArchiveSuffix = ".ix-plugin.zip";
     private const string TestAssemblyFileName = "IntelligenceX.Chat.Tests.dll";
     private const int SupportedSchemaVersion = 1;
     private const int PluginArchiveCacheMaxEntries = 128;
@@ -82,7 +82,8 @@ internal static partial class PluginFolderToolPackLoader {
         HashSet<string> existingPackIds,
         Action<string>? onWarning,
         Action<ToolPackAvailabilityInfo>? onPackAvailability = null,
-        Action<ToolPluginAvailabilityInfo>? onPluginAvailability = null) {
+        Action<ToolPluginAvailabilityInfo>? onPluginAvailability = null,
+        Action<ToolPluginCatalogInfo>? onPluginCatalog = null) {
         if (packs is null) {
             throw new ArgumentNullException(nameof(packs));
         }
@@ -133,6 +134,7 @@ internal static partial class PluginFolderToolPackLoader {
                 onWarning: onWarning,
                 onPackAvailability: onPackAvailability,
                 onPluginAvailability: onPluginAvailability,
+                onPluginCatalog: onPluginCatalog,
                 loadIndex: i + 1,
                 loadTotal: total);
             if (loadedAnyPack && pending.PluginIdentity.Length > 0) {

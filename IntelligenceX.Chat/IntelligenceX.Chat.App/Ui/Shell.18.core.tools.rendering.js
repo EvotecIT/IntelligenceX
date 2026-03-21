@@ -295,6 +295,7 @@
     state.options.memoryDebug = nextOptions.memoryDebug || null;
     state.options.startupDiagnostics = nextOptions.startupDiagnostics || null;
     state.options.toolCatalogRoutingCatalog = nextOptions.toolCatalogRoutingCatalog || null;
+    state.options.toolCatalogPlugins = Array.isArray(nextOptions.toolCatalogPlugins) ? nextOptions.toolCatalogPlugins : [];
     state.options.toolCatalogCapabilitySnapshot = nextOptions.toolCatalogCapabilitySnapshot || null;
     var previousDebug = state.options.debug && typeof state.options.debug === "object"
       ? state.options.debug

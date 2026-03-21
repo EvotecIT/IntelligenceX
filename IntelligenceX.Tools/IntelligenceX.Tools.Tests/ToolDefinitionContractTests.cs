@@ -2269,6 +2269,9 @@ public class ToolDefinitionContractTests {
         var existing = new ToolRoutingContract {
             IsRoutingAware = true,
             RoutingContractId = "custom_contract",
+            DomainIntentFamilyDisplayName = "Operations",
+            DomainIntentFamilyReplyExample = "ops",
+            DomainIntentFamilyChoiceDescription = "Operations scope (internal operations tooling)",
             DomainSignalTokens = new[] { "custom_signal" },
             FallbackSelectionKeys = new[] { "ignored_selection" },
             FallbackHintKeys = new[] { "ignored_hint" }
@@ -2292,10 +2295,25 @@ public class ToolDefinitionContractTests {
         Assert.Equal("inspect", routing.Role);
         Assert.Equal("ops", routing.DomainIntentFamily);
         Assert.Equal("inspect_host", routing.DomainIntentActionId);
+        Assert.Equal("Operations", routing.DomainIntentFamilyDisplayName);
+        Assert.Equal("ops", routing.DomainIntentFamilyReplyExample);
+        Assert.Equal("Operations scope (internal operations tooling)", routing.DomainIntentFamilyChoiceDescription);
         Assert.Equal(new[] { "custom_signal" }, routing.DomainSignalTokens);
         Assert.True(routing.RequiresSelectionForFallback);
         Assert.Equal(new[] { "computer_name" }, routing.FallbackSelectionKeys);
         Assert.Equal(new[] { "timeout_ms" }, routing.FallbackHintKeys);
+    }
+
+    [Fact]
+    public void ToolRoutingContract_ShouldRejectDomainIntentPresentationWithoutFamily() {
+        var routing = new ToolRoutingContract {
+            IsRoutingAware = true,
+            Role = ToolRoutingTaxonomy.RoleOperational,
+            DomainIntentFamilyDisplayName = "Email"
+        };
+
+        var ex = Assert.Throws<InvalidOperationException>(() => routing.Validate());
+        Assert.Contains("DomainIntentFamily is required", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -3020,6 +3038,9 @@ public class ToolDefinitionContractTests {
 
         Assert.Equal("security_posture", rulesRunRouting.DomainIntentFamily, ignoreCase: true);
         Assert.Equal("act_domain_scope_security_posture", rulesRunRouting.DomainIntentActionId, ignoreCase: true);
+        Assert.Equal("Security posture", rulesRunRouting.DomainIntentFamilyDisplayName);
+        Assert.Equal("security posture", rulesRunRouting.DomainIntentFamilyReplyExample);
+        Assert.Equal("Security posture scope (rules, baselines, and stored run analysis)", rulesRunRouting.DomainIntentFamilyChoiceDescription);
         Assert.True(rulesRunRecovery.SupportsTransientRetry);
         Assert.Equal(new[] { "execution_failed", "timeout", "transport_unavailable" }, rulesRunRecovery.RetryableErrorCodes);
         Assert.Contains(
@@ -3052,6 +3073,9 @@ public class ToolDefinitionContractTests {
 
         Assert.Equal("monitoring_artifacts", diagnosticsRouting.DomainIntentFamily, ignoreCase: true);
         Assert.Equal("act_domain_scope_monitoring_artifacts", diagnosticsRouting.DomainIntentActionId, ignoreCase: true);
+        Assert.Equal("Monitoring artifacts", diagnosticsRouting.DomainIntentFamilyDisplayName);
+        Assert.Equal("monitoring artifacts", diagnosticsRouting.DomainIntentFamilyReplyExample);
+        Assert.Equal("Monitoring artifacts scope (history, reports, dashboards, and maintenance windows)", diagnosticsRouting.DomainIntentFamilyChoiceDescription);
         Assert.Contains("history_directory", diagnosticsSetup.SetupHintKeys, StringComparer.OrdinalIgnoreCase);
         Assert.False(diagnosticsRecovery.SupportsTransientRetry);
         Assert.Contains(

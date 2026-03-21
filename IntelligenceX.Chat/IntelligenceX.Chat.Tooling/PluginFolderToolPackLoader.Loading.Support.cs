@@ -512,7 +512,7 @@ internal static partial class PluginFolderToolPackLoader {
         return false;
     }
 
-    private static ToolPluginAvailabilityInfo CreatePluginAvailability(
+    private static ToolPluginCatalogInfo CreatePluginCatalog(
         string rootPath,
         PluginManifest? manifest,
         IReadOnlyList<ToolPackAvailabilityInfo> packAvailability,
@@ -545,20 +545,45 @@ internal static partial class PluginFolderToolPackLoader {
         }
 
         var skillDirectories = ResolvePluginSkillDirectories(rootPath, manifest);
-        return new ToolPluginAvailabilityInfo {
+        return new ToolPluginCatalogInfo {
             Id = normalizedPluginId.Length == 0 ? pluginId : normalizedPluginId,
             Name = pluginName,
             Version = string.IsNullOrWhiteSpace(manifest?.Version) ? null : manifest.Version.Trim(),
             Origin = "plugin_folder",
             SourceKind = sourceKind,
             DefaultEnabled = manifest?.DefaultEnabled ?? true,
-            Enabled = enabled,
-            DisabledReason = disabledReason,
             IsDangerous = (manifest?.IsDangerous ?? false) || (packAvailability ?? Array.Empty<ToolPackAvailabilityInfo>()).Any(static pack => pack.IsDangerous),
             PackIds = normalizedPackIds,
             RootPath = string.IsNullOrWhiteSpace(rootPath) ? null : rootPath,
             SkillDirectories = skillDirectories,
             SkillIds = ResolvePluginSkillIds(skillDirectories, onWarning)
+        };
+    }
+
+    private static ToolPluginAvailabilityInfo CreatePluginAvailability(
+        ToolPluginCatalogInfo pluginCatalog,
+        IReadOnlyList<ToolPackAvailabilityInfo> packAvailability) {
+        var enabled = (packAvailability ?? Array.Empty<ToolPackAvailabilityInfo>()).Any(static pack => pack.Enabled);
+        var disabledReason = enabled
+            ? null
+            : (packAvailability ?? Array.Empty<ToolPackAvailabilityInfo>())
+                .Select(static pack => (pack.DisabledReason ?? string.Empty).Trim())
+                .FirstOrDefault(static reason => reason.Length > 0);
+
+        return new ToolPluginAvailabilityInfo {
+            Id = pluginCatalog.Id,
+            Name = pluginCatalog.Name,
+            Version = pluginCatalog.Version,
+            Origin = pluginCatalog.Origin,
+            SourceKind = pluginCatalog.SourceKind,
+            DefaultEnabled = pluginCatalog.DefaultEnabled,
+            Enabled = enabled,
+            DisabledReason = disabledReason,
+            IsDangerous = pluginCatalog.IsDangerous,
+            PackIds = pluginCatalog.PackIds ?? Array.Empty<string>(),
+            RootPath = pluginCatalog.RootPath,
+            SkillDirectories = pluginCatalog.SkillDirectories ?? Array.Empty<string>(),
+            SkillIds = pluginCatalog.SkillIds ?? Array.Empty<string>()
         };
     }
 

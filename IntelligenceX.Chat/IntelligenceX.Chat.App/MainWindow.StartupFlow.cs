@@ -606,7 +606,7 @@ public sealed partial class MainWindow : Window {
                     listToolsStopwatch.Stop();
                     toolCatalogDuration = listToolsStopwatch.Elapsed;
                     RecordStartupListToolsPhaseDiagnostics(listToolsStopwatch.Elapsed, listToolsAttemptCount, success: true);
-                    UpdateToolCatalog(toolList.Tools, toolList.RoutingCatalog, toolList.Packs, toolList.CapabilitySnapshot);
+                    UpdateToolCatalog(toolList.Tools, toolList.RoutingCatalog, toolList.Packs, toolList.Plugins, toolList.CapabilitySnapshot);
                     SeedBackgroundSchedulerSnapshot(toolList.CapabilitySnapshot?.BackgroundScheduler);
                     toolCatalogPhaseSucceeded = true;
                     listedToolCount = toolList.Tools?.Length ?? 0;

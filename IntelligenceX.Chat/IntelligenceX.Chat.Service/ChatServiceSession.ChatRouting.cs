@@ -49,7 +49,8 @@ internal sealed partial class ChatServiceSession {
         }
 
         var fullToolDefs = toolDefs.Count == 0 ? Array.Empty<ToolDefinition>() : toolDefs.ToArray();
-        var domainIntentFamilyAvailability = ResolveDomainIntentFamilyAvailability(fullToolDefs);
+        var runtimeDomainIntentCatalog = ResolveRuntimeDomainIntentCatalog(fullToolDefs);
+        var domainIntentFamilyAvailability = runtimeDomainIntentCatalog.Availability;
         var originalToolCount = toolDefs.Count;
         var routingInsights = new List<ToolRoutingInsight>();
         long? weightedSubsetSelectionMs = null;
@@ -153,11 +154,10 @@ internal sealed partial class ChatServiceSession {
                         : "Tool routing detected mixed cross-family technical signals and requested scope clarification before weighted routing.")
                 .ConfigureAwait(false);
 
-            var actionCatalog = ResolveDomainIntentActionCatalog(fullToolDefs);
-            var clarificationText = BuildDomainIntentClarificationText(domainIntentFamilyAvailability, actionCatalog);
-            var clarificationVisibleText = BuildDomainIntentClarificationVisibleText(domainIntentSignalRequest, domainIntentFamilyAvailability, actionCatalog);
+            var clarificationText = BuildDomainIntentClarificationText(runtimeDomainIntentCatalog);
+            var clarificationVisibleText = BuildDomainIntentClarificationVisibleText(domainIntentSignalRequest, runtimeDomainIntentCatalog);
             if (clarificationText.Length > 0 && clarificationVisibleText.Length > 0) {
-                RememberPendingDomainIntentClarificationRequest(threadId);
+                RememberPendingDomainIntentClarificationRequest(threadId, fullToolDefs);
                 await RememberPendingActionsAndEmitBackgroundWorkStatusAsync(writer, request.RequestId, threadId, clarificationText)
                     .ConfigureAwait(false);
                 var clarificationResult = new ChatResultMessage {
@@ -428,11 +428,10 @@ internal sealed partial class ChatServiceSession {
                         : "Tool routing detected mixed cross-family domain candidates; requesting scope clarification before execution.")
                 .ConfigureAwait(false);
 
-            var actionCatalog = ResolveDomainIntentActionCatalog(fullToolDefs);
-            var clarificationText = BuildDomainIntentClarificationText(domainIntentFamilyAvailability, actionCatalog);
-            var clarificationVisibleText = BuildDomainIntentClarificationVisibleText(domainIntentSignalRequest, domainIntentFamilyAvailability, actionCatalog);
+            var clarificationText = BuildDomainIntentClarificationText(runtimeDomainIntentCatalog);
+            var clarificationVisibleText = BuildDomainIntentClarificationVisibleText(domainIntentSignalRequest, runtimeDomainIntentCatalog);
             if (clarificationText.Length > 0 && clarificationVisibleText.Length > 0) {
-                RememberPendingDomainIntentClarificationRequest(threadId);
+                RememberPendingDomainIntentClarificationRequest(threadId, fullToolDefs);
                 await RememberPendingActionsAndEmitBackgroundWorkStatusAsync(writer, request.RequestId, threadId, clarificationText)
                     .ConfigureAwait(false);
                 var clarificationResult = new ChatResultMessage {

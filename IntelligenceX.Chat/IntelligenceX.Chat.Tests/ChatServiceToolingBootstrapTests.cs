@@ -31,15 +31,15 @@ public sealed class ChatServiceToolingBootstrapTests {
 
         var initialAvailability = Assert.IsType<ToolPackAvailabilityInfo[]>(packAvailabilityField!.GetValue(session));
 
-        options.DisabledPackIds.Add("officeimo");
+        options.DisabledPackIds.Add("active_directory");
         rebuildMethod!.Invoke(session, Array.Empty<object>());
 
         var rebuiltAvailability = Assert.IsType<ToolPackAvailabilityInfo[]>(packAvailabilityField.GetValue(session));
         Assert.NotSame(initialAvailability, rebuiltAvailability);
 
-        var officeImo = Assert.Single(rebuiltAvailability, static item =>
-            string.Equals(item.Id, "officeimo", StringComparison.OrdinalIgnoreCase));
-        Assert.False(officeImo.Enabled);
+        var activeDirectory = Assert.Single(rebuiltAvailability, static item =>
+            string.Equals(item.Id, "active_directory", StringComparison.OrdinalIgnoreCase));
+        Assert.False(activeDirectory.Enabled);
     }
 
     [Fact]
@@ -178,7 +178,9 @@ public sealed class ChatServiceToolingBootstrapTests {
         var routingCatalog = Assert.IsType<SessionRoutingCatalogDiagnosticsDto>(message.RoutingCatalog);
         var capabilitySnapshot = Assert.IsType<SessionCapabilitySnapshotDto>(message.CapabilitySnapshot);
         Assert.NotEmpty(message.Packs);
+        Assert.NotEmpty(message.Plugins);
         Assert.Contains(message.Packs, static pack => pack.AutonomySummary is not null);
+        Assert.Contains(message.Plugins, static plugin => plugin.PackIds.Length > 0);
 
         Assert.Equal(message.Tools.Length, routingCatalog.TotalTools);
         Assert.True(capabilitySnapshot.ToolingAvailable);
@@ -398,6 +400,20 @@ public sealed class ChatServiceToolingBootstrapTests {
                             SkillIds = new[] { "inventory-test", "network-recon" }
                         }
                     },
+                    PluginCatalog = new[] {
+                        new ToolPluginCatalogInfo {
+                            Id = "plugin_loader_test",
+                            Name = "Plugin Loader Test",
+                            Version = "1.0.0",
+                            Origin = "plugin_folder",
+                            SourceKind = "open_source",
+                            DefaultEnabled = true,
+                            PackIds = new[] { "plugin_loader_test" },
+                            RootPath = "C:\\plugins\\plugin-loader-test",
+                            SkillDirectories = new[] { "C:\\plugins\\plugin-loader-test\\skills" },
+                            SkillIds = new[] { "inventory-test", "network-recon" }
+                        }
+                    },
                     StartupWarnings = new[] { "[startup] unit-test warning" },
                     StartupBootstrap = new SessionStartupBootstrapTelemetryDto(),
                     PluginSearchPaths = Array.Empty<string>(),
@@ -428,6 +444,11 @@ public sealed class ChatServiceToolingBootstrapTests {
             var pluginAvailability = Assert.Single(persistedSnapshot.PluginAvailability);
             Assert.Equal("plugin_loader_test", pluginAvailability.Id);
             Assert.Equal(new[] { "inventory-test", "network-recon" }, pluginAvailability.SkillIds);
+            var pluginCatalog = Assert.Single(persistedSnapshot.PluginCatalog);
+            Assert.Equal("plugin_loader_test", pluginCatalog.Id);
+            Assert.Equal("1.0.0", pluginCatalog.Version);
+            Assert.Equal("C:\\plugins\\plugin-loader-test", pluginCatalog.RootPath);
+            Assert.Equal(new[] { "inventory-test", "network-recon" }, pluginCatalog.SkillIds);
             Assert.Equal("unit_test_tool", Assert.Single(persistedSnapshot.CapabilitySnapshot.HealthyTools));
         } finally {
             try {
@@ -650,8 +671,10 @@ public sealed class ChatServiceToolingBootstrapTests {
 
             var session = new ChatServiceSession(options, Stream.Null, cache);
             var orchestrationCatalogField = typeof(ChatServiceSession).GetField("_toolOrchestrationCatalog", BindingFlags.NonPublic | BindingFlags.Instance);
+            var startupToolingBootstrapTaskField = typeof(ChatServiceSession).GetField("_startupToolingBootstrapTask", BindingFlags.NonPublic | BindingFlags.Instance);
             var handleListToolsMethod = typeof(ChatServiceSession).GetMethod("HandleListToolsAsync", BindingFlags.NonPublic | BindingFlags.Instance);
             Assert.NotNull(orchestrationCatalogField);
+            Assert.NotNull(startupToolingBootstrapTaskField);
             Assert.NotNull(handleListToolsMethod);
 
             var previewCatalog = Assert.IsType<ToolOrchestrationCatalog>(orchestrationCatalogField!.GetValue(session));
@@ -661,6 +684,9 @@ public sealed class ChatServiceToolingBootstrapTests {
             Assert.NotNull(previewCapabilitySnapshot.Autonomy);
             Assert.Equal(1, previewCapabilitySnapshot.Autonomy!.RemoteCapableToolCount);
             Assert.Equal(new[] { "eventlog", "system" }, previewCapabilitySnapshot.Autonomy.CrossPackTargetPackIds);
+
+            var startupToolingBootstrapTcs = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
+            startupToolingBootstrapTaskField!.SetValue(session, startupToolingBootstrapTcs.Task);
 
             using var memoryStream = new MemoryStream();
             using var writer = new StreamWriter(memoryStream) { AutoFlush = true };
@@ -715,6 +741,8 @@ public sealed class ChatServiceToolingBootstrapTests {
             Assert.Equal(1, capabilitySnapshot.Autonomy.AuthenticationRequiredToolCount);
             Assert.Equal(1, capabilitySnapshot.Autonomy.ProbeCapableToolCount);
             Assert.Equal(new[] { "eventlog", "system" }, capabilitySnapshot.Autonomy.CrossPackTargetPackIds);
+
+            startupToolingBootstrapTcs.SetResult(null);
         } finally {
             try {
                 if (File.Exists(cachePath)) {
@@ -1145,6 +1173,55 @@ public sealed class ChatServiceToolingBootstrapTests {
         Assert.Contains(@"plugin_paths=C:\plugins\runtime-a;", firstKey, StringComparison.Ordinal);
         Assert.Contains(@"plugin_paths=C:\plugins\runtime-b;", secondKey, StringComparison.Ordinal);
         Assert.NotEqual(firstKey, secondKey);
+    }
+
+    [Fact]
+    public void BuildToolingBootstrapCacheKey_ChangesWhenPluginDiscoverySurfaceChanges() {
+        var keyMethod = typeof(ChatServiceSession).GetMethod(
+            "BuildToolingBootstrapCacheKey",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(keyMethod);
+
+        var runtimePolicyOptions = new ToolRuntimePolicyOptions();
+        var resolved = new ToolRuntimePolicyResolvedOptions {
+            Options = runtimePolicyOptions,
+            RequireSuccessfulSmtpProbeForSend = false,
+            SmtpProbeMaxAgeSeconds = 900
+        };
+
+        var root = TempPathTestHelper.CreateTempDirectoryPath("ix-chat-plugin-fingerprint");
+        Directory.CreateDirectory(root);
+        var pluginRoot = Path.Combine(root, "plugins");
+        var pluginFolder = Path.Combine(pluginRoot, "ops-bundle");
+        Directory.CreateDirectory(pluginFolder);
+        File.WriteAllText(Path.Combine(pluginFolder, "ix-plugin.json"), """
+            {
+              "schemaVersion": 1,
+              "pluginId": "ops_bundle",
+              "displayName": "Ops bundle"
+            }
+            """);
+
+        try {
+            var options = new ServiceOptions {
+                EnableDefaultPluginPaths = false
+            };
+            options.RuntimePluginPaths.Add(pluginRoot);
+
+            var keyWithManifest = Assert.IsType<string>(keyMethod!.Invoke(null, new object?[] { options, runtimePolicyOptions, resolved }));
+            File.Delete(Path.Combine(pluginFolder, "ix-plugin.json"));
+            var keyWithoutManifest = Assert.IsType<string>(keyMethod.Invoke(null, new object?[] { options, runtimePolicyOptions, resolved }));
+
+            Assert.NotEqual(keyWithManifest, keyWithoutManifest);
+        } finally {
+            try {
+                if (Directory.Exists(root)) {
+                    Directory.Delete(root, recursive: true);
+                }
+            } catch {
+                // Best-effort cleanup.
+            }
+        }
     }
 
     [Fact]

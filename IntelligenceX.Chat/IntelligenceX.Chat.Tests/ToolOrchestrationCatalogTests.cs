@@ -723,6 +723,9 @@ public sealed class ToolOrchestrationCatalogTests {
             overlayEntry.RepresentativeExamples);
         Assert.Equal(ToolSelectionMetadata.DomainIntentFamilyAd, overlayEntry.DomainIntentFamily);
         Assert.Equal(ToolSelectionMetadata.DomainIntentActionIdAd, overlayEntry.DomainIntentActionId);
+        Assert.Equal("Directory operations", overlayEntry.DomainIntentFamilyDisplayName);
+        Assert.Equal("directory operations", overlayEntry.DomainIntentFamilyReplyExample);
+        Assert.Equal("Directory operations scope (discovery and host diagnostics)", overlayEntry.DomainIntentFamilyChoiceDescription);
         Assert.True(overlayEntry.IsSetupAware);
         Assert.Equal("custom_environment_discover", overlayEntry.SetupToolName);
         Assert.Equal(new[] { "host_access" }, overlayEntry.SetupRequirementIds);
@@ -738,6 +741,34 @@ public sealed class ToolOrchestrationCatalogTests {
         Assert.Equal(2, overlayEntry.MaxRetryAttempts);
         Assert.Equal(new[] { "timeout" }, overlayEntry.RetryableErrorCodes);
         Assert.Equal(new[] { "custom_environment_discover" }, overlayEntry.RecoveryToolNames);
+    }
+
+    [Fact]
+    public void Build_WithOverlayFamilyChange_DoesNotLeakBaselineFamilyPresentation() {
+        var definitions = new[] {
+            CreateDefinition(
+                name: "custom_probe",
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "customx",
+                    Role = ToolRoutingTaxonomy.RoleOperational,
+                    DomainIntentFamily = "corp_internal",
+                    DomainIntentActionId = "act_domain_scope_corp_internal",
+                    DomainIntentFamilyDisplayName = "Corporate operations",
+                    DomainIntentFamilyReplyExample = "corporate operations",
+                    DomainIntentFamilyChoiceDescription = "Corporate operations scope (internal runtime tooling)"
+                })
+        };
+
+        var overlay = ToolOrchestrationCatalog.Build(definitions, new IToolPack[] { new SyntheticCatalogOverlayWithoutPresentationPack() });
+
+        Assert.True(overlay.TryGetEntry("custom_probe", out var overlayEntry));
+        Assert.Equal(ToolSelectionMetadata.DomainIntentFamilyAd, overlayEntry.DomainIntentFamily);
+        Assert.Equal(ToolSelectionMetadata.DomainIntentActionIdAd, overlayEntry.DomainIntentActionId);
+        Assert.Equal(string.Empty, overlayEntry.DomainIntentFamilyDisplayName);
+        Assert.Equal(string.Empty, overlayEntry.DomainIntentFamilyReplyExample);
+        Assert.Equal(string.Empty, overlayEntry.DomainIntentFamilyChoiceDescription);
     }
 
     [Fact]
@@ -871,7 +902,10 @@ public sealed class ToolOrchestrationCatalogTests {
                         Risk = ToolRoutingTaxonomy.RiskMedium,
                         Source = ToolRoutingTaxonomy.SourceExplicit,
                         DomainIntentFamily = ToolSelectionMetadata.DomainIntentFamilyAd,
-                        DomainIntentActionId = ToolSelectionMetadata.DomainIntentActionIdAd
+                        DomainIntentActionId = ToolSelectionMetadata.DomainIntentActionIdAd,
+                        DomainIntentFamilyDisplayName = "Directory operations",
+                        DomainIntentFamilyReplyExample = "directory operations",
+                        DomainIntentFamilyChoiceDescription = "Directory operations scope (discovery and host diagnostics)"
                     },
                     Traits = new ToolPackToolTraitsModel {
                         ExecutionScope = "local_or_remote",
@@ -906,6 +940,35 @@ public sealed class ToolOrchestrationCatalogTests {
                         MaxRetryAttempts = 2,
                         RetryableErrorCodes = new[] { "timeout" },
                         RecoveryToolNames = new[] { "custom_environment_discover" }
+                    }
+                }
+            };
+        }
+    }
+
+    private sealed class SyntheticCatalogOverlayWithoutPresentationPack : IToolPack, IToolPackCatalogProvider {
+        public ToolPackDescriptor Descriptor { get; } = new() {
+            Id = "customx",
+            Name = "CustomX",
+            Tier = ToolCapabilityTier.ReadOnly,
+            Description = "Synthetic catalog overlay pack without family presentation metadata.",
+            SourceKind = "builtin"
+        };
+
+        public void Register(ToolRegistry registry) {
+            _ = registry;
+        }
+
+        public IReadOnlyList<ToolPackToolCatalogEntryModel> GetToolCatalog() {
+            return new[] {
+                new ToolPackToolCatalogEntryModel {
+                    Name = "custom_probe",
+                    Routing = new ToolPackToolRoutingModel {
+                        PackId = "ADPlayground",
+                        Role = ToolRoutingTaxonomy.RoleOperational,
+                        Source = ToolRoutingTaxonomy.SourceExplicit,
+                        DomainIntentFamily = ToolSelectionMetadata.DomainIntentFamilyAd,
+                        DomainIntentActionId = ToolSelectionMetadata.DomainIntentActionIdAd
                     }
                 }
             };

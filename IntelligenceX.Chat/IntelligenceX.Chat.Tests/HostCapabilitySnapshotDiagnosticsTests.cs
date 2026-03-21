@@ -51,10 +51,12 @@ public sealed class HostCapabilitySnapshotDiagnosticsTests {
                 Id = "ops_bundle",
                 Name = "Ops Bundle",
                 Origin = "folder",
+                Version = "1.2.3",
                 SourceKind = "closed_source",
                 DefaultEnabled = true,
                 Enabled = true,
                 PackIds = new[] { "active_directory", "eventlog", "system" },
+                RootPath = "C:\\plugins\\ops-bundle",
                 SkillIds = new[] { "ad-ops", "event-triage" }
             }
         };
@@ -79,6 +81,7 @@ public sealed class HostCapabilitySnapshotDiagnosticsTests {
         Assert.Contains("host_inventory", snapshot.EnabledCapabilityTags, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("ad-ops", snapshot.Skills, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("remote_reachability=remote_capable", summary, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("tooling_snapshot=host_runtime", summary, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("autonomy remote-capable 2, cross-pack 2", summary, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("governed-write 1", summary, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(3, snapshot.Autonomy!.LocalCapableToolCount);
@@ -97,6 +100,7 @@ public sealed class HostCapabilitySnapshotDiagnosticsTests {
                 && line.Contains("directory", StringComparison.OrdinalIgnoreCase)
                 && line.Contains("host_inventory", StringComparison.OrdinalIgnoreCase)
                 && line.Contains("remote_analysis", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(highlights, static line => line.Contains("tooling snapshot: host_runtime, packs 3, plugins 1", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(highlights, static line => line.Contains("skills: ad-ops, event-triage", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(highlights, static line => line.Contains("governed-write packs: active_directory", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(highlights, static line => line.Contains("cross-pack targets: system", StringComparison.OrdinalIgnoreCase));
@@ -128,6 +132,125 @@ public sealed class HostCapabilitySnapshotDiagnosticsTests {
 
         Assert.True(snapshot.DangerousToolsEnabled);
         Assert.Equal(new[] { "active_directory" }, snapshot.DangerousPackIds);
+    }
+
+    [Fact]
+    public void BuildHostCapabilitySnapshot_ExposesPackDeclaredDeferredWorkAffordancesInHighlights() {
+        var snapshot = HostProgram.BuildHostCapabilitySnapshot(
+            allowedRootCount: 0,
+            toolDefinitions: Array.Empty<ToolDefinition>(),
+            packAvailability: new[] {
+                new ToolPackAvailabilityInfo {
+                    Id = "email",
+                    Name = "Email",
+                    SourceKind = "builtin",
+                    CapabilityTags = new[] { ToolPackCapabilityTags.DeferredCapabilityEmail, "email" },
+                    Enabled = true
+                },
+                new ToolPackAvailabilityInfo {
+                    Id = "testimox_analytics",
+                    Name = "TestimoX Analytics",
+                    SourceKind = "builtin",
+                    CapabilityTags = new[] { ToolPackCapabilityTags.DeferredCapabilityReporting, "reporting" },
+                    Enabled = true
+                }
+            },
+            pluginAvailability: Array.Empty<ToolPluginAvailabilityInfo>(),
+            routingCatalogDiagnostics: new ToolRoutingCatalogDiagnostics {
+                TotalTools = 0,
+                RoutingAwareTools = 0,
+                MissingRoutingContractTools = 0,
+                DomainFamilyTools = 0,
+                ExpectedDomainFamilyMissingTools = 0,
+                DomainFamilyMissingActionTools = 0,
+                ActionWithoutFamilyTools = 0,
+                FamilyActionConflictFamilies = 0,
+                FamilyActions = Array.Empty<ToolRoutingFamilyActionSummary>()
+            },
+            orchestrationCatalog: ToolOrchestrationCatalog.Build(Array.Empty<ToolDefinition>()));
+
+        var summary = HostProgram.FormatCapabilitySnapshotSummary(snapshot);
+        var highlights = HostProgram.BuildCapabilitySnapshotHighlights(snapshot);
+
+        Assert.Equal(
+            new[] { "email", "reporting" },
+            snapshot.DeferredWorkAffordances.Select(static affordance => affordance.CapabilityId).ToArray());
+        Assert.Contains("deferred_affordances=2", summary, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(highlights, static line => line.Contains("deferred work affordances: Email, Reporting", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void BuildHostCapabilitySnapshot_UsesOrchestrationCatalogForPackIdentityWhenPackAvailabilityMissing() {
+        var definitions = CreateDefinitions();
+        var orchestrationCatalog = ToolOrchestrationCatalog.Build(definitions, new IToolPack[] {
+            new SyntheticHostCapabilityPack("active_directory", "adplayground", "directory", "remote_analysis"),
+            new SyntheticHostCapabilityPack("eventlog", "eventviewerx", "event_logs", "evtx"),
+            new SyntheticHostCapabilityPack("system", "computerx", "host_inventory", "storage")
+        });
+        var routingCatalog = ToolRoutingCatalogDiagnosticsBuilder.Build(definitions);
+
+        var snapshot = HostProgram.BuildHostCapabilitySnapshot(
+            allowedRootCount: 0,
+            toolDefinitions: definitions,
+            packAvailability: Array.Empty<ToolPackAvailabilityInfo>(),
+            pluginAvailability: Array.Empty<ToolPluginAvailabilityInfo>(),
+            routingCatalogDiagnostics: routingCatalog,
+            orchestrationCatalog: orchestrationCatalog);
+
+        Assert.Contains("active_directory", snapshot.EnabledPackIds, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("eventlog", snapshot.EnabledPackIds, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("system", snapshot.EnabledPackIds, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("adplayground", snapshot.EnabledPackEngineIds, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("eventviewerx", snapshot.EnabledPackEngineIds, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("computerx", snapshot.EnabledPackEngineIds, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("directory", snapshot.EnabledCapabilityTags, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("host_inventory", snapshot.EnabledCapabilityTags, StringComparer.OrdinalIgnoreCase);
+        Assert.True(snapshot.ToolingAvailable);
+        Assert.NotNull(snapshot.ToolingSnapshot);
+        Assert.Equal("host_runtime", snapshot.ToolingSnapshot!.Source);
+        Assert.Equal(3, snapshot.ToolingSnapshot.Packs.Length);
+        Assert.Equal(3, snapshot.ToolingSnapshot.Plugins.Length);
+        Assert.Contains(snapshot.ToolingSnapshot.Packs, static pack => string.Equals(pack.Id, "active_directory", StringComparison.OrdinalIgnoreCase) && string.Equals(pack.EngineId, "adplayground", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void BuildHostCapabilitySnapshot_UsesPluginCatalogForPluginIdentityWhenAvailabilityMissing() {
+        var definitions = CreateDefinitions();
+        var orchestrationCatalog = ToolOrchestrationCatalog.Build(definitions, new IToolPack[] {
+            new SyntheticHostCapabilityPack("active_directory", "adplayground", "directory", "remote_analysis")
+        });
+        var routingCatalog = ToolRoutingCatalogDiagnosticsBuilder.Build(definitions);
+
+        var snapshot = HostProgram.BuildHostCapabilitySnapshot(
+            allowedRootCount: 0,
+            toolDefinitions: definitions,
+            packAvailability: Array.Empty<ToolPackAvailabilityInfo>(),
+            pluginAvailability: Array.Empty<ToolPluginAvailabilityInfo>(),
+            routingCatalogDiagnostics: routingCatalog,
+            orchestrationCatalog: orchestrationCatalog,
+            pluginCatalog: new[] {
+                new ToolPluginCatalogInfo {
+                    Id = "ops_bundle",
+                    Name = "Ops Bundle",
+                    Origin = "plugin_folder",
+                    SourceKind = "closed_source",
+                    DefaultEnabled = true,
+                    PackIds = new[] { "active_directory" },
+                    SkillIds = new[] { "ad-ops", "event-triage" }
+                }
+            });
+
+        Assert.Equal(1, snapshot.PluginCount);
+        Assert.Equal(1, snapshot.EnabledPluginCount);
+        Assert.Contains("ops_bundle", snapshot.EnabledPluginIds, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("ad-ops", snapshot.Skills, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("event-triage", snapshot.Skills, StringComparer.OrdinalIgnoreCase);
+        Assert.NotNull(snapshot.ToolingSnapshot);
+        Assert.Equal("host_runtime", snapshot.ToolingSnapshot!.Source);
+        Assert.Single(snapshot.ToolingSnapshot.Plugins);
+        Assert.Equal("ops_bundle", snapshot.ToolingSnapshot.Plugins[0].Id);
+        Assert.Equal("plugin_folder", snapshot.ToolingSnapshot.Plugins[0].Origin);
+        Assert.Equal("active_directory", Assert.Single(snapshot.ToolingSnapshot.Plugins[0].PackIds));
     }
 
     [Fact]
@@ -166,10 +289,12 @@ public sealed class HostCapabilitySnapshotDiagnosticsTests {
                 Id = "ops_bundle",
                 Name = "Ops Bundle",
                 Origin = "folder",
+                Version = "1.2.3",
                 SourceKind = "closed_source",
                 DefaultEnabled = true,
                 Enabled = true,
                 PackIds = new[] { "active_directory", "eventlog", "system" },
+                RootPath = "C:\\plugins\\ops-bundle",
                 SkillIds = new[] { "ad-ops", "event-triage" }
             }
         };
@@ -188,11 +313,22 @@ public sealed class HostCapabilitySnapshotDiagnosticsTests {
         Assert.Contains(lines, static line => line.Contains("Routing catalog:", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(lines, static line => line.Contains("[routing]", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(lines, static line => line.Contains("Pack readiness:", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(lines, static line => line.Contains("Plugin sources:", StringComparison.OrdinalIgnoreCase));
         var activeDirectoryPackLine = Assert.Single(lines, static line => line.Contains("Active Directory [active_directory]:", StringComparison.OrdinalIgnoreCase));
         Assert.Contains("target-scoped=1", activeDirectoryPackLine, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("write-capable=1", activeDirectoryPackLine, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("cross-pack=1", activeDirectoryPackLine, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("targets=system", activeDirectoryPackLine, StringComparison.OrdinalIgnoreCase);
+
+        var pluginLine = Assert.Single(lines, static line => line.Contains("Ops Bundle [ops_bundle]:", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("status=enabled", pluginLine, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("default=enabled", pluginLine, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("origin=folder", pluginLine, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("source=closed_source", pluginLine, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("version=1.2.3", pluginLine, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("packs=active_directory/eventlog/system", pluginLine, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("skills=ad-ops/event-triage", pluginLine, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("root=C:\\plugins\\ops-bundle", pluginLine, StringComparison.OrdinalIgnoreCase);
 
         var eventLogPackLine = Assert.Single(lines, static line => line.Contains("Event Log [eventlog]:", StringComparison.OrdinalIgnoreCase));
         Assert.Contains("remote-capable=1", eventLogPackLine, StringComparison.OrdinalIgnoreCase);
@@ -223,6 +359,78 @@ public sealed class HostCapabilitySnapshotDiagnosticsTests {
         Assert.Contains("pack=system", systemToolLine, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("scope=local_or_remote", systemToolLine, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("remote_args=computer_name", systemToolLine, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildToolsInspectionLines_UsesCapabilitySnapshotToolingForPackInspectionWhenAvailabilityMissing() {
+        var definitions = CreateDefinitions();
+        var orchestrationCatalog = ToolOrchestrationCatalog.Build(definitions, new IToolPack[] {
+            new SyntheticHostCapabilityPack("active_directory", "adplayground", "directory", "remote_analysis"),
+            new SyntheticHostCapabilityPack("eventlog", "eventviewerx", "event_logs", "evtx")
+        });
+        var routingCatalog = ToolRoutingCatalogDiagnosticsBuilder.Build(definitions);
+
+        var lines = HostProgram.BuildToolsInspectionLines(
+            allowedRootCount: 0,
+            toolDefinitions: definitions,
+            packAvailability: Array.Empty<ToolPackAvailabilityInfo>(),
+            pluginAvailability: Array.Empty<ToolPluginAvailabilityInfo>(),
+            routingCatalogDiagnostics: routingCatalog,
+            orchestrationCatalog: orchestrationCatalog,
+            showToolIds: false);
+
+        Assert.Contains(lines, static line => line.Contains("Capability snapshot:", StringComparison.OrdinalIgnoreCase) && line.Contains("tooling_snapshot=host_runtime", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(lines, static line => line.Contains("[capability] tooling snapshot: host_runtime, packs 2, plugins 2", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(lines, static line => line.Contains("Pack readiness:", StringComparison.OrdinalIgnoreCase));
+
+        var activeDirectoryPackLine = Assert.Single(lines, static line => line.Contains("active_directory", StringComparison.OrdinalIgnoreCase) && line.Contains("engine=adplayground", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("status=enabled", activeDirectoryPackLine, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("source=builtin", activeDirectoryPackLine, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("capabilities=directory/remote_analysis", activeDirectoryPackLine, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("target-scoped=1", activeDirectoryPackLine, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("write-capable=1", activeDirectoryPackLine, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("cross-pack=1", activeDirectoryPackLine, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildToolsInspectionLines_UsesPluginCatalogForPluginInspectionWhenAvailabilityMissing() {
+        var definitions = CreateDefinitions();
+        var orchestrationCatalog = ToolOrchestrationCatalog.Build(definitions, new IToolPack[] {
+            new SyntheticHostCapabilityPack("active_directory", "adplayground", "directory", "remote_analysis"),
+            new SyntheticHostCapabilityPack("eventlog", "eventviewerx", "event_logs", "evtx")
+        });
+        var routingCatalog = ToolRoutingCatalogDiagnosticsBuilder.Build(definitions);
+
+        var lines = HostProgram.BuildToolsInspectionLines(
+            allowedRootCount: 0,
+            toolDefinitions: definitions,
+            packAvailability: Array.Empty<ToolPackAvailabilityInfo>(),
+            pluginAvailability: Array.Empty<ToolPluginAvailabilityInfo>(),
+            routingCatalogDiagnostics: routingCatalog,
+            orchestrationCatalog: orchestrationCatalog,
+            showToolIds: false,
+            pluginCatalog: new[] {
+                new ToolPluginCatalogInfo {
+                    Id = "ops_bundle",
+                    Name = "Ops Bundle",
+                    Origin = "plugin_folder",
+                    Version = "9.9.9",
+                    SourceKind = "closed_source",
+                    DefaultEnabled = true,
+                    PackIds = new[] { "active_directory", "eventlog" },
+                    RootPath = "C:\\plugins\\ops-bundle",
+                    SkillIds = new[] { "ad-ops" }
+                }
+            });
+
+        Assert.Contains(lines, static line => line.Contains("Plugin sources:", StringComparison.OrdinalIgnoreCase));
+        var pluginLine = Assert.Single(lines, static line => line.Contains("Ops Bundle [ops_bundle]:", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains("status=enabled", pluginLine, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("origin=plugin_folder", pluginLine, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("version=9.9.9", pluginLine, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("packs=active_directory/eventlog", pluginLine, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("skills=ad-ops", pluginLine, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("root=C:\\plugins\\ops-bundle", pluginLine, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -284,11 +492,18 @@ public sealed class HostCapabilitySnapshotDiagnosticsTests {
         Assert.Equal("host.toolsjson", parsed.RequestId);
         Assert.Equal(3, parsed.Tools.Length);
         Assert.Equal(3, parsed.Packs.Length);
+        var plugin = Assert.Single(parsed.Plugins);
         Assert.NotNull(parsed.RoutingCatalog);
         Assert.NotNull(parsed.CapabilitySnapshot);
         Assert.Equal("remote_capable", parsed.CapabilitySnapshot!.RemoteReachabilityMode);
         Assert.Equal(2, parsed.CapabilitySnapshot.Autonomy!.RemoteCapableToolCount);
         Assert.Equal(2, parsed.RoutingCatalog!.CrossPackHandoffTools);
+        Assert.Equal("ops_bundle", plugin.Id);
+        Assert.Equal("Ops Bundle", plugin.Name);
+        Assert.Equal("folder", plugin.Origin);
+        Assert.Equal(ToolPackSourceKind.ClosedSource, plugin.SourceKind);
+        Assert.Equal(new[] { "active_directory", "eventlog", "system" }, plugin.PackIds);
+        Assert.Equal(new[] { "ad-ops", "event-triage" }, plugin.SkillIds);
 
         var eventLogTool = Assert.Single(parsed.Tools, static item =>
             string.Equals(item.Name, "eventlog_timeline_query", StringComparison.OrdinalIgnoreCase));
@@ -390,6 +605,9 @@ public sealed class HostCapabilitySnapshotDiagnosticsTests {
             ChatServiceJsonContext.Default.ToolListMessage);
 
         Assert.NotNull(parsed);
+        var plugin = Assert.Single(parsed!.Plugins);
+        Assert.Equal("ops_bundle", plugin.Id);
+        Assert.Equal("Ops Bundle", plugin.Name);
         var toolsByName = parsed!.Tools.ToDictionary(static item => item.Name, StringComparer.OrdinalIgnoreCase);
         foreach (var toolName in new[] { "ad_domain_monitor", "eventlog_timeline_query", "system_metrics_summary" }) {
             Assert.True(orchestrationCatalog.TryGetEntry(toolName, out var entry));
@@ -478,6 +696,11 @@ public sealed class HostCapabilitySnapshotDiagnosticsTests {
 
     private static void AssertToolDtoMatchesOrchestration(ToolDefinitionDto dto, ToolOrchestrationCatalogEntry entry) {
         Assert.Equal(entry.PackId, dto.PackId);
+        Assert.Equal(string.IsNullOrWhiteSpace(entry.DomainIntentFamily) ? null : entry.DomainIntentFamily, dto.DomainIntentFamily);
+        Assert.Equal(string.IsNullOrWhiteSpace(entry.DomainIntentActionId) ? null : entry.DomainIntentActionId, dto.DomainIntentActionId);
+        Assert.Equal(string.IsNullOrWhiteSpace(entry.DomainIntentFamilyDisplayName) ? null : entry.DomainIntentFamilyDisplayName, dto.DomainIntentFamilyDisplayName);
+        Assert.Equal(string.IsNullOrWhiteSpace(entry.DomainIntentFamilyReplyExample) ? null : entry.DomainIntentFamilyReplyExample, dto.DomainIntentFamilyReplyExample);
+        Assert.Equal(string.IsNullOrWhiteSpace(entry.DomainIntentFamilyChoiceDescription) ? null : entry.DomainIntentFamilyChoiceDescription, dto.DomainIntentFamilyChoiceDescription);
         Assert.Equal(entry.IsPackInfoTool, dto.IsPackInfoTool);
         Assert.Equal(entry.IsEnvironmentDiscoverTool, dto.IsEnvironmentDiscoverTool);
         Assert.Equal(entry.IsWriteCapable, dto.IsWriteCapable);
@@ -597,7 +820,10 @@ public sealed class HostCapabilitySnapshotDiagnosticsTests {
                     RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
                     PackId = "active_directory",
                     DomainIntentFamily = ToolSelectionMetadata.DomainIntentFamilyAd,
-                    DomainIntentActionId = "act_domain_monitor"
+                    DomainIntentActionId = "act_domain_monitor",
+                    DomainIntentFamilyDisplayName = "Directory operations",
+                    DomainIntentFamilyReplyExample = "directory operations",
+                    DomainIntentFamilyChoiceDescription = "Directory operations scope (monitoring and controller health)"
                 },
                 execution: new ToolExecutionContract {
                     IsExecutionAware = true,
@@ -635,5 +861,24 @@ public sealed class HostCapabilitySnapshotDiagnosticsTests {
                     Role = ToolRoutingTaxonomy.RoleOperational
                 })
         };
+    }
+
+    private sealed class SyntheticHostCapabilityPack : IToolPack {
+        public SyntheticHostCapabilityPack(string packId, string engineId, params string[] capabilityTags) {
+            Descriptor = new ToolPackDescriptor {
+                Id = packId,
+                Name = packId,
+                Tier = ToolCapabilityTier.ReadOnly,
+                SourceKind = "builtin",
+                EngineId = engineId,
+                CapabilityTags = capabilityTags
+            };
+        }
+
+        public ToolPackDescriptor Descriptor { get; }
+
+        public void Register(ToolRegistry registry) {
+            _ = registry;
+        }
     }
 }

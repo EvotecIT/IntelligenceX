@@ -748,6 +748,344 @@ public sealed class ChatServicePlannerPromptTests {
     }
 
     [Fact]
+    public void BuildModelPlannerPrompt_IncludesRegisteredDeferredWorkAffordancesForFocusedPacks() {
+        var definitions = new List<ToolDefinition> {
+            new(
+                "email_message_compose",
+                "Compose an email summary.",
+                ToolSchema.Object(("subject", ToolSchema.String("Message subject."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "email",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                }),
+            new(
+                "report_snapshot_publish",
+                "Publish a report snapshot.",
+                ToolSchema.Object(("report_name", ToolSchema.String("Report name."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "testimox_analytics",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                })
+        };
+        var orchestrationCatalog = ToolOrchestrationCatalog.Build(definitions, new IToolPack[] { new SyntheticDeferredAffordancePromptPack() });
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        session.SetCapabilitySnapshotContextForTesting(
+            new[] {
+                new ToolPackAvailabilityInfo {
+                    Id = "email",
+                    Name = "Email",
+                    SourceKind = "builtin",
+                    CapabilityTags = new[] { ToolPackCapabilityTags.DeferredCapabilityEmail },
+                    Enabled = true
+                },
+                new ToolPackAvailabilityInfo {
+                    Id = "testimox_analytics",
+                    Name = "TestimoX Analytics",
+                    SourceKind = "builtin",
+                    CapabilityTags = new[] { ToolPackCapabilityTags.DeferredCapabilityReporting },
+                    Enabled = true
+                }
+            },
+            new ToolRoutingCatalogDiagnostics {
+                TotalTools = 0,
+                RoutingAwareTools = 0,
+                MissingRoutingContractTools = 0,
+                DomainFamilyTools = 0,
+                ExpectedDomainFamilyMissingTools = 0,
+                DomainFamilyMissingActionTools = 0,
+                ActionWithoutFamilyTools = 0,
+                FamilyActionConflictFamilies = 0,
+                FamilyActions = Array.Empty<ToolRoutingFamilyActionSummary>()
+            });
+        session.SetToolOrchestrationCatalogForTesting(orchestrationCatalog);
+
+        var prompt = session.BuildModelPlannerPromptForTesting(
+            """
+            [Planner context]
+            ix:planner-context:v1
+            preferred_pack_ids: email
+
+            send the follow-up summary
+            """,
+            definitions,
+            limit: 4);
+
+        Assert.Contains("Deferred follow-up affordances:", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Email [email]", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Reporting [reporting]", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("send an email summary after the run", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("email[pack_declared:email]", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildModelPlannerPrompt_EmitsPreferredDeferredCapabilityIdsFromPlannerContext() {
+        var definitions = new List<ToolDefinition> {
+            new(
+                "email_message_compose",
+                "Compose an email summary.",
+                ToolSchema.Object(("subject", ToolSchema.String("Message subject."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "email",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                }),
+            new(
+                "report_snapshot_publish",
+                "Publish a report snapshot.",
+                ToolSchema.Object(("report_name", ToolSchema.String("Report name."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "testimox_analytics",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                })
+        };
+        var orchestrationCatalog = ToolOrchestrationCatalog.Build(definitions, new IToolPack[] { new SyntheticDeferredAffordancePromptPack() });
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        session.SetCapabilitySnapshotContextForTesting(
+            new[] {
+                new ToolPackAvailabilityInfo {
+                    Id = "email",
+                    Name = "Email",
+                    SourceKind = "builtin",
+                    CapabilityTags = new[] { ToolPackCapabilityTags.DeferredCapabilityEmail },
+                    Enabled = true
+                },
+                new ToolPackAvailabilityInfo {
+                    Id = "testimox_analytics",
+                    Name = "TestimoX Analytics",
+                    SourceKind = "builtin",
+                    CapabilityTags = new[] { ToolPackCapabilityTags.DeferredCapabilityReporting },
+                    Enabled = true
+                }
+            },
+            new ToolRoutingCatalogDiagnostics {
+                TotalTools = 0,
+                RoutingAwareTools = 0,
+                MissingRoutingContractTools = 0,
+                DomainFamilyTools = 0,
+                ExpectedDomainFamilyMissingTools = 0,
+                DomainFamilyMissingActionTools = 0,
+                ActionWithoutFamilyTools = 0,
+                FamilyActionConflictFamilies = 0,
+                FamilyActions = Array.Empty<ToolRoutingFamilyActionSummary>()
+            });
+        session.SetToolOrchestrationCatalogForTesting(orchestrationCatalog);
+
+        var prompt = session.BuildModelPlannerPromptForTesting(
+            """
+            [Planner context]
+            ix:planner-context:v1
+            preferred_deferred_work_capability_ids: reporting
+
+            prepare the deliverable
+            """,
+            definitions,
+            limit: 4);
+
+        Assert.Contains("Preferred deferred follow-up capabilities: reporting", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("report_snapshot_publish", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildModelPlannerPrompt_IncludesDeferredWorkAffordancesWithoutCapabilitySnapshot() {
+        var definitions = new List<ToolDefinition> {
+            new(
+                "email_message_compose",
+                "Compose an email summary.",
+                ToolSchema.Object(("subject", ToolSchema.String("Message subject."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "email",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                }),
+            new(
+                "report_snapshot_publish",
+                "Publish a report snapshot.",
+                ToolSchema.Object(("report_name", ToolSchema.String("Report name."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "testimox_analytics",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                })
+        };
+        var orchestrationCatalog = ToolOrchestrationCatalog.Build(
+            definitions,
+            new IToolPack[] {
+                new SyntheticCapabilityDescriptorPack(
+                    "email",
+                    new[] { ToolPackCapabilityTags.DeferredCapabilityEmail },
+                    "email_message_compose"),
+                new SyntheticCapabilityDescriptorPack(
+                    "testimox_analytics",
+                    new[] { ToolPackCapabilityTags.DeferredCapabilityReporting },
+                    "report_snapshot_publish"),
+                new SyntheticDeferredAffordancePromptPack()
+            });
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        session.SetToolOrchestrationCatalogForTesting(orchestrationCatalog);
+
+        var prompt = session.BuildModelPlannerPromptForTesting(
+            """
+            [Planner context]
+            ix:planner-context:v1
+            preferred_deferred_work_capability_ids: reporting
+
+            prepare the deliverable
+            """,
+            definitions,
+            limit: 4);
+
+        Assert.Contains("Deferred follow-up affordances:", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Reporting [reporting]", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ResolvePackIdsForDeferredWorkCapabilityPreferences_MapsCapabilityIdsToRegisteredPacks() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        session.SetCapabilitySnapshotContextForTesting(
+            new[] {
+                new ToolPackAvailabilityInfo {
+                    Id = "email",
+                    Name = "Email",
+                    SourceKind = "builtin",
+                    CapabilityTags = new[] { ToolPackCapabilityTags.DeferredCapabilityEmail },
+                    Enabled = true
+                },
+                new ToolPackAvailabilityInfo {
+                    Id = "testimox_analytics",
+                    Name = "TestimoX Analytics",
+                    SourceKind = "builtin",
+                    CapabilityTags = new[] { ToolPackCapabilityTags.DeferredCapabilityReporting },
+                    Enabled = true
+                },
+                new ToolPackAvailabilityInfo {
+                    Id = "customx",
+                    Name = "CustomX",
+                    SourceKind = "builtin",
+                    Enabled = true
+                }
+            },
+            new ToolRoutingCatalogDiagnostics {
+                TotalTools = 0,
+                RoutingAwareTools = 0,
+                MissingRoutingContractTools = 0,
+                DomainFamilyTools = 0,
+                ExpectedDomainFamilyMissingTools = 0,
+                DomainFamilyMissingActionTools = 0,
+                ActionWithoutFamilyTools = 0,
+                FamilyActionConflictFamilies = 0,
+                FamilyActions = Array.Empty<ToolRoutingFamilyActionSummary>()
+            });
+
+        var resolvedPackIds = session.ResolvePackIdsForDeferredWorkCapabilityPreferencesForTesting(new[] { "Reporting", "email" });
+
+        Assert.Equal(new[] { "email", "testimox_analytics" }, resolvedPackIds);
+    }
+
+    [Fact]
+    public void ResolvePackIdsForDeferredWorkCapabilityPreferences_UsesOrchestrationCatalogWhenCapabilitySnapshotMissing() {
+        var definitions = new List<ToolDefinition> {
+            new(
+                "email_message_compose",
+                "Compose an email summary.",
+                ToolSchema.Object(("subject", ToolSchema.String("Message subject."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "email",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                }),
+            new(
+                "report_snapshot_publish",
+                "Publish the prepared deliverable artifact for later sharing.",
+                ToolSchema.Object(("report_name", ToolSchema.String("Report name."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "testimox_analytics",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                })
+        };
+        var orchestrationCatalog = ToolOrchestrationCatalog.Build(
+            definitions,
+            new IToolPack[] {
+                new SyntheticCapabilityDescriptorPack(
+                    "email",
+                    new[] { ToolPackCapabilityTags.DeferredCapabilityEmail },
+                    "email_message_compose"),
+                new SyntheticCapabilityDescriptorPack(
+                    "testimox_analytics",
+                    new[] { ToolPackCapabilityTags.DeferredCapabilityReporting },
+                    "report_snapshot_publish")
+            });
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        session.SetToolOrchestrationCatalogForTesting(orchestrationCatalog);
+
+        var resolvedPackIds = session.ResolvePackIdsForDeferredWorkCapabilityPreferencesForTesting(new[] { "Reporting", "email" });
+
+        Assert.Equal(new[] { "email", "testimox_analytics" }, resolvedPackIds);
+    }
+
+    [Fact]
+    public void ResolvePackIdsForDeferredWorkCapabilityPreferences_DoesNotReturnDisabledPackFromAvailability() {
+        var definitions = new List<ToolDefinition> {
+            new(
+                "report_snapshot_publish",
+                "Publish the prepared deliverable artifact for later sharing.",
+                ToolSchema.Object(("report_name", ToolSchema.String("Report name."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "testimox_analytics",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                })
+        };
+        var orchestrationCatalog = ToolOrchestrationCatalog.Build(
+            definitions,
+            new IToolPack[] {
+                new SyntheticCapabilityDescriptorPack(
+                    "testimox_analytics",
+                    new[] { ToolPackCapabilityTags.DeferredCapabilityReporting },
+                    "report_snapshot_publish")
+            });
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        session.SetToolOrchestrationCatalogForTesting(orchestrationCatalog);
+        session.SetCapabilitySnapshotContextForTesting(
+            new[] {
+                new ToolPackAvailabilityInfo {
+                    Id = "testimox_analytics",
+                    Name = "TestimoX Analytics",
+                    SourceKind = "builtin",
+                    CapabilityTags = new[] { ToolPackCapabilityTags.DeferredCapabilityReporting },
+                    Enabled = false
+                }
+            },
+            new ToolRoutingCatalogDiagnostics {
+                TotalTools = 0,
+                RoutingAwareTools = 0,
+                MissingRoutingContractTools = 0,
+                DomainFamilyTools = 0,
+                ExpectedDomainFamilyMissingTools = 0,
+                DomainFamilyMissingActionTools = 0,
+                ActionWithoutFamilyTools = 0,
+                FamilyActionConflictFamilies = 0,
+                FamilyActions = Array.Empty<ToolRoutingFamilyActionSummary>()
+            });
+
+        var resolvedPackIds = session.ResolvePackIdsForDeferredWorkCapabilityPreferencesForTesting(new[] { "reporting" });
+
+        Assert.Empty(resolvedPackIds);
+    }
+
+    [Fact]
     public void BuildPlannerContextAugmentedRequest_UsesStructuredNextActionHintsWithoutCheckpoint() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var toolDefinitions = new List<ToolDefinition> {
@@ -805,6 +1143,80 @@ public sealed class ChatServicePlannerPromptTests {
         Assert.Contains("structured_next_action_source_tools: ad_monitoring_probe_run", augmented, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("structured_next_action_reason: inspect ldaps certificate details on the same domain controller", augmented, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("structured_next_action_confidence: 0.88", augmented, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildPlannerContextAugmentedRequest_CarriesPreferredDeferredWorkCapabilityIdsFromWorkingMemory() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        const string threadId = "thread-planner-deferred-capabilities";
+        var toolDefinitions = new List<ToolDefinition> {
+            new(
+                "email_message_compose",
+                "Compose an email summary.",
+                ToolSchema.Object(("subject", ToolSchema.String("Message subject."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "email",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                })
+        };
+
+        session.RememberWorkingMemoryCheckpointForTesting(
+            threadId: threadId,
+            intentAnchor: "Prepare the operator deliverable and send the follow-up.",
+            domainIntentFamily: "public_domain",
+            recentToolNames: new[] { "email_message_compose" },
+            recentEvidenceSnippets: new[] { "email_message_compose: draft summary is ready." },
+            priorAnswerPlanUserGoal: "Prepare the follow-up deliverables.",
+            priorAnswerPlanUnresolvedNow: "send the report and email follow-up",
+            priorAnswerPlanPreferredDeferredWorkCapabilityIds: new[] { "Reporting", "email" });
+
+        var augmented = session.BuildPlannerContextAugmentedRequestForTesting(
+            threadId,
+            "prepare the deliverable",
+            toolDefinitions);
+
+        var parsed = ChatServiceSession.TryReadPlannerContextFromRequestTextForTesting(
+            augmented,
+            out var requiresLiveExecution,
+            out var missingLiveEvidence,
+            out var preferredPackIds,
+            out var preferredToolNames,
+            out var preferredDeferredWorkCapabilityIds,
+            out var preferredExecutionBackends,
+            out var handoffTargetPackIds,
+            out var handoffTargetToolNames,
+            out var continuationSourceTool,
+            out var continuationReason,
+            out var continuationConfidence,
+            out var backgroundPreparationAllowed,
+            out var backgroundPendingReadOnlyActions,
+            out var backgroundPendingUnknownActions,
+            out var backgroundFollowUpFocus,
+            out var backgroundRecentEvidenceTools,
+            out var matchingSkills,
+            out var allowCachedEvidenceReuse);
+
+        Assert.True(parsed);
+        Assert.False(requiresLiveExecution);
+        Assert.Equal(string.Empty, missingLiveEvidence);
+        Assert.Empty(preferredPackIds);
+        Assert.Empty(preferredToolNames);
+        Assert.Equal(new[] { "reporting", "email" }, preferredDeferredWorkCapabilityIds);
+        Assert.Empty(preferredExecutionBackends);
+        Assert.Empty(handoffTargetPackIds);
+        Assert.Empty(handoffTargetToolNames);
+        Assert.Equal(string.Empty, continuationSourceTool);
+        Assert.Equal(string.Empty, continuationReason);
+        Assert.Equal(string.Empty, continuationConfidence);
+        Assert.False(backgroundPreparationAllowed);
+        Assert.Equal(0, backgroundPendingReadOnlyActions);
+        Assert.Equal(0, backgroundPendingUnknownActions);
+        Assert.Equal(string.Empty, backgroundFollowUpFocus);
+        Assert.Empty(backgroundRecentEvidenceTools);
+        Assert.Empty(matchingSkills);
+        Assert.False(allowCachedEvidenceReuse);
     }
 
     [Fact]
@@ -1073,6 +1485,7 @@ public sealed class ChatServicePlannerPromptTests {
             out var missingLiveEvidence,
             out var preferredPackIds,
             out var preferredToolNames,
+            out var preferredDeferredWorkCapabilityIds,
             out var preferredExecutionBackends,
             out var handoffTargetPackIds,
             out var handoffTargetToolNames,
@@ -1092,6 +1505,7 @@ public sealed class ChatServicePlannerPromptTests {
         Assert.Equal(string.Empty, missingLiveEvidence);
         Assert.Contains("active_directory", preferredPackIds, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("ad_ldap_diagnostics", preferredToolNames, StringComparer.OrdinalIgnoreCase);
+        Assert.Empty(preferredDeferredWorkCapabilityIds);
         Assert.Contains("ad_ldap_diagnostics=cim", preferredExecutionBackends, StringComparer.OrdinalIgnoreCase);
         Assert.Empty(handoffTargetPackIds);
         Assert.Empty(handoffTargetToolNames);
@@ -1117,6 +1531,7 @@ public sealed class ChatServicePlannerPromptTests {
             missing_live_evidence: ldap certificate posture
             preferred_pack_ids: active_directory, system
             preferred_tool_names: ad_ldap_diagnostics, system_hardware_summary
+            preferred_deferred_work_capability_ids: reporting, Email
             handoff_target_pack_ids: system
             handoff_target_tool_names: system_metrics_summary
             continuation_source_tool: ad_monitoring_probe_run
@@ -1131,6 +1546,7 @@ public sealed class ChatServicePlannerPromptTests {
             out var missingLiveEvidence,
             out var preferredPackIds,
             out var preferredToolNames,
+            out var preferredDeferredWorkCapabilityIds,
             out var preferredExecutionBackends,
             out var handoffTargetPackIds,
             out var handoffTargetToolNames,
@@ -1152,6 +1568,8 @@ public sealed class ChatServicePlannerPromptTests {
         Assert.Contains("system", preferredPackIds, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("ad_ldap_diagnostics", preferredToolNames, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("system_hardware_summary", preferredToolNames, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("reporting", preferredDeferredWorkCapabilityIds, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("email", preferredDeferredWorkCapabilityIds, StringComparer.OrdinalIgnoreCase);
         Assert.Empty(preferredExecutionBackends);
         Assert.Contains("system", handoffTargetPackIds, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("system_metrics_summary", handoffTargetToolNames, StringComparer.OrdinalIgnoreCase);
@@ -2095,6 +2513,58 @@ public sealed class ChatServicePlannerPromptTests {
     }
 
     [Fact]
+    public void BuildModelPlannerCandidates_PrefersDeferredWorkCapabilityTargetsWithoutCapabilitySnapshot() {
+        var definitions = new List<ToolDefinition>();
+        for (var i = 0; i < 80; i++) {
+            definitions.Add(new ToolDefinition(
+                $"identity_probe_{i:D2}",
+                "Inspect identity lifecycle compliance ownership evidence for the current environment.",
+                ToolSchema.Object(("identity", ToolSchema.String("Target identity."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "generic",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                }));
+        }
+
+        definitions.Add(new ToolDefinition(
+            "report_snapshot_publish",
+            "Publish the prepared deliverable artifact for later sharing.",
+            ToolSchema.Object(("report_name", ToolSchema.String("Report name."))).NoAdditionalProperties(),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "testimox_analytics",
+                Role = ToolRoutingTaxonomy.RoleOperational
+            }));
+
+        var orchestrationCatalog = ToolOrchestrationCatalog.Build(
+            definitions,
+            new IToolPack[] {
+                new SyntheticCapabilityDescriptorPack(
+                    "testimox_analytics",
+                    new[] { ToolPackCapabilityTags.DeferredCapabilityReporting },
+                    "report_snapshot_publish")
+            });
+
+        var selected = BuildModelPlannerCandidates(
+            definitions,
+            """
+            [Planner context]
+            ix:planner-context:v1
+            preferred_deferred_work_capability_ids: reporting
+
+            inspect identity lifecycle compliance ownership evidence for the current environment
+            """,
+            4,
+            orchestrationCatalog: orchestrationCatalog);
+
+        Assert.InRange(selected.Count, 24, 24);
+        Assert.Contains(selected, tool => string.Equals(tool.Name, "report_snapshot_publish", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void BuildModelPlannerCandidates_PrefersStructuredNextActionHintsProjectedIntoPlannerContext() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         var definitions = new List<ToolDefinition>();
@@ -2593,6 +3063,92 @@ public sealed class ChatServicePlannerPromptTests {
             insights,
             insight => (insight.GetType().GetProperty("Reason", BindingFlags.Public | BindingFlags.Instance)?.GetValue(insight)?.ToString() ?? string.Empty)
                 .IndexOf("setup-aware preflight support", StringComparison.OrdinalIgnoreCase) >= 0);
+    }
+
+    [Fact]
+    public void SelectWeightedToolSubset_PreservesDeferredWorkTargetedPackWhenLexicalMatchesAreNoisy() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        session.SetCapabilitySnapshotContextForTesting(
+            new[] {
+                new ToolPackAvailabilityInfo {
+                    Id = "generic",
+                    Name = "Generic",
+                    SourceKind = "builtin",
+                    Enabled = true
+                },
+                new ToolPackAvailabilityInfo {
+                    Id = "testimox_analytics",
+                    Name = "TestimoX Analytics",
+                    SourceKind = "builtin",
+                    CapabilityTags = new[] { ToolPackCapabilityTags.DeferredCapabilityReporting },
+                    Enabled = true
+                }
+            },
+            new ToolRoutingCatalogDiagnostics {
+                TotalTools = 0,
+                RoutingAwareTools = 0,
+                MissingRoutingContractTools = 0,
+                DomainFamilyTools = 0,
+                ExpectedDomainFamilyMissingTools = 0,
+                DomainFamilyMissingActionTools = 0,
+                ActionWithoutFamilyTools = 0,
+                FamilyActionConflictFamilies = 0,
+                FamilyActions = Array.Empty<ToolRoutingFamilyActionSummary>()
+            });
+
+        var definitions = new List<ToolDefinition>();
+        for (var i = 0; i < 6; i++) {
+            definitions.Add(new ToolDefinition(
+                $"identity_probe_{i:D2}",
+                "Inspect identity lifecycle compliance ownership evidence for the current environment.",
+                ToolSchema.Object(("identity", ToolSchema.String("Target identity."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "generic",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                }));
+        }
+
+        for (var i = 0; i < 8; i++) {
+            definitions.Add(new ToolDefinition(
+                $"generic_probe_{i:D2}",
+                "Collect generic operational diagnostics.",
+                ToolSchema.Object(("identity", ToolSchema.String("Target identity."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "generic",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                }));
+        }
+
+        definitions.Add(new ToolDefinition(
+            "report_snapshot_publish",
+            "Publish the prepared deliverable artifact for later sharing.",
+            ToolSchema.Object(("report_name", ToolSchema.String("Report name."))).NoAdditionalProperties(),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "testimox_analytics",
+                Role = ToolRoutingTaxonomy.RoleOperational
+            }));
+
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(definitions));
+        var selected = session.SelectWeightedToolSubsetForTesting(
+            definitions,
+            """
+            [Planner context]
+            ix:planner-context:v1
+            preferred_deferred_work_capability_ids: reporting
+
+            inspect identity lifecycle compliance ownership evidence for the current environment
+            """,
+            4,
+            out _);
+
+        Assert.InRange(selected.Count, 4, definitions.Count);
+        Assert.Contains(selected, tool => string.Equals(tool.Name, "report_snapshot_publish", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -3448,6 +4004,69 @@ public sealed class ChatServicePlannerPromptTests {
                     }
                 }
             };
+        }
+    }
+
+    private sealed class SyntheticDeferredAffordancePromptPack : IToolPack, IToolPackCatalogProvider {
+        public ToolPackDescriptor Descriptor { get; } = new() {
+            Id = "custom-deferred",
+            Name = "Custom Deferred",
+            Tier = ToolCapabilityTier.ReadOnly,
+            SourceKind = "open_source"
+        };
+
+        public void Register(ToolRegistry registry) {
+            _ = registry;
+        }
+
+        public IReadOnlyList<ToolPackToolCatalogEntryModel> GetToolCatalog() {
+            return new[] {
+                new ToolPackToolCatalogEntryModel {
+                    Name = "email_message_compose",
+                    Description = "Compose an email summary.",
+                    RepresentativeExamples = new[] {
+                        "send an email summary after the run"
+                    }
+                },
+                new ToolPackToolCatalogEntryModel {
+                    Name = "report_snapshot_publish",
+                    Description = "Publish a report snapshot.",
+                    RepresentativeExamples = new[] {
+                        "publish a monitoring report snapshot"
+                    }
+                }
+            };
+        }
+    }
+
+    private sealed class SyntheticCapabilityDescriptorPack : IToolPack, IToolPackCatalogProvider {
+        private readonly IReadOnlyList<ToolPackToolCatalogEntryModel> _catalogEntries;
+
+        public SyntheticCapabilityDescriptorPack(string packId, IReadOnlyList<string> capabilityTags, params string[] toolNames) {
+            Descriptor = new ToolPackDescriptor {
+                Id = packId,
+                Name = packId,
+                Tier = ToolCapabilityTier.ReadOnly,
+                SourceKind = "open_source",
+                CapabilityTags = capabilityTags
+            };
+            _catalogEntries = toolNames
+                .Where(static toolName => !string.IsNullOrWhiteSpace(toolName))
+                .Select(toolName => new ToolPackToolCatalogEntryModel {
+                    Name = toolName,
+                    Description = toolName
+                })
+                .ToArray();
+        }
+
+        public ToolPackDescriptor Descriptor { get; }
+
+        public void Register(ToolRegistry registry) {
+            _ = registry;
+        }
+
+        public IReadOnlyList<ToolPackToolCatalogEntryModel> GetToolCatalog() {
+            return _catalogEntries;
         }
     }
 

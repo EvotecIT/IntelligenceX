@@ -68,6 +68,21 @@ public sealed class ToolRoutingContract {
     public string DomainIntentActionId { get; set; } = string.Empty;
 
     /// <summary>
+    /// Optional user-facing display label for this domain intent family.
+    /// </summary>
+    public string DomainIntentFamilyDisplayName { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Optional natural-language reply example for selecting this domain intent family.
+    /// </summary>
+    public string DomainIntentFamilyReplyExample { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Optional user-facing clarification description for this domain intent family.
+    /// </summary>
+    public string DomainIntentFamilyChoiceDescription { get; set; } = string.Empty;
+
+    /// <summary>
     /// Optional normalized domain-intent signal tokens associated with this tool.
     /// </summary>
     public IReadOnlyList<string> DomainSignalTokens { get; set; } = Array.Empty<string>();
@@ -125,6 +140,14 @@ public sealed class ToolRoutingContract {
 
         if (normalizedFamily.Length > 0 && string.IsNullOrWhiteSpace(DomainIntentActionId)) {
             throw new InvalidOperationException("DomainIntentActionId is required when DomainIntentFamily is provided.");
+        }
+
+        if (normalizedFamily.Length == 0
+            && (!string.IsNullOrWhiteSpace(DomainIntentFamilyDisplayName)
+                || !string.IsNullOrWhiteSpace(DomainIntentFamilyReplyExample)
+                || !string.IsNullOrWhiteSpace(DomainIntentFamilyChoiceDescription))) {
+            throw new InvalidOperationException(
+                "DomainIntentFamily is required when domain-intent family presentation metadata is provided.");
         }
 
         if (RequiresSelectionForFallback && (FallbackSelectionKeys is null || FallbackSelectionKeys.Count == 0)) {

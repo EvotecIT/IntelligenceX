@@ -136,6 +136,13 @@ public sealed partial class PluginFolderLoaderTests {
             Assert.Equal(
                 new[] { "inventory-test", "network-recon" },
                 pluginAvailability.SkillIds);
+            var pluginCatalog = Assert.Single(
+                result.PluginCatalog,
+                plugin => string.Equals(plugin.Id, normalizedPluginId, StringComparison.OrdinalIgnoreCase));
+            Assert.Equal(Path.Combine(pluginFolder, "skills"), Assert.Single(pluginCatalog.SkillDirectories));
+            Assert.Equal(
+                new[] { "inventory-test", "network-recon" },
+                pluginCatalog.SkillIds);
         } finally {
             if (Directory.Exists(tempRoot)) {
                 Directory.Delete(tempRoot, recursive: true);
@@ -774,7 +781,10 @@ public sealed partial class PluginFolderLoaderTests {
                     PackId = packId,
                     Role = ToolRoutingTaxonomy.RoleOperational,
                     DomainIntentFamily = "plugin_ops",
-                    DomainIntentActionId = "act_domain_scope_plugin_ops"
+                    DomainIntentActionId = "act_domain_scope_plugin_ops",
+                    DomainIntentFamilyDisplayName = "Plugin operations",
+                    DomainIntentFamilyReplyExample = "plugin operations",
+                    DomainIntentFamilyChoiceDescription = "Plugin operations scope (plugin-owned runtime diagnostics)"
                 });
         }
 

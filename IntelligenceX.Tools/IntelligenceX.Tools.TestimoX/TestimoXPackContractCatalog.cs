@@ -30,6 +30,9 @@ internal static class TestimoXPackContractCatalog {
             domainIntentFamily: TestimoXRoutingCatalog.ResolveDomainIntentFamily(definition.Name, existing?.DomainIntentFamily),
             domainIntentActionId: TestimoXRoutingCatalog.ResolveDomainIntentActionId(definition.Name, existing?.DomainIntentActionId),
             defaultSignalTokens: TestimoXRoutingCatalog.SignalTokens,
+            domainIntentFamilyDisplayName: TestimoXRoutingCatalog.ResolveDomainIntentFamilyDisplayName(definition.Name, existing?.DomainIntentFamilyDisplayName),
+            domainIntentFamilyReplyExample: TestimoXRoutingCatalog.ResolveDomainIntentFamilyReplyExample(definition.Name, existing?.DomainIntentFamilyReplyExample),
+            domainIntentFamilyChoiceDescription: TestimoXRoutingCatalog.ResolveDomainIntentFamilyChoiceDescription(definition.Name, existing?.DomainIntentFamilyChoiceDescription),
             requiresSelectionForFallback: TestimoXRoutingCatalog.RequiresSelectionForFallback(existing?.RequiresSelectionForFallback == true, fallbackSelectionKeys),
             fallbackSelectionKeys: fallbackSelectionKeys,
             fallbackHintKeys: TestimoXRoutingCatalog.ResolveFallbackHintKeys(definition.Name, existing?.FallbackHintKeys));

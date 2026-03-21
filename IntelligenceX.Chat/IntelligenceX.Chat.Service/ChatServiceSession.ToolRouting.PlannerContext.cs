@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text;
 using IntelligenceX.Chat.Tooling;
 using IntelligenceX.Tools;
+using IntelligenceX.Tools.Common;
 
 namespace IntelligenceX.Chat.Service;
 
@@ -12,6 +13,7 @@ internal sealed partial class ChatServiceSession {
     private const string PlannerContextMarker = "ix:planner-context:v1";
     private const int MaxPlannerContextPackIds = 8;
     private const int MaxPlannerContextToolNames = 8;
+    private const int MaxPlannerContextDeferredWorkCapabilityIds = 6;
     private const int MaxPlannerContextSkills = 6;
     private const int MaxPlannerContextHandoffTargets = 8;
     private const int MaxPlannerContextSourceTools = 4;
@@ -22,6 +24,7 @@ internal sealed partial class ChatServiceSession {
         string MissingLiveEvidence,
         string[] PreferredPackIds,
         string[] PreferredToolNames,
+        string[] PreferredDeferredWorkCapabilityIds,
         string[] StructuredNextActionSourceToolNames,
         string StructuredNextActionReason,
         double? StructuredNextActionConfidence,
@@ -106,6 +109,11 @@ internal sealed partial class ChatServiceSession {
             (hasCheckpoint ? checkpoint.PriorAnswerPlanPreferredToolNames : Array.Empty<string>())
             .Concat(structuredPreferredToolNames),
             MaxPlannerContextToolNames);
+        var preferredDeferredWorkCapabilityIds = NormalizeDistinctStrings(
+            (hasCheckpoint ? checkpoint.PriorAnswerPlanPreferredDeferredWorkCapabilityIds : Array.Empty<string>())
+            .Select(static capabilityId => NormalizeDeferredWorkCapabilityId(capabilityId))
+            .Where(static capabilityId => capabilityId.Length > 0),
+            MaxPlannerContextDeferredWorkCapabilityIds);
         var sourceToolNames = NormalizeDistinctStrings(structuredSourceToolNames, MaxPlannerContextSourceTools);
         var preferredExecutionBackends = CollectThreadToolExecutionBackendHints(
             normalizedThreadId,
@@ -131,6 +139,7 @@ internal sealed partial class ChatServiceSession {
             checkpoint,
             preferredPackIds,
             preferredToolNames,
+            preferredDeferredWorkCapabilityIds,
             sourceToolNames,
             structuredNextActionReason,
             backgroundHints.FollowUpClasses,
@@ -142,6 +151,7 @@ internal sealed partial class ChatServiceSession {
             && (!hasCheckpoint || checkpoint.PriorAnswerPlanMissingLiveEvidence.Length == 0)
             && preferredPackIds.Length == 0
             && preferredToolNames.Length == 0
+            && preferredDeferredWorkCapabilityIds.Length == 0
             && preferredExecutionBackends.Length == 0
             && sourceToolNames.Length == 0
             && structuredNextActionReason.Length == 0
@@ -183,6 +193,11 @@ internal sealed partial class ChatServiceSession {
         if (preferredToolNames.Length > 0) {
             builder.Append("preferred_tool_names: ")
                 .AppendLine(string.Join(", ", preferredToolNames));
+        }
+
+        if (preferredDeferredWorkCapabilityIds.Length > 0) {
+            builder.Append("preferred_deferred_work_capability_ids: ")
+                .AppendLine(string.Join(", ", preferredDeferredWorkCapabilityIds));
         }
 
         if (sourceToolNames.Length > 0) {
@@ -404,6 +419,7 @@ internal sealed partial class ChatServiceSession {
         WorkingMemoryCheckpoint checkpoint,
         IReadOnlyList<string> preferredPackIds,
         IReadOnlyList<string> preferredToolNames,
+        IReadOnlyList<string> preferredDeferredWorkCapabilityIds,
         IReadOnlyList<string> sourceToolNames,
         string structuredNextActionReason,
         IReadOnlyList<string> backgroundFollowUpClasses,
@@ -423,6 +439,7 @@ internal sealed partial class ChatServiceSession {
             StringComparer.OrdinalIgnoreCase);
         AddPlannerTokenSeeds(requestTokens, preferredPackIds);
         AddPlannerTokenSeeds(requestTokens, preferredToolNames);
+        AddPlannerTokenSeeds(requestTokens, preferredDeferredWorkCapabilityIds);
         AddPlannerTokenSeeds(requestTokens, sourceToolNames);
         AddPlannerTokenSeeds(requestTokens, backgroundFollowUpClasses);
         AddPlannerTokenSeeds(requestTokens, handoffTargetPackIds);
@@ -444,6 +461,7 @@ internal sealed partial class ChatServiceSession {
             score += CountPlannerSkillMatches(skill, preferredPackIds) * 3;
             score += CountPlannerSkillMatches(skill, handoffTargetPackIds) * 2;
             score += CountPlannerSkillMatches(skill, preferredToolNames) * 3;
+            score += CountPlannerSkillMatches(skill, preferredDeferredWorkCapabilityIds) * 3;
             score += CountPlannerSkillMatches(skill, sourceToolNames);
             score += CountPlannerSkillMatches(skill, handoffTargetToolNames) * 2;
             if (checkpoint.DomainIntentFamily.Length > 0
@@ -533,6 +551,7 @@ internal sealed partial class ChatServiceSession {
             MissingLiveEvidence: string.Empty,
             PreferredPackIds: Array.Empty<string>(),
             PreferredToolNames: Array.Empty<string>(),
+            PreferredDeferredWorkCapabilityIds: Array.Empty<string>(),
             StructuredNextActionSourceToolNames: Array.Empty<string>(),
             StructuredNextActionReason: string.Empty,
             StructuredNextActionConfidence: null,
@@ -560,6 +579,7 @@ internal sealed partial class ChatServiceSession {
         var missingLiveEvidence = string.Empty;
         var preferredPackIds = Array.Empty<string>();
         var preferredToolNames = Array.Empty<string>();
+        var preferredDeferredWorkCapabilityIds = Array.Empty<string>();
         var structuredNextActionSourceToolNames = Array.Empty<string>();
         var structuredNextActionReason = string.Empty;
         double? structuredNextActionConfidence = null;
@@ -637,6 +657,15 @@ internal sealed partial class ChatServiceSession {
                     preferredToolNamesValue,
                     static value => NormalizeToolNameForAnswerPlan(value),
                     MaxPlannerContextToolNames);
+                parsedAnyStructuredValue = true;
+                continue;
+            }
+
+            if (TryParseStructuredKeyValueLine(trimmed, "preferred_deferred_work_capability_ids", out var preferredDeferredWorkCapabilityIdsValue)) {
+                preferredDeferredWorkCapabilityIds = NormalizeStructuredMetadataCsv(
+                    preferredDeferredWorkCapabilityIdsValue,
+                    static value => NormalizeDeferredWorkCapabilityId(value),
+                    MaxPlannerContextDeferredWorkCapabilityIds);
                 parsedAnyStructuredValue = true;
                 continue;
             }
@@ -782,6 +811,7 @@ internal sealed partial class ChatServiceSession {
             MissingLiveEvidence: missingLiveEvidence,
             PreferredPackIds: preferredPackIds,
             PreferredToolNames: preferredToolNames,
+            PreferredDeferredWorkCapabilityIds: preferredDeferredWorkCapabilityIds,
             StructuredNextActionSourceToolNames: structuredNextActionSourceToolNames,
             StructuredNextActionReason: structuredNextActionReason,
             StructuredNextActionConfidence: structuredNextActionConfidence,
@@ -801,6 +831,26 @@ internal sealed partial class ChatServiceSession {
             MatchingSkills: matchingSkills,
             AllowCachedEvidenceReuse: allowCachedEvidenceReuse);
         return sawMarker && parsedAnyStructuredValue;
+    }
+
+    private static string NormalizeDeferredWorkCapabilityId(string? value) {
+        var normalized = (value ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return string.Empty;
+        }
+
+        if (ToolPackCapabilityTags.TryGetDeferredCapabilityId(normalized, out var capabilityId)) {
+            return capabilityId;
+        }
+
+        var capabilityTag = ToolPackCapabilityTags.CreateDeferredCapabilityTag(normalized);
+        if (capabilityTag.Length == 0) {
+            return string.Empty;
+        }
+
+        return ToolPackCapabilityTags.TryGetDeferredCapabilityId(capabilityTag, out capabilityId)
+            ? capabilityId
+            : string.Empty;
     }
 
     private static string[] ReadRememberedToolExecutionBackendHintsFromRequestText(string requestText) {

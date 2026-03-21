@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Json;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.Common;
@@ -256,6 +257,21 @@ public sealed record ToolOrchestrationCatalogEntry {
     public string DomainIntentActionId { get; init; } = string.Empty;
 
     /// <summary>
+    /// Optional human-friendly domain intent family display label.
+    /// </summary>
+    public string DomainIntentFamilyDisplayName { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Optional natural-language reply example for domain intent clarification.
+    /// </summary>
+    public string DomainIntentFamilyReplyExample { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Optional user-facing clarification description for the domain intent family.
+    /// </summary>
+    public string DomainIntentFamilyChoiceDescription { get; init; } = string.Empty;
+
+    /// <summary>
     /// Indicates whether tool is setup-aware.
     /// </summary>
     public bool IsSetupAware { get; init; }
@@ -372,6 +388,51 @@ public sealed record ToolOrchestrationCatalogEntry {
 }
 
 /// <summary>
+/// Normalized pack descriptor metadata projected into the orchestration catalog.
+/// </summary>
+public sealed record ToolOrchestrationPackMetadata {
+    /// <summary>
+    /// Normalized pack identifier.
+    /// </summary>
+    public required string PackId { get; init; }
+
+    /// <summary>
+    /// Human-friendly pack display name.
+    /// </summary>
+    public string DisplayName { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Pack-level capability tier from the descriptor.
+    /// </summary>
+    public ToolCapabilityTier Tier { get; init; } = ToolCapabilityTier.ReadOnly;
+
+    /// <summary>
+    /// True when the descriptor marks the pack as dangerous/write-capable.
+    /// </summary>
+    public bool IsDangerous { get; init; }
+
+    /// <summary>
+    /// Optional normalized source-kind token.
+    /// </summary>
+    public string SourceKind { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Optional normalized engine id.
+    /// </summary>
+    public string EngineId { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Optional normalized category token.
+    /// </summary>
+    public string Category { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Optional normalized capability tags.
+    /// </summary>
+    public IReadOnlyList<string> CapabilityTags { get; init; } = Array.Empty<string>();
+}
+
+/// <summary>
 /// Contract-first orchestration catalog built from tool definitions.
 /// </summary>
 public sealed class ToolOrchestrationCatalog {
@@ -396,17 +457,21 @@ public sealed class ToolOrchestrationCatalog {
     private readonly IReadOnlyDictionary<string, IReadOnlyList<ToolOrchestrationCatalogEntry>> _entriesByPackId;
     private readonly IReadOnlyDictionary<string, IReadOnlyList<ToolOrchestrationCatalogEntry>> _entriesByRole;
     private readonly IReadOnlyDictionary<string, IReadOnlyList<ToolOrchestrationCatalogEntry>> _entriesByPackAndRole;
+    private readonly IReadOnlyDictionary<string, ToolOrchestrationPackMetadata> _packMetadataByPackId;
 
     private ToolOrchestrationCatalog(
         Dictionary<string, ToolOrchestrationCatalogEntry> entriesByToolName,
         Dictionary<string, IReadOnlyList<ToolOrchestrationCatalogEntry>> entriesByPackId,
         Dictionary<string, IReadOnlyList<ToolOrchestrationCatalogEntry>> entriesByRole,
-        Dictionary<string, IReadOnlyList<ToolOrchestrationCatalogEntry>> entriesByPackAndRole) {
+        Dictionary<string, IReadOnlyList<ToolOrchestrationCatalogEntry>> entriesByPackAndRole,
+        Dictionary<string, ToolOrchestrationPackMetadata>? packMetadataByPackId) {
         _entriesByToolName = new ReadOnlyDictionary<string, ToolOrchestrationCatalogEntry>(
             new Dictionary<string, ToolOrchestrationCatalogEntry>(entriesByToolName, StringComparer.OrdinalIgnoreCase));
         _entriesByPackId = FreezeEntryListDictionary(entriesByPackId);
         _entriesByRole = FreezeEntryListDictionary(entriesByRole);
         _entriesByPackAndRole = FreezeEntryListDictionary(entriesByPackAndRole);
+        _packMetadataByPackId = new ReadOnlyDictionary<string, ToolOrchestrationPackMetadata>(
+            new Dictionary<string, ToolOrchestrationPackMetadata>(packMetadataByPackId ?? new Dictionary<string, ToolOrchestrationPackMetadata>(StringComparer.OrdinalIgnoreCase), StringComparer.OrdinalIgnoreCase));
     }
 
     /// <summary>
@@ -429,14 +494,16 @@ public sealed class ToolOrchestrationCatalog {
             definitions,
             packCatalogEntriesByToolName: null,
             packGuidanceByPackId: null,
-            packGuidanceByToolName: null);
+            packGuidanceByToolName: null,
+            packMetadataByPackId: null);
     }
 
     private static ToolOrchestrationCatalog Build(
         IReadOnlyList<ToolDefinition> definitions,
         IReadOnlyDictionary<string, PackCatalogToolMetadata>? packCatalogEntriesByToolName,
         IReadOnlyDictionary<string, PackGuidanceMetadata>? packGuidanceByPackId,
-        IReadOnlyDictionary<string, PackGuidanceToolMetadata>? packGuidanceByToolName) {
+        IReadOnlyDictionary<string, PackGuidanceToolMetadata>? packGuidanceByToolName,
+        IReadOnlyDictionary<string, ToolOrchestrationPackMetadata>? packMetadataByPackId) {
         if (definitions is null) {
             throw new ArgumentNullException(nameof(definitions));
         }
@@ -481,6 +548,9 @@ public sealed class ToolOrchestrationCatalog {
             }
 
             var actionId = NormalizeToken(routing?.DomainIntentActionId);
+            var domainIntentFamilyDisplayName = NormalizeOptionalText(routing?.DomainIntentFamilyDisplayName);
+            var domainIntentFamilyReplyExample = NormalizeOptionalText(routing?.DomainIntentFamilyReplyExample);
+            var domainIntentFamilyChoiceDescription = NormalizeOptionalText(routing?.DomainIntentFamilyChoiceDescription);
             var setup = definition.Setup;
             var handoff = definition.Handoff;
             var recovery = definition.Recovery;
@@ -644,6 +714,9 @@ public sealed class ToolOrchestrationCatalog {
                 ProbeToolName = normalizedProbeToolName,
                 DomainIntentFamily = normalizedFamily,
                 DomainIntentActionId = actionId,
+                DomainIntentFamilyDisplayName = domainIntentFamilyDisplayName,
+                DomainIntentFamilyReplyExample = domainIntentFamilyReplyExample,
+                DomainIntentFamilyChoiceDescription = domainIntentFamilyChoiceDescription,
                 IsSetupAware = isSetupAware,
                 SetupRequirementCount = normalizedSetupRequirementPairs.Length,
                 SetupToolName = normalizedSetupToolName,
@@ -707,7 +780,14 @@ public sealed class ToolOrchestrationCatalog {
                 static group => FreezeEntryList(group.OrderBy(static entry => entry.ToolName, StringComparer.OrdinalIgnoreCase)),
                 StringComparer.OrdinalIgnoreCase);
 
-        return new ToolOrchestrationCatalog(entriesByToolName, entriesByPackId, entriesByRole, entriesByPackAndRole);
+        return new ToolOrchestrationCatalog(
+            entriesByToolName,
+            entriesByPackId,
+            entriesByRole,
+            entriesByPackAndRole,
+            packMetadataByPackId is null
+                ? null
+                : new Dictionary<string, ToolOrchestrationPackMetadata>(packMetadataByPackId, StringComparer.OrdinalIgnoreCase));
     }
 
     /// <summary>
@@ -724,7 +804,8 @@ public sealed class ToolOrchestrationCatalog {
         var resolvedPackIdsByToolName = BuildResolvedPackIdIndex(definitions, packCatalogEntriesByToolName);
         var packGuidanceByPackId = BuildPackGuidanceIndex(packs, resolvedPackIdsByToolName);
         var packGuidanceByToolName = BuildPackGuidanceToolIndex(packGuidanceByPackId);
-        return Build(definitions, packCatalogEntriesByToolName, packGuidanceByPackId, packGuidanceByToolName);
+        var packMetadataByPackId = BuildPackMetadataIndex(packs);
+        return Build(definitions, packCatalogEntriesByToolName, packGuidanceByPackId, packGuidanceByToolName, packMetadataByPackId);
     }
 
     /// <summary>
@@ -790,8 +871,91 @@ public sealed class ToolOrchestrationCatalog {
         return entries;
     }
 
+    /// <summary>
+    /// Returns true when capability tags are registered for the provided pack id.
+    /// </summary>
+    public bool TryGetPackCapabilityTags(string? packId, out IReadOnlyList<string> capabilityTags) {
+        if (!TryGetPackMetadata(packId, out var metadata) || metadata.CapabilityTags.Count == 0) {
+            capabilityTags = Array.Empty<string>();
+            return false;
+        }
+
+        capabilityTags = metadata.CapabilityTags;
+        return true;
+    }
+
+    /// <summary>
+    /// Returns true when descriptor metadata is registered for the provided pack id.
+    /// </summary>
+    public bool TryGetPackMetadata(string? packId, out ToolOrchestrationPackMetadata metadata) {
+        var normalizedPackId = NormalizePackId(packId);
+        if (normalizedPackId.Length == 0 || !_packMetadataByPackId.TryGetValue(normalizedPackId, out metadata!)) {
+            metadata = null!;
+            return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Returns normalized pack ids known to the orchestration catalog.
+    /// </summary>
+    public IReadOnlyList<string> GetKnownPackIds() {
+        if (_entriesByPackId.Count == 0 && _packMetadataByPackId.Count == 0) {
+            return Array.Empty<string>();
+        }
+
+        var packIds = new List<string>(_entriesByPackId.Count + _packMetadataByPackId.Count);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var packId in _entriesByPackId.Keys) {
+            if (seen.Add(packId)) {
+                packIds.Add(packId);
+            }
+        }
+
+        foreach (var packId in _packMetadataByPackId.Keys) {
+            if (seen.Add(packId)) {
+                packIds.Add(packId);
+            }
+        }
+
+        return packIds.Count == 0 ? Array.Empty<string>() : packIds;
+    }
+
     private static string BuildPackRoleKey(string packId, string role) {
         return packId + "|" + role;
+    }
+
+    private static IReadOnlyDictionary<string, ToolOrchestrationPackMetadata>? BuildPackMetadataIndex(IEnumerable<IToolPack>? packs) {
+        if (packs is null) {
+            return null;
+        }
+
+        var index = new Dictionary<string, ToolOrchestrationPackMetadata>(StringComparer.OrdinalIgnoreCase);
+        foreach (var pack in packs) {
+            if (pack is null) {
+                continue;
+            }
+
+            var normalizedPackId = NormalizePackId(pack.Descriptor.Id);
+            if (normalizedPackId.Length == 0 || index.ContainsKey(normalizedPackId)) {
+                continue;
+            }
+
+            var capabilityTags = NormalizeDistinctTokens(pack.Descriptor.CapabilityTags);
+            index[normalizedPackId] = new ToolOrchestrationPackMetadata {
+                PackId = normalizedPackId,
+                DisplayName = ToolPackMetadataNormalizer.ResolveDisplayName(pack.Descriptor.Id, pack.Descriptor.Name),
+                Tier = pack.Descriptor.Tier,
+                IsDangerous = pack.Descriptor.IsDangerous || pack.Descriptor.Tier == ToolCapabilityTier.DangerousWrite,
+                SourceKind = ToolPackMetadataNormalizer.ResolveSourceKind(pack.Descriptor.SourceKind).ToString(),
+                EngineId = ToolPackMetadataNormalizer.NormalizeDescriptorToken(pack.Descriptor.EngineId),
+                Category = ToolPackBootstrap.NormalizePackCategory(pack.Descriptor.Category, normalizedPackId) ?? string.Empty,
+                CapabilityTags = FreezeStringList(capabilityTags)
+            };
+        }
+
+        return index.Count == 0 ? null : index;
     }
 
     private static IReadOnlyDictionary<string, PackCatalogToolMetadata>? BuildPackCatalogEntryIndex(IEnumerable<IToolPack>? packs) {
@@ -1064,6 +1228,17 @@ public sealed class ToolOrchestrationCatalog {
             normalizedDomainIntentFamily,
             entry.DomainIntentFamily,
             entry.DomainIntentActionId);
+        var domainIntentFamilyChanged = normalizedDomainIntentFamily.Length > 0
+                                        && !string.Equals(normalizedDomainIntentFamily, entry.DomainIntentFamily, StringComparison.OrdinalIgnoreCase);
+        var normalizedDomainIntentFamilyDisplayName = NormalizeOverlayOptionalText(
+            overlayEntry.Routing?.DomainIntentFamilyDisplayName,
+            domainIntentFamilyChanged ? string.Empty : entry.DomainIntentFamilyDisplayName);
+        var normalizedDomainIntentFamilyReplyExample = NormalizeOverlayOptionalText(
+            overlayEntry.Routing?.DomainIntentFamilyReplyExample,
+            domainIntentFamilyChanged ? string.Empty : entry.DomainIntentFamilyReplyExample);
+        var normalizedDomainIntentFamilyChoiceDescription = NormalizeOverlayOptionalText(
+            overlayEntry.Routing?.DomainIntentFamilyChoiceDescription,
+            domainIntentFamilyChanged ? string.Empty : entry.DomainIntentFamilyChoiceDescription);
 
         var targetScopeArguments = NormalizeDistinctTokens(overlayEntry.Traits?.TargetScopeArguments);
         var remoteHostArguments = NormalizeDistinctTokens(overlayEntry.Traits?.RemoteHostArguments);
@@ -1157,6 +1332,9 @@ public sealed class ToolOrchestrationCatalog {
             ProbeToolName = probeToolName,
             DomainIntentFamily = normalizedDomainIntentFamily,
             DomainIntentActionId = normalizedDomainIntentActionId,
+            DomainIntentFamilyDisplayName = normalizedDomainIntentFamilyDisplayName,
+            DomainIntentFamilyReplyExample = normalizedDomainIntentFamilyReplyExample,
+            DomainIntentFamilyChoiceDescription = normalizedDomainIntentFamilyChoiceDescription,
             IsSetupAware = isSetupAware,
             SetupRequirementCount = isSetupAware
                 ? Math.Max(entry.SetupRequirementCount, resolvedSetupRequirementIds.Count)
@@ -1415,8 +1593,17 @@ public sealed class ToolOrchestrationCatalog {
         return NormalizeToken(fallback, "local_only");
     }
 
+    private static string NormalizeOverlayOptionalText(string? value, string fallback) {
+        var normalized = NormalizeOptionalText(value);
+        return normalized.Length == 0 ? fallback : normalized;
+    }
+
     private static string NormalizePackId(string? value) {
         return ToolPackBootstrap.NormalizePackId(value);
+    }
+
+    private static string NormalizeOptionalText(string? value) {
+        return (value ?? string.Empty).Trim();
     }
 
     private static string NormalizeToken(string? value, string fallback = "") {

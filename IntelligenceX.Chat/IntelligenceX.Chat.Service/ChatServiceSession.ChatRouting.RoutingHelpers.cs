@@ -559,6 +559,14 @@ internal sealed partial class ChatServiceSession {
             plannerContext.HandoffTargetToolNames.Concat(derivedHandoffTargetToolNames),
             StringComparer.OrdinalIgnoreCase);
         var preferredPackIds = new HashSet<string>(plannerContext.PreferredPackIds, StringComparer.OrdinalIgnoreCase);
+        var preferredDeferredWorkCapabilityIds = new HashSet<string>(
+            plannerContext.PreferredDeferredWorkCapabilityIds
+                .Select(static capabilityId => NormalizeDeferredWorkCapabilityId(capabilityId))
+                .Where(static capabilityId => capabilityId.Length > 0),
+            StringComparer.OrdinalIgnoreCase);
+        foreach (var packId in ResolvePackIdsForDeferredWorkCapabilityPreferences(preferredDeferredWorkCapabilityIds)) {
+            preferredPackIds.Add(packId);
+        }
         var handoffTargetPackIds = new HashSet<string>(
             plannerContext.HandoffTargetPackIds.Concat(derivedHandoffTargetPackIds),
             StringComparer.OrdinalIgnoreCase);
@@ -596,6 +604,15 @@ internal sealed partial class ChatServiceSession {
                 && handoffTargetPackIds.Count == 0) {
                 return SelectDeterministicToolSubset(definitions, candidateLimit, toolOrchestrationCatalog);
             }
+
+            return SelectContractAwareDeterministicSubset(
+                definitions,
+                candidateLimit,
+                toolOrchestrationCatalog,
+                preferredToolNames,
+                handoffTargetToolNames,
+                preferredPackIds,
+                handoffTargetPackIds);
         }
 
         var scored = new List<(ToolDefinition Definition, int Priority, int FocusHits, string SearchText)>(definitions.Count);
@@ -621,6 +638,9 @@ internal sealed partial class ChatServiceSession {
             }
             if (preferredPackIds.Contains(packId)) {
                 priority += 400;
+            }
+            if (PackMatchesDeferredWorkCapabilityPreference(packId, preferredDeferredWorkCapabilityIds)) {
+                priority += PlannerDeferredWorkCapabilityPriorityBoost;
             }
             if (handoffTargetPackIds.Contains(packId)) {
                 priority += 200;
@@ -760,6 +780,14 @@ internal sealed partial class ChatServiceSession {
             plannerContext.HandoffTargetToolNames.Concat(derivedHandoffTargetToolNames),
             StringComparer.OrdinalIgnoreCase);
         var preferredPackIds = new HashSet<string>(plannerContext.PreferredPackIds, StringComparer.OrdinalIgnoreCase);
+        var preferredDeferredWorkCapabilityIds = new HashSet<string>(
+            plannerContext.PreferredDeferredWorkCapabilityIds
+                .Select(static capabilityId => NormalizeDeferredWorkCapabilityId(capabilityId))
+                .Where(static capabilityId => capabilityId.Length > 0),
+            StringComparer.OrdinalIgnoreCase);
+        foreach (var packId in ResolvePackIdsForDeferredWorkCapabilityPreferences(preferredDeferredWorkCapabilityIds)) {
+            preferredPackIds.Add(packId);
+        }
         var handoffTargetPackIds = new HashSet<string>(
             plannerContext.HandoffTargetPackIds.Concat(derivedHandoffTargetPackIds),
             StringComparer.OrdinalIgnoreCase);
@@ -866,6 +894,9 @@ internal sealed partial class ChatServiceSession {
             }
             if (preferredPackIds.Contains(packId)) {
                 score += 4d;
+            }
+            if (PackMatchesDeferredWorkCapabilityPreference(packId, preferredDeferredWorkCapabilityIds)) {
+                score += WeightedRoutingDeferredWorkCapabilityScoreBoost;
             }
             if (handoffTargetPackIds.Contains(packId)) {
                 score += 3d;
@@ -1007,7 +1038,14 @@ internal sealed partial class ChatServiceSession {
         }
 
         if (!hasSignal) {
-            return SelectDeterministicToolSubset(definitions, limit, _toolOrchestrationCatalog);
+            return SelectContractAwareDeterministicSubset(
+                definitions,
+                limit,
+                _toolOrchestrationCatalog,
+                preferredToolNames,
+                handoffTargetToolNames,
+                preferredPackIds,
+                handoffTargetPackIds);
         }
 
         scored.Sort(static (a, b) => {
@@ -1020,7 +1058,14 @@ internal sealed partial class ChatServiceSession {
         });
 
         if (scored[0].Score < 1d) {
-            return SelectDeterministicToolSubset(definitions, limit, _toolOrchestrationCatalog);
+            return SelectContractAwareDeterministicSubset(
+                definitions,
+                limit,
+                _toolOrchestrationCatalog,
+                preferredToolNames,
+                handoffTargetToolNames,
+                preferredPackIds,
+                handoffTargetPackIds);
         }
 
         var selected = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -1049,6 +1094,16 @@ internal sealed partial class ChatServiceSession {
             }
         }
 
+        selectedDefs = EnsureContractTargetedToolSelection(
+            selectedDefs,
+            scored,
+            limit,
+            _toolOrchestrationCatalog,
+            preferredToolNames,
+            handoffTargetToolNames,
+            preferredPackIds,
+            handoffTargetPackIds).ToList();
+
         if (selectedDefs.Count >= definitions.Count) {
             return definitions;
         }
@@ -1070,6 +1125,7 @@ internal sealed partial class ChatServiceSession {
 
             AddPlannerContextFocusTokens(focusTokens, plannerContext.PreferredPackIds);
             AddPlannerContextFocusTokens(focusTokens, plannerContext.PreferredToolNames);
+            AddPlannerContextFocusTokens(focusTokens, plannerContext.PreferredDeferredWorkCapabilityIds);
             AddPlannerContextFocusTokens(focusTokens, plannerContext.StructuredNextActionSourceToolNames);
             AddPlannerContextFocusTokens(focusTokens, plannerContext.HandoffTargetPackIds);
             AddPlannerContextFocusTokens(focusTokens, plannerContext.HandoffTargetToolNames);

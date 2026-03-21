@@ -40,7 +40,8 @@ internal static class TranscriptForensicsExporter {
         string conversationTitle,
         string? threadId,
         IReadOnlyList<(string Role, string Text, DateTime Time, string? Model)> liveMessages,
-        IReadOnlyList<ChatMessageState>? persistedMessages) {
+        IReadOnlyList<ChatMessageState>? persistedMessages,
+        RuntimeToolingSupportSnapshot? tooling = null) {
         ArgumentNullException.ThrowIfNull(markdownOptions);
         ArgumentNullException.ThrowIfNull(liveMessages);
 
@@ -58,6 +59,7 @@ internal static class TranscriptForensicsExporter {
             ThreadId = NormalizeOptionalValue(threadId),
             TimestampFormat = string.IsNullOrWhiteSpace(timestampFormat) ? "HH:mm:ss" : timestampFormat.Trim(),
             Renderer = BuildRendererSnapshot(),
+            Tooling = tooling,
             Live = liveSnapshot,
             Persisted = persistedSnapshot
         };
@@ -189,6 +191,7 @@ internal sealed class TranscriptForensicsBundle {
     public string? ThreadId { get; set; }
     public string TimestampFormat { get; set; } = "HH:mm:ss";
     public TranscriptForensicsRendererSnapshot Renderer { get; set; } = new();
+    public RuntimeToolingSupportSnapshot? Tooling { get; set; }
     public TranscriptForensicsConversationSnapshot Live { get; set; } = new();
     public TranscriptForensicsConversationSnapshot? Persisted { get; set; }
 }

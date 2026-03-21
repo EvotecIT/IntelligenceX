@@ -261,6 +261,25 @@ public static class ToolPackIdentityCatalog {
     }
 
     /// <summary>
+    /// Returns the display label associated with the pack identity when known.
+    /// </summary>
+    public static bool TryGetDisplayName(string? packId, out string displayName) {
+        displayName = string.Empty;
+        var normalizedPackId = NormalizePackId(packId);
+        if (normalizedPackId.Length == 0) {
+            return false;
+        }
+
+        if (TryGetKnownPackIdentity(normalizedPackId, out var identity) && !string.IsNullOrWhiteSpace(identity.DisplayName)) {
+            displayName = identity.DisplayName;
+            return true;
+        }
+
+        displayName = normalizedPackId;
+        return displayName.Length > 0;
+    }
+
+    /// <summary>
     /// Resolves a category from a runtime namespace marker when it matches a known pack identity.
     /// </summary>
     public static bool TryResolveCategoryFromRuntimeNamespace(string? runtimeNamespace, out string category) {

@@ -818,6 +818,9 @@ public sealed partial class MainWindow : Window {
                     _toolCatalogPacks = hello.Policy?.Packs is { } helloPacks
                         ? helloPacks
                         : Array.Empty<ToolPackInfoDto>();
+                    _toolCatalogPlugins = hello.Policy?.Plugins is { } helloPlugins
+                        ? helloPlugins
+                        : Array.Empty<PluginInfoDto>();
                     _toolCatalogRoutingCatalog = hello.Policy?.RoutingCatalog;
                     _toolCatalogCapabilitySnapshot = hello.Policy?.CapabilitySnapshot;
                     SeedBackgroundSchedulerSnapshot(hello.Policy?.CapabilitySnapshot?.BackgroundScheduler);
@@ -843,7 +846,7 @@ public sealed partial class MainWindow : Window {
                     UpdateStartupMetadataSyncPhase("loading tool catalog");
                     LogStartupConnectPhase("list_tools", "begin");
                     var toolList = await _client.RequestAsync<ToolListMessage>(new ListToolsRequest { RequestId = NextId() }, CancellationToken.None).ConfigureAwait(false);
-                    UpdateToolCatalog(toolList.Tools, toolList.RoutingCatalog, toolList.Packs, toolList.CapabilitySnapshot);
+                    UpdateToolCatalog(toolList.Tools, toolList.RoutingCatalog, toolList.Packs, toolList.Plugins, toolList.CapabilitySnapshot);
                     SeedBackgroundSchedulerSnapshot(toolList.CapabilitySnapshot?.BackgroundScheduler);
                     RecordStartupListToolsPhaseDiagnostics(listToolsStopwatch.Elapsed, attempts: 1, success: true);
                     inlineToolCatalogPhaseSucceeded = true;

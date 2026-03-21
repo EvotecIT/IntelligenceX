@@ -38,6 +38,26 @@ public static class ToolPackCapabilityTags {
     /// </summary>
     public const string GovernedWrite = "governed_write";
 
+    /// <summary>
+    /// Prefix for pack-declared deferred-work capabilities that should surface in runtime capability snapshots.
+    /// </summary>
+    public const string DeferredCapabilityPrefix = "deferred_capability:";
+
+    /// <summary>
+    /// Pack advertises email-oriented deferred work.
+    /// </summary>
+    public const string DeferredCapabilityEmail = DeferredCapabilityPrefix + "email";
+
+    /// <summary>
+    /// Pack advertises reporting-oriented deferred work.
+    /// </summary>
+    public const string DeferredCapabilityReporting = DeferredCapabilityPrefix + "reporting";
+
+    /// <summary>
+    /// Pack advertises notification-oriented deferred work.
+    /// </summary>
+    public const string DeferredCapabilityNotification = DeferredCapabilityPrefix + "notification";
+
     private static readonly string[] PlannerPriorityOrder = {
         GovernedWrite,
         WriteCapable,
@@ -119,6 +139,36 @@ public static class ToolPackCapabilityTags {
             .ToArray();
     }
 
+    /// <summary>
+    /// Builds a normalized deferred-work capability tag for the supplied capability identifier.
+    /// </summary>
+    public static string CreateDeferredCapabilityTag(string? capabilityId) {
+        var normalizedCapabilityId = NormalizeDeferredCapabilityId(capabilityId);
+        return normalizedCapabilityId.Length == 0
+            ? string.Empty
+            : DeferredCapabilityPrefix + normalizedCapabilityId;
+    }
+
+    /// <summary>
+    /// Returns <see langword="true"/> when the capability tag advertises a deferred-work capability id.
+    /// </summary>
+    public static bool TryGetDeferredCapabilityId(string? capabilityTag, out string capabilityId) {
+        capabilityId = string.Empty;
+        var normalizedTag = NormalizeDescriptorToken(capabilityTag);
+        if (!normalizedTag.StartsWith(DeferredCapabilityPrefix, StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        var suffix = normalizedTag[DeferredCapabilityPrefix.Length..];
+        suffix = NormalizeDeferredCapabilityId(suffix);
+        if (suffix.Length == 0) {
+            return false;
+        }
+
+        capabilityId = suffix;
+        return true;
+    }
+
     private static bool IsExecutionOrAnalysisScopeTag(string? capabilityTag) {
         return string.Equals(capabilityTag, LocalAnalysis, StringComparison.OrdinalIgnoreCase)
                || string.Equals(capabilityTag, RemoteAnalysis, StringComparison.OrdinalIgnoreCase)
@@ -129,5 +179,20 @@ public static class ToolPackCapabilityTags {
     private static bool IsWriteOrGovernanceTag(string? capabilityTag) {
         return string.Equals(capabilityTag, WriteCapable, StringComparison.OrdinalIgnoreCase)
                || string.Equals(capabilityTag, GovernedWrite, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string NormalizeDescriptorToken(string? capabilityTag) {
+        return (capabilityTag ?? string.Empty).Trim().ToLowerInvariant();
+    }
+
+    private static string NormalizeDeferredCapabilityId(string? capabilityId) {
+        var normalized = NormalizeDescriptorToken(capabilityId)
+            .Replace("-", "_", StringComparison.Ordinal)
+            .Replace(" ", "_", StringComparison.Ordinal);
+        while (normalized.Contains("__", StringComparison.Ordinal)) {
+            normalized = normalized.Replace("__", "_", StringComparison.Ordinal);
+        }
+
+        return normalized.Trim('_');
     }
 }

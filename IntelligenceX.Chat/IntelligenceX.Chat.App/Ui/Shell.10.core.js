@@ -110,6 +110,7 @@
       activeConversationId: "",
       conversations: [],
       toolCatalogRoutingCatalog: null,
+      toolCatalogPlugins: [],
       toolCatalogCapabilitySnapshot: null,
       profileApplyMode: "session",
       profile: {
@@ -2010,7 +2011,9 @@
 
   function renderPolicy() {
     var policyEl = byId("policyInfo");
+    var pluginDetailsEl = byId("policyPluginDetails");
     var startupWarningsEl = byId("policyStartupWarnings");
+    var pluginsEl = byId("policyPlugins");
     var pluginRootsEl = byId("policyPluginRoots");
     var routingCatalogEl = byId("policyRoutingCatalog");
     var capabilitySnapshotEl = byId("policyCapabilitySnapshot");
@@ -2019,14 +2022,22 @@
     var p = state.options.policy;
     var fallbackRoutingCatalog = normalizeRoutingCatalog(state.options ? state.options.toolCatalogRoutingCatalog : null);
     var fallbackCapabilitySnapshot = normalizeCapabilitySnapshot(state.options ? state.options.toolCatalogCapabilitySnapshot : null);
+    var fallbackPlugins = normalizePlugins(state.options ? state.options.toolCatalogPlugins : null);
+    if (fallbackPlugins.length === 0) {
+      fallbackPlugins = resolveCapabilitySnapshotPlugins(fallbackCapabilitySnapshot);
+    }
     if (!p) {
-      var usingToolCatalogPreview = !!fallbackRoutingCatalog || !!fallbackCapabilitySnapshot;
+      var usingToolCatalogPreview = !!fallbackRoutingCatalog || !!fallbackCapabilitySnapshot || fallbackPlugins.length > 0;
       policyEl.innerHTML = usingToolCatalogPreview
         ? "<span class='options-k'>Policy</span><span class='options-v'>Not available</span><span class='options-k'>Bootstrap preview</span><span class='options-v'>Using tool catalog</span>"
         : "<span class='options-k'>Policy</span><span class='options-v'>Not available</span>";
       if (startupWarningsEl) {
         startupWarningsEl.hidden = true;
         startupWarningsEl.innerHTML = "";
+      }
+      renderPluginPolicyDetails(pluginDetailsEl, fallbackPlugins);
+      if (pluginsEl) {
+        renderPolicyList(pluginsEl, formatPluginPolicyLines(fallbackPlugins), "Plugin sources");
       }
       if (pluginRootsEl) {
         pluginRootsEl.hidden = true;
@@ -2047,6 +2058,13 @@
     var runtimePolicy = normalizeRuntimePolicy(p.runtimePolicy);
     var routingCatalog = normalizeRoutingCatalog(p && p.routingCatalog ? p.routingCatalog : fallbackRoutingCatalog);
     var capabilitySnapshot = normalizeCapabilitySnapshot(p && p.capabilitySnapshot ? p.capabilitySnapshot : fallbackCapabilitySnapshot);
+    var plugins = normalizePlugins(p && p.plugins ? p.plugins : null);
+    if (plugins.length === 0) {
+      plugins = resolveCapabilitySnapshotPlugins(capabilitySnapshot);
+    }
+    if (plugins.length === 0) {
+      plugins = fallbackPlugins;
+    }
     var runtimeNotices = routingCatalog
       ? filterOutRoutingCatalogWarnings(startupWarnings)
       : startupWarnings;
@@ -2070,6 +2088,7 @@
       ["Tooling available", !capabilitySnapshot ? "N/A" : (capabilitySnapshot.toolingAvailable ? "Yes" : "No")],
       ["Registered tools", !capabilitySnapshot ? "N/A" : String(capabilitySnapshot.registeredTools)],
       ["Enabled packs", !capabilitySnapshot ? "N/A" : String(capabilitySnapshot.enabledPackCount)],
+      ["Plugin sources", plugins.length === 0 ? "None" : String(plugins.length)],
       ["Remote reachability", !capabilitySnapshot ? "N/A" : capabilitySnapshot.remoteReachabilityMode],
       ["Autonomy surface", !capabilityAutonomy
         ? "N/A"
@@ -2091,8 +2110,10 @@
       policyEl.appendChild(v);
     }
 
+    renderPluginPolicyDetails(pluginDetailsEl, plugins);
     renderRoutingCatalogPolicy(routingCatalogEl, routingCatalog);
     renderCapabilitySnapshotPolicy(capabilitySnapshotEl, capabilitySnapshot);
+    renderPolicyList(pluginsEl, formatPluginPolicyLines(plugins), "Plugin sources");
     renderPolicyList(pluginRootsEl, pluginSearchPaths, "Plugin search roots");
     renderPolicyList(startupWarningsEl, runtimeNotices, runtimeNotices.length === 1 ? "Runtime notice" : "Runtime notices");
   }
@@ -2347,6 +2368,9 @@
     var autonomyRaw = value.autonomy && typeof value.autonomy === "object"
       ? value.autonomy
       : null;
+    var toolingSnapshotRaw = value.toolingSnapshot && typeof value.toolingSnapshot === "object"
+      ? value.toolingSnapshot
+      : null;
 
     return {
       registeredTools: toNonNegativeInt(value.registeredTools),
@@ -2372,9 +2396,240 @@
         crossPackReadyPackIds: toStringArray(autonomyRaw.crossPackReadyPackIds),
         crossPackTargetPackIds: toStringArray(autonomyRaw.crossPackTargetPackIds)
       },
+      toolingSnapshot: !toolingSnapshotRaw ? null : {
+        source: normalizeModeToken(toolingSnapshotRaw.source, ""),
+        packs: Array.isArray(toolingSnapshotRaw.packs) ? toolingSnapshotRaw.packs : [],
+        plugins: normalizePlugins(toolingSnapshotRaw.plugins)
+      },
       parityAttentionCount: toNonNegativeInt(value.parityAttentionCount),
       parityMissingCapabilityCount: toNonNegativeInt(value.parityMissingCapabilityCount)
     };
+  }
+
+  function resolveCapabilitySnapshotPlugins(capabilitySnapshot) {
+    if (!capabilitySnapshot || !capabilitySnapshot.toolingSnapshot) {
+      return [];
+    }
+
+    return normalizePlugins(capabilitySnapshot.toolingSnapshot.plugins);
+  }
+
+  function normalizePluginSourceKind(value) {
+    var normalized = String(value || "").trim().toLowerCase();
+    if (normalized === "builtin" || normalized === "closed_source" || normalized === "open_source") {
+      return normalized;
+    }
+    return "open_source";
+  }
+
+  function normalizePluginOrigin(value) {
+    if (typeof value !== "string") {
+      return "";
+    }
+
+    return value.trim();
+  }
+
+  function normalizePluginInfo(value) {
+    if (!value || typeof value !== "object") {
+      return null;
+    }
+
+    var id = typeof value.id === "string" ? value.id.trim() : "";
+    var name = typeof value.name === "string" ? value.name.trim() : "";
+    if (!id && !name) {
+      return null;
+    }
+
+    return {
+      id: id,
+      name: name,
+      version: typeof value.version === "string" ? value.version.trim() : "",
+      origin: normalizePluginOrigin(value.origin),
+      sourceKind: normalizePluginSourceKind(value.sourceKind),
+      defaultEnabled: normalizeBool(value.defaultEnabled),
+      enabled: normalizeBool(value.enabled),
+      disabledReason: typeof value.disabledReason === "string" ? value.disabledReason.trim() : "",
+      isDangerous: normalizeBool(value.isDangerous),
+      packIds: toStringArray(value.packIds),
+      rootPath: normalizeOptionalPath(value.rootPath),
+      skillIds: toStringArray(value.skillIds)
+    };
+  }
+
+  function normalizePlugins(value) {
+    if (!Array.isArray(value) || value.length === 0) {
+      return [];
+    }
+
+    var plugins = [];
+    for (var i = 0; i < value.length; i++) {
+      var plugin = normalizePluginInfo(value[i]);
+      if (!plugin) {
+        continue;
+      }
+
+      plugins.push(plugin);
+    }
+
+    plugins.sort(function(a, b) {
+      var byName = String(a.name || a.id || "").localeCompare(String(b.name || b.id || ""), undefined, { sensitivity: "accent" });
+      if (byName !== 0) {
+        return byName;
+      }
+
+      return String(a.id || "").localeCompare(String(b.id || ""), undefined, { sensitivity: "accent" });
+    });
+    return plugins;
+  }
+
+  function buildPluginPolicyLabel(plugin) {
+    if (!plugin) {
+      return "";
+    }
+
+    var pluginId = String(plugin.id || "").trim();
+    var pluginName = String(plugin.name || "").trim();
+    if (!pluginName) {
+      return pluginId;
+    }
+
+    return pluginId && pluginName.toLowerCase() !== pluginId.toLowerCase()
+      ? (pluginName + " [" + pluginId + "]")
+      : pluginName;
+  }
+
+  function describePluginOrigin(origin, sourceKind) {
+    var normalizedOrigin = normalizePluginOrigin(origin).toLowerCase();
+    if (normalizedOrigin === "folder" || normalizedOrigin === "plugin_folder") {
+      return "plugin folder";
+    }
+    if (normalizedOrigin === "builtin") {
+      return "built-in runtime";
+    }
+    if (normalizedOrigin) {
+      return normalizedOrigin.replace(/_/g, " ");
+    }
+
+    if (normalizePluginSourceKind(sourceKind) === "builtin") {
+      return "built-in runtime";
+    }
+    if (normalizePluginSourceKind(sourceKind) === "closed_source") {
+      return "private plugin source";
+    }
+    return "registered plugin source";
+  }
+
+  function formatPluginPolicyLines(plugins) {
+    if (!Array.isArray(plugins) || plugins.length === 0) {
+      return [];
+    }
+
+    var lines = [];
+    for (var i = 0; i < plugins.length; i++) {
+      var plugin = plugins[i];
+      var details = [];
+      details.push(plugin.enabled ? "enabled" : "disabled");
+      details.push(plugin.defaultEnabled ? "default enabled" : "default disabled");
+      details.push("origin " + describePluginOrigin(plugin.origin, plugin.sourceKind));
+      details.push("source " + packSourceLabel(plugin.sourceKind));
+      if (plugin.version) {
+        details.push("version " + plugin.version);
+      }
+      if (plugin.isDangerous) {
+        details.push("dangerous");
+      }
+      if (plugin.packIds.length > 0) {
+        details.push("packs " + plugin.packIds.join("/"));
+      }
+      if (plugin.skillIds.length > 0) {
+        details.push("skills " + plugin.skillIds.join("/"));
+      }
+      if (plugin.rootPath) {
+        details.push("root " + plugin.rootPath);
+      }
+      if (!plugin.enabled && plugin.disabledReason) {
+        details.push("reason " + plugin.disabledReason);
+      }
+
+      lines.push(buildPluginPolicyLabel(plugin) + ": " + details.join(", "));
+    }
+
+    return lines;
+  }
+
+  function appendOptionsKv(host, label, value) {
+    if (!host) {
+      return;
+    }
+
+    var k = document.createElement("span");
+    k.className = "options-k";
+    k.textContent = label;
+    var v = document.createElement("span");
+    v.className = "options-v";
+    v.textContent = value;
+    host.appendChild(k);
+    host.appendChild(v);
+  }
+
+  function renderPluginPolicyDetails(host, plugins) {
+    if (!host) {
+      return;
+    }
+
+    host.innerHTML = "";
+    if (!Array.isArray(plugins) || plugins.length === 0) {
+      host.hidden = true;
+      return;
+    }
+
+    host.hidden = false;
+    for (var i = 0; i < plugins.length; i++) {
+      var plugin = plugins[i];
+      var label = buildPluginPolicyLabel(plugin);
+      if (!label) {
+        continue;
+      }
+
+      var provenanceParts = [
+        "origin " + describePluginOrigin(plugin.origin, plugin.sourceKind),
+        "source " + packSourceLabel(plugin.sourceKind),
+        plugin.defaultEnabled ? "default enabled" : "default disabled"
+      ];
+      appendOptionsKv(host, label + " provenance", provenanceParts.join(" | "));
+
+      var runtimeParts = [plugin.enabled ? "enabled" : "disabled"];
+      if (plugin.isDangerous) {
+        runtimeParts.push("dangerous");
+      }
+      if (!plugin.enabled && plugin.disabledReason) {
+        runtimeParts.push("reason " + plugin.disabledReason);
+      }
+      appendOptionsKv(host, label + " runtime", runtimeParts.join(" | "));
+
+      if (plugin.packIds.length > 0) {
+        appendOptionsKv(host, label + " packs", plugin.packIds.join(", "));
+      }
+      if (plugin.skillIds.length > 0) {
+        appendOptionsKv(host, label + " skills", plugin.skillIds.join(", "));
+      }
+
+      var identityParts = [];
+      if (plugin.version) {
+        identityParts.push("version " + plugin.version);
+      }
+      if (plugin.rootPath) {
+        identityParts.push("root " + plugin.rootPath);
+      }
+      if (identityParts.length > 0) {
+        appendOptionsKv(host, label + " identity", identityParts.join(" | "));
+      }
+    }
+
+    if (host.childElementCount === 0) {
+      host.hidden = true;
+    }
   }
 
   function renderRoutingCatalogPolicy(host, routingCatalog) {
@@ -2464,6 +2719,10 @@
     }
     if (capabilitySnapshot.healthyTools.length > 0) {
       lines.push("healthy tools: " + capabilitySnapshot.healthyTools.length);
+    }
+    if (capabilitySnapshot.toolingSnapshot) {
+      var toolingSource = capabilitySnapshot.toolingSnapshot.source || "registered_export";
+      lines.push("tooling snapshot: " + toolingSource + ", packs " + capabilitySnapshot.toolingSnapshot.packs.length + ", plugins " + capabilitySnapshot.toolingSnapshot.plugins.length);
     }
 
     var autonomy = capabilitySnapshot.autonomy;

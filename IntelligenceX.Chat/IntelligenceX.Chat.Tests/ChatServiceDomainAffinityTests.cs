@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.Service;
+using IntelligenceX.Chat.Tooling;
 using IntelligenceX.Json;
 using IntelligenceX.Tools;
 using Xunit;
@@ -302,6 +303,79 @@ public sealed class ChatServiceDomainAffinityTests {
         Assert.True(resolved);
         Assert.Equal("corp_internal", family);
         Assert.Equal("corp_internal", session.GetPreferredDomainIntentFamilyForTesting("thread-clarify-custom-family"));
+    }
+
+    [Fact]
+    public void TryResolvePendingDomainIntentClarificationSelection_UsesRuntimeRoutingCatalogFamiliesWhenDefinitionsAreUnavailable() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        session.SetCapabilitySnapshotContextForTesting(
+            Array.Empty<ToolPackAvailabilityInfo>(),
+            new ToolRoutingCatalogDiagnostics {
+                TotalTools = 1,
+                RoutingAwareTools = 1,
+                MissingRoutingContractTools = 0,
+                DomainFamilyTools = 1,
+                ExpectedDomainFamilyMissingTools = 0,
+                DomainFamilyMissingActionTools = 0,
+                ActionWithoutFamilyTools = 0,
+                FamilyActionConflictFamilies = 0,
+                FamilyActions = new[] {
+                    new ToolRoutingFamilyActionSummary {
+                        Family = "corp_internal",
+                        ActionId = "act_domain_scope_corp_internal_custom",
+                        ToolCount = 1
+                    }
+                }
+            });
+        session.RememberPendingDomainIntentClarificationRequestForTesting("thread-clarify-runtime-catalog");
+
+        var resolved = session.TryResolvePendingDomainIntentClarificationSelectionForTesting(
+            "thread-clarify-runtime-catalog",
+            "1",
+            out var family);
+
+        Assert.True(resolved);
+        Assert.Equal("corp_internal", family);
+        Assert.Equal("corp_internal", session.GetPreferredDomainIntentFamilyForTesting("thread-clarify-runtime-catalog"));
+    }
+
+    [Fact]
+    public void TryResolvePendingDomainIntentClarificationSelection_UsesRuntimeRoutingCatalogActionIdsWhenDefinitionsAreUnavailable() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        session.SetCapabilitySnapshotContextForTesting(
+            Array.Empty<ToolPackAvailabilityInfo>(),
+            new ToolRoutingCatalogDiagnostics {
+                TotalTools = 2,
+                RoutingAwareTools = 2,
+                MissingRoutingContractTools = 0,
+                DomainFamilyTools = 2,
+                ExpectedDomainFamilyMissingTools = 0,
+                DomainFamilyMissingActionTools = 0,
+                ActionWithoutFamilyTools = 0,
+                FamilyActionConflictFamilies = 0,
+                FamilyActions = new[] {
+                    new ToolRoutingFamilyActionSummary {
+                        Family = "corp_internal",
+                        ActionId = "act_domain_scope_corp_internal_custom",
+                        ToolCount = 1
+                    },
+                    new ToolRoutingFamilyActionSummary {
+                        Family = "public_domain",
+                        ActionId = "act_domain_scope_public_custom",
+                        ToolCount = 1
+                    }
+                }
+            });
+        session.RememberPendingDomainIntentClarificationRequestForTesting("thread-clarify-runtime-catalog-action");
+
+        var resolved = session.TryResolvePendingDomainIntentClarificationSelectionForTesting(
+            "thread-clarify-runtime-catalog-action",
+            "/act act_domain_scope_corp_internal_custom",
+            out var family);
+
+        Assert.True(resolved);
+        Assert.Equal("corp_internal", family);
+        Assert.Equal("corp_internal", session.GetPreferredDomainIntentFamilyForTesting("thread-clarify-runtime-catalog-action"));
     }
 
     [Theory]

@@ -195,7 +195,7 @@ public sealed class ChatServiceRequestClientConnectionPolicyTests {
 
     [Theory]
     [InlineData(true, true)]
-    [InlineData(false, true)]
+    [InlineData(false, false)]
     public void ShouldUseCachedToolCatalogFallbackForListTools_ReturnsExpectedValue(
         bool startupToolingBootstrapInProgress,
         bool expected) {

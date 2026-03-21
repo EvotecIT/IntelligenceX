@@ -10,7 +10,7 @@ using IntelligenceX.Tools.Common;
 namespace IntelligenceX.Chat.Service;
 
 internal sealed class ChatServiceToolingBootstrapCache {
-    private const int PersistedSnapshotSchemaVersion = 3;
+    private const int PersistedSnapshotSchemaVersion = 4;
     private const string DefaultPersistedSnapshotFileName = "tooling-bootstrap-cache-v1.json";
     private static readonly JsonSerializerOptions PersistedSnapshotJson = new() {
         PropertyNameCaseInsensitive = true,
@@ -104,6 +104,7 @@ internal sealed class ChatServiceToolingBootstrapCache {
             PackSummaries = snapshot.PackSummaries ?? Array.Empty<ToolPackInfoDto>(),
             PackAvailability = snapshot.PackAvailability ?? Array.Empty<ToolPackAvailabilityInfo>(),
             PluginAvailability = snapshot.PluginAvailability ?? Array.Empty<ToolPluginAvailabilityInfo>(),
+            PluginCatalog = snapshot.PluginCatalog ?? Array.Empty<ToolPluginCatalogInfo>(),
             StartupWarnings = snapshot.StartupWarnings ?? Array.Empty<string>(),
             StartupBootstrap = snapshot.StartupBootstrap ?? new SessionStartupBootstrapTelemetryDto(),
             PluginSearchPaths = snapshot.PluginSearchPaths ?? Array.Empty<string>(),
@@ -157,6 +158,7 @@ internal sealed class ChatServiceToolingBootstrapCache {
                 PackSummaries = snapshot.PackSummaries ?? Array.Empty<ToolPackInfoDto>(),
                 PackAvailability = snapshot.PackAvailability ?? Array.Empty<ToolPackAvailabilityInfo>(),
                 PluginAvailability = snapshot.PluginAvailability ?? Array.Empty<ToolPluginAvailabilityInfo>(),
+                PluginCatalog = snapshot.PluginCatalog ?? Array.Empty<ToolPluginCatalogInfo>(),
                 StartupWarnings = snapshot.StartupWarnings ?? Array.Empty<string>(),
                 StartupBootstrap = snapshot.StartupBootstrap ?? new SessionStartupBootstrapTelemetryDto(),
                 PluginSearchPaths = snapshot.PluginSearchPaths ?? Array.Empty<string>(),
@@ -167,7 +169,8 @@ internal sealed class ChatServiceToolingBootstrapCache {
                     toolDefinitions: null,
                     snapshot.PackAvailability ?? Array.Empty<ToolPackAvailabilityInfo>(),
                     snapshot.PluginAvailability ?? Array.Empty<ToolPluginAvailabilityInfo>(),
-                    snapshot.RoutingCatalogDiagnostics)
+                    snapshot.RoutingCatalogDiagnostics,
+                    pluginCatalog: snapshot.PluginCatalog ?? Array.Empty<ToolPluginCatalogInfo>())
             };
         } catch {
             return null;
@@ -213,6 +216,7 @@ internal sealed record ChatServiceToolingBootstrapSnapshot {
     public required IToolPack[] Packs { get; init; }
     public required ToolPackAvailabilityInfo[] PackAvailability { get; init; }
     public required ToolPluginAvailabilityInfo[] PluginAvailability { get; init; }
+    public ToolPluginCatalogInfo[] PluginCatalog { get; init; } = Array.Empty<ToolPluginCatalogInfo>();
     public required string[] StartupWarnings { get; init; }
     public required SessionStartupBootstrapTelemetryDto StartupBootstrap { get; init; }
     public required string[] PluginSearchPaths { get; init; }
@@ -230,6 +234,7 @@ internal sealed record ChatServiceToolingBootstrapPersistedSnapshot {
     public ToolPackInfoDto[] PackSummaries { get; init; } = Array.Empty<ToolPackInfoDto>();
     public required ToolPackAvailabilityInfo[] PackAvailability { get; init; }
     public ToolPluginAvailabilityInfo[] PluginAvailability { get; init; } = Array.Empty<ToolPluginAvailabilityInfo>();
+    public ToolPluginCatalogInfo[] PluginCatalog { get; init; } = Array.Empty<ToolPluginCatalogInfo>();
     public required string[] StartupWarnings { get; init; }
     public required SessionStartupBootstrapTelemetryDto StartupBootstrap { get; init; }
     public required string[] PluginSearchPaths { get; init; }

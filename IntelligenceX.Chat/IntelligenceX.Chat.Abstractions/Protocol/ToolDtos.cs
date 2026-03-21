@@ -66,6 +66,18 @@ public sealed record ToolDefinitionDto {
     /// </summary>
     public string? DomainIntentActionId { get; init; }
     /// <summary>
+    /// Optional human-friendly domain-intent family display label.
+    /// </summary>
+    public string? DomainIntentFamilyDisplayName { get; init; }
+    /// <summary>
+    /// Optional natural-language reply example for domain-intent clarification.
+    /// </summary>
+    public string? DomainIntentFamilyReplyExample { get; init; }
+    /// <summary>
+    /// Optional user-facing clarification description for the domain-intent family.
+    /// </summary>
+    public string? DomainIntentFamilyChoiceDescription { get; init; }
+    /// <summary>
     /// Optional tool-pack display name.
     /// </summary>
     public string? PackName { get; init; }

@@ -413,7 +413,10 @@ public class ToolPackGuidanceTests {
                     PackId = "CustomX",
                     Role = ToolRoutingTaxonomy.RolePackInfo,
                     DomainIntentFamily = ToolSelectionMetadata.DomainIntentFamilyAd,
-                    DomainIntentActionId = "Act_Custom_Scope"
+                    DomainIntentActionId = "Act_Custom_Scope",
+                    DomainIntentFamilyDisplayName = "Directory checks",
+                    DomainIntentFamilyReplyExample = "directory",
+                    DomainIntentFamilyChoiceDescription = "Directory checks (forest and domain health)"
                 },
                 setup: new ToolSetupContract {
                     IsSetupAware = true,
@@ -459,6 +462,9 @@ public class ToolPackGuidanceTests {
         Assert.Equal(ToolRoutingTaxonomy.RolePackInfo, item.Routing.Role);
         Assert.Equal(ToolSelectionMetadata.DomainIntentFamilyAd, item.Routing.DomainIntentFamily);
         Assert.Equal("Act_Custom_Scope", item.Routing.DomainIntentActionId);
+        Assert.Equal("Directory checks", item.Routing.DomainIntentFamilyDisplayName);
+        Assert.Equal("directory", item.Routing.DomainIntentFamilyReplyExample);
+        Assert.Equal("Directory checks (forest and domain health)", item.Routing.DomainIntentFamilyChoiceDescription);
         Assert.Equal("local_or_remote", item.Traits.ExecutionScope);
         Assert.Contains("machine_name", item.Traits.RemoteHostArguments, StringComparer.OrdinalIgnoreCase);
         Assert.True(item.Setup.IsSetupAware);
@@ -867,6 +873,23 @@ public class ToolPackGuidanceTests {
         Assert.Equal(string.Empty, entry.Routing.Role);
         Assert.Equal(string.Empty, entry.Routing.DomainIntentFamily);
         Assert.Equal(string.Empty, entry.Routing.DomainIntentActionId);
+        Assert.Equal(string.Empty, entry.Routing.DomainIntentFamilyDisplayName);
+        Assert.Equal(string.Empty, entry.Routing.DomainIntentFamilyReplyExample);
+        Assert.Equal(string.Empty, entry.Routing.DomainIntentFamilyChoiceDescription);
+    }
+
+    [Fact]
+    public void ToolCatalogEntry_ShouldRejectDomainIntentPresentationWithoutFamily_OnAssignment() {
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+            new ToolPackToolCatalogEntryModel {
+                Name = "email_send",
+                Description = "Email send",
+                Routing = new ToolPackToolRoutingModel {
+                    DomainIntentFamilyDisplayName = "Email"
+                }
+            });
+
+        Assert.Contains("domain intent family is required", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

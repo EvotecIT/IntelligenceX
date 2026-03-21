@@ -51,22 +51,26 @@ internal sealed partial class ChatServiceSession {
         var startupToolingBootstrapInProgress = startupToolingBootstrapTask is { IsCompleted: false };
         ToolDefinitionDto[] tools;
         ToolPackInfoDto[] packs;
+        PluginInfoDto[] plugins;
         SessionRoutingCatalogDiagnosticsDto? routingCatalog;
         SessionCapabilitySnapshotDto? capabilitySnapshot;
         if (defs.Count > 0) {
             tools = BuildToolDefinitionDtosFromRegistryDefinitions(defs);
             Volatile.Write(ref _cachedToolDefinitions, tools);
             packs = BuildPackPolicyList(_packAvailability, _toolOrchestrationCatalog);
+            plugins = BuildPluginPolicyList(_pluginAvailability, packs, _pluginCatalog);
             routingCatalog = MapRoutingCatalogDiagnostics(_routingCatalogDiagnostics);
             capabilitySnapshot = BuildRuntimeCapabilitySnapshot();
         } else if (!ShouldUseCachedToolCatalogFallbackForListTools(startupToolingBootstrapInProgress)
                    || !TryGetCachedToolCatalogForListTools(
                        out tools,
                        out packs,
+                       out plugins,
                        out routingCatalog,
                        out capabilitySnapshot)) {
             tools = Array.Empty<ToolDefinitionDto>();
             packs = BuildPackPolicyList(_packAvailability, _toolOrchestrationCatalog);
+            plugins = BuildPluginPolicyList(_pluginAvailability, packs, _pluginCatalog);
             routingCatalog = MapRoutingCatalogDiagnostics(_routingCatalogDiagnostics);
             capabilitySnapshot = BuildRuntimeCapabilitySnapshot();
         }
@@ -76,6 +80,7 @@ internal sealed partial class ChatServiceSession {
             RequestId = requestId,
             Tools = tools,
             Packs = packs,
+            Plugins = plugins,
             RoutingCatalog = routingCatalog,
             CapabilitySnapshot = capabilitySnapshot
         }, cancellationToken).ConfigureAwait(false);
@@ -261,7 +266,7 @@ internal sealed partial class ChatServiceSession {
     }
 
     internal static bool ShouldUseCachedToolCatalogFallbackForListTools(bool startupToolingBootstrapInProgress) {
-        return true;
+        return startupToolingBootstrapInProgress;
     }
 
     private static bool TryBuildBackgroundSchedulerSummaryOptions(
@@ -620,12 +625,14 @@ internal sealed partial class ChatServiceSession {
             out tools,
             out _,
             out _,
+            out _,
             out _);
     }
 
     private bool TryGetCachedToolCatalogForListTools(
         out ToolDefinitionDto[] tools,
         out ToolPackInfoDto[] packs,
+        out PluginInfoDto[] plugins,
         out SessionRoutingCatalogDiagnosticsDto? routingCatalog,
         out SessionCapabilitySnapshotDto? capabilitySnapshot) {
         var inMemory = Volatile.Read(ref _cachedToolDefinitions);
@@ -634,6 +641,7 @@ internal sealed partial class ChatServiceSession {
             packs = _servingPersistedToolingBootstrapPreview && _persistedPreviewPackSummaries.Length > 0
                 ? _persistedPreviewPackSummaries
                 : BuildPackPolicyList(_packAvailability, _toolOrchestrationCatalog);
+            plugins = BuildPluginPolicyList(_pluginAvailability, packs, _pluginCatalog);
             routingCatalog = MapRoutingCatalogDiagnostics(_routingCatalogDiagnostics);
             capabilitySnapshot = BuildRuntimeCapabilitySnapshot();
             return true;
@@ -647,6 +655,10 @@ internal sealed partial class ChatServiceSession {
             && persisted.ToolDefinitions.Length > 0) {
             tools = persisted.ToolDefinitions;
             packs = persisted.PackSummaries ?? Array.Empty<ToolPackInfoDto>();
+            plugins = BuildPluginPolicyList(
+                persisted.PluginAvailability ?? Array.Empty<ToolPluginAvailabilityInfo>(),
+                packs,
+                persisted.PluginCatalog ?? Array.Empty<ToolPluginCatalogInfo>());
             routingCatalog = MapRoutingCatalogDiagnostics(persisted.RoutingCatalogDiagnostics);
             capabilitySnapshot = persisted.CapabilitySnapshot;
             Volatile.Write(ref _cachedToolDefinitions, tools);
@@ -655,6 +667,7 @@ internal sealed partial class ChatServiceSession {
 
         tools = Array.Empty<ToolDefinitionDto>();
         packs = Array.Empty<ToolPackInfoDto>();
+        plugins = Array.Empty<PluginInfoDto>();
         routingCatalog = null;
         capabilitySnapshot = null;
         return false;

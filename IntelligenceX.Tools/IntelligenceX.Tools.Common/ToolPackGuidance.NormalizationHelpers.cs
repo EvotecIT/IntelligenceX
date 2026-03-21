@@ -507,8 +507,17 @@ public static partial class ToolPackGuidance {
             actionId = ToolSelectionMetadata.GetDefaultDomainIntentActionId(family);
         }
 
+        var displayName = (routing.DomainIntentFamilyDisplayName ?? string.Empty).Trim();
+        var replyExample = (routing.DomainIntentFamilyReplyExample ?? string.Empty).Trim();
+        var choiceDescription = (routing.DomainIntentFamilyChoiceDescription ?? string.Empty).Trim();
+
         if (family.Length == 0 && actionId.Length > 0) {
             throw new InvalidOperationException("Routing domain intent action id requires a domain intent family.");
+        }
+
+        if (family.Length == 0 && (displayName.Length > 0 || replyExample.Length > 0 || choiceDescription.Length > 0)) {
+            throw new InvalidOperationException(
+                "Routing domain intent family is required when family presentation metadata is provided.");
         }
 
         return new ToolPackToolRoutingModel {
@@ -520,7 +529,10 @@ public static partial class ToolPackGuidance {
             Risk = risk,
             Source = source,
             DomainIntentFamily = family,
-            DomainIntentActionId = actionId
+            DomainIntentActionId = actionId,
+            DomainIntentFamilyDisplayName = displayName,
+            DomainIntentFamilyReplyExample = replyExample,
+            DomainIntentFamilyChoiceDescription = choiceDescription
         };
     }
 

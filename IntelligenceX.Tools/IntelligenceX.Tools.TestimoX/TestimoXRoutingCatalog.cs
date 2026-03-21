@@ -8,6 +8,9 @@ namespace IntelligenceX.Tools.TestimoX;
 internal static class TestimoXRoutingCatalog {
     public const string SecurityPostureDomainIntentFamily = "security_posture";
     public const string SecurityPostureDomainIntentActionId = "act_domain_scope_security_posture";
+    public const string SecurityPostureDomainIntentDisplayName = "Security posture";
+    public const string SecurityPostureDomainIntentReplyExample = "security posture";
+    public const string SecurityPostureDomainIntentChoiceDescription = "Security posture scope (rules, baselines, and stored run analysis)";
 
     private static readonly string[] RunsListFallbackHintKeys = { "store_directory", "run_id_contains", "completed_only" };
     private static readonly string[] RunSummaryFallbackSelectionKeys = { "store_directory", "run_id" };
@@ -83,6 +86,36 @@ internal static class TestimoXRoutingCatalog {
             : string.Empty;
     }
 
+    public static string ResolveDomainIntentFamilyDisplayName(string toolName, string? explicitDisplayName) {
+        if (!string.IsNullOrWhiteSpace(explicitDisplayName)) {
+            return explicitDisplayName!;
+        }
+
+        return SupportsSecurityPostureFamily(toolName)
+            ? SecurityPostureDomainIntentDisplayName
+            : string.Empty;
+    }
+
+    public static string ResolveDomainIntentFamilyReplyExample(string toolName, string? explicitReplyExample) {
+        if (!string.IsNullOrWhiteSpace(explicitReplyExample)) {
+            return explicitReplyExample!;
+        }
+
+        return SupportsSecurityPostureFamily(toolName)
+            ? SecurityPostureDomainIntentReplyExample
+            : string.Empty;
+    }
+
+    public static string ResolveDomainIntentFamilyChoiceDescription(string toolName, string? explicitChoiceDescription) {
+        if (!string.IsNullOrWhiteSpace(explicitChoiceDescription)) {
+            return explicitChoiceDescription!;
+        }
+
+        return SupportsSecurityPostureFamily(toolName)
+            ? SecurityPostureDomainIntentChoiceDescription
+            : string.Empty;
+    }
+
     public static IReadOnlyList<string> ResolveFallbackSelectionKeys(string toolName, IReadOnlyList<string>? explicitKeys) {
         if (explicitKeys is { Count: > 0 }) {
             return explicitKeys;
@@ -117,5 +150,10 @@ internal static class TestimoXRoutingCatalog {
 
     public static bool RequiresSelectionForFallback(bool explicitRequiresSelection, IReadOnlyList<string> fallbackSelectionKeys) {
         return explicitRequiresSelection || fallbackSelectionKeys.Count > 0;
+    }
+
+    private static bool SupportsSecurityPostureFamily(string toolName) {
+        return string.Equals(toolName, "testimox_run_summary", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(toolName, "testimox_rules_run", StringComparison.OrdinalIgnoreCase);
     }
 }

@@ -30,7 +30,13 @@ public sealed class EmailToolPack : IToolPack, IToolPackCatalogProvider {
         SourceKind = "builtin",
         EngineId = "mailozaurr",
         Category = "email",
-        CapabilityTags = new[] { "email", "imap", ToolPackCapabilityTags.RemoteAnalysis, "smtp" }
+        CapabilityTags = new[] {
+            "email",
+            "imap",
+            ToolPackCapabilityTags.RemoteAnalysis,
+            "smtp",
+            ToolPackCapabilityTags.DeferredCapabilityEmail
+        }
     };
 
     /// <inheritdoc />

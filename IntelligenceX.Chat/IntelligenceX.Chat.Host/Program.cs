@@ -91,6 +91,7 @@ internal static partial class Program {
                 packs,
                 startupBootstrapResult.PackAvailability,
                 startupBootstrapResult.PluginAvailability,
+                startupBootstrapResult.PluginCatalog,
                 startupRuntimePolicyContext,
                 startupRuntimePolicyDiagnostics,
                 startupRegistryContext.RoutingCatalogDiagnostics,
@@ -126,6 +127,7 @@ internal static partial class Program {
         string? runtimeInstructions = null;
         IReadOnlyList<ToolPackAvailabilityInfo> runtimePackAvailability = Array.Empty<ToolPackAvailabilityInfo>();
         IReadOnlyList<ToolPluginAvailabilityInfo> runtimePluginAvailability = Array.Empty<ToolPluginAvailabilityInfo>();
+        IReadOnlyList<ToolPluginCatalogInfo> runtimePluginCatalog = Array.Empty<ToolPluginCatalogInfo>();
         ToolRoutingCatalogDiagnostics? runtimeRoutingCatalogDiagnostics = null;
         ToolOrchestrationCatalog? runtimeOrchestrationCatalog = null;
 
@@ -213,7 +215,8 @@ internal static partial class Program {
                 nextBootstrapResult.PackAvailability,
                 nextBootstrapResult.PluginAvailability,
                 nextRoutingCatalogDiagnostics,
-                nextRegistryContext.OrchestrationCatalog);
+                nextRegistryContext.OrchestrationCatalog,
+                nextBootstrapResult.PluginCatalog);
             var nextSession = new ReplSession(
                 nextClient,
                 nextRegistry,
@@ -236,6 +239,7 @@ internal static partial class Program {
             session = nextSession;
             runtimePackAvailability = nextBootstrapResult.PackAvailability;
             runtimePluginAvailability = nextBootstrapResult.PluginAvailability;
+            runtimePluginCatalog = nextBootstrapResult.PluginCatalog;
             runtimeRoutingCatalogDiagnostics = nextRoutingCatalogDiagnostics;
             runtimeOrchestrationCatalog = nextRegistryContext.OrchestrationCatalog;
 
@@ -312,7 +316,8 @@ internal static partial class Program {
                                     runtimePluginAvailability,
                                     runtimeRoutingCatalogDiagnostics,
                                     runtimeOrchestrationCatalog,
-                                    options.ShowToolIds);
+                                    options.ShowToolIds,
+                                    runtimePluginCatalog);
                                 foreach (var toolInspectionLine in toolInspectionLines) {
                                     Console.WriteLine(toolInspectionLine);
                                 }
@@ -331,7 +336,8 @@ internal static partial class Program {
                                     runtimePackAvailability,
                                     runtimePluginAvailability,
                                     runtimeRoutingCatalogDiagnostics,
-                                    runtimeOrchestrationCatalog);
+                                    runtimeOrchestrationCatalog,
+                                    runtimePluginCatalog);
                                 var exportJson = JsonSerializer.Serialize(exportMessage, ChatServiceJsonContext.Default.ToolListMessage);
                                 Console.WriteLine(exportJson);
                             } else {
@@ -402,6 +408,7 @@ internal static partial class Program {
                                         profilePacks,
                                         profileBootstrapResult.PackAvailability,
                                         profileBootstrapResult.PluginAvailability,
+                                        profileBootstrapResult.PluginCatalog,
                                         profileRuntimePolicyContext,
                                         profileRuntimePolicyDiagnostics,
                                         profileRegistryContext.RoutingCatalogDiagnostics,

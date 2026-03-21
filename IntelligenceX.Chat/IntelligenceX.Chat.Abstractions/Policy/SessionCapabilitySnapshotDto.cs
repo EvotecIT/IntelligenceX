@@ -87,6 +87,16 @@ public sealed record SessionCapabilitySnapshotDto {
     public string[] RepresentativeExamples { get; init; } = Array.Empty<string>();
 
     /// <summary>
+    /// Structured deferred-work capabilities advertised by the current runtime and enabled packs.
+    /// </summary>
+    public SessionCapabilityDeferredWorkAffordanceDto[] DeferredWorkAffordances { get; init; } = Array.Empty<SessionCapabilityDeferredWorkAffordanceDto>();
+
+    /// <summary>
+    /// Registration-first pack/plugin provenance snapshot for the current runtime.
+    /// </summary>
+    public SessionCapabilityToolingSnapshotDto? ToolingSnapshot { get; init; }
+
+    /// <summary>
     /// Human-friendly cross-pack follow-up target pack names available from current handoff contracts.
     /// </summary>
     public string[] CrossPackTargetPackDisplayNames { get; init; } = Array.Empty<string>();

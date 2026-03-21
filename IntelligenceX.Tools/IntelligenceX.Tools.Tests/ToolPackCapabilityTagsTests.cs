@@ -39,4 +39,14 @@ public sealed class ToolPackCapabilityTagsTests {
         Assert.True(ToolPackCapabilityTags.HasWriteOrGovernanceTag(new[] { ToolPackCapabilityTags.GovernedWrite }));
         Assert.False(ToolPackCapabilityTags.HasWriteOrGovernanceTag(new[] { ToolPackCapabilityTags.RemoteAnalysis }));
     }
+
+    [Fact]
+    public void DeferredCapabilityTags_NormalizeAndRoundTripCapabilityIdentifiers() {
+        var tag = ToolPackCapabilityTags.CreateDeferredCapabilityTag("Email Alerts");
+
+        Assert.Equal("deferred_capability:email_alerts", tag);
+        Assert.True(ToolPackCapabilityTags.TryGetDeferredCapabilityId(tag, out var capabilityId));
+        Assert.Equal("email_alerts", capabilityId);
+        Assert.False(ToolPackCapabilityTags.TryGetDeferredCapabilityId("reporting", out _));
+    }
 }
