@@ -31,7 +31,8 @@ internal sealed partial class ChatServiceSession {
         IReadOnlyList<string>? connectedRuntimeSkills = null,
         IReadOnlyList<string>? healthyToolNames = null, string? remoteReachabilityMode = null,
         ToolOrchestrationCatalog? orchestrationCatalog = null,
-        SessionCapabilitySnapshotDto? capabilitySnapshot = null) {
+        SessionCapabilitySnapshotDto? capabilitySnapshot = null,
+        IReadOnlyList<ToolPluginCatalogInfo>? pluginCatalog = null) {
         var roots = options.AllowedRoots.Count == 0 ? Array.Empty<string>() : options.AllowedRoots.ToArray();
 
         var resolvedCapabilitySnapshot = capabilitySnapshot ?? BuildCapabilitySnapshot(
@@ -43,10 +44,11 @@ internal sealed partial class ChatServiceSession {
             orchestrationCatalog,
             connectedRuntimeSkills,
             healthyToolNames,
-            remoteReachabilityMode);
+            remoteReachabilityMode,
+            pluginCatalog: pluginCatalog);
         var packList = BuildPackPolicyList(packAvailability, orchestrationCatalog);
 
-        var pluginList = MapPluginPolicyList(pluginAvailability, packAvailability);
+        var pluginList = BuildPluginPolicyList(pluginAvailability, packList, pluginCatalog);
 
         var dangerousEnabled = resolvedCapabilitySnapshot.DangerousToolsEnabled
             || Array.Exists(
@@ -98,54 +100,11 @@ internal sealed partial class ChatServiceSession {
         return ToolCatalogExportBuilder.BuildPackInfoDtos(packAvailability, orchestrationCatalog);
     }
 
-    private static PluginInfoDto[] MapPluginPolicyList(
+    private static PluginInfoDto[] BuildPluginPolicyList(
         IEnumerable<ToolPluginAvailabilityInfo>? pluginAvailability,
-        IEnumerable<ToolPackAvailabilityInfo> packAvailability) {
-        var pluginList = new List<PluginInfoDto>();
-        var normalizedPlugins = (pluginAvailability ?? Array.Empty<ToolPluginAvailabilityInfo>())
-            .Where(static plugin => plugin is not null)
-            .ToArray();
-
-        if (normalizedPlugins.Length == 0) {
-            foreach (var pack in packAvailability ?? Array.Empty<ToolPackAvailabilityInfo>()) {
-                pluginList.Add(new PluginInfoDto {
-                    Id = pack.Id,
-                    Name = ToolPackMetadataNormalizer.ResolveDisplayName(pack.Id, pack.Name),
-                    Origin = pack.SourceKind,
-                    SourceKind = ToolPackMetadataNormalizer.ResolveSourceKind(pack.SourceKind),
-                    DefaultEnabled = pack.Enabled,
-                    Enabled = pack.Enabled,
-                    DisabledReason = pack.Enabled ? null : pack.DisabledReason,
-                    IsDangerous = pack.IsDangerous || pack.Tier == ToolCapabilityTier.DangerousWrite,
-                    PackIds = string.IsNullOrWhiteSpace(pack.Id) ? Array.Empty<string>() : new[] { NormalizePackId(pack.Id) },
-                    SkillDirectories = Array.Empty<string>(),
-                    SkillIds = Array.Empty<string>()
-                });
-            }
-        } else {
-            foreach (var plugin in normalizedPlugins) {
-                pluginList.Add(new PluginInfoDto {
-                    Id = plugin.Id,
-                    Name = plugin.Name,
-                    Version = string.IsNullOrWhiteSpace(plugin.Version) ? null : plugin.Version.Trim(),
-                    Origin = string.IsNullOrWhiteSpace(plugin.Origin) ? "unknown" : plugin.Origin.Trim(),
-                    SourceKind = ToolPackMetadataNormalizer.ResolveSourceKind(plugin.SourceKind),
-                    DefaultEnabled = plugin.DefaultEnabled,
-                    Enabled = plugin.Enabled,
-                    DisabledReason = plugin.Enabled ? null : plugin.DisabledReason,
-                    IsDangerous = plugin.IsDangerous,
-                    PackIds = NormalizeDistinctStrings(plugin.PackIds ?? Array.Empty<string>(), maxItems: 0),
-                    RootPath = string.IsNullOrWhiteSpace(plugin.RootPath) ? null : plugin.RootPath.Trim(),
-                    SkillDirectories = NormalizeDistinctStrings(plugin.SkillDirectories ?? Array.Empty<string>(), maxItems: 0),
-                    SkillIds = NormalizeSkillInventoryValues(plugin.SkillIds ?? Array.Empty<string>(), maxItems: 0)
-                });
-            }
-        }
-
-        return pluginList
-            .OrderBy(static plugin => plugin.Name, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(static plugin => plugin.Id, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+        IReadOnlyList<ToolPackInfoDto> packList,
+        IReadOnlyList<ToolPluginCatalogInfo>? pluginCatalog) {
+        return ToolCatalogExportBuilder.BuildPluginInfoDtos(pluginAvailability, packList, pluginCatalog);
     }
 
     private static SessionRoutingCatalogDiagnosticsDto? MapRoutingCatalogDiagnostics(ToolRoutingCatalogDiagnostics? diagnostics) {

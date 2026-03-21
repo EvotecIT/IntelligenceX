@@ -134,4 +134,24 @@ public sealed record SessionRoutingFamilyActionSummaryDto {
     /// Number of tools mapped to this family/action pair.
     /// </summary>
     public int ToolCount { get; init; }
+
+    /// <summary>
+    /// Human-friendly family label inferred from the active routing catalog.
+    /// </summary>
+    public string? DisplayName { get; init; }
+
+    /// <summary>
+    /// Short natural-language reply example for clarification prompts.
+    /// </summary>
+    public string? ReplyExample { get; init; }
+
+    /// <summary>
+    /// User-facing clarification description for this family.
+    /// </summary>
+    public string? ChoiceDescription { get; init; }
+
+    /// <summary>
+    /// Representative pack ids contributing tools to this family/action pair.
+    /// </summary>
+    public string[]? RepresentativePackIds { get; init; }
 }

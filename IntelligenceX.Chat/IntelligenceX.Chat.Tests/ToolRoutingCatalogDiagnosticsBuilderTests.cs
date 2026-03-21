@@ -89,6 +89,11 @@ public sealed class ToolRoutingCatalogDiagnosticsBuilderTests {
         var familySummaries = ToolRoutingCatalogDiagnosticsBuilder.FormatFamilySummaries(diagnostics, maxItems: 8);
         Assert.Contains(familySummaries, static line => line.Contains("ad_domain", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(familySummaries, static line => line.Contains("public_domain", StringComparison.OrdinalIgnoreCase));
+        var adSummary = Assert.Single(diagnostics.FamilyActions, static item =>
+            string.Equals(item.Family, ToolSelectionMetadata.DomainIntentFamilyAd, StringComparison.Ordinal));
+        Assert.Equal("AD domain", adSummary.DisplayName);
+        Assert.Equal("AD", adSummary.ReplyExample);
+        Assert.Contains("internal AD checks", adSummary.ChoiceDescription ?? string.Empty, StringComparison.OrdinalIgnoreCase);
         Assert.Empty(ToolRoutingCatalogDiagnosticsBuilder.BuildWarnings(diagnostics));
         var readiness = ToolRoutingCatalogDiagnosticsBuilder.BuildAutonomyReadinessHighlights(diagnostics, maxItems: 8);
         Assert.Contains(readiness, static line => line.Contains("remote host-targeting", StringComparison.OrdinalIgnoreCase));
@@ -96,6 +101,49 @@ public sealed class ToolRoutingCatalogDiagnosticsBuilderTests {
         Assert.Contains(readiness, static line => line.Contains("environment discovery bootstrap", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(readiness, static line => line.Contains("strict enforcement", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(readiness, static line => line.Contains("fully populated", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void Build_CustomFamily_InfersPresentationFromRepresentativePack() {
+        var diagnostics = ToolRoutingCatalogDiagnosticsBuilder.Build(new[] {
+            CreateDefinition(
+                name: "email_report_summary",
+                category: "email",
+                routing: new ToolRoutingContract {
+                    PackId = "email",
+                    DomainIntentFamily = "reporting_notifications",
+                    DomainIntentActionId = "act_reporting_notifications"
+                })
+        });
+
+        var summary = Assert.Single(diagnostics.FamilyActions);
+        Assert.Equal("reporting_notifications", summary.Family);
+        Assert.Equal("Email", summary.DisplayName);
+        Assert.Equal("Email", summary.ReplyExample);
+        Assert.Contains("Email tools", summary.ChoiceDescription ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(new[] { "email" }, summary.RepresentativePackIds);
+    }
+
+    [Fact]
+    public void Build_CustomFamily_PrefersExplicitRegisteredPresentationMetadata() {
+        var diagnostics = ToolRoutingCatalogDiagnosticsBuilder.Build(new[] {
+            CreateDefinition(
+                name: "email_send_summary",
+                category: "email",
+                routing: new ToolRoutingContract {
+                    PackId = "email",
+                    DomainIntentFamily = "reporting_notifications",
+                    DomainIntentActionId = "act_reporting_notifications",
+                    DomainIntentFamilyDisplayName = "Notifications",
+                    DomainIntentFamilyReplyExample = "notify",
+                    DomainIntentFamilyChoiceDescription = "Notifications scope (email and alerts)"
+                })
+        });
+
+        var summary = Assert.Single(diagnostics.FamilyActions);
+        Assert.Equal("Notifications", summary.DisplayName);
+        Assert.Equal("notify", summary.ReplyExample);
+        Assert.Equal("Notifications scope (email and alerts)", summary.ChoiceDescription);
     }
 
     [Fact]

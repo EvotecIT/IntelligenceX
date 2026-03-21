@@ -1172,6 +1172,205 @@ public sealed class ToolPackBootstrapMetadataTests {
         Assert.Equal(new[] { "computerx", "server_inventory", "cpu", "memory" }, dto.SearchTokens);
     }
 
+    [Fact]
+    public void BuildPackInfoDtos_OverlaysMissingDescriptorMetadataFromOrchestrationCatalog() {
+        var orchestrationCatalog = ToolOrchestrationCatalog.Build(
+            Array.Empty<ToolDefinition>(),
+            new IToolPack[] {
+                new SyntheticPackMetadataOnlyPack(
+                    id: "ops_inventory",
+                    name: "Ops Inventory",
+                    sourceKind: "closed_source",
+                    engineId: "computerx",
+                    category: "system",
+                    capabilityTags: new[] { "host_inventory", "remote_analysis" })
+            });
+        var packs = new ToolPackAvailabilityInfo[] {
+            new() {
+                Id = "ops_inventory",
+                Name = "",
+                Tier = ToolCapabilityTier.ReadOnly,
+                SourceKind = "",
+                Category = null,
+                EngineId = null,
+                CapabilityTags = Array.Empty<string>(),
+                Enabled = false,
+                DisabledReason = "Temporarily unavailable."
+            }
+        };
+
+        var dto = Assert.Single(ToolCatalogExportBuilder.BuildPackInfoDtos(packs, orchestrationCatalog));
+
+        Assert.Equal("Ops Inventory", dto.Name);
+        Assert.Equal(ToolPackSourceKind.ClosedSource, dto.SourceKind);
+        Assert.Equal("system", dto.Category);
+        Assert.Equal("computerx", dto.EngineId);
+        Assert.Equal(new[] { "host_inventory", "remote_analysis" }, dto.CapabilityTags);
+        Assert.False(dto.Enabled);
+        Assert.Equal("Temporarily unavailable.", dto.DisabledReason);
+    }
+
+    [Fact]
+    public void BuildPackInfoDtos_IncludesOrchestrationCatalogPackMetadataWhenAvailabilityMissing() {
+        var orchestrationCatalog = ToolOrchestrationCatalog.Build(
+            Array.Empty<ToolDefinition>(),
+            new IToolPack[] {
+                new SyntheticPackMetadataOnlyPack(
+                    id: "ops_inventory",
+                    name: "Ops Inventory",
+                    sourceKind: "closed_source",
+                    engineId: "computerx",
+                    category: "system",
+                    capabilityTags: new[] { "host_inventory", "remote_analysis" })
+            });
+
+        var dto = Assert.Single(ToolCatalogExportBuilder.BuildPackInfoDtos(Array.Empty<ToolPackAvailabilityInfo>(), orchestrationCatalog));
+
+        Assert.Equal("ops_inventory", dto.Id);
+        Assert.Equal("Ops Inventory", dto.Name);
+        Assert.Equal(CapabilityTier.ReadOnly, dto.Tier);
+        Assert.True(dto.Enabled);
+        Assert.False(dto.IsDangerous);
+        Assert.Equal(ToolPackSourceKind.ClosedSource, dto.SourceKind);
+        Assert.Equal("system", dto.Category);
+        Assert.Equal("computerx", dto.EngineId);
+        Assert.Equal(new[] { "host_inventory", "remote_analysis" }, dto.CapabilityTags);
+        Assert.Empty(dto.Aliases);
+        Assert.Empty(dto.SearchTokens);
+    }
+
+    [Fact]
+    public void BuildPackInfoDtos_PreservesDangerousTierFromOrchestrationCatalogMetadata() {
+        var orchestrationCatalog = ToolOrchestrationCatalog.Build(
+            Array.Empty<ToolDefinition>(),
+            new IToolPack[] {
+                new SyntheticPackMetadataOnlyPack(
+                    id: "ops_inventory",
+                    name: "Ops Inventory",
+                    sourceKind: "closed_source",
+                    engineId: "computerx",
+                    category: "system",
+                    capabilityTags: new[] { "host_inventory", "remote_analysis" },
+                    tier: ToolCapabilityTier.DangerousWrite)
+            });
+
+        var dto = Assert.Single(ToolCatalogExportBuilder.BuildPackInfoDtos(Array.Empty<ToolPackAvailabilityInfo>(), orchestrationCatalog));
+
+        Assert.Equal(CapabilityTier.DangerousWrite, dto.Tier);
+        Assert.True(dto.IsDangerous);
+    }
+
+    [Fact]
+    public void BuildPluginInfoDtos_UsesPackSummariesForFallbackWhenPluginAvailabilityMissing() {
+        var packs = new[] {
+            new ToolPackInfoDto {
+                Id = "ops_inventory",
+                Name = "Ops Inventory",
+                Tier = CapabilityTier.ReadOnly,
+                Enabled = true,
+                IsDangerous = false,
+                SourceKind = ToolPackSourceKind.ClosedSource,
+                Category = "system",
+                EngineId = "computerx",
+                CapabilityTags = new[] { "host_inventory", "remote_analysis" }
+            }
+        };
+
+        var dto = Assert.Single(ToolCatalogExportBuilder.BuildPluginInfoDtos(Array.Empty<ToolPluginAvailabilityInfo>(), packs));
+
+        Assert.Equal("ops_inventory", dto.Id);
+        Assert.Equal("Ops Inventory", dto.Name);
+        Assert.Equal("closed_source", dto.Origin);
+        Assert.Equal(ToolPackSourceKind.ClosedSource, dto.SourceKind);
+        Assert.True(dto.Enabled);
+        Assert.Equal(new[] { "ops_inventory" }, dto.PackIds);
+        Assert.Empty(dto.SkillDirectories);
+        Assert.Empty(dto.SkillIds);
+    }
+
+    [Fact]
+    public void BuildPluginInfoDtos_OverlaysSparsePluginMetadataFromPackSummaries() {
+        var packs = new[] {
+            new ToolPackInfoDto {
+                Id = "ops_inventory",
+                Name = "Ops Inventory",
+                Tier = CapabilityTier.DangerousWrite,
+                Enabled = true,
+                IsDangerous = true,
+                SourceKind = ToolPackSourceKind.ClosedSource,
+                Category = "system",
+                EngineId = "computerx",
+                CapabilityTags = new[] { "host_inventory", "remote_analysis" }
+            }
+        };
+        var plugins = new[] {
+            new ToolPluginAvailabilityInfo {
+                Id = "ops_inventory",
+                Name = "",
+                Origin = "",
+                SourceKind = "",
+                DefaultEnabled = true,
+                Enabled = true,
+                IsDangerous = false,
+                PackIds = Array.Empty<string>(),
+                SkillIds = new[] { " REPORTING.CUSTOM ", "reporting.custom" }
+            }
+        };
+
+        var dto = Assert.Single(ToolCatalogExportBuilder.BuildPluginInfoDtos(plugins, packs));
+
+        Assert.Equal("Ops Inventory", dto.Name);
+        Assert.Equal("unknown", dto.Origin);
+        Assert.Equal(ToolPackSourceKind.ClosedSource, dto.SourceKind);
+        Assert.True(dto.IsDangerous);
+        Assert.Equal(new[] { "ops_inventory" }, dto.PackIds);
+        Assert.Equal(new[] { "reporting.custom" }, dto.SkillIds);
+    }
+
+    [Fact]
+    public void BuildPluginInfoDtos_PrefersPluginCatalogIdentityWhenAvailabilityMissing() {
+        var packs = new[] {
+            new ToolPackInfoDto {
+                Id = "ops_inventory",
+                Name = "Ops Inventory",
+                Tier = CapabilityTier.ReadOnly,
+                Enabled = true,
+                IsDangerous = false,
+                SourceKind = ToolPackSourceKind.ClosedSource
+            }
+        };
+        var pluginCatalog = new[] {
+            new ToolPluginCatalogInfo {
+                Id = "ops_bundle",
+                Name = "Ops Bundle",
+                Version = "1.2.3",
+                Origin = "plugin_folder",
+                SourceKind = "closed_source",
+                DefaultEnabled = true,
+                PackIds = new[] { "ops_inventory" },
+                RootPath = "C:\\plugins\\ops-bundle",
+                SkillDirectories = new[] { "C:\\plugins\\ops-bundle\\skills" },
+                SkillIds = new[] { "inventory-test", "network-recon" }
+            }
+        };
+
+        var dto = Assert.Single(ToolCatalogExportBuilder.BuildPluginInfoDtos(
+            Array.Empty<ToolPluginAvailabilityInfo>(),
+            packs,
+            pluginCatalog));
+
+        Assert.Equal("ops_bundle", dto.Id);
+        Assert.Equal("Ops Bundle", dto.Name);
+        Assert.Equal("1.2.3", dto.Version);
+        Assert.Equal("plugin_folder", dto.Origin);
+        Assert.Equal(ToolPackSourceKind.ClosedSource, dto.SourceKind);
+        Assert.True(dto.Enabled);
+        Assert.Equal(new[] { "ops_inventory" }, dto.PackIds);
+        Assert.Equal("C:\\plugins\\ops-bundle", dto.RootPath);
+        Assert.Equal(new[] { "C:\\plugins\\ops-bundle\\skills" }, dto.SkillDirectories);
+        Assert.Equal(new[] { "inventory-test", "network-recon" }, dto.SkillIds);
+    }
+
     private sealed class TestPackRuntimeSettings : IToolPackRuntimeSettings {
         public IReadOnlyList<string> AllowedRoots { get; init; } = Array.Empty<string>();
         public string? AdDomainController { get; init; }
@@ -1231,6 +1430,33 @@ public sealed class ToolPackBootstrapMetadataTests {
         }
     }
 
+    private sealed class SyntheticPackMetadataOnlyPack : IToolPack {
+        public SyntheticPackMetadataOnlyPack(
+            string id,
+            string name,
+            string sourceKind,
+            string engineId,
+            string category,
+            IReadOnlyList<string> capabilityTags,
+            ToolCapabilityTier tier = ToolCapabilityTier.ReadOnly) {
+            Descriptor = new ToolPackDescriptor {
+                Id = id,
+                Name = name,
+                Tier = tier,
+                SourceKind = sourceKind,
+                EngineId = engineId,
+                Category = category,
+                CapabilityTags = capabilityTags
+            };
+        }
+
+        public ToolPackDescriptor Descriptor { get; }
+
+        public void Register(ToolRegistry registry) {
+            _ = registry;
+        }
+    }
+
     private sealed class SyntheticTool : ITool {
         public SyntheticTool(string packId) {
             Definition = new ToolDefinition(
@@ -1253,7 +1479,10 @@ public sealed class ToolPackBootstrapMetadataTests {
                     PackId = packId,
                     Role = ToolRoutingTaxonomy.RoleOperational,
                     DomainIntentFamily = "corp_internal",
-                    DomainIntentActionId = "act_domain_scope_corp_internal"
+                    DomainIntentActionId = "act_domain_scope_corp_internal",
+                    DomainIntentFamilyDisplayName = "Corporate operations",
+                    DomainIntentFamilyReplyExample = "corporate operations",
+                    DomainIntentFamilyChoiceDescription = "Corporate operations scope (internal runtime tooling)"
                 });
         }
 
@@ -1336,6 +1565,9 @@ public sealed class ToolPackBootstrapMetadataTests {
         Assert.Equal(entry.RoutingSource, dto.RoutingSource);
         Assert.Equal(string.IsNullOrWhiteSpace(entry.DomainIntentFamily) ? null : entry.DomainIntentFamily, dto.DomainIntentFamily);
         Assert.Equal(string.IsNullOrWhiteSpace(entry.DomainIntentActionId) ? null : entry.DomainIntentActionId, dto.DomainIntentActionId);
+        Assert.Equal(string.IsNullOrWhiteSpace(entry.DomainIntentFamilyDisplayName) ? null : entry.DomainIntentFamilyDisplayName, dto.DomainIntentFamilyDisplayName);
+        Assert.Equal(string.IsNullOrWhiteSpace(entry.DomainIntentFamilyReplyExample) ? null : entry.DomainIntentFamilyReplyExample, dto.DomainIntentFamilyReplyExample);
+        Assert.Equal(string.IsNullOrWhiteSpace(entry.DomainIntentFamilyChoiceDescription) ? null : entry.DomainIntentFamilyChoiceDescription, dto.DomainIntentFamilyChoiceDescription);
         Assert.Equal(entry.IsPackInfoTool, dto.IsPackInfoTool);
         Assert.Equal(entry.IsEnvironmentDiscoverTool, dto.IsEnvironmentDiscoverTool);
         Assert.Equal(entry.IsWriteCapable, dto.IsWriteCapable);

@@ -230,6 +230,9 @@ public sealed partial class PluginFolderLoaderTests {
             Assert.Equal("plugin_loader_synthetic_catalog", routing.PackId, ignoreCase: true);
             Assert.Equal(ToolRoutingTaxonomy.SourceExplicit, routing.RoutingSource, ignoreCase: true);
             Assert.Equal(ToolRoutingTaxonomy.RoleOperational, routing.Role, ignoreCase: true);
+            Assert.Equal("Plugin operations", routing.DomainIntentFamilyDisplayName);
+            Assert.Equal("plugin operations", routing.DomainIntentFamilyReplyExample);
+            Assert.Equal("Plugin operations scope (plugin-owned runtime diagnostics)", routing.DomainIntentFamilyChoiceDescription);
 
             var catalog = ToolOrchestrationCatalog.Build(registry.GetDefinitions());
             Assert.True(catalog.TryGetEntry("plugin_loader_synthetic_probe", out var entry));
@@ -237,6 +240,9 @@ public sealed partial class PluginFolderLoaderTests {
             Assert.Equal(ToolRoutingTaxonomy.SourceExplicit, entry.RoutingSource);
             Assert.Equal(ToolRoutingTaxonomy.RoleOperational, entry.Role);
             Assert.Equal("plugin_ops", entry.DomainIntentFamily);
+            Assert.Equal("Plugin operations", entry.DomainIntentFamilyDisplayName);
+            Assert.Equal("plugin operations", entry.DomainIntentFamilyReplyExample);
+            Assert.Equal("Plugin operations scope (plugin-owned runtime diagnostics)", entry.DomainIntentFamilyChoiceDescription);
         } finally {
             if (Directory.Exists(tempRoot)) {
                 Directory.Delete(tempRoot, recursive: true);

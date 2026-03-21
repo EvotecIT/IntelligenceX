@@ -138,12 +138,35 @@ public sealed class ToolPackCatalogParityTests {
             "verify reviewer setup contract fingerprints");
     }
 
+    [Fact]
+    public void CustomDomainIntentFamilies_ShouldPublishExplicitPresentationMetadataInCatalog() {
+        var testimoXCatalog = ToolRegistryTestimoXExtensions.GetRegisteredToolCatalog(new TestimoXToolOptions())
+            .ToDictionary(static entry => entry.Name, StringComparer.OrdinalIgnoreCase);
+        var testimoXAnalyticsCatalog = ToolRegistryTestimoXAnalyticsExtensions.GetRegisteredToolCatalog(new TestimoXToolOptions())
+            .ToDictionary(static entry => entry.Name, StringComparer.OrdinalIgnoreCase);
+
+        var rulesRun = Assert.IsType<ToolPackToolCatalogEntryModel>(testimoXCatalog["testimox_rules_run"]);
+        Assert.Equal("security_posture", rulesRun.Routing.DomainIntentFamily);
+        Assert.Equal("Security posture", rulesRun.Routing.DomainIntentFamilyDisplayName);
+        Assert.Equal("security posture", rulesRun.Routing.DomainIntentFamilyReplyExample);
+        Assert.Equal("Security posture scope (rules, baselines, and stored run analysis)", rulesRun.Routing.DomainIntentFamilyChoiceDescription);
+
+        var historyQuery = Assert.IsType<ToolPackToolCatalogEntryModel>(testimoXAnalyticsCatalog["testimox_history_query"]);
+        Assert.Equal("monitoring_artifacts", historyQuery.Routing.DomainIntentFamily);
+        Assert.Equal("Monitoring artifacts", historyQuery.Routing.DomainIntentFamilyDisplayName);
+        Assert.Equal("monitoring artifacts", historyQuery.Routing.DomainIntentFamilyReplyExample);
+        Assert.Equal("Monitoring artifacts scope (history, reports, dashboards, and maintenance windows)", historyQuery.Routing.DomainIntentFamilyChoiceDescription);
+    }
+
     private static void AssertCatalogEntryMatchesDefinition(ToolPackToolCatalogEntryModel entry, ToolDefinition definition) {
         var routing = Assert.IsType<ToolRoutingContract>(definition.Routing);
         Assert.Equal(routing.PackId, entry.Routing.PackId);
         Assert.Equal(routing.Role, entry.Routing.Role);
         Assert.Equal(routing.DomainIntentFamily ?? string.Empty, entry.Routing.DomainIntentFamily);
         Assert.Equal(routing.DomainIntentActionId ?? string.Empty, entry.Routing.DomainIntentActionId);
+        Assert.Equal(routing.DomainIntentFamilyDisplayName ?? string.Empty, entry.Routing.DomainIntentFamilyDisplayName);
+        Assert.Equal(routing.DomainIntentFamilyReplyExample ?? string.Empty, entry.Routing.DomainIntentFamilyReplyExample);
+        Assert.Equal(routing.DomainIntentFamilyChoiceDescription ?? string.Empty, entry.Routing.DomainIntentFamilyChoiceDescription);
         Assert.Equal(
             string.Equals(routing.Role, ToolRoutingTaxonomy.RolePackInfo, StringComparison.OrdinalIgnoreCase),
             entry.IsPackInfoTool);

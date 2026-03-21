@@ -233,6 +233,9 @@ public sealed class ChatContractsProtocolStabilityTests {
                     RoutingSource = "explicit",
                     DomainIntentFamily = "host_operations",
                     DomainIntentActionId = "query_event_timeline",
+                    DomainIntentFamilyDisplayName = "Host operations",
+                    DomainIntentFamilyReplyExample = "host operations",
+                    DomainIntentFamilyChoiceDescription = "Host operations scope (event timeline and host evidence)",
                     PackName = "Event Log",
                     PackDescription = "Event log investigation tools.",
                     PackSourceKind = ToolPackSourceKind.OpenSource,
@@ -278,6 +281,22 @@ public sealed class ChatContractsProtocolStabilityTests {
                         }
                     }
                 }
+            },
+            Plugins = new[] {
+                new PluginInfoDto {
+                    Id = "ops_bundle",
+                    Name = "Ops Bundle",
+                    Version = "1.2.3",
+                    Origin = "plugin_folder",
+                    SourceKind = ToolPackSourceKind.ClosedSource,
+                    DefaultEnabled = true,
+                    Enabled = true,
+                    IsDangerous = false,
+                    PackIds = new[] { "eventlog" },
+                    RootPath = "C:\\plugins\\ops-bundle",
+                    SkillDirectories = new[] { "C:\\plugins\\ops-bundle\\skills" },
+                    SkillIds = new[] { "event-triage" }
+                }
             }
         };
 
@@ -297,6 +316,9 @@ public sealed class ChatContractsProtocolStabilityTests {
         Assert.Equal("explicit", tool.RoutingSource);
         Assert.Equal("host_operations", tool.DomainIntentFamily);
         Assert.Equal("query_event_timeline", tool.DomainIntentActionId);
+        Assert.Equal("Host operations", tool.DomainIntentFamilyDisplayName);
+        Assert.Equal("host operations", tool.DomainIntentFamilyReplyExample);
+        Assert.Equal("Host operations scope (event timeline and host evidence)", tool.DomainIntentFamilyChoiceDescription);
         Assert.True(tool.IsExecutionAware);
         Assert.Equal("ix.tool-execution.v1", tool.ExecutionContractId);
         Assert.False(tool.IsPackInfoTool);
@@ -327,5 +349,14 @@ public sealed class ChatContractsProtocolStabilityTests {
         Assert.Equal(new[] { "dc01", "dc02" }, parameter.EnumValues);
         Assert.Equal("\"dc01\"", parameter.DefaultJson);
         Assert.Equal("\"dc02\"", parameter.ExampleJson);
+
+        var plugin = Assert.Single(toolList.Plugins);
+        Assert.Equal("ops_bundle", plugin.Id);
+        Assert.Equal("Ops Bundle", plugin.Name);
+        Assert.Equal("1.2.3", plugin.Version);
+        Assert.Equal("plugin_folder", plugin.Origin);
+        Assert.Equal(ToolPackSourceKind.ClosedSource, plugin.SourceKind);
+        Assert.Equal("C:\\plugins\\ops-bundle", plugin.RootPath);
+        Assert.Equal(new[] { "event-triage" }, plugin.SkillIds);
     }
 }

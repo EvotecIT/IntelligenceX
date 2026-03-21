@@ -19,10 +19,13 @@ internal sealed partial class ChatServiceSession {
     private const int MaxCapabilitySnapshotFamilies = 6;
     private const int MaxCapabilitySnapshotSkills = 8;
     private const int MaxCapabilitySnapshotRepresentativeExamples = 4;
+    private const int MaxCapabilitySnapshotDeferredWorkAffordances = 6;
     private const int MaxCapabilitySnapshotCrossPackTargetDisplays = 4;
     private const int MaxCapabilitySnapshotHealthyTools = 12;
     private const int MaxCapabilitySnapshotParityAttention = 4;
     private const int MaxCapabilitySnapshotParityDetail = 4;
+    private const int MaxCapabilitySnapshotToolingPackDetails = 4;
+    private const int MaxCapabilitySnapshotToolingPluginDetails = 4;
 
     private SessionCapabilitySnapshotDto BuildRuntimeCapabilitySnapshot() {
         if (_servingPersistedToolingBootstrapPreview && _persistedPreviewCapabilitySnapshot is not null) {
@@ -41,7 +44,8 @@ internal sealed partial class ChatServiceSession {
                 Array.Empty<string>(),
                 Array.Empty<string>()),
             remoteReachabilityMode: ResolveHelloRemoteReachabilityMode(),
-            backgroundScheduler: BuildBackgroundSchedulerSummary());
+            backgroundScheduler: BuildBackgroundSchedulerSummary(),
+            pluginCatalog: _pluginCatalog);
     }
 
     internal static SessionCapabilitySnapshotDto BuildCapabilitySnapshot(
@@ -54,46 +58,65 @@ internal sealed partial class ChatServiceSession {
         IEnumerable<string>? connectedRuntimeSkills = null,
         IEnumerable<string>? healthyToolNames = null,
         string? remoteReachabilityMode = null,
-        SessionCapabilityBackgroundSchedulerDto? backgroundScheduler = null) {
+        SessionCapabilityBackgroundSchedulerDto? backgroundScheduler = null,
+        IEnumerable<ToolPluginCatalogInfo>? pluginCatalog = null,
+        string? toolingSnapshotSource = "service_runtime") {
         ArgumentNullException.ThrowIfNull(options);
 
+        var normalizedPackAvailability = (packAvailability ?? Array.Empty<ToolPackAvailabilityInfo>()).ToArray();
+        var packList = ToolCatalogExportBuilder.BuildPackInfoDtos(normalizedPackAvailability, orchestrationCatalog);
+        var pluginList = ToolCatalogExportBuilder.BuildPluginInfoDtos(pluginAvailability, packList, pluginCatalog);
+        var toolingSnapshot = ToolCatalogExportBuilder.BuildCapabilityToolingSnapshotDto(packList, pluginList, toolingSnapshotSource);
         var enabledPackIds = NormalizeCapabilitySnapshotEnabledPackIds(
-            (packAvailability ?? Array.Empty<ToolPackAvailabilityInfo>())
+            normalizedPackAvailability
             .Where(static pack => pack.Enabled)
             .Select(static pack => pack.Id));
+        if (enabledPackIds.Length == 0) {
+            enabledPackIds = NormalizeCapabilitySnapshotEnabledPackIds(
+                EnumerateCapabilitySnapshotKnownPackIds(normalizedPackAvailability, orchestrationCatalog));
+        }
         var allPluginIds = NormalizeCapabilitySnapshotEnabledPluginIds(
-            (pluginAvailability ?? Array.Empty<ToolPluginAvailabilityInfo>())
-            .Select(static plugin => plugin.Id),
+            pluginList.Select(static plugin => plugin.Id),
             maxItems: 0);
         if (allPluginIds.Length == 0) {
             allPluginIds = NormalizeCapabilitySnapshotEnabledPluginIds(
-                (packAvailability ?? Array.Empty<ToolPackAvailabilityInfo>())
+                normalizedPackAvailability
                 .Select(static pack => pack.Id),
                 maxItems: 0);
         }
 
         var enabledPluginIds = NormalizeCapabilitySnapshotEnabledPluginIds(
-            (pluginAvailability ?? Array.Empty<ToolPluginAvailabilityInfo>())
+            pluginList
             .Where(static plugin => plugin.Enabled)
             .Select(static plugin => plugin.Id),
             MaxCapabilitySnapshotPluginIds);
         if (enabledPluginIds.Length == 0) {
             enabledPluginIds = NormalizeCapabilitySnapshotEnabledPluginIds(
-                (packAvailability ?? Array.Empty<ToolPackAvailabilityInfo>())
+                normalizedPackAvailability
                 .Where(static pack => pack.Enabled)
                 .Select(static pack => pack.Id),
                 MaxCapabilitySnapshotPluginIds);
         }
         var enabledPackEngineIds = NormalizeCapabilitySnapshotDescriptorTokens(
-            (packAvailability ?? Array.Empty<ToolPackAvailabilityInfo>())
+            normalizedPackAvailability
             .Where(static pack => pack.Enabled)
             .Select(static pack => pack.EngineId),
             MaxCapabilitySnapshotEngineIds);
+        if (enabledPackEngineIds.Length == 0) {
+            enabledPackEngineIds = NormalizeCapabilitySnapshotDescriptorTokens(
+                EnumerateCapabilitySnapshotKnownPackEngineIds(normalizedPackAvailability, orchestrationCatalog),
+                MaxCapabilitySnapshotEngineIds);
+        }
         var enabledCapabilityTags = NormalizeCapabilitySnapshotDescriptorTokens(
-            (packAvailability ?? Array.Empty<ToolPackAvailabilityInfo>())
+            normalizedPackAvailability
             .Where(static pack => pack.Enabled)
             .SelectMany(static pack => pack.CapabilityTags ?? Array.Empty<string>()),
             MaxCapabilitySnapshotCapabilityTags);
+        if (enabledCapabilityTags.Length == 0) {
+            enabledCapabilityTags = NormalizeCapabilitySnapshotDescriptorTokens(
+                EnumerateCapabilitySnapshotKnownPackCapabilityTags(normalizedPackAvailability, orchestrationCatalog),
+                MaxCapabilitySnapshotCapabilityTags);
+        }
 
         var familyActions = MapCapabilityFamilyActions(routingCatalog);
         var routingFamilies = NormalizeCapabilitySnapshotRoutingFamilies(
@@ -101,17 +124,22 @@ internal sealed partial class ChatServiceSession {
         var orchestrationEntries = EnumerateCapabilitySnapshotOrchestrationEntries(orchestrationCatalog);
         var representativeExamples = NormalizeCapabilitySnapshotRepresentativeExamples(
             ToolContractPromptExamples.BuildRepresentativeExamples(orchestrationEntries));
+        var deferredWorkAffordances = DeferredWorkAffordanceCatalog.Build(
+            packAvailability,
+            orchestrationCatalog,
+            backgroundScheduler,
+            MaxCapabilitySnapshotDeferredWorkAffordances);
         var crossPackTargetPackDisplayNames = NormalizeCapabilitySnapshotCrossPackTargetPackDisplayNames(
             ToolContractPromptExamples.BuildCrossPackTargetPackDisplayNames(orchestrationEntries));
-        var skills = ResolveCapabilitySnapshotSkills(pluginAvailability, routingCatalog, connectedRuntimeSkills);
+        var skills = ResolveCapabilitySnapshotSkills(pluginList, routingCatalog, connectedRuntimeSkills);
         var healthyTools = NormalizeCapabilitySnapshotHealthyToolNames(healthyToolNames ?? Array.Empty<string>());
         var registeredTools = Math.Max(0, routingCatalog?.TotalTools ?? 0);
         var allowedRootCount = Math.Max(0, options.AllowedRoots.Count);
         var autonomy = ToolAutonomySummaryBuilder.BuildCapabilityAutonomySummary(
-            packAvailability ?? Array.Empty<ToolPackAvailabilityInfo>(),
+            normalizedPackAvailability,
             orchestrationCatalog);
-        var dangerousPackIds = NormalizeCapabilitySnapshotDangerousPackIds(packAvailability, autonomy);
-        var parityEntries = ToolCapabilityParityInventoryBuilder.Build(toolDefinitions, packAvailability);
+        var dangerousPackIds = NormalizeCapabilitySnapshotDangerousPackIds(normalizedPackAvailability, autonomy);
+        var parityEntries = ToolCapabilityParityInventoryBuilder.Build(toolDefinitions, normalizedPackAvailability);
         var parityAttentionCount = parityEntries.Count(static entry =>
             !string.Equals(entry.Status, ToolCapabilityParityInventoryBuilder.HealthyStatus, StringComparison.OrdinalIgnoreCase)
             && !string.Equals(entry.Status, ToolCapabilityParityInventoryBuilder.SourceUnavailableStatus, StringComparison.OrdinalIgnoreCase)
@@ -135,6 +163,8 @@ internal sealed partial class ChatServiceSession {
             FamilyActions = familyActions,
             Skills = skills,
             RepresentativeExamples = representativeExamples,
+            DeferredWorkAffordances = deferredWorkAffordances,
+            ToolingSnapshot = toolingSnapshot,
             CrossPackTargetPackDisplayNames = crossPackTargetPackDisplayNames,
             HealthyTools = healthyTools,
             RemoteReachabilityMode = NormalizeCapabilitySnapshotRemoteReachabilityMode(remoteReachabilityMode),
@@ -162,7 +192,11 @@ internal sealed partial class ChatServiceSession {
             .Select(static summary => new SessionRoutingFamilyActionSummaryDto {
                 Family = summary.Family.Trim(),
                 ActionId = summary.ActionId.Trim(),
-                ToolCount = Math.Max(0, summary.ToolCount)
+                ToolCount = Math.Max(0, summary.ToolCount),
+                DisplayName = string.IsNullOrWhiteSpace(summary.DisplayName) ? null : summary.DisplayName.Trim(),
+                ReplyExample = string.IsNullOrWhiteSpace(summary.ReplyExample) ? null : summary.ReplyExample.Trim(),
+                ChoiceDescription = string.IsNullOrWhiteSpace(summary.ChoiceDescription) ? null : summary.ChoiceDescription.Trim(),
+                RepresentativePackIds = summary.RepresentativePackIds is { Length: > 0 } ? summary.RepresentativePackIds : null
             })
             .ToArray();
     }
@@ -199,6 +233,88 @@ internal sealed partial class ChatServiceSession {
             .Where(static pack => pack.Enabled && (pack.IsDangerous || pack.Tier == ToolCapabilityTier.DangerousWrite))
             .Select(static pack => pack.Id)
             .Concat(autonomy?.WriteCapablePackIds ?? Array.Empty<string>()));
+    }
+
+    private static IEnumerable<string> EnumerateCapabilitySnapshotKnownPackIds(
+        IReadOnlyList<ToolPackAvailabilityInfo> packAvailability,
+        ToolOrchestrationCatalog? orchestrationCatalog) {
+        if (orchestrationCatalog is null) {
+            return Array.Empty<string>();
+        }
+
+        return orchestrationCatalog
+            .GetKnownPackIds()
+            .Where(packId => IsCapabilitySnapshotPackEnabledOrUnknown(packId, packAvailability));
+    }
+
+    private static IEnumerable<string> EnumerateCapabilitySnapshotKnownPackEngineIds(
+        IReadOnlyList<ToolPackAvailabilityInfo> packAvailability,
+        ToolOrchestrationCatalog? orchestrationCatalog) {
+        if (orchestrationCatalog is null) {
+            return Array.Empty<string>();
+        }
+
+        var values = new List<string>();
+        var knownPackIds = orchestrationCatalog.GetKnownPackIds();
+        for (var i = 0; i < knownPackIds.Count; i++) {
+            var packId = knownPackIds[i];
+            if (!IsCapabilitySnapshotPackEnabledOrUnknown(packId, packAvailability)
+                || !orchestrationCatalog.TryGetPackMetadata(packId, out var metadata)
+                || string.IsNullOrWhiteSpace(metadata.EngineId)) {
+                continue;
+            }
+
+            values.Add(metadata.EngineId);
+        }
+
+        return values;
+    }
+
+    private static IEnumerable<string> EnumerateCapabilitySnapshotKnownPackCapabilityTags(
+        IReadOnlyList<ToolPackAvailabilityInfo> packAvailability,
+        ToolOrchestrationCatalog? orchestrationCatalog) {
+        if (orchestrationCatalog is null) {
+            return Array.Empty<string>();
+        }
+
+        var values = new List<string>();
+        var knownPackIds = orchestrationCatalog.GetKnownPackIds();
+        for (var i = 0; i < knownPackIds.Count; i++) {
+            var packId = knownPackIds[i];
+            if (!IsCapabilitySnapshotPackEnabledOrUnknown(packId, packAvailability)
+                || !orchestrationCatalog.TryGetPackCapabilityTags(packId, out var capabilityTags)
+                || capabilityTags.Count == 0) {
+                continue;
+            }
+
+            values.AddRange(capabilityTags);
+        }
+
+        return values;
+    }
+
+    private static bool IsCapabilitySnapshotPackEnabledOrUnknown(
+        string? normalizedPackId,
+        IReadOnlyList<ToolPackAvailabilityInfo> packAvailability) {
+        normalizedPackId = NormalizePackId(normalizedPackId);
+        if (normalizedPackId.Length == 0) {
+            return false;
+        }
+
+        var sawAvailability = false;
+        for (var i = 0; i < packAvailability.Count; i++) {
+            var pack = packAvailability[i];
+            if (!string.Equals(NormalizePackId(pack.Id), normalizedPackId, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            sawAvailability = true;
+            if (pack.Enabled) {
+                return true;
+            }
+        }
+
+        return !sawAvailability;
     }
 
     private static string[] NormalizeCapabilitySnapshotRoutingFamilies(IEnumerable<string> routingFamilies) {
@@ -284,6 +400,23 @@ internal sealed partial class ChatServiceSession {
         runtimeIdentity.AppendLine("enabled_pack_count: " + snapshot.EnabledPackCount);
         runtimeIdentity.AppendLine("plugin_count: " + snapshot.PluginCount);
         runtimeIdentity.AppendLine("enabled_plugin_count: " + snapshot.EnabledPluginCount);
+        if (snapshot.ToolingSnapshot is not null) {
+            runtimeIdentity.AppendLine(
+                "tooling_snapshot: "
+                + (string.IsNullOrWhiteSpace(snapshot.ToolingSnapshot.Source) ? "unknown" : snapshot.ToolingSnapshot.Source)
+                + ", packs " + snapshot.ToolingSnapshot.Packs.Length
+                + ", plugins " + snapshot.ToolingSnapshot.Plugins.Length);
+            var toolingPackDetails = BuildCapabilitySnapshotToolingPackDetails(snapshot.ToolingSnapshot, MaxCapabilitySnapshotToolingPackDetails);
+            if (toolingPackDetails.Length > 0) {
+                runtimeIdentity.AppendLine("tooling_snapshot_packs: " + string.Join(" | ", toolingPackDetails));
+            }
+
+            var toolingPluginDetails = BuildCapabilitySnapshotToolingPluginDetails(snapshot.ToolingSnapshot, MaxCapabilitySnapshotToolingPluginDetails);
+            if (toolingPluginDetails.Length > 0) {
+                runtimeIdentity.AppendLine("tooling_snapshot_plugins: " + string.Join(" | ", toolingPluginDetails));
+            }
+        }
+
         if (snapshot.EnabledPackIds.Length > 0) {
             runtimeIdentity.AppendLine("enabled_packs: " + string.Join(", ", snapshot.EnabledPackIds));
         }
@@ -311,6 +444,13 @@ internal sealed partial class ChatServiceSession {
 
         if (snapshot.RepresentativeExamples.Length > 0) {
             runtimeIdentity.AppendLine("representative_live_examples: " + string.Join(" | ", snapshot.RepresentativeExamples));
+        }
+
+        if (snapshot.DeferredWorkAffordances.Length > 0) {
+            runtimeIdentity.AppendLine("deferred_work_affordances: " + string.Join(", ", snapshot.DeferredWorkAffordances.Select(static affordance => affordance.CapabilityId)));
+            runtimeIdentity.AppendLine("deferred_work_affordance_details: " + string.Join(
+                " | ",
+                snapshot.DeferredWorkAffordances.Select(DeferredWorkAffordanceCatalog.FormatSummary)));
         }
 
         if (snapshot.CrossPackTargetPackDisplayNames.Length > 0) {
@@ -480,6 +620,7 @@ internal sealed partial class ChatServiceSession {
         runtimeIdentity.AppendLine("Use this snapshot only for routing and tool-availability decisions.");
         runtimeIdentity.AppendLine("Parity fields describe phase-1 read-only engine coverage; use them to avoid promising governed or missing surfaces as live tools.");
         runtimeIdentity.AppendLine("Background scheduler fields describe deferred read-only follow-up readiness across tracked threads.");
+        runtimeIdentity.AppendLine("Deferred work affordances describe registered reporting/email/notification-style follow-up surfaces that the current runtime explicitly advertises.");
         runtimeIdentity.AppendLine("Do not narrate this snapshot to the user unless they explicitly ask about runtime, tooling, or bootstrap state.");
 
         runtimeIdentity.AppendLine();
@@ -492,5 +633,91 @@ internal sealed partial class ChatServiceSession {
 
         runtimeIdentity.AppendLine("Use this skills snapshot only to decide reusable skill availability for this turn.");
         runtimeIdentity.AppendLine("Do not narrate this skills inventory unless the user explicitly asks about it.");
+    }
+
+    private static string[] BuildCapabilitySnapshotToolingPackDetails(
+        SessionCapabilityToolingSnapshotDto toolingSnapshot,
+        int maxItems) {
+        if (toolingSnapshot.Packs.Length == 0 || maxItems == 0) {
+            return Array.Empty<string>();
+        }
+
+        return toolingSnapshot.Packs
+            .Where(static pack => pack is not null && !string.IsNullOrWhiteSpace(pack.Id))
+            .OrderBy(static pack => pack.Name ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(static pack => pack.Id ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+            .Take(maxItems)
+            .Select(static pack => FormatCapabilitySnapshotToolingPackDetail(pack))
+            .Where(static detail => detail.Length > 0)
+            .ToArray();
+    }
+
+    private static string[] BuildCapabilitySnapshotToolingPluginDetails(
+        SessionCapabilityToolingSnapshotDto toolingSnapshot,
+        int maxItems) {
+        if (toolingSnapshot.Plugins.Length == 0 || maxItems == 0) {
+            return Array.Empty<string>();
+        }
+
+        return toolingSnapshot.Plugins
+            .Where(static plugin => plugin is not null && !string.IsNullOrWhiteSpace(plugin.Id))
+            .OrderBy(static plugin => plugin.Name ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(static plugin => plugin.Id ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+            .Take(maxItems)
+            .Select(static plugin => FormatCapabilitySnapshotToolingPluginDetail(plugin))
+            .Where(static detail => detail.Length > 0)
+            .ToArray();
+    }
+
+    private static string FormatCapabilitySnapshotToolingPackDetail(ToolPackInfoDto pack) {
+        var label = string.IsNullOrWhiteSpace(pack.Name) ? NormalizePackId(pack.Id) : pack.Name.Trim();
+        if (label.Length == 0) {
+            return string.Empty;
+        }
+
+        var parts = new List<string> {
+            pack.Enabled ? "enabled" : "disabled",
+            FormatCapabilitySnapshotSourceKind(pack.SourceKind)
+        };
+        if (!string.IsNullOrWhiteSpace(pack.EngineId)) {
+            parts.Add(pack.EngineId.Trim());
+        }
+
+        if (pack.CapabilityTags.Length > 0) {
+            parts.Add(string.Join("/", pack.CapabilityTags.Take(2)));
+        }
+
+        return label + "[" + string.Join("|", parts) + "]";
+    }
+
+    private static string FormatCapabilitySnapshotToolingPluginDetail(PluginInfoDto plugin) {
+        var label = string.IsNullOrWhiteSpace(plugin.Name)
+            ? NormalizePackId(plugin.Id)
+            : plugin.Name.Trim();
+        if (label.Length == 0) {
+            return string.Empty;
+        }
+
+        var parts = new List<string> {
+            plugin.Enabled ? "enabled" : "disabled",
+            FormatCapabilitySnapshotSourceKind(plugin.SourceKind)
+        };
+        if (!string.IsNullOrWhiteSpace(plugin.Origin)) {
+            parts.Add(plugin.Origin.Trim());
+        }
+
+        if (plugin.PackIds.Length > 0) {
+            parts.Add("packs=" + string.Join("/", plugin.PackIds.Take(2)));
+        }
+
+        return label + "[" + string.Join("|", parts) + "]";
+    }
+
+    private static string FormatCapabilitySnapshotSourceKind(ToolPackSourceKind sourceKind) {
+        return sourceKind switch {
+            ToolPackSourceKind.Builtin => "builtin",
+            ToolPackSourceKind.ClosedSource => "closed_source",
+            _ => "open_source"
+        };
     }
 }

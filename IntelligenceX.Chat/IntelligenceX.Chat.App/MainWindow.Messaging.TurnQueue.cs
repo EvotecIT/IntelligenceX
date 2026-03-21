@@ -1039,6 +1039,10 @@ public sealed partial class MainWindow : Window {
             return;
         }
 
+        text = RuntimeToolingSupportSnapshotBuilder.BuildClipboardText(
+            text,
+            BuildRuntimeToolingSupportSnapshot());
+
         var dp = new DataPackage();
         dp.SetText(text);
         Clipboard.SetContent(dp);

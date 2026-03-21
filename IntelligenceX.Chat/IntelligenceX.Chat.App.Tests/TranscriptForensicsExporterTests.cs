@@ -34,6 +34,35 @@ public sealed class TranscriptForensicsExporterTests {
                 Model = "gpt-5.3-codex"
             }
         };
+        var tooling = new RuntimeToolingSupportSnapshot {
+            Source = "session_policy",
+            PackCount = 1,
+            PluginCount = 1,
+            Packs = new List<RuntimeToolingPackSnapshot> {
+                new() {
+                    Id = "eventlog",
+                    Name = "Event Viewer",
+                    Enabled = true,
+                    SourceKind = "builtin",
+                    EngineId = "windows_eventing",
+                    CapabilityTags = new List<string> { "events", "host_diagnostics" }
+                }
+            },
+            Plugins = new List<RuntimeToolingPluginSnapshot> {
+                new() {
+                    Id = "ops_bundle",
+                    Name = "Ops Bundle",
+                    Enabled = true,
+                    DefaultEnabled = true,
+                    Origin = "plugin_folder",
+                    SourceKind = "closed_source",
+                    Version = "1.2.3",
+                    RootPath = @"C:\plugins\ops-bundle",
+                    PackIds = new List<string> { "eventlog" },
+                    SkillIds = new List<string> { "event-triage" }
+                }
+            }
+        };
 
         var bundle = TranscriptForensicsExporter.Build(
             "default",
@@ -44,7 +73,8 @@ public sealed class TranscriptForensicsExporterTests {
             "Forest",
             "thread-1",
             liveMessages,
-            persistedMessages);
+            persistedMessages,
+            tooling);
 
         Assert.Equal("conv-1", bundle.ConversationId);
         Assert.Equal("Forest", bundle.ConversationTitle);
@@ -64,6 +94,13 @@ public sealed class TranscriptForensicsExporterTests {
         Assert.Contains("expected>=0.6.2", bundle.Renderer.MarkdownAssembly, StringComparison.Ordinal);
         Assert.Contains("OfficeIMO.Word.Markdown", bundle.Renderer.WordMarkdownAssembly, StringComparison.Ordinal);
         Assert.Contains("expected>=1.0.9", bundle.Renderer.WordMarkdownAssembly, StringComparison.Ordinal);
+        Assert.NotNull(bundle.Tooling);
+        Assert.Equal("session_policy", bundle.Tooling!.Source);
+        Assert.Single(bundle.Tooling.Packs);
+        Assert.Single(bundle.Tooling.Plugins);
+        Assert.Equal("windows_eventing", bundle.Tooling.Packs[0].EngineId);
+        Assert.Equal("1.2.3", bundle.Tooling.Plugins[0].Version);
+        Assert.Equal(@"C:\plugins\ops-bundle", bundle.Tooling.Plugins[0].RootPath);
     }
 
     /// <summary>
@@ -152,6 +189,7 @@ public sealed class TranscriptForensicsExporterTests {
             Assert.True(File.Exists(outputPath));
             var json = File.ReadAllText(outputPath);
             Assert.Contains("\"conversationId\": \"conv-2\"", json, StringComparison.Ordinal);
+            Assert.Contains("\"tooling\": null", json, StringComparison.Ordinal);
             Assert.Contains("\"rawText\": \"Hello world\"", json, StringComparison.Ordinal);
             Assert.Contains("\"renderedTranscriptHtml\":", json, StringComparison.Ordinal);
         } finally {

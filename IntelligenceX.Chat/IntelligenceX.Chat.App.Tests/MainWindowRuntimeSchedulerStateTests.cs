@@ -204,6 +204,57 @@ public sealed class MainWindowRuntimeSchedulerStateTests {
     }
 
     /// <summary>
+    /// Ensures capability snapshot diagnostics expose deferred follow-up affordances for app-side runtime diagnostics.
+    /// </summary>
+    [Fact]
+    public void BuildCapabilitySnapshotState_EmbedsDeferredWorkAffordances() {
+        var snapshot = new SessionCapabilitySnapshotDto {
+            RegisteredTools = 2,
+            EnabledPackCount = 2,
+            PluginCount = 0,
+            EnabledPluginCount = 0,
+            ToolingAvailable = true,
+            AllowedRootCount = 1,
+            DeferredWorkAffordances = new[] {
+                new SessionCapabilityDeferredWorkAffordanceDto {
+                    CapabilityId = "email",
+                    DisplayName = "Email",
+                    Summary = "Compose or send email follow-up.",
+                    AvailabilityMode = "pack_declared",
+                    SupportsBackgroundExecution = true,
+                    PackIds = new[] { "email" },
+                    RoutingFamilies = new[] { "notification_delivery" },
+                    RepresentativeExamples = new[] { "send an email summary after the run" }
+                },
+                new SessionCapabilityDeferredWorkAffordanceDto {
+                    CapabilityId = "reporting",
+                    DisplayName = "Reporting",
+                    Summary = "Generate reporting artifacts.",
+                    AvailabilityMode = "pack_declared",
+                    SupportsBackgroundExecution = false,
+                    PackIds = new[] { "testimox_analytics" },
+                    RoutingFamilies = new[] { "monitoring_artifacts" },
+                    RepresentativeExamples = new[] { "publish a monitoring report snapshot" }
+                }
+            }
+        };
+
+        var state = BuildCapabilitySnapshotStateMethod.Invoke(null, new object?[] { snapshot });
+        Assert.NotNull(state);
+
+        using var document = JsonDocument.Parse(JsonSerializer.Serialize(state));
+        var affordances = document.RootElement.GetProperty("deferredWorkAffordances");
+        Assert.Equal(2, affordances.GetArrayLength());
+        Assert.Equal("email", affordances[0].GetProperty("capabilityId").GetString());
+        Assert.Equal("Email", affordances[0].GetProperty("displayName").GetString());
+        Assert.True(affordances[0].GetProperty("supportsBackgroundExecution").GetBoolean());
+        Assert.Equal("notification_delivery", affordances[0].GetProperty("routingFamilies")[0].GetString());
+        Assert.Equal("send an email summary after the run", affordances[0].GetProperty("representativeExamples")[0].GetString());
+        Assert.Equal("reporting", affordances[1].GetProperty("capabilityId").GetString());
+        Assert.Equal("pack_declared", affordances[1].GetProperty("availabilityMode").GetString());
+    }
+
+    /// <summary>
     /// Ensures paused scheduler state reports the active pause reason in UI diagnostics.
     /// </summary>
     [Fact]

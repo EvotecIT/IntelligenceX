@@ -510,6 +510,7 @@ internal sealed partial class ChatServiceSession {
         }
         if (plannerContext.PreferredPackIds.Length > 0
             || plannerContext.PreferredToolNames.Length > 0
+            || plannerContext.PreferredDeferredWorkCapabilityIds.Length > 0
             || plannerContext.PreferredExecutionBackends.Length > 0) {
             sb.AppendLine();
             sb.AppendLine("Planner preferences:");
@@ -518,6 +519,10 @@ internal sealed partial class ChatServiceSession {
             }
             if (plannerContext.PreferredToolNames.Length > 0) {
                 sb.Append("Preferred tools: ").AppendLine(string.Join(", ", plannerContext.PreferredToolNames));
+            }
+            if (plannerContext.PreferredDeferredWorkCapabilityIds.Length > 0) {
+                sb.Append("Preferred deferred follow-up capabilities: ")
+                    .AppendLine(string.Join(", ", plannerContext.PreferredDeferredWorkCapabilityIds));
             }
             if (plannerContext.StructuredNextActionSourceToolNames.Length > 0) {
                 sb.Append("Structured source tools: ").AppendLine(string.Join(", ", plannerContext.StructuredNextActionSourceToolNames));
@@ -638,6 +643,20 @@ internal sealed partial class ChatServiceSession {
 
             if (crossPackTargets.Count > 0) {
                 sb.AppendLine(ToolRepresentativeExamples.BuildCrossPackSummary(crossPackTargets));
+            }
+        }
+        var deferredWorkAffordances = ResolvePlannerDeferredWorkAffordances(plannerPromptHintEntries, plannerContext);
+        var deferredWorkHintLines = DeferredWorkAffordanceCatalog.BuildPromptHintLines(deferredWorkAffordances);
+        if (deferredWorkHintLines.Count > 0) {
+            sb.AppendLine();
+            sb.AppendLine("Deferred follow-up affordances:");
+            for (var lineIndex = 0; lineIndex < deferredWorkHintLines.Count; lineIndex++) {
+                var line = (deferredWorkHintLines[lineIndex] ?? string.Empty).Trim();
+                if (line.Length == 0) {
+                    continue;
+                }
+
+                sb.AppendLine(line);
             }
         }
         var hasWriteCapableTools = definitions.Any(static definition => definition.WriteGovernance?.IsWriteCapable == true);
@@ -873,7 +892,7 @@ internal sealed partial class ChatServiceSession {
         return ToolPackCapabilityTags.PrioritizeForPlanner(capabilityTags, maxCount);
     }
 
-    private static IReadOnlyList<ToolOrchestrationCatalogEntry> CollectPlannerPromptHintEntries(
+    private IReadOnlyList<ToolOrchestrationCatalogEntry> CollectPlannerPromptHintEntries(
         IReadOnlyList<ToolDefinition> definitions,
         PlannerContextMetadata plannerContext,
         ToolOrchestrationCatalog? orchestrationCatalog = null) {
@@ -895,6 +914,11 @@ internal sealed partial class ChatServiceSession {
                 .Concat(plannerContext.HandoffTargetToolNames)
                 .Where(static toolName => !string.IsNullOrWhiteSpace(toolName)),
             StringComparer.OrdinalIgnoreCase);
+        var preferredDeferredWorkCapabilityIds = new HashSet<string>(
+            plannerContext.PreferredDeferredWorkCapabilityIds
+                .Select(static capabilityId => NormalizeDeferredWorkCapabilityId(capabilityId))
+                .Where(static capabilityId => capabilityId.Length > 0),
+            StringComparer.OrdinalIgnoreCase);
 
         var focusedEntries = new List<ToolOrchestrationCatalogEntry>(definitions.Count);
         var allEntries = new List<ToolOrchestrationCatalogEntry>(definitions.Count);
@@ -909,18 +933,186 @@ internal sealed partial class ChatServiceSession {
             }
 
             allEntries.Add(entry);
-            if (preferredPackIds.Count == 0 && preferredToolNames.Count == 0) {
+            if (preferredPackIds.Count == 0
+                && preferredToolNames.Count == 0
+                && preferredDeferredWorkCapabilityIds.Count == 0) {
                 continue;
             }
 
             var normalizedPackId = NormalizePackId(entry.PackId);
             if (preferredToolNames.Contains(entry.ToolName)
-                || (normalizedPackId.Length > 0 && preferredPackIds.Contains(normalizedPackId))) {
+                || (normalizedPackId.Length > 0 && preferredPackIds.Contains(normalizedPackId))
+                || PackMatchesDeferredWorkCapabilityPreference(normalizedPackId, preferredDeferredWorkCapabilityIds)) {
                 focusedEntries.Add(entry);
             }
         }
 
         return focusedEntries.Count > 0 ? focusedEntries : allEntries;
+    }
+
+    private SessionCapabilityDeferredWorkAffordanceDto[] ResolvePlannerDeferredWorkAffordances(
+        IReadOnlyList<ToolOrchestrationCatalogEntry> plannerPromptHintEntries,
+        PlannerContextMetadata plannerContext) {
+        var preferredDeferredWorkCapabilityIds = new HashSet<string>(
+            plannerContext.PreferredDeferredWorkCapabilityIds
+                .Select(static capabilityId => NormalizeDeferredWorkCapabilityId(capabilityId))
+                .Where(static capabilityId => capabilityId.Length > 0),
+            StringComparer.OrdinalIgnoreCase);
+        var relevantPackIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < plannerPromptHintEntries.Count; i++) {
+            var normalizedPackId = ResolveRuntimePackId(NormalizePackId(plannerPromptHintEntries[i].PackId));
+            if (normalizedPackId.Length > 0) {
+                relevantPackIds.Add(normalizedPackId);
+            }
+        }
+
+        IEnumerable<ToolPackAvailabilityInfo> relevantPackAvailability = _packAvailability;
+        if (preferredDeferredWorkCapabilityIds.Count > 0 || relevantPackIds.Count > 0) {
+            relevantPackAvailability = _packAvailability.Where(pack => {
+                var normalizedPackId = ResolveRuntimePackId(NormalizePackId(pack.Id));
+                if (normalizedPackId.Length == 0) {
+                    return false;
+                }
+
+                if (relevantPackIds.Count > 0 && !relevantPackIds.Contains(normalizedPackId)) {
+                    return false;
+                }
+
+                return preferredDeferredWorkCapabilityIds.Count == 0
+                       || PackMatchesDeferredWorkCapabilityPreference(normalizedPackId, preferredDeferredWorkCapabilityIds);
+            });
+        }
+
+        return DeferredWorkAffordanceCatalog.Build(
+            relevantPackAvailability,
+            _toolOrchestrationCatalog,
+            BuildBackgroundSchedulerSummary(),
+            maxItems: 4);
+    }
+
+    private bool PackMatchesDeferredWorkCapabilityPreference(
+        string? normalizedPackId,
+        IReadOnlySet<string> preferredDeferredWorkCapabilityIds) {
+        if (preferredDeferredWorkCapabilityIds is null || preferredDeferredWorkCapabilityIds.Count == 0) {
+            return false;
+        }
+
+        normalizedPackId = ResolveRuntimePackId(normalizedPackId);
+        if (normalizedPackId.Length == 0) {
+            return false;
+        }
+
+        if (!IsPackEnabledOrUnknown(normalizedPackId)) {
+            return false;
+        }
+
+        if (_packCapabilityTagsById.TryGetValue(normalizedPackId, out var capabilityTags)
+            && capabilityTags is { Length: > 0 }
+            && ContainsPreferredDeferredWorkCapability(capabilityTags, preferredDeferredWorkCapabilityIds)) {
+            return true;
+        }
+
+        for (var packIndex = 0; packIndex < _packAvailability.Length; packIndex++) {
+            var pack = _packAvailability[packIndex];
+            if (!pack.Enabled || !string.Equals(ResolveRuntimePackId(pack.Id), normalizedPackId, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            if (ContainsPreferredDeferredWorkCapability(pack.CapabilityTags, preferredDeferredWorkCapabilityIds)) {
+                return true;
+            }
+        }
+
+        if (_toolOrchestrationCatalog.TryGetPackCapabilityTags(normalizedPackId, out var orchestrationCapabilityTags)
+            && ContainsPreferredDeferredWorkCapability(orchestrationCapabilityTags, preferredDeferredWorkCapabilityIds)) {
+            return true;
+        }
+
+        return false;
+    }
+
+    private bool IsPackEnabledOrUnknown(string? normalizedPackId) {
+        normalizedPackId = ResolveRuntimePackId(normalizedPackId);
+        if (normalizedPackId.Length == 0) {
+            return false;
+        }
+
+        var sawAvailability = false;
+        for (var packIndex = 0; packIndex < _packAvailability.Length; packIndex++) {
+            var pack = _packAvailability[packIndex];
+            if (!string.Equals(ResolveRuntimePackId(pack.Id), normalizedPackId, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            sawAvailability = true;
+            if (pack.Enabled) {
+                return true;
+            }
+        }
+
+        return !sawAvailability;
+    }
+
+    private static bool ContainsPreferredDeferredWorkCapability(
+        IReadOnlyList<string>? capabilityTags,
+        IReadOnlySet<string> preferredDeferredWorkCapabilityIds) {
+        if (capabilityTags is not { Count: > 0 } || preferredDeferredWorkCapabilityIds is null || preferredDeferredWorkCapabilityIds.Count == 0) {
+            return false;
+        }
+
+        for (var i = 0; i < capabilityTags.Count; i++) {
+            if (!ToolPackCapabilityTags.TryGetDeferredCapabilityId(capabilityTags[i], out var capabilityId)) {
+                continue;
+            }
+
+            if (preferredDeferredWorkCapabilityIds.Contains(capabilityId)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private string[] ResolvePackIdsForDeferredWorkCapabilityPreferences(
+        IReadOnlySet<string> preferredDeferredWorkCapabilityIds) {
+        if (preferredDeferredWorkCapabilityIds is null || preferredDeferredWorkCapabilityIds.Count == 0) {
+            return Array.Empty<string>();
+        }
+
+        var matchingPackIds = new List<string>();
+        var seenPackIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < _packAvailability.Length; i++) {
+            var pack = _packAvailability[i];
+            if (!pack.Enabled) {
+                continue;
+            }
+
+            var normalizedPackId = ResolveRuntimePackId(pack.Id);
+            if (normalizedPackId.Length == 0
+                || !ContainsPreferredDeferredWorkCapability(pack.CapabilityTags, preferredDeferredWorkCapabilityIds)) {
+                continue;
+            }
+
+            if (seenPackIds.Add(normalizedPackId)) {
+                matchingPackIds.Add(normalizedPackId);
+            }
+        }
+
+        var knownPackIds = _toolOrchestrationCatalog.GetKnownPackIds();
+        for (var i = 0; i < knownPackIds.Count; i++) {
+            var normalizedPackId = ResolveRuntimePackId(knownPackIds[i]);
+            if (normalizedPackId.Length == 0
+                || !seenPackIds.Add(normalizedPackId)
+                || !IsPackEnabledOrUnknown(normalizedPackId)
+                || !_toolOrchestrationCatalog.TryGetPackCapabilityTags(normalizedPackId, out var capabilityTags)
+                || !ContainsPreferredDeferredWorkCapability(capabilityTags, preferredDeferredWorkCapabilityIds)) {
+                continue;
+            }
+
+            matchingPackIds.Add(normalizedPackId);
+        }
+
+        return NormalizeDistinctStrings(matchingPackIds, maxItems: 8);
     }
 
     private static string ResolvePlannerCategory(ToolDefinition definition) {

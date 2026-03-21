@@ -28,6 +28,7 @@ internal static partial class PluginFolderToolPackLoader {
         Action<string>? onWarning,
         Action<ToolPackAvailabilityInfo>? onPackAvailability,
         Action<ToolPluginAvailabilityInfo>? onPluginAvailability,
+        Action<ToolPluginCatalogInfo>? onPluginCatalog,
         int loadIndex,
         int loadTotal) {
         PluginManifest? manifest = null;
@@ -208,8 +209,12 @@ internal static partial class PluginFolderToolPackLoader {
             }
         }
 
-        if (pluginPackAvailability.Count > 0) {
-            onPluginAvailability?.Invoke(CreatePluginAvailability(pluginDirectory, manifest, pluginPackAvailability, onWarning));
+        if (manifest is not null || pluginPackAvailability.Count > 0) {
+            var pluginCatalog = CreatePluginCatalog(pluginDirectory, manifest, pluginPackAvailability, onWarning);
+            onPluginCatalog?.Invoke(pluginCatalog);
+            if (pluginPackAvailability.Count > 0) {
+                onPluginAvailability?.Invoke(CreatePluginAvailability(pluginCatalog, pluginPackAvailability));
+            }
         }
 
         return loadedPackCount > 0;

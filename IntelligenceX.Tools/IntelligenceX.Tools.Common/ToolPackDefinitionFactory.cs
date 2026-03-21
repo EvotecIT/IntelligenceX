@@ -21,6 +21,9 @@ public static class ToolPackDefinitionFactory {
         string? displayName = null,
         string? domainIntentFamily = null,
         string? domainIntentActionId = null,
+        string? domainIntentFamilyDisplayName = null,
+        string? domainIntentFamilyReplyExample = null,
+        string? domainIntentFamilyChoiceDescription = null,
         IReadOnlyList<string>? domainSignalTokens = null) {
         return CreateStructuredDefinition(
             toolName: toolName,
@@ -33,6 +36,9 @@ public static class ToolPackDefinitionFactory {
             displayName: displayName,
             domainIntentFamily: domainIntentFamily,
             domainIntentActionId: domainIntentActionId,
+            domainIntentFamilyDisplayName: domainIntentFamilyDisplayName,
+            domainIntentFamilyReplyExample: domainIntentFamilyReplyExample,
+            domainIntentFamilyChoiceDescription: domainIntentFamilyChoiceDescription,
             domainSignalTokens: domainSignalTokens);
     }
 
@@ -49,6 +55,9 @@ public static class ToolPackDefinitionFactory {
         string? displayName = null,
         string? domainIntentFamily = null,
         string? domainIntentActionId = null,
+        string? domainIntentFamilyDisplayName = null,
+        string? domainIntentFamilyReplyExample = null,
+        string? domainIntentFamilyChoiceDescription = null,
         IReadOnlyList<string>? domainSignalTokens = null) {
         return CreateStructuredDefinition(
             toolName: toolName,
@@ -61,6 +70,9 @@ public static class ToolPackDefinitionFactory {
             displayName: displayName,
             domainIntentFamily: domainIntentFamily,
             domainIntentActionId: domainIntentActionId,
+            domainIntentFamilyDisplayName: domainIntentFamilyDisplayName,
+            domainIntentFamilyReplyExample: domainIntentFamilyReplyExample,
+            domainIntentFamilyChoiceDescription: domainIntentFamilyChoiceDescription,
             domainSignalTokens: domainSignalTokens);
     }
 
@@ -75,6 +87,9 @@ public static class ToolPackDefinitionFactory {
         string? displayName = null,
         string? domainIntentFamily = null,
         string? domainIntentActionId = null,
+        string? domainIntentFamilyDisplayName = null,
+        string? domainIntentFamilyReplyExample = null,
+        string? domainIntentFamilyChoiceDescription = null,
         IReadOnlyList<string>? domainSignalTokens = null) {
         if (string.IsNullOrWhiteSpace(toolName)) {
             throw new ArgumentException("Tool name cannot be empty.", nameof(toolName));
@@ -90,8 +105,17 @@ public static class ToolPackDefinitionFactory {
 
         var normalizedFamily = (domainIntentFamily ?? string.Empty).Trim();
         var normalizedActionId = (domainIntentActionId ?? string.Empty).Trim();
+        var normalizedDisplayName = (domainIntentFamilyDisplayName ?? string.Empty).Trim();
+        var normalizedReplyExample = (domainIntentFamilyReplyExample ?? string.Empty).Trim();
+        var normalizedChoiceDescription = (domainIntentFamilyChoiceDescription ?? string.Empty).Trim();
         if (normalizedActionId.Length > 0 && normalizedFamily.Length == 0) {
             throw new ArgumentException("Domain intent family is required when an action id is provided.", nameof(domainIntentFamily));
+        }
+        if (normalizedFamily.Length == 0
+            && (normalizedDisplayName.Length > 0 || normalizedReplyExample.Length > 0 || normalizedChoiceDescription.Length > 0)) {
+            throw new ArgumentException(
+                "Domain intent family is required when family presentation metadata is provided.",
+                nameof(domainIntentFamily));
         }
 
         return new ToolDefinition(
@@ -108,6 +132,9 @@ public static class ToolPackDefinitionFactory {
                 Role = role,
                 DomainIntentFamily = normalizedFamily,
                 DomainIntentActionId = normalizedActionId,
+                DomainIntentFamilyDisplayName = normalizedDisplayName,
+                DomainIntentFamilyReplyExample = normalizedReplyExample,
+                DomainIntentFamilyChoiceDescription = normalizedChoiceDescription,
                 DomainSignalTokens = domainSignalTokens ?? Array.Empty<string>()
             });
     }

@@ -489,10 +489,16 @@ public sealed partial class MainWindow : Window {
         // metadata flags so stale queued state cannot pin loading UI forever.
         _ = ApplyStartupMetadataSyncWatchdog();
 
-        var packs = _sessionPolicy?.Packs is { Length: > 0 }
-            ? BuildPackState(_sessionPolicy.Packs)
-            : _toolCatalogPacks.Length > 0
-                ? BuildPackState(_toolCatalogPacks)
+        var effectivePacks = RuntimeToolingMetadataResolver.ResolveEffectivePacks(
+            _sessionPolicy,
+            _toolCatalogPacks,
+            _toolCatalogCapabilitySnapshot);
+        var effectivePlugins = RuntimeToolingMetadataResolver.ResolveEffectivePlugins(
+            _sessionPolicy,
+            _toolCatalogPlugins,
+            _toolCatalogCapabilitySnapshot);
+        var packs = effectivePacks.Length > 0
+            ? BuildPackState(effectivePacks)
             : Array.Empty<object>();
 
         var tools = BuildToolState();
@@ -607,6 +613,7 @@ public sealed partial class MainWindow : Window {
             tools,
             toolsLoading,
             toolCatalogRoutingCatalog = BuildRoutingCatalogState(_toolCatalogRoutingCatalog),
+            toolCatalogPlugins = BuildPluginState(_toolCatalogPlugins),
             toolCatalogCapabilitySnapshot = BuildCapabilitySnapshotState(_toolCatalogCapabilitySnapshot),
             policy = _sessionPolicy is null ? null : new {
                 readOnly = _sessionPolicy.ReadOnly,
@@ -618,6 +625,7 @@ public sealed partial class MainWindow : Window {
                 allowMutatingParallelToolCalls = _sessionPolicy.AllowMutatingParallelToolCalls,
                 startupWarnings = _sessionPolicy.StartupWarnings,
                 pluginSearchPaths = _sessionPolicy.PluginSearchPaths,
+                plugins = BuildPluginState(effectivePlugins),
                 runtimePolicy = _sessionPolicy.RuntimePolicy is null ? null : new {
                     writeGovernanceMode = _sessionPolicy.RuntimePolicy.WriteGovernanceMode,
                     requireWriteGovernanceRuntime = _sessionPolicy.RuntimePolicy.RequireWriteGovernanceRuntime,

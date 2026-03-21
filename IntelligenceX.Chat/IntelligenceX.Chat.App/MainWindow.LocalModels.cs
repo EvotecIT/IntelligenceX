@@ -666,13 +666,17 @@ public sealed partial class MainWindow : Window {
     }
 
     private ServiceLaunchArguments.PackToggle[]? BuildRuntimePackTogglesFromSessionPolicy() {
-        if (_sessionPolicy?.Packs is not { Length: > 0 }) {
+        var packs = RuntimeToolingMetadataResolver.ResolveEffectivePacks(
+            _sessionPolicy,
+            _toolCatalogPacks,
+            _toolCatalogCapabilitySnapshot);
+        if (packs.Length == 0) {
             return null;
         }
 
         var togglesById = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
-        for (var i = 0; i < _sessionPolicy.Packs.Length; i++) {
-            var pack = _sessionPolicy.Packs[i];
+        for (var i = 0; i < packs.Length; i++) {
+            var pack = packs[i];
             var normalizedPackId = NormalizeRuntimePackId(pack.Id);
             if (normalizedPackId.Length == 0) {
                 continue;

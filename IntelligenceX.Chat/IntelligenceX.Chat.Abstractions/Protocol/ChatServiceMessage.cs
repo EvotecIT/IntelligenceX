@@ -295,6 +295,11 @@ public sealed record ToolListMessage : ChatServiceMessage {
     public ToolPackInfoDto[] Packs { get; init; } = Array.Empty<ToolPackInfoDto>();
 
     /// <summary>
+    /// Plugin summaries projected from the current tool inventory.
+    /// </summary>
+    public PluginInfoDto[] Plugins { get; init; } = Array.Empty<PluginInfoDto>();
+
+    /// <summary>
     /// Structured routing/autonomy diagnostics for the returned tool catalog.
     /// </summary>
     public SessionRoutingCatalogDiagnosticsDto? RoutingCatalog { get; init; }

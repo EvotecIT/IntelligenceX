@@ -433,6 +433,170 @@ public sealed class MainWindowCapabilitySelfKnowledgeTests {
     }
 
     /// <summary>
+    /// Ensures capability self-knowledge surfaces deferred/reporting-style affordances from the runtime snapshot
+    /// instead of requiring chat-core family-specific wording.
+    /// </summary>
+    [Fact]
+    public void BuildCapabilitySelfKnowledgeLines_SurfacesDeferredWorkAffordances_FromCapabilitySnapshot() {
+        var lines = MainWindow.BuildCapabilitySelfKnowledgeLines(
+            new SessionPolicyDto {
+                ReadOnly = true,
+                DangerousToolsEnabled = false,
+                MaxToolRounds = 24,
+                ParallelTools = true,
+                AllowMutatingParallelToolCalls = false,
+                Packs = new[] {
+                    new ToolPackInfoDto { Id = "email", Name = "Email", Tier = CapabilityTier.ReadOnly, Enabled = true, IsDangerous = false },
+                    new ToolPackInfoDto { Id = "testimox_analytics", Name = "Reporting", Tier = CapabilityTier.ReadOnly, Enabled = true, IsDangerous = false }
+                },
+                CapabilitySnapshot = new SessionCapabilitySnapshotDto {
+                    RegisteredTools = 2,
+                    EnabledPackCount = 2,
+                    PluginCount = 0,
+                    EnabledPluginCount = 0,
+                    ToolingAvailable = true,
+                    AllowedRootCount = 1,
+                    HealthyTools = Array.Empty<string>(),
+                    RemoteReachabilityMode = "remote_capable",
+                    FamilyActions = Array.Empty<SessionRoutingFamilyActionSummaryDto>(),
+                    DeferredWorkAffordances = new[] {
+                        new SessionCapabilityDeferredWorkAffordanceDto {
+                            CapabilityId = "background_followup",
+                            DisplayName = "Background Follow-up",
+                            Summary = "Runtime scheduler can continue deferred work.",
+                            AvailabilityMode = "runtime_scheduler",
+                            SupportsBackgroundExecution = true,
+                            PackIds = Array.Empty<string>(),
+                            RoutingFamilies = Array.Empty<string>(),
+                            RepresentativeExamples = Array.Empty<string>()
+                        },
+                        new SessionCapabilityDeferredWorkAffordanceDto {
+                            CapabilityId = "email",
+                            DisplayName = "Email",
+                            Summary = "Compose or send email follow-up.",
+                            AvailabilityMode = "pack_declared",
+                            SupportsBackgroundExecution = true,
+                            PackIds = new[] { "email" },
+                            RoutingFamilies = new[] { "notification_delivery" },
+                            RepresentativeExamples = new[] { "send an email summary after the run" }
+                        },
+                        new SessionCapabilityDeferredWorkAffordanceDto {
+                            CapabilityId = "reporting",
+                            DisplayName = "Reporting",
+                            Summary = "Generate reporting artifacts.",
+                            AvailabilityMode = "pack_declared",
+                            SupportsBackgroundExecution = false,
+                            PackIds = new[] { "testimox_analytics" },
+                            RoutingFamilies = new[] { "monitoring_artifacts" },
+                            RepresentativeExamples = new[] { "publish a monitoring report snapshot" }
+                        }
+                    }
+                }
+            });
+
+        Assert.Contains(lines, line => line.Contains("Deferred follow-up work currently registered includes", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(lines, line => line.Contains("Background Follow-up", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(lines, line => line.Contains("Email", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(lines, line => line.Contains("Reporting", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(lines, line => line.Contains("background follow-up", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(lines, line => line.Contains("send an email summary after the run", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(lines, line => line.Contains("publish a monitoring report snapshot", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Ensures capability self-knowledge can describe registered plugin sources without inferring them from pack wording alone.
+    /// </summary>
+    [Fact]
+    public void BuildCapabilitySelfKnowledgeLines_SummarizesRegisteredPluginSources_FromSessionPolicy() {
+        var lines = MainWindow.BuildCapabilitySelfKnowledgeLines(
+            new SessionPolicyDto {
+                ReadOnly = true,
+                DangerousToolsEnabled = false,
+                MaxToolRounds = 24,
+                ParallelTools = true,
+                AllowMutatingParallelToolCalls = false,
+                Packs = new[] {
+                    new ToolPackInfoDto { Id = "eventlog", Name = "Event Viewer", Tier = CapabilityTier.ReadOnly, Enabled = true, IsDangerous = false },
+                    new ToolPackInfoDto { Id = "system", Name = "System", Tier = CapabilityTier.ReadOnly, Enabled = true, IsDangerous = false }
+                },
+                Plugins = new[] {
+                    new PluginInfoDto {
+                        Id = "ops_bundle",
+                        Name = "Ops Bundle",
+                        Origin = "plugin_folder",
+                        SourceKind = ToolPackSourceKind.ClosedSource,
+                        DefaultEnabled = true,
+                        Enabled = true,
+                        IsDangerous = false,
+                        PackIds = new[] { "eventlog", "system" }
+                    }
+                },
+                CapabilitySnapshot = new SessionCapabilitySnapshotDto {
+                    RegisteredTools = 2,
+                    EnabledPackCount = 2,
+                    PluginCount = 1,
+                    EnabledPluginCount = 1,
+                    ToolingAvailable = true,
+                    AllowedRootCount = 0,
+                    FamilyActions = Array.Empty<SessionRoutingFamilyActionSummaryDto>()
+                }
+            });
+
+        Assert.Contains(lines, line => line.Contains("Registered tool sources currently active include", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(lines, line => line.Contains("Ops Bundle", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(lines, line => line.Contains("plugin folder", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(lines, line => line.Contains("Event Viewer", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(lines, line => line.Contains("System", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Ensures runtime-introspection guidance keeps deferred affordances concise
+    /// instead of spilling into broader follow-up example text.
+    /// </summary>
+    [Fact]
+    public void BuildCapabilitySelfKnowledgeLines_RuntimeMode_SummarizesDeferredWorkAffordances_WithoutExamples() {
+        var lines = MainWindow.BuildCapabilitySelfKnowledgeLines(
+            new SessionPolicyDto {
+                ReadOnly = true,
+                DangerousToolsEnabled = false,
+                MaxToolRounds = 24,
+                ParallelTools = true,
+                AllowMutatingParallelToolCalls = false,
+                Packs = new[] {
+                    new ToolPackInfoDto { Id = "email", Name = "Email", Tier = CapabilityTier.ReadOnly, Enabled = true, IsDangerous = false }
+                },
+                CapabilitySnapshot = new SessionCapabilitySnapshotDto {
+                    RegisteredTools = 1,
+                    EnabledPackCount = 1,
+                    PluginCount = 0,
+                    EnabledPluginCount = 0,
+                    ToolingAvailable = true,
+                    AllowedRootCount = 1,
+                    HealthyTools = Array.Empty<string>(),
+                    RemoteReachabilityMode = "local_only",
+                    FamilyActions = Array.Empty<SessionRoutingFamilyActionSummaryDto>(),
+                    DeferredWorkAffordances = new[] {
+                        new SessionCapabilityDeferredWorkAffordanceDto {
+                            CapabilityId = "email",
+                            DisplayName = "Email",
+                            Summary = "Compose or send email follow-up.",
+                            AvailabilityMode = "pack_declared",
+                            SupportsBackgroundExecution = true,
+                            PackIds = new[] { "email" },
+                            RoutingFamilies = new[] { "notification_delivery" },
+                            RepresentativeExamples = new[] { "send an email summary after the run" }
+                        }
+                    }
+                }
+            },
+            runtimeIntrospectionMode: true);
+
+        Assert.Contains(lines, line => line.Contains("Deferred follow-up affordances currently registered", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(lines, line => line.Contains("Email", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(lines, line => line.Contains("Deferred follow-up examples you can mention", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
     /// Ensures runtime-introspection answers stay concise and do not pick up broader tool-example guidance.
     /// </summary>
     [Fact]
@@ -441,6 +605,18 @@ public sealed class MainWindowCapabilitySelfKnowledgeTests {
             sessionPolicy: null,
             toolCatalogPacks: new[] {
                 new ToolPackInfoDto { Id = "system", Name = "System", Tier = CapabilityTier.ReadOnly, Enabled = true, IsDangerous = false }
+            },
+            toolCatalogPlugins: new[] {
+                new PluginInfoDto {
+                    Id = "ops_bundle",
+                    Name = "Ops Bundle",
+                    Origin = "folder",
+                    SourceKind = ToolPackSourceKind.ClosedSource,
+                    DefaultEnabled = true,
+                    Enabled = true,
+                    IsDangerous = false,
+                    PackIds = new[] { "system" }
+                }
             },
             toolCatalogRoutingCatalog: null,
             toolCatalogCapabilitySnapshot: new SessionCapabilitySnapshotDto {
@@ -467,6 +643,61 @@ public sealed class MainWindowCapabilitySelfKnowledgeTests {
 
         Assert.DoesNotContain(lines, line => line.Contains("Concrete examples you can mention", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(lines, line => line.Contains("runtime capability handshake", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(lines, line => line.Contains("Registered tool sources currently visible include", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(lines, line => line.Contains("Ops Bundle", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(lines, line => line.Contains("plugin folder", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Ensures plugin/source guidance can come from capability-snapshot tooling provenance even when legacy plugin arrays are empty.
+    /// </summary>
+    [Fact]
+    public void BuildCapabilitySelfKnowledgeLines_PrefersCapabilitySnapshotToolingSnapshotForPluginGuidance() {
+        var lines = MainWindow.BuildCapabilitySelfKnowledgeLines(
+            new SessionPolicyDto {
+                ReadOnly = true,
+                DangerousToolsEnabled = false,
+                MaxToolRounds = 24,
+                ParallelTools = true,
+                AllowMutatingParallelToolCalls = false,
+                CapabilitySnapshot = new SessionCapabilitySnapshotDto {
+                    RegisteredTools = 1,
+                    EnabledPackCount = 1,
+                    PluginCount = 1,
+                    EnabledPluginCount = 1,
+                    ToolingAvailable = true,
+                    AllowedRootCount = 0,
+                    FamilyActions = Array.Empty<SessionRoutingFamilyActionSummaryDto>(),
+                    ToolingSnapshot = new SessionCapabilityToolingSnapshotDto {
+                        Source = "service_runtime",
+                        Packs = new[] {
+                            new ToolPackInfoDto {
+                                Id = "system",
+                                Name = "System",
+                                Tier = CapabilityTier.ReadOnly,
+                                Enabled = true,
+                                IsDangerous = false
+                            }
+                        },
+                        Plugins = new[] {
+                            new PluginInfoDto {
+                                Id = "ops_bundle",
+                                Name = "Ops Bundle",
+                                Origin = "plugin_folder",
+                                SourceKind = ToolPackSourceKind.ClosedSource,
+                                DefaultEnabled = true,
+                                Enabled = true,
+                                IsDangerous = false,
+                                PackIds = new[] { "system" }
+                            }
+                        }
+                    }
+                }
+            });
+
+        Assert.Contains(lines, line => line.Contains("System", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(lines, line => line.Contains("Ops Bundle", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(lines, line => line.Contains("plugin folder", StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>

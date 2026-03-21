@@ -111,6 +111,9 @@ public static class ToolContractDefaults {
         string? domainIntentFamily,
         string? domainIntentActionId,
         IReadOnlyList<string>? defaultSignalTokens,
+        string? domainIntentFamilyDisplayName = null,
+        string? domainIntentFamilyReplyExample = null,
+        string? domainIntentFamilyChoiceDescription = null,
         bool requiresSelectionForFallback = false,
         IReadOnlyList<string>? fallbackSelectionKeys = null,
         IReadOnlyList<string>? fallbackHintKeys = null) {
@@ -124,6 +127,15 @@ public static class ToolContractDefaults {
             Role = role ?? string.Empty,
             DomainIntentFamily = domainIntentFamily ?? string.Empty,
             DomainIntentActionId = domainIntentActionId ?? string.Empty,
+            DomainIntentFamilyDisplayName = string.IsNullOrWhiteSpace(domainIntentFamilyDisplayName)
+                ? existing?.DomainIntentFamilyDisplayName ?? string.Empty
+                : domainIntentFamilyDisplayName.Trim(),
+            DomainIntentFamilyReplyExample = string.IsNullOrWhiteSpace(domainIntentFamilyReplyExample)
+                ? existing?.DomainIntentFamilyReplyExample ?? string.Empty
+                : domainIntentFamilyReplyExample.Trim(),
+            DomainIntentFamilyChoiceDescription = string.IsNullOrWhiteSpace(domainIntentFamilyChoiceDescription)
+                ? existing?.DomainIntentFamilyChoiceDescription ?? string.Empty
+                : domainIntentFamilyChoiceDescription.Trim(),
             DomainSignalTokens = existing?.DomainSignalTokens.Count > 0
                 ? CloneOrEmpty(existing.DomainSignalTokens)
                 : CloneOrEmpty(defaultSignalTokens),

@@ -80,7 +80,11 @@ public sealed partial class MainWindow : Window {
     }
 
     private void AppendUnavailablePacksFromPolicy() {
-        var unavailable = BuildUnavailablePackWarningEntries(_sessionPolicy?.Packs);
+        var effectivePacks = RuntimeToolingMetadataResolver.ResolveEffectivePacks(
+            _sessionPolicy,
+            _toolCatalogPacks,
+            _toolCatalogCapabilitySnapshot);
+        var unavailable = BuildUnavailablePackWarningEntries(effectivePacks);
         if (unavailable.Length == 0) {
             return;
         }
@@ -122,7 +126,11 @@ public sealed partial class MainWindow : Window {
             return;
         }
 
-        AppendSystem(string.Join(Environment.NewLine, BuildStartupToolHealthWarningLines(toolHealthWarnings, _sessionPolicy?.Packs)));
+        var effectivePacks = RuntimeToolingMetadataResolver.ResolveEffectivePacks(
+            _sessionPolicy,
+            _toolCatalogPacks,
+            _toolCatalogCapabilitySnapshot);
+        AppendSystem(string.Join(Environment.NewLine, BuildStartupToolHealthWarningLines(toolHealthWarnings, effectivePacks)));
     }
 
     internal static string FormatStartupToolHealthWarningForDisplay(string? warning, ToolPackInfoDto[]? packs = null) {

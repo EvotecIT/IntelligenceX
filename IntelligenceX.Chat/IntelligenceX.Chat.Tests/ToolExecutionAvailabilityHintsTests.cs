@@ -1,4 +1,5 @@
 using System;
+using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Tooling;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.Common;
@@ -10,6 +11,40 @@ namespace IntelligenceX.Chat.Tests;
 /// Validates shared execution-locality helper text used across host, service, and planner prompts.
 /// </summary>
 public sealed class ToolExecutionAvailabilityHintsTests {
+    [Fact]
+    public void DeferredWorkAffordanceCatalog_BuildPromptHintLines_SummarizesCapabilitiesExamplesAndBackgroundSupport() {
+        var lines = DeferredWorkAffordanceCatalog.BuildPromptHintLines(new[] {
+            new SessionCapabilityDeferredWorkAffordanceDto {
+                CapabilityId = "background_followup",
+                DisplayName = "Background Follow-up",
+                Summary = "Runtime scheduler can continue deferred work.",
+                AvailabilityMode = "runtime_scheduler",
+                SupportsBackgroundExecution = true,
+                PackIds = Array.Empty<string>(),
+                RoutingFamilies = Array.Empty<string>(),
+                RepresentativeExamples = Array.Empty<string>()
+            },
+            new SessionCapabilityDeferredWorkAffordanceDto {
+                CapabilityId = "reporting",
+                DisplayName = "Reporting",
+                Summary = "Generate reporting artifacts.",
+                AvailabilityMode = "pack_declared",
+                SupportsBackgroundExecution = false,
+                PackIds = new[] { "testimox_analytics" },
+                RoutingFamilies = new[] { "monitoring_artifacts" },
+                RepresentativeExamples = new[] { "publish a monitoring report snapshot" }
+            }
+        });
+
+        Assert.Equal(4, lines.Count);
+        Assert.Contains("Background Follow-up [background_followup]", lines[0], StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Reporting [reporting]", lines[0], StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("publish a monitoring report snapshot", lines[1], StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("background_followup[runtime_scheduler]", lines[2], StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("reporting[pack_declared:testimox_analytics]", lines[2], StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Background-capable deferred follow-up is available", lines[3], StringComparison.OrdinalIgnoreCase);
+    }
+
     [Fact]
     public void BuildRegistrationHintLines_ExplainsLocalOnlyCatalogForRemoteWork() {
         var definitions = new[] {

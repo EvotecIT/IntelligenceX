@@ -487,6 +487,52 @@ public sealed partial class MainWindow : Window {
         return list.ToArray();
     }
 
+    private static object[] BuildPluginState(PluginInfoDto[] plugins) {
+        if (plugins.Length == 0) {
+            return Array.Empty<object>();
+        }
+
+        var ordered = new List<PluginInfoDto>(plugins.Length);
+        ordered.AddRange(plugins);
+        ordered.Sort(static (a, b) => {
+            var byName = string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase);
+            if (byName != 0) {
+                return byName;
+            }
+
+            return string.Compare(a.Id, b.Id, StringComparison.OrdinalIgnoreCase);
+        });
+
+        var list = new List<object>(ordered.Count);
+        foreach (var plugin in ordered) {
+            var normalizedPluginId = NormalizeRuntimePackId(plugin.Id);
+            var displayName = string.IsNullOrWhiteSpace(plugin.Name)
+                ? ToolPackMetadataNormalizer.ResolveDisplayName(normalizedPluginId, fallbackName: plugin.Id)
+                : plugin.Name.Trim();
+            list.Add(new {
+                id = string.IsNullOrWhiteSpace(normalizedPluginId) ? plugin.Id : normalizedPluginId,
+                name = displayName,
+                version = string.IsNullOrWhiteSpace(plugin.Version) ? null : plugin.Version.Trim(),
+                origin = string.IsNullOrWhiteSpace(plugin.Origin) ? null : plugin.Origin.Trim(),
+                sourceKind = plugin.SourceKind switch {
+                    ToolPackSourceKind.Builtin => "builtin",
+                    ToolPackSourceKind.ClosedSource => "closed_source",
+                    _ => "open_source"
+                },
+                defaultEnabled = plugin.DefaultEnabled,
+                enabled = plugin.Enabled,
+                disabledReason = string.IsNullOrWhiteSpace(plugin.DisabledReason) ? null : plugin.DisabledReason.Trim(),
+                isDangerous = plugin.IsDangerous,
+                packIds = plugin.PackIds ?? Array.Empty<string>(),
+                rootPath = string.IsNullOrWhiteSpace(plugin.RootPath) ? null : plugin.RootPath.Trim(),
+                skillDirectories = plugin.SkillDirectories ?? Array.Empty<string>(),
+                skillIds = plugin.SkillIds ?? Array.Empty<string>()
+            });
+        }
+
+        return list.ToArray();
+    }
+
     private static object? BuildPackAutonomySummaryState(ToolPackAutonomySummaryDto? summary) {
         if (summary is null) {
             return null;

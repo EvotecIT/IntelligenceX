@@ -23,6 +23,7 @@ internal sealed partial class ChatServiceSession {
 
     private sealed class DomainIntentClarificationStoreEntryDto {
         public long SeenUtcTicks { get; set; }
+        public string[] Families { get; set; } = Array.Empty<string>();
     }
 
     private static string ResolveDefaultDomainIntentClarificationStorePath() {
@@ -44,7 +45,7 @@ internal sealed partial class ChatServiceSession {
         return ResolveDefaultDomainIntentClarificationStorePath();
     }
 
-    private void PersistPendingDomainIntentClarificationSnapshot(string threadId, long seenUtcTicks) {
+    private void PersistPendingDomainIntentClarificationSnapshot(string threadId, long seenUtcTicks, IReadOnlyList<string>? families) {
         var normalizedThreadId = (threadId ?? string.Empty).Trim();
         if (normalizedThreadId.Length == 0 || seenUtcTicks <= 0) {
             return;
@@ -54,7 +55,8 @@ internal sealed partial class ChatServiceSession {
         lock (DomainIntentClarificationStoreLock) {
             var store = ReadDomainIntentClarificationStoreNoThrow(path);
             store.Threads[normalizedThreadId] = new DomainIntentClarificationStoreEntryDto {
-                SeenUtcTicks = seenUtcTicks
+                SeenUtcTicks = seenUtcTicks,
+                Families = NormalizePendingDomainIntentClarificationFamilies(families)
             };
             PruneDomainIntentClarificationStore(store);
             WriteDomainIntentClarificationStoreNoThrow(path, store);
@@ -91,8 +93,9 @@ internal sealed partial class ChatServiceSession {
         }
     }
 
-    private bool TryLoadPendingDomainIntentClarificationSnapshot(string threadId, out long seenUtcTicks) {
+    private bool TryLoadPendingDomainIntentClarificationSnapshot(string threadId, out long seenUtcTicks, out string[] families) {
         seenUtcTicks = 0;
+        families = Array.Empty<string>();
         var normalizedThreadId = (threadId ?? string.Empty).Trim();
         if (normalizedThreadId.Length == 0) {
             return false;
@@ -119,8 +122,32 @@ internal sealed partial class ChatServiceSession {
             }
 
             seenUtcTicks = entry.SeenUtcTicks;
+            families = NormalizePendingDomainIntentClarificationFamilies(entry.Families);
             return true;
         }
+    }
+
+    private static string[] NormalizePendingDomainIntentClarificationFamilies(IReadOnlyList<string>? families) {
+        if (families is not { Count: > 0 }) {
+            return Array.Empty<string>();
+        }
+
+        var normalized = new List<string>(families.Count);
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        for (var i = 0; i < families.Count; i++) {
+            if (!TryNormalizeDomainIntentFamily(families[i], out var family) || !seen.Add(family)) {
+                continue;
+            }
+
+            normalized.Add(family);
+        }
+
+        if (normalized.Count == 0) {
+            return Array.Empty<string>();
+        }
+
+        normalized.Sort(StringComparer.Ordinal);
+        return normalized.ToArray();
     }
 
     private static DomainIntentClarificationStoreDto ReadDomainIntentClarificationStoreNoThrow(string path) {

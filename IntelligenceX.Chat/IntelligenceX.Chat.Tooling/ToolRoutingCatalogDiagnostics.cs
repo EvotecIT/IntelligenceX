@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using IntelligenceX.Shared;
 using IntelligenceX.Tools;
 
 namespace IntelligenceX.Chat.Tooling;
@@ -23,6 +24,26 @@ public sealed record ToolRoutingFamilyActionSummary {
     /// Number of tools mapped to this family/action pair.
     /// </summary>
     public required int ToolCount { get; init; }
+
+    /// <summary>
+    /// Human-friendly family label inferred from the registered capability surface.
+    /// </summary>
+    public string? DisplayName { get; init; }
+
+    /// <summary>
+    /// Short natural-language reply example for clarification prompts.
+    /// </summary>
+    public string? ReplyExample { get; init; }
+
+    /// <summary>
+    /// User-facing clarification description for this family.
+    /// </summary>
+    public string? ChoiceDescription { get; init; }
+
+    /// <summary>
+    /// Representative pack ids contributing tools to this family/action pair.
+    /// </summary>
+    public string[] RepresentativePackIds { get; init; } = Array.Empty<string>();
 }
 
 /// <summary>
@@ -186,7 +207,7 @@ public static class ToolRoutingCatalogDiagnosticsBuilder {
         var domainFamilyMissingActionTools = 0;
         var actionWithoutFamilyTools = 0;
 
-        var familyActionCounts = new Dictionary<string, Dictionary<string, int>>(StringComparer.OrdinalIgnoreCase);
+        var familyActionCounts = new Dictionary<string, Dictionary<string, FamilyActionAggregate>>(StringComparer.OrdinalIgnoreCase);
 
         for (var i = 0; i < definitions.Count; i++) {
             var definition = definitions[i];
@@ -269,12 +290,23 @@ public static class ToolRoutingCatalogDiagnosticsBuilder {
                     domainFamilyMissingActionTools++;
                 } else {
                     if (!familyActionCounts.TryGetValue(family, out var actionCounts)) {
-                        actionCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                        actionCounts = new Dictionary<string, FamilyActionAggregate>(StringComparer.OrdinalIgnoreCase);
                         familyActionCounts[family] = actionCounts;
                     }
 
-                    actionCounts.TryGetValue(actionId, out var currentCount);
-                    actionCounts[actionId] = currentCount + 1;
+                    if (!actionCounts.TryGetValue(actionId, out var aggregate)) {
+                        aggregate = new FamilyActionAggregate();
+                        actionCounts[actionId] = aggregate;
+                    }
+
+                    aggregate.ToolCount++;
+                    if (packId.Length > 0) {
+                        aggregate.AddPackId(packId);
+                    }
+                    aggregate.AddPresentation(
+                        routing?.DomainIntentFamilyDisplayName,
+                        routing?.DomainIntentFamilyReplyExample,
+                        routing?.DomainIntentFamilyChoiceDescription);
                 }
             }
 
@@ -293,10 +325,24 @@ public static class ToolRoutingCatalogDiagnosticsBuilder {
             }
 
             foreach (var actionPair in actionCountById.OrderBy(static pair => pair.Key, StringComparer.OrdinalIgnoreCase)) {
+                var representativePackIds = actionPair.Value.GetRepresentativePackIds();
+                var explicitDisplayName = actionPair.Value.GetPreferredDisplayName();
+                var explicitReplyExample = actionPair.Value.GetPreferredReplyExample();
+                var explicitChoiceDescription = actionPair.Value.GetPreferredChoiceDescription();
+                var presentation = DomainIntentFamilyPresentationCatalog.Resolve(
+                    familyPair.Key,
+                    representativePackIds,
+                    explicitDisplayName,
+                    explicitReplyExample,
+                    explicitChoiceDescription);
                 familyActions.Add(new ToolRoutingFamilyActionSummary {
                     Family = familyPair.Key,
                     ActionId = actionPair.Key,
-                    ToolCount = Math.Max(0, actionPair.Value)
+                    ToolCount = Math.Max(0, actionPair.Value.ToolCount),
+                    DisplayName = presentation.DisplayName,
+                    ReplyExample = presentation.ReplyExample,
+                    ChoiceDescription = presentation.ChoiceDescription,
+                    RepresentativePackIds = representativePackIds
                 });
             }
         }
@@ -507,6 +553,70 @@ public static class ToolRoutingCatalogDiagnosticsBuilder {
         }
 
         highlights.Add(prefix + count + suffix);
+    }
+
+    private sealed class FamilyActionAggregate {
+        private readonly Dictionary<string, int> _packCounts = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, int> _displayNameCounts = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, int> _replyExampleCounts = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, int> _choiceDescriptionCounts = new(StringComparer.Ordinal);
+
+        internal int ToolCount { get; set; }
+
+        internal void AddPackId(string packId) {
+            var normalizedPackId = ToolPackIdentityCatalog.NormalizePackId(packId);
+            if (normalizedPackId.Length == 0) {
+                return;
+            }
+
+            _packCounts.TryGetValue(normalizedPackId, out var currentCount);
+            _packCounts[normalizedPackId] = currentCount + 1;
+        }
+
+        internal string[] GetRepresentativePackIds(int maxItems = 3) {
+            return _packCounts
+                .OrderByDescending(static pair => pair.Value)
+                .ThenBy(static pair => pair.Key, StringComparer.OrdinalIgnoreCase)
+                .Take(Math.Max(1, maxItems))
+                .Select(static pair => pair.Key)
+                .ToArray();
+        }
+
+        internal void AddPresentation(string? displayName, string? replyExample, string? choiceDescription) {
+            AddValue(_displayNameCounts, displayName);
+            AddValue(_replyExampleCounts, replyExample);
+            AddValue(_choiceDescriptionCounts, choiceDescription);
+        }
+
+        internal string GetPreferredDisplayName() {
+            return GetPreferredValue(_displayNameCounts);
+        }
+
+        internal string GetPreferredReplyExample() {
+            return GetPreferredValue(_replyExampleCounts);
+        }
+
+        internal string GetPreferredChoiceDescription() {
+            return GetPreferredValue(_choiceDescriptionCounts);
+        }
+
+        private static void AddValue(IDictionary<string, int> counts, string? value) {
+            var normalized = (value ?? string.Empty).Trim();
+            if (normalized.Length == 0) {
+                return;
+            }
+
+            counts.TryGetValue(normalized, out var currentCount);
+            counts[normalized] = currentCount + 1;
+        }
+
+        private static string GetPreferredValue(IEnumerable<KeyValuePair<string, int>> counts) {
+            return counts
+                .OrderByDescending(static pair => pair.Value)
+                .ThenBy(static pair => pair.Key, StringComparer.Ordinal)
+                .Select(static pair => pair.Key)
+                .FirstOrDefault() ?? string.Empty;
+        }
     }
 
     private static bool HasCrossPackHandoff(ToolDefinition definition, string sourcePackId) {

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using IntelligenceX.Chat.Service;
+using IntelligenceX.Chat.Tooling;
 using IntelligenceX.Tools;
 using Xunit;
 
@@ -249,6 +250,55 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.DoesNotContain("/act", clarification, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("ad_domain", clarification, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("public_domain", clarification, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildDomainIntentClarificationVisibleTextForTesting_HumanizesCustomRegisteredFamilies() {
+        var familyActionIds = new Dictionary<string, string>(StringComparer.Ordinal) {
+            ["corp_internal"] = "act_domain_scope_corp_internal_custom",
+            ["monitoring_artifacts"] = "act_domain_scope_monitoring_artifacts"
+        };
+        var clarification = ChatServiceSession.BuildDomainIntentClarificationVisibleTextForTesting(
+            "Please continue with this scope",
+            families: new[] { "corp_internal", "monitoring_artifacts" },
+            familyActionIds: familyActionIds);
+
+        Assert.Contains("corp internal scope", clarification, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("monitoring artifacts scope", clarification, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"corp internal\"", clarification, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"monitoring artifacts\"", clarification, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("AD domain", clarification, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("public DNS", clarification, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildDomainIntentClarificationVisibleTextForTesting_PrefersExplicitFamilyPresentationMetadata() {
+        var clarification = ChatServiceSession.BuildDomainIntentClarificationVisibleTextForTesting(
+            "Please use the notification workflow",
+            new[] {
+                new ToolRoutingFamilyActionSummary {
+                    Family = "reporting_notifications",
+                    ActionId = "act_reporting_notifications",
+                    ToolCount = 2,
+                    DisplayName = "Notifications",
+                    ReplyExample = "notify",
+                    ChoiceDescription = "Notifications scope (email and alerts)",
+                    RepresentativePackIds = new[] { "email" }
+                },
+                new ToolRoutingFamilyActionSummary {
+                    Family = "monitoring_artifacts",
+                    ActionId = "act_monitoring_artifacts",
+                    ToolCount = 1,
+                    DisplayName = "Monitoring artifacts",
+                    ReplyExample = "monitoring",
+                    ChoiceDescription = "Monitoring artifacts scope",
+                    RepresentativePackIds = new[] { "testimox_analytics" }
+                }
+            });
+
+        Assert.Contains("\"notify\"", clarification, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Notifications scope (email and alerts)", clarification, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"Email\"", clarification, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

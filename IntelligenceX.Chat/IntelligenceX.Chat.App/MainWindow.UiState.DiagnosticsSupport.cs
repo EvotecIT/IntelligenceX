@@ -40,7 +40,7 @@ public sealed partial class MainWindow {
         };
     }
 
-    private static object? BuildCapabilitySnapshotState(SessionCapabilitySnapshotDto? capabilitySnapshot) {
+    internal static object? BuildCapabilitySnapshotState(SessionCapabilitySnapshotDto? capabilitySnapshot) {
         if (capabilitySnapshot is null) {
             return null;
         }
@@ -65,6 +65,18 @@ public sealed partial class MainWindow {
             skills = capabilitySnapshot.Skills ?? Array.Empty<string>(),
             healthyTools = capabilitySnapshot.HealthyTools ?? Array.Empty<string>(),
             remoteReachabilityMode = capabilitySnapshot.RemoteReachabilityMode,
+            deferredWorkAffordances = Array.ConvertAll(
+                capabilitySnapshot.DeferredWorkAffordances ?? Array.Empty<SessionCapabilityDeferredWorkAffordanceDto>(),
+                static item => new {
+                    capabilityId = item.CapabilityId,
+                    displayName = item.DisplayName,
+                    summary = item.Summary,
+                    availabilityMode = item.AvailabilityMode,
+                    supportsBackgroundExecution = item.SupportsBackgroundExecution,
+                    packIds = item.PackIds ?? Array.Empty<string>(),
+                    routingFamilies = item.RoutingFamilies ?? Array.Empty<string>(),
+                    representativeExamples = item.RepresentativeExamples ?? Array.Empty<string>()
+                }),
             autonomy = capabilitySnapshot.Autonomy is null ? null : new {
                 remoteCapableToolCount = capabilitySnapshot.Autonomy.RemoteCapableToolCount,
                 setupAwareToolCount = capabilitySnapshot.Autonomy.SetupAwareToolCount,
@@ -74,6 +86,11 @@ public sealed partial class MainWindow {
                 remoteCapablePackIds = capabilitySnapshot.Autonomy.RemoteCapablePackIds ?? Array.Empty<string>(),
                 crossPackReadyPackIds = capabilitySnapshot.Autonomy.CrossPackReadyPackIds ?? Array.Empty<string>(),
                 crossPackTargetPackIds = capabilitySnapshot.Autonomy.CrossPackTargetPackIds ?? Array.Empty<string>()
+            },
+            toolingSnapshot = capabilitySnapshot.ToolingSnapshot is null ? null : new {
+                source = capabilitySnapshot.ToolingSnapshot.Source,
+                packs = BuildPackState(capabilitySnapshot.ToolingSnapshot.Packs ?? Array.Empty<ToolPackInfoDto>()),
+                plugins = BuildPluginState(capabilitySnapshot.ToolingSnapshot.Plugins ?? Array.Empty<PluginInfoDto>())
             },
             backgroundScheduler = BuildBackgroundSchedulerState(capabilitySnapshot.BackgroundScheduler),
             parityAttentionCount = capabilitySnapshot.ParityAttentionCount,

@@ -5,6 +5,8 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.Loader;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Tools;
@@ -42,6 +44,44 @@ public static partial class ToolPackBootstrap {
         }
 
         return ResolveBuiltInToolAssemblyProbePaths(options, typeof(ToolPackBootstrap).Assembly);
+    }
+
+    /// <summary>
+    /// Builds a stable fingerprint describing the currently discoverable pack/plugin surface.
+    /// Persisted bootstrap previews should only be reused when this fingerprint matches.
+    /// </summary>
+    /// <param name="options">Bootstrap options.</param>
+    /// <returns>Stable lowercase SHA-256 fingerprint.</returns>
+    public static string BuildDiscoveryFingerprint(ToolPackBootstrapOptions options) {
+        if (options is null) {
+            throw new ArgumentNullException(nameof(options));
+        }
+
+        var lines = new List<string> {
+            "built_in_pack_loading=" + (options.EnableBuiltInPackLoading ? "1" : "0"),
+            "plugin_folder_loading=" + (options.EnablePluginFolderLoading ? "1" : "0")
+        };
+
+        var allowedAssemblyNames = ResolveAllowedBuiltInAssemblyNames(options);
+        foreach (var allowedAssemblyName in allowedAssemblyNames.OrderBy(static name => name, StringComparer.OrdinalIgnoreCase)) {
+            lines.Add("allowed_builtin_assembly=" + allowedAssemblyName);
+        }
+
+        if (options.EnableBuiltInPackLoading) {
+            foreach (var assemblyName in EnumerateToolAssemblyNamesForDiscovery(options)) {
+                AppendBuiltInAssemblyFingerprint(lines, assemblyName, options);
+            }
+        }
+
+        foreach (var root in PluginFolderToolPackLoader.ResolvePluginSearchRoots(options)
+                     .OrderBy(static root => root.Path, StringComparer.OrdinalIgnoreCase)) {
+            AppendPluginSearchRootFingerprint(lines, root);
+        }
+
+        using var sha = SHA256.Create();
+        var payload = string.Join("\n", lines);
+        var hash = sha.ComputeHash(Encoding.UTF8.GetBytes(payload));
+        return Convert.ToHexString(hash).ToLowerInvariant();
     }
 
     private static IReadOnlyList<BuiltInPackRegistrationCandidate> DiscoverBuiltInPacks(ToolPackBootstrapOptions options) {
@@ -95,6 +135,227 @@ public static partial class ToolPackBootstrap {
         return candidates
             .OrderBy(static candidate => candidate.PackId, StringComparer.OrdinalIgnoreCase)
             .ToArray();
+    }
+
+    private static void AppendBuiltInAssemblyFingerprint(
+        ICollection<string> lines,
+        AssemblyName assemblyName,
+        ToolPackBootstrapOptions options) {
+        var simpleName = (assemblyName.Name ?? string.Empty).Trim();
+        if (simpleName.Length == 0) {
+            return;
+        }
+
+        if (TryResolveLoadedAssemblyLocation(assemblyName, out var loadedPath)
+            && TryGetDiscoveryFileStamp(loadedPath, out var loadedStamp)) {
+            lines.Add($"builtin_assembly={simpleName}|loaded|path={loadedPath}|{loadedStamp}");
+            return;
+        }
+
+        if (TryResolveTrustedToolAssemblyPath(assemblyName, options, out var trustedPath)
+            && TryGetDiscoveryFileStamp(trustedPath, out var trustedStamp)) {
+            lines.Add($"builtin_assembly={simpleName}|trusted|path={trustedPath}|{trustedStamp}");
+            return;
+        }
+
+        lines.Add($"builtin_assembly={simpleName}|unresolved");
+    }
+
+    private static bool TryResolveLoadedAssemblyLocation(AssemblyName assemblyName, out string location) {
+        location = string.Empty;
+        var simpleName = (assemblyName.Name ?? string.Empty).Trim();
+        if (simpleName.Length == 0) {
+            return false;
+        }
+
+        foreach (var loadedAssembly in AppDomain.CurrentDomain.GetAssemblies()) {
+            if (!string.Equals(loadedAssembly.GetName().Name, simpleName, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            var candidate = NormalizeDiscoveryPath(loadedAssembly.Location);
+            if (candidate.Length == 0) {
+                continue;
+            }
+
+            location = candidate;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static void AppendPluginSearchRootFingerprint(ICollection<string> lines, PluginFolderToolPackLoader.PluginSearchRoot root) {
+        var normalizedRootPath = NormalizeDiscoveryPath(root.Path);
+        if (normalizedRootPath.Length == 0) {
+            return;
+        }
+
+        var exists = Directory.Exists(normalizedRootPath);
+        lines.Add($"plugin_root={normalizedRootPath}|explicit={(root.IsExplicit ? "1" : "0")}|exists={(exists ? "1" : "0")}");
+        if (!exists) {
+            return;
+        }
+
+        if (IsDiscoveryPluginFolder(normalizedRootPath) || LooksLikeDiscoveryManifestlessPluginFolder(normalizedRootPath)) {
+            AppendPluginDirectoryFingerprint(lines, normalizedRootPath);
+        }
+
+        string[] archives;
+        try {
+            archives = Directory
+                .EnumerateFiles(normalizedRootPath, "*" + PluginFolderToolPackLoader.PluginArchiveSuffix, SearchOption.TopDirectoryOnly)
+                .OrderBy(static path => Path.GetFileName(path), StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        } catch {
+            archives = Array.Empty<string>();
+        }
+
+        foreach (var archive in archives) {
+            var normalizedArchivePath = NormalizeDiscoveryPath(archive);
+            if (normalizedArchivePath.Length == 0) {
+                continue;
+            }
+
+            lines.Add(TryGetDiscoveryFileStamp(normalizedArchivePath, out var archiveStamp)
+                ? $"plugin_archive={normalizedArchivePath}|{archiveStamp}"
+                : $"plugin_archive={normalizedArchivePath}|missing");
+        }
+
+        string[] directories;
+        try {
+            directories = Directory
+                .EnumerateDirectories(normalizedRootPath, "*", SearchOption.TopDirectoryOnly)
+                .OrderBy(static path => Path.GetFileName(path), StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        } catch {
+            directories = Array.Empty<string>();
+        }
+
+        foreach (var directory in directories) {
+            if (!IsDiscoveryPluginFolder(directory) && !LooksLikeDiscoveryManifestlessPluginFolder(directory)) {
+                continue;
+            }
+
+            AppendPluginDirectoryFingerprint(lines, directory);
+        }
+    }
+
+    private static void AppendPluginDirectoryFingerprint(ICollection<string> lines, string pluginDirectory) {
+        var normalizedPluginDirectory = NormalizeDiscoveryPath(pluginDirectory);
+        if (normalizedPluginDirectory.Length == 0) {
+            return;
+        }
+
+        var manifestPath = Path.Combine(normalizedPluginDirectory, PluginFolderToolPackLoader.ManifestFileName);
+        var pluginIdentity = ResolveDiscoveryPluginIdentity(normalizedPluginDirectory);
+        lines.Add($"plugin_dir={normalizedPluginDirectory}|id={pluginIdentity}");
+        lines.Add(TryGetDiscoveryFileStamp(manifestPath, out var manifestStamp)
+            ? $"plugin_manifest={manifestPath}|{manifestStamp}"
+            : $"plugin_manifest={manifestPath}|missing");
+
+        string[] assemblies;
+        try {
+            assemblies = Directory
+                .EnumerateFiles(normalizedPluginDirectory, "*.dll", SearchOption.TopDirectoryOnly)
+                .OrderBy(static path => Path.GetFileName(path), StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        } catch {
+            assemblies = Array.Empty<string>();
+        }
+
+        foreach (var assemblyPath in assemblies) {
+            var normalizedAssemblyPath = NormalizeDiscoveryPath(assemblyPath);
+            if (normalizedAssemblyPath.Length == 0) {
+                continue;
+            }
+
+            lines.Add(TryGetDiscoveryFileStamp(normalizedAssemblyPath, out var assemblyStamp)
+                ? $"plugin_assembly={normalizedAssemblyPath}|{assemblyStamp}"
+                : $"plugin_assembly={normalizedAssemblyPath}|missing");
+        }
+    }
+
+    private static bool TryGetDiscoveryFileStamp(string path, out string stamp) {
+        stamp = string.Empty;
+        try {
+            var normalizedPath = NormalizeDiscoveryPath(path);
+            if (normalizedPath.Length == 0 || !File.Exists(normalizedPath)) {
+                return false;
+            }
+
+            var file = new FileInfo(normalizedPath);
+            stamp = "len=" + file.Length + "|ticks=" + file.LastWriteTimeUtc.Ticks;
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
+    private static string NormalizeDiscoveryPath(string? path) {
+        var normalized = (path ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return string.Empty;
+        }
+
+        try {
+            return Path.GetFullPath(normalized);
+        } catch {
+            return normalized;
+        }
+    }
+
+    private static bool IsDiscoveryPluginFolder(string path) {
+        var normalizedPath = NormalizeDiscoveryPath(path);
+        if (normalizedPath.Length == 0 || !Directory.Exists(normalizedPath)) {
+            return false;
+        }
+
+        return File.Exists(Path.Combine(normalizedPath, PluginFolderToolPackLoader.ManifestFileName));
+    }
+
+    private static bool LooksLikeDiscoveryManifestlessPluginFolder(string path) {
+        var normalizedPath = NormalizeDiscoveryPath(path);
+        if (normalizedPath.Length == 0 || !Directory.Exists(normalizedPath) || IsDiscoveryPluginFolder(normalizedPath)) {
+            return false;
+        }
+
+        try {
+            return Directory.EnumerateFiles(normalizedPath, "*.dll", SearchOption.TopDirectoryOnly).Any();
+        } catch {
+            return false;
+        }
+    }
+
+    private static string ResolveDiscoveryPluginIdentity(string pluginDirectory) {
+        var normalizedPluginDirectory = NormalizeDiscoveryPath(pluginDirectory);
+        var fallback = (Path.GetFileName(normalizedPluginDirectory) ?? string.Empty).Trim();
+        if (fallback.Length == 0) {
+            return string.Empty;
+        }
+
+        var manifestPath = Path.Combine(normalizedPluginDirectory, PluginFolderToolPackLoader.ManifestFileName);
+        if (!File.Exists(manifestPath)) {
+            return fallback;
+        }
+
+        try {
+            using var stream = File.OpenRead(manifestPath);
+            using var json = JsonDocument.Parse(stream);
+            if (json.RootElement.ValueKind != JsonValueKind.Object) {
+                return fallback;
+            }
+
+            if (!json.RootElement.TryGetProperty("pluginId", out var pluginIdProperty)
+                || pluginIdProperty.ValueKind != JsonValueKind.String) {
+                return fallback;
+            }
+
+            var pluginId = (pluginIdProperty.GetString() ?? string.Empty).Trim();
+            return pluginId.Length == 0 ? fallback : pluginId;
+        } catch {
+            return fallback;
+        }
     }
 
     private static IReadOnlyList<Type> DiscoverBuiltInPackTypes(ToolPackBootstrapOptions options, Action<string>? onWarning) {
@@ -1066,6 +1327,27 @@ public static partial class ToolPackBootstrap {
         };
     }
 
+    private static ToolPluginCatalogInfo CreateBuiltInPluginCatalog(BuiltInPackRegistrationCandidate candidate) {
+        var descriptor = candidate.Pack.Descriptor;
+        var normalizedPackId = NormalizePackId(descriptor.Id);
+        var normalizedName = string.IsNullOrWhiteSpace(descriptor.Name) ? normalizedPackId : descriptor.Name.Trim();
+        var normalizedSourceKind = NormalizeSourceKind(descriptor.SourceKind, descriptor.Id);
+        var version = candidate.Pack.GetType().Assembly.GetName().Version?.ToString();
+
+        return new ToolPluginCatalogInfo {
+            Id = normalizedPackId.Length == 0 ? descriptor.Id : normalizedPackId,
+            Name = normalizedName,
+            Version = string.IsNullOrWhiteSpace(version) ? null : version,
+            Origin = PackSourceBuiltin,
+            SourceKind = normalizedSourceKind,
+            DefaultEnabled = candidate.DefaultEnabled,
+            IsDangerous = descriptor.IsDangerous || descriptor.Tier == ToolCapabilityTier.DangerousWrite,
+            PackIds = normalizedPackId.Length == 0 ? Array.Empty<string>() : new[] { normalizedPackId },
+            SkillDirectories = Array.Empty<string>(),
+            SkillIds = Array.Empty<string>()
+        };
+    }
+
     private static void UpsertAvailability(Dictionary<string, ToolPackAvailabilityInfo> availabilityById, ToolPackAvailabilityInfo availability) {
         var normalizedPackId = NormalizePackId(availability.Id);
         if (normalizedPackId.Length == 0) {
@@ -1133,6 +1415,43 @@ public static partial class ToolPackBootstrap {
             SkillDirectories = normalizedSkillDirectories,
             SkillIds = normalizedSkillIds,
             DisabledReason = normalizedReason
+        };
+    }
+
+    private static void UpsertPluginCatalog(
+        Dictionary<string, ToolPluginCatalogInfo> catalogById,
+        ToolPluginCatalogInfo catalog) {
+        var normalizedPluginId = NormalizePackId(catalog.Id);
+        if (normalizedPluginId.Length == 0) {
+            return;
+        }
+
+        var normalizedName = string.IsNullOrWhiteSpace(catalog.Name) ? normalizedPluginId : catalog.Name.Trim();
+        var normalizedPackIds = (catalog.PackIds ?? Array.Empty<string>())
+            .Select(static packId => NormalizePackId(packId))
+            .Where(static packId => packId.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(static packId => packId, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var normalizedSkillDirectories = (catalog.SkillDirectories ?? Array.Empty<string>())
+            .Select(static path => (path ?? string.Empty).Trim())
+            .Where(static path => path.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(static path => path, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var normalizedSkillIds = (catalog.SkillIds ?? Array.Empty<string>())
+            .Select(static skillId => (skillId ?? string.Empty).Trim())
+            .Where(static skillId => skillId.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(static skillId => skillId, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        catalogById[normalizedPluginId] = catalog with {
+            Id = normalizedPluginId,
+            Name = normalizedName,
+            PackIds = normalizedPackIds,
+            SkillDirectories = normalizedSkillDirectories,
+            SkillIds = normalizedSkillIds
         };
     }
 

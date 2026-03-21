@@ -55,6 +55,7 @@ public sealed partial class MainWindow {
         var capabilitySelfKnowledgeLines = SelectCapabilitySelfKnowledgeLines(
             _sessionPolicy,
             _toolCatalogPacks,
+            _toolCatalogPlugins,
             _toolCatalogRoutingCatalog,
             _toolCatalogCapabilitySnapshot,
             _toolCatalogDefinitions.Count == 0 ? null : _toolCatalogDefinitions.Values,
@@ -120,6 +121,7 @@ public sealed partial class MainWindow {
         return SelectCapabilitySelfKnowledgeLines(
             sessionPolicy,
             toolCatalogPacks: null,
+            toolCatalogPlugins: null,
             toolCatalogRoutingCatalog: null,
             toolCatalogCapabilitySnapshot: null,
             toolCatalogTools: null,
@@ -130,6 +132,7 @@ public sealed partial class MainWindow {
     internal static IReadOnlyList<string>? SelectCapabilitySelfKnowledgeLines(
         SessionPolicyDto? sessionPolicy,
         IReadOnlyList<ToolPackInfoDto>? toolCatalogPacks,
+        IReadOnlyList<PluginInfoDto>? toolCatalogPlugins,
         SessionRoutingCatalogDiagnosticsDto? toolCatalogRoutingCatalog,
         SessionCapabilitySnapshotDto? toolCatalogCapabilitySnapshot,
         IReadOnlyCollection<ToolDefinitionDto>? toolCatalogTools,
@@ -139,6 +142,7 @@ public sealed partial class MainWindow {
             return BuildCapabilitySelfKnowledgeLines(
                 sessionPolicy,
                 toolCatalogPacks,
+                toolCatalogPlugins,
                 toolCatalogRoutingCatalog,
                 toolCatalogCapabilitySnapshot,
                 toolCatalogExecutionSummary: null,
@@ -150,6 +154,7 @@ public sealed partial class MainWindow {
             return BuildCapabilitySelfKnowledgeLines(
                 sessionPolicy,
                 toolCatalogPacks,
+                toolCatalogPlugins,
                 toolCatalogRoutingCatalog,
                 toolCatalogCapabilitySnapshot,
                 toolCatalogExecutionSummary: null,
@@ -158,6 +163,25 @@ public sealed partial class MainWindow {
         }
 
         return null;
+    }
+
+    internal static IReadOnlyList<string>? SelectCapabilitySelfKnowledgeLines(
+        SessionPolicyDto? sessionPolicy,
+        IReadOnlyList<ToolPackInfoDto>? toolCatalogPacks,
+        SessionRoutingCatalogDiagnosticsDto? toolCatalogRoutingCatalog,
+        SessionCapabilitySnapshotDto? toolCatalogCapabilitySnapshot,
+        IReadOnlyCollection<ToolDefinitionDto>? toolCatalogTools,
+        bool assistantCapabilityQuestion,
+        bool assistantRuntimeIntrospectionQuestion) {
+        return SelectCapabilitySelfKnowledgeLines(
+            sessionPolicy,
+            toolCatalogPacks,
+            toolCatalogPlugins: null,
+            toolCatalogRoutingCatalog,
+            toolCatalogCapabilitySnapshot,
+            toolCatalogTools,
+            assistantCapabilityQuestion,
+            assistantRuntimeIntrospectionQuestion);
     }
 
     internal static bool ShouldUseCompactRuntimeCapabilityContext(

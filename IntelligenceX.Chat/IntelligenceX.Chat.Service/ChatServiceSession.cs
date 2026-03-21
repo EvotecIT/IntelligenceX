@@ -58,6 +58,7 @@ internal sealed partial class ChatServiceSession {
     private IReadOnlyList<IToolPack> _packs;
     private ToolPackAvailabilityInfo[] _packAvailability;
     private ToolPluginAvailabilityInfo[] _pluginAvailability;
+    private ToolPluginCatalogInfo[] _pluginCatalog;
     private string[] _connectedRuntimeSkillInventory;
     private bool _connectedRuntimeSkillInventoryHydrated;
     private string[] _startupWarnings;
@@ -160,6 +161,7 @@ internal sealed partial class ChatServiceSession {
         _packs = Array.Empty<IToolPack>();
         _packAvailability = Array.Empty<ToolPackAvailabilityInfo>();
         _pluginAvailability = Array.Empty<ToolPluginAvailabilityInfo>();
+        _pluginCatalog = Array.Empty<ToolPluginCatalogInfo>();
         _connectedRuntimeSkillInventory = Array.Empty<string>();
         _connectedRuntimeSkillInventoryHydrated = false;
         _startupWarnings = Array.Empty<string>();
@@ -611,7 +613,8 @@ internal sealed partial class ChatServiceSession {
                                 healthyToolNames: helloCapabilitySnapshot.HealthyTools,
                                 remoteReachabilityMode: helloCapabilitySnapshot.RemoteReachabilityMode,
                                 orchestrationCatalog: _toolOrchestrationCatalog,
-                                capabilitySnapshot: helloCapabilitySnapshot)
+                                capabilitySnapshot: helloCapabilitySnapshot,
+                                pluginCatalog: _pluginCatalog)
                         }, cancellationToken).ConfigureAwait(false);
                         break;
 

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using IntelligenceX.Chat.Abstractions.Protocol;
+using IntelligenceX.Chat.Tooling;
 
 namespace IntelligenceX.Chat.Service;
 
@@ -34,6 +35,7 @@ internal sealed partial class ChatServiceSession {
         string PriorAnswerPlanMissingLiveEvidence,
         string[] PriorAnswerPlanPreferredPackIds,
         string[] PriorAnswerPlanPreferredToolNames,
+        string[] PriorAnswerPlanPreferredDeferredWorkCapabilityIds,
         bool PriorAnswerPlanAllowCachedEvidenceReuse,
         bool PriorAnswerPlanPreferCachedEvidenceReuse,
         string PriorAnswerPlanCachedEvidenceReuseReason,
@@ -87,6 +89,9 @@ internal sealed partial class ChatServiceSession {
         var priorAnswerPlanPreferredToolNames = ResolveWorkingMemoryAnswerPlanPreferredToolNames(
             answerPlan,
             existing.PriorAnswerPlanPreferredToolNames);
+        var priorAnswerPlanPreferredDeferredWorkCapabilityIds = ResolveWorkingMemoryAnswerPlanPreferredDeferredWorkCapabilityIds(
+            answerPlan,
+            existing.PriorAnswerPlanPreferredDeferredWorkCapabilityIds);
         var priorAnswerPlanAllowCachedEvidenceReuse = ResolveWorkingMemoryAnswerPlanAllowCachedEvidenceReusePreference(
             answerPlan,
             existing.PriorAnswerPlanAllowCachedEvidenceReuse);
@@ -116,6 +121,7 @@ internal sealed partial class ChatServiceSession {
             && priorAnswerPlanMissingLiveEvidence.Length == 0
             && priorAnswerPlanPreferredPackIds.Length == 0
             && priorAnswerPlanPreferredToolNames.Length == 0
+            && priorAnswerPlanPreferredDeferredWorkCapabilityIds.Length == 0
             && !priorAnswerPlanAllowCachedEvidenceReuse
             && !priorAnswerPlanPreferCachedEvidenceReuse
             && priorAnswerPlanCachedEvidenceReuseReason.Length == 0
@@ -138,6 +144,7 @@ internal sealed partial class ChatServiceSession {
             PriorAnswerPlanMissingLiveEvidence: priorAnswerPlanMissingLiveEvidence,
             PriorAnswerPlanPreferredPackIds: priorAnswerPlanPreferredPackIds,
             PriorAnswerPlanPreferredToolNames: priorAnswerPlanPreferredToolNames,
+            PriorAnswerPlanPreferredDeferredWorkCapabilityIds: priorAnswerPlanPreferredDeferredWorkCapabilityIds,
             PriorAnswerPlanAllowCachedEvidenceReuse: priorAnswerPlanAllowCachedEvidenceReuse,
             PriorAnswerPlanPreferCachedEvidenceReuse: priorAnswerPlanPreferCachedEvidenceReuse,
             PriorAnswerPlanCachedEvidenceReuseReason: priorAnswerPlanCachedEvidenceReuseReason,
@@ -212,6 +219,7 @@ internal sealed partial class ChatServiceSession {
             && checkpoint.PriorAnswerPlanMissingLiveEvidence.Length == 0
             && checkpoint.PriorAnswerPlanPreferredPackIds.Length == 0
             && checkpoint.PriorAnswerPlanPreferredToolNames.Length == 0
+            && checkpoint.PriorAnswerPlanPreferredDeferredWorkCapabilityIds.Length == 0
             && !checkpoint.PriorAnswerPlanAllowCachedEvidenceReuse
             && !checkpoint.PriorAnswerPlanPreferCachedEvidenceReuse
             && checkpoint.PriorAnswerPlanCachedEvidenceReuseReason.Length == 0
@@ -279,6 +287,11 @@ internal sealed partial class ChatServiceSession {
         if (checkpoint.PriorAnswerPlanPreferredToolNames.Length > 0) {
             builder.Append("prior_answer_plan_preferred_tool_names: ")
                 .AppendLine(string.Join(", ", checkpoint.PriorAnswerPlanPreferredToolNames));
+        }
+
+        if (checkpoint.PriorAnswerPlanPreferredDeferredWorkCapabilityIds.Length > 0) {
+            builder.Append("prior_answer_plan_preferred_deferred_work_capability_ids: ")
+                .AppendLine(string.Join(", ", checkpoint.PriorAnswerPlanPreferredDeferredWorkCapabilityIds));
         }
 
         builder.Append("prior_answer_plan_allow_cached_evidence_reuse: ")
@@ -533,6 +546,7 @@ internal sealed partial class ChatServiceSession {
                || checkpoint.PriorAnswerPlanMissingLiveEvidence.Length > 0
                || checkpoint.PriorAnswerPlanPreferredPackIds.Length > 0
                || checkpoint.PriorAnswerPlanPreferredToolNames.Length > 0
+               || checkpoint.PriorAnswerPlanPreferredDeferredWorkCapabilityIds.Length > 0
                || checkpoint.PriorAnswerPlanUnresolvedNow.Length > 0
                || checkpoint.PriorAnswerPlanUserGoal.Length > 0
                || checkpoint.PriorAnswerPlanPrimaryArtifact.Length > 0
@@ -574,6 +588,11 @@ internal sealed partial class ChatServiceSession {
         if (checkpoint.PriorAnswerPlanPreferredToolNames.Length > 0) {
             builder.Append("last_preferred_tool_names: ")
                 .AppendLine(string.Join(", ", checkpoint.PriorAnswerPlanPreferredToolNames));
+        }
+
+        if (checkpoint.PriorAnswerPlanPreferredDeferredWorkCapabilityIds.Length > 0) {
+            builder.Append("last_preferred_deferred_work_capability_ids: ")
+                .AppendLine(string.Join(", ", checkpoint.PriorAnswerPlanPreferredDeferredWorkCapabilityIds));
         }
 
         builder.Append("last_allow_cached_evidence_reuse: ")
@@ -857,6 +876,24 @@ internal sealed partial class ChatServiceSession {
         return NormalizeDistinctStrings(answerPlan.PreferredToolNames ?? Array.Empty<string>(), maxItems: 8);
     }
 
+    private static string[] ResolveWorkingMemoryAnswerPlanPreferredDeferredWorkCapabilityIds(
+        TurnAnswerPlan answerPlan,
+        IReadOnlyList<string> fallbackValues) {
+        if (!answerPlan.HasPlan) {
+            return NormalizeDistinctStrings(
+                (fallbackValues ?? Array.Empty<string>())
+                .Select(static capabilityId => NormalizeDeferredWorkCapabilityId(capabilityId))
+                .Where(static capabilityId => capabilityId.Length > 0),
+                maxItems: 6);
+        }
+
+        return NormalizeDistinctStrings(
+            (answerPlan.PreferredDeferredWorkCapabilityIds ?? Array.Empty<string>())
+            .Select(static capabilityId => NormalizeDeferredWorkCapabilityId(capabilityId))
+            .Where(static capabilityId => capabilityId.Length > 0),
+            maxItems: 6);
+    }
+
     private static bool ResolveWorkingMemoryAnswerPlanAllowCachedEvidenceReusePreference(TurnAnswerPlan answerPlan, bool fallbackValue) {
         if (!answerPlan.HasPlan) {
             return fallbackValue;
@@ -921,18 +958,16 @@ internal sealed partial class ChatServiceSession {
     }
 
     private string[] ResolveWorkingMemoryCapabilityRoutingFamilies(IReadOnlyList<string> fallbackRoutingFamilies) {
-        var routingFamilies = _routingCatalogDiagnostics.FamilyActions
-            .Select(static summary => summary.Family);
-        var normalized = NormalizeCapabilitySnapshotRoutingFamilies(routingFamilies);
-        if (normalized.Length > 0) {
-            return normalized;
-        }
-
-        return NormalizeCapabilitySnapshotRoutingFamilies(fallbackRoutingFamilies ?? Array.Empty<string>());
+        var runtimeCatalog = ResolveRuntimeDomainIntentCatalog(
+            availableDefinitions: null,
+            persistedFamilies: fallbackRoutingFamilies);
+        return NormalizeCapabilitySnapshotRoutingFamilies(runtimeCatalog.GetFamilies());
     }
 
     private string[] ResolveWorkingMemoryCapabilitySkills(IReadOnlyList<string> fallbackSkills) {
-        return ResolveCapabilitySnapshotSkills(_pluginAvailability, _routingCatalogDiagnostics, _connectedRuntimeSkillInventory, fallbackSkills);
+        var packList = ToolCatalogExportBuilder.BuildPackInfoDtos(_packAvailability, _toolOrchestrationCatalog);
+        var pluginList = ToolCatalogExportBuilder.BuildPluginInfoDtos(_pluginAvailability, packList, _pluginCatalog);
+        return ResolveCapabilitySnapshotSkills(pluginList, _routingCatalogDiagnostics, _connectedRuntimeSkillInventory, fallbackSkills);
     }
 
     private static string BuildSkillSnapshotValue(string family, string actionId) {
@@ -1257,7 +1292,7 @@ internal sealed partial class ChatServiceSession {
         }
 
         return HasFreshPendingDomainIntentClarificationForWorkingMemory(threadId)
-               && TryParsePendingDomainIntentClarificationSelection(normalizedFollowUp, out _);
+               && TryParsePendingDomainIntentClarificationSelectionForRuntime(normalizedFollowUp, out _);
     }
 
     private bool HasFreshPendingDomainIntentClarificationForWorkingMemory(string threadId) {
@@ -1272,7 +1307,7 @@ internal sealed partial class ChatServiceSession {
         }
 
         if (clarificationSeenTicks <= 0) {
-            if (!TryLoadPendingDomainIntentClarificationSnapshot(normalizedThreadId, out clarificationSeenTicks)) {
+            if (!TryLoadPendingDomainIntentClarificationSnapshot(normalizedThreadId, out clarificationSeenTicks, out _)) {
                 return false;
             }
 
@@ -1309,6 +1344,7 @@ internal sealed partial class ChatServiceSession {
         string? priorAnswerPlanMissingLiveEvidence = null,
         IReadOnlyList<string>? priorAnswerPlanPreferredPackIds = null,
         IReadOnlyList<string>? priorAnswerPlanPreferredToolNames = null,
+        IReadOnlyList<string>? priorAnswerPlanPreferredDeferredWorkCapabilityIds = null,
         bool priorAnswerPlanAllowCachedEvidenceReuse = false,
         bool priorAnswerPlanPreferCachedEvidenceReuse = false,
         string? priorAnswerPlanCachedEvidenceReuseReason = null,
@@ -1337,6 +1373,11 @@ internal sealed partial class ChatServiceSession {
             PriorAnswerPlanPreferredToolNames: NormalizeDistinctStrings(
                 priorAnswerPlanPreferredToolNames ?? Array.Empty<string>(),
                 maxItems: 8),
+            PriorAnswerPlanPreferredDeferredWorkCapabilityIds: NormalizeDistinctStrings(
+                (priorAnswerPlanPreferredDeferredWorkCapabilityIds ?? Array.Empty<string>())
+                .Select(static capabilityId => NormalizeDeferredWorkCapabilityId(capabilityId))
+                .Where(static capabilityId => capabilityId.Length > 0),
+                maxItems: 6),
             PriorAnswerPlanAllowCachedEvidenceReuse: priorAnswerPlanAllowCachedEvidenceReuse,
             PriorAnswerPlanPreferCachedEvidenceReuse: priorAnswerPlanPreferCachedEvidenceReuse,
             PriorAnswerPlanCachedEvidenceReuseReason: priorAnswerPlanPreferCachedEvidenceReuse
@@ -1391,6 +1432,18 @@ internal sealed partial class ChatServiceSession {
         userGoal = checkpoint.PriorAnswerPlanUserGoal;
         unresolvedNow = checkpoint.PriorAnswerPlanUnresolvedNow;
         primaryArtifact = checkpoint.PriorAnswerPlanPrimaryArtifact;
+        return true;
+    }
+
+    internal bool TryGetWorkingMemoryPreferredDeferredWorkCapabilityIdsForTesting(
+        string threadId,
+        out string[] preferredDeferredWorkCapabilityIds) {
+        preferredDeferredWorkCapabilityIds = Array.Empty<string>();
+        if (!TryGetWorkingMemoryCheckpoint(threadId, out var checkpoint)) {
+            return false;
+        }
+
+        preferredDeferredWorkCapabilityIds = checkpoint.PriorAnswerPlanPreferredDeferredWorkCapabilityIds;
         return true;
     }
 

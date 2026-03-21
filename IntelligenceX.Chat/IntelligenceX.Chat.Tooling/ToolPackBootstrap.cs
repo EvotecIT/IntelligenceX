@@ -344,6 +344,56 @@ public sealed record ToolPluginAvailabilityInfo {
 }
 
 /// <summary>
+/// Stable discovery metadata for a plugin-style tool source independent of runtime enablement.
+/// </summary>
+public sealed record ToolPluginCatalogInfo {
+    /// <summary>
+    /// Stable plugin identifier.
+    /// </summary>
+    public required string Id { get; init; }
+    /// <summary>
+    /// Human-friendly plugin name.
+    /// </summary>
+    public required string Name { get; init; }
+    /// <summary>
+    /// Optional plugin version from manifest or assembly metadata.
+    /// </summary>
+    public string? Version { get; init; }
+    /// <summary>
+    /// Plugin origin classification (for example builtin or folder).
+    /// </summary>
+    public required string Origin { get; init; }
+    /// <summary>
+    /// Normalized source kind for the plugin.
+    /// </summary>
+    public required string SourceKind { get; init; }
+    /// <summary>
+    /// Whether the plugin is enabled by default before runtime overrides.
+    /// </summary>
+    public bool DefaultEnabled { get; init; }
+    /// <summary>
+    /// Whether the plugin exposes dangerous/write capability.
+    /// </summary>
+    public bool IsDangerous { get; init; }
+    /// <summary>
+    /// Normalized pack ids contributed by this plugin.
+    /// </summary>
+    public string[] PackIds { get; init; } = Array.Empty<string>();
+    /// <summary>
+    /// Optional root path for folder-based plugins.
+    /// </summary>
+    public string? RootPath { get; init; }
+    /// <summary>
+    /// Optional skill directories exposed by the plugin.
+    /// </summary>
+    public string[] SkillDirectories { get; init; } = Array.Empty<string>();
+    /// <summary>
+    /// Optional resolved skill identifiers exposed by the plugin.
+    /// </summary>
+    public string[] SkillIds { get; init; } = Array.Empty<string>();
+}
+
+/// <summary>
 /// Result of bootstrapping default tool packs with pack availability metadata.
 /// </summary>
 public sealed record ToolPackBootstrapResult {
@@ -359,6 +409,10 @@ public sealed record ToolPackBootstrapResult {
     /// Runtime availability for known plugins.
     /// </summary>
     public IReadOnlyList<ToolPluginAvailabilityInfo> PluginAvailability { get; init; } = Array.Empty<ToolPluginAvailabilityInfo>();
+    /// <summary>
+    /// Stable discovery catalog for known plugins.
+    /// </summary>
+    public IReadOnlyList<ToolPluginCatalogInfo> PluginCatalog { get; init; } = Array.Empty<ToolPluginCatalogInfo>();
 }
 
 /// <summary>
@@ -568,6 +622,7 @@ public static partial class ToolPackBootstrap {
         var packs = new List<IToolPack>();
         var availabilityById = new Dictionary<string, ToolPackAvailabilityInfo>(StringComparer.OrdinalIgnoreCase);
         var pluginAvailabilityById = new Dictionary<string, ToolPluginAvailabilityInfo>(StringComparer.OrdinalIgnoreCase);
+        var pluginCatalogById = new Dictionary<string, ToolPluginCatalogInfo>(StringComparer.OrdinalIgnoreCase);
         var knownBootstrapStepTotal = builtInPacks.Count + (options.EnablePluginFolderLoading ? 1 : 0);
         var knownBootstrapStepIndex = 0;
 
@@ -619,6 +674,9 @@ public static partial class ToolPackBootstrap {
                             builtInPack,
                             enabled: false,
                             disabledReason: disabledReason));
+                    UpsertPluginCatalog(
+                        pluginCatalogById,
+                        CreateBuiltInPluginCatalog(builtInPack));
                     return;
                 }
 
@@ -635,6 +693,9 @@ public static partial class ToolPackBootstrap {
                         builtInPack,
                         enabled: true,
                         disabledReason: null));
+                UpsertPluginCatalog(
+                    pluginCatalogById,
+                    CreateBuiltInPluginCatalog(builtInPack));
             });
         }
 
@@ -652,7 +713,8 @@ public static partial class ToolPackBootstrap {
                     existingPackIds: existingPackIds,
                     onWarning: options.OnBootstrapWarning,
                     onPackAvailability: availability => UpsertAvailability(availabilityById, availability),
-                    onPluginAvailability: plugin => UpsertPluginAvailability(pluginAvailabilityById, plugin));
+                    onPluginAvailability: plugin => UpsertPluginAvailability(pluginAvailabilityById, plugin),
+                    onPluginCatalog: plugin => UpsertPluginCatalog(pluginCatalogById, plugin));
             });
         }
 
@@ -675,6 +737,10 @@ public static partial class ToolPackBootstrap {
             Packs = packs,
             PackAvailability = availability,
             PluginAvailability = pluginAvailabilityById.Values
+                .OrderBy(static plugin => plugin.Name, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(static plugin => plugin.Id, StringComparer.OrdinalIgnoreCase)
+                .ToArray(),
+            PluginCatalog = pluginCatalogById.Values
                 .OrderBy(static plugin => plugin.Name, StringComparer.OrdinalIgnoreCase)
                 .ThenBy(static plugin => plugin.Id, StringComparer.OrdinalIgnoreCase)
                 .ToArray()

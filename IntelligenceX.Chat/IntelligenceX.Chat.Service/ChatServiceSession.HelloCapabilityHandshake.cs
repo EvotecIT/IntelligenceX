@@ -75,6 +75,20 @@ internal sealed partial class ChatServiceSession {
         warning.Append(" parity_engine_count='").Append(snapshot.ParityEntries.Length).Append('\'');
         warning.Append(" parity_attention_count='").Append(snapshot.ParityAttentionCount).Append('\'');
         warning.Append(" parity_missing_readonly_capabilities='").Append(snapshot.ParityMissingCapabilityCount).Append('\'');
+        if (snapshot.ToolingSnapshot is not null) {
+            warning.Append(" tooling_snapshot_source='").Append(snapshot.ToolingSnapshot.Source ?? "unknown").Append('\'');
+            warning.Append(" tooling_snapshot_pack_count='").Append(snapshot.ToolingSnapshot.Packs.Length).Append('\'');
+            warning.Append(" tooling_snapshot_plugin_count='").Append(snapshot.ToolingSnapshot.Plugins.Length).Append('\'');
+            var toolingPackDetails = BuildCapabilitySnapshotToolingPackDetails(snapshot.ToolingSnapshot, maxItems: 3);
+            if (toolingPackDetails.Length > 0) {
+                warning.Append(" tooling_snapshot_packs='").Append(string.Join("|", toolingPackDetails)).Append('\'');
+            }
+
+            var toolingPluginDetails = BuildCapabilitySnapshotToolingPluginDetails(snapshot.ToolingSnapshot, maxItems: 3);
+            if (toolingPluginDetails.Length > 0) {
+                warning.Append(" tooling_snapshot_plugins='").Append(string.Join("|", toolingPluginDetails)).Append('\'');
+            }
+        }
 
         if (snapshot.EnabledPackIds.Length > 0) {
             warning.Append(" enabled_packs='").Append(string.Join(",", snapshot.EnabledPackIds)).Append('\'');

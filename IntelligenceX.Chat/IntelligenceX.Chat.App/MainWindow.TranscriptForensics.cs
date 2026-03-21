@@ -37,7 +37,8 @@ public sealed partial class MainWindow {
                 conversation.Title,
                 conversation.ThreadId,
                 conversation.Messages,
-                persistedConversation?.Messages);
+                persistedConversation?.Messages,
+                BuildRuntimeToolingSupportSnapshot());
 
             var outputPath = ResolveTranscriptForensicsOutputPath(pickedPath);
             TranscriptForensicsExporter.Export(outputPath, bundle);
@@ -116,5 +117,13 @@ public sealed partial class MainWindow {
         }
 
         return null;
+    }
+
+    internal RuntimeToolingSupportSnapshot? BuildRuntimeToolingSupportSnapshot() {
+        return RuntimeToolingSupportSnapshotBuilder.Build(
+            _sessionPolicy,
+            _toolCatalogPacks,
+            _toolCatalogPlugins,
+            _toolCatalogCapabilitySnapshot);
     }
 }

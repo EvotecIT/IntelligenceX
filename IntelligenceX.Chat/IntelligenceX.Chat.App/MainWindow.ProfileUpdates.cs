@@ -41,6 +41,7 @@ public sealed partial class MainWindow : Window {
     private void ClearToolCatalogCache(bool clearCatalogMetadata) {
         if (clearCatalogMetadata) {
             _toolCatalogPacks = Array.Empty<ToolPackInfoDto>();
+            _toolCatalogPlugins = Array.Empty<PluginInfoDto>();
             _toolCatalogRoutingCatalog = null;
             _toolCatalogCapabilitySnapshot = null;
             ClearBackgroundSchedulerSnapshots();
@@ -157,8 +158,10 @@ public sealed partial class MainWindow : Window {
         ToolDefinitionDto[] tools,
         SessionRoutingCatalogDiagnosticsDto? routingCatalog = null,
         ToolPackInfoDto[]? packs = null,
+        PluginInfoDto[]? plugins = null,
         SessionCapabilitySnapshotDto? capabilitySnapshot = null) {
         _toolCatalogPacks = packs ?? Array.Empty<ToolPackInfoDto>();
+        _toolCatalogPlugins = plugins ?? Array.Empty<PluginInfoDto>();
         _toolCatalogRoutingCatalog = routingCatalog;
         _toolCatalogCapabilitySnapshot = capabilitySnapshot;
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -307,8 +310,11 @@ public sealed partial class MainWindow : Window {
     }
 
     private ToolPackInfoDto? FindSessionPackInfo(string normalizedPackId) {
-        var packs = _sessionPolicy?.Packs;
-        if (packs is null || packs.Length == 0) {
+        var packs = RuntimeToolingMetadataResolver.ResolveEffectivePacks(
+            _sessionPolicy,
+            _toolCatalogPacks,
+            _toolCatalogCapabilitySnapshot);
+        if (packs.Length == 0) {
             return null;
         }
 

@@ -180,8 +180,11 @@ public sealed class MainWindowPromptContextGatingTests {
                     Description = "Collect system metrics.",
                     PackId = "system",
                     PackName = "System",
+                    RoutingScope = "host",
+                    RoutingEntity = "host",
                     ExecutionScope = "local_or_remote",
-                    SupportsRemoteHostTargeting = true
+                    SupportsRemoteHostTargeting = true,
+                    SupportsRemoteExecution = true
                 }
             },
             assistantCapabilityQuestion: true,

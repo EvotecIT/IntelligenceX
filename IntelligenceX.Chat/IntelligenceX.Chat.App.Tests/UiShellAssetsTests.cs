@@ -414,13 +414,27 @@ public sealed partial class UiShellAssetsTests {
         Assert.Contains("var autonomyReadinessHighlightsRaw = Array.isArray(value.autonomyReadinessHighlights) ? value.autonomyReadinessHighlights : [];", script, StringComparison.Ordinal);
         Assert.Contains("autonomyReadinessHighlights: autonomyReadinessHighlights", script, StringComparison.Ordinal);
         Assert.Contains("toolCatalogRoutingCatalog: null", script, StringComparison.Ordinal);
+        Assert.Contains("toolCatalogPlugins: []", script, StringComparison.Ordinal);
         Assert.Contains("toolCatalogCapabilitySnapshot: null", script, StringComparison.Ordinal);
+        Assert.Contains("var pluginDetailsEl = byId(\"policyPluginDetails\");", script, StringComparison.Ordinal);
         Assert.Contains("var fallbackRoutingCatalog = normalizeRoutingCatalog(state.options ? state.options.toolCatalogRoutingCatalog : null);", script, StringComparison.Ordinal);
+        Assert.Contains("var fallbackPlugins = normalizePlugins(state.options ? state.options.toolCatalogPlugins : null);", script, StringComparison.Ordinal);
+        Assert.Contains("fallbackPlugins = resolveCapabilitySnapshotPlugins(fallbackCapabilitySnapshot);", script, StringComparison.Ordinal);
+        Assert.Contains("renderPluginPolicyDetails(pluginDetailsEl, fallbackPlugins);", script, StringComparison.Ordinal);
         Assert.Contains("var fallbackCapabilitySnapshot = normalizeCapabilitySnapshot(state.options ? state.options.toolCatalogCapabilitySnapshot : null);", script, StringComparison.Ordinal);
+        Assert.Contains("renderPolicyList(pluginsEl, formatPluginPolicyLines(fallbackPlugins), \"Plugin sources\");", script, StringComparison.Ordinal);
         Assert.Contains("renderRoutingCatalogPolicy(routingCatalogEl, fallbackRoutingCatalog);", script, StringComparison.Ordinal);
         Assert.Contains("renderCapabilitySnapshotPolicy(capabilitySnapshotEl, fallbackCapabilitySnapshot);", script, StringComparison.Ordinal);
         Assert.Contains("function normalizeCapabilitySnapshot(value) {", script, StringComparison.Ordinal);
+        Assert.Contains("function resolveCapabilitySnapshotPlugins(capabilitySnapshot) {", script, StringComparison.Ordinal);
+        Assert.Contains("function normalizePlugins(value) {", script, StringComparison.Ordinal);
+        Assert.Contains("function appendOptionsKv(host, label, value) {", script, StringComparison.Ordinal);
+        Assert.Contains("function formatPluginPolicyLines(plugins) {", script, StringComparison.Ordinal);
+        Assert.Contains("function renderPluginPolicyDetails(host, plugins) {", script, StringComparison.Ordinal);
         Assert.Contains("function renderCapabilitySnapshotPolicy(host, capabilitySnapshot) {", script, StringComparison.Ordinal);
+        Assert.Contains("toolingSnapshot: !toolingSnapshotRaw ? null :", script, StringComparison.Ordinal);
+        Assert.Contains("plugins = resolveCapabilitySnapshotPlugins(capabilitySnapshot);", script, StringComparison.Ordinal);
+        Assert.Contains("lines.push(\"tooling snapshot: \" + toolingSource + \", packs \" + capabilitySnapshot.toolingSnapshot.packs.length + \", plugins \" + capabilitySnapshot.toolingSnapshot.plugins.length);", script, StringComparison.Ordinal);
         Assert.Contains("isExplicitRoutingReady: hasIsExplicitRoutingReady ? value.isExplicitRoutingReady === true : true,", script, StringComparison.Ordinal);
         Assert.Contains("var canDeriveExplicitReadiness = hasMissingRoutingContractTools", script, StringComparison.Ordinal);
         Assert.Contains("if (canDeriveExplicitReadiness && explicitReadinessIssueCount > 0) {", script, StringComparison.Ordinal);
@@ -441,7 +455,10 @@ public sealed partial class UiShellAssetsTests {
         var coreScript = File.ReadAllText(coreScriptPath);
 
         Assert.Contains("id=\"policyCapabilitySnapshot\"", html, StringComparison.Ordinal);
+        Assert.Contains("id=\"policyPluginDetails\"", html, StringComparison.Ordinal);
+        Assert.Contains("id=\"policyPlugins\"", html, StringComparison.Ordinal);
         Assert.Contains("state.options.toolCatalogRoutingCatalog = nextOptions.toolCatalogRoutingCatalog || null;", renderingScript, StringComparison.Ordinal);
+        Assert.Contains("state.options.toolCatalogPlugins = Array.isArray(nextOptions.toolCatalogPlugins) ? nextOptions.toolCatalogPlugins : [];", renderingScript, StringComparison.Ordinal);
         Assert.Contains("state.options.toolCatalogCapabilitySnapshot = nextOptions.toolCatalogCapabilitySnapshot || null;", renderingScript, StringComparison.Ordinal);
         Assert.Contains("Bootstrap preview", coreScript, StringComparison.Ordinal);
     }

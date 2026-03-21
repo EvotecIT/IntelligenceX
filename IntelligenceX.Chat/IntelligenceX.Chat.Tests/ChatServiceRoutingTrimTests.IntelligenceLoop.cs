@@ -513,6 +513,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             unresolved_now: missing forest rows
             carry_forward_unresolved_focus: true
             carry_forward_reason: the forest-scope explanation still remains
+            preferred_deferred_work_capability_ids: Reporting, email
             prefer_cached_evidence_reuse: false
             cached_evidence_reuse_reason: none
             primary_artifact: prose
@@ -535,6 +536,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.True(reviewedDraft.AnswerPlan.HasPlan);
         Assert.True(reviewedDraft.AnswerPlan.CarryForwardUnresolvedFocus);
         Assert.Equal("the forest-scope explanation still remains", reviewedDraft.AnswerPlan.CarryForwardReason);
+        Assert.Equal(new[] { "reporting", "email" }, reviewedDraft.AnswerPlan.PreferredDeferredWorkCapabilityIds);
         Assert.False(reviewedDraft.AnswerPlan.PreferCachedEvidenceReuse);
         Assert.Equal(string.Empty, reviewedDraft.AnswerPlan.CachedEvidenceReuseReason);
         Assert.True(reviewedDraft.AnswerPlan.RequestedArtifactAlreadyVisibleAbove);

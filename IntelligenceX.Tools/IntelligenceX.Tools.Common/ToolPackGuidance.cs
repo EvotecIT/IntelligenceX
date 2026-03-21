@@ -672,6 +672,21 @@ public sealed class ToolPackToolRoutingModel {
     /// Optional domain intent action id token.
     /// </summary>
     public string DomainIntentActionId { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Optional user-facing display label for this domain intent family.
+    /// </summary>
+    public string DomainIntentFamilyDisplayName { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Optional natural-language reply example for selecting this domain intent family.
+    /// </summary>
+    public string DomainIntentFamilyReplyExample { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Optional user-facing clarification description for this domain intent family.
+    /// </summary>
+    public string DomainIntentFamilyChoiceDescription { get; init; } = string.Empty;
 }
 
 /// <summary>
@@ -1299,7 +1314,10 @@ public static partial class ToolPackGuidance {
                         ? ToolRoutingTaxonomy.SourceExplicit
                         : ToolRoutingTaxonomy.SourceInferred,
                     DomainIntentFamily = enrichedDefinition.Routing?.DomainIntentFamily ?? string.Empty,
-                    DomainIntentActionId = enrichedDefinition.Routing?.DomainIntentActionId ?? string.Empty
+                    DomainIntentActionId = enrichedDefinition.Routing?.DomainIntentActionId ?? string.Empty,
+                    DomainIntentFamilyDisplayName = enrichedDefinition.Routing?.DomainIntentFamilyDisplayName ?? string.Empty,
+                    DomainIntentFamilyReplyExample = enrichedDefinition.Routing?.DomainIntentFamilyReplyExample ?? string.Empty,
+                    DomainIntentFamilyChoiceDescription = enrichedDefinition.Routing?.DomainIntentFamilyChoiceDescription ?? string.Empty
                 },
                 Description = enrichedDefinition.Description?.Trim() ?? string.Empty,
                 RequiredArguments = requiredArguments,

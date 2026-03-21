@@ -8,6 +8,9 @@ namespace IntelligenceX.Tools.TestimoX;
 internal static class TestimoXAnalyticsRoutingCatalog {
     public const string DomainIntentFamily = "monitoring_artifacts";
     public const string DomainIntentActionId = "act_domain_scope_monitoring_artifacts";
+    public const string DomainIntentFamilyDisplayName = "Monitoring artifacts";
+    public const string DomainIntentFamilyReplyExample = "monitoring artifacts";
+    public const string DomainIntentFamilyChoiceDescription = "Monitoring artifacts scope (history, reports, dashboards, and maintenance windows)";
 
     private static readonly string[] DiagnosticsFallbackSelectionKeys = { "history_directory" };
     private static readonly string[] DiagnosticsFallbackHintKeys = { "history_directory", "include_slow_probes", "max_slow_probes" };
@@ -75,6 +78,18 @@ internal static class TestimoXAnalyticsRoutingCatalog {
 
     public static string ResolveDomainIntentActionId(string? explicitActionId) {
         return string.IsNullOrWhiteSpace(explicitActionId) ? DomainIntentActionId : explicitActionId!;
+    }
+
+    public static string ResolveDomainIntentFamilyDisplayName(string? explicitDisplayName) {
+        return string.IsNullOrWhiteSpace(explicitDisplayName) ? DomainIntentFamilyDisplayName : explicitDisplayName!;
+    }
+
+    public static string ResolveDomainIntentFamilyReplyExample(string? explicitReplyExample) {
+        return string.IsNullOrWhiteSpace(explicitReplyExample) ? DomainIntentFamilyReplyExample : explicitReplyExample!;
+    }
+
+    public static string ResolveDomainIntentFamilyChoiceDescription(string? explicitChoiceDescription) {
+        return string.IsNullOrWhiteSpace(explicitChoiceDescription) ? DomainIntentFamilyChoiceDescription : explicitChoiceDescription!;
     }
 
     public static IReadOnlyList<string> ResolveFallbackSelectionKeys(string toolName, IReadOnlyList<string>? explicitKeys) {

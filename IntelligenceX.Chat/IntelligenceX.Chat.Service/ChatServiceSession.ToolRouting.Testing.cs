@@ -105,6 +105,10 @@ internal sealed partial class ChatServiceSession {
         return BuildRuntimeCapabilitySnapshot();
     }
 
+    internal string[] ResolveWorkingMemoryCapabilityRoutingFamiliesForTesting(IReadOnlyList<string> fallbackRoutingFamilies) {
+        return ResolveWorkingMemoryCapabilityRoutingFamilies(fallbackRoutingFamilies);
+    }
+
     internal string ExpandContinuationUserRequestForTesting(string threadId, string userRequest, bool forceContinuationFollowUp = false) {
         ArgumentNullException.ThrowIfNull(threadId);
         ArgumentNullException.ThrowIfNull(userRequest);
@@ -141,12 +145,24 @@ internal sealed partial class ChatServiceSession {
         return BuildModelPlannerPrompt(requestText, definitions, limit);
     }
 
+    internal string[] ResolvePackIdsForDeferredWorkCapabilityPreferencesForTesting(IReadOnlyCollection<string> capabilityIds) {
+        ArgumentNullException.ThrowIfNull(capabilityIds);
+        return ResolvePackIdsForDeferredWorkCapabilityPreferences(
+            new HashSet<string>(
+                capabilityIds
+                    .Where(static capabilityId => !string.IsNullOrWhiteSpace(capabilityId))
+                    .Select(static capabilityId => NormalizeDeferredWorkCapabilityId(capabilityId))
+                    .Where(static capabilityId => capabilityId.Length > 0),
+                StringComparer.OrdinalIgnoreCase));
+    }
+
     internal static bool TryReadPlannerContextFromRequestTextForTesting(
         string requestText,
         out bool requiresLiveExecution,
         out string missingLiveEvidence,
         out string[] preferredPackIds,
         out string[] preferredToolNames,
+        out string[] preferredDeferredWorkCapabilityIds,
         out string[] preferredExecutionBackends,
         out string[] handoffTargetPackIds,
         out string[] handoffTargetToolNames,
@@ -165,6 +181,7 @@ internal sealed partial class ChatServiceSession {
         missingLiveEvidence = context.MissingLiveEvidence;
         preferredPackIds = context.PreferredPackIds;
         preferredToolNames = context.PreferredToolNames;
+        preferredDeferredWorkCapabilityIds = context.PreferredDeferredWorkCapabilityIds;
         preferredExecutionBackends = context.PreferredExecutionBackends;
         handoffTargetPackIds = context.HandoffTargetPackIds;
         handoffTargetToolNames = context.HandoffTargetToolNames;
@@ -884,6 +901,62 @@ internal sealed partial class ChatServiceSession {
             userRequest,
             new DomainIntentFamilyAvailability(HasAd: hasAdFamily, HasPublic: hasPublicFamily),
             BuildDefaultDomainIntentActionCatalog());
+    }
+
+    internal static string BuildDomainIntentClarificationVisibleTextForTesting(
+        string userRequest,
+        IReadOnlyList<string> families,
+        IReadOnlyDictionary<string, string>? familyActionIds) {
+        var normalizedFamilies = families is null || families.Count == 0
+            ? Array.Empty<string>()
+            : families
+                .Where(static family => TryNormalizeDomainIntentFamily(family, out _))
+                .Select(static family => family.Trim())
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(static family => string.Equals(family, DomainIntentFamilyAd, StringComparison.Ordinal)
+                        ? 0
+                        : string.Equals(family, DomainIntentFamilyPublic, StringComparison.Ordinal)
+                            ? 1
+                            : 2)
+                .ThenBy(static family => family, StringComparer.Ordinal)
+                .ToArray();
+        var hasAdFamily = normalizedFamilies.Contains(DomainIntentFamilyAd, StringComparer.Ordinal);
+        var hasPublicFamily = normalizedFamilies.Contains(DomainIntentFamilyPublic, StringComparer.Ordinal);
+        var availability = new DomainIntentFamilyAvailability(
+            HasAd: hasAdFamily,
+            HasPublic: hasPublicFamily,
+            Families: normalizedFamilies);
+        var actionCatalog = new DomainIntentActionCatalog(FamilyActionIds: familyActionIds);
+        return BuildDomainIntentClarificationVisibleText(userRequest, availability, actionCatalog);
+    }
+
+    internal static string BuildDomainIntentClarificationVisibleTextForTesting(
+        string userRequest,
+        IReadOnlyList<ToolRoutingFamilyActionSummary> familyActions) {
+        ArgumentNullException.ThrowIfNull(familyActions);
+
+        var families = familyActions
+            .Where(static summary => TryNormalizeDomainIntentFamily(summary.Family, out _))
+            .Select(static summary => summary.Family.Trim())
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(static family => string.Equals(family, DomainIntentFamilyAd, StringComparison.Ordinal)
+                    ? 0
+                    : string.Equals(family, DomainIntentFamilyPublic, StringComparison.Ordinal)
+                        ? 1
+                        : 2)
+            .ThenBy(static family => family, StringComparer.Ordinal)
+            .ToArray();
+        var availability = CreateDomainIntentFamilyAvailability(families);
+        var familyActionIds = familyActions
+            .Where(static summary => TryNormalizeDomainIntentFamily(summary.Family, out _) && !string.IsNullOrWhiteSpace(summary.ActionId))
+            .GroupBy(static summary => summary.Family.Trim(), StringComparer.Ordinal)
+            .ToDictionary(
+                static group => group.Key,
+                static group => group.First().ActionId.Trim(),
+                StringComparer.Ordinal);
+        var actionCatalog = new DomainIntentActionCatalog(FamilyActionIds: familyActionIds);
+        var presentations = BuildDomainIntentFamilyPresentationMap(familyActions);
+        return BuildDomainIntentClarificationVisibleText(userRequest, availability, actionCatalog, presentations);
     }
 
     internal IReadOnlyCollection<string> GetTrackedToolRoutingStatNamesForTesting() {

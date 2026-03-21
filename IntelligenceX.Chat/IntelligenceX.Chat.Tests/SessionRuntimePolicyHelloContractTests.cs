@@ -1,6 +1,7 @@
 using System;
-using System.Text.Json;
+using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.Abstractions.Serialization;
@@ -492,6 +493,223 @@ public sealed class SessionRuntimePolicyHelloContractTests {
     }
 
     [Fact]
+    public void BuildSessionPolicy_UsesOrchestrationCatalogPackMetadataWhenPackAvailabilityMissing() {
+        var orchestrationCatalog = ToolOrchestrationCatalog.Build(
+            Array.Empty<ToolDefinition>(),
+            new IToolPack[] {
+                new SyntheticPolicyPack(
+                    id: "ops_inventory",
+                    name: "Ops Inventory",
+                    sourceKind: "closed_source",
+                    engineId: "computerx",
+                    category: "system",
+                    capabilityTags: new[] { "host_inventory", "remote_analysis" })
+            });
+
+        var policy = ChatServiceSession.BuildSessionPolicy(
+            new ServiceOptions(),
+            Array.Empty<ToolPackAvailabilityInfo>(),
+            Array.Empty<ToolPluginAvailabilityInfo>(),
+            Array.Empty<string>(),
+            null,
+            Array.Empty<string>(),
+            new ToolRuntimePolicyDiagnostics {
+                WriteGovernanceMode = ToolWriteGovernanceMode.Enforced,
+                RequireWriteGovernanceRuntime = false,
+                WriteGovernanceRuntimeConfigured = false,
+                RequireWriteAuditSinkForWriteOperations = false,
+                WriteAuditSinkMode = ToolWriteAuditSinkMode.None,
+                WriteAuditSinkConfigured = false,
+                AuthenticationPreset = ToolAuthenticationRuntimePreset.Default,
+                RequireExplicitRoutingMetadata = false,
+                RequireAuthenticationRuntime = false,
+                AuthenticationRuntimeConfigured = false,
+                RequireSuccessfulSmtpProbeForSend = false,
+                SmtpProbeMaxAgeSeconds = 0
+            },
+            orchestrationCatalog: orchestrationCatalog);
+
+        var pack = Assert.Single(policy.Packs);
+        Assert.Equal("ops_inventory", pack.Id);
+        Assert.Equal("Ops Inventory", pack.Name);
+        Assert.Equal(ToolPackSourceKind.ClosedSource, pack.SourceKind);
+        Assert.Equal("system", pack.Category);
+        Assert.Equal("computerx", pack.EngineId);
+        Assert.Equal(new[] { "host_inventory", "remote_analysis" }, pack.CapabilityTags);
+        Assert.True(pack.Enabled);
+
+        var hello = new HelloMessage {
+            Kind = ChatServiceMessageKind.Response,
+            RequestId = "req_pack_metadata_fallback",
+            Name = "IntelligenceX.Chat.Service",
+            Version = "1.0.0",
+            ProcessId = "1234",
+            Policy = policy
+        };
+
+        var json = JsonSerializer.Serialize<ChatServiceMessage>(hello, ChatServiceJsonContext.Default.ChatServiceMessage);
+        using var doc = JsonDocument.Parse(json);
+        var serializedPack = doc.RootElement
+            .GetProperty("policy")
+            .GetProperty("packs")[0];
+
+        Assert.Equal("ops_inventory", serializedPack.GetProperty("id").GetString());
+        Assert.Equal("Ops Inventory", serializedPack.GetProperty("name").GetString());
+        Assert.Equal("ClosedSource", serializedPack.GetProperty("sourceKind").GetString());
+        Assert.Equal("system", serializedPack.GetProperty("category").GetString());
+        Assert.Equal("computerx", serializedPack.GetProperty("engineId").GetString());
+        Assert.Equal(2, serializedPack.GetProperty("capabilityTags").GetArrayLength());
+    }
+
+    [Fact]
+    public void BuildSessionPolicy_UsesPackSummaryFallbackForPluginsWhenAvailabilityMissing() {
+        var orchestrationCatalog = ToolOrchestrationCatalog.Build(
+            Array.Empty<ToolDefinition>(),
+            new IToolPack[] {
+                new SyntheticPolicyPack(
+                    id: "ops_inventory",
+                    name: "Ops Inventory",
+                    sourceKind: "closed_source",
+                    engineId: "computerx",
+                    category: "system",
+                    capabilityTags: new[] { "host_inventory", "remote_analysis" })
+            });
+
+        var policy = ChatServiceSession.BuildSessionPolicy(
+            new ServiceOptions(),
+            Array.Empty<ToolPackAvailabilityInfo>(),
+            Array.Empty<ToolPluginAvailabilityInfo>(),
+            Array.Empty<string>(),
+            null,
+            Array.Empty<string>(),
+            new ToolRuntimePolicyDiagnostics {
+                WriteGovernanceMode = ToolWriteGovernanceMode.Enforced,
+                RequireWriteGovernanceRuntime = false,
+                WriteGovernanceRuntimeConfigured = false,
+                RequireWriteAuditSinkForWriteOperations = false,
+                WriteAuditSinkMode = ToolWriteAuditSinkMode.None,
+                WriteAuditSinkConfigured = false,
+                AuthenticationPreset = ToolAuthenticationRuntimePreset.Default,
+                RequireExplicitRoutingMetadata = false,
+                RequireAuthenticationRuntime = false,
+                AuthenticationRuntimeConfigured = false,
+                RequireSuccessfulSmtpProbeForSend = false,
+                SmtpProbeMaxAgeSeconds = 0
+            },
+            orchestrationCatalog: orchestrationCatalog);
+
+        var plugin = Assert.Single(policy.Plugins);
+        Assert.Equal("ops_inventory", plugin.Id);
+        Assert.Equal("Ops Inventory", plugin.Name);
+        Assert.Equal("closed_source", plugin.Origin);
+        Assert.Equal(ToolPackSourceKind.ClosedSource, plugin.SourceKind);
+        Assert.True(plugin.Enabled);
+        Assert.Equal(new[] { "ops_inventory" }, plugin.PackIds);
+
+        var hello = new HelloMessage {
+            Kind = ChatServiceMessageKind.Response,
+            RequestId = "req_plugin_fallback",
+            Name = "IntelligenceX.Chat.Service",
+            Version = "1.0.0",
+            ProcessId = "1234",
+            Policy = policy
+        };
+
+        var json = JsonSerializer.Serialize<ChatServiceMessage>(hello, ChatServiceJsonContext.Default.ChatServiceMessage);
+        using var doc = JsonDocument.Parse(json);
+        var serializedPlugin = doc.RootElement
+            .GetProperty("policy")
+            .GetProperty("plugins")[0];
+
+        Assert.Equal("ops_inventory", serializedPlugin.GetProperty("id").GetString());
+        Assert.Equal("Ops Inventory", serializedPlugin.GetProperty("name").GetString());
+        Assert.Equal("closed_source", serializedPlugin.GetProperty("origin").GetString());
+        Assert.Equal("ClosedSource", serializedPlugin.GetProperty("sourceKind").GetString());
+        Assert.Equal("ops_inventory", serializedPlugin.GetProperty("packIds")[0].GetString());
+    }
+
+    [Fact]
+    public void BuildSessionPolicy_BackfillsSparsePluginMetadataFromPackSummaries() {
+        var orchestrationCatalog = ToolOrchestrationCatalog.Build(
+            Array.Empty<ToolDefinition>(),
+            new IToolPack[] {
+                new SyntheticPolicyPack(
+                    id: "ops_inventory",
+                    name: "Ops Inventory",
+                    sourceKind: "closed_source",
+                    engineId: "computerx",
+                    category: "system",
+                    capabilityTags: new[] { "host_inventory", "remote_analysis" },
+                    tier: ToolCapabilityTier.DangerousWrite)
+            });
+
+        var policy = ChatServiceSession.BuildSessionPolicy(
+            new ServiceOptions(),
+            Array.Empty<ToolPackAvailabilityInfo>(),
+            new[] {
+                new ToolPluginAvailabilityInfo {
+                    Id = "ops_inventory",
+                    Name = "",
+                    Origin = "",
+                    SourceKind = "",
+                    DefaultEnabled = true,
+                    Enabled = true,
+                    IsDangerous = false,
+                    PackIds = Array.Empty<string>(),
+                    SkillIds = new[] { " REPORTING.CUSTOM ", "reporting.custom" }
+                }
+            },
+            Array.Empty<string>(),
+            null,
+            Array.Empty<string>(),
+            new ToolRuntimePolicyDiagnostics {
+                WriteGovernanceMode = ToolWriteGovernanceMode.Enforced,
+                RequireWriteGovernanceRuntime = false,
+                WriteGovernanceRuntimeConfigured = false,
+                RequireWriteAuditSinkForWriteOperations = false,
+                WriteAuditSinkMode = ToolWriteAuditSinkMode.None,
+                WriteAuditSinkConfigured = false,
+                AuthenticationPreset = ToolAuthenticationRuntimePreset.Default,
+                RequireExplicitRoutingMetadata = false,
+                RequireAuthenticationRuntime = false,
+                AuthenticationRuntimeConfigured = false,
+                RequireSuccessfulSmtpProbeForSend = false,
+                SmtpProbeMaxAgeSeconds = 0
+            },
+            orchestrationCatalog: orchestrationCatalog);
+
+        var plugin = Assert.Single(policy.Plugins);
+        Assert.Equal("Ops Inventory", plugin.Name);
+        Assert.Equal("unknown", plugin.Origin);
+        Assert.Equal(ToolPackSourceKind.ClosedSource, plugin.SourceKind);
+        Assert.True(plugin.IsDangerous);
+        Assert.Equal(new[] { "ops_inventory" }, plugin.PackIds);
+        Assert.Equal(new[] { "reporting.custom" }, plugin.SkillIds);
+
+        var hello = new HelloMessage {
+            Kind = ChatServiceMessageKind.Response,
+            RequestId = "req_plugin_backfill",
+            Name = "IntelligenceX.Chat.Service",
+            Version = "1.0.0",
+            ProcessId = "1234",
+            Policy = policy
+        };
+
+        var json = JsonSerializer.Serialize<ChatServiceMessage>(hello, ChatServiceJsonContext.Default.ChatServiceMessage);
+        using var doc = JsonDocument.Parse(json);
+        var serializedPlugin = doc.RootElement
+            .GetProperty("policy")
+            .GetProperty("plugins")[0];
+
+        Assert.Equal("Ops Inventory", serializedPlugin.GetProperty("name").GetString());
+        Assert.Equal("unknown", serializedPlugin.GetProperty("origin").GetString());
+        Assert.Equal("ClosedSource", serializedPlugin.GetProperty("sourceKind").GetString());
+        Assert.True(serializedPlugin.GetProperty("isDangerous").GetBoolean());
+        Assert.Equal("ops_inventory", serializedPlugin.GetProperty("packIds")[0].GetString());
+        Assert.Equal("reporting.custom", serializedPlugin.GetProperty("skillIds")[0].GetString());
+    }
+
+    [Fact]
     public void BuildSessionPolicy_TreatsWriteCapableNonDangerousPackAsNonReadOnly() {
         var definitions = new[] {
             new ToolDefinition(
@@ -554,5 +772,32 @@ public sealed class SessionRuntimePolicyHelloContractTests {
         Assert.NotNull(snapshot.Autonomy);
         Assert.Equal(new[] { "email" }, snapshot.Autonomy!.WriteCapablePackIds);
         Assert.Equal(new[] { "email" }, snapshot.Autonomy.GovernedWritePackIds);
+    }
+
+    private sealed class SyntheticPolicyPack : IToolPack {
+        public SyntheticPolicyPack(
+            string id,
+            string name,
+            string sourceKind,
+            string engineId,
+            string category,
+            IReadOnlyList<string> capabilityTags,
+            ToolCapabilityTier tier = ToolCapabilityTier.ReadOnly) {
+            Descriptor = new ToolPackDescriptor {
+                Id = id,
+                Name = name,
+                Tier = tier,
+                SourceKind = sourceKind,
+                EngineId = engineId,
+                Category = category,
+                CapabilityTags = capabilityTags
+            };
+        }
+
+        public ToolPackDescriptor Descriptor { get; }
+
+        public void Register(ToolRegistry registry) {
+            _ = registry;
+        }
     }
 }

@@ -2,20 +2,87 @@ using System;
 using System.IO;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.Service;
+using IntelligenceX.Chat.Tooling;
+using IntelligenceX.Tools.Common;
 using Xunit;
 
 namespace IntelligenceX.Chat.Tests;
 
 public sealed partial class ChatServiceRoutingTrimTests {
     [Fact]
+    public void ResolveWorkingMemoryCapabilityRoutingFamiliesForTesting_UsesRuntimeRoutingCatalogFamilies() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        session.SetCapabilitySnapshotContextForTesting(
+            Array.Empty<ToolPackAvailabilityInfo>(),
+            new ToolRoutingCatalogDiagnostics {
+                TotalTools = 1,
+                RoutingAwareTools = 1,
+                MissingRoutingContractTools = 0,
+                DomainFamilyTools = 1,
+                ExpectedDomainFamilyMissingTools = 0,
+                DomainFamilyMissingActionTools = 0,
+                ActionWithoutFamilyTools = 0,
+                FamilyActionConflictFamilies = 0,
+                FamilyActions = new[] {
+                    new ToolRoutingFamilyActionSummary {
+                        Family = "corp_internal",
+                        ActionId = "act_domain_scope_corp_internal_custom",
+                        ToolCount = 1
+                    }
+                }
+            });
+
+        var families = session.ResolveWorkingMemoryCapabilityRoutingFamiliesForTesting(new[] { "public_domain" });
+
+        Assert.Equal(new[] { "corp_internal" }, families);
+    }
+
+    [Fact]
     public void WorkingMemoryCheckpoint_AugmentsCompactFollowUpAfterRestart() {
         var pendingActionsStorePath = CreateAllowedPendingActionsStorePath("ix-chat-working-memory", out var root);
         const string threadId = "thread-working-memory";
 
         try {
+            var routingDiagnostics = new ToolRoutingCatalogDiagnostics {
+                TotalTools = 2,
+                RoutingAwareTools = 2,
+                MissingRoutingContractTools = 0,
+                DomainFamilyTools = 2,
+                ExpectedDomainFamilyMissingTools = 0,
+                DomainFamilyMissingActionTools = 0,
+                ActionWithoutFamilyTools = 0,
+                FamilyActionConflictFamilies = 0,
+                FamilyActions = new[] {
+                    new ToolRoutingFamilyActionSummary {
+                        Family = "ad_domain",
+                        ActionId = "act_domain_scope_ad_domain_diagnostics",
+                        ToolCount = 1
+                    },
+                    new ToolRoutingFamilyActionSummary {
+                        Family = "public_domain",
+                        ActionId = "act_domain_scope_public_domain_query",
+                        ToolCount = 1
+                    }
+                }
+            };
+            var packAvailability = new[] {
+                new ToolPackAvailabilityInfo {
+                    Id = "active_directory",
+                    Name = "Active Directory",
+                    SourceKind = "builtin",
+                    Enabled = true
+                },
+                new ToolPackAvailabilityInfo {
+                    Id = "eventlog",
+                    Name = "Event Log",
+                    SourceKind = "builtin",
+                    Enabled = true
+                }
+            };
             var session1 = new ChatServiceSession(
                 new ServiceOptions { PendingActionsStorePath = pendingActionsStorePath },
                 Stream.Null);
+            session1.SetCapabilitySnapshotContextForTesting(packAvailability, routingDiagnostics);
             session1.RememberWorkingMemoryCheckpointForTesting(
                 threadId: threadId,
                 intentAnchor: "Run AD replication + failed-logon diagnostics across DCs and summarize top risks.",
@@ -28,6 +95,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
                 priorAnswerPlanMissingLiveEvidence: "cert status and memory usage",
                 priorAnswerPlanPreferredPackIds: new[] { "active_directory", "system" },
                 priorAnswerPlanPreferredToolNames: new[] { "ad_ldap_diagnostics", "system_hardware_summary" },
+                priorAnswerPlanPreferredDeferredWorkCapabilityIds: new[] { "reporting" },
                 priorAnswerPlanPrimaryArtifact: "table",
                 enabledPackIds: new[] { "adplayground", "eventlog" },
                 routingFamilies: new[] { "ad_domain", "public_domain" },
@@ -37,6 +105,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             var session2 = new ChatServiceSession(
                 new ServiceOptions { PendingActionsStorePath = pendingActionsStorePath },
                 Stream.Null);
+            session2.SetCapabilitySnapshotContextForTesting(packAvailability, routingDiagnostics);
             var augmented = session2.TryAugmentRoutedUserRequestFromWorkingMemoryCheckpointForTesting(
                 threadId,
                 userRequest: "run now",
@@ -51,6 +120,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             Assert.Contains("last_missing_live_evidence: cert status and memory usage", routedFromCheckpoint, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("last_preferred_pack_ids: active_directory, system", routedFromCheckpoint, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("last_preferred_tool_names: ad_ldap_diagnostics, system_hardware_summary", routedFromCheckpoint, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("last_preferred_deferred_work_capability_ids: reporting", routedFromCheckpoint, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("last_primary_artifact: table", routedFromCheckpoint, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("ix:working-memory:v1", routedFromCheckpoint, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("intent_anchor:", routedFromCheckpoint, StringComparison.OrdinalIgnoreCase);
@@ -62,10 +132,8 @@ public sealed partial class ChatServiceRoutingTrimTests {
             Assert.Contains("prior_answer_plan_missing_live_evidence: cert status and memory usage", routedFromCheckpoint, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("prior_answer_plan_preferred_pack_ids: active_directory, system", routedFromCheckpoint, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("prior_answer_plan_preferred_tool_names: ad_ldap_diagnostics, system_hardware_summary", routedFromCheckpoint, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("prior_answer_plan_preferred_deferred_work_capability_ids: reporting", routedFromCheckpoint, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("prior_answer_plan_primary_artifact: table", routedFromCheckpoint, StringComparison.OrdinalIgnoreCase);
-            Assert.Contains("ix:capability-snapshot:v1", routedFromCheckpoint, StringComparison.OrdinalIgnoreCase);
-            Assert.Contains("enabled_packs:", routedFromCheckpoint, StringComparison.OrdinalIgnoreCase);
-            Assert.Contains("routing_families:", routedFromCheckpoint, StringComparison.OrdinalIgnoreCase);
         } finally {
             try {
                 if (Directory.Exists(root)) {
@@ -478,6 +546,51 @@ public sealed partial class ChatServiceRoutingTrimTests {
             "last_unresolved_ask: confirm whether ADRODC rows were omitted by the upstream collector or filtered client-side",
             routedFromCheckpoint,
             StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void WorkingMemoryCheckpoint_AnswerPlanStoresPreferredDeferredWorkCapabilityIds() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        const string threadId = "thread-working-memory-answer-plan-deferred";
+
+        var reviewedDraft = ChatServiceSession.ResolveReviewedAssistantDraft("""
+            [Answer progression plan]
+            ix:answer-plan:v1
+            user_goal: prepare the follow-up deliverables
+            resolved_so_far: summarized the incident findings for the operator
+            unresolved_now: send the report and email follow-up
+            carry_forward_unresolved_focus: true
+            carry_forward_reason: the delivery step still remains after the summary
+            preferred_deferred_work_capability_ids: Reporting, email
+            primary_artifact: prose
+            advances_current_ask: true
+            advance_reason: carries the delivery intent into the next step
+
+            The findings are ready to deliver as a report and email follow-up.
+            """);
+
+        session.RememberWorkingMemoryCheckpointFromAnswerPlanForTesting(
+            threadId: threadId,
+            userIntent: "Prepare the follow-up deliverables.",
+            routedUserRequest: "Prepare the follow-up deliverables.",
+            answerPlan: reviewedDraft.AnswerPlan);
+
+        var found = session.TryGetWorkingMemoryPreferredDeferredWorkCapabilityIdsForTesting(
+            threadId,
+            out var preferredDeferredWorkCapabilityIds);
+
+        Assert.True(found);
+        Assert.Equal(new[] { "reporting", "email" }, preferredDeferredWorkCapabilityIds);
+
+        var augmented = session.TryAugmentRoutedUserRequestFromWorkingMemoryCheckpointForTesting(
+            threadId,
+            userRequest: "run now",
+            routedUserRequest: "run now",
+            out var routedFromCheckpoint);
+
+        Assert.True(augmented);
+        Assert.Contains("last_preferred_deferred_work_capability_ids: reporting, email", routedFromCheckpoint, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("prior_answer_plan_preferred_deferred_work_capability_ids: reporting, email", routedFromCheckpoint, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

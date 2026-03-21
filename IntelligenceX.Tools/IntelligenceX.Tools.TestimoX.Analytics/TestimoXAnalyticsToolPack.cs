@@ -29,7 +29,14 @@ public sealed class TestimoXAnalyticsToolPack : IToolPack, IToolPackCatalogProvi
         SourceKind = "closed_source",
         EngineId = "testimox_analytics",
         Category = "testimox",
-        CapabilityTags = new[] { "analytics", "evidence", ToolPackCapabilityTags.LocalAnalysis, "posture", "reporting" },
+        CapabilityTags = new[] {
+            "analytics",
+            "evidence",
+            ToolPackCapabilityTags.LocalAnalysis,
+            "posture",
+            "reporting",
+            ToolPackCapabilityTags.DeferredCapabilityReporting
+        },
         CapabilityParity = TestimoXAnalyticsToolPackParity.Slices
     };
 

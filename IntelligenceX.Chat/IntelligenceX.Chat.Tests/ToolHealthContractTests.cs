@@ -1037,6 +1037,54 @@ public sealed class ToolHealthContractTests {
             DangerousToolsEnabled = true,
             DangerousPackIds = new[] { "active_directory" },
             RepresentativeExamples = new[] { "inspect host posture before expanding into remote follow-up" },
+            DeferredWorkAffordances = new[] {
+                new SessionCapabilityDeferredWorkAffordanceDto {
+                    CapabilityId = "background_followup",
+                    DisplayName = "Background Follow Up",
+                    Summary = "Background follow-up can be tracked and advanced by the runtime background scheduler.",
+                    AvailabilityMode = "runtime_scheduler",
+                    SupportsBackgroundExecution = true
+                },
+                new SessionCapabilityDeferredWorkAffordanceDto {
+                    CapabilityId = "reporting",
+                    DisplayName = "Reporting",
+                    Summary = "Reporting is advertised by enabled pack metadata: testimox_analytics.",
+                    AvailabilityMode = "pack_declared",
+                    PackIds = new[] { "testimox_analytics" },
+                    RoutingFamilies = new[] { "monitoring_artifacts" },
+                    RepresentativeExamples = new[] { "open a stored monitoring HTML report snapshot from an allowed history directory" }
+                }
+            },
+            ToolingSnapshot = new SessionCapabilityToolingSnapshotDto {
+                Source = "service_runtime",
+                Packs = new[] {
+                    new ToolPackInfoDto {
+                        Id = "eventlog",
+                        Name = "Event Log",
+                        Tier = CapabilityTier.ReadOnly,
+                        Enabled = true,
+                        SourceKind = ToolPackSourceKind.Builtin,
+                        EngineId = "windows_eventing",
+                        CapabilityTags = new[] { "events", "host_diagnostics" },
+                        IsDangerous = false
+                    }
+                },
+                Plugins = new[] {
+                    new PluginInfoDto {
+                        Id = "ops_bundle",
+                        Name = "Ops Bundle",
+                        Origin = "plugin_folder",
+                        SourceKind = ToolPackSourceKind.ClosedSource,
+                        Version = "1.2.3",
+                        DefaultEnabled = true,
+                        Enabled = true,
+                        IsDangerous = false,
+                        PackIds = new[] { "eventlog" },
+                        RootPath = @"C:\plugins\ops-bundle",
+                        SkillIds = new[] { "event-triage" }
+                    }
+                }
+            },
             CrossPackTargetPackDisplayNames = new[] { "Event Log", "System" },
             Autonomy = new SessionCapabilityAutonomySummaryDto {
                 RemoteCapableToolCount = 2,
@@ -1086,6 +1134,16 @@ public sealed class ToolHealthContractTests {
         Assert.True(parsed.DangerousToolsEnabled);
         Assert.Equal(new[] { "active_directory" }, parsed.DangerousPackIds);
         Assert.Equal("inspect host posture before expanding into remote follow-up", Assert.Single(parsed.RepresentativeExamples));
+        Assert.Equal(2, parsed.DeferredWorkAffordances.Length);
+        Assert.Equal("background_followup", parsed.DeferredWorkAffordances[0].CapabilityId);
+        Assert.Equal("reporting", parsed.DeferredWorkAffordances[1].CapabilityId);
+        Assert.Equal("testimox_analytics", Assert.Single(parsed.DeferredWorkAffordances[1].PackIds));
+        Assert.NotNull(parsed.ToolingSnapshot);
+        Assert.Equal("service_runtime", parsed.ToolingSnapshot!.Source);
+        Assert.Equal("eventlog", Assert.Single(parsed.ToolingSnapshot.Packs).Id);
+        Assert.Equal("windows_eventing", Assert.Single(parsed.ToolingSnapshot.Packs).EngineId);
+        Assert.Equal("ops_bundle", Assert.Single(parsed.ToolingSnapshot.Plugins).Id);
+        Assert.Equal(@"C:\plugins\ops-bundle", Assert.Single(parsed.ToolingSnapshot.Plugins).RootPath);
         Assert.Equal(new[] { "Event Log", "System" }, parsed.CrossPackTargetPackDisplayNames);
         Assert.NotNull(parsed.Autonomy);
         Assert.Equal(3, parsed.Autonomy!.TargetScopedToolCount);

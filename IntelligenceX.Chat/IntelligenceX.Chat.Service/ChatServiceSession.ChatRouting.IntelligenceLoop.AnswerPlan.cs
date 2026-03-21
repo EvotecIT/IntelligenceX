@@ -15,6 +15,7 @@ internal sealed partial class ChatServiceSession {
         string MissingLiveEvidence,
         string[] PreferredPackIds,
         string[] PreferredToolNames,
+        string[] PreferredDeferredWorkCapabilityIds,
         bool AllowCachedEvidenceReuse,
         bool PreferCachedEvidenceReuse,
         string CachedEvidenceReuseReason,
@@ -41,6 +42,7 @@ internal sealed partial class ChatServiceSession {
                 MissingLiveEvidence: string.Empty,
                 PreferredPackIds: Array.Empty<string>(),
                 PreferredToolNames: Array.Empty<string>(),
+                PreferredDeferredWorkCapabilityIds: Array.Empty<string>(),
                 AllowCachedEvidenceReuse: false,
                 PreferCachedEvidenceReuse: false,
                 CachedEvidenceReuseReason: string.Empty,
@@ -88,6 +90,7 @@ internal sealed partial class ChatServiceSession {
             missing_live_evidence: <short line or none>
             preferred_pack_ids: <csv pack ids or none>
             preferred_tool_names: <csv tool names or none>
+            preferred_deferred_work_capability_ids: <csv deferred capability ids or none>
             allow_cached_evidence_reuse: true|false
             prefer_cached_evidence_reuse: true|false
             cached_evidence_reuse_reason: <short line or none>
@@ -109,6 +112,7 @@ internal sealed partial class ChatServiceSession {
             Set requires_live_execution to true when the current ask still needs fresh tool execution instead of capability explanation or cached evidence.
             Use missing_live_evidence to name the fresh evidence that is still missing (for example cert status, disk state, memory usage).
             preferred_pack_ids and preferred_tool_names should be compact planning hints for the next execution attempt.
+            preferred_deferred_work_capability_ids should name runtime-registered deferred follow-up capabilities like email, reporting, or notification when that deliverable format matters for the next step.
             Set allow_cached_evidence_reuse to true only when recent read-only evidence remains acceptable for this exact continuation.
             Set prefer_cached_evidence_reuse to true only when this turn should explicitly reuse the latest fresh read-only evidence snapshot on a compact continuation instead of rerunning tools.
             Start your output with this exact answer-plan block, then a blank line, then the revised assistant response text for the user.
@@ -145,6 +149,7 @@ internal sealed partial class ChatServiceSession {
         var missingLiveEvidence = string.Empty;
         var preferredPackIds = Array.Empty<string>();
         var preferredToolNames = Array.Empty<string>();
+        var preferredDeferredWorkCapabilityIds = Array.Empty<string>();
         var cachedEvidenceReuseReason = string.Empty;
         var primaryArtifact = string.Empty;
         var requestedArtifactVisibilityReason = string.Empty;
@@ -229,6 +234,14 @@ internal sealed partial class ChatServiceSession {
                     preferredToolNamesValue,
                     static value => NormalizeToolNameForAnswerPlan(value),
                     maxItems: 8);
+                continue;
+            }
+
+            if (TryParseStructuredKeyValueLine(trimmed, "preferred_deferred_work_capability_ids", out var preferredDeferredWorkCapabilityIdsValue)) {
+                preferredDeferredWorkCapabilityIds = NormalizeStructuredMetadataCsv(
+                    preferredDeferredWorkCapabilityIdsValue,
+                    static value => NormalizeDeferredWorkCapabilityId(value),
+                    maxItems: 6);
                 continue;
             }
 
@@ -348,6 +361,7 @@ internal sealed partial class ChatServiceSession {
             MissingLiveEvidence: NormalizeStructuredMetadataText(missingLiveEvidence),
             PreferredPackIds: preferredPackIds,
             PreferredToolNames: preferredToolNames,
+            PreferredDeferredWorkCapabilityIds: preferredDeferredWorkCapabilityIds,
             AllowCachedEvidenceReuse: effectiveAllowCachedEvidenceReuse,
             PreferCachedEvidenceReuse: hasPreferCachedEvidenceReuse && preferCachedEvidenceReuse,
             CachedEvidenceReuseReason: NormalizeStructuredMetadataText(cachedEvidenceReuseReason),

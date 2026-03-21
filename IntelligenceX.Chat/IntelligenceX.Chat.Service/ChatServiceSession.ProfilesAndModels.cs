@@ -653,6 +653,7 @@ internal sealed partial class ChatServiceSession {
         nameof(_packs),
         nameof(_packAvailability),
         nameof(_pluginAvailability),
+        nameof(_pluginCatalog),
         nameof(_startupWarnings),
         nameof(_pluginSearchPaths),
         nameof(_runtimePolicyDiagnostics),
@@ -664,6 +665,7 @@ internal sealed partial class ChatServiceSession {
         IToolPack[] packs,
         ToolPackAvailabilityInfo[] packAvailability,
         ToolPluginAvailabilityInfo[] pluginAvailability,
+        ToolPluginCatalogInfo[] pluginCatalog,
         string[] pluginSearchPaths,
         string[] startupWarnings,
         SessionStartupBootstrapTelemetryDto startupBootstrap,
@@ -675,6 +677,7 @@ internal sealed partial class ChatServiceSession {
         _packs = packs;
         _packAvailability = packAvailability;
         _pluginAvailability = pluginAvailability;
+        _pluginCatalog = pluginCatalog;
         _pluginSearchPaths = pluginSearchPaths;
         _startupWarnings = startupWarnings;
         _startupBootstrap = startupBootstrap;
@@ -818,6 +821,7 @@ internal sealed partial class ChatServiceSession {
         var packs = bootstrapResult.Packs.ToArray();
         var packAvailability = bootstrapResult.PackAvailability.ToArray();
         var pluginAvailability = bootstrapResult.PluginAvailability.ToArray();
+        var pluginCatalog = bootstrapResult.PluginCatalog.ToArray();
         var startupBootstrap = new SessionStartupBootstrapTelemetryDto {
             TotalMs = totalMs,
             RuntimePolicyMs = runtimePolicyMs,
@@ -853,6 +857,7 @@ internal sealed partial class ChatServiceSession {
             packs,
             packAvailability,
             pluginAvailability,
+            pluginCatalog,
             pluginSearchPaths,
             warnings,
             startupBootstrap,
@@ -869,6 +874,7 @@ internal sealed partial class ChatServiceSession {
                 Packs = packs,
                 PackAvailability = packAvailability,
                 PluginAvailability = bootstrapResult.PluginAvailability.ToArray(),
+                PluginCatalog = bootstrapResult.PluginCatalog.ToArray(),
                 StartupWarnings = warnings,
                 StartupBootstrap = startupBootstrap,
                 PluginSearchPaths = pluginSearchPaths,
@@ -888,6 +894,7 @@ internal sealed partial class ChatServiceSession {
         nameof(_packs),
         nameof(_packAvailability),
         nameof(_pluginAvailability),
+        nameof(_pluginCatalog),
         nameof(_startupWarnings),
         nameof(_pluginSearchPaths),
         nameof(_runtimePolicyDiagnostics),
@@ -926,6 +933,7 @@ internal sealed partial class ChatServiceSession {
             snapshot.Packs,
             snapshot.PackAvailability.ToArray(),
             snapshot.PluginAvailability.ToArray(),
+            snapshot.PluginCatalog.ToArray(),
             snapshot.PluginSearchPaths.ToArray(),
             startupWarnings,
             startupBootstrap,
@@ -961,6 +969,7 @@ internal sealed partial class ChatServiceSession {
         Volatile.Write(ref _cachedToolDefinitions, snapshot.ToolDefinitions);
         _packAvailability = snapshot.PackAvailability.ToArray();
         _pluginAvailability = snapshot.PluginAvailability.ToArray();
+        _pluginCatalog = snapshot.PluginCatalog.ToArray();
         _pluginSearchPaths = snapshot.PluginSearchPaths.ToArray();
         _runtimePolicyDiagnostics = snapshot.RuntimePolicyDiagnostics;
         _routingCatalogDiagnostics = snapshot.RoutingCatalogDiagnostics;
@@ -1022,6 +1031,9 @@ internal sealed partial class ChatServiceSession {
         builder.Append("smtp_probe_max_age_seconds=").Append(resolvedRuntimePolicyOptions.SmtpProbeMaxAgeSeconds.ToString(CultureInfo.InvariantCulture)).Append(';');
         builder.Append("runas_profile_path=").Append(Normalize(runtimePolicyOptions.RunAsProfilePath)).Append(';');
         builder.Append("auth_profile_path=").Append(Normalize(runtimePolicyOptions.AuthenticationProfilePath)).Append(';');
+        var runtimePolicyContext = ToolRuntimePolicyBootstrap.CreateContext(runtimePolicyOptions);
+        var bootstrapOptions = ToolPackBootstrap.CreateRuntimeBootstrapOptions(options, runtimePolicyContext);
+        builder.Append("discovery_fingerprint=").Append(ToolPackBootstrap.BuildDiscoveryFingerprint(bootstrapOptions)).Append(';');
         return builder.ToString();
     }
 

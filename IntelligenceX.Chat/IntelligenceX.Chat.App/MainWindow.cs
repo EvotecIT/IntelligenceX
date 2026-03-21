@@ -343,6 +343,7 @@ public sealed partial class MainWindow : Window {
     private string? _serviceActiveProfileName;
     private SessionPolicyDto? _sessionPolicy;
     private ToolPackInfoDto[] _toolCatalogPacks = Array.Empty<ToolPackInfoDto>();
+    private PluginInfoDto[] _toolCatalogPlugins = Array.Empty<PluginInfoDto>();
     private SessionRoutingCatalogDiagnosticsDto? _toolCatalogRoutingCatalog;
     private SessionCapabilitySnapshotDto? _toolCatalogCapabilitySnapshot;
     private SessionCapabilityBackgroundSchedulerDto? _backgroundSchedulerStatusSnapshot;
