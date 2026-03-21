@@ -177,6 +177,95 @@ public sealed class RuntimeToolingMetadataResolverTests {
     }
 
     /// <summary>
+    /// Ensures the combined resolver keeps pack/plugin/source precedence aligned for all app surfaces.
+    /// </summary>
+    [Fact]
+    public void Resolve_ReturnsConsistentMetadataFromSharedToolingSnapshot() {
+        var resolution = RuntimeToolingMetadataResolver.Resolve(
+            new SessionPolicyDto {
+                ReadOnly = true,
+                DangerousToolsEnabled = false,
+                MaxToolRounds = 4,
+                ParallelTools = true,
+                AllowMutatingParallelToolCalls = false,
+                Packs = new[] {
+                    new ToolPackInfoDto {
+                        Id = "legacy_pack",
+                        Name = "Legacy Pack",
+                        Tier = CapabilityTier.ReadOnly,
+                        Enabled = false,
+                        IsDangerous = false
+                    }
+                },
+                Plugins = new[] {
+                    new PluginInfoDto {
+                        Id = "legacy_plugin",
+                        Name = "Legacy Plugin",
+                        Enabled = false,
+                        DefaultEnabled = false,
+                        Origin = "legacy",
+                        IsDangerous = false
+                    }
+                },
+                CapabilitySnapshot = new SessionCapabilitySnapshotDto {
+                    RegisteredTools = 2,
+                    EnabledPackCount = 1,
+                    PluginCount = 1,
+                    EnabledPluginCount = 1,
+                    ToolingAvailable = true,
+                    AllowedRootCount = 0,
+                    ToolingSnapshot = new SessionCapabilityToolingSnapshotDto {
+                        Source = "service_runtime",
+                        Packs = new[] {
+                            new ToolPackInfoDto {
+                                Id = "eventlog",
+                                Name = "Event Viewer",
+                                Tier = CapabilityTier.ReadOnly,
+                                Enabled = true,
+                                IsDangerous = false
+                            }
+                        },
+                        Plugins = new[] {
+                            new PluginInfoDto {
+                                Id = "ops_bundle",
+                                Name = "Ops Bundle",
+                                Enabled = true,
+                                DefaultEnabled = true,
+                                Origin = "plugin_folder",
+                                IsDangerous = false
+                            }
+                        }
+                    }
+                }
+            },
+            toolCatalogPacks: new[] {
+                new ToolPackInfoDto {
+                    Id = "preview_pack",
+                    Name = "Preview Pack",
+                    Tier = CapabilityTier.ReadOnly,
+                    Enabled = true,
+                    IsDangerous = false
+                }
+            },
+            toolCatalogPlugins: new[] {
+                new PluginInfoDto {
+                    Id = "preview_plugin",
+                    Name = "Preview Plugin",
+                    Enabled = true,
+                    DefaultEnabled = true,
+                    Origin = "preview",
+                    IsDangerous = false
+                }
+            },
+            toolCatalogCapabilitySnapshot: null);
+
+        Assert.Equal("service_runtime", resolution.Source);
+        Assert.NotNull(resolution.CapabilitySnapshot);
+        Assert.Equal("eventlog", Assert.Single(resolution.Packs).Id);
+        Assert.Equal("ops_bundle", Assert.Single(resolution.Plugins).Id);
+    }
+
+    /// <summary>
     /// Ensures the app publishes nested tooling provenance inside capability-snapshot JSON for the shell fallback path.
     /// </summary>
     [Fact]
