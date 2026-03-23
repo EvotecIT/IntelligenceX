@@ -25,7 +25,7 @@
     <!-- fallback base path for package mode when no local checkout is present -->
     <OfficeImoRepoRoot Condition="'$(OfficeImoRepoRoot)' == ''">$(OfficeImoRepoRootCandidate1)</OfficeImoRepoRoot>
     <UseLocalOfficeImoCheckout Condition="'$(UseLocalOfficeImoCheckoutInput)' != ''">$(UseLocalOfficeImoCheckoutInput)</UseLocalOfficeImoCheckout>
-    <UseLocalOfficeImoCheckout Condition="'$(UseLocalOfficeImoCheckout)' == '' and '$(OfficeImoRepoRootResolved)' != ''">true</UseLocalOfficeImoCheckout>
+    <!-- Package-first by default after the OfficeIMO markdown contract was published; opt in explicitly for local sibling checkout work. -->
     <UseLocalOfficeImoCheckout Condition="'$(UseLocalOfficeImoCheckout)' == ''">false</UseLocalOfficeImoCheckout>
 
     <DbaClientXRepoRootCandidate1>$([System.IO.Path]::GetFullPath('$(IxChatSiblingsRoot1)DbaClientX\\'))</DbaClientXRepoRootCandidate1>
@@ -37,9 +37,9 @@
     <DbaClientXRepoRoot Condition="'$(DbaClientXRepoRoot)' == '' and Exists('$(DbaClientXRepoRootCandidate2)DbaClientX.SQLite\\DbaClientX.SQLite.csproj')">$(DbaClientXRepoRootCandidate2)</DbaClientXRepoRoot>
     <DbaClientXRepoRoot Condition="'$(DbaClientXRepoRoot)' == ''">$(DbaClientXRepoRootCandidate1)</DbaClientXRepoRoot>
 
-    <OfficeImoMarkdownNuGetVersion Condition="'$(OfficeImoMarkdownNuGetVersion)' == ''">0.6.2</OfficeImoMarkdownNuGetVersion>
-    <OfficeImoMarkdownRendererNuGetVersion Condition="'$(OfficeImoMarkdownRendererNuGetVersion)' == ''">0.2.2</OfficeImoMarkdownRendererNuGetVersion>
-    <OfficeImoExcelNuGetVersion Condition="'$(OfficeImoExcelNuGetVersion)' == ''">0.6.15</OfficeImoExcelNuGetVersion>
-    <OfficeImoWordMarkdownNuGetVersion Condition="'$(OfficeImoWordMarkdownNuGetVersion)' == ''">1.0.9</OfficeImoWordMarkdownNuGetVersion>
+    <OfficeImoMarkdownNuGetVersion Condition="'$(OfficeImoMarkdownNuGetVersion)' == ''">0.6.6</OfficeImoMarkdownNuGetVersion>
+    <OfficeImoMarkdownRendererNuGetVersion Condition="'$(OfficeImoMarkdownRendererNuGetVersion)' == ''">0.2.6</OfficeImoMarkdownRendererNuGetVersion>
+    <OfficeImoExcelNuGetVersion Condition="'$(OfficeImoExcelNuGetVersion)' == ''">0.6.19</OfficeImoExcelNuGetVersion>
+    <OfficeImoWordMarkdownNuGetVersion Condition="'$(OfficeImoWordMarkdownNuGetVersion)' == ''">1.0.13</OfficeImoWordMarkdownNuGetVersion>
   </PropertyGroup>
 </Project>

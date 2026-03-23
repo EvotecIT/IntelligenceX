@@ -168,7 +168,7 @@ public sealed partial class TranscriptHtmlFormatterTests {
     public void Format_ComposesOfficeImoSharedVisualHostsFixtureRoundTripIntoNativeVisualContract() {
         var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
         var now = new DateTime(2026, 3, 23, 12, 4, 18, DateTimeKind.Local);
-        string sourceHtml = ReadOfficeImoHtmlFixture("shared-visual-hosts.html");
+        string sourceHtml = ReadOfficeImoHtmlFixture("officeimo-shared-visual-hosts.html");
         string markdown = sourceHtml.ToMarkdown(new HtmlToMarkdownOptions {
             BaseUri = new Uri("https://example.com/visuals/archive.html"),
             MarkdownWriteOptions = MarkdownWriteOptions.CreateOfficeIMOProfile()

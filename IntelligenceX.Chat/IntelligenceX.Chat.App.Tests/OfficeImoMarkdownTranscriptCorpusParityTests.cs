@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using IntelligenceX.Chat.App;
 using IntelligenceX.Chat.ExportArtifacts;
+using OfficeIMO.Markdown;
 using OfficeIMO.MarkdownRenderer;
 using Xunit;
 
@@ -9,7 +10,7 @@ namespace IntelligenceX.Chat.App.Tests;
 
 /// <summary>
 /// Verifies the IX runtime/render and portable-export seams stay aligned with the explicit OfficeIMO corpus fixtures
-/// when the sibling OfficeIMO repository is available in the workspace.
+/// when the local optional OfficeIMO corpus is available in the workspace.
 /// </summary>
 public sealed class OfficeImoMarkdownTranscriptCorpusParityTests {
     /// <summary>
@@ -111,45 +112,13 @@ public sealed class OfficeImoMarkdownTranscriptCorpusParityTests {
     }
 
     private static string ApplyExplicitTranscriptPreparation(string markdown, MarkdownRendererOptions options) {
-        var preparationType = Type.GetType(
-            "OfficeIMO.Markdown.MarkdownTranscriptPreparation, OfficeIMO.Markdown",
-            throwOnError: false);
-        var method = preparationType?.GetMethod(
-            "PrepareIntelligenceXTranscriptForExport",
-            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static,
-            binder: null,
-            types: [typeof(string)],
-            modifiers: null);
-        if (method == null) {
-            return ApplyMarkdownPreProcessors(markdown, options);
-        }
-
-        return (string)(method.Invoke(null, [markdown]) ?? markdown);
+        return MarkdownTranscriptPreparation.PrepareIntelligenceXTranscriptForExport(markdown);
     }
 
     private static string ApplyExplicitPortableTranscriptPreparation(string markdown) {
-        var preparationType = Type.GetType(
-            "OfficeIMO.Markdown.MarkdownTranscriptPreparation, OfficeIMO.Markdown",
-            throwOnError: false);
-        var visualFenceLanguageModeType = Type.GetType(
-            "OfficeIMO.Markdown.MarkdownVisualFenceLanguageMode, OfficeIMO.Markdown",
-            throwOnError: false);
-        if (preparationType == null || visualFenceLanguageModeType == null) {
-            return string.Empty;
-        }
-
-        var method = preparationType.GetMethod(
-            "PrepareIntelligenceXTranscriptForExport",
-            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static,
-            binder: null,
-            types: [typeof(string), visualFenceLanguageModeType],
-            modifiers: null);
-        if (method == null) {
-            return string.Empty;
-        }
-
-        var genericMode = Enum.Parse(visualFenceLanguageModeType, "GenericSemanticFence", ignoreCase: false);
-        return (string)(method.Invoke(null, [markdown, genericMode]) ?? markdown);
+        return MarkdownTranscriptPreparation.PrepareIntelligenceXTranscriptForExport(
+            markdown,
+            MarkdownVisualFenceLanguageMode.GenericSemanticFence);
     }
 
     private static string ApplyMarkdownPreProcessors(string markdown, MarkdownRendererOptions options) {

@@ -186,25 +186,8 @@ public sealed partial class TranscriptHtmlFormatterTests {
     }
 
     private static string ReadOfficeImoHtmlFixture(string fileName) {
-        string path = Path.Combine(GetOfficeImoTestsRoot(), "Markdown", "Fixtures", fileName);
+        string path = Path.Combine(GetAppTestsProjectRoot(), "Fixtures", fileName);
         return File.ReadAllText(path);
-    }
-
-    private static string GetOfficeImoTestsRoot() {
-        string testsProjectRoot = GetAppTestsProjectRoot();
-        string[] fallbackCandidates = new[] {
-            Path.GetFullPath(Path.Combine(testsProjectRoot, "..", "..", "..", "OfficeIMO", "OfficeIMO.Tests")),
-            Path.GetFullPath(Path.Combine(testsProjectRoot, "..", "..", "..", "..", "OfficeIMO", "OfficeIMO.Tests"))
-        };
-
-        for (int i = 0; i < fallbackCandidates.Length; i++) {
-            string candidate = fallbackCandidates[i];
-            if (File.Exists(Path.Combine(candidate, "OfficeIMO.Tests.csproj"))) {
-                return candidate;
-            }
-        }
-
-        throw new DirectoryNotFoundException("Could not locate OfficeIMO.Tests project root from IntelligenceX.Chat.App.Tests.");
     }
 
     private static string GetAppTestsProjectRoot() {
