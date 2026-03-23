@@ -49,11 +49,13 @@ public static class TranscriptMarkdownContract {
             return string.Empty;
         }
 
-        return TryInvokeTranscriptPreparationMethod(
-                   "PrepareIntelligenceXTranscriptForExport",
-                   withoutMarkers,
-                   "GenericSemanticFence")
-               ?? NormalizeAliasVisualFenceOpenersToGeneric(PrepareTranscriptMarkdownForExport(withoutMarkers));
+        var prepared = TryInvokeTranscriptPreparationMethod(
+                           "PrepareIntelligenceXTranscriptForExport",
+                           withoutMarkers,
+                           "GenericSemanticFence")
+                       ?? PrepareTranscriptMarkdownForExport(withoutMarkers);
+
+        return NormalizeAliasVisualFenceOpenersToGeneric(prepared);
     }
 
     /// <summary>
@@ -116,7 +118,12 @@ public static class TranscriptMarkdownContract {
                 return null;
             }
 
-            var visualFenceLanguageMode = Enum.Parse(visualFenceLanguageModeType, visualFenceLanguageModeName, ignoreCase: false);
+            if (!Enum.TryParse(visualFenceLanguageModeType, visualFenceLanguageModeName, ignoreCase: false, out object? visualFenceLanguageMode) ||
+                visualFenceLanguageMode == null ||
+                !Enum.IsDefined(visualFenceLanguageModeType, visualFenceLanguageMode)) {
+                return null;
+            }
+
             return method.Invoke(null, [markdown, visualFenceLanguageMode]) as string;
         } catch (Exception ex) when (IsCompatibilityFallbackException(ex)) {
             return null;
@@ -248,6 +255,7 @@ public static class TranscriptMarkdownContract {
         var replacement = language switch {
             "ix-chart" => "chart",
             "ix-network" => "network",
+            "visnetwork" => "network",
             "ix-dataview" => "dataview",
             _ => string.Empty
         };

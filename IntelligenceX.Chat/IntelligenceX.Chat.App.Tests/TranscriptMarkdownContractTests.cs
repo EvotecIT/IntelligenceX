@@ -67,6 +67,24 @@ public sealed class TranscriptMarkdownContractTests {
     }
 
     /// <summary>
+    /// Ensures portable markdown export also normalizes the legacy visnetwork alias onto the generic network fence.
+    /// </summary>
+    [Fact]
+    public void PrepareTranscriptMarkdownForPortableExport_NormalizesVisnetworkAliasToNetwork() {
+        const string markdown = """
+            ```visnetwork
+            {"nodes":[{"id":"A","label":"User"}],"edges":[]}
+            ```
+            """;
+
+        var normalized = TranscriptMarkdownContract.PrepareTranscriptMarkdownForPortableExport(markdown)
+            .Replace("\r\n", "\n", StringComparison.Ordinal);
+
+        Assert.Contains("```network", normalized, StringComparison.Ordinal);
+        Assert.DoesNotContain("```visnetwork", normalized, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Ensures DOCX preparation keeps legacy grouped definition repair isolated behind an explicit capability flag.
     /// </summary>
     [Fact]
