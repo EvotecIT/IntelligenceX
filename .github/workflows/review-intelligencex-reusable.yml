@@ -103,16 +103,6 @@ on:
         required: false
         default: false
         type: boolean
-      fail_open:
-        description: 'Emit a failure summary instead of failing the workflow'
-        required: false
-        default: true
-        type: boolean
-      fail_open_transient_only:
-        description: 'When true, fail-open only on transient reviewer/provider errors'
-        required: false
-        default: false
-        type: boolean
       preflight:
         description: 'Run health check before review'
         required: false
@@ -322,16 +312,6 @@ on:
         type: number
       diagnostics:
         description: 'Enable reviewer diagnostics'
-        required: false
-        default: false
-        type: boolean
-      fail_open:
-        description: 'Emit a failure summary instead of failing the workflow'
-        required: false
-        default: true
-        type: boolean
-      fail_open_transient_only:
-        description: 'When true, fail-open only on transient reviewer/provider errors'
         required: false
         default: false
         type: boolean
@@ -759,8 +739,8 @@ jobs:
           INPUT_PROGRESS_UPDATE_SECONDS: ${{ inputs.progress_update_seconds }}
           INPUT_PROGRESS_PREVIEW_CHARS: ${{ inputs.progress_preview_chars }}
           INPUT_DIAGNOSTICS: ${{ inputs.diagnostics }}
-          INPUT_FAIL_OPEN: ${{ inputs.fail_open }}
-          INPUT_FAIL_OPEN_TRANSIENT_ONLY: ${{ inputs.fail_open_transient_only }}
+          REVIEW_FAIL_OPEN: true
+          REVIEW_FAIL_OPEN_TRANSIENT_ONLY: false
           INPUT_PREFLIGHT: ${{ inputs.preflight }}
           INPUT_PREFLIGHT_TIMEOUT_SECONDS: ${{ inputs.preflight_timeout_seconds }}
 
@@ -858,8 +838,8 @@ jobs:
           INPUT_PROGRESS_UPDATE_SECONDS: ${{ inputs.progress_update_seconds }}
           INPUT_PROGRESS_PREVIEW_CHARS: ${{ inputs.progress_preview_chars }}
           INPUT_DIAGNOSTICS: ${{ inputs.diagnostics }}
-          INPUT_FAIL_OPEN: ${{ inputs.fail_open }}
-          INPUT_FAIL_OPEN_TRANSIENT_ONLY: ${{ inputs.fail_open_transient_only }}
+          REVIEW_FAIL_OPEN: true
+          REVIEW_FAIL_OPEN_TRANSIENT_ONLY: false
           INPUT_PREFLIGHT: ${{ inputs.preflight }}
           INPUT_PREFLIGHT_TIMEOUT_SECONDS: ${{ inputs.preflight_timeout_seconds }}
 
@@ -963,8 +943,8 @@ jobs:
           INPUT_PROGRESS_UPDATE_SECONDS: ${{ inputs.progress_update_seconds }}
           INPUT_PROGRESS_PREVIEW_CHARS: ${{ inputs.progress_preview_chars }}
           INPUT_DIAGNOSTICS: ${{ inputs.diagnostics }}
-          INPUT_FAIL_OPEN: ${{ inputs.fail_open }}
-          INPUT_FAIL_OPEN_TRANSIENT_ONLY: ${{ inputs.fail_open_transient_only }}
+          REVIEW_FAIL_OPEN: true
+          REVIEW_FAIL_OPEN_TRANSIENT_ONLY: false
           INPUT_PREFLIGHT: ${{ inputs.preflight }}
           INPUT_PREFLIGHT_TIMEOUT_SECONDS: ${{ inputs.preflight_timeout_seconds }}
 
