@@ -384,6 +384,7 @@ build/*
 !Build/powerforge.dotnetpublish.json
 !Build/Run-Project.ps1
 !Build/run.profiles.json
+!Build/store.submit.tray.example.json
 !Build/workspace.validation.json
 
 # Allow release command sources under IntelligenceX.Cli/Release

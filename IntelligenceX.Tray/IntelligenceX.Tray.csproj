@@ -1,16 +1,21 @@
 <Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
         <OutputType>WinExe</OutputType>
-        <TargetFramework>net10.0-windows</TargetFramework>
+        <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
         <UseWPF>true</UseWPF>
         <AssemblyName>IntelligenceX.Tray</AssemblyName>
         <RootNamespace>IntelligenceX.Tray</RootNamespace>
+        <EnableWindowsTargeting>true</EnableWindowsTargeting>
+        <WindowsPackageType>None</WindowsPackageType>
+        <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+        <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
         <Nullable>enable</Nullable>
         <ImplicitUsings>enable</ImplicitUsings>
         <LangVersion>Latest</LangVersion>
     </PropertyGroup>
     <ItemGroup>
         <PackageReference Include="H.NotifyIcon.Wpf" Version="2.4.1" />
+        <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.250907003" />
     </ItemGroup>
     <ItemGroup>
         <Resource Include="Resources\tray-icon.ico" />
