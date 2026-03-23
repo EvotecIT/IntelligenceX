@@ -9,8 +9,7 @@ using Xunit;
 namespace IntelligenceX.Chat.App.Tests;
 
 /// <summary>
-/// Verifies the IX runtime/render and portable-export seams stay aligned with the explicit OfficeIMO corpus fixtures
-/// when the local optional OfficeIMO corpus is available in the workspace.
+/// Verifies the IX runtime/render and portable-export seams stay aligned with the explicit OfficeIMO corpus fixtures.
 /// </summary>
 public sealed class OfficeImoMarkdownTranscriptCorpusParityTests {
     /// <summary>
@@ -20,9 +19,6 @@ public sealed class OfficeImoMarkdownTranscriptCorpusParityTests {
     [Fact]
     public void IxCompatibilityTranscriptVisualPack_PreProcessorsMatchExplicitOfficeImoTranscriptPreset() {
         string markdown = LoadOfficeImoCorpusFixture("ix-compat-transcript-visual-pack.md");
-        if (markdown.Length == 0) {
-            return;
-        }
 
         var explicitOptions = TryCreateExplicitOfficeImoTranscriptMinimal();
         if (explicitOptions == null) {
@@ -45,10 +41,6 @@ public sealed class OfficeImoMarkdownTranscriptCorpusParityTests {
     [Fact]
     public void IxCompatibilityTranscriptVisualPack_RenderingMatchesExplicitOfficeImoTranscriptPreset() {
         string markdown = LoadOfficeImoCorpusFixture("ix-compat-transcript-visual-pack.md");
-        if (markdown.Length == 0) {
-            return;
-        }
-
         var expectedOptions = TryCreateExplicitOfficeImoTranscriptDesktopShell();
         if (expectedOptions == null) {
             return;
@@ -69,10 +61,6 @@ public sealed class OfficeImoMarkdownTranscriptCorpusParityTests {
     [Fact]
     public void IxCompatibilityTranscriptChartSuite_RenderingMatchesExplicitOfficeImoTranscriptPreset() {
         string markdown = LoadOfficeImoCorpusFixture("ix-compat-transcript-chart-suite.md");
-        if (markdown.Length == 0) {
-            return;
-        }
-
         var expectedOptions = TryCreateExplicitOfficeImoTranscriptDesktopShell();
         if (expectedOptions == null) {
             return;
@@ -93,15 +81,8 @@ public sealed class OfficeImoMarkdownTranscriptCorpusParityTests {
     [Fact]
     public void SourceDerivedCachedEvidenceVisualCorpus_PortableExportMatchesExplicitOfficeImoGenericPreparation() {
         string markdown = LoadOfficeImoCorpusFixture("ix-source-derived-cached-evidence-visuals.md");
-        if (markdown.Length == 0) {
-            return;
-        }
-
         var actual = TranscriptMarkdownContract.PrepareTranscriptMarkdownForPortableExport(markdown);
         var expected = ApplyExplicitPortableTranscriptPreparation(markdown);
-        if (expected.Length == 0) {
-            return;
-        }
 
         Assert.Equal(expected, actual);
         Assert.Contains("```chart", actual, StringComparison.Ordinal);
@@ -147,31 +128,8 @@ public sealed class OfficeImoMarkdownTranscriptCorpusParityTests {
     }
 
     private static string LoadOfficeImoCorpusFixture(string name) {
-        var path = TryFindOfficeImoCorpusFixture(name);
-        if (path == null) {
-            return string.Empty;
-        }
-
+        var path = Path.Combine(GetAppTestsProjectRoot(), "Fixtures", "Compatibility", name);
         return File.ReadAllText(path);
-    }
-
-    private static string? TryFindOfficeImoCorpusFixture(string name) {
-        for (var current = new DirectoryInfo(AppContext.BaseDirectory); current != null; current = current.Parent) {
-            var candidate = Path.Combine(
-                current.FullName,
-                "OfficeIMO",
-                "OfficeIMO.Tests",
-                "Markdown",
-                "Fixtures",
-                "Compatibility",
-                name);
-
-            if (File.Exists(candidate)) {
-                return candidate;
-            }
-        }
-
-        return null;
     }
 
     private static string NormalizeHtml(string html) {
@@ -207,5 +165,19 @@ public sealed class OfficeImoMarkdownTranscriptCorpusParityTests {
         }
 
         return null;
+    }
+
+    private static string GetAppTestsProjectRoot() {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir != null) {
+            string candidate = Path.Combine(dir.FullName, "IntelligenceX.Chat.App.Tests.csproj");
+            if (File.Exists(candidate)) {
+                return dir.FullName;
+            }
+
+            dir = dir.Parent;
+        }
+
+        throw new DirectoryNotFoundException("Could not locate IntelligenceX.Chat.App.Tests project root from test runtime base directory.");
     }
 }
