@@ -158,3 +158,4 @@ public sealed partial class UiShellAssetsTests {
         Assert.Contains("pre.querySelector(\"code.language-network\")", script, StringComparison.Ordinal);
     }
 }
+
