@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using IntelligenceX.Chat.App;
 using IntelligenceX.Chat.App.Rendering;
+using OfficeIMO.Markdown;
+using OfficeIMO.Markdown.Html;
 using OfficeIMO.MarkdownRenderer;
 using Xunit;
 
@@ -76,16 +78,16 @@ public sealed partial class TranscriptHtmlFormatterTests {
     }
 
     /// <summary>
-    /// Ensures ix-chart fenced blocks render through the native OfficeIMO visual contract.
+    /// Ensures generic chart fenced blocks render through the native OfficeIMO visual contract.
     /// </summary>
     [Fact]
-    public void Format_ComposesIxChartAliasIntoNativeChartVisualContract() {
+    public void Format_ComposesGenericChartFenceIntoNativeChartVisualContract() {
         var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
         var now = new DateTime(2026, 2, 20, 9, 12, 45, DateTimeKind.Local);
         var html = TranscriptHtmlFormatter.Format(new[] {
             ("Assistant", """
                           Chart preview:
-                          ```ix-chart
+                          ```chart
                           {"type":"bar","data":{"labels":["A"],"datasets":[{"label":"X","data":[1]}]}}
                           ```
                           Interpretation line.
@@ -93,20 +95,20 @@ public sealed partial class TranscriptHtmlFormatterTests {
         }, "HH:mm:ss", options);
 
         Assert.Contains("Chart preview:", html, StringComparison.Ordinal);
-        AssertIxChartAliasRendersAsNativeChartVisual(html);
+        AssertChartRendersAsNativeChartVisual(html);
     }
 
     /// <summary>
-    /// Ensures ix-network fenced blocks render through the native OfficeIMO visual contract.
+    /// Ensures generic network fenced blocks render through the native OfficeIMO visual contract.
     /// </summary>
     [Fact]
-    public void Format_ComposesIxNetworkAliasIntoNativeNetworkVisualContract() {
+    public void Format_ComposesGenericNetworkFenceIntoNativeNetworkVisualContract() {
         var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
         var now = new DateTime(2026, 2, 20, 9, 16, 22, DateTimeKind.Local);
         var html = TranscriptHtmlFormatter.Format(new[] {
             ("Assistant", """
                           Relationship network:
-                          ```ix-network
+                          ```network
                           {"nodes":[{"id":"A","label":"User"},{"id":"B","label":"Group"}],"edges":[{"from":"A","to":"B","label":"memberOf"}]}
                           ```
                           Interpretation line.
@@ -114,11 +116,79 @@ public sealed partial class TranscriptHtmlFormatterTests {
         }, "HH:mm:ss", options);
 
         Assert.Contains("Relationship network:", html, StringComparison.Ordinal);
-        AssertIxNetworkAliasRendersAsNativeNetworkVisual(html);
+        AssertNetworkRendersAsNativeNetworkVisual(html);
     }
 
     /// <summary>
-    /// Ensures historical JSON-fenced network payloads are upgraded into the ix-network render path during transcript formatting.
+    /// Ensures the live transcript formatter composes multiple generic chart/network fences in the same message.
+    /// </summary>
+    [Fact]
+    public void Format_ComposesMultipleGenericVisualFencesIntoNativeVisualContract() {
+        var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
+        var now = new DateTime(2026, 3, 23, 10, 18, 12, DateTimeKind.Local);
+        var html = TranscriptHtmlFormatter.Format(new[] {
+            ("Assistant", """
+                          Mixed visual preview:
+
+                          Generic chart:
+                          ```chart
+                          {"type":"bar","data":{"labels":["A"],"datasets":[{"label":"X","data":[1]}]}}
+                          ```
+
+                          Second chart:
+                          ```chart
+                          {"type":"bar","data":{"labels":["B"],"datasets":[{"label":"Y","data":[2]}]}}
+                          ```
+
+                          Generic network:
+                          ```network
+                          {"nodes":[{"id":"A","label":"User"},{"id":"B","label":"Group"}],"edges":[{"source":"A","target":"B","label":"memberOf"}]}
+                          ```
+
+                          Second network:
+                          ```network
+                          {"nodes":[{"id":"C","label":"Computer"},{"id":"D","label":"OU"}],"edges":[{"from":"C","to":"D","label":"contains"}]}
+                          ```
+                          """, now)
+        }, "HH:mm:ss", options);
+
+        Assert.Contains("Mixed visual preview:", html, StringComparison.Ordinal);
+        Assert.Equal(2, CountOccurrences(html, "data-omd-visual-kind=\"chart\""));
+        Assert.Equal(2, CountOccurrences(html, "data-omd-visual-kind=\"network\""));
+        Assert.DoesNotContain("language-chart", html, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("language-network", html, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Ensures the live transcript renderer can consume markdown recovered from the shared OfficeIMO visual-host HTML fixture.
+    /// </summary>
+    [Fact]
+    public void Format_ComposesOfficeImoSharedVisualHostsFixtureRoundTripIntoNativeVisualContract() {
+        var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
+        var now = new DateTime(2026, 3, 23, 12, 4, 18, DateTimeKind.Local);
+        string sourceHtml = ReadOfficeImoHtmlFixture("officeimo-shared-visual-hosts.html");
+        string markdown = sourceHtml.ToMarkdown(new HtmlToMarkdownOptions {
+            BaseUri = new Uri("https://example.com/visuals/archive.html"),
+            MarkdownWriteOptions = MarkdownWriteOptions.CreateOfficeIMOProfile()
+        });
+
+        var html = TranscriptHtmlFormatter.Format(new[] {
+            ("Assistant", markdown, now)
+        }, "HH:mm:ss", options);
+
+        Assert.Contains("Shared Visual Archive", html, StringComparison.Ordinal);
+        Assert.Equal(1, CountOccurrences(html, "data-omd-visual-kind=\"chart\""));
+        Assert.Equal(1, CountOccurrences(html, "data-omd-visual-kind=\"network\""));
+        Assert.Equal(1, CountOccurrences(html, "data-omd-visual-kind=\"dataview\""));
+        Assert.Contains("Chart preview", html, StringComparison.Ordinal);
+        Assert.Contains("Network preview", html, StringComparison.Ordinal);
+        Assert.Contains("Dataview preview", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("data-omd-visual-contract", markdown, StringComparison.Ordinal);
+        Assert.DoesNotContain("<figure class=\"omd-visual", html, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Ensures historical JSON-fenced network payloads are upgraded into the generic network render path during transcript formatting.
     /// </summary>
     [Fact]
     public void Format_UpgradesLegacyJsonNetworkFenceForHistoricalTranscriptMessages() {
@@ -135,7 +205,7 @@ public sealed partial class TranscriptHtmlFormatterTests {
         }, "HH:mm:ss", options);
 
         Assert.Contains("Scope graph preview:", html, StringComparison.Ordinal);
-        AssertIxNetworkAliasRendersAsNativeNetworkVisual(html);
+        AssertNetworkRendersAsNativeNetworkVisual(html);
         Assert.DoesNotContain("language-json", html, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -456,4 +526,3 @@ public sealed partial class TranscriptHtmlFormatterTests {
         Assert.DoesNotContain("data-msg-index='1'", html);
     }
 }
-

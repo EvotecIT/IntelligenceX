@@ -15,10 +15,9 @@ internal sealed partial class ChatServiceSession {
     private const string ProactiveVisualizationMarker = "ix:proactive-visualization:v1";
     private const string AutoVisualType = "auto";
     private const string MermaidVisualType = "mermaid";
-    private const string ChartVisualType = "ix-chart";
-    private const string NetworkVisualType = "ix-network";
+    private const string ChartVisualType = "chart";
+    private const string NetworkVisualType = "network";
     private const string TableVisualType = "table";
-    private const string LegacyNetworkVisualType = "visnetwork";
     private const int MaxSupportedProactiveVisualBlocks = 3;
     private static readonly string[] NetworkJsonNodeAliases = new[] { "nodes", "vertices", "entities" };
     private static readonly string[] NetworkJsonEdgeAliases = new[] { "edges", "links", "relationships", "connections" };
@@ -37,15 +36,15 @@ internal sealed partial class ChatServiceSession {
         new(
             CanonicalType: ChartVisualType,
             SupportsProactiveFenceGuidance: true,
-            PreferredAliases: new[] { "chart", "plot" },
+            PreferredAliases: new[] { "plot" },
             FenceLanguageSignals: new[] { ChartVisualType },
-            InlineTokenSignals: new[] { ChartVisualType, "chart" }),
+            InlineTokenSignals: new[] { ChartVisualType, "plot" }),
         new(
             CanonicalType: NetworkVisualType,
             SupportsProactiveFenceGuidance: true,
-            PreferredAliases: new[] { "network", "graph", "node-link", LegacyNetworkVisualType },
-            FenceLanguageSignals: new[] { NetworkVisualType, LegacyNetworkVisualType },
-            InlineTokenSignals: new[] { NetworkVisualType, "network", LegacyNetworkVisualType }),
+            PreferredAliases: new[] { "graph", "node-link" },
+            FenceLanguageSignals: new[] { NetworkVisualType },
+            InlineTokenSignals: new[] { NetworkVisualType, "graph" }),
         new(
             CanonicalType: TableVisualType,
             SupportsProactiveFenceGuidance: false,

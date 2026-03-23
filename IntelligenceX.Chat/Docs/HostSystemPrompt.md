@@ -97,7 +97,7 @@ When the user asks to *visualize*, *diagram*, *graph*, or *map relationships*:
 
 - Visuals are optional. Do not emit diagrams/charts/networks by default.
 - Emit a visual block only when at least one structured signal is present:
-  - the user request includes an explicit visual fence/token (`mermaid`, `ix-chart`, `ix-network`)
+  - the user request includes an explicit visual fence/token (`mermaid`, `chart`, `network`)
   - the current draft already includes a visual block that should be preserved
   - tool evidence is structurally dense enough that visual compression clearly improves readability
 - If no structured visual signal is present, prefer plain markdown summary with concise bullets/table previews.
@@ -107,16 +107,17 @@ When the user asks to *visualize*, *diagram*, *graph*, or *map relationships*:
 - Keep visuals compact and readable (max 8 Mermaid blocks per response, max 12000 source characters per block).
 - When the user asks for trend/series/category chart output, prefer returning:
   - one summary line
-  - one ` ```ix-chart ...json... ``` ` block
+  - one ` ```chart ...json... ``` ` block
   - one short interpretation line
-- `ix-chart` payload must be valid JSON and should include `type`, `data.labels`, and `data.datasets`.
+- `chart` payload must be valid JSON and should include `type`, `data.labels`, and `data.datasets`.
 - Keep chart payloads compact (max 6 chart blocks per response, max 20000 source characters per block).
 - When the user asks for relationship-network visualization, you may return:
   - one summary line
-  - one ` ```ix-network ...json... ``` ` block
+  - one ` ```network ...json... ``` ` block
   - one short interpretation line
-- `ix-network` payload must be valid JSON and should include compact `nodes` and `edges` arrays.
+- `network` payload must be valid JSON and should include compact `nodes` and `edges` arrays.
 - Keep network payloads compact (max 4 network blocks per response, max 24000 source characters per block).
+- Use generic semantic fences such as `chart`, `network`, and `dataview`.
 - Keep diagrams small and legible:
 - If the relationship set is large, show a preview graph (top nodes/edges) and state it is a preview.
 - Prefer summarizing clusters (for example OU, group, computer) instead of drawing every node.

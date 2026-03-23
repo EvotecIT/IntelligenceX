@@ -106,6 +106,13 @@ Mermaid should be surfaced as either:
 - `summary_markdown` with a fenced Mermaid block, or
 - `render.kind=code` with `language=mermaid` pointing to Mermaid source.
 
+For first-party visuals, prefer generic render languages for new output:
+- `language=chart`
+- `language=network`
+- `language=dataview`
+
+Legacy `ix-chart`, `ix-network`, and `ix-dataview` aliases remain acceptable when a host still depends on them.
+
 ## Pack Guidance Tools
 
 Each pack should expose a `*_pack_info` tool with:
@@ -135,6 +142,10 @@ Keep summaries CommonMark/GFM-friendly:
 - Code blocks: fenced with language tags
 - Mermaid: fenced blocks named `mermaid`
 - Charts: fenced blocks named `chart` containing JSON (Chart.js), if enabled by the host renderer
+- Networks: fenced blocks named `network` containing node/edge JSON
+- Data views: fenced blocks named `dataview` containing row/column JSON
+
+Prefer the generic visual fence names above for new output. Legacy `ix-chart`, `ix-network`, and `ix-dataview` fences are compatibility aliases.
 
 Avoid:
 
@@ -149,6 +160,7 @@ Preferred helpers in `IntelligenceX.Tools.Common`:
 - `ToolResponse.OkTablePreview(...)`
 - `ToolOutputHints.Meta(...)`
 - `ToolOutputHints.RenderTable(...)` / `RenderCode(...)` / `RenderMermaid(...)`
+- `ToolOutputHints.RenderChart(...)` / `RenderNetwork(...)` / `RenderDataView(...)`
 - `ToolMarkdown.*` and `MarkdownTable.Table(...)`
 - `ToolMarkdownContract.Create()` / `ToolMarkdownDocument` for composable summaries
 - `ToolTableViewEnvelope.TryBuildModelResponse(...)` for shared projection/view wrapper flow
