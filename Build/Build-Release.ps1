@@ -31,6 +31,10 @@
     [string] $SignToolPath = 'signtool.exe',
     [string] $SignThumbprint,
     [string] $SignSubjectName,
+    [ValidateSet('Warn','Fail','Skip')]
+    [string] $SignOnMissingTool,
+    [ValidateSet('Warn','Fail','Skip')]
+    [string] $SignOnFailure,
     [string] $SignTimestampUrl = 'http://timestamp.digicert.com',
     [string] $SignDescription = 'IntelligenceX Chat',
     [string] $SignUrl,
@@ -42,94 +46,105 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-function Write-Header($text) { Write-Host "`n=== $text ===" -ForegroundColor Cyan }
-function Write-Step($text) { Write-Host "[+] $text" -ForegroundColor Yellow }
-function Write-Ok($text) { Write-Host "[OK] $text" -ForegroundColor Green }
-function Write-Warn($text) { Write-Host "[!] $text" -ForegroundColor DarkYellow }
-
-function Invoke-ScriptFile {
+function Invoke-BuildProjectRelease {
     param(
         [Parameter(Mandatory)]
-        [string] $ScriptPath,
-        [Parameter(Mandatory)]
-        [hashtable] $Parameters
+        [string] $ScriptPath
     )
 
-    & $ScriptPath @Parameters
-    if ($LASTEXITCODE -ne 0) {
-        throw "Script failed with exit code ${LASTEXITCODE}: $ScriptPath"
+    $parameters = @{
+        Configuration = $Configuration
+        Targets = @('IntelligenceX.Chat.App')
+        Runtimes = @($Runtime)
+        Frameworks = @($AppFramework)
+        Styles = @('PortableCompat')
+        StageRoot = $OutDir
     }
-}
-
-function Remove-ReleaseSymbols {
-    param(
-        [Parameter(Mandatory)]
-        [string] $RootPath
-    )
-
+    if ($SkipWorkspaceBuild) {
+        $parameters['SkipWorkspaceBuild'] = $true
+    }
+    if ($SkipChecksums) {
+        $parameters['SkipChecksums'] = $true
+    }
     if ($IncludeSymbols) {
-        return
+        $parameters['IncludeSymbols'] = $true
     }
+    if ($SignInstaller) {
+        $effectiveSignThumbprint = Resolve-DefaultSignThumbprint -RepoRoot $script:RepoRoot -ExplicitThumbprint $SignThumbprint -UseTestimoXFallback $UseTestimoXSignThumbprintFallback
+        if ([string]::IsNullOrWhiteSpace($SignThumbprint) -and -not [string]::IsNullOrWhiteSpace($effectiveSignThumbprint)) {
+            $fromEnvironment = @('CERT_THUMBPRINT', 'SIGN_THUMBPRINT', 'CODE_SIGN_THUMBPRINT', 'INTELLIGENCEX_SIGN_THUMBPRINT', 'TESTIMOX_SIGN_THUMBPRINT') |
+                Where-Object { -not [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($_)) } |
+                Select-Object -First 1
 
-    Get-ChildItem -Path $RootPath -Recurse -File -ErrorAction SilentlyContinue |
-        Where-Object { $_.Extension -eq '.pdb' -or $_.Extension -eq '.wixpdb' } |
-        Remove-Item -Force -ErrorAction SilentlyContinue
-}
-
-function Write-Sha256Manifest {
-    param(
-        [Parameter(Mandatory)]
-        [string] $RootPath,
-        [Parameter(Mandatory)]
-        [string] $OutputPath
-    )
-
-    $files = Get-ChildItem -Path $RootPath -File -Recurse -ErrorAction SilentlyContinue |
-        Where-Object { $_.FullName -ne $OutputPath } |
-        Sort-Object FullName
-
-    $lines = [System.Collections.Generic.List[string]]::new()
-    foreach ($file in $files) {
-        $hash = Get-FileHash -Algorithm SHA256 -Path $file.FullName
-        $relative = [System.IO.Path]::GetRelativePath($RootPath, $file.FullName)
-        $lines.Add(("{0} *{1}" -f $hash.Hash.ToLowerInvariant(), $relative.Replace('\\', '/')))
-    }
-    Set-Content -Path $OutputPath -Value $lines -Encoding UTF8
-}
-
-function Resolve-TestimoXDefaultSignThumbprint {
-    param(
-        [Parameter(Mandatory)]
-        [string] $RepoRoot
-    )
-
-    $candidates = @(
-        (Join-Path $RepoRoot '..\TestimoX\Build\Build-TestimoX.Agent-MSI.ps1'),
-        (Join-Path $RepoRoot '..\TestimoX\Build\Prepare-TestimoX.Agent-MSI.ps1'),
-        (Join-Path $RepoRoot '..\TestimoX\Build\Deploy-TestimoX.Agent.ps1')
-    )
-
-    foreach ($candidate in $candidates) {
-        if (-not (Test-Path $candidate)) {
-            continue
-        }
-
-        try {
-            $raw = Get-Content -Path $candidate -Raw -ErrorAction Stop
-            $match = [System.Text.RegularExpressions.Regex]::Match(
-                $raw,
-                '(?im)^\s*\[string\]\s*\$SignThumbprint\s*=\s*''(?<thumb>[0-9a-f]{40})''')
-            if ($match.Success) {
-                return $match.Groups['thumb'].Value.ToLowerInvariant()
+            if ($fromEnvironment) {
+                Write-Step "Using signing thumbprint from environment variable $fromEnvironment."
+            } elseif ($UseTestimoXSignThumbprintFallback) {
+                Write-Warn 'Using default TestimoX signing thumbprint fallback from sibling repo.'
             }
-        } catch {
+        } elseif ([string]::IsNullOrWhiteSpace($effectiveSignThumbprint)) {
+            Write-Warn 'No default signing thumbprint found; MSI signing will rely on subject name or local cert auto-selection.'
+        }
+
+        $parameters['SignInstaller'] = $true
+        if (-not [string]::IsNullOrWhiteSpace($effectiveSignThumbprint)) {
+            $parameters['SignThumbprint'] = $effectiveSignThumbprint
         }
     }
+    if (-not [string]::IsNullOrWhiteSpace($SignToolPath)) {
+        $parameters['SignToolPath'] = $SignToolPath
+    }
+    if (-not [string]::IsNullOrWhiteSpace($SignSubjectName)) {
+        $parameters['SignSubjectName'] = $SignSubjectName
+    }
+    if (-not [string]::IsNullOrWhiteSpace($SignOnMissingTool)) {
+        $parameters['SignOnMissingTool'] = $SignOnMissingTool
+    }
+    if (-not [string]::IsNullOrWhiteSpace($SignOnFailure)) {
+        $parameters['SignOnFailure'] = $SignOnFailure
+    }
+    if (-not [string]::IsNullOrWhiteSpace($SignTimestampUrl)) {
+        $parameters['SignTimestampUrl'] = $SignTimestampUrl
+    }
+    if (-not [string]::IsNullOrWhiteSpace($SignDescription)) {
+        $parameters['SignDescription'] = $SignDescription
+    }
+    if (-not [string]::IsNullOrWhiteSpace($SignUrl)) {
+        $parameters['SignUrl'] = $SignUrl
+    }
+    if (-not [string]::IsNullOrWhiteSpace($SignCsp)) {
+        $parameters['SignCsp'] = $SignCsp
+    }
+    if (-not [string]::IsNullOrWhiteSpace($SignKeyContainer)) {
+        $parameters['SignKeyContainer'] = $SignKeyContainer
+    }
+    if (-not [string]::IsNullOrWhiteSpace($TestimoXRoot)) {
+        $parameters['TestimoXRoot'] = $TestimoXRoot
+    }
 
-    return $null
+    Invoke-ScriptFile -ScriptPath $ScriptPath -Parameters $parameters -FailureContext 'Unified Build-Project release failed.' -FailureHint 'Use Build-Project.ps1 -Plan to inspect the unified release graph, or rerun Build-Project.ps1 directly for a narrower repro.'
+}
+
+function Get-UnifiedReleaseFallbackReasons {
+    $reasons = [System.Collections.Generic.List[string]]::new()
+
+    if ($Frontend -ne 'app') {
+        $reasons.Add('Frontend host still uses the legacy path.')
+    }
+    if ($SkipPluginPackages) {
+        $reasons.Add('Skipping plugin packages requires the granular path.')
+    }
+    if ($SkipPortable) {
+        $reasons.Add('Skipping the portable bundle requires the granular path.')
+    }
+    if ($SkipInstaller) {
+        $reasons.Add('Skipping the installer requires the granular path.')
+    }
+    return @($reasons)
 }
 
 $script:RepoRoot = (Get-Item (Split-Path -Parent $MyInvocation.MyCommand.Path)).Parent.FullName
+. (Join-Path $script:RepoRoot 'Build\Internal\Build.ScriptSupport.ps1')
+. (Join-Path $script:RepoRoot 'Build\Internal\Resolve-ReleaseDefaults.ps1')
 
 if ([string]::IsNullOrWhiteSpace($ReleaseId)) {
     $ReleaseId = Get-Date -Format 'yyyyMMdd-HHmmss'
@@ -143,9 +158,10 @@ if ($ClearOut -and (Test-Path $OutDir)) {
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 
 $workspaceScript = Join-Path $script:RepoRoot 'Build\Build-Workspace.ps1'
-$pluginsScript = Join-Path $script:RepoRoot 'Build\Publish-Plugins.ps1'
-$portableScript = Join-Path $script:RepoRoot 'Build\Package-Portable.ps1'
-$installerScript = Join-Path $script:RepoRoot 'Build\Build-Installer.ps1'
+$buildProjectScript = Join-Path $script:RepoRoot 'Build\Build-Project.ps1'
+$pluginsScript = Join-Path $script:RepoRoot 'Build\Advanced\Publish-Plugins.ps1'
+$portableScript = Join-Path $script:RepoRoot 'Build\Advanced\Package-Portable.ps1'
+$installerScript = Join-Path $script:RepoRoot 'Build\Advanced\Build-Installer.ps1'
 
 $nugetOut = Join-Path $OutDir 'nuget'
 $portableOut = Join-Path $OutDir 'portable'
@@ -162,6 +178,22 @@ Write-Step "Framework: $Framework"
 Write-Step "App framework: $AppFramework"
 Write-Step "Output root: $OutDir"
 Write-Step "Include symbols: $([bool]$IncludeSymbols)"
+
+$fallbackReasons = @(Get-UnifiedReleaseFallbackReasons)
+$canUseUnifiedBuildProject = $fallbackReasons.Count -eq 0
+
+if ($canUseUnifiedBuildProject) {
+    Write-Header 'Unified Release'
+    Invoke-BuildProjectRelease -ScriptPath $buildProjectScript
+
+    Write-Ok "Release artifacts ready: $OutDir"
+    return
+}
+
+Write-Header 'Legacy Release Fallback'
+foreach ($reason in $fallbackReasons) {
+    Write-Step $reason
+}
 
 if (-not $SkipWorkspaceBuild) {
     Write-Header 'Workspace Build Validation'
@@ -180,7 +212,7 @@ if (-not $SkipWorkspaceBuild) {
     if (-not [string]::IsNullOrWhiteSpace($TestimoXRoot)) {
         $workspaceArgs['TestimoXRoot'] = $TestimoXRoot
     }
-    Invoke-ScriptFile -ScriptPath $workspaceScript -Parameters $workspaceArgs
+    Invoke-ScriptFile -ScriptPath $workspaceScript -Parameters $workspaceArgs -FailureContext 'Workspace validation failed before release packaging.' -FailureHint 'Use -SkipWorkspaceBuild if you already validated locally, or rerun Build-Workspace.ps1 directly to diagnose the failure.'
 }
 
 if (-not $SkipPluginPackages) {
@@ -193,7 +225,7 @@ if (-not $SkipPluginPackages) {
     if (-not [string]::IsNullOrWhiteSpace($TestimoXRoot)) {
         $pluginArgs['TestimoXRoot'] = $TestimoXRoot
     }
-    Invoke-ScriptFile -ScriptPath $pluginsScript -Parameters $pluginArgs
+    Invoke-ScriptFile -ScriptPath $pluginsScript -Parameters $pluginArgs -FailureContext 'Plugin packaging failed.' -FailureHint 'Run Build\\Advanced\\Publish-Plugins.ps1 directly if you want to narrow the failure to package generation only.'
 }
 
 if (-not $SkipPortable) {
@@ -220,7 +252,7 @@ if (-not $SkipPortable) {
     if (-not [string]::IsNullOrWhiteSpace($TestimoXRoot)) {
         $portableArgs['TestimoXRoot'] = $TestimoXRoot
     }
-    Invoke-ScriptFile -ScriptPath $portableScript -Parameters $portableArgs
+    Invoke-ScriptFile -ScriptPath $portableScript -Parameters $portableArgs -FailureContext 'Portable bundle generation failed.' -FailureHint 'Run Build\\Advanced\\Package-Portable.ps1 directly if you want to diagnose only the portable bundle path.'
     if ($Frontend -eq 'app' -or $IncludeService) {
         $serviceIncluded = $true
     }
@@ -252,14 +284,18 @@ if (-not $SkipInstaller) {
         $installerArgs['TestimoXRoot'] = $TestimoXRoot
     }
     if ($SignInstaller) {
-        if (-not $SignThumbprint -and $UseTestimoXSignThumbprintFallback) {
-            $resolvedThumbprint = Resolve-TestimoXDefaultSignThumbprint -RepoRoot $script:RepoRoot
-            if ($resolvedThumbprint) {
-                $SignThumbprint = $resolvedThumbprint
+        $SignThumbprint = Resolve-DefaultSignThumbprint -RepoRoot $script:RepoRoot -ExplicitThumbprint $SignThumbprint -UseTestimoXFallback $UseTestimoXSignThumbprintFallback
+        if (-not [string]::IsNullOrWhiteSpace($SignThumbprint)) {
+            $fromEnvironment = @('CERT_THUMBPRINT', 'SIGN_THUMBPRINT', 'CODE_SIGN_THUMBPRINT', 'INTELLIGENCEX_SIGN_THUMBPRINT', 'TESTIMOX_SIGN_THUMBPRINT') |
+                Where-Object { -not [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($_)) } |
+                Select-Object -First 1
+            if ($fromEnvironment) {
+                Write-Step "Using signing thumbprint from environment variable $fromEnvironment."
+            } elseif ($UseTestimoXSignThumbprintFallback) {
                 Write-Warn "Using default TestimoX signing thumbprint fallback from sibling repo."
-            } else {
-                Write-Warn 'No TestimoX signing thumbprint fallback found; MSI signing will rely on subject name or local cert auto-selection.'
             }
+        } else {
+            Write-Warn 'No default signing thumbprint found; MSI signing will rely on subject name or local cert auto-selection.'
         }
         $installerArgs['Sign'] = $true
         $installerArgs['SignToolPath'] = $SignToolPath
@@ -271,52 +307,10 @@ if (-not $SkipInstaller) {
         if ($SignCsp) { $installerArgs['SignCsp'] = $SignCsp }
         if ($SignKeyContainer) { $installerArgs['SignKeyContainer'] = $SignKeyContainer }
     }
-    Invoke-ScriptFile -ScriptPath $installerScript -Parameters $installerArgs
+    Invoke-ScriptFile -ScriptPath $installerScript -Parameters $installerArgs -FailureContext 'MSI build failed.' -FailureHint 'Run Build\\Advanced\\Build-Installer.ps1 directly if you want to diagnose only the installer path.'
     if ($Frontend -eq 'app' -or $IncludeService) {
         $serviceIncluded = $true
     }
-}
-
-Remove-ReleaseSymbols -RootPath $OutDir
-
-$manifest = [ordered]@{
-    schemaVersion = 1
-    releaseId = $ReleaseId
-    createdUtc = (Get-Date).ToUniversalTime().ToString('o')
-    runtime = $Runtime
-    frontend = $Frontend
-    framework = $Framework
-    appFramework = $AppFramework
-    configuration = $Configuration
-    includeService = $serviceIncluded
-    includeSymbols = [bool] $IncludeSymbols
-    outputRoot = $OutDir
-    artifacts = [ordered]@{
-        nuget = if (Test-Path $nugetOut) {
-            Get-ChildItem -Path $nugetOut -Filter '*.nupkg' -File -ErrorAction SilentlyContinue |
-                Sort-Object Name |
-                ForEach-Object { $_.FullName }
-        } else { @() }
-        portable = if (Test-Path $portableOut) {
-            Get-ChildItem -Path $portableOut -File -Recurse -ErrorAction SilentlyContinue |
-                Sort-Object FullName |
-                ForEach-Object { $_.FullName }
-        } else { @() }
-        installer = if (Test-Path $installerOut) {
-            Get-ChildItem -Path $installerOut -File -Recurse -ErrorAction SilentlyContinue |
-                Sort-Object FullName |
-                ForEach-Object { $_.FullName }
-        } else { @() }
-    }
-}
-$manifestPath = Join-Path $OutDir 'release-manifest.json'
-$manifest | ConvertTo-Json -Depth 6 | Set-Content -Path $manifestPath -Encoding UTF8
-
-if (-not $SkipChecksums) {
-    Write-Header 'Generate Checksums'
-    $checksumPath = Join-Path $OutDir 'SHA256SUMS.txt'
-    Write-Sha256Manifest -RootPath $OutDir -OutputPath $checksumPath
-    Write-Ok "Checksums: $checksumPath"
 }
 
 Write-Ok "Release artifacts ready: $OutDir"

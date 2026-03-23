@@ -19,7 +19,7 @@ dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -c Release -- se
 ## Build a local CLI binary
 
 ```powershell
-pwsh ./Build/Publish-Cli.ps1 -Runtime win-x64 -Configuration Release -Framework net8.0
+pwsh ./Build/Build-Project.ps1 -ToolsOnly -Targets IntelligenceX.Cli -Runtimes win-x64 -Frameworks net8.0 -Styles PortableCompat
 ```
 
 After publishing locally, run:

@@ -1,0 +1,247 @@
+{
+  "$schema": "https://raw.githubusercontent.com/EvotecIT/PSPublishModule/main/Schemas/powerforge.dotnetpublish.schema.json",
+  "SchemaVersion": 1,
+  "Profile": "release",
+  "Profiles": [
+    {
+      "Name": "release",
+      "Default": true
+    }
+  ],
+  "Projects": [
+    {
+      "Id": "cli",
+      "Path": "IntelligenceX.Cli/IntelligenceX.Cli.csproj",
+      "Group": "tools"
+    },
+    {
+      "Id": "tray",
+      "Path": "IntelligenceX.Tray/IntelligenceX.Tray.csproj",
+      "Group": "tools"
+    },
+    {
+      "Id": "chat-host",
+      "Path": "IntelligenceX.Chat/IntelligenceX.Chat.Host/IntelligenceX.Chat.Host.csproj",
+      "Group": "tools"
+    },
+    {
+      "Id": "chat-service",
+      "Path": "IntelligenceX.Chat/IntelligenceX.Chat.Service/IntelligenceX.Chat.Service.csproj",
+      "Group": "tools"
+    },
+    {
+      "Id": "chat-app",
+      "Path": "IntelligenceX.Chat/IntelligenceX.Chat.App/IntelligenceX.Chat.App.csproj",
+      "Group": "tools"
+    },
+    {
+      "Id": "chat-app-installer",
+      "Path": "Installer/IntelligenceX.Chat/IntelligenceX.Chat.Installer.wixproj",
+      "Group": "installer"
+    }
+  ],
+  "DotNet": {
+    "ProjectRoot": "..",
+    "Configuration": "Release",
+    "Restore": false,
+    "Build": false,
+    "NoRestoreInPublish": false,
+    "NoBuildInPublish": false
+  },
+  "Targets": [
+    {
+      "Name": "IntelligenceX.Cli",
+      "ProjectId": "cli",
+      "Kind": "Cli",
+      "Publish": {
+        "Framework": "net8.0",
+        "Styles": [
+          "FrameworkDependent",
+          "PortableCompat"
+        ],
+        "Runtimes": [
+          "win-x64",
+          "linux-x64",
+          "linux-arm64",
+          "osx-x64",
+          "osx-arm64"
+        ],
+        "OutputPath": "Artifacts/IntelligenceX.Cli/{rid}/{framework}/{style}",
+        "Zip": true,
+        "ZipNameTemplate": "IntelligenceX.Cli-{framework}-{rid}-{style}.zip",
+        "RenameTo": "intelligencex"
+      }
+    },
+    {
+      "Name": "IntelligenceX.Tray",
+      "ProjectId": "tray",
+      "Publish": {
+        "Framework": "net10.0-windows10.0.19041.0",
+        "Styles": [
+          "FrameworkDependent",
+          "PortableCompat"
+        ],
+        "Runtimes": [
+          "win-x64",
+          "win-arm64"
+        ],
+        "OutputPath": "Artifacts/IntelligenceX.Tray/{rid}/{framework}/{style}",
+        "Zip": true,
+        "ZipNameTemplate": "IntelligenceX.Tray-{framework}-{rid}-{style}.zip"
+      }
+    },
+    {
+      "Name": "IntelligenceX.Chat.Host",
+      "ProjectId": "chat-host",
+      "Publish": {
+        "Framework": "net10.0-windows",
+        "Styles": [
+          "FrameworkDependent",
+          "PortableCompat"
+        ],
+        "Runtimes": [
+          "win-x64",
+          "win-arm64"
+        ],
+        "OutputPath": "Artifacts/IntelligenceX.Chat.Host/{rid}/{framework}/{style}",
+        "Zip": true,
+        "ZipNameTemplate": "IntelligenceX.Chat.Host-{framework}-{rid}-{style}.zip"
+      }
+    },
+    {
+      "Name": "IntelligenceX.Chat.Service",
+      "ProjectId": "chat-service",
+      "Publish": {
+        "Framework": "net10.0-windows",
+        "Styles": [
+          "FrameworkDependent",
+          "PortableCompat"
+        ],
+        "Runtimes": [
+          "win-x64",
+          "win-arm64"
+        ],
+        "OutputPath": "Artifacts/IntelligenceX.Chat.Service/{rid}/{framework}/{style}",
+        "Zip": true,
+        "ZipNameTemplate": "IntelligenceX.Chat.Service-{framework}-{rid}-{style}.zip"
+      }
+    },
+    {
+      "Name": "IntelligenceX.Chat.App",
+      "ProjectId": "chat-app",
+      "Publish": {
+        "Framework": "net8.0-windows10.0.26100.0",
+        "Styles": [
+          "FrameworkDependent",
+          "PortableCompat"
+        ],
+        "Runtimes": [
+          "win-x64"
+        ],
+        "OutputPath": "Artifacts/IntelligenceX.Chat.App/{rid}/{framework}/{style}",
+        "Zip": true,
+        "ZipNameTemplate": "IntelligenceX.Chat.App-{framework}-{rid}-{style}.zip",
+        "StyleOverrides": {
+          "PortableCompat": {
+            "MsBuildProperties": {
+              "EnableMsixTooling": "true",
+              "WindowsAppSDKSelfContained": "true"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "Bundles": [
+    {
+      "Id": "IntelligenceX.Chat.Portable",
+      "PrepareFromTarget": "IntelligenceX.Chat.App",
+      "Frameworks": [
+        "net8.0-windows10.0.26100.0"
+      ],
+      "Runtimes": [
+        "win-x64"
+      ],
+      "Styles": [
+        "PortableCompat"
+      ],
+      "OutputPath": "Artifacts/Portable/{rid}/IntelligenceX.Chat-Portable-{rid}",
+      "Zip": true,
+      "ZipPath": "Artifacts/Portable/{rid}/IntelligenceX.Chat-Portable-{rid}.zip",
+      "Includes": [
+        {
+          "Target": "IntelligenceX.Chat.Service",
+          "Subdirectory": "service",
+          "Framework": "net10.0-windows",
+          "Style": "PortableCompat",
+          "Required": true
+        }
+      ],
+      "Scripts": [
+        {
+          "Path": "Build/Internal/Complete-PortableBundle.ps1",
+          "WorkingDirectory": "{output}",
+          "Arguments": [
+            "-Frontend",
+            "app",
+            "-PluginMode",
+            "all",
+            "-Configuration",
+            "{configuration}",
+            "-Framework",
+            "net10.0-windows",
+            "-AppFramework",
+            "net8.0-windows10.0.26100.0",
+            "-Runtime",
+            "{rid}",
+            "-PrimaryExecutable",
+            "IntelligenceX.Chat.App.exe",
+            "-BundleName",
+            "IntelligenceX.Chat-Portable-{rid}",
+            "-IncludeSymbols:{keepSymbols}",
+            "-IncludeService",
+            "-IncludePrivateToolPacks",
+            "-IncludePortableHelpers",
+            "-IncludeBundleMetadata"
+          ]
+        }
+      ]
+    }
+  ],
+  "Installers": [
+    {
+      "Id": "IntelligenceX.Chat.App.Msi",
+      "PrepareFromTarget": "IntelligenceX.Chat.App",
+      "PrepareFromBundleId": "IntelligenceX.Chat.Portable",
+      "InstallerProjectId": "chat-app-installer",
+      "Frameworks": [
+        "net8.0-windows10.0.26100.0"
+      ],
+      "Runtimes": [
+        "win-x64"
+      ],
+      "Styles": [
+        "PortableCompat"
+      ],
+      "Harvest": "Auto",
+      "HarvestDirectoryRefId": "INSTALLFOLDER",
+      "HarvestComponentGroupId": "ProductFiles",
+      "Versioning": {
+        "Enabled": true,
+        "Major": 1,
+        "Minor": 0,
+        "FloorDateUtc": "2026-01-01",
+        "Monotonic": true,
+        "StatePath": "Artifacts/DotNetPublish/Msi/{installer}/version.state.json",
+        "PropertyName": "ProductVersion",
+        "PatchCap": 65535
+      }
+    }
+  ],
+  "Outputs": {
+    "ManifestJsonPath": "Artifacts/DotNetPublish/manifest.json",
+    "ManifestTextPath": "Artifacts/DotNetPublish/manifest.txt",
+    "ChecksumsPath": "Artifacts/DotNetPublish/SHA256SUMS.txt",
+    "RunReportPath": "Artifacts/DotNetPublish/run-report.json"
+  }
+}

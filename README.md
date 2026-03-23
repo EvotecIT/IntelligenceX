@@ -192,10 +192,10 @@ dotnet ./IntelligenceX.Tests/bin/Release/net10.0/IntelligenceX.Tests.dll
 
 `IntelligenceX.sln` includes Chat/Tools projects for local integration work.
 
-Publish CLI (self-contained single-file):
+Publish CLI (self-contained portable style):
 
 ```powershell
-pwsh ./Build/Publish-Cli.ps1 -Runtime win-x64 -Configuration Release -Framework net8.0
+pwsh ./Build/Build-Project.ps1 -ToolsOnly -Targets IntelligenceX.Cli -Runtimes win-x64 -Frameworks net8.0 -Styles PortableCompat
 ```
 
 ## License

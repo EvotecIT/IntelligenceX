@@ -1,0 +1,61 @@
+{
+  "SchemaVersion": 1,
+  "ProjectRoot": "..",
+  "Profiles": [
+    {
+      "Name": "Chat.App",
+      "Kind": "Script",
+      "Path": "Build/Chat/Run-ChatApp.ps1",
+      "Framework": "project-defined",
+      "PassConfiguration": true,
+      "PassNoBuild": true,
+      "PassIncludePrivateToolPacks": true,
+      "PassTestimoXRoot": true,
+      "Description": "WinUI desktop chat app with the local runtime sidecar managed automatically.",
+      "Example": "pwsh ./Build/Run-Project.ps1 -Target Chat.App"
+    },
+    {
+      "Name": "Chat.Host",
+      "Kind": "Script",
+      "Path": "Build/Chat/Run-Chat.ps1",
+      "Framework": "net10.0-windows10.0.19041.0",
+      "PassFramework": true,
+      "PassNoBuild": true,
+      "PassAllowRoot": true,
+      "PassIncludePrivateToolPacks": true,
+      "PassTestimoXRoot": true,
+      "PassExtraArgs": true,
+      "Description": "Console host for local chat/runtime/tool development.",
+      "Example": "pwsh ./Build/Run-Project.ps1 -Target Chat.Host -AllowRoot C:\\Support\\GitHub"
+    },
+    {
+      "Name": "Chat.Service",
+      "Kind": "Project",
+      "ProjectPath": "IntelligenceX.Chat/IntelligenceX.Chat.Service/IntelligenceX.Chat.Service.csproj",
+      "Framework": "net10.0-windows",
+      "PassAllowRoot": true,
+      "PassIncludePrivateToolPacks": true,
+      "PassExtraArgs": true,
+      "Description": "Service-only local runtime for app embedding or advanced debugging.",
+      "Example": "pwsh ./Build/Run-Project.ps1 -Target Chat.Service -AllowRoot C:\\Support\\GitHub"
+    },
+    {
+      "Name": "Tray",
+      "Kind": "Project",
+      "ProjectPath": "IntelligenceX.Tray/IntelligenceX.Tray.csproj",
+      "Framework": "net10.0-windows",
+      "PassExtraArgs": true,
+      "Description": "Windows tray app shell.",
+      "Example": "pwsh ./Build/Run-Project.ps1 -Target Tray"
+    },
+    {
+      "Name": "Cli",
+      "Kind": "Project",
+      "ProjectPath": "IntelligenceX.Cli/IntelligenceX.Cli.csproj",
+      "Framework": "net8.0",
+      "PassExtraArgs": true,
+      "Description": "CLI entrypoint for setup, doctor, auth, and maintenance flows.",
+      "Example": "pwsh ./Build/Run-Project.ps1 -Target Cli -ExtraArgs setup,wizard"
+    }
+  ]
+}

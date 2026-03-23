@@ -133,8 +133,8 @@ function Get-ScenarioTurnCount([string] $path) {
     return $count
 }
 
-$repoRoot = (Get-Item (Split-Path -Parent $MyInvocation.MyCommand.Path)).Parent.FullName
-$runChatScript = Join-Path $repoRoot 'Build\Run-Chat.ps1'
+$repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
+$runChatScript = Join-Path $repoRoot 'Build\Chat\Run-Chat.ps1'
 if (-not (Test-Path $runChatScript)) {
     throw "Run script not found: $runChatScript"
 }

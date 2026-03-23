@@ -265,49 +265,9 @@ function New-ShortPayloadJunction {
     return $junctionPath
 }
 
-function Resolve-TestimoXDefaultSignThumbprint {
-    param(
-        [Parameter(Mandatory)]
-        [string] $RepoRoot
-    )
-
-    $candidates = @(
-        (Join-Path $RepoRoot '..\TestimoX\Build\Build-TestimoX.Agent-MSI.ps1'),
-        (Join-Path $RepoRoot '..\TestimoX\Build\Prepare-TestimoX.Agent-MSI.ps1'),
-        (Join-Path $RepoRoot '..\TestimoX\Build\Deploy-TestimoX.Agent.ps1')
-    )
-
-    foreach ($candidate in $candidates) {
-        if (-not (Test-Path $candidate)) {
-            continue
-        }
-
-        try {
-            $raw = Get-Content -Path $candidate -Raw -ErrorAction Stop
-            $match = [System.Text.RegularExpressions.Regex]::Match(
-                $raw,
-                '(?im)^\s*\[string\]\s*\$SignThumbprint\s*=\s*''(?<thumb>[0-9a-f]{40})''')
-            if ($match.Success) {
-                return $match.Groups['thumb'].Value.ToLowerInvariant()
-            }
-        } catch {
-        }
-    }
-
-    return $null
-}
-
-function Resolve-PrimaryExecutableName {
-    param([Parameter(Mandatory)][string] $FrontendName)
-
-    if ($FrontendName -eq 'app') {
-        return 'IntelligenceX.Chat.App.exe'
-    }
-
-    return 'IntelligenceX.Chat.Host.exe'
-}
-$script:RepoRoot = (Get-Item (Split-Path -Parent $MyInvocation.MyCommand.Path)).Parent.FullName
-$packagePortableScript = Join-Path $script:RepoRoot 'Build\Package-Portable.ps1'
+$script:RepoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
+. (Join-Path $script:RepoRoot 'Build\Internal\Resolve-ReleaseDefaults.ps1')
+$packagePortableScript = Join-Path $script:RepoRoot 'Build\Advanced\Package-Portable.ps1'
 $installerProject = Join-Path $script:RepoRoot 'Installer\IntelligenceX.Chat\IntelligenceX.Chat.Installer.wixproj'
 $frontendNormalized = $Frontend.ToLowerInvariant()
 $primaryExecutable = Resolve-PrimaryExecutableName -FrontendName $frontendNormalized
@@ -388,7 +348,6 @@ $junctionPath = $null
 try {
     $junctionPath = New-ShortPayloadJunction -TargetPath $payloadRoot
     $payloadForBuild = [System.IO.Path]::GetFullPath($junctionPath)
-    $primaryExeForBuild = Join-Path $payloadForBuild $primaryExecutable
 
     $harvestPath = Join-Path $msiRoot 'Harvest.wxs'
     Write-Header 'Harvest Payload'
@@ -396,7 +355,6 @@ try {
     Write-Step "Build payload alias: $payloadForBuild"
     Write-Step "Harvest file: $harvestPath"
     $harvestExcludes = @(
-        $primaryExeForBuild,
         (Join-Path $payloadForBuild 'run-chat.ps1'),
         (Join-Path $payloadForBuild 'run-chat.cmd'),
         (Join-Path $payloadForBuild 'README.md'),

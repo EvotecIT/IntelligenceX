@@ -12,28 +12,40 @@ Status: active migration in mono-repo (Host + Service + WinUI App in progress).
 
 Use scripts from repo root `Build\` as the canonical entrypoint surface:
 
-- `Build\Run-Chat.ps1` - Console host (recommended default runtime)
-- `Build\Run-ChatApp.ps1` - WinUI app (desktop UI)
-- `Build\Run-ChatService.ps1` - Service-only mode (advanced/debug)
+- `Build\Run-Project.ps1` - Unified runtime entrypoint (`Chat.Host`, `Chat.App`, `Chat.Service`, `Tray`, `Cli`)
+- `Build\Chat\Run-Chat.ps1` - Console host (recommended default runtime)
+- `Build\Chat\Run-ChatApp.ps1` - WinUI app (desktop UI)
+- `Build\Run-Project.ps1 -Target Chat.Service` - Service-only mode (advanced/debug)
 
 ### Run
+
+Unified entrypoint:
+
+```powershell
+pwsh .\Build\Run-Project.ps1 -ListTargets
+pwsh .\Build\Run-Project.ps1 -Target Chat.App
+pwsh .\Build\Run-Project.ps1 -Target Chat.Host -AllowRoot C:\Support\GitHub
+pwsh .\Build\Run-Project.ps1 -Target Chat.Service -AllowRoot C:\Support\GitHub
+pwsh .\Build\Run-Project.ps1 -Target Tray
+pwsh .\Build\Run-Project.ps1 -Target Cli -ExtraArgs setup,wizard
+```
 
 Console host (recommended):
 
 ```powershell
-pwsh .\Build\Run-Chat.ps1 -AllowRoot C:\Support\GitHub
+pwsh .\Build\Chat\Run-Chat.ps1 -AllowRoot C:\Support\GitHub
 ```
 
 WinUI app:
 
 ```powershell
-pwsh .\Build\Run-ChatApp.ps1 -Configuration Release
+pwsh .\Build\Chat\Run-ChatApp.ps1 -Configuration Release
 ```
 
 Local repeatable scenario run (non-interactive, same real host/tools runtime):
 
 ```powershell
-pwsh .\Build\Run-Chat.ps1 `
+pwsh .\Build\Chat\Run-Chat.ps1 `
   -ScenarioFile .\IntelligenceX.Chat\scenarios\ad-reboot-local-10-turn.json `
   -ScenarioOutput .\artifacts\chat-scenarios
 ```
@@ -41,7 +53,7 @@ pwsh .\Build\Run-Chat.ps1 `
 Live 10-turn harness run (real auth/tools, transcript + tool ledger JSON):
 
 ```powershell
-pwsh .\Build\Run-ChatLiveConversation.ps1 `
+pwsh .\Build\Chat\Run-ChatLiveConversation.ps1 `
   -ScenarioFile .\IntelligenceX.Chat\scenarios\ad-replication-health-10-turn.json `
   -ExpectedTurns 10 `
   -OutDir .\artifacts\chat-live
@@ -57,7 +69,7 @@ Equivalent space-separated form also works (`-ScenarioTags strict live`), but ex
 Do not pass a quoted CSV string (for example `-ScenarioTags "strict,live"`), because that is treated as one tag value.
 
 ```powershell
-pwsh .\Build\Run-ChatLiveConversation.ps1 `
+pwsh .\Build\Chat\Run-ChatLiveConversation.ps1 `
   -ScenarioFilter "*-10-turn.json" `
   -ScenarioTags strict,live `
   -ExpectedTurns 10 `
@@ -67,7 +79,7 @@ pwsh .\Build\Run-ChatLiveConversation.ps1 `
 Live 10-turn harness suite run (tag-driven, no hardcoded single scenario):
 
 ```powershell
-pwsh .\Build\Run-ChatLiveConversationSuite.ps1 `
+pwsh .\Build\Chat\Run-ChatLiveConversationSuite.ps1 `
   -ScenarioDir .\IntelligenceX.Chat\scenarios `
   -Filter "*-10-turn.json" `
   -Tags strict,live `
@@ -138,7 +150,7 @@ Included conversation-style scenario seeds:
 Run the conversation-style scenario suite locally:
 
 ```powershell
-pwsh .\Build\Run-ChatScenarioSuite.ps1 `
+pwsh .\Build\Chat\Run-ChatScenarioSuite.ps1 `
   -ScenarioDir .\IntelligenceX.Chat\scenarios `
   -Filter "chat-*.json" `
   -OutDir .\artifacts\chat-scenarios-style
@@ -151,7 +163,7 @@ Included analysis-style scenario seeds:
 Run the analysis-style scenario suite locally:
 
 ```powershell
-pwsh .\Build\Run-ChatScenarioSuite.ps1 `
+pwsh .\Build\Chat\Run-ChatScenarioSuite.ps1 `
   -ScenarioDir .\IntelligenceX.Chat\scenarios `
   -Filter "analysis-*.json" `
   -OutDir .\artifacts\chat-scenarios-analysis
@@ -160,7 +172,7 @@ pwsh .\Build\Run-ChatScenarioSuite.ps1 `
 Batch run all built-in AD scenarios locally:
 
 ```powershell
-pwsh .\Build\Run-ChatScenarioSuite.ps1 `
+pwsh .\Build\Chat\Run-ChatScenarioSuite.ps1 `
   -ScenarioDir .\IntelligenceX.Chat\scenarios `
   -Filter "ad-*-10-turn.json" `
   -OutDir .\artifacts\chat-scenarios
@@ -169,7 +181,7 @@ pwsh .\Build\Run-ChatScenarioSuite.ps1 `
 Run long-run compaction soak scenarios (20+ turns) with strict contracts:
 
 ```powershell
-pwsh .\Build\Run-ChatCompactionSoakSuite.ps1 `
+pwsh .\Build\Chat\Run-ChatCompactionSoakSuite.ps1 `
   -ScenarioDir .\IntelligenceX.Chat\scenarios `
   -OutDir .\artifacts\chat-compaction-soak
 ```
@@ -177,7 +189,7 @@ pwsh .\Build\Run-ChatCompactionSoakSuite.ps1 `
 Run compaction soak with golden-baseline comparison (real host runtime + strict regression gate):
 
 ```powershell
-pwsh .\Build\Run-ChatCompactionSoakBaseline.ps1 `
+pwsh .\Build\Chat\Run-ChatCompactionSoakBaseline.ps1 `
   -ScenarioDir .\IntelligenceX.Chat\scenarios `
   -OutDir .\artifacts\chat-compaction-soak `
   -GoldenDir .\artifacts\chat-compaction-soak\golden
@@ -186,7 +198,7 @@ pwsh .\Build\Run-ChatCompactionSoakBaseline.ps1 `
 To refresh golden baselines after an intentional behavior change:
 
 ```powershell
-pwsh .\Build\Run-ChatCompactionSoakBaseline.ps1 `
+pwsh .\Build\Chat\Run-ChatCompactionSoakBaseline.ps1 `
   -ScenarioDir .\IntelligenceX.Chat\scenarios `
   -OutDir .\artifacts\chat-compaction-soak `
   -GoldenDir .\artifacts\chat-compaction-soak\golden `
@@ -203,14 +215,14 @@ Optional flags:
 One-command local quality preflight (strict scenario suite + optional live smoke run):
 
 ```powershell
-pwsh .\Build\Run-ChatQualityPreflight.ps1 `
+pwsh .\Build\Chat\Run-ChatQualityPreflight.ps1 `
   -ScenarioFilter "*-10-turn.json"
 ```
 
 To include a live 10-turn smoke run in the same preflight:
 
 ```powershell
-pwsh .\Build\Run-ChatQualityPreflight.ps1 `
+pwsh .\Build\Chat\Run-ChatQualityPreflight.ps1 `
   -ScenarioFilter "*-10-turn.json" `
   -RunLiveHarness
 ```
@@ -220,7 +232,7 @@ If `-RunLiveHarness` is used without `-LiveScenarioFile`, preflight auto-selects
 To include a tag-driven live harness suite run in the same preflight:
 
 ```powershell
-pwsh .\Build\Run-ChatQualityPreflight.ps1 `
+pwsh .\Build\Chat\Run-ChatQualityPreflight.ps1 `
   -ScenarioFilter "*-10-turn.json" `
   -RunLiveHarnessSuite `
   -LiveSuiteTags strict,live
@@ -229,7 +241,7 @@ pwsh .\Build\Run-ChatQualityPreflight.ps1 `
 To run only strict AD continuation scenarios in preflight:
 
 ```powershell
-pwsh .\Build\Run-ChatQualityPreflight.ps1 `
+pwsh .\Build\Chat\Run-ChatQualityPreflight.ps1 `
   -ScenarioFilter "ad-*-10-turn.json" `
   -ScenarioTags ad,strict,continuation
 ```
@@ -237,7 +249,7 @@ pwsh .\Build\Run-ChatQualityPreflight.ps1 `
 To include recovery unit tests (tool-pairing/transport retry guards) in preflight:
 
 ```powershell
-pwsh .\Build\Run-ChatQualityPreflight.ps1 `
+pwsh .\Build\Chat\Run-ChatQualityPreflight.ps1 `
   -ScenarioFilter "*-10-turn.json" `
   -RunRecoveryUnitTests
 ```
@@ -245,7 +257,7 @@ pwsh .\Build\Run-ChatQualityPreflight.ps1 `
 To add a dedicated strict transport-recovery gate run (tags: `ad,strict,transport-recovery`) in the same preflight:
 
 ```powershell
-pwsh .\Build\Run-ChatQualityPreflight.ps1 `
+pwsh .\Build\Chat\Run-ChatQualityPreflight.ps1 `
   -ScenarioFilter "*-10-turn.json" `
   -RunTransportRecoveryProfile `
   -RunRecoveryUnitTests
@@ -254,7 +266,7 @@ pwsh .\Build\Run-ChatQualityPreflight.ps1 `
 Compare two scenario JSON artifacts and optionally fail on regression:
 
 ```powershell
-pwsh .\Build\Compare-ChatScenarioReports.ps1 `
+pwsh .\Build\Chat\Compare-ChatScenarioReports.ps1 `
   -BaseReport .\artifacts\chat-scenarios\baseline.json `
   -CurrentReport .\artifacts\chat-scenarios\candidate.json `
   -FailOnRegression
@@ -263,7 +275,7 @@ pwsh .\Build\Compare-ChatScenarioReports.ps1 `
 Summarize scenario coverage and strictness (console + optional markdown):
 
 ```powershell
-pwsh .\Build\Get-ChatScenarioCoverage.ps1 `
+pwsh .\Build\Chat\Get-ChatScenarioCoverage.ps1 `
   -Filter "ad-*-10-turn.json" `
   -OutFile .\artifacts\chat-scenarios\coverage.md
 ```
@@ -301,7 +313,7 @@ Markdown renderer dependency resolution is automatic:
 - Dev: if sibling local source exists (`..\OfficeIMO`), Chat builds against that local project.
 - Fallback: if local source is not present (CI/clean OSS checkout), Chat uses the NuGet package.
 
-`Run-ChatApp.ps1` launches only the app. The local runtime service is auto-started and auto-restarted by the app.
+`Build\Chat\Run-ChatApp.ps1` launches only the app. The local runtime service is auto-started and auto-restarted by the app.
 
 ### WinUI Local Model Quick Setup
 
@@ -326,7 +338,7 @@ Reference: `Docs/apps/chat-local-providers.md`
 Service-only mode (advanced):
 
 ```powershell
-pwsh .\Build\Run-ChatService.ps1 -AllowRoot C:\Support\GitHub
+pwsh .\Build\Run-Project.ps1 -Target Chat.Service -AllowRoot C:\Support\GitHub
 ```
 
 ChatGPT login is cached under `%USERPROFILE%\\.intelligencex\\auth.json` by default, so after the first login the host should show:

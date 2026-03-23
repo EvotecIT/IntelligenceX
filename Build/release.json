@@ -1,0 +1,71 @@
+{
+  "$schema": "https://raw.githubusercontent.com/EvotecIT/PSPublishModule/main/Schemas/powerforge.release.schema.json",
+  "SchemaVersion": 1,
+  "WorkspaceValidation": {
+    "ConfigPath": "workspace.validation.json",
+    "Profile": "full-private"
+  },
+  "Outputs": {
+    "ManifestJsonPath": "../Artifacts/UnifiedRelease/release-manifest.json",
+    "ChecksumsPath": "../Artifacts/UnifiedRelease/SHA256SUMS.txt"
+  },
+  "Packages": {
+    "RootPath": "..",
+    "ExpectedVersion": "0.1.X",
+    "IncludeProjects": [
+      "IntelligenceX.Tools.Common",
+      "IntelligenceX.Tools.FileSystem",
+      "IntelligenceX.Tools.Email",
+      "IntelligenceX.Tools.EventLog",
+      "IntelligenceX.Tools.PowerShell",
+      "IntelligenceX.Tools.ReviewerSetup",
+      "IntelligenceX.Tools.System",
+      "IntelligenceX.Tools.ADPlayground",
+      "IntelligenceX.Tools.TestimoX"
+    ],
+    "ExcludeDirectories": [
+      ".worktrees",
+      ".claude",
+      "Artifacts",
+      "Website",
+      "WebsiteArtifacts"
+    ],
+    "Configuration": "Release",
+    "StagingPath": "Artifacts/ProjectBuild",
+    "CleanStaging": true,
+    "PlanOutputPath": "Artifacts/ProjectBuild/project.build.plan.json",
+    "UpdateVersions": true,
+    "Build": true,
+    "PublishNuget": false,
+    "PublishGitHub": false,
+    "CreateReleaseZip": true,
+    "PublishSource": "https://api.nuget.org/v3/index.json",
+    "PublishApiKeyFilePath": "C:\\Support\\Important\\NugetOrgEvotec.txt",
+    "SkipDuplicate": true,
+    "PublishFailFast": true,
+    "GitHubAccessTokenFilePath": "C:\\Support\\Important\\GithubAPI.txt",
+    "GitHubUsername": "EvotecIT",
+    "GitHubRepositoryName": "IntelligenceX",
+    "GitHubReleaseMode": "Single",
+    "GitHubPrimaryProject": "IntelligenceX.Tools.Common",
+    "GitHubTagTemplate": "{Repo}-packages-v{PrimaryVersion}",
+    "GitHubTagConflictPolicy": "Reuse",
+    "GitHubIsPreRelease": false,
+    "GitHubIncludeProjectNameInTag": false,
+    "GitHubGenerateReleaseNotes": true,
+    "GitHubReleaseName": "{Repo} packages {PrimaryVersion}"
+  },
+  "Tools": {
+    "DotNetPublishConfigPath": "powerforge.dotnetpublish.json",
+    "GitHub": {
+      "Publish": false,
+      "Owner": "EvotecIT",
+      "Repository": "IntelligenceX",
+      "TokenFilePath": "C:\\Support\\Important\\GithubAPI.txt",
+      "GenerateReleaseNotes": true,
+      "IsPreRelease": false,
+      "TagTemplate": "{Target}-v{Version}",
+      "ReleaseNameTemplate": "{Target} {Version}"
+    }
+  }
+}
