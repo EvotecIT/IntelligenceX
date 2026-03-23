@@ -24,7 +24,7 @@ When a sibling OfficeIMO checkout is present, `IntelligenceX.Chat` now prefers i
 - DOCX export now calls `MarkdownToWordPresets.CreateIntelligenceXTranscript(...)` and `MarkdownToWordCapabilities.PreservesNarrativeSingleLineDefinitionsAsSeparateParagraphs()` directly.
 - Runtime assembly diagnostics are centralized in [OfficeImoAssemblyContractDiagnostics.cs](../IntelligenceX.Chat.App/OfficeImoAssemblyContractDiagnostics.cs).
 - OfficeIMO now owns the generic post-parse markdown document-transform pipeline; IX should continue to consume that only via explicit OfficeIMO contracts/presets.
-- Markdown artifact export now has an explicit portable lane that prefers generic semantic visual fences (`chart`, `network`, `dataview`), while runtime/chat and DOCX lanes intentionally remain IX-alias-first for compatibility.
+- Transcript export and DOCX preparation now use generic semantic visual fences (`chart`, `network`, `dataview`) across the current published contract.
 
 ## Adoption Gate
 

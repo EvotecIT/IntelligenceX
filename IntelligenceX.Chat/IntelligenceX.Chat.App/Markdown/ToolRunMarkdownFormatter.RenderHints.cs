@@ -134,12 +134,8 @@ internal static partial class ToolRunMarkdownFormatter {
         var normalized = (kind ?? string.Empty).Trim().ToLowerInvariant();
         return normalized switch {
             "chart" => ChartFenceLanguage,
-            "ix-chart" => ChartFenceLanguage,
             "network" => NetworkFenceLanguage,
-            "ix-network" => NetworkFenceLanguage,
-            "visnetwork" => NetworkFenceLanguage,
             "dataview" => DataViewPayloadFenceLanguage,
-            "ix-dataview" => DataViewPayloadFenceLanguage,
             _ => normalized
         };
     }
@@ -147,19 +143,15 @@ internal static partial class ToolRunMarkdownFormatter {
     private static string NormalizeRenderFenceLanguage(string language, string normalizedKind) {
         var normalizedLanguage = (language ?? string.Empty).Trim().ToLowerInvariant();
         if (normalizedLanguage.Length > 0) {
-            if (string.Equals(normalizedLanguage, "chart", StringComparison.Ordinal)
-                || string.Equals(normalizedLanguage, "ix-chart", StringComparison.Ordinal)) {
+            if (string.Equals(normalizedLanguage, "chart", StringComparison.Ordinal)) {
                 return ChartFenceLanguage;
             }
 
-            if (string.Equals(normalizedLanguage, "network", StringComparison.Ordinal)
-                || string.Equals(normalizedLanguage, "ix-network", StringComparison.Ordinal)
-                || string.Equals(normalizedLanguage, "visnetwork", StringComparison.Ordinal)) {
+            if (string.Equals(normalizedLanguage, "network", StringComparison.Ordinal)) {
                 return NetworkFenceLanguage;
             }
 
-            if (string.Equals(normalizedLanguage, "dataview", StringComparison.Ordinal)
-                || string.Equals(normalizedLanguage, "ix-dataview", StringComparison.Ordinal)) {
+            if (string.Equals(normalizedLanguage, "dataview", StringComparison.Ordinal)) {
                 return DataViewPayloadFenceLanguage;
             }
 

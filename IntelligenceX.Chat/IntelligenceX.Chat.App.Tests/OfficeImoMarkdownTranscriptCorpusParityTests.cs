@@ -9,12 +9,12 @@ using Xunit;
 namespace IntelligenceX.Chat.App.Tests;
 
 /// <summary>
-/// Verifies the IX runtime/render and portable-export seams stay aligned with the explicit OfficeIMO corpus fixtures.
+/// Verifies the IX runtime/render and export seams stay aligned with the explicit OfficeIMO corpus fixtures.
 /// </summary>
 public sealed class OfficeImoMarkdownTranscriptCorpusParityTests {
     /// <summary>
-    /// Verifies IX transcript pre-processing matches the explicit OfficeIMO transcript preset
-    /// for the IX compatibility mixed visual transcript corpus.
+    /// Verifies transcript pre-processing matches the explicit OfficeIMO transcript preset
+    /// for the mixed visual transcript corpus.
     /// </summary>
     [Fact]
     public void IxCompatibilityTranscriptVisualPack_PreProcessorsMatchExplicitOfficeImoTranscriptPreset() {
@@ -29,14 +29,14 @@ public sealed class OfficeImoMarkdownTranscriptCorpusParityTests {
         var expected = ApplyExplicitTranscriptPreparation(markdown, explicitOptions);
 
         Assert.Equal(expected, actual);
-        Assert.Contains("```ix-chart", actual, StringComparison.Ordinal);
+        Assert.Contains("```chart", actual, StringComparison.Ordinal);
         Assert.Contains("```mermaid", actual, StringComparison.Ordinal);
         Assert.Contains("\"label\": \"Broken\"", actual, StringComparison.Ordinal);
     }
 
     /// <summary>
-    /// Verifies IX transcript rendering matches the explicit OfficeIMO transcript preset
-    /// for the IX compatibility mixed visual transcript corpus.
+    /// Verifies transcript rendering matches the explicit OfficeIMO transcript preset
+    /// for the mixed visual transcript corpus.
     /// </summary>
     [Fact]
     public void IxCompatibilityTranscriptVisualPack_RenderingMatchesExplicitOfficeImoTranscriptPreset() {
@@ -50,13 +50,13 @@ public sealed class OfficeImoMarkdownTranscriptCorpusParityTests {
         var expected = MarkdownRenderer.RenderBodyHtml(markdown, expectedOptions);
 
         Assert.Equal(NormalizeHtml(expected), NormalizeHtml(actual));
-        Assert.Contains("data-omd-fence-language=\"ix-chart\"", actual, StringComparison.Ordinal);
+        Assert.Contains("data-omd-fence-language=\"chart\"", actual, StringComparison.Ordinal);
         Assert.Contains("class=\"mermaid\"", actual, StringComparison.Ordinal);
     }
 
     /// <summary>
-    /// Verifies IX transcript rendering matches the explicit OfficeIMO transcript preset
-    /// for the IX compatibility chart-heavy transcript corpus.
+    /// Verifies transcript rendering matches the explicit OfficeIMO transcript preset
+    /// for the chart-heavy transcript corpus.
     /// </summary>
     [Fact]
     public void IxCompatibilityTranscriptChartSuite_RenderingMatchesExplicitOfficeImoTranscriptPreset() {
@@ -70,7 +70,7 @@ public sealed class OfficeImoMarkdownTranscriptCorpusParityTests {
         var expected = MarkdownRenderer.RenderBodyHtml(markdown, expectedOptions);
 
         Assert.Equal(NormalizeHtml(expected), NormalizeHtml(actual));
-        Assert.Contains("data-omd-fence-language=\"ix-chart\"", actual, StringComparison.Ordinal);
+        Assert.Contains("data-omd-fence-language=\"chart\"", actual, StringComparison.Ordinal);
         Assert.Contains("class=\"mermaid\"", actual, StringComparison.Ordinal);
         Assert.Contains("omd-visual omd-chart", actual, StringComparison.Ordinal);
     }
@@ -93,7 +93,9 @@ public sealed class OfficeImoMarkdownTranscriptCorpusParityTests {
     }
 
     private static string ApplyExplicitTranscriptPreparation(string markdown, MarkdownRendererOptions options) {
-        return MarkdownTranscriptPreparation.PrepareIntelligenceXTranscriptForExport(markdown);
+        return MarkdownTranscriptPreparation.PrepareIntelligenceXTranscriptForExport(
+            markdown,
+            MarkdownVisualFenceLanguageMode.GenericSemanticFence);
     }
 
     private static string ApplyExplicitPortableTranscriptPreparation(string markdown) {

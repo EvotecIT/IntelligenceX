@@ -22,10 +22,10 @@ public sealed class ChatMarkdownOptionsTests {
     }
 
     /// <summary>
-    /// Ensures the central contract still produces a chat-scoped surface with IntelligenceX alias support.
+    /// Ensures the central contract still produces a chat-scoped surface with generic chart support.
     /// </summary>
     [Fact]
-    public void CreateTranscriptRendererOptions_ComposesChatPresentationAndIntelligenceXAliases() {
+    public void CreateTranscriptRendererOptions_ComposesChatPresentationAndGenericChartFence() {
         var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
         options.Chart.Enabled = true;
 
@@ -34,7 +34,7 @@ public sealed class ChatMarkdownOptionsTests {
         Assert.Equal("#omdRoot article.markdown-body", options.HtmlOptions.CssScopeSelector);
 
         var html = MarkdownRenderer.RenderBodyHtml("""
-```ix-chart
+```chart
 {"type":"bar","data":{"labels":["A"],"datasets":[{"label":"Count","data":[1]}]}}
 ```
 """, options);
@@ -44,25 +44,7 @@ public sealed class ChatMarkdownOptionsTests {
     }
 
     /// <summary>
-    /// Ensures the central transcript contract maps IntelligenceX dataview aliases onto the native OfficeIMO visual contract.
-    /// </summary>
-    [Fact]
-    public void CreateTranscriptRendererOptions_ComposesIntelligenceXDataviewAliasesOntoNativeVisualContract() {
-        var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
-
-        var html = MarkdownRenderer.RenderBodyHtml("""
-```ix-dataview
-{"headers":["Name","Count"],"items":[{"Name":"A","Count":1}]}
-```
-""", options);
-
-        Assert.Contains("data-omd-visual-kind=\"dataview\"", html, StringComparison.Ordinal);
-        Assert.Contains("data-omd-visual-contract=\"v1\"", html, StringComparison.Ordinal);
-        Assert.Contains("data-omd-config-encoding=\"base64-utf8\"", html, StringComparison.Ordinal);
-    }
-
-    /// <summary>
-    /// Ensures the same renderer contract also accepts the portable generic dataview fence emitted by markdown artifact export.
+    /// Ensures the central transcript contract maps generic dataview fences onto the native OfficeIMO visual contract.
     /// </summary>
     [Fact]
     public void CreateTranscriptRendererOptions_ComposesGenericDataviewFenceOntoNativeVisualContract() {

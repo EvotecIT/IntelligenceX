@@ -117,7 +117,7 @@ When the user asks to *visualize*, *diagram*, *graph*, or *map relationships*:
   - one short interpretation line
 - `network` payload must be valid JSON and should include compact `nodes` and `edges` arrays.
 - Keep network payloads compact (max 4 network blocks per response, max 24000 source characters per block).
-- Legacy `ix-chart`, `ix-network`, and `visnetwork` fences remain acceptable for compatibility when a host already uses them.
+- Use generic semantic fences such as `chart`, `network`, and `dataview`.
 - Keep diagrams small and legible:
 - If the relationship set is large, show a preview graph (top nodes/edges) and state it is a preview.
 - Prefer summarizing clusters (for example OU, group, computer) instead of drawing every node.

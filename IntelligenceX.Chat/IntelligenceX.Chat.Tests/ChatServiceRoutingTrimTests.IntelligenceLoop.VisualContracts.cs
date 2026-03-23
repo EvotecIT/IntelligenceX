@@ -13,7 +13,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             [Proactive visualization guidance]
             ix:proactive-visualization:v1
             allow_new_visuals: false
-            If needed, use `visnetwork`.
+            If needed, use `network`.
             """;
         var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt(request, "Current findings...");
 
@@ -44,7 +44,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             """;
         var draft = """
             Current findings:
-            ```ix-network
+            ```network
             {"nodes":[{"id":"AD0"}],"edges":[]}
             ```
             """;
@@ -250,7 +250,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
-    public void BuildProactiveFollowUpReviewPrompt_NormalizesLegacyNetworkRenderHintLanguageWhenVisualsAreAllowed() {
+    public void BuildProactiveFollowUpReviewPrompt_UsesGenericNetworkRenderHintLanguageWhenVisualsAreAllowed() {
         var request = """
             [Proactive visualization guidance]
             ix:proactive-visualization:v1
@@ -260,7 +260,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             new() {
                 CallId = "c1",
                 Output = "{\"ok\":true}",
-                RenderJson = "{\"kind\":\"code\",\"language\":\"visnetwork\",\"content\":\"{}\"}",
+                RenderJson = "{\"kind\":\"code\",\"language\":\"network\",\"content\":\"{}\"}",
                 Ok = true
             }
         };
@@ -538,7 +538,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             """;
         var draft = """
             Current findings:
-            ```ix-network
+            ```network
             {"nodes":[{"id":"AD0"}],"edges":[]}
             ```
             """;
@@ -576,7 +576,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
         var request = """
             [Proactive visualization guidance]
             ix:proactive-visualization:v1
-            preferred_visual: visnetwork
+            preferred_visual: network
             """;
         var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt(request, "Current findings...");
 
@@ -676,7 +676,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             [Proactive visualization guidance]
             ix:proactive-visualization:v1
             preferred_visual: auto
-            Use `visnetwork` only if required.
+            Use `network` only if required.
             """;
         var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt(request, "Current findings...");
 

@@ -203,7 +203,7 @@ public sealed class ToolRunMarkdownFormatterTests {
     }
 
     /// <summary>
-    /// Ensures render arrays can emit first-party visual fences and map visnetwork to generic network output.
+    /// Ensures render arrays can emit first-party visual fences using generic chart/network output.
     /// </summary>
     [Fact]
     public void Format_EmitsVisualFencesFromRenderArrayAndSkipsCompletedFallback() {
@@ -220,7 +220,7 @@ public sealed class ToolRunMarkdownFormatterTests {
                     Output =
                         "{\"ok\":true,\"chart_payload\":{\"type\":\"bar\",\"data\":{\"labels\":[\"A\"],\"datasets\":[{\"data\":[1]}]}},\"network_payload\":{\"nodes\":[{\"id\":1,\"label\":\"A\"}],\"edges\":[]}}",
                     RenderJson =
-                        "[{\"kind\":\"code\",\"language\":\"chart\",\"content_path\":\"chart_payload\"},{\"kind\":\"code\",\"language\":\"visnetwork\",\"content_path\":\"network_payload\"}]"
+                        "[{\"kind\":\"code\",\"language\":\"chart\",\"content_path\":\"chart_payload\"},{\"kind\":\"code\",\"language\":\"network\",\"content_path\":\"network_payload\"}]"
                 }
             }
         };
@@ -332,7 +332,7 @@ public sealed class ToolRunMarkdownFormatterTests {
                     CallId = "c9",
                     Output = "{\"chart\":{\"type\":\"bar\",\"data\":{\"labels\":[\"A\"],\"datasets\":[{\"data\":[1]}]}},\"rows\":[{\"name\":\"A\",\"score\":1}]}",
                     RenderJson =
-                        "[{\"kind\":\"code\",\"language\":\"ix-chart\",\"content_path\":\"chart\"},{\"kind\":\"table\",\"rows_path\":\"rows\",\"columns\":[{\"key\":\"name\",\"label\":\"Name\"},{\"key\":\"score\",\"label\":\"Score\"}]},{\"kind\":\"code\",\"language\":\"text\",\"content\":\"hidden\"}]",
+                        "[{\"kind\":\"code\",\"language\":\"chart\",\"content_path\":\"chart\"},{\"kind\":\"table\",\"rows_path\":\"rows\",\"columns\":[{\"key\":\"name\",\"label\":\"Name\"},{\"key\":\"score\",\"label\":\"Score\"}]},{\"kind\":\"code\",\"language\":\"text\",\"content\":\"hidden\"}]",
                     Ok = false,
                     ErrorCode = "tool_timeout",
                     Error = "debug-only error",

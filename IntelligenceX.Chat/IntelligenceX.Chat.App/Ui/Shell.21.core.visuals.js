@@ -353,10 +353,10 @@
     if (normalized === "mermaid") {
       return "Mermaid Diagram";
     }
-    if (normalized === "ix-chart" || normalized === "chart") {
+    if (normalized === "ix-chart") {
       return "Chart";
     }
-    if (normalized === "ix-network" || normalized === "network" || normalized === "visnetwork") {
+    if (normalized === "ix-network") {
       return "Network Diagram";
     }
     return "Visual";
@@ -1341,7 +1341,7 @@
       return;
     }
 
-    var code = pre.querySelector("code.language-ix-chart, code.language-chart");
+    var code = pre.querySelector("code.language-chart");
     var source = pre.getAttribute("data-ix-chart-source");
     if ((!source || source.length === 0) && code) {
       source = normalizeText(code.textContent || "");
@@ -1972,7 +1972,7 @@
       return;
     }
 
-    var code = pre.querySelector("code.language-ix-network, code.language-visnetwork, code.language-network");
+    var code = pre.querySelector("code.language-network");
     var source = pre.getAttribute("data-ix-network-source");
     if ((!source || source.length === 0) && code) {
       source = normalizeText(code.textContent || "");
@@ -2136,7 +2136,7 @@
   }
 
   function collectIxNetworkBlocks(root) {
-    var codeNodes = root.querySelectorAll(".bubble .markdown-body pre > code.language-ix-network, .bubble .markdown-body pre > code.language-visnetwork, .bubble .markdown-body pre > code.language-network");
+    var codeNodes = root.querySelectorAll(".bubble .markdown-body pre > code.language-network");
     if (!codeNodes || codeNodes.length === 0) {
       return [];
     }
@@ -2267,7 +2267,7 @@
   }
 
   function collectIxChartBlocks(root) {
-    var codeNodes = root.querySelectorAll(".bubble .markdown-body pre > code.language-ix-chart, .bubble .markdown-body pre > code.language-chart");
+    var codeNodes = root.querySelectorAll(".bubble .markdown-body pre > code.language-chart");
     if (!codeNodes || codeNodes.length === 0) {
       return [];
     }
@@ -2440,7 +2440,7 @@
     if (normalized === "chart") {
       return "ix-chart";
     }
-    if (normalized === "network" || normalized === "visnetwork") {
+    if (normalized === "network") {
       return "ix-network";
     }
     return normalized;

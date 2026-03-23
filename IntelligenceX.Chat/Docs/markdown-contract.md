@@ -44,7 +44,7 @@ Streaming preview now delegates conservative delta cleanup through the explicit 
 - `OfficeIMO.MarkdownRenderer.MarkdownRendererPreProcessorPipeline.Apply(...)` with `MarkdownRendererPresets.CreateIntelligenceXTranscriptMinimal()`
 - `OfficeIMO.Markdown.MarkdownStreamingPreviewNormalizer.NormalizeIntelligenceXTranscript(...)`
 
-For this PR line, IX should run against the sibling OfficeIMO checkout by default whenever it exists. Package mode will not compile until the new OfficeIMO package line is published, which is expected for this end-state cleanup branch.
+IX now runs against the published OfficeIMO package line directly. Local checkout fallbacks were removed so package-mode validation is the primary contract surface.
 
 OfficeIMO now also exposes a generic post-parse document-transform pipeline. IX should treat that as OfficeIMO implementation detail and consume it only through explicit OfficeIMO presets/contracts instead of composing transcript-specific transforms in App code.
 
@@ -60,13 +60,13 @@ It owns:
 
 This keeps `ExportArtifacts` focused on orchestration while OfficeIMO remains the canonical markdown-shaping contract.
 
-There are now two intentional export lanes:
+The transcript export contract is now intentionally generic-first across markdown artifacts and DOCX preparation:
 
-- runtime/chat-preprocessor and DOCX-oriented transcript prep stay compatibility-first and continue to use IX alias visual fences like `ix-chart` and `ix-network`
-- portable markdown artifact export prefers generic semantic visual fences like `chart`, `network`, and `dataview` so downstream markdown/crawl consumers do not need IX-specific aliases
+- transcript export uses generic semantic visual fences like `chart`, `network`, and `dataview`
+- downstream markdown/crawl consumers do not need IX-specific alias fences
+- any remaining IX-specific runtime DOM details stay internal to the App shell and are not part of the authored markdown contract
 
-That split is intentional. `IntelligenceX.Chat` should not silently collapse those two lanes back into one unless the OfficeIMO transcript contracts do the same first.
-In the shared cross-repo corpus, the compatibility-first runtime/render lane is represented by `ix-compat-transcript-*` fixtures, while portable export checks should use the legacy-JSON/source-derived fixtures that upgrade into generic semantic fences.
+In the shared cross-repo corpus, source-derived fixtures should upgrade into generic semantic fences as part of export and render preparation.
 
 ### 3. Renderer/runtime contract
 

@@ -21,7 +21,7 @@ public sealed class OfficeImoMarkdownRuntimeContractTests {
         var description = InvokeContractMethod("DescribeMarkdownRendererContract");
 
         Assert.Contains("OfficeIMO.MarkdownRenderer", description, StringComparison.Ordinal);
-        Assert.Contains("expected>=0.2.2", description, StringComparison.Ordinal);
+        Assert.Contains("expected>=0.2.6", description, StringComparison.Ordinal);
         Assert.Contains("status=", description, StringComparison.Ordinal);
     }
 
@@ -33,7 +33,7 @@ public sealed class OfficeImoMarkdownRuntimeContractTests {
         var description = InvokeContractMethod("DescribeMarkdownContract");
 
         Assert.Contains("OfficeIMO.Markdown", description, StringComparison.Ordinal);
-        Assert.Contains("expected>=0.6.2", description, StringComparison.Ordinal);
+        Assert.Contains("expected>=0.6.6", description, StringComparison.Ordinal);
         Assert.Contains("status=", description, StringComparison.Ordinal);
     }
 
@@ -45,7 +45,7 @@ public sealed class OfficeImoMarkdownRuntimeContractTests {
         var description = InvokeContractMethod("DescribeWordMarkdownContract");
 
         Assert.Contains("OfficeIMO.Word.Markdown", description, StringComparison.Ordinal);
-        Assert.Contains("expected>=1.0.9", description, StringComparison.Ordinal);
+        Assert.Contains("expected>=1.0.13", description, StringComparison.Ordinal);
         Assert.Contains("status=", description, StringComparison.Ordinal);
     }
 
@@ -92,21 +92,21 @@ public sealed class OfficeImoMarkdownRuntimeContractTests {
     }
 
     /// <summary>
-    /// Verifies the repo still declares OfficeIMO package pins for package-mode adoption, even when local checkout mode is preferred for explicit transcript API work.
+    /// Verifies the repo declares the current published OfficeIMO package pins used by package-mode adoption.
     /// </summary>
     [Fact]
     public void DirectoryBuildProps_PinsCurrentPublishedOfficeImoPackageVersions() {
         var propsPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "Directory.Build.props"));
         var props = LoadMsBuildProperties(propsPath);
 
-        Assert.Equal("0.6.2", props["OfficeImoMarkdownNuGetVersion"]);
-        Assert.Equal("0.2.2", props["OfficeImoMarkdownRendererNuGetVersion"]);
-        Assert.Equal("0.6.15", props["OfficeImoExcelNuGetVersion"]);
-        Assert.Equal("1.0.9", props["OfficeImoWordMarkdownNuGetVersion"]);
+        Assert.Equal("0.6.6", props["OfficeImoMarkdownNuGetVersion"]);
+        Assert.Equal("0.2.6", props["OfficeImoMarkdownRendererNuGetVersion"]);
+        Assert.Equal("0.6.19", props["OfficeImoExcelNuGetVersion"]);
+        Assert.Equal("1.0.13", props["OfficeImoWordMarkdownNuGetVersion"]);
     }
 
     /// <summary>
-    /// Verifies cached-evidence transport markers are stripped and legacy network payloads are upgraded through the shared IX adapter path.
+    /// Verifies cached-evidence transport markers are stripped and legacy network payloads are upgraded through the shared transcript adapter path.
     /// </summary>
     [Fact]
     public void ApplyTranscriptMarkdownPreProcessors_StripsCachedEvidenceMarkerAndUpgradesNetworkPayload() {
@@ -133,7 +133,7 @@ ix:cached-tool-evidence:v1
         normalized = normalized.Replace("\r\n", "\n", StringComparison.Ordinal);
 
         Assert.DoesNotContain("cached-tool-evidence", normalized, System.StringComparison.Ordinal);
-        Assert.Contains("```ix-network", normalized, System.StringComparison.Ordinal);
+        Assert.Contains("```network", normalized, System.StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -166,8 +166,8 @@ Standalone example:
         var normalized = OfficeImoMarkdownRuntimeContract.ApplyTranscriptMarkdownPreProcessors(markdown);
         normalized = normalized.Replace("\r\n", "\n", StringComparison.Ordinal);
 
-        Assert.Contains("```ix-chart", normalized, System.StringComparison.Ordinal);
-        Assert.Contains("```ix-dataview", normalized, System.StringComparison.Ordinal);
+        Assert.Contains("```chart", normalized, System.StringComparison.Ordinal);
+        Assert.Contains("```dataview", normalized, System.StringComparison.Ordinal);
         Assert.Contains("```json", normalized, System.StringComparison.Ordinal);
         Assert.Contains("\"hello\": \"world\"", normalized, System.StringComparison.Ordinal);
     }
@@ -217,7 +217,7 @@ Recent evidence:
     }
 
     /// <summary>
-    /// Verifies plain legacy IX network payloads upgrade through the shared OfficeIMO transcript adapter even without a transport marker.
+    /// Verifies plain legacy JSON network payloads upgrade through the shared OfficeIMO transcript adapter even without a transport marker.
     /// </summary>
     [Fact]
     public void ApplyTranscriptMarkdownPreProcessors_UpgradesPlainLegacyJsonNetworkFenceWithoutTransportMarker() {
@@ -233,15 +233,15 @@ Recent evidence:
 
         var normalized = OfficeImoMarkdownRuntimeContract.ApplyTranscriptMarkdownPreProcessors(markdown);
 
-        Assert.Contains("```ix-network", normalized, System.StringComparison.Ordinal);
+        Assert.Contains("```network", normalized, System.StringComparison.Ordinal);
         Assert.DoesNotContain("```json", normalized, System.StringComparison.Ordinal);
     }
 
     /// <summary>
-    /// Verifies the explicit runtime transcript contract stays IX-alias-first even when portable markdown export uses generic fences.
+    /// Verifies the explicit runtime transcript contract stays generic-first for current transcript preparation.
     /// </summary>
     [Fact]
-    public void ApplyTranscriptMarkdownPreProcessors_RemainsIxAliasFirst_WhenPortableExportHelpersExist() {
+    public void ApplyTranscriptMarkdownPreProcessors_RemainsGenericFirst_ForCurrentTranscriptPreparation() {
         if (!SupportsExplicitTranscriptPreProcessorBehavior()) {
             return;
         }
@@ -254,8 +254,8 @@ Recent evidence:
 
         var normalized = OfficeImoMarkdownRuntimeContract.ApplyTranscriptMarkdownPreProcessors(markdown);
 
-        Assert.Contains("```ix-chart", normalized, StringComparison.Ordinal);
-        Assert.DoesNotContain("```chart", normalized, StringComparison.Ordinal);
+        Assert.Contains("```chart", normalized, StringComparison.Ordinal);
+        Assert.DoesNotContain("```ix-chart", normalized, StringComparison.Ordinal);
     }
 
     private static string InvokeContractMethod(string methodName) {

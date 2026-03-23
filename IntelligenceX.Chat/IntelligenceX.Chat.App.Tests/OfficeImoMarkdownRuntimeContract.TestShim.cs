@@ -14,7 +14,9 @@ internal static class OfficeImoMarkdownRuntimeContract {
             return markdown;
         }
 
-        return MarkdownTranscriptPreparation.PrepareIntelligenceXTranscriptForExport(markdown);
+        return MarkdownTranscriptPreparation.PrepareIntelligenceXTranscriptForExport(
+            markdown,
+            MarkdownVisualFenceLanguageMode.GenericSemanticFence);
     }
 
     public static string DescribeMarkdownRendererContract() {
@@ -47,7 +49,7 @@ internal static class OfficeImoTestAssemblyContractDiagnostics {
         return Describe(
             typeof(MarkdownRenderer).Assembly,
             "OfficeIMO.MarkdownRenderer",
-            "0.2.2",
+            "0.2.6",
             "explicit transcript presets + preprocessor pipeline");
     }
 
@@ -55,7 +57,7 @@ internal static class OfficeImoTestAssemblyContractDiagnostics {
         return Describe(
             typeof(MarkdownInputNormalizer).Assembly,
             "OfficeIMO.Markdown",
-            "0.6.2",
+            "0.6.6",
             "transcript normalization + streaming preview");
     }
 
@@ -63,7 +65,7 @@ internal static class OfficeImoTestAssemblyContractDiagnostics {
         return Describe(
             typeof(MarkdownToWordOptions).Assembly,
             "OfficeIMO.Word.Markdown",
-            "1.0.9",
+            "1.0.13",
             "transcript markdown-to-word conversion");
     }
 

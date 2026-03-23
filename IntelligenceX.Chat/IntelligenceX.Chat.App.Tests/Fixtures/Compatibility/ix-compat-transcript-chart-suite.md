@@ -8,7 +8,7 @@ I'll give you 4 chart types so you can validate palette, legends, stacking, and 
 
 ## 1) Risk distribution (stacked bar, severity colors)
 
-```ix-chart
+```chart
 {
   "type": "bar",
   "data": {
@@ -47,7 +47,7 @@ I'll give you 4 chart types so you can validate palette, legends, stacking, and 
 
 ## 2) 30-day security trend (line chart, multi-series)
 
-```ix-chart
+```chart
 {
   "type": "line",
   "data": {
@@ -83,7 +83,7 @@ I'll give you 4 chart types so you can validate palette, legends, stacking, and 
 
 ## 3) Control coverage (doughnut with rose accent)
 
-```ix-chart
+```chart
 {
   "type": "doughnut",
   "data": {
@@ -105,7 +105,7 @@ I'll give you 4 chart types so you can validate palette, legends, stacking, and 
 
 ## 4) Heat-style matrix proxy (grouped bar for intensity)
 
-```ix-chart
+```chart
 {
   "type": "bar",
   "data": {
@@ -140,7 +140,7 @@ you sure this is the chartjs thatwe support?
 <!-- ix:model: gpt-5.3-codex -->
 Yep - your instinct is right: don't trust "looks fine," **certify it**.
 
-You're using the correct contract shape (`ix-chart` with Chart.js-like `type`, `data.labels`, `data.datasets`).  
+You're using the correct contract shape (`chart` with Chart.js-like `type`, `data.labels`, `data.datasets`).  
 Now run this compact compatibility matrix to prove what your renderer actually supports.
 
 | Feature | Test block | Expected result | If it fails, likely cause |
@@ -159,7 +159,7 @@ Now run this compact compatibility matrix to prove what your renderer actually s
 
 ```mermaid
 flowchart LR
-    A[Paste ix-chart block] --> B{Renders chart?}
+    A[Paste chart block] --> B{Renders chart?}
     B -- No --> C[Validate JSON syntax]
     C --> D{Valid now?}
     D -- No --> E[Fix payload]

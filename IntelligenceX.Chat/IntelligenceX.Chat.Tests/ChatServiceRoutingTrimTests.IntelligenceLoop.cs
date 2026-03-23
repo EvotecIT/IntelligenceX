@@ -1072,7 +1072,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     public void BuildProactiveFollowUpReviewPrompt_AllowsOneVisualWhenStructuredVisualContractIsPresent() {
         var request = """
             Build the summary and include this visual contract if useful:
-            ```ix-network
+            ```network
             {"nodes":[],"edges":[]}
             ```
             """;
@@ -1221,8 +1221,8 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
-    public void BuildProactiveFollowUpReviewPrompt_AllowsVisualsForBacktickedLegacyNetworkToken() {
-        var request = "If needed, use `visnetwork` for relationship mapping.";
+    public void BuildProactiveFollowUpReviewPrompt_AllowsVisualsForBacktickedNetworkToken() {
+        var request = "If needed, use `network` for relationship mapping.";
         var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt(request, "Current findings...");
 
         Assert.Contains("allow_new_visuals: true", text, StringComparison.OrdinalIgnoreCase);
@@ -1302,7 +1302,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     public void BuildProactiveFollowUpReviewPrompt_AllowsVisualsForWhitespacePrefixedFenceLanguage() {
         var request = """
             Build a relationship summary with explicit contract:
-            ``` ix-network
+            ``` network
             {"nodes":[],"edges":[]}
             ```
             """;
@@ -1317,7 +1317,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     public void BuildProactiveFollowUpReviewPrompt_AllowsVisualsForTildeFenceLanguage() {
         var request = """
             Render network evidence if needed:
-            ~~~ix-network
+            ~~~network
             {"nodes":[],"edges":[]}
             ~~~
             """;
@@ -1329,8 +1329,8 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
-    public void BuildProactiveFollowUpReviewPrompt_AllowsVisualsForDoubleBacktickedLegacyNetworkToken() {
-        var request = "Use ``visnetwork`` only if relationship mapping is necessary.";
+    public void BuildProactiveFollowUpReviewPrompt_AllowsVisualsForDoubleBacktickedNetworkToken() {
+        var request = "Use ``network`` only if relationship mapping is necessary.";
         var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt(request, "Current findings...");
 
         Assert.Contains("allow_new_visuals: true", text, StringComparison.OrdinalIgnoreCase);
@@ -1340,7 +1340,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void BuildProactiveFollowUpReviewPrompt_AllowsVisualsForNaturalLanguageRequestEvenWhenInlineBackticksAreMalformed() {
-        var request = "Use ``visnetwork``` only when relationship mapping is required.";
+        var request = "Use ``network``` only when relationship mapping is required.";
         var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt(request, "Current findings...");
 
         Assert.Contains("allow_new_visuals: true", text, StringComparison.OrdinalIgnoreCase);
@@ -1349,7 +1349,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void BuildProactiveFollowUpReviewPrompt_DetectsValidTokenAfterMalformedInlineSequence() {
-        var request = "Malformed token first: ``visnetwork` then valid: `visnetwork`.";
+        var request = "Malformed token first: ``network` then valid: `network`.";
         var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt(request, "Current findings...");
 
         Assert.Contains("allow_new_visuals: true", text, StringComparison.OrdinalIgnoreCase);

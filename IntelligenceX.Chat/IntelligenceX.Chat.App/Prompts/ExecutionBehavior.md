@@ -70,7 +70,7 @@
   - For Mermaid label line breaks, prefer `<br/>` over escaped `\n` for better export compatibility.
   - `chart` blocks must contain valid JSON object payloads.
   - `network` blocks must contain valid JSON object payloads with compact nodes/edges.
-  - Legacy `ix-chart`, `ix-network`, and `visnetwork` fences remain acceptable for compatibility.
+  - Use generic semantic fences such as `chart`, `network`, and `dataview`.
   - Keep visuals compact: max 8 Mermaid blocks per message (max 12000 source characters each).
   - Keep visuals compact: max 6 chart blocks per message (max 20000 source characters each).
   - Keep visuals compact: max 4 network blocks per message (max 24000 source characters each, max ~220 nodes and ~520 edges).

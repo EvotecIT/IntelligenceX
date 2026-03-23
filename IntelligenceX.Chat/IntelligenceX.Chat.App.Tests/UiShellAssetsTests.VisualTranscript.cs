@@ -135,8 +135,8 @@ public sealed partial class UiShellAssetsTests {
             "host.style.width = String(exportWidth) + \"px\"",
             "(!parsedData || !parsedData.dataBase64) && canvas && typeof canvas.toDataURL === \"function\"",
             "window.requestAnimationFrame(function()",
-            "normalized === \"network\" || normalized === \"visnetwork\"",
-            "code.language-ix-network, code.language-visnetwork, code.language-network",
+            "normalized === \"network\"",
+            "code.language-network",
             "canvas.omd-chart",
             ".omd-network",
             "data-chart-config-b64",
@@ -154,7 +154,7 @@ public sealed partial class UiShellAssetsTests {
         var script = File.ReadAllText(scriptPath);
 
         Assert.Contains("pre.classList && pre.classList.contains(\"mermaid\")", script, StringComparison.Ordinal);
-        Assert.Contains("pre.querySelector(\"code.language-ix-chart, code.language-chart\")", script, StringComparison.Ordinal);
-        Assert.Contains("pre.querySelector(\"code.language-ix-network, code.language-visnetwork, code.language-network\")", script, StringComparison.Ordinal);
+        Assert.Contains("pre.querySelector(\"code.language-chart\")", script, StringComparison.Ordinal);
+        Assert.Contains("pre.querySelector(\"code.language-network\")", script, StringComparison.Ordinal);
     }
 }

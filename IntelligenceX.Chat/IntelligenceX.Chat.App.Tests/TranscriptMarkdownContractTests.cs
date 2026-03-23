@@ -34,10 +34,10 @@ public sealed class TranscriptMarkdownContractTests {
     }
 
     /// <summary>
-    /// Ensures portable markdown export normalizes legacy IX visual aliases onto generic semantic fence languages.
+    /// Ensures transcript export uses generic semantic visual fence languages.
     /// </summary>
     [Fact]
-    public void PrepareTranscriptMarkdownForPortableExport_UsesGenericVisualFenceLanguages() {
+    public void PrepareTranscriptMarkdownForExport_UsesGenericVisualFenceLanguages() {
         const string markdown = """
             ix:cached-tool-evidence:v1
 
@@ -54,7 +54,7 @@ public sealed class TranscriptMarkdownContractTests {
             ```
             """;
 
-        var normalized = TranscriptMarkdownContract.PrepareTranscriptMarkdownForPortableExport(markdown)
+        var normalized = TranscriptMarkdownContract.PrepareTranscriptMarkdownForExport(markdown)
             .Replace("\r\n", "\n", StringComparison.Ordinal);
 
         Assert.DoesNotContain("ix:cached-tool-evidence:v1", normalized, StringComparison.OrdinalIgnoreCase);
@@ -64,24 +64,6 @@ public sealed class TranscriptMarkdownContractTests {
         Assert.DoesNotContain("```ix-chart", normalized, StringComparison.Ordinal);
         Assert.DoesNotContain("```ix-network", normalized, StringComparison.Ordinal);
         Assert.DoesNotContain("```ix-dataview", normalized, StringComparison.Ordinal);
-    }
-
-    /// <summary>
-    /// Ensures portable markdown export also normalizes the legacy visnetwork alias onto the generic network fence.
-    /// </summary>
-    [Fact]
-    public void PrepareTranscriptMarkdownForPortableExport_NormalizesVisnetworkAliasToNetwork() {
-        const string markdown = """
-            ```visnetwork
-            {"nodes":[{"id":"A","label":"User"}],"edges":[]}
-            ```
-            """;
-
-        var normalized = TranscriptMarkdownContract.PrepareTranscriptMarkdownForPortableExport(markdown)
-            .Replace("\r\n", "\n", StringComparison.Ordinal);
-
-        Assert.Contains("```network", normalized, StringComparison.Ordinal);
-        Assert.DoesNotContain("```visnetwork", normalized, StringComparison.Ordinal);
     }
 
     /// <summary>

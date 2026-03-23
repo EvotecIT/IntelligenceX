@@ -288,10 +288,10 @@ public sealed partial class LocalExportArtifactWriterTests {
     }
 
     /// <summary>
-    /// Ensures successful DOCX transcript export stays on the IX compatibility lane for the markdown handed to the DOCX writer.
+    /// Ensures successful DOCX transcript export uses the same generic transcript markdown contract handed to the DOCX writer.
     /// </summary>
     [Fact]
-    public void ExportTranscript_Docx_PassesIxCompatibilityMarkdownToWriter() {
+    public void ExportTranscript_Docx_PassesGenericTranscriptMarkdownToWriter() {
         var markdown = CreatePortableVisualExportMarkdown();
 
         string? capturedMarkdown = null;
@@ -314,12 +314,12 @@ public sealed partial class LocalExportArtifactWriterTests {
             Assert.Equal(
                 NormalizeSnapshotText(TranscriptMarkdownPreparation.PrepareTranscriptMarkdownForExport(markdown)),
                 NormalizeSnapshotText(capturedMarkdown));
-            Assert.Contains("```ix-chart", capturedMarkdown, StringComparison.Ordinal);
-            Assert.Contains("```ix-network", capturedMarkdown, StringComparison.Ordinal);
-            Assert.Contains("```ix-dataview", capturedMarkdown, StringComparison.Ordinal);
-            Assert.DoesNotContain("```chart", capturedMarkdown, StringComparison.Ordinal);
-            Assert.DoesNotContain("```network", capturedMarkdown, StringComparison.Ordinal);
-            Assert.DoesNotContain("```dataview", capturedMarkdown, StringComparison.Ordinal);
+            Assert.Contains("```chart", capturedMarkdown, StringComparison.Ordinal);
+            Assert.Contains("```network", capturedMarkdown, StringComparison.Ordinal);
+            Assert.Contains("```dataview", capturedMarkdown, StringComparison.Ordinal);
+            Assert.DoesNotContain("```ix-chart", capturedMarkdown, StringComparison.Ordinal);
+            Assert.DoesNotContain("```ix-network", capturedMarkdown, StringComparison.Ordinal);
+            Assert.DoesNotContain("```ix-dataview", capturedMarkdown, StringComparison.Ordinal);
         } finally {
             Directory.Delete(root, recursive: true);
         }
@@ -639,13 +639,13 @@ public sealed partial class LocalExportArtifactWriterTests {
             Interpretation line.
 
             Chart snapshot:
-            ```ix-chart
+            ```chart
             {"type":"bar","data":{"labels":["A","B"],"datasets":[{"label":"Count","data":[3,5]}]}}
             ```
             Interpretation line.
 
             Network snapshot:
-            ```ix-network
+            ```network
             {"nodes":[{"id":"A","label":"User"},{"id":"B","label":"Group"}],"edges":[{"from":"A","to":"B","label":"memberOf"}]}
             ```
             Interpretation line.

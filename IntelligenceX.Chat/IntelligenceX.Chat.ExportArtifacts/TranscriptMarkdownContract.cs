@@ -32,7 +32,9 @@ public static class TranscriptMarkdownContract {
             return string.Empty;
         }
 
-        return MarkdownTranscriptPreparation.PrepareIntelligenceXTranscriptForExport(withoutMarkers);
+        return MarkdownTranscriptPreparation.PrepareIntelligenceXTranscriptForExport(
+            withoutMarkers,
+            MarkdownVisualFenceLanguageMode.GenericSemanticFence);
     }
 
     /// <summary>
@@ -40,16 +42,7 @@ public static class TranscriptMarkdownContract {
     /// removing transport markers, and preferring generic semantic visual fence languages.
     /// </summary>
     public static string PrepareTranscriptMarkdownForPortableExport(string? markdown) {
-        var withoutMarkers = StripCachedEvidenceTransportMarkers(markdown);
-        if (string.IsNullOrEmpty(withoutMarkers)) {
-            return string.Empty;
-        }
-
-        var prepared = MarkdownTranscriptPreparation.PrepareIntelligenceXTranscriptForExport(
-            withoutMarkers,
-            MarkdownVisualFenceLanguageMode.GenericSemanticFence);
-
-        return NormalizeAliasVisualFenceOpenersToGeneric(prepared);
+        return PrepareTranscriptMarkdownForExport(markdown);
     }
 
     /// <summary>
@@ -80,75 +73,6 @@ public static class TranscriptMarkdownContract {
         }
 
         return string.Join(newline, output);
-    }
-
-    private static string NormalizeAliasVisualFenceOpenersToGeneric(string markdown) {
-        if (string.IsNullOrEmpty(markdown)) {
-            return string.Empty;
-        }
-
-        var newline = markdown.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
-        var normalized = markdown.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
-        var lines = normalized.Split('\n');
-
-        for (var i = 0; i < lines.Length; i++) {
-            lines[i] = RewriteVisualFenceLanguage(lines[i] ?? string.Empty);
-        }
-
-        return string.Join(newline, lines);
-    }
-
-    private static string RewriteVisualFenceLanguage(string line) {
-        if (string.IsNullOrEmpty(line)) {
-            return line;
-        }
-
-        var index = 0;
-        while (index < line.Length && char.IsWhiteSpace(line[index])) {
-            index++;
-        }
-
-        var fenceStart = index;
-        while (index < line.Length && line[index] == '`') {
-            index++;
-        }
-
-        if (index - fenceStart < 3) {
-            return line;
-        }
-
-        while (index < line.Length && char.IsWhiteSpace(line[index])) {
-            index++;
-        }
-
-        if (index >= line.Length) {
-            return line;
-        }
-
-        var languageStart = index;
-        while (index < line.Length && !char.IsWhiteSpace(line[index])) {
-            index++;
-        }
-
-        if (index == languageStart) {
-            return line;
-        }
-
-        var language = line.Substring(languageStart, index - languageStart);
-        var replacement = language switch {
-            "ix-chart" => "chart",
-            "ix-network" => "network",
-            "visnetwork" => "network",
-            "ix-dataview" => "dataview",
-            _ => string.Empty
-        };
-        if (replacement.Length == 0) {
-            return line;
-        }
-
-        return line.Substring(0, languageStart)
-               + replacement
-               + line.Substring(index);
     }
 
 }

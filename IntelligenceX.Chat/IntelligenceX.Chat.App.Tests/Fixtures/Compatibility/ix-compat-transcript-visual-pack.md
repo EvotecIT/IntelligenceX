@@ -7,7 +7,7 @@ Hey Przemek
 Good to see you.
 
 ### User (20:30: 06)
-Well lets try to show me 3 things - a table, a chart, a visnetwork and diagram so i can confirm our markdown works properly after all the changes.
+Well lets try to show me 3 things - a table, a chart, a network and diagram so i can confirm our markdown works properly after all the changes.
 
 ### Assistant (20:30: 13)
 <!-- ix:model: gpt-5.3-codex -->
@@ -16,7 +16,7 @@ Well lets try to show me 3 things - a table, a chart, a visnetwork and diagram s
 | Check | What to verify | Expected pass signal |
 |---|---|---|
 | Fence integrity | Every code block opens/closes cleanly (` ``` `) | No bleeding formatting below blocks |
-| JSON strictness | `ix-chart` / `ix-network` payloads are valid JSON | Visual renders instead of raw text |
+| JSON strictness | `chart` / `network` payloads are valid JSON | Visual renders instead of raw text |
 
 ### Mixed list edge case
 1. Item one
@@ -25,7 +25,7 @@ Well lets try to show me 3 things - a table, a chart, a visnetwork and diagram s
 2. Item two
 
 ### Deliberate invalid JSON test
-```ix-chart
+```chart
 {
   "type": "bar",
   "data": {
@@ -42,8 +42,8 @@ Well lets try to show me 3 things - a table, a chart, a visnetwork and diagram s
 flowchart LR
     A[Markdown Input] --> B{Parser OK?}
     B -- Yes --> C[Render Table]
-    B -- Yes --> D[Render ix-chart]
-    B -- Yes --> E[Render ix-network]
+    B -- Yes --> D[Render chart]
+    B -- Yes --> E[Render network]
     C --> H[Regression Gate Pass]
     D --> H
     E --> H
@@ -55,7 +55,7 @@ show me proper visual tests
 ### Assistant (20:36: 24)
 <!-- ix:model: gpt-5.3-codex -->
 ## Risk distribution
-```ix-chart
+```chart
 {
   "type": "bar",
   "data": {
@@ -70,7 +70,7 @@ show me proper visual tests
 ```
 
 ## Security trend
-```ix-chart
+```chart
 {
   "type": "line",
   "data": {
@@ -84,7 +84,7 @@ show me proper visual tests
 ```
 
 ## Control coverage
-```ix-chart
+```chart
 {
   "type": "doughnut",
   "data": {
@@ -97,7 +97,7 @@ show me proper visual tests
 ```
 
 ## Heat-style matrix proxy
-```ix-chart
+```chart
 {
   "type": "bar",
   "data": {
@@ -117,7 +117,7 @@ you sure this is the chartjs that we support?
 <!-- ix:model: gpt-5.3-codex -->
 ```mermaid
 flowchart LR
-    A[Paste ix-chart block] --> B{Renders chart?}
+    A[Paste chart block] --> B{Renders chart?}
     B -- No --> C[Validate JSON syntax]
     C --> D{Valid now?}
     D -- No --> E[Fix payload]
