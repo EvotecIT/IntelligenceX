@@ -472,7 +472,7 @@ internal static partial class Program {
             TestSetupWorkflowTemplateIncludesOpenAiAccountRoutingPassThrough);
         failed += Run("Setup workflow template includes OpenAI model pass-through",
             TestSetupWorkflowTemplateIncludesOpenAiModelPassThrough);
-        failed += Run("Reusable review workflow dispatch includes OpenAI model input",
+        failed += Run("Reusable review workflow includes provider-safe fail-open and resilient analysis defaults",
             TestReviewReusableWorkflowDispatchIncludesOpenAiModelInput);
         failed += Run("Setup workflow template explicit-secrets includes diagnostics and preflight pass-through",
             TestSetupWorkflowTemplateExplicitSecretsIncludesDiagnosticsAndPreflightPassThrough);

@@ -188,6 +188,22 @@ jobs:
         AssertContainsText(content, "workflow_call:", "reusable workflow defines workflow_call");
         AssertEqual(2, CountOccurrences(content, "openai_model:"),
             "reusable workflow defines openai_model for dispatch and workflow_call");
+        AssertEqual(2, CountOccurrences(content, "fail_open:"),
+            "reusable workflow defines fail_open for dispatch and workflow_call");
+        AssertEqual(2, CountOccurrences(content, "fail_open_transient_only:"),
+            "reusable workflow defines fail_open_transient_only for dispatch and workflow_call");
+        AssertEqual(3, CountOccurrences(content, "INPUT_FAIL_OPEN: ${{ inputs.fail_open }}"),
+            "reusable workflow passes fail_open to each reviewer execution path");
+        AssertEqual(3, CountOccurrences(content, "INPUT_FAIL_OPEN_TRANSIENT_ONLY: ${{ inputs.fail_open_transient_only }}"),
+            "reusable workflow passes fail_open_transient_only to each reviewer execution path");
+        AssertContainsText(content, "default: false\n        type: boolean\n      preflight:",
+            "reusable workflow defaults fail_open_transient_only to false before preflight");
+        AssertContainsText(content, "git diff --name-only HEAD^1 HEAD^2 > artifacts/changed-files.txt",
+            "reusable workflow falls back to merge-parent changed-files diff");
+        AssertContainsText(content, "-p:EnableWindowsTargeting=true -- analyze run",
+            "reusable workflow enables windows targeting for analysis pre-run");
+        AssertContainsText(content, "-p:EnableWindowsTargeting=true -- analyze gate",
+            "reusable workflow enables windows targeting for analysis gate");
         AssertEqual(false, content.Contains("&review_inputs", StringComparison.Ordinal),
             "reusable workflow should avoid YAML anchors in workflow schema");
         AssertEqual(false, content.Contains("*review_inputs", StringComparison.Ordinal),

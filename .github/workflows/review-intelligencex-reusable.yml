@@ -103,6 +103,16 @@ on:
         required: false
         default: false
         type: boolean
+      fail_open:
+        description: 'Emit a failure summary instead of failing the workflow'
+        required: false
+        default: true
+        type: boolean
+      fail_open_transient_only:
+        description: 'When true, fail-open only on transient reviewer/provider errors'
+        required: false
+        default: false
+        type: boolean
       preflight:
         description: 'Run health check before review'
         required: false
@@ -312,6 +322,16 @@ on:
         type: number
       diagnostics:
         description: 'Enable reviewer diagnostics'
+        required: false
+        default: false
+        type: boolean
+      fail_open:
+        description: 'Emit a failure summary instead of failing the workflow'
+        required: false
+        default: true
+        type: boolean
+      fail_open_transient_only:
+        description: 'When true, fail-open only on transient reviewer/provider errors'
         required: false
         default: false
         type: boolean
@@ -659,8 +679,16 @@ jobs:
           : > artifacts/changed-files.txt
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             if ! git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}" > artifacts/changed-files.txt; then
-              echo "Warning: failed to compute changed-files from PR SHAs; continuing with full gate scope." >&2
+              echo "Warning: failed to compute changed-files from PR SHAs; trying merge-parent fallback." >&2
               : > artifacts/changed-files.txt
+              if git rev-parse --verify HEAD^1 >/dev/null 2>&1 && git rev-parse --verify HEAD^2 >/dev/null 2>&1; then
+                if ! git diff --name-only HEAD^1 HEAD^2 > artifacts/changed-files.txt; then
+                  : > artifacts/changed-files.txt
+                fi
+              fi
+              if [ ! -s artifacts/changed-files.txt ]; then
+                echo "Warning: changed-files fallback unavailable; continuing with full gate scope." >&2
+              fi
             fi
           fi
 
@@ -674,7 +702,7 @@ jobs:
             echo "Static analysis pre-run skipped: config '$IX_REVIEW_CONFIG_PATH' not found."
             exit 0
           fi
-          dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -c Release -f net8.0 -- analyze run --workspace . --config "$IX_REVIEW_CONFIG_PATH"
+          dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -c Release -f net8.0 -p:EnableWindowsTargeting=true -- analyze run --workspace . --config "$IX_REVIEW_CONFIG_PATH"
 
       - name: Evaluate IntelligenceX analysis gate (pre-review, enforcing)
         if: ${{ inputs.reviewer_source == 'source' }}
@@ -686,9 +714,9 @@ jobs:
             exit 0
           fi
           if [ -s artifacts/changed-files.txt ]; then
-            dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -c Release -f net8.0 -- analyze gate --workspace . --config "$IX_REVIEW_CONFIG_PATH" --changed-files artifacts/changed-files.txt
+            dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -c Release -f net8.0 -p:EnableWindowsTargeting=true -- analyze gate --workspace . --config "$IX_REVIEW_CONFIG_PATH" --changed-files artifacts/changed-files.txt
           else
-            dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -c Release -f net8.0 -- analyze gate --workspace . --config "$IX_REVIEW_CONFIG_PATH"
+            dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -c Release -f net8.0 -p:EnableWindowsTargeting=true -- analyze gate --workspace . --config "$IX_REVIEW_CONFIG_PATH"
           fi
 
       - name: Run IntelligenceX.Reviewer (source)
@@ -731,6 +759,8 @@ jobs:
           INPUT_PROGRESS_UPDATE_SECONDS: ${{ inputs.progress_update_seconds }}
           INPUT_PROGRESS_PREVIEW_CHARS: ${{ inputs.progress_preview_chars }}
           INPUT_DIAGNOSTICS: ${{ inputs.diagnostics }}
+          INPUT_FAIL_OPEN: ${{ inputs.fail_open }}
+          INPUT_FAIL_OPEN_TRANSIENT_ONLY: ${{ inputs.fail_open_transient_only }}
           INPUT_PREFLIGHT: ${{ inputs.preflight }}
           INPUT_PREFLIGHT_TIMEOUT_SECONDS: ${{ inputs.preflight_timeout_seconds }}
 
@@ -828,6 +858,8 @@ jobs:
           INPUT_PROGRESS_UPDATE_SECONDS: ${{ inputs.progress_update_seconds }}
           INPUT_PROGRESS_PREVIEW_CHARS: ${{ inputs.progress_preview_chars }}
           INPUT_DIAGNOSTICS: ${{ inputs.diagnostics }}
+          INPUT_FAIL_OPEN: ${{ inputs.fail_open }}
+          INPUT_FAIL_OPEN_TRANSIENT_ONLY: ${{ inputs.fail_open_transient_only }}
           INPUT_PREFLIGHT: ${{ inputs.preflight }}
           INPUT_PREFLIGHT_TIMEOUT_SECONDS: ${{ inputs.preflight_timeout_seconds }}
 
@@ -931,6 +963,8 @@ jobs:
           INPUT_PROGRESS_UPDATE_SECONDS: ${{ inputs.progress_update_seconds }}
           INPUT_PROGRESS_PREVIEW_CHARS: ${{ inputs.progress_preview_chars }}
           INPUT_DIAGNOSTICS: ${{ inputs.diagnostics }}
+          INPUT_FAIL_OPEN: ${{ inputs.fail_open }}
+          INPUT_FAIL_OPEN_TRANSIENT_ONLY: ${{ inputs.fail_open_transient_only }}
           INPUT_PREFLIGHT: ${{ inputs.preflight }}
           INPUT_PREFLIGHT_TIMEOUT_SECONDS: ${{ inputs.preflight_timeout_seconds }}
 

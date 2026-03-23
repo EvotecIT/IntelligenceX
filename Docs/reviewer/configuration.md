@@ -609,6 +609,7 @@ Prefer `directTokenEnv` over `directToken` to avoid committing secrets to source
 - `providerCircuitBreakerOpenSeconds`: how long the provider circuit remains open
 - `failOpen`: emit a failure summary instead of failing the workflow
 - `failOpenTransientOnly`: when true, fail-open only on transient errors
+  Reusable workflow inputs `fail_open` and `fail_open_transient_only` map to these settings; the bundled GitHub workflow defaults to `fail_open: true` and `fail_open_transient_only: false` so provider auth/runtime failures leave a summary comment instead of blocking CI.
 - `summaryStability`: reuse the previous summary (same commit) as prompt context to avoid noisy rewrites
 - `structuredFindings`: emit a structured findings JSON block for automation
 - `skipPaths`: if **all** changed files in a PR match these globs, skip reviewing the entire PR
