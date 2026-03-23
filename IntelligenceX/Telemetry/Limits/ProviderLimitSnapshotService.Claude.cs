@@ -16,6 +16,8 @@ public sealed partial class ProviderLimitSnapshotService {
     private static readonly Uri ClaudeOAuthUsageUri = new("https://api.anthropic.com/api/oauth/usage", UriKind.Absolute);
     private static readonly Uri ClaudeOrganizationsUri = new("https://claude.ai/api/organizations", UriKind.Absolute);
     private static readonly Uri ClaudeAccountUri = new("https://claude.ai/api/account", UriKind.Absolute);
+    private static readonly TimeSpan ClaudeFiveHourWindowDuration = TimeSpan.FromHours(5);
+    private static readonly TimeSpan ClaudeSevenDayWindowDuration = TimeSpan.FromDays(7);
 
     private static async Task<ProviderLimitSnapshot> FetchClaudeAsync(string requestedProviderId, CancellationToken cancellationToken) {
         var credentials = TryLoadClaudeCredentials();
@@ -303,7 +305,29 @@ public sealed partial class ProviderLimitSnapshotService {
             key,
             label,
             NormalizePercent(window.Utilization),
-            window.ResetsAt));
+            window.ResetsAt,
+            detail: BuildClaudeWindowDetail(key),
+            windowDuration: ResolveClaudeWindowDuration(key)));
+    }
+
+    private static string BuildClaudeWindowDetail(string key) {
+        return key switch {
+            "session" => "Account-wide online usage",
+            "weekly" => "Account-wide online usage",
+            "sonnet" => "Account-wide Sonnet online usage",
+            "opus" => "Account-wide Opus online usage",
+            _ => "Account-wide online usage"
+        };
+    }
+
+    private static TimeSpan? ResolveClaudeWindowDuration(string key) {
+        return key switch {
+            "session" => ClaudeFiveHourWindowDuration,
+            "weekly" => ClaudeSevenDayWindowDuration,
+            "sonnet" => ClaudeSevenDayWindowDuration,
+            "opus" => ClaudeSevenDayWindowDuration,
+            _ => null
+        };
     }
 
     private static ClaudeUsageWindow? ReadClaudeUsageWindow(JsonElement root, string propertyName) {

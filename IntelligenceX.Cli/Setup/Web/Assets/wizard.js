@@ -117,6 +117,7 @@ const repoList = $('repoList');
 const repoFilter = $('repoFilter');
 const reviewMode = $('reviewMode');
 const reviewCommentMode = $('reviewCommentMode');
+const reviewModel = $('reviewModel');
 const reviewIntentInput = $('reviewIntent');
 const reviewStrictnessInput = $('reviewStrictness');
 const reviewLoopPolicy = $('reviewLoopPolicy');
@@ -137,6 +138,8 @@ const importFile = $('importFile');
 const keepSecret = $('keepSecret');
 const authB64 = $('authB64');
 const authB64Path = $('authB64Path');
+const anthropicApiKey = $('anthropicApiKey');
+const anthropicApiKeyPath = $('anthropicApiKeyPath');
 const usageEvents = $('usageEvents');
 const output = $('output');
 const summary = $('summary');
@@ -154,6 +157,225 @@ const openAiAccountIdInput = $('openAiAccountId');
 const openAiAccountIdsInput = $('openAiAccountIds');
 const openAiAccountRotation = $('openAiAccountRotation');
 const openAiAccountFailover = $('openAiAccountFailover');
+const reviewModelProfile = $('reviewModelProfile');
+
+const PROVIDER_MODEL_CATALOG = {
+  openai: [
+    { profileId: 'openai-default-review', profileLabel: 'OpenAI default review', id: 'gpt-5.4', label: 'gpt-5.4', description: 'Best default quality for reviewer runs.', isDefault: true },
+    { profileId: 'openai-fast-review', profileLabel: 'OpenAI fast review', id: 'gpt-5.4/fast', label: 'gpt-5.4/fast', description: 'Lower-latency default when you want faster PR turnaround.' },
+    { profileId: 'openai-budget-review', profileLabel: 'OpenAI budget review', id: 'gpt-5-mini', label: 'gpt-5-mini', description: 'Cheaper review pass with solid quality for routine repos.' },
+    { profileId: 'openai-nano-check', profileLabel: 'OpenAI nano check', id: 'gpt-5-nano', label: 'gpt-5-nano', description: 'Smallest budget option for lightweight checks or experimentation.' }
+  ],
+  claude: [
+    { profileId: 'claude-deep-review', profileLabel: 'Claude deep review', id: 'claude-opus-4-1', label: 'claude-opus-4-1', description: 'Best Claude review quality for deep code review passes.', isDefault: true },
+    { profileId: 'claude-balanced-review', profileLabel: 'Claude balanced review', id: 'claude-sonnet-4-5', label: 'claude-sonnet-4-5', description: 'Balanced Claude option when you want strong reviews with lower cost than Opus.' },
+    { profileId: 'claude-fast-review', profileLabel: 'Claude fast review', id: 'claude-haiku-4-5', label: 'claude-haiku-4-5', description: 'Fastest Claude option for lighter checks and quicker iteration.' }
+  ],
+  copilot: []
+};
+
+const PROVIDER_SETUP_SUMMARIES = {
+  openai: 'OpenAI uses your ChatGPT/OpenAI auth bundle and can optionally rotate reviewer runs across OpenAI accounts.',
+  claude: 'Claude uses an Anthropic API key and reviewer usage is tracked separately from local Claude session logs.',
+  copilot: 'Copilot setup relies on GitHub Copilot CLI instead of a managed provider secret in setup.'
+};
+
+function getProviderModelCatalog(provider) {
+  const normalizedProvider = String(provider || '').trim().toLowerCase();
+  return PROVIDER_MODEL_CATALOG[normalizedProvider] || [];
+}
+
+function getProviderSetupSummary(provider) {
+  const normalizedProvider = String(provider || '').trim().toLowerCase();
+  return PROVIDER_SETUP_SUMMARIES[normalizedProvider] || '';
+}
+
+function getProviderModelProfile(provider, model) {
+  const normalizedModel = String(model || '').trim().toLowerCase();
+  if (!normalizedModel) return null;
+
+  const catalog = getProviderModelCatalog(provider);
+  for (const entry of catalog) {
+    if (String(entry.id || '').trim().toLowerCase() === normalizedModel) {
+      return entry;
+    }
+  }
+
+  return null;
+}
+
+function getProviderDefaultModel(provider) {
+  const catalog = getProviderModelCatalog(provider);
+  return catalog.length > 0 ? catalog[0].id : '';
+}
+
+function getProviderDefaultModelProfileId(provider) {
+  const catalog = getProviderModelCatalog(provider);
+  const defaultEntry = catalog.find(entry => !!entry.isDefault) || catalog[0];
+  return defaultEntry ? defaultEntry.profileId : '__custom__';
+}
+
+function modelLooksCompatibleWithProvider(model, provider) {
+  const normalizedModel = String(model || '').trim().toLowerCase();
+  const normalizedProvider = String(provider || '').trim().toLowerCase();
+  if (!normalizedModel) return false;
+  if (normalizedProvider === 'claude') return normalizedModel.startsWith('claude');
+  if (normalizedProvider === 'openai') {
+    return normalizedModel.startsWith('gpt') ||
+      normalizedModel.startsWith('o1') ||
+      normalizedModel.startsWith('o3') ||
+      normalizedModel.startsWith('o4') ||
+      normalizedModel.startsWith('chatgpt') ||
+      normalizedModel.startsWith('codex');
+  }
+  return false;
+}
+
+function syncProviderModelSelection(previousProvider, nextProvider) {
+  if (!reviewModel) return;
+
+  const previousDefault = getProviderDefaultModel(previousProvider);
+  const nextDefault = getProviderDefaultModel(nextProvider);
+  const currentValue = reviewModel.value.trim();
+  const providerChanged = String(previousProvider || '').trim().toLowerCase() !== String(nextProvider || '').trim().toLowerCase();
+  const shouldReset = providerChanged && (
+    currentValue.length === 0 ||
+    (previousDefault && currentValue.toLowerCase() === previousDefault.toLowerCase()) ||
+    !modelLooksCompatibleWithProvider(currentValue, nextProvider)
+  );
+
+  reviewModel.disabled = nextProvider === 'copilot';
+  reviewModel.placeholder = nextDefault || 'provider-specific model';
+
+  const hint = $('reviewModelHint');
+  if (hint) {
+    hint.textContent = nextProvider === 'openai'
+      ? 'Set the review model for OpenAI runs. Use a named profile, quick pick, or custom model id. Default: gpt-5.4.'
+      : nextProvider === 'claude'
+        ? 'Set the review model for Claude runs. Use a named profile, quick pick, or custom model id. Default: claude-opus-4-1.'
+        : 'Copilot setup does not use the managed model field here.';
+  }
+
+  if (nextProvider === 'copilot') {
+    reviewModel.value = '';
+    renderModelProfiles(nextProvider);
+    renderModelQuickPicks(nextProvider);
+    syncSelectedModelProfile(nextProvider, reviewModel.value);
+    return;
+  }
+
+  if (shouldReset || currentValue.length === 0) {
+    reviewModel.value = nextDefault;
+  }
+
+  renderModelProfiles(nextProvider);
+  renderModelQuickPicks(nextProvider);
+  syncSelectedModelProfile(nextProvider, reviewModel.value);
+}
+
+function setSelectedModelQuickPick(model, provider) {
+  const quickPickContainer = $('reviewModelQuickPicks');
+  if (!quickPickContainer) return;
+
+  const currentValue = String(model || '').trim().toLowerCase();
+  const normalizedProvider = String(provider || '').trim().toLowerCase();
+  quickPickContainer.querySelectorAll('[data-model-id]').forEach(button => {
+    const matchesModel = String(button.dataset.modelId || '').trim().toLowerCase() === currentValue;
+    const matchesProvider = String(button.dataset.provider || '').trim().toLowerCase() === normalizedProvider;
+    button.classList.toggle('active', matchesModel && matchesProvider);
+  });
+}
+
+function getSelectedModelProfileId(provider, model) {
+  const entry = getProviderModelProfile(provider, model);
+  return entry && entry.profileId ? entry.profileId : '__custom__';
+}
+
+function syncSelectedModelProfile(provider, model) {
+  if (!reviewModelProfile) return;
+
+  const profileId = getSelectedModelProfileId(provider, model);
+  if (reviewModelProfile.value !== profileId) {
+    reviewModelProfile.value = profileId;
+  }
+
+  const hint = $('reviewModelProfileHint');
+  const entry = getProviderModelProfile(provider, model);
+  if (hint) {
+    hint.textContent = entry
+      ? `${entry.profileLabel}: ${entry.description}${entry.isDefault ? ' Recommended default.' : ''}`
+      : 'Choose a named provider/model profile or switch to custom.';
+  }
+}
+
+function renderModelProfiles(provider) {
+  if (!reviewModelProfile) return;
+
+  reviewModelProfile.innerHTML = '';
+  const models = getProviderModelCatalog(provider);
+  if (String(provider || '').trim().toLowerCase() === 'copilot' || models.length === 0) {
+    const option = document.createElement('option');
+    option.value = '__custom__';
+    option.textContent = 'Custom / not used';
+    reviewModelProfile.appendChild(option);
+    reviewModelProfile.disabled = true;
+    syncSelectedModelProfile(provider, '');
+    return;
+  }
+
+  reviewModelProfile.disabled = false;
+  models.forEach(model => {
+    const option = document.createElement('option');
+    option.value = model.profileId;
+    option.textContent = `${model.profileLabel} - ${model.label}`;
+    reviewModelProfile.appendChild(option);
+  });
+
+  const customOption = document.createElement('option');
+  customOption.value = '__custom__';
+  customOption.textContent = 'Custom model id';
+  reviewModelProfile.appendChild(customOption);
+  syncSelectedModelProfile(provider, reviewModel ? reviewModel.value : '');
+}
+
+function renderModelQuickPicks(provider) {
+  const quickPickContainer = $('reviewModelQuickPicks');
+  const suggestions = $('reviewModelSuggestions');
+  if (!quickPickContainer || !suggestions) return;
+
+  quickPickContainer.innerHTML = '';
+  suggestions.innerHTML = '';
+
+  const models = getProviderModelCatalog(provider);
+  if (String(provider || '').trim().toLowerCase() === 'copilot' || models.length === 0) {
+    quickPickContainer.hidden = true;
+    return;
+  }
+
+  quickPickContainer.hidden = false;
+  models.forEach(model => {
+    const option = document.createElement('option');
+    option.value = model.id;
+    suggestions.appendChild(option);
+
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'model-quick-pick';
+    button.dataset.modelId = model.id;
+    button.dataset.provider = String(provider || '').trim().toLowerCase();
+    button.textContent = model.label;
+    button.title = model.description || model.id;
+    button.addEventListener('click', () => {
+      if (!reviewModel || reviewModel.disabled) return;
+      reviewModel.value = model.id;
+      setSelectedModelQuickPick(model.id, provider);
+      reviewModel.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    quickPickContainer.appendChild(button);
+  });
+
+  setSelectedModelQuickPick(reviewModel ? reviewModel.value : '', provider);
+}
 
 function normalizeOperationId(operation) {
   const normalized = String(operation || '').trim().toLowerCase();
@@ -482,6 +704,7 @@ function refreshPathStateAfterOnboardingSelection() {
 
 // ── Provider toggle ──
 function selectProvider(p) {
+  const previousProvider = selectedProvider;
   selectedProvider = p;
   document.querySelectorAll('[data-provider]').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.provider === p);
@@ -491,9 +714,28 @@ function selectProvider(p) {
   if (hint) {
     hint.textContent = p === 'openai'
       ? 'Recommended. Uses your ChatGPT account for reviews.'
-      : 'Uses GitHub Copilot CLI. Requires Copilot subscription and CLI installed.';
+      : p === 'claude'
+        ? 'Uses Anthropic Claude via API key and tracks Claude reviewer usage alongside local Claude telemetry.'
+        : 'Uses GitHub Copilot CLI. Requires Copilot subscription and CLI installed.';
   }
+  const secretHint = $('secretHint');
+  if (secretHint) {
+    secretHint.textContent = p === 'openai'
+      ? 'Sign in to ChatGPT or provide an auth bundle to enable code reviews.'
+      : p === 'claude'
+        ? 'Provide a Claude API key to enable reviewer runs and track Claude usage.'
+        : 'No managed secret is required for Copilot setup.';
+  }
+  const openaiSection = $('openaiAuthSection');
+  const claudeSection = $('claudeAuthSection');
+  if (openaiSection) openaiSection.classList.toggle('hidden', p !== 'openai');
+  if (claudeSection) claudeSection.classList.toggle('hidden', p !== 'claude');
+  syncProviderModelSelection(previousProvider, p);
   updateOpenAiAccountControls();
+  updateUsageBtn();
+  if (currentStep === 4) {
+    buildReviewTable();
+  }
 }
 
 // ── Preset selection ──
@@ -579,8 +821,16 @@ if (chatgptLoginBtn) {
 
 async function ensureOpenAiAuthIfNeeded() {
   if (shouldSkipSecrets()) return true;
-  if (selectedProvider !== 'openai') return true;
+  if (selectedProvider === 'copilot') return true;
   if (secretOption === 'skip') return true;
+
+  if (selectedProvider === 'claude') {
+    const hasClaudeKey = (anthropicApiKey && anthropicApiKey.value.trim().length > 0) ||
+      (anthropicApiKeyPath && anthropicApiKeyPath.value.trim().length > 0);
+    if (hasClaudeKey) return true;
+    write('Claude setup requires anthropicApiKey or anthropicApiKeyPath.');
+    return false;
+  }
 
   const hasAuth = (authB64 && authB64.value.trim().length > 0) || (authB64Path && authB64Path.value.trim().length > 0);
   if (hasAuth) return true;

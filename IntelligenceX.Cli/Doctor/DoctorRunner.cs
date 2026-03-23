@@ -8,6 +8,7 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using IntelligenceX.Cli;
 using IntelligenceX.Cli.Auth;
+using IntelligenceX.Cli.Setup;
 using IntelligenceX.OpenAI;
 using IntelligenceX.OpenAI.Auth;
 
@@ -62,9 +63,7 @@ internal static class DoctorRunner {
         }
 
         if (!options.SkipOpenAi) {
-            var requiresAuthStore = config is null
-                ? false
-                : RequiresOpenAiAuthStore(config.Provider, config.Transport);
+            var requiresAuthStore = config is not null && RequiresOpenAiAuthStore(config.Provider, config.Transport);
             if (requiresAuthStore) {
                 var (ok, warnCount, errorMessage) = CheckOpenAiAuthStore(config!);
                 warnings += warnCount;
@@ -181,12 +180,7 @@ internal static class DoctorRunner {
     }
 
     private static bool RequiresOpenAiAuthStore(string provider, OpenAITransportKind transport) {
-        if (string.IsNullOrWhiteSpace(provider)) {
-            return false;
-        }
-        var p = provider.Trim().ToLowerInvariant();
-        var isOpenAi = p is "openai" or "codex" or "chatgpt";
-        if (!isOpenAi) {
+        if (!SetupProviderCatalog.IsOpenAiProvider(provider)) {
             return false;
         }
         // Native transport uses ChatGPT OAuth auth store.

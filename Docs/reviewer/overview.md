@@ -1,13 +1,14 @@
 ---
 title: IntelligenceX Reviewer Overview
-description: Learn how the IntelligenceX reviewer runs in GitHub Actions, supports ChatGPT or Copilot, posts structured PR feedback, and keeps setup under your control.
+description: Learn how the IntelligenceX reviewer runs in GitHub Actions, supports OpenAI, Claude, and Copilot, posts structured PR feedback, and keeps setup under your control.
 ---
 
 # Reviewer Overview
 
 The reviewer runs in GitHub Actions (and Azure DevOps summary-only) and posts a structured review comment on PRs. Azure DevOps summary-only uses the PR-level changes endpoint (cumulative diff).
 It can use:
-- ChatGPT (native transport) with a ChatGPT login bundle.
+- OpenAI/ChatGPT (native transport) with a ChatGPT login bundle.
+- Claude (Anthropic Messages API) with an `ANTHROPIC_API_KEY`.
 - Copilot (via Copilot CLI) for teams already using GitHub Copilot.
 - Copilot direct HTTP transport (experimental) for custom gateways.
 
@@ -38,7 +39,7 @@ flowchart LR
   A["Pull request event"] --> B["GitHub Actions job"]
   B --> C["IntelligenceX review pipeline"]
   C --> D["Context builder<br/>diff selection, chunking, redaction"]
-  D --> E["Provider call<br/>OpenAI or Copilot"]
+  D --> E["Provider call<br/>OpenAI, Claude, or Copilot"]
   E --> F["Findings parser and formatter"]
   F --> G["PR summary comment"]
   F --> H["Inline comments (if enabled)"]
@@ -57,7 +58,7 @@ flowchart LR
 
 **Engine Scope**
 - Review pipeline: resolve inputs, build context, assemble prompt, call provider, parse inline comments, post summary/inline output.
-- Providers and transports: OpenAI (native/appserver), OpenAI-compatible HTTP endpoints (Ollama/OpenRouter/etc.), and Copilot (CLI/direct).
+- Providers and transports: OpenAI (native/appserver), Claude (Anthropic Messages API), OpenAI-compatible HTTP endpoints (Ollama/OpenRouter/etc.), and Copilot (CLI/direct).
 - Context builder: diff-range selection, file filtering, chunking, redaction, language hints, related PRs.
 - Formatter/output: summary templates, inline comment formatting, structured findings block.
 - Thread triage/auto-resolve: load threads, require evidence, summarize/append optional replies.
@@ -70,7 +71,7 @@ flowchart LR
 
 **Default Mode + Model Policy**
 - Default review mode: `hybrid` (summary + inline when supported; falls back to summary-only).
-- Default provider/model: OpenAI with `gpt-5.3-codex` unless configured otherwise; Copilot is opt-in.
+- Default provider/model: OpenAI with `gpt-5.4` unless configured otherwise; Claude and Copilot are opt-in.
 - Safe defaults: skip drafts; skip workflow changes unless allowed; no secrets/writes on untrusted PRs; fail-open only for transient errors; budget summary enabled; auto-resolve limited to bot threads with evidence; secrets audit on.
 
 ## Reusable workflow (quick start)
@@ -112,14 +113,28 @@ The reusable workflow maps `with:` inputs to environment variables the reviewer 
 | `reviewer_release_asset` | `REVIEWER_RELEASE_ASSET` |
 | `reviewer_release_url` | `REVIEWER_RELEASE_URL` |
 
-## Minimal config (native ChatGPT)
+## Minimal config (native OpenAI)
 
 ```json
 {
   "review": {
     "provider": "openai",
     "openaiTransport": "native",
-    "model": "gpt-5.3-codex",
+    "model": "gpt-5.4",
+    "mode": "inline",
+    "length": "long",
+    "reviewUsageSummary": true
+  }
+}
+```
+
+## Minimal config (Claude)
+
+```json
+{
+  "review": {
+    "provider": "claude",
+    "model": "claude-opus-4-1",
     "mode": "inline",
     "length": "long",
     "reviewUsageSummary": true
@@ -152,5 +167,5 @@ By default:
 
 ## Usage and credits line
 
-Enable `reviewUsageSummary` to append limits/credits (ChatGPT native only). See [Configuration](/docs/reviewer/configuration/).
+Enable `reviewUsageSummary` to append limits/credits. OpenAI uses the ChatGPT account snapshot, while Claude uses the live Anthropic provider-limit snapshot. See [Configuration](/docs/reviewer/configuration/).
 When a code-review rate-limit window is present, its label is explicitly prefixed with `code review` (for example, `code review weekly limit`) so it is distinct from general limits.

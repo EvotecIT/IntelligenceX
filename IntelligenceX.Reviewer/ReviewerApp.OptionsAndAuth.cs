@@ -168,9 +168,9 @@ public static partial class ReviewerApp {
     }
 
     private static readonly RunOptionSpec[] RunOptionSpecs = {
-        new RunOptionSpec("--provider", "<openai|codex|chatgpt|openai-codex|openai-compatible|ollama|copilot|azure>", "AI provider or Azure DevOps code host (aliases: azuredevops, azure-devops, ado)", true,
+        new RunOptionSpec("--provider", "<openai|codex|chatgpt|openai-codex|openai-compatible|ollama|claude|anthropic|copilot|azure>", "AI provider or Azure DevOps code host (aliases: azuredevops, azure-devops, ado)", true,
             (options, value) => options.Provider = value),
-        new RunOptionSpec("--provider-fallback", "<openai|codex|chatgpt|openai-codex|openai-compatible|ollama|copilot>", "Optional fallback AI provider when the primary provider fails", true,
+        new RunOptionSpec("--provider-fallback", "<openai|codex|chatgpt|openai-codex|openai-compatible|ollama|claude|anthropic|copilot>", "Optional fallback AI provider when the primary provider fails", true,
             (options, value) => options.ProviderFallback = value),
         new RunOptionSpec("--code-host", "<github|azure>", "Override code host (azure/azuredevops supported)", true,
             (options, value) => options.CodeHost = value),
@@ -212,11 +212,11 @@ public static partial class ReviewerApp {
         }
         if (!string.IsNullOrWhiteSpace(options.Provider) && !IsValidProvider(options.Provider)) {
             options.Errors.Add(
-                $"Unsupported provider '{options.Provider}'. Use openai/codex/chatgpt/openai-codex, openai-compatible/ollama/openrouter, copilot, or azure/azuredevops.");
+                $"Unsupported provider '{options.Provider}'. Use openai/codex/chatgpt/openai-codex, openai-compatible/ollama/openrouter, claude/anthropic, copilot, or azure/azuredevops.");
         }
         if (!string.IsNullOrWhiteSpace(options.ProviderFallback) && !IsValidAiProvider(options.ProviderFallback)) {
             options.Errors.Add(
-                $"Unsupported provider fallback '{options.ProviderFallback}'. Use openai/codex/chatgpt/openai-codex, openai-compatible/ollama/openrouter, or copilot.");
+                $"Unsupported provider fallback '{options.ProviderFallback}'. Use openai/codex/chatgpt/openai-codex, openai-compatible/ollama/openrouter, claude/anthropic, or copilot.");
         }
         if (!string.IsNullOrWhiteSpace(options.CodeHost) && !IsValidCodeHost(options.CodeHost)) {
             options.Errors.Add($"Unsupported code host '{options.CodeHost}'. Use github or azure/azuredevops.");
@@ -314,6 +314,15 @@ public static partial class ReviewerApp {
 
     private static async Task<bool> ValidateAuthAsync(ReviewSettings settings) {
         var provider = ReviewProviderContracts.Get(settings.Provider);
+        if (provider.Provider == ReviewProvider.Claude) {
+            try {
+                _ = new ReviewRunner(settings).ResolveClaudeApiKeyForTests();
+                return true;
+            } catch (Exception ex) {
+                Console.Error.WriteLine(ex.Message);
+                return false;
+            }
+        }
         if (!provider.RequiresOpenAiAuthStore) {
             return true;
         }

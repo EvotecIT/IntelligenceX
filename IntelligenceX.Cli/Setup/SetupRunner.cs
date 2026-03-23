@@ -152,21 +152,13 @@ internal static partial class SetupRunner {
                 return 0;
             }
 
-            if (!options.SkipSecret) {
-                var authB64 = ResolveAuthB64(options);
-                if (string.IsNullOrWhiteSpace(authB64)) {
-                    state.OpenAI.AuthBundle = await LoginOpenAiAsync(options).ConfigureAwait(false);
-                    state.OpenAI.AuthJson = AuthBundleSerializer.Serialize(state.OpenAI.AuthBundle);
-                    state.OpenAI.AuthB64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(state.OpenAI.AuthJson));
-                } else {
-                    state.OpenAI.AuthB64 = authB64;
-                }
-
+            if (!options.SkipSecret && SetupProviderCatalog.RequiresManagedSecret(options.Provider)) {
+                var secretValue = await ResolveManagedSecretValueAsync(state).ConfigureAwait(false);
+                var secretName = GetRequiredManagedSecretName(options.Provider);
                 if (options.ManualSecret) {
-                    PrintManualSecret(state.OpenAI.AuthB64, options.ManualSecretStdout);
+                    PrintManualSecret(options.Provider ?? IntelligenceXDefaults.DefaultProvider, secretValue, options.ManualSecretStdout);
                 } else {
-                    await github.SetSecretAsync(owner, repo, "INTELLIGENCEX_AUTH_B64", state.OpenAI.AuthB64)
-                        .ConfigureAwait(false);
+                    await github.SetSecretAsync(owner, repo, secretName, secretValue).ConfigureAwait(false);
                 }
             }
 

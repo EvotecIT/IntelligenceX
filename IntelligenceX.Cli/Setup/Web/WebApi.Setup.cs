@@ -29,15 +29,9 @@ internal sealed partial class WebApi {
         string? secretTarget,
         string? secretOrg) {
         var expectOrgSecret = (operation == SetupApplyOperation.Setup || operation == SetupApplyOperation.UpdateSecret) &&
-                              IsOpenAiProvider(provider) &&
+                              SetupProviderCatalog.SupportsOrgSecret(provider) &&
                               string.Equals(secretTarget, "org", StringComparison.OrdinalIgnoreCase);
         return (expectOrgSecret, expectOrgSecret ? secretOrg : null);
-    }
-
-    private static bool IsOpenAiProvider(string provider) {
-        return string.Equals(provider, "openai", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(provider, "chatgpt", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(provider, "codex", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string? ResolveSecretOrgForRepo(string repo, string? secretOrg) {
@@ -82,8 +76,8 @@ internal sealed partial class WebApi {
             return true;
         }
 
-        var provider = string.IsNullOrWhiteSpace(request.Provider) ? "openai" : request.Provider!;
-        if (!IsOpenAiProvider(provider)) {
+        var provider = SetupProviderCatalog.GetCanonicalProviderId(request.Provider);
+        if (!SetupProviderCatalog.SupportsOpenAiAccountRouting(provider)) {
             error = "OpenAI account routing options are supported only when provider=openai/chatgpt/codex.";
             return false;
         }
@@ -175,20 +169,48 @@ internal sealed partial class WebApi {
             await WriteJsonAsync(context, new { error = "Choose only one of authB64 or authB64Path." }).ConfigureAwait(false);
             return;
         }
-
-        var hasAuthBundle = !string.IsNullOrWhiteSpace(request.AuthB64) || !string.IsNullOrWhiteSpace(request.AuthB64Path);
-        if (!request.SkipSecret && !request.Cleanup && !request.UpdateSecret && !hasAuthBundle) {
+        if (!string.IsNullOrWhiteSpace(request.AnthropicApiKey) && !string.IsNullOrWhiteSpace(request.AnthropicApiKeyPath)) {
             context.Response.StatusCode = 400;
-            await WriteJsonAsync(context, new {
-                error = "Missing OpenAI auth bundle. Click 'Sign in with ChatGPT', provide authB64/authB64Path, or set skipSecret=true."
-            }).ConfigureAwait(false);
+            await WriteJsonAsync(context, new { error = "Choose only one of anthropicApiKey or anthropicApiKeyPath." }).ConfigureAwait(false);
             return;
         }
 
-        if (request.UpdateSecret && !hasAuthBundle) {
-            context.Response.StatusCode = 400;
-            await WriteJsonAsync(context, new { error = "Update-secret requires authB64/authB64Path in the web UI." }).ConfigureAwait(false);
-            return;
+        var provider = SetupProviderCatalog.GetCanonicalProviderId(request.Provider);
+        request.Provider = provider;
+        var hasOpenAiAuthBundle = !string.IsNullOrWhiteSpace(request.AuthB64) || !string.IsNullOrWhiteSpace(request.AuthB64Path);
+        var hasAnthropicApiKey = !string.IsNullOrWhiteSpace(request.AnthropicApiKey) || !string.IsNullOrWhiteSpace(request.AnthropicApiKeyPath);
+        var needsManagedSecret = SetupProviderCatalog.RequiresManagedSecret(provider) &&
+                                 !request.SkipSecret &&
+                                 !request.Cleanup;
+        if (needsManagedSecret) {
+            if (SetupProviderCatalog.IsOpenAiProvider(provider) && !hasOpenAiAuthBundle) {
+                context.Response.StatusCode = 400;
+                await WriteJsonAsync(context, new {
+                    error = "Missing OpenAI auth bundle. Click 'Sign in with ChatGPT', provide authB64/authB64Path, or set skipSecret=true."
+                }).ConfigureAwait(false);
+                return;
+            }
+
+            if (SetupProviderCatalog.IsClaudeProvider(provider) && !hasAnthropicApiKey) {
+                context.Response.StatusCode = 400;
+                await WriteJsonAsync(context, new {
+                    error = "Missing Claude API key. Paste anthropicApiKey, provide anthropicApiKeyPath, or set skipSecret=true."
+                }).ConfigureAwait(false);
+                return;
+            }
+        }
+
+        if (request.UpdateSecret) {
+            if (SetupProviderCatalog.IsOpenAiProvider(provider) && !hasOpenAiAuthBundle) {
+                context.Response.StatusCode = 400;
+                await WriteJsonAsync(context, new { error = "Update-secret requires authB64/authB64Path in the web UI." }).ConfigureAwait(false);
+                return;
+            }
+            if (SetupProviderCatalog.IsClaudeProvider(provider) && !hasAnthropicApiKey) {
+                context.Response.StatusCode = 400;
+                await WriteJsonAsync(context, new { error = "Update-secret requires anthropicApiKey/anthropicApiKeyPath in the web UI." }).ConfigureAwait(false);
+                return;
+            }
         }
 
         // Analysis flags are only honored when the setup flow is generating/merging reviewer.json.
@@ -267,7 +289,6 @@ internal sealed partial class WebApi {
             : request.UpdateSecret
                 ? SetupApplyOperation.UpdateSecret
                 : SetupApplyOperation.Setup;
-        var provider = string.IsNullOrWhiteSpace(request.Provider) ? "openai" : request.Provider!;
         var requestDryRun = dryRun || request.DryRun;
 
         GitHubRepoClient? verifyClient = null;

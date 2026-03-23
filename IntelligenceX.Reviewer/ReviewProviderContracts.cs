@@ -69,11 +69,24 @@ internal static class ReviewProviderContracts {
         requiresOpenAiAuthStore: false,
         maxRecommendedRetryCount: 3);
 
+    private static readonly ReviewProviderContract Claude = new(
+        ReviewProvider.Claude,
+        "claude",
+        "Claude",
+        new[] { "anthropic", "claude-code" },
+        new[] { "messages-api" },
+        supportsUsageApi: true,
+        supportsReasoningControls: false,
+        supportsStreaming: false,
+        requiresOpenAiAuthStore: false,
+        maxRecommendedRetryCount: 3);
+
     private static readonly IReadOnlyDictionary<ReviewProvider, ReviewProviderContract> ByProvider =
         new Dictionary<ReviewProvider, ReviewProviderContract> {
             [ReviewProvider.OpenAI] = OpenAi,
             [ReviewProvider.Copilot] = Copilot,
-            [ReviewProvider.OpenAICompatible] = OpenAiCompatible
+            [ReviewProvider.OpenAICompatible] = OpenAiCompatible,
+            [ReviewProvider.Claude] = Claude
         };
 
     private static readonly IReadOnlyDictionary<string, ReviewProvider> ByAlias = BuildAliasMap();

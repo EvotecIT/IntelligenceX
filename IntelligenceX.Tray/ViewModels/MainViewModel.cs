@@ -38,6 +38,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     private readonly HashSet<string> _activeLimitNotificationKeys = new(StringComparer.Ordinal);
     private readonly HashSet<string> _favoriteProviderIds;
     private readonly Dictionary<string, ProviderLimitSnapshot> _latestLimitSnapshots = new(StringComparer.OrdinalIgnoreCase);
+    private Dictionary<string, List<SourceRootRecord>> _latestSourceRootsByProvider = new(StringComparer.OrdinalIgnoreCase);
     private Dictionary<string, List<UsageEventRecord>> _displayedProviderEvents = new(StringComparer.OrdinalIgnoreCase);
     private Dictionary<string, ProviderRefreshSnapshot> _previousProviderSnapshots = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, Queue<ProviderRefreshSnapshot>> _providerRefreshHistory = new(StringComparer.OrdinalIgnoreCase);
@@ -504,6 +505,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
                 StringComparer.OrdinalIgnoreCase);
             UpdateProviderRefreshHistory(currentProviderSnapshots);
             var providerHistory = BuildProviderComparisonHistory(_providerRefreshHistory);
+            UpdateLatestSourceRoots(refreshData.SourceRoots);
             var newProviders = BuildUsageProviders(
                 mergedProviderData,
                 refreshData.AllEvents,
@@ -1149,9 +1151,11 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
 
     private void ApplyLatestLimitSnapshotsToProviders() {
         foreach (var provider in Providers.Where(static provider => provider.ProviderId != "__all__")) {
-            provider.ApplyLimitSnapshot(_latestLimitSnapshots.TryGetValue(provider.ProviderId, out var snapshot)
-                ? snapshot
-                : null);
+            var snapshot = _latestLimitSnapshots.TryGetValue(provider.ProviderId, out var limitSnapshot)
+                ? limitSnapshot
+                : null;
+            provider.ApplyLimitSnapshot(snapshot);
+            provider.ApplyUsageScopeSummary(BuildUsageScopeSummary(provider.ProviderId, snapshot));
         }
 
         if (Providers.FirstOrDefault(provider => string.Equals(provider.ProviderId, "__all__", StringComparison.Ordinal)) is { } allProvider) {
@@ -1394,6 +1398,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
             static group => group.ProviderId,
             static group => ProviderRefreshSnapshot.FromEvents(group.Events),
             StringComparer.OrdinalIgnoreCase);
+        UpdateLatestSourceRoots(cachedSnapshot.SourceRoots);
         var cachedProviders = BuildUsageProviders(
             mergedProviderData,
             cachedSnapshot.Events,
@@ -1506,6 +1511,21 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
             StringComparer.OrdinalIgnoreCase);
     }
 
+    private void UpdateLatestSourceRoots(IReadOnlyList<SourceRootRecord> sourceRoots) {
+        _latestSourceRootsByProvider = (sourceRoots ?? Array.Empty<SourceRootRecord>())
+            .Where(static root => !string.IsNullOrWhiteSpace(root.ProviderId))
+            .GroupBy(static root => root.ProviderId, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                static group => group.Key,
+                static group => group.ToList(),
+                StringComparer.OrdinalIgnoreCase);
+    }
+
+    private UsageTelemetryScopeSummary BuildUsageScopeSummary(string providerId, ProviderLimitSnapshot? limitSnapshot) {
+        _latestSourceRootsByProvider.TryGetValue(providerId, out var providerRoots);
+        return UsageTelemetryScopeSummaryBuilder.Build(providerId, providerRoots, limitSnapshot);
+    }
+
     private List<ProviderViewModel> BuildUsageProviders(
         IReadOnlyList<ProviderRefreshData> providerData,
         List<UsageEventRecord> allEvents,
@@ -1518,6 +1538,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         if (shouldShowCombinedProvider) {
             var allVm = BuildCombinedProviderViewModel(allEvents, scannedAtUtc);
             ApplyUsageHealth(allVm, usageHealth, providerId: null);
+            allVm.ApplyUsageScopeSummary(null);
             allVm.ApplyRefreshDelta(
                 providerDelta?.Values.Where(static delta => delta.TokenDelta > 0L).Sum(static delta => delta.TokenDelta) ?? 0L,
                 providerDelta?.Values.Where(static delta => delta.EventDelta > 0).Sum(static delta => delta.EventDelta) ?? 0);
@@ -1539,6 +1560,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
             if (_latestLimitSnapshots.TryGetValue(group.ProviderId, out var limitSnapshot)) {
                 vm.ApplyLimitSnapshot(limitSnapshot);
             }
+            vm.ApplyUsageScopeSummary(BuildUsageScopeSummary(group.ProviderId, _latestLimitSnapshots.TryGetValue(group.ProviderId, out var scopeSnapshot) ? scopeSnapshot : null));
 
             vm.ApplyExplorerPreferences(GetProviderExplorerPreferences(vm.ProviderId));
             newProviders.Add(vm);

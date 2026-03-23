@@ -541,7 +541,9 @@ internal static partial class Program {
         failed += Run("Review provider alias parsing", TestReviewProviderAliasParsing);
         failed += Run("Review provider contract capabilities", TestReviewProviderContractCapabilities);
         failed += Run("Review provider config alias", TestReviewProviderConfigAlias);
+        failed += Run("Review Claude provider config alias", TestReviewClaudeProviderConfigAlias);
         failed += Run("Review provider invalid config throws", TestReviewProviderConfigInvalidThrows);
+        failed += Run("Review Claude API provider runs and records telemetry", TestReviewClaudeApiProviderRunsAndRecordsTelemetry);
         failed += Run("OpenAI-compatible rejects http non-loopback by default", TestReviewOpenAiCompatibleRejectsHttpNonLoopbackByDefault);
         failed += Run("OpenAI-compatible preflight treats 405 as reachable", TestReviewOpenAiCompatiblePreflightTreats405AsReachable);
         failed += Run("OpenAI-compatible follows redirects", TestReviewOpenAiCompatibleFollowsRedirects);
@@ -679,11 +681,16 @@ internal static partial class Program {
         failed += Run("Review formatter golden snapshot", TestReviewFormatterGoldenSnapshot);
         failed += Run("Review usage integration display", TestReviewUsageIntegrationDisplay);
         failed += Run("Review usage summary line", TestReviewUsageSummaryLine);
+        failed += Run("Review Claude usage summary line", TestReviewClaudeUsageSummaryLine);
         failed += Run("Review usage summary disambiguates code review weekly", TestReviewUsageSummaryDisambiguatesCodeReviewWeekly);
         failed += Run("Review usage summary disambiguates code review weekly secondary", TestReviewUsageSummaryDisambiguatesCodeReviewWeeklySecondary);
         failed += Run("Review usage summary prefixes non-weekly code review", TestReviewUsageSummaryPrefixesNonWeeklyCodeReview);
         failed += Run("Review usage budget guard blocks exhausted credits and weekly", TestReviewUsageBudgetGuardBlocksWhenCreditsAndWeeklyExhausted);
         failed += Run("Review usage budget guard allows credits fallback", TestReviewUsageBudgetGuardAllowsCreditsFallback);
+        failed += Run("Review Claude usage budget guard blocks when weekly exhausted",
+            TestReviewClaudeUsageBudgetGuardBlocksWhenWeeklyExhausted);
+        failed += Run("Review Claude usage budget guard allows remaining weekly",
+            TestReviewClaudeUsageBudgetGuardAllowsRemainingWeekly);
         failed += Run("Review usage budget guard blocks when no budget sources are allowed",
             TestReviewUsageBudgetGuardBlocksWhenNoBudgetSourcesAllowed);
         return failed;

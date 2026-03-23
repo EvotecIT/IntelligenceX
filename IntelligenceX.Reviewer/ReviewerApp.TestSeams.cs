@@ -14,8 +14,17 @@ public static partial class ReviewerApp {
     /// <summary>Test-only forwarder for usage summary formatting.</summary>
     internal static string FormatUsageSummaryForTests(ChatGptUsageSnapshot snapshot) => FormatUsageSummary(snapshot);
 
+    /// <summary>Test-only forwarder for provider-limit usage summary formatting.</summary>
+    internal static string FormatUsageSummaryForTests(IntelligenceX.Telemetry.Limits.ProviderLimitSnapshot snapshot) =>
+        FormatUsageSummary(snapshot);
+
     /// <summary>Test-only forwarder for usage budget guard evaluation.</summary>
     internal static string? EvaluateUsageBudgetGuardFailureForTests(ReviewSettings settings, ChatGptUsageSnapshot snapshot) =>
+        EvaluateUsageBudgetGuardFailure(settings, snapshot);
+
+    /// <summary>Test-only forwarder for provider-limit usage budget guard evaluation.</summary>
+    internal static string? EvaluateUsageBudgetGuardFailureForTests(ReviewSettings settings,
+        IntelligenceX.Telemetry.Limits.ProviderLimitSnapshot snapshot) =>
         EvaluateUsageBudgetGuardFailure(settings, snapshot);
 
     /// <summary>Test-only forwarder for async usage budget guard construction.</summary>

@@ -181,12 +181,25 @@ public static partial class ReviewerApp {
         }
 
         try {
-            var snapshot = await TryGetUsageSnapshotAsync(settings).ConfigureAwait(false);
-            if (snapshot is null) {
-                return string.Empty;
+            if (providerKind == ReviewProvider.OpenAI) {
+                var snapshot = await TryGetUsageSnapshotAsync(settings).ConfigureAwait(false);
+                if (snapshot is null) {
+                    return string.Empty;
+                }
+                var summary = FormatUsageSummary(snapshot);
+                return string.IsNullOrWhiteSpace(summary) ? string.Empty : summary;
             }
-            var summary = FormatUsageSummary(snapshot);
-            return string.IsNullOrWhiteSpace(summary) ? string.Empty : summary;
+
+            if (providerKind == ReviewProvider.Claude) {
+                var snapshot = await TryGetProviderLimitSnapshotAsync("claude", settings).ConfigureAwait(false);
+                if (snapshot is null) {
+                    return string.Empty;
+                }
+                var summary = FormatUsageSummary(snapshot);
+                return string.IsNullOrWhiteSpace(summary) ? string.Empty : summary;
+            }
+
+            return string.Empty;
         } catch (Exception ex) {
             if (settings.Diagnostics) {
                 Console.Error.WriteLine($"Usage summary failed: {ex.Message}");
@@ -211,11 +224,23 @@ public static partial class ReviewerApp {
         }
 
         try {
-            var snapshot = await TryGetUsageSnapshotAsync(settings).ConfigureAwait(false);
-            if (snapshot is null) {
-                return null;
+            if (providerKind == ReviewProvider.OpenAI) {
+                var snapshot = await TryGetUsageSnapshotAsync(settings).ConfigureAwait(false);
+                if (snapshot is null) {
+                    return null;
+                }
+                return EvaluateUsageBudgetGuardFailure(settings, snapshot);
             }
-            return EvaluateUsageBudgetGuardFailure(settings, snapshot);
+
+            if (providerKind == ReviewProvider.Claude) {
+                var snapshot = await TryGetProviderLimitSnapshotAsync("claude", settings).ConfigureAwait(false);
+                if (snapshot is null) {
+                    return null;
+                }
+                return EvaluateUsageBudgetGuardFailure(settings, snapshot);
+            }
+
+            return null;
         } catch (Exception ex) {
             if (settings.Diagnostics) {
                 Console.Error.WriteLine($"Usage budget guard skipped: {ex.Message}");
@@ -234,6 +259,34 @@ public static partial class ReviewerApp {
             var weekly = EvaluateWeeklyBudget(snapshot, out var weeklyDetail);
             checks.Add((weekly, weeklyDetail));
         }
+        if (checks.Count == 0) {
+            return "Usage budget guard blocked review run: both credits and weekly budget allowances are disabled. "
+                   + "Enable reviewUsageBudgetAllowCredits or reviewUsageBudgetAllowWeeklyLimit "
+                   + "(or REVIEW_USAGE_BUDGET_ALLOW_CREDITS/REVIEW_USAGE_BUDGET_ALLOW_WEEKLY_LIMIT), "
+                   + "or disable REVIEW_USAGE_BUDGET_GUARD.";
+        }
+        if (checks.Any(static c => c.Availability == BudgetAvailability.Available)) {
+            return null;
+        }
+        if (checks.Any(static c => c.Availability == BudgetAvailability.Unknown)) {
+            return null;
+        }
+
+        var detail = string.Join("; ", checks.Select(static c => c.Detail));
+        return "Usage budget guard blocked review run: "
+               + detail
+               + ". Configure reviewUsageBudgetAllowCredits/reviewUsageBudgetAllowWeeklyLimit "
+               + "(or REVIEW_USAGE_BUDGET_ALLOW_CREDITS/REVIEW_USAGE_BUDGET_ALLOW_WEEKLY_LIMIT), "
+               + "or disable REVIEW_USAGE_BUDGET_GUARD.";
+    }
+
+    private static string? EvaluateUsageBudgetGuardFailure(ReviewSettings settings, IntelligenceX.Telemetry.Limits.ProviderLimitSnapshot snapshot) {
+        var checks = new List<(BudgetAvailability Availability, string Detail)>();
+        if (settings.ReviewUsageBudgetAllowWeeklyLimit) {
+            var weekly = EvaluateProviderWeeklyBudget(snapshot, out var weeklyDetail);
+            checks.Add((weekly, weeklyDetail));
+        }
+
         if (checks.Count == 0) {
             return "Usage budget guard blocked review run: both credits and weekly budget allowances are disabled. "
                    + "Enable reviewUsageBudgetAllowCredits or reviewUsageBudgetAllowWeeklyLimit "
@@ -312,6 +365,37 @@ public static partial class ReviewerApp {
         return BudgetAvailability.Unknown;
     }
 
+    private static BudgetAvailability EvaluateProviderWeeklyBudget(
+        IntelligenceX.Telemetry.Limits.ProviderLimitSnapshot snapshot,
+        out string detail) {
+        if (snapshot is null) {
+            detail = "weekly limit unavailable";
+            return BudgetAvailability.Unknown;
+        }
+
+        var weeklyWindows = snapshot.Windows
+            .Where(static window => IsWeeklyWindow(window))
+            .ToArray();
+        if (weeklyWindows.Length == 0) {
+            detail = "weekly limit unavailable";
+            return BudgetAvailability.Unknown;
+        }
+
+        if (weeklyWindows.Any(window => ResolveRemainingPercent(window).GetValueOrDefault() > 0d)) {
+            detail = "weekly limit available";
+            return BudgetAvailability.Available;
+        }
+
+        if (weeklyWindows.All(static window => window.UsedPercent.HasValue)) {
+            detail = string.Join("; ", weeklyWindows.Select(window =>
+                $"{FormatProviderWindowLabel(window.Label)} exhausted{FormatWindowResetSuffix(window)}"));
+            return BudgetAvailability.Unavailable;
+        }
+
+        detail = "weekly limit unavailable";
+        return BudgetAvailability.Unknown;
+    }
+
     private static void AddWeeklyObservations(ChatGptRateLimitStatus? status, string prefix,
         List<(BudgetAvailability Availability, string Detail)> observations) {
         if (status is null) {
@@ -354,10 +438,27 @@ public static partial class ReviewerApp {
         return window.LimitWindowSeconds.HasValue && IsWithin(window.LimitWindowSeconds.Value, 7 * 24 * 3600, 3600);
     }
 
+    private static bool IsWeeklyWindow(IntelligenceX.Telemetry.Limits.ProviderLimitWindow window) {
+        if (window.WindowDuration.HasValue) {
+            return Math.Abs((window.WindowDuration.Value - TimeSpan.FromDays(7)).TotalHours) <= 1d;
+        }
+
+        var label = window.Label ?? string.Empty;
+        return label.IndexOf("weekly", StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
     private static double? ResolveRemainingPercent(ChatGptRateLimitWindow window) {
         if (!window.UsedPercent.HasValue) {
             return null;
         }
+        return Math.Max(0, 100 - window.UsedPercent.Value);
+    }
+
+    private static double? ResolveRemainingPercent(IntelligenceX.Telemetry.Limits.ProviderLimitWindow window) {
+        if (!window.UsedPercent.HasValue) {
+            return null;
+        }
+
         return Math.Max(0, 100 - window.UsedPercent.Value);
     }
 
@@ -370,6 +471,16 @@ public static partial class ReviewerApp {
             var resetAt = DateTimeOffset.FromUnixTimeSeconds(window.ResetAtUnixSeconds.Value).ToUniversalTime();
             return $" (resets at {resetAt.ToString("u", CultureInfo.InvariantCulture)})";
         }
+        return string.Empty;
+    }
+
+    private static string FormatWindowResetSuffix(IntelligenceX.Telemetry.Limits.ProviderLimitWindow window) {
+        if (window.ResetsAt.HasValue) {
+            var delta = window.ResetsAt.Value - DateTimeOffset.UtcNow;
+            var bounded = delta < TimeSpan.Zero ? TimeSpan.Zero : delta;
+            return $" (resets in {FormatDuration((long)Math.Round(bounded.TotalSeconds))})";
+        }
+
         return string.Empty;
     }
 
@@ -387,6 +498,16 @@ public static partial class ReviewerApp {
 
     private static Task<ChatGptUsageSnapshot?> TryGetUsageSnapshotAsync(ReviewSettings settings) {
         return TryGetUsageSnapshotAsync(settings, settings.OpenAiAccountId);
+    }
+
+    private static async Task<IntelligenceX.Telemetry.Limits.ProviderLimitSnapshot?> TryGetProviderLimitSnapshotAsync(
+        string providerId,
+        ReviewSettings settings) {
+        using var cts = new CancellationTokenSource(
+            TimeSpan.FromSeconds(Math.Max(1, settings.ReviewUsageSummaryTimeoutSeconds)));
+        var service = new IntelligenceX.Telemetry.Limits.ProviderLimitSnapshotService();
+        var snapshot = await service.FetchAsync(providerId, cts.Token).ConfigureAwait(false);
+        return snapshot.IsAvailable ? snapshot : null;
     }
 
     private static async Task<ChatGptUsageSnapshot?> TryGetUsageSnapshotAsync(ReviewSettings settings, string? accountId) {
@@ -464,6 +585,37 @@ public static partial class ReviewerApp {
             return string.Empty;
         }
         return UsageSummaryPrefix + string.Join(UsageSummarySeparator, lines);
+    }
+
+    private static string FormatUsageSummary(IntelligenceX.Telemetry.Limits.ProviderLimitSnapshot snapshot) {
+        var parts = new List<string>();
+        foreach (var window in snapshot.Windows) {
+            var remaining = ResolveRemainingPercent(window);
+            if (!remaining.HasValue) {
+                continue;
+            }
+
+            parts.Add($"{FormatProviderWindowLabel(window.Label)}: {remaining.Value:0.#}% remaining");
+        }
+
+        if (!string.IsNullOrWhiteSpace(snapshot.Summary)) {
+            parts.Add(snapshot.Summary!.Trim());
+        }
+
+        if (parts.Count == 0) {
+            return string.Empty;
+        }
+
+        return UsageSummaryPrefix + string.Join(UsageSummarySeparator, parts);
+    }
+
+    private static string FormatProviderWindowLabel(string? label) {
+        var value = (label ?? string.Empty).Trim();
+        if (value.Length == 0) {
+            return "limit";
+        }
+
+        return value.ToLowerInvariant();
     }
 
     private enum UsageLimitLineKind {
@@ -590,5 +742,4 @@ public static partial class ReviewerApp {
     }
 
 }
-
 

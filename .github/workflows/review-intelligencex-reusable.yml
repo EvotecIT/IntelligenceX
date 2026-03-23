@@ -24,7 +24,7 @@ on:
         default: 'source'
         type: string
       provider:
-        description: 'Review provider: openai or copilot'
+        description: 'Review provider: openai, claude, or copilot'
         required: false
         default: 'openai'
         type: string
@@ -176,7 +176,7 @@ on:
 
       # Provider/model
       provider:
-        description: 'Review provider: openai or copilot'
+        description: 'Review provider: openai, claude, or copilot'
         required: false
         default: 'openai'
         type: string
@@ -553,6 +553,8 @@ on:
     secrets:
       INTELLIGENCEX_AUTH_B64:
         required: false
+      ANTHROPIC_API_KEY:
+        required: false
       INTELLIGENCEX_GITHUB_APP_ID:
         required: false
       INTELLIGENCEX_GITHUB_APP_PRIVATE_KEY:
@@ -695,6 +697,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           INTELLIGENCEX_GITHUB_TOKEN: ${{ steps.app_token.outputs.token }}
           INTELLIGENCEX_AUTH_B64: ${{ secrets.INTELLIGENCEX_AUTH_B64 }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 
           INPUT_PROVIDER: ${{ inputs.provider }}
           INPUT_MODEL: ${{ inputs.model }}
@@ -791,6 +794,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           INTELLIGENCEX_GITHUB_TOKEN: ${{ steps.app_token.outputs.token }}
           INTELLIGENCEX_AUTH_B64: ${{ secrets.INTELLIGENCEX_AUTH_B64 }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 
           INPUT_PROVIDER: ${{ inputs.provider }}
           INPUT_MODEL: ${{ inputs.model }}
@@ -893,6 +897,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           INTELLIGENCEX_GITHUB_TOKEN: ${{ steps.app_token.outputs.token }}
           INTELLIGENCEX_AUTH_B64: ${{ secrets.INTELLIGENCEX_AUTH_B64 }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 
           INPUT_PROVIDER: ${{ inputs.provider }}
           INPUT_MODEL: ${{ inputs.model }}

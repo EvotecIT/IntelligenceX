@@ -34,7 +34,7 @@ public static class IntelligenceXDefaults {
     /// <summary>
     /// Default review provider.
     /// </summary>
-    public const string DefaultProvider = "openai";
+    public const string DefaultProvider = SetupProviderCatalog.OpenAiProvider;
 
     /// <summary>
     /// Gets the effective GitHub Client ID, checking environment variable first.

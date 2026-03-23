@@ -9,9 +9,11 @@ namespace IntelligenceX.Cli.Setup.Wizard;
 
 internal static partial class WizardRunner {
     private static bool IsOpenAiProvider(string provider) {
-        return string.Equals(provider, "openai", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(provider, "codex", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(provider, "chatgpt", StringComparison.OrdinalIgnoreCase);
+        return SetupProviderCatalog.IsOpenAiProvider(provider);
+    }
+
+    private static bool IsClaudeProvider(string provider) {
+        return SetupProviderCatalog.IsClaudeProvider(provider);
     }
 
     private static bool ShouldPassAuthB64(WizardState state) {
@@ -27,8 +29,18 @@ internal static partial class WizardRunner {
         return !string.IsNullOrWhiteSpace(state.OpenAiAuthB64);
     }
 
+    private static bool ShouldPassAnthropicApiKey(WizardState state) {
+        if (!IsClaudeProvider(state.Provider)) {
+            return false;
+        }
+        if (state.SkipSecret || state.ManualSecret) {
+            return false;
+        }
+        return !string.IsNullOrWhiteSpace(state.AnthropicApiKey);
+    }
+
     private static string DescribeSecretTarget(WizardState state) {
-        if (!IsOpenAiProvider(state.Provider) || state.SkipSecret || state.ManualSecret || state.Operation == WizardOperation.Cleanup) {
+        if (!SetupProviderCatalog.SupportsOrgSecret(state.Provider) || state.SkipSecret || state.ManualSecret || state.Operation == WizardOperation.Cleanup) {
             return string.Empty;
         }
         if (state.SecretTarget == SecretTarget.Org) {
@@ -84,6 +96,45 @@ internal static partial class WizardRunner {
         }
     }
 
+    private static bool EnsureClaudeApiKey(WizardState state) {
+        if (!string.IsNullOrWhiteSpace(state.AnthropicApiKey)) {
+            return true;
+        }
+        var envValue = Environment.GetEnvironmentVariable(SetupProviderCatalog.ClaudeSecretName);
+        if (!string.IsNullOrWhiteSpace(envValue)) {
+            state.AnthropicApiKey = envValue.Trim();
+            return true;
+        }
+        if (!string.IsNullOrWhiteSpace(state.AnthropicApiKeyPath) && System.IO.File.Exists(state.AnthropicApiKeyPath)) {
+            try {
+                state.AnthropicApiKey = System.IO.File.ReadAllText(state.AnthropicApiKeyPath).Trim();
+                return !string.IsNullOrWhiteSpace(state.AnthropicApiKey);
+            } catch (Exception ex) {
+                AnsiConsole.MarkupLine($"[red]Failed to read Claude API key file: {ex.Message}[/]");
+                return false;
+            }
+        }
+
+        state.AnthropicApiKey = WizardPrompts.PromptAnthropicApiKey();
+        if (!string.IsNullOrWhiteSpace(state.AnthropicApiKey)) {
+            return true;
+        }
+
+        state.AnthropicApiKeyPath = WizardPrompts.PromptAnthropicApiKeyPath(state.AnthropicApiKeyPath);
+        if (!string.IsNullOrWhiteSpace(state.AnthropicApiKeyPath) && System.IO.File.Exists(state.AnthropicApiKeyPath)) {
+            try {
+                state.AnthropicApiKey = System.IO.File.ReadAllText(state.AnthropicApiKeyPath).Trim();
+                return !string.IsNullOrWhiteSpace(state.AnthropicApiKey);
+            } catch (Exception ex) {
+                AnsiConsole.MarkupLine($"[red]Failed to read Claude API key file: {ex.Message}[/]");
+                return false;
+            }
+        }
+
+        AnsiConsole.MarkupLine($"[red]Claude setup requires {SetupProviderCatalog.ClaudeSecretName}.[/]");
+        return false;
+    }
+
     private static async Task<bool> EnsureOrgSecretAsync(WizardState state) {
         if (string.IsNullOrWhiteSpace(state.GitHubToken)) {
             AnsiConsole.MarkupLine("[red]Missing GitHub token.[/]");
@@ -123,7 +174,7 @@ internal static partial class WizardRunner {
                 repoIds = ids;
             }
 
-            await secrets.SetOrgSecretAsync(state.SecretOrg!, "INTELLIGENCEX_AUTH_B64", state.OpenAiAuthB64!, visibility, repoIds).ConfigureAwait(false);
+            await secrets.SetOrgSecretAsync(state.SecretOrg!, SetupProviderCatalog.OpenAiSecretName, state.OpenAiAuthB64!, visibility, repoIds).ConfigureAwait(false);
 
             if (state.DeleteRepoSecretsAfterOrgSecret) {
                 foreach (var repoFullName in state.SelectedRepos) {
@@ -132,14 +183,14 @@ internal static partial class WizardRunner {
                         continue;
                     }
                     try {
-                        await secrets.DeleteRepoSecretAsync(parts[0], parts[1], "INTELLIGENCEX_AUTH_B64").ConfigureAwait(false);
+                        await secrets.DeleteRepoSecretAsync(parts[0], parts[1], SetupProviderCatalog.OpenAiSecretName).ConfigureAwait(false);
                     } catch (Exception ex) {
                         AnsiConsole.MarkupLine($"[yellow]Warning: failed to delete repo secret for {repoFullName}: {ex.Message}[/]");
                     }
                 }
             }
 
-            AnsiConsole.MarkupLine($"[green]Org secret updated: {state.SecretOrg}/INTELLIGENCEX_AUTH_B64[/]");
+            AnsiConsole.MarkupLine($"[green]Org secret updated: {state.SecretOrg}/{SetupProviderCatalog.OpenAiSecretName}[/]");
             return true;
         } catch (Exception ex) {
             AnsiConsole.MarkupLine($"[red]Failed to set org secret: {ex.Message}[/]");
@@ -158,4 +209,3 @@ internal static partial class WizardRunner {
         }
     }
 }
-

@@ -40,7 +40,7 @@ Best for:
 
 - Runner targeting (`runs_on`)
 - Reviewer binary source (`reviewer_source: source|release`)
-- Provider wiring and transport (`provider`, `model`, `openai_transport`)
+- Provider wiring and transport (`provider`, `model`, `openai_transport`, Claude/OpenAI secrets)
 - Secrets wiring (explicit mapping is the default/recommended mode; `secrets: inherit` is legacy)
 - Temporary run-time overrides from `workflow_dispatch` inputs
 
@@ -58,7 +58,7 @@ Best for:
 
 | Concern | Workflow YAML (`with:`) | reviewer.json | Typical impact |
 | --- | --- | --- | --- |
-| Provider/model wiring | `provider`, `model`, `openai_transport` | `review.provider`, `review.model`, `review.openaiTransport` | Runtime identity, latency/cost, provider behavior |
+| Provider/model wiring | `provider`, `model`, `openai_transport` | `review.provider`, `review.model`, `review.openaiTransport`, `review.anthropic.*` | Runtime identity, latency/cost, provider behavior |
 | Review shape | `mode`, `length`, `style` | `review.mode`, `review.length`, `review.style` | Comment visual structure and verbosity |
 | Diff policy | optional override | `review.reviewDiffRange` | What context the model sees |
 | Path filters | optional override | `review.includePaths`, `review.excludePaths`, `review.skipPaths` | Which files are reviewed |
