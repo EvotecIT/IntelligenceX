@@ -14,9 +14,7 @@ internal static class OfficeImoMarkdownRuntimeContract {
             return markdown;
         }
 
-        return MarkdownRendererPreProcessorPipeline.Apply(
-            markdown,
-            MarkdownRendererPresets.CreateIntelligenceXTranscriptMinimal());
+        return MarkdownTranscriptPreparation.PrepareIntelligenceXTranscriptForExport(markdown);
     }
 
     public static string DescribeMarkdownRendererContract() {

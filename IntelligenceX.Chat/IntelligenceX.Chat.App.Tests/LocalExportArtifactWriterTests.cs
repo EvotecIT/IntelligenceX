@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Text;
 using IntelligenceX.Chat.App.Markdown;
 using IntelligenceX.Chat.ExportArtifacts;
 using System.Text.Json;
@@ -147,8 +148,8 @@ public sealed partial class LocalExportArtifactWriterTests {
             var written = File.ReadAllText(markdownPath);
             Assert.DoesNotContain("ix:cached-tool-evidence:v1", written, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("#### ad_environment_discover", written, StringComparison.Ordinal);
-            Assert.Contains("[Cached evidence fallback]", written, StringComparison.Ordinal);
-            Assert.Contains("### Active Directory: Environment Discovery", written, StringComparison.Ordinal);
+            Assert.Contains("Cached evidence fallback", written, StringComparison.Ordinal);
+            Assert.Contains("Active Directory: Environment Discovery", written, StringComparison.Ordinal);
         } finally {
             Directory.Delete(root, recursive: true);
         }
@@ -189,7 +190,7 @@ public sealed partial class LocalExportArtifactWriterTests {
             Assert.NotNull(capturedMarkdown);
             Assert.DoesNotContain("ix:cached-tool-evidence:v1", capturedMarkdown, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("#### ad_environment_discover", capturedMarkdown, StringComparison.Ordinal);
-            Assert.Contains("[Cached evidence fallback]", capturedMarkdown, StringComparison.Ordinal);
+            Assert.Contains("Cached evidence fallback", capturedMarkdown, StringComparison.Ordinal);
         } finally {
             Directory.Delete(root, recursive: true);
         }
@@ -222,8 +223,103 @@ public sealed partial class LocalExportArtifactWriterTests {
             var written = File.ReadAllText(markdownPath);
             Assert.DoesNotContain("ix:cached-tool-evidence:v1", written, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("- eventlog_top_events:", written, StringComparison.Ordinal);
-            Assert.Contains("Top 30 recent events (preview)", written, StringComparison.Ordinal);
+            Assert.Contains("Top 30 recent events", written, StringComparison.Ordinal);
             Assert.Contains("- Overall health **healthy**", written, StringComparison.Ordinal);
+        } finally {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// Ensures markdown transcript export prefers portable generic visual fence languages for downstream consumers.
+    /// </summary>
+    [Fact]
+    public void ExportTranscript_Markdown_UsesPortableGenericVisualFenceLanguages() {
+        const string markdown = """
+            # Transcript
+
+            ix:cached-tool-evidence:v1
+
+            ```json
+            {"type":"bar","data":{"labels":["A"],"datasets":[{"label":"Count","data":[1]}]}}
+            ```
+
+            ```json
+            {"nodes":[{"id":"A","label":"Forest: ad.evotec.xyz"}],"edges":[{"source":"A","target":"B","label":"contains"}]}
+            ```
+            """;
+
+        var root = TempPathTestHelper.CreateTempDirectory("ixchat-tests");
+        try {
+            var markdownPath = Path.Combine(root, "transcript.md");
+            var result = LocalExportArtifactWriter.ExportTranscript("md", "transcript", markdown, markdownPath);
+
+            Assert.True(result.Succeeded);
+            var written = File.ReadAllText(markdownPath);
+            Assert.DoesNotContain("ix:cached-tool-evidence:v1", written, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("```chart", written, StringComparison.Ordinal);
+            Assert.Contains("```network", written, StringComparison.Ordinal);
+            Assert.DoesNotContain("```ix-chart", written, StringComparison.Ordinal);
+            Assert.DoesNotContain("```ix-network", written, StringComparison.Ordinal);
+        } finally {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// Ensures markdown transcript export writes a stable portable artifact for downstream markdown/crawl consumers.
+    /// </summary>
+    [Fact]
+    public void ExportTranscript_Markdown_PortableArtifactMatchesExpectedSnapshot() {
+        var markdown = CreatePortableVisualExportMarkdown();
+
+        var root = TempPathTestHelper.CreateTempDirectory("ixchat-tests");
+        try {
+            var markdownPath = Path.Combine(root, "transcript.md");
+            var result = LocalExportArtifactWriter.ExportTranscript("md", "transcript", markdown, markdownPath);
+
+            Assert.True(result.Succeeded);
+            Assert.Equal(
+                NormalizeSnapshotText(LoadExpectedSnapshot("local-export-portable-transcript-markdown.snapshot.md")),
+                NormalizeSnapshotText(File.ReadAllText(markdownPath, Encoding.UTF8)));
+        } finally {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// Ensures successful DOCX transcript export stays on the IX compatibility lane for the markdown handed to the DOCX writer.
+    /// </summary>
+    [Fact]
+    public void ExportTranscript_Docx_PassesIxCompatibilityMarkdownToWriter() {
+        var markdown = CreatePortableVisualExportMarkdown();
+
+        string? capturedMarkdown = null;
+        var root = TempPathTestHelper.CreateTempDirectory("ixchat-tests");
+        try {
+            var docxPath = Path.Combine(root, "transcript.docx");
+            var result = LocalExportArtifactWriter.ExportTranscript(
+                ExportPreferencesContract.FormatDocx,
+                "transcript",
+                markdown,
+                docxPath,
+                additionalAllowedImageDirectories: null,
+                docxVisualMaxWidthPx: null,
+                allowMarkdownFallback: false,
+                markdownWriter: static (_, _) => throw new InvalidOperationException("markdown fallback should not run"),
+                docxWriter: (_, docxMarkdown, _, _, _) => capturedMarkdown = docxMarkdown);
+
+            Assert.True(result.Succeeded);
+            Assert.NotNull(capturedMarkdown);
+            Assert.Equal(
+                NormalizeSnapshotText(TranscriptMarkdownPreparation.PrepareTranscriptMarkdownForExport(markdown)),
+                NormalizeSnapshotText(capturedMarkdown));
+            Assert.Contains("```ix-chart", capturedMarkdown, StringComparison.Ordinal);
+            Assert.Contains("```ix-network", capturedMarkdown, StringComparison.Ordinal);
+            Assert.Contains("```ix-dataview", capturedMarkdown, StringComparison.Ordinal);
+            Assert.DoesNotContain("```chart", capturedMarkdown, StringComparison.Ordinal);
+            Assert.DoesNotContain("```network", capturedMarkdown, StringComparison.Ordinal);
+            Assert.DoesNotContain("```dataview", capturedMarkdown, StringComparison.Ordinal);
         } finally {
             Directory.Delete(root, recursive: true);
         }
@@ -247,14 +343,11 @@ public sealed partial class LocalExportArtifactWriterTests {
     }
 
     /// <summary>
-    /// Ensures requested DOCX transcript export falls back to markdown with typed result metadata when the DOCX writer fails.
+    /// Ensures requested DOCX transcript export falls back to the same portable markdown artifact contract when the DOCX writer fails.
     /// </summary>
     [Fact]
     public void ExportTranscript_Docx_FallsBackToMarkdown_WhenDocxWriterFails() {
-        const string markdown = """
-            # Transcript
-            hello
-            """;
+        var markdown = CreatePortableVisualExportMarkdown();
 
         var root = TempPathTestHelper.CreateTempDirectory("ixchat-tests");
         try {
@@ -282,7 +375,9 @@ public sealed partial class LocalExportArtifactWriterTests {
             Assert.Contains("docx write boom", result.Fallback?.Cause.Message, StringComparison.Ordinal);
             Assert.True(File.Exists(fallbackPath));
             Assert.False(File.Exists(requestedDocxPath));
-            Assert.Contains("# Transcript", File.ReadAllText(fallbackPath));
+            Assert.Equal(
+                NormalizeSnapshotText(LoadExpectedSnapshot("local-export-portable-transcript-markdown.snapshot.md")),
+                NormalizeSnapshotText(File.ReadAllText(fallbackPath, Encoding.UTF8)));
         } finally {
             Directory.Delete(root, recursive: true);
         }
@@ -577,4 +672,55 @@ public sealed partial class LocalExportArtifactWriterTests {
         }
     }
 
+    private static string LoadExpectedSnapshot(string name) {
+        return File.ReadAllText(Path.Combine(GetTestsProjectRoot(), "Fixtures", "Expected", name), Encoding.UTF8);
+    }
+
+    private static string CreatePortableVisualExportMarkdown() {
+        return """
+            # Transcript
+
+            [Cached evidence fallback]
+            ix:cached-tool-evidence:v1
+
+            Recent evidence:
+            - eventlog_top_events: ### Top 30 recent events (preview)
+
+            Chart preview:
+            ```json
+            {"type":"bar","data":{"labels":["A"],"datasets":[{"label":"Count","data":[1]}]}}
+            ```
+
+            Network preview:
+            ```json
+            {"nodes":[{"id":"A","label":"Forest: ad.evotec.xyz"}],"edges":[{"source":"A","target":"B","label":"contains"}]}
+            ```
+
+            Dataview preview:
+            ```json
+            {"kind":"ix_tool_dataview_v1","rows":[["Server","Fails"],["AD0","0"]]}
+            ```
+            """;
+    }
+
+    private static string GetTestsProjectRoot() {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir != null) {
+            var candidate = Path.Combine(dir.FullName, "IntelligenceX.Chat.App.Tests.csproj");
+            if (File.Exists(candidate)) {
+                return dir.FullName;
+            }
+
+            dir = dir.Parent;
+        }
+
+        throw new DirectoryNotFoundException("Could not locate IntelligenceX.Chat.App.Tests project root from test runtime base directory.");
+    }
+
+    private static string NormalizeSnapshotText(string text) {
+        return (text ?? string.Empty)
+            .Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Replace('\r', '\n')
+            .Trim();
+    }
 }

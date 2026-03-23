@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using IntelligenceX.Chat.App;
 using IntelligenceX.Chat.App.Rendering;
 using OfficeIMO.MarkdownRenderer;
@@ -182,6 +183,42 @@ public sealed partial class TranscriptHtmlFormatterTests {
         }
 
         return count;
+    }
+
+    private static string ReadOfficeImoHtmlFixture(string fileName) {
+        string path = Path.Combine(GetOfficeImoTestsRoot(), "Markdown", "Fixtures", fileName);
+        return File.ReadAllText(path);
+    }
+
+    private static string GetOfficeImoTestsRoot() {
+        string testsProjectRoot = GetAppTestsProjectRoot();
+        string[] fallbackCandidates = new[] {
+            Path.GetFullPath(Path.Combine(testsProjectRoot, "..", "..", "..", "OfficeIMO", "OfficeIMO.Tests")),
+            Path.GetFullPath(Path.Combine(testsProjectRoot, "..", "..", "..", "..", "OfficeIMO", "OfficeIMO.Tests"))
+        };
+
+        for (int i = 0; i < fallbackCandidates.Length; i++) {
+            string candidate = fallbackCandidates[i];
+            if (File.Exists(Path.Combine(candidate, "OfficeIMO.Tests.csproj"))) {
+                return candidate;
+            }
+        }
+
+        throw new DirectoryNotFoundException("Could not locate OfficeIMO.Tests project root from IntelligenceX.Chat.App.Tests.");
+    }
+
+    private static string GetAppTestsProjectRoot() {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir != null) {
+            string candidate = Path.Combine(dir.FullName, "IntelligenceX.Chat.App.Tests.csproj");
+            if (File.Exists(candidate)) {
+                return dir.FullName;
+            }
+
+            dir = dir.Parent;
+        }
+
+        throw new DirectoryNotFoundException("Could not locate IntelligenceX.Chat.App.Tests project root from test runtime base directory.");
     }
 
     /// <summary>
@@ -456,6 +493,5 @@ public sealed partial class TranscriptHtmlFormatterTests {
         Assert.Contains("data-omd-visual-contract=\"v1\"", html, StringComparison.Ordinal);
         Assert.Contains("data-omd-config-encoding=\"base64-utf8\"", html, StringComparison.Ordinal);
     }
+
 }
-
-

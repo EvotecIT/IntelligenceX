@@ -62,6 +62,24 @@ public sealed class ChatMarkdownOptionsTests {
     }
 
     /// <summary>
+    /// Ensures the same renderer contract also accepts the portable generic dataview fence emitted by markdown artifact export.
+    /// </summary>
+    [Fact]
+    public void CreateTranscriptRendererOptions_ComposesGenericDataviewFenceOntoNativeVisualContract() {
+        var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
+
+        var html = MarkdownRenderer.RenderBodyHtml("""
+```dataview
+{"kind":"ix_tool_dataview_v1","rows":[["Name","Count"],["A","1"]]}
+```
+""", options);
+
+        Assert.Contains("data-omd-visual-kind=\"dataview\"", html, StringComparison.Ordinal);
+        Assert.Contains("data-omd-visual-contract=\"v1\"", html, StringComparison.Ordinal);
+        Assert.Contains("data-omd-config-encoding=\"base64-utf8\"", html, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Ensures each options instance is independent so per-call mutations cannot leak across callers.
     /// </summary>
     [Fact]

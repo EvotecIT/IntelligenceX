@@ -119,7 +119,7 @@ public sealed class ToolRunMarkdownFormatterTests {
     }
 
     /// <summary>
-    /// Ensures tool table render hints emit an ix-dataview payload with full rows.
+    /// Ensures tool table render hints emit a generic dataview payload fence with full rows.
     /// </summary>
     [Fact]
     public void Format_EmbedsDataViewPayloadFenceForTableRenderHints() {
@@ -142,7 +142,7 @@ public sealed class ToolRunMarkdownFormatterTests {
 
         var markdown = ToolRunMarkdownFormatter.Format(tools, _ => "TestimoX Rules List");
 
-        Assert.Contains("```ix-dataview", markdown);
+        Assert.Contains("```dataview", markdown);
         Assert.Contains("\"kind\":\"ix_tool_dataview_v1\"", markdown);
         Assert.Contains("\"rows\":[[\"Rule\",\"Enabled\"],[\"rule_a\",\"true\"],[\"rule_b\",\"false\"]]", markdown);
         Assert.Contains("### TestimoX rules (preview)", markdown);
@@ -171,7 +171,7 @@ public sealed class ToolRunMarkdownFormatterTests {
 
         var markdown = ToolRunMarkdownFormatter.Format(tools, _ => "TestimoX Rules List");
 
-        Assert.Contains("```ix-dataview", markdown);
+        Assert.Contains("```dataview", markdown);
         Assert.Contains("\"rows\":[[\"Name\",\"Status\"],[\"First\",\"OK\"]]", markdown);
     }
 
@@ -198,12 +198,12 @@ public sealed class ToolRunMarkdownFormatterTests {
 
         var markdown = ToolRunMarkdownFormatter.Format(tools, _ => "TestimoX Rules List");
 
-        Assert.Contains("```ix-dataview", markdown);
+        Assert.Contains("```dataview", markdown);
         Assert.Contains("\"rows\":[[\"Name\",\"Status\"],[\"scalar\",\"\"],[\"array-name\",\"array-status\"],[\"ObjectName\",\"ObjectStatus\"]]", markdown);
     }
 
     /// <summary>
-    /// Ensures render arrays can emit first-party visual fences and map visnetwork to ix-network.
+    /// Ensures render arrays can emit first-party visual fences and map visnetwork to generic network output.
     /// </summary>
     [Fact]
     public void Format_EmitsVisualFencesFromRenderArrayAndSkipsCompletedFallback() {
@@ -227,9 +227,9 @@ public sealed class ToolRunMarkdownFormatterTests {
 
         var markdown = ToolRunMarkdownFormatter.Format(tools, _ => "Visual Pack Report");
 
-        Assert.Contains("```ix-chart", markdown);
+        Assert.Contains("```chart", markdown);
         Assert.Contains("\"type\":\"bar\"", markdown);
-        Assert.Contains("```ix-network", markdown);
+        Assert.Contains("```network", markdown);
         Assert.Contains("\"nodes\":[{\"id\":1,\"label\":\"A\"}]", markdown);
         Assert.DoesNotContain("\ncompleted\n", markdown, StringComparison.OrdinalIgnoreCase);
     }
@@ -312,7 +312,7 @@ public sealed class ToolRunMarkdownFormatterTests {
 
         var markdown = ToolRunMarkdownFormatter.Format(tools, _ => "Duplicate Visuals");
 
-        Assert.Equal(1, CountOccurrences(markdown, "```ix-chart"));
+        Assert.Equal(1, CountOccurrences(markdown, "```chart"));
     }
 
     /// <summary>
@@ -346,8 +346,8 @@ public sealed class ToolRunMarkdownFormatterTests {
 
         Assert.Contains("**Tool visuals:**", markdown);
         Assert.Contains("#### Visuals Only Report", markdown);
-        Assert.Contains("```ix-chart", markdown);
-        Assert.Contains("```ix-dataview", markdown);
+        Assert.Contains("```chart", markdown);
+        Assert.Contains("```dataview", markdown);
         Assert.DoesNotContain("```text", markdown, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("failure descriptor", markdown, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("debug-only error", markdown, StringComparison.OrdinalIgnoreCase);
@@ -410,7 +410,7 @@ public sealed class ToolRunMarkdownFormatterTests {
 
         var markdown = ToolRunMarkdownFormatter.FormatVisualsOnly(tools, _ => "Visual Pack Report");
 
-        Assert.Contains("```ix-chart", markdown);
+        Assert.Contains("```chart", markdown);
         Assert.Contains("\"type\":\"bar\"", markdown);
         Assert.Contains("\"type\":\"line\"", markdown);
         Assert.Equal(1, CountOccurrences(markdown, "#### Visual Pack Report"));
@@ -528,7 +528,7 @@ public sealed class ToolRunMarkdownFormatterTests {
 
         var markdown = ToolRunMarkdownFormatter.FormatVisualsOnly(tools, _ => "unused");
 
-        Assert.Equal(1, CountOccurrences(markdown, "```ix-chart"));
+        Assert.Equal(1, CountOccurrences(markdown, "```chart"));
     }
 
     /// <summary>

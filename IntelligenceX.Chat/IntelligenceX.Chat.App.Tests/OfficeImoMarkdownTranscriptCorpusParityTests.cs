@@ -1,23 +1,24 @@
 using System;
 using System.IO;
 using IntelligenceX.Chat.App;
+using IntelligenceX.Chat.ExportArtifacts;
 using OfficeIMO.MarkdownRenderer;
 using Xunit;
 
 namespace IntelligenceX.Chat.App.Tests;
 
 /// <summary>
-/// Verifies the IX runtime contract stays aligned with the explicit OfficeIMO transcript corpus
+/// Verifies the IX runtime/render and portable-export seams stay aligned with the explicit OfficeIMO corpus fixtures
 /// when the sibling OfficeIMO repository is available in the workspace.
 /// </summary>
 public sealed class OfficeImoMarkdownTranscriptCorpusParityTests {
     /// <summary>
     /// Verifies IX transcript pre-processing matches the explicit OfficeIMO transcript preset
-    /// for the exported mixed visual transcript corpus.
+    /// for the IX compatibility mixed visual transcript corpus.
     /// </summary>
     [Fact]
-    public void ExportedTranscriptVisualPack_PreProcessorsMatchExplicitOfficeImoTranscriptPreset() {
-        string markdown = LoadOfficeImoCompatibilityFixture("ix-exported-transcript-visual-pack.md");
+    public void IxCompatibilityTranscriptVisualPack_PreProcessorsMatchExplicitOfficeImoTranscriptPreset() {
+        string markdown = LoadOfficeImoCorpusFixture("ix-compat-transcript-visual-pack.md");
         if (markdown.Length == 0) {
             return;
         }
@@ -28,7 +29,7 @@ public sealed class OfficeImoMarkdownTranscriptCorpusParityTests {
         }
 
         var actual = OfficeImoMarkdownRuntimeContract.ApplyTranscriptMarkdownPreProcessors(markdown);
-        var expected = ApplyMarkdownPreProcessors(markdown, explicitOptions);
+        var expected = ApplyExplicitTranscriptPreparation(markdown, explicitOptions);
 
         Assert.Equal(expected, actual);
         Assert.Contains("```ix-chart", actual, StringComparison.Ordinal);
@@ -38,11 +39,11 @@ public sealed class OfficeImoMarkdownTranscriptCorpusParityTests {
 
     /// <summary>
     /// Verifies IX transcript rendering matches the explicit OfficeIMO transcript preset
-    /// for the exported mixed visual transcript corpus.
+    /// for the IX compatibility mixed visual transcript corpus.
     /// </summary>
     [Fact]
-    public void ExportedTranscriptVisualPack_RenderingMatchesExplicitOfficeImoTranscriptPreset() {
-        string markdown = LoadOfficeImoCompatibilityFixture("ix-exported-transcript-visual-pack.md");
+    public void IxCompatibilityTranscriptVisualPack_RenderingMatchesExplicitOfficeImoTranscriptPreset() {
+        string markdown = LoadOfficeImoCorpusFixture("ix-compat-transcript-visual-pack.md");
         if (markdown.Length == 0) {
             return;
         }
@@ -62,11 +63,11 @@ public sealed class OfficeImoMarkdownTranscriptCorpusParityTests {
 
     /// <summary>
     /// Verifies IX transcript rendering matches the explicit OfficeIMO transcript preset
-    /// for the exported chart-heavy transcript corpus.
+    /// for the IX compatibility chart-heavy transcript corpus.
     /// </summary>
     [Fact]
-    public void ExportedTranscriptChartSuite_RenderingMatchesExplicitOfficeImoTranscriptPreset() {
-        string markdown = LoadOfficeImoCompatibilityFixture("ix-exported-transcript-chart-suite.md");
+    public void IxCompatibilityTranscriptChartSuite_RenderingMatchesExplicitOfficeImoTranscriptPreset() {
+        string markdown = LoadOfficeImoCorpusFixture("ix-compat-transcript-chart-suite.md");
         if (markdown.Length == 0) {
             return;
         }
@@ -83,6 +84,72 @@ public sealed class OfficeImoMarkdownTranscriptCorpusParityTests {
         Assert.Contains("data-omd-fence-language=\"ix-chart\"", actual, StringComparison.Ordinal);
         Assert.Contains("class=\"mermaid\"", actual, StringComparison.Ordinal);
         Assert.Contains("omd-visual omd-chart", actual, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Verifies portable markdown export stays aligned with the explicit OfficeIMO generic semantic-fence preparation.
+    /// </summary>
+    [Fact]
+    public void SourceDerivedCachedEvidenceVisualCorpus_PortableExportMatchesExplicitOfficeImoGenericPreparation() {
+        string markdown = LoadOfficeImoCorpusFixture("ix-source-derived-cached-evidence-visuals.md");
+        if (markdown.Length == 0) {
+            return;
+        }
+
+        var actual = TranscriptMarkdownContract.PrepareTranscriptMarkdownForPortableExport(markdown);
+        var expected = ApplyExplicitPortableTranscriptPreparation(markdown);
+        if (expected.Length == 0) {
+            return;
+        }
+
+        Assert.Equal(expected, actual);
+        Assert.Contains("```chart", actual, StringComparison.Ordinal);
+        Assert.Contains("```dataview", actual, StringComparison.Ordinal);
+        Assert.DoesNotContain("```ix-chart", actual, StringComparison.Ordinal);
+        Assert.DoesNotContain("```ix-dataview", actual, StringComparison.Ordinal);
+        Assert.Contains("\"label\": \"Count\"", actual, StringComparison.Ordinal);
+    }
+
+    private static string ApplyExplicitTranscriptPreparation(string markdown, MarkdownRendererOptions options) {
+        var preparationType = Type.GetType(
+            "OfficeIMO.Markdown.MarkdownTranscriptPreparation, OfficeIMO.Markdown",
+            throwOnError: false);
+        var method = preparationType?.GetMethod(
+            "PrepareIntelligenceXTranscriptForExport",
+            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static,
+            binder: null,
+            types: [typeof(string)],
+            modifiers: null);
+        if (method == null) {
+            return ApplyMarkdownPreProcessors(markdown, options);
+        }
+
+        return (string)(method.Invoke(null, [markdown]) ?? markdown);
+    }
+
+    private static string ApplyExplicitPortableTranscriptPreparation(string markdown) {
+        var preparationType = Type.GetType(
+            "OfficeIMO.Markdown.MarkdownTranscriptPreparation, OfficeIMO.Markdown",
+            throwOnError: false);
+        var visualFenceLanguageModeType = Type.GetType(
+            "OfficeIMO.Markdown.MarkdownVisualFenceLanguageMode, OfficeIMO.Markdown",
+            throwOnError: false);
+        if (preparationType == null || visualFenceLanguageModeType == null) {
+            return string.Empty;
+        }
+
+        var method = preparationType.GetMethod(
+            "PrepareIntelligenceXTranscriptForExport",
+            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static,
+            binder: null,
+            types: [typeof(string), visualFenceLanguageModeType],
+            modifiers: null);
+        if (method == null) {
+            return string.Empty;
+        }
+
+        var genericMode = Enum.Parse(visualFenceLanguageModeType, "GenericSemanticFence", ignoreCase: false);
+        return (string)(method.Invoke(null, [markdown, genericMode]) ?? markdown);
     }
 
     private static string ApplyMarkdownPreProcessors(string markdown, MarkdownRendererOptions options) {
@@ -110,8 +177,8 @@ public sealed class OfficeImoMarkdownTranscriptCorpusParityTests {
         return InvokeOptionalBaseHrefFactory("CreateIntelligenceXTranscriptDesktopShell");
     }
 
-    private static string LoadOfficeImoCompatibilityFixture(string name) {
-        var path = TryFindOfficeImoCompatibilityFixture(name);
+    private static string LoadOfficeImoCorpusFixture(string name) {
+        var path = TryFindOfficeImoCorpusFixture(name);
         if (path == null) {
             return string.Empty;
         }
@@ -119,7 +186,7 @@ public sealed class OfficeImoMarkdownTranscriptCorpusParityTests {
         return File.ReadAllText(path);
     }
 
-    private static string? TryFindOfficeImoCompatibilityFixture(string name) {
+    private static string? TryFindOfficeImoCorpusFixture(string name) {
         for (var current = new DirectoryInfo(AppContext.BaseDirectory); current != null; current = current.Parent) {
             var candidate = Path.Combine(
                 current.FullName,

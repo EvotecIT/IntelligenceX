@@ -147,10 +147,10 @@ internal static class LocalExportArtifactWriter {
         MarkdownTranscriptWriter markdownWriter,
         DocxTranscriptWriter docxWriter) {
         var normalizedFormat = (format ?? string.Empty).Trim().ToLowerInvariant();
-        var safeMarkdown = TranscriptMarkdownPreparation.PrepareTranscriptMarkdownForExport(markdown ?? string.Empty);
         switch (normalizedFormat) {
             case ExportPreferencesContract.FormatMarkdown:
                 try {
+                    var safeMarkdown = TranscriptMarkdownPreparation.PrepareTranscriptMarkdownForPortableExport(markdown ?? string.Empty);
                     markdownWriter(outputPath, safeMarkdown);
                     return TranscriptExportResult.Success(normalizedFormat, ExportPreferencesContract.FormatMarkdown, outputPath);
                 } catch (Exception ex) {
@@ -161,6 +161,7 @@ internal static class LocalExportArtifactWriter {
                 }
             case ExportPreferencesContract.FormatDocx:
                 try {
+                    var safeMarkdown = TranscriptMarkdownPreparation.PrepareTranscriptMarkdownForExport(markdown ?? string.Empty);
                     docxWriter(title, safeMarkdown, outputPath, additionalAllowedImageDirectories, docxVisualMaxWidthPx);
                     return TranscriptExportResult.Success(normalizedFormat, ExportPreferencesContract.FormatDocx, outputPath);
                 } catch (Exception ex) {
@@ -175,6 +176,7 @@ internal static class LocalExportArtifactWriter {
                         outputPath,
                         defaultPrefix: "transcript");
                     try {
+                        var safeMarkdown = TranscriptMarkdownPreparation.PrepareTranscriptMarkdownForPortableExport(markdown ?? string.Empty);
                         markdownWriter(fallbackPath, safeMarkdown);
                         return TranscriptExportResult.SuccessWithFallback(
                             normalizedFormat,

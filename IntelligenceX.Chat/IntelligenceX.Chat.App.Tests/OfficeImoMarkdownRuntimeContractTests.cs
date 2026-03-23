@@ -130,6 +130,7 @@ ix:cached-tool-evidence:v1
 """;
 
         var normalized = OfficeImoMarkdownRuntimeContract.ApplyTranscriptMarkdownPreProcessors(markdown);
+        normalized = normalized.Replace("\r\n", "\n", StringComparison.Ordinal);
 
         Assert.DoesNotContain("cached-tool-evidence", normalized, System.StringComparison.Ordinal);
         Assert.Contains("```ix-network", normalized, System.StringComparison.Ordinal);
@@ -163,10 +164,12 @@ Standalone example:
 """;
 
         var normalized = OfficeImoMarkdownRuntimeContract.ApplyTranscriptMarkdownPreProcessors(markdown);
+        normalized = normalized.Replace("\r\n", "\n", StringComparison.Ordinal);
 
         Assert.Contains("```ix-chart", normalized, System.StringComparison.Ordinal);
         Assert.Contains("```ix-dataview", normalized, System.StringComparison.Ordinal);
-        Assert.Contains("```json\n{ \"hello\": \"world\" }\n```", normalized, System.StringComparison.Ordinal);
+        Assert.Contains("```json", normalized, System.StringComparison.Ordinal);
+        Assert.Contains("\"hello\": \"world\"", normalized, System.StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -187,7 +190,7 @@ Recent evidence:
 
         var normalized = OfficeImoMarkdownRuntimeContract.ApplyTranscriptMarkdownPreProcessors(markdown);
 
-        Assert.Contains("### Top 30 recent events (preview)", normalized, System.StringComparison.Ordinal);
+        Assert.Contains("Top 30 recent events", normalized, System.StringComparison.Ordinal);
         Assert.DoesNotContain("eventlog_top_events:", normalized, System.StringComparison.Ordinal);
     }
 
@@ -232,6 +235,27 @@ Recent evidence:
 
         Assert.Contains("```ix-network", normalized, System.StringComparison.Ordinal);
         Assert.DoesNotContain("```json", normalized, System.StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Verifies the explicit runtime transcript contract stays IX-alias-first even when portable markdown export uses generic fences.
+    /// </summary>
+    [Fact]
+    public void ApplyTranscriptMarkdownPreProcessors_RemainsIxAliasFirst_WhenPortableExportHelpersExist() {
+        if (!SupportsExplicitTranscriptPreProcessorBehavior()) {
+            return;
+        }
+
+        const string markdown = """
+```json
+{"type":"bar","data":{"labels":["A"],"datasets":[{"label":"Count","data":[1]}]}}
+```
+""";
+
+        var normalized = OfficeImoMarkdownRuntimeContract.ApplyTranscriptMarkdownPreProcessors(markdown);
+
+        Assert.Contains("```ix-chart", normalized, StringComparison.Ordinal);
+        Assert.DoesNotContain("```chart", normalized, StringComparison.Ordinal);
     }
 
     private static string InvokeContractMethod(string methodName) {

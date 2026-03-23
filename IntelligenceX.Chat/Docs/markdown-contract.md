@@ -4,7 +4,7 @@ This document describes the intended markdown pipeline for `IntelligenceX.Chat`.
 
 ## Goals
 
-- keep one explicit OfficeIMO-owned transcript markdown contract across render, export, and DOCX flows
+- keep explicit OfficeIMO-owned transcript markdown contracts across render, export, and DOCX flows
 - isolate OfficeIMO host/runtime capability checks from transcript normalization
 - keep DOCX-only compatibility behavior explicit instead of mixing it into the general transcript path
 
@@ -59,6 +59,14 @@ It owns:
 - DOCX-specific grouped-definition compatibility repair when required, delegated to the shared `OfficeIMO.Markdown` helper `MarkdownDefinitionLines`
 
 This keeps `ExportArtifacts` focused on orchestration while OfficeIMO remains the canonical markdown-shaping contract.
+
+There are now two intentional export lanes:
+
+- runtime/chat-preprocessor and DOCX-oriented transcript prep stay compatibility-first and continue to use IX alias visual fences like `ix-chart` and `ix-network`
+- portable markdown artifact export prefers generic semantic visual fences like `chart`, `network`, and `dataview` so downstream markdown/crawl consumers do not need IX-specific aliases
+
+That split is intentional. `IntelligenceX.Chat` should not silently collapse those two lanes back into one unless the OfficeIMO transcript contracts do the same first.
+In the shared cross-repo corpus, the compatibility-first runtime/render lane is represented by `ix-compat-transcript-*` fixtures, while portable export checks should use the legacy-JSON/source-derived fixtures that upgrade into generic semantic fences.
 
 ### 3. Renderer/runtime contract
 

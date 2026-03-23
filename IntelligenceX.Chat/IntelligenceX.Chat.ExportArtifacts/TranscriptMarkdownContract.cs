@@ -40,6 +40,23 @@ public static class TranscriptMarkdownContract {
     }
 
     /// <summary>
+    /// Prepares transcript markdown for portable markdown export by applying shared normalization,
+    /// removing transport markers, and preferring generic semantic visual fence languages.
+    /// </summary>
+    public static string PrepareTranscriptMarkdownForPortableExport(string? markdown) {
+        var withoutMarkers = StripCachedEvidenceTransportMarkers(markdown);
+        if (string.IsNullOrEmpty(withoutMarkers)) {
+            return string.Empty;
+        }
+
+        return TryInvokeTranscriptPreparationMethod(
+                   "PrepareIntelligenceXTranscriptForExport",
+                   withoutMarkers,
+                   "GenericSemanticFence")
+               ?? NormalizeAliasVisualFenceOpenersToGeneric(PrepareTranscriptMarkdownForExport(withoutMarkers));
+    }
+
+    /// <summary>
     /// Applies the DOCX-specific normalization contract after the transcript markdown has already been prepared for export.
     /// </summary>
     public static string PrepareTranscriptMarkdownForDocx(string markdown, bool preservesGroupedDefinitionLikeParagraphs) {
@@ -72,6 +89,35 @@ public static class TranscriptMarkdownContract {
             }
 
             return method.Invoke(null, [markdown]) as string;
+        } catch (Exception ex) when (IsCompatibilityFallbackException(ex)) {
+            return null;
+        }
+    }
+
+    private static string? TryInvokeTranscriptPreparationMethod(string methodName, string markdown, string visualFenceLanguageModeName) {
+        try {
+            var preparationType = Type.GetType(
+                "OfficeIMO.Markdown.MarkdownTranscriptPreparation, OfficeIMO.Markdown",
+                throwOnError: false);
+            var visualFenceLanguageModeType = Type.GetType(
+                "OfficeIMO.Markdown.MarkdownVisualFenceLanguageMode, OfficeIMO.Markdown",
+                throwOnError: false);
+            if (visualFenceLanguageModeType == null) {
+                return null;
+            }
+
+            var method = preparationType?.GetMethod(
+                methodName,
+                BindingFlags.Public | BindingFlags.Static,
+                binder: null,
+                types: [typeof(string), visualFenceLanguageModeType],
+                modifiers: null);
+            if (method?.ReturnType != typeof(string)) {
+                return null;
+            }
+
+            var visualFenceLanguageMode = Enum.Parse(visualFenceLanguageModeType, visualFenceLanguageModeName, ignoreCase: false);
+            return method.Invoke(null, [markdown, visualFenceLanguageMode]) as string;
         } catch (Exception ex) when (IsCompatibilityFallbackException(ex)) {
             return null;
         }
@@ -144,6 +190,74 @@ public static class TranscriptMarkdownContract {
         }
 
         return string.Join(newline, output);
+    }
+
+    private static string NormalizeAliasVisualFenceOpenersToGeneric(string markdown) {
+        if (string.IsNullOrEmpty(markdown)) {
+            return string.Empty;
+        }
+
+        var newline = markdown.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+        var normalized = markdown.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
+        var lines = normalized.Split('\n');
+
+        for (var i = 0; i < lines.Length; i++) {
+            lines[i] = RewriteVisualFenceLanguage(lines[i] ?? string.Empty);
+        }
+
+        return string.Join(newline, lines);
+    }
+
+    private static string RewriteVisualFenceLanguage(string line) {
+        if (string.IsNullOrEmpty(line)) {
+            return line;
+        }
+
+        var index = 0;
+        while (index < line.Length && char.IsWhiteSpace(line[index])) {
+            index++;
+        }
+
+        var fenceStart = index;
+        while (index < line.Length && line[index] == '`') {
+            index++;
+        }
+
+        if (index - fenceStart < 3) {
+            return line;
+        }
+
+        while (index < line.Length && char.IsWhiteSpace(line[index])) {
+            index++;
+        }
+
+        if (index >= line.Length) {
+            return line;
+        }
+
+        var languageStart = index;
+        while (index < line.Length && !char.IsWhiteSpace(line[index])) {
+            index++;
+        }
+
+        if (index == languageStart) {
+            return line;
+        }
+
+        var language = line.Substring(languageStart, index - languageStart);
+        var replacement = language switch {
+            "ix-chart" => "chart",
+            "ix-network" => "network",
+            "ix-dataview" => "dataview",
+            _ => string.Empty
+        };
+        if (replacement.Length == 0) {
+            return line;
+        }
+
+        return line.Substring(0, languageStart)
+               + replacement
+               + line.Substring(index);
     }
 
     private static string ExpandAdjacentOrderedListItems(string text) {
