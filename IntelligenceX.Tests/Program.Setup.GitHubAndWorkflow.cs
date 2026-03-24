@@ -196,6 +196,8 @@ jobs:
             "reusable workflow defines openai_model once for workflow_call");
         AssertContainsText(content, "dotnet-version: '8.0.x'",
             "reusable workflow provisions the .NET 8 SDK for source reviewer runs");
+        AssertContainsText(content, "dotnet build IntelligenceX.Reviewer/IntelligenceX.Reviewer.csproj -c Release -f net8.0",
+            "reusable workflow pins the source reviewer build to net8.0 on the provisioned SDK");
         AssertEqual(1, CountOccurrences(content, "REVIEW_FAIL_OPEN: true"),
             "reusable workflow exports fail-open default once at the job level");
         AssertEqual(1, CountOccurrences(content, "REVIEW_FAIL_OPEN_TRANSIENT_ONLY: false"),
