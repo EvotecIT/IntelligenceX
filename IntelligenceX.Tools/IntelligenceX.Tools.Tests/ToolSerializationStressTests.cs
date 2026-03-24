@@ -182,7 +182,7 @@ public sealed class ToolSerializationStressTests {
                 ReplicationSpan: ReplicationSpan.InterSite,
                 ReplicationSchedule: schedule);
 
-            rows.Add(AdReplicationConnectionsTool.MapConnectionForResponse(connection));
+            rows.Add(ConnectionsExplorer.ProjectSerializableRow(connection));
         }
 
         var json = ToolResponse.OkModel(new {

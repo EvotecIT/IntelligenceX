@@ -80,4 +80,21 @@ public sealed class AdUserLifecycleToolTests {
         Assert.Contains("distinguishedName", updatedAttributes, StringComparer.OrdinalIgnoreCase);
         Assert.False(root.GetProperty("meta").GetProperty("write_applied").GetBoolean());
     }
+
+    [Fact]
+    public async Task InvokeAsync_MoveDryRun_ShouldUseDnAwareLeafParsingForEscapedCommaIdentity() {
+        var tool = new AdUserLifecycleTool(new ActiveDirectoryToolOptions());
+        var arguments = new JsonObject()
+            .Add("operation", "move")
+            .Add("identity", "CN=Doe\\, Alice,CN=Users,DC=lab,DC=local")
+            .Add("target_organizational_unit", "OU=Sales,DC=lab,DC=local")
+            .Add("apply", false);
+
+        var json = await tool.InvokeAsync(arguments, CancellationToken.None);
+
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+        Assert.True(root.GetProperty("ok").GetBoolean());
+        Assert.Equal("CN=Doe\\, Alice,OU=Sales,DC=lab,DC=local", root.GetProperty("distinguished_name").GetString());
+    }
 }

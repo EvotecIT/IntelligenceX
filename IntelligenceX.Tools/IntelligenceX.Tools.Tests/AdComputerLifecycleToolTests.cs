@@ -68,4 +68,22 @@ public sealed class AdComputerLifecycleToolTests {
         Assert.Contains("distinguishedName", updatedAttributes, StringComparer.OrdinalIgnoreCase);
         Assert.False(root.GetProperty("meta").GetProperty("write_applied").GetBoolean());
     }
+
+    [Fact]
+    public async Task InvokeAsync_MoveDryRun_ShouldPreserveDnAwareLeafParsingAndEscapeReplacementCn() {
+        var tool = new AdComputerLifecycleTool(new ActiveDirectoryToolOptions());
+        var arguments = new JsonObject()
+            .Add("operation", "move")
+            .Add("identity", "CN=SRV\\,SQL-01,OU=Servers,DC=lab,DC=local")
+            .Add("new_common_name", "SRV,SQL-02")
+            .Add("apply", false);
+
+        var json = await tool.InvokeAsync(arguments, CancellationToken.None);
+
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+        Assert.True(root.GetProperty("ok").GetBoolean());
+        Assert.Equal("CN=SRV\\,SQL-02,OU=Servers,DC=lab,DC=local", root.GetProperty("distinguished_name").GetString());
+        Assert.Equal("SRV,SQL-02", root.GetProperty("computer_name").GetString());
+    }
 }

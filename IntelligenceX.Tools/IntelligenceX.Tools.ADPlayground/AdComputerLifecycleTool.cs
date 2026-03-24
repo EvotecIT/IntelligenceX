@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.DirectoryServices;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -186,9 +185,7 @@ public sealed class AdComputerLifecycleTool : ActiveDirectoryToolBase, ITool {
             return Task.FromResult(ToolResultV2.Error("invalid_argument", ex.Message));
         } catch (NotSupportedException ex) {
             return Task.FromResult(ToolResultV2.Error("not_supported", ex.Message));
-        } catch (DirectoryServicesCOMException ex) {
-            return Task.FromResult(ToolResultV2.Error("directory_write_failed", ex.Message));
-        } catch (InvalidOperationException ex) {
+        } catch (Exception ex) when (IsDirectoryWriteFailure(ex)) {
             return Task.FromResult(ToolResultV2.Error("directory_write_failed", ex.Message));
         } catch (Exception ex) {
             return Task.FromResult(ToolResultV2.Error("execution_failed", ex.Message));
@@ -469,11 +466,11 @@ public sealed class AdComputerLifecycleTool : ActiveDirectoryToolBase, ITool {
     }
 
     private ComputerLifecycleResult ExecuteMove(ComputerLifecycleRequest request) {
-        var mutation = MoveComputer(
+        var mutation = new DirectoryObjectMoveHelper().MoveComputer(
             request.Identity!,
-            request.TargetOrganizationalUnit,
-            request.NewCommonName,
-            request.DomainName);
+            targetOrganizationalUnit: request.TargetOrganizationalUnit,
+            newCommonName: request.NewCommonName,
+            domainName: request.DomainName);
 
         return new ComputerLifecycleResult(
             Operation: mutation.Operation,
@@ -733,7 +730,7 @@ public sealed class AdComputerLifecycleTool : ActiveDirectoryToolBase, ITool {
             ? normalizedSam.Substring(0, normalizedSam.Length - 1)
             : normalizedSam;
         var cn = string.IsNullOrWhiteSpace(commonName) ? defaultCn : commonName.Trim();
-        return $"CN={cn},{organizationalUnit}";
+        return DistinguishedNameHelper.BuildChildDistinguishedName("CN", cn, organizationalUnit);
     }
 
     private static string BuildPredictedMoveDistinguishedName(string identity, string? targetOrganizationalUnit, string? newCommonName) {
@@ -747,11 +744,11 @@ public sealed class AdComputerLifecycleTool : ActiveDirectoryToolBase, ITool {
             : TryResolveComputerLeafName(normalizedIdentity);
         var parent = !string.IsNullOrWhiteSpace(targetOrganizationalUnit)
             ? targetOrganizationalUnit!.Trim()
-            : ExtractParentDistinguishedName(currentDistinguishedName);
+            : DistinguishedNameHelper.GetParentDistinguishedName(currentDistinguishedName);
 
         return string.IsNullOrWhiteSpace(parent) || string.IsNullOrWhiteSpace(leafName)
             ? string.Empty
-            : $"CN={leafName},{parent}";
+            : DistinguishedNameHelper.BuildChildDistinguishedName("CN", leafName, parent);
     }
 
     private static string? TryResolveComputerLeafName(string? identity) {
@@ -761,10 +758,8 @@ public sealed class AdComputerLifecycleTool : ActiveDirectoryToolBase, ITool {
         }
 
         if (normalized.StartsWith("CN=", StringComparison.OrdinalIgnoreCase)) {
-            var separatorIndex = normalized.IndexOf(',');
-            return separatorIndex > 3
-                ? normalized.Substring(3, separatorIndex - 3).Trim()
-                : normalized.Substring(3).Trim();
+            var lastRdnValue = DistinguishedNameHelper.GetLastRdnValue(normalized);
+            return string.IsNullOrWhiteSpace(lastRdnValue) ? null : lastRdnValue;
         }
 
         var slashIndex = normalized.IndexOf('\\');
@@ -777,98 +772,8 @@ public sealed class AdComputerLifecycleTool : ActiveDirectoryToolBase, ITool {
             : normalized;
     }
 
-    private static string? ExtractParentDistinguishedName(string? distinguishedName) {
-        if (string.IsNullOrWhiteSpace(distinguishedName)) {
-            return null;
-        }
-
-        var separatorIndex = distinguishedName.IndexOf(',');
-        return separatorIndex >= 0 && separatorIndex < distinguishedName.Length - 1
-            ? distinguishedName.Substring(separatorIndex + 1).Trim()
-            : null;
-    }
-
-    private static DirectoryMutationResult MoveComputer(
-        string identity,
-        string? targetOrganizationalUnit,
-        string? newCommonName,
-        string? domainName) {
-        var objectHelper = new DirectoryObjectHelper();
-        var snapshot = objectHelper.GetComputer(identity, domainName, new[] { "cn", "distinguishedName" });
-        var sourceDistinguishedName = snapshot.DistinguishedName;
-        if (string.IsNullOrWhiteSpace(sourceDistinguishedName)) {
-            throw new InvalidOperationException("Unable to resolve a distinguished name for the requested computer move.");
-        }
-
-        var currentParent = ExtractParentDistinguishedName(sourceDistinguishedName);
-        var resolvedTargetParent = !string.IsNullOrWhiteSpace(targetOrganizationalUnit)
-            ? targetOrganizationalUnit!.Trim()
-            : currentParent;
-        if (string.IsNullOrWhiteSpace(resolvedTargetParent)) {
-            throw new InvalidOperationException("Unable to resolve the target organizational unit for the requested computer move.");
-        }
-
-        var currentLeafName = snapshot.Attributes.TryGetValue("cn", out var rawCn)
-            ? ToolArgs.NormalizeOptional(rawCn?.ToString())
-            : TryResolveComputerLeafName(identity);
-        var resolvedLeafName = !string.IsNullOrWhiteSpace(newCommonName) ? newCommonName!.Trim() : currentLeafName;
-        if (string.IsNullOrWhiteSpace(resolvedLeafName)) {
-            throw new InvalidOperationException("Unable to resolve the computer common name for the requested move.");
-        }
-
-        var newRdn = string.Equals(currentLeafName, resolvedLeafName, StringComparison.OrdinalIgnoreCase)
-            ? null
-            : "CN=" + resolvedLeafName;
-        var resolvedDomainName = !string.IsNullOrWhiteSpace(snapshot.DomainName)
-            ? snapshot.DomainName
-            : (domainName ?? InferDomainNameFromDistinguishedName(resolvedTargetParent));
-
-        using var targetParent = new DirectoryEntry($"LDAP://{resolvedTargetParent}");
-        using var entry = new DirectoryEntry($"LDAP://{sourceDistinguishedName}");
-        if (string.IsNullOrWhiteSpace(newRdn)) {
-            entry.MoveTo(targetParent);
-        } else {
-            entry.MoveTo(targetParent, newRdn);
-        }
-
-        targetParent.CommitChanges();
-        entry.CommitChanges();
-
-        var movedDistinguishedName = ToolArgs.NormalizeOptional(entry.Properties["distinguishedName"]?.Value?.ToString())
-                                   ?? $"CN={resolvedLeafName},{resolvedTargetParent}";
-
-        return new DirectoryMutationResult {
-            Operation = "move",
-            ObjectType = "computer",
-            Identity = identity,
-            DistinguishedName = movedDistinguishedName,
-            DomainName = resolvedDomainName ?? string.Empty,
-            Changed = !string.Equals(sourceDistinguishedName, movedDistinguishedName, StringComparison.OrdinalIgnoreCase),
-            Message = string.IsNullOrWhiteSpace(newRdn) ? "Computer moved." : "Computer moved and renamed.",
-            UpdatedAttributes = string.IsNullOrWhiteSpace(newRdn)
-                ? new[] { "distinguishedName" }
-                : new[] { "cn", "distinguishedName", "name" },
-            TimestampUtc = DateTime.UtcNow
-        };
-    }
-
     private static string InferDomainNameFromDistinguishedName(string? distinguishedName) {
-        if (string.IsNullOrWhiteSpace(distinguishedName)) {
-            return string.Empty;
-        }
-
-        var components = distinguishedName.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        var dcParts = new List<string>();
-        for (var i = 0; i < components.Length; i++) {
-            var part = components[i];
-            if (!part.StartsWith("DC=", StringComparison.OrdinalIgnoreCase) || part.Length <= 3) {
-                continue;
-            }
-
-            dcParts.Add(part.Substring(3));
-        }
-
-        return dcParts.Count == 0 ? string.Empty : string.Join(".", dcParts);
+        return DistinguishedNameHelper.GetDomainCanonicalName(distinguishedName);
     }
 
     private static string CreateSuccessResponse(ComputerLifecycleResult result) {
