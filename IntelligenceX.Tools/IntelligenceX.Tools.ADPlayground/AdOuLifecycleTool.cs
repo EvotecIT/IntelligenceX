@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.DirectoryServices;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -178,9 +177,7 @@ public sealed class AdOuLifecycleTool : ActiveDirectoryToolBase, ITool {
             return Task.FromResult(ToolResultV2.Error("invalid_argument", ex.Message));
         } catch (NotSupportedException ex) {
             return Task.FromResult(ToolResultV2.Error("not_supported", ex.Message));
-        } catch (DirectoryServicesCOMException ex) {
-            return Task.FromResult(ToolResultV2.Error("directory_write_failed", ex.Message));
-        } catch (InvalidOperationException ex) {
+        } catch (Exception ex) when (IsDirectoryWriteFailure(ex)) {
             return Task.FromResult(ToolResultV2.Error("directory_write_failed", ex.Message));
         } catch (Exception ex) {
             return Task.FromResult(ToolResultV2.Error("execution_failed", ex.Message));

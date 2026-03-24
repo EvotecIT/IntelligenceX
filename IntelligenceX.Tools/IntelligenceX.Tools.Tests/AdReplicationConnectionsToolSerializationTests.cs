@@ -3,14 +3,13 @@ using System.Collections.Generic;
 using System.DirectoryServices.ActiveDirectory;
 using System.Text.Json;
 using ADPlayground.Replication;
-using IntelligenceX.Tools.ADPlayground;
 using Xunit;
 
 namespace IntelligenceX.Tools.Tests;
 
 public sealed class AdReplicationConnectionsToolSerializationTests {
     [Fact]
-    public void MapReplicationScheduleForResponse_FlattensScheduleToSerializableView() {
+    public void CreateScheduleSnapshot_FlattensScheduleToSerializableView() {
         var schedule = new ActiveDirectorySchedule();
         var raw = new bool[7, 24, 4];
         raw[0, 0, 0] = true;
@@ -18,7 +17,7 @@ public sealed class AdReplicationConnectionsToolSerializationTests {
         raw[2, 5, 3] = true;
         schedule.RawSchedule = raw;
 
-        var view = AdReplicationConnectionsTool.MapReplicationScheduleForResponse(schedule);
+        var view = ConnectionsExplorer.CreateScheduleSnapshot(schedule);
 
         Assert.NotNull(view);
         Assert.Equal(7, view!.Days);
@@ -37,13 +36,13 @@ public sealed class AdReplicationConnectionsToolSerializationTests {
     }
 
     [Fact]
-    public void MapReplicationScheduleForResponse_UsesReadOnlyCollections() {
+    public void CreateScheduleSnapshot_UsesReadOnlyCollections() {
         var schedule = new ActiveDirectorySchedule();
         var raw = new bool[7, 24, 4];
         raw[0, 0, 0] = true;
         schedule.RawSchedule = raw;
 
-        var view = AdReplicationConnectionsTool.MapReplicationScheduleForResponse(schedule);
+        var view = ConnectionsExplorer.CreateScheduleSnapshot(schedule);
         Assert.NotNull(view);
 
         var slotsByDay = Assert.IsAssignableFrom<IList<int>>(view!.AllowedSlotsByDay);
@@ -57,7 +56,7 @@ public sealed class AdReplicationConnectionsToolSerializationTests {
     }
 
     [Fact]
-    public void MapConnectionForResponse_ReplacesUnsupportedSchedulePayload() {
+    public void ProjectSerializableRow_ReplacesUnsupportedSchedulePayload() {
         var schedule = new ActiveDirectorySchedule();
         var raw = new bool[7, 24, 4];
         raw[1, 7, 2] = true;
@@ -81,9 +80,10 @@ public sealed class AdReplicationConnectionsToolSerializationTests {
 
         Assert.Throws<NotSupportedException>(() => JsonSerializer.Serialize(connection));
 
-        var row = AdReplicationConnectionsTool.MapConnectionForResponse(connection);
+        var row = ConnectionsExplorer.ProjectSerializableRow(connection);
         var rowJson = JsonSerializer.Serialize(row);
         Assert.Contains("ReplicationSchedule", rowJson, StringComparison.Ordinal);
         Assert.DoesNotContain("RawSchedule", rowJson, StringComparison.Ordinal);
+        Assert.Contains("\"Transport\":\"Rpc\"", rowJson, StringComparison.Ordinal);
     }
 }

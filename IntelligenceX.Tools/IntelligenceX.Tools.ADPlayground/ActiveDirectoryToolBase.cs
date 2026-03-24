@@ -683,4 +683,24 @@ public abstract partial class ActiveDirectoryToolBase : ToolBase {
         return SanitizeErrorMessage(exception?.Message, fallback);
     }
 
+    /// <summary>
+    /// Determines whether an exception should be surfaced as a directory-write failure.
+    /// </summary>
+    protected static bool IsDirectoryWriteFailure(Exception exception) {
+        for (var current = exception; current is not null; current = current.InnerException) {
+            if (current is InvalidOperationException) {
+                return true;
+            }
+
+            if (string.Equals(
+                    current.GetType().FullName,
+                    "System.DirectoryServices.DirectoryServicesCOMException",
+                    StringComparison.Ordinal)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
 }

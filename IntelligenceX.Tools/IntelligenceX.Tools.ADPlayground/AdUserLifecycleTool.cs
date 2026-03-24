@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.DirectoryServices;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -231,9 +230,7 @@ public sealed class AdUserLifecycleTool : ActiveDirectoryToolBase, ITool {
             return Task.FromResult(ToolResultV2.Error("invalid_argument", ex.Message));
         } catch (NotSupportedException ex) {
             return Task.FromResult(ToolResultV2.Error("not_supported", ex.Message));
-        } catch (DirectoryServicesCOMException ex) {
-            return Task.FromResult(ToolResultV2.Error("directory_write_failed", ex.Message));
-        } catch (InvalidOperationException ex) {
+        } catch (Exception ex) when (IsDirectoryWriteFailure(ex)) {
             return Task.FromResult(ToolResultV2.Error("directory_write_failed", ex.Message));
         } catch (Exception ex) {
             return Task.FromResult(ToolResultV2.Error("execution_failed", ex.Message));
@@ -670,7 +667,7 @@ public sealed class AdUserLifecycleTool : ActiveDirectoryToolBase, ITool {
     }
 
     private UserLifecycleResult ExecuteMove(UserLifecycleRequest request) {
-        var mutation = MoveUser(request.Identity!, request.TargetOrganizationalUnit!, request.DomainName);
+        var mutation = new DirectoryObjectMoveHelper().MoveUser(request.Identity!, request.TargetOrganizationalUnit!, request.DomainName);
         return new UserLifecycleResult(
             Operation: mutation.Operation,
             ObjectType: mutation.ObjectType,
@@ -1173,43 +1170,6 @@ public sealed class AdUserLifecycleTool : ActiveDirectoryToolBase, ITool {
         }
 
         return update.HasChanges() ? update : null;
-    }
-
-    private static DirectoryMutationResult MoveUser(string identity, string targetOrganizationalUnit, string? domainName) {
-        var objectHelper = new DirectoryObjectHelper();
-        var snapshot = objectHelper.GetUser(identity, domainName, new[] { "cn", "distinguishedName" });
-        var sourceDistinguishedName = snapshot.DistinguishedName;
-        if (string.IsNullOrWhiteSpace(sourceDistinguishedName)) {
-            throw new InvalidOperationException("Unable to resolve a distinguished name for the requested user move.");
-        }
-
-        var leafName = snapshot.Attributes.TryGetValue("cn", out var rawCn)
-            ? ToolArgs.NormalizeOptional(rawCn?.ToString())
-            : TryResolveMoveLeafName(identity, commonName: null);
-        var resolvedDomainName = !string.IsNullOrWhiteSpace(snapshot.DomainName)
-            ? snapshot.DomainName
-            : (domainName ?? InferDomainNameFromDistinguishedName(targetOrganizationalUnit));
-
-        using var targetParent = new DirectoryEntry($"LDAP://{targetOrganizationalUnit}");
-        using var entry = new DirectoryEntry($"LDAP://{sourceDistinguishedName}");
-        entry.MoveTo(targetParent);
-        targetParent.CommitChanges();
-        entry.CommitChanges();
-
-        var movedDistinguishedName = ToolArgs.NormalizeOptional(entry.Properties["distinguishedName"]?.Value?.ToString())
-                                   ?? BuildPredictedDistinguishedName(leafName, identity, targetOrganizationalUnit);
-
-        return new DirectoryMutationResult {
-            Operation = "move",
-            ObjectType = "user",
-            Identity = identity,
-            DistinguishedName = movedDistinguishedName,
-            DomainName = resolvedDomainName ?? string.Empty,
-            Changed = !string.Equals(sourceDistinguishedName, movedDistinguishedName, StringComparison.OrdinalIgnoreCase),
-            Message = "User moved.",
-            UpdatedAttributes = new[] { "distinguishedName" },
-            TimestampUtc = DateTime.UtcNow
-        };
     }
 
     private static void MergeUserMutation(
