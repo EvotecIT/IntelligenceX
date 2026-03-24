@@ -22,10 +22,10 @@ public sealed class ChatMarkdownOptionsTests {
     }
 
     /// <summary>
-    /// Ensures the central contract still produces a chat-scoped surface with IntelligenceX alias support.
+    /// Ensures the central contract still produces a chat-scoped surface with generic chart support.
     /// </summary>
     [Fact]
-    public void CreateTranscriptRendererOptions_ComposesChatPresentationAndIntelligenceXAliases() {
+    public void CreateTranscriptRendererOptions_ComposesChatPresentationAndGenericChartFence() {
         var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
         options.Chart.Enabled = true;
 
@@ -34,7 +34,7 @@ public sealed class ChatMarkdownOptionsTests {
         Assert.Equal("#omdRoot article.markdown-body", options.HtmlOptions.CssScopeSelector);
 
         var html = MarkdownRenderer.RenderBodyHtml("""
-```ix-chart
+```chart
 {"type":"bar","data":{"labels":["A"],"datasets":[{"label":"Count","data":[1]}]}}
 ```
 """, options);
@@ -44,15 +44,15 @@ public sealed class ChatMarkdownOptionsTests {
     }
 
     /// <summary>
-    /// Ensures the central transcript contract maps IntelligenceX dataview aliases onto the native OfficeIMO visual contract.
+    /// Ensures the central transcript contract maps generic dataview fences onto the native OfficeIMO visual contract.
     /// </summary>
     [Fact]
-    public void CreateTranscriptRendererOptions_ComposesIntelligenceXDataviewAliasesOntoNativeVisualContract() {
+    public void CreateTranscriptRendererOptions_ComposesGenericDataviewFenceOntoNativeVisualContract() {
         var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
 
         var html = MarkdownRenderer.RenderBodyHtml("""
-```ix-dataview
-{"headers":["Name","Count"],"items":[{"Name":"A","Count":1}]}
+```dataview
+{"kind":"ix_tool_dataview_v1","rows":[["Name","Count"],["A","1"]]}
 ```
 """, options);
 

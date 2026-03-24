@@ -229,6 +229,8 @@ internal static partial class Program {
 
         AssertEqual(true, providerValues.Contains("openai-compatible"), "reviewer schema provider includes openai-compatible");
         AssertEqual(true, providerValues.Contains("ollama"), "reviewer schema provider includes ollama");
+        AssertEqual(true, providerValues.Contains("claude"), "reviewer schema provider includes claude");
+        AssertEqual(true, providerValues.Contains("anthropic"), "reviewer schema provider includes anthropic");
 
         var openAiCompatible = reviewProps.GetObject("openaiCompatible");
         AssertNotNull(openAiCompatible, "reviewer schema openaiCompatible property");
@@ -253,6 +255,16 @@ internal static partial class Program {
         AssertNotNull(timeoutSeconds, "reviewer schema openaiCompatible timeoutSeconds property");
         AssertEqual("integer", timeoutSeconds!.GetString("type") ?? string.Empty,
             "reviewer schema openaiCompatible timeoutSeconds type");
+
+        var anthropic = reviewProps.GetObject("anthropic");
+        AssertNotNull(anthropic, "reviewer schema anthropic property");
+        AssertEqual("object", anthropic!.GetString("type") ?? string.Empty, "reviewer schema anthropic type");
+        var anthropicProps = anthropic.GetObject("properties");
+        AssertNotNull(anthropicProps, "reviewer schema anthropic.properties");
+        AssertNotNull(anthropicProps!.GetObject("baseUrl"), "reviewer schema anthropic baseUrl property");
+        AssertNotNull(anthropicProps.GetObject("apiKeyEnv"), "reviewer schema anthropic apiKeyEnv property");
+        AssertNotNull(anthropicProps.GetObject("timeoutSeconds"), "reviewer schema anthropic timeoutSeconds property");
+        AssertNotNull(anthropicProps.GetObject("maxTokens"), "reviewer schema anthropic maxTokens property");
     }
 }
 #endif

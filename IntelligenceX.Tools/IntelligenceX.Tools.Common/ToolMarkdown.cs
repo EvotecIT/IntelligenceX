@@ -10,7 +10,7 @@ namespace IntelligenceX.Tools.Common;
 /// </summary>
 /// <remarks>
 /// Keep this intentionally minimal: produce CommonMark-friendly output (headings, bullet lists, code fences).
-/// Prefer this over ad-hoc string concatenation inside tools so output stays consistent across packs.
+/// Prefer generic fence names for new output and keep IntelligenceX aliases only where compatibility is required.
 /// </remarks>
 public static class ToolMarkdown {
     /// <summary>
@@ -87,14 +87,34 @@ public static class ToolMarkdown {
     public static string Mermaid(string? source) => CodeBlock("mermaid", source);
 
     /// <summary>
-    /// Creates an IntelligenceX chart fenced code block.
+    /// Creates a generic chart fenced code block.
+    /// </summary>
+    public static string Chart(string? chartJson) => CodeBlock("chart", chartJson);
+
+    /// <summary>
+    /// Creates a generic network fenced code block.
+    /// </summary>
+    public static string Network(string? networkJson) => CodeBlock("network", networkJson);
+
+    /// <summary>
+    /// Creates a generic dataview fenced code block.
+    /// </summary>
+    public static string DataView(string? dataViewJson) => CodeBlock("dataview", dataViewJson);
+
+    /// <summary>
+    /// Creates an IntelligenceX chart fenced code block compatibility alias.
     /// </summary>
     public static string IxChart(string? chartJson) => CodeBlock("ix-chart", chartJson);
 
     /// <summary>
-    /// Creates an IntelligenceX network fenced code block.
+    /// Creates an IntelligenceX network fenced code block compatibility alias.
     /// </summary>
     public static string IxNetwork(string? networkJson) => CodeBlock("ix-network", networkJson);
+
+    /// <summary>
+    /// Creates an IntelligenceX dataview fenced code block compatibility alias.
+    /// </summary>
+    public static string IxDataView(string? dataViewJson) => CodeBlock("ix-dataview", dataViewJson);
 
     /// <summary>
     /// Renders <paramref name="value"/> as markdown inline code, using a safe backtick fence.

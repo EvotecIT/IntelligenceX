@@ -12,7 +12,6 @@ internal static class SetupPostApplyVerifier {
     private const string WorkflowPath = ".github/workflows/review-intelligencex.yml";
     private const string ConfigPath = ".intelligencex/reviewer.json";
     private const string LegacyConfigPath = ".intelligencex/config.json";
-    private const string SecretName = "INTELLIGENCEX_AUTH_B64";
     private const string ManagedWorkflowMarker = "INTELLIGENCEX:BEGIN";
 
     public static string? ExtractPullRequestUrl(string output) {
@@ -148,11 +147,12 @@ internal static class SetupPostApplyVerifier {
             }
         }
 
-        if (needsRepoSecretCheck) {
-            observed.RepoSecretLookup = await client.TryRepoSecretExistsAsync(owner, repo, SecretName).ConfigureAwait(false);
+        var secretName = SetupProviderCatalog.GetSecretName(context.Provider);
+        if (needsRepoSecretCheck && !string.IsNullOrWhiteSpace(secretName)) {
+            observed.RepoSecretLookup = await client.TryRepoSecretExistsAsync(owner, repo, secretName).ConfigureAwait(false);
         }
-        if (needsOrgSecretCheck && !string.IsNullOrWhiteSpace(context.SecretOrg)) {
-            observed.OrgSecretLookup = await client.TryOrgSecretExistsAsync(context.SecretOrg!, SecretName).ConfigureAwait(false);
+        if (needsOrgSecretCheck && !string.IsNullOrWhiteSpace(context.SecretOrg) && !string.IsNullOrWhiteSpace(secretName)) {
+            observed.OrgSecretLookup = await client.TryOrgSecretExistsAsync(context.SecretOrg!, secretName).ConfigureAwait(false);
         }
 
         var runLookup = await client.ListWorkflowRunsAsync(owner, repo, WorkflowPath, maxCount: 1).ConfigureAwait(false);
@@ -240,9 +240,9 @@ internal static class SetupPostApplyVerifier {
             whenFalse: "missing",
             note: "Expected to be removed on cleanup branch.");
 
-        if (!IsOpenAiProvider(context.Provider)) {
+        if (!SetupProviderCatalog.RequiresManagedSecret(context.Provider)) {
             AddSkippedCheck(result, SetupPostApplyCheckNames.RepoSecret, "not applicable", SetupPostApplyCheckValues.NotChecked,
-                "Provider does not require OpenAI auth secret.");
+                "Provider does not require a managed setup secret.");
             return;
         }
 
@@ -256,9 +256,9 @@ internal static class SetupPostApplyVerifier {
 
     private static void AddUpdateSecretChecks(SetupPostApplyContext context, SetupPostApplyObservedState observed,
         SetupPostApplyVerification result) {
-        if (!IsOpenAiProvider(context.Provider)) {
+        if (!SetupProviderCatalog.RequiresManagedSecret(context.Provider)) {
             AddSkippedCheck(result, SetupPostApplyCheckNames.RepoSecret, "not applicable", SetupPostApplyCheckValues.NotChecked,
-                "Provider does not require OpenAI auth secret.");
+                "Provider does not require a managed setup secret.");
             return;
         }
 
@@ -282,9 +282,9 @@ internal static class SetupPostApplyVerifier {
 
     private static void AddSecretCheckForSetup(SetupPostApplyContext context, SetupPostApplyObservedState observed,
         SetupPostApplyVerification result) {
-        if (!IsOpenAiProvider(context.Provider)) {
+        if (!SetupProviderCatalog.RequiresManagedSecret(context.Provider)) {
             AddSkippedCheck(result, SetupPostApplyCheckNames.RepoSecret, "not applicable", SetupPostApplyCheckValues.NotChecked,
-                "Provider does not require OpenAI auth secret.");
+                "Provider does not require a managed setup secret.");
             return;
         }
 
@@ -528,7 +528,7 @@ internal static class SetupPostApplyVerifier {
     }
 
     private static bool ShouldCheckRepoSecret(SetupPostApplyContext context) {
-        if (!IsOpenAiProvider(context.Provider)) {
+        if (!SetupProviderCatalog.RequiresManagedSecret(context.Provider)) {
             return false;
         }
         if (context.Operation == SetupApplyOperation.Setup) {
@@ -550,7 +550,7 @@ internal static class SetupPostApplyVerifier {
     }
 
     private static bool ShouldCheckOrgSecret(SetupPostApplyContext context) {
-        if (!IsOpenAiProvider(context.Provider)) {
+        if (!SetupProviderCatalog.SupportsOrgSecret(context.Provider)) {
             return false;
         }
         if (!context.ExpectOrgSecret) {
@@ -560,12 +560,6 @@ internal static class SetupPostApplyVerifier {
             return false;
         }
         return context.Operation == SetupApplyOperation.Setup || context.Operation == SetupApplyOperation.UpdateSecret;
-    }
-
-    private static bool IsOpenAiProvider(string provider) {
-        return string.Equals(provider, "openai", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(provider, "chatgpt", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(provider, "codex", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string DescribeOperation(SetupApplyOperation operation) {

@@ -186,7 +186,8 @@ internal static partial class SetupRunner {
         if (options.DryRun) {
             Console.WriteLine("Cleanup dry run:");
             Console.WriteLine($"- Repo: {state.GitHub.RepositoryFullName}");
-            Console.WriteLine($"- Secret: INTELLIGENCEX_AUTH_B64 ({(options.KeepSecret ? "keep" : "delete")})");
+            var secretName = GetManagedSecretName(options.Provider);
+            Console.WriteLine($"- Secret: {(secretName ?? "(none)") } ({(options.KeepSecret ? "keep" : "delete")})");
             Console.WriteLine($"- File: .github/workflows/review-intelligencex.yml ({(workflow is null ? "skip (missing)" : "delete")})");
             Console.WriteLine($"- File: .intelligencex/reviewer.json ({(reviewerConfig is null ? "skip (missing)" : "delete")})");
             Console.WriteLine($"- File: .intelligencex/config.json ({(legacyLooksLikeReviewer ? "delete (legacy reviewer config)" : "skip (reserved for library config)")})");
@@ -194,8 +195,9 @@ internal static partial class SetupRunner {
             return 0;
         }
 
-        if (!options.KeepSecret) {
-            await github.DeleteSecretAsync(owner, repo, "INTELLIGENCEX_AUTH_B64").ConfigureAwait(false);
+        var cleanupSecretName = GetManagedSecretName(options.Provider);
+        if (!options.KeepSecret && !string.IsNullOrWhiteSpace(cleanupSecretName)) {
+            await github.DeleteSecretAsync(owner, repo, cleanupSecretName).ConfigureAwait(false);
         }
 
         if (workflow is null && reviewerConfig is null && !legacyLooksLikeReviewer) {
@@ -246,23 +248,15 @@ internal static partial class SetupRunner {
         if (options.DryRun) {
             Console.WriteLine("Secret update dry run:");
             Console.WriteLine($"- Repo: {state.GitHub.RepositoryFullName}");
-            Console.WriteLine("- Secret: INTELLIGENCEX_AUTH_B64 (would be updated)");
+            Console.WriteLine($"- Secret: {GetRequiredManagedSecretName(options.Provider)} (would be updated)");
             return 0;
         }
 
-        var authB64 = ResolveAuthB64(options);
-        if (string.IsNullOrWhiteSpace(authB64)) {
-            state.OpenAI.AuthBundle = await LoginOpenAiAsync(options).ConfigureAwait(false);
-            state.OpenAI.AuthJson = AuthBundleSerializer.Serialize(state.OpenAI.AuthBundle);
-            state.OpenAI.AuthB64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(state.OpenAI.AuthJson));
-        } else {
-            state.OpenAI.AuthB64 = authB64;
-        }
+        var secretValue = await ResolveManagedSecretValueAsync(state).ConfigureAwait(false);
+        var secretName = GetRequiredManagedSecretName(options.Provider);
+        await github.SetSecretAsync(owner, repo, secretName, secretValue).ConfigureAwait(false);
 
-        await github.SetSecretAsync(owner, repo, "INTELLIGENCEX_AUTH_B64", state.OpenAI.AuthB64)
-            .ConfigureAwait(false);
-
-        Console.WriteLine("Secret updated: INTELLIGENCEX_AUTH_B64");
+        Console.WriteLine($"Secret updated: {secretName}");
         return 0;
     }
 
@@ -407,7 +401,7 @@ internal static partial class SetupRunner {
         IReadOnlyList<FilePlan> triagePlans) {
         Console.WriteLine("Dry run summary:");
         Console.WriteLine($"- Repo: {state.GitHub.RepositoryFullName}");
-        Console.WriteLine($"- Secret: INTELLIGENCEX_AUTH_B64 ({DescribeSecretAction(state.Options)})");
+        Console.WriteLine($"- Secret: {DescribeManagedSecret(state.Options)} ({DescribeSecretAction(state.Options)})");
         Console.WriteLine($"- File: {workflowPlan.Path} ({DescribePlan(workflowPlan)})");
         Console.WriteLine($"- File: {configPlan.Path} ({DescribePlan(configPlan)})");
         foreach (var exportPlan in exportPlans) {
@@ -495,12 +489,13 @@ internal static partial class SetupRunner {
         return options.SkipSecret ? "skip" : "create/update";
     }
 
-    private static void PrintManualSecret(string secret, bool printToStdout) {
+    private static void PrintManualSecret(string provider, string secret, bool printToStdout) {
+        var secretName = GetRequiredManagedSecretName(provider);
         Console.WriteLine("Manual secret mode enabled.");
         if (printToStdout) {
             Console.WriteLine("Warning: --manual-secret-stdout prints secret content to stdout.");
             Console.WriteLine("This can leak in terminal history, CI logs, and screen recordings.");
-            Console.WriteLine("INTELLIGENCEX_AUTH_B64 value:");
+            Console.WriteLine($"{secretName} value:");
             Console.WriteLine(secret);
             return;
         }
@@ -508,11 +503,11 @@ internal static partial class SetupRunner {
         var path = TryWriteManualSecretFile(secret);
         if (string.IsNullOrWhiteSpace(path)) {
             Console.WriteLine("Failed to create a local secret file. Secret output was intentionally suppressed.");
-            Console.WriteLine("Use --auth-b64 or --auth-b64-path to provide the secret value securely.");
+            Console.WriteLine("Use provider-specific CLI secret options to provide the secret value securely.");
             return;
         }
         Console.WriteLine("Secret output to stdout is disabled for safety.");
-        Console.WriteLine("Set INTELLIGENCEX_AUTH_B64 in your repo/org secrets using the value in:");
+        Console.WriteLine($"Set {secretName} in your repo/org secrets using the value in:");
         Console.WriteLine(path);
         Console.WriteLine("Delete that file after pasting the value.");
     }
@@ -542,6 +537,63 @@ internal static partial class SetupRunner {
             }
         }
         return null;
+    }
+
+    private static string DescribeManagedSecret(SetupOptions options) {
+        return GetManagedSecretName(options.Provider) ?? "(none)";
+    }
+
+    private static string? GetManagedSecretName(string? provider) {
+        return SetupProviderCatalog.GetSecretName(provider);
+    }
+
+    private static string GetRequiredManagedSecretName(string? provider) {
+        return GetManagedSecretName(provider)
+               ?? throw new InvalidOperationException(
+                   $"{SetupProviderCatalog.GetProviderDisplayName(provider)} does not use a managed setup secret.");
+    }
+
+    private static string? ResolveAnthropicApiKey(SetupOptions options) {
+        if (!string.IsNullOrWhiteSpace(options.AnthropicApiKey)) {
+            return options.AnthropicApiKey;
+        }
+        if (!string.IsNullOrWhiteSpace(options.AnthropicApiKeyPath)) {
+            try {
+                return File.ReadAllText(options.AnthropicApiKeyPath).Trim();
+            } catch {
+                return null;
+            }
+        }
+        return Environment.GetEnvironmentVariable(SetupProviderCatalog.ClaudeSecretName);
+    }
+
+    private static async Task<string> ResolveManagedSecretValueAsync(SetupState state) {
+        var provider = state.Options.Provider;
+        if (SetupProviderCatalog.IsOpenAiProvider(provider)) {
+            var authB64 = ResolveAuthB64(state.Options);
+            if (string.IsNullOrWhiteSpace(authB64)) {
+                state.OpenAI.AuthBundle = await LoginOpenAiAsync(state.Options).ConfigureAwait(false);
+                state.OpenAI.AuthJson = AuthBundleSerializer.Serialize(state.OpenAI.AuthBundle);
+                state.OpenAI.AuthB64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(state.OpenAI.AuthJson));
+            } else {
+                state.OpenAI.AuthB64 = authB64.Trim();
+            }
+
+            return state.OpenAI.AuthB64!;
+        }
+
+        if (SetupProviderCatalog.IsClaudeProvider(provider)) {
+            var apiKey = ResolveAnthropicApiKey(state.Options);
+            if (string.IsNullOrWhiteSpace(apiKey)) {
+                throw new InvalidOperationException(
+                    $"Missing {SetupProviderCatalog.ClaudeSecretName}. Pass --anthropic-api-key, --anthropic-api-key-path, or set the environment variable.");
+            }
+
+            return apiKey.Trim();
+        }
+
+        throw new InvalidOperationException(
+            $"{SetupProviderCatalog.GetProviderDisplayName(provider)} does not support managed secret upload.");
     }
 
     private static async Task<AuthBundle> LoginOpenAiAsync(SetupOptions options) {

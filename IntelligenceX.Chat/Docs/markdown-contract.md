@@ -4,7 +4,7 @@ This document describes the intended markdown pipeline for `IntelligenceX.Chat`.
 
 ## Goals
 
-- keep one explicit OfficeIMO-owned transcript markdown contract across render, export, and DOCX flows
+- keep explicit OfficeIMO-owned transcript markdown contracts across render, export, and DOCX flows
 - isolate OfficeIMO host/runtime capability checks from transcript normalization
 - keep DOCX-only compatibility behavior explicit instead of mixing it into the general transcript path
 
@@ -44,7 +44,7 @@ Streaming preview now delegates conservative delta cleanup through the explicit 
 - `OfficeIMO.MarkdownRenderer.MarkdownRendererPreProcessorPipeline.Apply(...)` with `MarkdownRendererPresets.CreateIntelligenceXTranscriptMinimal()`
 - `OfficeIMO.Markdown.MarkdownStreamingPreviewNormalizer.NormalizeIntelligenceXTranscript(...)`
 
-For this PR line, IX should run against the sibling OfficeIMO checkout by default whenever it exists. Package mode will not compile until the new OfficeIMO package line is published, which is expected for this end-state cleanup branch.
+IX now runs against the published OfficeIMO package line directly. Local checkout fallbacks were removed so package-mode validation is the primary contract surface.
 
 OfficeIMO now also exposes a generic post-parse document-transform pipeline. IX should treat that as OfficeIMO implementation detail and consume it only through explicit OfficeIMO presets/contracts instead of composing transcript-specific transforms in App code.
 
@@ -59,6 +59,14 @@ It owns:
 - DOCX-specific grouped-definition compatibility repair when required, delegated to the shared `OfficeIMO.Markdown` helper `MarkdownDefinitionLines`
 
 This keeps `ExportArtifacts` focused on orchestration while OfficeIMO remains the canonical markdown-shaping contract.
+
+The transcript export contract is now intentionally generic-first across markdown artifacts and DOCX preparation:
+
+- transcript export uses generic semantic visual fences like `chart`, `network`, and `dataview`
+- downstream markdown/crawl consumers do not need IX-specific alias fences
+- any remaining IX-specific runtime DOM details stay internal to the App shell and are not part of the authored markdown contract
+
+In the shared cross-repo corpus, source-derived fixtures should upgrade into generic semantic fences as part of export and render preparation.
 
 ### 3. Renderer/runtime contract
 

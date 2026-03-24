@@ -20,6 +20,10 @@ internal static class OpenAICompatibleHttpProviderDetector {
             return "chatgpt";
         }
 
+        if (IsLikelyClaudeEndpoint(uri)) {
+            return "claude";
+        }
+
         return null;
     }
 
@@ -61,6 +65,21 @@ internal static class OpenAICompatibleHttpProviderDetector {
 
         var path = apiBase.AbsolutePath ?? string.Empty;
         return path.IndexOf("/backend-api", StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
+    private static bool IsLikelyClaudeEndpoint(Uri apiBase) {
+        if (apiBase is null) {
+            return false;
+        }
+
+        var host = apiBase.Host ?? string.Empty;
+        if (host.IndexOf("anthropic", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            host.IndexOf("claude.ai", StringComparison.OrdinalIgnoreCase) >= 0) {
+            return true;
+        }
+
+        var path = apiBase.AbsolutePath ?? string.Empty;
+        return path.IndexOf("/v1/messages", StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
     private static bool TryParseBaseUrl(string? baseUrl, out Uri uri) {

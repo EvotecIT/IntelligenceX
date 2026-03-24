@@ -611,7 +611,7 @@ pre:hover .code-copy-btn {
   margin: 0 auto;
 }
 
-.ix-chart-host {
+.visual-chart-host {
   margin: 8px 0;
   padding: 8px;
   border-radius: var(--ix-radius-md);
@@ -620,7 +620,7 @@ pre:hover .code-copy-btn {
   min-height: clamp(260px, 40vh, 860px);
 }
 
-.ix-chart-host .ix-chart-canvas {
+.visual-chart-host .visual-chart-canvas {
   width: 100%;
   height: clamp(260px, 50vh, 1040px) !important;
   max-height: none;
@@ -639,7 +639,7 @@ pre:hover .code-copy-btn {
   box-sizing: border-box;
 }
 
-.ix-network-host,
+.visual-network-host,
 .omd-network {
   margin: 8px 0;
   padding: 8px;
@@ -649,7 +649,7 @@ pre:hover .code-copy-btn {
   min-height: clamp(300px, 44vh, 1080px);
 }
 
-.ix-network-host .ix-network-canvas,
+.visual-network-host .visual-network-canvas,
 .omd-network .omd-network-canvas {
   width: 100%;
   height: clamp(280px, 52vh, 1120px);
@@ -657,7 +657,7 @@ pre:hover .code-copy-btn {
   overflow: hidden;
 }
 
-.ix-network-host .vis-network:focus,
+.visual-network-host .vis-network:focus,
 .omd-network .vis-network:focus {
   outline: none;
 }
@@ -901,3 +901,4 @@ pre:hover .code-copy-btn {
   opacity: 0.55;
   cursor: default;
 }
+

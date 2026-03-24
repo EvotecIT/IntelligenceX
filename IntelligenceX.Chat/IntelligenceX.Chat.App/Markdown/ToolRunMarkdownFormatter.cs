@@ -8,10 +8,10 @@ namespace IntelligenceX.Chat.App.Markdown;
 /// Formats structured tool-run envelopes into transcript markdown.
 /// </summary>
 internal static partial class ToolRunMarkdownFormatter {
-    private const string DataViewPayloadFenceLanguage = "ix-dataview";
+    private const string DataViewPayloadFenceLanguage = "dataview";
     private const string DataViewPayloadKind = "ix_tool_dataview_v1";
-    private const string ChartFenceLanguage = "ix-chart";
-    private const string NetworkFenceLanguage = "ix-network";
+    private const string ChartFenceLanguage = "chart";
+    private const string NetworkFenceLanguage = "network";
 
     /// <summary>
     /// Builds markdown for tool calls and outputs.

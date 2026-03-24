@@ -63,4 +63,15 @@ public class ToolMarkdownTests {
         Assert.Contains("```ix-network", markdown);
         Assert.Contains("{\"nodes\":[],\"edges\":[]}", markdown);
     }
+
+    [Fact]
+    public void GenericVisualHelpers_ShouldRenderGenericNamedFences() {
+        var chart = ToolMarkdown.Chart("{\"type\":\"bar\"}");
+        var network = ToolMarkdown.Network("{\"nodes\":[],\"edges\":[]}");
+        var dataView = ToolMarkdown.DataView("{\"rows\":[[\"Name\"],[\"alpha\"]]}");
+
+        Assert.Contains("```chart", chart);
+        Assert.Contains("```network", network);
+        Assert.Contains("```dataview", dataView);
+    }
 }

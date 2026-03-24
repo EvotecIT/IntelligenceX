@@ -19,6 +19,27 @@ internal static partial class Program {
         AssertEqual(true, flowsIndex > formattingIndex, "web setup static assets flows segment ordered after formatting");
     }
 
+    private static void TestWebSetupStaticAssetsExposeProviderModelQuickPicks() {
+        var html = IntelligenceX.Cli.Setup.Web.WebStaticAssets.TryGet("/index.html", out var htmlContentType);
+        AssertEqual(true, html != null && html.Length > 0, "web setup static assets index html available");
+        AssertEqual("text/html; charset=utf-8", htmlContentType, "web setup static assets index html content type");
+
+        var htmlText = System.Text.Encoding.UTF8.GetString(html!);
+        AssertContainsText(htmlText, "reviewModelQuickPicks", "web setup index quick picks container");
+        AssertContainsText(htmlText, "reviewModelSuggestions", "web setup index model datalist");
+        AssertContainsText(htmlText, "reviewModelProfile", "web setup index model profile select");
+
+        var script = IntelligenceX.Cli.Setup.Web.WebStaticAssets.TryGet("/app.js", out _);
+        AssertEqual(true, script != null && script.Length > 0, "web setup static assets app.js available for quick picks");
+        var scriptText = System.Text.Encoding.UTF8.GetString(script!);
+        AssertContainsText(scriptText, "const PROVIDER_MODEL_CATALOG =", "web setup script provider model catalog");
+        AssertContainsText(scriptText, "function renderModelQuickPicks(provider)", "web setup script quick pick render function");
+        AssertContainsText(scriptText, "function getProviderSetupSummary(provider)", "web setup script provider summary helper");
+        AssertContainsText(scriptText, "function getProviderModelProfile(provider, model)", "web setup script model summary helper");
+        AssertContainsText(scriptText, "function renderModelProfiles(provider)", "web setup script model profile render function");
+        AssertContainsText(scriptText, "modelProfileId:", "web setup preset state includes model profile id");
+    }
+
     private static void TestWebSetupAutodetectResponseJsonMatchesSharedContractPayload() {
         var contractCommands = IntelligenceX.Setup.Onboarding.SetupOnboardingContract.GetCommandTemplates();
         var contractPaths = IntelligenceX.Setup.Onboarding.SetupOnboardingContract.GetPaths(includeMaintenancePath: true);
@@ -182,10 +203,24 @@ internal static partial class Program {
     }
 
     private static void TestWebSetupBuildSetupArgsPropagatesOpenAiModel() {
-        var args = IntelligenceX.Cli.Setup.Web.WebApi.BuildSetupArgsForOpenAiModelTests("gpt-5.4/fast");
-        var modelIndex = Array.IndexOf(args, "--openai-model");
+        var args = IntelligenceX.Cli.Setup.Web.WebApi.BuildSetupArgsForProviderModelTests("openai", "gpt-5.4/fast");
+        var modelIndex = Array.IndexOf(args, "--model");
         AssertEqual(true, modelIndex >= 0, "web setup args openai model flag");
         AssertEqual("gpt-5.4/fast", args[modelIndex + 1], "web setup args openai model value");
+    }
+
+    private static void TestWebSetupBuildSetupArgsPropagatesClaudeModelAndApiKey() {
+        var args = IntelligenceX.Cli.Setup.Web.WebApi.BuildSetupArgsForProviderModelTests(
+            "claude",
+            "claude-sonnet-4-20250514",
+            anthropicApiKey: "sk-ant-web");
+        var modelIndex = Array.IndexOf(args, "--model");
+        var keyIndex = Array.IndexOf(args, "--anthropic-api-key");
+
+        AssertEqual(true, modelIndex >= 0, "web setup args claude model flag");
+        AssertEqual(true, keyIndex >= 0, "web setup args claude api key flag");
+        AssertEqual("claude-sonnet-4-20250514", args[modelIndex + 1], "web setup args claude model value");
+        AssertEqual("sk-ant-web", args[keyIndex + 1], "web setup args claude api key value");
     }
 
     private static void TestWebSetupBuildSetupArgsPropagatesAnalysisRunStrict() {
@@ -561,6 +596,15 @@ internal static partial class Program {
             secretOrg: "EvotecIT");
         AssertEqual(false, nonOpenAiProvider.ExpectOrgSecret, "web setup org target non-openai provider does not expect org secret");
         AssertEqual(null, nonOpenAiProvider.SecretOrg, "web setup org target non-openai provider does not pass org secret");
+
+        var claudeProvider = IntelligenceX.Cli.Setup.Web.WebApi.ResolveOrgSecretVerificationContextForTests(
+            cleanup: false,
+            updateSecret: false,
+            provider: "claude",
+            secretTarget: "org",
+            secretOrg: "EvotecIT");
+        AssertEqual(false, claudeProvider.ExpectOrgSecret, "web setup org target claude provider does not expect org secret");
+        AssertEqual(null, claudeProvider.SecretOrg, "web setup org target claude provider does not pass org secret");
     }
 
     private static void TestWebSetupResolveOrgSecretVerificationContextPerRepo() {

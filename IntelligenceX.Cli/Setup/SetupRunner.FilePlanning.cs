@@ -169,7 +169,7 @@ internal static partial class SetupRunner {
             if (!options.ProviderSet && !string.IsNullOrWhiteSpace(snapshot.Provider)) {
                 settings.Provider = snapshot.Provider!;
             }
-            if (!options.OpenAIModelSet && !string.IsNullOrWhiteSpace(snapshot.Model)) {
+            if (!options.OpenAIModelSet && !options.ProviderSet && !string.IsNullOrWhiteSpace(snapshot.Model)) {
                 settings.Model = snapshot.Model!;
             }
             if (!options.OpenAITransportSet && !string.IsNullOrWhiteSpace(snapshot.OpenAITransport)) {
@@ -238,10 +238,10 @@ internal static partial class SetupRunner {
         if (!options.ProviderSet && !string.IsNullOrWhiteSpace(snapshot.Provider)) {
             settings.Provider = snapshot.Provider!;
         }
-        if (!options.OpenAITransportSet && !string.IsNullOrWhiteSpace(snapshot.OpenAITransport)) {
+        if (!options.OpenAITransportSet && !options.ProviderSet && !string.IsNullOrWhiteSpace(snapshot.OpenAITransport)) {
             settings.OpenAITransport = snapshot.OpenAITransport!;
         }
-        if (!options.OpenAIModelSet && !string.IsNullOrWhiteSpace(snapshot.OpenAIModel)) {
+        if (!options.OpenAIModelSet && !options.ProviderSet && !string.IsNullOrWhiteSpace(snapshot.OpenAIModel)) {
             settings.OpenAIModel = snapshot.OpenAIModel!;
         }
         // Precedence: CLI arg (--openai-account-id) > existing config snapshot > environment default.
@@ -378,44 +378,51 @@ internal static partial class SetupRunner {
     }
 
     private static string BuildConfigJson(ConfigSettings settings) {
-        var root = new JsonObject {
-            ["review"] = new JsonObject {
-                ["summaryStability"] = settings.SummaryStability,
-                ["provider"] = settings.Provider,
-                ["openaiTransport"] = settings.OpenAITransport,
-                ["model"] = settings.OpenAIModel,
-                ["profile"] = settings.Profile,
-                ["mode"] = settings.Mode,
-                ["commentMode"] = settings.CommentMode,
-                ["reviewDiffRange"] = settings.ReviewDiffRange,
-                ["includeIssueComments"] = settings.IncludeIssueComments,
-                ["includeReviewComments"] = settings.IncludeReviewComments,
-                ["includeReviewThreads"] = settings.IncludeReviewThreads,
-                ["reviewThreadsIncludeBots"] = settings.ReviewThreadsIncludeBots,
-                ["reviewThreadsMax"] = settings.ReviewThreadsMax,
-                ["reviewThreadsMaxComments"] = settings.ReviewThreadsMaxComments,
-                ["reviewThreadsAutoResolveStale"] = settings.ReviewThreadsAutoResolveStale,
-                ["reviewThreadsAutoResolveDiffRange"] = settings.ReviewThreadsAutoResolveDiffRange,
-                ["reviewThreadsAutoResolveMax"] = settings.ReviewThreadsAutoResolveMax,
-                ["reviewThreadsAutoResolveSweepNoBlockers"] = settings.ReviewThreadsAutoResolveSweepNoBlockers,
-                ["reviewThreadsAutoResolveAIReply"] = settings.ReviewThreadsAutoResolveAIReply,
-                ["reviewUsageSummary"] = settings.ReviewUsageSummary,
-                ["reviewUsageSummaryCacheMinutes"] = settings.ReviewUsageSummaryCacheMinutes,
-                ["reviewUsageSummaryTimeoutSeconds"] = settings.ReviewUsageSummaryTimeoutSeconds,
-                ["reviewUsageBudgetGuard"] = settings.ReviewUsageBudgetGuard,
-                ["reviewUsageBudgetAllowCredits"] = settings.ReviewUsageBudgetAllowCredits,
-                ["reviewUsageBudgetAllowWeeklyLimit"] = settings.ReviewUsageBudgetAllowWeeklyLimit,
-                ["includeRelatedPrs"] = settings.IncludeRelatedPullRequests,
-                ["progressUpdates"] = settings.ProgressUpdates,
-                ["diagnostics"] = settings.Diagnostics,
-                ["preflight"] = settings.Preflight,
-                ["preflightTimeoutSeconds"] = settings.PreflightTimeoutSeconds
-            }
+        var review = new JsonObject {
+            ["summaryStability"] = settings.SummaryStability,
+            ["provider"] = settings.Provider,
+            ["model"] = settings.OpenAIModel,
+            ["profile"] = settings.Profile,
+            ["mode"] = settings.Mode,
+            ["commentMode"] = settings.CommentMode,
+            ["reviewDiffRange"] = settings.ReviewDiffRange,
+            ["includeIssueComments"] = settings.IncludeIssueComments,
+            ["includeReviewComments"] = settings.IncludeReviewComments,
+            ["includeReviewThreads"] = settings.IncludeReviewThreads,
+            ["reviewThreadsIncludeBots"] = settings.ReviewThreadsIncludeBots,
+            ["reviewThreadsMax"] = settings.ReviewThreadsMax,
+            ["reviewThreadsMaxComments"] = settings.ReviewThreadsMaxComments,
+            ["reviewThreadsAutoResolveStale"] = settings.ReviewThreadsAutoResolveStale,
+            ["reviewThreadsAutoResolveDiffRange"] = settings.ReviewThreadsAutoResolveDiffRange,
+            ["reviewThreadsAutoResolveMax"] = settings.ReviewThreadsAutoResolveMax,
+            ["reviewThreadsAutoResolveSweepNoBlockers"] = settings.ReviewThreadsAutoResolveSweepNoBlockers,
+            ["reviewThreadsAutoResolveAIReply"] = settings.ReviewThreadsAutoResolveAIReply,
+            ["reviewUsageSummary"] = settings.ReviewUsageSummary,
+            ["reviewUsageSummaryCacheMinutes"] = settings.ReviewUsageSummaryCacheMinutes,
+            ["reviewUsageSummaryTimeoutSeconds"] = settings.ReviewUsageSummaryTimeoutSeconds,
+            ["reviewUsageBudgetGuard"] = settings.ReviewUsageBudgetGuard,
+            ["reviewUsageBudgetAllowCredits"] = settings.ReviewUsageBudgetAllowCredits,
+            ["reviewUsageBudgetAllowWeeklyLimit"] = settings.ReviewUsageBudgetAllowWeeklyLimit,
+            ["includeRelatedPrs"] = settings.IncludeRelatedPullRequests,
+            ["progressUpdates"] = settings.ProgressUpdates,
+            ["diagnostics"] = settings.Diagnostics,
+            ["preflight"] = settings.Preflight,
+            ["preflightTimeoutSeconds"] = settings.PreflightTimeoutSeconds
         };
-        if (!string.IsNullOrWhiteSpace(settings.OpenAIAccountId)) {
-            ((JsonObject)root["review"]!)["openaiAccountId"] = settings.OpenAIAccountId;
+        var root = new JsonObject {
+            ["review"] = review
+        };
+        if (SetupProviderCatalog.IsOpenAiProvider(settings.Provider)) {
+            review["openaiTransport"] = settings.OpenAITransport;
+        } else if (SetupProviderCatalog.IsClaudeProvider(settings.Provider)) {
+            review["anthropic"] = new JsonObject {
+                ["apiKeyEnv"] = SetupProviderCatalog.ClaudeSecretName
+            };
         }
-        var review = (JsonObject)root["review"]!;
+        if (SetupProviderCatalog.SupportsOpenAiAccountRouting(settings.Provider) &&
+            !string.IsNullOrWhiteSpace(settings.OpenAIAccountId)) {
+            review["openaiAccountId"] = settings.OpenAIAccountId;
+        }
         if (!string.IsNullOrWhiteSpace(settings.Intent)) {
             review["intent"] = settings.Intent;
         }
@@ -438,7 +445,7 @@ internal static partial class SetupRunner {
         if (settings.MergeBlockerRequireSectionMatchSet) {
             review["mergeBlockerRequireSectionMatch"] = settings.MergeBlockerRequireSectionMatch;
         }
-        if (settings.OpenAIAccountIds.Length > 0) {
+        if (SetupProviderCatalog.SupportsOpenAiAccountRouting(settings.Provider) && settings.OpenAIAccountIds.Length > 0) {
             var accountIds = new JsonArray();
             foreach (var accountId in settings.OpenAIAccountIds) {
                 accountIds.Add(accountId);
@@ -446,7 +453,8 @@ internal static partial class SetupRunner {
             review["openaiAccountIds"] = accountIds;
             review["openaiAccountRotation"] = settings.OpenAIAccountRotation;
             review["openaiAccountFailover"] = settings.OpenAIAccountFailover;
-        } else if (!string.IsNullOrWhiteSpace(settings.OpenAIAccountId)) {
+        } else if (SetupProviderCatalog.SupportsOpenAiAccountRouting(settings.Provider) &&
+                   !string.IsNullOrWhiteSpace(settings.OpenAIAccountId)) {
             review["openaiAccountRotation"] = settings.OpenAIAccountRotation;
             review["openaiAccountFailover"] = settings.OpenAIAccountFailover;
         }

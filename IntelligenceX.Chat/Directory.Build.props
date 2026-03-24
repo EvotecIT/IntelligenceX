@@ -4,29 +4,9 @@
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <UseLocalOfficeImoCheckoutInput>$(UseLocalOfficeImoCheckout)</UseLocalOfficeImoCheckoutInput>
 
-    <!-- Chat local-dev dependency roots: explicit opt-in to sibling repos during development. -->
-    <!-- root1: repo-root sibling layout (..\..\OfficeIMO from IntelligenceX.Chat) -->
     <IxChatSiblingsRoot1>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\\..\\'))</IxChatSiblingsRoot1>
-    <!-- root2: worktree layout (..\..\..\OfficeIMO from IntelligenceX.Chat) -->
     <IxChatSiblingsRoot2>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\\..\\..\\'))</IxChatSiblingsRoot2>
-    <OfficeImoRepoRootCandidate1>$([MSBuild]::EnsureTrailingSlash($([System.IO.Path]::GetFullPath('$(IxChatSiblingsRoot1)OfficeIMO\\'))))</OfficeImoRepoRootCandidate1>
-    <OfficeImoRepoRootCandidate2>$([MSBuild]::EnsureTrailingSlash($([System.IO.Path]::GetFullPath('$(IxChatSiblingsRoot2)OfficeIMO\\'))))</OfficeImoRepoRootCandidate2>
-    <OfficeImoMarkdownRendererProbeRelativePath>OfficeIMO.MarkdownRenderer\\OfficeIMO.MarkdownRenderer.csproj</OfficeImoMarkdownRendererProbeRelativePath>
-    <OfficeImoRepoRootInput>$(OfficeImoRepoRoot)</OfficeImoRepoRootInput>
-    <OfficeImoRepoRootInputNormalized Condition="'$(OfficeImoRepoRootInput)' != ''">$([MSBuild]::EnsureTrailingSlash($([System.IO.Path]::GetFullPath('$(OfficeImoRepoRootInput)\\'))))</OfficeImoRepoRootInputNormalized>
-    <OfficeImoRepoRootResolved Condition="'$(OfficeImoRepoRootInputNormalized)' != '' and Exists('$(OfficeImoRepoRootInputNormalized)$(OfficeImoMarkdownRendererProbeRelativePath)')">$(OfficeImoRepoRootInputNormalized)</OfficeImoRepoRootResolved>
-    <OfficeImoRepoRootResolved Condition="'$(OfficeImoRepoRootResolved)' == '' and Exists('$(OfficeImoRepoRootCandidate1)$(OfficeImoMarkdownRendererProbeRelativePath)')">$(OfficeImoRepoRootCandidate1)</OfficeImoRepoRootResolved>
-    <OfficeImoRepoRootResolved Condition="'$(OfficeImoRepoRootResolved)' == '' and Exists('$(OfficeImoRepoRootCandidate2)$(OfficeImoMarkdownRendererProbeRelativePath)')">$(OfficeImoRepoRootCandidate2)</OfficeImoRepoRootResolved>
-    <!-- OfficeImoRepoRoot is the normalized downstream base path; OfficeImoRepoRootResolved is only set when a checkout actually exists. -->
-    <OfficeImoRepoRoot Condition="'$(OfficeImoRepoRootInputNormalized)' != ''">$(OfficeImoRepoRootInputNormalized)</OfficeImoRepoRoot>
-    <OfficeImoRepoRoot Condition="'$(OfficeImoRepoRoot)' == '' and '$(OfficeImoRepoRootResolved)' != ''">$(OfficeImoRepoRootResolved)</OfficeImoRepoRoot>
-    <!-- fallback base path for package mode when no local checkout is present -->
-    <OfficeImoRepoRoot Condition="'$(OfficeImoRepoRoot)' == ''">$(OfficeImoRepoRootCandidate1)</OfficeImoRepoRoot>
-    <UseLocalOfficeImoCheckout Condition="'$(UseLocalOfficeImoCheckoutInput)' != ''">$(UseLocalOfficeImoCheckoutInput)</UseLocalOfficeImoCheckout>
-    <UseLocalOfficeImoCheckout Condition="'$(UseLocalOfficeImoCheckout)' == '' and '$(OfficeImoRepoRootResolved)' != ''">true</UseLocalOfficeImoCheckout>
-    <UseLocalOfficeImoCheckout Condition="'$(UseLocalOfficeImoCheckout)' == ''">false</UseLocalOfficeImoCheckout>
 
     <DbaClientXRepoRootCandidate1>$([System.IO.Path]::GetFullPath('$(IxChatSiblingsRoot1)DbaClientX\\'))</DbaClientXRepoRootCandidate1>
     <DbaClientXRepoRootCandidate2>$([System.IO.Path]::GetFullPath('$(IxChatSiblingsRoot2)DbaClientX\\'))</DbaClientXRepoRootCandidate2>
@@ -37,9 +17,9 @@
     <DbaClientXRepoRoot Condition="'$(DbaClientXRepoRoot)' == '' and Exists('$(DbaClientXRepoRootCandidate2)DbaClientX.SQLite\\DbaClientX.SQLite.csproj')">$(DbaClientXRepoRootCandidate2)</DbaClientXRepoRoot>
     <DbaClientXRepoRoot Condition="'$(DbaClientXRepoRoot)' == ''">$(DbaClientXRepoRootCandidate1)</DbaClientXRepoRoot>
 
-    <OfficeImoMarkdownNuGetVersion Condition="'$(OfficeImoMarkdownNuGetVersion)' == ''">0.6.2</OfficeImoMarkdownNuGetVersion>
-    <OfficeImoMarkdownRendererNuGetVersion Condition="'$(OfficeImoMarkdownRendererNuGetVersion)' == ''">0.2.2</OfficeImoMarkdownRendererNuGetVersion>
-    <OfficeImoExcelNuGetVersion Condition="'$(OfficeImoExcelNuGetVersion)' == ''">0.6.15</OfficeImoExcelNuGetVersion>
-    <OfficeImoWordMarkdownNuGetVersion Condition="'$(OfficeImoWordMarkdownNuGetVersion)' == ''">1.0.9</OfficeImoWordMarkdownNuGetVersion>
+    <OfficeImoMarkdownNuGetVersion Condition="'$(OfficeImoMarkdownNuGetVersion)' == ''">0.6.6</OfficeImoMarkdownNuGetVersion>
+    <OfficeImoMarkdownRendererNuGetVersion Condition="'$(OfficeImoMarkdownRendererNuGetVersion)' == ''">0.2.6</OfficeImoMarkdownRendererNuGetVersion>
+    <OfficeImoExcelNuGetVersion Condition="'$(OfficeImoExcelNuGetVersion)' == ''">0.6.19</OfficeImoExcelNuGetVersion>
+    <OfficeImoWordMarkdownNuGetVersion Condition="'$(OfficeImoWordMarkdownNuGetVersion)' == ''">1.0.13</OfficeImoWordMarkdownNuGetVersion>
   </PropertyGroup>
 </Project>

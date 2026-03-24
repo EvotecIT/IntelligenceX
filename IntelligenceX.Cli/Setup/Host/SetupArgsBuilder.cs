@@ -34,6 +34,9 @@ internal static class SetupArgsBuilder {
         if (!string.IsNullOrWhiteSpace(plan.AuthB64) && !string.IsNullOrWhiteSpace(plan.AuthB64Path)) {
             throw new InvalidOperationException("Choose only one of --auth-b64 or --auth-b64-path.");
         }
+        if (!string.IsNullOrWhiteSpace(plan.AnthropicApiKey) && !string.IsNullOrWhiteSpace(plan.AnthropicApiKeyPath)) {
+            throw new InvalidOperationException("Choose only one of --anthropic-api-key or --anthropic-api-key-path.");
+        }
 
         string? normalizedReviewLoopPolicy = null;
         if (!string.IsNullOrWhiteSpace(plan.ReviewLoopPolicy)) {
@@ -90,13 +93,21 @@ internal static class SetupArgsBuilder {
             args.Add("--auth-b64-path");
             args.Add(plan.AuthB64Path);
         }
+        if (!string.IsNullOrWhiteSpace(plan.AnthropicApiKey)) {
+            args.Add("--anthropic-api-key");
+            args.Add(plan.AnthropicApiKey);
+        }
+        if (!string.IsNullOrWhiteSpace(plan.AnthropicApiKeyPath)) {
+            args.Add("--anthropic-api-key-path");
+            args.Add(plan.AnthropicApiKeyPath);
+        }
 
         if (!string.IsNullOrWhiteSpace(plan.Provider)) {
             args.Add("--provider");
             args.Add(plan.Provider);
         }
         if (!string.IsNullOrWhiteSpace(plan.OpenAIModel)) {
-            args.Add("--openai-model");
+            args.Add("--model");
             args.Add(plan.OpenAIModel);
         }
         if (!string.IsNullOrWhiteSpace(plan.OpenAIAccountId)) {

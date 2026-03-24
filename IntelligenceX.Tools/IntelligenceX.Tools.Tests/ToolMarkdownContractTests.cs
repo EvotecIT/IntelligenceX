@@ -5,32 +5,41 @@ namespace IntelligenceX.Tools.Tests;
 
 public class ToolMarkdownContractTests {
     [Fact]
-    public void DocumentBuilder_ShouldRenderMermaidChartAndNetworkFences() {
+    public void DocumentBuilder_ShouldRenderMermaidAndGenericVisualFences() {
         var markdown = ToolMarkdownContract.Create()
             .AddHeading(3, "Visualization")
             .AddMermaid("graph TD\nA-->B", "Topology")
-            .AddIxChart("{\"type\":\"bar\",\"data\":{\"labels\":[\"A\"],\"datasets\":[{\"label\":\"X\",\"data\":[1]}]}}", "Counts")
-            .AddIxNetwork("{\"nodes\":[{\"id\":\"A\",\"label\":\"User\"},{\"id\":\"B\",\"label\":\"Group\"}],\"edges\":[{\"from\":\"A\",\"to\":\"B\"}]}", "Relationships")
+            .AddChart("{\"type\":\"bar\",\"data\":{\"labels\":[\"A\"],\"datasets\":[{\"label\":\"X\",\"data\":[1]}]}}", "Counts")
+            .AddNetwork("{\"nodes\":[{\"id\":\"A\",\"label\":\"User\"},{\"id\":\"B\",\"label\":\"Group\"}],\"edges\":[{\"from\":\"A\",\"to\":\"B\"}]}", "Relationships")
+            .AddDataView("{\"rows\":[[\"Name\",\"Count\"],[\"alpha\",\"1\"]]}", "Tabular")
             .Build();
 
         Assert.Contains("### Visualization", markdown);
         Assert.Contains("#### Topology", markdown);
         Assert.Contains("```mermaid", markdown);
         Assert.Contains("graph TD", markdown);
-        Assert.Contains("```ix-chart", markdown);
+        Assert.Contains("```chart", markdown);
         Assert.Contains("#### Counts", markdown);
-        Assert.Contains("```ix-network", markdown);
+        Assert.Contains("```network", markdown);
         Assert.Contains("#### Relationships", markdown);
+        Assert.Contains("```dataview", markdown);
+        Assert.Contains("#### Tabular", markdown);
     }
 
     [Fact]
-    public void DocumentBuilder_ShouldKeepLegacyChartFenceForCompatibility() {
+    public void DocumentBuilder_ShouldKeepIntelligenceXAliasFencesForCompatibility() {
         var markdown = ToolMarkdownContract.Create()
-            .AddChart("{\"type\":\"bar\",\"data\":{}}", "Legacy")
+            .AddIxChart("{\"type\":\"bar\",\"data\":{}}", "Legacy chart")
+            .AddIxNetwork("{\"nodes\":[],\"edges\":[]}", "Legacy network")
+            .AddIxDataView("{\"rows\":[[\"Name\"],[\"alpha\"]]}", "Legacy dataview")
             .Build();
 
-        Assert.Contains("#### Legacy", markdown);
-        Assert.Contains("```chart", markdown);
+        Assert.Contains("#### Legacy chart", markdown);
+        Assert.Contains("```ix-chart", markdown);
+        Assert.Contains("#### Legacy network", markdown);
+        Assert.Contains("```ix-network", markdown);
+        Assert.Contains("#### Legacy dataview", markdown);
+        Assert.Contains("```ix-dataview", markdown);
     }
 
     [Fact]

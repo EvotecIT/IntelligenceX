@@ -167,7 +167,7 @@ public sealed partial class LocalExportArtifactWriterTests {
             # Transcript
 
             Invalid chart:
-            ```ix-chart
+            ```chart
             {"type":"bar","data":{"labels":["A"],"datasets":[{"label":"Broken","data":"not-array"}]}}
             ```
             """;
