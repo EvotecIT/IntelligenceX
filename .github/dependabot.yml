@@ -29,6 +29,10 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    ignore:
+      - dependency-name: "System.DirectoryServices"
+        update-types:
+          - "version-update:semver-major"
     groups:
       nuget-minor-patch:
         update-types:
