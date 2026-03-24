@@ -202,6 +202,21 @@ jobs:
             "reusable workflow enables windows targeting for analysis pre-run");
         AssertContainsText(content, "-p:EnableWindowsTargeting=true -- analyze gate",
             "reusable workflow enables windows targeting for analysis gate");
+        AssertEqual(false, content.Contains("""
+      - name: Prepare static analysis context
+        if: ${{ inputs.reviewer_source == 'source' }}
+""", StringComparison.Ordinal),
+            "reusable workflow keeps static analysis context independent from reviewer_source");
+        AssertEqual(false, content.Contains("""
+      - name: Run IntelligenceX analysis (pre-review, best-effort)
+        if: ${{ inputs.reviewer_source == 'source' }}
+""", StringComparison.Ordinal),
+            "reusable workflow keeps static analysis pre-run independent from reviewer_source");
+        AssertEqual(false, content.Contains("""
+      - name: Evaluate IntelligenceX analysis gate (pre-review, enforcing)
+        if: ${{ inputs.reviewer_source == 'source' }}
+""", StringComparison.Ordinal),
+            "reusable workflow keeps analysis gate independent from reviewer_source");
         AssertEqual(false, content.Contains("&review_inputs", StringComparison.Ordinal),
             "reusable workflow should avoid YAML anchors in workflow schema");
         AssertEqual(false, content.Contains("*review_inputs", StringComparison.Ordinal),
