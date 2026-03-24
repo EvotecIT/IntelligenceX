@@ -51,21 +51,25 @@ Path requirements (GitHub/repo/AI auth) and Bot contract checks are defined in [
 
 Operations available:
 - Setup / update workflow + config
-- Update OpenAI secret only (requires auth bundle)
+- Update provider secret only
 - Cleanup (remove workflow/config)
 - Maintenance (inspect and choose operation)
 - Optional GitHub App manifest flow (create app + installation token)
 - Load existing config from a repo (manage existing setup)
 - Load workflow preview for the managed workflow
-- Save/load config presets in the browser
+- Save/load browser presets for provider, model, review knobs, and config overrides
 - Export/import presets as JSON files
 - Import prompts before overwriting existing presets
 
 Advanced options:
-- Provider toggle (openai | copilot)
+- Provider toggle (`openai` | `claude` | `copilot`)
+- Provider-aware model field in the Configure step, with quick picks for common OpenAI and Claude models
+- Review step summarizes why the selected provider/model pair is a good fit before apply
+- Browser presets now retain the named provider/model profile alongside the raw provider/model values
 - Static analysis controls when generating preset config (`analysisEnabled`, `analysisGateEnabled`, `analysisRunStrict`, packs, export path)
 - OpenAI account routing supports primary-only setup (rotation/failover can be configured without `account ids`)
-- Auth bundle input for secret updates (INTELLIGENCEX_AUTH_B64)
+- OpenAI auth bundle input for `INTELLIGENCEX_AUTH_B64`
+- Claude API key / key-path input for `ANTHROPIC_API_KEY`
 
 For YAML vs JSON ownership and precedence, see [Workflow vs JSON](/docs/reviewer/workflow-vs-json/).
 
@@ -82,17 +86,22 @@ If you want to avoid personal access tokens, you can use the GitHub App manifest
 ## Current limitations
 
 - OpenAI login runs locally in the web UI ("Sign in with ChatGPT") and returns an auth bundle (`authB64`) you can upload as `INTELLIGENCEX_AUTH_B64`.
-- Update-secret in the web UI requires an auth bundle (either from the login button or pasted via `authB64`/`authB64Path`).
+- Claude setup in the web UI uses an API key or key file path; there is no browser-login equivalent.
+- Update-secret in the web UI requires provider-specific credentials:
+  - OpenAI: `authB64` or `authB64Path`
+  - Claude: `anthropicApiKey` or `anthropicApiKeyPath`
 - The UI supports multi-repo setup (plan/apply), repo inspection, and setup recommendations.
 - GitHub App installation tokens can only list repos the app is installed on.
-- Buttons are disabled until required inputs are provided (token, repo selection, auth bundle).
+- Buttons are disabled until required inputs are provided (token, repo selection, and any required provider secret input).
 - Inline hints describe what is missing before plan/apply can run.
-- Status badges show auth, repo selection, and auth bundle readiness.
+- Browser presets intentionally do not store GitHub tokens, OpenAI auth bundles, or Claude API keys.
+- Switching providers resets incompatible default models so stale GPT/Claude model values are not carried forward accidentally, while still letting you type a custom model id.
 
 ## Tips
 
 - Use the "Load workflow preview" button before applying changes.
-- If you want zero secret handling in the UI, enable "Skip OpenAI secret" and paste secrets manually in GitHub.
+- If you want zero secret handling in the UI, enable "Skip provider secret" and paste secrets manually in GitHub.
+- Save a browser preset after choosing your provider/model pair if you frequently onboard repos with the same setup shape.
 - Start with auto-detect to get a recommended path before selecting repositories.
 - If you automate setup with Bot tools, verify `contractVersion` + `contractFingerprint` match before apply.
 

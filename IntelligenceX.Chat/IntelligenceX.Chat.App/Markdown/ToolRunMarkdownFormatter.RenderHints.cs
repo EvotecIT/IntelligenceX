@@ -135,7 +135,7 @@ internal static partial class ToolRunMarkdownFormatter {
         return normalized switch {
             "chart" => ChartFenceLanguage,
             "network" => NetworkFenceLanguage,
-            "visnetwork" => NetworkFenceLanguage,
+            "dataview" => DataViewPayloadFenceLanguage,
             _ => normalized
         };
     }
@@ -147,9 +147,12 @@ internal static partial class ToolRunMarkdownFormatter {
                 return ChartFenceLanguage;
             }
 
-            if (string.Equals(normalizedLanguage, "network", StringComparison.Ordinal)
-                || string.Equals(normalizedLanguage, "visnetwork", StringComparison.Ordinal)) {
+            if (string.Equals(normalizedLanguage, "network", StringComparison.Ordinal)) {
                 return NetworkFenceLanguage;
+            }
+
+            if (string.Equals(normalizedLanguage, "dataview", StringComparison.Ordinal)) {
+                return DataViewPayloadFenceLanguage;
             }
 
             return normalizedLanguage;
@@ -176,7 +179,8 @@ internal static partial class ToolRunMarkdownFormatter {
         if (!string.Equals(normalizedKind, "code", StringComparison.Ordinal)
             && !string.Equals(normalizedKind, "mermaid", StringComparison.Ordinal)
             && !string.Equals(normalizedKind, ChartFenceLanguage, StringComparison.Ordinal)
-            && !string.Equals(normalizedKind, NetworkFenceLanguage, StringComparison.Ordinal)) {
+            && !string.Equals(normalizedKind, NetworkFenceLanguage, StringComparison.Ordinal)
+            && !string.Equals(normalizedKind, DataViewPayloadFenceLanguage, StringComparison.Ordinal)) {
             return false;
         }
 

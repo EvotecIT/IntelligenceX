@@ -54,22 +54,23 @@
 - For numbered lists, always use `1. ` style with a following space.
 - Do not nest strong delimiters inside strong spans; prefer a single strong segment (`- Label **value**`).
 - Keep markdown syntax out of inline code unless it is intended as literal code content.
-- Visual blocks contract (phase 3 / Mermaid + ix-chart + ix-network enabled):
+- Visual blocks contract (phase 3 / Mermaid + chart + network enabled):
   - Visual blocks are optional. Do not emit diagrams/charts/networks by default.
   - Emit visual fences only when at least one structured signal is present:
-    - the user request includes an explicit visual fence/token (`mermaid`, `ix-chart`, `ix-network`)
+    - the user request includes an explicit visual fence/token (`mermaid`, `chart`, `network`)
     - the current draft already contains a visual block that should be preserved
     - tool evidence is structurally dense enough that visual compression clearly improves readability
   - If no structured signal is present, prefer plain markdown summary + concise bullets/tables.
   - Allowed visual fence: ` ```mermaid ... ``` `.
-  - Allowed visual fence: ` ```ix-chart ...json... ``` `.
-  - Allowed visual fence: ` ```ix-network ...json... ``` `.
+  - Allowed visual fence: ` ```chart ...json... ``` `.
+  - Allowed visual fence: ` ```network ...json... ``` `.
   - Always include a one-line summary immediately before each visual block and one short interpretation line immediately after it.
   - Visual fences must be closed.
   - Mermaid blocks must be syntactically valid.
   - For Mermaid label line breaks, prefer `<br/>` over escaped `\n` for better export compatibility.
-  - `ix-chart` blocks must contain valid JSON object payloads.
-  - `ix-network` blocks must contain valid JSON object payloads with compact nodes/edges.
+  - `chart` blocks must contain valid JSON object payloads.
+  - `network` blocks must contain valid JSON object payloads with compact nodes/edges.
+  - Use generic semantic fences such as `chart`, `network`, and `dataview`.
   - Keep visuals compact: max 8 Mermaid blocks per message (max 12000 source characters each).
   - Keep visuals compact: max 6 chart blocks per message (max 20000 source characters each).
   - Keep visuals compact: max 4 network blocks per message (max 24000 source characters each, max ~220 nodes and ~520 edges).

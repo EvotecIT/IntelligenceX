@@ -15,7 +15,7 @@ public sealed class ToolOutputEnvelopeRenderValueTests {
             .Add(ToolOutputHints.RenderTable(
                 "rows",
                 new ToolColumn("id", "Id", "string")))
-            .Add(ToolOutputHints.RenderCode(language: "ix-network", contentPath: "graph"));
+            .Add(ToolOutputHints.RenderNetwork("graph"));
 
         var json = ToolOutputEnvelope.OkFlatWithRenderValue(
             root: root,
@@ -29,5 +29,20 @@ public sealed class ToolOutputEnvelopeRenderValueTests {
         Assert.Equal("demo", envelope.GetProperty("summary_markdown").GetString());
         Assert.Equal(global::System.Text.Json.JsonValueKind.Array, envelope.GetProperty("render").ValueKind);
         Assert.Equal(2, envelope.GetProperty("render").GetArrayLength());
+        Assert.Equal("network", envelope.GetProperty("render")[1].GetProperty("language").GetString());
+    }
+
+    [Fact]
+    public void RenderVisualHelpers_UseGenericLanguagesByDefault() {
+        var chart = ToolOutputHints.RenderChart("chart_payload");
+        var network = ToolOutputHints.RenderNetwork("graph_payload");
+        var dataView = ToolOutputHints.RenderDataView("table_payload");
+
+        Assert.Equal("chart", chart.GetString("language"));
+        Assert.Equal("chart_payload", chart.GetString("content_path"));
+        Assert.Equal("network", network.GetString("language"));
+        Assert.Equal("graph_payload", network.GetString("content_path"));
+        Assert.Equal("dataview", dataView.GetString("language"));
+        Assert.Equal("table_payload", dataView.GetString("content_path"));
     }
 }

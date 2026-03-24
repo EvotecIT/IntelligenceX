@@ -230,7 +230,7 @@
             <div class="option-card" data-op="update-secret" onclick="selectOperation('update-secret')">
               <div class="card-icon">&#x1F504;</div>
               <div class="card-title">Update Secret</div>
-              <div class="card-desc">Only update the INTELLIGENCEX_AUTH_B64 secret.</div>
+              <div class="card-desc">Only update the current provider secret.</div>
             </div>
             <div class="option-card" data-op="cleanup" onclick="selectOperation('cleanup')">
               <div class="card-icon">&#x1F9F9;</div>
@@ -247,9 +247,20 @@
           <label>Provider</label>
           <div class="toggle-group">
             <button class="active" data-provider="openai" onclick="selectProvider('openai')">ChatGPT / OpenAI</button>
+            <button data-provider="claude" onclick="selectProvider('claude')">Claude / Anthropic</button>
             <button data-provider="copilot" onclick="selectProvider('copilot')">GitHub Copilot</button>
           </div>
           <p class="hint" id="providerHint">Recommended. Uses your ChatGPT account for reviews.</p>
+
+          <label>Provider/Model profile</label>
+          <select id="reviewModelProfile"></select>
+          <p class="hint" id="reviewModelProfileHint">Choose a named provider/model profile or switch to custom.</p>
+
+          <label>Model</label>
+          <input id="reviewModel" list="reviewModelSuggestions" placeholder="gpt-5.4" />
+          <datalist id="reviewModelSuggestions"></datalist>
+          <div class="model-quick-picks" id="reviewModelQuickPicks"></div>
+          <p class="hint" id="reviewModelHint">Set the review model for the selected provider. Switching providers resets incompatible defaults.</p>
 
           <label>Review profile</label>
           <div class="preset-grid" id="presetGrid">
@@ -430,6 +441,16 @@
                 <div class="card-desc">Set up authentication later via CLI.</div>
               </div>
             </div>
+          </div>
+
+          <div id="claudeAuthSection" class="hidden">
+            <label>Claude API key</label>
+            <input id="anthropicApiKey" type="password" placeholder="sk-ant-..." />
+            <p class="hint">Used to populate the <code>ANTHROPIC_API_KEY</code> secret for reviewer runs.</p>
+
+            <label>Claude API key file path (optional)</label>
+            <input id="anthropicApiKeyPath" placeholder="C:\\secrets\\anthropic.key" />
+            <p class="hint">Use either a pasted key or a file path. Browser login is not available for Claude setup.</p>
           </div>
 
           <!-- ChatGPT Login sub-flow -->

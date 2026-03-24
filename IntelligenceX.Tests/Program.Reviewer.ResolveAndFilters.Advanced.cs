@@ -379,5 +379,76 @@ internal static partial class Program {
         AssertContainsText(failure!, "both credits and weekly budget allowances are disabled",
             "usage budget strict mode block detail");
     }
+
+    private static void TestReviewClaudeUsageSummaryLine() {
+        var snapshot = new IntelligenceX.Telemetry.Limits.ProviderLimitSnapshot(
+            "claude",
+            "Claude",
+            "Claude OAuth usage API",
+            "Claude Max",
+            "user@example.com",
+            new[] {
+                new IntelligenceX.Telemetry.Limits.ProviderLimitWindow("session", "Session", 12.5d, DateTimeOffset.UtcNow.AddHours(4)),
+                new IntelligenceX.Telemetry.Limits.ProviderLimitWindow("weekly", "Weekly", 26.0d, DateTimeOffset.UtcNow.AddDays(6)),
+                new IntelligenceX.Telemetry.Limits.ProviderLimitWindow("opus", "Opus weekly", 61.0d, DateTimeOffset.UtcNow.AddDays(6))
+            },
+            "Extra 2.00 / 20.00 USD",
+            null,
+            DateTimeOffset.UtcNow);
+
+        var line = CallFormatUsageSummary(snapshot);
+        AssertContainsText(line, "Usage:", "claude usage summary prefix");
+        AssertContainsText(line, "session: 87.5% remaining", "claude usage session");
+        AssertContainsText(line, "weekly: 74% remaining", "claude usage weekly");
+        AssertContainsText(line, "opus weekly: 39% remaining", "claude usage opus");
+        AssertContainsText(line, "Extra 2.00 / 20.00 USD", "claude usage extra");
+    }
+
+    private static void TestReviewClaudeUsageBudgetGuardBlocksWhenWeeklyExhausted() {
+        var snapshot = new IntelligenceX.Telemetry.Limits.ProviderLimitSnapshot(
+            "claude",
+            "Claude",
+            "Claude OAuth usage API",
+            "Claude Max",
+            null,
+            new[] {
+                new IntelligenceX.Telemetry.Limits.ProviderLimitWindow("weekly", "Weekly", 100d, DateTimeOffset.UtcNow.AddMinutes(30), windowDuration: TimeSpan.FromDays(7)),
+                new IntelligenceX.Telemetry.Limits.ProviderLimitWindow("sonnet", "Sonnet weekly", 100d, DateTimeOffset.UtcNow.AddMinutes(30), windowDuration: TimeSpan.FromDays(7))
+            },
+            null,
+            null,
+            DateTimeOffset.UtcNow);
+
+        var settings = new ReviewSettings {
+            ReviewUsageBudgetAllowCredits = false,
+            ReviewUsageBudgetAllowWeeklyLimit = true
+        };
+        var failure = CallEvaluateUsageBudgetGuardFailure(settings, snapshot);
+        AssertNotNull(failure, "claude usage budget guard block message");
+        AssertContainsText(failure!, "weekly exhausted", "claude usage budget weekly exhausted");
+        AssertContainsText(failure!, "sonnet weekly exhausted", "claude usage budget sonnet exhausted");
+    }
+
+    private static void TestReviewClaudeUsageBudgetGuardAllowsRemainingWeekly() {
+        var snapshot = new IntelligenceX.Telemetry.Limits.ProviderLimitSnapshot(
+            "claude",
+            "Claude",
+            "Claude OAuth usage API",
+            "Claude Max",
+            null,
+            new[] {
+                new IntelligenceX.Telemetry.Limits.ProviderLimitWindow("weekly", "Weekly", 64d, DateTimeOffset.UtcNow.AddHours(3), windowDuration: TimeSpan.FromDays(7))
+            },
+            null,
+            null,
+            DateTimeOffset.UtcNow);
+
+        var settings = new ReviewSettings {
+            ReviewUsageBudgetAllowCredits = false,
+            ReviewUsageBudgetAllowWeeklyLimit = true
+        };
+        var failure = CallEvaluateUsageBudgetGuardFailure(settings, snapshot);
+        AssertEqual(null, failure, "claude usage budget allows remaining weekly");
+    }
     #endif
 }

@@ -347,6 +347,39 @@
                                                    Visibility="{Binding HasUsageHealthAccounts, Converter={StaticResource BoolToVis}}" />
                                     </StackPanel>
                                 </Border>
+                                <Border Margin="0,10,0,0"
+                                        Padding="10,8"
+                                        CornerRadius="8"
+                                        Background="{StaticResource InsetPanelBrush}"
+                                        Visibility="{Binding HasDataScopeSection, Converter={StaticResource BoolToVis}}">
+                                    <StackPanel>
+                                        <TextBlock Text="DATA SCOPE"
+                                                   FontFamily="{StaticResource AppFont}"
+                                                   FontSize="10"
+                                                   Foreground="{StaticResource TertiaryTextBrush}" />
+                                        <TextBlock Text="{Binding ScopeLocalText}"
+                                                   Margin="0,4,0,0"
+                                                   FontFamily="{StaticResource AppFont}"
+                                                   FontSize="10"
+                                                   Foreground="{StaticResource PrimaryTextBrush}"
+                                                   TextWrapping="Wrap"
+                                                   Visibility="{Binding HasScopeLocalText, Converter={StaticResource BoolToVis}}" />
+                                        <TextBlock Text="{Binding ScopeOnlineText}"
+                                                   Margin="0,4,0,0"
+                                                   FontFamily="{StaticResource AppFont}"
+                                                   FontSize="10"
+                                                   Foreground="{StaticResource SecondaryTextBrush}"
+                                                   TextWrapping="Wrap"
+                                                   Visibility="{Binding HasScopeOnlineText, Converter={StaticResource BoolToVis}}" />
+                                        <TextBlock Text="{Binding ScopeDifferenceText}"
+                                                   Margin="0,4,0,0"
+                                                   FontFamily="{StaticResource AppFont}"
+                                                   FontSize="10"
+                                                   Foreground="{StaticResource SecondaryTextBrush}"
+                                                   TextWrapping="Wrap"
+                                                   Visibility="{Binding HasScopeDifferenceText, Converter={StaticResource BoolToVis}}" />
+                                    </StackPanel>
+                                </Border>
                             </StackPanel>
                         </Border>
 
@@ -1024,10 +1057,10 @@
                             </Border>
                         </Grid>
 
-                        <!-- ── DAILY ACTIVITY (7-day bars) ── -->
+                        <!-- ── LOCAL DAILY ACTIVITY (7-day bars) ── -->
                         <Border Style="{StaticResource CardStyle}">
                             <StackPanel>
-                                <TextBlock Text="DAILY ACTIVITY" Style="{StaticResource SectionHeaderStyle}" />
+                                <TextBlock Text="LOCAL DAILY ACTIVITY" Style="{StaticResource SectionHeaderStyle}" />
                                 <ItemsControl ItemsSource="{Binding DailyBars}">
                                     <ItemsControl.ItemsPanel>
                                         <ItemsPanelTemplate>
@@ -1065,10 +1098,10 @@
                             </StackPanel>
                         </Border>
 
-                        <!-- ── MODEL BREAKDOWN ── -->
+                        <!-- ── LOCAL MODEL BREAKDOWN ── -->
                         <Border Style="{StaticResource CardStyle}">
                             <StackPanel>
-                                <TextBlock Text="MODELS" Style="{StaticResource SectionHeaderStyle}" />
+                                <TextBlock Text="LOCAL MODELS" Style="{StaticResource SectionHeaderStyle}" />
                                 <ItemsControl ItemsSource="{Binding ModelBreakdown}">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate DataType="{x:Type vm:ModelUsageViewModel}">
@@ -1906,9 +1939,52 @@
                                                 </Grid>
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
-                                </StackPanel>
-                            </Border>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource CardStyle}"
+                                Visibility="{Binding HasModelDaySummaries, Converter={StaticResource BoolToVis}}">
+                            <StackPanel>
+                                <TextBlock Text="LOCAL MODELS BY DAY" Style="{StaticResource SectionHeaderStyle}" />
+                                <ItemsControl ItemsSource="{Binding ModelDaySummaries}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate DataType="{x:Type vm:ModelDaySummaryViewModel}">
+                                            <Border Margin="0,0,0,8"
+                                                    Padding="10,8"
+                                                    CornerRadius="8"
+                                                    Background="{StaticResource InsetPanelBrush}">
+                                                <StackPanel>
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Grid.Column="0"
+                                                                   Text="{Binding DayLabel}"
+                                                                   FontFamily="{StaticResource AppFont}"
+                                                                   FontSize="11"
+                                                                   FontWeight="SemiBold"
+                                                                   Foreground="{StaticResource PrimaryTextBrush}" />
+                                                        <TextBlock Grid.Column="1"
+                                                                   Text="{Binding TotalTokensText}"
+                                                                   FontFamily="{StaticResource AppFont}"
+                                                                   FontSize="10"
+                                                                   Foreground="{StaticResource SecondaryTextBrush}" />
+                                                    </Grid>
+                                                    <TextBlock Margin="0,4,0,0"
+                                                               Text="{Binding ModelsText}"
+                                                               FontFamily="{StaticResource AppFont}"
+                                                               FontSize="10"
+                                                               Foreground="{StaticResource SecondaryTextBrush}"
+                                                               TextWrapping="Wrap" />
+                                                </StackPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Border>
 
                             <Border Style="{StaticResource CardStyle}"
                                     Visibility="{Binding HasLanguages, Converter={StaticResource BoolToVis}}">

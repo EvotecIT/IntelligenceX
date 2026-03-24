@@ -89,7 +89,7 @@ internal static partial class Program {
         }
     }
 
-    private sealed record HttpRequest(string Method, string Path, string Body);
+    private sealed record HttpRequest(string Method, string Path, string Body, IReadOnlyDictionary<string, string> Headers);
     private sealed record HttpResponse(string Body, IReadOnlyDictionary<string, string>? Headers = null,
         int StatusCode = 200, string StatusText = "OK");
 
@@ -185,15 +185,20 @@ internal static partial class Program {
             }
 
             var contentLength = 0;
+            var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             for (var i = 1; i < headerLines.Length; i++) {
                 var line = headerLines[i];
                 if (string.IsNullOrEmpty(line)) {
                     break;
                 }
                 var headerParts = line.Split(':', 2);
-                if (headerParts.Length == 2 &&
-                    headerParts[0].Trim().Equals("Content-Length", StringComparison.OrdinalIgnoreCase)) {
-                    int.TryParse(headerParts[1].Trim(), out contentLength);
+                if (headerParts.Length == 2) {
+                    var headerName = headerParts[0].Trim();
+                    var headerValue = headerParts[1].Trim();
+                    headers[headerName] = headerValue;
+                    if (headerName.Equals("Content-Length", StringComparison.OrdinalIgnoreCase)) {
+                        int.TryParse(headerValue, out contentLength);
+                    }
                 }
             }
 
@@ -213,7 +218,7 @@ internal static partial class Program {
                 }
             }
 
-            return new HttpRequest(requestParts[0], requestParts[1], body);
+            return new HttpRequest(requestParts[0], requestParts[1], body, headers);
         }
 
         private static async Task WriteResponseAsync(NetworkStream stream, int statusCode, string statusText, string body,

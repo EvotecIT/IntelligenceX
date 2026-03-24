@@ -974,7 +974,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Contains("allow_new_visuals: false", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("request_has_visual_contract: false", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("natural and conversational", text, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("do not introduce new mermaid/ix-chart/ix-network blocks", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("do not introduce new mermaid/chart/network blocks", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("do not force that label on every line", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("avoid repeating rigid templates", text, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("signal -> why it matters -> exact next validation/fix action", text, StringComparison.OrdinalIgnoreCase);
@@ -1072,7 +1072,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     public void BuildProactiveFollowUpReviewPrompt_AllowsOneVisualWhenStructuredVisualContractIsPresent() {
         var request = """
             Build the summary and include this visual contract if useful:
-            ```ix-network
+            ```network
             {"nodes":[],"edges":[]}
             ```
             """;
@@ -1085,7 +1085,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         Assert.Contains("allow_new_visuals: true", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("request_has_visual_contract: true", text, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("preferred_visual: ix-network", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("preferred_visual: network", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("include at most 1 new visual block(s)", text, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -1109,7 +1109,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         Assert.Contains("allow_new_visuals: true", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("request_has_visual_contract: true", text, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("preferred_visual: ix-network", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("preferred_visual: network", text, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -1122,7 +1122,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         Assert.Contains("allow_new_visuals: true", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("request_has_visual_contract: true", text, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("preferred_visual: ix-network", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("preferred_visual: network", text, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -1135,7 +1135,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         Assert.Contains("allow_new_visuals: true", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("request_has_visual_contract: true", text, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("preferred_visual: ix-chart", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("preferred_visual: chart", text, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -1148,7 +1148,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         Assert.Contains("allow_new_visuals: true", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("request_has_visual_contract: true", text, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("preferred_visual: ix-chart", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("preferred_visual: chart", text, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -1221,13 +1221,13 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
-    public void BuildProactiveFollowUpReviewPrompt_AllowsVisualsForBacktickedLegacyNetworkToken() {
-        var request = "If needed, use `visnetwork` for relationship mapping.";
+    public void BuildProactiveFollowUpReviewPrompt_AllowsVisualsForBacktickedNetworkToken() {
+        var request = "If needed, use `network` for relationship mapping.";
         var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt(request, "Current findings...");
 
         Assert.Contains("allow_new_visuals: true", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("request_has_visual_contract: true", text, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("preferred_visual: ix-network", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("preferred_visual: network", text, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -1275,7 +1275,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         Assert.Contains("allow_new_visuals: true", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("request_has_visual_contract: true", text, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("preferred_visual: ix-chart", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("preferred_visual: chart", text, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -1302,7 +1302,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     public void BuildProactiveFollowUpReviewPrompt_AllowsVisualsForWhitespacePrefixedFenceLanguage() {
         var request = """
             Build a relationship summary with explicit contract:
-            ``` ix-network
+            ``` network
             {"nodes":[],"edges":[]}
             ```
             """;
@@ -1310,14 +1310,14 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         Assert.Contains("allow_new_visuals: true", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("request_has_visual_contract: true", text, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("preferred_visual: ix-network", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("preferred_visual: network", text, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
     public void BuildProactiveFollowUpReviewPrompt_AllowsVisualsForTildeFenceLanguage() {
         var request = """
             Render network evidence if needed:
-            ~~~ix-network
+            ~~~network
             {"nodes":[],"edges":[]}
             ~~~
             """;
@@ -1325,22 +1325,22 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         Assert.Contains("allow_new_visuals: true", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("request_has_visual_contract: true", text, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("preferred_visual: ix-network", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("preferred_visual: network", text, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
-    public void BuildProactiveFollowUpReviewPrompt_AllowsVisualsForDoubleBacktickedLegacyNetworkToken() {
-        var request = "Use ``visnetwork`` only if relationship mapping is necessary.";
+    public void BuildProactiveFollowUpReviewPrompt_AllowsVisualsForDoubleBacktickedNetworkToken() {
+        var request = "Use ``network`` only if relationship mapping is necessary.";
         var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt(request, "Current findings...");
 
         Assert.Contains("allow_new_visuals: true", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("request_has_visual_contract: true", text, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("preferred_visual: ix-network", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("preferred_visual: network", text, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
     public void BuildProactiveFollowUpReviewPrompt_AllowsVisualsForNaturalLanguageRequestEvenWhenInlineBackticksAreMalformed() {
-        var request = "Use ``visnetwork``` only when relationship mapping is required.";
+        var request = "Use ``network``` only when relationship mapping is required.";
         var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt(request, "Current findings...");
 
         Assert.Contains("allow_new_visuals: true", text, StringComparison.OrdinalIgnoreCase);
@@ -1349,7 +1349,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Fact]
     public void BuildProactiveFollowUpReviewPrompt_DetectsValidTokenAfterMalformedInlineSequence() {
-        var request = "Malformed token first: ``visnetwork` then valid: `visnetwork`.";
+        var request = "Malformed token first: ``network` then valid: `network`.";
         var text = ChatServiceSession.BuildProactiveFollowUpReviewPrompt(request, "Current findings...");
 
         Assert.Contains("allow_new_visuals: true", text, StringComparison.OrdinalIgnoreCase);

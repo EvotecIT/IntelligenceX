@@ -109,16 +109,32 @@ internal static partial class WizardRunner {
             state.WithConfig = false;
         }
         if (state.Operation == WizardOperation.Setup) {
+            var previousProvider = state.Provider;
             state.Provider = WizardPrompts.PromptProvider(state.Provider);
-            if (string.Equals(state.Provider, "copilot", StringComparison.OrdinalIgnoreCase)) {
+            if (string.Equals(state.Provider, SetupProviderCatalog.CopilotProvider, StringComparison.OrdinalIgnoreCase)) {
                 state.SkipSecret = true;
                 state.ManualSecret = false;
                 state.ManualSecretStdout = false;
+                state.OpenAiModel = null;
                 state.OpenAiAccountId = null;
                 state.OpenAiAccountIds = null;
                 state.OpenAiAccountRotation = "first-available";
                 state.OpenAiAccountFailover = true;
-            } else if (state.WithConfig && state.ConfigMode == ConfigMode.Preset) {
+                state.AnthropicApiKey = null;
+                state.AnthropicApiKeyPath = null;
+            } else if (SetupProviderCatalog.IsClaudeProvider(state.Provider)) {
+                state.OpenAiModel = ResolveSuggestedModelForProvider(previousProvider, state.Provider, state.OpenAiModel);
+                state.OpenAiAccountId = null;
+                state.OpenAiAccountIds = null;
+                state.OpenAiAccountRotation = "first-available";
+                state.OpenAiAccountFailover = true;
+            } else {
+                state.OpenAiModel = ResolveSuggestedModelForProvider(previousProvider, state.Provider, state.OpenAiModel);
+            }
+            if (!string.Equals(state.Provider, SetupProviderCatalog.CopilotProvider, StringComparison.OrdinalIgnoreCase)) {
+                state.OpenAiModel = WizardPrompts.PromptModel(state.Provider, state.OpenAiModel);
+            }
+            if (state.WithConfig && state.ConfigMode == ConfigMode.Preset && SetupProviderCatalog.SupportsOpenAiAccountRouting(state.Provider)) {
                 state.OpenAiAccountId = WizardPrompts.PromptOpenAiAccountId(state.OpenAiAccountId);
                 state.OpenAiAccountIds = WizardPrompts.PromptOpenAiAccountIds(state.OpenAiAccountIds, state.OpenAiAccountId);
                 if (!string.IsNullOrWhiteSpace(state.OpenAiAccountIds)) {
@@ -126,9 +142,9 @@ internal static partial class WizardRunner {
                     state.OpenAiAccountFailover = WizardPrompts.PromptOpenAiAccountFailover(state.OpenAiAccountFailover);
                 }
             }
-            state.SkipSecret = WizardPrompts.PromptSkipSecret(state.SkipSecret);
+            state.SkipSecret = WizardPrompts.PromptSkipSecret(state.Provider, state.SkipSecret);
             if (!state.SkipSecret) {
-                state.ManualSecret = WizardPrompts.PromptManualSecret(state.ManualSecret);
+                state.ManualSecret = WizardPrompts.PromptManualSecret(state.Provider, state.ManualSecret);
             }
             state.ExplicitSecrets = WizardPrompts.PromptExplicitSecrets(state.ExplicitSecrets);
             state.Upgrade = WizardPrompts.PromptUpgradeManaged(state.Upgrade);
@@ -143,12 +159,12 @@ internal static partial class WizardRunner {
             state.Force = false;
         }
         if (state.Operation == WizardOperation.Cleanup) {
-            state.KeepSecret = WizardPrompts.PromptKeepSecret(state.KeepSecret);
+            state.KeepSecret = WizardPrompts.PromptKeepSecret(state.Provider, state.KeepSecret);
         }
         state.DryRun = WizardPrompts.PromptDryRun(state.DryRun);
         state.BranchName = WizardPrompts.PromptBranchName(state.BranchName);
 
-        if (IsOpenAiProvider(state.Provider) && !state.SkipSecret && !state.ManualSecret && state.Operation != WizardOperation.Cleanup) {
+        if (SetupProviderCatalog.SupportsOrgSecret(state.Provider) && !state.SkipSecret && !state.ManualSecret && state.Operation != WizardOperation.Cleanup) {
             var ownersMatch = TryGetCommonOwner(state.SelectedRepos, out var owner);
             state.SecretTarget = WizardPrompts.PromptSecretTarget(state.SelectedRepos.Count, ownersMatch);
             if (state.SecretTarget == SecretTarget.Org) {
@@ -168,23 +184,29 @@ internal static partial class WizardRunner {
             return 1;
         }
 
-        if (IsOpenAiProvider(state.Provider) && !state.SkipSecret && !state.ManualSecret && state.Operation != WizardOperation.Cleanup) {
-            if (!await EnsureOpenAiAuthB64Async(state).ConfigureAwait(false)) {
-                AnsiConsole.MarkupLine("[red]OpenAI login failed (secret not set).[/]");
-                return 1;
-            }
-
-            if (state.SecretTarget == SecretTarget.Org) {
-                if (!await EnsureOrgSecretAsync(state).ConfigureAwait(false)) {
+        if (SetupProviderCatalog.RequiresManagedSecret(state.Provider) && !state.SkipSecret && !state.ManualSecret && state.Operation != WizardOperation.Cleanup) {
+            if (IsOpenAiProvider(state.Provider)) {
+                if (!await EnsureOpenAiAuthB64Async(state).ConfigureAwait(false)) {
+                    AnsiConsole.MarkupLine("[red]OpenAI login failed (secret not set).[/]");
                     return 1;
                 }
-                // Secret is now stored at org scope; per-repo setup should skip secret upload.
-                state.SkipSecret = true;
-            }
 
-            if (state.Operation == WizardOperation.UpdateSecret && state.SecretTarget == SecretTarget.Org) {
-                AnsiConsole.MarkupLine("[green]Org secret updated successfully.[/]");
-                return 0;
+                if (state.SecretTarget == SecretTarget.Org) {
+                    if (!await EnsureOrgSecretAsync(state).ConfigureAwait(false)) {
+                        return 1;
+                    }
+                    // Secret is now stored at org scope; per-repo setup should skip secret upload.
+                    state.SkipSecret = true;
+                }
+
+                if (state.Operation == WizardOperation.UpdateSecret && state.SecretTarget == SecretTarget.Org) {
+                    AnsiConsole.MarkupLine("[green]Org secret updated successfully.[/]");
+                    return 0;
+                }
+            } else if (IsClaudeProvider(state.Provider)) {
+                if (!EnsureClaudeApiKey(state)) {
+                    return 1;
+                }
             }
         }
 

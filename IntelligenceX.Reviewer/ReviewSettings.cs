@@ -37,7 +37,8 @@ internal enum AzureDevOpsAuthScheme {
 internal enum ReviewProvider {
     OpenAI,
     Copilot,
-    OpenAICompatible
+    OpenAICompatible,
+    Claude
 }
 
 internal sealed partial class ReviewSettings {
@@ -178,6 +179,30 @@ internal sealed partial class ReviewSettings {
     /// Optional ordered list of ChatGPT account ids used for reviewer account rotation/failover.
     /// </summary>
     public IReadOnlyList<string> OpenAiAccountIds { get; set; } = Array.Empty<string>();
+    /// <summary>
+    /// Anthropic Messages API base URL for native Claude review runs.
+    /// </summary>
+    public string AnthropicBaseUrl { get; set; } = "https://api.anthropic.com";
+    /// <summary>
+    /// Anthropic API version header sent with native Claude review runs.
+    /// </summary>
+    public string AnthropicVersion { get; set; } = "2023-06-01";
+    /// <summary>
+    /// Environment variable name holding the Anthropic API key.
+    /// </summary>
+    public string? AnthropicApiKeyEnv { get; set; }
+    /// <summary>
+    /// Anthropic API key value for native Claude review runs (prefer env).
+    /// </summary>
+    public string? AnthropicApiKey { get; set; }
+    /// <summary>
+    /// Timeout for Anthropic Messages API requests.
+    /// </summary>
+    public int AnthropicTimeoutSeconds { get; set; } = 60;
+    /// <summary>
+    /// Max tokens requested from the Anthropic Messages API.
+    /// </summary>
+    public int AnthropicMaxTokens { get; set; } = 8192;
     /// <summary>
     /// Account rotation policy when <see cref="OpenAiAccountIds"/> contains multiple entries.
     /// Supported values: first-available, round-robin, sticky.

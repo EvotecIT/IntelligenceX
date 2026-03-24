@@ -34,7 +34,16 @@ internal static partial class Program {
         return ReviewerApp.FormatUsageSummaryForTests(snapshot);
     }
 
+    private static string CallFormatUsageSummary(IntelligenceX.Telemetry.Limits.ProviderLimitSnapshot snapshot) {
+        return ReviewerApp.FormatUsageSummaryForTests(snapshot);
+    }
+
     private static string? CallEvaluateUsageBudgetGuardFailure(ReviewSettings settings, ChatGptUsageSnapshot snapshot) {
+        return ReviewerApp.EvaluateUsageBudgetGuardFailureForTests(settings, snapshot);
+    }
+
+    private static string? CallEvaluateUsageBudgetGuardFailure(ReviewSettings settings,
+        IntelligenceX.Telemetry.Limits.ProviderLimitSnapshot snapshot) {
         return ReviewerApp.EvaluateUsageBudgetGuardFailureForTests(settings, snapshot);
     }
 

@@ -99,6 +99,37 @@ jobs:
         AssertEqual(upgraded, secondPass, "workflow upgrade remains idempotent after outside-block preserve");
     }
 
+    private static void TestSetupWorkflowUpgradeResetsModelWhenSwitchingToClaudeProvider() {
+        const string beginMarker = "# INTELLIGENCEX:BEGIN";
+        const string endMarker = "# INTELLIGENCEX:END";
+        var seed = """
+name: IntelligenceX Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+jobs:
+  __IX_BEGIN__
+  review:
+    uses: ./.github/workflows/review-intelligencex-reusable.yml
+    with:
+      provider: openai
+      model: gpt-5.4/fast
+  __IX_END__
+""";
+        seed = seed.Replace("__IX_BEGIN__", beginMarker).Replace("__IX_END__", endMarker);
+
+        var upgraded = SetupRunner.BuildWorkflowYamlFromSeedForTests(
+            new[] { "--provider", "claude" },
+            seed);
+
+        AssertContainsText(upgraded, "provider: claude", "workflow upgrade switches provider to claude");
+        AssertContainsText(upgraded, "model: claude-opus-4-1", "workflow upgrade resets model to claude default");
+        AssertEqual(false, upgraded.Contains("model: gpt-5.4/fast", StringComparison.Ordinal),
+            "workflow upgrade removes stale openai model");
+    }
+
     private static int CountOccurrencesInText(string value, string marker) {
         if (string.IsNullOrEmpty(value) || string.IsNullOrEmpty(marker)) {
             return 0;

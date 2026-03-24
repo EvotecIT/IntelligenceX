@@ -553,27 +553,27 @@ body.visual-view-maximized .visual-view-panel {
   padding: 10px;
 }
 
-.visual-view-canvas-wrap .ix-chart-host,
-.visual-view-canvas-wrap .ix-network-host,
+.visual-view-canvas-wrap .visual-chart-host,
+.visual-view-canvas-wrap .visual-network-host,
 .visual-view-canvas-wrap pre.mermaid {
   margin: 0;
   width: 100%;
 }
 
-.visual-view-canvas-wrap .ix-chart-host {
+.visual-view-canvas-wrap .visual-chart-host {
   min-height: max(360px, calc(100vh - 340px));
 }
 
-.visual-view-canvas-wrap .ix-chart-host .ix-chart-canvas {
+.visual-view-canvas-wrap .visual-chart-host .visual-chart-canvas {
   height: max(340px, calc(100vh - 360px)) !important;
   min-height: 320px;
 }
 
-.visual-view-canvas-wrap .ix-network-host {
+.visual-view-canvas-wrap .visual-network-host {
   min-height: max(360px, calc(100vh - 340px));
 }
 
-.visual-view-canvas-wrap .ix-network-host .ix-network-canvas {
+.visual-view-canvas-wrap .visual-network-host .visual-network-canvas {
   height: max(340px, calc(100vh - 360px));
   min-height: 320px;
 }
@@ -582,3 +582,4 @@ body.visual-view-maximized .visual-view-panel {
   padding: 12px;
   overflow: auto;
 }
+
