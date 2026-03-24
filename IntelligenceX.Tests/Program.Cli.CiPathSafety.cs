@@ -280,6 +280,71 @@ internal static partial class Program {
         }
     }
 
+    private static void TestCiReviewFailOpenSummaryCreatesCommentForManualPrRun() {
+        var root = Path.Combine(Path.GetTempPath(), "ix-ci-fail-open-summary-create-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var previousEventPath = Environment.GetEnvironmentVariable("GITHUB_EVENT_PATH");
+        try {
+            var logPath = Path.Combine(root, "reviewer.log");
+            File.WriteAllText(logPath, "Unhandled exception: reviewer-runtime");
+
+            var createHits = 0;
+            string? createdBody = null;
+            Environment.SetEnvironmentVariable("GITHUB_EVENT_PATH", null);
+
+            using var server = new LocalHttpServer(request => {
+                if (string.Equals(request.Method, "GET", StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(request.Path, "/repos/owner/repo/pulls/123", StringComparison.OrdinalIgnoreCase)) {
+                    return new HttpResponse("""
+{
+  "title": "Manual workflow review",
+  "body": "Body",
+  "draft": false,
+  "number": 123,
+  "head": { "sha": "head-sha", "repo": { "full_name": "owner/repo", "fork": false } },
+  "base": { "sha": "base-sha", "ref": "master", "repo": { "full_name": "owner/repo" } },
+  "labels": []
+}
+""");
+                }
+
+                if (string.Equals(request.Method, "GET", StringComparison.OrdinalIgnoreCase) &&
+                    request.Path.StartsWith("/repos/owner/repo/issues/123/comments", StringComparison.OrdinalIgnoreCase)) {
+                    return new HttpResponse("[]");
+                }
+
+                if (string.Equals(request.Method, "POST", StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(request.Path, "/repos/owner/repo/issues/123/comments", StringComparison.OrdinalIgnoreCase)) {
+                    createHits++;
+                    createdBody = request.Body;
+                    return new HttpResponse("{\"id\":77,\"body\":\"ok\"}", StatusCode: 201, StatusText: "Created");
+                }
+
+                return null;
+            });
+
+            var exit = CiReviewFailOpenSummaryCommand.RunAsync(new[] {
+                    "--repo", "owner/repo",
+                    "--pr-number", "123",
+                    "--reviewer-source", "source",
+                    "--source-log", logPath,
+                    "--github-token", "token",
+                    "--github-base-url", server.BaseUri.ToString().TrimEnd('/')
+                })
+                .GetAwaiter().GetResult();
+
+            AssertEqual(0, exit, "review-fail-open-summary manual create exit code");
+            AssertEqual(1, createHits, "review-fail-open-summary creates a comment when no owned summary exists");
+            AssertContainsText(createdBody ?? string.Empty, "## IntelligenceX Review (failed open)",
+                "review-fail-open-summary manual create uses fail-open heading");
+            AssertContainsText(createdBody ?? string.Empty, "Reviewing this pull request: **Manual workflow review**",
+                "review-fail-open-summary manual create uses PR title");
+        } finally {
+            Environment.SetEnvironmentVariable("GITHUB_EVENT_PATH", previousEventPath);
+            try { Directory.Delete(root, recursive: true); } catch { }
+        }
+    }
+
     private static void TestCiReviewFailOpenSummaryPrefersReviewerTokenOverGitHubToken() {
         var root = Path.Combine(Path.GetTempPath(), "ix-ci-fail-open-summary-token-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
