@@ -568,7 +568,15 @@ jobs:
         id: reviewer_build
         continue-on-error: true
         shell: bash
-        run: dotnet build IntelligenceX.Reviewer/IntelligenceX.Reviewer.csproj -c Release -f net8.0
+        run: |
+          set -uo pipefail
+          mkdir -p artifacts
+          log_path="artifacts/reviewer-run-source.log"
+          : > "$log_path"
+          set +e
+          dotnet build IntelligenceX.Reviewer/IntelligenceX.Reviewer.csproj -c Release -f net8.0 2>&1 | tee "$log_path"
+          exit_code=${PIPESTATUS[0]}
+          exit "$exit_code"
       # Static analysis is repo-local and should enforce regardless of how the reviewer binary is sourced.
       - name: Prepare static analysis context
         shell: bash
@@ -681,12 +689,15 @@ jobs:
             always() &&
             github.event_name == 'pull_request' &&
             (
+              steps.reviewer_build.outcome == 'failure' ||
               steps.reviewer_run_source.outcome == 'failure' ||
               steps.reviewer_run_release_unix.outcome == 'failure' ||
               steps.reviewer_run_release_windows.outcome == 'failure'
             )
           }}
         continue-on-error: true
+        env:
+          INTELLIGENCEX_GITHUB_TOKEN: ${{ steps.app_token.outputs.token || secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
           dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -c Release -f net8.0 -- ci review-fail-open-summary \

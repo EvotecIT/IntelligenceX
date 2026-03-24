@@ -198,6 +198,8 @@ jobs:
             "reusable workflow provisions the .NET 8 SDK for source reviewer runs");
         AssertContainsText(content, "dotnet build IntelligenceX.Reviewer/IntelligenceX.Reviewer.csproj -c Release -f net8.0",
             "reusable workflow pins the source reviewer build to net8.0 on the provisioned SDK");
+        AssertContainsText(content, "log_path=\"artifacts/reviewer-run-source.log\"",
+            "reusable workflow captures source reviewer build output in the shared source log");
         AssertEqual(1, CountOccurrences(content, "REVIEW_FAIL_OPEN: true"),
             "reusable workflow exports fail-open default once at the job level");
         AssertEqual(1, CountOccurrences(content, "REVIEW_FAIL_OPEN_TRANSIENT_ONLY: false"),
@@ -231,6 +233,10 @@ jobs:
             "reusable workflow finalizes fail-open reviewer runs with a summary update");
         AssertContainsText(content, "continue-on-error: true",
             "reusable workflow keeps fail-open finalization best-effort");
+        AssertContainsText(content, "steps.reviewer_build.outcome == 'failure'",
+            "reusable workflow finalizes fail-open summaries when the source reviewer build fails");
+        AssertContainsText(content, "INTELLIGENCEX_GITHUB_TOKEN: ${{ steps.app_token.outputs.token || secrets.GITHUB_TOKEN }}",
+            "reusable workflow passes the app token to fail-open summary finalization");
         AssertContainsText(content, "ci review-fail-open-summary",
             "reusable workflow delegates fail-open summary handling to the CLI helper");
         AssertContainsText(content, "--source-log artifacts/reviewer-run-source.log",
