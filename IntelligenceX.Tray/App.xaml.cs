@@ -46,7 +46,6 @@ public partial class App : Application {
             _viewModel.NotificationRequested += OnNotificationRequested;
             _viewModel.ThemeModeChanged += OnThemeModeChanged;
             _viewModel.AccentPresetChanged += OnAccentPresetChanged;
-            _viewModel.SyncStartWithWindowsState(_startupRegistrationService.IsEnabled());
 
             _themeService = new TrayThemeService(this);
             _themeService.ThemeChanged += OnThemeChanged;
@@ -64,6 +63,9 @@ public partial class App : Application {
             _trayIcon.ContextMenu = CreateContextMenu();
             Dispatcher.InvokeAsync(
                 async () => await StartBackgroundInitializationAsync(),
+                DispatcherPriority.Background);
+            Dispatcher.InvokeAsync(
+                async () => await RefreshStartupRegistrationStateAsync(),
                 DispatcherPriority.Background);
         } catch (Exception ex) {
             MessageBox.Show(
@@ -258,7 +260,7 @@ public partial class App : Application {
         menu.Items.Add(separator);
         menu.Items.Add(aboutItem);
         menu.Items.Add(quitItem);
-        menu.Opened += (_, _) => UpdateContextMenuState();
+        menu.Opened += async (_, _) => await UpdateContextMenuStateAsync();
 
         return menu;
     }
@@ -296,7 +298,7 @@ public partial class App : Application {
         _accentPresetItems.Add((item, preset));
     }
 
-    private void UpdateContextMenuState() {
+    private async Task UpdateContextMenuStateAsync() {
         if (_viewModel is null) {
             return;
         }
@@ -321,9 +323,7 @@ public partial class App : Application {
             _closeHidesToTrayItem.IsChecked = _viewModel.CloseHidesToTray;
         }
 
-        if (_startWithWindowsItem is not null) {
-            _startWithWindowsItem.IsChecked = _startupRegistrationService.IsEnabled();
-        }
+        await RefreshStartupRegistrationStateAsync();
     }
 
     private void OnTrayLeftClick(object? sender, RoutedEventArgs e) {
@@ -464,25 +464,44 @@ public partial class App : Application {
         ExitApplication();
     }
 
-    private void ToggleStartWithWindows() {
+    private async void ToggleStartWithWindows() {
         if (_viewModel is null) {
             return;
         }
 
         var targetEnabled = _startWithWindowsItem?.IsChecked ?? false;
-        var applied = _startupRegistrationService.SetEnabled(targetEnabled);
-        if (applied) {
-            _viewModel.SetStartWithWindows(targetEnabled);
-            UpdateContextMenuState();
+        if (_startWithWindowsItem is not null) {
+            _startWithWindowsItem.IsEnabled = false;
+        }
+
+        var result = await _startupRegistrationService.SetEnabledAsync(targetEnabled);
+        _viewModel.SyncStartWithWindowsState(result.State.IsEnabled);
+        await RefreshStartupRegistrationStateAsync();
+        if (result.Applied) {
             return;
         }
 
         MessageBox.Show(
-            "Unable to update the Windows startup registration for the tray app.",
+            result.Message ?? "Unable to update the Windows startup registration for the tray app.",
             "Startup Registration",
             MessageBoxButton.OK,
             MessageBoxImage.Warning);
-        UpdateContextMenuState();
+    }
+
+    private async Task RefreshStartupRegistrationStateAsync() {
+        if (_viewModel is null) {
+            return;
+        }
+
+        var state = await _startupRegistrationService.GetStateAsync();
+        _viewModel.SyncStartWithWindowsState(state.IsEnabled);
+        if (_startWithWindowsItem is null) {
+            return;
+        }
+
+        _startWithWindowsItem.IsChecked = state.IsEnabled;
+        _startWithWindowsItem.IsEnabled = state.CanChange;
+        _startWithWindowsItem.ToolTip = state.Message;
     }
 
     private void ExitApplication() {

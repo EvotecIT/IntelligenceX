@@ -169,6 +169,18 @@ pwsh ./Build/Build-Project.ps1 -ToolsOnly -Targets IntelligenceX.Tray -Runtimes 
 pwsh ./Build/Build-Project.ps1 -ToolsOnly -Targets IntelligenceX.Tray -Runtimes win-x64 -Frameworks net10.0-windows10.0.19041.0 -Styles FrameworkDependent
 ```
 
+Tray Store package:
+
+```powershell
+pwsh ./Build/Build-Project.ps1 -ToolsOnly -Targets IntelligenceX.Tray -Runtimes win-x64 -Frameworks net10.0-windows10.0.19041.0 -Styles FrameworkDependent
+dotnet exec C:\Support\GitHub\PSPublishModule\PowerForge.Cli\bin\Release\net10.0\PowerForge.Cli.dll store submit --config ./Build/store.submit.tray.example.json --target IntelligenceX.Tray.Store --plan
+```
+
+Store notes:
+- the packaging project is `Installer/IntelligenceX.Tray.Store/IntelligenceX.Tray.Store.wapproj`
+- PowerForge now routes `*.wapproj` Store builds through Visual Studio MSBuild automatically
+- the checked-in app manifest uses placeholder identity/publisher values for local validation; replace them with the real Partner Center identity before submitting
+
 Portable app bundle (recommended for end users):
 
 ```powershell

@@ -38,6 +38,11 @@
       "Id": "chat-app-installer",
       "Path": "Installer/IntelligenceX.Chat/IntelligenceX.Chat.Installer.wixproj",
       "Group": "installer"
+    },
+    {
+      "Id": "tray-store",
+      "Path": "Installer/IntelligenceX.Tray.Store/IntelligenceX.Tray.Store.wapproj",
+      "Group": "store"
     }
   ],
   "DotNet": {
@@ -236,6 +241,28 @@
         "PropertyName": "ProductVersion",
         "PatchCap": 65535
       }
+    }
+  ],
+  "StorePackages": [
+    {
+      "Id": "IntelligenceX.Tray.Store",
+      "PrepareFromTarget": "IntelligenceX.Tray",
+      "PackagingProjectId": "tray-store",
+      "Frameworks": [
+        "net10.0-windows10.0.19041.0"
+      ],
+      "Runtimes": [
+        "win-x64",
+        "win-arm64"
+      ],
+      "Styles": [
+        "FrameworkDependent",
+        "PortableCompat"
+      ],
+      "OutputPath": "Artifacts/DotNetPublish/Store/{storePackage}/{target}/{rid}/{framework}/{style}",
+      "BuildMode": "StoreUpload",
+      "Bundle": "Always",
+      "GenerateAppInstaller": false
     }
   ],
   "Outputs": {

@@ -57,6 +57,18 @@ pwsh ./Build/Run-Project.ps1 -Target Tray
 pwsh ./Build/Run-Project.ps1 -Target Cli -ExtraArgs setup,wizard
 ```
 
+Tray Store package:
+
+```powershell
+pwsh ./Build/Build-Project.ps1 -ToolsOnly -Targets IntelligenceX.Tray -Runtimes win-x64 -Frameworks net10.0-windows10.0.19041.0 -Styles FrameworkDependent
+dotnet exec C:\Support\GitHub\PSPublishModule\PowerForge.Cli\bin\Release\net10.0\PowerForge.Cli.dll store submit --config ./Build/store.submit.tray.example.json --target IntelligenceX.Tray.Store --plan
+```
+
+Notes:
+- the packaging project is `Installer/IntelligenceX.Tray.Store/IntelligenceX.Tray.Store.wapproj`
+- the checked-in Store manifest identity/publisher is placeholder metadata for local packaging validation and must be replaced with the real Partner Center identity before production submission
+- `Build/store.submit.tray.example.json` is only an example; fill in the real `SellerId`, `TenantId`, `ClientId`, secret, and Partner Center `ApplicationId`
+
 `TestimoXRoot` is now resolved centrally for normal builds:
 - `Directory.Build.props` picks up `TESTIMOX_ROOT` when set.
 - otherwise the repo falls back to sibling `..\TestimoX` / `..\..\TestimoX` layouts.
