@@ -187,6 +187,8 @@ jobs:
         var wrapperContent = File.ReadAllText(wrapperWorkflowPath);
 
         AssertContainsText(wrapperContent, "workflow_dispatch:", "wrapper workflow defines workflow_dispatch");
+        AssertContainsText(wrapperContent, "reviewer_source: source",
+            "wrapper workflow keeps PR reviews on repo source to avoid release drift");
         AssertEqual(false, content.Contains("workflow_dispatch:", StringComparison.Ordinal),
             "reusable workflow should keep manual dispatch on the wrapper workflow");
         AssertContainsText(content, "workflow_call:", "reusable workflow defines workflow_call");
@@ -223,6 +225,10 @@ jobs:
             "reusable workflow explains that CI cannot complete interactive login");
         AssertContainsText(content, "intelligencex auth login --set-github-secret --repo ${remediationRepo}",
             "reusable workflow points to the local reauth and secret refresh command");
+        AssertContainsText(content, "Reviewing this pull request: **${title}**",
+            "reusable workflow avoids self-referential PR number formatting in fail-open summaries");
+        AssertContainsText(content, "Check the `review / review` workflow logs for the runtime failure",
+            "reusable workflow gives non-auth runtime remediation without auth-only instructions");
         AssertEqual(false, content.Contains("&review_inputs", StringComparison.Ordinal),
             "reusable workflow should avoid YAML anchors in workflow schema");
         AssertEqual(false, content.Contains("*review_inputs", StringComparison.Ordinal),
