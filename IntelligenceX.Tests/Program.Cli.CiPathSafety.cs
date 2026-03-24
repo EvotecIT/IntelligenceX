@@ -279,5 +279,75 @@ internal static partial class Program {
             Environment.SetEnvironmentVariable("GITHUB_EVENT_PATH", previousEventPath);
         }
     }
+
+    private static void TestCiReviewFailOpenSummaryPrefersReviewerTokenOverGitHubToken() {
+        var root = Path.Combine(Path.GetTempPath(), "ix-ci-fail-open-summary-token-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var previousReviewerToken = Environment.GetEnvironmentVariable("INTELLIGENCEX_GITHUB_TOKEN");
+        var previousGitHubToken = Environment.GetEnvironmentVariable("GITHUB_TOKEN");
+        try {
+            var logPath = Path.Combine(root, "reviewer.log");
+            File.WriteAllText(logPath, "Unhandled exception: reviewer-runtime");
+
+            string? authorizationHeader = null;
+            using var server = new LocalHttpServer(request => {
+                authorizationHeader = request.Headers.TryGetValue("Authorization", out var value) ? value : authorizationHeader;
+                if (string.Equals(request.Method, "GET", StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(request.Path, "/repos/owner/repo/pulls/123", StringComparison.OrdinalIgnoreCase)) {
+                    return new HttpResponse("""
+{
+  "title": "Workflow hardening",
+  "body": "Body",
+  "draft": false,
+  "number": 123,
+  "head": { "sha": "head-sha", "repo": { "full_name": "owner/repo", "fork": false } },
+  "base": { "sha": "base-sha", "ref": "master", "repo": { "full_name": "owner/repo" } },
+  "labels": []
+}
+""");
+                }
+
+                if (string.Equals(request.Method, "GET", StringComparison.OrdinalIgnoreCase) &&
+                    request.Path.StartsWith("/repos/owner/repo/issues/123/comments", StringComparison.OrdinalIgnoreCase)) {
+                    return new HttpResponse("""
+[
+  {
+    "id": 42,
+    "body": "<!-- intelligencex:summary -->\nold body",
+    "user": { "login": "intelligencex-review[bot]" }
+  }
+]
+""");
+                }
+
+                if (string.Equals(request.Method, "PATCH", StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(request.Path, "/repos/owner/repo/issues/comments/42", StringComparison.OrdinalIgnoreCase)) {
+                    return new HttpResponse("{\"id\":42,\"body\":\"ok\"}");
+                }
+
+                return null;
+            });
+
+            Environment.SetEnvironmentVariable("INTELLIGENCEX_GITHUB_TOKEN", "reviewer-token");
+            Environment.SetEnvironmentVariable("GITHUB_TOKEN", "github-token");
+
+            var exit = CiReviewFailOpenSummaryCommand.RunAsync(new[] {
+                    "--repo", "owner/repo",
+                    "--pr-number", "123",
+                    "--reviewer-source", "source",
+                    "--source-log", logPath,
+                    "--github-base-url", server.BaseUri.ToString().TrimEnd('/')
+                })
+                .GetAwaiter().GetResult();
+
+            AssertEqual(0, exit, "review-fail-open-summary token precedence exit code");
+            AssertContainsText(authorizationHeader ?? string.Empty, "Bearer reviewer-token",
+                "review-fail-open-summary prefers INTELLIGENCEX_GITHUB_TOKEN over GITHUB_TOKEN");
+        } finally {
+            Environment.SetEnvironmentVariable("INTELLIGENCEX_GITHUB_TOKEN", previousReviewerToken);
+            Environment.SetEnvironmentVariable("GITHUB_TOKEN", previousGitHubToken);
+            try { Directory.Delete(root, recursive: true); } catch { }
+        }
+    }
 #endif
 }

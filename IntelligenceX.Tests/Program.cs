@@ -606,6 +606,7 @@ internal static partial class Program {
         failed += Run("CI changed-files strict fails on diff failure even with fallback", TestCiChangedFilesStrictFailsWhenDiffFailsEvenIfFallbackSucceeds);
         failed += Run("CI tune-reviewer-budgets rejects out-env outside workspace", TestCiTuneReviewerBudgetsRejectsOutEnvOutsideWorkspaceWhenGitHubEnvMissing);
         failed += Run("CI review-fail-open-summary updates existing comment", TestCiReviewFailOpenSummaryUpdatesExistingComment);
+        failed += Run("CI review-fail-open-summary prefers reviewer token over GitHub token", TestCiReviewFailOpenSummaryPrefersReviewerTokenOverGitHubToken);
         failed += Run("CI review-fail-open-summary skips when PR number unavailable", TestCiReviewFailOpenSummarySkipsWhenPrNumberUnavailable);
         failed += Run("Reviewer GraphQL mutation detection", TestReviewerGraphQlMutationDetection);
 #endif

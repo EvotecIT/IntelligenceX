@@ -129,7 +129,7 @@ internal static class CiReviewFailOpenSummaryCommand {
         if (!string.IsNullOrWhiteSpace(options.GitHubToken)) {
             return options.GitHubToken;
         }
-        return FirstNonEmptyEnvironment("GITHUB_TOKEN", "GH_TOKEN", "INTELLIGENCEX_GITHUB_TOKEN");
+        return FirstNonEmptyEnvironment("INTELLIGENCEX_GITHUB_TOKEN", "GITHUB_TOKEN", "GH_TOKEN");
     }
 
     private static string? FirstNonEmptyEnvironment(params string[] names) {
