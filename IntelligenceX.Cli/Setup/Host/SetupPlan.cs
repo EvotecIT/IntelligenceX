@@ -19,6 +19,8 @@ internal sealed class SetupPlan {
     public string? ConfigJson { get; init; }
     public string? AuthB64 { get; init; }
     public string? AuthB64Path { get; init; }
+    public string? AnthropicApiKey { get; init; }
+    public string? AnthropicApiKeyPath { get; init; }
     public string? Provider { get; init; }
     public string? OpenAIModel { get; init; }
     public string? OpenAIAccountId { get; init; }

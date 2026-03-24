@@ -24,6 +24,8 @@ internal sealed partial class WebApi {
             TriageBootstrap = request.TriageBootstrap,
             AuthB64 = request.AuthB64,
             AuthB64Path = request.AuthB64Path,
+            AnthropicApiKey = request.AnthropicApiKey,
+            AnthropicApiKeyPath = request.AnthropicApiKeyPath,
             ConfigJson = request.ConfigJson,
             ConfigPath = request.ConfigPath,
             Provider = request.Provider,

@@ -27,6 +27,8 @@ global using IntelligenceX.OpenAI.Transport;
 global using IntelligenceX.OpenAI.Usage;
 global using IntelligenceX.Rpc;
 global using IntelligenceX.Telemetry;
+global using IntelligenceX.Telemetry.Limits;
+global using IntelligenceX.Telemetry.Usage;
 global using IntelligenceX.Tools;
 global using IntelligenceX.Utils;
 #if INTELLIGENCEX_REVIEWER

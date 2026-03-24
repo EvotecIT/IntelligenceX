@@ -13,6 +13,14 @@ on:
         description: 'Pull request number for manual runs'
         required: false
         default: ''
+      provider:
+        description: 'Review provider override for manual runs (openai, claude, copilot)'
+        required: false
+        default: ''
+      model:
+        description: 'Optional model override for manual runs'
+        required: false
+        default: ''
       openai_model:
         description: 'Optional OpenAI model override for manual runs'
         required: false

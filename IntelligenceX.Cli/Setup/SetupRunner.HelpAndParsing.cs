@@ -21,13 +21,15 @@ internal static partial class SetupRunner {
         Console.WriteLine("  --reviewer-release-tag <tag> (default latest)");
         Console.WriteLine("  --reviewer-release-asset <name>");
         Console.WriteLine("  --reviewer-release-url <url>");
-        Console.WriteLine("  --provider <openai|copilot> (default openai)");
-        Console.WriteLine("  --openai-model <model>");
+        Console.WriteLine("  --provider <openai|claude|copilot> (default openai)");
+        Console.WriteLine("  --model <model> (provider-specific; alias: --openai-model)");
         Console.WriteLine("  --openai-transport <native|appserver>");
         Console.WriteLine("  --openai-account-id <id> (pin ChatGPT account when multiple are present)");
         Console.WriteLine("  --openai-account-ids <id1,id2,...> (ordered account rotation/failover list)");
         Console.WriteLine("  --openai-account-rotation <first-available|round-robin|sticky>");
         Console.WriteLine("  --openai-account-failover <true|false>");
+        Console.WriteLine("  --anthropic-api-key <value> (use explicit Claude API key)");
+        Console.WriteLine("  --anthropic-api-key-path <path> (read Claude API key from file)");
         Console.WriteLine("  --include-issue-comments <true|false>");
         Console.WriteLine("  --include-review-comments <true|false>");
         Console.WriteLine("  --include-related-prs <true|false>");
@@ -49,8 +51,8 @@ internal static partial class SetupRunner {
         Console.WriteLine("  --analysis-export-path <repo/path> (optional: export analyzer configs into PR for IDE support)");
         Console.WriteLine("  --config-path <path> (use custom config.json content)");
         Console.WriteLine("  --config-json <json> (use inline config.json content)");
-        Console.WriteLine("  --auth-b64 <value> (use pre-exported auth bundle)");
-        Console.WriteLine("  --auth-b64-path <path> (read pre-exported auth bundle)");
+        Console.WriteLine("  --auth-b64 <value> (use pre-exported ChatGPT/OpenAI auth bundle)");
+        Console.WriteLine("  --auth-b64-path <path> (read pre-exported ChatGPT/OpenAI auth bundle)");
         Console.WriteLine("  --diagnostics <true|false>");
         Console.WriteLine("  --preflight <true|false>");
         Console.WriteLine("  --preflight-timeout-seconds <number>");
@@ -64,7 +66,7 @@ internal static partial class SetupRunner {
         Console.WriteLine("  --with-config (also write .intelligencex/reviewer.json)");
         Console.WriteLine("  --triage-bootstrap (also bootstrap IX triage project schema + workflow + VISION.md + labels + assistive issues + links comment)");
         Console.WriteLine("  --upgrade (update managed sections instead of skipping)");
-        Console.WriteLine("  --update-secret (refresh INTELLIGENCEX_AUTH_B64 only)");
+        Console.WriteLine("  --update-secret (refresh the provider secret only)");
         Console.WriteLine("  --skip-secret (skip secret update during setup)");
         Console.WriteLine("  --manual-secret (write secret to local temp file instead of uploading)");
         Console.WriteLine("  --manual-secret-stdout (print secret to stdout; requires --manual-secret)");

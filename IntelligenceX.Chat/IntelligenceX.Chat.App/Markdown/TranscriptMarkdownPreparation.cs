@@ -36,10 +36,14 @@ internal static class TranscriptMarkdownPreparation {
         TranscriptMarkdownContract.PrepareMessageBody(NormalizeMessageBodyCore(text));
 
     public static string PrepareOutcomeDetailBody(string? text) =>
-        PrepareMessageBody(text).Trim();
+        TranscriptMarkdownContract.PrepareTranscriptMarkdownForExport(NormalizeMessageBodyCore(text)).Trim();
 
     public static string PrepareTranscriptMarkdownForExport(string? markdown) {
         return TranscriptMarkdownContract.PrepareTranscriptMarkdownForExport(NormalizeMessageBodyCore(markdown));
+    }
+
+    public static string PrepareTranscriptMarkdownForPortableExport(string? markdown) {
+        return TranscriptMarkdownContract.PrepareTranscriptMarkdownForPortableExport(NormalizeMessageBodyCore(markdown));
     }
 
     public static string PrepareStreamingPreview(string? text) =>

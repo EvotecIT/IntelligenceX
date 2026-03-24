@@ -96,6 +96,9 @@ public sealed class ProviderViewModel : ViewModelBase {
     private string? _usageHealthSummary;
     private string? _usageHealthDetail;
     private string? _usageHealthAccountsText;
+    private string? _scopeLocalText;
+    private string? _scopeOnlineText;
+    private string? _scopeDifferenceText;
     private string _todayLabel = "Today";
     private string _weeklyLabel = "7 days";
     private string _monthlyLabel = "30 days";
@@ -139,6 +142,7 @@ public sealed class ProviderViewModel : ViewModelBase {
         };
         AccountBreakdown.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasAccountBreakdown));
         SurfaceBreakdown.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasSurfaceBreakdown));
+        ModelDaySummaries.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasModelDaySummaries));
         RecentActivity.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasRecentActivity));
         ProviderComparison.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasProviderComparison));
     }
@@ -693,6 +697,36 @@ public sealed class ProviderViewModel : ViewModelBase {
         }
     }
 
+    public string? ScopeLocalText {
+        get => _scopeLocalText;
+        set {
+            if (SetProperty(ref _scopeLocalText, value)) {
+                OnPropertyChanged(nameof(HasScopeLocalText));
+                OnPropertyChanged(nameof(HasDataScopeSection));
+            }
+        }
+    }
+
+    public string? ScopeOnlineText {
+        get => _scopeOnlineText;
+        set {
+            if (SetProperty(ref _scopeOnlineText, value)) {
+                OnPropertyChanged(nameof(HasScopeOnlineText));
+                OnPropertyChanged(nameof(HasDataScopeSection));
+            }
+        }
+    }
+
+    public string? ScopeDifferenceText {
+        get => _scopeDifferenceText;
+        set {
+            if (SetProperty(ref _scopeDifferenceText, value)) {
+                OnPropertyChanged(nameof(HasScopeDifferenceText));
+                OnPropertyChanged(nameof(HasDataScopeSection));
+            }
+        }
+    }
+
     public bool HasLimitSummary => !string.IsNullOrWhiteSpace(LimitSummary);
     public bool HasLimitStatusMessage => !string.IsNullOrWhiteSpace(LimitStatusMessage);
     public bool HasRecommendedLimitAccount => !string.IsNullOrWhiteSpace(RecommendedLimitAccountLabel);
@@ -700,13 +734,18 @@ public sealed class ProviderViewModel : ViewModelBase {
     public bool HasUsageHealthSummary => !string.IsNullOrWhiteSpace(UsageHealthSummary);
     public bool HasUsageHealthDetail => !string.IsNullOrWhiteSpace(UsageHealthDetail);
     public bool HasUsageHealthAccounts => !string.IsNullOrWhiteSpace(UsageHealthAccountsText);
+    public bool HasScopeLocalText => !string.IsNullOrWhiteSpace(ScopeLocalText);
+    public bool HasScopeOnlineText => !string.IsNullOrWhiteSpace(ScopeOnlineText);
+    public bool HasScopeDifferenceText => !string.IsNullOrWhiteSpace(ScopeDifferenceText);
     public bool HasUsageHealthSection => HasUsageHealthSummary || HasUsageHealthDetail || HasUsageHealthAccounts;
+    public bool HasDataScopeSection => HasScopeLocalText || HasScopeOnlineText || HasScopeDifferenceText;
     public bool HasLiveLimitData => LimitWindows.Count > 0;
     public bool HasLimitAccounts => LimitAccounts.Count > 0;
     public bool HasMultipleLimitAccounts => LimitAccounts.Count > 1;
     public bool ShowSharedLimitWindows => HasLiveLimitData && !HasMultipleLimitAccounts;
     public bool HasAccountBreakdown => AccountBreakdown.Count > 0;
     public bool HasSurfaceBreakdown => SurfaceBreakdown.Count > 0;
+    public bool HasModelDaySummaries => ModelDaySummaries.Count > 0;
     public bool HasRecentActivity => RecentActivity.Count > 0;
     public bool IsCombinedProvider => string.Equals(ProviderId, "__all__", StringComparison.Ordinal);
     public bool HasProviderComparison => IsCombinedProvider && ProviderComparison.Count > 0;
@@ -726,6 +765,7 @@ public sealed class ProviderViewModel : ViewModelBase {
         || HasLimitAccounts;
 
     public ObservableCollection<ModelUsageViewModel> ModelBreakdown { get; } = [];
+    public ObservableCollection<ModelDaySummaryViewModel> ModelDaySummaries { get; } = [];
     public ObservableCollection<DailyBarViewModel> DailyBars { get; } = [];
     public ObservableCollection<ProviderLimitWindowViewModel> LimitWindows { get; } = [];
     public ObservableCollection<ProviderLimitAccountViewModel> LimitAccounts { get; } = [];
@@ -904,6 +944,19 @@ public sealed class ProviderViewModel : ViewModelBase {
         var brush = new SolidColorBrush(info.TotalColor);
         brush.Freeze();
         AccentBrush = brush;
+    }
+
+    public void ApplyUsageScopeSummary(UsageTelemetryScopeSummary? summary) {
+        if (summary is null || !summary.HasAnyText) {
+            ScopeLocalText = null;
+            ScopeOnlineText = null;
+            ScopeDifferenceText = null;
+            return;
+        }
+
+        ScopeLocalText = summary.LocalScopeText;
+        ScopeOnlineText = summary.OnlineScopeText;
+        ScopeDifferenceText = summary.DifferenceText;
     }
 
     public void ApplyLimitSnapshot(ProviderLimitSnapshot? snapshot) {
@@ -1250,6 +1303,7 @@ public sealed class ProviderViewModel : ViewModelBase {
         TodayEventCount = rangeEvents.Count;
 
         PopulateModelBreakdown(rangeEvents);
+        PopulateModelDaySummaries(rangeEvents);
         PopulateUsageBreakdown(
             AccountBreakdown,
             BuildBreakdown(rangeEvents, e => NormalizeAccountLabel(e.AccountLabel, e.ProviderAccountId)),
@@ -1315,6 +1369,47 @@ public sealed class ProviderViewModel : ViewModelBase {
                 TotalTokens = group.Total,
                 Proportion = max > 0 ? (double)group.Total / max : 0d,
                 BarBrush = FrozenBrush(OutputColor)
+            });
+        }
+    }
+
+    private void PopulateModelDaySummaries(IReadOnlyList<UsageEventRecord> events) {
+        ModelDaySummaries.Clear();
+        var groupedDays = events
+            .GroupBy(static usageEvent => usageEvent.TimestampUtc.ToLocalTime().Date)
+            .OrderByDescending(static group => group.Key)
+            .Take(7)
+            .ToList();
+
+        foreach (var dayGroup in groupedDays) {
+            var topModels = dayGroup
+                .Where(static usageEvent => !string.IsNullOrWhiteSpace(usageEvent.Model))
+                .GroupBy(static usageEvent => usageEvent.Model!.Trim(), StringComparer.OrdinalIgnoreCase)
+                .Select(static group => new {
+                    Model = group.Key,
+                    Tokens = group.Sum(usageEvent => usageEvent.TotalTokens ?? 0L)
+                })
+                .OrderByDescending(static group => group.Tokens)
+                .ThenBy(static group => group.Model, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var visibleModels = topModels
+                .Take(3)
+                .Select(group => group.Model + " (" + FormatTokens(group.Tokens) + ")")
+                .ToList();
+            var moreCount = topModels.Count - visibleModels.Count;
+            if (moreCount > 0) {
+                visibleModels.Add("+" + moreCount.ToString(CultureInfo.InvariantCulture) + " more");
+            }
+
+            ModelDaySummaries.Add(new ModelDaySummaryViewModel {
+                DayLabel = dayGroup.Key == DateTime.Now.Date
+                    ? "Today"
+                    : dayGroup.Key.ToString("ddd, MMM d", CultureInfo.CurrentCulture),
+                TotalTokensText = FormatTokens(dayGroup.Sum(static usageEvent => usageEvent.TotalTokens ?? 0L)),
+                ModelsText = visibleModels.Count > 0
+                    ? string.Join(" • ", visibleModels)
+                    : "No model ids in local logs"
             });
         }
     }
@@ -1543,6 +1638,43 @@ public sealed class ProviderViewModel : ViewModelBase {
                 lines.AddRange(ModelBreakdown.Select(entry => $"  {entry.ModelName}: {entry.TotalTokensFormatted}"));
             }
 
+            if (HasModelDaySummaries) {
+                lines.Add("Local models by day:");
+                lines.AddRange(ModelDaySummaries.Select(entry => $"  {entry.DayLabel}: {entry.TotalTokensText} • {entry.ModelsText}"));
+            }
+
+            if (HasDataScopeSection) {
+                lines.Add("Data scope:");
+                if (HasScopeLocalText) {
+                    lines.Add("  Local: " + ScopeLocalText);
+                }
+                if (HasScopeOnlineText) {
+                    lines.Add("  Online: " + ScopeOnlineText);
+                }
+                if (HasScopeDifferenceText) {
+                    lines.Add("  Why they differ: " + ScopeDifferenceText);
+                }
+            }
+
+            if (HasLimitSection) {
+                lines.Add("Live limits:");
+                if (!string.IsNullOrWhiteSpace(LimitSourceLabel)) {
+                    lines.Add("  Source: " + LimitSourceLabel);
+                }
+                if (!string.IsNullOrWhiteSpace(LimitPlanLabel)) {
+                    lines.Add("  Plan: " + LimitPlanLabel);
+                }
+                if (!string.IsNullOrWhiteSpace(LimitAccountLabel)) {
+                    lines.Add("  Account: " + LimitAccountLabel);
+                }
+                if (!string.IsNullOrWhiteSpace(LimitSummary)) {
+                    lines.Add("  Summary: " + LimitSummary);
+                }
+                if (!string.IsNullOrWhiteSpace(LimitStatusMessage)) {
+                    lines.Add("  Detail: " + LimitStatusMessage);
+                }
+            }
+
             Clipboard.SetText(string.Join(Environment.NewLine, lines));
             ActionStatusMessage = "Copied selected range summary to clipboard.";
         } catch (Exception ex) {
@@ -1646,6 +1778,46 @@ public sealed class ProviderViewModel : ViewModelBase {
                     costUsd = TodayCostUsd,
                     costApproximate = TodayCostUsesEstimate
                 },
+                dataScope = HasDataScopeSection
+                    ? new {
+                        local = ScopeLocalText,
+                        online = ScopeOnlineText,
+                        whyDifferent = ScopeDifferenceText
+                    }
+                    : null,
+                liveLimits = HasLimitSection
+                    ? new {
+                        source = LimitSourceLabel,
+                        plan = LimitPlanLabel,
+                        account = LimitAccountLabel,
+                        summary = LimitSummary,
+                        detail = LimitStatusMessage,
+                        windows = LimitWindows.Select(window => new {
+                            label = window.Label,
+                            usedPercent = window.UsedPercent,
+                            reset = window.ResetText,
+                            detail = window.Detail
+                        }),
+                        accounts = LimitAccounts.Select(account => new {
+                            label = account.Label,
+                            plan = account.PlanLabel,
+                            status = account.StatusLabel,
+                            summary = account.Summary,
+                            detail = account.DetailText,
+                            windows = account.Windows.Select(window => new {
+                                label = window.Label,
+                                usedPercent = window.UsedPercent,
+                                reset = window.ResetText,
+                                detail = window.Detail
+                            })
+                        })
+                    }
+                    : null,
+                modelsByDay = ModelDaySummaries.Select(entry => new {
+                    day = entry.DayLabel,
+                    totalTokens = entry.TotalTokensText,
+                    models = entry.ModelsText
+                }),
                 events = events.Select(e => {
                     var displayCost = UsageTelemetryApiPricing.BuildDisplayCost(e);
                     return new {
@@ -1779,24 +1951,43 @@ public sealed class ProviderViewModel : ViewModelBase {
 
     private JsonObject? BuildReportMetadata() {
         if (!HasUsageHealthSection) {
-            return null;
+            if (!HasDataScopeSection) {
+                return null;
+            }
         }
 
-        var reportHealth = new JsonObject()
-            .Add("source", "tray-explorer");
-        if (!string.IsNullOrWhiteSpace(UsageHealthSummary)) {
-            reportHealth.Add("summary", UsageHealthSummary);
+        var metadata = new JsonObject();
+        if (HasUsageHealthSection) {
+            var reportHealth = new JsonObject()
+                .Add("source", "tray-explorer");
+            if (!string.IsNullOrWhiteSpace(UsageHealthSummary)) {
+                reportHealth.Add("summary", UsageHealthSummary);
+            }
+            if (!string.IsNullOrWhiteSpace(UsageHealthDetail)) {
+                reportHealth.Add("detail", UsageHealthDetail);
+            }
+            if (!string.IsNullOrWhiteSpace(UsageHealthAccountsText)) {
+                reportHealth.Add("accountsText", UsageHealthAccountsText);
+            }
+            reportHealth.Add("generatedAtLocal", LastUpdated.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.CurrentCulture));
+            metadata.Add("reportHealth", reportHealth);
         }
-        if (!string.IsNullOrWhiteSpace(UsageHealthDetail)) {
-            reportHealth.Add("detail", UsageHealthDetail);
-        }
-        if (!string.IsNullOrWhiteSpace(UsageHealthAccountsText)) {
-            reportHealth.Add("accountsText", UsageHealthAccountsText);
-        }
-        reportHealth.Add("generatedAtLocal", LastUpdated.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.CurrentCulture));
 
-        return new JsonObject()
-            .Add("reportHealth", reportHealth);
+        if (HasDataScopeSection) {
+            var dataScope = new JsonObject();
+            if (!string.IsNullOrWhiteSpace(ScopeLocalText)) {
+                dataScope.Add("local", ScopeLocalText);
+            }
+            if (!string.IsNullOrWhiteSpace(ScopeOnlineText)) {
+                dataScope.Add("online", ScopeOnlineText);
+            }
+            if (!string.IsNullOrWhiteSpace(ScopeDifferenceText)) {
+                dataScope.Add("whyDifferent", ScopeDifferenceText);
+            }
+            metadata.Add("dataScope", dataScope);
+        }
+
+        return metadata;
     }
 
     private static string? NormalizeAccountLabel(string? value, string? providerAccountId = null) {

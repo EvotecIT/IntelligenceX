@@ -18,31 +18,47 @@ internal static partial class SetupRunner {
         var node = JsonNode.Parse(existingContent) as JsonObject ?? new JsonObject();
         var review = node["review"] as JsonObject ?? new JsonObject();
         review["provider"] = settings.Provider;
-        review["openaiTransport"] = settings.OpenAITransport;
         review["model"] = settings.OpenAIModel;
-        if (!string.IsNullOrWhiteSpace(settings.OpenAIAccountId)) {
-            review["openaiAccountId"] = settings.OpenAIAccountId;
-        }
-        if (settings.OpenAIAccountIds.Length > 0) {
-            var accountIds = new JsonArray();
-            foreach (var accountId in settings.OpenAIAccountIds) {
-                accountIds.Add(accountId);
+        if (SetupProviderCatalog.IsOpenAiProvider(settings.Provider)) {
+            review["openaiTransport"] = settings.OpenAITransport;
+            review.Remove("anthropic");
+            if (!string.IsNullOrWhiteSpace(settings.OpenAIAccountId)) {
+                review["openaiAccountId"] = settings.OpenAIAccountId;
             }
-            review["openaiAccountIds"] = accountIds;
-            review["openaiAccountRotation"] = settings.OpenAIAccountRotation;
-            review["openaiAccountFailover"] = settings.OpenAIAccountFailover;
-        } else if (settings.OpenAIAccountIdsSet) {
-            review.Remove("openaiAccountIds");
-            if (string.IsNullOrWhiteSpace(settings.OpenAIAccountId)) {
-                review.Remove("openaiAccountRotation");
-                review.Remove("openaiAccountFailover");
-            } else {
+            if (settings.OpenAIAccountIds.Length > 0) {
+                var accountIds = new JsonArray();
+                foreach (var accountId in settings.OpenAIAccountIds) {
+                    accountIds.Add(accountId);
+                }
+                review["openaiAccountIds"] = accountIds;
+                review["openaiAccountRotation"] = settings.OpenAIAccountRotation;
+                review["openaiAccountFailover"] = settings.OpenAIAccountFailover;
+            } else if (settings.OpenAIAccountIdsSet) {
+                review.Remove("openaiAccountIds");
+                if (string.IsNullOrWhiteSpace(settings.OpenAIAccountId)) {
+                    review.Remove("openaiAccountRotation");
+                    review.Remove("openaiAccountFailover");
+                } else {
+                    review["openaiAccountRotation"] = settings.OpenAIAccountRotation;
+                    review["openaiAccountFailover"] = settings.OpenAIAccountFailover;
+                }
+            } else if (!string.IsNullOrWhiteSpace(settings.OpenAIAccountId)) {
                 review["openaiAccountRotation"] = settings.OpenAIAccountRotation;
                 review["openaiAccountFailover"] = settings.OpenAIAccountFailover;
             }
-        } else if (!string.IsNullOrWhiteSpace(settings.OpenAIAccountId)) {
-            review["openaiAccountRotation"] = settings.OpenAIAccountRotation;
-            review["openaiAccountFailover"] = settings.OpenAIAccountFailover;
+        } else {
+            review.Remove("openaiTransport");
+            review.Remove("openaiAccountId");
+            review.Remove("openaiAccountIds");
+            review.Remove("openaiAccountRotation");
+            review.Remove("openaiAccountFailover");
+            if (SetupProviderCatalog.IsClaudeProvider(settings.Provider)) {
+                review["anthropic"] = new JsonObject {
+                    ["apiKeyEnv"] = SetupProviderCatalog.ClaudeSecretName
+                };
+            } else {
+                review.Remove("anthropic");
+            }
         }
         review["summaryStability"] = settings.SummaryStability;
         review["reviewDiffRange"] = settings.ReviewDiffRange;
