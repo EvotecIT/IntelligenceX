@@ -413,8 +413,6 @@ jobs:
       INTELLIGENCEX_APP_ID: ${{ secrets.INTELLIGENCEX_GITHUB_APP_ID }}
       INTELLIGENCEX_APP_KEY: ${{ secrets.INTELLIGENCEX_GITHUB_APP_PRIVATE_KEY }}
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      INTELLIGENCEX_AUTH_B64: ${{ secrets.INTELLIGENCEX_AUTH_B64 }}
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       INPUT_PROVIDER: ${{ inputs.provider }}
       INPUT_MODEL: ${{ inputs.model }}
       INPUT_OPENAI_MODEL: ${{ inputs.openai_model }}
@@ -632,6 +630,8 @@ jobs:
         continue-on-error: true
         env:
           INTELLIGENCEX_GITHUB_TOKEN: ${{ steps.app_token.outputs.token || secrets.GITHUB_TOKEN }}
+          INTELLIGENCEX_AUTH_B64: ${{ secrets.INTELLIGENCEX_AUTH_B64 }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         # Source reviewer runs only after the repo build succeeds and uses the .NET SDK provisioned above.
         shell: bash
         run: |
@@ -649,6 +649,8 @@ jobs:
         continue-on-error: true
         env:
           INTELLIGENCEX_GITHUB_TOKEN: ${{ steps.app_token.outputs.token || secrets.GITHUB_TOKEN }}
+          INTELLIGENCEX_AUTH_B64: ${{ secrets.INTELLIGENCEX_AUTH_B64 }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         shell: bash
         run: |
           set -uo pipefail
@@ -670,6 +672,8 @@ jobs:
         continue-on-error: true
         env:
           INTELLIGENCEX_GITHUB_TOKEN: ${{ steps.app_token.outputs.token || secrets.GITHUB_TOKEN }}
+          INTELLIGENCEX_AUTH_B64: ${{ secrets.INTELLIGENCEX_AUTH_B64 }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path artifacts | Out-Null
@@ -687,7 +691,6 @@ jobs:
         if: >-
           ${{
             always() &&
-            github.event_name == 'pull_request' &&
             (
               steps.reviewer_build.outcome == 'failure' ||
               steps.reviewer_run_source.outcome == 'failure' ||

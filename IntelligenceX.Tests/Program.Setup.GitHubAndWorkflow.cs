@@ -191,6 +191,11 @@ jobs:
             "wrapper workflow keeps PR reviews on repo source to avoid release drift");
         AssertEqual(false, content.Contains("workflow_dispatch:", StringComparison.Ordinal),
             "reusable workflow should keep manual dispatch on the wrapper workflow");
+        var jobEnvIndex = content.IndexOf("    env:", StringComparison.Ordinal);
+        var permissionsIndex = content.IndexOf("    permissions:", StringComparison.Ordinal);
+        AssertEqual(true, jobEnvIndex > 0, "reusable workflow contains job env section");
+        AssertEqual(true, permissionsIndex > jobEnvIndex, "reusable workflow contains permissions after job env");
+        var jobEnvContent = content[jobEnvIndex..permissionsIndex];
         AssertContainsText(content, "workflow_call:", "reusable workflow defines workflow_call");
         AssertEqual(1, CountOccurrences(content, "openai_model:"),
             "reusable workflow defines openai_model once for workflow_call");
@@ -204,6 +209,14 @@ jobs:
             "reusable workflow exports fail-open default once at the job level");
         AssertEqual(1, CountOccurrences(content, "REVIEW_FAIL_OPEN_TRANSIENT_ONLY: false"),
             "reusable workflow exports non-transient fail-open default once at the job level");
+        AssertEqual(false, jobEnvContent.Contains("INTELLIGENCEX_AUTH_B64:", StringComparison.Ordinal),
+            "reusable workflow does not expose auth bundle at job scope");
+        AssertEqual(false, jobEnvContent.Contains("ANTHROPIC_API_KEY:", StringComparison.Ordinal),
+            "reusable workflow does not expose provider api key at job scope");
+        AssertEqual(3, CountOccurrences(content, "INTELLIGENCEX_AUTH_B64: ${{ secrets.INTELLIGENCEX_AUTH_B64 }}"),
+            "reusable workflow scopes auth bundle to the three reviewer execution steps");
+        AssertEqual(3, CountOccurrences(content, "ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}"),
+            "reusable workflow scopes provider api key to the three reviewer execution steps");
         AssertEqual(1, CountOccurrences(content, "INPUT_PROVIDER: ${{ inputs.provider }}"),
             "reusable workflow defines shared reviewer env once instead of repeating it per step");
         AssertContainsText(content, "inputs.reviewer_source == 'source' && steps.reviewer_build.outcome == 'success'",
@@ -237,6 +250,8 @@ jobs:
             "reusable workflow finalizes fail-open summaries when the source reviewer build fails");
         AssertContainsText(content, "INTELLIGENCEX_GITHUB_TOKEN: ${{ steps.app_token.outputs.token || secrets.GITHUB_TOKEN }}",
             "reusable workflow passes the app token to fail-open summary finalization");
+        AssertEqual(false, content.Contains("github.event_name == 'pull_request'", StringComparison.Ordinal),
+            "reusable workflow allows fail-open finalization for workflow_dispatch PR reviews too");
         AssertContainsText(content, "ci review-fail-open-summary",
             "reusable workflow delegates fail-open summary handling to the CLI helper");
         AssertContainsText(content, "--source-log artifacts/reviewer-run-source.log",
