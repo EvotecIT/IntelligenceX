@@ -19,6 +19,8 @@
             "openai-api",
             "ollama",
             "openrouter",
+            "claude",
+            "anthropic",
             "copilot"
           ]
         },
@@ -33,6 +35,8 @@
             "openai-api",
             "ollama",
             "openrouter",
+            "claude",
+            "anthropic",
             "copilot"
           ]
         },
@@ -95,6 +99,30 @@
             "allowInsecureHttpNonLoopback": { "type": "boolean" },
             "dropAuthorizationOnRedirect": { "type": "boolean" },
             "timeoutSeconds": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "anthropic": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "baseUrl": { "type": "string" },
+            "version": { "type": "string" },
+            "apiKeyEnv": { "type": "string" },
+            "apiKey": { "type": "string" },
+            "timeoutSeconds": { "type": "integer", "minimum": 1 },
+            "maxTokens": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "claude": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "baseUrl": { "type": "string" },
+            "version": { "type": "string" },
+            "apiKeyEnv": { "type": "string" },
+            "apiKey": { "type": "string" },
+            "timeoutSeconds": { "type": "integer", "minimum": 1 },
+            "maxTokens": { "type": "integer", "minimum": 1 }
           }
         },
         "authAccountId": { "type": "string" },

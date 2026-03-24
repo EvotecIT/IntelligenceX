@@ -197,5 +197,45 @@ internal static partial class Program {
         AssertEqual(false, review["openaiAccountFailover"]?.GetValue<bool>(),
             "config json openai merge explicit-empty ids snapshot primary keeps failover");
     }
+
+    private static void TestSetupBuildConfigJsonMergeSwitchesOpenAiSeedToClaudeAndClearsOpenAiFields() {
+        var seed = """
+{
+  "review": {
+    "provider": "openai",
+    "model": "gpt-5.4",
+    "openaiTransport": "native",
+    "openaiAccountId": "acc-primary",
+    "openaiAccountIds": [
+      "acc-primary",
+      "acc-backup"
+    ],
+    "openaiAccountRotation": "round-robin",
+    "openaiAccountFailover": false
+  }
+}
+""";
+        var content = SetupRunner.BuildReviewerConfigJsonFromSeedForTests(
+            new[] { "--provider", "claude" },
+            seed);
+        AssertNotNull(content, "config json claude merge switch content");
+
+        var root = System.Text.Json.Nodes.JsonNode.Parse(content) as System.Text.Json.Nodes.JsonObject;
+        AssertNotNull(root, "config json claude merge switch root");
+        var review = root!["review"] as System.Text.Json.Nodes.JsonObject;
+        AssertNotNull(review, "config json claude merge switch review");
+        var anthropic = review!["anthropic"] as System.Text.Json.Nodes.JsonObject;
+        AssertNotNull(anthropic, "config json claude merge switch anthropic");
+
+        AssertEqual("claude", review["provider"]?.GetValue<string>(), "config json claude merge switch provider");
+        AssertEqual("claude-opus-4-1", review["model"]?.GetValue<string>(), "config json claude merge switch model");
+        AssertEqual("ANTHROPIC_API_KEY", anthropic!["apiKeyEnv"]?.GetValue<string>(),
+            "config json claude merge switch api key env");
+        AssertEqual(null, review["openaiTransport"], "config json claude merge switch clears openai transport");
+        AssertEqual(null, review["openaiAccountId"], "config json claude merge switch clears openai account id");
+        AssertEqual(null, review["openaiAccountIds"], "config json claude merge switch clears openai account ids");
+        AssertEqual(null, review["openaiAccountRotation"], "config json claude merge switch clears openai rotation");
+        AssertEqual(null, review["openaiAccountFailover"], "config json claude merge switch clears openai failover");
+    }
 #endif
 }

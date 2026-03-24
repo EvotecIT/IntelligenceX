@@ -90,6 +90,54 @@ public static class ToolOutputHints {
         return RenderCode(language: "mermaid", contentPath: contentPath);
     }
 
+    /// <summary>
+    /// Builds a generic chart render hint.
+    /// </summary>
+    /// <param name="contentPath">JSON path (relative to the tool output root) pointing to the chart JSON payload.</param>
+    public static JsonObject RenderChart(string contentPath) {
+        return RenderCode(language: "chart", contentPath: contentPath);
+    }
+
+    /// <summary>
+    /// Builds a generic network render hint.
+    /// </summary>
+    /// <param name="contentPath">JSON path (relative to the tool output root) pointing to the network JSON payload.</param>
+    public static JsonObject RenderNetwork(string contentPath) {
+        return RenderCode(language: "network", contentPath: contentPath);
+    }
+
+    /// <summary>
+    /// Builds a generic dataview render hint.
+    /// </summary>
+    /// <param name="contentPath">JSON path (relative to the tool output root) pointing to the dataview JSON payload.</param>
+    public static JsonObject RenderDataView(string contentPath) {
+        return RenderCode(language: "dataview", contentPath: contentPath);
+    }
+
+    /// <summary>
+    /// Builds an IntelligenceX chart render hint compatibility alias.
+    /// Prefer <see cref="RenderChart"/> for new tool output.
+    /// </summary>
+    public static JsonObject RenderIxChart(string contentPath) {
+        return RenderCode(language: "ix-chart", contentPath: contentPath);
+    }
+
+    /// <summary>
+    /// Builds an IntelligenceX network render hint compatibility alias.
+    /// Prefer <see cref="RenderNetwork"/> for new tool output.
+    /// </summary>
+    public static JsonObject RenderIxNetwork(string contentPath) {
+        return RenderCode(language: "ix-network", contentPath: contentPath);
+    }
+
+    /// <summary>
+    /// Builds an IntelligenceX dataview render hint compatibility alias.
+    /// Prefer <see cref="RenderDataView"/> for new tool output.
+    /// </summary>
+    public static JsonObject RenderIxDataView(string contentPath) {
+        return RenderCode(language: "ix-dataview", contentPath: contentPath);
+    }
+
     private static string NormalizePath(string? path) {
         if (string.IsNullOrWhiteSpace(path)) {
             return string.Empty;

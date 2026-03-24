@@ -29,9 +29,11 @@ public sealed class TranscriptMarkdownContractIntegrationTests {
             """;
 
         var preparedForRender = TranscriptMarkdownPreparation.PrepareMessageBody(markdown)
-            .Replace("\r\n", "\n", StringComparison.Ordinal);
+            .Replace("\r\n", "\n", StringComparison.Ordinal)
+            .TrimEnd();
         var preparedForExport = TranscriptMarkdownPreparation.PrepareTranscriptMarkdownForExport(markdown)
-            .Replace("\r\n", "\n", StringComparison.Ordinal);
+            .Replace("\r\n", "\n", StringComparison.Ordinal)
+            .TrimEnd();
 
         Assert.Equal(preparedForRender, preparedForExport);
         Assert.Contains("1. First check\n\n2. Second check", preparedForRender, StringComparison.Ordinal);
@@ -60,11 +62,11 @@ public sealed class TranscriptMarkdownContractIntegrationTests {
             .Replace("\r\n", "\n", StringComparison.Ordinal);
 
         Assert.DoesNotContain("ix:cached-tool-evidence:v1", preparedForExport, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("[Cached evidence fallback]", preparedForExport, StringComparison.Ordinal);
+        Assert.Contains("Cached evidence fallback", preparedForExport, StringComparison.Ordinal);
         Assert.Contains("Status: healthy", preparedForExport, StringComparison.Ordinal);
         Assert.Contains("Impact: none", preparedForExport, StringComparison.Ordinal);
 
-        Assert.Contains("[Cached evidence fallback]", preparedForDocx, StringComparison.Ordinal);
+        Assert.Contains("Cached evidence fallback", preparedForDocx, StringComparison.Ordinal);
         Assert.Contains("Status: healthy", preparedForDocx, StringComparison.Ordinal);
         Assert.Contains("Impact: none", preparedForDocx, StringComparison.Ordinal);
     }
@@ -91,7 +93,31 @@ public sealed class TranscriptMarkdownContractIntegrationTests {
 
         Assert.Equal(contractPrepared, appPrepared);
         Assert.DoesNotContain("ix:cached-tool-evidence:v1", appPrepared, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("[Cached evidence fallback]", appPrepared, StringComparison.Ordinal);
+        Assert.Contains("Cached evidence fallback", appPrepared, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures the App portable markdown-export seam stays aligned with the shared export-artifacts contract.
+    /// </summary>
+    [Fact]
+    public void AppAndExportArtifactPortableExportPreparation_StayInParity() {
+        const string markdown = """
+            ix:cached-tool-evidence:v1
+
+            ```json
+            {"type":"bar","data":{"labels":["A"],"datasets":[{"label":"Count","data":[1]}]}}
+            ```
+            """;
+
+        var appPrepared = TranscriptMarkdownPreparation.PrepareTranscriptMarkdownForPortableExport(markdown)
+            .Replace("\r\n", "\n", StringComparison.Ordinal);
+        var contractPrepared = TranscriptMarkdownContract.PrepareTranscriptMarkdownForPortableExport(markdown)
+            .Replace("\r\n", "\n", StringComparison.Ordinal);
+
+        Assert.Equal(contractPrepared, appPrepared);
+        Assert.DoesNotContain("ix:cached-tool-evidence:v1", appPrepared, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("```chart", appPrepared, StringComparison.Ordinal);
+        Assert.DoesNotContain("```ix-chart", appPrepared, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -138,7 +164,7 @@ public sealed class TranscriptMarkdownContractIntegrationTests {
 
         Assert.DoesNotContain("ix:cached-tool-evidence:v1", prepared, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("- eventlog_top_events:", prepared, StringComparison.Ordinal);
-        Assert.Contains("Top 30 recent events (preview)", prepared, StringComparison.Ordinal);
+        Assert.Contains("Top 30 recent events", prepared, StringComparison.Ordinal);
     }
 
     private static bool SupportsExplicitTranscriptPreparationContract() {

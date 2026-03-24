@@ -22,9 +22,11 @@ internal static partial class SetupRunner {
         public string? ActionsRepo { get; set; } = DefaultActionsRepo;
         public string? ActionsRef { get; set; } = DefaultActionsRef;
         public string? RunsOn { get; set; } = DefaultRunsOn;
-        public string? Provider { get; set; } = "openai";
-        public string? OpenAIModel { get; set; } = OpenAIModelCatalog.DefaultModel;
+        public string? Provider { get; set; } = IntelligenceXDefaults.DefaultProvider;
+        public string? OpenAIModel { get; set; }
         public string? OpenAITransport { get; set; } = "native";
+        public string? AnthropicApiKey { get; set; }
+        public string? AnthropicApiKeyPath { get; set; }
         public string? OpenAIAccountId { get; set; }
         public bool OpenAIAccountIdSet { get; set; }
         public string? OpenAIAccountIds { get; set; }
@@ -185,6 +187,7 @@ internal static partial class SetupRunner {
                         options.Provider = value;
                         options.ProviderSet = true;
                         break;
+                    case "model":
                     case "openai-model":
                         options.OpenAIModel = value;
                         options.OpenAIModelSet = true;
@@ -192,6 +195,12 @@ internal static partial class SetupRunner {
                     case "openai-transport":
                         options.OpenAITransport = value;
                         options.OpenAITransportSet = true;
+                        break;
+                    case "anthropic-api-key":
+                        options.AnthropicApiKey = value;
+                        break;
+                    case "anthropic-api-key-path":
+                        options.AnthropicApiKeyPath = value;
                         break;
                     case "openai-account-id":
                         options.OpenAIAccountId = value;

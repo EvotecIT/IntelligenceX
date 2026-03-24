@@ -62,11 +62,11 @@
       contractKind: "chart",
       legacySelector: ".bubble .markdown-body canvas.omd-chart",
       renderedSelector: ".bubble .markdown-body .omd-visual[data-omd-visual-kind='chart'][data-omd-visual-rendered='true'], .bubble .markdown-body canvas.omd-chart[data-chart-rendered='1']",
-      messageWideSelector: ".markdown-body pre[data-ix-chart-rendered='1'], .markdown-body .omd-visual[data-omd-visual-kind='chart'][data-omd-visual-rendered='true'], .markdown-body canvas.omd-chart[data-chart-rendered='1'], .markdown-body .ix-chart-host",
-      datasetKey: "ixChartBlockId",
+      messageWideSelector: ".markdown-body pre[data-visual-chart-rendered='1'], .markdown-body .omd-visual[data-omd-visual-kind='chart'][data-omd-visual-rendered='true'], .markdown-body canvas.omd-chart[data-chart-rendered='1'], .markdown-body .visual-chart-host",
+      datasetKey: "visualChartBlockId",
       fallbackHashAttribute: "data-chart-hash",
       fallbackPrefix: "omd-chart",
-      cachedSourceAttribute: "data-ix-chart-source",
+      cachedSourceAttribute: "data-visual-chart-source",
       fallbackConfigAttribute: "data-chart-config-b64",
       overflowReason: "too many charts",
       unavailableReason: "renderer unavailable",
@@ -89,11 +89,11 @@
       contractKind: "network",
       legacySelector: ".bubble .markdown-body .omd-network",
       renderedSelector: ".bubble .markdown-body .omd-visual[data-omd-visual-kind='network'][data-omd-visual-rendered='true'], .bubble .markdown-body .omd-network[data-network-rendered='1']",
-      messageWideSelector: ".markdown-body pre[data-ix-network-rendered='1'], .markdown-body .omd-visual[data-omd-visual-kind='network'][data-omd-visual-rendered='true'], .markdown-body .omd-network[data-network-rendered='1'], .markdown-body .ix-network-host",
-      datasetKey: "ixNetworkBlockId",
+      messageWideSelector: ".markdown-body pre[data-visual-network-rendered='1'], .markdown-body .omd-visual[data-omd-visual-kind='network'][data-omd-visual-rendered='true'], .markdown-body .omd-network[data-network-rendered='1'], .markdown-body .visual-network-host",
+      datasetKey: "visualNetworkBlockId",
       fallbackHashAttribute: "data-network-hash",
       fallbackPrefix: "omd-network",
-      cachedSourceAttribute: "data-ix-network-source",
+      cachedSourceAttribute: "data-visual-network-source",
       fallbackConfigAttribute: "data-network-config-b64",
       overflowReason: "too many networks",
       unavailableReason: "renderer unavailable",
@@ -353,10 +353,10 @@
     if (normalized === "mermaid") {
       return "Mermaid Diagram";
     }
-    if (normalized === "ix-chart" || normalized === "chart") {
+    if (normalized === "ix-chart") {
       return "Chart";
     }
-    if (normalized === "ix-network" || normalized === "network" || normalized === "visnetwork") {
+    if (normalized === "ix-network") {
       return "Network Diagram";
     }
     return "Visual";
@@ -472,9 +472,9 @@
 
     var anchor = pre;
     var next = pre.nextElementSibling;
-    if (kind === "ix-chart" && next && next.classList && next.classList.contains("ix-chart-host")) {
+    if (kind === "ix-chart" && next && next.classList && next.classList.contains("visual-chart-host")) {
       anchor = next;
-    } else if (kind === "ix-network" && next && next.classList && next.classList.contains("ix-network-host")) {
+    } else if (kind === "ix-network" && next && next.classList && next.classList.contains("visual-network-host")) {
       anchor = next;
     }
 
@@ -1286,15 +1286,15 @@
       }
     }
     pre._ixChartInstance = null;
-    pre.removeAttribute("data-ix-chart-rendered");
-    pre.removeAttribute("data-ix-chart-pending");
+    pre.removeAttribute("data-visual-chart-rendered");
+    pre.removeAttribute("data-visual-chart-pending");
     pre.removeAttribute("data-omd-visual-rendered");
     pre.removeAttribute("data-chart-rendered");
     pre.removeAttribute("data-chart-pending");
     pre.style.removeProperty("display");
 
     var host = pre.nextElementSibling;
-    if (host && host.classList && host.classList.contains("ix-chart-host")) {
+    if (host && host.classList && host.classList.contains("visual-chart-host")) {
       host.remove();
     }
     clearVisualMessageWideWhenEmpty(pre);
@@ -1331,18 +1331,18 @@
     }
 
     disposeChartBlock(pre);
-    pre.setAttribute("data-ix-chart-invalid", "1");
+    pre.setAttribute("data-visual-chart-invalid", "1");
     var suffix = reason ? " (" + reason + ")" : "";
     ensureVisualNotice(pre, "invalid visual block: ix-chart" + suffix);
   }
 
   async function renderIxChartBlock(pre) {
-    if (!pre || pre.getAttribute("data-ix-chart-pending") === "1") {
+    if (!pre || pre.getAttribute("data-visual-chart-pending") === "1") {
       return;
     }
 
-    var code = pre.querySelector("code.language-ix-chart, code.language-chart");
-    var source = pre.getAttribute("data-ix-chart-source");
+    var code = pre.querySelector("code.language-chart");
+    var source = pre.getAttribute("data-visual-chart-source");
     if ((!source || source.length === 0) && code) {
       source = normalizeText(code.textContent || "");
     }
@@ -1350,7 +1350,7 @@
       source = normalizeText(pre.textContent || "");
     }
     if (source) {
-      pre.setAttribute("data-ix-chart-source", source);
+      pre.setAttribute("data-visual-chart-source", source);
     }
 
     if (!source) {
@@ -1376,15 +1376,15 @@
       return;
     }
 
-    pre.setAttribute("data-ix-chart-pending", "1");
+    pre.setAttribute("data-visual-chart-pending", "1");
     try {
       disposeChartBlock(pre);
       markVisualMessageWide(pre);
 
       var host = document.createElement("div");
-      host.className = "ix-chart-host";
+      host.className = "visual-chart-host";
       var canvas = document.createElement("canvas");
-      canvas.className = "ix-chart-canvas";
+      canvas.className = "visual-chart-canvas";
       host.appendChild(canvas);
       pre.insertAdjacentElement("afterend", host);
 
@@ -1398,15 +1398,15 @@
       var instance = new window.Chart(context, chartConfig);
       pre._ixChartInstance = instance;
       pre.style.display = "none";
-      pre.removeAttribute("data-ix-chart-invalid");
-      pre.setAttribute("data-ix-chart-rendered", "1");
+      pre.removeAttribute("data-visual-chart-invalid");
+      pre.setAttribute("data-visual-chart-rendered", "1");
       clearVisualNotice(pre);
       ensureVisualActionBar(pre, "ix-chart");
       scheduleChartResize(instance);
     } catch (_) {
       markChartInvalid(pre, "render failed");
     } finally {
-      pre.removeAttribute("data-ix-chart-pending");
+      pre.removeAttribute("data-visual-chart-pending");
     }
   }
 
@@ -1417,7 +1417,7 @@
 
     var source = getOfficeImoVisualSourceByKind(canvas, "ix-chart");
     if (source) {
-      canvas.setAttribute("data-ix-chart-source", source);
+      canvas.setAttribute("data-visual-chart-source", source);
     }
 
     if (!source) {
@@ -1456,7 +1456,7 @@
       chartConfig = applyChartThemeDefaults(chartConfig, "preserve_ui_theme");
       var instance = new window.Chart(context, chartConfig);
       canvas._ixChartInstance = instance;
-      canvas.removeAttribute("data-ix-chart-invalid");
+      canvas.removeAttribute("data-visual-chart-invalid");
       canvas.setAttribute("data-omd-visual-rendered", "true");
       canvas.setAttribute("data-chart-rendered", "1");
       clearVisualNotice(canvas);
@@ -1936,15 +1936,15 @@
       }
     }
     pre._ixNetworkInstance = null;
-    pre.removeAttribute("data-ix-network-rendered");
-    pre.removeAttribute("data-ix-network-pending");
+    pre.removeAttribute("data-visual-network-rendered");
+    pre.removeAttribute("data-visual-network-pending");
     pre.removeAttribute("data-omd-visual-rendered");
     pre.removeAttribute("data-network-rendered");
     pre.removeAttribute("data-network-pending");
     pre.style.removeProperty("display");
 
     var host = pre.nextElementSibling;
-    if (host && host.classList && host.classList.contains("ix-network-host")) {
+    if (host && host.classList && host.classList.contains("visual-network-host")) {
       host.remove();
     }
     if (pre.classList && pre.classList.contains("omd-network")) {
@@ -1962,18 +1962,18 @@
     }
 
     disposeNetworkBlock(pre);
-    pre.setAttribute("data-ix-network-invalid", "1");
+    pre.setAttribute("data-visual-network-invalid", "1");
     var suffix = reason ? " (" + reason + ")" : "";
     ensureVisualNotice(pre, "invalid visual block: ix-network" + suffix);
   }
 
   async function renderIxNetworkBlock(pre) {
-    if (!pre || pre.getAttribute("data-ix-network-pending") === "1") {
+    if (!pre || pre.getAttribute("data-visual-network-pending") === "1") {
       return;
     }
 
-    var code = pre.querySelector("code.language-ix-network, code.language-visnetwork, code.language-network");
-    var source = pre.getAttribute("data-ix-network-source");
+    var code = pre.querySelector("code.language-network");
+    var source = pre.getAttribute("data-visual-network-source");
     if ((!source || source.length === 0) && code) {
       source = normalizeText(code.textContent || "");
     }
@@ -1981,7 +1981,7 @@
       source = normalizeText(pre.textContent || "");
     }
     if (source) {
-      pre.setAttribute("data-ix-network-source", source);
+      pre.setAttribute("data-visual-network-source", source);
     }
 
     if (!source) {
@@ -2007,15 +2007,15 @@
       return;
     }
 
-    pre.setAttribute("data-ix-network-pending", "1");
+    pre.setAttribute("data-visual-network-pending", "1");
     try {
       disposeNetworkBlock(pre);
       markVisualMessageWide(pre);
 
       var host = document.createElement("div");
-      host.className = "ix-network-host";
+      host.className = "visual-network-host";
       var canvas = document.createElement("div");
-      canvas.className = "ix-network-canvas";
+      canvas.className = "visual-network-canvas";
       host.appendChild(canvas);
       pre.insertAdjacentElement("afterend", host);
 
@@ -2045,14 +2045,14 @@
       pre._ixNetworkInstance = network;
       pre._ixNetworkResizeCleanup = attachNetworkAutoFitObserver(network, canvas);
       pre.style.display = "none";
-      pre.removeAttribute("data-ix-network-invalid");
-      pre.setAttribute("data-ix-network-rendered", "1");
+      pre.removeAttribute("data-visual-network-invalid");
+      pre.setAttribute("data-visual-network-rendered", "1");
       clearVisualNotice(pre);
       ensureVisualActionBar(pre, "ix-network");
     } catch (_) {
       markNetworkInvalid(pre, "render failed");
     } finally {
-      pre.removeAttribute("data-ix-network-pending");
+      pre.removeAttribute("data-visual-network-pending");
     }
   }
 
@@ -2063,7 +2063,7 @@
 
     var source = getOfficeImoVisualSourceByKind(host, "ix-network");
     if (source) {
-      host.setAttribute("data-ix-network-source", source);
+      host.setAttribute("data-visual-network-source", source);
     }
 
     if (!source) {
@@ -2123,7 +2123,7 @@
 
       host._ixNetworkInstance = network;
       host._ixNetworkResizeCleanup = attachNetworkAutoFitObserver(network, canvas);
-      host.removeAttribute("data-ix-network-invalid");
+      host.removeAttribute("data-visual-network-invalid");
       host.setAttribute("data-omd-visual-rendered", "true");
       host.setAttribute("data-network-rendered", "1");
       clearVisualNotice(host);
@@ -2136,7 +2136,7 @@
   }
 
   function collectIxNetworkBlocks(root) {
-    var codeNodes = root.querySelectorAll(".bubble .markdown-body pre > code.language-ix-network, .bubble .markdown-body pre > code.language-visnetwork, .bubble .markdown-body pre > code.language-network");
+    var codeNodes = root.querySelectorAll(".bubble .markdown-body pre > code.language-network");
     if (!codeNodes || codeNodes.length === 0) {
       return [];
     }
@@ -2149,10 +2149,10 @@
         continue;
       }
 
-      var marker = pre.dataset.ixNetworkBlockId;
+      var marker = pre.dataset.visualNetworkBlockId;
       if (!marker) {
         marker = "ix-network-" + String(i + 1) + "-" + String(Math.floor(Math.random() * 1000000));
-        pre.dataset.ixNetworkBlockId = marker;
+        pre.dataset.visualNetworkBlockId = marker;
       }
 
       if (seen[marker]) {
@@ -2267,7 +2267,7 @@
   }
 
   function collectIxChartBlocks(root) {
-    var codeNodes = root.querySelectorAll(".bubble .markdown-body pre > code.language-ix-chart, .bubble .markdown-body pre > code.language-chart");
+    var codeNodes = root.querySelectorAll(".bubble .markdown-body pre > code.language-chart");
     if (!codeNodes || codeNodes.length === 0) {
       return [];
     }
@@ -2280,10 +2280,10 @@
         continue;
       }
 
-      var marker = pre.dataset.ixChartBlockId;
+      var marker = pre.dataset.visualChartBlockId;
       if (!marker) {
         marker = "ix-chart-" + String(i + 1) + "-" + String(Math.floor(Math.random() * 1000000));
-        pre.dataset.ixChartBlockId = marker;
+        pre.dataset.visualChartBlockId = marker;
       }
 
       if (seen[marker]) {
@@ -2440,7 +2440,7 @@
     if (normalized === "chart") {
       return "ix-chart";
     }
-    if (normalized === "network" || normalized === "visnetwork") {
+    if (normalized === "network") {
       return "ix-network";
     }
     return normalized;
@@ -2822,9 +2822,9 @@
     }
 
     var host = document.createElement("div");
-    host.className = "ix-chart-host";
+    host.className = "visual-chart-host";
     var canvas = document.createElement("canvas");
-    canvas.className = "ix-chart-canvas";
+    canvas.className = "visual-chart-canvas";
     host.appendChild(canvas);
     visualViewCanvasWrap.appendChild(host);
 
@@ -2854,9 +2854,9 @@
     }
 
     var host = document.createElement("div");
-    host.className = "ix-network-host";
+    host.className = "visual-network-host";
     var canvas = document.createElement("div");
-    canvas.className = "ix-network-canvas";
+    canvas.className = "visual-network-canvas";
     host.appendChild(canvas);
     visualViewCanvasWrap.appendChild(host);
 
@@ -4412,3 +4412,4 @@
       images: images
     };
   };
+

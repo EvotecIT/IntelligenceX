@@ -142,6 +142,12 @@ internal static partial class Program {
         AssertEqual(true, ReviewProviderContracts.TryParseProviderAlias("openrouter", out var openrouter), "provider openrouter alias");
         AssertEqual(ReviewProvider.OpenAICompatible, openrouter, "provider openrouter value");
 
+        AssertEqual(true, ReviewProviderContracts.TryParseProviderAlias("claude", out var claude), "provider claude alias");
+        AssertEqual(ReviewProvider.Claude, claude, "provider claude value");
+
+        AssertEqual(true, ReviewProviderContracts.TryParseProviderAlias("anthropic", out var anthropic), "provider anthropic alias");
+        AssertEqual(ReviewProvider.Claude, anthropic, "provider anthropic value");
+
         AssertEqual(false, ReviewProviderContracts.TryParseProviderAlias(null, out _), "provider null alias unsupported");
         AssertEqual(false, ReviewProviderContracts.TryParseProviderAlias("", out _), "provider empty alias unsupported");
         AssertEqual(false, ReviewProviderContracts.TryParseProviderAlias("   ", out _), "provider whitespace alias unsupported");
@@ -169,6 +175,13 @@ internal static partial class Program {
         AssertEqual(false, compatible.RequiresOpenAiAuthStore, "openai-compatible auth");
         AssertEqual(false, compatible.SupportsStreaming, "openai-compatible streaming");
         AssertEqual(true, compatible.MaxRecommendedRetryCount > 0, "openai-compatible retry limit");
+
+        var claude = ReviewProviderContracts.Get(ReviewProvider.Claude);
+        AssertEqual(true, claude.SupportsUsageApi, "claude usage api");
+        AssertEqual(false, claude.SupportsReasoningControls, "claude reasoning");
+        AssertEqual(false, claude.RequiresOpenAiAuthStore, "claude auth");
+        AssertEqual(false, claude.SupportsStreaming, "claude streaming");
+        AssertEqual(true, claude.MaxRecommendedRetryCount > 0, "claude retry limit");
 
         AssertThrows<NotSupportedException>(() => ReviewProviderContracts.Get((ReviewProvider)999), "unknown provider contract");
     }
@@ -204,6 +217,99 @@ internal static partial class Program {
             Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", previous);
             if (File.Exists(path)) {
                 File.Delete(path);
+            }
+        }
+    }
+
+    private static void TestReviewClaudeProviderConfigAlias() {
+        var previous = Environment.GetEnvironmentVariable("REVIEW_CONFIG_PATH");
+        var path = Path.Combine(Path.GetTempPath(), $"intelligencex-review-claude-{Guid.NewGuid():N}.json");
+        try {
+            File.WriteAllText(path, "{ \"review\": { \"provider\": \"anthropic\" } }");
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", path);
+            var settings = new ReviewSettings();
+            ReviewConfigLoader.Apply(settings);
+            AssertEqual(ReviewProvider.Claude, settings.Provider, "provider anthropic config");
+        } finally {
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", previous);
+            if (File.Exists(path)) {
+                File.Delete(path);
+            }
+        }
+    }
+
+    private static void TestReviewClaudeApiProviderRunsAndRecordsTelemetry() {
+        var previousUsageDb = Environment.GetEnvironmentVariable("INTELLIGENCEX_USAGE_DB");
+        var previousAnthropicApiKey = Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY");
+        var tempDir = Path.Combine(Path.GetTempPath(), "ix-review-claude-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        var dbPath = Path.Combine(tempDir, "usage.db");
+
+        try {
+            using var server = new OpenAiCompatibleTestServer((method, path, body, headers) => {
+                AssertEqual("POST", method, "claude review method");
+                AssertEqual("/v1/messages", path, "claude review path");
+                AssertEqual(true, headers.ContainsKey("x-api-key"), "claude review api key header");
+                AssertEqual(true, headers.ContainsKey("anthropic-version"), "claude review version header");
+                AssertContainsText(body, "\"model\":\"claude-sonnet-4-5\"", "claude request model");
+                AssertContainsText(body, "\"max_tokens\":1024", "claude request max tokens");
+                return (200, "OK",
+                    "{\"id\":\"msg_review_1\",\"model\":\"claude-sonnet-4-5\",\"content\":[{\"type\":\"text\",\"text\":\"review output\"}],\"usage\":{\"input_tokens\":120,\"output_tokens\":45}}",
+                    new Dictionary<string, string> {
+                        ["anthropic-organization-id"] = "org-review"
+                    });
+            });
+
+            Environment.SetEnvironmentVariable("INTELLIGENCEX_USAGE_DB", dbPath);
+            Environment.SetEnvironmentVariable("ANTHROPIC_API_KEY", "test-anthropic-key");
+
+            var settings = new ReviewSettings {
+                Provider = ReviewProvider.Claude,
+                ProviderHealthChecks = false,
+                Preflight = false,
+                Model = "claude-sonnet-4-5",
+                AnthropicBaseUrl = server.BaseUri.ToString(),
+                AnthropicVersion = "2023-06-01",
+                AnthropicMaxTokens = 1024,
+                AnthropicTimeoutSeconds = 30,
+                RetryCount = 1,
+                RetryDelaySeconds = 1,
+                RetryMaxDelaySeconds = 1,
+                FailOpen = false
+            };
+
+            var runner = new ReviewRunner(settings);
+            var output = runner.RunAsync("Please review this patch.", onPartial: null, updateInterval: null, CancellationToken.None)
+                .GetAwaiter()
+                .GetResult();
+
+            AssertEqual("review output", output, "claude review output");
+
+            using var rootStore = new SqliteSourceRootStore(dbPath);
+            using var eventStore = new SqliteUsageEventStore(dbPath);
+            var roots = rootStore.GetAll();
+            var events = eventStore.GetAll();
+
+            AssertEqual(1, roots.Count, "claude reviewer telemetry root count");
+            AssertEqual("claude", roots[0].ProviderId, "claude reviewer telemetry provider");
+            AssertEqual(1, events.Count, "claude reviewer telemetry event count");
+            AssertEqual("claude", events[0].ProviderId, "claude reviewer telemetry event provider");
+            AssertEqual("claude.reviewer-api", events[0].AdapterId, "claude reviewer telemetry adapter");
+            AssertEqual("reviewer", events[0].Surface, "claude reviewer telemetry surface");
+            AssertEqual("org-review", events[0].ProviderAccountId, "claude reviewer telemetry account");
+            AssertEqual(120L, events[0].InputTokens, "claude reviewer telemetry input");
+            AssertEqual(45L, events[0].OutputTokens, "claude reviewer telemetry output");
+            AssertEqual(165L, events[0].TotalTokens, "claude reviewer telemetry total");
+            AssertEqual(UsageTruthLevel.Exact, events[0].TruthLevel, "claude reviewer telemetry truth");
+        } finally {
+            Environment.SetEnvironmentVariable("INTELLIGENCEX_USAGE_DB", previousUsageDb);
+            Environment.SetEnvironmentVariable("ANTHROPIC_API_KEY", previousAnthropicApiKey);
+            try {
+                if (Directory.Exists(tempDir)) {
+                    Directory.Delete(tempDir, recursive: true);
+                }
+            } catch {
+                // best effort cleanup
             }
         }
     }

@@ -182,16 +182,115 @@ jobs:
 
     private static void TestReviewReusableWorkflowDispatchIncludesOpenAiModelInput() {
         var workflowPath = ResolveRepoFilePath(".github", "workflows", "review-intelligencex-reusable.yml");
-        var content = File.ReadAllText(workflowPath);
+        var content = NormalizeWorkflowText(File.ReadAllText(workflowPath));
+        var wrapperWorkflowPath = ResolveRepoFilePath(".github", "workflows", "review-intelligencex.yml");
+        var wrapperContent = NormalizeWorkflowText(File.ReadAllText(wrapperWorkflowPath));
 
-        AssertContainsText(content, "workflow_dispatch:", "reusable workflow defines workflow_dispatch");
+        AssertContainsText(wrapperContent, "workflow_dispatch:", "wrapper workflow defines workflow_dispatch");
+        AssertContainsText(wrapperContent, "reviewer_source: source",
+            "wrapper workflow keeps PR reviews on repo source to avoid release drift");
+        AssertEqual(false, content.Contains("workflow_dispatch:", StringComparison.Ordinal),
+            "reusable workflow should keep manual dispatch on the wrapper workflow");
+        var jobEnvIndex = content.IndexOf("    env:\n", StringComparison.Ordinal);
+        var permissionsIndex = content.IndexOf("    permissions:\n", StringComparison.Ordinal);
+        AssertEqual(true, jobEnvIndex > 0, "reusable workflow contains job env section");
+        AssertEqual(true, permissionsIndex > jobEnvIndex, "reusable workflow contains permissions after job env");
+        var jobEnvContent = content[jobEnvIndex..permissionsIndex];
+        var sourceStep = ExtractWorkflowStepBlock(content, "Run IntelligenceX.Reviewer (source)");
+        var releaseUnixStep = ExtractWorkflowStepBlock(content, "Run IntelligenceX.Reviewer (release, unix)");
+        var releaseWindowsStep = ExtractWorkflowStepBlock(content, "Run IntelligenceX.Reviewer (release, windows)");
         AssertContainsText(content, "workflow_call:", "reusable workflow defines workflow_call");
-        AssertEqual(2, CountOccurrences(content, "openai_model:"),
-            "reusable workflow defines openai_model for dispatch and workflow_call");
+        AssertEqual(1, CountOccurrences(content, "openai_model:"),
+            "reusable workflow defines openai_model once for workflow_call");
+        AssertContainsText(content, "dotnet-version: '8.0.x'",
+            "reusable workflow provisions the .NET 8 SDK for source reviewer runs");
+        AssertContainsText(content, "dotnet build IntelligenceX.Reviewer/IntelligenceX.Reviewer.csproj -c Release -f net8.0",
+            "reusable workflow pins the source reviewer build to net8.0 on the provisioned SDK");
+        AssertContainsText(content, "log_path=\"artifacts/reviewer-run-source.log\"",
+            "reusable workflow captures source reviewer build output in the shared source log");
+        AssertEqual(1, CountOccurrences(content, "REVIEW_FAIL_OPEN: true"),
+            "reusable workflow exports fail-open default once at the job level");
+        AssertEqual(1, CountOccurrences(content, "REVIEW_FAIL_OPEN_TRANSIENT_ONLY: false"),
+            "reusable workflow exports non-transient fail-open default once at the job level");
+        AssertEqual(false, jobEnvContent.Contains("INTELLIGENCEX_AUTH_B64:", StringComparison.Ordinal),
+            "reusable workflow does not expose auth bundle at job scope");
+        AssertEqual(false, jobEnvContent.Contains("ANTHROPIC_API_KEY:", StringComparison.Ordinal),
+            "reusable workflow does not expose provider api key at job scope");
+        AssertContainsText(sourceStep, "INTELLIGENCEX_AUTH_B64: ${{ secrets.INTELLIGENCEX_AUTH_B64 }}",
+            "source reviewer step receives auth bundle");
+        AssertContainsText(sourceStep, "ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}",
+            "source reviewer step receives provider api key");
+        AssertContainsText(releaseUnixStep, "INTELLIGENCEX_AUTH_B64: ${{ secrets.INTELLIGENCEX_AUTH_B64 }}",
+            "release unix reviewer step receives auth bundle");
+        AssertContainsText(releaseUnixStep, "ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}",
+            "release unix reviewer step receives provider api key");
+        AssertContainsText(releaseWindowsStep, "INTELLIGENCEX_AUTH_B64: ${{ secrets.INTELLIGENCEX_AUTH_B64 }}",
+            "release windows reviewer step receives auth bundle");
+        AssertContainsText(releaseWindowsStep, "ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}",
+            "release windows reviewer step receives provider api key");
+        AssertEqual(1, CountOccurrences(content, "INPUT_PROVIDER: ${{ inputs.provider }}"),
+            "reusable workflow defines shared reviewer env once instead of repeating it per step");
+        AssertContainsText(content, "inputs.reviewer_source == 'source' && steps.reviewer_build.outcome == 'success'",
+            "reusable workflow gates source reviewer execution on a successful source build");
+        AssertContainsText(content, "git diff --name-only HEAD^1 HEAD^2 > artifacts/changed-files.txt",
+            "reusable workflow falls back to merge-parent changed-files diff");
+        AssertContainsText(content, "-p:EnableWindowsTargeting=true -- analyze run",
+            "reusable workflow enables windows targeting for analysis pre-run");
+        AssertContainsText(content, "-p:EnableWindowsTargeting=true -- analyze gate",
+            "reusable workflow enables windows targeting for analysis gate");
+        AssertEqual(false, content.Contains("""
+      - name: Prepare static analysis context
+        if: ${{ inputs.reviewer_source == 'source' }}
+""", StringComparison.Ordinal),
+            "reusable workflow keeps static analysis context independent from reviewer_source");
+        AssertEqual(false, content.Contains("""
+      - name: Run IntelligenceX analysis (pre-review, best-effort)
+        if: ${{ inputs.reviewer_source == 'source' }}
+""", StringComparison.Ordinal),
+            "reusable workflow keeps static analysis pre-run independent from reviewer_source");
+        AssertEqual(false, content.Contains("""
+      - name: Evaluate IntelligenceX analysis gate (pre-review, enforcing)
+        if: ${{ inputs.reviewer_source == 'source' }}
+""", StringComparison.Ordinal),
+            "reusable workflow keeps analysis gate independent from reviewer_source");
+        AssertContainsText(content, "Finalize fail-open reviewer summary",
+            "reusable workflow finalizes fail-open reviewer runs with a summary update");
+        AssertContainsText(content, "continue-on-error: true",
+            "reusable workflow keeps fail-open finalization best-effort");
+        AssertContainsText(content, "steps.reviewer_build.outcome == 'failure'",
+            "reusable workflow finalizes fail-open summaries when the source reviewer build fails");
+        AssertContainsText(content, "INTELLIGENCEX_GITHUB_TOKEN: ${{ steps.app_token.outputs.token || secrets.GITHUB_TOKEN }}",
+            "reusable workflow passes the app token to fail-open summary finalization");
+        AssertEqual(false, content.Contains("github.event_name == 'pull_request'", StringComparison.Ordinal),
+            "reusable workflow allows fail-open finalization for workflow_dispatch PR reviews too");
+        AssertContainsText(content, "ci review-fail-open-summary",
+            "reusable workflow delegates fail-open summary handling to the CLI helper");
+        AssertContainsText(content, "--source-log artifacts/reviewer-run-source.log",
+            "reusable workflow passes source reviewer log path to CLI helper");
+        AssertContainsText(content, "--release-unix-log artifacts/reviewer-run-release-unix.log",
+            "reusable workflow passes release unix log path to CLI helper");
+        AssertContainsText(content, "--release-windows-log artifacts/reviewer-run-release-windows.log",
+            "reusable workflow passes release windows log path to CLI helper");
         AssertEqual(false, content.Contains("&review_inputs", StringComparison.Ordinal),
             "reusable workflow should avoid YAML anchors in workflow schema");
         AssertEqual(false, content.Contains("*review_inputs", StringComparison.Ordinal),
             "reusable workflow should avoid YAML aliases in workflow schema");
+    }
+
+    private static string NormalizeWorkflowText(string content) {
+        return content.Replace("\r\n", "\n");
+    }
+
+    private static string ExtractWorkflowStepBlock(string content, string stepName) {
+        var normalized = NormalizeWorkflowText(content);
+        var startMarker = $"      - name: {stepName}\n";
+        var start = normalized.IndexOf(startMarker, StringComparison.Ordinal);
+        AssertEqual(true, start >= 0, $"workflow contains step '{stepName}'");
+        var next = normalized.IndexOf("\n      - name: ", start + startMarker.Length, StringComparison.Ordinal);
+        if (next < 0) {
+            next = normalized.Length;
+        }
+        return normalized[start..next];
     }
 
     private static void TestSetupWorkflowTemplateExplicitSecretsIncludesDiagnosticsAndPreflightPassThrough() {

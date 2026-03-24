@@ -6,11 +6,11 @@
           return;
         }
 
-        if (pre.querySelector("code.language-ix-chart, code.language-chart")) {
+        if (pre.querySelector("code.language-chart")) {
           return;
         }
 
-        if (pre.querySelector("code.language-ix-network, code.language-visnetwork, code.language-network")) {
+        if (pre.querySelector("code.language-network")) {
           return;
         }
 

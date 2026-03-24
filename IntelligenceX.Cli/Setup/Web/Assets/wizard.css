@@ -434,6 +434,39 @@ input::placeholder {
   color: var(--pf-muted);
 }
 
+.model-quick-picks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.model-quick-picks[hidden] {
+  display: none;
+}
+
+.model-quick-pick {
+  background: transparent;
+  color: var(--pf-ink);
+  border: 1px solid var(--pf-btn-ghost-border);
+  padding: 8px 12px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  box-shadow: none;
+}
+
+.model-quick-pick:hover:not(:disabled) {
+  border-color: var(--pf-accent);
+  color: var(--pf-ink-strong);
+}
+
+.model-quick-pick.active {
+  background: var(--pf-glow-primary);
+  border-color: var(--pf-accent);
+  color: var(--pf-ink-strong);
+}
+
 textarea {
   width: 100%;
   padding: 9px 12px;
@@ -1020,6 +1053,17 @@ button.primary-action:hover:not(:disabled) {
 .review-value {
   font-size: 0.9rem;
   color: var(--pf-ink);
+}
+
+.review-note {
+  margin: 2px 0 10px;
+  padding: 10px 12px;
+  border-radius: var(--pf-radius-sm);
+  background: var(--pf-bg-alt);
+  border: 1px solid var(--pf-border);
+  color: var(--pf-muted);
+  font-size: 0.82rem;
+  line-height: 1.5;
 }
 
 .review-repos {

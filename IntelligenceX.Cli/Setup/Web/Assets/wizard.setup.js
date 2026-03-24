@@ -271,6 +271,7 @@ function buildReviewTable() {
   const reviewTweaksApply = selectedOperation === 'setup' && withConfigEffective && !hasConfigOverride;
   const reviewIntentValue = reviewIntentInput ? reviewIntentInput.value.trim() : '';
   const reviewStrictnessValue = reviewStrictnessInput ? reviewStrictnessInput.value.trim() : '';
+  const reviewModelValue = reviewModel ? reviewModel.value.trim() : '';
   const reviewLoopPolicyValue = reviewLoopPolicy ? reviewLoopPolicy.value : '';
   const reviewLoopPolicyKey = normalizeLoopPolicy(reviewLoopPolicyValue);
   const reviewVisionPathValue = reviewVisionPathInput ? reviewVisionPathInput.value.trim() : '';
@@ -284,7 +285,15 @@ function buildReviewTable() {
   const includeMergeBlockerBooleans = shouldIncludeMergeBlockerBooleansInPayload();
   const visionPolicySelected = isVisionLoopPolicy(reviewLoopPolicyKey);
   const includeReviewVisionPath = visionPolicySelected && reviewVisionPathValue.length > 0;
-  const providerLabel = selectedProvider === 'openai' ? 'ChatGPT / OpenAI' : 'GitHub Copilot';
+  const providerLabel = selectedProvider === 'openai'
+    ? 'ChatGPT / OpenAI'
+    : selectedProvider === 'claude'
+      ? 'Claude / Anthropic'
+      : 'GitHub Copilot';
+  const providerSetupSummary = getProviderSetupSummary(selectedProvider);
+  const modelProfile = selectedProvider === 'copilot'
+    ? null
+    : getProviderModelProfile(selectedProvider, reviewModelValue || getProviderDefaultModel(selectedProvider));
   const profileLabels = {
     balanced: 'Balanced',
     picky: 'Strict',
@@ -298,6 +307,10 @@ function buildReviewTable() {
   const safeProfile = escapeHtml(profileLabels[selectedPresetProfile] || selectedPresetProfile);
   const safeReviewMode = escapeHtml(reviewMode && reviewMode.value ? reviewMode.value : 'default');
   const safeReviewCommentMode = escapeHtml(reviewCommentMode && reviewCommentMode.value ? reviewCommentMode.value : 'default');
+  const safeReviewModel = escapeHtml(reviewModelValue || '(default)');
+  const safeModelProfile = escapeHtml(modelProfile ? modelProfile.profileLabel || '(matched)' : 'Custom');
+  const safeProviderSetupSummary = escapeHtml(providerSetupSummary || '');
+  const safeModelSummary = escapeHtml(modelProfile ? modelProfile.description || '' : '');
   const safeAnalysisState = escapeHtml(analysisState);
   const safeAnalysisExportPath = escapeHtml(analysisExportPathValue);
   const safeAnalysisRunStrict = analysisRunStrictValue ? 'enabled' : 'disabled';
@@ -356,6 +369,18 @@ function buildReviewTable() {
         <span class="review-label">AI Provider</span>
         <span class="review-value">${safeProviderLabel}</span>
       </div>
+      ${providerSetupSummary ? `
+      <div class="review-note">${safeProviderSetupSummary}</div>` : ''}
+      ${selectedProvider !== 'copilot' ? `
+      <div class="review-item">
+        <span class="review-label">Model</span>
+        <span class="review-value">${safeReviewModel}</span>
+      </div>
+      <div class="review-item">
+        <span class="review-label">Model profile</span>
+        <span class="review-value">${safeModelProfile}</span>
+      </div>
+      ${modelProfile ? `<div class="review-note">${safeModelSummary}${modelProfile.id === getProviderDefaultModel(selectedProvider) ? ' Recommended default.' : ''}</div>` : ''}` : ''}
       <div class="review-item">
         <span class="review-label">Review Profile</span>
         <span class="review-value">${safeProfile}</span>
@@ -438,11 +463,13 @@ function buildReviewTable() {
   if (!shouldSkipSecrets()) {
     const secretLabels = {
       login: 'ChatGPT browser login',
+      claude: 'Claude API key',
       paste: 'Auth bundle (pasted)',
       file: 'Auth bundle (file path)',
       skip: 'Skipped (set up later)'
     };
-    const safeSecretMethod = escapeHtml(secretLabels[secretOption] || secretOption);
+    const effectiveSecretOption = selectedProvider === 'claude' ? 'claude' : secretOption;
+    const safeSecretMethod = escapeHtml(secretLabels[effectiveSecretOption] || effectiveSecretOption);
     html += `
       <div class="review-section">
         <div class="review-section-title">AI Authentication</div>
@@ -517,6 +544,7 @@ function buildRequestBody(dryRun) {
   const exportPathRaw = analysisExportPath ? analysisExportPath.value.trim() : '';
   const reviewIntentValue = reviewIntentInput ? reviewIntentInput.value.trim() : '';
   const reviewStrictnessValue = reviewStrictnessInput ? reviewStrictnessInput.value.trim() : '';
+  const reviewModelValue = reviewModel ? reviewModel.value.trim() : '';
   const reviewLoopPolicyValue = reviewLoopPolicy ? reviewLoopPolicy.value.trim() : '';
   const reviewLoopPolicyKey = normalizeLoopPolicy(reviewLoopPolicyValue);
   const reviewVisionPathValue = reviewVisionPathInput ? reviewVisionPathInput.value.trim() : '';
@@ -542,7 +570,10 @@ function buildRequestBody(dryRun) {
     configPath: configPath.value.trim(),
     authB64: authB64 ? authB64.value.trim() : '',
     authB64Path: authB64Path ? authB64Path.value.trim() : '',
+    anthropicApiKey: anthropicApiKey ? anthropicApiKey.value.trim() : '',
+    anthropicApiKeyPath: anthropicApiKeyPath ? anthropicApiKeyPath.value.trim() : '',
     provider: selectedProvider,
+    openAIModel: selectedProvider === 'copilot' ? '' : reviewModelValue,
     reviewProfile: selectedPresetProfile,
     reviewMode: reviewMode.value,
     reviewCommentMode: reviewCommentMode.value,

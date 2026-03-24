@@ -42,10 +42,24 @@ internal static class WizardSummary {
             table.AddRow("Workflow status", workflowStatus);
         }
         if (!string.IsNullOrWhiteSpace(plan.Provider)) {
-            table.AddRow("Provider", plan.Provider);
-            if ((string.Equals(plan.Provider, "openai", StringComparison.OrdinalIgnoreCase) ||
-                 string.Equals(plan.Provider, "chatgpt", StringComparison.OrdinalIgnoreCase) ||
-                 string.Equals(plan.Provider, "codex", StringComparison.OrdinalIgnoreCase)) &&
+            table.AddRow("Provider", SetupProviderCatalog.GetProviderDisplayName(plan.Provider));
+            var providerSummary = SetupProviderCatalog.GetProviderSetupSummary(plan.Provider);
+            if (!string.IsNullOrWhiteSpace(providerSummary)) {
+                table.AddRow("Provider fit", providerSummary!);
+            }
+            if (!string.Equals(plan.Provider, SetupProviderCatalog.CopilotProvider, System.StringComparison.OrdinalIgnoreCase)) {
+                var selectedModel = string.IsNullOrWhiteSpace(plan.OpenAIModel)
+                    ? SetupProviderCatalog.GetDefaultModel(plan.Provider)
+                    : plan.OpenAIModel!;
+                table.AddRow("Model", selectedModel);
+                var modelProfile = SetupProviderCatalog.TryGetRecommendedModelProfile(plan.Provider, selectedModel);
+                if (modelProfile.HasValue && !string.IsNullOrWhiteSpace(modelProfile.Value.Summary)) {
+                    table.AddRow("Model profile", modelProfile.Value.ProfileLabel);
+                    var suffix = modelProfile.Value.IsRecommendedDefault ? " Recommended default." : string.Empty;
+                    table.AddRow("Model fit", $"{modelProfile.Value.Summary}{suffix}");
+                }
+            }
+            if (SetupProviderCatalog.SupportsOpenAiAccountRouting(plan.Provider) &&
                 plan.WithConfig &&
                 string.IsNullOrWhiteSpace(plan.ConfigJson) &&
                 string.IsNullOrWhiteSpace(plan.ConfigPath)) {

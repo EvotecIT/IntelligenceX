@@ -1,8 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using IntelligenceX.OpenAI;
-
 namespace IntelligenceX.Cli.Setup;
 
 internal static partial class SetupRunner {
@@ -16,8 +14,8 @@ internal static partial class SetupRunner {
         public string ReviewerReleaseTag { get; set; } = "latest";
         public string? ReviewerReleaseAsset { get; set; }
         public string? ReviewerReleaseUrl { get; set; }
-        public string Provider { get; set; } = "openai";
-        public string Model { get; set; } = OpenAIModelCatalog.DefaultModel;
+        public string Provider { get; set; } = IntelligenceXDefaults.DefaultProvider;
+        public string Model { get; set; } = SetupProviderCatalog.GetDefaultModel(IntelligenceXDefaults.DefaultProvider);
         public string OpenAITransport { get; set; } = "native";
         public bool IncludeIssueComments { get; set; } = true;
         public bool IncludeReviewComments { get; set; } = true;
@@ -46,8 +44,8 @@ internal static partial class SetupRunner {
                 ReviewerReleaseTag = options.ReviewerReleaseTag ?? "latest",
                 ReviewerReleaseAsset = options.ReviewerReleaseAsset,
                 ReviewerReleaseUrl = options.ReviewerReleaseUrl,
-                Provider = options.Provider ?? "openai",
-                Model = options.OpenAIModel ?? OpenAIModelCatalog.DefaultModel,
+                Provider = options.Provider ?? IntelligenceXDefaults.DefaultProvider,
+                Model = options.OpenAIModel ?? SetupProviderCatalog.GetDefaultModel(options.Provider),
                 OpenAITransport = options.OpenAITransport ?? "native",
                 IncludeIssueComments = options.IncludeIssueComments,
                 IncludeReviewComments = options.IncludeReviewComments,
@@ -69,9 +67,9 @@ internal static partial class SetupRunner {
     }
 
     private sealed class ConfigSettings {
-        public string Provider { get; set; } = "openai";
+        public string Provider { get; set; } = IntelligenceXDefaults.DefaultProvider;
         public string OpenAITransport { get; set; } = "native";
-        public string OpenAIModel { get; set; } = OpenAIModelCatalog.DefaultModel;
+        public string OpenAIModel { get; set; } = SetupProviderCatalog.GetDefaultModel(IntelligenceXDefaults.DefaultProvider);
         public string? OpenAIAccountId { get; set; }
         public bool OpenAIAccountIdsSet { get; set; }
         public string[] OpenAIAccountIds { get; set; } = Array.Empty<string>();
@@ -127,9 +125,9 @@ internal static partial class SetupRunner {
 
         public static ConfigSettings FromOptions(SetupOptions options) {
             var settings = new ConfigSettings {
-                Provider = options.Provider ?? "openai",
+                Provider = options.Provider ?? IntelligenceXDefaults.DefaultProvider,
                 OpenAITransport = options.OpenAITransport ?? "native",
-                OpenAIModel = options.OpenAIModel ?? OpenAIModelCatalog.DefaultModel,
+                OpenAIModel = options.OpenAIModel ?? SetupProviderCatalog.GetDefaultModel(options.Provider),
                 OpenAIAccountId = string.IsNullOrWhiteSpace(options.OpenAIAccountId) ? null : options.OpenAIAccountId!.Trim(),
                 OpenAIAccountIdsSet = options.OpenAIAccountIdsSet,
                 OpenAIAccountIds = SplitCsv(options.OpenAIAccountIds),

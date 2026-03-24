@@ -19,6 +19,7 @@ internal static class CiRunner {
         var rest = args.Skip(1).ToArray();
         return command switch {
             "changed-files" => CiChangedFilesCommand.RunAsync(rest),
+            "review-fail-open-summary" => CiReviewFailOpenSummaryCommand.RunAsync(rest),
             "tune-reviewer-budgets" => CiTuneReviewerBudgetsCommand.RunAsync(rest),
             _ => Task.FromResult(PrintHelpReturn())
         };
@@ -38,6 +39,8 @@ internal static class CiRunner {
     private static void PrintHelp() {
         Console.WriteLine("CI commands:");
         Console.WriteLine("  intelligencex ci changed-files --out <path> [--workspace <path>] [--base <rev>] [--head <rev>] [--strict]");
+        Console.WriteLine("  intelligencex ci review-fail-open-summary --reviewer-source <source|release> [--repo <owner/name>] [--pr-number <n>]");
+        Console.WriteLine("                              [--source-log <path>] [--release-unix-log <path>] [--release-windows-log <path>]");
         Console.WriteLine("  intelligencex ci tune-reviewer-budgets --changed-files <path> [--changed-threshold <n>] [--catalog-threshold <n>]");
         Console.WriteLine("                              [--max-files <n>] [--max-patch-chars <n>] [--out-env <path>]");
     }

@@ -74,7 +74,7 @@
     }
 
     var className = String(code.className || "").toLowerCase();
-    return className.indexOf("language-ix-dataview") >= 0 || className.indexOf("ix-dataview") >= 0;
+    return className.indexOf("language-dataview") >= 0 || className.indexOf("dataview") >= 0;
   }
 
   window.ixExtractToolDataViewPayloads = function(root) {

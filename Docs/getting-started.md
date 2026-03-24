@@ -19,7 +19,10 @@ The fastest path is the reviewer onboarding flow, but the platform also includes
 
 - .NET 8.0 or later
 - GitHub account with repository access
-- ChatGPT account or GitHub Copilot access
+- One of:
+  - ChatGPT / OpenAI access
+  - Claude / Anthropic API key
+  - GitHub Copilot access
 
 ## Option 1 - Reviewer CLI Wizard (Recommended)
 
@@ -36,7 +39,7 @@ The wizard guides you through:
 2. Choosing your path (new setup, fix expired auth, cleanup, maintenance)
 3. Connecting to GitHub (OAuth, PAT, or your own GitHub App)
 4. Selecting repositories for review
-5. Choosing a review preset (balanced, picky, security, minimal, etc.)
+5. Choosing a provider/model pair from recommended quick picks or a custom model id, then a review preset (balanced, picky, security, minimal, etc.)
 6. Creating a PR with the GitHub Actions workflow
 
 See [Web Onboarding Flow](/docs/reviewer/web-onboarding/) for the canonical path/auth requirements matrix and Bot contract-check flow.
@@ -56,14 +59,16 @@ This starts a local web server (localhost only) with a step-by-step UI. See [Web
 For full control:
 
 ```bash
-# 1. Authenticate with ChatGPT
+# 1a. OpenAI path: authenticate with ChatGPT
 intelligencex auth login
 
-# 2. Export the auth bundle
+# 2a. Export the auth bundle
 intelligencex auth export --format store-base64
 
-# 3. Add to GitHub as a secret named INTELLIGENCEX_AUTH_B64
-# 4. Create the workflow file
+# 3a. Add to GitHub as a secret named INTELLIGENCEX_AUTH_B64
+
+# 1b. Claude path: provide ANTHROPIC_API_KEY in GitHub
+# 2b. Create the workflow file
 ```
 
 See [CLI Quick Start](/docs/cli/quickstart/) for the complete manual flow.
@@ -86,8 +91,8 @@ Create `.intelligencex/reviewer.json` in your repo:
 ```json
 {
   "review": {
-    "provider": "openai",
-    "model": "gpt-5.3-codex",
+    "provider": "claude",
+    "model": "claude-opus-4-1",
     "mode": "hybrid",
     "length": "long",
     "outputStyle": "compact"
