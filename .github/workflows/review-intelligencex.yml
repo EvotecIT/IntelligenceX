@@ -69,9 +69,9 @@ jobs:
     uses: ./.github/workflows/review-intelligencex-reusable.yml
     with:
       runs_on: ${{ github.event.repository.private && vars.IX_FORCE_GITHUB_HOSTED != 'true' && '["self-hosted","ubuntu"]' || '["ubuntu-latest"]' }}
-      reviewer_source: source
-      
-      
+      # Use the published reviewer in PR lanes so repo-local build drift does not block merges.
+      reviewer_source: release
+
       repo: ${{ github.event.pull_request.number && github.repository || inputs.repo }}
       pr_number: ${{ github.event.pull_request.number || inputs.pr_number }}
       provider: ${{ inputs.provider || vars.IX_REVIEW_PROVIDER || 'openai' }}

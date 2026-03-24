@@ -1,134 +1,6 @@
 name: IntelligenceX Review
 
 on:
-  workflow_dispatch:
-    inputs:
-      runs_on:
-        description: 'JSON array of runner labels'
-        required: false
-        default: '["ubuntu-latest"]'
-        type: string
-      repo:
-        description: 'Repository (owner/name) for workflow_dispatch or external calls'
-        required: false
-        default: ''
-        type: string
-      pr_number:
-        description: 'Pull request number for workflow_dispatch or external calls'
-        required: false
-        default: ''
-        type: string
-      reviewer_source:
-        description: 'Reviewer source: source or release'
-        required: false
-        default: 'source'
-        type: string
-      provider:
-        description: 'Review provider: openai, claude, or copilot'
-        required: false
-        default: 'openai'
-        type: string
-      model:
-        description: 'Model id (provider-specific)'
-        required: false
-        default: 'gpt-5.4'
-        type: string
-      openai_model:
-        description: 'OpenAI model id (overrides model when provider=openai)'
-        required: false
-        default: ''
-        type: string
-      copilot_model:
-        description: 'Copilot model id (overrides model when provider=copilot)'
-        required: false
-        default: ''
-        type: string
-      openai_transport:
-        description: 'OpenAI transport: native or appserver'
-        required: false
-        default: 'native'
-        type: string
-      review_config_path:
-        description: 'Path to reviewer.json (overrides default .intelligencex/reviewer.json)'
-        required: false
-        default: '.intelligencex/reviewer.json'
-        type: string
-      mode:
-        description: 'Review mode (summary, hybrid, inline, etc.)'
-        required: false
-        default: 'hybrid'
-        type: string
-      length:
-        description: 'Review length: short, medium, long'
-        required: false
-        default: 'medium'
-        type: string
-      style:
-        description: 'Review style preset: direct, friendly, funny, colorful, formal'
-        required: false
-        default: 'direct'
-        type: string
-      max_files:
-        description: 'Max files to review'
-        required: false
-        default: 30
-        type: number
-      max_patch_chars:
-        description: 'Max patch chars per file'
-        required: false
-        default: 20000
-        type: number
-      include_issue_comments:
-        description: 'Include PR issue comments in prompt'
-        required: false
-        default: true
-        type: boolean
-      include_review_comments:
-        description: 'Include PR review comments in prompt'
-        required: false
-        default: true
-        type: boolean
-      include_related_prs:
-        description: 'Include related PRs in prompt'
-        required: false
-        default: true
-        type: boolean
-      progress_updates:
-        description: 'Enable progress updates'
-        required: false
-        default: true
-        type: boolean
-      diagnostics:
-        description: 'Enable reviewer diagnostics'
-        required: false
-        default: false
-        type: boolean
-      preflight:
-        description: 'Run health check before review'
-        required: false
-        default: false
-        type: boolean
-      preflight_timeout_seconds:
-        description: 'Preflight timeout in seconds'
-        required: false
-        default: 15
-        type: number
-      cleanup_enabled:
-        description: 'Enable cleanup for PR/issue metadata'
-        required: false
-        default: false
-        type: boolean
-      cleanup_mode:
-        description: 'Cleanup mode: comment, edit, hybrid'
-        required: false
-        default: 'comment'
-        type: string
-      cleanup_scope:
-        description: 'Cleanup scope: pr, issue, both'
-        required: false
-        default: 'pr'
-        type: string
-
   workflow_call:
     inputs:
       runs_on:
@@ -574,7 +446,8 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
-          fetch-depth: 1
+          # The analysis gate compares PR base/head SHAs and needs more than the merge commit.
+          fetch-depth: 0
 
       - name: Setup .NET
         uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
@@ -592,6 +465,7 @@ jobs:
       - name: Resolve reviewer release
         if: ${{ inputs.reviewer_source == 'release' && inputs.reviewer_release_url == '' }}
         id: reviewer_release
+        continue-on-error: true
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         with:
           script: |
@@ -622,6 +496,8 @@ jobs:
 
       - name: Download reviewer (unix)
         if: ${{ inputs.reviewer_source == 'release' && runner.os != 'Windows' }}
+        id: reviewer_download_unix
+        continue-on-error: true
         env:
           REVIEWER_ASSET_URL: ${{ inputs.reviewer_release_url != '' && inputs.reviewer_release_url || steps.reviewer_release.outputs.asset_url }}
         shell: bash
@@ -632,6 +508,8 @@ jobs:
 
       - name: Download reviewer (windows)
         if: ${{ inputs.reviewer_source == 'release' && runner.os == 'Windows' }}
+        id: reviewer_download_windows
+        continue-on-error: true
         env:
           REVIEWER_ASSET_URL: ${{ inputs.reviewer_release_url != '' && inputs.reviewer_release_url || steps.reviewer_release.outputs.asset_url }}
         shell: pwsh
@@ -642,11 +520,13 @@ jobs:
 
       - name: Build IntelligenceX.Reviewer
         if: ${{ inputs.reviewer_source == 'source' }}
+        id: reviewer_build
+        continue-on-error: true
         shell: bash
         run: dotnet build IntelligenceX.Reviewer/IntelligenceX.Reviewer.csproj -c Release
 
+      # Static analysis is repo-local and should enforce regardless of how the reviewer binary is sourced.
       - name: Prepare static analysis context
-        if: ${{ inputs.reviewer_source == 'source' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -673,7 +553,6 @@ jobs:
           fi
 
       - name: Run IntelligenceX analysis (pre-review, best-effort)
-        if: ${{ inputs.reviewer_source == 'source' }}
         continue-on-error: true
         shell: bash
         run: |
@@ -685,7 +564,6 @@ jobs:
           dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -c Release -f net8.0 -p:EnableWindowsTargeting=true -- analyze run --workspace . --config "$IX_REVIEW_CONFIG_PATH"
 
       - name: Evaluate IntelligenceX analysis gate (pre-review, enforcing)
-        if: ${{ inputs.reviewer_source == 'source' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -700,7 +578,9 @@ jobs:
           fi
 
       - name: Run IntelligenceX.Reviewer (source)
-        if: ${{ inputs.reviewer_source == 'source' }}
+        if: ${{ inputs.reviewer_source == 'source' && steps.reviewer_build.outcome == 'success' }}
+        id: reviewer_run_source
+        continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           INTELLIGENCEX_GITHUB_TOKEN: ${{ steps.app_token.outputs.token }}
@@ -799,7 +679,9 @@ jobs:
           dotnet run --project IntelligenceX.Reviewer/IntelligenceX.Reviewer.csproj -c Release -f net8.0
 
       - name: Run IntelligenceX.Reviewer (release, unix)
-        if: ${{ inputs.reviewer_source == 'release' && runner.os != 'Windows' }}
+        if: ${{ inputs.reviewer_source == 'release' && runner.os != 'Windows' && steps.reviewer_download_unix.outcome == 'success' }}
+        id: reviewer_run_release_unix
+        continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           INTELLIGENCEX_GITHUB_TOKEN: ${{ steps.app_token.outputs.token }}
@@ -904,7 +786,9 @@ jobs:
           dotnet "$reviewer_dll"
 
       - name: Run IntelligenceX.Reviewer (release, windows)
-        if: ${{ inputs.reviewer_source == 'release' && runner.os == 'Windows' }}
+        if: ${{ inputs.reviewer_source == 'release' && runner.os == 'Windows' && steps.reviewer_download_windows.outcome == 'success' }}
+        id: reviewer_run_release_windows
+        continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           INTELLIGENCEX_GITHUB_TOKEN: ${{ steps.app_token.outputs.token }}
