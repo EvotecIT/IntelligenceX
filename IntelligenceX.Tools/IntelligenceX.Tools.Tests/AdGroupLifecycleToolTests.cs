@@ -66,4 +66,21 @@ public sealed class AdGroupLifecycleToolTests {
         Assert.Contains("distinguishedName", updatedAttributes, StringComparer.OrdinalIgnoreCase);
         Assert.False(root.GetProperty("meta").GetProperty("write_applied").GetBoolean());
     }
+
+    [Fact]
+    public async Task InvokeAsync_MoveDryRun_ShouldUseDnAwareLeafParsingForEscapedCommaIdentity() {
+        var tool = new AdGroupLifecycleTool(new ActiveDirectoryToolOptions());
+        var arguments = new JsonObject()
+            .Add("operation", "move")
+            .Add("identity", "CN=GG\\,SQL-Admins,OU=Legacy,DC=lab,DC=local")
+            .Add("target_organizational_unit", "OU=Privileged,DC=lab,DC=local")
+            .Add("apply", false);
+
+        var json = await tool.InvokeAsync(arguments, CancellationToken.None);
+
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+        Assert.True(root.GetProperty("ok").GetBoolean());
+        Assert.Equal("CN=GG\\,SQL-Admins,OU=Privileged,DC=lab,DC=local", root.GetProperty("distinguished_name").GetString());
+    }
 }

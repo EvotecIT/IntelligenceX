@@ -1070,7 +1070,7 @@ public sealed class AdUserLifecycleTool : ActiveDirectoryToolBase, ITool {
 
     private static string BuildPredictedDistinguishedName(string? commonName, string samAccountName, string organizationalUnit) {
         var cn = string.IsNullOrWhiteSpace(commonName) ? samAccountName : commonName.Trim();
-        return $"CN={cn},{organizationalUnit}";
+        return DistinguishedNameHelper.BuildChildDistinguishedName("CN", cn, organizationalUnit);
     }
 
     private static string? TryResolveMoveLeafName(string? identity, string? commonName) {
@@ -1083,11 +1083,9 @@ public sealed class AdUserLifecycleTool : ActiveDirectoryToolBase, ITool {
             return null;
         }
 
-        if (normalizedIdentity.StartsWith("CN=", StringComparison.OrdinalIgnoreCase)) {
-            var separatorIndex = normalizedIdentity.IndexOf(',');
-            return separatorIndex > 3
-                ? normalizedIdentity.Substring(3, separatorIndex - 3).Trim()
-                : normalizedIdentity.Substring(3).Trim();
+        if (DistinguishedNameHelper.LooksLikeDistinguishedName(normalizedIdentity)) {
+            var lastRdnValue = DistinguishedNameHelper.GetLastRdnValue(normalizedIdentity);
+            return string.IsNullOrWhiteSpace(lastRdnValue) ? null : lastRdnValue;
         }
 
         var slashIndex = normalizedIdentity.IndexOf('\\');
@@ -1205,22 +1203,7 @@ public sealed class AdUserLifecycleTool : ActiveDirectoryToolBase, ITool {
     }
 
     private static string InferDomainNameFromDistinguishedName(string? distinguishedName) {
-        if (string.IsNullOrWhiteSpace(distinguishedName)) {
-            return string.Empty;
-        }
-
-        var components = distinguishedName.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        var dcParts = new List<string>();
-        for (var i = 0; i < components.Length; i++) {
-            var part = components[i];
-            if (!part.StartsWith("DC=", StringComparison.OrdinalIgnoreCase) || part.Length <= 3) {
-                continue;
-            }
-
-            dcParts.Add(part.Substring(3));
-        }
-
-        return dcParts.Count == 0 ? string.Empty : string.Join(".", dcParts);
+        return DistinguishedNameHelper.GetDomainCanonicalName(distinguishedName);
     }
 
     private static string CreateSuccessResponse(UserLifecycleResult result) {

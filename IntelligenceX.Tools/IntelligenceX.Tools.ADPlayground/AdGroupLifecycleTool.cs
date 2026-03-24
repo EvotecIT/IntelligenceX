@@ -743,7 +743,7 @@ public sealed class AdGroupLifecycleTool : ActiveDirectoryToolBase, ITool {
 
     private static string BuildPredictedDistinguishedName(string? commonName, string samAccountName, string organizationalUnit) {
         var cn = string.IsNullOrWhiteSpace(commonName) ? samAccountName : commonName.Trim();
-        return $"CN={cn},{organizationalUnit}";
+        return DistinguishedNameHelper.BuildChildDistinguishedName("CN", cn, organizationalUnit);
     }
 
     private static string BuildPredictedMoveDistinguishedName(string identity, string? targetOrganizationalUnit, string? newCommonName) {
@@ -757,11 +757,11 @@ public sealed class AdGroupLifecycleTool : ActiveDirectoryToolBase, ITool {
             : TryResolveGroupLeafName(normalizedIdentity);
         var parent = !string.IsNullOrWhiteSpace(targetOrganizationalUnit)
             ? targetOrganizationalUnit!.Trim()
-            : ExtractParentDistinguishedName(currentDistinguishedName);
+            : DistinguishedNameHelper.GetParentDistinguishedName(currentDistinguishedName);
 
         return string.IsNullOrWhiteSpace(parent) || string.IsNullOrWhiteSpace(leafName)
             ? string.Empty
-            : $"CN={leafName},{parent}";
+            : DistinguishedNameHelper.BuildChildDistinguishedName("CN", leafName, parent);
     }
 
     private static string? TryResolveGroupLeafName(string? identity) {
@@ -771,10 +771,8 @@ public sealed class AdGroupLifecycleTool : ActiveDirectoryToolBase, ITool {
         }
 
         if (normalized.StartsWith("CN=", StringComparison.OrdinalIgnoreCase)) {
-            var separatorIndex = normalized.IndexOf(',');
-            return separatorIndex > 3
-                ? normalized.Substring(3, separatorIndex - 3).Trim()
-                : normalized.Substring(3).Trim();
+            var lastRdnValue = DistinguishedNameHelper.GetLastRdnValue(normalized);
+            return string.IsNullOrWhiteSpace(lastRdnValue) ? null : lastRdnValue;
         }
 
         var slashIndex = normalized.IndexOf('\\');
@@ -790,34 +788,8 @@ public sealed class AdGroupLifecycleTool : ActiveDirectoryToolBase, ITool {
         return normalized;
     }
 
-    private static string? ExtractParentDistinguishedName(string? distinguishedName) {
-        if (string.IsNullOrWhiteSpace(distinguishedName)) {
-            return null;
-        }
-
-        var separatorIndex = distinguishedName.IndexOf(',');
-        return separatorIndex >= 0 && separatorIndex < distinguishedName.Length - 1
-            ? distinguishedName.Substring(separatorIndex + 1).Trim()
-            : null;
-    }
-
     private static string InferDomainNameFromDistinguishedName(string? distinguishedName) {
-        if (string.IsNullOrWhiteSpace(distinguishedName)) {
-            return string.Empty;
-        }
-
-        var components = distinguishedName.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        var dcParts = new List<string>();
-        for (var i = 0; i < components.Length; i++) {
-            var part = components[i];
-            if (!part.StartsWith("DC=", StringComparison.OrdinalIgnoreCase) || part.Length <= 3) {
-                continue;
-            }
-
-            dcParts.Add(part.Substring(3));
-        }
-
-        return dcParts.Count == 0 ? string.Empty : string.Join(".", dcParts);
+        return DistinguishedNameHelper.GetDomainCanonicalName(distinguishedName);
     }
 
     private static string CreateSuccessResponse(GroupLifecycleResult result) {
