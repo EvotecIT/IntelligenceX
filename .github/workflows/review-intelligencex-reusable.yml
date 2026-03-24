@@ -1,5 +1,4 @@
 name: IntelligenceX Review
-
 on:
   workflow_call:
     inputs:
@@ -18,8 +17,6 @@ on:
         required: false
         default: ''
         type: string
-
-      # Reviewer source
       reviewer_source:
         description: 'Reviewer source: source or release'
         required: false
@@ -45,8 +42,6 @@ on:
         required: false
         default: ''
         type: string
-
-      # Provider/model
       provider:
         description: 'Review provider: openai, claude, or copilot'
         required: false
@@ -107,8 +102,6 @@ on:
         required: false
         default: ''
         type: string
-
-      # Prompt behavior
       profile:
         description: 'Prompt profile: picky, balanced, highlevel, security, performance, tests'
         required: false
@@ -139,7 +132,6 @@ on:
         required: false
         default: ''
         type: string
-
       length:
         description: 'Review length: short, medium, long'
         required: false
@@ -160,8 +152,6 @@ on:
         required: false
         default: ''
         type: string
-
-      # Progress comment behavior
       comment_mode:
         description: 'sticky or fresh'
         required: false
@@ -197,8 +187,6 @@ on:
         required: false
         default: 15
         type: number
-
-      # Limits
       max_files:
         description: 'Max files to review'
         required: false
@@ -219,8 +207,6 @@ on:
         required: false
         default: ''
         type: string
-
-      # Wait/idle
       wait_seconds:
         description: 'Max wait for completion'
         required: false
@@ -231,8 +217,6 @@ on:
         required: false
         default: 5
         type: number
-
-      # Skip rules
       skip_draft:
         description: 'Skip draft PRs'
         required: false
@@ -253,8 +237,6 @@ on:
         required: false
         default: ''
         type: string
-
-      # Redaction
       redact_pii:
         description: 'Redact PII in prompt'
         required: false
@@ -270,7 +252,6 @@ on:
         required: false
         default: '[REDACTED]'
         type: string
-
       # Cleanup (PR/Issue metadata)
       cleanup_enabled:
         description: 'Enable cleanup for PR/issue metadata'
@@ -317,7 +298,6 @@ on:
         required: false
         default: true
         type: boolean
-
       # Context enrichment
       include_issue_comments:
         description: 'Include PR issue comments in prompt'
@@ -354,7 +334,6 @@ on:
         required: false
         default: 5
         type: number
-
       # Templates
       prompt_template_path:
         description: 'Path to custom prompt template'
@@ -366,14 +345,12 @@ on:
         required: false
         default: ''
         type: string
-
       # Config file
       review_config_path:
         description: 'Path to reviewer.json (overrides default .intelligencex/reviewer.json)'
         required: false
         default: ''
         type: string
-
       # Provider-specific
       codex_path:
         description: 'Codex app-server executable path'
@@ -390,7 +367,6 @@ on:
         required: false
         default: ''
         type: string
-
       copilot_cli_path:
         description: 'Copilot CLI path'
         required: false
@@ -421,7 +397,6 @@ on:
         required: false
         default: false
         type: boolean
-
     secrets:
       INTELLIGENCEX_AUTH_B64:
         required: false
@@ -431,13 +406,89 @@ on:
         required: false
       INTELLIGENCEX_GITHUB_APP_PRIVATE_KEY:
         required: false
-
 jobs:
   review:
     runs-on: ${{ fromJSON(inputs.runs_on) }}
     env:
       INTELLIGENCEX_APP_ID: ${{ secrets.INTELLIGENCEX_GITHUB_APP_ID }}
       INTELLIGENCEX_APP_KEY: ${{ secrets.INTELLIGENCEX_GITHUB_APP_PRIVATE_KEY }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      INTELLIGENCEX_AUTH_B64: ${{ secrets.INTELLIGENCEX_AUTH_B64 }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      INPUT_PROVIDER: ${{ inputs.provider }}
+      INPUT_MODEL: ${{ inputs.model }}
+      INPUT_OPENAI_MODEL: ${{ inputs.openai_model }}
+      INPUT_COPILOT_MODEL: ${{ inputs.copilot_model }}
+      INPUT_OPENAI_TRANSPORT: ${{ inputs.openai_transport }}
+      INPUT_OPENAI_ACCOUNT_ID: ${{ inputs.openai_account_id }}
+      INPUT_OPENAI_ACCOUNT_IDS: ${{ inputs.openai_account_ids }}
+      INPUT_OPENAI_ACCOUNT_ROTATION: ${{ inputs.openai_account_rotation }}
+      INPUT_OPENAI_ACCOUNT_FAILOVER: ${{ inputs.openai_account_failover }}
+      INPUT_USAGE_BUDGET_GUARD: ${{ inputs.usage_budget_guard }}
+      INPUT_USAGE_BUDGET_ALLOW_CREDITS: ${{ inputs.usage_budget_allow_credits }}
+      INPUT_USAGE_BUDGET_ALLOW_WEEKLY_LIMIT: ${{ inputs.usage_budget_allow_weekly_limit }}
+      INPUT_REPO: ${{ inputs.repo }}
+      INPUT_PR_NUMBER: ${{ inputs.pr_number }}
+      INPUT_PROFILE: ${{ inputs.profile }}
+      INPUT_STYLE: ${{ inputs.style }}
+      INPUT_OUTPUT_STYLE: ${{ inputs.output_style }}
+      INPUT_STRICTNESS: ${{ inputs.strictness }}
+      INPUT_TONE: ${{ inputs.tone }}
+      INPUT_FOCUS: ${{ inputs.focus }}
+      INPUT_LENGTH: ${{ inputs.length }}
+      INPUT_MODE: ${{ inputs.mode }}
+      INPUT_PERSONA: ${{ inputs.persona }}
+      INPUT_NOTES: ${{ inputs.notes }}
+      INPUT_COMMENT_MODE: ${{ inputs.comment_mode }}
+      INPUT_PROGRESS_UPDATES: ${{ inputs.progress_updates }}
+      INPUT_PROGRESS_UPDATE_SECONDS: ${{ inputs.progress_update_seconds }}
+      INPUT_PROGRESS_PREVIEW_CHARS: ${{ inputs.progress_preview_chars }}
+      INPUT_DIAGNOSTICS: ${{ inputs.diagnostics }}
+      REVIEW_FAIL_OPEN: true
+      REVIEW_FAIL_OPEN_TRANSIENT_ONLY: false
+      INPUT_PREFLIGHT: ${{ inputs.preflight }}
+      INPUT_PREFLIGHT_TIMEOUT_SECONDS: ${{ inputs.preflight_timeout_seconds }}
+      INPUT_MAX_FILES: ${{ inputs.max_files }}
+      INPUT_MAX_PATCH_CHARS: ${{ inputs.max_patch_chars }}
+      INPUT_MAX_INLINE_COMMENTS: ${{ inputs.max_inline_comments }}
+      INPUT_SEVERITY_THRESHOLD: ${{ inputs.severity_threshold }}
+      INPUT_WAIT_SECONDS: ${{ inputs.wait_seconds }}
+      INPUT_IDLE_SECONDS: ${{ inputs.idle_seconds }}
+      INPUT_SKIP_DRAFT: ${{ inputs.skip_draft }}
+      INPUT_SKIP_TITLES: ${{ inputs.skip_titles }}
+      INPUT_SKIP_LABELS: ${{ inputs.skip_labels }}
+      INPUT_SKIP_PATHS: ${{ inputs.skip_paths }}
+      INPUT_REDACT_PII: ${{ inputs.redact_pii }}
+      INPUT_REDACTION_PATTERNS: ${{ inputs.redaction_patterns }}
+      INPUT_REDACTION_REPLACEMENT: ${{ inputs.redaction_replacement }}
+      INPUT_CLEANUP_ENABLED: ${{ inputs.cleanup_enabled }}
+      INPUT_CLEANUP_MODE: ${{ inputs.cleanup_mode }}
+      INPUT_CLEANUP_SCOPE: ${{ inputs.cleanup_scope }}
+      INPUT_CLEANUP_REQUIRE_LABEL: ${{ inputs.cleanup_require_label }}
+      INPUT_CLEANUP_MIN_CONFIDENCE: ${{ inputs.cleanup_min_confidence }}
+      INPUT_CLEANUP_ALLOWED_EDITS: ${{ inputs.cleanup_allowed_edits }}
+      INPUT_CLEANUP_TEMPLATE: ${{ inputs.cleanup_template }}
+      INPUT_CLEANUP_TEMPLATE_PATH: ${{ inputs.cleanup_template_path }}
+      INPUT_CLEANUP_POST_EDIT_COMMENT: ${{ inputs.cleanup_post_edit_comment }}
+      INPUT_INCLUDE_ISSUE_COMMENTS: ${{ inputs.include_issue_comments }}
+      INPUT_INCLUDE_REVIEW_COMMENTS: ${{ inputs.include_review_comments }}
+      INPUT_MAX_COMMENT_CHARS: ${{ inputs.max_comment_chars }}
+      INPUT_MAX_COMMENTS: ${{ inputs.max_comments }}
+      INPUT_INCLUDE_RELATED_PRS: ${{ inputs.include_related_prs }}
+      INPUT_RELATED_PRS_QUERY: ${{ inputs.related_prs_query }}
+      INPUT_MAX_RELATED_PRS: ${{ inputs.max_related_prs }}
+      INPUT_PROMPT_TEMPLATE_PATH: ${{ inputs.prompt_template_path }}
+      INPUT_SUMMARY_TEMPLATE_PATH: ${{ inputs.summary_template_path }}
+      REVIEW_CONFIG_PATH: ${{ inputs.review_config_path }}
+      CODEX_APP_SERVER_PATH: ${{ inputs.codex_path }}
+      CODEX_APP_SERVER_ARGS: ${{ inputs.codex_args }}
+      CODEX_APP_SERVER_CWD: ${{ inputs.codex_cwd }}
+      COPILOT_CLI_PATH: ${{ inputs.copilot_cli_path }}
+      COPILOT_CLI_URL: ${{ inputs.copilot_cli_url }}
+      COPILOT_CLI_WORKDIR: ${{ inputs.copilot_cli_workdir }}
+      COPILOT_AUTO_INSTALL: ${{ inputs.copilot_auto_install }}
+      COPILOT_AUTO_INSTALL_METHOD: ${{ inputs.copilot_auto_install_method }}
+      COPILOT_AUTO_INSTALL_PRERELEASE: ${{ inputs.copilot_auto_install_prerelease }}
     permissions:
       contents: read
       pull-requests: write
@@ -448,12 +499,10 @@ jobs:
         with:
           # The analysis gate compares PR base/head SHAs and needs more than the merge commit.
           fetch-depth: 0
-
       - name: Setup .NET
         uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
           dotnet-version: '8.0.x'
-
       - name: Create GitHub App token
         id: app_token
         if: ${{ env.INTELLIGENCEX_APP_ID != '' && env.INTELLIGENCEX_APP_KEY != '' }}
@@ -461,7 +510,6 @@ jobs:
         with:
           app-id: ${{ env.INTELLIGENCEX_APP_ID }}
           private-key: ${{ env.INTELLIGENCEX_APP_KEY }}
-
       - name: Resolve reviewer release
         if: ${{ inputs.reviewer_source == 'release' && inputs.reviewer_release_url == '' }}
         id: reviewer_release
@@ -493,7 +541,6 @@ jobs:
               return;
             }
             core.setOutput('asset_url', asset.browser_download_url);
-
       - name: Download reviewer (unix)
         if: ${{ inputs.reviewer_source == 'release' && runner.os != 'Windows' }}
         id: reviewer_download_unix
@@ -505,7 +552,6 @@ jobs:
           mkdir -p reviewer-release
           curl -L "$REVIEWER_ASSET_URL" -o reviewer-release/reviewer.zip
           unzip -o reviewer-release/reviewer.zip -d reviewer-release
-
       - name: Download reviewer (windows)
         if: ${{ inputs.reviewer_source == 'release' && runner.os == 'Windows' }}
         id: reviewer_download_windows
@@ -517,14 +563,20 @@ jobs:
           New-Item -ItemType Directory -Path reviewer-release -Force | Out-Null
           Invoke-WebRequest -Uri $env:REVIEWER_ASSET_URL -OutFile reviewer-release/reviewer.zip
           Expand-Archive -Path reviewer-release/reviewer.zip -DestinationPath reviewer-release -Force
-
       - name: Build IntelligenceX.Reviewer
         if: ${{ inputs.reviewer_source == 'source' }}
         id: reviewer_build
         continue-on-error: true
         shell: bash
-        run: dotnet build IntelligenceX.Reviewer/IntelligenceX.Reviewer.csproj -c Release
-
+        run: |
+          set -uo pipefail
+          mkdir -p artifacts
+          log_path="artifacts/reviewer-run-source.log"
+          : > "$log_path"
+          set +e
+          dotnet build IntelligenceX.Reviewer/IntelligenceX.Reviewer.csproj -c Release -f net8.0 2>&1 | tee "$log_path"
+          exit_code=${PIPESTATUS[0]}
+          exit "$exit_code"
       # Static analysis is repo-local and should enforce regardless of how the reviewer binary is sourced.
       - name: Prepare static analysis context
         shell: bash
@@ -551,7 +603,6 @@ jobs:
               fi
             fi
           fi
-
       - name: Run IntelligenceX analysis (pre-review, best-effort)
         continue-on-error: true
         shell: bash
@@ -562,7 +613,6 @@ jobs:
             exit 0
           fi
           dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -c Release -f net8.0 -p:EnableWindowsTargeting=true -- analyze run --workspace . --config "$IX_REVIEW_CONFIG_PATH"
-
       - name: Evaluate IntelligenceX analysis gate (pre-review, enforcing)
         shell: bash
         run: |
@@ -576,317 +626,84 @@ jobs:
           else
             dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -c Release -f net8.0 -p:EnableWindowsTargeting=true -- analyze gate --workspace . --config "$IX_REVIEW_CONFIG_PATH"
           fi
-
       - name: Run IntelligenceX.Reviewer (source)
         if: ${{ inputs.reviewer_source == 'source' && steps.reviewer_build.outcome == 'success' }}
         id: reviewer_run_source
         continue-on-error: true
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          INTELLIGENCEX_GITHUB_TOKEN: ${{ steps.app_token.outputs.token }}
-          INTELLIGENCEX_AUTH_B64: ${{ secrets.INTELLIGENCEX_AUTH_B64 }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-
-          INPUT_PROVIDER: ${{ inputs.provider }}
-          INPUT_MODEL: ${{ inputs.model }}
-          INPUT_OPENAI_MODEL: ${{ inputs.openai_model }}
-          INPUT_COPILOT_MODEL: ${{ inputs.copilot_model }}
-          INPUT_OPENAI_TRANSPORT: ${{ inputs.openai_transport }}
-          INPUT_OPENAI_ACCOUNT_ID: ${{ inputs.openai_account_id }}
-          INPUT_OPENAI_ACCOUNT_IDS: ${{ inputs.openai_account_ids }}
-          INPUT_OPENAI_ACCOUNT_ROTATION: ${{ inputs.openai_account_rotation }}
-          INPUT_OPENAI_ACCOUNT_FAILOVER: ${{ inputs.openai_account_failover }}
-          INPUT_USAGE_BUDGET_GUARD: ${{ inputs.usage_budget_guard }}
-          INPUT_USAGE_BUDGET_ALLOW_CREDITS: ${{ inputs.usage_budget_allow_credits }}
-          INPUT_USAGE_BUDGET_ALLOW_WEEKLY_LIMIT: ${{ inputs.usage_budget_allow_weekly_limit }}
-          INPUT_REPO: ${{ inputs.repo }}
-          INPUT_PR_NUMBER: ${{ inputs.pr_number }}
-
-          INPUT_PROFILE: ${{ inputs.profile }}
-          INPUT_STYLE: ${{ inputs.style }}
-          INPUT_OUTPUT_STYLE: ${{ inputs.output_style }}
-          INPUT_STRICTNESS: ${{ inputs.strictness }}
-          INPUT_TONE: ${{ inputs.tone }}
-          INPUT_FOCUS: ${{ inputs.focus }}
-
-          INPUT_LENGTH: ${{ inputs.length }}
-          INPUT_MODE: ${{ inputs.mode }}
-          INPUT_PERSONA: ${{ inputs.persona }}
-          INPUT_NOTES: ${{ inputs.notes }}
-
-          INPUT_COMMENT_MODE: ${{ inputs.comment_mode }}
-          INPUT_PROGRESS_UPDATES: ${{ inputs.progress_updates }}
-          INPUT_PROGRESS_UPDATE_SECONDS: ${{ inputs.progress_update_seconds }}
-          INPUT_PROGRESS_PREVIEW_CHARS: ${{ inputs.progress_preview_chars }}
-          INPUT_DIAGNOSTICS: ${{ inputs.diagnostics }}
-          REVIEW_FAIL_OPEN: true
-          REVIEW_FAIL_OPEN_TRANSIENT_ONLY: false
-          INPUT_PREFLIGHT: ${{ inputs.preflight }}
-          INPUT_PREFLIGHT_TIMEOUT_SECONDS: ${{ inputs.preflight_timeout_seconds }}
-
-          INPUT_MAX_FILES: ${{ inputs.max_files }}
-          INPUT_MAX_PATCH_CHARS: ${{ inputs.max_patch_chars }}
-          INPUT_MAX_INLINE_COMMENTS: ${{ inputs.max_inline_comments }}
-          INPUT_SEVERITY_THRESHOLD: ${{ inputs.severity_threshold }}
-
-          INPUT_WAIT_SECONDS: ${{ inputs.wait_seconds }}
-          INPUT_IDLE_SECONDS: ${{ inputs.idle_seconds }}
-
-          INPUT_SKIP_DRAFT: ${{ inputs.skip_draft }}
-          INPUT_SKIP_TITLES: ${{ inputs.skip_titles }}
-          INPUT_SKIP_LABELS: ${{ inputs.skip_labels }}
-          INPUT_SKIP_PATHS: ${{ inputs.skip_paths }}
-
-          INPUT_REDACT_PII: ${{ inputs.redact_pii }}
-          INPUT_REDACTION_PATTERNS: ${{ inputs.redaction_patterns }}
-          INPUT_REDACTION_REPLACEMENT: ${{ inputs.redaction_replacement }}
-
-          INPUT_CLEANUP_ENABLED: ${{ inputs.cleanup_enabled }}
-          INPUT_CLEANUP_MODE: ${{ inputs.cleanup_mode }}
-          INPUT_CLEANUP_SCOPE: ${{ inputs.cleanup_scope }}
-          INPUT_CLEANUP_REQUIRE_LABEL: ${{ inputs.cleanup_require_label }}
-          INPUT_CLEANUP_MIN_CONFIDENCE: ${{ inputs.cleanup_min_confidence }}
-          INPUT_CLEANUP_ALLOWED_EDITS: ${{ inputs.cleanup_allowed_edits }}
-          INPUT_CLEANUP_TEMPLATE: ${{ inputs.cleanup_template }}
-          INPUT_CLEANUP_TEMPLATE_PATH: ${{ inputs.cleanup_template_path }}
-          INPUT_CLEANUP_POST_EDIT_COMMENT: ${{ inputs.cleanup_post_edit_comment }}
-
-          INPUT_INCLUDE_ISSUE_COMMENTS: ${{ inputs.include_issue_comments }}
-          INPUT_INCLUDE_REVIEW_COMMENTS: ${{ inputs.include_review_comments }}
-          INPUT_MAX_COMMENT_CHARS: ${{ inputs.max_comment_chars }}
-          INPUT_MAX_COMMENTS: ${{ inputs.max_comments }}
-          INPUT_INCLUDE_RELATED_PRS: ${{ inputs.include_related_prs }}
-          INPUT_RELATED_PRS_QUERY: ${{ inputs.related_prs_query }}
-          INPUT_MAX_RELATED_PRS: ${{ inputs.max_related_prs }}
-
-          INPUT_PROMPT_TEMPLATE_PATH: ${{ inputs.prompt_template_path }}
-          INPUT_SUMMARY_TEMPLATE_PATH: ${{ inputs.summary_template_path }}
-
-          REVIEW_CONFIG_PATH: ${{ inputs.review_config_path }}
-
-          CODEX_APP_SERVER_PATH: ${{ inputs.codex_path }}
-          CODEX_APP_SERVER_ARGS: ${{ inputs.codex_args }}
-          CODEX_APP_SERVER_CWD: ${{ inputs.codex_cwd }}
-
-          COPILOT_CLI_PATH: ${{ inputs.copilot_cli_path }}
-          COPILOT_CLI_URL: ${{ inputs.copilot_cli_url }}
-          COPILOT_CLI_WORKDIR: ${{ inputs.copilot_cli_workdir }}
-          COPILOT_AUTO_INSTALL: ${{ inputs.copilot_auto_install }}
-          COPILOT_AUTO_INSTALL_METHOD: ${{ inputs.copilot_auto_install_method }}
-          COPILOT_AUTO_INSTALL_PRERELEASE: ${{ inputs.copilot_auto_install_prerelease }}
+          INTELLIGENCEX_GITHUB_TOKEN: ${{ steps.app_token.outputs.token || secrets.GITHUB_TOKEN }}
+        # Source reviewer runs only after the repo build succeeds and uses the .NET SDK provisioned above.
         shell: bash
         run: |
-          dotnet run --project IntelligenceX.Reviewer/IntelligenceX.Reviewer.csproj -c Release -f net8.0
-
+          set -uo pipefail
+          mkdir -p artifacts
+          log_path="artifacts/reviewer-run-source.log"
+          : > "$log_path"
+          set +e
+          dotnet run --project IntelligenceX.Reviewer/IntelligenceX.Reviewer.csproj -c Release -f net8.0 2>&1 | tee "$log_path"
+          exit_code=${PIPESTATUS[0]}
+          exit "$exit_code"
       - name: Run IntelligenceX.Reviewer (release, unix)
         if: ${{ inputs.reviewer_source == 'release' && runner.os != 'Windows' && steps.reviewer_download_unix.outcome == 'success' }}
         id: reviewer_run_release_unix
         continue-on-error: true
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          INTELLIGENCEX_GITHUB_TOKEN: ${{ steps.app_token.outputs.token }}
-          INTELLIGENCEX_AUTH_B64: ${{ secrets.INTELLIGENCEX_AUTH_B64 }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-
-          INPUT_PROVIDER: ${{ inputs.provider }}
-          INPUT_MODEL: ${{ inputs.model }}
-          INPUT_OPENAI_MODEL: ${{ inputs.openai_model }}
-          INPUT_COPILOT_MODEL: ${{ inputs.copilot_model }}
-          INPUT_OPENAI_TRANSPORT: ${{ inputs.openai_transport }}
-          INPUT_OPENAI_ACCOUNT_ID: ${{ inputs.openai_account_id }}
-          INPUT_OPENAI_ACCOUNT_IDS: ${{ inputs.openai_account_ids }}
-          INPUT_OPENAI_ACCOUNT_ROTATION: ${{ inputs.openai_account_rotation }}
-          INPUT_OPENAI_ACCOUNT_FAILOVER: ${{ inputs.openai_account_failover }}
-          INPUT_USAGE_BUDGET_GUARD: ${{ inputs.usage_budget_guard }}
-          INPUT_USAGE_BUDGET_ALLOW_CREDITS: ${{ inputs.usage_budget_allow_credits }}
-          INPUT_USAGE_BUDGET_ALLOW_WEEKLY_LIMIT: ${{ inputs.usage_budget_allow_weekly_limit }}
-          INPUT_REPO: ${{ inputs.repo }}
-          INPUT_PR_NUMBER: ${{ inputs.pr_number }}
-
-          INPUT_PROFILE: ${{ inputs.profile }}
-          INPUT_STYLE: ${{ inputs.style }}
-          INPUT_OUTPUT_STYLE: ${{ inputs.output_style }}
-          INPUT_STRICTNESS: ${{ inputs.strictness }}
-          INPUT_TONE: ${{ inputs.tone }}
-          INPUT_FOCUS: ${{ inputs.focus }}
-
-          INPUT_LENGTH: ${{ inputs.length }}
-          INPUT_MODE: ${{ inputs.mode }}
-          INPUT_PERSONA: ${{ inputs.persona }}
-          INPUT_NOTES: ${{ inputs.notes }}
-
-          INPUT_COMMENT_MODE: ${{ inputs.comment_mode }}
-          INPUT_PROGRESS_UPDATES: ${{ inputs.progress_updates }}
-          INPUT_PROGRESS_UPDATE_SECONDS: ${{ inputs.progress_update_seconds }}
-          INPUT_PROGRESS_PREVIEW_CHARS: ${{ inputs.progress_preview_chars }}
-          INPUT_DIAGNOSTICS: ${{ inputs.diagnostics }}
-          REVIEW_FAIL_OPEN: true
-          REVIEW_FAIL_OPEN_TRANSIENT_ONLY: false
-          INPUT_PREFLIGHT: ${{ inputs.preflight }}
-          INPUT_PREFLIGHT_TIMEOUT_SECONDS: ${{ inputs.preflight_timeout_seconds }}
-
-          INPUT_MAX_FILES: ${{ inputs.max_files }}
-          INPUT_MAX_PATCH_CHARS: ${{ inputs.max_patch_chars }}
-          INPUT_MAX_INLINE_COMMENTS: ${{ inputs.max_inline_comments }}
-          INPUT_SEVERITY_THRESHOLD: ${{ inputs.severity_threshold }}
-
-          INPUT_WAIT_SECONDS: ${{ inputs.wait_seconds }}
-          INPUT_IDLE_SECONDS: ${{ inputs.idle_seconds }}
-
-          INPUT_SKIP_DRAFT: ${{ inputs.skip_draft }}
-          INPUT_SKIP_TITLES: ${{ inputs.skip_titles }}
-          INPUT_SKIP_LABELS: ${{ inputs.skip_labels }}
-          INPUT_SKIP_PATHS: ${{ inputs.skip_paths }}
-
-          INPUT_REDACT_PII: ${{ inputs.redact_pii }}
-          INPUT_REDACTION_PATTERNS: ${{ inputs.redaction_patterns }}
-          INPUT_REDACTION_REPLACEMENT: ${{ inputs.redaction_replacement }}
-
-          INPUT_CLEANUP_ENABLED: ${{ inputs.cleanup_enabled }}
-          INPUT_CLEANUP_MODE: ${{ inputs.cleanup_mode }}
-          INPUT_CLEANUP_SCOPE: ${{ inputs.cleanup_scope }}
-          INPUT_CLEANUP_REQUIRE_LABEL: ${{ inputs.cleanup_require_label }}
-          INPUT_CLEANUP_MIN_CONFIDENCE: ${{ inputs.cleanup_min_confidence }}
-          INPUT_CLEANUP_ALLOWED_EDITS: ${{ inputs.cleanup_allowed_edits }}
-          INPUT_CLEANUP_TEMPLATE: ${{ inputs.cleanup_template }}
-          INPUT_CLEANUP_TEMPLATE_PATH: ${{ inputs.cleanup_template_path }}
-          INPUT_CLEANUP_POST_EDIT_COMMENT: ${{ inputs.cleanup_post_edit_comment }}
-
-          INPUT_INCLUDE_ISSUE_COMMENTS: ${{ inputs.include_issue_comments }}
-          INPUT_INCLUDE_REVIEW_COMMENTS: ${{ inputs.include_review_comments }}
-          INPUT_MAX_COMMENT_CHARS: ${{ inputs.max_comment_chars }}
-          INPUT_MAX_COMMENTS: ${{ inputs.max_comments }}
-          INPUT_INCLUDE_RELATED_PRS: ${{ inputs.include_related_prs }}
-          INPUT_RELATED_PRS_QUERY: ${{ inputs.related_prs_query }}
-          INPUT_MAX_RELATED_PRS: ${{ inputs.max_related_prs }}
-
-          INPUT_PROMPT_TEMPLATE_PATH: ${{ inputs.prompt_template_path }}
-          INPUT_SUMMARY_TEMPLATE_PATH: ${{ inputs.summary_template_path }}
-
-          REVIEW_CONFIG_PATH: ${{ inputs.review_config_path }}
-
-          CODEX_APP_SERVER_PATH: ${{ inputs.codex_path }}
-          CODEX_APP_SERVER_ARGS: ${{ inputs.codex_args }}
-          CODEX_APP_SERVER_CWD: ${{ inputs.codex_cwd }}
-
-          COPILOT_CLI_PATH: ${{ inputs.copilot_cli_path }}
-          COPILOT_CLI_URL: ${{ inputs.copilot_cli_url }}
-          COPILOT_CLI_WORKDIR: ${{ inputs.copilot_cli_workdir }}
-          COPILOT_AUTO_INSTALL: ${{ inputs.copilot_auto_install }}
-          COPILOT_AUTO_INSTALL_METHOD: ${{ inputs.copilot_auto_install_method }}
-          COPILOT_AUTO_INSTALL_PRERELEASE: ${{ inputs.copilot_auto_install_prerelease }}
+          INTELLIGENCEX_GITHUB_TOKEN: ${{ steps.app_token.outputs.token || secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
-          set -euo pipefail
+          set -uo pipefail
+          mkdir -p artifacts
+          log_path="artifacts/reviewer-run-release-unix.log"
+          : > "$log_path"
           reviewer_dll=$(find reviewer-release -type f -name IntelligenceX.Reviewer.dll | head -n 1)
           if [ -z "$reviewer_dll" ]; then
             echo "Reviewer DLL not found under reviewer-release."
             exit 1
           fi
-          dotnet "$reviewer_dll"
-
+          set +e
+          dotnet "$reviewer_dll" 2>&1 | tee "$log_path"
+          exit_code=${PIPESTATUS[0]}
+          exit "$exit_code"
       - name: Run IntelligenceX.Reviewer (release, windows)
         if: ${{ inputs.reviewer_source == 'release' && runner.os == 'Windows' && steps.reviewer_download_windows.outcome == 'success' }}
         id: reviewer_run_release_windows
         continue-on-error: true
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          INTELLIGENCEX_GITHUB_TOKEN: ${{ steps.app_token.outputs.token }}
-          INTELLIGENCEX_AUTH_B64: ${{ secrets.INTELLIGENCEX_AUTH_B64 }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-
-          INPUT_PROVIDER: ${{ inputs.provider }}
-          INPUT_MODEL: ${{ inputs.model }}
-          INPUT_OPENAI_MODEL: ${{ inputs.openai_model }}
-          INPUT_COPILOT_MODEL: ${{ inputs.copilot_model }}
-          INPUT_OPENAI_TRANSPORT: ${{ inputs.openai_transport }}
-          INPUT_OPENAI_ACCOUNT_ID: ${{ inputs.openai_account_id }}
-          INPUT_OPENAI_ACCOUNT_IDS: ${{ inputs.openai_account_ids }}
-          INPUT_OPENAI_ACCOUNT_ROTATION: ${{ inputs.openai_account_rotation }}
-          INPUT_OPENAI_ACCOUNT_FAILOVER: ${{ inputs.openai_account_failover }}
-          INPUT_USAGE_BUDGET_GUARD: ${{ inputs.usage_budget_guard }}
-          INPUT_USAGE_BUDGET_ALLOW_CREDITS: ${{ inputs.usage_budget_allow_credits }}
-          INPUT_USAGE_BUDGET_ALLOW_WEEKLY_LIMIT: ${{ inputs.usage_budget_allow_weekly_limit }}
-          INPUT_REPO: ${{ inputs.repo }}
-          INPUT_PR_NUMBER: ${{ inputs.pr_number }}
-
-          INPUT_PROFILE: ${{ inputs.profile }}
-          INPUT_STYLE: ${{ inputs.style }}
-          INPUT_OUTPUT_STYLE: ${{ inputs.output_style }}
-          INPUT_STRICTNESS: ${{ inputs.strictness }}
-          INPUT_TONE: ${{ inputs.tone }}
-          INPUT_FOCUS: ${{ inputs.focus }}
-
-          INPUT_LENGTH: ${{ inputs.length }}
-          INPUT_MODE: ${{ inputs.mode }}
-          INPUT_PERSONA: ${{ inputs.persona }}
-          INPUT_NOTES: ${{ inputs.notes }}
-
-          INPUT_COMMENT_MODE: ${{ inputs.comment_mode }}
-          INPUT_PROGRESS_UPDATES: ${{ inputs.progress_updates }}
-          INPUT_PROGRESS_UPDATE_SECONDS: ${{ inputs.progress_update_seconds }}
-          INPUT_PROGRESS_PREVIEW_CHARS: ${{ inputs.progress_preview_chars }}
-          INPUT_DIAGNOSTICS: ${{ inputs.diagnostics }}
-          REVIEW_FAIL_OPEN: true
-          REVIEW_FAIL_OPEN_TRANSIENT_ONLY: false
-          INPUT_PREFLIGHT: ${{ inputs.preflight }}
-          INPUT_PREFLIGHT_TIMEOUT_SECONDS: ${{ inputs.preflight_timeout_seconds }}
-
-          INPUT_MAX_FILES: ${{ inputs.max_files }}
-          INPUT_MAX_PATCH_CHARS: ${{ inputs.max_patch_chars }}
-          INPUT_MAX_INLINE_COMMENTS: ${{ inputs.max_inline_comments }}
-          INPUT_SEVERITY_THRESHOLD: ${{ inputs.severity_threshold }}
-
-          INPUT_WAIT_SECONDS: ${{ inputs.wait_seconds }}
-          INPUT_IDLE_SECONDS: ${{ inputs.idle_seconds }}
-
-          INPUT_SKIP_DRAFT: ${{ inputs.skip_draft }}
-          INPUT_SKIP_TITLES: ${{ inputs.skip_titles }}
-          INPUT_SKIP_LABELS: ${{ inputs.skip_labels }}
-          INPUT_SKIP_PATHS: ${{ inputs.skip_paths }}
-
-          INPUT_REDACT_PII: ${{ inputs.redact_pii }}
-          INPUT_REDACTION_PATTERNS: ${{ inputs.redaction_patterns }}
-          INPUT_REDACTION_REPLACEMENT: ${{ inputs.redaction_replacement }}
-
-          INPUT_CLEANUP_ENABLED: ${{ inputs.cleanup_enabled }}
-          INPUT_CLEANUP_MODE: ${{ inputs.cleanup_mode }}
-          INPUT_CLEANUP_SCOPE: ${{ inputs.cleanup_scope }}
-          INPUT_CLEANUP_REQUIRE_LABEL: ${{ inputs.cleanup_require_label }}
-          INPUT_CLEANUP_MIN_CONFIDENCE: ${{ inputs.cleanup_min_confidence }}
-          INPUT_CLEANUP_ALLOWED_EDITS: ${{ inputs.cleanup_allowed_edits }}
-          INPUT_CLEANUP_TEMPLATE: ${{ inputs.cleanup_template }}
-          INPUT_CLEANUP_TEMPLATE_PATH: ${{ inputs.cleanup_template_path }}
-          INPUT_CLEANUP_POST_EDIT_COMMENT: ${{ inputs.cleanup_post_edit_comment }}
-
-          INPUT_INCLUDE_ISSUE_COMMENTS: ${{ inputs.include_issue_comments }}
-          INPUT_INCLUDE_REVIEW_COMMENTS: ${{ inputs.include_review_comments }}
-          INPUT_MAX_COMMENT_CHARS: ${{ inputs.max_comment_chars }}
-          INPUT_MAX_COMMENTS: ${{ inputs.max_comments }}
-          INPUT_INCLUDE_RELATED_PRS: ${{ inputs.include_related_prs }}
-          INPUT_RELATED_PRS_QUERY: ${{ inputs.related_prs_query }}
-          INPUT_MAX_RELATED_PRS: ${{ inputs.max_related_prs }}
-
-          INPUT_PROMPT_TEMPLATE_PATH: ${{ inputs.prompt_template_path }}
-          INPUT_SUMMARY_TEMPLATE_PATH: ${{ inputs.summary_template_path }}
-
-          REVIEW_CONFIG_PATH: ${{ inputs.review_config_path }}
-
-          CODEX_APP_SERVER_PATH: ${{ inputs.codex_path }}
-          CODEX_APP_SERVER_ARGS: ${{ inputs.codex_args }}
-          CODEX_APP_SERVER_CWD: ${{ inputs.codex_cwd }}
-
-          COPILOT_CLI_PATH: ${{ inputs.copilot_cli_path }}
-          COPILOT_CLI_URL: ${{ inputs.copilot_cli_url }}
-          COPILOT_CLI_WORKDIR: ${{ inputs.copilot_cli_workdir }}
-          COPILOT_AUTO_INSTALL: ${{ inputs.copilot_auto_install }}
-          COPILOT_AUTO_INSTALL_METHOD: ${{ inputs.copilot_auto_install_method }}
-          COPILOT_AUTO_INSTALL_PRERELEASE: ${{ inputs.copilot_auto_install_prerelease }}
+          INTELLIGENCEX_GITHUB_TOKEN: ${{ steps.app_token.outputs.token || secrets.GITHUB_TOKEN }}
         shell: pwsh
         run: |
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+          $logPath = "artifacts/reviewer-run-release-windows.log"
           $reviewer = Get-ChildItem -Path reviewer-release -Recurse -Filter IntelligenceX.Reviewer.dll | Select-Object -First 1
           if (-not $reviewer) {
             Write-Error "Reviewer DLL not found under reviewer-release."
             exit 1
           }
-          dotnet $reviewer.FullName
+          $output = & dotnet $reviewer.FullName 2>&1
+          $exitCode = $LASTEXITCODE
+          $output | Tee-Object -FilePath $logPath
+          exit $exitCode
+      - name: Finalize fail-open reviewer summary
+        if: >-
+          ${{
+            always() &&
+            github.event_name == 'pull_request' &&
+            (
+              steps.reviewer_build.outcome == 'failure' ||
+              steps.reviewer_run_source.outcome == 'failure' ||
+              steps.reviewer_run_release_unix.outcome == 'failure' ||
+              steps.reviewer_run_release_windows.outcome == 'failure'
+            )
+          }}
+        continue-on-error: true
+        env:
+          INTELLIGENCEX_GITHUB_TOKEN: ${{ steps.app_token.outputs.token || secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -c Release -f net8.0 -- ci review-fail-open-summary \
+            --reviewer-source "${{ inputs.reviewer_source }}" \
+            --repo "${{ inputs.repo }}" \
+            --pr-number "${{ inputs.pr_number }}" \
+            --source-log artifacts/reviewer-run-source.log \
+            --release-unix-log artifacts/reviewer-run-release-unix.log \
+            --release-windows-log artifacts/reviewer-run-release-windows.log

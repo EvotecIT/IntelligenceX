@@ -187,15 +187,27 @@ jobs:
         var wrapperContent = File.ReadAllText(wrapperWorkflowPath);
 
         AssertContainsText(wrapperContent, "workflow_dispatch:", "wrapper workflow defines workflow_dispatch");
+        AssertContainsText(wrapperContent, "reviewer_source: source",
+            "wrapper workflow keeps PR reviews on repo source to avoid release drift");
         AssertEqual(false, content.Contains("workflow_dispatch:", StringComparison.Ordinal),
             "reusable workflow should keep manual dispatch on the wrapper workflow");
         AssertContainsText(content, "workflow_call:", "reusable workflow defines workflow_call");
         AssertEqual(1, CountOccurrences(content, "openai_model:"),
             "reusable workflow defines openai_model once for workflow_call");
-        AssertEqual(3, CountOccurrences(content, "REVIEW_FAIL_OPEN: true"),
-            "reusable workflow exports fail-open default to each reviewer execution path");
-        AssertEqual(3, CountOccurrences(content, "REVIEW_FAIL_OPEN_TRANSIENT_ONLY: false"),
-            "reusable workflow exports non-transient fail-open default to each reviewer execution path");
+        AssertContainsText(content, "dotnet-version: '8.0.x'",
+            "reusable workflow provisions the .NET 8 SDK for source reviewer runs");
+        AssertContainsText(content, "dotnet build IntelligenceX.Reviewer/IntelligenceX.Reviewer.csproj -c Release -f net8.0",
+            "reusable workflow pins the source reviewer build to net8.0 on the provisioned SDK");
+        AssertContainsText(content, "log_path=\"artifacts/reviewer-run-source.log\"",
+            "reusable workflow captures source reviewer build output in the shared source log");
+        AssertEqual(1, CountOccurrences(content, "REVIEW_FAIL_OPEN: true"),
+            "reusable workflow exports fail-open default once at the job level");
+        AssertEqual(1, CountOccurrences(content, "REVIEW_FAIL_OPEN_TRANSIENT_ONLY: false"),
+            "reusable workflow exports non-transient fail-open default once at the job level");
+        AssertEqual(1, CountOccurrences(content, "INPUT_PROVIDER: ${{ inputs.provider }}"),
+            "reusable workflow defines shared reviewer env once instead of repeating it per step");
+        AssertContainsText(content, "inputs.reviewer_source == 'source' && steps.reviewer_build.outcome == 'success'",
+            "reusable workflow gates source reviewer execution on a successful source build");
         AssertContainsText(content, "git diff --name-only HEAD^1 HEAD^2 > artifacts/changed-files.txt",
             "reusable workflow falls back to merge-parent changed-files diff");
         AssertContainsText(content, "-p:EnableWindowsTargeting=true -- analyze run",
@@ -217,6 +229,22 @@ jobs:
         if: ${{ inputs.reviewer_source == 'source' }}
 """, StringComparison.Ordinal),
             "reusable workflow keeps analysis gate independent from reviewer_source");
+        AssertContainsText(content, "Finalize fail-open reviewer summary",
+            "reusable workflow finalizes fail-open reviewer runs with a summary update");
+        AssertContainsText(content, "continue-on-error: true",
+            "reusable workflow keeps fail-open finalization best-effort");
+        AssertContainsText(content, "steps.reviewer_build.outcome == 'failure'",
+            "reusable workflow finalizes fail-open summaries when the source reviewer build fails");
+        AssertContainsText(content, "INTELLIGENCEX_GITHUB_TOKEN: ${{ steps.app_token.outputs.token || secrets.GITHUB_TOKEN }}",
+            "reusable workflow passes the app token to fail-open summary finalization");
+        AssertContainsText(content, "ci review-fail-open-summary",
+            "reusable workflow delegates fail-open summary handling to the CLI helper");
+        AssertContainsText(content, "--source-log artifacts/reviewer-run-source.log",
+            "reusable workflow passes source reviewer log path to CLI helper");
+        AssertContainsText(content, "--release-unix-log artifacts/reviewer-run-release-unix.log",
+            "reusable workflow passes release unix log path to CLI helper");
+        AssertContainsText(content, "--release-windows-log artifacts/reviewer-run-release-windows.log",
+            "reusable workflow passes release windows log path to CLI helper");
         AssertEqual(false, content.Contains("&review_inputs", StringComparison.Ordinal),
             "reusable workflow should avoid YAML anchors in workflow schema");
         AssertEqual(false, content.Contains("*review_inputs", StringComparison.Ordinal),
