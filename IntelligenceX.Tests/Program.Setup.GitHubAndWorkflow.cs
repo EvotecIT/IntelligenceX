@@ -194,10 +194,16 @@ jobs:
         AssertContainsText(content, "workflow_call:", "reusable workflow defines workflow_call");
         AssertEqual(1, CountOccurrences(content, "openai_model:"),
             "reusable workflow defines openai_model once for workflow_call");
-        AssertEqual(3, CountOccurrences(content, "REVIEW_FAIL_OPEN: true"),
-            "reusable workflow exports fail-open default to each reviewer execution path");
-        AssertEqual(3, CountOccurrences(content, "REVIEW_FAIL_OPEN_TRANSIENT_ONLY: false"),
-            "reusable workflow exports non-transient fail-open default to each reviewer execution path");
+        AssertContainsText(content, "dotnet-version: '8.0.x'",
+            "reusable workflow provisions the .NET 8 SDK for source reviewer runs");
+        AssertEqual(1, CountOccurrences(content, "REVIEW_FAIL_OPEN: true"),
+            "reusable workflow exports fail-open default once at the job level");
+        AssertEqual(1, CountOccurrences(content, "REVIEW_FAIL_OPEN_TRANSIENT_ONLY: false"),
+            "reusable workflow exports non-transient fail-open default once at the job level");
+        AssertEqual(1, CountOccurrences(content, "INPUT_PROVIDER: ${{ inputs.provider }}"),
+            "reusable workflow defines shared reviewer env once instead of repeating it per step");
+        AssertContainsText(content, "inputs.reviewer_source == 'source' && steps.reviewer_build.outcome == 'success'",
+            "reusable workflow gates source reviewer execution on a successful source build");
         AssertContainsText(content, "git diff --name-only HEAD^1 HEAD^2 > artifacts/changed-files.txt",
             "reusable workflow falls back to merge-parent changed-files diff");
         AssertContainsText(content, "-p:EnableWindowsTargeting=true -- analyze run",

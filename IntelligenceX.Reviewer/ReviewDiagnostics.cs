@@ -365,6 +365,30 @@ internal static class ReviewDiagnostics {
         return string.Join(Environment.NewLine, lines);
     }
 
+    internal static bool IsTrustedSummaryAuthor(string? author) {
+        if (string.IsNullOrWhiteSpace(author)) {
+            return false;
+        }
+
+        var normalized = author.Trim();
+        if (normalized.EndsWith("[bot]", StringComparison.OrdinalIgnoreCase)) {
+            normalized = normalized[..^5];
+        }
+        if (normalized.StartsWith("app/", StringComparison.OrdinalIgnoreCase)) {
+            normalized = normalized[4..];
+        }
+
+        return string.Equals(normalized, "intelligencex-review", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(normalized, "github-actions", StringComparison.OrdinalIgnoreCase);
+    }
+
+    internal static bool IsOwnedWorkflowSummaryComment(IssueComment comment) {
+        return comment is not null &&
+               !string.IsNullOrWhiteSpace(comment.Body) &&
+               comment.Body.Contains(WorkflowSummaryMarker, StringComparison.OrdinalIgnoreCase) &&
+               IsTrustedSummaryAuthor(comment.Author);
+    }
+
     private static void AppendException(StringBuilder sb, Exception ex, bool includeInner, int depth) {
         if (depth > 0) {
             sb.Append(" | ");

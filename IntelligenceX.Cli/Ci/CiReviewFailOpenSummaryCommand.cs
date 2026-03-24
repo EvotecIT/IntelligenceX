@@ -67,9 +67,7 @@ internal static class CiReviewFailOpenSummaryCommand {
         int prNumber, int limit) {
         var comments = await github.ListIssueCommentsAsync(owner, repo, prNumber, Math.Max(1, limit), CancellationToken.None)
             .ConfigureAwait(false);
-        return comments.FirstOrDefault(comment =>
-            !string.IsNullOrWhiteSpace(comment.Body) &&
-            comment.Body.Contains(ReviewDiagnostics.WorkflowSummaryMarker, StringComparison.OrdinalIgnoreCase));
+        return comments.FirstOrDefault(ReviewDiagnostics.IsOwnedWorkflowSummaryComment);
     }
 
     private static string? ResolveLogPath(Options options) {
@@ -120,8 +118,8 @@ internal static class CiReviewFailOpenSummaryCommand {
                 prNumber > 0) {
                 return prNumber;
             }
-        } catch {
-            // Best-effort fallback only.
+        } catch (Exception ex) {
+            Console.Error.WriteLine($"Warning: failed to parse GITHUB_EVENT_PATH for pull_request.number: {ex.Message}");
         }
 
         return null;

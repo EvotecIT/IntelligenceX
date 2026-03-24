@@ -212,10 +212,17 @@ internal static partial class Program {
                     return new HttpResponse("""
 [
   {
+    "id": 41,
+    "body": "<!-- intelligencex:summary -->\nuser body",
+    "user": {
+      "login": "alice"
+    }
+  },
+  {
     "id": 42,
     "body": "<!-- intelligencex:summary -->\nold body",
     "user": {
-      "login": "intelligencex-review"
+      "login": "intelligencex-review[bot]"
     }
   }
 ]
@@ -244,6 +251,7 @@ internal static partial class Program {
 
             AssertEqual(0, exit, "review-fail-open-summary exit code");
             AssertEqual(1, patchHits, "review-fail-open-summary updates existing comment");
+            AssertEqual(false, string.IsNullOrWhiteSpace(updatedBody), "review-fail-open-summary updates trusted comment body");
             AssertContainsText(updatedBody ?? string.Empty, "## IntelligenceX Review (failed open)",
                 "review-fail-open-summary uses fail-open heading");
             AssertContainsText(updatedBody ?? string.Empty, "Reviewing this pull request: **Workflow hardening**",
