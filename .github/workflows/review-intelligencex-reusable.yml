@@ -683,28 +683,6 @@ jobs:
           set +e
           dotnet run --project IntelligenceX.Reviewer/IntelligenceX.Reviewer.csproj -c Release -f net8.0 2>&1 | tee "$log_path"
           exit_code=${PIPESTATUS[0]}
-          set -e
-          failure_kind=""
-          failure_detail=""
-          if [ "$exit_code" -ne 0 ]; then
-            if grep -Eiq 'refresh_token_reused|refresh token has already been used' "$log_path"; then
-              failure_kind="openai-auth-refresh-reused"
-              failure_detail="OpenAI auth refresh token was already used; sign in again."
-            elif grep -Eiq 'OAuth token request failed|invalid_grant|auth bundle|INTELLIGENCEX_AUTH_B64|signing in again' "$log_path"; then
-              failure_kind="openai-auth"
-              failure_detail="OpenAI auth bundle is missing or no longer valid; sign in again."
-            else
-              failure_kind="reviewer-runtime"
-              failure_detail="Reviewer execution failed after the workflow created the progress summary."
-            fi
-          fi
-          {
-            echo "exit_code=$exit_code"
-            echo "failure_kind=$failure_kind"
-            echo "failure_detail<<EOF"
-            echo "$failure_detail"
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
           exit "$exit_code"
 
       - name: Run IntelligenceX.Reviewer (release, unix)
@@ -818,28 +796,6 @@ jobs:
           set +e
           dotnet "$reviewer_dll" 2>&1 | tee "$log_path"
           exit_code=${PIPESTATUS[0]}
-          set -e
-          failure_kind=""
-          failure_detail=""
-          if [ "$exit_code" -ne 0 ]; then
-            if grep -Eiq 'refresh_token_reused|refresh token has already been used' "$log_path"; then
-              failure_kind="openai-auth-refresh-reused"
-              failure_detail="OpenAI auth refresh token was already used; sign in again."
-            elif grep -Eiq 'OAuth token request failed|invalid_grant|auth bundle|INTELLIGENCEX_AUTH_B64|signing in again' "$log_path"; then
-              failure_kind="openai-auth"
-              failure_detail="OpenAI auth bundle is missing or no longer valid; sign in again."
-            else
-              failure_kind="reviewer-runtime"
-              failure_detail="Reviewer execution failed after the workflow created the progress summary."
-            fi
-          fi
-          {
-            echo "exit_code=$exit_code"
-            echo "failure_kind=$failure_kind"
-            echo "failure_detail<<EOF"
-            echo "$failure_detail"
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
           exit "$exit_code"
 
       - name: Run IntelligenceX.Reviewer (release, windows)
@@ -943,44 +899,14 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path artifacts | Out-Null
           $logPath = "artifacts/reviewer-run-release-windows.log"
-          $stdoutPath = "artifacts/reviewer-run-release-windows.stdout.log"
-          $stderrPath = "artifacts/reviewer-run-release-windows.stderr.log"
-          Set-Content -Path $logPath -Value ""
-          if (Test-Path $stdoutPath) { Remove-Item $stdoutPath -Force }
-          if (Test-Path $stderrPath) { Remove-Item $stderrPath -Force }
           $reviewer = Get-ChildItem -Path reviewer-release -Recurse -Filter IntelligenceX.Reviewer.dll | Select-Object -First 1
           if (-not $reviewer) {
             Write-Error "Reviewer DLL not found under reviewer-release."
             exit 1
           }
-          $process = Start-Process -FilePath "dotnet" -ArgumentList @($reviewer.FullName) -NoNewWindow -PassThru -Wait -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath
-          $exitCode = $process.ExitCode
-          if (Test-Path $stdoutPath) {
-            Get-Content -Path $stdoutPath | Tee-Object -FilePath $logPath -Append
-          }
-          if (Test-Path $stderrPath) {
-            Get-Content -Path $stderrPath | Tee-Object -FilePath $logPath -Append
-          }
-          $failureKind = ""
-          $failureDetail = ""
-          if ($exitCode -ne 0) {
-            $logText = Get-Content -Path $logPath -Raw
-            if ($logText -match 'refresh_token_reused|refresh token has already been used') {
-              $failureKind = "openai-auth-refresh-reused"
-              $failureDetail = "OpenAI auth refresh token was already used; sign in again."
-            } elseif ($logText -match 'OAuth token request failed|invalid_grant|auth bundle|INTELLIGENCEX_AUTH_B64|signing in again') {
-              $failureKind = "openai-auth"
-              $failureDetail = "OpenAI auth bundle is missing or no longer valid; sign in again."
-            } else {
-              $failureKind = "reviewer-runtime"
-              $failureDetail = "Reviewer execution failed after the workflow created the progress summary."
-            }
-          }
-          "exit_code=$exitCode" >> $env:GITHUB_OUTPUT
-          "failure_kind=$failureKind" >> $env:GITHUB_OUTPUT
-          "failure_detail<<EOF" >> $env:GITHUB_OUTPUT
-          $failureDetail >> $env:GITHUB_OUTPUT
-          "EOF" >> $env:GITHUB_OUTPUT
+          $output = & dotnet $reviewer.FullName 2>&1
+          $exitCode = $LASTEXITCODE
+          $output | Tee-Object -FilePath $logPath
           exit $exitCode
 
       - name: Finalize fail-open reviewer summary
@@ -995,120 +921,12 @@ jobs:
             )
           }}
         continue-on-error: true
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
-        env:
-          REVIEWER_SOURCE_SELECTED: ${{ inputs.reviewer_source }}
-          REVIEWER_SOURCE_FAILURE_KIND: ${{ steps.reviewer_run_source.outputs.failure_kind }}
-          REVIEWER_SOURCE_FAILURE_DETAIL: ${{ steps.reviewer_run_source.outputs.failure_detail }}
-          REVIEWER_RELEASE_UNIX_FAILURE_KIND: ${{ steps.reviewer_run_release_unix.outputs.failure_kind }}
-          REVIEWER_RELEASE_UNIX_FAILURE_DETAIL: ${{ steps.reviewer_run_release_unix.outputs.failure_detail }}
-          REVIEWER_RELEASE_WINDOWS_FAILURE_KIND: ${{ steps.reviewer_run_release_windows.outputs.failure_kind }}
-          REVIEWER_RELEASE_WINDOWS_FAILURE_DETAIL: ${{ steps.reviewer_run_release_windows.outputs.failure_detail }}
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            const summaryMarker = '<!-- intelligencex:summary -->';
-            const repoInput = '${{ inputs.repo }}';
-            const prNumber = Number('${{ inputs.pr_number }}' || context.payload.pull_request?.number || 0);
-            const selectedSource = process.env.REVIEWER_SOURCE_SELECTED || 'release';
-            const title = context.payload.pull_request?.title || 'Pull request';
-            const owner = context.repo.owner;
-            const repo = context.repo.repo;
-            const remediationRepo = repoInput || `${owner}/${repo}`;
-
-            if (!Number.isInteger(prNumber) || prNumber <= 0) {
-              console.log('Skipping fail-open summary finalization because no PR number was available.');
-              return;
-            }
-
-            const candidates = [
-              {
-                kind: process.env.REVIEWER_SOURCE_FAILURE_KIND,
-                detail: process.env.REVIEWER_SOURCE_FAILURE_DETAIL,
-                source: 'source'
-              },
-              {
-                kind: process.env.REVIEWER_RELEASE_UNIX_FAILURE_KIND,
-                detail: process.env.REVIEWER_RELEASE_UNIX_FAILURE_DETAIL,
-                source: 'release'
-              },
-              {
-                kind: process.env.REVIEWER_RELEASE_WINDOWS_FAILURE_KIND,
-                detail: process.env.REVIEWER_RELEASE_WINDOWS_FAILURE_DETAIL,
-                source: 'release'
-              }
-            ].filter(candidate => candidate.kind);
-
-            const failure = candidates[0] || {
-              kind: 'reviewer-runtime',
-              detail: 'Reviewer execution failed after the workflow created the progress summary.',
-              source: selectedSource
-            };
-
-            const failureLabel = failure.kind === 'openai-auth-refresh-reused'
-              ? 'OpenAI auth refresh token was already used'
-              : failure.kind === 'openai-auth'
-                ? 'OpenAI auth bundle is missing or stale'
-                : 'Reviewer runtime failed';
-
-            const lines = [
-              summaryMarker,
-              '## IntelligenceX Review (failed open)',
-              `Reviewing this pull request: **${title}**`,
-              '',
-              'WARNING: Reviewer execution failed and this workflow was allowed to pass open.',
-              '',
-              `- Reviewer source: ${failure.source}`,
-              `- Failure type: ${failureLabel}`,
-            ];
-
-            if (failure.detail && failure.detail.trim().length > 0) {
-              lines.push(`- Detail: ${failure.detail.trim()}`);
-            }
-
-            if (failure.kind === 'openai-auth-refresh-reused' || failure.kind === 'openai-auth') {
-              lines.push(
-                '',
-                '> Interactive ChatGPT sign-in cannot run inside GitHub Actions.',
-                '> Reauthenticate locally and refresh `INTELLIGENCEX_AUTH_B64` with:',
-                `> \`intelligencex auth login --set-github-secret --repo ${remediationRepo}\``
-              );
-            } else {
-              lines.push(
-                '',
-                '> Check the `review / review` workflow logs for the runtime failure and rerun the job after fixing the underlying issue.'
-              );
-            }
-
-            lines.push(
-              '',
-              '_The static analysis gate still ran and remained enforcing in this workflow._'
-            );
-
-            const body = lines.join('\n');
-            const comments = await github.paginate(github.rest.issues.listComments, {
-              owner,
-              repo,
-              issue_number: prNumber,
-              per_page: 100
-            });
-
-            const existing = comments
-              .filter(comment => typeof comment.body === 'string' && comment.body.includes(summaryMarker))
-              .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())[0];
-
-            if (existing) {
-              await github.rest.issues.updateComment({
-                owner,
-                repo,
-                comment_id: existing.id,
-                body
-              });
-            } else {
-              await github.rest.issues.createComment({
-                owner,
-                repo,
-                issue_number: prNumber,
-                body
-              });
-            }
+        shell: bash
+        run: |
+          dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -c Release -f net8.0 -- ci review-fail-open-summary \
+            --reviewer-source "${{ inputs.reviewer_source }}" \
+            --repo "${{ inputs.repo }}" \
+            --pr-number "${{ inputs.pr_number }}" \
+            --source-log artifacts/reviewer-run-source.log \
+            --release-unix-log artifacts/reviewer-run-release-unix.log \
+            --release-windows-log artifacts/reviewer-run-release-windows.log

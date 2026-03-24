@@ -223,18 +223,14 @@ jobs:
             "reusable workflow finalizes fail-open reviewer runs with a summary update");
         AssertContainsText(content, "continue-on-error: true",
             "reusable workflow keeps fail-open finalization best-effort");
-        AssertContainsText(content, "Interactive ChatGPT sign-in cannot run inside GitHub Actions.",
-            "reusable workflow explains that CI cannot complete interactive login");
-        AssertContainsText(content, "intelligencex auth login --set-github-secret --repo ${remediationRepo}",
-            "reusable workflow points to the local reauth and secret refresh command");
-        AssertContainsText(content, "const prNumber = Number('${{ inputs.pr_number }}' || context.payload.pull_request?.number || 0);",
-            "reusable workflow falls back to event payload PR number for fail-open summaries");
-        AssertContainsText(content, "Skipping fail-open summary finalization because no PR number was available.",
-            "reusable workflow skips fail-open summary when no PR number is available");
-        AssertContainsText(content, "Reviewing this pull request: **${title}**",
-            "reusable workflow avoids self-referential PR number formatting in fail-open summaries");
-        AssertContainsText(content, "Check the `review / review` workflow logs for the runtime failure",
-            "reusable workflow gives non-auth runtime remediation without auth-only instructions");
+        AssertContainsText(content, "ci review-fail-open-summary",
+            "reusable workflow delegates fail-open summary handling to the CLI helper");
+        AssertContainsText(content, "--source-log artifacts/reviewer-run-source.log",
+            "reusable workflow passes source reviewer log path to CLI helper");
+        AssertContainsText(content, "--release-unix-log artifacts/reviewer-run-release-unix.log",
+            "reusable workflow passes release unix log path to CLI helper");
+        AssertContainsText(content, "--release-windows-log artifacts/reviewer-run-release-windows.log",
+            "reusable workflow passes release windows log path to CLI helper");
         AssertEqual(false, content.Contains("&review_inputs", StringComparison.Ordinal),
             "reusable workflow should avoid YAML anchors in workflow schema");
         AssertEqual(false, content.Contains("*review_inputs", StringComparison.Ordinal),

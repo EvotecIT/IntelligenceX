@@ -172,6 +172,28 @@ internal static partial class Program {
         }
     }
 
+    private static void TestWorkflowFailOpenLogClassificationUsesAuthRefreshLabel() {
+        var failure = ReviewDiagnostics.ClassifyWorkflowFailureLog(
+            "OAuth token request failed (401): refresh_token_reused. Your refresh token has already been used.");
+        AssertEqual("openai-auth-refresh-reused", failure.Kind, "workflow failure kind");
+        AssertEqual("OpenAI auth refresh token was already used", failure.Label, "workflow failure label");
+        AssertEqual(true, failure.RequiresAuthRemediation, "workflow failure remediation flag");
+    }
+
+    private static void TestWorkflowFailOpenSummaryBodyUsesRuntimeGuidance() {
+        var context = new PullRequestContext("owner/repo", "owner", "repo", 1, "Workflow hardening", null, false, "head", "base",
+            Array.Empty<string>(), "owner/repo", false, null);
+        var failure = ReviewDiagnostics.ClassifyWorkflowFailureLog("Unhandled exception: reviewer-runtime");
+        var body = ReviewDiagnostics.BuildWorkflowFailOpenSummaryBody(context, "source", "owner/repo", failure);
+
+        AssertContainsText(body, "## IntelligenceX Review (failed open)", "workflow fail-open heading");
+        AssertContainsText(body, "Reviewing this pull request: **Workflow hardening**", "workflow fail-open title");
+        AssertContainsText(body, "- Reviewer source: source", "workflow fail-open reviewer source");
+        AssertContainsText(body, "Check the `review / review` workflow logs for the runtime failure", "workflow fail-open runtime guidance");
+        AssertEqual(false, body.Contains("intelligencex auth login --set-github-secret", StringComparison.OrdinalIgnoreCase),
+            "workflow fail-open runtime guidance omits auth remediation");
+    }
+
     private static void TestFailureSummaryCommentUpdate() {
         var commentId = 42L;
         string? body = null;

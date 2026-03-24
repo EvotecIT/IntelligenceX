@@ -99,10 +99,13 @@ internal sealed class ReviewDiagnosticsSession : IDisposable {
 
 internal static class ReviewDiagnostics {
     public const string FailureMarker = "<!-- intelligencex:failure -->";
+    internal const string WorkflowSummaryMarker = "<!-- intelligencex:summary -->";
     private const string InvalidConfigurationSummary = "Invalid configuration";
     private const string AuthBundleSummary = "Auth bundle missing or invalid";
     private const string AuthRefreshFailedSummary = "OpenAI auth refresh failed; sign in again";
     private const string AuthRefreshTokenReusedSummary = "OpenAI auth refresh token was already used; sign in again";
+
+    internal readonly record struct WorkflowFailureInfo(string Kind, string Label, string Detail, bool RequiresAuthRemediation);
 
     /// <summary>
     /// Categorizes reviewer failures for reporting and retry logic.
@@ -291,6 +294,75 @@ internal static class ReviewDiagnostics {
                 Console.Error.WriteLine($"  {snapshot.StandardError[i]}");
             }
         }
+    }
+
+    internal static WorkflowFailureInfo ClassifyWorkflowFailureLog(string? logText) {
+        var text = logText ?? string.Empty;
+        if (text.IndexOf("refresh_token_reused", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            text.IndexOf("refresh token has already been used", StringComparison.OrdinalIgnoreCase) >= 0) {
+            return new WorkflowFailureInfo(
+                "openai-auth-refresh-reused",
+                "OpenAI auth refresh token was already used",
+                "OpenAI auth refresh token was already used; sign in again.",
+                true);
+        }
+
+        if (text.IndexOf("OAuth token request failed", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            text.IndexOf("invalid_grant", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            text.IndexOf("auth bundle", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            text.IndexOf("INTELLIGENCEX_AUTH_B64", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            text.IndexOf("signing in again", StringComparison.OrdinalIgnoreCase) >= 0) {
+            return new WorkflowFailureInfo(
+                "openai-auth",
+                "OpenAI auth bundle is missing or stale",
+                "OpenAI auth bundle is missing or no longer valid; sign in again.",
+                true);
+        }
+
+        return new WorkflowFailureInfo(
+            "reviewer-runtime",
+            "Reviewer runtime failed",
+            "Reviewer execution failed after the workflow created the progress summary.",
+            false);
+    }
+
+    internal static string BuildWorkflowFailOpenSummaryBody(PullRequestContext context, string reviewerSource,
+        string remediationRepo, WorkflowFailureInfo failure) {
+        var lines = new List<string> {
+            WorkflowSummaryMarker,
+            "## IntelligenceX Review (failed open)",
+            $"Reviewing this pull request: **{context.Title.Replace("\r", string.Empty).Replace("\n", " ")}**",
+            string.Empty,
+            "WARNING: Reviewer execution failed and this workflow was allowed to pass open.",
+            string.Empty,
+            $"- Reviewer source: {reviewerSource}",
+            $"- Failure type: {failure.Label}"
+        };
+
+        if (!string.IsNullOrWhiteSpace(failure.Detail)) {
+            lines.Add($"- Detail: {failure.Detail.Trim()}");
+        }
+
+        if (failure.RequiresAuthRemediation) {
+            lines.AddRange(new[] {
+                string.Empty,
+                "> Interactive ChatGPT sign-in cannot run inside GitHub Actions.",
+                "> Reauthenticate locally and refresh `INTELLIGENCEX_AUTH_B64` with:",
+                $"> `intelligencex auth login --set-github-secret --repo {remediationRepo}`"
+            });
+        } else {
+            lines.AddRange(new[] {
+                string.Empty,
+                "> Check the `review / review` workflow logs for the runtime failure and rerun the job after fixing the underlying issue."
+            });
+        }
+
+        lines.AddRange(new[] {
+            string.Empty,
+            "_The static analysis gate still ran and remained enforcing in this workflow._"
+        });
+
+        return string.Join(Environment.NewLine, lines);
     }
 
     private static void AppendException(StringBuilder sb, Exception ex, bool includeInner, int depth) {

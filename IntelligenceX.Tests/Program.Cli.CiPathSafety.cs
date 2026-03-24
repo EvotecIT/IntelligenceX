@@ -168,5 +168,108 @@ internal static partial class Program {
             try { Directory.Delete(root, recursive: true); } catch { }
         }
     }
+
+    private static void TestCiReviewFailOpenSummaryUpdatesExistingComment() {
+        var root = Path.Combine(Path.GetTempPath(), "ix-ci-fail-open-summary-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try {
+            var logPath = Path.Combine(root, "reviewer.log");
+            File.WriteAllText(logPath,
+                "OAuth token request failed (401): refresh_token_reused. Your refresh token has already been used to generate a new access token. Please try signing in again.");
+
+            string? updatedBody = null;
+            var patchHits = 0;
+            using var server = new LocalHttpServer(request => {
+                if (string.Equals(request.Method, "GET", StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(request.Path, "/repos/owner/repo/pulls/123", StringComparison.OrdinalIgnoreCase)) {
+                    return new HttpResponse("""
+{
+  "title": "Workflow hardening",
+  "body": "Body",
+  "draft": false,
+  "number": 123,
+  "head": {
+    "sha": "head-sha",
+    "repo": {
+      "full_name": "owner/repo",
+      "fork": false
+    }
+  },
+  "base": {
+    "sha": "base-sha",
+    "ref": "master",
+    "repo": {
+      "full_name": "owner/repo"
+    }
+  },
+  "labels": []
+}
+""");
+                }
+
+                if (string.Equals(request.Method, "GET", StringComparison.OrdinalIgnoreCase) &&
+                    request.Path.StartsWith("/repos/owner/repo/issues/123/comments", StringComparison.OrdinalIgnoreCase)) {
+                    return new HttpResponse("""
+[
+  {
+    "id": 42,
+    "body": "<!-- intelligencex:summary -->\nold body",
+    "user": {
+      "login": "intelligencex-review"
+    }
+  }
+]
+""");
+                }
+
+                if (string.Equals(request.Method, "PATCH", StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(request.Path, "/repos/owner/repo/issues/comments/42", StringComparison.OrdinalIgnoreCase)) {
+                    patchHits++;
+                    updatedBody = request.Body;
+                    return new HttpResponse("{\"id\":42,\"body\":\"ok\"}");
+                }
+
+                return null;
+            });
+
+            var exit = CiReviewFailOpenSummaryCommand.RunAsync(new[] {
+                    "--repo", "owner/repo",
+                    "--pr-number", "123",
+                    "--reviewer-source", "source",
+                    "--source-log", logPath,
+                    "--github-token", "token",
+                    "--github-base-url", server.BaseUri.ToString().TrimEnd('/')
+                })
+                .GetAwaiter().GetResult();
+
+            AssertEqual(0, exit, "review-fail-open-summary exit code");
+            AssertEqual(1, patchHits, "review-fail-open-summary updates existing comment");
+            AssertContainsText(updatedBody ?? string.Empty, "## IntelligenceX Review (failed open)",
+                "review-fail-open-summary uses fail-open heading");
+            AssertContainsText(updatedBody ?? string.Empty, "Reviewing this pull request: **Workflow hardening**",
+                "review-fail-open-summary uses PR title");
+            AssertContainsText(updatedBody ?? string.Empty, "- Reviewer source: source",
+                "review-fail-open-summary records reviewer source");
+            AssertContainsText(updatedBody ?? string.Empty, "intelligencex auth login --set-github-secret --repo owner/repo",
+                "review-fail-open-summary includes reauth guidance");
+        } finally {
+            try { Directory.Delete(root, recursive: true); } catch { }
+        }
+    }
+
+    private static void TestCiReviewFailOpenSummarySkipsWhenPrNumberUnavailable() {
+        var previousEventPath = Environment.GetEnvironmentVariable("GITHUB_EVENT_PATH");
+        try {
+            Environment.SetEnvironmentVariable("GITHUB_EVENT_PATH", null);
+            var exit = CiReviewFailOpenSummaryCommand.RunAsync(new[] {
+                    "--repo", "owner/repo",
+                    "--reviewer-source", "source"
+                })
+                .GetAwaiter().GetResult();
+            AssertEqual(0, exit, "review-fail-open-summary skip exit code");
+        } finally {
+            Environment.SetEnvironmentVariable("GITHUB_EVENT_PATH", previousEventPath);
+        }
+    }
 #endif
 }
