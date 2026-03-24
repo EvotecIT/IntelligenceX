@@ -65,9 +65,9 @@ function Get-ScenarioStem([string] $scenarioName) {
     return $compact
 }
 
-$repoRoot = (Get-Item (Split-Path -Parent $MyInvocation.MyCommand.Path)).Parent.FullName
-$soakScript = Join-Path $repoRoot 'Build\Run-ChatCompactionSoakSuite.ps1'
-$compareScript = Join-Path $repoRoot 'Build\Compare-ChatScenarioReports.ps1'
+$repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
+$soakScript = Join-Path $repoRoot 'Build\Chat\Run-ChatCompactionSoakSuite.ps1'
+$compareScript = Join-Path $repoRoot 'Build\Chat\Compare-ChatScenarioReports.ps1'
 
 if (-not (Test-Path $soakScript)) {
     throw "Compaction soak suite script not found: $soakScript"

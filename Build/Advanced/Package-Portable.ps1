@@ -312,17 +312,8 @@ function New-PortableReadme {
     Set-Content -Path (Join-Path $BundleRoot 'README.md') -Value ($lines -join "`r`n") -Encoding UTF8
 }
 
-function Resolve-PrimaryExecutableName {
-    param([Parameter(Mandatory)][string] $FrontendName)
-
-    if ($FrontendName -eq 'app') {
-        return 'IntelligenceX.Chat.App.exe'
-    }
-
-    return 'IntelligenceX.Chat.Host.exe'
-}
-
-$script:RepoRoot = (Get-Item (Split-Path -Parent $MyInvocation.MyCommand.Path)).Parent.FullName
+$script:RepoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
+. (Join-Path $script:RepoRoot 'Build\Internal\Resolve-ReleaseDefaults.ps1')
 
 if ([string]::IsNullOrWhiteSpace($OutDir)) {
     $OutDir = Join-Path $script:RepoRoot ("Artifacts\Portable\{0}" -f $Runtime)
@@ -349,7 +340,8 @@ New-Item -ItemType Directory -Path $pluginsOut -Force | Out-Null
 $hostProject = Join-Path $script:RepoRoot 'IntelligenceX.Chat\IntelligenceX.Chat.Host\IntelligenceX.Chat.Host.csproj'
 $appProject = Join-Path $script:RepoRoot 'IntelligenceX.Chat\IntelligenceX.Chat.App\IntelligenceX.Chat.App.csproj'
 $serviceProject = Join-Path $script:RepoRoot 'IntelligenceX.Chat\IntelligenceX.Chat.Service\IntelligenceX.Chat.Service.csproj'
-$exportScript = Join-Path $script:RepoRoot 'Build\Export-PluginFolders.ps1'
+$exportScript = Join-Path $script:RepoRoot 'Build\Internal\Export-PluginFolders.ps1'
+$completeBundleScript = Join-Path $script:RepoRoot 'Build\Internal\Complete-PortableBundle.ps1'
 
 Write-Header 'Package Portable Chat Bundle'
 Write-Step "Frontend: $frontendNormalized"
@@ -387,67 +379,52 @@ if (-not (Test-Path (Join-Path $bundleRoot $primaryExecutable))) {
     throw "Primary executable missing from portable bundle: $(Join-Path $bundleRoot $primaryExecutable)"
 }
 
-Write-Header 'Export Plugin Folders'
-$exportArgs = @(
+Write-Header 'Finalize Portable Bundle'
+$completeArgs = @(
     '-NoLogo',
     '-NoProfile',
     '-File',
-    $exportScript,
-    '-Mode',
+    $completeBundleScript,
+    '-BundleRoot',
+    $bundleRoot,
+    '-PluginMode',
     $PluginMode,
     '-Configuration',
     $Configuration,
+    '-Frontend',
+    $frontendNormalized,
     '-Framework',
     $Framework,
-    '-OutDir',
-    $pluginsOut
+    '-AppFramework',
+    $AppFramework,
+    '-Runtime',
+    $Runtime,
+    '-PrimaryExecutable',
+    $primaryExecutable,
+    '-BundleName',
+    $BundleName
 )
+if ($serviceIncluded) {
+    $completeArgs += '-IncludeService'
+}
+if ($IncludePrivateToolPacks) {
+    $completeArgs += '-IncludePrivateToolPacks'
+}
 if ($IncludeSymbols) {
-    $exportArgs += '-IncludeSymbols'
+    $completeArgs += '-IncludeSymbols'
+}
+if ($IncludePortableHelpers) {
+    $completeArgs += '-IncludePortableHelpers'
+}
+if ($IncludeBundleMetadata) {
+    $completeArgs += '-IncludeBundleMetadata'
 }
 if (-not [string]::IsNullOrWhiteSpace($TestimoXRoot)) {
-    $exportArgs += @('-TestimoXRoot', $TestimoXRoot)
+    $completeArgs += @('-TestimoXRoot', $TestimoXRoot)
 }
-& pwsh @exportArgs
+& pwsh @completeArgs
 if ($LASTEXITCODE -ne 0) {
-    throw "Plugin export failed with exit code $LASTEXITCODE."
-}
-
-if ($LeanBundle) {
-    Write-Header 'Compress Plugin Folders'
-    Convert-PluginFoldersToArchives -PluginsRoot $pluginsOut
-}
-
-Write-Header 'Generate Portable Launchers'
-if ($IncludePortableHelpers) {
-    New-PortableLauncherScripts -BundleRoot $bundleRoot -PrimaryExecutable $primaryExecutable
-    New-PortableReadme -BundleRoot $bundleRoot -FrontendValue $frontendNormalized -PrimaryExecutable $primaryExecutable -RuntimeValue $Runtime -FrameworkValue $Framework -PluginModeValue $PluginMode -ServiceIncluded $serviceIncluded
-} else {
-    Write-Step 'Skipping helper scripts/docs for one-click portable UX (launch IntelligenceX.Chat.App.exe directly).'
-}
-
-Remove-BundleSymbols -BundleRoot $bundleRoot
-Remove-BundleDiagnostics -BundleRoot $bundleRoot
-
-if ($IncludeBundleMetadata) {
-    $bundleMetadata = [ordered]@{
-        schemaVersion = 1
-        bundleName = $BundleName
-        frontend = $frontendNormalized
-        primaryExecutable = $primaryExecutable
-        runtime = $Runtime
-        framework = $Framework
-        appFramework = $AppFramework
-        configuration = $Configuration
-        pluginMode = $PluginMode
-        includeService = $serviceIncluded
-        includePrivateToolPacks = [bool]$IncludePrivateToolPacks
-        includeSymbols = [bool]$IncludeSymbols
-        leanBundle = $LeanBundle
-        includePortableHelpers = [bool]$IncludePortableHelpers
-        createdUtc = (Get-Date).ToUniversalTime().ToString('o')
-    }
-    $bundleMetadata | ConvertTo-Json -Depth 5 | Set-Content -Path (Join-Path $bundleRoot 'portable-bundle.json') -Encoding UTF8
+    throw "Portable bundle finishing failed with exit code $LASTEXITCODE."
 }
 
 if ($Zip) {

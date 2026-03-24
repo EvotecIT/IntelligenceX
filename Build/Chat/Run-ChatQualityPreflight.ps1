@@ -46,10 +46,10 @@ $ErrorActionPreference = 'Stop'
 function Write-Header([string] $text) { Write-Host "`n=== $text ===" -ForegroundColor Cyan }
 function Write-Step([string] $text) { Write-Host "[+] $text" -ForegroundColor Yellow }
 
-$repoRoot = (Get-Item (Split-Path -Parent $MyInvocation.MyCommand.Path)).Parent.FullName
-$scenarioSuiteScript = Join-Path $repoRoot 'Build\Run-ChatScenarioSuite.ps1'
-$liveHarnessScript = Join-Path $repoRoot 'Build\Run-ChatLiveConversation.ps1'
-$liveHarnessSuiteScript = Join-Path $repoRoot 'Build\Run-ChatLiveConversationSuite.ps1'
+$repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
+$scenarioSuiteScript = Join-Path $repoRoot 'Build\Chat\Run-ChatScenarioSuite.ps1'
+$liveHarnessScript = Join-Path $repoRoot 'Build\Chat\Run-ChatLiveConversation.ps1'
+$liveHarnessSuiteScript = Join-Path $repoRoot 'Build\Chat\Run-ChatLiveConversationSuite.ps1'
 
 if (-not (Test-Path $scenarioSuiteScript)) {
     throw "Scenario suite script not found: $scenarioSuiteScript"

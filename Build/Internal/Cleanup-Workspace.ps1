@@ -303,7 +303,7 @@ function Test-WorktreeGitPointerHealthy {
     return Test-Path -LiteralPath $resolved
 }
 
-$script:RepoRoot = (Get-Item (Split-Path -Parent $MyInvocation.MyCommand.Path)).Parent.FullName
+$script:RepoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $workspaceRoot = Split-Path -Parent $script:RepoRoot
 
 $candidateRepos = [System.Collections.Generic.List[string]]::new()

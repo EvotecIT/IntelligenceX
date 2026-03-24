@@ -33,7 +33,7 @@ function Stop-IfRunning {
     }
 }
 
-$repoRoot = (Get-Item (Split-Path -Parent $MyInvocation.MyCommand.Path)).Parent.FullName
+$repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $appProject = Join-Path $repoRoot 'IntelligenceX.Chat\IntelligenceX.Chat.App\IntelligenceX.Chat.App.csproj'
 $officeImoRoot = Join-Path (Split-Path $repoRoot -Parent) 'OfficeIMO'
 $resolvedOfficeImoRoot = $null

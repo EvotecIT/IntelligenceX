@@ -128,7 +128,7 @@ function Is-StrictDefaultSet([object] $defaults) {
         -and ([int](Get-JsonPropertyValue -instance $defaults -propertyName 'max_duplicate_tool_call_signatures' -defaultValue -1) -eq 1)
 }
 
-$repoRoot = (Get-Item (Split-Path -Parent $MyInvocation.MyCommand.Path)).Parent.FullName
+$repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $resolvedScenarioDir = Resolve-RepoRelativePath -repoRoot $repoRoot -pathValue $ScenarioDir
 if (-not (Test-Path $resolvedScenarioDir)) {
     throw "Scenario directory not found: $resolvedScenarioDir"

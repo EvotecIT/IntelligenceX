@@ -100,8 +100,8 @@ function Test-ScenarioTagMatch([string[]] $scenarioTags, [string[]] $requiredTag
     return $true
 }
 
-$repoRoot = (Get-Item (Split-Path -Parent $MyInvocation.MyCommand.Path)).Parent.FullName
-$liveHarnessScript = Join-Path $repoRoot 'Build\Run-ChatLiveConversation.ps1'
+$repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
+$liveHarnessScript = Join-Path $repoRoot 'Build\Chat\Run-ChatLiveConversation.ps1'
 if (-not (Test-Path $liveHarnessScript)) {
     throw "Live harness script not found: $liveHarnessScript"
 }

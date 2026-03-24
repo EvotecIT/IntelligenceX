@@ -24,8 +24,8 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$repoRoot = (Get-Item (Split-Path -Parent $MyInvocation.MyCommand.Path)).Parent.FullName
-$scenarioSuiteScript = Join-Path $repoRoot 'Build\Run-ChatScenarioSuite.ps1'
+$repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
+$scenarioSuiteScript = Join-Path $repoRoot 'Build\Chat\Run-ChatScenarioSuite.ps1'
 if (-not (Test-Path $scenarioSuiteScript)) {
     throw "Scenario suite script not found: $scenarioSuiteScript"
 }

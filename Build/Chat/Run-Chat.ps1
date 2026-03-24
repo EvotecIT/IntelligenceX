@@ -41,7 +41,7 @@ $ErrorActionPreference = 'Stop'
 function Write-Header($text) { Write-Host "`n=== $text ===" -ForegroundColor Cyan }
 function Write-Step($text)   { Write-Host "[+] $text" -ForegroundColor Yellow }
 
-$repoRoot = (Get-Item (Split-Path -Parent $MyInvocation.MyCommand.Path)).Parent.FullName
+$repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $hostProject = Join-Path $repoRoot 'IntelligenceX.Chat\IntelligenceX.Chat.Host\IntelligenceX.Chat.Host.csproj'
 
 if (-not (Test-Path $hostProject)) {

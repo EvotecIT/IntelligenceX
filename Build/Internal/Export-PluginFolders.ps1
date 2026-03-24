@@ -43,63 +43,6 @@ function Invoke-DotNet {
     }
 }
 
-function Ensure-TrailingSlash {
-    param([Parameter(Mandatory)][string] $Path)
-    $full = [System.IO.Path]::GetFullPath($Path)
-    if ($full.EndsWith([System.IO.Path]::DirectorySeparatorChar)) {
-        return $full
-    }
-    return ($full + [System.IO.Path]::DirectorySeparatorChar)
-}
-
-function Test-TestimoXMarkers {
-    param([Parameter(Mandatory)][string] $Root)
-
-    $full = [System.IO.Path]::GetFullPath($Root)
-    $markers = @(
-        (Join-Path $full 'ADPlayground\ADPlayground.csproj'),
-        (Join-Path $full 'ComputerX\Features\FeatureInventoryQuery.cs'),
-        (Join-Path $full 'ComputerX\PowerShellRuntime\PowerShellCommandQuery.cs')
-    )
-
-    foreach ($marker in $markers) {
-        if (-not (Test-Path $marker)) {
-            return $false
-        }
-    }
-    return $true
-}
-
-function Resolve-TestimoXRoot {
-    param(
-        [string] $Provided,
-        [Parameter(Mandatory)]
-        [string] $RepoRoot
-    )
-
-    if (-not [string]::IsNullOrWhiteSpace($Provided)) {
-        if (-not (Test-TestimoXMarkers -Root $Provided)) {
-            throw "Provided -TestimoXRoot does not contain required markers: $Provided"
-        }
-        return (Ensure-TrailingSlash -Path $Provided)
-    }
-
-    $candidates = @(
-        (Join-Path $RepoRoot '..\TestimoX'),
-        (Join-Path $RepoRoot '..\TestimoX-master'),
-        (Join-Path $RepoRoot '..\..\TestimoX'),
-        (Join-Path $RepoRoot '..\..\TestimoX-master')
-    )
-
-    foreach ($candidate in $candidates) {
-        if (Test-TestimoXMarkers -Root $candidate) {
-            return (Ensure-TrailingSlash -Path $candidate)
-        }
-    }
-
-    throw "Unable to locate TestimoX private engines. Pass -TestimoXRoot explicitly for private plugin export."
-}
-
 function Get-ProjectFrameworks {
     param([xml] $Xml)
 
@@ -117,6 +60,9 @@ function Get-ProjectFrameworks {
         ForEach-Object { $_.Trim() } |
         Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
 }
+
+$script:RepoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
+. (Join-Path $script:RepoRoot 'Build\Internal\Resolve-TestimoXRoot.ps1')
 
 function Resolve-FrameworkForProject {
     param(
@@ -210,8 +156,6 @@ function Get-PluginEntryType {
 
     return @($candidates)[0]
 }
-
-$script:RepoRoot = (Get-Item (Split-Path -Parent $MyInvocation.MyCommand.Path)).Parent.FullName
 
 if ([string]::IsNullOrWhiteSpace($OutDir)) {
     $OutDir = Join-Path $script:RepoRoot 'Artifacts\Plugins'
