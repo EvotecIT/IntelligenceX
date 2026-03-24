@@ -227,8 +227,64 @@ internal static partial class Program {
         AssertSequenceEqual(new[] {
             "--repo", "owner/repo",
             "--provider", "openai",
-            "--openai-model", "gpt-5.4/fast"
+            "--model", "gpt-5.4/fast"
         }, args, "setup args openai model");
+    }
+
+    private static void TestSetupProviderCatalogReturnsRecommendedOpenAiModels() {
+        var models = IntelligenceX.Cli.Setup.SetupProviderCatalog.GetRecommendedModels("openai");
+        AssertEqual(true, models.Count >= 3, "setup provider catalog openai model count");
+        AssertEqual("gpt-5.4", models[0], "setup provider catalog openai default first");
+        AssertEqual(true, models.Contains("gpt-5.4/fast", StringComparer.OrdinalIgnoreCase),
+            "setup provider catalog openai fast present");
+        AssertEqual(true, models.Contains("gpt-5-mini", StringComparer.OrdinalIgnoreCase),
+            "setup provider catalog openai mini present");
+    }
+
+    private static void TestSetupProviderCatalogReturnsRecommendedClaudeModels() {
+        var models = IntelligenceX.Cli.Setup.SetupProviderCatalog.GetRecommendedModels("claude");
+        AssertEqual(3, models.Count, "setup provider catalog claude model count");
+        AssertEqual("claude-opus-4-1", models[0], "setup provider catalog claude default first");
+        AssertEqual(true, models.Contains("claude-sonnet-4-5", StringComparer.OrdinalIgnoreCase),
+            "setup provider catalog claude sonnet present");
+        AssertEqual(true, models.Contains("claude-haiku-4-5", StringComparer.OrdinalIgnoreCase),
+            "setup provider catalog claude haiku present");
+    }
+
+    private static void TestSetupProviderCatalogDescribesRecommendedModelProfiles() {
+        var openAiProfile = IntelligenceX.Cli.Setup.SetupProviderCatalog.TryGetRecommendedModelProfile("openai", "gpt-5.4");
+        AssertEqual(true, openAiProfile.HasValue, "setup provider catalog openai profile exists");
+        AssertContainsText(openAiProfile?.Summary ?? string.Empty, "default quality", "setup provider catalog openai profile summary");
+        AssertEqual(true, openAiProfile?.IsRecommendedDefault ?? false, "setup provider catalog openai default flag");
+        AssertEqual("OpenAI default review", openAiProfile?.ProfileLabel ?? string.Empty, "setup provider catalog openai profile label");
+
+        var claudeProfile = IntelligenceX.Cli.Setup.SetupProviderCatalog.TryGetRecommendedModelProfile("claude", "claude-sonnet-4-5");
+        AssertEqual(true, claudeProfile.HasValue, "setup provider catalog claude profile exists");
+        AssertContainsText(claudeProfile?.Summary ?? string.Empty, "Balanced Claude option", "setup provider catalog claude profile summary");
+        AssertEqual("claude-balanced-review", claudeProfile?.ProfileId ?? string.Empty, "setup provider catalog claude profile id");
+
+        var missing = IntelligenceX.Cli.Setup.SetupProviderCatalog.TryGetRecommendedModelProfile("claude", "claude-custom-test");
+        AssertEqual(false, missing.HasValue, "setup provider catalog missing profile");
+
+        var byId = IntelligenceX.Cli.Setup.SetupProviderCatalog.TryGetRecommendedModelProfileById("claude", "claude-fast-review");
+        AssertEqual(true, byId.HasValue, "setup provider catalog profile by id exists");
+        AssertEqual("claude-haiku-4-5", byId?.ModelId ?? string.Empty, "setup provider catalog profile by id model");
+    }
+
+    private static void TestSetupArgsIncludeClaudeModelAndApiKey() {
+        var plan = new SetupPlan("owner/repo") {
+            Provider = "claude",
+            OpenAIModel = "claude-sonnet-4-20250514",
+            AnthropicApiKey = "sk-ant-test"
+        };
+
+        var args = SetupArgsBuilder.FromPlan(plan);
+        AssertSequenceEqual(new[] {
+            "--repo", "owner/repo",
+            "--anthropic-api-key", "sk-ant-test",
+            "--provider", "claude",
+            "--model", "claude-sonnet-4-20250514"
+        }, args, "setup args claude model and api key");
     }
 
     private static void TestSetupConfigRejectsInvalidOpenAiAccountRotation() {

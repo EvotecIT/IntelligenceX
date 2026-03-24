@@ -70,16 +70,21 @@ See [Web Setup UI](/docs/reviewer/setup-web/) for limitations and security notes
 - Authenticates GitHub (device flow, PAT, or GitHub App)
 - Lets you pick single or multiple repos
 - Builds reviewer config via presets or custom JSON
+- Lets you choose a provider/model pair during preset-driven setup (`openai`, `claude`, or `copilot`), with quick picks for common OpenAI and Claude models
 - Preset flow exposes static-analysis controls (gate, runner strict mode, packs, export path)
 - Can load existing config from a repo and preview the workflow
 - Summary includes workflow status (managed/unmanaged) from the first selected repo
-- Logs into ChatGPT (native transport) if secrets are needed
+- Summary explains the selected provider/model pair so you can sanity-check the tradeoff before apply
+- Presets can carry named provider/model profiles so teams can reuse a consistent setup choice
+- Collects provider-specific secrets only when needed:
+  - OpenAI: ChatGPT login or auth bundle
+  - Claude: API key or key file path
 - Creates PRs with workflow/config updates
 
 ## Operations
 
 - Setup / update workflow + config (default)
-- Update OpenAI secret only
+- Update provider secret only
 - Cleanup (remove workflow/config)
 - Maintenance (inspect first, then pick setup/update-secret/cleanup)
 
@@ -116,6 +121,7 @@ intelligencex setup wizard --verbose
 - Presets (balanced, picky, security, performance, tests, minimal)
 - Load existing config from a repo
 - Custom JSON (editor, path, or paste)
+- Provider-aware model selection for OpenAI/Claude during preset setup, including recommended quick picks plus custom model entry
 
 For config ownership and precedence details, see [Workflow vs JSON](/docs/reviewer/workflow-vs-json/).
 

@@ -58,7 +58,7 @@ internal static partial class WizardRunner {
                               state.Operation == WizardOperation.Setup &&
                               state.ConfigMode == ConfigMode.Preset;
         var openAiAccountRoutingApplies = analysisApplies &&
-                                          IsOpenAiProvider(state.Provider);
+                                          SetupProviderCatalog.SupportsOpenAiAccountRouting(state.Provider);
         var allowSecrets = state.Operation == WizardOperation.Setup;
         var plan = new SetupPlan(repo) {
             GitHubClientId = state.GitHubClientId,
@@ -67,6 +67,8 @@ internal static partial class WizardRunner {
             ConfigPath = state.ConfigPath,
             ConfigJson = state.ConfigJson,
             AuthB64 = ShouldPassAuthB64(state) ? state.OpenAiAuthB64 : null,
+            AnthropicApiKey = ShouldPassAnthropicApiKey(state) ? state.AnthropicApiKey : null,
+            AnthropicApiKeyPath = ShouldPassAnthropicApiKey(state) ? null : state.AnthropicApiKeyPath,
             Provider = state.Provider,
             OpenAIModel = state.OpenAiModel,
             OpenAIAccountId = openAiAccountRoutingApplies ? state.OpenAiAccountId : null,
@@ -99,6 +101,48 @@ internal static partial class WizardRunner {
         return plan;
     }
 
+    private static string? ResolveSuggestedModelForProvider(string? previousProvider, string provider, string? currentModel) {
+        if (string.Equals(provider, SetupProviderCatalog.CopilotProvider, StringComparison.OrdinalIgnoreCase)) {
+            return null;
+        }
+
+        var normalizedProvider = SetupProviderCatalog.GetCanonicalProviderId(provider);
+        var normalizedPreviousProvider = SetupProviderCatalog.GetCanonicalProviderId(previousProvider);
+        var trimmedModel = string.IsNullOrWhiteSpace(currentModel) ? null : currentModel.Trim();
+        if (string.IsNullOrWhiteSpace(trimmedModel)) {
+            return SetupProviderCatalog.GetDefaultModel(normalizedProvider);
+        }
+
+        if (!string.Equals(normalizedPreviousProvider, normalizedProvider, StringComparison.OrdinalIgnoreCase) &&
+            !ModelLooksCompatibleWithProvider(trimmedModel, normalizedProvider)) {
+            return SetupProviderCatalog.GetDefaultModel(normalizedProvider);
+        }
+
+        return trimmedModel;
+    }
+
+    private static bool ModelLooksCompatibleWithProvider(string? model, string? provider) {
+        if (string.IsNullOrWhiteSpace(model)) {
+            return false;
+        }
+
+        var normalizedModel = model.Trim().ToLowerInvariant();
+        if (SetupProviderCatalog.IsClaudeProvider(provider)) {
+            return normalizedModel.StartsWith("claude", StringComparison.Ordinal);
+        }
+
+        if (SetupProviderCatalog.IsOpenAiProvider(provider)) {
+            return normalizedModel.StartsWith("gpt", StringComparison.Ordinal) ||
+                   normalizedModel.StartsWith("o1", StringComparison.Ordinal) ||
+                   normalizedModel.StartsWith("o3", StringComparison.Ordinal) ||
+                   normalizedModel.StartsWith("o4", StringComparison.Ordinal) ||
+                   normalizedModel.StartsWith("chatgpt", StringComparison.Ordinal) ||
+                   normalizedModel.StartsWith("codex", StringComparison.Ordinal);
+        }
+
+        return false;
+    }
+
     private static string DescribeAuth(WizardState state) {
         return state.AuthMode switch {
             GitHubAuthMode.DefaultDeviceFlow => "IntelligenceX app (device flow)",
@@ -121,7 +165,7 @@ internal static partial class WizardRunner {
         };
         var provider = !string.IsNullOrWhiteSpace(plan.Provider) ? plan.Provider! : state.Provider;
         var expectOrgSecret = (state.Operation == WizardOperation.Setup || state.Operation == WizardOperation.UpdateSecret) &&
-                              IsOpenAiProvider(provider) &&
+                              SetupProviderCatalog.SupportsOrgSecret(provider) &&
                               state.SecretTarget == SecretTarget.Org;
         var withConfig = plan.WithConfig ||
                          !string.IsNullOrWhiteSpace(plan.ConfigJson) ||
@@ -197,6 +241,9 @@ internal static partial class WizardRunner {
     }
 
     private static async Task TryShowUsageAsync(WizardState state) {
+        if (!IsOpenAiProvider(state.Provider)) {
+            return;
+        }
         if (state.Operation == WizardOperation.Cleanup) {
             return;
         }

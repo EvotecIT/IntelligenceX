@@ -169,6 +169,7 @@ internal sealed partial class ReviewSettings {
 
         ApplyOpenAiEnvironment(settings);
         ApplyOpenAiCompatibleEnvironment(settings);
+        ApplyAnthropicEnvironment(settings);
 
         var overwriteSummary = GetInput("overwrite_summary", "OVERWRITE_SUMMARY");
         if (!string.IsNullOrWhiteSpace(overwriteSummary)) {

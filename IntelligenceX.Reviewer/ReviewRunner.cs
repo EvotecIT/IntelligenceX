@@ -148,6 +148,7 @@ internal sealed partial class ReviewRunner {
                 ReviewProvider.Copilot => await RunCopilotAsync(prompt, onPartial, updateInterval, cancellationToken).ConfigureAwait(false),
                 ReviewProvider.OpenAI => await RunOpenAiWithRetryAsync(prompt, onPartial, updateInterval, cancellationToken).ConfigureAwait(false),
                 ReviewProvider.OpenAICompatible => await RunOpenAiCompatibleWithRetryAsync(prompt, cancellationToken).ConfigureAwait(false),
+                ReviewProvider.Claude => await RunClaudeWithRetryAsync(prompt, cancellationToken).ConfigureAwait(false),
                 _ => throw new NotSupportedException($"Unsupported review provider '{provider}'.")
             };
         } finally {
@@ -166,6 +167,9 @@ internal sealed partial class ReviewRunner {
                 return;
             case ReviewProvider.OpenAICompatible:
                 await RunOpenAiCompatiblePreflightAsync(timeout, cancellationToken).ConfigureAwait(false);
+                return;
+            case ReviewProvider.Claude:
+                await RunClaudePreflightAsync(timeout, cancellationToken).ConfigureAwait(false);
                 return;
             default:
                 throw new NotSupportedException($"Unsupported review provider '{provider}'.");

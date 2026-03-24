@@ -90,6 +90,8 @@ internal sealed partial class WebApi {
         public bool TriageBootstrap { get; set; }
         public string? AuthB64 { get; set; }
         public string? AuthB64Path { get; set; }
+        public string? AnthropicApiKey { get; set; }
+        public string? AnthropicApiKeyPath { get; set; }
         public string? Provider { get; set; }
         public string? OpenAIModel { get; set; }
         public string? OpenAIAccountId { get; set; }

@@ -9,6 +9,7 @@ namespace IntelligenceX.Cli.Setup.Wizard;
 
 internal static class WizardPrompts {
     internal const string DisableAnalysisSelection = "__disable_analysis__";
+    private const string CustomModelSelection = "__custom_model__";
 
     public static string PromptRepo(string? current) {
         var prompt = new TextPrompt<string>("Repository (owner/name):")
@@ -103,7 +104,7 @@ internal static class WizardPrompts {
                 .AddChoices(WizardOperation.Setup, WizardOperation.UpdateSecret, WizardOperation.Cleanup)
                 .UseConverter(op => op switch {
                     WizardOperation.Setup => "Setup / update workflow + config",
-                    WizardOperation.UpdateSecret => "Update OpenAI auth secret only",
+                    WizardOperation.UpdateSecret => "Update provider secret only",
                     _ => "Cleanup (remove workflow/config)"
                 }));
     }
@@ -255,16 +256,16 @@ internal static class WizardPrompts {
         return AnsiConsole.Confirm("Also create .intelligencex/reviewer.json?", current);
     }
 
-    public static bool PromptSkipSecret(bool current) {
-        return AnsiConsole.Confirm("Skip uploading OpenAI secret now?", current);
+    public static bool PromptSkipSecret(string provider, bool current) {
+        return AnsiConsole.Confirm($"Skip uploading {SetupProviderCatalog.GetProviderDisplayName(provider)} secret now?", current);
     }
 
-    public static bool PromptManualSecret(bool current) {
-        return AnsiConsole.Confirm("Manual secret (print value instead of uploading)?", current);
+    public static bool PromptManualSecret(string provider, bool current) {
+        return AnsiConsole.Confirm($"Manual secret for {SetupProviderCatalog.GetProviderDisplayName(provider)} (print value instead of uploading)?", current);
     }
 
-    public static bool PromptKeepSecret(bool current) {
-        return AnsiConsole.Confirm("Keep existing OpenAI secret during cleanup?", current);
+    public static bool PromptKeepSecret(string provider, bool current) {
+        return AnsiConsole.Confirm($"Keep existing {SetupProviderCatalog.GetProviderDisplayName(provider)} secret during cleanup?", current);
     }
 
     public static bool PromptExplicitSecrets(bool current) {
@@ -370,7 +371,7 @@ internal static class WizardPrompts {
         }
         return AnsiConsole.Prompt(
             new SelectionPrompt<SecretTarget>()
-                .Title("Store OpenAI secret as:")
+                .Title("Store provider secret as:")
                 .AddChoices(SecretTarget.Org, SecretTarget.Repo)
                 .UseConverter(target => target switch {
                     SecretTarget.Org => "Organization secret (recommended for multi-repo)",
@@ -408,14 +409,89 @@ internal static class WizardPrompts {
     public static string PromptProvider(string current) {
         var prompt = new SelectionPrompt<string>()
             .Title("Review provider:")
-            .AddChoices("openai", "copilot")
+            .AddChoices(SetupProviderCatalog.OpenAiProvider, SetupProviderCatalog.ClaudeProvider, SetupProviderCatalog.CopilotProvider)
             .UseConverter(value => value switch {
-                "openai" => "ChatGPT / OpenAI (recommended)",
-                "copilot" => "GitHub Copilot (requires Copilot CLI)",
+                SetupProviderCatalog.OpenAiProvider => "ChatGPT / OpenAI (recommended)",
+                SetupProviderCatalog.ClaudeProvider => "Claude / Anthropic (API key)",
+                SetupProviderCatalog.CopilotProvider => "GitHub Copilot (requires Copilot CLI)",
                 _ => value
             });
         var selection = AnsiConsole.Prompt(prompt);
         return string.IsNullOrWhiteSpace(selection) ? current : selection;
+    }
+
+    public static string? PromptModel(string provider, string? current) {
+        if (string.Equals(provider, SetupProviderCatalog.CopilotProvider, StringComparison.OrdinalIgnoreCase)) {
+            return null;
+        }
+
+        var defaultModel = string.IsNullOrWhiteSpace(current)
+            ? SetupProviderCatalog.GetDefaultModel(provider)
+            : current.Trim();
+        var recommendedModels = SetupProviderCatalog.GetRecommendedModels(provider)
+            .Where(model => !string.IsNullOrWhiteSpace(model))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var choices = new List<string>();
+        if (!recommendedModels.Contains(defaultModel, StringComparer.OrdinalIgnoreCase)) {
+            choices.Add(defaultModel);
+        }
+        choices.AddRange(recommendedModels);
+        choices.Add(CustomModelSelection);
+
+        var selection = AnsiConsole.Prompt(
+            new SelectionPrompt<string>()
+                .Title($"{SetupProviderCatalog.GetProviderDisplayName(provider)} model:")
+                .PageSize(8)
+                .AddChoices(choices)
+                .UseConverter(value => {
+                    if (string.Equals(value, CustomModelSelection, StringComparison.Ordinal)) {
+                        return "Custom model id";
+                    }
+
+                    var profile = SetupProviderCatalog.TryGetRecommendedModelProfile(provider, value);
+                    if (profile.HasValue) {
+                        var suffix = string.Equals(value, defaultModel, StringComparison.OrdinalIgnoreCase)
+                            ? " (current/default)"
+                            : string.Empty;
+                        return $"{profile.Value.ProfileLabel} - {profile.Value.DisplayLabel}{suffix}";
+                    }
+
+                    if (string.Equals(value, defaultModel, StringComparison.OrdinalIgnoreCase)) {
+                        return $"{value} (current/default)";
+                    }
+
+                    return value;
+                }));
+
+        if (!string.Equals(selection, CustomModelSelection, StringComparison.Ordinal)) {
+            return selection;
+        }
+
+        var prompt = new TextPrompt<string>($"{SetupProviderCatalog.GetProviderDisplayName(provider)} custom model:")
+            .AllowEmpty()
+            .DefaultValue(defaultModel);
+        var value = AnsiConsole.Prompt(prompt);
+        return string.IsNullOrWhiteSpace(value) ? defaultModel : value.Trim();
+    }
+
+    public static string? PromptAnthropicApiKey() {
+        var value = AnsiConsole.Prompt(
+            new TextPrompt<string>("Claude API key (optional, leave blank to use file/env later):")
+                .Secret()
+                .AllowEmpty());
+        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    }
+
+    public static string? PromptAnthropicApiKeyPath(string? current) {
+        var prompt = new TextPrompt<string>("Claude API key file path (optional):")
+            .AllowEmpty();
+        if (!string.IsNullOrWhiteSpace(current)) {
+            prompt.DefaultValue(current);
+        }
+        var value = AnsiConsole.Prompt(prompt);
+        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
     }
 
     public static string? PromptOpenAiAccountId(string? current) {

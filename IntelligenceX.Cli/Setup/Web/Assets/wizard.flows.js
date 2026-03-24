@@ -333,13 +333,38 @@ installation.addEventListener('change', updateAppControls);
 
 // ── Auth bundle watchers ──
 function updateUsageBtn() {
-  const hasAuth = (authB64 && authB64.value.trim().length > 0) || (authB64Path && authB64Path.value.trim().length > 0);
+  const hasAuth = selectedProvider === 'openai' &&
+    ((authB64 && authB64.value.trim().length > 0) || (authB64Path && authB64Path.value.trim().length > 0));
   $('checkUsage').disabled = !hasAuth;
 }
 if (authB64) authB64.addEventListener('input', updateUsageBtn);
 if (authB64Path) authB64Path.addEventListener('input', updateUsageBtn);
 if (authB64) authB64.addEventListener('input', () => { openAiAccountId = ''; });
 if (authB64Path) authB64Path.addEventListener('input', () => { openAiAccountId = ''; });
+if (anthropicApiKey) anthropicApiKey.addEventListener('input', updateUsageBtn);
+if (anthropicApiKeyPath) anthropicApiKeyPath.addEventListener('input', updateUsageBtn);
+if (reviewModelProfile) reviewModelProfile.addEventListener('change', () => {
+  if (!reviewModel || reviewModel.disabled) return;
+  const profileId = reviewModelProfile.value;
+  const entry = getProviderModelCatalog(selectedProvider)
+    .find(model => String(model.profileId || '') === String(profileId || ''));
+  if (entry) {
+    reviewModel.value = entry.id;
+  }
+  setSelectedModelQuickPick(reviewModel.value, selectedProvider);
+  syncSelectedModelProfile(selectedProvider, reviewModel.value);
+  if (currentStep === 4) {
+    buildReviewTable();
+  }
+});
+if (reviewModel) reviewModel.addEventListener('input', () => {
+  setSelectedModelQuickPick(reviewModel.value, selectedProvider);
+  syncSelectedModelProfile(selectedProvider, reviewModel.value);
+  if (currentStep === 4) {
+    buildReviewTable();
+  }
+});
+selectProvider(selectedProvider);
 
 // ── Presets (localStorage) ──
 function readPresets() {
@@ -353,6 +378,110 @@ function readPresets() {
 
 function writePresets(presets) {
   localStorage.setItem('ix.setup.presets', JSON.stringify(presets));
+}
+
+function capturePresetState() {
+  return {
+    version: 2,
+    provider: selectedProvider,
+    modelProfileId: reviewModelProfile ? reviewModelProfile.value : '',
+    reviewModel: reviewModel ? reviewModel.value.trim() : '',
+    reviewProfile: selectedPresetProfile,
+    reviewMode: reviewMode ? reviewMode.value : '',
+    reviewCommentMode: reviewCommentMode ? reviewCommentMode.value : '',
+    withConfig: !!(withConfig && withConfig.checked),
+    configJson: configJson ? configJson.value : '',
+    configPath: configPath ? configPath.value.trim() : '',
+    reviewIntent: reviewIntentInput ? reviewIntentInput.value.trim() : '',
+    reviewStrictness: reviewStrictnessInput ? reviewStrictnessInput.value.trim() : '',
+    reviewLoopPolicy: reviewLoopPolicy ? reviewLoopPolicy.value : '',
+    reviewVisionPath: reviewVisionPathInput ? reviewVisionPathInput.value.trim() : '',
+    mergeBlockerSections: mergeBlockerSectionsInput ? mergeBlockerSectionsInput.value.trim() : '',
+    mergeBlockerRequireAllSections: mergeBlockerRequireAllSectionsInput ? !!mergeBlockerRequireAllSectionsInput.checked : true,
+    mergeBlockerRequireSectionMatch: mergeBlockerRequireSectionMatchInput ? !!mergeBlockerRequireSectionMatchInput.checked : true,
+    analysisEnabled: analysisEnabled ? !!analysisEnabled.checked : false,
+    analysisGate: analysisGate ? !!analysisGate.checked : false,
+    analysisRunStrict: analysisRunStrict ? !!analysisRunStrict.checked : false,
+    analysisPacks: analysisPacks ? analysisPacks.value.trim() : '',
+    analysisExportPath: analysisExportPath ? analysisExportPath.value.trim() : '',
+    openAiAccountId: openAiAccountIdInput ? openAiAccountIdInput.value.trim() : '',
+    openAiAccountIds: openAiAccountIdsInput ? openAiAccountIdsInput.value.trim() : '',
+    openAiAccountRotation: openAiAccountRotation ? openAiAccountRotation.value : 'first-available',
+    openAiAccountFailover: openAiAccountFailover ? !!openAiAccountFailover.checked : true,
+    explicitSecrets: !!(explicitSecrets && explicitSecrets.checked),
+    upgrade: !!(upgrade && upgrade.checked),
+    force: !!(force && force.checked),
+    branchName: branchName ? branchName.value.trim() : ''
+  };
+}
+
+function applyPresetState(state) {
+  if (!state || typeof state !== 'object') return;
+
+  const provider = typeof state.provider === 'string' && state.provider.trim().length > 0
+    ? state.provider.trim().toLowerCase()
+    : selectedProvider;
+  selectProvider(provider);
+
+  const profile = typeof state.reviewProfile === 'string' && state.reviewProfile.trim().length > 0
+    ? state.reviewProfile.trim()
+    : selectedPresetProfile;
+  selectPreset(profile);
+
+  if (reviewModelProfile) {
+    reviewModelProfile.value = typeof state.modelProfileId === 'string' && state.modelProfileId.trim().length > 0
+      ? state.modelProfileId.trim()
+      : getProviderDefaultModelProfileId(provider);
+  }
+
+  if (reviewModel) {
+    reviewModel.value = typeof state.reviewModel === 'string' && state.reviewModel.trim().length > 0
+      ? state.reviewModel.trim()
+      : getProviderDefaultModel(provider);
+    setSelectedModelQuickPick(reviewModel.value, provider);
+    syncSelectedModelProfile(provider, reviewModel.value);
+  }
+  if (reviewMode) reviewMode.value = typeof state.reviewMode === 'string' ? state.reviewMode : '';
+  if (reviewCommentMode) reviewCommentMode.value = typeof state.reviewCommentMode === 'string' ? state.reviewCommentMode : '';
+  if (withConfig) withConfig.checked = !!state.withConfig || !!(state.configJson && String(state.configJson).trim().length > 0) || !!(state.configPath && String(state.configPath).trim().length > 0);
+  if (configJson) configJson.value = typeof state.configJson === 'string' ? state.configJson : '';
+  if (configPath) configPath.value = typeof state.configPath === 'string' ? state.configPath : '';
+  if (reviewIntentInput) reviewIntentInput.value = typeof state.reviewIntent === 'string' ? state.reviewIntent : '';
+  if (reviewStrictnessInput) reviewStrictnessInput.value = typeof state.reviewStrictness === 'string' ? state.reviewStrictness : '';
+  if (reviewLoopPolicy) reviewLoopPolicy.value = typeof state.reviewLoopPolicy === 'string' ? state.reviewLoopPolicy : '';
+  if (reviewVisionPathInput) reviewVisionPathInput.value = typeof state.reviewVisionPath === 'string' ? state.reviewVisionPath : '';
+  if (mergeBlockerSectionsInput) mergeBlockerSectionsInput.value = typeof state.mergeBlockerSections === 'string' ? state.mergeBlockerSections : '';
+  if (mergeBlockerRequireAllSectionsInput && typeof state.mergeBlockerRequireAllSections === 'boolean') {
+    mergeBlockerRequireAllSectionsInput.checked = state.mergeBlockerRequireAllSections;
+  }
+  if (mergeBlockerRequireSectionMatchInput && typeof state.mergeBlockerRequireSectionMatch === 'boolean') {
+    mergeBlockerRequireSectionMatchInput.checked = state.mergeBlockerRequireSectionMatch;
+  }
+  if (analysisEnabled && typeof state.analysisEnabled === 'boolean') analysisEnabled.checked = state.analysisEnabled;
+  if (analysisGate && typeof state.analysisGate === 'boolean') analysisGate.checked = state.analysisGate;
+  if (analysisRunStrict && typeof state.analysisRunStrict === 'boolean') analysisRunStrict.checked = state.analysisRunStrict;
+  if (analysisPacks) analysisPacks.value = typeof state.analysisPacks === 'string' ? state.analysisPacks : '';
+  if (analysisExportPath) analysisExportPath.value = typeof state.analysisExportPath === 'string' ? state.analysisExportPath : '';
+  if (openAiAccountIdInput) openAiAccountIdInput.value = typeof state.openAiAccountId === 'string' ? state.openAiAccountId : '';
+  if (openAiAccountIdsInput) openAiAccountIdsInput.value = typeof state.openAiAccountIds === 'string' ? state.openAiAccountIds : '';
+  if (openAiAccountRotation && typeof state.openAiAccountRotation === 'string' && state.openAiAccountRotation.trim().length > 0) {
+    openAiAccountRotation.value = state.openAiAccountRotation;
+  }
+  if (openAiAccountFailover && typeof state.openAiAccountFailover === 'boolean') {
+    openAiAccountFailover.checked = state.openAiAccountFailover;
+  }
+  if (explicitSecrets && typeof state.explicitSecrets === 'boolean') explicitSecrets.checked = state.explicitSecrets;
+  if (upgrade && typeof state.upgrade === 'boolean') upgrade.checked = state.upgrade;
+  if (force && typeof state.force === 'boolean') force.checked = state.force;
+  if (branchName) branchName.value = typeof state.branchName === 'string' ? state.branchName : '';
+
+  updateAnalysisControls();
+  updateReviewConfigControls();
+  updateOpenAiAccountControls();
+  updatePresetControls();
+  if (currentStep === 4) {
+    buildReviewTable();
+  }
 }
 
 function refreshPresets() {
@@ -369,9 +498,12 @@ function refreshPresets() {
 
 function updatePresetControls() {
   const hasName = presetName.value.trim().length > 0;
-  const hasJson = configJson.value.trim().length > 0;
+  const hasPresetData = !!selectedProvider ||
+    !!(reviewModel && reviewModel.value.trim().length > 0) ||
+    !!(configJson && configJson.value.trim().length > 0) ||
+    !!(configPath && configPath.value.trim().length > 0);
   const hasSel = !!presetList.value;
-  $('savePreset').disabled = !hasName || !hasJson;
+  $('savePreset').disabled = !hasName || !hasPresetData;
   $('loadPreset').disabled = !hasSel;
   $('deletePreset').disabled = !hasSel;
 }
@@ -381,12 +513,17 @@ presetList.addEventListener('change', updatePresetControls);
 
 $('savePreset').addEventListener('click', () => {
   const name = presetName.value.trim();
-  const content = configJson.value.trim();
-  if (!name || !content) return;
+  if (!name) return;
+  const content = configJson.value;
+  const state = capturePresetState();
   const presets = readPresets();
   const existing = presets.find(p => p.name === name);
-  if (existing) existing.content = content;
-  else presets.push({ name, content });
+  if (existing) {
+    existing.content = content;
+    existing.state = state;
+  } else {
+    presets.push({ name, content, state });
+  }
   writePresets(presets);
   refreshPresets();
   write(`Saved preset '${name}'.`);
@@ -397,8 +534,12 @@ $('loadPreset').addEventListener('click', () => {
   if (!name) return;
   const preset = readPresets().find(p => p.name === name);
   if (!preset) { refreshPresets(); return; }
-  configJson.value = preset.content || '';
-  withConfig.checked = true;
+  if (preset.state && typeof preset.state === 'object') {
+    applyPresetState(preset.state);
+  } else {
+    configJson.value = preset.content || '';
+    withConfig.checked = true;
+  }
   write(`Loaded preset '${name}'.`);
 });
 
@@ -439,7 +580,11 @@ importFile.addEventListener('change', async () => {
     if (!Array.isArray(parsed)) { write('Invalid preset file.'); return; }
     const normalized = parsed
       .filter(item => item && typeof item.name === 'string' && typeof item.content === 'string')
-      .map(item => ({ name: item.name.trim(), content: item.content }))
+      .map(item => ({
+        name: item.name.trim(),
+        content: item.content,
+        state: item.state && typeof item.state === 'object' ? item.state : null
+      }))
       .filter(item => item.name.length > 0);
     if (normalized.length === 0) { write('No valid presets found.'); return; }
     const existing = readPresets();
@@ -450,8 +595,10 @@ importFile.addEventListener('change', async () => {
     }
     normalized.forEach(item => {
       const match = existing.find(p => p.name === item.name);
-      if (match) match.content = item.content;
-      else existing.push(item);
+      if (match) {
+        match.content = item.content;
+        if (item.state) match.state = item.state;
+      } else existing.push(item);
     });
     writePresets(existing);
     refreshPresets();

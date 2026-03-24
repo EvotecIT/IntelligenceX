@@ -143,6 +143,10 @@ internal static partial class Program {
             TestUsageTelemetryQuickReportScannerReusesCachedCodexDuplicatesSafely);
         failed += Run("Usage provider registry supports alias lookups",
             TestUsageTelemetryProviderRegistrySupportsAliasLookups);
+        failed += Run("Usage telemetry scope summary explains Claude local vs online gap",
+            TestUsageTelemetryScopeSummaryBuilderExplainsClaudeLocalVsOnlineGap);
+        failed += Run("Provider limit forecasting handles Claude window durations",
+            TestProviderLimitForecastingHandlesClaudeWindowDurations);
         failed += Run("Usage overview page model builder builds GitHub render model",
             TestUsageTelemetryOverviewPageModelBuilderBuildsGitHubRenderModel);
         failed += Run("Usage GitHub wrapped page model builder builds owner panels",
@@ -363,6 +367,13 @@ internal static partial class Program {
         failed += Run("Setup args include OpenAI account routing with primary only",
             TestSetupArgsIncludeOpenAiAccountRoutingWithPrimaryOnly);
         failed += Run("Setup args include OpenAI model", TestSetupArgsIncludeOpenAiModel);
+        failed += Run("Setup provider catalog returns recommended OpenAI models",
+            TestSetupProviderCatalogReturnsRecommendedOpenAiModels);
+        failed += Run("Setup provider catalog returns recommended Claude models",
+            TestSetupProviderCatalogReturnsRecommendedClaudeModels);
+        failed += Run("Setup provider catalog describes recommended model profiles",
+            TestSetupProviderCatalogDescribesRecommendedModelProfiles);
+        failed += Run("Setup args include Claude model and API key", TestSetupArgsIncludeClaudeModelAndApiKey);
         failed += Run("Setup args include review loop policy and strictness",
             TestSetupArgsIncludeReviewLoopPolicyAndStrictness);
         failed += Run("Setup args reject review vision path without vision policy",
@@ -403,6 +414,8 @@ internal static partial class Program {
         failed += Run("Setup config build includes OpenAI account routing", TestSetupBuildConfigJsonIncludesOpenAiAccountRouting);
         failed += Run("Setup config build includes reviewer runtime policy defaults",
             TestSetupBuildConfigJsonIncludesReviewerRuntimePolicyDefaults);
+        failed += Run("Setup config build includes Claude provider defaults",
+            TestSetupBuildConfigJsonIncludesClaudeProviderDefaults);
         failed += Run("Setup config normalizes OpenAI primary into account ids",
             TestSetupBuildConfigJsonNormalizesOpenAiPrimaryInAccountIds);
         failed += Run("Setup config build persists OpenAI routing with primary only",
@@ -417,6 +430,8 @@ internal static partial class Program {
             TestSetupBuildConfigJsonMergeClearsOpenAiIdsButKeepsRoutingWithPrimary);
         failed += Run("Setup config merge clears OpenAI ids when snapshot has primary",
             TestSetupBuildConfigJsonMergeClearsOpenAiIdsWhenSnapshotHasPrimary);
+        failed += Run("Setup config merge switches OpenAI seed to Claude and clears OpenAI fields",
+            TestSetupBuildConfigJsonMergeSwitchesOpenAiSeedToClaudeAndClearsOpenAiFields);
         failed += Run("Setup config build includes vision loop policy defaults",
             TestSetupBuildConfigJsonIncludesVisionLoopPolicyDefaults);
         failed += Run("Setup config build normalizes todo-only loop policy alias",
@@ -451,11 +466,13 @@ internal static partial class Program {
             TestSetupWorkflowUpgradePreservesLocalReusableWorkflowReference);
         failed += Run("Setup workflow upgrade preserves outside managed block verbatim",
             TestSetupWorkflowUpgradePreservesOutsideManagedBlockVerbatim);
+        failed += Run("Setup workflow upgrade resets model when switching to Claude provider",
+            TestSetupWorkflowUpgradeResetsModelWhenSwitchingToClaudeProvider);
         failed += Run("Setup workflow template includes OpenAI account routing pass-through",
             TestSetupWorkflowTemplateIncludesOpenAiAccountRoutingPassThrough);
         failed += Run("Setup workflow template includes OpenAI model pass-through",
             TestSetupWorkflowTemplateIncludesOpenAiModelPassThrough);
-        failed += Run("Reusable review workflow dispatch includes OpenAI model input",
+        failed += Run("Reusable review workflow includes provider-safe fail-open and resilient analysis defaults",
             TestReviewReusableWorkflowDispatchIncludesOpenAiModelInput);
         failed += Run("Setup workflow template explicit-secrets includes diagnostics and preflight pass-through",
             TestSetupWorkflowTemplateExplicitSecretsIncludesDiagnosticsAndPreflightPassThrough);
@@ -498,6 +515,8 @@ internal static partial class Program {
         failed += Run("Manage external command non-timeout failure is not timeout", TestManageRunExternalCommandNonTimeoutFailureIsNotTimeout);
         failed += Run("Web setup static assets serve combined wizard script",
             TestWebSetupStaticAssetsServeCombinedWizardScript);
+        failed += Run("Web setup static assets expose provider model quick picks",
+            TestWebSetupStaticAssetsExposeProviderModelQuickPicks);
         failed += Run("Web setup autodetect response matches shared contract payload",
             TestWebSetupAutodetectResponseJsonMatchesSharedContractPayload);
         failed += Run("Web setup autodetect response fallbacks for null payloads",
@@ -509,6 +528,8 @@ internal static partial class Program {
         failed += Run("Web setup args propagate OpenAI account routing with primary only",
             TestWebSetupBuildSetupArgsPropagatesOpenAiAccountRoutingWithPrimaryOnly);
         failed += Run("Web setup args propagate OpenAI model", TestWebSetupBuildSetupArgsPropagatesOpenAiModel);
+        failed += Run("Web setup args propagate Claude model and API key",
+            TestWebSetupBuildSetupArgsPropagatesClaudeModelAndApiKey);
         failed += Run("Web setup args propagate analysis run strict", TestWebSetupBuildSetupArgsPropagatesAnalysisRunStrict);
         failed += Run("Web setup args propagate review config tweaks",
             TestWebSetupBuildSetupArgsPropagatesReviewConfigTweaks);

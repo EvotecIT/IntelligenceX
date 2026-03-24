@@ -62,11 +62,35 @@ GitHub Actions input/env aliases:
 {
   "review": {
     "provider": "openai",
-    "model": "gpt-5.3-codex",
+    "model": "gpt-5.4",
     "mode": "inline",
     "length": "long",
     "outputStyle": "compact",
     "reviewUsageSummary": false
+  }
+}
+```
+
+## Claude provider (Anthropic Messages API)
+
+Use `provider: claude` when you want the reviewer to call Anthropic directly via the Messages API.
+This provider uses `POST /v1/messages` and requires:
+- `review.model`
+- an API key (via `review.anthropic.apiKeyEnv`, `ANTHROPIC_API_KEY`, or `review.anthropic.apiKey`)
+
+`review.anthropic.baseUrl` defaults to `https://api.anthropic.com`, and `review.anthropic.version` defaults to `2023-06-01`.
+
+```json
+{
+  "review": {
+    "provider": "claude",
+    "model": "claude-opus-4-1",
+    "reviewUsageSummary": true,
+    "anthropic": {
+      "apiKeyEnv": "ANTHROPIC_API_KEY",
+      "timeoutSeconds": 60,
+      "maxTokens": 4096
+    }
   }
 }
 ```
@@ -288,6 +312,7 @@ Use this to skip the main review and only assess existing review threads.
 }
 ```
 
+For OpenAI, the footer uses the ChatGPT account usage snapshot. For Claude, it uses the live Anthropic provider-limit snapshot.
 When code-review rate-limit windows are present, their labels are prefixed with `code review` in the usage line so they remain distinct from general limits.
 
 ## Usage budget guard (credits vs weekly limit)
@@ -549,7 +574,7 @@ Use `directHeaders` to attach custom headers required by your gateway.
 Prefer `directTokenEnv` over `directToken` to avoid committing secrets to source control.
 
 ## Common knobs
-- `provider`: `openai`/`codex`/`chatgpt`/`openai-codex`, `openai-compatible` (aliases: `openai-api`, `ollama`, `openrouter`), or `copilot`
+- `provider`: `openai`/`codex`/`chatgpt`/`openai-codex`, `claude`/`anthropic`, `openai-compatible` (aliases: `openai-api`, `ollama`, `openrouter`), or `copilot`
 - `providerFallback`: optional fallback provider (same value set as `provider`)
 - `model`: model name for the selected provider
 - `reasoningEffort`: `minimal|low|medium|high|xhigh` (when set to low/medium/high, the header shows a reasoning level label)
@@ -564,7 +589,7 @@ Prefer `directTokenEnv` over `directToken` to avoid committing secrets to source
 - `reviewDiffRange`: `current`, `pr-base`, or `first-review`
 - `outputStyle`: rendering style preset (for the compact template, use `compact`)
 - `narrativeMode`: `structured` (default) or `freedom`
-- `reviewUsageSummary`: append usage line to the footer (ChatGPT auth only)
+- `reviewUsageSummary`: append usage line to the footer (OpenAI ChatGPT usage snapshot or Claude live limit snapshot)
 - `openaiAccountId`: pin a preferred ChatGPT account id
 - `openaiAccountIds`: ordered account ids used for rotation/failover
 - `openaiAccountRotation`: `first-available`, `round-robin`, or `sticky`
@@ -584,6 +609,7 @@ Prefer `directTokenEnv` over `directToken` to avoid committing secrets to source
 - `providerCircuitBreakerOpenSeconds`: how long the provider circuit remains open
 - `failOpen`: emit a failure summary instead of failing the workflow
 - `failOpenTransientOnly`: when true, fail-open only on transient errors
+  The bundled GitHub workflow exports `REVIEW_FAIL_OPEN=true` and `REVIEW_FAIL_OPEN_TRANSIENT_ONLY=false` so provider auth/runtime failures leave a summary comment instead of blocking CI.
 - `summaryStability`: reuse the previous summary (same commit) as prompt context to avoid noisy rewrites
 - `structuredFindings`: emit a structured findings JSON block for automation
 - `skipPaths`: if **all** changed files in a PR match these globs, skip reviewing the entire PR

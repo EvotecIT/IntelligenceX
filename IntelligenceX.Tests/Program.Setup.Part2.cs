@@ -238,5 +238,25 @@ internal static partial class Program {
         AssertEqual(true, review["mergeBlockerRequireSectionMatch"]?.GetValue<bool>(),
             "config json merge preserve review loop settings require match");
     }
+
+    private static void TestSetupBuildConfigJsonIncludesClaudeProviderDefaults() {
+        var content = SetupRunner.BuildReviewerConfigJson(new[] {
+            "--provider", "claude"
+        });
+        AssertNotNull(content, "config json claude defaults content");
+
+        var root = System.Text.Json.Nodes.JsonNode.Parse(content) as System.Text.Json.Nodes.JsonObject;
+        AssertNotNull(root, "config json claude defaults root");
+        var review = root!["review"] as System.Text.Json.Nodes.JsonObject;
+        AssertNotNull(review, "config json claude defaults review");
+        var anthropic = review!["anthropic"] as System.Text.Json.Nodes.JsonObject;
+        AssertNotNull(anthropic, "config json claude defaults anthropic block");
+
+        AssertEqual("claude", review["provider"]?.GetValue<string>(), "config json claude defaults provider");
+        AssertEqual("claude-opus-4-1", review["model"]?.GetValue<string>(), "config json claude defaults model");
+        AssertEqual("ANTHROPIC_API_KEY", anthropic!["apiKeyEnv"]?.GetValue<string>(),
+            "config json claude defaults api key env");
+        AssertEqual(null, review["openaiTransport"], "config json claude defaults removes openai transport");
+    }
 #endif
 }

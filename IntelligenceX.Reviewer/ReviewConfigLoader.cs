@@ -67,6 +67,7 @@ internal static class ReviewConfigLoader {
         ApplyContext(reviewObj, settings);
         ApplyCodex(root, settings);
         ApplyOpenAiCompatible(reviewObj, settings);
+        ApplyAnthropic(reviewObj, settings);
         ApplyCopilot(root, settings);
         ApplyAzureDevOps(reviewObj, settings);
         ApplyCleanup(root, settings);
@@ -362,6 +363,20 @@ internal static class ReviewConfigLoader {
         settings.OpenAICompatibleAllowInsecureHttp = ReadBool(openAi, "allowInsecureHttp", settings.OpenAICompatibleAllowInsecureHttp);
         settings.OpenAICompatibleAllowInsecureHttpNonLoopback = ReadBool(openAi, "allowInsecureHttpNonLoopback", settings.OpenAICompatibleAllowInsecureHttpNonLoopback);
         settings.OpenAICompatibleDropAuthorizationOnRedirect = ReadBool(openAi, "dropAuthorizationOnRedirect", settings.OpenAICompatibleDropAuthorizationOnRedirect);
+    }
+
+    private static void ApplyAnthropic(JsonObject reviewObj, ReviewSettings settings) {
+        var anthropic = reviewObj.GetObject("anthropic") ?? reviewObj.GetObject("claude");
+        if (anthropic is null) {
+            return;
+        }
+
+        settings.AnthropicBaseUrl = anthropic.GetString("baseUrl") ?? settings.AnthropicBaseUrl;
+        settings.AnthropicVersion = anthropic.GetString("version") ?? settings.AnthropicVersion;
+        settings.AnthropicApiKeyEnv = anthropic.GetString("apiKeyEnv") ?? settings.AnthropicApiKeyEnv;
+        settings.AnthropicApiKey = anthropic.GetString("apiKey") ?? settings.AnthropicApiKey;
+        settings.AnthropicTimeoutSeconds = ReadInt(anthropic, "timeoutSeconds", settings.AnthropicTimeoutSeconds);
+        settings.AnthropicMaxTokens = ReadInt(anthropic, "maxTokens", settings.AnthropicMaxTokens);
     }
 
     private static void ApplyCopilot(JsonObject root, ReviewSettings settings) {
