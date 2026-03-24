@@ -252,7 +252,6 @@ on:
         required: false
         default: '[REDACTED]'
         type: string
-      # Cleanup (PR/Issue metadata)
       cleanup_enabled:
         description: 'Enable cleanup for PR/issue metadata'
         required: false
@@ -298,7 +297,6 @@ on:
         required: false
         default: true
         type: boolean
-      # Context enrichment
       include_issue_comments:
         description: 'Include PR issue comments in prompt'
         required: false
@@ -334,7 +332,6 @@ on:
         required: false
         default: 5
         type: number
-      # Templates
       prompt_template_path:
         description: 'Path to custom prompt template'
         required: false
@@ -345,13 +342,11 @@ on:
         required: false
         default: ''
         type: string
-      # Config file
       review_config_path:
         description: 'Path to reviewer.json (overrides default .intelligencex/reviewer.json)'
         required: false
         default: ''
         type: string
-      # Provider-specific
       codex_path:
         description: 'Codex app-server executable path'
         required: false
@@ -398,14 +393,10 @@ on:
         default: false
         type: boolean
     secrets:
-      INTELLIGENCEX_AUTH_B64:
-        required: false
-      ANTHROPIC_API_KEY:
-        required: false
-      INTELLIGENCEX_GITHUB_APP_ID:
-        required: false
-      INTELLIGENCEX_GITHUB_APP_PRIVATE_KEY:
-        required: false
+      INTELLIGENCEX_AUTH_B64: { required: false }
+      ANTHROPIC_API_KEY: { required: false }
+      INTELLIGENCEX_GITHUB_APP_ID: { required: false }
+      INTELLIGENCEX_GITHUB_APP_PRIVATE_KEY: { required: false }
 jobs:
   review:
     runs-on: ${{ fromJSON(inputs.runs_on) }}
@@ -495,7 +486,6 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
-          # The analysis gate compares PR base/head SHAs and needs more than the merge commit.
           fetch-depth: 0
       - name: Setup .NET
         uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
@@ -575,15 +565,12 @@ jobs:
           dotnet build IntelligenceX.Reviewer/IntelligenceX.Reviewer.csproj -c Release -f net8.0 2>&1 | tee "$log_path"
           exit_code=${PIPESTATUS[0]}
           exit "$exit_code"
-      # Static analysis is repo-local and should enforce regardless of how the reviewer binary is sourced.
       - name: Prepare static analysis context
         shell: bash
         run: |
           set -euo pipefail
           config='${{ inputs.review_config_path }}'
-          if [ -z "$config" ]; then
-            config=".intelligencex/reviewer.json"
-          fi
+          if [ -z "$config" ]; then config=".intelligencex/reviewer.json"; fi
           echo "IX_REVIEW_CONFIG_PATH=$config" >> "$GITHUB_ENV"
           mkdir -p artifacts
           : > artifacts/changed-files.txt
@@ -632,7 +619,6 @@ jobs:
           INTELLIGENCEX_GITHUB_TOKEN: ${{ steps.app_token.outputs.token || secrets.GITHUB_TOKEN }}
           INTELLIGENCEX_AUTH_B64: ${{ secrets.INTELLIGENCEX_AUTH_B64 }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        # Source reviewer runs only after the repo build succeeds and uses the .NET SDK provisioned above.
         shell: bash
         run: |
           set -uo pipefail
