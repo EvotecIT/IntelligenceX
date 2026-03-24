@@ -217,6 +217,12 @@ jobs:
         if: ${{ inputs.reviewer_source == 'source' }}
 """, StringComparison.Ordinal),
             "reusable workflow keeps analysis gate independent from reviewer_source");
+        AssertContainsText(content, "Finalize fail-open reviewer summary",
+            "reusable workflow finalizes fail-open reviewer runs with a summary update");
+        AssertContainsText(content, "Interactive ChatGPT sign-in cannot run inside GitHub Actions.",
+            "reusable workflow explains that CI cannot complete interactive login");
+        AssertContainsText(content, "intelligencex auth login --set-github-secret --repo ${remediationRepo}",
+            "reusable workflow points to the local reauth and secret refresh command");
         AssertEqual(false, content.Contains("&review_inputs", StringComparison.Ordinal),
             "reusable workflow should avoid YAML anchors in workflow schema");
         AssertEqual(false, content.Contains("*review_inputs", StringComparison.Ordinal),
