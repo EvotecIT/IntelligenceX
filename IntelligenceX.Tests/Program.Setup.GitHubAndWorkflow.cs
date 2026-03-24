@@ -183,11 +183,15 @@ jobs:
     private static void TestReviewReusableWorkflowDispatchIncludesOpenAiModelInput() {
         var workflowPath = ResolveRepoFilePath(".github", "workflows", "review-intelligencex-reusable.yml");
         var content = File.ReadAllText(workflowPath);
+        var wrapperWorkflowPath = ResolveRepoFilePath(".github", "workflows", "review-intelligencex.yml");
+        var wrapperContent = File.ReadAllText(wrapperWorkflowPath);
 
-        AssertContainsText(content, "workflow_dispatch:", "reusable workflow defines workflow_dispatch");
+        AssertContainsText(wrapperContent, "workflow_dispatch:", "wrapper workflow defines workflow_dispatch");
+        AssertEqual(false, content.Contains("workflow_dispatch:", StringComparison.Ordinal),
+            "reusable workflow should keep manual dispatch on the wrapper workflow");
         AssertContainsText(content, "workflow_call:", "reusable workflow defines workflow_call");
-        AssertEqual(2, CountOccurrences(content, "openai_model:"),
-            "reusable workflow defines openai_model for dispatch and workflow_call");
+        AssertEqual(1, CountOccurrences(content, "openai_model:"),
+            "reusable workflow defines openai_model once for workflow_call");
         AssertEqual(3, CountOccurrences(content, "REVIEW_FAIL_OPEN: true"),
             "reusable workflow exports fail-open default to each reviewer execution path");
         AssertEqual(3, CountOccurrences(content, "REVIEW_FAIL_OPEN_TRANSIENT_ONLY: false"),
