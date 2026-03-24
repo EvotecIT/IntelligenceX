@@ -994,6 +994,7 @@ jobs:
               steps.reviewer_run_release_windows.outcome == 'failure'
             )
           }}
+        continue-on-error: true
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         env:
           REVIEWER_SOURCE_SELECTED: ${{ inputs.reviewer_source }}
@@ -1008,12 +1009,17 @@ jobs:
           script: |
             const summaryMarker = '<!-- intelligencex:summary -->';
             const repoInput = '${{ inputs.repo }}';
-            const prNumber = Number('${{ inputs.pr_number }}');
+            const prNumber = Number('${{ inputs.pr_number }}' || context.payload.pull_request?.number || 0);
             const selectedSource = process.env.REVIEWER_SOURCE_SELECTED || 'release';
             const title = context.payload.pull_request?.title || 'Pull request';
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const remediationRepo = repoInput || `${owner}/${repo}`;
+
+            if (!Number.isInteger(prNumber) || prNumber <= 0) {
+              console.log('Skipping fail-open summary finalization because no PR number was available.');
+              return;
+            }
 
             const candidates = [
               {
