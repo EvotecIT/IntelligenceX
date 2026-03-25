@@ -11,14 +11,9 @@ concurrency:
 permissions:
   contents: read
 
-env:
-  # Pinned until IntelligenceX adopts an engine lock file.
-  POWERFORGE_REPOSITORY: EvotecIT/PSPublishModule
-  POWERFORGE_REF: 4751f06a2a52d926fc222a709ea6f0fff3d022c7
-
 jobs:
   website-build:
-    uses: EvotecIT/PSPublishModule/.github/workflows/powerforge-website-ci.yml@codex/testimox-doctor-seo-fix
+    uses: EvotecIT/PSPublishModule/.github/workflows/powerforge-website-ci.yml@68f079eadff527434583c09a88367e36e3baf417
     with:
       website_root: Website
       pipeline_config: Website/pipeline.json
