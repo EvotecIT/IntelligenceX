@@ -29,6 +29,11 @@
         ".sidebar-toggle",
         ".type-item",
         ".filter-button",
+        ".pf-combobox",
+        ".overview-group-toggle",
+        ".type-toc",
+        ".type-toc-toggle",
+        ".member-toggle input",
         ".member-card",
         ".member-signature"
       ]
