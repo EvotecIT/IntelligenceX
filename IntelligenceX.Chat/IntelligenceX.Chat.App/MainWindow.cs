@@ -368,7 +368,9 @@ public sealed partial class MainWindow : Window {
     private readonly Dictionary<string, string> _toolRoutingConfidence = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _toolRoutingReason = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, double> _toolRoutingScore = new(StringComparer.OrdinalIgnoreCase);
+    // Guarded by _turnDiagnosticsSync.
     private RoutingPromptExposureSnapshot? _latestRoutingPromptExposure;
+    // Guarded by _turnDiagnosticsSync.
     private readonly List<RoutingPromptExposureSnapshot> _routingPromptExposureHistory = new();
     private int _toolStateHiddenWithoutCatalogLastCount = -1;
     private readonly HashSet<string> _startupToolHealthWarningSignatures = new(StringComparer.OrdinalIgnoreCase);

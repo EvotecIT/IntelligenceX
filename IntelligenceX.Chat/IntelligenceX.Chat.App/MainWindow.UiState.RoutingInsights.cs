@@ -35,8 +35,10 @@ public sealed partial class MainWindow : Window {
         _toolRoutingConfidence.Clear();
         _toolRoutingReason.Clear();
         _toolRoutingScore.Clear();
-        _latestRoutingPromptExposure = null;
-        _routingPromptExposureHistory.Clear();
+        lock (_turnDiagnosticsSync) {
+            _latestRoutingPromptExposure = null;
+            _routingPromptExposureHistory.Clear();
+        }
 
         // Keep explicit per-tool keys so the next options publish clears stale routing state
         // for every visible tool row even if no fresh routing_tool events arrive this turn.
@@ -102,23 +104,30 @@ public sealed partial class MainWindow : Window {
             totalToolCount,
             promptExposureReordered,
             promptExposureTopToolNames);
-        if (EqualityComparer<RoutingPromptExposureSnapshot?>.Default.Equals(_latestRoutingPromptExposure, nextSnapshot)) {
-            return false;
-        }
+        lock (_turnDiagnosticsSync) {
+            if (EqualityComparer<RoutingPromptExposureSnapshot?>.Default.Equals(_latestRoutingPromptExposure, nextSnapshot)) {
+                return false;
+            }
 
-        _latestRoutingPromptExposure = nextSnapshot;
-        if (_routingPromptExposureHistory.Count == 0
-            || !EqualityComparer<RoutingPromptExposureSnapshot>.Default.Equals(_routingPromptExposureHistory[^1], nextSnapshot)) {
-            _routingPromptExposureHistory.Add(nextSnapshot);
-            while (_routingPromptExposureHistory.Count > MaxRoutingPromptExposureHistoryEntries) {
-                _routingPromptExposureHistory.RemoveAt(0);
+            _latestRoutingPromptExposure = nextSnapshot;
+            if (_routingPromptExposureHistory.Count == 0
+                || !EqualityComparer<RoutingPromptExposureSnapshot>.Default.Equals(_routingPromptExposureHistory[^1], nextSnapshot)) {
+                _routingPromptExposureHistory.Add(nextSnapshot);
+                while (_routingPromptExposureHistory.Count > MaxRoutingPromptExposureHistoryEntries) {
+                    _routingPromptExposureHistory.RemoveAt(0);
+                }
             }
         }
+
         return true;
     }
 
     private object? BuildRoutingPromptExposureState() {
-        var snapshot = _latestRoutingPromptExposure;
+        RoutingPromptExposureSnapshot? snapshot;
+        lock (_turnDiagnosticsSync) {
+            snapshot = _latestRoutingPromptExposure;
+        }
+
         if (snapshot is null) {
             return null;
         }
@@ -130,18 +139,25 @@ public sealed partial class MainWindow : Window {
             selectedToolCount = snapshot.SelectedToolCount,
             totalToolCount = snapshot.TotalToolCount,
             reordered = snapshot.Reordered,
-            topToolNames = snapshot.TopToolNames
+            topToolNames = snapshot.TopToolNames.Length == 0 ? Array.Empty<string>() : (string[])snapshot.TopToolNames.Clone()
         };
     }
 
     private object[] BuildRoutingPromptExposureHistoryState() {
-        if (_routingPromptExposureHistory.Count == 0) {
+        RoutingPromptExposureSnapshot[] history;
+        lock (_turnDiagnosticsSync) {
+            history = _routingPromptExposureHistory.Count == 0
+                ? Array.Empty<RoutingPromptExposureSnapshot>()
+                : _routingPromptExposureHistory.ToArray();
+        }
+
+        if (history.Length == 0) {
             return Array.Empty<object>();
         }
 
-        var items = new object[_routingPromptExposureHistory.Count];
-        for (var i = 0; i < _routingPromptExposureHistory.Count; i++) {
-            var snapshot = _routingPromptExposureHistory[i];
+        var items = new object[history.Length];
+        for (var i = 0; i < history.Length; i++) {
+            var snapshot = history[i];
             items[i] = new {
                 requestId = snapshot.RequestId,
                 threadId = snapshot.ThreadId,
@@ -149,7 +165,7 @@ public sealed partial class MainWindow : Window {
                 selectedToolCount = snapshot.SelectedToolCount,
                 totalToolCount = snapshot.TotalToolCount,
                 reordered = snapshot.Reordered,
-                topToolNames = snapshot.TopToolNames
+                topToolNames = snapshot.TopToolNames.Length == 0 ? Array.Empty<string>() : (string[])snapshot.TopToolNames.Clone()
             };
         }
 
