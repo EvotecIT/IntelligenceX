@@ -24,11 +24,11 @@ concurrency:
 jobs:
   cleanup-linux-runner:
     if: ${{ github.event.repository.private }}
-    uses: EvotecIT/PSPublishModule/.github/workflows/powerforge-github-runner-housekeeping.yml@79c9e7ddeb524a4a2b921a3ebd39d4c2ab9dc0e9
+    uses: EvotecIT/PSPublishModule/.github/workflows/powerforge-github-runner-housekeeping.yml@aeafc6ee579a474a14e9f6542ffbd1a2eb81e615
     with:
       config-path: ./.powerforge/runner-housekeeping.json
       apply: true
-      powerforge-ref: 79c9e7ddeb524a4a2b921a3ebd39d4c2ab9dc0e9
+      powerforge-ref: aeafc6ee579a474a14e9f6542ffbd1a2eb81e615
       runner-labels: '["self-hosted","ubuntu"]'
       report-artifact-name: runner-housekeeping-reports
     secrets:
