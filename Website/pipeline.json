@@ -50,6 +50,13 @@
           "kind": "nupkg"
         },
         {
+          "product": "unknown",
+          "label": "Reviewer",
+          "match": ["*IntelligenceX.Reviewer*.zip"],
+          "channel": "internal",
+          "kind": "zip"
+        },
+        {
           "product": "intelligencex.library",
           "label": ".NET Library",
           "match": ["*IntelligenceX*.nupkg", "*IntelligenceX*.zip"],

@@ -36,7 +36,8 @@ jobs:
   build:
     runs-on: ${{ fromJSON((github.event.repository.private && vars.IX_FORCE_GITHUB_HOSTED != 'true') && '["self-hosted","ubuntu"]' || '["ubuntu-latest"]') }}
     permissions:
-      contents: read
+      # Same-repo release publishing uses github.token, which needs contents:write to create/update releases.
+      contents: write
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
@@ -47,9 +48,8 @@ jobs:
 
       - name: Publish reviewer
         env:
-          INTELLIGENCEX_REVIEWER_TOKEN: ${{ secrets.INTELLIGENCEX_RELEASE_TOKEN }}
           INTELLIGENCEX_RELEASE_TOKEN: ${{ secrets.INTELLIGENCEX_RELEASE_TOKEN }}
-          GITHUB_TOKEN: ''
+          GITHUB_TOKEN: ${{ github.token }}
           GH_TOKEN: ''
           INTELLIGENCEX_REVIEWER_TAG: ${{ inputs.release_tag }}
           INTELLIGENCEX_REVIEWER_TITLE: ${{ inputs.release_title }}
@@ -61,4 +61,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -- release reviewer
+          release_repo="${INTELLIGENCEX_REVIEWER_REPO_SLUG:-${GITHUB_REPOSITORY}}"
+          if [[ "$release_repo" == "$GITHUB_REPOSITORY" ]]; then
+            export INTELLIGENCEX_REVIEWER_TOKEN="${GITHUB_TOKEN}"
+          else
+            export INTELLIGENCEX_REVIEWER_TOKEN="${INTELLIGENCEX_RELEASE_TOKEN:-}"
+          fi
+          dotnet run --framework net8.0 --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -- release reviewer
