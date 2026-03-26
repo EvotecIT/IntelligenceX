@@ -15,7 +15,7 @@ on:
 jobs:
   __IX_BEGIN__
   review:
-    uses: ./.github/workflows/review-intelligencex-reusable.yml
+    uses: ./.github/workflows/review-intelligencex-core.yml
     with:
       provider: openai
       model: gpt-5.4
@@ -27,9 +27,9 @@ jobs:
             new[] { "--provider", "copilot" },
             seed);
 
-        AssertContainsText(upgraded, "uses: ./.github/workflows/review-intelligencex-reusable.yml",
+        AssertContainsText(upgraded, "uses: ./.github/workflows/review-intelligencex-core.yml",
             "workflow upgrade preserves local reusable workflow reference");
-        AssertEqual(false, upgraded.Contains("review-intelligencex-reusable.yml@", StringComparison.Ordinal),
+        AssertEqual(false, upgraded.Contains("review-intelligencex-core.yml@", StringComparison.Ordinal),
             "workflow upgrade does not rewrite local reusable workflow to pinned remote reference");
         AssertContainsText(upgraded, "needs-ai-review", "workflow upgrade adds safety gate to local workflow shape");
     }
@@ -65,7 +65,7 @@ jobs:
       - run: echo pre
   __IX_BEGIN__
   review:
-    uses: evotecit/intelligencex/.github/workflows/review-intelligencex-reusable.yml@master
+    uses: evotecit/intelligencex/.github/workflows/review-intelligencex-core.yml@master
     with:
       provider: openai
       model: gpt-5.4
@@ -112,7 +112,7 @@ on:
 jobs:
   __IX_BEGIN__
   review:
-    uses: ./.github/workflows/review-intelligencex-reusable.yml
+    uses: ./.github/workflows/review-intelligencex-core.yml
     with:
       provider: openai
       model: gpt-5.4/fast

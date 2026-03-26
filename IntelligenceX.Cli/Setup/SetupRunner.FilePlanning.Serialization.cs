@@ -133,8 +133,8 @@ internal static partial class SetupRunner {
             : ReadEmbeddedResource("review-intelligencex.managed.yml");
         var tokens = new Dictionary<string, string> {
             ["ReusableWorkflowRef"] = settings.UseLocalReusableWorkflow
-                ? "./.github/workflows/review-intelligencex-reusable.yml"
-                : $"{settings.ActionsRepo}/.github/workflows/review-intelligencex-reusable.yml@{settings.ActionsRef}",
+                ? "./.github/workflows/review-intelligencex-core.yml"
+                : $"{settings.ActionsRepo}/.github/workflows/review-intelligencex-core.yml@{settings.ActionsRef}",
             ["RunsOn"] = NormalizeRunsOn(settings.RunsOn),
             ["ReviewerSource"] = settings.ReviewerSource,
             ["ReviewerReleaseRepo"] = settings.ReviewerReleaseRepo,

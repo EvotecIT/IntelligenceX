@@ -21,7 +21,7 @@ intelligencex setup --repo owner/name --with-config
 ## Managed workflow (release assets)
 
 ```powershell
-intelligencex setup --repo owner/name --reviewer-source release --reviewer-release-repo EvotecIT/github-actions --reviewer-release-tag latest
+intelligencex setup --repo owner/name --reviewer-source release --reviewer-release-repo EvotecIT/IntelligenceX --reviewer-release-tag latest
 ```
 
 ## Update secret only

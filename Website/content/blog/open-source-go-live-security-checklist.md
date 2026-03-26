@@ -34,7 +34,7 @@ permissions:
   checks: write
 jobs:
   review:
-    uses: <org>/<workflow-repo>/.github/workflows/review-intelligencex-reusable.yml@<pinned-sha>
+    uses: <org>/<workflow-repo>/.github/workflows/review-intelligencex-core.yml@<pinned-sha>
     with:
       review_config_path: .intelligencex/reviewer.json
 ```
@@ -49,7 +49,7 @@ Pin third-party actions and reusable workflows by full commit SHA.
 This makes upgrades intentional and auditable.
 
 ```yaml
-uses: <org>/<workflow-repo>/.github/workflows/review-intelligencex-reusable.yml@<40-char-sha>
+uses: <org>/<workflow-repo>/.github/workflows/review-intelligencex-core.yml@<40-char-sha>
 ```
 
 For internal repositories, decide your agility policy up front:

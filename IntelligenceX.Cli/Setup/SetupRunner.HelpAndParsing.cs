@@ -17,7 +17,7 @@ internal static partial class SetupRunner {
         Console.WriteLine($"  --actions-ref <ref> (default {DefaultActionsRef})");
         Console.WriteLine($"  --runs-on <json-array|expression> (default {DefaultRunsOn})");
         Console.WriteLine("  --reviewer-source <source|release> (default release)");
-        Console.WriteLine("  --reviewer-release-repo <owner/repo> (default EvotecIT/github-actions)");
+        Console.WriteLine("  --reviewer-release-repo <owner/repo> (default EvotecIT/IntelligenceX)");
         Console.WriteLine("  --reviewer-release-tag <tag> (default latest)");
         Console.WriteLine("  --reviewer-release-asset <name>");
         Console.WriteLine("  --reviewer-release-url <url>");

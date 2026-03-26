@@ -19,7 +19,7 @@ Use a pinned reusable workflow SHA so upgrades are intentional and auditable.
 ```yaml
 jobs:
   review:
-    uses: <org>/<workflow-repo>/.github/workflows/review-intelligencex-reusable.yml@<pinned-sha>
+    uses: <org>/<workflow-repo>/.github/workflows/review-intelligencex-core.yml@<pinned-sha>
     with:
       reviewer_source: source
       provider: openai

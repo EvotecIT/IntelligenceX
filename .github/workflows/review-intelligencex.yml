@@ -66,7 +66,7 @@ jobs:
       pull-requests: write
       issues: write
       id-token: write
-    uses: ./.github/workflows/review-intelligencex-reusable.yml
+    uses: ./.github/workflows/review-intelligencex-core.yml
     with:
       runs_on: ${{ github.event.repository.private && vars.IX_FORCE_GITHUB_HOSTED != 'true' && '["self-hosted","ubuntu"]' || '["ubuntu-latest"]' }}
       # Keep PR reviews on the repo source so reviewer UX/contracts stay aligned with current IntelligenceX changes.

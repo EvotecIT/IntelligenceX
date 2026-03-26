@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: 'Release tag in EvotecIT/github-actions (blank = timestamp)'
+        description: 'Release tag in EvotecIT/IntelligenceX (blank = timestamp)'
         required: false
         default: ''
       release_title:
@@ -18,7 +18,7 @@ on:
       release_repo:
         description: 'Release repo slug (owner/name)'
         required: false
-        default: 'EvotecIT/github-actions'
+        default: 'EvotecIT/IntelligenceX'
       rids:
         description: 'Comma-separated runtime IDs (optional)'
         required: false

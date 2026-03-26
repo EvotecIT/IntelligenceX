@@ -35,7 +35,7 @@ internal static class ReleaseReviewerRunner {
                 : options.Notes!.Trim();
 
             var releaseRepo = string.IsNullOrWhiteSpace(options.ReleaseRepoSlug)
-                ? "EvotecIT/github-actions"
+                ? "EvotecIT/IntelligenceX"
                 : options.ReleaseRepoSlug!.Trim();
             if (!TryParseRepoSlug(releaseRepo, out var owner, out var repo)) {
                 Console.Error.WriteLine("Release repo must be in owner/name format.");
@@ -101,7 +101,7 @@ internal static class ReleaseReviewerRunner {
         Console.WriteLine("  --tag <tag>             Release tag (default: reviewer-YYYYMMDDHHMMSS)");
         Console.WriteLine("  --title <title>         Release title");
         Console.WriteLine("  --notes <text>          Release notes");
-        Console.WriteLine("  --repo-slug <owner/name> GitHub repo for release assets (default: EvotecIT/github-actions)");
+        Console.WriteLine("  --repo-slug <owner/name> GitHub repo for release assets (default: EvotecIT/IntelligenceX)");
         Console.WriteLine("  --token <token>         GitHub token (default: INTELLIGENCEX_RELEASE_TOKEN/GITHUB_TOKEN)");
         Console.WriteLine("  --repo <path>           Repository path (default: current directory)");
         Console.WriteLine("  --framework <tfm>       Target framework (default: net8.0)");

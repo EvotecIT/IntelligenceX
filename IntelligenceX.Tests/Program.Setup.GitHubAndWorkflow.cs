@@ -77,7 +77,7 @@ jobs:
       - run: echo pre
   __IX_BEGIN__
   review:
-    uses: evotecit/intelligencex/.github/workflows/review-intelligencex-reusable.yml@master
+    uses: evotecit/intelligencex/.github/workflows/review-intelligencex-core.yml@master
     with:
       provider: openai
       model: gpt-5.4
@@ -122,7 +122,7 @@ on:
 
 jobs:
   review:
-    uses: evotecit/intelligencex/.github/workflows/review-intelligencex-reusable.yml@master
+    uses: evotecit/intelligencex/.github/workflows/review-intelligencex-core.yml@master
     with:
       provider: openai
       model: gpt-5.4
@@ -165,7 +165,7 @@ on:
 
 jobs:
   review:
-    uses: evotecit/intelligencex/.github/workflows/review-intelligencex-reusable.yml@master
+    uses: evotecit/intelligencex/.github/workflows/review-intelligencex-core.yml@master
     with:
       provider: openai
       model: gpt-5.4
@@ -181,7 +181,7 @@ jobs:
     }
 
     private static void TestReviewReusableWorkflowDispatchIncludesOpenAiModelInput() {
-        var workflowPath = ResolveRepoFilePath(".github", "workflows", "review-intelligencex-reusable.yml");
+        var workflowPath = ResolveRepoFilePath(".github", "workflows", "review-intelligencex-core.yml");
         var content = NormalizeWorkflowText(File.ReadAllText(workflowPath));
         var wrapperWorkflowPath = ResolveRepoFilePath(".github", "workflows", "review-intelligencex.yml");
         var wrapperContent = NormalizeWorkflowText(File.ReadAllText(wrapperWorkflowPath));
@@ -303,7 +303,7 @@ on:
 
 jobs:
   review:
-    uses: evotecit/intelligencex/.github/workflows/review-intelligencex-reusable.yml@master
+    uses: evotecit/intelligencex/.github/workflows/review-intelligencex-core.yml@master
     with:
       provider: openai
       model: gpt-5.4
@@ -331,7 +331,7 @@ on:
 
 jobs:
   review:
-    uses: evotecit/intelligencex/.github/workflows/review-intelligencex-reusable.yml@master
+    uses: evotecit/intelligencex/.github/workflows/review-intelligencex-core.yml@master
     with:
       provider: openai
       model: gpt-5.4
