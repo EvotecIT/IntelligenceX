@@ -25,7 +25,7 @@ on:
       reviewer_release_repo:
         description: 'Release repo (owner/name) containing reviewer assets'
         required: false
-        default: 'EvotecIT/github-actions'
+        default: 'EvotecIT/IntelligenceX'
         type: string
       reviewer_release_tag:
         description: 'Release tag (or latest)'

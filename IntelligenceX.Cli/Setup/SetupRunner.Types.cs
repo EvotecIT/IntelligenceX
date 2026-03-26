@@ -36,7 +36,7 @@ internal static partial class SetupRunner {
         public bool OpenAIAccountFailover { get; set; } = true;
         public bool OpenAIAccountFailoverSet { get; set; }
         public string? ReviewerSource { get; set; } = "release";
-        public string? ReviewerReleaseRepo { get; set; } = "EvotecIT/github-actions";
+        public string? ReviewerReleaseRepo { get; set; } = "EvotecIT/IntelligenceX";
         public string? ReviewerReleaseTag { get; set; } = "latest";
         public string? ReviewerReleaseAsset { get; set; }
         public string? ReviewerReleaseUrl { get; set; }

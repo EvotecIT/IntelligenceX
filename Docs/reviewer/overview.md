@@ -79,7 +79,7 @@ flowchart LR
 ```yaml
 jobs:
   review:
-    uses: EvotecIT/IntelligenceX/.github/workflows/review-intelligencex-reusable.yml@<pinned-sha>
+    uses: EvotecIT/IntelligenceX/.github/workflows/review-intelligencex-core.yml@<pinned-sha>
     with:
       reviewer_source: source
       openai_transport: native

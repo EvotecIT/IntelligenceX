@@ -39,7 +39,7 @@ Below is a side-by-side example where both files set overlapping keys.
 ```yaml
 jobs:
   review:
-    uses: <org>/<workflow-repo>/.github/workflows/review-intelligencex-reusable.yml@<pinned-sha>
+    uses: <org>/<workflow-repo>/.github/workflows/review-intelligencex-core.yml@<pinned-sha>
     with:
       review_config_path: .intelligencex/reviewer.json
       provider: openai
@@ -115,7 +115,7 @@ This gives CI engineers control of infrastructure and reviewers/maintainers cont
 ```yaml
 jobs:
   review:
-    uses: <org>/<workflow-repo>/.github/workflows/review-intelligencex-reusable.yml@<pinned-sha>
+    uses: <org>/<workflow-repo>/.github/workflows/review-intelligencex-core.yml@<pinned-sha>
     with:
       reviewer_source: source
       provider: openai
