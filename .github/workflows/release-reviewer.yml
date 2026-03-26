@@ -36,6 +36,7 @@ jobs:
   build:
     runs-on: ${{ fromJSON((github.event.repository.private && vars.IX_FORCE_GITHUB_HOSTED != 'true') && '["self-hosted","ubuntu"]' || '["ubuntu-latest"]') }}
     permissions:
+      # Same-repo release publishing uses github.token, which needs contents:write to create/update releases.
       contents: write
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
