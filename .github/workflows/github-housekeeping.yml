@@ -13,7 +13,6 @@ on:
 permissions:
   actions: write
   contents: read
-  issues: write
 
 concurrency:
   group: github-housekeeping-${{ github.repository }}
