@@ -251,13 +251,13 @@ internal static partial class SetupRunner {
     private static bool TryReadWorkflowSnapshot(string content, out WorkflowSnapshot snapshot) {
         snapshot = new WorkflowSnapshot();
         var localMatch = Regex.Match(content,
-            @"^\s*uses:\s*(\./\.github/workflows/review-intelligencex-reusable\.yml)\s*$",
+            @"^\s*uses:\s*(\./\.github/workflows/review-intelligencex-(?:reusable|core)\.yml)\s*$",
             RegexOptions.Multiline | RegexOptions.IgnoreCase);
         if (localMatch.Success) {
             snapshot.UseLocalReusableWorkflow = true;
         } else {
             var remoteMatch = Regex.Match(content,
-                @"^\s*uses:\s*([^\s@]+/\.github/workflows/review-intelligencex-reusable\.yml)@([^\s]+)\s*$",
+                @"^\s*uses:\s*([^\s@]+/\.github/workflows/review-intelligencex-(?:reusable|core)\.yml)@([^\s]+)\s*$",
                 RegexOptions.Multiline | RegexOptions.IgnoreCase);
             if (remoteMatch.Success) {
                 snapshot.ActionsRepo = NormalizeActionsRepo(remoteMatch.Groups[1].Value.Trim());
