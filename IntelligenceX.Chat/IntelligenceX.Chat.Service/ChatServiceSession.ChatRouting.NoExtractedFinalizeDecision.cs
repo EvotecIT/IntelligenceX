@@ -175,13 +175,22 @@ internal sealed partial class ChatServiceSession {
                 throw new InvalidOperationException("Finalize continuation decision must be non-empty before applying.");
         }
 
+        var promptOptions = await CopyChatOptionsWithPromptAwareToolOrderingAndEmitStatusAsync(
+                writer,
+                request.RequestId,
+                threadId,
+                retryOptions,
+                decision.Prompt,
+                strategy: "prompt_continuation",
+                newThreadOverride: false)
+            .ConfigureAwait(false);
         return await RunModelPhaseWithProgressAsync(
                 client,
                 writer,
                 request.RequestId,
                 threadId,
                 ChatInput.FromText(decision.Prompt),
-                retryOptions,
+                promptOptions,
                 turnToken,
                 phaseStatus: phaseStatus,
                 phaseMessage: phaseMessage,
@@ -265,7 +274,15 @@ internal sealed partial class ChatServiceSession {
                     request.RequestId,
                     threadId,
                     ChatInput.FromText(decision.Prompt),
-                    options,
+                    await CopyChatOptionsWithPromptAwareToolOrderingAndEmitStatusAsync(
+                            writer,
+                            request.RequestId,
+                            threadId,
+                            options,
+                            decision.Prompt,
+                            strategy: "prompt_review",
+                            newThreadOverride: false)
+                        .ConfigureAwait(false),
                     turnToken,
                     phaseStatus: ChatStatusCodes.PhaseReview,
                     phaseMessage: $"Reviewing response quality ({decision.ReviewPassNumber}/{maxReviewPasses})...",
@@ -278,7 +295,15 @@ internal sealed partial class ChatServiceSession {
                     request.RequestId,
                     threadId,
                     ChatInput.FromText(decision.Prompt),
-                    options,
+                    await CopyChatOptionsWithPromptAwareToolOrderingAndEmitStatusAsync(
+                            writer,
+                            request.RequestId,
+                            threadId,
+                            options,
+                            decision.Prompt,
+                            strategy: "prompt_review",
+                            newThreadOverride: false)
+                        .ConfigureAwait(false),
                     turnToken,
                     phaseStatus: ChatStatusCodes.PhaseReview,
                     phaseMessage: "Generating proactive next checks and fixes...",

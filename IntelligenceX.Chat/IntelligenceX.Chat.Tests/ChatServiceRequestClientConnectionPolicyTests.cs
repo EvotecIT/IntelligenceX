@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Client;
 using IntelligenceX.Chat.Abstractions.Protocol;
@@ -34,7 +35,7 @@ public sealed class ChatServiceRequestClientConnectionPolicyTests {
         yield return new object[] { new SetBackgroundSchedulerStateRequest { RequestId = "req_scheduler_control", Paused = true }, true };
         yield return new object[] { new SetBackgroundSchedulerMaintenanceWindowsRequest("req_scheduler_windows", "add", new[] { "mon@02:00/60" }), true };
         yield return new object[] { new CheckToolHealthRequest { RequestId = "req_health" }, true };
-        yield return new object[] { new InvokeToolRequest { RequestId = "req_invoke", ToolName = "system_info", ArgumentsJson = "{}" }, true };
+        yield return new object[] { new InvokeToolRequest { RequestId = "req_invoke", ToolName = "system_info", ArgumentsJson = "{}" }, false };
         yield return new object[] { new SetProfileRequest { RequestId = "req_profile_set", ProfileName = "local" }, true };
         yield return new object[] { new ApplyRuntimeSettingsRequest { RequestId = "req_runtime_apply", OpenAITransport = "native" }, true };
         yield return new object[] { new ChatRequest { RequestId = "req_chat", Text = "hello" }, true };
@@ -173,7 +174,7 @@ public sealed class ChatServiceRequestClientConnectionPolicyTests {
     }
 
     [Theory]
-    [InlineData(true, false, false, true, false)]
+    [InlineData(true, false, false, true, true)]
     [InlineData(true, true, true, true, true)]
     [InlineData(true, true, false, true, false)]
     [InlineData(true, false, false, false, false)]
@@ -206,6 +207,88 @@ public sealed class ChatServiceRequestClientConnectionPolicyTests {
     }
 
     [Theory]
+    [InlineData(true, true, true)]
+    [InlineData(true, false, false)]
+    [InlineData(false, true, false)]
+    [InlineData(false, false, false)]
+    public void ShouldOverlapClientConnectWithToolingBootstrap_ReturnsExpectedValue(
+        bool requestRequiresConnectedClient,
+        bool requestRequiresToolingBootstrap,
+        bool expected) {
+        var shouldOverlap = ChatServiceSession.ShouldOverlapClientConnectWithToolingBootstrap(
+            requestRequiresConnectedClient,
+            requestRequiresToolingBootstrap);
+
+        Assert.Equal(expected, shouldOverlap);
+    }
+
+    [Theory]
+    [InlineData(true, false, false, false, false, false, false, false, false, true)]
+    [InlineData(true, true, false, false, false, false, false, false, false, true)]
+    [InlineData(true, true, true, false, false, false, false, false, false, false)]
+    [InlineData(true, false, false, true, false, false, false, false, false, false)]
+    [InlineData(true, false, false, false, true, false, false, false, false, false)]
+    [InlineData(true, false, false, false, false, true, false, false, false, false)]
+    [InlineData(true, false, false, false, false, false, true, false, false, false)]
+    [InlineData(true, false, false, false, false, false, false, true, false, false)]
+    [InlineData(true, false, false, false, false, false, false, false, true, false)]
+    [InlineData(false, false, false, false, false, false, false, false, false, false)]
+    public void ShouldBypassToolingBootstrapWaitForChatRequests_ReturnsExpectedValue(
+        bool isChatRequest,
+        bool startupToolingBootstrapCompleted,
+        bool startupToolingBootstrapCompletedSuccessfully,
+        bool hasExplicitToolEnableSelectors,
+        bool hasDeferredToolCandidateMatch,
+        bool executionContractApplies,
+        bool continuationContractDetected,
+        bool hasPendingActionContext,
+        bool hasToolActivity,
+        bool expected) {
+        var shouldBypass = ChatServiceSession.ShouldBypassToolingBootstrapWaitForChatRequests(
+            isChatRequest: isChatRequest,
+            startupToolingBootstrapCompleted: startupToolingBootstrapCompleted,
+            startupToolingBootstrapCompletedSuccessfully: startupToolingBootstrapCompletedSuccessfully,
+            hasExplicitToolEnableSelectors: hasExplicitToolEnableSelectors,
+            hasDeferredToolCandidateMatch: hasDeferredToolCandidateMatch,
+            executionContractApplies: executionContractApplies,
+            continuationContractDetected: continuationContractDetected,
+            hasPendingActionContext: hasPendingActionContext,
+            hasToolActivity: hasToolActivity);
+
+        Assert.Equal(expected, shouldBypass);
+    }
+
+    [Theory]
+    [InlineData(true, false, false, false, false, false, false, true)]
+    [InlineData(true, true, false, false, false, false, false, false)]
+    [InlineData(true, false, true, false, false, false, false, false)]
+    [InlineData(true, false, false, true, false, false, false, false)]
+    [InlineData(true, false, false, false, true, false, false, false)]
+    [InlineData(true, false, false, false, false, true, false, false)]
+    [InlineData(true, false, false, false, false, false, true, false)]
+    [InlineData(false, false, false, false, false, false, false, false)]
+    public void ShouldAttemptDeferredChatPackActivation_ReturnsExpectedValue(
+        bool isChatRequest,
+        bool startupToolingBootstrapStarted,
+        bool hasExplicitToolEnableSelectors,
+        bool continuationContractDetected,
+        bool executionContractApplies,
+        bool hasPendingActionContext,
+        bool hasToolActivity,
+        bool expected) {
+        var shouldAttempt = ChatServiceSession.ShouldAttemptDeferredChatPackActivationForTesting(
+            isChatRequest,
+            startupToolingBootstrapStarted,
+            hasExplicitToolEnableSelectors,
+            continuationContractDetected,
+            executionContractApplies,
+            hasPendingActionContext,
+            hasToolActivity);
+
+        Assert.Equal(expected, shouldAttempt);
+    }
+
+    [Theory]
     [InlineData(true, true, false, true)]
     [InlineData(true, true, true, false)]
     [InlineData(true, false, false, false)]
@@ -221,5 +304,25 @@ public sealed class ChatServiceRequestClientConnectionPolicyTests {
             startupToolingBootstrapCompletedSuccessfully: startupToolingBootstrapCompletedSuccessfully);
 
         Assert.Equal(expected, shouldBypass);
+    }
+
+    [Fact]
+    public void ResolveTurnExecutionIntent_ForDeferredBootstrap_DoesNotReportRuntimeReady() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+
+        var turnExecutionIntent = session.ResolveTurnExecutionIntentForTesting(
+            userRequest: "summarize current state",
+            continuationFollowUpTurn: false,
+            compactFollowUpTurn: false,
+            hasPendingActionContext: false,
+            hasToolActivity: false,
+            startupBootstrapCompleted: false,
+            startupBootstrapCompletedSuccessfully: false,
+            hasCachedToolCatalog: false,
+            servingPersistedPreview: false);
+
+        Assert.False(turnExecutionIntent.RuntimeReady);
+        Assert.False(turnExecutionIntent.StartupBootstrapCompleted);
+        Assert.False(turnExecutionIntent.StartupBootstrapCompletedSuccessfully);
     }
 }

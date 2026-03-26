@@ -154,6 +154,17 @@ public sealed class HostOptionsProfileBootstrapTests {
     }
 
     [Fact]
+    public void Parse_AppliesWorkspaceBuiltInToolOutputProbing_AsRuntimeOnlyOverride() {
+        var options = ParseHostOptions(new[] {
+            "--enable-workspace-built-in-tool-output-probing"
+        }, out var error);
+
+        Assert.NotNull(options);
+        Assert.True(string.IsNullOrWhiteSpace(error), error);
+        Assert.True(ReadBoolProperty(options!, "EnableWorkspaceBuiltInToolOutputProbing"));
+    }
+
+    [Fact]
     public void Parse_ProfileDefaultMutatingParallelTrue_IsAppliedWithoutCliOverride() {
         var dbPath = CreateTempProfileDbPath();
         try {

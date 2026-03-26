@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Threading;
+using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Tooling;
 using IntelligenceX.Tools;
@@ -12,6 +14,7 @@ namespace IntelligenceX.Chat.Service;
 internal sealed partial class ChatServiceSession {
     private const string CapabilitySnapshotMarker = "ix:capability-snapshot:v1";
     private const string SkillsSnapshotMarker = "ix:skills:v1";
+    private const string DeferredDescriptorPreviewToolingSnapshotSource = "deferred_descriptor_preview";
     private const int MaxCapabilitySnapshotPackIds = 8;
     private const int MaxCapabilitySnapshotPluginIds = 8;
     private const int MaxCapabilitySnapshotEngineIds = 8;
@@ -26,10 +29,16 @@ internal sealed partial class ChatServiceSession {
     private const int MaxCapabilitySnapshotParityDetail = 4;
     private const int MaxCapabilitySnapshotToolingPackDetails = 4;
     private const int MaxCapabilitySnapshotToolingPluginDetails = 4;
+    private const int MaxCapabilitySnapshotDescriptorPreviewTools = 6;
+    private const int MaxCapabilitySnapshotDescriptorPreviewExamples = 4;
 
     private SessionCapabilitySnapshotDto BuildRuntimeCapabilitySnapshot() {
         if (_servingPersistedToolingBootstrapPreview && _persistedPreviewCapabilitySnapshot is not null) {
             return _persistedPreviewCapabilitySnapshot;
+        }
+
+        if (TryGetDeferredDescriptorPreviewCapabilitySnapshot(out var deferredDescriptorPreviewSnapshot)) {
+            return deferredDescriptorPreviewSnapshot;
         }
 
         return BuildCapabilitySnapshot(
@@ -46,6 +55,55 @@ internal sealed partial class ChatServiceSession {
             remoteReachabilityMode: ResolveHelloRemoteReachabilityMode(),
             backgroundScheduler: BuildBackgroundSchedulerSummary(),
             pluginCatalog: _pluginCatalog);
+    }
+
+    private bool TryGetDeferredDescriptorPreviewCapabilitySnapshot(out SessionCapabilitySnapshotDto snapshot) {
+        snapshot = null!;
+        var startupToolingBootstrapTask = Volatile.Read(ref _startupToolingBootstrapTask);
+        if (startupToolingBootstrapTask is not null
+            || _servingPersistedToolingBootstrapPreview
+            || _cachedToolDefinitions.Length > 0
+            || _packAvailability.Length > 0
+            || _pluginAvailability.Length > 0
+            || _pluginCatalog.Length > 0
+            || _registry.GetDefinitions().Count > 0
+            || _toolOrchestrationCatalog.EntriesByToolName.Count > 0
+            || _toolOrchestrationCatalog.GetKnownPackIds().Count > 0) {
+            return false;
+        }
+
+        if (_deferredDescriptorPreviewCapabilitySnapshot is not null) {
+            snapshot = _deferredDescriptorPreviewCapabilitySnapshot;
+            return true;
+        }
+
+        var descriptorPreview = ToolPackBootstrap.CreateDeferredDescriptorPreview(new ToolPackBootstrapOptions {
+            EnableBuiltInPackLoading = _options.EnableBuiltInPackLoading,
+            EnableDefaultPluginPaths = _options.EnableDefaultPluginPaths,
+            PluginPaths = _options.GetEffectivePluginPaths().ToArray(),
+            DisabledPackIds = _options.DisabledPackIds.ToArray(),
+            EnabledPackIds = _options.EnabledPackIds.ToArray()
+        });
+        if (descriptorPreview.PackAvailability.Count == 0 && descriptorPreview.PluginCatalog.Count == 0) {
+            return false;
+        }
+
+        _deferredDescriptorPreviewCapabilitySnapshot = BuildCapabilitySnapshot(
+            _options,
+            toolDefinitions: Array.Empty<ToolDefinition>(),
+            descriptorPreview.PackAvailability,
+            descriptorPreview.PluginAvailability,
+            _routingCatalogDiagnostics,
+            orchestrationCatalog: null,
+            connectedRuntimeSkills: Array.Empty<string>(),
+            healthyToolNames: Array.Empty<string>(),
+            remoteReachabilityMode: ResolveHelloRemoteReachabilityMode(),
+            backgroundScheduler: BuildBackgroundSchedulerSummary(),
+            pluginCatalog: descriptorPreview.PluginCatalog,
+            toolingSnapshotSource: DeferredDescriptorPreviewToolingSnapshotSource);
+        _deferredDescriptorPreviewToolDefinitions = descriptorPreview.ToolDefinitions.ToArray();
+        snapshot = _deferredDescriptorPreviewCapabilitySnapshot;
+        return true;
     }
 
     internal static SessionCapabilitySnapshotDto BuildCapabilitySnapshot(
@@ -425,6 +483,16 @@ internal sealed partial class ChatServiceSession {
             runtimeIdentity.AppendLine("enabled_plugins: " + string.Join(", ", snapshot.EnabledPluginIds));
         }
 
+        var activatablePackIds = NormalizeCapabilitySnapshotActivatablePackIds(snapshot.ToolingSnapshot);
+        if (activatablePackIds.Length > 0) {
+            runtimeIdentity.AppendLine("activatable_packs: " + string.Join(", ", activatablePackIds));
+        }
+
+        var activatablePluginIds = NormalizeCapabilitySnapshotActivatablePluginIds(snapshot.ToolingSnapshot);
+        if (activatablePluginIds.Length > 0) {
+            runtimeIdentity.AppendLine("activatable_plugins: " + string.Join(", ", activatablePluginIds));
+        }
+
         runtimeIdentity.AppendLine("dangerous_tools_enabled: " + (snapshot.DangerousToolsEnabled ? "true" : "false"));
         if (snapshot.DangerousPackIds.Length > 0) {
             runtimeIdentity.AppendLine("dangerous_packs: " + string.Join(", ", snapshot.DangerousPackIds));
@@ -669,6 +737,138 @@ internal sealed partial class ChatServiceSession {
             .ToArray();
     }
 
+    private static string[] NormalizeCapabilitySnapshotActivatablePackIds(SessionCapabilityToolingSnapshotDto? toolingSnapshot) {
+        if (toolingSnapshot?.Packs is not { Length: > 0 }) {
+            return Array.Empty<string>();
+        }
+
+        return NormalizeDistinctStrings(
+            toolingSnapshot.Packs
+                .Where(static pack => pack is not null && pack.CanActivateOnDemand)
+                .Select(static pack => NormalizePackId(pack.Id))
+                .Where(static packId => packId.Length > 0),
+            MaxCapabilitySnapshotPackIds);
+    }
+
+    private static string[] NormalizeCapabilitySnapshotActivatablePluginIds(SessionCapabilityToolingSnapshotDto? toolingSnapshot) {
+        if (toolingSnapshot?.Plugins is not { Length: > 0 }) {
+            return Array.Empty<string>();
+        }
+
+        return NormalizeDistinctStrings(
+            toolingSnapshot.Plugins
+                .Where(static plugin => plugin is not null && plugin.CanActivateOnDemand)
+                .Select(static plugin => NormalizePackId(plugin.Id))
+                .Where(static pluginId => pluginId.Length > 0),
+            MaxCapabilitySnapshotPluginIds);
+    }
+
+    private void AppendDeferredDescriptorPreviewToolPromptBlock(StringBuilder runtimeIdentity) {
+        ArgumentNullException.ThrowIfNull(runtimeIdentity);
+
+        if (_registry.GetDefinitions().Count > 0) {
+            return;
+        }
+
+        var definitions = GetDeferredToolDefinitionsForBootstrapDecision(options: null);
+        if (definitions.Length == 0) {
+            return;
+        }
+
+        runtimeIdentity.AppendLine("descriptor_preview_tool_count: " + definitions.Length);
+        var toolDetails = definitions
+            .Where(static definition => definition is not null && !string.IsNullOrWhiteSpace(definition.Name))
+            .Take(MaxCapabilitySnapshotDescriptorPreviewTools)
+            .Select(static definition => FormatDeferredDescriptorPreviewToolDetail(definition))
+            .Where(static detail => detail.Length > 0)
+            .ToArray();
+        if (toolDetails.Length > 0) {
+            runtimeIdentity.AppendLine("descriptor_preview_tools: " + string.Join(" | ", toolDetails));
+        }
+
+        var representativeExamples = NormalizeDistinctStrings(
+            definitions
+                .SelectMany(static definition => definition.RepresentativeExamples ?? Array.Empty<string>())
+                .Select(static example => (example ?? string.Empty).Trim())
+                .Where(static example => example.Length > 0),
+            MaxCapabilitySnapshotDescriptorPreviewExamples);
+        if (representativeExamples.Length > 0) {
+            runtimeIdentity.AppendLine("descriptor_preview_examples: " + string.Join(" | ", representativeExamples));
+        }
+
+        runtimeIdentity.AppendLine("Descriptor preview tools are descriptor-only candidates. They are not live callable schemas yet, so use them for routing and likely activation targets only.");
+    }
+
+    private static string FormatDeferredDescriptorPreviewToolDetail(ToolDefinitionDto definition) {
+        var name = (definition.Name ?? string.Empty).Trim();
+        if (name.Length == 0) {
+            return string.Empty;
+        }
+
+        var detail = new StringBuilder(name);
+        detail.Append('[');
+        var segments = new List<string>(capacity: 12);
+        var packId = NormalizePackId(definition.PackId);
+        if (packId.Length > 0) {
+            segments.Add("pack=" + packId);
+        }
+
+        var category = (definition.Category ?? string.Empty).Trim();
+        if (category.Length > 0) {
+            segments.Add("category=" + category);
+        }
+
+        var executionScope = (definition.ExecutionScope ?? string.Empty).Trim();
+        if (executionScope.Length > 0) {
+            segments.Add("scope=" + executionScope);
+        }
+
+        var routingRole = (definition.RoutingRole ?? string.Empty).Trim();
+        if (routingRole.Length > 0) {
+            segments.Add("role=" + routingRole);
+        }
+
+        segments.Add(definition.IsWriteCapable ? "write" : "read");
+        if (definition.SupportsRemoteHostTargeting) {
+            segments.Add("remote_host");
+        } else if (definition.SupportsRemoteExecution) {
+            segments.Add("remote_capable");
+        }
+
+        if (definition.IsSetupAware) {
+            segments.Add(string.IsNullOrWhiteSpace(definition.SetupToolName)
+                ? "setup"
+                : "setup=" + definition.SetupToolName.Trim());
+        }
+
+        if (definition.SupportsConnectivityProbe) {
+            segments.Add(string.IsNullOrWhiteSpace(definition.ProbeToolName)
+                ? "probe"
+                : "probe=" + definition.ProbeToolName.Trim());
+        }
+
+        if (definition.IsRecoveryAware) {
+            var recoveryToolName = definition.RecoveryToolNames.FirstOrDefault(static value => !string.IsNullOrWhiteSpace(value));
+            segments.Add(string.IsNullOrWhiteSpace(recoveryToolName)
+                ? "recovery"
+                : "recovery=" + recoveryToolName.Trim());
+        }
+
+        var handoffTargetToolName = definition.HandoffTargetToolNames.FirstOrDefault(static value => !string.IsNullOrWhiteSpace(value));
+        if (!string.IsNullOrWhiteSpace(handoffTargetToolName)) {
+            segments.Add("handoff=" + handoffTargetToolName.Trim());
+        } else {
+            var handoffTargetPackId = definition.HandoffTargetPackIds.FirstOrDefault(static value => !string.IsNullOrWhiteSpace(value));
+            if (!string.IsNullOrWhiteSpace(handoffTargetPackId)) {
+                segments.Add("handoff_pack=" + handoffTargetPackId.Trim());
+            }
+        }
+
+        detail.Append(string.Join("|", segments));
+        detail.Append(']');
+        return detail.ToString();
+    }
+
     private static string FormatCapabilitySnapshotToolingPackDetail(ToolPackInfoDto pack) {
         var label = string.IsNullOrWhiteSpace(pack.Name) ? NormalizePackId(pack.Id) : pack.Name.Trim();
         if (label.Length == 0) {
@@ -677,6 +877,7 @@ internal sealed partial class ChatServiceSession {
 
         var parts = new List<string> {
             pack.Enabled ? "enabled" : "disabled",
+            FormatCapabilitySnapshotActivationState(pack.ActivationState, pack.Enabled),
             FormatCapabilitySnapshotSourceKind(pack.SourceKind)
         };
         if (!string.IsNullOrWhiteSpace(pack.EngineId)) {
@@ -700,6 +901,7 @@ internal sealed partial class ChatServiceSession {
 
         var parts = new List<string> {
             plugin.Enabled ? "enabled" : "disabled",
+            FormatCapabilitySnapshotActivationState(plugin.ActivationState, plugin.Enabled),
             FormatCapabilitySnapshotSourceKind(plugin.SourceKind)
         };
         if (!string.IsNullOrWhiteSpace(plugin.Origin)) {
@@ -719,5 +921,9 @@ internal sealed partial class ChatServiceSession {
             ToolPackSourceKind.ClosedSource => "closed_source",
             _ => "open_source"
         };
+    }
+
+    private static string FormatCapabilitySnapshotActivationState(string? activationState, bool enabled) {
+        return ToolActivationStates.NormalizeOrDefault(activationState, enabled);
     }
 }

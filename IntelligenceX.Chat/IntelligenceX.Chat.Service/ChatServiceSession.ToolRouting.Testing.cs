@@ -7,6 +7,7 @@ using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.Tooling;
 using IntelligenceX.Json;
+using IntelligenceX.OpenAI.Chat;
 using IntelligenceX.OpenAI.ToolCalling;
 using IntelligenceX.Tools;
 
@@ -81,6 +82,30 @@ internal sealed partial class ChatServiceSession {
         return BuildModelPlannerCandidates(definitions, requestText, limit, toolOrchestrationCatalog);
     }
 
+    internal IReadOnlyList<ToolDefinition> OrderToolDefinitionsForPromptExposureForTesting(
+        IReadOnlyList<ToolDefinition> definitions,
+        string requestText) {
+        ArgumentNullException.ThrowIfNull(definitions);
+        ArgumentNullException.ThrowIfNull(requestText);
+        return OrderToolDefinitionsForPromptExposure(definitions, requestText);
+    }
+
+    internal IReadOnlyList<ToolDefinition> ExpandToFullToolAvailabilityForPromptExposureForTesting(
+        IReadOnlyList<ToolDefinition> fullDefinitions,
+        string requestText,
+        out ChatOptions options) {
+        ArgumentNullException.ThrowIfNull(fullDefinitions);
+        ArgumentNullException.ThrowIfNull(requestText);
+        options = new ChatOptions();
+        return ExpandToFullToolAvailabilityForPromptExposure(requestText, fullDefinitions, options);
+    }
+
+    internal ChatOptions CopyChatOptionsWithPromptAwareToolOrderingForTesting(ChatOptions options, string promptText) {
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(promptText);
+        return CopyChatOptionsWithPromptAwareToolOrdering(options, promptText, newThreadOverride: false);
+    }
+
     internal string BuildToolRoutingSearchTextForTesting(ToolDefinition definition) {
         ArgumentNullException.ThrowIfNull(definition);
         return BuildToolRoutingSearchText(definition);
@@ -96,13 +121,190 @@ internal sealed partial class ChatServiceSession {
         }
     }
 
-    internal string[] BuildHelloStartupWarningsForTesting(Task startupToolingBootstrapTask) {
-        ArgumentNullException.ThrowIfNull(startupToolingBootstrapTask);
+    internal string[] BuildHelloStartupWarningsForTesting(Task? startupToolingBootstrapTask) {
         return BuildHelloStartupWarnings(startupToolingBootstrapTask);
+    }
+
+    internal (bool RuntimeReady, bool StartupBootstrapCompleted, bool StartupBootstrapCompletedSuccessfully) ResolveTurnExecutionIntentForTesting(
+        string userRequest,
+        bool continuationFollowUpTurn,
+        bool compactFollowUpTurn,
+        bool hasPendingActionContext,
+        bool hasToolActivity,
+        bool startupBootstrapCompleted,
+        bool startupBootstrapCompletedSuccessfully,
+        bool hasCachedToolCatalog,
+        bool servingPersistedPreview) {
+        return ResolveTurnExecutionIntent(
+            userRequest,
+            continuationFollowUpTurn,
+            compactFollowUpTurn,
+            hasPendingActionContext,
+            hasToolActivity,
+            startupBootstrapCompleted,
+            startupBootstrapCompletedSuccessfully,
+            hasCachedToolCatalog,
+            servingPersistedPreview) is var intent
+            ? (
+                intent.RuntimeBootstrap.RuntimeReady,
+                intent.RuntimeBootstrap.StartupBootstrapCompleted,
+                intent.RuntimeBootstrap.StartupBootstrapCompletedSuccessfully)
+            : default;
     }
 
     internal SessionCapabilitySnapshotDto BuildRuntimeCapabilitySnapshotForTesting() {
         return BuildRuntimeCapabilitySnapshot();
+    }
+
+    internal bool HasDeferredToolCandidateMatchForTesting(string requestText, ChatRequestOptions? options = null) {
+        return HasDeferredToolCandidateMatchForChatRequest(requestText, options);
+    }
+
+    internal (string[] PreferredPackIds, string[] PreferredToolNames, bool HasAnyMatches, string[] ActivatablePackIds)
+        ResolveDeferredToolPreferenceHintsForTesting(
+            string requestText,
+            ChatRequestOptions? options,
+            int maxPreferredPackIds,
+            int maxPreferredToolNames) {
+        var hints = ResolveDeferredToolPreferenceHints(
+            requestText,
+            options,
+            maxPreferredPackIds,
+            maxPreferredToolNames);
+        return (
+            hints.PreferredPackIds,
+            hints.PreferredToolNames,
+            hints.HasAnyMatches,
+            hints.ActivatablePackIds);
+    }
+
+    internal bool TryApplyDeferredActivatedPackToolScopeForTesting(
+        string requestText,
+        ChatRequestOptions? options,
+        IReadOnlyList<ToolDefinition> definitions,
+        bool hasExplicitToolEnableSelectors,
+        bool continuationContractDetected,
+        bool executionContractApplies,
+        bool hasPendingActionContext,
+        bool hasToolActivity,
+        out IReadOnlyList<ToolDefinition> scopedDefinitions,
+        out string[] scopedPackIds) {
+        ArgumentNullException.ThrowIfNull(requestText);
+        ArgumentNullException.ThrowIfNull(definitions);
+        var result = TryApplyDeferredActivatedPackToolScope(
+            requestText,
+            options,
+            definitions,
+            hasExplicitToolEnableSelectors,
+            continuationContractDetected,
+            executionContractApplies,
+            hasPendingActionContext,
+            hasToolActivity,
+            out var resolvedDefinitions,
+            out var resolvedPackIds);
+        scopedDefinitions = result ? resolvedDefinitions! : definitions;
+        scopedPackIds = result ? resolvedPackIds! : Array.Empty<string>();
+        return result;
+    }
+
+    internal bool TryApplyDeferredActivatedPackToolScopeAfterRoundForTesting(
+        string requestText,
+        ChatRequestOptions? options,
+        IReadOnlyList<ToolDefinition> activeDefinitions,
+        IReadOnlyList<ToolCall> recentCalls,
+        bool hasExplicitToolEnableSelectors,
+        bool continuationContractDetected,
+        bool executionContractApplies,
+        bool hasPendingActionContext,
+        out IReadOnlyList<ToolDefinition> scopedDefinitions,
+        out string[] scopedPackIds) {
+        return TryApplyDeferredActivatedPackToolScopeAfterRoundForTesting(
+            requestText,
+            options,
+            activeDefinitions,
+            recentCalls,
+            hasExplicitToolEnableSelectors,
+            continuationContractDetected,
+            executionContractApplies,
+            hasPendingActionContext,
+            currentVisibleDefinitions: null,
+            out scopedDefinitions,
+            out scopedPackIds);
+    }
+
+    internal bool TryApplyDeferredActivatedPackToolScopeAfterRoundForTesting(
+        string requestText,
+        ChatRequestOptions? options,
+        IReadOnlyList<ToolDefinition> activeDefinitions,
+        IReadOnlyList<ToolCall> recentCalls,
+        bool hasExplicitToolEnableSelectors,
+        bool continuationContractDetected,
+        bool executionContractApplies,
+        bool hasPendingActionContext,
+        IReadOnlyList<ToolDefinition>? currentVisibleDefinitions,
+        out IReadOnlyList<ToolDefinition> scopedDefinitions,
+        out string[] scopedPackIds) {
+        ArgumentNullException.ThrowIfNull(requestText);
+        ArgumentNullException.ThrowIfNull(activeDefinitions);
+        ArgumentNullException.ThrowIfNull(recentCalls);
+        var result = TryApplyDeferredActivatedPackToolScopeAfterRound(
+            requestText,
+            options,
+            activeDefinitions,
+            recentCalls,
+            hasExplicitToolEnableSelectors,
+            continuationContractDetected,
+            executionContractApplies,
+            hasPendingActionContext,
+            currentVisibleDefinitions,
+            out var resolvedDefinitions,
+            out var resolvedPackIds);
+        scopedDefinitions = result ? resolvedDefinitions! : activeDefinitions;
+        scopedPackIds = result ? resolvedPackIds! : Array.Empty<string>();
+        return result;
+    }
+
+    internal async Task<string[]> TryActivateDeferredHandoffTargetPacksAfterRoundAsyncForTesting(
+        IReadOnlyList<ToolDefinition> activeDefinitions,
+        IReadOnlyList<ToolCall> recentCalls,
+        bool hasExplicitToolEnableSelectors,
+        bool continuationContractDetected,
+        bool executionContractApplies,
+        bool hasPendingActionContext,
+        CancellationToken cancellationToken = default) {
+        ArgumentNullException.ThrowIfNull(activeDefinitions);
+        ArgumentNullException.ThrowIfNull(recentCalls);
+        using var writer = new StreamWriter(Stream.Null) { AutoFlush = true };
+        return await TryActivateDeferredHandoffTargetPacksAfterRoundAsync(
+                writer,
+                requestId: "test-request",
+                threadId: "test-thread",
+                activeDefinitions,
+                recentCalls,
+                hasExplicitToolEnableSelectors,
+                continuationContractDetected,
+                executionContractApplies,
+                hasPendingActionContext,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    internal static bool ShouldAttemptDeferredChatPackActivationForTesting(
+        bool isChatRequest,
+        bool startupToolingBootstrapStarted,
+        bool hasExplicitToolEnableSelectors,
+        bool continuationContractDetected,
+        bool executionContractApplies,
+        bool hasPendingActionContext,
+        bool hasToolActivity) {
+        return ShouldAttemptDeferredChatPackActivation(
+            isChatRequest,
+            startupToolingBootstrapStarted,
+            hasExplicitToolEnableSelectors,
+            continuationContractDetected,
+            executionContractApplies,
+            hasPendingActionContext,
+            hasToolActivity);
     }
 
     internal string[] ResolveWorkingMemoryCapabilityRoutingFamiliesForTesting(IReadOnlyList<string> fallbackRoutingFamilies) {
@@ -197,6 +399,60 @@ internal sealed partial class ChatServiceSession {
         allowCachedEvidenceReuse = context.AllowCachedEvidenceReuse;
         return found;
     }
+
+    internal string BuildToolRoundReplayPlannerContextTextForTesting(
+        string threadId,
+        string requestText,
+        IReadOnlyList<ToolDefinition> currentVisibleDefinitions,
+        IReadOnlyList<ToolCall> executedCalls) {
+        ArgumentNullException.ThrowIfNull(threadId);
+        ArgumentNullException.ThrowIfNull(requestText);
+        ArgumentNullException.ThrowIfNull(currentVisibleDefinitions);
+        ArgumentNullException.ThrowIfNull(executedCalls);
+
+        return TryBuildToolRoundReplayPlannerContextText(
+            threadId,
+            requestText,
+            currentVisibleDefinitions,
+            executedCalls,
+            out var plannerContextText)
+            ? plannerContextText
+            : string.Empty;
+    }
+
+    internal ChatInput BuildToolRoundReplayInputWithPlannerContextForTesting(
+        string threadId,
+        string requestText,
+        IReadOnlyList<ToolDefinition> currentVisibleDefinitions,
+        IReadOnlyList<ToolCall> extractedCalls,
+        IReadOnlyList<ToolOutputDto> outputs) {
+        ArgumentNullException.ThrowIfNull(threadId);
+        ArgumentNullException.ThrowIfNull(requestText);
+        ArgumentNullException.ThrowIfNull(currentVisibleDefinitions);
+        ArgumentNullException.ThrowIfNull(extractedCalls);
+        ArgumentNullException.ThrowIfNull(outputs);
+
+        var extractedCallsById = new Dictionary<string, ToolCall>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < extractedCalls.Count; i++) {
+            var call = extractedCalls[i];
+            var normalizedCallId = (call.CallId ?? string.Empty).Trim();
+            if (normalizedCallId.Length == 0) {
+                continue;
+            }
+
+            extractedCallsById[normalizedCallId] = call;
+        }
+
+        var replayInput = BuildToolRoundReplayInput(extractedCalls, extractedCallsById, outputs);
+        AppendToolRoundReplayPlannerContextIfNeeded(
+            replayInput,
+            threadId,
+            requestText,
+            currentVisibleDefinitions,
+            extractedCalls);
+        return replayInput;
+    }
+
     internal (
         string UserRequest,
         string UserIntent,

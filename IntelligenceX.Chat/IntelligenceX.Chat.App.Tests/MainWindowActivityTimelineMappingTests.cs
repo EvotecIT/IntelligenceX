@@ -77,6 +77,26 @@ public sealed class MainWindowActivityTimelineMappingTests {
     }
 
     /// <summary>
+    /// Ensures prompt-exposure routing metadata surfaces the top ordered tools in activity text and timeline labels.
+    /// </summary>
+    [Fact]
+    public void BuildActivityTimelineLabel_UsesPromptExposureTopToolsWhenPayloadIncludesThem() {
+        var window = (MainWindow)RuntimeHelpers.GetUninitializedObject(typeof(MainWindow));
+        var message = CreateStatus(
+            status: ChatStatusCodes.RoutingMeta,
+            message: """
+                     {"strategy":"prompt_review","selectedToolCount":3,"totalToolCount":3,"promptExposure":{"reordered":true,"topToolNames":["eventlog_live_query","eventlog_connectivity_probe","system_pack_info"]}}
+                     """);
+
+        var activityText = InvokeFormatActivityText(window, message);
+        var timelineLabel = InvokeBuildActivityTimelineLabel(window, message, activityText);
+
+        Assert.Equal("Routing strategy prompt review (3/3 tools) -> eventlog_live_query, eventlog_connectivity_probe, +1", activityText);
+        Assert.Contains("route prompt review (3/3)", timelineLabel, StringComparison.Ordinal);
+        Assert.Contains("eventlog_live", timelineLabel, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Ensures malformed routing metadata falls back to a stable generic timeline label.
     /// </summary>
     [Fact]

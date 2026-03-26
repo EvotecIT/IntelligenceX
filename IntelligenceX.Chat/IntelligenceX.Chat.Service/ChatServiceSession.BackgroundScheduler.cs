@@ -134,6 +134,7 @@ internal sealed partial class ChatServiceSession {
         var maxRunningThreadIds = Math.Clamp(options.MaxRunningThreadIds, 0, ChatRequestOptionLimits.MaxBackgroundSchedulerStatusItems);
         var maxRecentActivity = Math.Clamp(options.MaxRecentActivity, 0, ChatRequestOptionLimits.MaxBackgroundSchedulerStatusItems);
         var maxThreadSummaries = Math.Clamp(options.MaxThreadSummaries, 0, ChatRequestOptionLimits.MaxBackgroundSchedulerStatusItems);
+        var activeToolDefinitions = _registry.GetDefinitions();
 
         lock (_backgroundSchedulerTelemetryLock) {
             NormalizeBackgroundSchedulerPauseStateNoLock(nowTicks);
@@ -169,8 +170,16 @@ internal sealed partial class ChatServiceSession {
             completedItemCount += Math.Max(0, snapshot.CompletedCount);
             pendingReadOnlyItemCount += Math.Max(0, snapshot.PendingReadOnlyCount);
             pendingUnknownItemCount += Math.Max(0, snapshot.PendingUnknownCount);
+            var summaryToolDefinitions = EnsureDeferredBackgroundWorkToolDefinitionsLoaded(
+                snapshot.Items,
+                activeToolDefinitions,
+                includeReadyTargets: true,
+                includeBlockedDependencies: true);
+            if (!ReferenceEquals(summaryToolDefinitions, activeToolDefinitions)) {
+                activeToolDefinitions = summaryToolDefinitions;
+            }
             var dependencySummary = BuildBackgroundWorkDependencySummary(snapshot.Items);
-            var dependencyRecoverySummary = BuildBackgroundWorkDependencyRecoverySummary(snapshot.Items, _registry.GetDefinitions());
+            var dependencyRecoverySummary = BuildBackgroundWorkDependencyRecoverySummary(snapshot.Items, summaryToolDefinitions);
             dependencyBlockedItemCount += Math.Max(0, dependencySummary.BlockedItemCount);
             foreach (var helperToolName in dependencyRecoverySummary.HelperToolNames) {
                 if (!string.IsNullOrWhiteSpace(helperToolName)) {
@@ -221,7 +230,7 @@ internal sealed partial class ChatServiceSession {
             }
 
             if (options.IncludeThreadSummaries) {
-                threadSummaries.Add(BuildBackgroundSchedulerThreadSummary(threadId, snapshot, _registry.GetDefinitions()));
+                threadSummaries.Add(BuildBackgroundSchedulerThreadSummary(threadId, snapshot, summaryToolDefinitions));
             }
         }
 
@@ -358,13 +367,14 @@ internal sealed partial class ChatServiceSession {
 
         RememberBackgroundSchedulerTick();
 
-        if (toolDefinitions is null || toolDefinitions.Count == 0) {
+        if (toolDefinitions is null) {
             reason = "background_scheduler_missing_definitions";
             return false;
         }
 
         var previews = new List<(string ThreadId, BackgroundWorkReplayCandidate Candidate)>();
         var trackedThreadIds = EnumerateTrackedBackgroundWorkThreadIds();
+        var schedulerToolDefinitions = EnsureDeferredBackgroundSchedulerToolDefinitionsLoaded(trackedThreadIds, toolDefinitions);
         var nowTicks = DateTime.UtcNow.Ticks;
         for (var i = 0; i < trackedThreadIds.Length; i++) {
             var candidateThreadId = trackedThreadIds[i];
@@ -381,7 +391,7 @@ internal sealed partial class ChatServiceSession {
             if (!TryPreviewReadyBackgroundWorkReplayCandidate(
                     candidateThreadId,
                     userRequest: string.Empty,
-                    toolDefinitions,
+                    schedulerToolDefinitions,
                     mutatingToolHintsByName,
                     out var preview,
                     out _)) {
@@ -398,7 +408,7 @@ internal sealed partial class ChatServiceSession {
 
         var previewTargetDefinitions = new List<ToolDefinition>(previews.Count);
         for (var i = 0; i < previews.Count; i++) {
-            if (TryGetToolDefinitionByName(toolDefinitions, previews[i].Candidate.Item.TargetToolName, out var previewDefinition)) {
+            if (TryGetToolDefinitionByName(schedulerToolDefinitions, previews[i].Candidate.Item.TargetToolName, out var previewDefinition)) {
                 previewTargetDefinitions.Add(previewDefinition);
             }
         }
@@ -414,7 +424,7 @@ internal sealed partial class ChatServiceSession {
             var priorityCompare = CompareBackgroundWorkReplayPriority(
                 left.Candidate.Item,
                 right.Candidate.Item,
-                toolDefinitions,
+                schedulerToolDefinitions,
                 helperDemandByToolName,
                 availablePreviewTargetToolNames);
             if (priorityCompare != 0) {
@@ -446,7 +456,7 @@ internal sealed partial class ChatServiceSession {
             if (!TryBuildReadyBackgroundWorkToolCall(
                     preview.ThreadId,
                     userRequest: string.Empty,
-                    toolDefinitions,
+                    schedulerToolDefinitions,
                     mutatingToolHintsByName,
                     out var claimedToolCall,
                     out var claimedItemId,
@@ -463,6 +473,34 @@ internal sealed partial class ChatServiceSession {
         }
 
         return false;
+    }
+
+    private IReadOnlyList<ToolDefinition> EnsureDeferredBackgroundSchedulerToolDefinitionsLoaded(
+        IReadOnlyList<string> trackedThreadIds,
+        IReadOnlyList<ToolDefinition> toolDefinitions) {
+        ArgumentNullException.ThrowIfNull(trackedThreadIds);
+        ArgumentNullException.ThrowIfNull(toolDefinitions);
+
+        var activeDefinitions = toolDefinitions;
+        for (var i = 0; i < trackedThreadIds.Count; i++) {
+            var candidateThreadId = (trackedThreadIds[i] ?? string.Empty).Trim();
+            if (candidateThreadId.Length == 0
+                || !TryGetRememberedThreadBackgroundWorkSnapshot(candidateThreadId, out var snapshot)
+                || IsEmptyBackgroundWorkSnapshot(snapshot)) {
+                continue;
+            }
+
+            var enrichedDefinitions = EnsureDeferredBackgroundWorkToolDefinitionsLoaded(
+                snapshot.Items,
+                activeDefinitions,
+                includeReadyTargets: true,
+                includeBlockedDependencies: true);
+            if (!ReferenceEquals(enrichedDefinitions, activeDefinitions)) {
+                activeDefinitions = enrichedDefinitions;
+            }
+        }
+
+        return activeDefinitions;
     }
 
     internal async Task<BackgroundSchedulerIterationResult> RunBackgroundSchedulerIterationAsync(
@@ -613,14 +651,6 @@ internal sealed partial class ChatServiceSession {
         if (!_options.EnableBackgroundSchedulerDaemon) {
             return;
         }
-
-        var bootstrapTask = Volatile.Read(ref _startupToolingBootstrapTask);
-        if (bootstrapTask is null) {
-            bootstrapTask = Task.Run(() => RebuildToolingCore(clearRoutingCaches: false), CancellationToken.None);
-            _startupToolingBootstrapTask = bootstrapTask;
-        }
-
-        await bootstrapTask.ConfigureAwait(false);
 
         var idleDelay = TimeSpan.FromSeconds(Math.Clamp(
             _options.BackgroundSchedulerPollSeconds,

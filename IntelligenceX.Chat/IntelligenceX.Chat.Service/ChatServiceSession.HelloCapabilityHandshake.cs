@@ -10,10 +10,12 @@ namespace IntelligenceX.Chat.Service;
 internal sealed partial class ChatServiceSession {
     private const string StartupCapabilityHandshakePrefix = "[startup] capability_handshake ";
 
-    private string[] BuildHelloStartupWarnings(Task startupToolingBootstrapTask) {
+    private string[] BuildHelloStartupWarnings(Task? startupToolingBootstrapTask) {
         var warnings = new List<string>(_startupWarnings.Length + 2);
         warnings.AddRange(_startupWarnings);
-        if (!startupToolingBootstrapTask.IsCompletedSuccessfully) {
+        if (startupToolingBootstrapTask is null) {
+            warnings.Add("[startup] Tool bootstrap deferred until a tooling request requires it.");
+        } else if (!startupToolingBootstrapTask.IsCompletedSuccessfully) {
             if (!startupToolingBootstrapTask.IsCompleted) {
                 warnings.Add("[startup] Tool bootstrap in progress. Tool metadata may be incomplete.");
             } else if (startupToolingBootstrapTask.IsFaulted) {

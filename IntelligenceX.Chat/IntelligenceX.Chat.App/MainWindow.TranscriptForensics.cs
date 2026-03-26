@@ -38,7 +38,8 @@ public sealed partial class MainWindow {
                 conversation.ThreadId,
                 conversation.Messages,
                 persistedConversation?.Messages,
-                BuildRuntimeToolingSupportSnapshot());
+                BuildRuntimeToolingSupportSnapshot(),
+                BuildTranscriptForensicsTurnDiagnosticsSnapshot());
 
             var outputPath = ResolveTranscriptForensicsOutputPath(pickedPath);
             TranscriptForensicsExporter.Export(outputPath, bundle);
@@ -125,5 +126,94 @@ public sealed partial class MainWindow {
             _toolCatalogPacks,
             _toolCatalogPlugins,
             _toolCatalogCapabilitySnapshot);
+    }
+
+    internal TranscriptForensicsTurnDiagnosticsSnapshot? BuildTranscriptForensicsTurnDiagnosticsSnapshot() {
+        TurnMetricsSnapshot? turnMetricsSnapshot;
+        string[] activityTimeline;
+        RoutingPromptExposureSnapshot[] routingPromptExposureHistory;
+        lock (_turnDiagnosticsSync) {
+            turnMetricsSnapshot = _lastTurnMetrics;
+            activityTimeline = _activityTimeline.Count == 0 ? Array.Empty<string>() : _activityTimeline.ToArray();
+            routingPromptExposureHistory = _routingPromptExposureHistory.Count == 0
+                ? Array.Empty<RoutingPromptExposureSnapshot>()
+                : _routingPromptExposureHistory.ToArray();
+        }
+
+        if (turnMetricsSnapshot is null
+            && activityTimeline.Length == 0
+            && routingPromptExposureHistory.Length == 0) {
+            return null;
+        }
+
+        var autonomyCounters = new List<TranscriptForensicsAutonomyCounterSnapshot>();
+        if (turnMetricsSnapshot is not null && turnMetricsSnapshot.AutonomyCounters is { Count: > 0 }) {
+            for (var i = 0; i < turnMetricsSnapshot.AutonomyCounters.Count; i++) {
+                var counter = turnMetricsSnapshot.AutonomyCounters[i];
+                var name = (counter.Name ?? string.Empty).Trim();
+                if (name.Length == 0 || counter.Count <= 0) {
+                    continue;
+                }
+
+                autonomyCounters.Add(new TranscriptForensicsAutonomyCounterSnapshot {
+                    Name = name,
+                    Count = counter.Count
+                });
+            }
+        }
+
+        var routingExposureHistory = new List<TranscriptForensicsRoutingPromptExposureSnapshot>(routingPromptExposureHistory.Length);
+        for (var i = 0; i < routingPromptExposureHistory.Length; i++) {
+            var snapshot = routingPromptExposureHistory[i];
+            routingExposureHistory.Add(new TranscriptForensicsRoutingPromptExposureSnapshot {
+                RequestId = string.IsNullOrWhiteSpace(snapshot.RequestId) ? null : snapshot.RequestId,
+                ThreadId = string.IsNullOrWhiteSpace(snapshot.ThreadId) ? null : snapshot.ThreadId,
+                Strategy = snapshot.Strategy,
+                SelectedToolCount = snapshot.SelectedToolCount,
+                TotalToolCount = snapshot.TotalToolCount,
+                Reordered = snapshot.Reordered,
+                TopToolNames = snapshot.TopToolNames.Length == 0 ? new List<string>() : new List<string>(snapshot.TopToolNames)
+            });
+        }
+
+        return new TranscriptForensicsTurnDiagnosticsSnapshot {
+            ActivityTimeline = activityTimeline.Length == 0 ? new List<string>() : new List<string>(activityTimeline),
+            RoutingPromptExposureHistory = routingExposureHistory,
+            LastTurnMetrics = turnMetricsSnapshot is null
+                ? null
+                : new TranscriptForensicsTurnMetricsSnapshot {
+                    RequestId = turnMetricsSnapshot.RequestId,
+                    CompletedUtc = EnsureUtc(turnMetricsSnapshot.CompletedUtc),
+                    DurationMs = turnMetricsSnapshot.DurationMs,
+                    TtftMs = turnMetricsSnapshot.TtftMs,
+                    QueueWaitMs = turnMetricsSnapshot.QueueWaitMs,
+                    AuthProbeMs = turnMetricsSnapshot.AuthProbeMs,
+                    ConnectMs = turnMetricsSnapshot.ConnectMs,
+                    EnsureThreadMs = turnMetricsSnapshot.EnsureThreadMs,
+                    WeightedSubsetSelectionMs = turnMetricsSnapshot.WeightedSubsetSelectionMs,
+                    ResolveModelMs = turnMetricsSnapshot.ResolveModelMs,
+                    DispatchToFirstStatusMs = turnMetricsSnapshot.DispatchToFirstStatusMs,
+                    DispatchToModelSelectedMs = turnMetricsSnapshot.DispatchToModelSelectedMs,
+                    DispatchToFirstToolRunningMs = turnMetricsSnapshot.DispatchToFirstToolRunningMs,
+                    DispatchToFirstDeltaMs = turnMetricsSnapshot.DispatchToFirstDeltaMs,
+                    DispatchToLastDeltaMs = turnMetricsSnapshot.DispatchToLastDeltaMs,
+                    StreamDurationMs = turnMetricsSnapshot.StreamDurationMs,
+                    ToolCallsCount = turnMetricsSnapshot.ToolCallsCount,
+                    ToolRounds = turnMetricsSnapshot.ToolRounds,
+                    ProjectionFallbackCount = turnMetricsSnapshot.ProjectionFallbackCount,
+                    Outcome = turnMetricsSnapshot.Outcome,
+                    ErrorCode = string.IsNullOrWhiteSpace(turnMetricsSnapshot.ErrorCode) ? null : turnMetricsSnapshot.ErrorCode,
+                    PromptTokens = turnMetricsSnapshot.PromptTokens,
+                    CompletionTokens = turnMetricsSnapshot.CompletionTokens,
+                    TotalTokens = turnMetricsSnapshot.TotalTokens,
+                    CachedPromptTokens = turnMetricsSnapshot.CachedPromptTokens,
+                    ReasoningTokens = turnMetricsSnapshot.ReasoningTokens,
+                    Model = string.IsNullOrWhiteSpace(turnMetricsSnapshot.Model) ? null : turnMetricsSnapshot.Model,
+                    RequestedModel = string.IsNullOrWhiteSpace(turnMetricsSnapshot.RequestedModel) ? null : turnMetricsSnapshot.RequestedModel,
+                    Transport = string.IsNullOrWhiteSpace(turnMetricsSnapshot.Transport) ? null : turnMetricsSnapshot.Transport,
+                    EndpointHost = string.IsNullOrWhiteSpace(turnMetricsSnapshot.EndpointHost) ? null : turnMetricsSnapshot.EndpointHost,
+                    AutonomyCounters = autonomyCounters
+                }
+        };
     }
 }

@@ -50,6 +50,7 @@ public sealed partial class MainWindow : Window {
     private const int MaxQueuedTurns = 8;
     private const int MaxActivityTimelineEntries = 6;
     private const int MaxActivityTimelineLabelChars = 48;
+    private const int MaxRoutingPromptExposureHistoryEntries = 6;
     private const int MaxAssistantTurnTimelineEntries = 8;
     private const string SystemConversationId = "chat-system";
     private const string SystemConversationTitle = "System";
@@ -367,6 +368,10 @@ public sealed partial class MainWindow : Window {
     private readonly Dictionary<string, string> _toolRoutingConfidence = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _toolRoutingReason = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, double> _toolRoutingScore = new(StringComparer.OrdinalIgnoreCase);
+    // Guarded by _turnDiagnosticsSync.
+    private RoutingPromptExposureSnapshot? _latestRoutingPromptExposure;
+    // Guarded by _turnDiagnosticsSync.
+    private readonly List<RoutingPromptExposureSnapshot> _routingPromptExposureHistory = new();
     private int _toolStateHiddenWithoutCatalogLastCount = -1;
     private readonly HashSet<string> _startupToolHealthWarningSignatures = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _startupUnavailablePackSignatures = new(StringComparer.OrdinalIgnoreCase);
@@ -622,6 +627,22 @@ public sealed partial class MainWindow : Window {
         string? RequestedModel,
         string? Transport,
         string? EndpointHost);
+
+    private sealed record RoutingPromptExposureSnapshot(
+        string RequestId,
+        string ThreadId,
+        string Strategy,
+        int SelectedToolCount,
+        int TotalToolCount,
+        bool Reordered,
+        string[] TopToolNames);
+
+    private readonly record struct RoutingMetaPayloadSnapshot(
+        string Strategy,
+        int SelectedToolCount,
+        int TotalToolCount,
+        bool PromptExposureReordered,
+        string[] PromptExposureTopToolNames);
 
     private sealed class UserProfileIntent {
         public string? UserName { get; set; }

@@ -30,6 +30,7 @@ internal sealed partial class ChatServiceSession {
             return Array.Empty<ToolCall>();
         }
 
+        allToolDefinitions = EnsureDeferredPackPreflightHelperDefinitionsLoaded(allToolDefinitions, extractedCalls);
         var catalog = BuildPackPreflightCatalog(allToolDefinitions);
         if (catalog.PackInfoByPackId.Count == 0) {
             return Array.Empty<ToolCall>();
@@ -147,6 +148,80 @@ internal sealed partial class ChatServiceSession {
 
         RememberSelectedPackPreflightTools(normalizedThreadId, selectedPreflightToolNames);
         return preflightCalls.Count == 0 ? Array.Empty<ToolCall>() : preflightCalls;
+    }
+
+    private IReadOnlyList<ToolDefinition> EnsureDeferredPackPreflightHelperDefinitionsLoaded(
+        IReadOnlyList<ToolDefinition> allToolDefinitions,
+        IReadOnlyList<ToolCall> extractedCalls) {
+        if (allToolDefinitions.Count == 0 || extractedCalls.Count == 0) {
+            return allToolDefinitions;
+        }
+
+        var definitionsByToolName = new Dictionary<string, ToolDefinition>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < allToolDefinitions.Count; i++) {
+            var definition = allToolDefinitions[i];
+            var toolName = (definition.Name ?? string.Empty).Trim();
+            if (toolName.Length == 0 || definitionsByToolName.ContainsKey(toolName)) {
+                continue;
+            }
+
+            definitionsByToolName[toolName] = definition;
+        }
+
+        var deferredHelperToolNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < extractedCalls.Count; i++) {
+            var callName = (extractedCalls[i].Name ?? string.Empty).Trim();
+            if (callName.Length == 0 || !definitionsByToolName.TryGetValue(callName, out var definition)) {
+                continue;
+            }
+
+            foreach (var helperToolName in ResolveContractHelperToolNames(definition, _toolOrchestrationCatalog)) {
+                var normalizedHelperToolName = (helperToolName ?? string.Empty).Trim();
+                if (normalizedHelperToolName.Length > 0) {
+                    deferredHelperToolNames.Add(normalizedHelperToolName);
+                }
+            }
+
+            if (_toolOrchestrationCatalog.TryGetEntry(callName, out var orchestrationEntry)
+                && orchestrationEntry.RecoveryToolNames.Count > 0) {
+                for (var helperIndex = 0; helperIndex < orchestrationEntry.RecoveryToolNames.Count; helperIndex++) {
+                    var helperToolName = (orchestrationEntry.RecoveryToolNames[helperIndex] ?? string.Empty).Trim();
+                    if (helperToolName.Length > 0) {
+                        deferredHelperToolNames.Add(helperToolName);
+                    }
+                }
+            } else {
+                var recoveryToolNames = NormalizePackPreflightRecoveryToolNames(definition.Recovery?.RecoveryToolNames);
+                for (var helperIndex = 0; helperIndex < recoveryToolNames.Length; helperIndex++) {
+                    var helperToolName = (recoveryToolNames[helperIndex] ?? string.Empty).Trim();
+                    if (helperToolName.Length > 0) {
+                        deferredHelperToolNames.Add(helperToolName);
+                    }
+                }
+            }
+        }
+
+        var activatedAny = false;
+        foreach (var helperToolName in deferredHelperToolNames) {
+            if (definitionsByToolName.ContainsKey(helperToolName)
+                || !TryResolveDeferredActivationPackId(helperToolName, out var activationPackId)) {
+                continue;
+            }
+
+            try {
+                activatedAny |= TryActivatePackOnDemand(activationPackId, out _);
+            } catch {
+                // Keep host preflight best-effort. Recovery/bootstrap diagnostics will surface later if needed.
+            }
+        }
+
+        if (!activatedAny) {
+            return allToolDefinitions;
+        }
+
+        return _registry.GetDefinitions()
+            .Where(static definition => definition is not null)
+            .ToArray();
     }
 
     private bool TryBuildHostDomainIntentEnvironmentBootstrapCall(

@@ -61,13 +61,19 @@ internal sealed partial class ChatServiceSession {
             plugins = BuildPluginPolicyList(_pluginAvailability, packs, _pluginCatalog);
             routingCatalog = MapRoutingCatalogDiagnostics(_routingCatalogDiagnostics);
             capabilitySnapshot = BuildRuntimeCapabilitySnapshot();
-        } else if (!ShouldUseCachedToolCatalogFallbackForListTools(startupToolingBootstrapInProgress)
-                   || !TryGetCachedToolCatalogForListTools(
+        } else if (TryGetCachedToolCatalogForListTools(
                        out tools,
                        out packs,
                        out plugins,
                        out routingCatalog,
                        out capabilitySnapshot)) {
+        } else if (TryGetDeferredDescriptorPreviewToolCatalog(
+                       out tools,
+                       out packs,
+                       out plugins,
+                       out routingCatalog,
+                       out capabilitySnapshot)) {
+        } else {
             tools = Array.Empty<ToolDefinitionDto>();
             packs = BuildPackPolicyList(_packAvailability, _toolOrchestrationCatalog);
             plugins = BuildPluginPolicyList(_pluginAvailability, packs, _pluginCatalog);
@@ -649,6 +655,22 @@ internal sealed partial class ChatServiceSession {
 
         var runtimePolicyOptions = BuildRuntimePolicyOptions(_options);
         var resolvedRuntimePolicyOptions = ToolRuntimePolicyBootstrap.ResolveOptions(runtimePolicyOptions);
+        var previewCacheKey = BuildToolingBootstrapPreviewCacheKey(_options, runtimePolicyOptions, resolvedRuntimePolicyOptions);
+        if (_toolingBootstrapCache is not null
+            && _toolingBootstrapCache.TryGetPersistedPreviewSnapshot(previewCacheKey, out var persistedPreview)
+            && persistedPreview.ToolDefinitions.Length > 0) {
+            tools = persistedPreview.ToolDefinitions;
+            packs = persistedPreview.PackSummaries ?? Array.Empty<ToolPackInfoDto>();
+            plugins = BuildPluginPolicyList(
+                persistedPreview.PluginAvailability ?? Array.Empty<ToolPluginAvailabilityInfo>(),
+                packs,
+                persistedPreview.PluginCatalog ?? Array.Empty<ToolPluginCatalogInfo>());
+            routingCatalog = MapRoutingCatalogDiagnostics(persistedPreview.RoutingCatalogDiagnostics);
+            capabilitySnapshot = persistedPreview.CapabilitySnapshot;
+            Volatile.Write(ref _cachedToolDefinitions, tools);
+            return true;
+        }
+
         var cacheKey = BuildToolingBootstrapCacheKey(_options, runtimePolicyOptions, resolvedRuntimePolicyOptions);
         if (_toolingBootstrapCache is not null
             && _toolingBootstrapCache.TryGetPersistedSnapshot(cacheKey, out var persisted)
@@ -665,12 +687,45 @@ internal sealed partial class ChatServiceSession {
             return true;
         }
 
+        if (TryGetDeferredDescriptorPreviewToolCatalog(
+                out tools,
+                out packs,
+                out plugins,
+                out routingCatalog,
+                out capabilitySnapshot)) {
+            return true;
+        }
+
         tools = Array.Empty<ToolDefinitionDto>();
         packs = Array.Empty<ToolPackInfoDto>();
         plugins = Array.Empty<PluginInfoDto>();
         routingCatalog = null;
         capabilitySnapshot = null;
         return false;
+    }
+
+    private bool TryGetDeferredDescriptorPreviewToolCatalog(
+        out ToolDefinitionDto[] tools,
+        out ToolPackInfoDto[] packs,
+        out PluginInfoDto[] plugins,
+        out SessionRoutingCatalogDiagnosticsDto? routingCatalog,
+        out SessionCapabilitySnapshotDto? capabilitySnapshot) {
+        tools = Array.Empty<ToolDefinitionDto>();
+        packs = Array.Empty<ToolPackInfoDto>();
+        plugins = Array.Empty<PluginInfoDto>();
+        routingCatalog = null;
+        capabilitySnapshot = null;
+
+        if (!TryGetDeferredDescriptorPreviewCapabilitySnapshot(out var descriptorPreviewSnapshot)) {
+            return false;
+        }
+
+        capabilitySnapshot = descriptorPreviewSnapshot;
+        var toolingSnapshot = descriptorPreviewSnapshot.ToolingSnapshot;
+        packs = toolingSnapshot?.Packs ?? Array.Empty<ToolPackInfoDto>();
+        plugins = toolingSnapshot?.Plugins ?? Array.Empty<PluginInfoDto>();
+        tools = _deferredDescriptorPreviewToolDefinitions;
+        return tools.Length > 0 || packs.Length > 0 || plugins.Length > 0;
     }
 
     private ToolDefinitionDto[] BuildToolDefinitionDtosFromRegistryDefinitions(IReadOnlyList<ToolDefinition> definitions) {

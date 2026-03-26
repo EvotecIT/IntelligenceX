@@ -559,6 +559,7 @@ internal sealed partial class ChatServiceSession {
             plannerContext.HandoffTargetToolNames.Concat(derivedHandoffTargetToolNames),
             StringComparer.OrdinalIgnoreCase);
         var preferredPackIds = new HashSet<string>(plannerContext.PreferredPackIds, StringComparer.OrdinalIgnoreCase);
+        MergeDeferredPlannerPreferenceHints(requestText, preferredPackIds, preferredToolNames);
         var preferredDeferredWorkCapabilityIds = new HashSet<string>(
             plannerContext.PreferredDeferredWorkCapabilityIds
                 .Select(static capabilityId => NormalizeDeferredWorkCapabilityId(capabilityId))
@@ -597,6 +598,11 @@ internal sealed partial class ChatServiceSession {
             handoffTargetToolNames,
             preferredPackIds,
             handoffTargetPackIds);
+        var exactTargetToolNames = BuildExactContractTargetToolNameSet(preferredToolNames, handoffTargetToolNames);
+        var suppressibleExactTargetPackIds = ResolveExactTargetPackIdsWithoutRequiredHelpers(
+            definitions,
+            toolOrchestrationCatalog,
+            exactTargetToolNames);
         if (focusTokens.Length == 0) {
             if (preferredToolNames.Count == 0
                 && handoffTargetToolNames.Count == 0
@@ -612,10 +618,12 @@ internal sealed partial class ChatServiceSession {
                 preferredToolNames,
                 handoffTargetToolNames,
                 preferredPackIds,
-                handoffTargetPackIds);
+                handoffTargetPackIds,
+                helperDemandByToolName,
+                suppressibleExactTargetPackIds);
         }
 
-        var scored = new List<(ToolDefinition Definition, int Priority, int FocusHits, string SearchText)>(definitions.Count);
+        var scored = new List<(ToolDefinition Definition, int Priority, int ContractPriority, int FocusHits, string SearchText)>(definitions.Count);
         for (var i = 0; i < definitions.Count; i++) {
             var definition = definitions[i];
             var searchText = BuildToolRoutingSearchText(definition);
@@ -690,6 +698,21 @@ internal sealed partial class ChatServiceSession {
                 && ResolveProbeToolName(definition, toolOrchestrationCatalog).Length > 0) {
                 priority -= PlannerAuthFollowUpPriorityPenalty;
             }
+            var contractPriority = GetPlannerContractTargetDeterministicPriority(
+                definition,
+                toolOrchestrationCatalog,
+                preferredToolNames,
+                handoffTargetToolNames,
+                preferredPackIds,
+                handoffTargetPackIds);
+            if (ShouldSuppressRedundantSiblingHelperTool(
+                    definition,
+                    toolOrchestrationCatalog,
+                    exactTargetToolNames,
+                    helperDemandByToolName,
+                    suppressibleExactTargetPackIds)) {
+                continue;
+            }
             for (var t = 0; t < focusTokens.Length; t++) {
                 var token = focusTokens[t];
                 if (token.Length == 0) {
@@ -701,13 +724,18 @@ internal sealed partial class ChatServiceSession {
                 }
             }
 
-            scored.Add((definition, priority, focusHits, searchText));
+            scored.Add((definition, priority, contractPriority, focusHits, searchText));
         }
 
         scored.Sort(static (left, right) => {
             var priorityCompare = right.Priority.CompareTo(left.Priority);
             if (priorityCompare != 0) {
                 return priorityCompare;
+            }
+
+            var contractCompare = right.ContractPriority.CompareTo(left.ContractPriority);
+            if (contractCompare != 0) {
+                return contractCompare;
             }
 
             var hitCompare = right.FocusHits.CompareTo(left.FocusHits);
@@ -742,7 +770,14 @@ internal sealed partial class ChatServiceSession {
         for (var i = 0; i < deterministicBackfill.Count && selected.Count < candidateLimit; i++) {
             var definition = deterministicBackfill[i];
             var name = (definition.Name ?? string.Empty).Trim();
-            if (name.Length == 0 || !selectedNames.Add(name)) {
+            if (name.Length == 0
+                || !selectedNames.Add(name)
+                || ShouldSuppressRedundantSiblingHelperTool(
+                    definition,
+                    toolOrchestrationCatalog,
+                    exactTargetToolNames,
+                    helperDemandByToolName,
+                    suppressibleExactTargetPackIds)) {
                 continue;
             }
 
@@ -780,6 +815,7 @@ internal sealed partial class ChatServiceSession {
             plannerContext.HandoffTargetToolNames.Concat(derivedHandoffTargetToolNames),
             StringComparer.OrdinalIgnoreCase);
         var preferredPackIds = new HashSet<string>(plannerContext.PreferredPackIds, StringComparer.OrdinalIgnoreCase);
+        MergeDeferredPlannerPreferenceHints(requestText, preferredPackIds, preferredToolNames);
         var preferredDeferredWorkCapabilityIds = new HashSet<string>(
             plannerContext.PreferredDeferredWorkCapabilityIds
                 .Select(static capabilityId => NormalizeDeferredWorkCapabilityId(capabilityId))
@@ -818,6 +854,11 @@ internal sealed partial class ChatServiceSession {
             handoffTargetToolNames,
             preferredPackIds,
             handoffTargetPackIds);
+        var exactTargetToolNames = BuildExactContractTargetToolNameSet(preferredToolNames, handoffTargetToolNames);
+        var suppressibleExactTargetPackIds = ResolveExactTargetPackIdsWithoutRequiredHelpers(
+            definitions,
+            _toolOrchestrationCatalog,
+            exactTargetToolNames);
         var routingTokenSupport = routingTokens.Length == 0 ? Array.Empty<int>() : new int[routingTokens.Length];
         var focusTokenSupport = focusTokens.Length == 0 ? Array.Empty<int>() : new int[focusTokens.Length];
         string[]? toolSearchTexts = null;
@@ -968,6 +1009,14 @@ internal sealed partial class ChatServiceSession {
                     ? WeightedRoutingAuthFollowUpScorePenalty
                     : 0d;
             score -= authFollowUpPenalty;
+            if (ShouldSuppressRedundantSiblingHelperTool(
+                    definition,
+                    _toolOrchestrationCatalog,
+                    exactTargetToolNames,
+                    helperDemandByToolName,
+                    suppressibleExactTargetPackIds)) {
+                continue;
+            }
 
             if (routingTokens.Length > 0) {
                 var searchText = toolSearchTexts?[i] ?? BuildToolRoutingSearchText(definition);
@@ -1045,7 +1094,9 @@ internal sealed partial class ChatServiceSession {
                 preferredToolNames,
                 handoffTargetToolNames,
                 preferredPackIds,
-                handoffTargetPackIds);
+                handoffTargetPackIds,
+                helperDemandByToolName,
+                suppressibleExactTargetPackIds);
         }
 
         scored.Sort(static (a, b) => {
@@ -1065,7 +1116,9 @@ internal sealed partial class ChatServiceSession {
                 preferredToolNames,
                 handoffTargetToolNames,
                 preferredPackIds,
-                handoffTargetPackIds);
+                handoffTargetPackIds,
+                helperDemandByToolName,
+                suppressibleExactTargetPackIds);
         }
 
         var selected = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -1103,6 +1156,14 @@ internal sealed partial class ChatServiceSession {
             handoffTargetToolNames,
             preferredPackIds,
             handoffTargetPackIds).ToList();
+        selectedDefs = TrimRedundantSiblingHelperTools(
+            selectedDefs,
+            definitions,
+            limit,
+            _toolOrchestrationCatalog,
+            exactTargetToolNames,
+            helperDemandByToolName,
+            suppressibleExactTargetPackIds).ToList();
 
         if (selectedDefs.Count >= definitions.Count) {
             return definitions;
@@ -1110,6 +1171,260 @@ internal sealed partial class ChatServiceSession {
 
         insights = BuildRoutingInsights(scored, selectedDefs, selectionDiagnostics);
         return selectedDefs;
+    }
+
+    private void MergeDeferredPlannerPreferenceHints(
+        string requestText,
+        ISet<string> preferredPackIds,
+        ISet<string> preferredToolNames) {
+        ArgumentNullException.ThrowIfNull(preferredPackIds);
+        ArgumentNullException.ThrowIfNull(preferredToolNames);
+
+        var deferredHints = ResolveDeferredToolPreferenceHints(
+            requestText,
+            options: null,
+            maxPreferredPackIds: MaxPlannerContextPackIds,
+            maxPreferredToolNames: MaxPlannerContextToolNames);
+        for (var i = 0; i < deferredHints.PreferredPackIds.Length; i++) {
+            var packId = NormalizePackId(deferredHints.PreferredPackIds[i]);
+            if (packId.Length > 0) {
+                preferredPackIds.Add(packId);
+            }
+        }
+
+        for (var i = 0; i < deferredHints.PreferredToolNames.Length; i++) {
+            var toolName = NormalizeToolNameForAnswerPlan(deferredHints.PreferredToolNames[i]);
+            if (toolName.Length > 0) {
+                preferredToolNames.Add(toolName);
+            }
+        }
+    }
+
+    private IReadOnlyList<ToolDefinition> OrderToolDefinitionsForPromptExposure(
+        IReadOnlyList<ToolDefinition> definitions,
+        string requestText) {
+        if (definitions is not { Count: > 1 }) {
+            return definitions ?? Array.Empty<ToolDefinition>();
+        }
+
+        _ = TryReadPlannerContextFromRequestText(requestText, out var plannerContext);
+        var (derivedHandoffTargetPackIds, derivedHandoffTargetToolNames) =
+            DerivePlannerHandoffTargetsFromContext(plannerContext, _toolOrchestrationCatalog);
+        var deferredHints = ResolveDeferredToolPreferenceHints(
+            requestText,
+            options: null,
+            maxPreferredPackIds: MaxPlannerContextPackIds,
+            maxPreferredToolNames: MaxPlannerContextToolNames);
+        var preferredToolNames = NormalizeDistinctStrings(
+            plannerContext.PreferredToolNames.Concat(deferredHints.PreferredToolNames),
+            MaxPlannerContextToolNames);
+        var handoffTargetToolNames = NormalizeDistinctStrings(
+            plannerContext.HandoffTargetToolNames.Concat(derivedHandoffTargetToolNames),
+            MaxPlannerContextHandoffTargets);
+        var preferredPackIds = NormalizeDistinctStrings(
+            plannerContext.PreferredPackIds.Concat(deferredHints.PreferredPackIds),
+            MaxPlannerContextPackIds);
+        var handoffTargetPackIds = NormalizeDistinctStrings(
+            plannerContext.HandoffTargetPackIds.Concat(derivedHandoffTargetPackIds),
+            MaxPlannerContextHandoffTargets);
+        if (preferredToolNames.Length == 0
+            && handoffTargetToolNames.Length == 0
+            && preferredPackIds.Length == 0
+            && handoffTargetPackIds.Length == 0) {
+            return definitions;
+        }
+
+        var exactTargetOrder = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        void addExactTargets(IReadOnlyList<string> toolNames) {
+            for (var i = 0; i < toolNames.Count; i++) {
+                var normalizedToolName = NormalizeToolNameForAnswerPlan(toolNames[i]);
+                if (normalizedToolName.Length > 0 && !exactTargetOrder.ContainsKey(normalizedToolName)) {
+                    exactTargetOrder[normalizedToolName] = exactTargetOrder.Count;
+                }
+            }
+        }
+
+        addExactTargets(handoffTargetToolNames);
+        addExactTargets(preferredToolNames);
+
+        var effectiveCatalog = _toolOrchestrationCatalog ?? ToolOrchestrationCatalog.Build(definitions);
+        var helperDemandByToolName = BuildContractHelperDemandByToolName(
+            definitions,
+            effectiveCatalog,
+            preferredToolNames,
+            handoffTargetToolNames,
+            preferredPackIds,
+            handoffTargetPackIds);
+        var ordered = definitions
+            .Select((definition, index) => {
+                var normalizedToolName = NormalizeToolNameForAnswerPlan(definition?.Name);
+                var packId = ResolveToolPackId(definition!, effectiveCatalog);
+                var matchesTargets = ToolMatchesPlannerContractTargets(
+                    normalizedToolName,
+                    packId,
+                    preferredToolNames,
+                    handoffTargetToolNames,
+                    preferredPackIds,
+                    handoffTargetPackIds);
+                var exactTargetIndex = exactTargetOrder.TryGetValue(normalizedToolName, out var resolvedIndex)
+                    ? resolvedIndex
+                    : int.MaxValue;
+                return (
+                    Definition: definition,
+                    Index: index,
+                    ExactTargetIndex: exactTargetIndex,
+                    MatchesTargets: matchesTargets,
+                    HelperDemand: GetContractHelperDemand(normalizedToolName, helperDemandByToolName),
+                    DeterministicPriority: GetDeterministicSubsetPriority(definition, effectiveCatalog));
+            })
+            .OrderBy(static entry => entry.ExactTargetIndex)
+            .ThenByDescending(static entry => entry.MatchesTargets)
+            .ThenByDescending(static entry => entry.HelperDemand)
+            .ThenBy(static entry => entry.DeterministicPriority)
+            .ThenBy(static entry => entry.Index)
+            .Where(static entry => entry.Definition is not null)
+            .Select(static entry => entry.Definition!)
+            .ToArray();
+        return ordered;
+    }
+
+    private IReadOnlyList<ToolDefinition> ExpandToFullToolAvailabilityForPromptExposure(
+        string requestText,
+        IReadOnlyList<ToolDefinition> fullDefinitions,
+        ChatOptions options) {
+        ArgumentNullException.ThrowIfNull(fullDefinitions);
+        ArgumentNullException.ThrowIfNull(options);
+
+        var orderedDefinitions = OrderToolDefinitionsForPromptExposure(fullDefinitions, requestText);
+        options.Tools = orderedDefinitions.Count == 0 ? null : orderedDefinitions;
+        options.ToolChoice = orderedDefinitions.Count == 0 ? null : ToolChoice.Auto;
+        return orderedDefinitions;
+    }
+
+    private ChatOptions CopyChatOptionsWithPromptAwareToolOrdering(
+        ChatOptions options,
+        string? promptText,
+        bool newThreadOverride = false) {
+        ArgumentNullException.ThrowIfNull(options);
+
+        var copied = CopyChatOptions(options, newThreadOverride);
+        if (string.IsNullOrWhiteSpace(promptText) || copied.Tools is not { Count: > 1 }) {
+            return copied;
+        }
+
+        copied.Tools = OrderToolDefinitionsForPromptExposure(copied.Tools, promptText!);
+        copied.ToolChoice = copied.Tools.Count == 0 ? null : copied.ToolChoice ?? ToolChoice.Auto;
+        return copied;
+    }
+
+    private string? BuildPromptExposureRoutingMetaPayload(
+        IReadOnlyList<ToolDefinition>? definitions,
+        string? promptText,
+        string strategy) {
+        if (definitions is not { Count: > 0 } || string.IsNullOrWhiteSpace(promptText)) {
+            return null;
+        }
+
+        var promptExposure = BuildRoutingPromptExposureSnapshot(definitions, promptText!);
+        return BuildRoutingMetaPayload(
+            strategy: string.IsNullOrWhiteSpace(strategy) ? "prompt_exposure" : strategy,
+            weightedToolRouting: false,
+            executionContractApplies: false,
+            usedContinuationSubset: false,
+            selectedToolCount: definitions.Count,
+            totalToolCount: definitions.Count,
+            insightCount: 0,
+            plannerInsightsDetected: false,
+            requestedMaxCandidateTools: null,
+            effectiveMaxCandidateTools: null,
+            effectiveContextLength: null,
+            contextAwareBudgetApplied: false,
+            domainIntentSource: null,
+            domainIntentFamily: null,
+            weightedAmbiguityWidened: false,
+            weightedAmbiguityBaselineSelection: null,
+            weightedAmbiguityEffectiveSelection: null,
+            weightedAmbiguityClusterSize: null,
+            weightedAmbiguitySecondScoreRatio: null,
+            promptExposureReordered: promptExposure.Reordered,
+            promptExposureToolNames: promptExposure.TopToolNames);
+    }
+
+    private async Task<ChatOptions> CopyChatOptionsWithPromptAwareToolOrderingAndEmitStatusAsync(
+        StreamWriter writer,
+        string requestId,
+        string threadId,
+        ChatOptions options,
+        string? promptText,
+        string strategy,
+        bool newThreadOverride = false) {
+        ArgumentNullException.ThrowIfNull(writer);
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(requestId);
+        ArgumentNullException.ThrowIfNull(threadId);
+
+        var payload = BuildPromptExposureRoutingMetaPayload(options.Tools, promptText, strategy);
+        var copied = CopyChatOptionsWithPromptAwareToolOrdering(options, promptText, newThreadOverride);
+        if (!string.IsNullOrWhiteSpace(payload)) {
+            await TryWriteStatusAsync(
+                    writer,
+                    requestId,
+                    threadId,
+                    status: ChatStatusCodes.RoutingMeta,
+                    message: payload)
+                .ConfigureAwait(false);
+        }
+
+        return copied;
+    }
+
+    private PromptExposureSnapshot BuildRoutingPromptExposureSnapshot(
+        IReadOnlyList<ToolDefinition> definitions,
+        string requestText) {
+        ArgumentNullException.ThrowIfNull(definitions);
+        ArgumentNullException.ThrowIfNull(requestText);
+
+        if (definitions.Count == 0) {
+            return new PromptExposureSnapshot(
+                Reordered: false,
+                TopToolNames: Array.Empty<string>());
+        }
+
+        var orderedDefinitions = OrderToolDefinitionsForPromptExposure(definitions, requestText);
+        var reordered = !HaveEquivalentToolExposureOrder(definitions, orderedDefinitions);
+        var topToolNames = orderedDefinitions
+            .Select(static definition => (definition?.Name ?? string.Empty).Trim())
+            .Where(static name => name.Length > 0)
+            .Take(MaxRoutingMetaPromptExposureToolNames)
+            .ToArray();
+        return new PromptExposureSnapshot(
+            Reordered: reordered,
+            TopToolNames: topToolNames);
+    }
+
+    private static bool HaveEquivalentToolExposureOrder(
+        IReadOnlyList<ToolDefinition> left,
+        IReadOnlyList<ToolDefinition> right) {
+        ArgumentNullException.ThrowIfNull(left);
+        ArgumentNullException.ThrowIfNull(right);
+
+        if (ReferenceEquals(left, right)) {
+            return true;
+        }
+
+        if (left.Count != right.Count) {
+            return false;
+        }
+
+        for (var i = 0; i < left.Count; i++) {
+            var leftName = (left[i]?.Name ?? string.Empty).Trim();
+            var rightName = (right[i]?.Name ?? string.Empty).Trim();
+            if (!string.Equals(leftName, rightName, StringComparison.OrdinalIgnoreCase)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static string[] ResolveWeightedRoutingFocusTokens(string requestText, IReadOnlyList<string> routingTokens) {
@@ -1707,6 +2022,158 @@ internal sealed partial class ChatServiceSession {
         }
 
         return false;
+    }
+
+    private static HashSet<string> BuildExactContractTargetToolNameSet(
+        IReadOnlyCollection<string> preferredToolNames,
+        IReadOnlyCollection<string> handoffTargetToolNames) {
+        var exactTargetToolNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (preferredToolNames is not null) {
+            foreach (var toolName in preferredToolNames) {
+                var normalizedToolName = NormalizeToolNameForAnswerPlan(toolName);
+                if (normalizedToolName.Length > 0) {
+                    exactTargetToolNames.Add(normalizedToolName);
+                }
+            }
+        }
+
+        if (handoffTargetToolNames is not null) {
+            foreach (var toolName in handoffTargetToolNames) {
+                var normalizedToolName = NormalizeToolNameForAnswerPlan(toolName);
+                if (normalizedToolName.Length > 0) {
+                    exactTargetToolNames.Add(normalizedToolName);
+                }
+            }
+        }
+
+        return exactTargetToolNames;
+    }
+
+    private static HashSet<string> ResolveExactTargetPackIdsWithoutRequiredHelpers(
+        IReadOnlyList<ToolDefinition> definitions,
+        ToolOrchestrationCatalog? toolOrchestrationCatalog,
+        IReadOnlySet<string> exactTargetToolNames) {
+        var suppressiblePackIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (definitions is null
+            || definitions.Count == 0
+            || exactTargetToolNames is null
+            || exactTargetToolNames.Count == 0) {
+            return suppressiblePackIds;
+        }
+
+        for (var i = 0; i < definitions.Count; i++) {
+            var definition = definitions[i];
+            var toolName = NormalizeToolNameForAnswerPlan(definition?.Name);
+            if (toolName.Length == 0 || !exactTargetToolNames.Contains(toolName)) {
+                continue;
+            }
+
+            if (ResolveContractHelperToolNames(definition!, toolOrchestrationCatalog).Length > 0) {
+                continue;
+            }
+
+            var packId = ResolveToolPackId(definition!, toolOrchestrationCatalog);
+            if (packId.Length > 0) {
+                suppressiblePackIds.Add(packId);
+            }
+        }
+
+        return suppressiblePackIds;
+    }
+
+    private static bool ShouldSuppressRedundantSiblingHelperTool(
+        ToolDefinition definition,
+        ToolOrchestrationCatalog? toolOrchestrationCatalog,
+        IReadOnlySet<string> exactTargetToolNames,
+        IReadOnlyDictionary<string, int>? helperDemandByToolName,
+        IReadOnlySet<string>? suppressibleExactTargetPackIds) {
+        if (definition is null
+            || exactTargetToolNames is null
+            || exactTargetToolNames.Count == 0
+            || suppressibleExactTargetPackIds is null
+            || suppressibleExactTargetPackIds.Count == 0) {
+            return false;
+        }
+
+        var toolName = NormalizeToolNameForAnswerPlan(definition.Name);
+        if (toolName.Length == 0 || exactTargetToolNames.Contains(toolName)) {
+            return false;
+        }
+
+        var packId = ResolveToolPackId(definition, toolOrchestrationCatalog);
+        if (packId.Length == 0 || !suppressibleExactTargetPackIds.Contains(packId)) {
+            return false;
+        }
+
+        return GetContractHelperDemand(toolName, helperDemandByToolName) > 0
+               || ToolIsPackPreferredProbeTool(definition, toolOrchestrationCatalog)
+               || ToolIsSetupAware(definition, toolOrchestrationCatalog)
+               || ToolSupportsEnvironmentDiscovery(definition, toolOrchestrationCatalog);
+    }
+
+    private static IReadOnlyList<ToolDefinition> TrimRedundantSiblingHelperTools(
+        IReadOnlyList<ToolDefinition> selected,
+        IReadOnlyList<ToolDefinition> allDefinitions,
+        int limit,
+        ToolOrchestrationCatalog? toolOrchestrationCatalog,
+        IReadOnlySet<string> exactTargetToolNames,
+        IReadOnlyDictionary<string, int>? helperDemandByToolName,
+        IReadOnlySet<string>? suppressibleExactTargetPackIds) {
+        if (selected is null
+            || selected.Count == 0
+            || limit <= 0
+            || exactTargetToolNames is null
+            || exactTargetToolNames.Count == 0
+            || suppressibleExactTargetPackIds is null
+            || suppressibleExactTargetPackIds.Count == 0) {
+            return selected ?? Array.Empty<ToolDefinition>();
+        }
+
+        var filtered = new List<ToolDefinition>(Math.Min(limit, selected.Count));
+        var selectedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < selected.Count; i++) {
+            var definition = selected[i];
+            var toolName = NormalizeToolNameForAnswerPlan(definition?.Name);
+            if (toolName.Length == 0 || !selectedNames.Add(toolName)) {
+                continue;
+            }
+
+            if (ShouldSuppressRedundantSiblingHelperTool(
+                    definition!,
+                    toolOrchestrationCatalog,
+                    exactTargetToolNames,
+                    helperDemandByToolName,
+                    suppressibleExactTargetPackIds)) {
+                continue;
+            }
+
+            filtered.Add(definition!);
+        }
+
+        if (filtered.Count >= limit) {
+            return filtered;
+        }
+
+        var effectiveCatalog = toolOrchestrationCatalog ?? ToolOrchestrationCatalog.Build(allDefinitions);
+        var deterministicBackfill = SelectDeterministicToolSubset(allDefinitions, limit, effectiveCatalog);
+        for (var i = 0; i < deterministicBackfill.Count && filtered.Count < limit; i++) {
+            var definition = deterministicBackfill[i];
+            var toolName = NormalizeToolNameForAnswerPlan(definition?.Name);
+            if (toolName.Length == 0
+                || !selectedNames.Add(toolName)
+                || ShouldSuppressRedundantSiblingHelperTool(
+                    definition!,
+                    toolOrchestrationCatalog,
+                    exactTargetToolNames,
+                    helperDemandByToolName,
+                    suppressibleExactTargetPackIds)) {
+                continue;
+            }
+
+            filtered.Add(definition!);
+        }
+
+        return filtered;
     }
 
     private static void AddContractHelperDemand(IDictionary<string, int> helperDemandByToolName, string toolName, int weight) {

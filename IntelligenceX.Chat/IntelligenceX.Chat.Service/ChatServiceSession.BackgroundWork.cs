@@ -230,6 +230,8 @@ internal sealed partial class ChatServiceSession {
             return;
         }
 
+        RememberDeferredToolDefinitionDescriptors(toolDefinitions);
+
         var successfulOutputsByCallId = BuildLatestSuccessfulToolOutputsByCallId(toolOutputs);
         if (successfulOutputsByCallId.Count == 0) {
             return;
@@ -351,6 +353,11 @@ internal sealed partial class ChatServiceSession {
         out string reason) {
         toolCall = null!;
         itemId = string.Empty;
+        toolDefinitions = EnsureDeferredBackgroundWorkToolDefinitionsLoaded(
+            threadId,
+            toolDefinitions,
+            includeReadyTargets: true,
+            includeBlockedDependencies: false);
 
         if (!TryBuildReadyBackgroundWorkReplayCandidateCore(
                 threadId,
@@ -376,6 +383,11 @@ internal sealed partial class ChatServiceSession {
         IReadOnlyDictionary<string, bool>? mutatingToolHintsByName,
         out BackgroundWorkReplayCandidate candidate,
         out string reason) {
+        toolDefinitions = EnsureDeferredBackgroundWorkToolDefinitionsLoaded(
+            threadId,
+            toolDefinitions,
+            includeReadyTargets: true,
+            includeBlockedDependencies: false);
         return TryBuildReadyBackgroundWorkReplayCandidateCore(
             threadId,
             userRequest,
@@ -557,6 +569,194 @@ internal sealed partial class ChatServiceSession {
         }
 
         return false;
+    }
+
+    private IReadOnlyList<ToolDefinition> EnsureDeferredBackgroundWorkToolDefinitionsLoaded(
+        string threadId,
+        IReadOnlyList<ToolDefinition> toolDefinitions,
+        bool includeReadyTargets,
+        bool includeBlockedDependencies) {
+        ArgumentNullException.ThrowIfNull(toolDefinitions);
+
+        var normalizedThreadId = (threadId ?? string.Empty).Trim();
+        if (normalizedThreadId.Length == 0
+            || !TryGetRememberedThreadBackgroundWorkSnapshot(normalizedThreadId, out var snapshot)
+            || snapshot.Items.Length == 0) {
+            return toolDefinitions;
+        }
+
+        return EnsureDeferredBackgroundWorkToolDefinitionsLoaded(
+            snapshot.Items,
+            toolDefinitions,
+            includeReadyTargets,
+            includeBlockedDependencies);
+    }
+
+    private IReadOnlyList<ToolDefinition> EnsureDeferredBackgroundWorkToolDefinitionsLoaded(
+        IReadOnlyList<ThreadBackgroundWorkItem>? items,
+        IReadOnlyList<ToolDefinition> toolDefinitions,
+        bool includeReadyTargets,
+        bool includeBlockedDependencies) {
+        ArgumentNullException.ThrowIfNull(toolDefinitions);
+
+        if (items is null
+            || items.Count == 0
+            || (!includeReadyTargets && !includeBlockedDependencies)) {
+            return toolDefinitions;
+        }
+
+        var requestedToolNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < items.Count; i++) {
+            var item = items[i];
+            if (includeReadyTargets
+                && string.Equals(item.State, BackgroundWorkStateReady, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(item.Kind, BackgroundWorkKindToolHandoff, StringComparison.OrdinalIgnoreCase)) {
+                var readyToolName = NormalizeToolNameForAnswerPlan(item.TargetToolName);
+                if (readyToolName.Length > 0) {
+                    requestedToolNames.Add(readyToolName);
+                }
+            }
+
+            if (includeBlockedDependencies && IsBackgroundWorkDependencyBlocked(item)) {
+                var blockedToolName = NormalizeToolNameForAnswerPlan(item.TargetToolName);
+                if (blockedToolName.Length > 0) {
+                    requestedToolNames.Add(blockedToolName);
+                }
+            }
+        }
+
+        var mergedDefinitions = MergeMissingToolDefinitionsFromDeferredDescriptors(toolDefinitions, requestedToolNames);
+
+        var activationPackIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var itemsById = includeBlockedDependencies
+            ? items
+                .Where(static item => !string.IsNullOrWhiteSpace(item.Id))
+                .ToDictionary(static item => item.Id, static item => item, StringComparer.OrdinalIgnoreCase)
+            : null;
+        if (itemsById is not null) {
+            for (var i = 0; i < items.Count; i++) {
+                var item = items[i];
+                if (!IsBackgroundWorkDependencyBlocked(item) || item.DependencyItemIds.Length == 0) {
+                    continue;
+                }
+
+                for (var dependencyIndex = 0; dependencyIndex < item.DependencyItemIds.Length; dependencyIndex++) {
+                    var dependencyId = (item.DependencyItemIds[dependencyIndex] ?? string.Empty).Trim();
+                    if (dependencyId.Length == 0
+                        || !itemsById.TryGetValue(dependencyId, out var dependencyItem)
+                        || string.Equals(
+                            NormalizeBackgroundWorkState(dependencyItem.State),
+                            BackgroundWorkStateCompleted,
+                            StringComparison.OrdinalIgnoreCase)) {
+                        continue;
+                    }
+
+                    var dependencyToolName = NormalizeToolNameForAnswerPlan(dependencyItem.TargetToolName);
+                    if (dependencyToolName.Length > 0) {
+                        requestedToolNames.Add(dependencyToolName);
+                    }
+                }
+            }
+
+            mergedDefinitions = MergeMissingToolDefinitionsFromDeferredDescriptors(toolDefinitions, requestedToolNames);
+        }
+
+        for (var i = 0; i < items.Count; i++) {
+            var item = items[i];
+            if (includeReadyTargets
+                && string.Equals(item.State, BackgroundWorkStateReady, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(item.Kind, BackgroundWorkKindToolHandoff, StringComparison.OrdinalIgnoreCase)) {
+                _ = TryCollectDeferredBackgroundWorkActivationPackId(item, mergedDefinitions, activationPackIds);
+            }
+
+            if (!includeBlockedDependencies || !IsBackgroundWorkDependencyBlocked(item)) {
+                continue;
+            }
+
+            _ = TryCollectDeferredBackgroundWorkActivationPackId(item, mergedDefinitions, activationPackIds);
+            if (itemsById is null || item.DependencyItemIds.Length == 0) {
+                continue;
+            }
+
+            for (var dependencyIndex = 0; dependencyIndex < item.DependencyItemIds.Length; dependencyIndex++) {
+                var dependencyId = (item.DependencyItemIds[dependencyIndex] ?? string.Empty).Trim();
+                if (dependencyId.Length == 0
+                    || !itemsById.TryGetValue(dependencyId, out var dependencyItem)
+                    || string.Equals(
+                        NormalizeBackgroundWorkState(dependencyItem.State),
+                        BackgroundWorkStateCompleted,
+                        StringComparison.OrdinalIgnoreCase)) {
+                    continue;
+                }
+
+                _ = TryCollectDeferredBackgroundWorkActivationPackId(dependencyItem, mergedDefinitions, activationPackIds);
+            }
+        }
+
+        if (activationPackIds.Count == 0) {
+            return mergedDefinitions;
+        }
+
+        var activatedAny = false;
+        var sawActivePack = false;
+        foreach (var activationPackId in activationPackIds) {
+            if (_packs.Any(pack => string.Equals(
+                    ToolPackBootstrap.NormalizePackId(pack.Descriptor.Id),
+                    activationPackId,
+                    StringComparison.OrdinalIgnoreCase))) {
+                sawActivePack = true;
+                continue;
+            }
+
+            try {
+                if (TryActivatePackOnDemand(activationPackId, out _)) {
+                    activatedAny = true;
+                }
+            } catch {
+                // Background-work recovery stays best-effort; unresolved packs simply remain deferred.
+            }
+        }
+
+        return activatedAny || sawActivePack
+            ? _registry.GetDefinitions()
+            : mergedDefinitions;
+    }
+
+    private bool TryCollectDeferredBackgroundWorkActivationPackId(
+        ThreadBackgroundWorkItem item,
+        IReadOnlyList<ToolDefinition> toolDefinitions,
+        ISet<string> activationPackIds) {
+        ArgumentNullException.ThrowIfNull(toolDefinitions);
+        ArgumentNullException.ThrowIfNull(activationPackIds);
+
+        var normalizedToolName = NormalizeToolNameForAnswerPlan(item.TargetToolName);
+        if (normalizedToolName.Length == 0
+            || TryGetToolDefinitionByName(toolDefinitions, normalizedToolName, out _)) {
+            return false;
+        }
+
+        var candidatePackIds = new List<string>(capacity: 2);
+        var normalizedPackId = ToolPackBootstrap.NormalizePackId(item.TargetPackId);
+        if (normalizedPackId.Length > 0) {
+            candidatePackIds.Add(normalizedPackId);
+        }
+
+        if (TryResolveDeferredActivationPackId(normalizedToolName, out var resolvedPackId)
+            && !string.IsNullOrWhiteSpace(resolvedPackId)) {
+            candidatePackIds.Add(resolvedPackId);
+        }
+
+        var addedAny = false;
+        for (var i = 0; i < candidatePackIds.Count; i++) {
+            var candidatePackId = ToolPackBootstrap.NormalizePackId(candidatePackIds[i]);
+            if (candidatePackId.Length == 0) {
+                continue;
+            }
+
+            addedAny |= activationPackIds.Add(candidatePackId);
+        }
+
+        return addedAny;
     }
 
     private int CompareBackgroundWorkReplayPriority(
@@ -2704,6 +2904,11 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
+        toolDefinitions = EnsureDeferredBackgroundWorkToolDefinitionsLoaded(
+            snapshot.Items,
+            toolDefinitions,
+            includeReadyTargets: false,
+            includeBlockedDependencies: true);
         summary = BuildBackgroundWorkDependencyRecoverySummary(snapshot.Items, toolDefinitions);
         return summary.BlockedItemCount > 0;
     }

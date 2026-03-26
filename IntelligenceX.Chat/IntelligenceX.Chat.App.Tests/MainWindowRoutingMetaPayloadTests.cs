@@ -11,8 +11,30 @@ namespace IntelligenceX.Chat.App.Tests;
 public sealed class MainWindowRoutingMetaPayloadTests {
     private static readonly MethodInfo TryParseRoutingMetaPayloadMethod = typeof(MainWindow).GetMethod(
                                                             "TryParseRoutingMetaPayload",
-                                                            BindingFlags.NonPublic | BindingFlags.Static)
+                                                            BindingFlags.NonPublic | BindingFlags.Static,
+                                                            binder: null,
+                                                            types: new[] {
+                                                                typeof(string),
+                                                                typeof(string).MakeByRefType(),
+                                                                typeof(int).MakeByRefType(),
+                                                                typeof(int).MakeByRefType()
+                                                            },
+                                                            modifiers: null)
                                                         ?? throw new InvalidOperationException("TryParseRoutingMetaPayload not found.");
+    private static readonly MethodInfo TryParseRoutingMetaPayloadDetailsMethod = typeof(MainWindow).GetMethod(
+                                                            "TryParseRoutingMetaPayload",
+                                                            BindingFlags.NonPublic | BindingFlags.Static,
+                                                            binder: null,
+                                                            types: new[] {
+                                                                typeof(string),
+                                                                typeof(string).MakeByRefType(),
+                                                                typeof(int).MakeByRefType(),
+                                                                typeof(int).MakeByRefType(),
+                                                                typeof(bool).MakeByRefType(),
+                                                                typeof(string[]).MakeByRefType()
+                                                            },
+                                                            modifiers: null)
+                                                        ?? throw new InvalidOperationException("TryParseRoutingMetaPayload(details) not found.");
 
     /// <summary>
     /// Ensures routing metadata parsing accepts numeric values represented as numbers and strings.
@@ -22,6 +44,7 @@ public sealed class MainWindowRoutingMetaPayloadTests {
     [InlineData("""{"strategy":"semantic_planner","selectedToolCount":"8","totalToolCount":"21"}""", 8, 21)]
     [InlineData("""{"strategy":"semantic_planner","selectedToolCount":"8.7","totalToolCount":"21.4"}""", 8, 21)]
     [InlineData("""{"strategy":"semantic_planner","selectedToolCount":"1e3","totalToolCount":"2e3"}""", 1000, 2000)]
+    [InlineData("""{"strategy":"semantic_planner","selectedToolCount":8,"totalToolCount":21,"promptExposure":{"reordered":true,"topToolNames":["eventlog_live_query","eventlog_connectivity_probe"]}}""", 8, 21)]
     public void TryParseRoutingMetaPayload_AcceptsNumericVariants(string payload, int expectedSelected, int expectedTotal) {
         var parsed = Invoke(payload, out var strategy, out var selectedToolCount, out var totalToolCount);
 
@@ -29,6 +52,27 @@ public sealed class MainWindowRoutingMetaPayloadTests {
         Assert.Equal("semantic planner", strategy);
         Assert.Equal(expectedSelected, selectedToolCount);
         Assert.Equal(expectedTotal, totalToolCount);
+    }
+
+    /// <summary>
+    /// Ensures prompt-exposure routing metadata details are parsed when present.
+    /// </summary>
+    [Fact]
+    public void TryParseRoutingMetaPayload_ParsesPromptExposureDetailsWhenPresent() {
+        var parsed = InvokeDetailed(
+            """{"strategy":"prompt_review","selectedToolCount":3,"totalToolCount":3,"promptExposure":{"reordered":true,"topToolNames":["eventlog_live_query","eventlog_connectivity_probe","system_pack_info"]}}""",
+            out var strategy,
+            out var selectedToolCount,
+            out var totalToolCount,
+            out var reordered,
+            out var topToolNames);
+
+        Assert.True(parsed);
+        Assert.Equal("prompt review", strategy);
+        Assert.Equal(3, selectedToolCount);
+        Assert.Equal(3, totalToolCount);
+        Assert.True(reordered);
+        Assert.Equal(new[] { "eventlog_live_query", "eventlog_connectivity_probe", "system_pack_info" }, topToolNames);
     }
 
     /// <summary>
@@ -129,6 +173,24 @@ public sealed class MainWindowRoutingMetaPayloadTests {
         strategy = Assert.IsType<string>(args[1]);
         selectedToolCount = Assert.IsType<int>(args[2]);
         totalToolCount = Assert.IsType<int>(args[3]);
+        return Assert.IsType<bool>(result);
+    }
+
+    private static bool InvokeDetailed(
+        string payload,
+        out string strategy,
+        out int selectedToolCount,
+        out int totalToolCount,
+        out bool reordered,
+        out string[] topToolNames) {
+        var args = new object?[] { payload, null, 0, 0, false, null! };
+        var result = TryParseRoutingMetaPayloadDetailsMethod.Invoke(null, args);
+
+        strategy = Assert.IsType<string>(args[1]);
+        selectedToolCount = Assert.IsType<int>(args[2]);
+        totalToolCount = Assert.IsType<int>(args[3]);
+        reordered = Assert.IsType<bool>(args[4]);
+        topToolNames = Assert.IsType<string[]>(args[5]);
         return Assert.IsType<bool>(result);
     }
 }

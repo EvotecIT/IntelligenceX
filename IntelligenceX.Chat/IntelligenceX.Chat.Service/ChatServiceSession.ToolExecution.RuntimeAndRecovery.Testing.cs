@@ -1,5 +1,8 @@
 using System;
+using System.IO;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Json;
 using IntelligenceX.Tools;
@@ -108,10 +111,52 @@ internal sealed partial class ChatServiceSession {
         return ExecuteToolAsync(threadId, userRequest, call, toolTimeoutSeconds, cancellationToken);
     }
 
+    internal void SetStartupToolingBootstrapTaskForTesting(Task? startupToolingBootstrapTask) {
+        Volatile.Write(ref _startupToolingBootstrapTask, startupToolingBootstrapTask);
+    }
+
+    internal Task? GetStartupToolingBootstrapTaskForTesting() {
+        return Volatile.Read(ref _startupToolingBootstrapTask);
+    }
+
+    internal void SetCachedToolDefinitionsForTesting(IReadOnlyList<ToolDefinitionDto> toolDefinitions) {
+        ArgumentNullException.ThrowIfNull(toolDefinitions);
+        Volatile.Write(ref _cachedToolDefinitions, toolDefinitions.ToArray());
+    }
+
+    internal string[] ResolveDeferredActivationPackIdsForChatRequestForTesting(string requestText, ChatRequestOptions? options = null) {
+        return TryResolveDeferredActivationPackIdsForChatRequest(requestText, options, out var packIds)
+            ? packIds
+            : Array.Empty<string>();
+    }
+
+    internal Task<bool> TryPrepareDeferredChatToolingForRequestAsyncForTesting(ChatRequest request, CancellationToken cancellationToken = default) {
+        return TryPrepareDeferredChatToolingForRequestAsync(new StreamWriter(Stream.Null) { AutoFlush = true }, request.RequestId, request, cancellationToken);
+    }
+
+    internal string[] GetRegisteredToolNamesForTesting() {
+        return _registry.GetDefinitions()
+            .Select(static definition => definition.Name)
+            .Where(static name => !string.IsNullOrWhiteSpace(name))
+            .OrderBy(static name => name, StringComparer.OrdinalIgnoreCase)
+            .ToArray()!;
+    }
+
+    internal ToolDefinition[] GetRegisteredToolDefinitionsForTesting() {
+        return _registry.GetDefinitions().ToArray();
+    }
+
     internal static bool TryBuildRecoveryHelperArgumentsForTesting(
         ToolCall failedCall,
         ToolDefinition helperDefinition,
         out JsonObject helperArguments) {
         return TryBuildRecoveryHelperArguments(failedCall, helperDefinition, out helperArguments);
+    }
+
+    internal bool TryBuildRecoveryHelperInvocationForTesting(
+        ToolCall failedCall,
+        string helperToolName,
+        out ToolCall helperCall) {
+        return TryBuildRecoveryHelperInvocation(failedCall, helperToolName, out _, out helperCall);
     }
 }

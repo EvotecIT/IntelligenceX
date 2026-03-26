@@ -2,6 +2,8 @@ using System.Reflection;
 using System.Runtime.Loader;
 using System.Text.Json;
 using IntelligenceX.Chat.Abstractions.Policy;
+using IntelligenceX.Chat.Abstractions.Protocol;
+using IntelligenceX.Tools;
 using IntelligenceX.Tools.Common;
 
 namespace IntelligenceX.Chat.Tooling;
@@ -10,22 +12,31 @@ internal static partial class PluginFolderToolPackLoader {
     private static PluginManifest? TryReadManifest(string manifestPath, Action<string>? onWarning) {
         try {
             var json = File.ReadAllText(manifestPath);
+            return TryDeserializeManifest(json, manifestPath, onWarning);
+        } catch (Exception ex) {
+            onWarning?.Invoke($"[plugin] manifest_invalid path='{manifestPath}' error='{ex.GetType().Name}: {ex.Message}'");
+            return null;
+        }
+    }
+
+    private static PluginManifest? TryDeserializeManifest(string json, string sourcePath, Action<string>? onWarning) {
+        try {
             var manifest = JsonSerializer.Deserialize<PluginManifest>(json, new JsonSerializerOptions {
                 PropertyNameCaseInsensitive = true
             });
             if (manifest is null) {
-                onWarning?.Invoke($"[plugin] manifest_invalid path='{manifestPath}' error='empty manifest'");
+                onWarning?.Invoke($"[plugin] manifest_invalid path='{sourcePath}' error='empty manifest'");
                 return null;
             }
 
             if (!TryValidateManifest(manifest, out var validationError)) {
-                onWarning?.Invoke($"[plugin] manifest_invalid path='{manifestPath}' error='{validationError}'");
+                onWarning?.Invoke($"[plugin] manifest_invalid path='{sourcePath}' error='{validationError}'");
                 return null;
             }
 
             return manifest;
         } catch (Exception ex) {
-            onWarning?.Invoke($"[plugin] manifest_invalid path='{manifestPath}' error='{ex.GetType().Name}: {ex.Message}'");
+            onWarning?.Invoke($"[plugin] manifest_invalid path='{sourcePath}' error='{ex.GetType().Name}: {ex.Message}'");
             return null;
         }
     }
@@ -477,6 +488,200 @@ internal static partial class PluginFolderToolPackLoader {
                && ToolPackBootstrap.TryNormalizeSourceKind(configured, out sourceKind);
     }
 
+    private static bool TryResolvePluginManifestSourceKind(PluginManifest? manifest, out string sourceKind) {
+        sourceKind = string.Empty;
+
+        var configured = manifest?.SourceKind;
+        if (string.IsNullOrWhiteSpace(configured)) {
+            configured = manifest?.Source;
+        }
+        if (string.IsNullOrWhiteSpace(configured)) {
+            configured = manifest?.Visibility;
+        }
+
+        return !string.IsNullOrWhiteSpace(configured)
+               && ToolPackBootstrap.TryNormalizeSourceKind(configured, out sourceKind);
+    }
+
+    private static string[] ResolveManifestPackIds(PluginManifest? manifest) {
+        return (manifest?.PackIds ?? Array.Empty<string>())
+            .Where(static packId => !string.IsNullOrWhiteSpace(packId))
+            .Select(static packId => ToolPackBootstrap.NormalizePackId(packId))
+            .Where(static packId => packId.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(static packId => packId, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static ToolDefinitionDto[] CreateManifestToolDefinitions(
+        PluginManifest? manifest,
+        ToolPluginCatalogInfo pluginCatalog,
+        Action<string>? onWarning) {
+        if (manifest?.Tools is not { Length: > 0 }) {
+            return Array.Empty<ToolDefinitionDto>();
+        }
+
+        var tools = new List<ToolDefinitionDto>(manifest.Tools.Length);
+        var seenToolNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < manifest.Tools.Length; i++) {
+            var definition = TryCreateManifestToolDefinition(manifest.Tools[i], pluginCatalog, onWarning, i);
+            if (definition is null || !seenToolNames.Add(definition.Name)) {
+                continue;
+            }
+
+            tools.Add(definition);
+        }
+
+        return tools.ToArray();
+    }
+
+    private static ToolDefinitionDto? TryCreateManifestToolDefinition(
+        PluginManifestToolDescriptor? manifestTool,
+        ToolPluginCatalogInfo pluginCatalog,
+        Action<string>? onWarning,
+        int index) {
+        if (manifestTool is null) {
+            return null;
+        }
+
+        var name = (manifestTool.Name ?? string.Empty).Trim();
+        if (name.Length == 0) {
+            onWarning?.Invoke($"[plugin] manifest_tool_invalid plugin='{pluginCatalog.Id}' index='{index}' error='missing required tool name'");
+            return null;
+        }
+
+        var resolvedPackId = ResolveManifestToolPackId(manifestTool, pluginCatalog);
+        if (string.IsNullOrWhiteSpace(resolvedPackId)) {
+            onWarning?.Invoke($"[plugin] manifest_tool_invalid plugin='{pluginCatalog.Id}' tool='{name}' error='tool preview requires a resolvable pack id'");
+            return null;
+        }
+
+        var supportsRemoteExecution = manifestTool.SupportsRemoteExecution ?? false;
+        var supportsLocalExecution = manifestTool.SupportsLocalExecution ?? !supportsRemoteExecution;
+        var executionScope = ResolveManifestToolExecutionScope(
+            manifestTool.ExecutionScope,
+            supportsLocalExecution,
+            supportsRemoteExecution);
+        var routingRole = ResolveManifestToolRoutingRole(manifestTool.RoutingRole);
+        var probeToolName = NormalizeOptionalPreviewText(manifestTool.ProbeToolName);
+        var setupToolName = NormalizeOptionalPreviewText(manifestTool.SetupToolName);
+        var handoffTargetPackIds = NormalizePreviewPackIdArray(manifestTool.HandoffTargetPackIds);
+        var handoffTargetToolNames = NormalizePreviewStringArray(manifestTool.HandoffTargetToolNames);
+        var recoveryToolNames = NormalizePreviewStringArray(manifestTool.RecoveryToolNames);
+        var supportsConnectivityProbe = manifestTool.SupportsConnectivityProbe == true || !string.IsNullOrWhiteSpace(probeToolName);
+        var isSetupAware = manifestTool.IsSetupAware == true || !string.IsNullOrWhiteSpace(setupToolName);
+        var isHandoffAware = handoffTargetPackIds.Length > 0 || handoffTargetToolNames.Length > 0;
+        var isRecoveryAware = manifestTool.IsRecoveryAware == true || recoveryToolNames.Length > 0;
+        var description = (manifestTool.Description ?? string.Empty).Trim();
+        if (description.Length == 0) {
+            description = "Deferred plugin tool preview for '" + name + "'.";
+        }
+
+        return new ToolDefinitionDto {
+            Name = name,
+            Description = description,
+            DisplayName = NormalizeOptionalPreviewText(manifestTool.DisplayName),
+            Category = NormalizeManifestToolCategory(manifestTool.Category),
+            Tags = NormalizePreviewStringArray(manifestTool.Tags),
+            PackId = resolvedPackId,
+            RoutingRole = routingRole,
+            RoutingSource = routingRole is null ? null : ToolRoutingTaxonomy.SourceExplicit,
+            PackSourceKind = ToolPackMetadataNormalizer.ResolveSourceKind(pluginCatalog.SourceKind),
+            IsWriteCapable = manifestTool.IsWriteCapable ?? false,
+            IsPackInfoTool = string.Equals(routingRole, ToolRoutingTaxonomy.RolePackInfo, StringComparison.OrdinalIgnoreCase),
+            IsEnvironmentDiscoverTool = string.Equals(routingRole, ToolRoutingTaxonomy.RoleEnvironmentDiscover, StringComparison.OrdinalIgnoreCase),
+            SupportsConnectivityProbe = supportsConnectivityProbe,
+            ProbeToolName = probeToolName,
+            IsExecutionAware = true,
+            ExecutionScope = executionScope,
+            SupportsLocalExecution = supportsLocalExecution,
+            SupportsRemoteExecution = supportsRemoteExecution,
+            SupportsTargetScoping = manifestTool.SupportsTargetScoping ?? false,
+            SupportsRemoteHostTargeting = manifestTool.SupportsRemoteHostTargeting ?? false,
+            IsSetupAware = isSetupAware,
+            SetupToolName = setupToolName,
+            IsHandoffAware = isHandoffAware,
+            HandoffTargetPackIds = handoffTargetPackIds,
+            HandoffTargetToolNames = handoffTargetToolNames,
+            IsRecoveryAware = isRecoveryAware,
+            RecoveryToolNames = recoveryToolNames,
+            RepresentativeExamples = NormalizePreviewStringArray(manifestTool.RepresentativeExamples)
+        };
+    }
+
+    private static string? ResolveManifestToolPackId(
+        PluginManifestToolDescriptor manifestTool,
+        ToolPluginCatalogInfo pluginCatalog) {
+        var configuredPackId = ToolPackBootstrap.NormalizePackId(manifestTool.PackId);
+        if (configuredPackId.Length > 0) {
+            return configuredPackId;
+        }
+
+        return pluginCatalog.PackIds is { Length: 1 }
+            ? pluginCatalog.PackIds[0]
+            : null;
+    }
+
+    private static string NormalizeManifestToolCategory(string? category) {
+        var normalized = ToolCatalogExportBuilder.ResolveToolListCategory(category);
+        return string.Equals(normalized, "other", StringComparison.OrdinalIgnoreCase)
+            && string.IsNullOrWhiteSpace(category)
+            ? string.Empty
+            : normalized;
+    }
+
+    private static string? ResolveManifestToolRoutingRole(string? routingRole) {
+        var normalizedRole = NormalizeOptionalPreviewText(routingRole);
+        if (string.IsNullOrWhiteSpace(normalizedRole)) {
+            return null;
+        }
+
+        return ToolRoutingTaxonomy.IsAllowedRole(normalizedRole)
+            ? normalizedRole
+            : null;
+    }
+
+    private static string ResolveManifestToolExecutionScope(
+        string? configuredScope,
+        bool supportsLocalExecution,
+        bool supportsRemoteExecution) {
+        var normalizedScope = NormalizeOptionalPreviewText(configuredScope);
+        if (!string.IsNullOrWhiteSpace(normalizedScope)) {
+            return normalizedScope!;
+        }
+
+        if (supportsLocalExecution && supportsRemoteExecution) {
+            return "local_or_remote";
+        }
+
+        if (supportsRemoteExecution) {
+            return "remote_only";
+        }
+
+        return "local_only";
+    }
+
+    private static string[] NormalizePreviewStringArray(string[]? values) {
+        return (values ?? Array.Empty<string>())
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .Select(static value => value.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static string[] NormalizePreviewPackIdArray(string[]? values) {
+        return (values ?? Array.Empty<string>())
+            .Select(static value => ToolPackBootstrap.NormalizePackId(value))
+            .Where(static value => value.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static string? NormalizeOptionalPreviewText(string? value) {
+        var normalized = (value ?? string.Empty).Trim();
+        return normalized.Length == 0 ? null : normalized;
+    }
+
     private static bool TryResolvePluginSourceKind(PluginManifest? manifest, IToolPack pack, out string sourceKind, out string error) {
         sourceKind = string.Empty;
         error = string.Empty;
@@ -531,6 +736,9 @@ internal static partial class PluginFolderToolPackLoader {
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(static packId => packId, StringComparer.OrdinalIgnoreCase)
             .ToArray();
+        if (normalizedPackIds.Length == 0) {
+            normalizedPackIds = ResolveManifestPackIds(manifest);
+        }
         var enabled = (packAvailability ?? Array.Empty<ToolPackAvailabilityInfo>()).Any(static pack => pack.Enabled);
         var disabledReason = enabled
             ? null
@@ -540,6 +748,10 @@ internal static partial class PluginFolderToolPackLoader {
         var sourceKind = (packAvailability ?? Array.Empty<ToolPackAvailabilityInfo>())
             .Select(static pack => (pack.SourceKind ?? string.Empty).Trim())
             .FirstOrDefault(static kind => kind.Length > 0) ?? string.Empty;
+        if (sourceKind.Length == 0
+            && TryResolvePluginManifestSourceKind(manifest, out var manifestSourceKind)) {
+            sourceKind = manifestSourceKind;
+        }
         if (sourceKind.Length == 0) {
             sourceKind = ToolPackBootstrap.PackSourceOpenSource;
         }

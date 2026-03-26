@@ -435,13 +435,16 @@ internal sealed partial class ChatServiceSession {
     private static ChatInput BuildHostReplayReviewInput(
         ToolCall executedCall,
         IReadOnlyList<ToolOutputDto> outputs,
-        bool supportsSyntheticReplayItems) {
+        bool supportsSyntheticReplayItems,
+        out string? promptTextForOrdering) {
+        promptTextForOrdering = null;
         if (supportsSyntheticReplayItems
             && TryBuildSyntheticHostReplayInput(executedCall, outputs, out var syntheticInput)) {
             return syntheticInput;
         }
 
-        return ChatInput.FromText(BuildNativeHostReplayReviewPrompt(executedCall, outputs));
+        promptTextForOrdering = BuildNativeHostReplayReviewPrompt(executedCall, outputs);
+        return ChatInput.FromText(promptTextForOrdering);
     }
 
     private static bool TryBuildSyntheticHostReplayInput(

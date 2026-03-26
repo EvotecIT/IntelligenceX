@@ -793,6 +793,246 @@ public sealed partial class PluginFolderLoaderTests {
         public Task<string> InvokeAsync(JsonObject? arguments, CancellationToken cancellationToken) {
             _ = arguments;
             _ = cancellationToken;
+            return Task.FromResult("""{"ok":true}""");
+        }
+    }
+
+    public sealed class PluginFolderLoaderSyntheticHandoffSourcePack : IToolPack {
+        public ToolPackDescriptor Descriptor { get; } = new() {
+            Id = "plugin-loader-synthetic-handoff-source",
+            Name = "Plugin Loader Synthetic Handoff Source",
+            Tier = ToolCapabilityTier.ReadOnly,
+            IsDangerous = false,
+            SourceKind = "open_source"
+        };
+
+        public void Register(ToolRegistry registry) {
+            ArgumentNullException.ThrowIfNull(registry);
+            registry.Register(new PluginFolderLoaderSyntheticHandoffSourceTool(ToolPackBootstrap.NormalizePackId(Descriptor.Id)));
+        }
+    }
+
+    private sealed class PluginFolderLoaderSyntheticHandoffSourceTool : ITool {
+        public PluginFolderLoaderSyntheticHandoffSourceTool(string packId) {
+            Definition = new ToolDefinition(
+                name: "plugin_loader_synthetic_handoff_entry",
+                description: "Synthetic descriptor-matched source tool that hands off to a deferred plugin target.",
+                parameters: new JsonObject()
+                    .Add("type", "object")
+                    .Add("properties", new JsonObject().Add("target", new JsonObject().Add("type", "string")))
+                    .Add("additionalProperties", false),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = packId,
+                    Role = ToolRoutingTaxonomy.RoleOperational,
+                    DomainIntentFamily = "plugin_ops",
+                    DomainIntentActionId = "act_domain_scope_plugin_ops",
+                    DomainIntentFamilyDisplayName = "Plugin handoff operations",
+                    DomainIntentFamilyReplyExample = "plugin handoff operations",
+                    DomainIntentFamilyChoiceDescription = "Plugin handoff scope (deferred source plus destination plugin)"
+                },
+                handoff: new ToolHandoffContract {
+                    IsHandoffAware = true,
+                    OutboundRoutes = new[] {
+                        new ToolHandoffRoute {
+                            TargetPackId = "plugin_loader_synthetic_catalog",
+                            TargetToolName = "plugin_loader_synthetic_probe",
+                            TargetRole = ToolRoutingTaxonomy.RoleOperational,
+                            Bindings = new[] {
+                                new ToolHandoffBinding {
+                                    SourceField = "target",
+                                    TargetArgument = "target"
+                                }
+                            }
+                        }
+                    }
+                });
+        }
+
+        public ToolDefinition Definition { get; }
+
+        public Task<string> InvokeAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+            _ = arguments;
+            _ = cancellationToken;
+            return Task.FromResult("""{"ok":true}""");
+        }
+    }
+
+    public sealed class PluginFolderLoaderSyntheticPreflightPack : IToolPack {
+        public ToolPackDescriptor Descriptor { get; } = new() {
+            Id = "plugin-loader-synthetic-preflight",
+            Name = "Plugin Loader Synthetic Preflight",
+            Tier = ToolCapabilityTier.ReadOnly,
+            IsDangerous = false,
+            SourceKind = "open_source"
+        };
+
+        public void Register(ToolRegistry registry) {
+            ArgumentNullException.ThrowIfNull(registry);
+            var packId = ToolPackBootstrap.NormalizePackId(Descriptor.Id);
+            registry.Register(new PluginFolderLoaderSyntheticPreflightProbeTool(packId));
+            registry.Register(new PluginFolderLoaderSyntheticPreflightOperationalTool(packId));
+            registry.Register(new PluginFolderLoaderSyntheticPreflightHelperTool(packId));
+        }
+    }
+
+    private sealed class PluginFolderLoaderSyntheticPreflightProbeTool : ITool {
+        public PluginFolderLoaderSyntheticPreflightProbeTool(string packId) {
+            Definition = new ToolDefinition(
+                name: "plugin_loader_synthetic_pack_probe",
+                description: "Synthetic pack probe for preflight activation coverage.",
+                parameters: new JsonObject()
+                    .Add("type", "object")
+                    .Add("properties", new JsonObject())
+                    .Add("additionalProperties", false),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = packId,
+                    Role = ToolRoutingTaxonomy.RolePackInfo
+                });
+        }
+
+        public ToolDefinition Definition { get; }
+
+        public Task<string> InvokeAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+            _ = arguments;
+            _ = cancellationToken;
+            return Task.FromResult("{}");
+        }
+    }
+
+    private sealed class PluginFolderLoaderSyntheticPreflightOperationalTool : ITool {
+        public PluginFolderLoaderSyntheticPreflightOperationalTool(string packId) {
+            Definition = new ToolDefinition(
+                name: "plugin_loader_synthetic_operational",
+                description: "Synthetic operational tool for preflight activation coverage.",
+                parameters: new JsonObject()
+                    .Add("type", "object")
+                    .Add("properties", new JsonObject().Add("target", new JsonObject().Add("type", "string")))
+                    .Add("additionalProperties", false),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = packId,
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                },
+                recovery: new ToolRecoveryContract {
+                    IsRecoveryAware = true,
+                    RecoveryToolNames = new[] { "plugin_loader_synthetic_helper" }
+                });
+        }
+
+        public ToolDefinition Definition { get; }
+
+        public Task<string> InvokeAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+            _ = arguments;
+            _ = cancellationToken;
+            return Task.FromResult("{}");
+        }
+    }
+
+    private sealed class PluginFolderLoaderSyntheticPreflightHelperTool : ITool {
+        public PluginFolderLoaderSyntheticPreflightHelperTool(string packId) {
+            Definition = new ToolDefinition(
+                name: "plugin_loader_synthetic_helper",
+                description: "Synthetic helper tool for recovery and preflight activation coverage.",
+                parameters: new JsonObject()
+                    .Add("type", "object")
+                    .Add("properties", new JsonObject().Add("target", new JsonObject().Add("type", "string")))
+                    .Add("additionalProperties", false),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = packId,
+                    Role = ToolRoutingTaxonomy.RoleDiagnostic
+                });
+        }
+
+        public ToolDefinition Definition { get; }
+
+        public Task<string> InvokeAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+            _ = arguments;
+            _ = cancellationToken;
+            return Task.FromResult("{}");
+        }
+    }
+
+    public sealed class PluginFolderLoaderSyntheticBackgroundDependencyPack : IToolPack {
+        public ToolPackDescriptor Descriptor { get; } = new() {
+            Id = "plugin-loader-synthetic-background-dependency",
+            Name = "Plugin Loader Synthetic Background Dependency",
+            Tier = ToolCapabilityTier.ReadOnly,
+            IsDangerous = false,
+            SourceKind = "open_source"
+        };
+
+        public void Register(ToolRegistry registry) {
+            ArgumentNullException.ThrowIfNull(registry);
+            var packId = ToolPackBootstrap.NormalizePackId(Descriptor.Id);
+            registry.Register(new PluginFolderLoaderSyntheticBackgroundDependencyOperationalTool(packId));
+            registry.Register(new PluginFolderLoaderSyntheticBackgroundDependencyHelperTool(packId));
+        }
+    }
+
+    private sealed class PluginFolderLoaderSyntheticBackgroundDependencyOperationalTool : ITool {
+        public PluginFolderLoaderSyntheticBackgroundDependencyOperationalTool(string packId) {
+            Definition = new ToolDefinition(
+                name: "plugin_loader_synthetic_background_operational",
+                description: "Synthetic operational tool for deferred background dependency recovery coverage.",
+                parameters: new JsonObject()
+                    .Add("type", "object")
+                    .Add("properties", new JsonObject().Add("target", new JsonObject().Add("type", "string")))
+                    .Add("additionalProperties", false),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = packId,
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                },
+                authentication: new ToolAuthenticationContract {
+                    IsAuthenticationAware = true,
+                    RequiresAuthentication = true,
+                    AuthenticationContractId = "ix.auth.runtime.v1",
+                    Mode = ToolAuthenticationMode.ProfileReference,
+                    ProfileIdArgumentName = "profile_id",
+                    SupportsConnectivityProbe = true,
+                    ProbeToolName = "plugin_loader_synthetic_background_helper"
+                });
+        }
+
+        public ToolDefinition Definition { get; }
+
+        public Task<string> InvokeAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+            _ = arguments;
+            _ = cancellationToken;
+            return Task.FromResult("{}");
+        }
+    }
+
+    private sealed class PluginFolderLoaderSyntheticBackgroundDependencyHelperTool : ITool {
+        public PluginFolderLoaderSyntheticBackgroundDependencyHelperTool(string packId) {
+            Definition = new ToolDefinition(
+                name: "plugin_loader_synthetic_background_helper",
+                description: "Synthetic helper tool for deferred background dependency recovery coverage.",
+                parameters: new JsonObject()
+                    .Add("type", "object")
+                    .Add("properties", new JsonObject().Add("target", new JsonObject().Add("type", "string")))
+                    .Add("additionalProperties", false),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = packId,
+                    Role = ToolRoutingTaxonomy.RoleDiagnostic
+                });
+        }
+
+        public ToolDefinition Definition { get; }
+
+        public Task<string> InvokeAsync(JsonObject? arguments, CancellationToken cancellationToken) {
+            _ = arguments;
+            _ = cancellationToken;
             return Task.FromResult("{}");
         }
     }

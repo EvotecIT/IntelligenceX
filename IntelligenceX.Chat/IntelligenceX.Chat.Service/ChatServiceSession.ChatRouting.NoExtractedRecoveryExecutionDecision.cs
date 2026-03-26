@@ -262,6 +262,15 @@ internal sealed partial class ChatServiceSession {
         NoExtractedRecoveryExecutionDecision decision) {
         switch (decision.Kind) {
             case NoExtractedRecoveryExecutionDecisionKind.AutoPendingActionReplay:
+                var replayOptions = await CopyChatOptionsWithPromptAwareToolOrderingAndEmitStatusAsync(
+                        writer,
+                        request.RequestId,
+                        threadId,
+                        options,
+                        decision.ReplayPayload,
+                        strategy: "prompt_replay",
+                        newThreadOverride: false)
+                    .ConfigureAwait(false);
                 return (
                     Turn: await RunModelPhaseWithProgressAsync(
                             client,
@@ -269,7 +278,7 @@ internal sealed partial class ChatServiceSession {
                             request.RequestId,
                             threadId,
                             ChatInput.FromText(decision.ReplayPayload),
-                            CopyChatOptions(options, newThreadOverride: false),
+                            replayOptions,
                             turnToken,
                             phaseStatus: planExecuteReviewLoop ? ChatStatusCodes.PhaseExecute : ChatStatusCodes.Thinking,
                             phaseMessage: decision.ExecutePhaseMessage,
@@ -462,14 +471,24 @@ internal sealed partial class ChatServiceSession {
         var nextInput = BuildHostReplayReviewInput(
             toolCall,
             outputs,
-            supportsSyntheticHostReplayItems);
+            supportsSyntheticHostReplayItems,
+            out var promptTextForOrdering);
+        var reviewOptions = await CopyChatOptionsWithPromptAwareToolOrderingAndEmitStatusAsync(
+                writer,
+                request.RequestId,
+                threadId,
+                options,
+                promptTextForOrdering,
+                strategy: "prompt_review",
+                newThreadOverride: false)
+            .ConfigureAwait(false);
         var turn = await RunModelPhaseWithProgressAsync(
                 client,
                 writer,
                 request.RequestId,
                 threadId,
                 nextInput,
-                CopyChatOptions(options, newThreadOverride: false),
+                reviewOptions,
                 turnToken,
                 phaseStatus: planExecuteReviewLoop ? ChatStatusCodes.PhaseReview : ChatStatusCodes.Thinking,
                 phaseMessage: decision.ReviewPhaseMessage,

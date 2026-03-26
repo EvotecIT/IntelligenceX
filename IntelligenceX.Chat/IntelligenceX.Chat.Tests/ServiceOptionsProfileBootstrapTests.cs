@@ -671,6 +671,16 @@ public sealed partial class ServiceOptionsProfileBootstrapTests {
     }
 
     [Fact]
+    public void Parse_Applies_WorkspaceBuiltInToolOutputProbing_AsRuntimeOnlyOverride() {
+        var options = ServiceOptions.Parse(new[] {
+            "--enable-workspace-built-in-tool-output-probing"
+        }, out var error);
+
+        Assert.True(string.IsNullOrWhiteSpace(error));
+        Assert.True(options.EnableWorkspaceBuiltInToolOutputProbing);
+    }
+
+    [Fact]
     public void Parse_AcceptsMaxToolRoundsUpperBoundary() {
         var options = ServiceOptions.Parse(
             new[] { "--max-tool-rounds", ChatRequestOptionLimits.MaxToolRounds.ToString() },

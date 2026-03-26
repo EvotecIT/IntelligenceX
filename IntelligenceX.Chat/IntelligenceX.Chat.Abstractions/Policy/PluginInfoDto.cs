@@ -35,6 +35,14 @@ public sealed record PluginInfoDto {
     /// </summary>
     public required bool Enabled { get; init; }
     /// <summary>
+    /// Activation state for the current session. See <see cref="ToolActivationStates"/>.
+    /// </summary>
+    public string? ActivationState { get; init; }
+    /// <summary>
+    /// Whether the runtime can activate this plugin on demand from descriptor-only state.
+    /// </summary>
+    public bool CanActivateOnDemand { get; init; }
+    /// <summary>
     /// Optional reason when the plugin is unavailable for this session.
     /// </summary>
     public string? DisabledReason { get; init; }

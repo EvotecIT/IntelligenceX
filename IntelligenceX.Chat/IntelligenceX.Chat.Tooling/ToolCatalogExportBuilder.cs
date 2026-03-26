@@ -15,6 +15,15 @@ namespace IntelligenceX.Chat.Tooling;
 /// Shared projection helpers for lightweight tool catalog exports used by Chat host and service surfaces.
 /// </summary>
 public static class ToolCatalogExportBuilder {
+    private const int ToolCatalogOrderPriorityOperational = 0;
+    private const int ToolCatalogOrderPriorityResolver = 1;
+    private const int ToolCatalogOrderPriorityDiagnostic = 2;
+    private const int ToolCatalogOrderPriorityGeneral = 3;
+    private const int ToolCatalogOrderPriorityEnvironmentDiscover = 4;
+    private const int ToolCatalogOrderPriorityHelper = 5;
+    private const int ToolCatalogOrderPriorityPackInfo = 6;
+    private const int ToolCatalogOrderPriorityFallback = 7;
+
     /// <summary>
     /// Builds client-facing tool definition DTOs from runtime tool definitions and orchestration metadata.
     /// </summary>
@@ -32,7 +41,7 @@ public static class ToolCatalogExportBuilder {
             tools[i] = BuildToolDefinitionDto(definitions[i], orchestrationCatalog, packLookup);
         }
 
-        return tools;
+        return OrderToolDefinitionDtosForCatalog(tools);
     }
 
     /// <summary>
@@ -96,6 +105,8 @@ public static class ToolCatalogExportBuilder {
                     SourceKind = pack.SourceKind,
                     DefaultEnabled = pack.Enabled,
                     Enabled = pack.Enabled,
+                    ActivationState = ToolActivationStates.Resolve(pack.Enabled, ToolActivationStates.IsDeferred(pack.ActivationState)),
+                    CanActivateOnDemand = pack.CanActivateOnDemand,
                     DisabledReason = pack.Enabled ? null : pack.DisabledReason,
                     IsDangerous = pack.IsDangerous || pack.Tier == CapabilityTier.DangerousWrite,
                     PackIds = string.IsNullOrWhiteSpace(pack.Id) ? Array.Empty<string>() : new[] { ToolPackMetadataNormalizer.NormalizePackId(pack.Id) },
@@ -220,12 +231,119 @@ public static class ToolCatalogExportBuilder {
         return normalized.Length == 0 ? "other" : normalized;
     }
 
+    /// <summary>
+    /// Applies a request-independent, contract-aware default ordering for exported tool catalogs.
+    /// </summary>
+    public static ToolDefinitionDto[] OrderToolDefinitionDtosForCatalog(IReadOnlyList<ToolDefinitionDto>? definitions) {
+        if (definitions is not { Count: > 0 }) {
+            return Array.Empty<ToolDefinitionDto>();
+        }
+
+        if (definitions.Count == 1) {
+            return definitions[0] is null ? Array.Empty<ToolDefinitionDto>() : new[] { definitions[0] };
+        }
+
+        var helperTargetToolNames = BuildHelperTargetToolNameSet(definitions);
+        return definitions
+            .Select(static (definition, index) => new CatalogOrderedToolDefinition(definition, index))
+            .Where(static entry => entry.Definition is not null)
+            .OrderBy(entry => GetCatalogToolPriority(entry.Definition!, helperTargetToolNames))
+            .ThenBy(static entry => HasRepresentativeExamples(entry.Definition!) ? 0 : 1)
+            .ThenBy(static entry => entry.Definition!.IsWriteCapable ? 1 : 0)
+            .ThenBy(static entry => NormalizeCatalogToken(entry.Definition!.PackId), StringComparer.OrdinalIgnoreCase)
+            .ThenBy(static entry => NormalizeCatalogToken(entry.Definition!.PackName), StringComparer.OrdinalIgnoreCase)
+            .ThenBy(static entry => NormalizeCatalogToken(entry.Definition!.DisplayName), StringComparer.OrdinalIgnoreCase)
+            .ThenBy(static entry => NormalizeCatalogToken(entry.Definition!.Name), StringComparer.OrdinalIgnoreCase)
+            .ThenBy(static entry => entry.Index)
+            .Select(static entry => entry.Definition!)
+            .ToArray();
+    }
+
     private static Dictionary<string, ToolPackAvailabilityInfo> BuildPackAvailabilityLookup(IEnumerable<ToolPackAvailabilityInfo>? packAvailability) {
         return (packAvailability ?? Array.Empty<ToolPackAvailabilityInfo>())
             .Where(static pack => pack is not null)
             .GroupBy(static pack => ToolPackMetadataNormalizer.NormalizePackId(pack.Id), StringComparer.OrdinalIgnoreCase)
             .ToDictionary(static group => group.Key, static group => group.First(), StringComparer.OrdinalIgnoreCase);
     }
+
+    private static HashSet<string> BuildHelperTargetToolNameSet(IReadOnlyList<ToolDefinitionDto> definitions) {
+        var helperTargets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < definitions.Count; i++) {
+            var definition = definitions[i];
+            if (definition is null) {
+                continue;
+            }
+
+            AddHelperTargetName(helperTargets, definition.ProbeToolName);
+            AddHelperTargetName(helperTargets, definition.SetupToolName);
+            AddHelperTargetNames(helperTargets, definition.RecoveryToolNames);
+        }
+
+        return helperTargets;
+    }
+
+    private static void AddHelperTargetNames(HashSet<string> targets, IReadOnlyList<string>? values) {
+        if (values is not { Count: > 0 }) {
+            return;
+        }
+
+        for (var i = 0; i < values.Count; i++) {
+            AddHelperTargetName(targets, values[i]);
+        }
+    }
+
+    private static void AddHelperTargetName(HashSet<string> targets, string? value) {
+        var normalized = NormalizeCatalogToken(value);
+        if (normalized.Length > 0) {
+            targets.Add(normalized);
+        }
+    }
+
+    private static int GetCatalogToolPriority(ToolDefinitionDto definition, IReadOnlySet<string> helperTargetToolNames) {
+        var toolName = NormalizeCatalogToken(definition.Name);
+        var isHelperTarget = toolName.Length > 0 && helperTargetToolNames.Contains(toolName);
+        if (definition.IsPackInfoTool
+            || string.Equals(definition.RoutingRole, ToolRoutingTaxonomy.RolePackInfo, StringComparison.OrdinalIgnoreCase)) {
+            return ToolCatalogOrderPriorityPackInfo;
+        }
+
+        if (definition.IsEnvironmentDiscoverTool
+            || string.Equals(definition.RoutingRole, ToolRoutingTaxonomy.RoleEnvironmentDiscover, StringComparison.OrdinalIgnoreCase)) {
+            return ToolCatalogOrderPriorityEnvironmentDiscover;
+        }
+
+        if (isHelperTarget) {
+            return ToolCatalogOrderPriorityHelper;
+        }
+
+        if (string.Equals(definition.RoutingRole, ToolRoutingTaxonomy.RoleOperational, StringComparison.OrdinalIgnoreCase)) {
+            return ToolCatalogOrderPriorityOperational;
+        }
+
+        if (string.Equals(definition.RoutingRole, ToolRoutingTaxonomy.RoleResolver, StringComparison.OrdinalIgnoreCase)) {
+            return ToolCatalogOrderPriorityResolver;
+        }
+
+        if (string.Equals(definition.RoutingRole, ToolRoutingTaxonomy.RoleDiagnostic, StringComparison.OrdinalIgnoreCase)) {
+            return ToolCatalogOrderPriorityDiagnostic;
+        }
+
+        if (!string.IsNullOrWhiteSpace(definition.Name)) {
+            return ToolCatalogOrderPriorityGeneral;
+        }
+
+        return ToolCatalogOrderPriorityFallback;
+    }
+
+    private static bool HasRepresentativeExamples(ToolDefinitionDto definition) {
+        return definition.RepresentativeExamples is { Length: > 0 };
+    }
+
+    private static string NormalizeCatalogToken(string? value) {
+        return (value ?? string.Empty).Trim();
+    }
+
+    private sealed record CatalogOrderedToolDefinition(ToolDefinitionDto? Definition, int Index);
 
     private static ToolDefinitionDto BuildToolDefinitionDto(
         ToolDefinition definition,
@@ -592,6 +710,8 @@ public static class ToolCatalogExportBuilder {
             Description = string.IsNullOrWhiteSpace(pack.Description) ? null : pack.Description.Trim(),
             Tier = MapTier(pack.Tier),
             Enabled = pack.Enabled,
+            ActivationState = ToolActivationStates.Resolve(pack.Enabled, pack.DescriptorOnly),
+            CanActivateOnDemand = pack.Enabled && pack.DescriptorOnly,
             DisabledReason = pack.Enabled || string.IsNullOrWhiteSpace(pack.DisabledReason) ? null : pack.DisabledReason.Trim(),
             IsDangerous = pack.IsDangerous || pack.Tier == ToolCapabilityTier.DangerousWrite || exposesWriteCapability,
             SourceKind = sourceKind,
@@ -615,6 +735,8 @@ public static class ToolCatalogExportBuilder {
             Name = ResolvePackDisplayName(packMetadata.PackId, packMetadata),
             Tier = MapTier(packMetadata.Tier),
             Enabled = true,
+            ActivationState = ToolActivationStates.Active,
+            CanActivateOnDemand = false,
             IsDangerous = isDangerous,
             SourceKind = ResolvePackSourceKind(packMetadata),
             Category = ResolvePackCategory(packMetadata),
@@ -704,6 +826,8 @@ public static class ToolCatalogExportBuilder {
             SourceKind = ResolvePluginSourceKind(availability?.SourceKind, catalog.SourceKind, resolvedPacks),
             DefaultEnabled = availability?.DefaultEnabled ?? catalog.DefaultEnabled,
             Enabled = enabled,
+            ActivationState = ResolvePluginActivationState(availability, resolvedPacks, enabled),
+            CanActivateOnDemand = ResolvePluginCanActivateOnDemand(availability, resolvedPacks, enabled),
             DisabledReason = enabled ? null : availability?.DisabledReason,
             IsDangerous = resolvedDangerous,
             PackIds = resolvedPackIds,
@@ -731,6 +855,8 @@ public static class ToolCatalogExportBuilder {
             SourceKind = ResolvePluginSourceKind(plugin, resolvedPacks),
             DefaultEnabled = plugin.DefaultEnabled,
             Enabled = plugin.Enabled,
+            ActivationState = ToolActivationStates.Resolve(plugin.Enabled, plugin.DescriptorOnly),
+            CanActivateOnDemand = plugin.Enabled && plugin.DescriptorOnly,
             DisabledReason = plugin.Enabled ? null : plugin.DisabledReason,
             IsDangerous = resolvedDangerous,
             PackIds = resolvedPackIds,
@@ -747,6 +873,36 @@ public static class ToolCatalogExportBuilder {
             .Where(static pair => pair.Key.Length > 0)
             .GroupBy(static pair => pair.Key, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(static group => group.Key, static group => group.First().Value, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static string ResolvePluginActivationState(
+        ToolPluginAvailabilityInfo? availability,
+        IReadOnlyList<ToolPackInfoDto> resolvedPacks,
+        bool enabled) {
+        if (availability is not null) {
+            return ToolActivationStates.Resolve(availability.Enabled, availability.DescriptorOnly);
+        }
+
+        if (!enabled) {
+            return ToolActivationStates.Disabled;
+        }
+
+        if (resolvedPacks.Count > 0 && resolvedPacks.All(static pack => ToolActivationStates.IsDeferred(pack.ActivationState))) {
+            return ToolActivationStates.Deferred;
+        }
+
+        return ToolActivationStates.Active;
+    }
+
+    private static bool ResolvePluginCanActivateOnDemand(
+        ToolPluginAvailabilityInfo? availability,
+        IReadOnlyList<ToolPackInfoDto> resolvedPacks,
+        bool enabled) {
+        if (availability is not null) {
+            return availability.Enabled && availability.DescriptorOnly;
+        }
+
+        return enabled && resolvedPacks.Any(static pack => pack.CanActivateOnDemand);
     }
 
     private static Dictionary<string, ToolPluginAvailabilityInfo> BuildPluginAvailabilityLookup(

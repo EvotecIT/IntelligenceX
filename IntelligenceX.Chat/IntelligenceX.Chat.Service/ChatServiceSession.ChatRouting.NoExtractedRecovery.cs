@@ -99,9 +99,7 @@ internal sealed partial class ChatServiceSession {
                     if (prePromptExecutionDecision.ExpandToFullToolAvailability
                         && fullToolDefs.Length > 0
                         && toolDefs.Count != fullToolDefs.Length) {
-                        toolDefs = fullToolDefs;
-                        options.Tools = fullToolDefs;
-                        options.ToolChoice = ToolChoice.Auto;
+                        toolDefs = ExpandToFullToolAvailabilityForPromptExposure(routedUserRequest, fullToolDefs, options);
                         usedContinuationSubset = false;
                         RememberWeightedToolSubset(threadId, toolDefs, originalToolCount);
                     }
@@ -187,13 +185,22 @@ internal sealed partial class ChatServiceSession {
                         reason: executionNudgeReason);
                     executionNudgeUsed = true;
                     var nudgePrompt = BuildToolExecutionNudgePrompt(routedUserRequest, text, toolDefs);
+                    var nudgeOptions = await CopyChatOptionsWithPromptAwareToolOrderingAndEmitStatusAsync(
+                            writer,
+                            request.RequestId,
+                            threadId,
+                            options,
+                            nudgePrompt,
+                            strategy: "prompt_recovery",
+                            newThreadOverride: false)
+                        .ConfigureAwait(false);
                     turn = await RunModelPhaseWithProgressAsync(
                             client,
                             writer,
                             request.RequestId,
                             threadId,
                             ChatInput.FromText(nudgePrompt),
-                            CopyChatOptions(options, newThreadOverride: false),
+                            nudgeOptions,
                             turnToken,
                             phaseStatus: planExecuteReviewLoop ? ChatStatusCodes.PhasePlan : ChatStatusCodes.Thinking,
                             phaseMessage: "Re-planning to execute available tools in this turn.",
@@ -303,9 +310,7 @@ internal sealed partial class ChatServiceSession {
                     }
 
                     if (promptRecoveryDecision.ExpandToFullToolAvailability) {
-                        toolDefs = fullToolDefs;
-                        options.Tools = fullToolDefs;
-                        options.ToolChoice = ToolChoice.Auto;
+                        toolDefs = ExpandToFullToolAvailabilityForPromptExposure(routedUserRequest, fullToolDefs, options);
                         usedContinuationSubset = false;
                         RememberWeightedToolSubset(threadId, toolDefs, originalToolCount);
                     }
@@ -340,9 +345,7 @@ internal sealed partial class ChatServiceSession {
                     if (postPromptExecutionDecision.ExpandToFullToolAvailability
                         && fullToolDefs.Length > 0
                         && toolDefs.Count != fullToolDefs.Length) {
-                        toolDefs = fullToolDefs;
-                        options.Tools = fullToolDefs;
-                        options.ToolChoice = ToolChoice.Auto;
+                        toolDefs = ExpandToFullToolAvailabilityForPromptExposure(routedUserRequest, fullToolDefs, options);
                         usedContinuationSubset = false;
                         RememberWeightedToolSubset(threadId, toolDefs, originalToolCount);
                     }
