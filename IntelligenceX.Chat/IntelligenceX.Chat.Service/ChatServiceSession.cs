@@ -65,9 +65,11 @@ internal sealed partial class ChatServiceSession {
     private SessionStartupBootstrapTelemetryDto? _startupBootstrap;
     private string[] _pluginSearchPaths;
     private ToolDefinitionDto[] _cachedToolDefinitions;
+    private ToolDefinitionDto[] _deferredDescriptorPreviewToolDefinitions;
     private bool _servingPersistedToolingBootstrapPreview;
     private ToolPackInfoDto[] _persistedPreviewPackSummaries;
     private SessionCapabilitySnapshotDto? _persistedPreviewCapabilitySnapshot;
+    private SessionCapabilitySnapshotDto? _deferredDescriptorPreviewCapabilitySnapshot;
     private readonly Dictionary<string, string> _packDisplayNamesById = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _packDescriptionsById = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, ToolPackSourceKind> _packSourceKindsById = new(StringComparer.OrdinalIgnoreCase);
@@ -134,6 +136,7 @@ internal sealed partial class ChatServiceSession {
     private readonly JsonSerializerOptions _json;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
     private string? _instructions;
+    private readonly object _startupToolingBootstrapLock = new();
     private Task? _startupToolingBootstrapTask;
 
     private readonly object _loginLock = new();
@@ -168,9 +171,11 @@ internal sealed partial class ChatServiceSession {
         _startupBootstrap = null;
         _pluginSearchPaths = Array.Empty<string>();
         _cachedToolDefinitions = Array.Empty<ToolDefinitionDto>();
+        _deferredDescriptorPreviewToolDefinitions = Array.Empty<ToolDefinitionDto>();
         _servingPersistedToolingBootstrapPreview = false;
         _persistedPreviewPackSummaries = Array.Empty<ToolPackInfoDto>();
         _persistedPreviewCapabilitySnapshot = null;
+        _deferredDescriptorPreviewCapabilitySnapshot = null;
         _routingCatalogDiagnostics = ToolRoutingCatalogDiagnosticsBuilder.Build(Array.Empty<ToolDefinition>());
         _toolOrchestrationCatalog = ToolOrchestrationCatalog.Build(Array.Empty<ToolDefinition>());
         UpdatePackMetadataIndexes(Array.Empty<ToolPackDescriptor>());
@@ -431,10 +436,15 @@ internal sealed partial class ChatServiceSession {
                or SetBackgroundSchedulerBlockedPacksRequest
                or SetBackgroundSchedulerBlockedThreadsRequest
                or CheckToolHealthRequest
-               or InvokeToolRequest
                or ChatRequest
                or SetProfileRequest
                or ApplyRuntimeSettingsRequest;
+    }
+
+    internal static bool ShouldOverlapClientConnectWithToolingBootstrap(
+        bool requestRequiresConnectedClient,
+        bool requestRequiresToolingBootstrap) {
+        return requestRequiresConnectedClient && requestRequiresToolingBootstrap;
     }
 
     internal static string BuildToolingBootstrapFailureMessage(ChatServiceRequest request, Exception exception) {
@@ -478,24 +488,40 @@ internal sealed partial class ChatServiceSession {
         };
     }
 
+    private Task EnsureStartupToolingBootstrapTaskStarted(CancellationToken cancellationToken) {
+        var existingTask = Volatile.Read(ref _startupToolingBootstrapTask);
+        if (existingTask is not null) {
+            return existingTask;
+        }
+
+        lock (_startupToolingBootstrapLock) {
+            existingTask = _startupToolingBootstrapTask;
+            if (existingTask is not null) {
+                return existingTask;
+            }
+
+            var startupToolingBootstrapTask = Task.Run(() => RebuildToolingCore(clearRoutingCaches: false), CancellationToken.None);
+            _startupToolingBootstrapTask = startupToolingBootstrapTask;
+            _ = startupToolingBootstrapTask.ContinueWith(
+                faultedBootstrapTask => {
+                    var detail = (faultedBootstrapTask.Exception?.GetBaseException().Message ?? "Tool bootstrap failed.").Trim();
+                    if (detail.Length == 0) {
+                        detail = "Tool bootstrap failed.";
+                    }
+
+                    RecordStartupWarning("[startup] Tool bootstrap failed: " + detail);
+                },
+                CancellationToken.None,
+                TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
+            _ = RunStartupToolHealthPrimingAfterToolingBootstrapAsync(startupToolingBootstrapTask, cancellationToken);
+            return startupToolingBootstrapTask;
+        }
+    }
+
     public async Task RunAsync(CancellationToken cancellationToken) {
         var instructions = LoadInstructions(_options);
         _instructions = instructions;
-        var startupToolingBootstrapTask = Task.Run(() => RebuildToolingCore(clearRoutingCaches: false), CancellationToken.None);
-        _startupToolingBootstrapTask = startupToolingBootstrapTask;
-        _ = startupToolingBootstrapTask.ContinueWith(
-            faultedBootstrapTask => {
-                var detail = (faultedBootstrapTask.Exception?.GetBaseException().Message ?? "Tool bootstrap failed.").Trim();
-                if (detail.Length == 0) {
-                    detail = "Tool bootstrap failed.";
-                }
-
-                RecordStartupWarning("[startup] Tool bootstrap failed: " + detail);
-            },
-            CancellationToken.None,
-            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
-            TaskScheduler.Default);
-        _ = RunStartupToolHealthPrimingAfterToolingBootstrapAsync(startupToolingBootstrapTask, cancellationToken);
 
         using var reader = new StreamReader(_stream, leaveOpen: true);
         using var writer = new StreamWriter(_stream, leaveOpen: true) { AutoFlush = true, NewLine = "\n" };
@@ -553,8 +579,36 @@ internal sealed partial class ChatServiceSession {
                     continue;
                 }
 
-                var activeStartupToolingBootstrapTask = Volatile.Read(ref _startupToolingBootstrapTask) ?? startupToolingBootstrapTask;
-                if (RequestRequiresToolingBootstrap(request)) {
+                var deferredChatToolingPrepared = false;
+                if (request is ChatRequest deferredChatRequest) {
+                    try {
+                        deferredChatToolingPrepared = await TryPrepareDeferredChatToolingForRequestAsync(
+                                writer,
+                                deferredChatRequest.RequestId,
+                                deferredChatRequest,
+                                cancellationToken)
+                            .ConfigureAwait(false);
+                    } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
+                        break;
+                    }
+                }
+
+                var requestRequiresConnectedClient = RequestRequiresConnectedClient(request);
+                var requestRequiresToolingBootstrap = RequestRequiresToolingBootstrap(request) && !deferredChatToolingPrepared;
+                Task<IntelligenceXClient>? connectedClientTask = null;
+                if (ShouldOverlapClientConnectWithToolingBootstrap(
+                        requestRequiresConnectedClient,
+                        requestRequiresToolingBootstrap)) {
+                    connectedClientTask = GetOrConnectClientAsync();
+                    _ = connectedClientTask.ContinueWith(
+                        static faultedConnectTask => _ = faultedConnectTask.Exception,
+                        CancellationToken.None,
+                        TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+                        TaskScheduler.Default);
+                }
+
+                if (requestRequiresToolingBootstrap) {
+                    var activeStartupToolingBootstrapTask = EnsureStartupToolingBootstrapTaskStarted(cancellationToken);
                     var shouldBypassToolingBootstrapWait = ShouldBypassToolingBootstrapWait(request, activeStartupToolingBootstrapTask);
                     try {
                         if (!shouldBypassToolingBootstrapWait) {
@@ -574,9 +628,11 @@ internal sealed partial class ChatServiceSession {
                 }
 
                 IntelligenceXClient? connectedClient = null;
-                if (RequestRequiresConnectedClient(request)) {
+                if (requestRequiresConnectedClient) {
                     try {
-                        connectedClient = await GetOrConnectClientAsync().ConfigureAwait(false);
+                        connectedClient = connectedClientTask is null
+                            ? await GetOrConnectClientAsync().ConfigureAwait(false)
+                            : await connectedClientTask.ConfigureAwait(false);
                         await RefreshConnectedRuntimeSkillInventoryAsync(connectedClient, cancellationToken).ConfigureAwait(false);
                     } catch (Exception ex) {
                         await WriteAsync(writer, new ErrorMessage {
@@ -591,7 +647,7 @@ internal sealed partial class ChatServiceSession {
 
                 switch (request) {
                     case HelloRequest:
-                        var helloStartupToolingBootstrapTask = Volatile.Read(ref _startupToolingBootstrapTask) ?? startupToolingBootstrapTask;
+                        var helloStartupToolingBootstrapTask = Volatile.Read(ref _startupToolingBootstrapTask);
                         var helloStartupWarnings = BuildHelloStartupWarnings(helloStartupToolingBootstrapTask);
                         var helloCapabilitySnapshot = BuildRuntimeCapabilitySnapshot();
                         await WriteAsync(writer, new HelloMessage {
@@ -780,14 +836,15 @@ internal sealed partial class ChatServiceSession {
         bool startupToolingBootstrapCompleted,
         bool startupToolingBootstrapCompletedSuccessfully,
         bool hasCachedToolCatalog) {
-        if (!isListToolsRequest
-            || !startupToolingBootstrapCompleted
-            || !startupToolingBootstrapCompletedSuccessfully
-            || !hasCachedToolCatalog) {
+        if (!isListToolsRequest || !hasCachedToolCatalog) {
             return false;
         }
 
-        return true;
+        if (!startupToolingBootstrapCompleted) {
+            return true;
+        }
+
+        return startupToolingBootstrapCompletedSuccessfully;
     }
 
     internal static bool ShouldBypassToolingBootstrapWaitForRecoveryRequests(
@@ -799,6 +856,36 @@ internal sealed partial class ChatServiceSession {
                && !startupToolingBootstrapCompletedSuccessfully;
     }
 
+    internal static bool ShouldBypassToolingBootstrapWaitForChatRequests(
+        bool isChatRequest,
+        bool startupToolingBootstrapCompleted,
+        bool startupToolingBootstrapCompletedSuccessfully,
+        bool hasExplicitToolEnableSelectors,
+        bool hasDeferredToolCandidateMatch,
+        bool executionContractApplies,
+        bool continuationContractDetected,
+        bool hasPendingActionContext,
+        bool hasToolActivity) {
+        if (!isChatRequest) {
+            return false;
+        }
+
+        if (hasExplicitToolEnableSelectors
+            || hasDeferredToolCandidateMatch
+            || executionContractApplies
+            || continuationContractDetected
+            || hasPendingActionContext
+            || hasToolActivity) {
+            return false;
+        }
+
+        if (!startupToolingBootstrapCompleted) {
+            return true;
+        }
+
+        return !startupToolingBootstrapCompletedSuccessfully;
+    }
+
     private bool ShouldBypassToolingBootstrapWait(ChatServiceRequest request, Task startupToolingBootstrapTask) {
         if (ShouldBypassToolingBootstrapWaitForRecoveryRequests(
                 isRecoveryRequest: request is SetProfileRequest or ApplyRuntimeSettingsRequest,
@@ -807,11 +894,242 @@ internal sealed partial class ChatServiceSession {
             return true;
         }
 
+        if (request is ChatRequest chatRequest) {
+            var normalizedThreadId = (chatRequest.ThreadId ?? string.Empty).Trim();
+            var requestText = chatRequest.Text ?? string.Empty;
+            var hasPendingActionContext = normalizedThreadId.Length > 0 && HasFreshPendingActionsContext(normalizedThreadId);
+            var hasToolActivity = normalizedThreadId.Length > 0 && HasFreshThreadToolEvidence(normalizedThreadId);
+            var continuationContractDetected = TryReadContinuationContractFromRequestText(requestText, out _, out _);
+            var executionContractApplies = ShouldEnforceExecuteOrExplainContract(requestText);
+            var hasExplicitToolEnableSelectors = HasExplicitToolEnableSelectors(chatRequest.Options);
+            var hasDeferredToolCandidateMatch = HasDeferredToolCandidateMatchForChatRequest(requestText, chatRequest.Options);
+            if (ShouldBypassToolingBootstrapWaitForChatRequests(
+                    isChatRequest: true,
+                    startupToolingBootstrapCompleted: startupToolingBootstrapTask.IsCompleted,
+                    startupToolingBootstrapCompletedSuccessfully: startupToolingBootstrapTask.IsCompletedSuccessfully,
+                    hasExplicitToolEnableSelectors: hasExplicitToolEnableSelectors,
+                    hasDeferredToolCandidateMatch: hasDeferredToolCandidateMatch,
+                    executionContractApplies: executionContractApplies,
+                    continuationContractDetected: continuationContractDetected,
+                    hasPendingActionContext: hasPendingActionContext,
+                    hasToolActivity: hasToolActivity)) {
+                return true;
+            }
+        }
+
         return ShouldBypassToolingBootstrapWaitForListTools(
             isListToolsRequest: request is ListToolsRequest,
             startupToolingBootstrapCompleted: startupToolingBootstrapTask.IsCompleted,
             startupToolingBootstrapCompletedSuccessfully: startupToolingBootstrapTask.IsCompletedSuccessfully,
             hasCachedToolCatalog: TryGetCachedToolCatalogForListTools(out _));
+    }
+
+    private static bool HasExplicitToolEnableSelectors(ChatRequestOptions? options) {
+        if (options is null) {
+            return false;
+        }
+
+        return HasNonEmptySelectorValues(options.EnabledTools)
+               || HasNonEmptySelectorValues(options.EnabledPackIds);
+    }
+
+    private static bool HasNonEmptySelectorValues(string[]? values) {
+        if (values is not { Length: > 0 }) {
+            return false;
+        }
+
+        for (var i = 0; i < values.Length; i++) {
+            if (!string.IsNullOrWhiteSpace(values[i])) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool HasDeferredToolCandidateMatchForChatRequest(string requestText, ChatRequestOptions? options) {
+        return ResolveDeferredToolPreferenceHints(
+                requestText,
+                options,
+                maxPreferredPackIds: 1,
+                maxPreferredToolNames: 1)
+            .HasAnyMatches;
+    }
+
+    private ToolDefinitionDto[] GetDeferredToolDefinitionsForBootstrapDecision(ChatRequestOptions? options) {
+        var merged = new Dictionary<string, ToolDefinitionDto>(StringComparer.OrdinalIgnoreCase);
+        foreach (var definition in Volatile.Read(ref _cachedToolDefinitions)) {
+            if (definition is null || string.IsNullOrWhiteSpace(definition.Name)) {
+                continue;
+            }
+
+            merged[definition.Name.Trim()] = definition;
+        }
+
+        if (_deferredDescriptorPreviewToolDefinitions.Length == 0) {
+            _ = TryGetDeferredDescriptorPreviewCapabilitySnapshot(out _);
+        }
+
+        foreach (var definition in _deferredDescriptorPreviewToolDefinitions) {
+            if (definition is null || string.IsNullOrWhiteSpace(definition.Name)) {
+                continue;
+            }
+
+            merged[definition.Name.Trim()] = definition;
+        }
+
+        if (merged.Count == 0) {
+            return Array.Empty<ToolDefinitionDto>();
+        }
+
+        return ApplyDeferredToolExposureOverrides(merged.Values.ToArray(), options);
+    }
+
+    private static ToolDefinitionDto[] ApplyDeferredToolExposureOverrides(
+        IReadOnlyList<ToolDefinitionDto> definitions,
+        ChatRequestOptions? options) {
+        if (definitions.Count == 0 || options is null) {
+            return definitions is ToolDefinitionDto[] array ? array : definitions.ToArray();
+        }
+
+        var enabledToolNames = BuildSelectorSet(options.EnabledTools);
+        var enabledPackIds = BuildSelectorSet(options.EnabledPackIds);
+        var disabledToolNames = BuildSelectorSet(options.DisabledTools);
+        var disabledPackIds = BuildSelectorSet(options.DisabledPackIds);
+        var filtered = new List<ToolDefinitionDto>(definitions.Count);
+        for (var i = 0; i < definitions.Count; i++) {
+            var definition = definitions[i];
+            var toolName = (definition.Name ?? string.Empty).Trim();
+            var packId = ToolPackBootstrap.NormalizePackId(definition.PackId);
+            if (enabledToolNames is not null && !enabledToolNames.Contains(toolName)) {
+                continue;
+            }
+
+            if (enabledPackIds is not null && !enabledPackIds.Contains(packId)) {
+                continue;
+            }
+
+            if (disabledToolNames is not null && disabledToolNames.Contains(toolName)) {
+                continue;
+            }
+
+            if (disabledPackIds is not null && disabledPackIds.Contains(packId)) {
+                continue;
+            }
+
+            filtered.Add(definition);
+        }
+
+        return filtered.ToArray();
+    }
+
+    private static HashSet<string>? BuildSelectorSet(string[]? values) {
+        if (values is not { Length: > 0 }) {
+            return null;
+        }
+
+        var normalized = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < values.Length; i++) {
+            var value = (values[i] ?? string.Empty).Trim();
+            if (value.Length == 0) {
+                continue;
+            }
+
+            normalized.Add(value);
+            var normalizedPackId = ToolPackBootstrap.NormalizePackId(value);
+            if (normalizedPackId.Length > 0) {
+                normalized.Add(normalizedPackId);
+            }
+        }
+
+        return normalized.Count == 0 ? null : normalized;
+    }
+
+    private static int CountSupportedDeferredToolTokenHits(
+        IReadOnlyList<string> allSearchTexts,
+        string searchText,
+        IReadOnlyList<string> tokens,
+        int maxTokenSupport) {
+        if (tokens.Count == 0 || searchText.Length == 0) {
+            return 0;
+        }
+
+        var hits = 0;
+        for (var t = 0; t < tokens.Count; t++) {
+            var token = tokens[t];
+            if (token.Length == 0) {
+                continue;
+            }
+
+            var support = 0;
+            for (var i = 0; i < allSearchTexts.Count; i++) {
+                if (allSearchTexts[i].IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0) {
+                    support++;
+                }
+            }
+
+            if (support <= maxTokenSupport
+                && searchText.IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0) {
+                hits++;
+            }
+        }
+
+        return hits;
+    }
+
+    private static string BuildDeferredToolRoutingSearchText(ToolDefinitionDto definition) {
+        var parts = new List<string>(16) {
+            definition.Name,
+            definition.Description
+        };
+
+        if (!string.IsNullOrWhiteSpace(definition.DisplayName)) {
+            parts.Add(definition.DisplayName);
+        }
+
+        if (!string.IsNullOrWhiteSpace(definition.Category)) {
+            parts.Add(definition.Category);
+        }
+
+        if (!string.IsNullOrWhiteSpace(definition.PackId)) {
+            parts.Add(definition.PackId);
+        }
+
+        if (!string.IsNullOrWhiteSpace(definition.PackName)) {
+            parts.Add(definition.PackName);
+        }
+
+        if (!string.IsNullOrWhiteSpace(definition.PackDescription)) {
+            parts.Add(definition.PackDescription);
+        }
+
+        if (!string.IsNullOrWhiteSpace(definition.RoutingRole)) {
+            parts.Add(definition.RoutingRole);
+        }
+
+        if (!string.IsNullOrWhiteSpace(definition.RoutingScope)) {
+            parts.Add(definition.RoutingScope);
+        }
+
+        if (!string.IsNullOrWhiteSpace(definition.RoutingOperation)) {
+            parts.Add(definition.RoutingOperation);
+        }
+
+        if (!string.IsNullOrWhiteSpace(definition.RoutingEntity)) {
+            parts.Add(definition.RoutingEntity);
+        }
+
+        if (!string.IsNullOrWhiteSpace(definition.DomainIntentFamily)) {
+            parts.Add(definition.DomainIntentFamily);
+        }
+
+        if (!string.IsNullOrWhiteSpace(definition.ExecutionScope)) {
+            parts.Add(definition.ExecutionScope);
+        }
+
+        parts.AddRange(definition.Tags ?? Array.Empty<string>());
+        parts.AddRange(definition.RepresentativeExamples ?? Array.Empty<string>());
+        return string.Join(' ', parts.Where(static value => !string.IsNullOrWhiteSpace(value)));
     }
 
     private void MarkStartupToolingBootstrapRecoveredAfterRuntimeMutation() {

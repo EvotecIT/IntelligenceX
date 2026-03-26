@@ -4571,6 +4571,32 @@
         parts.push("Live timeline: " + state.activityTimeline.join(" > "));
       }
 
+      if (Array.isArray(state.routingPromptExposureHistory) && state.routingPromptExposureHistory.length > 0) {
+        var routingExposureParts = [];
+        for (var r = 0; r < state.routingPromptExposureHistory.length; r++) {
+          var routingExposure = normalizeRoutingPromptExposure(state.routingPromptExposureHistory[r]);
+          if (!routingExposure) {
+            continue;
+          }
+
+          var routingExposureText = routingExposure.strategy + " (" + routingExposure.selectedToolCount + "/" + routingExposure.totalToolCount + ")";
+          if (routingExposure.requestId || routingExposure.threadId) {
+            routingExposureText += " [" + (routingExposure.requestId || "n/a") + " @ " + (routingExposure.threadId || "n/a") + "]";
+          }
+          if (routingExposure.reordered && routingExposure.topToolNames.length > 0) {
+            routingExposureText += " -> " + routingExposure.topToolNames.slice(0, 2).join(", ");
+            if (routingExposure.topToolNames.length > 2) {
+              routingExposureText += ", +" + String(routingExposure.topToolNames.length - 2);
+            }
+          }
+
+          routingExposureParts.push(routingExposureText);
+        }
+        if (routingExposureParts.length > 0) {
+          parts.push("Routing exposure: " + routingExposureParts.join(" | ") + ".");
+        }
+      }
+
       stateLabel.textContent = parts.join(" ");
     }
 

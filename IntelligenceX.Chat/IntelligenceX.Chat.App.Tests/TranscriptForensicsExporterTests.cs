@@ -104,6 +104,76 @@ public sealed class TranscriptForensicsExporterTests {
     }
 
     /// <summary>
+    /// Verifies transcript forensics bundles capture current-turn timeline, metrics, and routing prompt exposure history.
+    /// </summary>
+    [Fact]
+    public void Build_CapturesTurnDiagnosticsAlongsideTranscriptSnapshots() {
+        var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
+        var now = new DateTime(2026, 3, 8, 18, 12, 0, DateTimeKind.Local);
+        var turnDiagnostics = new TranscriptForensicsTurnDiagnosticsSnapshot {
+            ActivityTimeline = new List<string> {
+                "route prompt review (1/3)",
+                "run system_pack_info"
+            },
+            RoutingPromptExposureHistory = new List<TranscriptForensicsRoutingPromptExposureSnapshot> {
+                new() {
+                    RequestId = "req-turn-diag",
+                    ThreadId = "thread-turn-diag",
+                    Strategy = "prompt review",
+                    SelectedToolCount = 1,
+                    TotalToolCount = 3,
+                    Reordered = true,
+                    TopToolNames = new List<string> { "system_pack_info" }
+                }
+            },
+            LastTurnMetrics = new TranscriptForensicsTurnMetricsSnapshot {
+                RequestId = "req-turn-diag",
+                CompletedUtc = now.ToUniversalTime(),
+                DurationMs = 1800,
+                ToolCallsCount = 1,
+                ToolRounds = 1,
+                Outcome = "completed",
+                Model = "gpt-5.4",
+                Transport = "native",
+                EndpointHost = "chatgpt.com",
+                AutonomyCounters = new List<TranscriptForensicsAutonomyCounterSnapshot> {
+                    new() {
+                        Name = "tool_rounds",
+                        Count = 1
+                    }
+                }
+            }
+        };
+
+        var bundle = TranscriptForensicsExporter.Build(
+            "default",
+            @"C:\Users\me\AppData\Local\IntelligenceX.Chat\app-state.db",
+            "HH:mm:ss",
+            options,
+            "conv-turn-diag",
+            "Diagnostics",
+            "thread-turn-diag",
+            new List<(string Role, string Text, DateTime Time, string? Model)> {
+                ("Assistant", "Hello world", now, "gpt-5.4")
+            },
+            persistedMessages: null,
+            tooling: null,
+            turnDiagnostics: turnDiagnostics);
+
+        Assert.NotNull(bundle.TurnDiagnostics);
+        Assert.Equal(new[] { "route prompt review (1/3)", "run system_pack_info" }, bundle.TurnDiagnostics!.ActivityTimeline);
+        Assert.Single(bundle.TurnDiagnostics.RoutingPromptExposureHistory);
+        Assert.Equal("req-turn-diag", bundle.TurnDiagnostics.RoutingPromptExposureHistory[0].RequestId);
+        Assert.Equal("thread-turn-diag", bundle.TurnDiagnostics.RoutingPromptExposureHistory[0].ThreadId);
+        Assert.Equal("prompt review", bundle.TurnDiagnostics.RoutingPromptExposureHistory[0].Strategy);
+        Assert.Equal(new[] { "system_pack_info" }, bundle.TurnDiagnostics.RoutingPromptExposureHistory[0].TopToolNames);
+        Assert.NotNull(bundle.TurnDiagnostics.LastTurnMetrics);
+        Assert.Equal("req-turn-diag", bundle.TurnDiagnostics.LastTurnMetrics!.RequestId);
+        Assert.Equal(1800, bundle.TurnDiagnostics.LastTurnMetrics.DurationMs);
+        Assert.Single(bundle.TurnDiagnostics.LastTurnMetrics.AutonomyCounters);
+    }
+
+    /// <summary>
     /// Verifies persisted timestamps loaded without a kind are treated as UTC before projection.
     /// </summary>
     [Fact]
@@ -190,6 +260,7 @@ public sealed class TranscriptForensicsExporterTests {
             var json = File.ReadAllText(outputPath);
             Assert.Contains("\"conversationId\": \"conv-2\"", json, StringComparison.Ordinal);
             Assert.Contains("\"tooling\": null", json, StringComparison.Ordinal);
+            Assert.Contains("\"turnDiagnostics\": null", json, StringComparison.Ordinal);
             Assert.Contains("\"rawText\": \"Hello world\"", json, StringComparison.Ordinal);
             Assert.Contains("\"renderedTranscriptHtml\":", json, StringComparison.Ordinal);
         } finally {

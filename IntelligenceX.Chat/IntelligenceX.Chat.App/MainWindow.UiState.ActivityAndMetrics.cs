@@ -205,8 +205,18 @@ public sealed partial class MainWindow : Window {
         }
 
         if (string.Equals(status.Status, ChatStatusCodes.RoutingMeta, StringComparison.OrdinalIgnoreCase)) {
-            if (TryParseRoutingMetaPayload(status.Message, out var strategy, out var selectedToolCount, out var totalToolCount)) {
-                return $"Routing strategy {strategy} ({selectedToolCount}/{totalToolCount} tools)";
+            if (TryParseRoutingMetaPayload(
+                    status.Message,
+                    out var strategy,
+                    out var selectedToolCount,
+                    out var totalToolCount,
+                    out var promptExposureReordered,
+                    out var promptExposureTopToolNames)) {
+                return $"Routing strategy {strategy} ({selectedToolCount}/{totalToolCount} tools)"
+                       + BuildRoutingMetaPromptExposureSuffix(
+                           promptExposureReordered,
+                           promptExposureTopToolNames,
+                           MaxRoutingMetaPromptExposureActivityNames);
             }
 
             return "Routing strategy updated...";
@@ -432,7 +442,13 @@ public sealed partial class MainWindow : Window {
     }
 
     private static string BuildRoutingMetaTimelineLabel(string? payload) {
-        if (!TryParseRoutingMetaPayload(payload, out var strategy, out var selectedToolCount, out var totalToolCount)) {
+        if (!TryParseRoutingMetaPayload(
+                payload,
+                out var strategy,
+                out var selectedToolCount,
+                out var totalToolCount,
+                out var promptExposureReordered,
+                out var promptExposureTopToolNames)) {
             return "route strategy";
         }
 
@@ -443,6 +459,10 @@ public sealed partial class MainWindow : Window {
 
         var boundedSelectedToolCount = Math.Max(0, selectedToolCount);
         var boundedTotalToolCount = Math.Max(boundedSelectedToolCount, totalToolCount);
-        return "route " + normalizedStrategy + " (" + boundedSelectedToolCount + "/" + boundedTotalToolCount + ")";
+        return "route " + normalizedStrategy + " (" + boundedSelectedToolCount + "/" + boundedTotalToolCount + ")"
+               + BuildRoutingMetaPromptExposureSuffix(
+                   promptExposureReordered,
+                   promptExposureTopToolNames,
+                   MaxRoutingMetaPromptExposureTimelineNames);
     }
 }

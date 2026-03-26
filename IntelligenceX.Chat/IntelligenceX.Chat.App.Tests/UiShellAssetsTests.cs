@@ -104,6 +104,7 @@ public sealed partial class UiShellAssetsTests {
         var renderingScript = File.ReadAllText(renderingScriptPath);
 
         Assert.Contains("statusTimeline: []", coreScript, StringComparison.Ordinal);
+        Assert.Contains("routingPromptExposureHistory: []", coreScript, StringComparison.Ordinal);
         Assert.Contains("startupDiagnostics: null", coreScript, StringComparison.Ordinal);
         Assert.Contains("function appendStatusTimelineEntry(value)", coreScript, StringComparison.Ordinal);
         Assert.Contains("function buildStartupPhaseTimelineModel()", coreScript, StringComparison.Ordinal);
@@ -116,6 +117,9 @@ public sealed partial class UiShellAssetsTests {
         Assert.Contains("Background: retrying tool metadata sync in background.", coreScript, StringComparison.Ordinal);
         Assert.Contains("Background: tool pack metadata is still syncing.", coreScript, StringComparison.Ordinal);
         Assert.Contains("Runtime lifecycle: \" + state.statusTimeline.join(\" > \")", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("Routing exposure: " , toolsScript, StringComparison.Ordinal);
+        Assert.Contains("normalizeRoutingPromptExposure(state.routingPromptExposureHistory[r])", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("routingExposureText += \" [\" + (routingExposure.requestId || \"n/a\") + \" @ \" + (routingExposure.threadId || \"n/a\") + \"]\";", toolsScript, StringComparison.Ordinal);
         Assert.Contains("var startupPhaseTimeline = byId(\"optStartupPhaseTimeline\");", toolsScript, StringComparison.Ordinal);
         Assert.Contains("var startupDiagnosticsState = byId(\"optStartupDiagnosticsState\");", toolsScript, StringComparison.Ordinal);
         Assert.Contains("Refresh Account", coreScript, StringComparison.Ordinal);
@@ -129,6 +133,8 @@ public sealed partial class UiShellAssetsTests {
         Assert.Contains("Showing startup preview", toolsScript, StringComparison.Ordinal);
         Assert.Contains("Final tool catalog is still loading, so pack and tool counts may increase automatically.", toolsScript, StringComparison.Ordinal);
         Assert.Contains("if (Array.isArray(nextState.statusTimeline)) {", renderingScript, StringComparison.Ordinal);
+        Assert.Contains("if (Array.isArray(nextState.routingPromptExposureHistory)) {", renderingScript, StringComparison.Ordinal);
+        Assert.Contains("state.routingPromptExposureHistory = nextState.routingPromptExposureHistory;", renderingScript, StringComparison.Ordinal);
         Assert.Contains("state.options.startupDiagnostics = nextOptions.startupDiagnostics || null;", renderingScript, StringComparison.Ordinal);
         Assert.Contains("state.hasExplicitUnauthenticatedProbeSnapshot = nextState.hasExplicitUnauthenticatedProbeSnapshot;", renderingScript, StringComparison.Ordinal);
         Assert.Contains(".status-chip.status-chip-progress {", baseCss, StringComparison.Ordinal);
@@ -416,21 +422,29 @@ public sealed partial class UiShellAssetsTests {
         Assert.Contains("toolCatalogRoutingCatalog: null", script, StringComparison.Ordinal);
         Assert.Contains("toolCatalogPlugins: []", script, StringComparison.Ordinal);
         Assert.Contains("toolCatalogCapabilitySnapshot: null", script, StringComparison.Ordinal);
+        Assert.Contains("latestRoutingPromptExposure: null", script, StringComparison.Ordinal);
         Assert.Contains("var pluginDetailsEl = byId(\"policyPluginDetails\");", script, StringComparison.Ordinal);
         Assert.Contains("var fallbackRoutingCatalog = normalizeRoutingCatalog(state.options ? state.options.toolCatalogRoutingCatalog : null);", script, StringComparison.Ordinal);
         Assert.Contains("var fallbackPlugins = normalizePlugins(state.options ? state.options.toolCatalogPlugins : null);", script, StringComparison.Ordinal);
         Assert.Contains("fallbackPlugins = resolveCapabilitySnapshotPlugins(fallbackCapabilitySnapshot);", script, StringComparison.Ordinal);
+        Assert.Contains("var routingPromptExposure = normalizeRoutingPromptExposure(state.options ? state.options.latestRoutingPromptExposure : null);", script, StringComparison.Ordinal);
         Assert.Contains("renderPluginPolicyDetails(pluginDetailsEl, fallbackPlugins);", script, StringComparison.Ordinal);
         Assert.Contains("var fallbackCapabilitySnapshot = normalizeCapabilitySnapshot(state.options ? state.options.toolCatalogCapabilitySnapshot : null);", script, StringComparison.Ordinal);
         Assert.Contains("renderPolicyList(pluginsEl, formatPluginPolicyLines(fallbackPlugins), \"Plugin sources\");", script, StringComparison.Ordinal);
-        Assert.Contains("renderRoutingCatalogPolicy(routingCatalogEl, fallbackRoutingCatalog);", script, StringComparison.Ordinal);
+        Assert.Contains("renderRoutingCatalogPolicy(routingCatalogEl, fallbackRoutingCatalog, routingPromptExposure);", script, StringComparison.Ordinal);
         Assert.Contains("renderCapabilitySnapshotPolicy(capabilitySnapshotEl, fallbackCapabilitySnapshot);", script, StringComparison.Ordinal);
         Assert.Contains("function normalizeCapabilitySnapshot(value) {", script, StringComparison.Ordinal);
+        Assert.Contains("function normalizeRoutingPromptExposure(value) {", script, StringComparison.Ordinal);
         Assert.Contains("function resolveCapabilitySnapshotPlugins(capabilitySnapshot) {", script, StringComparison.Ordinal);
         Assert.Contains("function normalizePlugins(value) {", script, StringComparison.Ordinal);
         Assert.Contains("function appendOptionsKv(host, label, value) {", script, StringComparison.Ordinal);
         Assert.Contains("function formatPluginPolicyLines(plugins) {", script, StringComparison.Ordinal);
         Assert.Contains("function renderPluginPolicyDetails(host, plugins) {", script, StringComparison.Ordinal);
+        Assert.Contains("function renderRoutingCatalogPolicy(host, routingCatalog, routingPromptExposure) {", script, StringComparison.Ordinal);
+        Assert.Contains("requestId: typeof value.requestId === \"string\" ? value.requestId.trim() : \"\",", script, StringComparison.Ordinal);
+        Assert.Contains("lines.push(\"prompt source: \" + (routingPromptExposure.requestId || \"n/a\") + \" @ \" + (routingPromptExposure.threadId || \"n/a\"));", script, StringComparison.Ordinal);
+        Assert.Contains("lines.push(\"latest prompt exposure: \" + routingPromptExposure.strategy + \" (\" + routingPromptExposure.selectedToolCount + \"/\" + routingPromptExposure.totalToolCount + \")\");", script, StringComparison.Ordinal);
+        Assert.Contains("lines.push(\"prompt top tools: \" + routingPromptExposure.topToolNames.join(\", \"));", script, StringComparison.Ordinal);
         Assert.Contains("function renderCapabilitySnapshotPolicy(host, capabilitySnapshot) {", script, StringComparison.Ordinal);
         Assert.Contains("toolingSnapshot: !toolingSnapshotRaw ? null :", script, StringComparison.Ordinal);
         Assert.Contains("plugins = resolveCapabilitySnapshotPlugins(capabilitySnapshot);", script, StringComparison.Ordinal);
@@ -460,7 +474,9 @@ public sealed partial class UiShellAssetsTests {
         Assert.Contains("state.options.toolCatalogRoutingCatalog = nextOptions.toolCatalogRoutingCatalog || null;", renderingScript, StringComparison.Ordinal);
         Assert.Contains("state.options.toolCatalogPlugins = Array.isArray(nextOptions.toolCatalogPlugins) ? nextOptions.toolCatalogPlugins : [];", renderingScript, StringComparison.Ordinal);
         Assert.Contains("state.options.toolCatalogCapabilitySnapshot = nextOptions.toolCatalogCapabilitySnapshot || null;", renderingScript, StringComparison.Ordinal);
+        Assert.Contains("state.options.latestRoutingPromptExposure = nextOptions.latestRoutingPromptExposure || null;", renderingScript, StringComparison.Ordinal);
         Assert.Contains("Bootstrap preview", coreScript, StringComparison.Ordinal);
+        Assert.Contains("appendOptionsKv(policyEl, \"Prompt exposure\", routingPromptExposure.strategy + \" (\" + routingPromptExposure.selectedToolCount + \"/\" + routingPromptExposure.totalToolCount + \")\");", coreScript, StringComparison.Ordinal);
     }
 
     /// <summary>

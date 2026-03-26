@@ -39,6 +39,21 @@ public sealed class MainWindowToolCatalogNormalizationTests {
         BindingFlags.NonPublic | BindingFlags.Instance)
         ?? throw new InvalidOperationException("BuildOptionsStateJson not found.");
 
+    private static readonly MethodInfo ApplyRoutingMetaPromptExposureMethod = typeof(MainWindow).GetMethod(
+        "ApplyRoutingMetaPromptExposure",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("ApplyRoutingMetaPromptExposure not found.");
+
+    private static readonly MethodInfo BuildRoutingPromptExposureHistoryStateMethod = typeof(MainWindow).GetMethod(
+        "BuildRoutingPromptExposureHistoryState",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("BuildRoutingPromptExposureHistoryState not found.");
+
+    private static readonly MethodInfo BuildTranscriptForensicsTurnDiagnosticsSnapshotMethod = typeof(MainWindow).GetMethod(
+        "BuildTranscriptForensicsTurnDiagnosticsSnapshot",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("BuildTranscriptForensicsTurnDiagnosticsSnapshot not found.");
+
     private static readonly FieldInfo SessionPolicyField = typeof(MainWindow).GetField(
         "_sessionPolicy",
         BindingFlags.NonPublic | BindingFlags.Instance)
@@ -188,6 +203,21 @@ public sealed class MainWindowToolCatalogNormalizationTests {
         "_turnDiagnosticsSync",
         BindingFlags.NonPublic | BindingFlags.Instance)
         ?? throw new InvalidOperationException("_turnDiagnosticsSync field not found.");
+
+    private static readonly FieldInfo ActivityTimelineField = typeof(MainWindow).GetField(
+        "_activityTimeline",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_activityTimeline field not found.");
+
+    private static readonly FieldInfo LastTurnMetricsField = typeof(MainWindow).GetField(
+        "_lastTurnMetrics",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_lastTurnMetrics field not found.");
+
+    private static readonly FieldInfo RoutingPromptExposureHistoryField = typeof(MainWindow).GetField(
+        "_routingPromptExposureHistory",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_routingPromptExposureHistory field not found.");
 
     private static readonly FieldInfo AccountUsageByKeyField = typeof(MainWindow).GetField(
         "_accountUsageByKey",
@@ -643,6 +673,128 @@ public sealed class MainWindowToolCatalogNormalizationTests {
         Assert.DoesNotContain("preview_plugin", json, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// Ensures durable options state keeps the latest provider-facing prompt exposure snapshot
+    /// after routing metadata arrives, so the debug panel can show ordered tool exposure details.
+    /// </summary>
+    [Fact]
+    public void BuildOptionsStateJson_IncludesLatestRoutingPromptExposure_FromRoutingMetaStatus() {
+        var window = CreateWindow();
+        var updated = InvokeApplyRoutingMetaPromptExposure(
+            window,
+            new ChatStatusMessage {
+                Kind = ChatServiceMessageKind.Event,
+                ThreadId = "thread-routing-meta",
+                Status = "routing_meta",
+                Message = """{"strategy":"prompt_review","selectedToolCount":3,"totalToolCount":5,"promptExposure":{"reordered":true,"topToolNames":["eventlog_live_query","eventlog_connectivity_probe","system_pack_info"]}}"""
+            });
+
+        Assert.True(updated);
+
+        string json;
+        try {
+            json = Assert.IsType<string>(BuildOptionsStateJsonMethod.Invoke(window, Array.Empty<object>()));
+        } catch (TargetInvocationException ex) {
+            throw ex.InnerException ?? ex;
+        }
+
+        using var document = JsonDocument.Parse(json);
+        var snapshot = document.RootElement.GetProperty("latestRoutingPromptExposure");
+        Assert.Equal(string.Empty, snapshot.GetProperty("requestId").GetString());
+        Assert.Equal("thread-routing-meta", snapshot.GetProperty("threadId").GetString());
+        Assert.Equal("prompt review", snapshot.GetProperty("strategy").GetString());
+        Assert.Equal(3, snapshot.GetProperty("selectedToolCount").GetInt32());
+        Assert.Equal(5, snapshot.GetProperty("totalToolCount").GetInt32());
+        Assert.True(snapshot.GetProperty("reordered").GetBoolean());
+        Assert.Equal("eventlog_live_query", snapshot.GetProperty("topToolNames")[0].GetString());
+        Assert.Equal("system_pack_info", snapshot.GetProperty("topToolNames")[2].GetString());
+    }
+
+    /// <summary>
+    /// Ensures current-turn routing prompt-exposure history preserves ordered replay/review snapshots
+    /// so session diagnostics can show how provider-facing tool exposure evolved within the turn.
+    /// </summary>
+    [Fact]
+    public void BuildRoutingPromptExposureHistoryState_PreservesOrderedTurnHistory() {
+        var window = CreateWindow();
+
+        Assert.True(InvokeApplyRoutingMetaPromptExposure(
+            window,
+            new ChatStatusMessage {
+                Kind = ChatServiceMessageKind.Event,
+                ThreadId = "thread-routing-history",
+                Status = "routing_meta",
+                Message = """{"strategy":"prompt_replay","selectedToolCount":2,"totalToolCount":4,"promptExposure":{"reordered":true,"topToolNames":["eventlog_live_query","eventlog_connectivity_probe"]}}"""
+            }));
+        Assert.True(InvokeApplyRoutingMetaPromptExposure(
+            window,
+            new ChatStatusMessage {
+                Kind = ChatServiceMessageKind.Event,
+                ThreadId = "thread-routing-history",
+                Status = "routing_meta",
+                Message = """{"strategy":"prompt_review","selectedToolCount":1,"totalToolCount":3,"promptExposure":{"reordered":true,"topToolNames":["system_pack_info"]}}"""
+            }));
+
+        var history = InvokeBuildRoutingPromptExposureHistoryState(window);
+
+        Assert.Equal(2, history.Length);
+        Assert.Equal(string.Empty, GetProperty<string>(history[0], "requestId"));
+        Assert.Equal("thread-routing-history", GetProperty<string>(history[0], "threadId"));
+        Assert.Equal("prompt replay", GetProperty<string>(history[0], "strategy"));
+        Assert.Equal(2, GetProperty<int>(history[0], "selectedToolCount"));
+        Assert.Equal(new[] { "eventlog_live_query", "eventlog_connectivity_probe" }, GetProperty<string[]>(history[0], "topToolNames"));
+        Assert.Equal(string.Empty, GetProperty<string>(history[1], "requestId"));
+        Assert.Equal("thread-routing-history", GetProperty<string>(history[1], "threadId"));
+        Assert.Equal("prompt review", GetProperty<string>(history[1], "strategy"));
+        Assert.Equal(1, GetProperty<int>(history[1], "selectedToolCount"));
+        Assert.Equal(new[] { "system_pack_info" }, GetProperty<string[]>(history[1], "topToolNames"));
+    }
+
+    /// <summary>
+    /// Ensures transcript forensics turn diagnostics capture the live timeline, last-turn metrics,
+    /// and routing prompt-exposure history from current in-memory turn state.
+    /// </summary>
+    [Fact]
+    public void BuildTranscriptForensicsTurnDiagnosticsSnapshot_CapturesTimelineMetricsAndRoutingExposure() {
+        var window = CreateWindow();
+        var activityTimeline = Assert.IsType<List<string>>(ActivityTimelineField.GetValue(window));
+        activityTimeline.Add("route prompt review (1/3)");
+        activityTimeline.Add("run system_pack_info");
+
+        SetField(
+            LastTurnMetricsField,
+            window,
+            CreateTurnMetricsSnapshot(
+                requestId: "req-forensics",
+                durationMs: 1800,
+                outcome: "completed",
+                toolCallsCount: 1,
+                toolRounds: 1));
+
+        Assert.True(InvokeApplyRoutingMetaPromptExposure(
+            window,
+            new ChatStatusMessage {
+                Kind = ChatServiceMessageKind.Event,
+                ThreadId = "thread-forensics",
+                Status = "routing_meta",
+                Message = """{"strategy":"prompt_review","selectedToolCount":1,"totalToolCount":3,"promptExposure":{"reordered":true,"topToolNames":["system_pack_info"]}}"""
+            }));
+
+        var snapshot = InvokeBuildTranscriptForensicsTurnDiagnosticsSnapshot(window);
+
+        Assert.NotNull(snapshot);
+        Assert.Equal(new[] { "route prompt review (1/3)", "run system_pack_info" }, snapshot!.ActivityTimeline);
+        Assert.NotNull(snapshot.LastTurnMetrics);
+        Assert.Equal("req-forensics", snapshot.LastTurnMetrics!.RequestId);
+        Assert.Equal(1800, snapshot.LastTurnMetrics.DurationMs);
+        Assert.Equal("completed", snapshot.LastTurnMetrics.Outcome);
+        Assert.Single(snapshot.RoutingPromptExposureHistory);
+        Assert.Null(snapshot.RoutingPromptExposureHistory[0].RequestId);
+        Assert.Equal("thread-forensics", snapshot.RoutingPromptExposureHistory[0].ThreadId);
+        Assert.Equal("prompt review", snapshot.RoutingPromptExposureHistory[0].Strategy);
+        Assert.Equal(new[] { "system_pack_info" }, snapshot.RoutingPromptExposureHistory[0].TopToolNames);
+    }
+
     private static MainWindow CreateWindow() {
         var window = (MainWindow)RuntimeHelpers.GetUninitializedObject(typeof(MainWindow));
         SetField(NativeAccountSlotsField, window, new[] { string.Empty });
@@ -656,6 +808,9 @@ public sealed class MainWindowToolCatalogNormalizationTests {
         SetField(ToolCatalogRoutingCatalogField, window, null!);
         SetField(ToolCatalogCapabilitySnapshotField, window, null!);
         SetField(TurnDiagnosticsSyncField, window, new object());
+        SetField(ActivityTimelineField, window, new List<string>());
+        SetField(RoutingPromptExposureHistoryField, window, Activator.CreateInstance(RoutingPromptExposureHistoryField.FieldType)!);
+        SetField(LastTurnMetricsField, window, null!);
         SetField(AccountUsageByKeyField, window, Activator.CreateInstance(AccountUsageByKeyField.FieldType)!);
         SetField(MemoryDiagnosticsSyncField, window, new object());
         SetField(StartupMetadataSyncLockField, window, new object());
@@ -707,12 +862,79 @@ public sealed class MainWindowToolCatalogNormalizationTests {
         }
     }
 
+    private static bool InvokeApplyRoutingMetaPromptExposure(MainWindow window, ChatStatusMessage status) {
+        try {
+            return Assert.IsType<bool>(ApplyRoutingMetaPromptExposureMethod.Invoke(window, new object?[] { status }));
+        } catch (TargetInvocationException ex) {
+            throw ex.InnerException ?? ex;
+        }
+    }
+
     private static object[] InvokeBuildToolState(MainWindow window) {
         try {
             return Assert.IsType<object[]>(BuildToolStateMethod.Invoke(window, Array.Empty<object>()));
         } catch (TargetInvocationException ex) {
             throw ex.InnerException ?? ex;
         }
+    }
+
+    private static object[] InvokeBuildRoutingPromptExposureHistoryState(MainWindow window) {
+        try {
+            return Assert.IsType<object[]>(BuildRoutingPromptExposureHistoryStateMethod.Invoke(window, Array.Empty<object>()));
+        } catch (TargetInvocationException ex) {
+            throw ex.InnerException ?? ex;
+        }
+    }
+
+    private static TranscriptForensicsTurnDiagnosticsSnapshot? InvokeBuildTranscriptForensicsTurnDiagnosticsSnapshot(MainWindow window) {
+        try {
+            return (TranscriptForensicsTurnDiagnosticsSnapshot?)BuildTranscriptForensicsTurnDiagnosticsSnapshotMethod.Invoke(window, Array.Empty<object>());
+        } catch (TargetInvocationException ex) {
+            throw ex.InnerException ?? ex;
+        }
+    }
+
+    private static object CreateTurnMetricsSnapshot(
+        string requestId,
+        long durationMs,
+        string outcome,
+        int toolCallsCount,
+        int toolRounds) {
+        var type = LastTurnMetricsField.FieldType;
+        return Activator.CreateInstance(
+                   type,
+                   requestId,
+                   DateTime.SpecifyKind(new DateTime(2026, 3, 26, 1, 2, 3), DateTimeKind.Utc),
+                   durationMs,
+                   null,
+                   null,
+                   null,
+                   null,
+                   null,
+                   null,
+                   null,
+                   null,
+                   null,
+                   null,
+                   null,
+                   null,
+                   null,
+                   toolCallsCount,
+                   toolRounds,
+                   0,
+                   outcome,
+                   null,
+                   null,
+                   null,
+                   null,
+                   null,
+                   null,
+                   Array.Empty<TurnCounterMetricDto>(),
+                   "gpt-5.4",
+                   "gpt-5.4",
+                   "native",
+                   "chatgpt.com")
+               ?? throw new InvalidOperationException("Failed to create TurnMetricsSnapshot.");
     }
 
     private static T GetProperty<T>(object instance, string propertyName) {

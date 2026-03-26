@@ -202,6 +202,7 @@ internal sealed partial class ChatServiceSession {
             runtimeIdentity.AppendLine("endpoint: " + _options.OpenAIBaseUrl!.Trim());
         }
         AppendRuntimeCapabilityHandshake(runtimeIdentity);
+        AppendDeferredDescriptorPreviewToolPromptBlock(runtimeIdentity);
         runtimeIdentity.AppendLine("When asked about the current model or runtime, use the exact active model value above. Do not guess.");
 
         var runtimeIdentityText = runtimeIdentity.ToString().Trim();
@@ -213,10 +214,13 @@ internal sealed partial class ChatServiceSession {
     }
 
     private void AppendRuntimeCapabilityHandshake(StringBuilder runtimeIdentity) {
-        AppendCapabilitySnapshotPromptBlock(runtimeIdentity, BuildRuntimeCapabilitySnapshot(), _routingCatalogDiagnostics);
+        var capabilitySnapshot = BuildRuntimeCapabilitySnapshot();
+        AppendCapabilitySnapshotPromptBlock(runtimeIdentity, capabilitySnapshot, _routingCatalogDiagnostics);
         var startupToolingBootstrapTask = Volatile.Read(ref _startupToolingBootstrapTask);
         var bootstrapState = _servingPersistedToolingBootstrapPreview
             ? StartupBootstrapContracts.CacheModePersistedPreview
+            : startupToolingBootstrapTask is null
+                ? "deferred"
             : startupToolingBootstrapTask is { IsCompletedSuccessfully: true }
                 ? "ready"
                 : startupToolingBootstrapTask is { IsCompleted: true }
@@ -224,7 +228,15 @@ internal sealed partial class ChatServiceSession {
                     : "rebuilding";
         runtimeIdentity.AppendLine("runtime_bootstrap_state: " + bootstrapState);
         if (_servingPersistedToolingBootstrapPreview) {
-            runtimeIdentity.AppendLine("The current catalog is a persisted preview while live bootstrap is still rebuilding. Treat it as temporary and avoid presenting it as settled runtime state unless asked.");
+            runtimeIdentity.AppendLine(
+                startupToolingBootstrapTask is null
+                    ? "The current catalog is a persisted preview. Live bootstrap has not started yet and will begin on the first tooling-sensitive request, so treat the catalog as temporary unless asked."
+                    : "The current catalog is a persisted preview while live bootstrap is still rebuilding. Treat it as temporary and avoid presenting it as settled runtime state unless asked.");
+        } else if (startupToolingBootstrapTask is null) {
+            runtimeIdentity.AppendLine(
+                string.Equals(capabilitySnapshot.ToolingSnapshot?.Source, DeferredDescriptorPreviewToolingSnapshotSource, StringComparison.OrdinalIgnoreCase)
+                    ? "Tool bootstrap has not started yet. The current tooling catalog is a descriptor-only preview from known pack metadata and live tool registration will begin on the first tooling-sensitive request."
+                    : "Tool bootstrap has not started yet and will begin on the first tooling-sensitive request.");
         }
     }
 

@@ -111,9 +111,7 @@ internal sealed partial class ChatServiceSession {
                     } else {
                     hostStructuredNextActionReplayUsed = true;
                     if (fullToolDefs.Length > 0 && toolDefs.Count != fullToolDefs.Length) {
-                        toolDefs = fullToolDefs;
-                        options.Tools = fullToolDefs;
-                        options.ToolChoice = ToolChoice.Auto;
+                        toolDefs = ExpandToFullToolAvailabilityForPromptExposure(routedUserRequest, fullToolDefs, options);
                         usedContinuationSubset = false;
                         RememberWeightedToolSubset(threadId, toolDefs, originalToolCount);
                     }
@@ -206,14 +204,24 @@ internal sealed partial class ChatServiceSession {
                     var hostStructuredNextInput = BuildHostReplayReviewInput(
                         hostStructuredNextActionCall,
                         hostStructuredOutputs,
-                        supportsSyntheticHostReplayItems);
+                        supportsSyntheticHostReplayItems,
+                        out var hostStructuredReviewPromptText);
+                    var hostStructuredReviewOptions = await CopyChatOptionsWithPromptAwareToolOrderingAndEmitStatusAsync(
+                            writer,
+                            request.RequestId,
+                            threadId,
+                            options,
+                            hostStructuredReviewPromptText,
+                            strategy: "prompt_review",
+                            newThreadOverride: false)
+                        .ConfigureAwait(false);
                     turn = await RunModelPhaseWithProgressAsync(
                             client,
                             writer,
                             request.RequestId,
                             threadId,
                             hostStructuredNextInput,
-                            CopyChatOptions(options, newThreadOverride: false),
+                            hostStructuredReviewOptions,
                             turnToken,
                             phaseStatus: planExecuteReviewLoop ? ChatStatusCodes.PhaseReview : ChatStatusCodes.Thinking,
                             phaseMessage: "Reviewing tool-recommended next action results...",
@@ -244,9 +252,7 @@ internal sealed partial class ChatServiceSession {
                     if (finalizeContinuationDecision.ExpandToFullToolAvailability
                         && fullToolDefs.Length > 0
                         && toolDefs.Count != fullToolDefs.Length) {
-                        toolDefs = fullToolDefs;
-                        options.Tools = fullToolDefs;
-                        options.ToolChoice = ToolChoice.Auto;
+                        toolDefs = ExpandToFullToolAvailabilityForPromptExposure(routedUserRequest, fullToolDefs, options);
                         usedContinuationSubset = false;
                         RememberWeightedToolSubset(threadId, toolDefs, originalToolCount);
                     }
@@ -291,13 +297,22 @@ internal sealed partial class ChatServiceSession {
                     backgroundDependencyRecoveryUsed = true;
                     Trace.WriteLine(
                         $"[background-prerequisite-recovery] outcome=prompt reason={backgroundDependencyRecoveryReason} continuation={continuationFollowUpTurn} prior_calls={toolCalls.Count} prior_outputs={toolOutputs.Count}");
+                    var backgroundDependencyRecoveryOptions = await CopyChatOptionsWithPromptAwareToolOrderingAndEmitStatusAsync(
+                            writer,
+                            request.RequestId,
+                            threadId,
+                            options,
+                            backgroundDependencyRecoveryPrompt,
+                            strategy: "prompt_recovery",
+                            newThreadOverride: false)
+                        .ConfigureAwait(false);
                     turn = await RunModelPhaseWithProgressAsync(
                             client,
                             writer,
                             request.RequestId,
                             threadId,
                             ChatInput.FromText(backgroundDependencyRecoveryPrompt),
-                            CopyChatOptions(options, newThreadOverride: false),
+                            backgroundDependencyRecoveryOptions,
                             turnToken,
                             phaseStatus: planExecuteReviewLoop ? ChatStatusCodes.PhasePlan : ChatStatusCodes.Thinking,
                             phaseMessage: "Resolving prepared follow-up prerequisites.",
@@ -313,9 +328,7 @@ internal sealed partial class ChatServiceSession {
                     if (finalizeContinuationDecision.ExpandToFullToolAvailability
                         && fullToolDefs.Length > 0
                         && toolDefs.Count != fullToolDefs.Length) {
-                        toolDefs = fullToolDefs;
-                        options.Tools = fullToolDefs;
-                        options.ToolChoice = ToolChoice.Auto;
+                        toolDefs = ExpandToFullToolAvailabilityForPromptExposure(routedUserRequest, fullToolDefs, options);
                         usedContinuationSubset = false;
                         RememberWeightedToolSubset(threadId, toolDefs, originalToolCount);
                     }
@@ -408,8 +421,8 @@ internal sealed partial class ChatServiceSession {
                     compactFollowUpTurn: compactFollowUpTurn,
                     hasPendingActionContext: false,
                     hasToolActivity: hasToolActivity,
-                    startupBootstrapCompleted: startupToolingBootstrapTask?.IsCompleted ?? true,
-                    startupBootstrapCompletedSuccessfully: startupToolingBootstrapTask?.IsCompletedSuccessfully ?? true,
+                    startupBootstrapCompleted: startupToolingBootstrapTask?.IsCompleted ?? false,
+                    startupBootstrapCompletedSuccessfully: startupToolingBootstrapTask?.IsCompletedSuccessfully ?? false,
                     hasCachedToolCatalog: TryGetCachedToolCatalogForListTools(out _),
                     servingPersistedPreview: _servingPersistedToolingBootstrapPreview);
                 if (!proactiveDecision.ShouldAttempt

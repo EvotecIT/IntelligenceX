@@ -85,6 +85,30 @@ internal sealed partial class ChatServiceSession {
         var maxCandidateTools = maxCandidateToolDiagnostics.EffectiveMaxCandidateTools;
         var executionContractApplies = ShouldEnforceExecuteOrExplainContract(routedUserRequest) || liveRefreshFollowUpTurn;
         var proactiveModeEnabled = TryReadProactiveModeFromRequestText(request.Text, out var proactiveMode) && proactiveMode;
+        if (TryApplyDeferredActivatedPackToolScope(
+                request.Text ?? string.Empty,
+                request.Options,
+                toolDefs,
+                hasExplicitToolEnableSelectors: HasExplicitToolEnableSelectors(request.Options),
+                continuationContractDetected: continuationContractDetected,
+                executionContractApplies: executionContractApplies,
+                hasPendingActionContext: hasFreshPendingActionContext,
+                hasToolActivity: hasFreshThreadToolEvidence,
+                out var deferredScopedToolDefs,
+                out var deferredScopedPackIds)) {
+            toolDefs = deferredScopedToolDefs;
+            fullToolDefs = toolDefs.ToArray();
+            runtimeDomainIntentCatalog = ResolveRuntimeDomainIntentCatalog(fullToolDefs);
+            domainIntentFamilyAvailability = runtimeDomainIntentCatalog.Availability;
+            originalToolCount = toolDefs.Count;
+            await TryWriteStatusAsync(
+                    writer,
+                    request.RequestId,
+                    threadId,
+                    status: ChatStatusCodes.Routing,
+                    message: BuildDeferredActivatedPackToolScopeMessage(deferredScopedPackIds))
+                .ConfigureAwait(false);
+        }
         if (liveRefreshFollowUpTurn) {
             await TryWriteStatusAsync(
                     writer,
@@ -268,6 +292,7 @@ internal sealed partial class ChatServiceSession {
                     message: BuildRoutingSelectionMessage(routingSelectedToolCount, routingTotalToolCount, routingStrategy))
                 .ConfigureAwait(false);
 
+            var routingPromptExposure = BuildRoutingPromptExposureSnapshot(toolDefs, request.Text ?? string.Empty);
             var routingMetaPayload = BuildRoutingMetaPayload(
                 strategy: routingStrategy,
                 weightedToolRouting,
@@ -287,7 +312,9 @@ internal sealed partial class ChatServiceSession {
                 weightedAmbiguityBaselineSelection,
                 weightedAmbiguityEffectiveSelection,
                 weightedAmbiguityClusterSize,
-                weightedAmbiguitySecondScoreRatio);
+                weightedAmbiguitySecondScoreRatio,
+                promptExposureReordered: routingPromptExposure.Reordered,
+                promptExposureToolNames: routingPromptExposure.TopToolNames);
             await TryWriteStatusAsync(
                     writer,
                     request.RequestId,
@@ -327,6 +354,7 @@ internal sealed partial class ChatServiceSession {
                     message:
                     $"Tool routing detected explicit domain-scope signals (family={DescribeDomainIntentFamily(signaledFamily)}) and removed {signaledRemovedCount} conflicting candidate tool(s).")
                 .ConfigureAwait(false);
+            var signalPromptExposure = BuildRoutingPromptExposureSnapshot(toolDefs, request.Text ?? string.Empty);
             var signalRoutingMetaPayload = BuildRoutingMetaPayload(
                 strategy: "domain_signal_hint",
                 weightedToolRouting,
@@ -346,7 +374,9 @@ internal sealed partial class ChatServiceSession {
                 weightedAmbiguityBaselineSelection,
                 weightedAmbiguityEffectiveSelection,
                 weightedAmbiguityClusterSize,
-                weightedAmbiguitySecondScoreRatio);
+                weightedAmbiguitySecondScoreRatio,
+                promptExposureReordered: signalPromptExposure.Reordered,
+                promptExposureToolNames: signalPromptExposure.TopToolNames);
             await TryWriteStatusAsync(
                     writer,
                     request.RequestId,
@@ -367,6 +397,7 @@ internal sealed partial class ChatServiceSession {
                     message:
                     $"Tool routing reused previous domain-scope context (family={DescribeDomainIntentFamily(affinityFamily)}) and removed {affinityRemovedCount} conflicting candidate tool(s).")
                 .ConfigureAwait(false);
+            var affinityPromptExposure = BuildRoutingPromptExposureSnapshot(toolDefs, request.Text ?? string.Empty);
             var affinityRoutingMetaPayload = BuildRoutingMetaPayload(
                 strategy: "domain_family_affinity",
                 weightedToolRouting,
@@ -386,7 +417,9 @@ internal sealed partial class ChatServiceSession {
                 weightedAmbiguityBaselineSelection,
                 weightedAmbiguityEffectiveSelection,
                 weightedAmbiguityClusterSize,
-                weightedAmbiguitySecondScoreRatio);
+                weightedAmbiguitySecondScoreRatio,
+                promptExposureReordered: affinityPromptExposure.Reordered,
+                promptExposureToolNames: affinityPromptExposure.TopToolNames);
             await TryWriteStatusAsync(
                     writer,
                     request.RequestId,
@@ -473,6 +506,7 @@ internal sealed partial class ChatServiceSession {
         var resolveModelStopwatch = Stopwatch.StartNew();
         var resolvedModel = await ResolveTurnModelAsync(client, request, turnToken).ConfigureAwait(false);
         resolveModelMs = Math.Max(0L, resolveModelStopwatch.ElapsedMilliseconds);
+        toolDefs = OrderToolDefinitionsForPromptExposure(toolDefs, request.Text ?? string.Empty);
 
         var options = new ChatOptions {
             Model = resolvedModel,
@@ -533,7 +567,7 @@ internal sealed partial class ChatServiceSession {
                 .ConfigureAwait(false);
         }
 
-        var firstTurnInputText = request.Text;
+        var firstTurnInputText = request.Text ?? string.Empty;
         if (continuationFollowUpTurn) {
             var continuationContractEnvelope = BuildContinuationContractEnvelope(routedUserRequest, userRequest);
             if (continuationContractEnvelope.Length > 0) {
@@ -866,6 +900,65 @@ internal sealed partial class ChatServiceSession {
                 });
             }
 
+            if (hasFreshCallsToExecute) {
+                var refreshedActiveToolDefs = SanitizeToolDefinitions(
+                    ApplyToolExposureOverrides(
+                        _registry.GetDefinitions(),
+                        request.Options?.EnabledTools,
+                        request.Options?.DisabledTools,
+                        request.Options?.EnabledPackIds,
+                        request.Options?.DisabledPackIds,
+                        _toolOrchestrationCatalog));
+                var activatedHandoffPackIds = await TryActivateDeferredHandoffTargetPacksAfterRoundAsync(
+                        writer,
+                        request.RequestId,
+                        threadId,
+                        refreshedActiveToolDefs,
+                        callsToExecute,
+                        hasExplicitToolEnableSelectors: HasExplicitToolEnableSelectors(request.Options),
+                        continuationContractDetected: continuationContractDetected,
+                        executionContractApplies: executionContractApplies,
+                        hasPendingActionContext: hasFreshPendingActionContext,
+                        turnToken)
+                    .ConfigureAwait(false);
+                if (activatedHandoffPackIds.Length > 0) {
+                    refreshedActiveToolDefs = SanitizeToolDefinitions(
+                        ApplyToolExposureOverrides(
+                            _registry.GetDefinitions(),
+                            request.Options?.EnabledTools,
+                            request.Options?.DisabledTools,
+                            request.Options?.EnabledPackIds,
+                            request.Options?.DisabledPackIds,
+                            _toolOrchestrationCatalog));
+                    fullToolDefs = refreshedActiveToolDefs.ToArray();
+                }
+
+                if (TryApplyDeferredActivatedPackToolScopeAfterRound(
+                        request.Text ?? string.Empty,
+                        request.Options,
+                        refreshedActiveToolDefs,
+                        callsToExecute,
+                        hasExplicitToolEnableSelectors: HasExplicitToolEnableSelectors(request.Options),
+                        continuationContractDetected: continuationContractDetected,
+                        executionContractApplies: executionContractApplies,
+                        hasPendingActionContext: hasFreshPendingActionContext,
+                        currentVisibleDefinitions: toolDefs,
+                        out var postRoundScopedToolDefs,
+                        out var postRoundScopedPackIds)) {
+                    toolDefs = postRoundScopedToolDefs;
+                    options.Tools = toolDefs;
+                    options.ToolChoice = ToolChoice.Auto;
+                    mutatingToolHints = BuildMutatingToolHintsByName(toolDefs);
+                    await TryWriteStatusAsync(
+                            writer,
+                            request.RequestId,
+                            threadId,
+                            status: ChatStatusCodes.Routing,
+                            message: BuildDeferredActivatedPackRoundScopeMessage(postRoundScopedPackIds))
+                        .ConfigureAwait(false);
+                }
+            }
+
             var replayInputOutputs = MergeToolRoundReplayOutputs(executed, replayRecoveredOutputs);
             var next = BuildToolRoundReplayInputWithBudget(
                 roundCalls,
@@ -873,6 +966,23 @@ internal sealed partial class ChatServiceSession {
                 replayInputOutputs,
                 replayOutputCompactionBudget,
                 out var replayOutputCompactionStats);
+            var replayPromptOrderingRequestText = request.Text ?? string.Empty;
+            if (TryBuildToolRoundReplayPlannerContextText(
+                    threadId,
+                    request.Text ?? string.Empty,
+                    toolDefs,
+                    callsToExecute,
+                    out var replayPlannerContextText)) {
+                next.AddText(replayPlannerContextText);
+                replayPromptOrderingRequestText = replayPromptOrderingRequestText.Length == 0
+                    ? replayPlannerContextText
+                    : replayPromptOrderingRequestText + "\n\n" + replayPlannerContextText;
+            }
+
+            options.Tools = toolDefs.Count == 0
+                ? null
+                : OrderToolDefinitionsForPromptExposure(toolDefs, replayPromptOrderingRequestText);
+            options.ToolChoice = toolDefs.Count == 0 ? null : ToolChoice.Auto;
             if (ShouldEmitReplayOutputCompactionStatus(replayOutputCompactionStats)) {
                 await TryWriteStatusAsync(
                         writer,

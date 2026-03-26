@@ -195,6 +195,8 @@ public sealed partial class ChatServiceRoutingTrimTests {
             null,
             null,
             null,
+            null,
+            false,
             null
         });
         var payload = Assert.IsType<string>(payloadResult);
@@ -226,6 +228,8 @@ public sealed partial class ChatServiceRoutingTrimTests {
             null,
             null,
             null,
+            null,
+            false,
             null
         });
         var payload = Assert.IsType<string>(result);
@@ -261,6 +265,8 @@ public sealed partial class ChatServiceRoutingTrimTests {
             null,
             null,
             null,
+            null,
+            false,
             null
         });
         var payload = Assert.IsType<string>(result);
@@ -293,6 +299,8 @@ public sealed partial class ChatServiceRoutingTrimTests {
             null,
             null,
             null,
+            null,
+            false,
             null
         });
         var payload = Assert.IsType<string>(result);
@@ -326,6 +334,8 @@ public sealed partial class ChatServiceRoutingTrimTests {
             null,
             null,
             null,
+            null,
+            false,
             null
         });
         var payload = Assert.IsType<string>(result);
@@ -360,6 +370,8 @@ public sealed partial class ChatServiceRoutingTrimTests {
             null,
             null,
             null,
+            null,
+            false,
             null
         });
         var payload = Assert.IsType<string>(result);
@@ -392,7 +404,9 @@ public sealed partial class ChatServiceRoutingTrimTests {
             8,
             10,
             10,
-            0.94d
+            0.94d,
+            false,
+            null
         });
         var payload = Assert.IsType<string>(result);
 
@@ -404,6 +418,43 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Equal(10, weightedAmbiguity.GetProperty("effectiveSelection").GetInt32());
         Assert.Equal(10, weightedAmbiguity.GetProperty("clusterSize").GetInt32());
         Assert.Equal(0.94d, weightedAmbiguity.GetProperty("secondScoreRatio").GetDouble());
+    }
+
+    [Fact]
+    public void BuildRoutingMetaPayload_IncludesPromptExposurePreviewWhenProvided() {
+        var result = BuildRoutingMetaPayloadMethod.Invoke(null, new object?[] {
+            "semantic_planner",
+            true,
+            false,
+            false,
+            3,
+            9,
+            2,
+            true,
+            null,
+            3,
+            16384L,
+            true,
+            null,
+            null,
+            false,
+            null,
+            null,
+            null,
+            null,
+            true,
+            new[] { "eventlog_live_query", "eventlog_connectivity_probe", "system_pack_info", "extra_a", "extra_b", "extra_c", "extra_d" }
+        });
+        var payload = Assert.IsType<string>(result);
+
+        using var doc = JsonDocument.Parse(payload);
+        var root = doc.RootElement;
+        var promptExposure = root.GetProperty("promptExposure");
+        Assert.True(promptExposure.GetProperty("reordered").GetBoolean());
+        var topToolNames = promptExposure.GetProperty("topToolNames");
+        Assert.Equal(6, topToolNames.GetArrayLength());
+        Assert.Equal("eventlog_live_query", topToolNames[0].GetString());
+        Assert.Equal("extra_c", topToolNames[5].GetString());
     }
 
     [Fact]

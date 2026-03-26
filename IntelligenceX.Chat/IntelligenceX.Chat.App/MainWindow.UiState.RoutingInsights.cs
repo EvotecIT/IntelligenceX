@@ -27,10 +27,16 @@ using Windows.Graphics;
 namespace IntelligenceX.Chat.App;
 
 public sealed partial class MainWindow : Window {
+    private const int MaxRoutingMetaPromptExposureToolNames = 6;
+    private const int MaxRoutingMetaPromptExposureActivityNames = 2;
+    private const int MaxRoutingMetaPromptExposureTimelineNames = 1;
+
     private void ClearToolRoutingInsights() {
         _toolRoutingConfidence.Clear();
         _toolRoutingReason.Clear();
         _toolRoutingScore.Clear();
+        _latestRoutingPromptExposure = null;
+        _routingPromptExposureHistory.Clear();
 
         // Keep explicit per-tool keys so the next options publish clears stale routing state
         // for every visible tool row even if no fresh routing_tool events arrive this turn.
@@ -71,6 +77,87 @@ public sealed partial class MainWindow : Window {
         }
 
         return true;
+    }
+
+    private bool ApplyRoutingMetaPromptExposure(ChatStatusMessage status) {
+        if (!string.Equals(status.Status, "routing_meta", StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        if (!TryParseRoutingMetaPayload(
+                status.Message,
+                out var strategy,
+                out var selectedToolCount,
+                out var totalToolCount,
+                out var promptExposureReordered,
+                out var promptExposureTopToolNames)) {
+            return false;
+        }
+
+        var nextSnapshot = new RoutingPromptExposureSnapshot(
+            NormalizeRoutingPromptExposureIdentifier(status.RequestId),
+            NormalizeRoutingPromptExposureIdentifier(status.ThreadId),
+            strategy,
+            selectedToolCount,
+            totalToolCount,
+            promptExposureReordered,
+            promptExposureTopToolNames);
+        if (EqualityComparer<RoutingPromptExposureSnapshot?>.Default.Equals(_latestRoutingPromptExposure, nextSnapshot)) {
+            return false;
+        }
+
+        _latestRoutingPromptExposure = nextSnapshot;
+        if (_routingPromptExposureHistory.Count == 0
+            || !EqualityComparer<RoutingPromptExposureSnapshot>.Default.Equals(_routingPromptExposureHistory[^1], nextSnapshot)) {
+            _routingPromptExposureHistory.Add(nextSnapshot);
+            while (_routingPromptExposureHistory.Count > MaxRoutingPromptExposureHistoryEntries) {
+                _routingPromptExposureHistory.RemoveAt(0);
+            }
+        }
+        return true;
+    }
+
+    private object? BuildRoutingPromptExposureState() {
+        var snapshot = _latestRoutingPromptExposure;
+        if (snapshot is null) {
+            return null;
+        }
+
+        return new {
+            requestId = snapshot.RequestId,
+            threadId = snapshot.ThreadId,
+            strategy = snapshot.Strategy,
+            selectedToolCount = snapshot.SelectedToolCount,
+            totalToolCount = snapshot.TotalToolCount,
+            reordered = snapshot.Reordered,
+            topToolNames = snapshot.TopToolNames
+        };
+    }
+
+    private object[] BuildRoutingPromptExposureHistoryState() {
+        if (_routingPromptExposureHistory.Count == 0) {
+            return Array.Empty<object>();
+        }
+
+        var items = new object[_routingPromptExposureHistory.Count];
+        for (var i = 0; i < _routingPromptExposureHistory.Count; i++) {
+            var snapshot = _routingPromptExposureHistory[i];
+            items[i] = new {
+                requestId = snapshot.RequestId,
+                threadId = snapshot.ThreadId,
+                strategy = snapshot.Strategy,
+                selectedToolCount = snapshot.SelectedToolCount,
+                totalToolCount = snapshot.TotalToolCount,
+                reordered = snapshot.Reordered,
+                topToolNames = snapshot.TopToolNames
+            };
+        }
+
+        return items;
+    }
+
+    private static string NormalizeRoutingPromptExposureIdentifier(string? value) {
+        return (value ?? string.Empty).Trim();
     }
 
     private static bool TryParseRoutingInsightPayload(string? payload, out string confidence, out string reason)
@@ -125,9 +212,27 @@ public sealed partial class MainWindow : Window {
     }
 
     private static bool TryParseRoutingMetaPayload(string? payload, out string strategy, out int selectedToolCount, out int totalToolCount) {
+        return TryParseRoutingMetaPayload(
+            payload,
+            out strategy,
+            out selectedToolCount,
+            out totalToolCount,
+            out _,
+            out _);
+    }
+
+    private static bool TryParseRoutingMetaPayload(
+        string? payload,
+        out string strategy,
+        out int selectedToolCount,
+        out int totalToolCount,
+        out bool promptExposureReordered,
+        out string[] promptExposureTopToolNames) {
         strategy = "updated";
         selectedToolCount = 0;
         totalToolCount = 0;
+        promptExposureReordered = false;
+        promptExposureTopToolNames = Array.Empty<string>();
 
         var json = (payload ?? string.Empty).Trim();
         if (json.Length == 0 || json[0] != '{' || json.Length > MaxRoutingInsightPayloadChars) {
@@ -172,10 +277,63 @@ public sealed partial class MainWindow : Window {
                 selectedToolCount = totalToolCount;
             }
 
+            if (root.TryGetProperty("promptExposure", out var promptExposureElement)
+                && promptExposureElement.ValueKind == JsonValueKind.Object) {
+                if (promptExposureElement.TryGetProperty("reordered", out var reorderedElement)
+                    && (reorderedElement.ValueKind == JsonValueKind.True || reorderedElement.ValueKind == JsonValueKind.False)) {
+                    promptExposureReordered = reorderedElement.GetBoolean();
+                }
+
+                if (promptExposureElement.TryGetProperty("topToolNames", out var topToolNamesElement)
+                    && topToolNamesElement.ValueKind == JsonValueKind.Array) {
+                    var topToolNames = new List<string>(Math.Min(MaxRoutingMetaPromptExposureToolNames, topToolNamesElement.GetArrayLength()));
+                    foreach (var entry in topToolNamesElement.EnumerateArray()) {
+                        if (entry.ValueKind != JsonValueKind.String) {
+                            continue;
+                        }
+
+                        var parsedToolName = (entry.GetString() ?? string.Empty).Trim();
+                        if (parsedToolName.Length == 0) {
+                            continue;
+                        }
+
+                        topToolNames.Add(parsedToolName);
+                        if (topToolNames.Count >= MaxRoutingMetaPromptExposureToolNames) {
+                            break;
+                        }
+                    }
+
+                    promptExposureTopToolNames = topToolNames.Count == 0 ? Array.Empty<string>() : topToolNames.ToArray();
+                }
+            }
+
             return hasStrategy && hasSelectedToolCount && hasTotalToolCount;
         } catch (JsonException) {
             return false;
         }
+    }
+
+    private static string BuildRoutingMetaPromptExposureSuffix(
+        bool reordered,
+        IReadOnlyList<string>? topToolNames,
+        int displayLimit) {
+        if (!reordered || topToolNames is not { Count: > 0 } || displayLimit <= 0) {
+            return string.Empty;
+        }
+
+        var names = topToolNames
+            .Select(static name => (name ?? string.Empty).Trim())
+            .Where(static name => name.Length > 0)
+            .Take(displayLimit)
+            .ToArray();
+        if (names.Length == 0) {
+            return string.Empty;
+        }
+
+        var remainingCount = Math.Max(0, topToolNames.Count - names.Length);
+        return remainingCount > 0
+            ? " -> " + string.Join(", ", names) + ", +" + remainingCount.ToString(CultureInfo.InvariantCulture)
+            : " -> " + string.Join(", ", names);
     }
 
     private static bool TryParseRoutingMetaCount(JsonElement element, out int value) {

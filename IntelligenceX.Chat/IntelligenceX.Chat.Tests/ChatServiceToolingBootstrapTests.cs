@@ -3,11 +3,13 @@ using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using System.Text.Json;
+using System.Threading.Tasks;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Abstractions.Serialization;
 using IntelligenceX.Chat.Service;
 using IntelligenceX.Chat.Tooling;
+using IntelligenceX.Json;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.Common;
 using Xunit;
@@ -17,6 +19,33 @@ namespace IntelligenceX.Chat.Tests;
 public sealed class ChatServiceToolingBootstrapTests {
     private static string CreateToolingBootstrapCachePath(string namePrefix) {
         return TempPathTestHelper.CreateTempFilePath("ix-chat-" + namePrefix, ".json");
+    }
+
+    private static (string PreviewCacheKey, string CacheKey) BuildToolingBootstrapKeys(ServiceOptions options) {
+        var runtimePolicyOptionsMethod = typeof(ChatServiceSession).GetMethod(
+            "BuildRuntimePolicyOptions",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        var previewCacheKeyMethod = typeof(ChatServiceSession).GetMethod(
+            "BuildToolingBootstrapPreviewCacheKey",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        var cacheKeyMethod = typeof(ChatServiceSession).GetMethod(
+            "BuildToolingBootstrapCacheKey",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(runtimePolicyOptionsMethod);
+        Assert.NotNull(previewCacheKeyMethod);
+        Assert.NotNull(cacheKeyMethod);
+
+        var runtimePolicyOptions = Assert.IsType<ToolRuntimePolicyOptions>(runtimePolicyOptionsMethod!.Invoke(
+            null,
+            new object[] { options }));
+        var resolvedRuntimePolicyOptions = ToolRuntimePolicyBootstrap.ResolveOptions(runtimePolicyOptions);
+        var previewCacheKey = Assert.IsType<string>(previewCacheKeyMethod!.Invoke(
+            null,
+            new object?[] { options, runtimePolicyOptions, resolvedRuntimePolicyOptions }));
+        var cacheKey = Assert.IsType<string>(cacheKeyMethod!.Invoke(
+            null,
+            new object?[] { options, runtimePolicyOptions, resolvedRuntimePolicyOptions }));
+        return (previewCacheKey, cacheKey);
     }
 
     [Fact]
@@ -85,6 +114,221 @@ public sealed class ChatServiceToolingBootstrapTests {
         Assert.DoesNotContain(
             warnings,
             static warning => warning.Contains("no_tool_packs_loaded", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task ExecuteToolAsyncForTesting_BootstrapsMissingToolOnDemand() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var call = new ToolCall(
+            callId: "call-system-pack-info",
+            name: "system_pack_info",
+            input: "{}",
+            arguments: new JsonObject(),
+            raw: new JsonObject());
+
+        var output = await session.ExecuteToolAsyncForTesting(
+            threadId: string.Empty,
+            userRequest: string.Empty,
+            call: call,
+            toolTimeoutSeconds: 10,
+            cancellationToken: CancellationToken.None);
+
+        Assert.True(output.Ok is true, output.Output);
+        Assert.NotEqual("tool_not_registered", output.ErrorCode);
+
+        var capabilitySnapshot = session.BuildRuntimeCapabilitySnapshotForTesting();
+        Assert.Contains("system", capabilitySnapshot.EnabledPackIds, StringComparer.OrdinalIgnoreCase);
+        Assert.True(capabilitySnapshot.RegisteredTools > 0);
+    }
+
+    [Fact]
+    public async Task ExecuteToolAsyncForTesting_ActivatesKnownPackFromCachedToolDefinitionsWithoutStartingFullBootstrap() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        session.SetCachedToolDefinitionsForTesting(new[] {
+            new ToolDefinitionDto {
+                Name = "system_pack_info",
+                Description = "System pack info.",
+                PackId = "system"
+            }
+        });
+
+        var blockedStartupTask = Task.FromException(new InvalidOperationException("full bootstrap should not run"));
+        session.SetStartupToolingBootstrapTaskForTesting(blockedStartupTask);
+
+        var call = new ToolCall(
+            callId: "call-system-pack-info-targeted",
+            name: "system_pack_info",
+            input: "{}",
+            arguments: new JsonObject(),
+            raw: new JsonObject());
+
+        var output = await session.ExecuteToolAsyncForTesting(
+            threadId: string.Empty,
+            userRequest: string.Empty,
+            call: call,
+            toolTimeoutSeconds: 10,
+            cancellationToken: CancellationToken.None);
+
+        Assert.True(output.Ok is true, output.Output);
+        Assert.Same(blockedStartupTask, session.GetStartupToolingBootstrapTaskForTesting());
+
+        var capabilitySnapshot = session.BuildRuntimeCapabilitySnapshotForTesting();
+        Assert.Contains("system", capabilitySnapshot.EnabledPackIds, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("system", capabilitySnapshot.ToolingSnapshot!.Packs.Select(static pack => pack.Id), StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ExecuteToolAsyncForTesting_OnDemandActivationPreservesFreshPendingActionsContext() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        session.SetCachedToolDefinitionsForTesting(new[] {
+            new ToolDefinitionDto {
+                Name = "system_pack_info",
+                Description = "System pack info.",
+                PackId = "system"
+            }
+        });
+
+        var blockedStartupTask = Task.FromException(new InvalidOperationException("full bootstrap should not run"));
+        session.SetStartupToolingBootstrapTaskForTesting(blockedStartupTask);
+
+        const string threadId = "thread-preserve-pending-actions-activation";
+        session.RememberPendingActionsForTesting(
+            threadId,
+            """
+            [Action]
+            ix:action:v1
+            id: act_preserve_pending
+            title: Run system pack info
+            request: Run system pack info.
+            mutating: false
+            reply: /act act_preserve_pending
+            """);
+        Assert.True(session.HasFreshPendingActionsContextForTesting(threadId));
+
+        var call = new ToolCall(
+            callId: "call-system-pack-info-preserve-pending",
+            name: "system_pack_info",
+            input: "{}",
+            arguments: new JsonObject(),
+            raw: new JsonObject());
+
+        var output = await session.ExecuteToolAsyncForTesting(
+            threadId: threadId,
+            userRequest: "continue",
+            call: call,
+            toolTimeoutSeconds: 10,
+            cancellationToken: CancellationToken.None);
+
+        Assert.True(output.Ok is true, output.Output);
+        Assert.True(session.HasFreshPendingActionsContextForTesting(threadId));
+        Assert.Same(blockedStartupTask, session.GetStartupToolingBootstrapTaskForTesting());
+    }
+
+    [Fact]
+    public async Task ExecuteToolAsyncForTesting_OnDemandActivationPreservesBackgroundWorkSnapshot() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        session.SetCachedToolDefinitionsForTesting(new[] {
+            new ToolDefinitionDto {
+                Name = "system_pack_info",
+                Description = "System pack info.",
+                PackId = "system"
+            }
+        });
+
+        var blockedStartupTask = Task.FromException(new InvalidOperationException("full bootstrap should not run"));
+        session.SetStartupToolingBootstrapTaskForTesting(blockedStartupTask);
+
+        const string threadId = "thread-preserve-background-work-activation";
+        var definitions = new[] {
+            new ToolDefinition(
+                name: "seed_system_probe_followup",
+                description: "Seed a system probe follow-up.",
+                handoff: new ToolHandoffContract {
+                    IsHandoffAware = true,
+                    OutboundRoutes = new[] {
+                        new ToolHandoffRoute {
+                            TargetPackId = "system",
+                            TargetToolName = "system_pack_info",
+                            TargetRole = ToolRoutingTaxonomy.RoleOperational,
+                            FollowUpKind = ToolHandoffFollowUpKinds.Enrichment,
+                            FollowUpPriority = ToolHandoffFollowUpPriorities.High,
+                            Bindings = new[] {
+                                new ToolHandoffBinding {
+                                    SourceField = "target",
+                                    TargetArgument = "target"
+                                }
+                            }
+                        }
+                    }
+                })
+        };
+
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(definitions));
+        session.RememberToolHandoffBackgroundWorkForTesting(
+            threadId,
+            definitions,
+            new[] {
+                new ToolCallDto {
+                    CallId = "call-seed-system-probe-followup",
+                    Name = "seed_system_probe_followup",
+                    ArgumentsJson = """{"target":"srv-preserve.contoso.com"}"""
+                }
+            },
+            new[] {
+                new ToolOutputDto {
+                    CallId = "call-seed-system-probe-followup",
+                    Ok = true,
+                    Output = """{"ok":true}"""
+                }
+            });
+
+        var initialSnapshot = session.ResolveThreadBackgroundWorkSnapshotForTesting(threadId);
+        Assert.Contains(
+            initialSnapshot.Items,
+            static item => string.Equals(item.TargetToolName, "system_pack_info", StringComparison.OrdinalIgnoreCase));
+
+        var call = new ToolCall(
+            callId: "call-system-pack-info-preserve-background",
+            name: "system_pack_info",
+            input: "{}",
+            arguments: new JsonObject(),
+            raw: new JsonObject());
+
+        var output = await session.ExecuteToolAsyncForTesting(
+            threadId: threadId,
+            userRequest: "continue",
+            call: call,
+            toolTimeoutSeconds: 10,
+            cancellationToken: CancellationToken.None);
+
+        Assert.True(output.Ok is true, output.Output);
+        Assert.Contains(
+            session.ResolveThreadBackgroundWorkSnapshotForTesting(threadId).Items,
+            static item => string.Equals(item.TargetToolName, "system_pack_info", StringComparison.OrdinalIgnoreCase));
+        Assert.Same(blockedStartupTask, session.GetStartupToolingBootstrapTaskForTesting());
+    }
+
+    [Fact]
+    public async Task ExecuteToolAsyncForTesting_ReturnsStructuredFailure_WhenOnDemandBootstrapFails() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        session.SetStartupToolingBootstrapTaskForTesting(Task.FromException(new InvalidOperationException("synthetic bootstrap failure")));
+        var call = new ToolCall(
+            callId: "call-system-pack-info-failure",
+            name: "system_pack_info",
+            input: "{}",
+            arguments: new JsonObject(),
+            raw: new JsonObject());
+
+        var output = await session.ExecuteToolAsyncForTesting(
+            threadId: string.Empty,
+            userRequest: string.Empty,
+            call: call,
+            toolTimeoutSeconds: 10,
+            cancellationToken: CancellationToken.None);
+
+        Assert.False(output.Ok ?? false);
+        Assert.Equal("tool_bootstrap_failed", output.ErrorCode);
+        Assert.Contains("synthetic bootstrap failure", output.Error, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -189,6 +433,119 @@ public sealed class ChatServiceToolingBootstrapTests {
         Assert.True(routingCatalog.RemoteCapableTools > 0);
         Assert.True(routingCatalog.CrossPackHandoffTools > 0);
         Assert.NotEmpty(routingCatalog.AutonomyReadinessHighlights);
+    }
+
+    [Fact]
+    public async Task HandleListToolsAsync_UsesDeferredDescriptorPreviewToolDefinitionsForManifestOnlyPlugins() {
+        var handleListToolsMethod = typeof(ChatServiceSession).GetMethod("HandleListToolsAsync", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(handleListToolsMethod);
+
+        var tempRoot = TempPathTestHelper.CreateTempDirectoryPath("ix-chat-list-tools-deferred-preview");
+        var pluginRoot = Path.Combine(tempRoot, "plugins");
+        var pluginFolder = Path.Combine(pluginRoot, "ops-bundle");
+        Directory.CreateDirectory(pluginFolder);
+
+        try {
+            File.WriteAllText(Path.Combine(pluginFolder, "ix-plugin.json"), """
+            {
+              "schemaVersion": 1,
+              "pluginId": "ops-bundle",
+              "displayName": "Ops Bundle",
+              "packIds": ["ops_inventory"],
+              "sourceKind": "closed_source",
+              "entryAssembly": "Ops.Bundle.dll",
+              "entryType": "Ops.Bundle.PluginPack",
+              "tools": [
+                {
+                  "name": "ops_inventory_query",
+                  "description": "Query inventory from deferred manifest metadata.",
+                  "packId": "ops_inventory",
+                  "supportsRemoteExecution": true,
+                  "supportsRemoteHostTargeting": true
+                }
+              ]
+            }
+            """);
+
+            var options = new ServiceOptions {
+                EnableDefaultPluginPaths = false
+            };
+            options.RuntimePluginPaths.Add(pluginRoot);
+            var session = new ChatServiceSession(options, Stream.Null);
+
+            using var memoryStream = new MemoryStream();
+            using var writer = new StreamWriter(memoryStream) { AutoFlush = true };
+            var task = Assert.IsAssignableFrom<Task>(handleListToolsMethod!.Invoke(session, new object?[] {
+                writer,
+                "req_list_tools_deferred_preview",
+                CancellationToken.None
+            }));
+            await task;
+
+            memoryStream.Position = 0;
+            using var reader = new StreamReader(memoryStream);
+            var json = await reader.ReadToEndAsync();
+            var parsed = JsonSerializer.Deserialize<ChatServiceMessage>(json, ChatServiceJsonContext.Default.ChatServiceMessage);
+            var message = Assert.IsType<ToolListMessage>(parsed);
+            var tool = Assert.Single(message.Tools, static tool => string.Equals(tool.Name, "ops_inventory_query", StringComparison.OrdinalIgnoreCase));
+            Assert.Equal("ops_inventory", tool.PackId);
+            Assert.True(tool.SupportsRemoteExecution);
+            Assert.True(tool.SupportsRemoteHostTargeting);
+
+            var capabilitySnapshot = Assert.IsType<SessionCapabilitySnapshotDto>(message.CapabilitySnapshot);
+            Assert.Equal("deferred_descriptor_preview", capabilitySnapshot.ToolingSnapshot?.Source);
+            Assert.Contains(message.Plugins, static plugin => string.Equals(plugin.Id, "ops_bundle", StringComparison.OrdinalIgnoreCase));
+        } finally {
+            if (Directory.Exists(tempRoot)) {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void DeferredPreviewToolDefinitions_MarkToolSeekingChatAsBootstrapSensitive() {
+        var tempRoot = TempPathTestHelper.CreateTempDirectoryPath("ix-chat-deferred-preview-routing");
+        var pluginRoot = Path.Combine(tempRoot, "plugins");
+        var pluginFolder = Path.Combine(pluginRoot, "ops-bundle");
+        Directory.CreateDirectory(pluginFolder);
+
+        try {
+            File.WriteAllText(Path.Combine(pluginFolder, "ix-plugin.json"), """
+            {
+              "schemaVersion": 1,
+              "pluginId": "ops-bundle",
+              "displayName": "Ops Bundle",
+              "packIds": ["ops_inventory"],
+              "sourceKind": "closed_source",
+              "entryAssembly": "Ops.Bundle.dll",
+              "entryType": "Ops.Bundle.PluginPack",
+              "tools": [
+                {
+                  "name": "ops_inventory_query",
+                  "description": "Query remote host inventory and diagnostics.",
+                  "packId": "ops_inventory",
+                  "tags": ["inventory", "diagnostics", "remote"],
+                  "supportsRemoteExecution": true,
+                  "supportsRemoteHostTargeting": true,
+                  "representativeExamples": ["Check remote inventory for srv-01"]
+                }
+              ]
+            }
+            """);
+
+            var options = new ServiceOptions {
+                EnableDefaultPluginPaths = false
+            };
+            options.RuntimePluginPaths.Add(pluginRoot);
+            var session = new ChatServiceSession(options, Stream.Null);
+
+            Assert.True(session.HasDeferredToolCandidateMatchForTesting("Check remote inventory for srv-01"));
+            Assert.False(session.HasDeferredToolCandidateMatchForTesting("Write me a haiku about spring"));
+        } finally {
+            if (Directory.Exists(tempRoot)) {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
     }
 
     [Fact]
@@ -441,6 +798,8 @@ public sealed class ChatServiceToolingBootstrapTests {
             var toolDefinition = Assert.Single(persistedSnapshot.ToolDefinitions);
             Assert.Equal("unit_test_tool", toolDefinition.Name);
             Assert.Equal("unit test tool definition", toolDefinition.Description);
+            Assert.True(reloaded.TryGetPersistedPreviewSnapshot(cacheKey, out var previewSnapshot));
+            Assert.Equal("unit_test_tool", Assert.Single(previewSnapshot.ToolDefinitions).Name);
             var pluginAvailability = Assert.Single(persistedSnapshot.PluginAvailability);
             Assert.Equal("plugin_loader_test", pluginAvailability.Id);
             Assert.Equal(new[] { "inventory-test", "network-recon" }, pluginAvailability.SkillIds);
@@ -509,6 +868,73 @@ public sealed class ChatServiceToolingBootstrapTests {
             using var document = JsonDocument.Parse(File.ReadAllText(cachePath));
             Assert.True(document.RootElement.TryGetProperty("CapabilitySnapshot", out var capabilitySnapshot));
             Assert.False(capabilitySnapshot.GetProperty("ToolingAvailable").GetBoolean());
+        } finally {
+            try {
+                if (File.Exists(cachePath)) {
+                    File.Delete(cachePath);
+                }
+            } catch {
+                // Best-effort test cleanup.
+            }
+        }
+    }
+
+    [Fact]
+    public void ToolingBootstrapCache_LoadsLegacyPersistedSnapshot_AndDerivesPreviewKey() {
+        var cachePath = CreateToolingBootstrapCachePath("tooling-cache-legacy-preview-key");
+        var cacheDirectory = Path.GetDirectoryName(cachePath);
+        if (!string.IsNullOrWhiteSpace(cacheDirectory)) {
+            Directory.CreateDirectory(cacheDirectory);
+        }
+
+        try {
+            const string legacyCacheKey = "ad_dc=dc01.contoso.com;write_mode=Disabled;discovery_fingerprint=legacy-fingerprint;";
+            const string expectedPreviewCacheKey = "ad_dc=dc01.contoso.com;write_mode=Disabled;";
+            var diagnostics = ToolRuntimePolicyBootstrap.BuildDiagnostics(
+                ToolRuntimePolicyBootstrap.CreateContext(new ToolRuntimePolicyOptions()));
+            var routingDiagnostics = ToolRoutingCatalogDiagnosticsBuilder.Build(Array.Empty<ToolDefinition>());
+            var capabilitySnapshot = new SessionCapabilitySnapshotDto {
+                RegisteredTools = 1,
+                EnabledPackCount = 0,
+                PluginCount = 0,
+                EnabledPluginCount = 0,
+                ToolingAvailable = true,
+                AllowedRootCount = 0,
+                EnabledPackIds = Array.Empty<string>(),
+                EnabledPluginIds = Array.Empty<string>(),
+                RoutingFamilies = Array.Empty<string>(),
+                FamilyActions = Array.Empty<SessionRoutingFamilyActionSummaryDto>(),
+                Skills = Array.Empty<string>(),
+                HealthyTools = new[] { "legacy_tool" }
+            };
+            var legacyPersistedSnapshot = new {
+                SchemaVersion = 4,
+                CacheKey = legacyCacheKey,
+                CachedAtUtc = DateTime.UtcNow,
+                ToolDefinitions = new[] {
+                    new ToolDefinitionDto {
+                        Name = "legacy_tool",
+                        Description = "Legacy preview tool"
+                    }
+                },
+                PackSummaries = Array.Empty<ToolPackInfoDto>(),
+                PackAvailability = Array.Empty<ToolPackAvailabilityInfo>(),
+                PluginAvailability = Array.Empty<ToolPluginAvailabilityInfo>(),
+                PluginCatalog = Array.Empty<ToolPluginCatalogInfo>(),
+                StartupWarnings = Array.Empty<string>(),
+                StartupBootstrap = new SessionStartupBootstrapTelemetryDto(),
+                PluginSearchPaths = Array.Empty<string>(),
+                RuntimePolicyDiagnostics = diagnostics,
+                RoutingCatalogDiagnostics = routingDiagnostics,
+                CapabilitySnapshot = capabilitySnapshot
+            };
+
+            File.WriteAllText(cachePath, JsonSerializer.Serialize(legacyPersistedSnapshot));
+
+            var reloaded = new ChatServiceToolingBootstrapCache(cachePath);
+            Assert.True(reloaded.TryGetPersistedPreviewSnapshot(expectedPreviewCacheKey, out var persistedSnapshot));
+            Assert.Equal("legacy_tool", Assert.Single(persistedSnapshot.ToolDefinitions).Name);
+            Assert.False(reloaded.TryGetPersistedSnapshot(expectedPreviewCacheKey, out _));
         } finally {
             try {
                 if (File.Exists(cachePath)) {
@@ -743,6 +1169,224 @@ public sealed class ChatServiceToolingBootstrapTests {
             Assert.Equal(new[] { "eventlog", "system" }, capabilitySnapshot.Autonomy.CrossPackTargetPackIds);
 
             startupToolingBootstrapTcs.SetResult(null);
+        } finally {
+            try {
+                if (File.Exists(cachePath)) {
+                    File.Delete(cachePath);
+                }
+            } catch {
+                // Best-effort test cleanup.
+            }
+        }
+    }
+
+    [Fact]
+    public void Constructor_RestoresPersistedPreview_WhenOnlyPreviewCacheKeyMatches() {
+        var cachePath = CreateToolingBootstrapCachePath("tooling-cache-preview-key-startup-restore");
+        var cacheDirectory = Path.GetDirectoryName(cachePath);
+        if (!string.IsNullOrWhiteSpace(cacheDirectory)) {
+            Directory.CreateDirectory(cacheDirectory);
+        }
+
+        try {
+            var options = new ServiceOptions();
+            var (previewCacheKey, cacheKey) = BuildToolingBootstrapKeys(options);
+            var diagnostics = ToolRuntimePolicyBootstrap.BuildDiagnostics(
+                ToolRuntimePolicyBootstrap.CreateContext(new ToolRuntimePolicyOptions()));
+            var routingDiagnostics = ToolRoutingCatalogDiagnosticsBuilder.Build(Array.Empty<ToolDefinition>());
+            var capabilitySnapshot = new SessionCapabilitySnapshotDto {
+                RegisteredTools = 1,
+                EnabledPackCount = 1,
+                PluginCount = 0,
+                EnabledPluginCount = 0,
+                ToolingAvailable = true,
+                AllowedRootCount = 0,
+                EnabledPackIds = new[] { "preview_pack" },
+                EnabledPluginIds = Array.Empty<string>(),
+                RoutingFamilies = Array.Empty<string>(),
+                FamilyActions = Array.Empty<SessionRoutingFamilyActionSummaryDto>(),
+                Skills = Array.Empty<string>(),
+                HealthyTools = new[] { "preview_tool" }
+            };
+            var persistedSnapshot = new ChatServiceToolingBootstrapPersistedSnapshot {
+                SchemaVersion = 4,
+                CacheKey = previewCacheKey + "discovery_fingerprint=stale-fingerprint;",
+                PreviewCacheKey = previewCacheKey,
+                CachedAtUtc = DateTime.UtcNow,
+                ToolDefinitions = new[] {
+                    new ToolDefinitionDto {
+                        Name = "preview_tool",
+                        Description = "Preview-only tool",
+                        PackId = "preview_pack"
+                    }
+                },
+                PackSummaries = new[] {
+                    new ToolPackInfoDto {
+                        Id = "preview_pack",
+                        Name = "Preview Pack",
+                        Tier = CapabilityTier.ReadOnly,
+                        Enabled = true,
+                        IsDangerous = false,
+                        SourceKind = ToolPackSourceKind.ClosedSource
+                    }
+                },
+                PackAvailability = new[] {
+                    new ToolPackAvailabilityInfo {
+                        Id = "preview_pack",
+                        Name = "Preview Pack",
+                        SourceKind = "closed_source",
+                        Enabled = true
+                    }
+                },
+                PluginAvailability = Array.Empty<ToolPluginAvailabilityInfo>(),
+                PluginCatalog = Array.Empty<ToolPluginCatalogInfo>(),
+                StartupWarnings = Array.Empty<string>(),
+                StartupBootstrap = new SessionStartupBootstrapTelemetryDto(),
+                PluginSearchPaths = Array.Empty<string>(),
+                RuntimePolicyDiagnostics = diagnostics,
+                RoutingCatalogDiagnostics = routingDiagnostics,
+                CapabilitySnapshot = capabilitySnapshot
+            };
+
+            File.WriteAllText(cachePath, JsonSerializer.Serialize(persistedSnapshot));
+
+            var cache = new ChatServiceToolingBootstrapCache(cachePath);
+            Assert.False(cache.TryGetPersistedSnapshot(cacheKey, out _));
+            Assert.True(cache.TryGetPersistedPreviewSnapshot(previewCacheKey, out _));
+
+            var persistedPreviewFlagField = typeof(ChatServiceSession).GetField(
+                "_servingPersistedToolingBootstrapPreview",
+                BindingFlags.NonPublic | BindingFlags.Instance);
+            var cachedToolDefinitionsField = typeof(ChatServiceSession).GetField(
+                "_cachedToolDefinitions",
+                BindingFlags.NonPublic | BindingFlags.Instance);
+            Assert.NotNull(persistedPreviewFlagField);
+            Assert.NotNull(cachedToolDefinitionsField);
+
+            var session = new ChatServiceSession(options, Stream.Null, cache);
+
+            Assert.True(Assert.IsType<bool>(persistedPreviewFlagField!.GetValue(session)));
+            var toolDefinitions = Assert.IsType<ToolDefinitionDto[]>(cachedToolDefinitionsField!.GetValue(session));
+            Assert.Equal("preview_tool", Assert.Single(toolDefinitions).Name);
+            Assert.Equal(new[] { "preview_pack" }, session.BuildRuntimeCapabilitySnapshotForTesting().EnabledPackIds);
+        } finally {
+            try {
+                if (File.Exists(cachePath)) {
+                    File.Delete(cachePath);
+                }
+            } catch {
+                // Best-effort test cleanup.
+            }
+        }
+    }
+
+    [Fact]
+    public void TryGetCachedToolCatalogForListTools_UsesPersistedPreviewSnapshotBeforeStrictCacheKey() {
+        var cachePath = CreateToolingBootstrapCachePath("tooling-cache-list-tools-preview-fallback");
+        var cacheDirectory = Path.GetDirectoryName(cachePath);
+        if (!string.IsNullOrWhiteSpace(cacheDirectory)) {
+            Directory.CreateDirectory(cacheDirectory);
+        }
+
+        try {
+            var tryGetCachedToolCatalogMethod = typeof(ChatServiceSession).GetMethod(
+                "TryGetCachedToolCatalogForListTools",
+                BindingFlags.NonPublic | BindingFlags.Instance,
+                binder: null,
+                types: new[] {
+                    typeof(ToolDefinitionDto[]).MakeByRefType(),
+                    typeof(ToolPackInfoDto[]).MakeByRefType(),
+                    typeof(PluginInfoDto[]).MakeByRefType(),
+                    typeof(SessionRoutingCatalogDiagnosticsDto).MakeByRefType(),
+                    typeof(SessionCapabilitySnapshotDto).MakeByRefType()
+                },
+                modifiers: null);
+            var cachedToolDefinitionsField = typeof(ChatServiceSession).GetField(
+                "_cachedToolDefinitions",
+                BindingFlags.NonPublic | BindingFlags.Instance);
+            Assert.NotNull(tryGetCachedToolCatalogMethod);
+            Assert.NotNull(cachedToolDefinitionsField);
+
+            var options = new ServiceOptions();
+            var (previewCacheKey, cacheKey) = BuildToolingBootstrapKeys(options);
+            var diagnostics = ToolRuntimePolicyBootstrap.BuildDiagnostics(
+                ToolRuntimePolicyBootstrap.CreateContext(new ToolRuntimePolicyOptions()));
+            var routingDiagnostics = ToolRoutingCatalogDiagnosticsBuilder.Build(Array.Empty<ToolDefinition>());
+            var capabilitySnapshot = new SessionCapabilitySnapshotDto {
+                RegisteredTools = 1,
+                EnabledPackCount = 1,
+                PluginCount = 0,
+                EnabledPluginCount = 0,
+                ToolingAvailable = true,
+                AllowedRootCount = 0,
+                EnabledPackIds = new[] { "preview_pack" },
+                EnabledPluginIds = Array.Empty<string>(),
+                RoutingFamilies = Array.Empty<string>(),
+                FamilyActions = Array.Empty<SessionRoutingFamilyActionSummaryDto>(),
+                Skills = Array.Empty<string>(),
+                HealthyTools = new[] { "preview_tool" }
+            };
+            var persistedSnapshot = new ChatServiceToolingBootstrapPersistedSnapshot {
+                SchemaVersion = 4,
+                CacheKey = previewCacheKey + "discovery_fingerprint=stale-fingerprint;",
+                PreviewCacheKey = previewCacheKey,
+                CachedAtUtc = DateTime.UtcNow,
+                ToolDefinitions = new[] {
+                    new ToolDefinitionDto {
+                        Name = "preview_tool",
+                        Description = "Preview-only tool",
+                        PackId = "preview_pack"
+                    }
+                },
+                PackSummaries = new[] {
+                    new ToolPackInfoDto {
+                        Id = "preview_pack",
+                        Name = "Preview Pack",
+                        Tier = CapabilityTier.ReadOnly,
+                        Enabled = true,
+                        IsDangerous = false,
+                        SourceKind = ToolPackSourceKind.ClosedSource
+                    }
+                },
+                PackAvailability = new[] {
+                    new ToolPackAvailabilityInfo {
+                        Id = "preview_pack",
+                        Name = "Preview Pack",
+                        SourceKind = "closed_source",
+                        Enabled = true
+                    }
+                },
+                PluginAvailability = Array.Empty<ToolPluginAvailabilityInfo>(),
+                PluginCatalog = Array.Empty<ToolPluginCatalogInfo>(),
+                StartupWarnings = Array.Empty<string>(),
+                StartupBootstrap = new SessionStartupBootstrapTelemetryDto(),
+                PluginSearchPaths = Array.Empty<string>(),
+                RuntimePolicyDiagnostics = diagnostics,
+                RoutingCatalogDiagnostics = routingDiagnostics,
+                CapabilitySnapshot = capabilitySnapshot
+            };
+
+            File.WriteAllText(cachePath, JsonSerializer.Serialize(persistedSnapshot));
+
+            var session = new ChatServiceSession(options, Stream.Null, new ChatServiceToolingBootstrapCache(cachePath));
+            cachedToolDefinitionsField!.SetValue(session, Array.Empty<ToolDefinitionDto>());
+
+            var invocationArguments = new object?[] { null, null, null, null, null };
+            var result = Assert.IsType<bool>(tryGetCachedToolCatalogMethod!.Invoke(session, invocationArguments));
+            Assert.True(result);
+
+            var tools = Assert.IsType<ToolDefinitionDto[]>(invocationArguments[0]);
+            var packs = Assert.IsType<ToolPackInfoDto[]>(invocationArguments[1]);
+            var plugins = Assert.IsType<PluginInfoDto[]>(invocationArguments[2]);
+            var routingCatalog = Assert.IsType<SessionRoutingCatalogDiagnosticsDto>(invocationArguments[3]);
+            var returnedCapabilitySnapshot = Assert.IsType<SessionCapabilitySnapshotDto>(invocationArguments[4]);
+
+            Assert.Equal("preview_tool", Assert.Single(tools).Name);
+            Assert.Equal("preview_pack", Assert.Single(packs).Id);
+            Assert.Equal("preview_pack", Assert.Single(plugins).Id);
+            Assert.Equal(0, routingCatalog.TotalTools);
+            Assert.Contains("preview_pack", returnedCapabilitySnapshot.EnabledPackIds, StringComparer.OrdinalIgnoreCase);
+            Assert.NotEqual(cacheKey, persistedSnapshot.CacheKey);
         } finally {
             try {
                 if (File.Exists(cachePath)) {
@@ -1393,5 +2037,990 @@ public sealed class ChatServiceToolingBootstrapTests {
         var slowRegistrations = Assert.Single(warnings, static w => w.StartsWith("[startup] slow pack registrations top", StringComparison.OrdinalIgnoreCase));
         Assert.Contains("eventlog=1200ms", slowRegistrations, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("tools=10", slowRegistrations, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ResolveDeferredActivationPackIdsForChatRequest_PrefersStrongUnambiguousDescriptorPackMatch() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        session.SetCachedToolDefinitionsForTesting(new[] {
+            new ToolDefinitionDto {
+                Name = "ops_inventory_collect",
+                Description = "Collect remote host inventory.",
+                PackId = "ops_inventory",
+                Category = "system",
+                ExecutionScope = "remote_only",
+                SupportsRemoteExecution = true,
+                SupportsRemoteHostTargeting = true,
+                RepresentativeExamples = new[] { "collect inventory from remote host" }
+            },
+            new ToolDefinitionDto {
+                Name = "eventlog_live_query",
+                Description = "Query remote event logs.",
+                PackId = "eventlog",
+                Category = "event-log",
+                ExecutionScope = "local_or_remote",
+                SupportsRemoteExecution = true,
+                SupportsRemoteHostTargeting = true,
+                RepresentativeExamples = new[] { "query event logs from remote host" }
+            }
+        });
+
+        var packIds = session.ResolveDeferredActivationPackIdsForChatRequestForTesting("run ops_inventory_collect against srv1");
+
+        Assert.Equal(new[] { "ops_inventory" }, packIds);
+    }
+
+    [Fact]
+    public async Task TryPrepareDeferredChatToolingForRequestAsync_ActivatesMatchingPackWithoutStartupBootstrap() {
+        var tempRoot = TempPathTestHelper.CreateTempDirectoryPath("ix-chat-deferred-chat-activation");
+        var pluginRoot = Path.Combine(tempRoot, "plugins");
+        var pluginFolder = Path.Combine(pluginRoot, "ops-bundle");
+        Directory.CreateDirectory(pluginFolder);
+
+        try {
+            var options = ChatServiceTestSessionFactory.CreateIsolatedOptions();
+            options.EnableBuiltInPackLoading = false;
+            options.EnableDefaultPluginPaths = false;
+            options.RuntimePluginPaths.Add(pluginRoot);
+
+            var testAssembly = Assembly.GetExecutingAssembly();
+            var sourceAssemblyPath = testAssembly.Location;
+            var entryAssemblyName = Path.GetFileName(sourceAssemblyPath);
+            File.Copy(sourceAssemblyPath, Path.Combine(pluginFolder, entryAssemblyName), overwrite: true);
+            var entryType = typeof(PluginFolderLoaderTests.PluginFolderLoaderSyntheticCatalogPack).FullName;
+            Assert.False(string.IsNullOrWhiteSpace(entryType));
+
+            File.WriteAllText(Path.Combine(pluginFolder, "ix-plugin.json"), $$"""
+            {
+              "schemaVersion": 1,
+              "pluginId": "ops-bundle",
+              "displayName": "Ops Bundle",
+              "version": "1.2.3",
+              "packIds": ["plugin_loader_synthetic_catalog"],
+              "defaultEnabled": true,
+              "sourceKind": "closed_source",
+              "entryAssembly": "{{entryAssemblyName}}",
+              "entryType": "{{entryType}}",
+              "tools": [
+                {
+                  "name": "plugin_loader_synthetic_probe",
+                  "description": "Probe the synthetic plugin runtime.",
+                  "category": "inventory",
+                  "supportsLocalExecution": true,
+                  "supportsRemoteExecution": false,
+                  "representativeExamples": ["show synthetic plugin probe status"]
+                }
+              ]
+            }
+            """);
+
+            var session = new ChatServiceSession(options, Stream.Null);
+
+            var prepared = await session.TryPrepareDeferredChatToolingForRequestAsyncForTesting(new ChatRequest {
+                RequestId = "req_chat",
+                Text = "please run plugin_loader_synthetic_probe"
+            });
+
+            Assert.True(prepared);
+            Assert.Null(session.GetStartupToolingBootstrapTaskForTesting());
+            Assert.Contains(
+                session.GetRegisteredToolNamesForTesting(),
+                static toolName => string.Equals(toolName, "plugin_loader_synthetic_probe", StringComparison.OrdinalIgnoreCase));
+        } finally {
+            if (Directory.Exists(tempRoot)) {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task TryPrepareDeferredChatToolingForRequestAsync_ActivatesMatchingPackForStructuredContinuationWithoutStartupBootstrap() {
+        var tempRoot = TempPathTestHelper.CreateTempDirectoryPath("ix-chat-deferred-chat-continuation-activation");
+        var pluginRoot = Path.Combine(tempRoot, "plugins");
+        var pluginFolder = Path.Combine(pluginRoot, "ops-bundle");
+        Directory.CreateDirectory(pluginFolder);
+
+        try {
+            var options = ChatServiceTestSessionFactory.CreateIsolatedOptions();
+            options.EnableBuiltInPackLoading = false;
+            options.EnableDefaultPluginPaths = false;
+            options.RuntimePluginPaths.Add(pluginRoot);
+
+            var testAssembly = Assembly.GetExecutingAssembly();
+            var sourceAssemblyPath = testAssembly.Location;
+            var entryAssemblyName = Path.GetFileName(sourceAssemblyPath);
+            File.Copy(sourceAssemblyPath, Path.Combine(pluginFolder, entryAssemblyName), overwrite: true);
+            var entryType = typeof(PluginFolderLoaderTests.PluginFolderLoaderSyntheticCatalogPack).FullName;
+            Assert.False(string.IsNullOrWhiteSpace(entryType));
+
+            File.WriteAllText(Path.Combine(pluginFolder, "ix-plugin.json"), $$"""
+            {
+              "schemaVersion": 1,
+              "pluginId": "ops-bundle",
+              "displayName": "Ops Bundle",
+              "version": "1.2.3",
+              "packIds": ["plugin_loader_synthetic_catalog"],
+              "defaultEnabled": true,
+              "sourceKind": "closed_source",
+              "entryAssembly": "{{entryAssemblyName}}",
+              "entryType": "{{entryType}}",
+              "tools": [
+                {
+                  "name": "plugin_loader_synthetic_probe",
+                  "description": "Probe the synthetic plugin runtime.",
+                  "category": "inventory",
+                  "supportsLocalExecution": true,
+                  "supportsRemoteExecution": false,
+                  "representativeExamples": ["show synthetic plugin probe status"]
+                }
+              ]
+            }
+            """);
+
+            var session = new ChatServiceSession(options, Stream.Null);
+
+            var prepared = await session.TryPrepareDeferredChatToolingForRequestAsyncForTesting(new ChatRequest {
+                RequestId = "req_chat_continuation",
+                ThreadId = "thread_synthetic",
+                Text = """
+                       ix:continuation:v1
+                       intent_anchor: investigate synthetic plugin runtime
+                       follow_up: please run plugin_loader_synthetic_probe
+                       """
+            });
+
+            Assert.True(prepared);
+            Assert.Null(session.GetStartupToolingBootstrapTaskForTesting());
+            Assert.Contains(
+                session.GetRegisteredToolNamesForTesting(),
+                static toolName => string.Equals(toolName, "plugin_loader_synthetic_probe", StringComparison.OrdinalIgnoreCase));
+        } finally {
+            if (Directory.Exists(tempRoot)) {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task TryPrepareDeferredChatToolingForRequestAsync_PrewarmsDeferredHandoffTargetPackFromDescriptorMatchedSourceWithoutStartupBootstrap() {
+        var tempRoot = TempPathTestHelper.CreateTempDirectoryPath("ix-chat-deferred-handoff-prewarm");
+        var pluginRoot = Path.Combine(tempRoot, "plugins");
+        var sourcePluginFolder = Path.Combine(pluginRoot, "source-bundle");
+        var targetPluginFolder = Path.Combine(pluginRoot, "target-bundle");
+        Directory.CreateDirectory(sourcePluginFolder);
+        Directory.CreateDirectory(targetPluginFolder);
+
+        try {
+            var options = ChatServiceTestSessionFactory.CreateIsolatedOptions();
+            options.EnableBuiltInPackLoading = false;
+            options.EnableDefaultPluginPaths = false;
+            options.RuntimePluginPaths.Add(pluginRoot);
+
+            var testAssembly = Assembly.GetExecutingAssembly();
+            var sourceAssemblyPath = testAssembly.Location;
+            var entryAssemblyName = Path.GetFileName(sourceAssemblyPath);
+            File.Copy(sourceAssemblyPath, Path.Combine(sourcePluginFolder, entryAssemblyName), overwrite: true);
+            File.Copy(sourceAssemblyPath, Path.Combine(targetPluginFolder, entryAssemblyName), overwrite: true);
+
+            var sourceEntryType = typeof(PluginFolderLoaderTests.PluginFolderLoaderSyntheticHandoffSourcePack).FullName;
+            var targetEntryType = typeof(PluginFolderLoaderTests.PluginFolderLoaderSyntheticCatalogPack).FullName;
+            Assert.False(string.IsNullOrWhiteSpace(sourceEntryType));
+            Assert.False(string.IsNullOrWhiteSpace(targetEntryType));
+
+            File.WriteAllText(Path.Combine(sourcePluginFolder, "ix-plugin.json"), $$"""
+            {
+              "schemaVersion": 1,
+              "pluginId": "source-bundle",
+              "displayName": "Source Bundle",
+              "version": "1.2.3",
+              "packIds": ["plugin_loader_synthetic_handoff_source"],
+              "defaultEnabled": true,
+              "sourceKind": "closed_source",
+              "entryAssembly": "{{entryAssemblyName}}",
+              "entryType": "{{sourceEntryType}}",
+              "tools": [
+                {
+                  "name": "plugin_loader_synthetic_handoff_entry",
+                  "description": "Synthetic source tool that hands off to a deferred plugin target.",
+                  "category": "inventory",
+                  "supportsLocalExecution": true,
+                  "supportsRemoteExecution": false,
+                  "representativeExamples": ["inspect synthetic handoff source runtime"],
+                  "handoffTargetPackIds": ["plugin_loader_synthetic_catalog"],
+                  "handoffTargetToolNames": ["plugin_loader_synthetic_probe"]
+                }
+              ]
+            }
+            """);
+
+            File.WriteAllText(Path.Combine(targetPluginFolder, "ix-plugin.json"), $$"""
+            {
+              "schemaVersion": 1,
+              "pluginId": "target-bundle",
+              "displayName": "Target Bundle",
+              "version": "1.2.3",
+              "packIds": ["plugin_loader_synthetic_catalog"],
+              "defaultEnabled": true,
+              "sourceKind": "closed_source",
+              "entryAssembly": "{{entryAssemblyName}}",
+              "entryType": "{{targetEntryType}}",
+              "tools": [
+                {
+                  "name": "plugin_loader_synthetic_probe",
+                  "description": "Probe the synthetic plugin runtime.",
+                  "category": "inventory",
+                  "supportsLocalExecution": true,
+                  "supportsRemoteExecution": false
+                }
+              ]
+            }
+            """);
+
+            var session = new ChatServiceSession(options, Stream.Null);
+
+            var activationPackIds = session.ResolveDeferredActivationPackIdsForChatRequestForTesting("please run plugin_loader_synthetic_handoff_entry");
+            Assert.Equal(new[] { "plugin_loader_synthetic_handoff_source" }, activationPackIds);
+
+            var prepared = await session.TryPrepareDeferredChatToolingForRequestAsyncForTesting(new ChatRequest {
+                RequestId = "req_chat_handoff_prewarm",
+                Text = "please run plugin_loader_synthetic_handoff_entry"
+            });
+
+            Assert.True(prepared);
+            Assert.Null(session.GetStartupToolingBootstrapTaskForTesting());
+            Assert.Contains(
+                session.GetRegisteredToolNamesForTesting(),
+                static toolName => string.Equals(toolName, "plugin_loader_synthetic_handoff_entry", StringComparison.OrdinalIgnoreCase));
+            Assert.Contains(
+                session.GetRegisteredToolNamesForTesting(),
+                static toolName => string.Equals(toolName, "plugin_loader_synthetic_probe", StringComparison.OrdinalIgnoreCase));
+        } finally {
+            if (Directory.Exists(tempRoot)) {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void TryBuildRecoveryHelperInvocationForTesting_ActivatesDeferredHelperPackWithoutStartupBootstrap() {
+        var tempRoot = TempPathTestHelper.CreateTempDirectoryPath("ix-chat-recovery-helper-activation");
+        var pluginRoot = Path.Combine(tempRoot, "plugins");
+        var pluginFolder = Path.Combine(pluginRoot, "ops-bundle");
+        Directory.CreateDirectory(pluginFolder);
+
+        try {
+            var options = ChatServiceTestSessionFactory.CreateIsolatedOptions();
+            options.EnableBuiltInPackLoading = false;
+            options.EnableDefaultPluginPaths = false;
+            options.RuntimePluginPaths.Add(pluginRoot);
+
+            var testAssembly = Assembly.GetExecutingAssembly();
+            var sourceAssemblyPath = testAssembly.Location;
+            var entryAssemblyName = Path.GetFileName(sourceAssemblyPath);
+            File.Copy(sourceAssemblyPath, Path.Combine(pluginFolder, entryAssemblyName), overwrite: true);
+            var entryType = typeof(PluginFolderLoaderTests.PluginFolderLoaderSyntheticCatalogPack).FullName;
+            Assert.False(string.IsNullOrWhiteSpace(entryType));
+
+            File.WriteAllText(Path.Combine(pluginFolder, "ix-plugin.json"), $$"""
+            {
+              "schemaVersion": 1,
+              "pluginId": "ops-bundle",
+              "displayName": "Ops Bundle",
+              "version": "1.2.3",
+              "packIds": ["plugin_loader_synthetic_catalog"],
+              "defaultEnabled": true,
+              "sourceKind": "closed_source",
+              "entryAssembly": "{{entryAssemblyName}}",
+              "entryType": "{{entryType}}",
+              "tools": [
+                {
+                  "name": "plugin_loader_synthetic_probe",
+                  "description": "Probe the synthetic plugin runtime.",
+                  "category": "inventory",
+                  "supportsLocalExecution": true,
+                  "supportsRemoteExecution": false
+                }
+              ]
+            }
+            """);
+
+            var session = new ChatServiceSession(options, Stream.Null);
+            session.SetCachedToolDefinitionsForTesting(new[] {
+                new ToolDefinitionDto {
+                    Name = "system_info",
+                    Description = "Inspect system details on a target host.",
+                    PackId = "system",
+                    RepresentativeExamples = new[] { "run system_info" }
+                },
+                new ToolDefinitionDto {
+                    Name = "plugin_loader_synthetic_probe",
+                    Description = "Probe the synthetic plugin runtime.",
+                    PackId = "plugin_loader_synthetic_catalog"
+                }
+            });
+
+            var failedCall = new ToolCall(
+                "failed_call",
+                "synthetic_failure",
+                """{"target":"srv1"}""",
+                new JsonObject(StringComparer.Ordinal).Add("target", "srv1"),
+                new JsonObject(StringComparer.Ordinal));
+
+            var built = session.TryBuildRecoveryHelperInvocationForTesting(
+                failedCall,
+                "plugin_loader_synthetic_probe",
+                out var helperCall);
+
+            Assert.True(built);
+            Assert.Equal("plugin_loader_synthetic_probe", helperCall.Name);
+            Assert.Null(session.GetStartupToolingBootstrapTaskForTesting());
+            Assert.Contains(
+                session.GetRegisteredToolNamesForTesting(),
+                static toolName => string.Equals(toolName, "plugin_loader_synthetic_probe", StringComparison.OrdinalIgnoreCase));
+        } finally {
+            if (Directory.Exists(tempRoot)) {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void BuildHostPackPreflightCalls_ActivatesDeferredHelperPackForSameRoundPreflight() {
+        var buildHostPackPreflightCallsMethod = typeof(ChatServiceSession).GetMethod(
+            "BuildHostPackPreflightCalls",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(buildHostPackPreflightCallsMethod);
+
+        var tempRoot = TempPathTestHelper.CreateTempDirectoryPath("ix-chat-preflight-helper-activation");
+        var pluginRoot = Path.Combine(tempRoot, "plugins");
+        var pluginFolder = Path.Combine(pluginRoot, "ops-bundle");
+        Directory.CreateDirectory(pluginFolder);
+
+        try {
+            var options = ChatServiceTestSessionFactory.CreateIsolatedOptions();
+            options.EnableBuiltInPackLoading = false;
+            options.EnableDefaultPluginPaths = false;
+            options.RuntimePluginPaths.Add(pluginRoot);
+
+            var testAssembly = Assembly.GetExecutingAssembly();
+            var sourceAssemblyPath = testAssembly.Location;
+            var entryAssemblyName = Path.GetFileName(sourceAssemblyPath);
+            File.Copy(sourceAssemblyPath, Path.Combine(pluginFolder, entryAssemblyName), overwrite: true);
+            var entryType = typeof(PluginFolderLoaderTests.PluginFolderLoaderSyntheticPreflightPack).FullName;
+            Assert.False(string.IsNullOrWhiteSpace(entryType));
+
+            File.WriteAllText(Path.Combine(pluginFolder, "ix-plugin.json"), $$"""
+            {
+              "schemaVersion": 1,
+              "pluginId": "ops-bundle",
+              "displayName": "Ops Bundle",
+              "version": "1.2.3",
+              "packIds": ["plugin_loader_synthetic_preflight"],
+              "defaultEnabled": true,
+              "sourceKind": "closed_source",
+              "entryAssembly": "{{entryAssemblyName}}",
+              "entryType": "{{entryType}}",
+              "tools": [
+                {
+                  "name": "plugin_loader_synthetic_helper",
+                  "description": "Synthetic helper tool.",
+                  "category": "diagnostic",
+                  "supportsLocalExecution": true,
+                  "supportsRemoteExecution": false
+                }
+              ]
+            }
+            """);
+
+            var session = new ChatServiceSession(options, Stream.Null);
+            session.SetCachedToolDefinitionsForTesting(new[] {
+                new ToolDefinitionDto {
+                    Name = "plugin_loader_synthetic_helper",
+                    Description = "Synthetic helper tool.",
+                    PackId = "plugin_loader_synthetic_preflight"
+                }
+            });
+
+            var operationalDefinition = new ToolDefinition(
+                "plugin_loader_synthetic_operational",
+                "Synthetic operational tool.",
+                ToolSchema.Object(("target", ToolSchema.String("Target host."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "plugin_loader_synthetic_preflight",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                },
+                recovery: new ToolRecoveryContract {
+                    IsRecoveryAware = true,
+                    RecoveryToolNames = new[] { "plugin_loader_synthetic_helper" }
+                });
+
+            var extractedCalls = new List<ToolCall> {
+                new(
+                    "operational_call",
+                    "plugin_loader_synthetic_operational",
+                    "{}",
+                    new JsonObject(StringComparer.Ordinal),
+                    new JsonObject(StringComparer.Ordinal))
+            };
+
+            var result = buildHostPackPreflightCallsMethod!.Invoke(
+                session,
+                new object?[] { "thread_preflight", new[] { operationalDefinition }, extractedCalls });
+            var preflightCalls = Assert.IsAssignableFrom<IReadOnlyList<ToolCall>>(result);
+
+            Assert.Equal(2, preflightCalls.Count);
+            Assert.Equal("plugin_loader_synthetic_pack_probe", preflightCalls[0].Name);
+            Assert.Equal("plugin_loader_synthetic_helper", preflightCalls[1].Name);
+            Assert.Contains(
+                session.GetRegisteredToolNamesForTesting(),
+                static toolName => string.Equals(toolName, "plugin_loader_synthetic_helper", StringComparison.OrdinalIgnoreCase));
+        } finally {
+            if (Directory.Exists(tempRoot)) {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task RunBackgroundSchedulerDaemonAsync_CanceledBeforePolling_DoesNotStartBootstrap() {
+        var options = ChatServiceTestSessionFactory.CreateIsolatedOptions();
+        options.EnableBackgroundSchedulerDaemon = true;
+        options.EnableBuiltInPackLoading = false;
+        options.EnableDefaultPluginPaths = false;
+        var session = new ChatServiceSession(options, Stream.Null);
+
+        using var cancellationTokenSource = new System.Threading.CancellationTokenSource();
+        await cancellationTokenSource.CancelAsync();
+
+        await session.RunBackgroundSchedulerDaemonAsync(cancellationTokenSource.Token);
+
+        Assert.Null(session.GetStartupToolingBootstrapTaskForTesting());
+    }
+
+    [Fact]
+    public void TryBuildScheduledBackgroundWorkToolCallForTesting_ClaimsDeferredPluginTargetWithoutStartupBootstrap() {
+        var tempRoot = TempPathTestHelper.CreateTempDirectoryPath("ix-chat-background-claim-activation");
+        var pluginRoot = Path.Combine(tempRoot, "plugins");
+        var pluginFolder = Path.Combine(pluginRoot, "ops-bundle");
+        Directory.CreateDirectory(pluginFolder);
+
+        try {
+            var options = ChatServiceTestSessionFactory.CreateIsolatedOptions();
+            options.EnableBuiltInPackLoading = false;
+            options.EnableDefaultPluginPaths = false;
+            options.RuntimePluginPaths.Add(pluginRoot);
+
+            var testAssembly = Assembly.GetExecutingAssembly();
+            var sourceAssemblyPath = testAssembly.Location;
+            var entryAssemblyName = Path.GetFileName(sourceAssemblyPath);
+            File.Copy(sourceAssemblyPath, Path.Combine(pluginFolder, entryAssemblyName), overwrite: true);
+            var entryType = typeof(PluginFolderLoaderTests.PluginFolderLoaderSyntheticCatalogPack).FullName;
+            Assert.False(string.IsNullOrWhiteSpace(entryType));
+
+            File.WriteAllText(Path.Combine(pluginFolder, "ix-plugin.json"), $$"""
+            {
+              "schemaVersion": 1,
+              "pluginId": "ops-bundle",
+              "displayName": "Ops Bundle",
+              "version": "1.2.3",
+              "packIds": ["plugin_loader_synthetic_catalog"],
+              "defaultEnabled": true,
+              "sourceKind": "closed_source",
+              "entryAssembly": "{{entryAssemblyName}}",
+              "entryType": "{{entryType}}",
+              "tools": [
+                {
+                  "name": "plugin_loader_synthetic_probe",
+                  "description": "Probe the synthetic plugin runtime.",
+                  "category": "inventory",
+                  "supportsLocalExecution": true,
+                  "supportsRemoteExecution": false
+                }
+              ]
+            }
+            """);
+
+            var session = new ChatServiceSession(options, Stream.Null);
+            session.SetCachedToolDefinitionsForTesting(new[] {
+                new ToolDefinitionDto {
+                    Name = "plugin_loader_synthetic_probe",
+                    Description = "Probe the synthetic plugin runtime.",
+                    PackId = "plugin_loader_synthetic_catalog"
+                }
+            });
+
+            const string threadId = "thread-background-claim-deferred-plugin";
+            var definitions = new[] {
+                new ToolDefinition(
+                    name: "seed_plugin_probe_followup",
+                    description: "Seed a deferred plugin follow-up.",
+                    handoff: new ToolHandoffContract {
+                        IsHandoffAware = true,
+                        OutboundRoutes = new[] {
+                            new ToolHandoffRoute {
+                                TargetPackId = "plugin_loader_synthetic_catalog",
+                                TargetToolName = "plugin_loader_synthetic_probe",
+                                TargetRole = ToolRoutingTaxonomy.RoleOperational,
+                                FollowUpKind = ToolHandoffFollowUpKinds.Enrichment,
+                                FollowUpPriority = ToolHandoffFollowUpPriorities.High,
+                                Bindings = new[] {
+                                    new ToolHandoffBinding {
+                                        SourceField = "target",
+                                        TargetArgument = "target"
+                                    }
+                                }
+                            }
+                        }
+                    })
+            };
+
+            session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(definitions));
+            session.RememberToolHandoffBackgroundWorkForTesting(
+                threadId,
+                definitions,
+                new[] {
+                    new ToolCallDto {
+                        CallId = "call-background-claim-deferred-plugin",
+                        Name = "seed_plugin_probe_followup",
+                        ArgumentsJson = """{"target":"srv-claim.contoso.com"}"""
+                    }
+                },
+                new[] {
+                    new ToolOutputDto {
+                        CallId = "call-background-claim-deferred-plugin",
+                        Ok = true,
+                        Output = """{"ok":true}"""
+                    }
+                });
+
+            var claimed = session.TryBuildScheduledBackgroundWorkToolCallForTesting(
+                Array.Empty<ToolDefinition>(),
+                new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase),
+                out var scheduledThreadId,
+                out _,
+                out var toolName,
+                out var argumentsJson,
+                out var reason);
+
+            Assert.True(claimed, reason);
+            Assert.Equal("background_scheduler_claimed_ready_work", reason);
+            Assert.Equal(threadId, scheduledThreadId);
+            Assert.Equal("plugin_loader_synthetic_probe", toolName);
+            Assert.Contains("\"target\":\"srv-claim.contoso.com\"", argumentsJson, StringComparison.Ordinal);
+            Assert.Null(session.GetStartupToolingBootstrapTaskForTesting());
+            Assert.DoesNotContain("plugin_loader_synthetic_probe", session.GetRegisteredToolNamesForTesting(), StringComparer.OrdinalIgnoreCase);
+        } finally {
+            if (Directory.Exists(tempRoot)) {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task RunBackgroundSchedulerIterationAsyncForTesting_ExecutesClaimedDeferredPackWithoutStartingFullBootstrap() {
+        var tempRoot = TempPathTestHelper.CreateTempDirectoryPath("ix-chat-background-execute-activation");
+        var pluginRoot = Path.Combine(tempRoot, "plugins");
+        var pluginFolder = Path.Combine(pluginRoot, "ops-bundle");
+        Directory.CreateDirectory(pluginFolder);
+
+        try {
+            var options = ChatServiceTestSessionFactory.CreateIsolatedOptions();
+            options.EnableBuiltInPackLoading = false;
+            options.EnableDefaultPluginPaths = false;
+            options.RuntimePluginPaths.Add(pluginRoot);
+
+            var testAssembly = Assembly.GetExecutingAssembly();
+            var sourceAssemblyPath = testAssembly.Location;
+            var entryAssemblyName = Path.GetFileName(sourceAssemblyPath);
+            File.Copy(sourceAssemblyPath, Path.Combine(pluginFolder, entryAssemblyName), overwrite: true);
+            var entryType = typeof(PluginFolderLoaderTests.PluginFolderLoaderSyntheticCatalogPack).FullName;
+            Assert.False(string.IsNullOrWhiteSpace(entryType));
+
+            File.WriteAllText(Path.Combine(pluginFolder, "ix-plugin.json"), $$"""
+            {
+              "schemaVersion": 1,
+              "pluginId": "ops-bundle",
+              "displayName": "Ops Bundle",
+              "version": "1.2.3",
+              "packIds": ["plugin_loader_synthetic_catalog"],
+              "defaultEnabled": true,
+              "sourceKind": "closed_source",
+              "entryAssembly": "{{entryAssemblyName}}",
+              "entryType": "{{entryType}}",
+              "tools": [
+                {
+                  "name": "plugin_loader_synthetic_probe",
+                  "description": "Probe the synthetic plugin runtime.",
+                  "category": "inventory",
+                  "supportsLocalExecution": true,
+                  "supportsRemoteExecution": false
+                }
+              ]
+            }
+            """);
+
+            var session = new ChatServiceSession(options, Stream.Null);
+            session.SetCachedToolDefinitionsForTesting(new[] {
+                new ToolDefinitionDto {
+                    Name = "plugin_loader_synthetic_probe",
+                    Description = "Probe the synthetic plugin runtime.",
+                    PackId = "plugin_loader_synthetic_catalog"
+                }
+            });
+
+            const string threadId = "thread-background-execute-deferred-plugin";
+            var definitions = new[] {
+                new ToolDefinition(
+                    name: "seed_plugin_probe_followup",
+                    description: "Seed a deferred plugin follow-up.",
+                    handoff: new ToolHandoffContract {
+                        IsHandoffAware = true,
+                        OutboundRoutes = new[] {
+                            new ToolHandoffRoute {
+                                TargetPackId = "plugin_loader_synthetic_catalog",
+                                TargetToolName = "plugin_loader_synthetic_probe",
+                                TargetRole = ToolRoutingTaxonomy.RoleOperational,
+                                FollowUpKind = ToolHandoffFollowUpKinds.Enrichment,
+                                FollowUpPriority = ToolHandoffFollowUpPriorities.High,
+                                Bindings = new[] {
+                                    new ToolHandoffBinding {
+                                        SourceField = "target",
+                                        TargetArgument = "target"
+                                    }
+                                }
+                            }
+                        }
+                    })
+            };
+
+            session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(definitions));
+            session.RememberToolHandoffBackgroundWorkForTesting(
+                threadId,
+                definitions,
+                new[] {
+                    new ToolCallDto {
+                        CallId = "call-background-execute-deferred-plugin",
+                        Name = "seed_plugin_probe_followup",
+                        ArgumentsJson = """{"target":"srv-execute.contoso.com"}"""
+                    }
+                },
+                new[] {
+                    new ToolOutputDto {
+                        CallId = "call-background-execute-deferred-plugin",
+                        Ok = true,
+                        Output = """{"ok":true}"""
+                    }
+                });
+
+            string? observedThreadId = null;
+            string? observedToolName = null;
+            string? observedArgumentsJson = null;
+            string[] observedRegisteredToolNames = Array.Empty<string>();
+            var result = await session.RunBackgroundSchedulerIterationAsyncForTesting(
+                Array.Empty<ToolDefinition>(),
+                new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase),
+                async (scheduledThreadId, toolCall, cancellationToken) => {
+                    observedThreadId = scheduledThreadId;
+                    observedToolName = toolCall.Name;
+                    observedArgumentsJson = JsonLite.Serialize(toolCall.Arguments);
+                    var output = await session.ExecuteToolAsyncForTesting(
+                        scheduledThreadId,
+                        "ix:background-scheduler-daemon",
+                        toolCall,
+                        5,
+                        cancellationToken);
+                    observedRegisteredToolNames = session.GetRegisteredToolNamesForTesting();
+
+                    return new[] { output };
+                });
+
+            Assert.Equal(ChatServiceSession.BackgroundSchedulerIterationOutcomeKind.Completed, result.Outcome);
+            Assert.Equal(threadId, result.ThreadId);
+            Assert.Equal("plugin_loader_synthetic_probe", result.ToolName);
+            Assert.Equal(threadId, observedThreadId);
+            Assert.Equal("plugin_loader_synthetic_probe", observedToolName);
+            Assert.Contains("\"target\":\"srv-execute.contoso.com\"", observedArgumentsJson, StringComparison.Ordinal);
+            Assert.Contains("plugin_loader_synthetic_probe", observedRegisteredToolNames, StringComparer.OrdinalIgnoreCase);
+            Assert.Null(session.GetStartupToolingBootstrapTaskForTesting());
+        } finally {
+            if (Directory.Exists(tempRoot)) {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task TryActivateDeferredHandoffTargetPacksAfterRoundAsyncForTesting_ActivatesDeferredPluginTargetForSameTurnFollowUp() {
+        var tempRoot = TempPathTestHelper.CreateTempDirectoryPath("ix-chat-round-handoff-activation");
+        var pluginRoot = Path.Combine(tempRoot, "plugins");
+        var pluginFolder = Path.Combine(pluginRoot, "ops-bundle");
+        Directory.CreateDirectory(pluginFolder);
+
+        try {
+            var options = ChatServiceTestSessionFactory.CreateIsolatedOptions();
+            options.EnableBuiltInPackLoading = false;
+            options.EnableDefaultPluginPaths = false;
+            options.RuntimePluginPaths.Add(pluginRoot);
+
+            var testAssembly = Assembly.GetExecutingAssembly();
+            var sourceAssemblyPath = testAssembly.Location;
+            var entryAssemblyName = Path.GetFileName(sourceAssemblyPath);
+            File.Copy(sourceAssemblyPath, Path.Combine(pluginFolder, entryAssemblyName), overwrite: true);
+            var entryType = typeof(PluginFolderLoaderTests.PluginFolderLoaderSyntheticCatalogPack).FullName;
+            Assert.False(string.IsNullOrWhiteSpace(entryType));
+
+            File.WriteAllText(Path.Combine(pluginFolder, "ix-plugin.json"), $$"""
+            {
+              "schemaVersion": 1,
+              "pluginId": "ops-bundle",
+              "displayName": "Ops Bundle",
+              "version": "1.2.3",
+              "packIds": ["plugin_loader_synthetic_catalog"],
+              "defaultEnabled": true,
+              "sourceKind": "closed_source",
+              "entryAssembly": "{{entryAssemblyName}}",
+              "entryType": "{{entryType}}",
+              "tools": [
+                {
+                  "name": "plugin_loader_synthetic_probe",
+                  "description": "Probe the synthetic plugin runtime.",
+                  "category": "inventory",
+                  "supportsLocalExecution": true,
+                  "supportsRemoteExecution": false
+                }
+              ]
+            }
+            """);
+
+            var session = new ChatServiceSession(options, Stream.Null);
+            session.SetCachedToolDefinitionsForTesting(new[] {
+                new ToolDefinitionDto {
+                    Name = "plugin_loader_synthetic_probe",
+                    Description = "Probe the synthetic plugin runtime.",
+                    PackId = "plugin_loader_synthetic_catalog"
+                }
+            });
+
+            var sourceDefinition = new ToolDefinition(
+                name: "system_info",
+                description: "Inspect system details and hand off to plugin follow-up.",
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "system",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                },
+                handoff: new ToolHandoffContract {
+                    IsHandoffAware = true,
+                    OutboundRoutes = new[] {
+                        new ToolHandoffRoute {
+                            TargetPackId = "plugin_loader_synthetic_catalog",
+                            TargetToolName = "plugin_loader_synthetic_probe",
+                            TargetRole = ToolRoutingTaxonomy.RoleOperational,
+                            Bindings = new[] {
+                                new ToolHandoffBinding {
+                                    SourceField = "target",
+                                    TargetArgument = "target"
+                                }
+                            }
+                        }
+                    }
+                });
+
+            session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(new[] { sourceDefinition }));
+
+            var recentCalls = new[] {
+                new ToolCall(
+                    callId: "call-round-handoff-activation",
+                    name: "system_info",
+                    input: "{}",
+                    arguments: new JsonObject(),
+                    raw: new JsonObject())
+            };
+            var activatedPackIds = await session.TryActivateDeferredHandoffTargetPacksAfterRoundAsyncForTesting(
+                new[] { sourceDefinition },
+                recentCalls,
+                hasExplicitToolEnableSelectors: false,
+                continuationContractDetected: false,
+                executionContractApplies: false,
+                hasPendingActionContext: false);
+
+            Assert.Single(activatedPackIds);
+            Assert.Equal("plugin_loader_synthetic_catalog", activatedPackIds[0], ignoreCase: true);
+            Assert.Contains(
+                session.GetRegisteredToolNamesForTesting(),
+                static toolName => string.Equals(toolName, "plugin_loader_synthetic_probe", StringComparison.OrdinalIgnoreCase));
+            Assert.Null(session.GetStartupToolingBootstrapTaskForTesting());
+        } finally {
+            if (Directory.Exists(tempRoot)) {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void TryBuildBackgroundWorkDependencyRecoveryPromptForTesting_ActivatesDeferredDependencyPackWithoutStartupBootstrap() {
+        var tempRoot = TempPathTestHelper.CreateTempDirectoryPath("ix-chat-background-recovery-activation");
+        var pluginRoot = Path.Combine(tempRoot, "plugins");
+        var pluginFolder = Path.Combine(pluginRoot, "ops-bundle");
+        Directory.CreateDirectory(pluginFolder);
+
+        try {
+            var options = ChatServiceTestSessionFactory.CreateIsolatedOptions();
+            options.EnableBuiltInPackLoading = false;
+            options.EnableDefaultPluginPaths = false;
+            options.RuntimePluginPaths.Add(pluginRoot);
+
+            var testAssembly = Assembly.GetExecutingAssembly();
+            var sourceAssemblyPath = testAssembly.Location;
+            var entryAssemblyName = Path.GetFileName(sourceAssemblyPath);
+            File.Copy(sourceAssemblyPath, Path.Combine(pluginFolder, entryAssemblyName), overwrite: true);
+            var entryType = typeof(PluginFolderLoaderTests.PluginFolderLoaderSyntheticBackgroundDependencyPack).FullName;
+            Assert.False(string.IsNullOrWhiteSpace(entryType));
+
+            File.WriteAllText(Path.Combine(pluginFolder, "ix-plugin.json"), $$"""
+            {
+              "schemaVersion": 1,
+              "pluginId": "ops-bundle",
+              "displayName": "Ops Bundle",
+              "version": "1.2.3",
+              "packIds": ["plugin_loader_synthetic_background_dependency"],
+              "defaultEnabled": true,
+              "sourceKind": "closed_source",
+              "entryAssembly": "{{entryAssemblyName}}",
+              "entryType": "{{entryType}}",
+              "tools": [
+                {
+                  "name": "plugin_loader_synthetic_background_operational",
+                  "description": "Synthetic deferred operational tool.",
+                  "category": "inventory",
+                  "supportsLocalExecution": true,
+                  "supportsRemoteExecution": false
+                },
+                {
+                  "name": "plugin_loader_synthetic_background_helper",
+                  "description": "Synthetic deferred helper tool.",
+                  "category": "diagnostic",
+                  "supportsLocalExecution": true,
+                  "supportsRemoteExecution": false
+                }
+              ]
+            }
+            """);
+
+            var session = new ChatServiceSession(options, Stream.Null);
+            session.SetCachedToolDefinitionsForTesting(new[] {
+                new ToolDefinitionDto {
+                    Name = "plugin_loader_synthetic_background_operational",
+                    Description = "Synthetic deferred operational tool.",
+                    PackId = "plugin_loader_synthetic_background_dependency"
+                },
+                new ToolDefinitionDto {
+                    Name = "plugin_loader_synthetic_background_helper",
+                    Description = "Synthetic deferred helper tool.",
+                    PackId = "plugin_loader_synthetic_background_dependency"
+                }
+            });
+            const string threadId = "thread-background-dependency-deferred-plugin";
+            var definitions = new[] {
+                new ToolDefinition(
+                    name: "seed_background_dependency_followup",
+                    description: "Seed a deferred background dependency follow-up.",
+                    handoff: new ToolHandoffContract {
+                        IsHandoffAware = true,
+                        OutboundRoutes = new[] {
+                            new ToolHandoffRoute {
+                                TargetPackId = "plugin_loader_synthetic_background_dependency",
+                                TargetToolName = "plugin_loader_synthetic_background_operational",
+                                TargetRole = ToolRoutingTaxonomy.RoleOperational,
+                                FollowUpKind = ToolHandoffFollowUpKinds.Verification,
+                                FollowUpPriority = ToolHandoffFollowUpPriorities.High,
+                                Bindings = new[] {
+                                    new ToolHandoffBinding {
+                                        SourceField = "target",
+                                        TargetArgument = "target"
+                                    }
+                                }
+                            }
+                        }
+                    }),
+                new ToolDefinition(
+                    "plugin_loader_synthetic_background_operational",
+                    "Synthetic deferred operational tool.",
+                    ToolSchema.Object(("target", ToolSchema.String("Target host."))).NoAdditionalProperties(),
+                    authentication: new ToolAuthenticationContract {
+                        IsAuthenticationAware = true,
+                        RequiresAuthentication = true,
+                        AuthenticationContractId = "ix.auth.runtime.v1",
+                        Mode = ToolAuthenticationMode.ProfileReference,
+                        ProfileIdArgumentName = "profile_id",
+                        SupportsConnectivityProbe = true,
+                        ProbeToolName = "plugin_loader_synthetic_background_helper"
+                    }),
+                new ToolDefinition(
+                    "plugin_loader_synthetic_background_helper",
+                    "Synthetic deferred helper tool.",
+                    ToolSchema.Object(("target", ToolSchema.String("Target host."))).NoAdditionalProperties())
+            };
+
+            session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(definitions));
+            session.RememberToolHandoffBackgroundWorkForTesting(
+                threadId,
+                definitions,
+                new[] {
+                    new ToolCallDto {
+                        CallId = "call-background-recovery-deferred-plugin",
+                        Name = "seed_background_dependency_followup",
+                        ArgumentsJson = """{"target":"srv-auth.contoso.com"}"""
+                    }
+                },
+                new[] {
+                    new ToolOutputDto {
+                        CallId = "call-background-recovery-deferred-plugin",
+                        Ok = true,
+                        Output = """{"ok":true}"""
+                    }
+                });
+
+            var helperItem = Assert.Single(
+                session.ResolveThreadBackgroundWorkSnapshotForTesting(threadId).Items,
+                static item => string.Equals(item.TargetToolName, "plugin_loader_synthetic_background_helper", StringComparison.OrdinalIgnoreCase));
+            Assert.True(session.TrySetThreadBackgroundWorkItemStateForTesting(threadId, helperItem.Id, "running"));
+            session.RememberBackgroundWorkExecutionOutcomeForTesting(
+                threadId,
+                helperItem.Id,
+                "call-background-recovery-helper",
+                new[] {
+                    new ToolOutputDto {
+                        CallId = "call-background-recovery-helper",
+                        Ok = false,
+                        ErrorCode = "authentication_failed",
+                        Error = "Missing runtime auth profile.",
+                        Output = """{"ok":false}"""
+                    }
+                });
+
+            var built = session.TryBuildBackgroundWorkDependencyRecoveryPromptForTesting(
+                threadId,
+                "continue",
+                "I can keep going with the prepared follow-up.",
+                Array.Empty<ToolDefinition>(),
+                out var prompt,
+                out var reason);
+
+            Assert.True(built);
+            Assert.Equal("background_prerequisite_auth_context_required", reason);
+            Assert.Contains("profile_id", prompt, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("plugin_loader_synthetic_background_helper", prompt, StringComparison.OrdinalIgnoreCase);
+            Assert.Null(session.GetStartupToolingBootstrapTaskForTesting());
+            Assert.DoesNotContain("plugin_loader_synthetic_background_operational", session.GetRegisteredToolNamesForTesting(), StringComparer.OrdinalIgnoreCase);
+            Assert.DoesNotContain("plugin_loader_synthetic_background_helper", session.GetRegisteredToolNamesForTesting(), StringComparer.OrdinalIgnoreCase);
+        } finally {
+            if (Directory.Exists(tempRoot)) {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
     }
 }

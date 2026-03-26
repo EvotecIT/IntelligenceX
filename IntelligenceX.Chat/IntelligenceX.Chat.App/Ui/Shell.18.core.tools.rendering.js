@@ -217,6 +217,9 @@
     if (Array.isArray(nextState.activityTimeline)) {
       state.activityTimeline = nextState.activityTimeline;
     }
+    if (Array.isArray(nextState.routingPromptExposureHistory)) {
+      state.routingPromptExposureHistory = nextState.routingPromptExposureHistory;
+    }
     if (Array.isArray(nextState.statusTimeline)) {
       state.statusTimeline = nextState.statusTimeline;
     }
@@ -297,6 +300,7 @@
     state.options.toolCatalogRoutingCatalog = nextOptions.toolCatalogRoutingCatalog || null;
     state.options.toolCatalogPlugins = Array.isArray(nextOptions.toolCatalogPlugins) ? nextOptions.toolCatalogPlugins : [];
     state.options.toolCatalogCapabilitySnapshot = nextOptions.toolCatalogCapabilitySnapshot || null;
+    state.options.latestRoutingPromptExposure = nextOptions.latestRoutingPromptExposure || null;
     var previousDebug = state.options.debug && typeof state.options.debug === "object"
       ? state.options.debug
       : { showTurnTrace: false, showDraftBubbles: false };

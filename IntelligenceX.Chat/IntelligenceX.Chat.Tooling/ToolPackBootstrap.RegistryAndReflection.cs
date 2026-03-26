@@ -17,6 +17,140 @@ namespace IntelligenceX.Chat.Tooling;
 public static partial class ToolPackBootstrap {
     private const string BuiltInToolAssemblyManifestResourceSuffix = ".BuiltInToolAssemblies.txt";
     private const string BuiltInToolProbePathsEnvironmentVariable = "INTELLIGENCEX_BUILTIN_TOOL_PROBE_PATHS";
+    private static readonly IReadOnlyList<KnownBuiltInPackBootstrapMetadata> KnownBuiltInPackBootstrapMetadataByIdentity = new[] {
+        CreateKnownBuiltInPackBootstrapMetadata(
+            id: "active_directory",
+            name: "ADPlayground",
+            tier: ToolCapabilityTier.SensitiveRead,
+            isDangerous: false,
+            description: "ADPlayground-backed Active Directory analysis, discovery, verification, and governed lifecycle tools.",
+            sourceKind: "closed_source",
+            engineId: "adplayground",
+            category: "active_directory",
+            aliases: new[] { "ad", "adplayground", "ad_lifecycle", "adlifecycle", "joiner_leaver", "adplayground_lifecycle" },
+            capabilityTags: new[] { "directory", "domain_scope", "identity_lifecycle", "remote_analysis", "governed_write" }),
+        CreateKnownBuiltInPackBootstrapMetadata(
+            id: "eventlog",
+            name: "Event Log (EventViewerX)",
+            tier: ToolCapabilityTier.SensitiveRead,
+            isDangerous: false,
+            description: "Windows Event Log and EVTX analysis plus governed channel policy, classic log administration, and collector subscription writes (restricted to AllowedRoots for EVTX file access).",
+            sourceKind: "builtin",
+            engineId: "eventviewerx",
+            category: "eventlog",
+            aliases: new[] { "eventviewerx", "event_log" },
+            capabilityTags: new[] { "event_logs", "evtx", "local_analysis", "remote_analysis", "governed_write", "write_capable" }),
+        CreateKnownBuiltInPackBootstrapMetadata(
+            id: "system",
+            name: "ComputerX",
+            tier: ToolCapabilityTier.ReadOnly,
+            isDangerous: false,
+            description: "ComputerX host inventory, diagnostics, and governed service plus scheduled-task lifecycle operations.",
+            sourceKind: "closed_source",
+            engineId: "computerx",
+            category: "system",
+            aliases: new[] { "computerx" },
+            capabilityTags: new[] { "host_inventory", "local_analysis", "local_execution", "remote_analysis", "remote_execution", "governed_write" }),
+        CreateKnownBuiltInPackBootstrapMetadata(
+            id: "filesystem",
+            name: "File System",
+            tier: ToolCapabilityTier.ReadOnly,
+            isDangerous: false,
+            description: "Safe-by-default file system reads (restricted to AllowedRoots).",
+            sourceKind: "builtin",
+            engineId: "filesystem",
+            category: "filesystem",
+            aliases: new[] { "fs" },
+            capabilityTags: new[] { "disk", "filesystem", "local_analysis" }),
+        CreateKnownBuiltInPackBootstrapMetadata(
+            id: "email",
+            name: "Email (Mailozaurr)",
+            tier: ToolCapabilityTier.SensitiveRead,
+            isDangerous: false,
+            description: "IMAP/SMTP workflows (search/get/probe/send) via Mailozaurr.",
+            sourceKind: "builtin",
+            engineId: "mailozaurr",
+            category: "email",
+            aliases: new[] { "mailozaurr" },
+            capabilityTags: new[] { "email", "imap", "smtp", "remote_analysis", ToolPackCapabilityTags.DeferredCapabilityEmail }),
+        CreateKnownBuiltInPackBootstrapMetadata(
+            id: "powershell",
+            name: "PowerShell Runtime",
+            tier: ToolCapabilityTier.DangerousWrite,
+            isDangerous: true,
+            description: "Opt-in shell runtime execution (windows_powershell / pwsh / cmd).",
+            sourceKind: "builtin",
+            engineId: "powershell_runtime",
+            category: "powershell",
+            aliases: new[] { "powershell_runtime" },
+            capabilityTags: new[] { ToolPackCapabilityTags.LocalExecution, ToolPackCapabilityTags.RemoteExecution, "shell", ToolPackCapabilityTags.WriteCapable }),
+        CreateKnownBuiltInPackBootstrapMetadata(
+            id: "testimox",
+            name: "TestimoX",
+            tier: ToolCapabilityTier.SensitiveRead,
+            isDangerous: false,
+            description: "TestimoX rule, profile, baseline, and stored-run diagnostics.",
+            sourceKind: "closed_source",
+            engineId: "testimox",
+            category: "testimox",
+            aliases: new[] { "testimoxpack" },
+            capabilityTags: new[] { "configuration", "evidence", "posture", "remote_analysis" }),
+        CreateKnownBuiltInPackBootstrapMetadata(
+            id: "testimox_analytics",
+            name: "TestimoX Analytics",
+            tier: ToolCapabilityTier.SensitiveRead,
+            isDangerous: false,
+            description: "Persisted TestimoX analytics, report, and history artifact inspection.",
+            sourceKind: "closed_source",
+            engineId: "testimox_analytics",
+            category: "testimox",
+            aliases: new[] { "testimoxanalytics" },
+            capabilityTags: new[] { "analytics", "evidence", "local_analysis", "posture", "reporting", ToolPackCapabilityTags.DeferredCapabilityReporting }),
+        CreateKnownBuiltInPackBootstrapMetadata(
+            id: "officeimo",
+            name: "Office Documents (OfficeIMO)",
+            tier: ToolCapabilityTier.ReadOnly,
+            isDangerous: false,
+            description: "Read-only Office document ingestion (Word/Excel/PowerPoint/Markdown/PDF) backed by OfficeIMO.Reader.",
+            sourceKind: "open_source",
+            engineId: "officeimo",
+            category: "officeimo",
+            aliases: Array.Empty<string>(),
+            capabilityTags: new[] { "document_analysis", ToolPackCapabilityTags.LocalAnalysis, "office" }),
+        CreateKnownBuiltInPackBootstrapMetadata(
+            id: "reviewer_setup",
+            name: "Reviewer Setup",
+            tier: ToolCapabilityTier.ReadOnly,
+            isDangerous: false,
+            description: "Path contract and execution guidance for IntelligenceX reviewer onboarding.",
+            sourceKind: "builtin",
+            engineId: "reviewer_setup",
+            category: "reviewer_setup",
+            aliases: new[] { "reviewersetup" },
+            capabilityTags: new[] { ToolPackCapabilityTags.LocalAnalysis, "onboarding", "reviewer", "setup" }),
+        CreateKnownBuiltInPackBootstrapMetadata(
+            id: "dnsclientx",
+            name: "DnsClientX",
+            tier: ToolCapabilityTier.ReadOnly,
+            isDangerous: false,
+            description: "Open-source DNS query and connectivity diagnostics.",
+            sourceKind: "open_source",
+            engineId: "dnsclientx",
+            category: "dns",
+            aliases: new[] { "dns_client_x" },
+            capabilityTags: new[] { "dns", "network", ToolPackCapabilityTags.RemoteAnalysis }),
+        CreateKnownBuiltInPackBootstrapMetadata(
+            id: "domaindetective",
+            name: "DomainDetective",
+            tier: ToolCapabilityTier.ReadOnly,
+            isDangerous: false,
+            description: "Open-source domain, DNS, and network-path diagnostics.",
+            sourceKind: "open_source",
+            engineId: "domaindetective",
+            category: "dns",
+            aliases: new[] { "domain_detective" },
+            capabilityTags: new[] { "dns", "domain_scope", "network_path", ToolPackCapabilityTags.RemoteAnalysis })
+    };
 
     /// <summary>
     /// Resolves plugin search roots used by folder-based plugin loading.
@@ -59,7 +193,8 @@ public static partial class ToolPackBootstrap {
 
         var lines = new List<string> {
             "built_in_pack_loading=" + (options.EnableBuiltInPackLoading ? "1" : "0"),
-            "plugin_folder_loading=" + (options.EnablePluginFolderLoading ? "1" : "0")
+            "plugin_folder_loading=" + (options.EnablePluginFolderLoading ? "1" : "0"),
+            "workspace_builtin_output_probing=" + (options.EnableWorkspaceBuiltInToolOutputProbing ? "1" : "0")
         };
 
         var allowedAssemblyNames = ResolveAllowedBuiltInAssemblyNames(options);
@@ -89,12 +224,441 @@ public static partial class ToolPackBootstrap {
             throw new ArgumentNullException(nameof(options));
         }
 
-        var candidates = new List<BuiltInPackRegistrationCandidate>();
-        var descriptorIdsByNormalizedPackId = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var packTypes = DiscoverBuiltInPackTypes(options, options.OnBootstrapWarning);
+        return BuildBuiltInPackRegistrationCandidates(packTypes, options);
+    }
+
+    private static ToolPackBootstrapResult CreateBuiltInDescriptorPreviewCore(ToolPackBootstrapOptions options) {
+        if (options is null) {
+            throw new ArgumentNullException(nameof(options));
+        }
+
+        if (!options.EnableBuiltInPackLoading) {
+            return new ToolPackBootstrapResult();
+        }
+
+        var disabledPackIds = BuildNormalizedPackIdSet(options.DisabledPackIds);
+        var enabledPackIds = BuildNormalizedPackIdSet(options.EnabledPackIds);
+        var availabilityById = new Dictionary<string, ToolPackAvailabilityInfo>(StringComparer.OrdinalIgnoreCase);
+        var pluginAvailabilityById = new Dictionary<string, ToolPluginAvailabilityInfo>(StringComparer.OrdinalIgnoreCase);
+        var pluginCatalogById = new Dictionary<string, ToolPluginCatalogInfo>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var metadata in EnumerateKnownBuiltInPackBootstrapMetadata()) {
+            var enabled = ResolveKnownPackEnabled(
+                packId: metadata.PackId,
+                enabledByDefault: metadata.DefaultEnabled,
+                disabledPackIds: disabledPackIds,
+                enabledPackIds: enabledPackIds);
+            var disabledReason = enabled ? null : DisabledByRuntimeConfigurationReason;
+            UpsertAvailability(
+                availabilityById,
+                CreateAvailabilityFromDescriptor(
+                    descriptor: metadata.Descriptor,
+                    enabled: enabled,
+                    disabledReason: disabledReason,
+                    descriptorOnly: true));
+            UpsertPluginAvailability(
+                pluginAvailabilityById,
+                CreateBuiltInPluginAvailability(
+                    metadata,
+                    enabled,
+                    disabledReason,
+                    descriptorOnly: true));
+            UpsertPluginCatalog(
+                pluginCatalogById,
+                CreateBuiltInPluginCatalog(metadata));
+        }
+
+        return new ToolPackBootstrapResult {
+            Packs = Array.Empty<IToolPack>(),
+            PackAvailability = availabilityById.Values
+                .OrderBy(static pack => pack.Name, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(static pack => pack.Id, StringComparer.OrdinalIgnoreCase)
+                .ToArray(),
+            PluginAvailability = pluginAvailabilityById.Values
+                .OrderBy(static plugin => plugin.Name, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(static plugin => plugin.Id, StringComparer.OrdinalIgnoreCase)
+                .ToArray(),
+            PluginCatalog = pluginCatalogById.Values
+                .OrderBy(static plugin => plugin.Name, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(static plugin => plugin.Id, StringComparer.OrdinalIgnoreCase)
+                .ToArray()
+        };
+    }
+
+    private static ToolPackBootstrapResult CreateDeferredDescriptorPreviewCore(ToolPackBootstrapOptions options) {
+        if (options is null) {
+            throw new ArgumentNullException(nameof(options));
+        }
+
+        var builtInPreview = CreateBuiltInDescriptorPreviewCore(options);
+        if (!options.EnablePluginFolderLoading) {
+            return builtInPreview;
+        }
+
+        var disabledPackIds = BuildNormalizedPackIdSet(options.DisabledPackIds);
+        var enabledPackIds = BuildNormalizedPackIdSet(options.EnabledPackIds);
+        var pluginAvailabilityById = new Dictionary<string, ToolPluginAvailabilityInfo>(StringComparer.OrdinalIgnoreCase);
+        var pluginCatalogById = new Dictionary<string, ToolPluginCatalogInfo>(StringComparer.OrdinalIgnoreCase);
+        var deferredToolDefinitions = new Dictionary<string, IntelligenceX.Chat.Abstractions.Protocol.ToolDefinitionDto>(StringComparer.OrdinalIgnoreCase);
+        var enabledDeferredPreviewPackIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        for (var i = 0; i < builtInPreview.PluginAvailability.Count; i++) {
+            UpsertPluginAvailability(pluginAvailabilityById, builtInPreview.PluginAvailability[i]);
+        }
+        for (var i = 0; i < builtInPreview.PluginCatalog.Count; i++) {
+            UpsertPluginCatalog(pluginCatalogById, builtInPreview.PluginCatalog[i]);
+        }
+
+        var pluginPreviewCatalog = PluginFolderToolPackLoader.CreatePluginCatalogPreview(options, options.OnBootstrapWarning);
+        var pluginPreviewTools = PluginFolderToolPackLoader.CreatePluginToolDefinitionPreview(options, options.OnBootstrapWarning);
+        for (var i = 0; i < pluginPreviewCatalog.Count; i++) {
+            var catalog = pluginPreviewCatalog[i];
+            var normalizedPluginId = NormalizePackId(catalog.Id);
+            var enabled = ResolveDeferredPreviewPluginEnabled(
+                catalog,
+                normalizedPluginId,
+                disabledPackIds,
+                enabledPackIds);
+            var disabledReason = ResolveDeferredPreviewPluginDisabledReason(
+                catalog,
+                normalizedPluginId,
+                enabled,
+                disabledPackIds,
+                enabledPackIds);
+            UpsertPluginCatalog(pluginCatalogById, catalog);
+            UpsertPluginAvailability(
+                pluginAvailabilityById,
+                CreatePluginPreviewAvailability(catalog, enabled, disabledReason, descriptorOnly: true));
+            if (enabled && catalog.PackIds is { Length: > 0 }) {
+                for (var packIndex = 0; packIndex < catalog.PackIds.Length; packIndex++) {
+                    var normalizedPackId = NormalizePackId(catalog.PackIds[packIndex]);
+                    if (normalizedPackId.Length > 0) {
+                        enabledDeferredPreviewPackIds.Add(normalizedPackId);
+                    }
+                }
+            }
+        }
+        for (var i = 0; i < pluginPreviewTools.Count; i++) {
+            var packId = NormalizePackId(pluginPreviewTools[i].PackId);
+            if (packId.Length == 0 || !enabledDeferredPreviewPackIds.Contains(packId)) {
+                continue;
+            }
+
+            deferredToolDefinitions[pluginPreviewTools[i].Name] = pluginPreviewTools[i];
+        }
+
+        return builtInPreview with {
+            ToolDefinitions = ToolCatalogExportBuilder.OrderToolDefinitionDtosForCatalog(
+                deferredToolDefinitions.Values.ToArray()),
+            PluginAvailability = pluginAvailabilityById.Values
+                .OrderBy(static plugin => plugin.Name, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(static plugin => plugin.Id, StringComparer.OrdinalIgnoreCase)
+                .ToArray(),
+            PluginCatalog = pluginCatalogById.Values
+                .OrderBy(static plugin => plugin.Name, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(static plugin => plugin.Id, StringComparer.OrdinalIgnoreCase)
+                .ToArray()
+        };
+    }
+
+    private static ToolPackBootstrapResult ActivatePackOnDemandCore(
+        ToolPackBootstrapOptions options,
+        string packId,
+        IEnumerable<IToolPack>? existingPacks) {
+        if (options is null) {
+            throw new ArgumentNullException(nameof(options));
+        }
+
+        var normalizedTargetPackId = NormalizePackId(packId);
+        if (normalizedTargetPackId.Length == 0) {
+            return new ToolPackBootstrapResult();
+        }
+
+        var existingPackList = existingPacks?.Where(static pack => pack is not null).ToArray() ?? Array.Empty<IToolPack>();
+        var existingPackIds = new HashSet<string>(
+            existingPackList
+                .Select(static pack => NormalizePackId(pack.Descriptor.Id))
+                .Where(static id => id.Length > 0),
+            StringComparer.OrdinalIgnoreCase);
+        if (existingPackIds.Contains(normalizedTargetPackId)) {
+            return new ToolPackBootstrapResult();
+        }
+
+        var builtInResult = options.EnableBuiltInPackLoading
+            ? ActivateBuiltInPackOnDemand(options, normalizedTargetPackId, existingPackIds)
+            : new ToolPackBootstrapResult();
+        if (builtInResult.Packs.Count > 0) {
+            return builtInResult;
+        }
+
+        var pluginResult = options.EnablePluginFolderLoading
+            ? PluginFolderToolPackLoader.LoadPluginPacksForPackId(options, normalizedTargetPackId, existingPackList, options.OnBootstrapWarning)
+            : new ToolPackBootstrapResult();
+        if (pluginResult.Packs.Count > 0) {
+            return pluginResult;
+        }
+
+        if (builtInResult.PackAvailability.Count > 0 || builtInResult.PluginAvailability.Count > 0 || builtInResult.PluginCatalog.Count > 0) {
+            return builtInResult;
+        }
+
+        return pluginResult;
+    }
+
+    private static ToolPackBootstrapResult ActivateBuiltInPackOnDemand(
+        ToolPackBootstrapOptions options,
+        string normalizedTargetPackId,
+        HashSet<string> existingPackIds) {
+        var disabledPackIds = BuildNormalizedPackIdSet(options.DisabledPackIds);
+        var enabledPackIds = BuildNormalizedPackIdSet(options.EnabledPackIds);
         var packTypes = DiscoverBuiltInPackTypes(options, options.OnBootstrapWarning);
 
         for (var i = 0; i < packTypes.Count; i++) {
             var packType = packTypes[i];
+            if (TryResolveKnownBuiltInPackBootstrapMetadata(packType, out var metadata)
+                && !string.Equals(metadata.PackId, normalizedTargetPackId, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            if (TryCreateDisabledKnownBuiltInPackCandidate(packType, disabledPackIds, enabledPackIds, out var disabledCandidate)) {
+                if (!string.Equals(disabledCandidate.PackId, normalizedTargetPackId, StringComparison.OrdinalIgnoreCase)) {
+                    continue;
+                }
+
+                return BuildBuiltInActivationResult(
+                    disabledCandidate.Descriptor,
+                    pack: null,
+                    enabled: false,
+                    defaultEnabled: disabledCandidate.DefaultEnabled,
+                    disabledReason: DisabledByRuntimeConfigurationReason,
+                    candidateType: packType,
+                    metadataOverride: metadata);
+            }
+
+            if (!TryCreateBuiltInPack(packType, options, out var createdPack, out var error)) {
+                Warn(
+                    options.OnBootstrapWarning,
+                    $"[startup] built_in_pack_skipped type='{packType.FullName ?? packType.Name}' reason='{NormalizeDisabledReason(error)}'",
+                    shouldWarn: true);
+                continue;
+            }
+
+            IToolPack normalizedPack;
+            try {
+                normalizedPack = RequireDeclaredSourceKind(createdPack, packType.FullName ?? packType.Name);
+            } catch (Exception ex) {
+                Warn(
+                    options.OnBootstrapWarning,
+                    $"[startup] built_in_pack_skipped type='{packType.FullName ?? packType.Name}' reason='{NormalizeDisabledReason(ex.Message)}'",
+                    shouldWarn: true);
+                continue;
+            }
+
+            var normalizedPackId = NormalizePackId(normalizedPack.Descriptor.Id);
+            if (!string.Equals(normalizedPackId, normalizedTargetPackId, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            if (existingPackIds.Contains(normalizedPackId)) {
+                return new ToolPackBootstrapResult();
+            }
+
+            var defaultEnabled = metadata is not null
+                ? metadata.DefaultEnabled
+                : (!normalizedPack.Descriptor.IsDangerous
+                   && normalizedPack.Descriptor.Tier != ToolCapabilityTier.DangerousWrite);
+            var enabled = ResolveKnownPackEnabled(
+                packId: normalizedPackId,
+                enabledByDefault: defaultEnabled,
+                disabledPackIds: disabledPackIds,
+                enabledPackIds: enabledPackIds);
+            var disabledReason = enabled ? null : DisabledByRuntimeConfigurationReason;
+            return BuildBuiltInActivationResult(
+                normalizedPack.Descriptor,
+                enabled ? normalizedPack : null,
+                enabled,
+                defaultEnabled,
+                disabledReason,
+                packType,
+                metadata);
+        }
+
+        return new ToolPackBootstrapResult();
+    }
+
+    private static ToolPackBootstrapResult BuildBuiltInActivationResult(
+        ToolPackDescriptor descriptor,
+        IToolPack? pack,
+        bool enabled,
+        bool defaultEnabled,
+        string? disabledReason,
+        Type candidateType,
+        KnownBuiltInPackBootstrapMetadata? metadataOverride) {
+        var normalizedPackId = NormalizePackId(descriptor.Id);
+        var packList = pack is null ? Array.Empty<IToolPack>() : new[] { pack };
+        var packAvailability = new[] {
+            CreateAvailabilityFromDescriptor(
+                descriptor,
+                enabled,
+                disabledReason,
+                descriptorOnly: false)
+        };
+        var pluginAvailability = new[] {
+            metadataOverride is not null
+                ? CreateBuiltInPluginAvailability(metadataOverride, enabled, disabledReason, descriptorOnly: false)
+                : CreateBuiltInPluginAvailability(
+                    new BuiltInPackRegistrationCandidate(
+                        PackId: normalizedPackId,
+                        Descriptor: descriptor,
+                        PackType: candidateType,
+                        Pack: pack,
+                        DefaultEnabled: defaultEnabled),
+                    enabled,
+                    disabledReason,
+                    descriptorOnly: false)
+        };
+        var pluginCatalog = new[] {
+            metadataOverride is not null
+                ? CreateBuiltInPluginCatalog(metadataOverride)
+                : CreateBuiltInPluginCatalog(
+                    new BuiltInPackRegistrationCandidate(
+                        PackId: normalizedPackId,
+                        Descriptor: descriptor,
+                        PackType: candidateType,
+                        Pack: pack,
+                        DefaultEnabled: defaultEnabled))
+        };
+
+        return new ToolPackBootstrapResult {
+            Packs = packList,
+            PackAvailability = packAvailability,
+            PluginAvailability = pluginAvailability,
+            PluginCatalog = pluginCatalog
+        };
+    }
+
+    private static bool ResolveDeferredPreviewPluginEnabled(
+        ToolPluginCatalogInfo catalog,
+        string normalizedPluginId,
+        HashSet<string> disabledPackIds,
+        HashSet<string> enabledPackIds) {
+        var declaredPackIds = (catalog.PackIds ?? Array.Empty<string>())
+            .Select(static packId => NormalizePackId(packId))
+            .Where(static packId => packId.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (declaredPackIds.Length > 0) {
+            for (var i = 0; i < declaredPackIds.Length; i++) {
+                if (ResolveKnownPackEnabled(
+                        packId: declaredPackIds[i],
+                        enabledByDefault: catalog.DefaultEnabled,
+                        disabledPackIds: disabledPackIds,
+                        enabledPackIds: enabledPackIds)) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        return ResolveKnownPackEnabled(
+            packId: normalizedPluginId.Length == 0 ? catalog.Id : normalizedPluginId,
+            enabledByDefault: catalog.DefaultEnabled,
+            disabledPackIds: disabledPackIds,
+            enabledPackIds: enabledPackIds);
+    }
+
+    private static string? ResolveDeferredPreviewPluginDisabledReason(
+        ToolPluginCatalogInfo catalog,
+        string normalizedPluginId,
+        bool enabled,
+        HashSet<string> disabledPackIds,
+        HashSet<string> enabledPackIds) {
+        if (enabled) {
+            return null;
+        }
+
+        var declaredPackIds = (catalog.PackIds ?? Array.Empty<string>())
+            .Select(static packId => NormalizePackId(packId))
+            .Where(static packId => packId.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (declaredPackIds.Length > 0) {
+            var anyExplicitlyDisabled = false;
+            for (var i = 0; i < declaredPackIds.Length; i++) {
+                if (disabledPackIds.Contains(declaredPackIds[i])) {
+                    anyExplicitlyDisabled = true;
+                    continue;
+                }
+
+                if (catalog.DefaultEnabled || enabledPackIds.Contains(declaredPackIds[i])) {
+                    return null;
+                }
+            }
+
+            if (anyExplicitlyDisabled) {
+                return DisabledByRuntimeConfigurationReason;
+            }
+
+            if (!catalog.DefaultEnabled) {
+                return DisabledByPluginManifestDefaultReason;
+            }
+        }
+
+        if (normalizedPluginId.Length > 0
+            && disabledPackIds.Contains(normalizedPluginId)) {
+            return DisabledByRuntimeConfigurationReason;
+        }
+
+        if (!catalog.DefaultEnabled
+            && (normalizedPluginId.Length == 0 || !enabledPackIds.Contains(normalizedPluginId))) {
+            return DisabledByPluginManifestDefaultReason;
+        }
+
+        return DisabledByRuntimeConfigurationReason;
+    }
+
+    private static IReadOnlyList<KnownBuiltInPackBootstrapMetadata> EnumerateKnownBuiltInPackBootstrapMetadata() {
+        var seenPackIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var metadata = new List<KnownBuiltInPackBootstrapMetadata>(KnownBuiltInPackBootstrapMetadataByIdentity.Count);
+        for (var i = 0; i < KnownBuiltInPackBootstrapMetadataByIdentity.Count; i++) {
+            var candidate = KnownBuiltInPackBootstrapMetadataByIdentity[i];
+            if (!seenPackIds.Add(candidate.PackId)) {
+                continue;
+            }
+
+            metadata.Add(candidate);
+        }
+
+        return metadata;
+    }
+
+    private static IReadOnlyList<BuiltInPackRegistrationCandidate> BuildBuiltInPackRegistrationCandidates(
+        IReadOnlyList<Type> packTypes,
+        ToolPackBootstrapOptions options) {
+        if (packTypes is null) {
+            throw new ArgumentNullException(nameof(packTypes));
+        }
+        if (options is null) {
+            throw new ArgumentNullException(nameof(options));
+        }
+
+        var candidates = new List<BuiltInPackRegistrationCandidate>();
+        var descriptorIdsByNormalizedPackId = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var disabledPackIds = BuildNormalizedPackIdSet(options.DisabledPackIds);
+        var enabledPackIds = BuildNormalizedPackIdSet(options.EnabledPackIds);
+
+        for (var i = 0; i < packTypes.Count; i++) {
+            var packType = packTypes[i];
+            if (TryCreateDisabledKnownBuiltInPackCandidate(packType, disabledPackIds, enabledPackIds, out var disabledCandidate)) {
+                EnsureNoPackIdentityNormalizationCollisions(
+                    descriptorIdsByNormalizedPackId,
+                    disabledCandidate.Descriptor);
+                candidates.Add(disabledCandidate);
+                continue;
+            }
+
             if (!TryCreateBuiltInPack(packType, options, out var pack, out var error)) {
                 Warn(
                     options.OnBootstrapWarning,
@@ -129,12 +693,141 @@ public static partial class ToolPackBootstrap {
 
             var defaultEnabled = !normalizedPack.Descriptor.IsDangerous
                                  && normalizedPack.Descriptor.Tier != ToolCapabilityTier.DangerousWrite;
-            candidates.Add(new BuiltInPackRegistrationCandidate(normalizedPackId, normalizedPack, defaultEnabled));
+            candidates.Add(new BuiltInPackRegistrationCandidate(
+                PackId: normalizedPackId,
+                Descriptor: normalizedPack.Descriptor,
+                PackType: packType,
+                Pack: normalizedPack,
+                DefaultEnabled: defaultEnabled));
         }
 
         return candidates
             .OrderBy(static candidate => candidate.PackId, StringComparer.OrdinalIgnoreCase)
             .ToArray();
+    }
+
+    private static bool TryCreateDisabledKnownBuiltInPackCandidate(
+        Type packType,
+        HashSet<string> disabledPackIds,
+        HashSet<string> enabledPackIds,
+        out BuiltInPackRegistrationCandidate candidate) {
+        candidate = null!;
+        if (!TryResolveKnownBuiltInPackBootstrapMetadata(packType, out var metadata)) {
+            return false;
+        }
+
+        var enabled = ResolveKnownPackEnabled(
+            packId: metadata.Descriptor.Id,
+            enabledByDefault: metadata.DefaultEnabled,
+            disabledPackIds: disabledPackIds,
+            enabledPackIds: enabledPackIds);
+        if (enabled) {
+            return false;
+        }
+
+        candidate = new BuiltInPackRegistrationCandidate(
+            PackId: metadata.PackId,
+            Descriptor: metadata.Descriptor,
+            PackType: packType,
+            Pack: null,
+            DefaultEnabled: metadata.DefaultEnabled);
+        return true;
+    }
+
+    private static bool TryResolveKnownBuiltInPackBootstrapMetadata(
+        Type packType,
+        out KnownBuiltInPackBootstrapMetadata metadata) {
+        metadata = null!;
+        if (packType is null) {
+            return false;
+        }
+
+        var compactTypeName = ToolPackIdentityCatalog.NormalizePackCompactId(packType.Name);
+        var compactFullName = ToolPackIdentityCatalog.NormalizePackCompactId(packType.FullName);
+        if (compactTypeName.Length == 0 && compactFullName.Length == 0) {
+            return false;
+        }
+
+        var bestScore = 0;
+        KnownBuiltInPackBootstrapMetadata? bestMatch = null;
+        for (var i = 0; i < KnownBuiltInPackBootstrapMetadataByIdentity.Count; i++) {
+            var candidate = KnownBuiltInPackBootstrapMetadataByIdentity[i];
+            var score = 0;
+            for (var tokenIndex = 0; tokenIndex < candidate.IdentityTokens.Length; tokenIndex++) {
+                var compactToken = ToolPackIdentityCatalog.NormalizePackCompactId(candidate.IdentityTokens[tokenIndex]);
+                if (compactToken.Length == 0) {
+                    continue;
+                }
+
+                if ((compactTypeName.Length > 0 && compactTypeName.Contains(compactToken, StringComparison.OrdinalIgnoreCase))
+                    || (compactFullName.Length > 0 && compactFullName.Contains(compactToken, StringComparison.OrdinalIgnoreCase))) {
+                    score = Math.Max(score, compactToken.Length);
+                }
+            }
+
+            if (score <= bestScore) {
+                continue;
+            }
+
+            bestScore = score;
+            bestMatch = candidate;
+        }
+
+        if (bestMatch is null) {
+            return false;
+        }
+
+        metadata = bestMatch;
+        return true;
+    }
+
+    private static KnownBuiltInPackBootstrapMetadata CreateKnownBuiltInPackBootstrapMetadata(
+        string id,
+        string name,
+        ToolCapabilityTier tier,
+        bool isDangerous,
+        string description,
+        string sourceKind,
+        string engineId,
+        string category,
+        IReadOnlyList<string> aliases,
+        IReadOnlyList<string> capabilityTags) {
+        var searchTokens = ToolPackIdentityCatalog.GetPackSearchTokens(id).ToArray();
+        var descriptor = new ToolPackDescriptor {
+            Id = id,
+            Name = name,
+            Aliases = aliases,
+            Tier = tier,
+            IsDangerous = isDangerous,
+            Description = description,
+            SourceKind = sourceKind,
+            EngineId = engineId,
+            Category = category,
+            CapabilityTags = capabilityTags,
+            SearchTokens = searchTokens
+        };
+
+        var identityTokens = new List<string>(capacity: 6 + aliases.Count + searchTokens.Length) {
+            id,
+            name,
+            engineId,
+            category
+        };
+        for (var i = 0; i < aliases.Count; i++) {
+            identityTokens.Add(aliases[i]);
+        }
+        for (var i = 0; i < searchTokens.Length; i++) {
+            identityTokens.Add(searchTokens[i]);
+        }
+
+        return new KnownBuiltInPackBootstrapMetadata(
+            PackId: NormalizePackId(id),
+            Descriptor: descriptor,
+            DefaultEnabled: !isDangerous && tier != ToolCapabilityTier.DangerousWrite,
+            IdentityTokens: identityTokens
+                .Where(static token => !string.IsNullOrWhiteSpace(token))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray());
     }
 
     private static void AppendBuiltInAssemblyFingerprint(
@@ -152,7 +845,11 @@ public static partial class ToolPackBootstrap {
             return;
         }
 
-        if (TryResolveTrustedToolAssemblyPath(assemblyName, options, out var trustedPath)
+        if (TryResolveTrustedToolAssemblyPath(
+                assemblyName,
+                options,
+                includeWorkspaceProjectOutputs: options.EnableWorkspaceBuiltInToolOutputProbing,
+                out var trustedPath)
             && TryGetDiscoveryFileStamp(trustedPath, out var trustedStamp)) {
             lines.Add($"builtin_assembly={simpleName}|trusted|path={trustedPath}|{trustedStamp}");
             return;
@@ -651,6 +1348,18 @@ public static partial class ToolPackBootstrap {
     }
 
     private static bool TryResolveTrustedToolAssemblyPath(AssemblyName assemblyName, ToolPackBootstrapOptions options, out string trustedAssemblyPath) {
+        return TryResolveTrustedToolAssemblyPath(
+            assemblyName,
+            options,
+            includeWorkspaceProjectOutputs: true,
+            out trustedAssemblyPath);
+    }
+
+    private static bool TryResolveTrustedToolAssemblyPath(
+        AssemblyName assemblyName,
+        ToolPackBootstrapOptions options,
+        bool includeWorkspaceProjectOutputs,
+        out string trustedAssemblyPath) {
         trustedAssemblyPath = string.Empty;
         var assemblyNameValue = (assemblyName.Name ?? string.Empty).Trim();
         if (assemblyNameValue.Length == 0) {
@@ -683,12 +1392,14 @@ public static partial class ToolPackBootstrap {
             return true;
         }
 
-        if (TryResolveTrustedToolAssemblyPathFromWorkspaceProjectOutputs(
-                assemblyName,
-                typeof(ToolPackBootstrap).Assembly,
-                out var workspaceProjectOutputPath)) {
-            trustedAssemblyPath = workspaceProjectOutputPath;
-            return true;
+        if (includeWorkspaceProjectOutputs) {
+            if (TryResolveTrustedToolAssemblyPathFromWorkspaceProjectOutputs(
+                    assemblyName,
+                    typeof(ToolPackBootstrap).Assembly,
+                    out var workspaceProjectOutputPath)) {
+                trustedAssemblyPath = workspaceProjectOutputPath;
+                return true;
+            }
         }
 
         return false;
@@ -1259,7 +1970,11 @@ public static partial class ToolPackBootstrap {
         return new DescriptorOverrideToolPack(pack, descriptor with { SourceKind = normalized });
     }
 
-    private static ToolPackAvailabilityInfo CreateAvailabilityFromDescriptor(ToolPackDescriptor descriptor, bool enabled, string? disabledReason) {
+    private static ToolPackAvailabilityInfo CreateAvailabilityFromDescriptor(
+        ToolPackDescriptor descriptor,
+        bool enabled,
+        string? disabledReason,
+        bool descriptorOnly = false) {
         if (descriptor is null) {
             throw new ArgumentNullException(nameof(descriptor));
         }
@@ -1296,6 +2011,7 @@ public static partial class ToolPackBootstrap {
             SearchTokens = normalizedSearchTokens,
             CapabilityParity = descriptor.CapabilityParity ?? Array.Empty<ToolCapabilityParitySliceDescriptor>(),
             Enabled = enabled,
+            DescriptorOnly = descriptorOnly,
             DisabledReason = enabled ? null : normalizedReason
         };
     }
@@ -1303,13 +2019,14 @@ public static partial class ToolPackBootstrap {
     private static ToolPluginAvailabilityInfo CreateBuiltInPluginAvailability(
         BuiltInPackRegistrationCandidate candidate,
         bool enabled,
-        string? disabledReason) {
-        var descriptor = candidate.Pack.Descriptor;
+        string? disabledReason,
+        bool descriptorOnly = false) {
+        var descriptor = candidate.Descriptor;
         var normalizedPackId = NormalizePackId(descriptor.Id);
         var normalizedName = string.IsNullOrWhiteSpace(descriptor.Name) ? normalizedPackId : descriptor.Name.Trim();
         var normalizedSourceKind = NormalizeSourceKind(descriptor.SourceKind, descriptor.Id);
         var normalizedReason = enabled ? null : NormalizeDisabledReason(disabledReason);
-        var version = candidate.Pack.GetType().Assembly.GetName().Version?.ToString();
+        var version = candidate.PackType.Assembly.GetName().Version?.ToString();
 
         return new ToolPluginAvailabilityInfo {
             Id = normalizedPackId.Length == 0 ? descriptor.Id : normalizedPackId,
@@ -1319,6 +2036,35 @@ public static partial class ToolPackBootstrap {
             SourceKind = normalizedSourceKind,
             DefaultEnabled = candidate.DefaultEnabled,
             Enabled = enabled,
+            DescriptorOnly = descriptorOnly,
+            DisabledReason = normalizedReason,
+            IsDangerous = descriptor.IsDangerous || descriptor.Tier == ToolCapabilityTier.DangerousWrite,
+            PackIds = normalizedPackId.Length == 0 ? Array.Empty<string>() : new[] { normalizedPackId },
+            SkillDirectories = Array.Empty<string>(),
+            SkillIds = Array.Empty<string>()
+        };
+    }
+
+    private static ToolPluginAvailabilityInfo CreateBuiltInPluginAvailability(
+        KnownBuiltInPackBootstrapMetadata metadata,
+        bool enabled,
+        string? disabledReason,
+        bool descriptorOnly = false) {
+        var descriptor = metadata.Descriptor;
+        var normalizedPackId = NormalizePackId(descriptor.Id);
+        var normalizedName = string.IsNullOrWhiteSpace(descriptor.Name) ? normalizedPackId : descriptor.Name.Trim();
+        var normalizedSourceKind = NormalizeSourceKind(descriptor.SourceKind, descriptor.Id);
+        var normalizedReason = enabled ? null : NormalizeDisabledReason(disabledReason);
+
+        return new ToolPluginAvailabilityInfo {
+            Id = normalizedPackId.Length == 0 ? descriptor.Id : normalizedPackId,
+            Name = normalizedName,
+            Version = null,
+            Origin = PackSourceBuiltin,
+            SourceKind = normalizedSourceKind,
+            DefaultEnabled = metadata.DefaultEnabled,
+            Enabled = enabled,
+            DescriptorOnly = descriptorOnly,
             DisabledReason = normalizedReason,
             IsDangerous = descriptor.IsDangerous || descriptor.Tier == ToolCapabilityTier.DangerousWrite,
             PackIds = normalizedPackId.Length == 0 ? Array.Empty<string>() : new[] { normalizedPackId },
@@ -1328,11 +2074,11 @@ public static partial class ToolPackBootstrap {
     }
 
     private static ToolPluginCatalogInfo CreateBuiltInPluginCatalog(BuiltInPackRegistrationCandidate candidate) {
-        var descriptor = candidate.Pack.Descriptor;
+        var descriptor = candidate.Descriptor;
         var normalizedPackId = NormalizePackId(descriptor.Id);
         var normalizedName = string.IsNullOrWhiteSpace(descriptor.Name) ? normalizedPackId : descriptor.Name.Trim();
         var normalizedSourceKind = NormalizeSourceKind(descriptor.SourceKind, descriptor.Id);
-        var version = candidate.Pack.GetType().Assembly.GetName().Version?.ToString();
+        var version = candidate.PackType.Assembly.GetName().Version?.ToString();
 
         return new ToolPluginCatalogInfo {
             Id = normalizedPackId.Length == 0 ? descriptor.Id : normalizedPackId,
@@ -1345,6 +2091,55 @@ public static partial class ToolPackBootstrap {
             PackIds = normalizedPackId.Length == 0 ? Array.Empty<string>() : new[] { normalizedPackId },
             SkillDirectories = Array.Empty<string>(),
             SkillIds = Array.Empty<string>()
+        };
+    }
+
+    private static ToolPluginCatalogInfo CreateBuiltInPluginCatalog(KnownBuiltInPackBootstrapMetadata metadata) {
+        var descriptor = metadata.Descriptor;
+        var normalizedPackId = NormalizePackId(descriptor.Id);
+        var normalizedName = string.IsNullOrWhiteSpace(descriptor.Name) ? normalizedPackId : descriptor.Name.Trim();
+        var normalizedSourceKind = NormalizeSourceKind(descriptor.SourceKind, descriptor.Id);
+
+        return new ToolPluginCatalogInfo {
+            Id = normalizedPackId.Length == 0 ? descriptor.Id : normalizedPackId,
+            Name = normalizedName,
+            Version = null,
+            Origin = PackSourceBuiltin,
+            SourceKind = normalizedSourceKind,
+            DefaultEnabled = metadata.DefaultEnabled,
+            IsDangerous = descriptor.IsDangerous || descriptor.Tier == ToolCapabilityTier.DangerousWrite,
+            PackIds = normalizedPackId.Length == 0 ? Array.Empty<string>() : new[] { normalizedPackId },
+            SkillDirectories = Array.Empty<string>(),
+            SkillIds = Array.Empty<string>()
+        };
+    }
+
+    private static ToolPluginAvailabilityInfo CreatePluginPreviewAvailability(
+        ToolPluginCatalogInfo catalog,
+        bool enabled,
+        string? disabledReason,
+        bool descriptorOnly = true) {
+        var normalizedPluginId = NormalizePackId(catalog.Id);
+        var normalizedName = string.IsNullOrWhiteSpace(catalog.Name)
+            ? (normalizedPluginId.Length == 0 ? catalog.Id : normalizedPluginId)
+            : catalog.Name.Trim();
+        var normalizedReason = enabled ? null : NormalizeDisabledReason(disabledReason);
+
+        return new ToolPluginAvailabilityInfo {
+            Id = normalizedPluginId.Length == 0 ? catalog.Id : normalizedPluginId,
+            Name = normalizedName,
+            Version = string.IsNullOrWhiteSpace(catalog.Version) ? null : catalog.Version.Trim(),
+            Origin = string.IsNullOrWhiteSpace(catalog.Origin) ? "plugin_folder" : catalog.Origin.Trim(),
+            SourceKind = string.IsNullOrWhiteSpace(catalog.SourceKind) ? PackSourceOpenSource : catalog.SourceKind.Trim(),
+            DefaultEnabled = catalog.DefaultEnabled,
+            Enabled = enabled,
+            DescriptorOnly = descriptorOnly,
+            DisabledReason = normalizedReason,
+            IsDangerous = catalog.IsDangerous,
+            PackIds = catalog.PackIds ?? Array.Empty<string>(),
+            RootPath = string.IsNullOrWhiteSpace(catalog.RootPath) ? null : catalog.RootPath.Trim(),
+            SkillDirectories = catalog.SkillDirectories ?? Array.Empty<string>(),
+            SkillIds = catalog.SkillIds ?? Array.Empty<string>()
         };
     }
 
@@ -1620,9 +2415,17 @@ public static partial class ToolPackBootstrap {
         }
     }
 
+    private sealed record KnownBuiltInPackBootstrapMetadata(
+        string PackId,
+        ToolPackDescriptor Descriptor,
+        bool DefaultEnabled,
+        string[] IdentityTokens);
+
     private sealed record BuiltInPackRegistrationCandidate(
         string PackId,
-        IToolPack Pack,
+        ToolPackDescriptor Descriptor,
+        Type PackType,
+        IToolPack? Pack,
         bool DefaultEnabled);
 
 }

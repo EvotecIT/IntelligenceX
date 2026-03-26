@@ -6,6 +6,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
+using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Tools.Common;
 
 namespace IntelligenceX.Chat.Tooling;
@@ -143,6 +144,186 @@ internal static partial class PluginFolderToolPackLoader {
         }
     }
 
+    internal static IReadOnlyList<ToolPluginCatalogInfo> CreatePluginCatalogPreview(
+        ToolPackBootstrapOptions options,
+        Action<string>? onWarning = null) {
+        if (options is null) {
+            throw new ArgumentNullException(nameof(options));
+        }
+
+        var roots = ResolvePluginSearchRoots(options);
+        var catalogs = new List<ToolPluginCatalogInfo>();
+        var seenPluginIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var root in roots) {
+            if (!Directory.Exists(root.Path)) {
+                if (root.IsExplicit) {
+                    onWarning?.Invoke($"[plugin] path_not_found path='{root.Path}'");
+                }
+                continue;
+            }
+
+            foreach (var pending in EnumeratePluginPreviewEntries(root.Path, onWarning, root.IsExplicit)) {
+                if (pending.PluginIdentity.Length > 0 && !seenPluginIds.Add(pending.PluginIdentity)) {
+                    if (pending.IsExplicitRoot) {
+                        onWarning?.Invoke(
+                            $"[plugin] duplicate_plugin_identity plugin='{pending.PluginIdentity}' path='{pending.Path}' action='skipped' mode='preview'");
+                    }
+                    continue;
+                }
+
+                var manifest = pending.IsArchive
+                    ? TryReadManifestFromArchive(pending.Path, onWarning)
+                    : TryReadManifest(Path.Combine(pending.Path, ManifestFileName), onWarning);
+                if (manifest is null) {
+                    continue;
+                }
+
+                catalogs.Add(CreatePluginCatalog(
+                    pending.Path,
+                    manifest,
+                    Array.Empty<ToolPackAvailabilityInfo>(),
+                    onWarning));
+            }
+        }
+
+        return catalogs
+            .OrderBy(static plugin => plugin.Name, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(static plugin => plugin.Id, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    internal static IReadOnlyList<ToolDefinitionDto> CreatePluginToolDefinitionPreview(
+        ToolPackBootstrapOptions options,
+        Action<string>? onWarning = null) {
+        if (options is null) {
+            throw new ArgumentNullException(nameof(options));
+        }
+
+        var tools = new List<ToolDefinitionDto>();
+        var seenPluginIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var root in ResolvePluginSearchRoots(options)) {
+            if (!Directory.Exists(root.Path)) {
+                if (root.IsExplicit) {
+                    onWarning?.Invoke($"[plugin] path_not_found path='{root.Path}'");
+                }
+                continue;
+            }
+
+            foreach (var pending in EnumeratePluginPreviewEntries(root.Path, onWarning, root.IsExplicit)) {
+                if (pending.PluginIdentity.Length > 0 && !seenPluginIds.Add(pending.PluginIdentity)) {
+                    if (pending.IsExplicitRoot) {
+                        onWarning?.Invoke(
+                            $"[plugin] duplicate_plugin_identity plugin='{pending.PluginIdentity}' path='{pending.Path}' action='skipped' mode='preview'");
+                    }
+                    continue;
+                }
+
+                var manifest = pending.IsArchive
+                    ? TryReadManifestFromArchive(pending.Path, onWarning)
+                    : TryReadManifest(Path.Combine(pending.Path, ManifestFileName), onWarning);
+                if (manifest is null) {
+                    continue;
+                }
+
+                var pluginCatalog = CreatePluginCatalog(
+                    pending.Path,
+                    manifest,
+                    Array.Empty<ToolPackAvailabilityInfo>(),
+                    onWarning);
+                tools.AddRange(CreateManifestToolDefinitions(manifest, pluginCatalog, onWarning));
+            }
+        }
+
+        return tools
+            .OrderBy(static tool => tool.Name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    internal static ToolPackBootstrapResult LoadPluginPacksForPackId(
+        ToolPackBootstrapOptions options,
+        string targetPackId,
+        IEnumerable<IToolPack>? existingPacks,
+        Action<string>? onWarning = null) {
+        ArgumentNullException.ThrowIfNull(options);
+
+        var normalizedTargetPackId = ToolPackBootstrap.NormalizePackId(targetPackId);
+        if (normalizedTargetPackId.Length == 0) {
+            return new ToolPackBootstrapResult();
+        }
+
+        var loadedPacks = existingPacks?.Where(static pack => pack is not null).ToArray() ?? Array.Empty<IToolPack>();
+        var existingPackIds = new HashSet<string>(
+            loadedPacks
+                .Select(static pack => ToolPackBootstrap.NormalizePackId(pack.Descriptor.Id))
+                .Where(static packId => packId.Length > 0),
+            StringComparer.OrdinalIgnoreCase);
+        var loadedPacksByAssemblyName = BuildLoadedPacksByAssemblyName(loadedPacks);
+        var packs = new List<IToolPack>();
+        var packAvailability = new List<ToolPackAvailabilityInfo>();
+        var pluginAvailability = new List<ToolPluginAvailabilityInfo>();
+        var pluginCatalog = new List<ToolPluginCatalogInfo>();
+        var seenPluginIdentities = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var root in ResolvePluginSearchRoots(options)) {
+            if (!Directory.Exists(root.Path)) {
+                if (root.IsExplicit) {
+                    onWarning?.Invoke($"[plugin] path_not_found path='{root.Path}'");
+                }
+                continue;
+            }
+
+            foreach (var pluginDirectory in EnumeratePluginDirectories(root.Path, options, onWarning)) {
+                var pluginIdentity = ResolvePluginIdentity(pluginDirectory);
+                if (pluginIdentity.Length > 0 && !seenPluginIdentities.Add(pluginIdentity)) {
+                    continue;
+                }
+
+                var manifest = TryReadManifest(Path.Combine(pluginDirectory, ManifestFileName), onWarning);
+                if (manifest is null || !ManifestCouldContainPack(manifest, pluginDirectory, normalizedTargetPackId)) {
+                    continue;
+                }
+
+                var loaded = TryLoadPluginDirectory(
+                    pluginDirectory: pluginDirectory,
+                    isExplicitRoot: root.IsExplicit,
+                    options: options,
+                    packs: packs,
+                    existingPackIds: existingPackIds,
+                    loadedPacksByAssemblyName: loadedPacksByAssemblyName,
+                    onWarning: onWarning,
+                    onPackAvailability: availability => packAvailability.Add(availability),
+                    onPluginAvailability: availability => pluginAvailability.Add(availability),
+                    onPluginCatalog: catalog => pluginCatalog.Add(catalog),
+                    loadIndex: 1,
+                    loadTotal: 1);
+                if (!loaded && packAvailability.Count == 0 && pluginAvailability.Count == 0 && pluginCatalog.Count == 0) {
+                    continue;
+                }
+
+                return new ToolPackBootstrapResult {
+                    Packs = packs.ToArray(),
+                    PackAvailability = packAvailability.ToArray(),
+                    PluginAvailability = pluginAvailability.ToArray(),
+                    PluginCatalog = pluginCatalog.ToArray()
+                };
+            }
+        }
+
+        return new ToolPackBootstrapResult();
+    }
+
+    private static bool ManifestCouldContainPack(PluginManifest manifest, string pluginDirectory, string normalizedTargetPackId) {
+        ArgumentNullException.ThrowIfNull(manifest);
+
+        var declaredPackIds = ResolveManifestPackIds(manifest);
+        if (declaredPackIds.Length > 0) {
+            return declaredPackIds.Contains(normalizedTargetPackId, StringComparer.OrdinalIgnoreCase);
+        }
+
+        var normalizedPluginId = ToolPackBootstrap.NormalizePackId(DeterminePluginId(pluginDirectory, manifest));
+        return string.Equals(normalizedPluginId, normalizedTargetPackId, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static Dictionary<string, IReadOnlyList<IToolPack>> BuildLoadedPacksByAssemblyName(IReadOnlyList<IToolPack> packs) {
         var byAssemblyName = new Dictionary<string, List<IToolPack>>(StringComparer.OrdinalIgnoreCase);
         for (var i = 0; i < packs.Count; i++) {
@@ -170,6 +351,64 @@ internal static partial class PluginFolderToolPackLoader {
         }
 
         return normalized;
+    }
+
+    private static IEnumerable<PluginPreviewEntry> EnumeratePluginPreviewEntries(
+        string rootPath,
+        Action<string>? onWarning,
+        bool isExplicitRoot) {
+        if (IsPluginFolder(rootPath)) {
+            yield return new PluginPreviewEntry(
+                rootPath,
+                IsArchive: false,
+                isExplicitRoot,
+                ResolvePluginIdentity(rootPath));
+        } else if (LooksLikeManifestlessPluginFolder(rootPath)) {
+            onWarning?.Invoke($"[plugin] manifest_missing path='{rootPath}' action='skipped'");
+        }
+
+        foreach (var archive in EnumeratePluginPreviewArchives(rootPath)) {
+            yield return new PluginPreviewEntry(
+                archive,
+                IsArchive: true,
+                isExplicitRoot,
+                ResolvePluginArchiveIdentity(archive));
+        }
+
+        IEnumerable<string> subDirectories;
+        try {
+            subDirectories = Directory.EnumerateDirectories(rootPath);
+        } catch {
+            yield break;
+        }
+
+        foreach (var directory in subDirectories.OrderBy(static d => Path.GetFileName(d), StringComparer.OrdinalIgnoreCase)) {
+            if (IsPluginFolder(directory)) {
+                yield return new PluginPreviewEntry(
+                    directory,
+                    IsArchive: false,
+                    isExplicitRoot,
+                    ResolvePluginIdentity(directory));
+            } else if (LooksLikeManifestlessPluginFolder(directory)) {
+                onWarning?.Invoke($"[plugin] manifest_missing path='{directory}' action='skipped'");
+            }
+        }
+    }
+
+    private static IEnumerable<string> EnumeratePluginPreviewArchives(string rootPath) {
+        string[] archives;
+        try {
+            archives = Directory
+                .EnumerateFiles(rootPath, "*" + PluginArchiveSuffix, SearchOption.TopDirectoryOnly)
+                .OrderBy(static file => Path.GetFileName(file), StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        } catch {
+            yield break;
+        }
+
+        foreach (var archive in archives) {
+            yield return archive;
+        }
     }
 
     private static IEnumerable<string> EnumeratePluginDirectories(string rootPath, ToolPackBootstrapOptions options, Action<string>? onWarning) {
@@ -264,6 +503,55 @@ internal static partial class PluginFolderToolPackLoader {
             return pluginId.Length == 0 ? fallback : pluginId;
         } catch {
             return fallback;
+        }
+    }
+
+    private static string ResolvePluginArchiveIdentity(string archivePath) {
+        var fallback = Path.GetFileNameWithoutExtension(Path.GetFileNameWithoutExtension(archivePath) ?? string.Empty);
+        if (string.IsNullOrWhiteSpace(archivePath) || !File.Exists(archivePath)) {
+            return fallback ?? string.Empty;
+        }
+
+        try {
+            using var archive = ZipFile.OpenRead(archivePath);
+            var manifestEntry = archive.Entries.FirstOrDefault(static entry =>
+                string.Equals(Path.GetFileName(entry.FullName), ManifestFileName, StringComparison.OrdinalIgnoreCase));
+            if (manifestEntry is null) {
+                return fallback ?? string.Empty;
+            }
+
+            using var stream = manifestEntry.Open();
+            using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+            var json = reader.ReadToEnd();
+            using var document = JsonDocument.Parse(json);
+            if (document.RootElement.ValueKind != JsonValueKind.Object) {
+                return fallback ?? string.Empty;
+            }
+
+            var pluginId = TryReadManifestString(document.RootElement, "pluginId");
+            return pluginId.Length == 0 ? (fallback ?? string.Empty) : pluginId;
+        } catch {
+            return fallback ?? string.Empty;
+        }
+    }
+
+    private static PluginManifest? TryReadManifestFromArchive(string archivePath, Action<string>? onWarning) {
+        try {
+            using var archive = ZipFile.OpenRead(archivePath);
+            var manifestEntry = archive.Entries.FirstOrDefault(static entry =>
+                string.Equals(Path.GetFileName(entry.FullName), ManifestFileName, StringComparison.OrdinalIgnoreCase));
+            if (manifestEntry is null) {
+                onWarning?.Invoke($"[plugin] manifest_missing archive='{archivePath}' action='skipped'");
+                return null;
+            }
+
+            using var stream = manifestEntry.Open();
+            using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+            var json = reader.ReadToEnd();
+            return TryDeserializeManifest(json, archivePath, onWarning);
+        } catch (Exception ex) {
+            onWarning?.Invoke($"[plugin] manifest_invalid path='{archivePath}' error='{ex.GetType().Name}: {ex.Message}'");
+            return null;
         }
     }
 
@@ -567,6 +855,8 @@ internal static partial class PluginFolderToolPackLoader {
         public string? PluginId { get; set; }
         public string? DisplayName { get; set; }
         public string? Version { get; set; }
+        public string[]? PackIds { get; set; }
+        public PluginManifestToolDescriptor[]? Tools { get; set; }
         public bool? DefaultEnabled { get; set; }
         public bool? IsDangerous { get; set; }
         public string? SourceKind { get; set; }
@@ -576,4 +866,31 @@ internal static partial class PluginFolderToolPackLoader {
         public string? EntryType { get; set; }
         public string[]? SkillDirectories { get; set; }
     }
+
+    private sealed class PluginManifestToolDescriptor {
+        public string? Name { get; set; }
+        public string? Description { get; set; }
+        public string? DisplayName { get; set; }
+        public string? PackId { get; set; }
+        public string? Category { get; set; }
+        public string[]? Tags { get; set; }
+        public string? RoutingRole { get; set; }
+        public string? ExecutionScope { get; set; }
+        public bool? SupportsLocalExecution { get; set; }
+        public bool? SupportsRemoteExecution { get; set; }
+        public bool? SupportsTargetScoping { get; set; }
+        public bool? SupportsRemoteHostTargeting { get; set; }
+        public bool? IsWriteCapable { get; set; }
+        public bool? SupportsConnectivityProbe { get; set; }
+        public string? ProbeToolName { get; set; }
+        public bool? IsSetupAware { get; set; }
+        public string? SetupToolName { get; set; }
+        public string[]? HandoffTargetPackIds { get; set; }
+        public string[]? HandoffTargetToolNames { get; set; }
+        public bool? IsRecoveryAware { get; set; }
+        public string[]? RecoveryToolNames { get; set; }
+        public string[]? RepresentativeExamples { get; set; }
+    }
+
+    private readonly record struct PluginPreviewEntry(string Path, bool IsArchive, bool IsExplicitRoot, string PluginIdentity);
 }

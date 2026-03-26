@@ -83,6 +83,7 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
     public bool UseDefaultBuiltInToolAssemblyNames { get; set; } = true;
     public List<string> BuiltInToolAssemblyNames { get; } = new();
     public List<string> BuiltInToolProbePaths { get; } = new();
+    public bool EnableWorkspaceBuiltInToolOutputProbing { get; set; }
     public bool EnableDefaultPluginPaths { get; set; } = true;
     public List<string> PluginPaths { get; } = new();
     internal List<string> RuntimePluginPaths { get; } = new();
@@ -103,6 +104,7 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
     IReadOnlyList<string> IToolPackRuntimeSettings.AllowedRoots => AllowedRoots;
     IReadOnlyList<string> IToolPackRuntimeSettings.BuiltInToolAssemblyNames => BuiltInToolAssemblyNames;
     IReadOnlyList<string> IToolPackRuntimeSettings.BuiltInToolProbePaths => BuiltInToolProbePaths;
+    bool IToolPackRuntimeSettings.EnableWorkspaceBuiltInToolOutputProbing => EnableWorkspaceBuiltInToolOutputProbing;
     IReadOnlyList<string> IToolPackRuntimeSettings.PluginPaths => GetEffectivePluginPaths();
     IReadOnlyList<string> IToolPackRuntimeSettings.DisabledPackIds => DisabledPackIds;
     IReadOnlyList<string> IToolPackRuntimeSettings.EnabledPackIds => EnabledPackIds;
@@ -609,6 +611,14 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
                     return options;
                 }
                 options.BuiltInToolProbePaths.Add(value!);
+                continue;
+            }
+            if (arg is "--enable-workspace-built-in-tool-output-probing") {
+                options.EnableWorkspaceBuiltInToolOutputProbing = true;
+                continue;
+            }
+            if (arg is "--disable-workspace-built-in-tool-output-probing") {
+                options.EnableWorkspaceBuiltInToolOutputProbing = false;
                 continue;
             }
             if (arg is "--no-default-built-in-tool-assemblies") {

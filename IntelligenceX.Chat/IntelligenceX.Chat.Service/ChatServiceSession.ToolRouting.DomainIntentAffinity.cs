@@ -237,13 +237,20 @@ internal sealed partial class ChatServiceSession {
         int? weightedAmbiguityBaselineSelection,
         int? weightedAmbiguityEffectiveSelection,
         int? weightedAmbiguityClusterSize,
-        double? weightedAmbiguitySecondScoreRatio) {
+        double? weightedAmbiguitySecondScoreRatio,
+        bool promptExposureReordered,
+        IReadOnlyList<string>? promptExposureToolNames) {
         var (selected, total) = NormalizeRoutingToolCounts(selectedToolCount, totalToolCount);
         var normalizedContextLength = effectiveContextLength is > 0 ? effectiveContextLength : null;
         var normalizedDomainIntentSource = NormalizeRoutingDomainIntentSource(domainIntentSource);
         var normalizedDomainIntentFamily = TryNormalizeDomainIntentFamily(domainIntentFamily, out var parsedDomainIntentFamily)
             ? parsedDomainIntentFamily
             : string.Empty;
+        var normalizedPromptExposureToolNames = promptExposureToolNames?
+            .Select(static name => (name ?? string.Empty).Trim())
+            .Where(static name => name.Length > 0)
+            .Take(MaxRoutingMetaPromptExposureToolNames)
+            .ToArray() ?? Array.Empty<string>();
         var normalizedWeightedAmbiguityBaseline = weightedAmbiguityWidened && weightedAmbiguityBaselineSelection is > 0
             ? weightedAmbiguityBaselineSelection
             : null;
@@ -275,6 +282,10 @@ internal sealed partial class ChatServiceSession {
             domainIntent = new {
                 source = normalizedDomainIntentSource.Length > 0 ? normalizedDomainIntentSource : null,
                 family = normalizedDomainIntentFamily.Length > 0 ? normalizedDomainIntentFamily : null
+            },
+            promptExposure = new {
+                reordered = promptExposureReordered,
+                topToolNames = normalizedPromptExposureToolNames
             },
             weightedAmbiguity = new {
                 widened = weightedAmbiguityWidened,

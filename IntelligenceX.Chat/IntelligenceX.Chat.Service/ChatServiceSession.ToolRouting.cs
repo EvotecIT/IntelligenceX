@@ -32,11 +32,15 @@ internal sealed partial class ChatServiceSession {
     private const int DomainIntentAmbiguousDomainTokenMinLength = 4;
     private const int DomainIntentAmbiguousDomainTokenMinLabels = 2;
     private const int DomainIntentAmbiguousDomainTokenMaxCandidates = 16;
+    private const int MaxRoutingMetaPromptExposureToolNames = 6;
     private const string DomainIntentFamilyAd = "ad_domain";
     private const string DomainIntentFamilyPublic = "public_domain";
     private const string DomainIntentAcronymTokenAd = "AD";
     private const string DomainIntentMarker = "ix:domain-intent:v1";
     private const string DomainIntentChoiceMarker = "ix:domain-intent-choice:v1";
+    private readonly record struct PromptExposureSnapshot(
+        bool Reordered,
+        string[] TopToolNames);
     private readonly record struct DomainIntentFamilyAvailability(
         bool HasAd,
         bool HasPublic,

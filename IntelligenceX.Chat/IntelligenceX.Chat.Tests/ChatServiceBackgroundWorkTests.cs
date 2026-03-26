@@ -1276,6 +1276,169 @@ public sealed class ChatServiceBackgroundWorkTests {
     }
 
     [Fact]
+    public void BuildBackgroundSchedulerSummaryForTesting_UsesDeferredDefinitionsForColdDependencyRecovery() {
+        var tempRoot = TempPathTestHelper.CreateTempDirectoryPath("ix-chat-background-summary-deferred");
+        var pluginRoot = Path.Combine(tempRoot, "plugins");
+        var pluginFolder = Path.Combine(pluginRoot, "ops-bundle");
+        Directory.CreateDirectory(pluginFolder);
+
+        try {
+            var options = ChatServiceTestSessionFactory.CreateIsolatedOptions();
+            options.EnableBuiltInPackLoading = false;
+            options.EnableDefaultPluginPaths = false;
+            options.RuntimePluginPaths.Add(pluginRoot);
+
+            var testAssembly = Assembly.GetExecutingAssembly();
+            var sourceAssemblyPath = testAssembly.Location;
+            var entryAssemblyName = Path.GetFileName(sourceAssemblyPath);
+            File.Copy(sourceAssemblyPath, Path.Combine(pluginFolder, entryAssemblyName), overwrite: true);
+            var entryType = typeof(PluginFolderLoaderTests.PluginFolderLoaderSyntheticBackgroundDependencyPack).FullName;
+            Assert.False(string.IsNullOrWhiteSpace(entryType));
+
+            File.WriteAllText(Path.Combine(pluginFolder, "ix-plugin.json"), $$"""
+            {
+              "schemaVersion": 1,
+              "pluginId": "ops-bundle",
+              "displayName": "Ops Bundle",
+              "version": "1.2.3",
+              "packIds": ["plugin_loader_synthetic_background_dependency"],
+              "defaultEnabled": true,
+              "sourceKind": "closed_source",
+              "entryAssembly": "{{entryAssemblyName}}",
+              "entryType": "{{entryType}}",
+              "tools": [
+                {
+                  "name": "plugin_loader_synthetic_background_operational",
+                  "description": "Synthetic deferred operational tool.",
+                  "category": "inventory",
+                  "supportsLocalExecution": true,
+                  "supportsRemoteExecution": false
+                },
+                {
+                  "name": "plugin_loader_synthetic_background_helper",
+                  "description": "Synthetic deferred helper tool.",
+                  "category": "diagnostic",
+                  "supportsLocalExecution": true,
+                  "supportsRemoteExecution": false
+                }
+              ]
+            }
+            """);
+
+            var session = new ChatServiceSession(options, Stream.Null);
+            session.SetCachedToolDefinitionsForTesting(new[] {
+                new ToolDefinitionDto {
+                    Name = "plugin_loader_synthetic_background_operational",
+                    Description = "Synthetic deferred operational tool.",
+                    PackId = "plugin_loader_synthetic_background_dependency"
+                },
+                new ToolDefinitionDto {
+                    Name = "plugin_loader_synthetic_background_helper",
+                    Description = "Synthetic deferred helper tool.",
+                    PackId = "plugin_loader_synthetic_background_dependency"
+                }
+            });
+
+            const string threadId = "thread-background-summary-deferred-auth";
+            var definitions = new[] {
+                new ToolDefinition(
+                    name: "seed_background_dependency_followup",
+                    description: "Seed a deferred background dependency follow-up.",
+                    handoff: new ToolHandoffContract {
+                        IsHandoffAware = true,
+                        OutboundRoutes = new[] {
+                            new ToolHandoffRoute {
+                                TargetPackId = "plugin_loader_synthetic_background_dependency",
+                                TargetToolName = "plugin_loader_synthetic_background_operational",
+                                TargetRole = ToolRoutingTaxonomy.RoleOperational,
+                                FollowUpKind = ToolHandoffFollowUpKinds.Verification,
+                                FollowUpPriority = ToolHandoffFollowUpPriorities.High,
+                                Bindings = new[] {
+                                    new ToolHandoffBinding {
+                                        SourceField = "target",
+                                        TargetArgument = "target"
+                                    }
+                                }
+                            }
+                        }
+                    }),
+                new ToolDefinition(
+                    "plugin_loader_synthetic_background_operational",
+                    "Synthetic deferred operational tool.",
+                    ToolSchema.Object(("target", ToolSchema.String("Target host."))).NoAdditionalProperties(),
+                    authentication: new ToolAuthenticationContract {
+                        IsAuthenticationAware = true,
+                        RequiresAuthentication = true,
+                        AuthenticationContractId = "ix.auth.runtime.v1",
+                        Mode = ToolAuthenticationMode.ProfileReference,
+                        ProfileIdArgumentName = "profile_id",
+                        SupportsConnectivityProbe = true,
+                        ProbeToolName = "plugin_loader_synthetic_background_helper"
+                    }),
+                new ToolDefinition(
+                    "plugin_loader_synthetic_background_helper",
+                    "Synthetic deferred helper tool.",
+                    ToolSchema.Object(("target", ToolSchema.String("Target host."))).NoAdditionalProperties())
+            };
+            session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(definitions));
+            session.RememberToolHandoffBackgroundWorkForTesting(
+                threadId,
+                definitions,
+                new[] {
+                    new ToolCallDto {
+                        CallId = "call-background-summary-deferred",
+                        Name = "seed_background_dependency_followup",
+                        ArgumentsJson = """{"target":"srv-summary.contoso.com"}"""
+                    }
+                },
+                new[] {
+                    new ToolOutputDto {
+                        CallId = "call-background-summary-deferred",
+                        Ok = true,
+                        Output = """{"ok":true}"""
+                    }
+                });
+
+            var helperItem = Assert.Single(
+                session.ResolveThreadBackgroundWorkSnapshotForTesting(threadId).Items,
+                static item => string.Equals(item.TargetToolName, "plugin_loader_synthetic_background_helper", StringComparison.OrdinalIgnoreCase));
+            Assert.True(session.TrySetThreadBackgroundWorkItemStateForTesting(threadId, helperItem.Id, "running"));
+            session.RememberBackgroundWorkExecutionOutcomeForTesting(
+                threadId,
+                helperItem.Id,
+                "call-background-summary-helper",
+                new[] {
+                    new ToolOutputDto {
+                        CallId = "call-background-summary-helper",
+                        Ok = false,
+                        ErrorCode = "authentication_failed",
+                        Error = "Missing runtime auth profile.",
+                        Output = """{"ok":false}"""
+                    }
+                });
+
+            var summary = session.BuildBackgroundSchedulerSummaryForTesting();
+            var threadSummary = Assert.Single(summary.ThreadSummaries, static item => string.Equals(item.ThreadId, threadId, StringComparison.Ordinal));
+
+            Assert.Equal("background_prerequisite_auth_context_required", threadSummary.DependencyRecoveryReason);
+            Assert.Equal("request_runtime_auth_context", threadSummary.DependencyNextAction);
+            Assert.Contains("plugin_loader_synthetic_background_helper", threadSummary.DependencyAuthenticationHelperToolNames, StringComparer.OrdinalIgnoreCase);
+            Assert.Contains("profile_id", threadSummary.DependencyAuthenticationArgumentNames, StringComparer.OrdinalIgnoreCase);
+            Assert.Equal("background_prerequisite_auth_context_required", summary.DependencyRecoveryReason);
+            Assert.Equal("request_runtime_auth_context", summary.DependencyNextAction);
+            Assert.Contains("plugin_loader_synthetic_background_helper", summary.DependencyAuthenticationHelperToolNames, StringComparer.OrdinalIgnoreCase);
+            Assert.Contains("profile_id", summary.DependencyAuthenticationArgumentNames, StringComparer.OrdinalIgnoreCase);
+            Assert.Null(session.GetStartupToolingBootstrapTaskForTesting());
+            Assert.DoesNotContain("plugin_loader_synthetic_background_operational", session.GetRegisteredToolNamesForTesting(), StringComparer.OrdinalIgnoreCase);
+            Assert.DoesNotContain("plugin_loader_synthetic_background_helper", session.GetRegisteredToolNamesForTesting(), StringComparer.OrdinalIgnoreCase);
+        } finally {
+            if (Directory.Exists(tempRoot)) {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public void TryBuildScheduledBackgroundWorkToolCallForTesting_PicksHighestPriorityReadyItemAcrossThreads() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
         const string lowPriorityThreadId = "thread-background-scheduler-low";

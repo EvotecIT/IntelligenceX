@@ -27,6 +27,14 @@ public sealed record ToolPackInfoDto {
     /// </summary>
     public required bool Enabled { get; init; }
     /// <summary>
+    /// Activation state for the current session (<c>active</c>, <c>deferred</c>, or <c>disabled</c>).
+    /// </summary>
+    public string? ActivationState { get; init; }
+    /// <summary>
+    /// Whether the runtime can activate this pack on demand from descriptor-only state.
+    /// </summary>
+    public bool CanActivateOnDemand { get; init; }
+    /// <summary>
     /// Optional reason when the pack is unavailable for this session.
     /// </summary>
     public string? DisabledReason { get; init; }

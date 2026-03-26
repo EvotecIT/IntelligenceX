@@ -14,6 +14,10 @@ internal static partial class PluginFolderToolPackLoader {
         }
 
         var normalizedRootPath = NormalizePath(rootPath) ?? string.Empty;
+        if (normalizedRootPath.Length > 0 && !Directory.Exists(normalizedRootPath)) {
+            return Array.Empty<string>();
+        }
+
         var directories = new List<string>();
         for (var i = 0; i < manifest.SkillDirectories.Length; i++) {
             var candidate = (manifest.SkillDirectories[i] ?? string.Empty).Trim();

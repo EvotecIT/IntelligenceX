@@ -646,6 +646,7 @@ internal sealed partial class ChatServiceSession {
         _servingPersistedToolingBootstrapPreview = false;
         _persistedPreviewPackSummaries = Array.Empty<ToolPackInfoDto>();
         _persistedPreviewCapabilitySnapshot = null;
+        _deferredDescriptorPreviewToolDefinitions = Array.Empty<ToolDefinitionDto>();
     }
 
     [MemberNotNull(
@@ -703,6 +704,11 @@ internal sealed partial class ChatServiceSession {
     private void RebuildToolingCore(bool clearRoutingCaches) {
         var runtimePolicyOptions = BuildRuntimePolicyOptions(_options);
         var resolvedRuntimePolicyOptions = ToolRuntimePolicyBootstrap.ResolveOptions(runtimePolicyOptions);
+        if (!clearRoutingCaches && Volatile.Read(ref _cachedToolDefinitions).Length == 0) {
+            // Restore lightweight preview state before paying the strict discovery-fingerprint cost.
+            TryApplyPersistedToolingBootstrapPreview();
+        }
+
         var bootstrapCacheKey = BuildToolingBootstrapCacheKey(_options, runtimePolicyOptions, resolvedRuntimePolicyOptions);
         if (!clearRoutingCaches
             && _toolingBootstrapCache is not null
@@ -710,11 +716,6 @@ internal sealed partial class ChatServiceSession {
             var cacheHitStopwatch = Stopwatch.StartNew();
             ApplyToolingBootstrapCacheSnapshot(cachedSnapshot, clearRoutingCaches, cacheHitStopwatch.Elapsed);
             return;
-        }
-
-        if (!clearRoutingCaches) {
-            // Best-effort preview for first-paint readiness while full bootstrap still runs.
-            TryApplyPersistedToolingBootstrapPreview();
         }
 
         var startupWarnings = new List<string>();
@@ -953,8 +954,8 @@ internal sealed partial class ChatServiceSession {
 
         var runtimePolicyOptions = BuildRuntimePolicyOptions(_options);
         var resolvedRuntimePolicyOptions = ToolRuntimePolicyBootstrap.ResolveOptions(runtimePolicyOptions);
-        var bootstrapCacheKey = BuildToolingBootstrapCacheKey(_options, runtimePolicyOptions, resolvedRuntimePolicyOptions);
-        if (!_toolingBootstrapCache.TryGetPersistedSnapshot(bootstrapCacheKey, out var persistedSnapshot)) {
+        var bootstrapPreviewCacheKey = BuildToolingBootstrapPreviewCacheKey(_options, runtimePolicyOptions, resolvedRuntimePolicyOptions);
+        if (!_toolingBootstrapCache.TryGetPersistedPreviewSnapshot(bootstrapPreviewCacheKey, out var persistedSnapshot)) {
             return false;
         }
 
@@ -986,6 +987,24 @@ internal sealed partial class ChatServiceSession {
         ServiceOptions options,
         ToolRuntimePolicyOptions runtimePolicyOptions,
         ToolRuntimePolicyResolvedOptions resolvedRuntimePolicyOptions) {
+        var builder = BuildToolingBootstrapCacheKeyBuilder(options, runtimePolicyOptions, resolvedRuntimePolicyOptions);
+        var runtimePolicyContext = ToolRuntimePolicyBootstrap.CreateContext(runtimePolicyOptions);
+        var bootstrapOptions = ToolPackBootstrap.CreateRuntimeBootstrapOptions(options, runtimePolicyContext);
+        builder.Append("discovery_fingerprint=").Append(ToolPackBootstrap.BuildDiscoveryFingerprint(bootstrapOptions)).Append(';');
+        return builder.ToString();
+    }
+
+    private static string BuildToolingBootstrapPreviewCacheKey(
+        ServiceOptions options,
+        ToolRuntimePolicyOptions runtimePolicyOptions,
+        ToolRuntimePolicyResolvedOptions resolvedRuntimePolicyOptions) {
+        return BuildToolingBootstrapCacheKeyBuilder(options, runtimePolicyOptions, resolvedRuntimePolicyOptions).ToString();
+    }
+
+    private static StringBuilder BuildToolingBootstrapCacheKeyBuilder(
+        ServiceOptions options,
+        ToolRuntimePolicyOptions runtimePolicyOptions,
+        ToolRuntimePolicyResolvedOptions resolvedRuntimePolicyOptions) {
         static string Normalize(string? value) {
             return (value ?? string.Empty).Trim();
         }
@@ -1013,6 +1032,7 @@ internal sealed partial class ChatServiceSession {
         builder.Append("ps_allow_write=").Append(options.PowerShellAllowWrite ? '1' : '0').Append(';');
         builder.Append("built_in_packs=").Append(options.EnableBuiltInPackLoading ? '1' : '0').Append(';');
         builder.Append("default_built_in_assemblies=").Append(options.UseDefaultBuiltInToolAssemblyNames ? '1' : '0').Append(';');
+        builder.Append("workspace_builtin_output_probing=").Append(options.EnableWorkspaceBuiltInToolOutputProbing ? '1' : '0').Append(';');
         builder.Append("default_plugin_paths=").Append(options.EnableDefaultPluginPaths ? '1' : '0').Append(';');
         AppendStringList(builder, "allowed_roots", options.AllowedRoots);
         AppendStringList(builder, "built_in_tool_assemblies", options.BuiltInToolAssemblyNames);
@@ -1031,13 +1051,10 @@ internal sealed partial class ChatServiceSession {
         builder.Append("smtp_probe_max_age_seconds=").Append(resolvedRuntimePolicyOptions.SmtpProbeMaxAgeSeconds.ToString(CultureInfo.InvariantCulture)).Append(';');
         builder.Append("runas_profile_path=").Append(Normalize(runtimePolicyOptions.RunAsProfilePath)).Append(';');
         builder.Append("auth_profile_path=").Append(Normalize(runtimePolicyOptions.AuthenticationProfilePath)).Append(';');
-        var runtimePolicyContext = ToolRuntimePolicyBootstrap.CreateContext(runtimePolicyOptions);
-        var bootstrapOptions = ToolPackBootstrap.CreateRuntimeBootstrapOptions(options, runtimePolicyContext);
-        builder.Append("discovery_fingerprint=").Append(ToolPackBootstrap.BuildDiscoveryFingerprint(bootstrapOptions)).Append(';');
-        return builder.ToString();
+        return builder;
     }
 
-    private void ClearToolRoutingCaches() {
+    private void ClearToolRoutingCaches(bool preserveConversationState = false) {
         // Tool sets may have changed; clear caches so routing doesn't assume removed tools.
         lock (_toolRoutingStatsLock) {
             _toolRoutingStats.Clear();
@@ -1047,34 +1064,38 @@ internal sealed partial class ChatServiceSession {
             _lastWeightedToolSubsetSeenUtcTicks.Clear();
             _plannerThreadIdByActiveThreadId.Clear();
             _plannerThreadSeenUtcTicksByActiveThreadId.Clear();
-            _domainIntentFamilyByThreadId.Clear();
-            _domainIntentFamilySeenUtcTicks.Clear();
-            _pendingDomainIntentClarificationSeenUtcTicks.Clear();
-            _packPreflightToolNamesByThreadId.Clear();
-            _packPreflightSeenUtcTicks.Clear();
-            _structuredNextActionAutoReplayByThreadId.Clear();
+            if (!preserveConversationState) {
+                _domainIntentFamilyByThreadId.Clear();
+                _domainIntentFamilySeenUtcTicks.Clear();
+                _pendingDomainIntentClarificationSeenUtcTicks.Clear();
+                _packPreflightToolNamesByThreadId.Clear();
+                _packPreflightSeenUtcTicks.Clear();
+                _structuredNextActionAutoReplayByThreadId.Clear();
+            }
         }
-        _lastUserIntentByThreadId.Clear();
-        _lastUserIntentSeenUtcTicks.Clear();
-        _pendingActionsByThreadId.Clear();
-        _pendingActionsSeenUtcTicks.Clear();
-        _pendingActionsCallToActionTokensByThreadId.Clear();
-        _structuredNextActionByThreadId.Clear();
-        ClearRecoveredThreadAliases();
-        ClearThreadToolEvidence();
-        ClearThreadBackgroundWorkSnapshots();
-        ClearPendingActionsSnapshots();
-        ClearUserIntentSnapshots();
-        ClearDomainIntentFamilySnapshots();
-        ClearPendingDomainIntentClarificationSnapshots();
-        ClearPackPreflightSnapshots();
-        ClearHostBootstrapFailureSnapshots();
-        ClearAlternateEngineHealthSnapshots();
+        if (!preserveConversationState) {
+            _lastUserIntentByThreadId.Clear();
+            _lastUserIntentSeenUtcTicks.Clear();
+            _pendingActionsByThreadId.Clear();
+            _pendingActionsSeenUtcTicks.Clear();
+            _pendingActionsCallToActionTokensByThreadId.Clear();
+            _structuredNextActionByThreadId.Clear();
+            ClearRecoveredThreadAliases();
+            ClearThreadToolEvidence();
+            ClearThreadBackgroundWorkSnapshots();
+            ClearPendingActionsSnapshots();
+            ClearUserIntentSnapshots();
+            ClearDomainIntentFamilySnapshots();
+            ClearPendingDomainIntentClarificationSnapshots();
+            ClearPackPreflightSnapshots();
+            ClearHostBootstrapFailureSnapshots();
+            ClearAlternateEngineHealthSnapshots();
+            ClearStructuredNextActionSnapshots();
+            ClearWorkingMemoryCheckpoints();
+        }
         ClearWeightedToolSubsetSnapshots();
-        ClearStructuredNextActionSnapshots();
         ClearPlannerThreadContextSnapshots();
         ClearToolRoutingStatsSnapshots();
-        ClearWorkingMemoryCheckpoints();
     }
 
     private static StartupLoadWarningSummary SummarizeStartupLoadWarnings(List<string> startupWarnings) {

@@ -86,9 +86,10 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Contains("enabled_plugin_count: 2", instructionsText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("tooling_snapshot: service_runtime, packs 3, plugins 3", instructionsText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("tooling_snapshot_packs:", instructionsText, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("AD Playground[enabled|builtin|adplayground|directory/remote_analysis]", instructionsText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("AD Playground[enabled|active|", instructionsText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("tooling_snapshot_plugins:", instructionsText, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("AD Playground[enabled|builtin|builtin|packs=active_directory]", instructionsText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("AD Playground[enabled|active|", instructionsText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("packs=active_directory", instructionsText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("enabled_packs: active_directory, eventlog", instructionsText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("enabled_plugins: active_directory, eventlog", instructionsText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("dangerous_tools_enabled: false", instructionsText, StringComparison.OrdinalIgnoreCase);
@@ -777,7 +778,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
-    public void RuntimeCapabilityHandshake_ReportsZeroToolingWhenNoPacksLoaded() {
+    public void RuntimeCapabilityHandshake_ReportsDescriptorPreviewWhenBootstrapHasNotStarted() {
         var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
 
         var instructions = session.BuildTurnInstructionsWithRuntimeIdentityForTesting("gpt-5");
@@ -787,13 +788,14 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Contains("ix:capability-snapshot:v1", instructionsText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("ix:skills:v1", instructionsText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("registered_tools: 0", instructionsText, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("enabled_pack_count: 0", instructionsText, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("plugin_count: 0", instructionsText, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("enabled_plugin_count: 0", instructionsText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("tooling_snapshot: deferred_descriptor_preview", instructionsText, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("enabled_pack_count: 0", instructionsText, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("plugin_count: 0", instructionsText, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("enabled_plugin_count: 0", instructionsText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("skill_count: 0", instructionsText, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("enabled_packs:", instructionsText, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("enabled_plugins:", instructionsText, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("deferred_work_affordances:", instructionsText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("enabled_packs:", instructionsText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("enabled_plugins:", instructionsText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("deferred_work_affordances:", instructionsText, StringComparison.OrdinalIgnoreCase);
         Assert.Null(TryReadInstructionLine(instructionsText, "skills:"));
     }
 
@@ -937,8 +939,9 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Contains("tooling_snapshot_source='service_runtime'", handshake, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("tooling_snapshot_pack_count='1'", handshake, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("tooling_snapshot_plugin_count='1'", handshake, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("tooling_snapshot_packs='AD Playground[enabled|builtin|adplayground|directory/remote_analysis]'", handshake, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("tooling_snapshot_plugins='AD Playground[enabled|builtin|builtin|packs=active_directory]'", handshake, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("tooling_snapshot_packs='AD Playground[enabled|active|", handshake, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("tooling_snapshot_plugins='AD Playground[enabled|active|", handshake, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("packs=active_directory", handshake, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("enabled_packs='active_directory'", handshake, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("enabled_plugins='active_directory'", handshake, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("enabled_pack_engines='adplayground'", handshake, StringComparison.OrdinalIgnoreCase);
@@ -1025,6 +1028,253 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Contains(
             warnings,
             static warning => warning.StartsWith("[startup] capability_handshake", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void RuntimeCapabilityHandshake_HelloWarningsAndRuntimeIdentityDescribeDeferredBootstrapWhenNotStarted() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+
+        var warnings = session.BuildHelloStartupWarningsForTesting(null);
+        var snapshot = session.BuildRuntimeCapabilitySnapshotForTesting();
+        var instructionsText = Assert.IsType<string>(session.BuildTurnInstructionsWithRuntimeIdentityForTesting("gpt-5.4"));
+
+        Assert.Contains(
+            warnings,
+            static warning => warning.Contains("Tool bootstrap deferred", StringComparison.OrdinalIgnoreCase));
+        Assert.NotNull(snapshot.ToolingSnapshot);
+        Assert.Equal("deferred_descriptor_preview", snapshot.ToolingSnapshot!.Source);
+        Assert.Equal(0, snapshot.RegisteredTools);
+        Assert.True(snapshot.ToolingSnapshot.Packs.Length > 0);
+        Assert.Contains(
+            snapshot.ToolingSnapshot.Packs,
+            static pack => string.Equals(pack.Id, "eventlog", StringComparison.OrdinalIgnoreCase)
+                           && pack.Enabled
+                           && string.Equals(pack.ActivationState, "deferred", StringComparison.OrdinalIgnoreCase)
+                           && pack.CanActivateOnDemand);
+        Assert.Contains(
+            snapshot.ToolingSnapshot.Plugins,
+            static plugin => string.Equals(plugin.Id, "eventlog", StringComparison.OrdinalIgnoreCase)
+                             && plugin.Enabled
+                             && string.Equals(plugin.ActivationState, "deferred", StringComparison.OrdinalIgnoreCase)
+                             && plugin.CanActivateOnDemand);
+        Assert.Contains("runtime_bootstrap_state: deferred", instructionsText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("tooling_snapshot: deferred_descriptor_preview", instructionsText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("|deferred|", instructionsText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("activatable_packs:", instructionsText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("eventlog", instructionsText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("activatable_plugins:", instructionsText, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("descriptor-only preview from known pack metadata", instructionsText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void RuntimeCapabilityHandshake_DeferredDescriptorPreviewIncludesManifestOnlyPlugins() {
+        var tempRoot = TempPathTestHelper.CreateTempDirectoryPath("ix-chat-runtime-plugin-preview");
+        var pluginRoot = Path.Combine(tempRoot, "plugins");
+        var pluginFolder = Path.Combine(pluginRoot, "ops-bundle");
+        Directory.CreateDirectory(pluginFolder);
+
+        try {
+            var options = ChatServiceTestSessionFactory.CreateIsolatedOptions();
+            options.EnableBuiltInPackLoading = false;
+            options.EnableDefaultPluginPaths = false;
+            options.RuntimePluginPaths.Add(pluginRoot);
+
+            File.WriteAllText(Path.Combine(pluginFolder, "ix-plugin.json"), """
+            {
+              "schemaVersion": 1,
+              "pluginId": "ops-bundle",
+              "displayName": "Ops Bundle",
+              "version": "1.2.3",
+              "packIds": ["plugin-loader-synthetic-catalog"],
+              "defaultEnabled": true,
+              "sourceKind": "closed_source",
+              "entryAssembly": "Ops.Bundle.dll",
+              "entryType": "Ops.Bundle.PluginPack"
+            }
+            """);
+
+            var session = new ChatServiceSession(options, Stream.Null);
+
+            var snapshot = session.BuildRuntimeCapabilitySnapshotForTesting();
+            var instructionsText = Assert.IsType<string>(session.BuildTurnInstructionsWithRuntimeIdentityForTesting("gpt-5.4"));
+
+            Assert.NotNull(snapshot.ToolingSnapshot);
+            Assert.Equal("deferred_descriptor_preview", snapshot.ToolingSnapshot!.Source);
+            Assert.Equal(1, snapshot.PluginCount);
+            Assert.Equal(1, snapshot.EnabledPluginCount);
+            var declaredPackId = ToolPackBootstrap.NormalizePackId("plugin-loader-synthetic-catalog");
+            Assert.Contains(
+                snapshot.ToolingSnapshot.Plugins,
+                plugin => string.Equals(plugin.Id, "ops_bundle", StringComparison.OrdinalIgnoreCase)
+                          && plugin.PackIds.Contains(declaredPackId, StringComparer.OrdinalIgnoreCase)
+                          && string.Equals(plugin.ActivationState, "deferred", StringComparison.OrdinalIgnoreCase)
+                          && plugin.CanActivateOnDemand);
+            Assert.Contains("tooling_snapshot_plugins:", instructionsText, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("|deferred|", instructionsText, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("packs=" + declaredPackId, instructionsText, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("activatable_plugins: ops_bundle", instructionsText, StringComparison.OrdinalIgnoreCase);
+        } finally {
+            if (Directory.Exists(tempRoot)) {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void RuntimeCapabilityHandshake_DeferredDescriptorPreviewInstructionsExposeDescriptorToolCandidates() {
+        var tempRoot = TempPathTestHelper.CreateTempDirectoryPath("ix-chat-runtime-plugin-preview-tools");
+        var pluginRoot = Path.Combine(tempRoot, "plugins");
+        var pluginFolder = Path.Combine(pluginRoot, "ops-bundle");
+        Directory.CreateDirectory(pluginFolder);
+
+        try {
+            var options = ChatServiceTestSessionFactory.CreateIsolatedOptions();
+            options.EnableBuiltInPackLoading = false;
+            options.EnableDefaultPluginPaths = false;
+            options.RuntimePluginPaths.Add(pluginRoot);
+
+            File.WriteAllText(Path.Combine(pluginFolder, "ix-plugin.json"), """
+            {
+              "schemaVersion": 1,
+              "pluginId": "ops-bundle",
+              "displayName": "Ops Bundle",
+              "version": "1.2.3",
+              "packIds": ["ops_inventory"],
+              "defaultEnabled": true,
+              "sourceKind": "closed_source",
+              "entryAssembly": "Ops.Bundle.dll",
+              "entryType": "Ops.Bundle.PluginPack",
+              "tools": [
+                {
+                  "name": "ops_inventory_collect",
+                  "description": "Collect host inventory.",
+                  "category": "system",
+                  "supportsLocalExecution": false,
+                  "supportsRemoteExecution": true,
+                  "supportsRemoteHostTargeting": true,
+                  "representativeExamples": ["collect inventory from a remote windows host"]
+                },
+                {
+                  "name": "ops_inventory_report",
+                  "description": "Summarize collected inventory.",
+                  "category": "reporting",
+                  "supportsLocalExecution": true,
+                  "supportsRemoteExecution": false,
+                  "representativeExamples": ["summarize inventory drift for the last collection"]
+                }
+              ]
+            }
+            """);
+
+            var session = new ChatServiceSession(options, Stream.Null);
+
+            var instructionsText = Assert.IsType<string>(session.BuildTurnInstructionsWithRuntimeIdentityForTesting("gpt-5.4"));
+
+            Assert.Contains("runtime_bootstrap_state: deferred", instructionsText, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("tooling_snapshot: deferred_descriptor_preview", instructionsText, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("descriptor_preview_tool_count: 2", instructionsText, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("descriptor_preview_tools:", instructionsText, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("ops_inventory_collect[pack=ops_inventory|category=system|scope=remote_only|read|remote_host]", instructionsText, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("ops_inventory_report[pack=ops_inventory|category=reporting|scope=local_only|read]", instructionsText, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("descriptor_preview_examples:", instructionsText, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("collect inventory from a remote windows host", instructionsText, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("Descriptor preview tools are descriptor-only candidates. They are not live callable schemas yet", instructionsText, StringComparison.OrdinalIgnoreCase);
+        } finally {
+            if (Directory.Exists(tempRoot)) {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void RuntimeCapabilityHandshake_DeferredDescriptorPreviewInstructionsPreserveCatalogPriorityOrdering() {
+        var tempRoot = TempPathTestHelper.CreateTempDirectoryPath("ix-chat-runtime-plugin-preview-tool-order");
+        var pluginRoot = Path.Combine(tempRoot, "plugins");
+        var pluginFolder = Path.Combine(pluginRoot, "ops-bundle");
+        Directory.CreateDirectory(pluginFolder);
+
+        try {
+            var options = ChatServiceTestSessionFactory.CreateIsolatedOptions();
+            options.EnableBuiltInPackLoading = false;
+            options.EnableDefaultPluginPaths = false;
+            options.RuntimePluginPaths.Add(pluginRoot);
+
+            File.WriteAllText(Path.Combine(pluginFolder, "ix-plugin.json"), """
+            {
+              "schemaVersion": 1,
+              "pluginId": "ops-bundle",
+              "displayName": "Ops Bundle",
+              "version": "1.2.3",
+              "packIds": ["ops_inventory"],
+              "defaultEnabled": true,
+              "sourceKind": "closed_source",
+              "entryAssembly": "Ops.Bundle.dll",
+              "entryType": "Ops.Bundle.PluginPack",
+              "tools": [
+                {
+                  "name": "ops_pack_info",
+                  "description": "Explain the ops inventory pack.",
+                  "category": "system",
+                  "routingRole": "pack_info",
+                  "supportsLocalExecution": true,
+                  "supportsRemoteExecution": false
+                },
+                {
+                  "name": "ops_connectivity_probe",
+                  "description": "Probe connectivity for ops inventory.",
+                  "category": "system",
+                  "routingRole": "diagnostic",
+                  "supportsLocalExecution": true,
+                  "supportsRemoteExecution": false
+                },
+                {
+                  "name": "ops_zeta_query",
+                  "description": "Collect host inventory.",
+                  "category": "system",
+                  "routingRole": "operational",
+                  "supportsLocalExecution": false,
+                  "supportsRemoteExecution": true,
+                  "supportsRemoteHostTargeting": true,
+                  "supportsConnectivityProbe": true,
+                  "probeToolName": "ops_connectivity_probe",
+                  "isSetupAware": true,
+                  "setupToolName": "ops_setup",
+                  "handoffTargetPackIds": ["system"],
+                  "handoffTargetToolNames": ["system_info"],
+                  "isRecoveryAware": true,
+                  "recoveryToolNames": ["ops_setup"],
+                  "representativeExamples": ["collect inventory from a remote windows host"]
+                }
+              ]
+            }
+            """);
+
+            var session = new ChatServiceSession(options, Stream.Null);
+
+            var instructionsText = Assert.IsType<string>(session.BuildTurnInstructionsWithRuntimeIdentityForTesting("gpt-5.4"));
+            var prioritizedIndex = instructionsText.IndexOf("ops_zeta_query[", StringComparison.OrdinalIgnoreCase);
+            var helperIndex = instructionsText.IndexOf("ops_connectivity_probe[", StringComparison.OrdinalIgnoreCase);
+            var packInfoIndex = instructionsText.IndexOf("ops_pack_info[", StringComparison.OrdinalIgnoreCase);
+
+            Assert.True(prioritizedIndex >= 0, "Expected deferred descriptor preview instructions to include ops_zeta_query.");
+            Assert.True(helperIndex >= 0, "Expected deferred descriptor preview instructions to include ops_connectivity_probe.");
+            Assert.True(packInfoIndex >= 0, "Expected deferred descriptor preview instructions to include ops_pack_info.");
+            Assert.True(
+                prioritizedIndex < helperIndex && helperIndex < packInfoIndex,
+                "Expected deferred descriptor preview instructions to keep the entry tool ahead of the helper probe, and the helper probe ahead of pack-info guidance.");
+            Assert.Contains(
+                "ops_zeta_query[pack=ops_inventory|category=system|scope=remote_only|role=operational|read|remote_host|setup=ops_setup|probe=ops_connectivity_probe|recovery=ops_setup|handoff=system_info]",
+                instructionsText,
+                StringComparison.OrdinalIgnoreCase);
+            Assert.Contains(
+                "ops_pack_info[pack=ops_inventory|category=system|scope=local_only|role=pack_info|read]",
+                instructionsText,
+                StringComparison.OrdinalIgnoreCase);
+        } finally {
+            if (Directory.Exists(tempRoot)) {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
     }
 
     [Fact]

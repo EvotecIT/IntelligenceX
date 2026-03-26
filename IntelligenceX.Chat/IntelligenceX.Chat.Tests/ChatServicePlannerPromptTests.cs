@@ -1,7 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Reflection;
+using System.Threading;
+using System.Threading.Tasks;
 using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Json;
@@ -9,6 +12,7 @@ using IntelligenceX.Chat.Service;
 using IntelligenceX.Chat.Tooling;
 using IntelligenceX.OpenAI;
 using IntelligenceX.OpenAI.AppServer.Models;
+using IntelligenceX.OpenAI.Chat;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.Common;
 using Xunit;
@@ -694,7 +698,7 @@ public sealed class ChatServicePlannerPromptTests {
                 })
         };
         var orchestrationCatalog = ToolOrchestrationCatalog.Build(definitions, new IToolPack[] { new SyntheticRepresentativeExamplePack() });
-        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
         session.SetToolOrchestrationCatalogForTesting(orchestrationCatalog);
 
         var prompt = session.BuildModelPlannerPromptForTesting(
@@ -1143,6 +1147,167 @@ public sealed class ChatServicePlannerPromptTests {
         Assert.Contains("structured_next_action_source_tools: ad_monitoring_probe_run", augmented, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("structured_next_action_reason: inspect ldaps certificate details on the same domain controller", augmented, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("structured_next_action_confidence: 0.88", augmented, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildPlannerContextAugmentedRequest_SeedsDeferredDescriptorPreferencesWithoutCheckpoint() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        session.SetCachedToolDefinitionsForTesting(new[] {
+            new ToolDefinitionDto {
+                Name = "eventlog_live_query",
+                Description = "Query remote event logs.",
+                PackId = "eventlog",
+                Category = "event-log",
+                ExecutionScope = "local_or_remote",
+                SupportsRemoteExecution = true,
+                SupportsRemoteHostTargeting = true,
+                RepresentativeExamples = new[] { "query event logs from remote host" }
+            },
+            new ToolDefinitionDto {
+                Name = "ops_inventory_collect",
+                Description = "Collect remote host inventory.",
+                PackId = "ops_inventory",
+                Category = "system",
+                ExecutionScope = "remote_only",
+                SupportsRemoteExecution = true,
+                SupportsRemoteHostTargeting = true,
+                RepresentativeExamples = new[] { "collect inventory from remote host" }
+            }
+        });
+
+        var augmented = session.BuildPlannerContextAugmentedRequestForTesting(
+            "thread-planner-deferred-descriptor",
+            "can you query event logs from srv1?",
+            Array.Empty<ToolDefinition>());
+
+        Assert.Contains("ix:planner-context:v1", augmented, StringComparison.OrdinalIgnoreCase);
+        var parsed = ChatServiceSession.TryReadPlannerContextFromRequestTextForTesting(
+            augmented,
+            out _,
+            out _,
+            out var preferredPackIds,
+            out var preferredToolNames,
+            out _,
+            out _,
+            out _,
+            out _,
+            out _,
+            out _,
+            out _,
+            out _,
+            out _,
+            out _,
+            out _,
+            out _,
+            out _,
+            out _);
+
+        Assert.True(parsed);
+        Assert.NotEmpty(preferredPackIds);
+        Assert.NotEmpty(preferredToolNames);
+        Assert.Equal("eventlog", preferredPackIds[0]);
+        Assert.Equal("eventlog_live_query", preferredToolNames[0]);
+    }
+
+    [Fact]
+    public void ResolveDeferredToolPreferenceHints_ProjectsDescriptorHandoffTargetsIntoPreferredHints() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        session.SetCachedToolDefinitionsForTesting(new[] {
+            new ToolDefinitionDto {
+                Name = "ops_inventory_collect",
+                Description = "Collect remote host inventory.",
+                PackId = "ops_inventory",
+                Category = "system",
+                ExecutionScope = "remote_only",
+                SupportsRemoteExecution = true,
+                SupportsRemoteHostTargeting = true,
+                HandoffTargetPackIds = new[] { "eventlog" },
+                HandoffTargetToolNames = new[] { "eventlog_live_query" },
+                RepresentativeExamples = new[] { "collect inventory from remote host" }
+            },
+            new ToolDefinitionDto {
+                Name = "eventlog_live_query",
+                Description = "Query remote event logs from a matched host.",
+                PackId = "eventlog",
+                Category = "event-log",
+                ExecutionScope = "local_or_remote",
+                SupportsRemoteExecution = true,
+                SupportsRemoteHostTargeting = true,
+                RepresentativeExamples = new[] { "query event logs from remote host" }
+            }
+        });
+
+        var hints = session.ResolveDeferredToolPreferenceHintsForTesting(
+            "collect inventory from srv1",
+            options: null,
+            maxPreferredPackIds: 2,
+            maxPreferredToolNames: 2);
+
+        Assert.True(hints.HasAnyMatches);
+        Assert.Equal(new[] { "ops_inventory", "eventlog" }, hints.PreferredPackIds);
+        Assert.Equal(new[] { "ops_inventory_collect", "eventlog_live_query" }, hints.PreferredToolNames);
+        Assert.Equal(new[] { "ops_inventory" }, hints.ActivatablePackIds);
+    }
+
+    [Fact]
+    public void BuildPlannerContextAugmentedRequest_SeedsDeferredDescriptorHandoffPreferencesWithoutCheckpoint() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        session.SetCachedToolDefinitionsForTesting(new[] {
+            new ToolDefinitionDto {
+                Name = "ops_inventory_collect",
+                Description = "Collect remote host inventory.",
+                PackId = "ops_inventory",
+                Category = "system",
+                ExecutionScope = "remote_only",
+                SupportsRemoteExecution = true,
+                SupportsRemoteHostTargeting = true,
+                HandoffTargetPackIds = new[] { "eventlog" },
+                HandoffTargetToolNames = new[] { "eventlog_live_query" },
+                RepresentativeExamples = new[] { "collect inventory from remote host" }
+            },
+            new ToolDefinitionDto {
+                Name = "eventlog_live_query",
+                Description = "Query remote event logs from a matched host.",
+                PackId = "eventlog",
+                Category = "event-log",
+                ExecutionScope = "local_or_remote",
+                SupportsRemoteExecution = true,
+                SupportsRemoteHostTargeting = true,
+                RepresentativeExamples = new[] { "query event logs from remote host" }
+            }
+        });
+
+        var augmented = session.BuildPlannerContextAugmentedRequestForTesting(
+            "thread-planner-deferred-handoff-descriptor",
+            "collect inventory from srv1",
+            Array.Empty<ToolDefinition>());
+
+        var parsed = ChatServiceSession.TryReadPlannerContextFromRequestTextForTesting(
+            augmented,
+            out _,
+            out _,
+            out var preferredPackIds,
+            out var preferredToolNames,
+            out _,
+            out _,
+            out var handoffTargetPackIds,
+            out var handoffTargetToolNames,
+            out _,
+            out _,
+            out _,
+            out _,
+            out _,
+            out _,
+            out _,
+            out _,
+            out _,
+            out _);
+
+        Assert.True(parsed);
+        Assert.Equal(new[] { "ops_inventory", "eventlog" }, preferredPackIds);
+        Assert.Equal(new[] { "ops_inventory_collect", "eventlog_live_query" }, preferredToolNames);
+        Assert.Empty(handoffTargetPackIds);
+        Assert.Empty(handoffTargetToolNames);
     }
 
     [Fact]
@@ -2513,6 +2678,157 @@ public sealed class ChatServicePlannerPromptTests {
     }
 
     [Fact]
+    public void BuildModelPlannerCandidates_PrefersExactHandoffTargetToolBeforeSiblingPackHelpers() {
+        var definitions = new List<ToolDefinition>();
+        for (var i = 0; i < 80; i++) {
+            definitions.Add(new ToolDefinition(
+                $"generic_probe_{i:D2}",
+                "Collect generic inventory details.",
+                ToolSchema.Object(("target", ToolSchema.String("Target host."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "generic",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                }));
+        }
+
+        definitions.Add(new ToolDefinition(
+            "eventlog_connectivity_probe",
+            "Probe remote event log connectivity.",
+            ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties(),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "eventlog",
+                Role = ToolRoutingTaxonomy.RoleDiagnostic
+            }));
+        definitions.Add(new ToolDefinition(
+            "eventlog_runtime_profile_validate",
+            "Validate event log runtime profile readiness.",
+            ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties(),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "eventlog",
+                Role = ToolRoutingTaxonomy.RoleOperational
+            }));
+        definitions.Add(new ToolDefinition(
+            "eventlog_live_query",
+            "Inspect recent event log records from a remote host.",
+            ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties(),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "eventlog",
+                Role = ToolRoutingTaxonomy.RoleOperational
+            }));
+
+        var selected = BuildModelPlannerCandidates(
+            definitions,
+            """
+            [Planner context]
+            ix:planner-context:v1
+            requires_live_execution: false
+            preferred_pack_ids: eventlog
+            preferred_tool_names: eventlog_live_query
+            structured_next_action_source_tools: system_pack_info
+            structured_next_action_reason: continue with the declared handoff target from the prior tool result
+            handoff_target_pack_ids: eventlog
+            handoff_target_tool_names: eventlog_live_query
+            continuation_source_tool: system_pack_info
+            continuation_reason: continue with the declared handoff target from the prior tool result
+            allow_cached_evidence_reuse: false
+
+            show me the recent login failures after the system probe
+            """,
+            4);
+
+        Assert.InRange(selected.Count, 24, 24);
+        Assert.Equal("eventlog_live_query", selected[0].Name);
+        Assert.Contains(selected, tool => string.Equals(tool.Name, "eventlog_connectivity_probe", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(selected, tool => string.Equals(tool.Name, "eventlog_runtime_profile_validate", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void BuildModelPlannerCandidates_SuppressesSiblingProbeHelperWhenExactTargetNeedsNoHelpers() {
+        var definitions = new List<ToolDefinition>();
+        for (var i = 0; i < 80; i++) {
+            definitions.Add(new ToolDefinition(
+                $"generic_probe_{i:D2}",
+                "Collect generic inventory details.",
+                ToolSchema.Object(("target", ToolSchema.String("Target host."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "generic",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                }));
+        }
+
+        definitions.Add(new ToolDefinition(
+            "custom_connectivity_probe",
+            "Probe custom runtime reachability.",
+            ToolSchema.Object(("endpoint", ToolSchema.String("Target endpoint."))).NoAdditionalProperties(),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "customx",
+                Role = ToolRoutingTaxonomy.RoleDiagnostic
+            }));
+        definitions.Add(new ToolDefinition(
+            "custom_followup",
+            "Collect custom follow-up evidence.",
+            ToolSchema.Object(("endpoint", ToolSchema.String("Target endpoint."))).NoAdditionalProperties(),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "customx",
+                Role = ToolRoutingTaxonomy.RoleOperational
+            }));
+        definitions.Add(new ToolDefinition(
+            "custom_secondary_followup",
+            "Collect a different custom follow-up that still requires probe preflight.",
+            ToolSchema.Object(("endpoint", ToolSchema.String("Target endpoint."))).NoAdditionalProperties(),
+            authentication: new ToolAuthenticationContract {
+                IsAuthenticationAware = true,
+                RequiresAuthentication = true,
+                Mode = ToolAuthenticationMode.ProfileReference,
+                SupportsConnectivityProbe = true,
+                ProbeToolName = "custom_connectivity_probe"
+            },
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "customx",
+                Role = ToolRoutingTaxonomy.RoleOperational
+            }));
+
+        var orchestrationCatalog = ToolOrchestrationCatalog.Build(definitions);
+        var selected = BuildModelPlannerCandidates(
+            definitions,
+            """
+            [Planner context]
+            ix:planner-context:v1
+            preferred_pack_ids: customx
+            preferred_tool_names: custom_followup
+            handoff_target_pack_ids: customx
+            handoff_target_tool_names: custom_followup
+            continuation_source_tool: system_pack_info
+            continuation_reason: continue with the declared handoff target from the prior tool result
+            allow_cached_evidence_reuse: false
+
+            continue with the custom follow-up step
+            """,
+            4,
+            orchestrationCatalog: orchestrationCatalog);
+
+        Assert.InRange(selected.Count, 24, 24);
+        Assert.Equal("custom_followup", selected[0].Name);
+        Assert.DoesNotContain(selected, tool => string.Equals(tool.Name, "custom_connectivity_probe", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void BuildModelPlannerCandidates_PrefersDeferredWorkCapabilityTargetsWithoutCapabilitySnapshot() {
         var definitions = new List<ToolDefinition>();
         for (var i = 0; i < 80; i++) {
@@ -2630,6 +2946,1176 @@ public sealed class ChatServicePlannerPromptTests {
 
         Assert.InRange(selected.Count, 24, 24);
         Assert.Contains(selected, tool => string.Equals(tool.Name, "ad_ldap_diagnostics", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void BuildModelPlannerCandidates_UsesDeferredDescriptorHintsAsDirectRankingPrior() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var definitions = new List<ToolDefinition>();
+        for (var i = 0; i < 80; i++) {
+            definitions.Add(new ToolDefinition(
+                $"generic_probe_{i:D2}",
+                "Collect generic inventory details.",
+                ToolSchema.Object(("target", ToolSchema.String("Target host."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "generic",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                }));
+        }
+
+        definitions.Add(new ToolDefinition(
+            "zzz_eventlog_live_query",
+            "Inspect runtime records.",
+            ToolSchema.Object(("computer_name", ToolSchema.String("Target host."))).NoAdditionalProperties(),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "eventlog",
+                Role = ToolRoutingTaxonomy.RoleOperational
+            }));
+
+        session.SetCachedToolDefinitionsForTesting(new[] {
+            new ToolDefinitionDto {
+                Name = "zzz_eventlog_live_query",
+                Description = "Query remote event logs.",
+                PackId = "eventlog",
+                Category = "event-log",
+                ExecutionScope = "local_or_remote",
+                SupportsRemoteExecution = true,
+                SupportsRemoteHostTargeting = true,
+                RepresentativeExamples = new[] { "show recent login failures from remote domain controller" }
+            }
+        });
+
+        var selected = session.BuildModelPlannerCandidatesForTesting(
+            definitions,
+            "show recent login failures from dc1",
+            4,
+            ToolOrchestrationCatalog.Build(definitions));
+
+        Assert.InRange(selected.Count, 24, 24);
+        Assert.Contains(selected, tool => string.Equals(tool.Name, "zzz_eventlog_live_query", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task TryApplyDeferredActivatedPackToolScopeForTesting_ScopesToStrongActivePackMatch() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var definitions = new List<ToolDefinition> {
+            new(
+                "system_info",
+                "Inspect system details on a target machine.",
+                ToolSchema.Object(("computer_name", ToolSchema.String("Remote host."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "system",
+                    Role = ToolRoutingTaxonomy.RoleDiagnostic
+                }),
+            new(
+                "system_pack_info",
+                "Inspect system pack metadata.",
+                ToolSchema.Object().NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "system",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                }),
+            new(
+                "eventlog_live_query",
+                "Inspect recent event log records from a remote host.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote host."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "eventlog",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                })
+        };
+
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(definitions));
+        session.SetCachedToolDefinitionsForTesting(new[] {
+            new ToolDefinitionDto {
+                Name = "system_pack_info",
+                Description = "Inspect system pack metadata.",
+                PackId = "system",
+                RepresentativeExamples = new[] { "run system_pack_info" }
+            },
+            new ToolDefinitionDto {
+                Name = "eventlog_live_query",
+                Description = "Inspect login failures from a remote domain controller.",
+                PackId = "eventlog",
+                RepresentativeExamples = new[] { "show recent login failures from remote domain controller" }
+            }
+        });
+
+        var activationOutput = await session.ExecuteToolAsyncForTesting(
+            threadId: "thread-scope-system-pack",
+            userRequest: "run system_pack_info",
+            call: new ToolCall(
+                callId: "call-scope-system-pack",
+                name: "system_pack_info",
+                input: "{}",
+                arguments: new JsonObject(),
+                raw: new JsonObject()),
+            toolTimeoutSeconds: 10,
+            cancellationToken: CancellationToken.None);
+        Assert.True(activationOutput.Ok is true, activationOutput.Output);
+
+        var scoped = session.TryApplyDeferredActivatedPackToolScopeForTesting(
+            "run system_pack_info",
+            options: null,
+            definitions,
+            hasExplicitToolEnableSelectors: false,
+            continuationContractDetected: false,
+            executionContractApplies: false,
+            hasPendingActionContext: false,
+            hasToolActivity: false,
+            out var scopedDefinitions,
+            out var scopedPackIds);
+
+        Assert.True(scoped);
+        Assert.Single(scopedPackIds);
+        Assert.Equal("system", scopedPackIds[0], ignoreCase: true);
+        Assert.Equal(2, scopedDefinitions.Count);
+        Assert.Equal("system_pack_info", scopedDefinitions[0].Name, ignoreCase: true);
+        Assert.All(scopedDefinitions, definition =>
+            Assert.Equal("system", definition.Routing?.PackId, ignoreCase: true));
+        Assert.DoesNotContain(scopedDefinitions, static definition =>
+            string.Equals(definition.Name, "eventlog_live_query", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task TryApplyDeferredActivatedPackToolScopeAfterRoundForTesting_ScopesToExecutedDeferredPack() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var definitions = new List<ToolDefinition> {
+            new(
+                "system_pack_info",
+                "Inspect system pack metadata.",
+                ToolSchema.Object().NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "system",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                }),
+            new(
+                "system_info",
+                "Inspect system details on a target machine.",
+                ToolSchema.Object(("computer_name", ToolSchema.String("Remote host."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "system",
+                    Role = ToolRoutingTaxonomy.RoleDiagnostic
+                }),
+            new(
+                "eventlog_live_query",
+                "Inspect recent event log records from a remote host.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote host."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "eventlog",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                })
+        };
+
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(definitions));
+        session.SetCachedToolDefinitionsForTesting(new[] {
+            new ToolDefinitionDto {
+                Name = "system_pack_info",
+                Description = "Inspect system pack metadata.",
+                PackId = "system",
+                RepresentativeExamples = new[] { "run system_pack_info" }
+            },
+            new ToolDefinitionDto {
+                Name = "eventlog_live_query",
+                Description = "Inspect login failures from a remote domain controller.",
+                PackId = "eventlog",
+                RepresentativeExamples = new[] { "show recent login failures from remote domain controller" }
+            }
+        });
+
+        var activationOutput = await session.ExecuteToolAsyncForTesting(
+            threadId: "thread-round-scope-system-pack",
+            userRequest: "run system_pack_info",
+            call: new ToolCall(
+                callId: "call-round-scope-system-pack",
+                name: "system_pack_info",
+                input: "{}",
+                arguments: new JsonObject(),
+                raw: new JsonObject()),
+            toolTimeoutSeconds: 10,
+            cancellationToken: CancellationToken.None);
+        Assert.True(activationOutput.Ok is true, activationOutput.Output);
+
+        var scoped = session.TryApplyDeferredActivatedPackToolScopeAfterRoundForTesting(
+            "run system_pack_info",
+            options: null,
+            definitions,
+            new[] {
+                new ToolCall(
+                    callId: "call-round-scope-system-pack",
+                    name: "system_pack_info",
+                    input: "{}",
+                    arguments: new JsonObject(),
+                    raw: new JsonObject())
+            },
+            hasExplicitToolEnableSelectors: false,
+            continuationContractDetected: false,
+            executionContractApplies: false,
+            hasPendingActionContext: false,
+            out var scopedDefinitions,
+            out var scopedPackIds);
+
+        Assert.True(scoped);
+        Assert.Single(scopedPackIds);
+        Assert.Equal("system", scopedPackIds[0], ignoreCase: true);
+        Assert.Equal(2, scopedDefinitions.Count);
+        Assert.All(scopedDefinitions, definition =>
+            Assert.Equal("system", definition.Routing?.PackId, ignoreCase: true));
+    }
+
+    [Fact]
+    public async Task TryApplyDeferredActivatedPackToolScopeAfterRoundForTesting_ScopesToSourceAndHandoffTargetPacks() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var definitions = new List<ToolDefinition> {
+            new(
+                "system_pack_info",
+                "Inspect system pack metadata and hand off to event log follow-up.",
+                ToolSchema.Object().NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "system",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                },
+                handoff: new ToolHandoffContract {
+                    IsHandoffAware = true,
+                    OutboundRoutes = new[] {
+                        new ToolHandoffRoute {
+                            TargetPackId = "eventlog",
+                            TargetToolName = "eventlog_live_query",
+                            TargetRole = ToolRoutingTaxonomy.RoleOperational,
+                            Bindings = new[] {
+                                new ToolHandoffBinding {
+                                    SourceField = "host",
+                                    TargetArgument = "machine_name"
+                                }
+                            }
+                        }
+                    }
+                }),
+            new(
+                "eventlog_live_query",
+                "Inspect recent event log records from a remote host.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote host."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "eventlog",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                }),
+            new(
+                "inventory_probe",
+                "Inspect generic inventory state from a target host.",
+                ToolSchema.Object(("target", ToolSchema.String("Remote host."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "inventory",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                })
+        };
+
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(definitions));
+        session.SetCachedToolDefinitionsForTesting(new[] {
+            new ToolDefinitionDto {
+                Name = "system_pack_info",
+                Description = "Inspect system pack metadata.",
+                PackId = "system",
+                RepresentativeExamples = new[] { "run system_pack_info" }
+            }
+        });
+
+        var activationOutput = await session.ExecuteToolAsyncForTesting(
+            threadId: "thread-round-cross-pack-skip",
+            userRequest: "run system_pack_info",
+            call: new ToolCall(
+                callId: "call-round-cross-pack-skip",
+                name: "system_pack_info",
+                input: "{}",
+                arguments: new JsonObject(),
+                raw: new JsonObject()),
+            toolTimeoutSeconds: 10,
+            cancellationToken: CancellationToken.None);
+        Assert.True(activationOutput.Ok is true, activationOutput.Output);
+
+        var scoped = session.TryApplyDeferredActivatedPackToolScopeAfterRoundForTesting(
+            "run system_pack_info",
+            options: null,
+            definitions,
+            new[] {
+                new ToolCall(
+                    callId: "call-round-cross-pack-skip",
+                    name: "system_pack_info",
+                    input: "{}",
+                    arguments: new JsonObject(),
+                    raw: new JsonObject())
+            },
+            hasExplicitToolEnableSelectors: false,
+            continuationContractDetected: false,
+            executionContractApplies: false,
+            hasPendingActionContext: false,
+            out var scopedDefinitions,
+            out var scopedPackIds);
+
+        Assert.True(scoped);
+        Assert.Equal(2, scopedPackIds.Length);
+        Assert.Contains(scopedPackIds, static packId => string.Equals(packId, "system", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(scopedPackIds, static packId => string.Equals(packId, "eventlog", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(2, scopedDefinitions.Count);
+        Assert.DoesNotContain(scopedDefinitions, static definition =>
+            string.Equals(definition.Routing?.PackId, "inventory", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void OrderToolDefinitionsForPromptExposureForTesting_PrefersDeferredMatchedToolFirst() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var definitions = new List<ToolDefinition> {
+            new(
+                "system_info",
+                "Inspect system details on a target machine.",
+                ToolSchema.Object(("computer_name", ToolSchema.String("Remote host."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "system",
+                    Role = ToolRoutingTaxonomy.RoleDiagnostic
+                }),
+            new(
+                "eventlog_connectivity_probe",
+                "Probe event log runtime reachability.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote host."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "eventlog",
+                    Role = ToolRoutingTaxonomy.RoleDiagnostic
+                }),
+            new(
+                "eventlog_live_query",
+                "Inspect recent login failures from a remote host.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote host."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "eventlog",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                })
+        };
+
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(definitions));
+        session.SetCachedToolDefinitionsForTesting(new[] {
+            new ToolDefinitionDto {
+                Name = "eventlog_live_query",
+                Description = "Inspect login failures from a remote domain controller.",
+                PackId = "eventlog",
+                RepresentativeExamples = new[] { "show recent login failures from remote domain controller" }
+            }
+        });
+
+        var ordered = session.OrderToolDefinitionsForPromptExposureForTesting(
+            definitions,
+            "show recent login failures from remote domain controller");
+
+        Assert.Equal("eventlog_live_query", ordered[0].Name, ignoreCase: true);
+    }
+
+    [Fact]
+    public void OrderToolDefinitionsForPromptExposureForTesting_PrefersPlannerContextHandoffTargetFirst() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var definitions = new List<ToolDefinition> {
+            new(
+                "eventlog_bulk_export",
+                "Export event log records after probe validation.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote host."))).NoAdditionalProperties(),
+                authentication: new ToolAuthenticationContract {
+                    IsAuthenticationAware = true,
+                    RequiresAuthentication = true,
+                    Mode = ToolAuthenticationMode.ProfileReference,
+                    SupportsConnectivityProbe = true,
+                    ProbeToolName = "eventlog_connectivity_probe"
+                },
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "eventlog",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                }),
+            new(
+                "system_pack_info",
+                "Inspect system pack metadata and hand off to event log follow-up.",
+                ToolSchema.Object().NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "system",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                },
+                handoff: new ToolHandoffContract {
+                    IsHandoffAware = true,
+                    OutboundRoutes = new[] {
+                        new ToolHandoffRoute {
+                            TargetPackId = "eventlog",
+                            TargetToolName = "eventlog_live_query",
+                            TargetRole = ToolRoutingTaxonomy.RoleOperational,
+                            Bindings = new[] {
+                                new ToolHandoffBinding {
+                                    SourceField = "host",
+                                    TargetArgument = "machine_name"
+                                }
+                            }
+                        }
+                    }
+                }),
+            new(
+                "eventlog_live_query",
+                "Inspect recent login failures from a remote host.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote host."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "eventlog",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                })
+        };
+
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(definitions));
+
+        var ordered = session.OrderToolDefinitionsForPromptExposureForTesting(
+            definitions,
+            """
+            [Planner context]
+            ix:planner-context:v1
+            preferred_pack_ids: eventlog
+            preferred_tool_names: eventlog_live_query
+            handoff_target_pack_ids: eventlog
+            handoff_target_tool_names: eventlog_live_query
+            continuation_source_tool: system_pack_info
+            continuation_reason: continue with the declared handoff target from the prior tool result
+            allow_cached_evidence_reuse: false
+
+            continue with the event log follow-up
+            """);
+
+        Assert.Equal("eventlog_live_query", ordered[0].Name, ignoreCase: true);
+    }
+
+    [Fact]
+    public async Task TryApplyDeferredActivatedPackToolScopeAfterRoundForTesting_SuppressesRedundantHandoffHelperSiblings() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var definitions = new List<ToolDefinition> {
+            new(
+                "system_pack_info",
+                "Inspect system pack metadata and hand off to event log follow-up.",
+                ToolSchema.Object().NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "system",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                },
+                handoff: new ToolHandoffContract {
+                    IsHandoffAware = true,
+                    OutboundRoutes = new[] {
+                        new ToolHandoffRoute {
+                            TargetPackId = "eventlog",
+                            TargetToolName = "eventlog_live_query",
+                            TargetRole = ToolRoutingTaxonomy.RoleOperational,
+                            Bindings = new[] {
+                                new ToolHandoffBinding {
+                                    SourceField = "host",
+                                    TargetArgument = "machine_name"
+                                }
+                            }
+                        }
+                    }
+                }),
+            new(
+                "eventlog_live_query",
+                "Inspect recent event log records from a remote host.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote host."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "eventlog",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                }),
+            new(
+                "eventlog_connectivity_probe",
+                "Probe event log runtime reachability.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote host."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "eventlog",
+                    Role = ToolRoutingTaxonomy.RoleDiagnostic
+                }),
+            new(
+                "eventlog_bulk_export",
+                "Export event log records after probe validation.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote host."))).NoAdditionalProperties(),
+                authentication: new ToolAuthenticationContract {
+                    IsAuthenticationAware = true,
+                    RequiresAuthentication = true,
+                    Mode = ToolAuthenticationMode.ProfileReference,
+                    SupportsConnectivityProbe = true,
+                    ProbeToolName = "eventlog_connectivity_probe"
+                },
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "eventlog",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                }),
+            new(
+                "inventory_probe",
+                "Inspect generic inventory state from a target host.",
+                ToolSchema.Object(("target", ToolSchema.String("Remote host."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "inventory",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                })
+        };
+
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(definitions));
+        session.SetCachedToolDefinitionsForTesting(new[] {
+            new ToolDefinitionDto {
+                Name = "system_pack_info",
+                Description = "Inspect system pack metadata.",
+                PackId = "system",
+                RepresentativeExamples = new[] { "run system_pack_info" }
+            }
+        });
+
+        var activationOutput = await session.ExecuteToolAsyncForTesting(
+            threadId: "thread-round-cross-pack-helper-skip",
+            userRequest: "run system_pack_info",
+            call: new ToolCall(
+                callId: "call-round-cross-pack-helper-skip",
+                name: "system_pack_info",
+                input: "{}",
+                arguments: new JsonObject(),
+                raw: new JsonObject()),
+            toolTimeoutSeconds: 10,
+            cancellationToken: CancellationToken.None);
+        Assert.True(activationOutput.Ok is true, activationOutput.Output);
+
+        var scoped = session.TryApplyDeferredActivatedPackToolScopeAfterRoundForTesting(
+            "run system_pack_info",
+            options: null,
+            definitions,
+            new[] {
+                new ToolCall(
+                    callId: "call-round-cross-pack-helper-skip",
+                    name: "system_pack_info",
+                    input: "{}",
+                    arguments: new JsonObject(),
+                    raw: new JsonObject())
+            },
+            hasExplicitToolEnableSelectors: false,
+            continuationContractDetected: false,
+            executionContractApplies: false,
+            hasPendingActionContext: false,
+            out var scopedDefinitions,
+            out var scopedPackIds);
+
+        Assert.True(scoped);
+        Assert.Equal(2, scopedPackIds.Length);
+        Assert.Equal("eventlog_live_query", scopedDefinitions[0].Name, ignoreCase: true);
+        Assert.Contains(scopedDefinitions, static definition =>
+            string.Equals(definition.Name, "system_pack_info", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(scopedDefinitions, static definition =>
+            string.Equals(definition.Name, "eventlog_live_query", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(scopedDefinitions, static definition =>
+            string.Equals(definition.Name, "eventlog_bulk_export", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(scopedDefinitions, static definition =>
+            string.Equals(definition.Name, "eventlog_connectivity_probe", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(scopedDefinitions, static definition =>
+            string.Equals(definition.Routing?.PackId, "inventory", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void BuildToolRoundReplayInputWithPlannerContextForTesting_PrefersHandoffTargetsForSameTurnReplay() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var definitions = new List<ToolDefinition> {
+            new(
+                "system_pack_info",
+                "Inspect system pack metadata and hand off to event log follow-up.",
+                ToolSchema.Object().NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "system",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                },
+                handoff: new ToolHandoffContract {
+                    IsHandoffAware = true,
+                    OutboundRoutes = new[] {
+                        new ToolHandoffRoute {
+                            TargetPackId = "eventlog",
+                            TargetToolName = "eventlog_live_query",
+                            TargetRole = ToolRoutingTaxonomy.RoleOperational,
+                            Bindings = new[] {
+                                new ToolHandoffBinding {
+                                    SourceField = "host",
+                                    TargetArgument = "machine_name"
+                                }
+                            }
+                        }
+                    }
+                }),
+            new(
+                "eventlog_live_query",
+                "Inspect recent event log records from a remote host.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote host."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "eventlog",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                })
+        };
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(definitions));
+
+        var replayInput = session.BuildToolRoundReplayInputWithPlannerContextForTesting(
+            "thread-replay-handoff-target",
+            "show me the recent login failures after the system probe",
+            definitions,
+            new[] {
+                new ToolCall(
+                    callId: "call-replay-handoff-target",
+                    name: "system_pack_info",
+                    input: "{}",
+                    arguments: new JsonObject(),
+                    raw: new JsonObject())
+            },
+            new[] {
+                new ToolOutputDto {
+                    CallId = "call-replay-handoff-target",
+                    Output = "{\"host\":\"srv1\"}",
+                    Ok = true
+                }
+            });
+        var plannerContextText = ExtractChatInputTextItems(replayInput)
+            .FirstOrDefault(text => text.IndexOf("ix:planner-context:v1", StringComparison.OrdinalIgnoreCase) >= 0);
+
+        Assert.False(string.IsNullOrWhiteSpace(plannerContextText));
+        var parsed = ChatServiceSession.TryReadPlannerContextFromRequestTextForTesting(
+            plannerContextText!,
+            out _,
+            out _,
+            out var preferredPackIds,
+            out var preferredToolNames,
+            out _,
+            out _,
+            out var handoffTargetPackIds,
+            out var handoffTargetToolNames,
+            out var continuationSourceTool,
+            out var continuationReason,
+            out _,
+            out _,
+            out _,
+            out _,
+            out _,
+            out _,
+            out _,
+            out _);
+
+        Assert.True(parsed);
+        Assert.Equal("eventlog", preferredPackIds[0]);
+        Assert.Equal("eventlog_live_query", preferredToolNames[0]);
+        Assert.Equal("eventlog", handoffTargetPackIds[0]);
+        Assert.Equal("eventlog_live_query", handoffTargetToolNames[0]);
+        Assert.Equal("system_pack_info", continuationSourceTool);
+        Assert.Contains("declared handoff target", continuationReason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void OrderToolDefinitionsForPromptExposureForTesting_UsesReplayPlannerContextToPreferSameTurnHandoffTarget() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var definitions = new List<ToolDefinition> {
+            new(
+                "system_pack_info",
+                "Inspect system pack metadata and hand off to event log follow-up.",
+                ToolSchema.Object().NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "system",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                },
+                handoff: new ToolHandoffContract {
+                    IsHandoffAware = true,
+                    OutboundRoutes = new[] {
+                        new ToolHandoffRoute {
+                            TargetPackId = "eventlog",
+                            TargetToolName = "eventlog_live_query",
+                            TargetRole = ToolRoutingTaxonomy.RoleOperational,
+                            Bindings = new[] {
+                                new ToolHandoffBinding {
+                                    SourceField = "host",
+                                    TargetArgument = "machine_name"
+                                }
+                            }
+                        }
+                    }
+                }),
+            new(
+                "eventlog_bulk_export",
+                "Export event log records after probe validation.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote host."))).NoAdditionalProperties(),
+                authentication: new ToolAuthenticationContract {
+                    IsAuthenticationAware = true,
+                    RequiresAuthentication = true,
+                    Mode = ToolAuthenticationMode.ProfileReference,
+                    SupportsConnectivityProbe = true,
+                    ProbeToolName = "eventlog_connectivity_probe"
+                },
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "eventlog",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                }),
+            new(
+                "eventlog_connectivity_probe",
+                "Probe event log runtime reachability.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote host."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "eventlog",
+                    Role = ToolRoutingTaxonomy.RoleDiagnostic
+                }),
+            new(
+                "eventlog_live_query",
+                "Inspect recent event log records from a remote host.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote host."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "eventlog",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                })
+        };
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(definitions));
+
+        var replayInput = session.BuildToolRoundReplayInputWithPlannerContextForTesting(
+            "thread-replay-handoff-order",
+            "show me the recent login failures after the system probe",
+            definitions,
+            new[] {
+                new ToolCall(
+                    callId: "call-replay-handoff-order",
+                    name: "system_pack_info",
+                    input: "{}",
+                    arguments: new JsonObject(),
+                    raw: new JsonObject())
+            },
+            new[] {
+                new ToolOutputDto {
+                    CallId = "call-replay-handoff-order",
+                    Output = "{\"host\":\"srv1\"}",
+                    Ok = true
+                }
+            });
+        var replayPlannerContextText = ExtractChatInputTextItems(replayInput)
+            .FirstOrDefault(text => text.IndexOf("ix:planner-context:v1", StringComparison.OrdinalIgnoreCase) >= 0);
+
+        Assert.False(string.IsNullOrWhiteSpace(replayPlannerContextText));
+        var ordered = session.OrderToolDefinitionsForPromptExposureForTesting(
+            definitions,
+            "show me the recent login failures after the system probe\n\n" + replayPlannerContextText);
+
+        Assert.Equal("eventlog_live_query", ordered[0].Name, ignoreCase: true);
+        var orderedToolNames = ordered.Select(static definition => definition.Name).ToArray();
+        Assert.True(Array.IndexOf(orderedToolNames, "eventlog_live_query") < Array.IndexOf(orderedToolNames, "eventlog_connectivity_probe"));
+        Assert.True(Array.IndexOf(orderedToolNames, "eventlog_live_query") < Array.IndexOf(orderedToolNames, "eventlog_bulk_export"));
+        Assert.True(Array.IndexOf(orderedToolNames, "eventlog_live_query") < Array.IndexOf(orderedToolNames, "system_pack_info"));
+    }
+
+    [Fact]
+    public void ExpandToFullToolAvailabilityForPromptExposureForTesting_PreservesReplayHandoffTargetOrdering() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var definitions = new List<ToolDefinition> {
+            new(
+                "system_pack_info",
+                "Inspect system pack metadata and hand off to event log follow-up.",
+                ToolSchema.Object().NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "system",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                },
+                handoff: new ToolHandoffContract {
+                    IsHandoffAware = true,
+                    OutboundRoutes = new[] {
+                        new ToolHandoffRoute {
+                            TargetPackId = "eventlog",
+                            TargetToolName = "eventlog_live_query",
+                            TargetRole = ToolRoutingTaxonomy.RoleOperational,
+                            Bindings = new[] {
+                                new ToolHandoffBinding {
+                                    SourceField = "host",
+                                    TargetArgument = "machine_name"
+                                }
+                            }
+                        }
+                    }
+                }),
+            new(
+                "eventlog_bulk_export",
+                "Export event log records after probe validation.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote host."))).NoAdditionalProperties(),
+                authentication: new ToolAuthenticationContract {
+                    IsAuthenticationAware = true,
+                    RequiresAuthentication = true,
+                    Mode = ToolAuthenticationMode.ProfileReference,
+                    SupportsConnectivityProbe = true,
+                    ProbeToolName = "eventlog_connectivity_probe"
+                },
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "eventlog",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                }),
+            new(
+                "eventlog_connectivity_probe",
+                "Probe event log runtime reachability.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote host."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "eventlog",
+                    Role = ToolRoutingTaxonomy.RoleDiagnostic
+                }),
+            new(
+                "eventlog_live_query",
+                "Inspect recent event log records from a remote host.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote host."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "eventlog",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                })
+        };
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(definitions));
+
+        var replayInput = session.BuildToolRoundReplayInputWithPlannerContextForTesting(
+            "thread-replay-handoff-full-expand",
+            "show me the recent login failures after the system probe",
+            definitions,
+            new[] {
+                new ToolCall(
+                    callId: "call-replay-handoff-full-expand",
+                    name: "system_pack_info",
+                    input: "{}",
+                    arguments: new JsonObject(),
+                    raw: new JsonObject())
+            },
+            new[] {
+                new ToolOutputDto {
+                    CallId = "call-replay-handoff-full-expand",
+                    Output = "{\"host\":\"srv1\"}",
+                    Ok = true
+                }
+            });
+        var replayPlannerContextText = ExtractChatInputTextItems(replayInput)
+            .FirstOrDefault(text => text.IndexOf("ix:planner-context:v1", StringComparison.OrdinalIgnoreCase) >= 0);
+        Assert.False(string.IsNullOrWhiteSpace(replayPlannerContextText));
+
+        var ordered = session.ExpandToFullToolAvailabilityForPromptExposureForTesting(
+            definitions,
+            "show me the recent login failures after the system probe\n\n" + replayPlannerContextText,
+            out var options);
+
+        Assert.Equal("eventlog_live_query", ordered[0].Name, ignoreCase: true);
+        var exposedTools = Assert.IsAssignableFrom<IReadOnlyList<ToolDefinition>>(options.Tools);
+        Assert.Equal("eventlog_live_query", exposedTools[0].Name, ignoreCase: true);
+        Assert.Equal(IntelligenceX.OpenAI.ToolCalling.ToolChoice.Auto, options.ToolChoice);
+    }
+
+    [Fact]
+    public void CopyChatOptionsWithPromptAwareToolOrderingForTesting_ReordersClonedOptionsWithoutMutatingSource() {
+        var session = new ChatServiceSession(new ServiceOptions(), Stream.Null);
+        var definitions = new List<ToolDefinition> {
+            new(
+                "system_pack_info",
+                "Inspect system pack metadata and hand off to event log follow-up.",
+                ToolSchema.Object().NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "system",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                }),
+            new(
+                "eventlog_connectivity_probe",
+                "Probe event log runtime reachability.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote host."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "eventlog",
+                    Role = ToolRoutingTaxonomy.RoleDiagnostic
+                }),
+            new(
+                "eventlog_live_query",
+                "Inspect recent event log records from a remote host.",
+                ToolSchema.Object(("machine_name", ToolSchema.String("Remote host."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "eventlog",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                })
+        };
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(definitions));
+
+        var sourceOptions = new ChatOptions {
+            Tools = definitions,
+            ToolChoice = IntelligenceX.OpenAI.ToolCalling.ToolChoice.Auto
+        };
+        var clonedOptions = session.CopyChatOptionsWithPromptAwareToolOrderingForTesting(
+            sourceOptions,
+            """
+            [Planner context]
+            ix:planner-context:v1
+            preferred_pack_ids: eventlog
+            preferred_tool_names: eventlog_live_query
+            handoff_target_pack_ids: eventlog
+            handoff_target_tool_names: eventlog_live_query
+            continuation_source_tool: system_pack_info
+            continuation_reason: continue with the declared handoff target from the prior tool result
+            allow_cached_evidence_reuse: false
+
+            continue with the event log follow-up
+            """);
+
+        Assert.NotSame(sourceOptions, clonedOptions);
+        Assert.Equal("system_pack_info", sourceOptions.Tools![0].Name, ignoreCase: true);
+        var clonedTools = Assert.IsAssignableFrom<IReadOnlyList<ToolDefinition>>(clonedOptions.Tools);
+        Assert.Equal("eventlog_live_query", clonedTools[0].Name, ignoreCase: true);
+        Assert.Equal(IntelligenceX.OpenAI.ToolCalling.ToolChoice.Auto, clonedOptions.ToolChoice);
+    }
+
+    [Fact]
+    public void SelectWeightedToolSubset_PrefersExactHandoffTargetToolBeforeSiblingPackHelpers() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var definitions = new List<ToolDefinition>();
+        for (var i = 0; i < 20; i++) {
+            definitions.Add(new ToolDefinition(
+                $"ix_probe_tool_{i:D2}",
+                "Generic diagnostic probe.",
+                ToolSchema.Object(("target", ToolSchema.String("Target host."))).NoAdditionalProperties()));
+        }
+
+        definitions.Add(new ToolDefinition(
+            "eventlog_connectivity_probe",
+            "Probe remote event log connectivity.",
+            ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties(),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "eventlog",
+                Role = ToolRoutingTaxonomy.RoleDiagnostic
+            }));
+        definitions.Add(new ToolDefinition(
+            "eventlog_runtime_profile_validate",
+            "Validate event log runtime profile readiness.",
+            ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties(),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "eventlog",
+                Role = ToolRoutingTaxonomy.RoleOperational
+            }));
+        definitions.Add(new ToolDefinition(
+            "eventlog_live_query",
+            "Inspect recent event log records from a remote host.",
+            ToolSchema.Object(("machine_name", ToolSchema.String("Remote machine."))).NoAdditionalProperties(),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "eventlog",
+                Role = ToolRoutingTaxonomy.RoleOperational
+            }));
+
+        var args = new object?[] {
+            definitions,
+            """
+            [Planner context]
+            ix:planner-context:v1
+            requires_live_execution: false
+            preferred_pack_ids: eventlog
+            preferred_tool_names: eventlog_live_query
+            structured_next_action_source_tools: system_pack_info
+            structured_next_action_reason: continue with the declared handoff target from the prior tool result
+            handoff_target_pack_ids: eventlog
+            handoff_target_tool_names: eventlog_live_query
+            continuation_source_tool: system_pack_info
+            continuation_reason: continue with the declared handoff target from the prior tool result
+            allow_cached_evidence_reuse: false
+            """,
+            3,
+            null
+        };
+        var selected = Assert.IsAssignableFrom<IReadOnlyList<ToolDefinition>>(SelectWeightedToolSubsetMethod.Invoke(session, args));
+
+        Assert.InRange(selected.Count, 3, 8);
+        Assert.Equal("eventlog_live_query", selected[0].Name);
+        Assert.Contains(selected, static tool => string.Equals(tool.Name, "eventlog_connectivity_probe", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(selected, static tool => string.Equals(tool.Name, "eventlog_runtime_profile_validate", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void SelectWeightedToolSubset_SuppressesSiblingProbeHelperWhenExactTargetNeedsNoHelpers() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var definitions = new List<ToolDefinition>();
+        for (var i = 0; i < 20; i++) {
+            definitions.Add(new ToolDefinition(
+                $"ix_probe_tool_{i:D2}",
+                "Generic diagnostic probe.",
+                ToolSchema.Object(("target", ToolSchema.String("Target host."))).NoAdditionalProperties()));
+        }
+
+        definitions.Add(new ToolDefinition(
+            "custom_connectivity_probe",
+            "Probe custom runtime reachability.",
+            ToolSchema.Object(("endpoint", ToolSchema.String("Target endpoint."))).NoAdditionalProperties(),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "customx",
+                Role = ToolRoutingTaxonomy.RoleDiagnostic
+            }));
+        definitions.Add(new ToolDefinition(
+            "custom_followup",
+            "Collect custom follow-up evidence.",
+            ToolSchema.Object(("endpoint", ToolSchema.String("Target endpoint."))).NoAdditionalProperties(),
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "customx",
+                Role = ToolRoutingTaxonomy.RoleOperational
+            }));
+        definitions.Add(new ToolDefinition(
+            "custom_secondary_followup",
+            "Collect a different custom follow-up that still requires probe preflight.",
+            ToolSchema.Object(("endpoint", ToolSchema.String("Target endpoint."))).NoAdditionalProperties(),
+            authentication: new ToolAuthenticationContract {
+                IsAuthenticationAware = true,
+                RequiresAuthentication = true,
+                Mode = ToolAuthenticationMode.ProfileReference,
+                SupportsConnectivityProbe = true,
+                ProbeToolName = "custom_connectivity_probe"
+            },
+            routing: new ToolRoutingContract {
+                IsRoutingAware = true,
+                RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                PackId = "customx",
+                Role = ToolRoutingTaxonomy.RoleOperational
+            }));
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(definitions));
+
+        var args = new object?[] {
+            definitions,
+            """
+            [Planner context]
+            ix:planner-context:v1
+            preferred_pack_ids: customx
+            preferred_tool_names: custom_followup
+            handoff_target_pack_ids: customx
+            handoff_target_tool_names: custom_followup
+            continuation_source_tool: system_pack_info
+            continuation_reason: continue with the declared handoff target from the prior tool result
+            allow_cached_evidence_reuse: false
+            """,
+            4,
+            null
+        };
+        var selected = Assert.IsAssignableFrom<IReadOnlyList<ToolDefinition>>(SelectWeightedToolSubsetMethod.Invoke(session, args));
+
+        Assert.InRange(selected.Count, 4, 8);
+        Assert.Equal("custom_followup", selected[0].Name);
+        Assert.DoesNotContain(selected, static tool => string.Equals(tool.Name, "custom_connectivity_probe", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void TryApplyDeferredActivatedPackToolScopeForTesting_DoesNotScopeInactiveDeferredPack() {
+        var options = new ServiceOptions {
+            EnableBuiltInPackLoading = false,
+            EnableDefaultPluginPaths = false
+        };
+        var session = new ChatServiceSession(options, Stream.Null);
+        var definitions = new List<ToolDefinition> {
+            new(
+                "ops_inventory_collect",
+                "Collect inventory from an endpoint.",
+                ToolSchema.Object(("target", ToolSchema.String("Target host."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "ops_inventory",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                }),
+            new(
+                "generic_inventory_query",
+                "Collect generic inventory from an endpoint.",
+                ToolSchema.Object(("target", ToolSchema.String("Target host."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "generic",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                })
+        };
+
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(definitions));
+        session.SetCachedToolDefinitionsForTesting(new[] {
+            new ToolDefinitionDto {
+                Name = "ops_inventory_collect",
+                Description = "Collect endpoint inventory.",
+                PackId = "ops_inventory",
+                RepresentativeExamples = new[] { "collect inventory from endpoint" }
+            }
+        });
+
+        var scoped = session.TryApplyDeferredActivatedPackToolScopeForTesting(
+            "collect inventory from endpoint srv1",
+            options: null,
+            definitions,
+            hasExplicitToolEnableSelectors: false,
+            continuationContractDetected: false,
+            executionContractApplies: false,
+            hasPendingActionContext: false,
+            hasToolActivity: false,
+            out var scopedDefinitions,
+            out var scopedPackIds);
+
+        Assert.False(scoped);
+        Assert.Empty(scopedPackIds);
+        Assert.Equal(definitions.Count, scopedDefinitions.Count);
     }
 
     [Fact]
@@ -3871,6 +5357,27 @@ public sealed class ChatServicePlannerPromptTests {
         }
 
         return session.BuildModelPlannerPromptForTesting(requestText, definitions, limit);
+    }
+
+    private static IReadOnlyList<string> ExtractChatInputTextItems(object input) {
+        var toJson = input.GetType().GetMethod("ToJson", BindingFlags.NonPublic | BindingFlags.Instance)
+                     ?? throw new InvalidOperationException("ChatInput.ToJson not found.");
+        var rawItems = Assert.IsType<JsonArray>(toJson.Invoke(input, Array.Empty<object>()));
+        var items = new List<string>();
+        for (var i = 0; i < rawItems.Count; i++) {
+            var item = rawItems[i].AsObject();
+            if (item is null
+                || !string.Equals(item.GetString("type"), "text", StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            var text = item.GetString("text");
+            if (!string.IsNullOrWhiteSpace(text)) {
+                items.Add(text);
+            }
+        }
+
+        return items;
     }
 
     private sealed class SyntheticRepresentativeExamplePack : IToolPack, IToolPackCatalogProvider, IToolPackGuidanceProvider {

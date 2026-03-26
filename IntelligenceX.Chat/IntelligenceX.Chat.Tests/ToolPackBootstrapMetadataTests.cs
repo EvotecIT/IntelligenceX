@@ -54,6 +54,7 @@ public sealed class ToolPackBootstrapMetadataTests {
                 UseDefaultBuiltInToolAssemblyNames = false,
                 BuiltInToolAssemblyNames = new[] { "IntelligenceX.Tools.System", "IntelligenceX.Tools.EventLog" },
                 BuiltInToolProbePaths = new[] { "C:/tools/a", "C:/tools/b" },
+                EnableWorkspaceBuiltInToolOutputProbing = true,
                 EnableDefaultPluginPaths = false,
                 PluginPaths = new[] { "C:/plugins/a", "C:/plugins/b" },
                 DisabledPackIds = new[] { "officeimo", "testimox", "dnsclientx", "domaindetective" },
@@ -70,6 +71,7 @@ public sealed class ToolPackBootstrapMetadataTests {
         Assert.False(options.UseDefaultBuiltInToolAssemblyNames);
         Assert.Equal(new[] { "IntelligenceX.Tools.System", "IntelligenceX.Tools.EventLog" }, options.BuiltInToolAssemblyNames);
         Assert.Equal(new[] { "C:/tools/a", "C:/tools/b" }, options.BuiltInToolProbePaths);
+        Assert.True(options.EnableWorkspaceBuiltInToolOutputProbing);
         Assert.False(options.EnableDefaultPluginPaths);
         Assert.Equal(new[] { "C:/plugins/a", "C:/plugins/b" }, options.PluginPaths);
         Assert.Equal(new[] { "officeimo", "testimox", "dnsclientx", "domaindetective" }, options.DisabledPackIds);
@@ -230,6 +232,22 @@ public sealed class ToolPackBootstrapMetadataTests {
     }
 
     [Fact]
+    public void BuildDiscoveryFingerprint_Changes_WhenWorkspaceBuiltInOutputProbingChanges() {
+        var disabledFingerprint = ToolPackBootstrap.BuildDiscoveryFingerprint(new ToolPackBootstrapOptions {
+            EnableBuiltInPackLoading = false,
+            EnablePluginFolderLoading = false,
+            EnableWorkspaceBuiltInToolOutputProbing = false
+        });
+        var enabledFingerprint = ToolPackBootstrap.BuildDiscoveryFingerprint(new ToolPackBootstrapOptions {
+            EnableBuiltInPackLoading = false,
+            EnablePluginFolderLoading = false,
+            EnableWorkspaceBuiltInToolOutputProbing = true
+        });
+
+        Assert.NotEqual(disabledFingerprint, enabledFingerprint);
+    }
+
+    [Fact]
     public void EnumerateToolAssemblyNamesForDiscovery_UsesConfiguredAssemblyNames_WhenDefaultAllowlistIsDisabled() {
         var method = typeof(ToolPackBootstrap).GetMethod(
             "EnumerateToolAssemblyNamesForDiscovery",
@@ -309,7 +327,10 @@ public sealed class ToolPackBootstrapMetadataTests {
         Assert.NotNull(enumerateAssembliesMethod);
         var resolvePathMethod = typeof(ToolPackBootstrap).GetMethod(
             "TryResolveTrustedToolAssemblyPath",
-            BindingFlags.NonPublic | BindingFlags.Static);
+            BindingFlags.NonPublic | BindingFlags.Static,
+            binder: null,
+            types: new[] { typeof(AssemblyName), typeof(ToolPackBootstrapOptions), typeof(string).MakeByRefType() },
+            modifiers: null);
         Assert.NotNull(resolvePathMethod);
 
         var options = new ToolPackBootstrapOptions();
@@ -328,7 +349,10 @@ public sealed class ToolPackBootstrapMetadataTests {
     public void TryResolveTrustedToolAssemblyPath_ReturnsFalse_WhenAssemblyNameIsMissing() {
         var resolvePathMethod = typeof(ToolPackBootstrap).GetMethod(
             "TryResolveTrustedToolAssemblyPath",
-            BindingFlags.NonPublic | BindingFlags.Static);
+            BindingFlags.NonPublic | BindingFlags.Static,
+            binder: null,
+            types: new[] { typeof(AssemblyName), typeof(ToolPackBootstrapOptions), typeof(string).MakeByRefType() },
+            modifiers: null);
         Assert.NotNull(resolvePathMethod);
         var invocationArguments = new object?[] { new AssemblyName(), new ToolPackBootstrapOptions(), null };
         var resolved = Assert.IsType<bool>(resolvePathMethod!.Invoke(null, invocationArguments));
@@ -346,7 +370,10 @@ public sealed class ToolPackBootstrapMetadataTests {
         Assert.NotNull(enumerateAssembliesMethod);
         var resolvePathMethod = typeof(ToolPackBootstrap).GetMethod(
             "TryResolveTrustedToolAssemblyPath",
-            BindingFlags.NonPublic | BindingFlags.Static);
+            BindingFlags.NonPublic | BindingFlags.Static,
+            binder: null,
+            types: new[] { typeof(AssemblyName), typeof(ToolPackBootstrapOptions), typeof(string).MakeByRefType() },
+            modifiers: null);
         Assert.NotNull(resolvePathMethod);
 
         var options = new ToolPackBootstrapOptions();
@@ -614,6 +641,93 @@ public sealed class ToolPackBootstrapMetadataTests {
             string.Equals(pack.Descriptor.Id, "active_directory", StringComparison.OrdinalIgnoreCase));
         Assert.Contains("ad_lifecycle", activeDirectoryPack.Descriptor.Aliases, StringComparer.OrdinalIgnoreCase);
         Assert.Contains("joiner_leaver", activeDirectoryPack.Descriptor.Aliases, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildBuiltInPackRegistrationCandidates_SkipsInstantiation_ForDisabledKnownBuiltInPack() {
+        var method = typeof(ToolPackBootstrap).GetMethod(
+            "BuildBuiltInPackRegistrationCandidates",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+
+        OfficeImoDisabledProbeToolPack.ConstructorCallCount = 0;
+        var result = Assert.IsAssignableFrom<System.Collections.IEnumerable>(method!.Invoke(
+            null,
+            new object[] {
+                new[] { typeof(OfficeImoDisabledProbeToolPack) },
+                new ToolPackBootstrapOptions {
+                    DisabledPackIds = new[] { "officeimo" }
+                }
+            }));
+
+        var candidate = Assert.Single(result.Cast<object>());
+        var candidateType = candidate.GetType();
+        var packId = Assert.IsType<string>(candidateType.GetProperty("PackId")!.GetValue(candidate));
+        var descriptor = Assert.IsType<ToolPackDescriptor>(candidateType.GetProperty("Descriptor")!.GetValue(candidate));
+        var pack = candidateType.GetProperty("Pack")!.GetValue(candidate);
+        var defaultEnabled = Assert.IsType<bool>(candidateType.GetProperty("DefaultEnabled")!.GetValue(candidate));
+
+        Assert.Equal(0, OfficeImoDisabledProbeToolPack.ConstructorCallCount);
+        Assert.Equal("officeimo", packId);
+        Assert.Equal("officeimo", descriptor.Id);
+        Assert.Equal("open_source", descriptor.SourceKind);
+        Assert.Equal("officeimo", descriptor.EngineId);
+        Assert.NotEmpty(descriptor.CapabilityTags);
+        Assert.NotEmpty(descriptor.SearchTokens);
+        Assert.Null(pack);
+        Assert.True(defaultEnabled);
+    }
+
+    [Fact]
+    public void BuildBuiltInPackRegistrationCandidates_SkipsInstantiation_ForDefaultDisabledKnownBuiltInPack() {
+        var method = typeof(ToolPackBootstrap).GetMethod(
+            "BuildBuiltInPackRegistrationCandidates",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+
+        PowerShellDisabledByDefaultProbeToolPack.ConstructorCallCount = 0;
+        var result = Assert.IsAssignableFrom<System.Collections.IEnumerable>(method!.Invoke(
+            null,
+            new object[] {
+                new[] { typeof(PowerShellDisabledByDefaultProbeToolPack) },
+                new ToolPackBootstrapOptions()
+            }));
+
+        var candidate = Assert.Single(result.Cast<object>());
+        var candidateType = candidate.GetType();
+        var packId = Assert.IsType<string>(candidateType.GetProperty("PackId")!.GetValue(candidate));
+        var pack = candidateType.GetProperty("Pack")!.GetValue(candidate);
+        var defaultEnabled = Assert.IsType<bool>(candidateType.GetProperty("DefaultEnabled")!.GetValue(candidate));
+
+        Assert.Equal(0, PowerShellDisabledByDefaultProbeToolPack.ConstructorCallCount);
+        Assert.Equal("powershell", packId);
+        Assert.Null(pack);
+        Assert.False(defaultEnabled);
+    }
+
+    [Fact]
+    public void BuildBuiltInPackRegistrationCandidates_InstantiatesKnownBuiltInPack_WhenExplicitlyEnabled() {
+        var method = typeof(ToolPackBootstrap).GetMethod(
+            "BuildBuiltInPackRegistrationCandidates",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(method);
+
+        PowerShellDisabledByDefaultProbeToolPack.ConstructorCallCount = 0;
+        var result = Assert.IsAssignableFrom<System.Collections.IEnumerable>(method!.Invoke(
+            null,
+            new object[] {
+                new[] { typeof(PowerShellDisabledByDefaultProbeToolPack) },
+                new ToolPackBootstrapOptions {
+                    EnabledPackIds = new[] { "powershell" }
+                }
+            }));
+
+        var candidate = Assert.Single(result.Cast<object>());
+        var candidateType = candidate.GetType();
+        var pack = candidateType.GetProperty("Pack")!.GetValue(candidate);
+
+        Assert.Equal(1, PowerShellDisabledByDefaultProbeToolPack.ConstructorCallCount);
+        Assert.NotNull(pack);
     }
 
     [Fact]
@@ -1072,6 +1186,261 @@ public sealed class ToolPackBootstrapMetadataTests {
     }
 
     [Fact]
+    public void CreateBuiltInDescriptorPreview_BuildsKnownPackMetadataWithoutLoadingRuntimePacks() {
+        var preview = ToolPackBootstrap.CreateBuiltInDescriptorPreview(new ToolPackBootstrapOptions {
+            DisabledPackIds = new[] { "eventlog" }
+        });
+
+        Assert.Empty(preview.Packs);
+        Assert.NotEmpty(preview.PackAvailability);
+        Assert.NotEmpty(preview.PluginCatalog);
+        Assert.Contains(
+            preview.PackAvailability,
+            static pack => string.Equals(pack.Id, "eventlog", StringComparison.OrdinalIgnoreCase)
+                           && !pack.Enabled
+                           && string.Equals(pack.DisabledReason, "Disabled by runtime configuration.", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(
+            preview.PackAvailability,
+            static pack => string.Equals(pack.Id, "powershell", StringComparison.OrdinalIgnoreCase)
+                           && !pack.Enabled);
+        Assert.Contains(
+            preview.PluginCatalog,
+            static plugin => string.Equals(plugin.Id, "system", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void CreateDeferredDescriptorPreview_IncludesManifestOnlyPluginCatalogWithoutLoadingPluginPacks() {
+        var tempRoot = TempPathTestHelper.CreateTempDirectoryPath("ix-chat-plugin-preview");
+        var pluginRoot = Path.Combine(tempRoot, "plugins");
+        var pluginFolder = Path.Combine(pluginRoot, "ops-bundle");
+        var skillsRoot = Path.Combine(pluginFolder, "skills", "network-recon");
+        Directory.CreateDirectory(skillsRoot);
+
+        try {
+            var declaredPackId = ToolPackBootstrap.NormalizePackId("plugin-loader-synthetic-catalog");
+            File.WriteAllText(Path.Combine(skillsRoot, "SKILL.md"), "# Network Recon");
+            File.WriteAllText(Path.Combine(pluginFolder, "ix-plugin.json"), """
+            {
+              "schemaVersion": 1,
+              "pluginId": "ops-bundle",
+              "displayName": "Ops Bundle",
+              "version": "1.2.3",
+              "packIds": ["plugin-loader-synthetic-catalog"],
+              "defaultEnabled": true,
+              "sourceKind": "closed_source",
+              "entryAssembly": "Ops.Bundle.dll",
+              "entryType": "Ops.Bundle.PluginPack",
+              "skillDirectories": ["skills"]
+            }
+            """);
+
+            var preview = ToolPackBootstrap.CreateDeferredDescriptorPreview(new ToolPackBootstrapOptions {
+                EnableDefaultPluginPaths = false,
+                PluginPaths = new[] { pluginRoot }
+            });
+
+            Assert.Empty(preview.Packs);
+            Assert.Contains(
+                preview.PluginCatalog,
+                static plugin => string.Equals(plugin.Id, "ops_bundle", StringComparison.OrdinalIgnoreCase)
+                                 && string.Equals(plugin.Name, "Ops Bundle", StringComparison.OrdinalIgnoreCase)
+                                 && string.Equals(plugin.SourceKind, "closed_source", StringComparison.OrdinalIgnoreCase));
+            var catalog = Assert.Single(preview.PluginCatalog, static plugin => string.Equals(plugin.Id, "ops_bundle", StringComparison.OrdinalIgnoreCase));
+            Assert.Equal(Path.GetFullPath(pluginFolder), catalog.RootPath, ignoreCase: true);
+            Assert.Contains("network-recon", catalog.SkillIds, StringComparer.OrdinalIgnoreCase);
+            Assert.Equal(new[] { declaredPackId }, catalog.PackIds);
+            var availability = Assert.Single(preview.PluginAvailability, static plugin => string.Equals(plugin.Id, "ops_bundle", StringComparison.OrdinalIgnoreCase));
+            Assert.True(availability.Enabled);
+            Assert.Equal(new[] { declaredPackId }, availability.PackIds);
+        } finally {
+            if (Directory.Exists(tempRoot)) {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void CreateDeferredDescriptorPreview_UsesDeclaredManifestPackIdsForPluginEnablement() {
+        var tempRoot = TempPathTestHelper.CreateTempDirectoryPath("ix-chat-plugin-preview-disabled");
+        var pluginRoot = Path.Combine(tempRoot, "plugins");
+        var pluginFolder = Path.Combine(pluginRoot, "ops-bundle");
+        Directory.CreateDirectory(pluginFolder);
+
+        try {
+            var declaredPackId = ToolPackBootstrap.NormalizePackId("plugin-loader-synthetic-catalog");
+            File.WriteAllText(Path.Combine(pluginFolder, "ix-plugin.json"), """
+            {
+              "schemaVersion": 1,
+              "pluginId": "ops-bundle",
+              "displayName": "Ops Bundle",
+              "packIds": ["plugin-loader-synthetic-catalog"],
+              "defaultEnabled": true,
+              "sourceKind": "closed_source",
+              "entryAssembly": "Ops.Bundle.dll",
+              "entryType": "Ops.Bundle.PluginPack"
+            }
+            """);
+
+            var preview = ToolPackBootstrap.CreateDeferredDescriptorPreview(new ToolPackBootstrapOptions {
+                EnableDefaultPluginPaths = false,
+                PluginPaths = new[] { pluginRoot },
+                DisabledPackIds = new[] { declaredPackId }
+            });
+
+            var availability = Assert.Single(preview.PluginAvailability, static plugin => string.Equals(plugin.Id, "ops_bundle", StringComparison.OrdinalIgnoreCase));
+            Assert.False(availability.Enabled);
+            Assert.Equal("Disabled by runtime configuration.", availability.DisabledReason);
+            Assert.Equal(new[] { declaredPackId }, availability.PackIds);
+        } finally {
+            if (Directory.Exists(tempRoot)) {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void CreateDeferredDescriptorPreview_IncludesManifestToolDefinitionsWithoutLoadingPluginPacks() {
+        var tempRoot = TempPathTestHelper.CreateTempDirectoryPath("ix-chat-plugin-tool-preview");
+        var pluginRoot = Path.Combine(tempRoot, "plugins");
+        var pluginFolder = Path.Combine(pluginRoot, "ops-bundle");
+        Directory.CreateDirectory(pluginFolder);
+
+        try {
+            File.WriteAllText(Path.Combine(pluginFolder, "ix-plugin.json"), """
+            {
+              "schemaVersion": 1,
+              "pluginId": "ops-bundle",
+              "displayName": "Ops Bundle",
+              "packIds": ["ops_inventory"],
+              "sourceKind": "closed_source",
+              "entryAssembly": "Ops.Bundle.dll",
+              "entryType": "Ops.Bundle.PluginPack",
+              "tools": [
+                {
+                  "name": "ops_inventory_query",
+                  "description": "Query inventory from deferred manifest metadata.",
+                  "packId": "ops_inventory",
+                  "category": "system",
+                  "routingRole": "operational",
+                  "tags": ["inventory", "remote"],
+                  "executionScope": "local_or_remote",
+                  "supportsRemoteExecution": true,
+                  "supportsTargetScoping": true,
+                  "supportsRemoteHostTargeting": true,
+                  "supportsConnectivityProbe": true,
+                  "probeToolName": "ops_connectivity_probe",
+                  "isSetupAware": true,
+                  "setupToolName": "ops_inventory_setup",
+                  "handoffTargetPackIds": ["system"],
+                  "handoffTargetToolNames": ["system_info"],
+                  "isRecoveryAware": true,
+                  "recoveryToolNames": ["ops_inventory_setup"],
+                  "representativeExamples": ["Query server inventory"]
+                }
+              ]
+            }
+            """);
+
+            var preview = ToolPackBootstrap.CreateDeferredDescriptorPreview(new ToolPackBootstrapOptions {
+                EnableDefaultPluginPaths = false,
+                PluginPaths = new[] { pluginRoot }
+            });
+
+            var tool = Assert.Single(preview.ToolDefinitions, static tool => string.Equals(tool.Name, "ops_inventory_query", StringComparison.OrdinalIgnoreCase));
+            Assert.Equal("ops_inventory", tool.PackId);
+            Assert.Equal("Query inventory from deferred manifest metadata.", tool.Description);
+            Assert.Equal("system", tool.Category);
+            Assert.Equal("local_or_remote", tool.ExecutionScope);
+            Assert.True(tool.SupportsRemoteExecution);
+            Assert.True(tool.SupportsTargetScoping);
+            Assert.True(tool.SupportsRemoteHostTargeting);
+            Assert.Equal(ToolRoutingTaxonomy.RoleOperational, tool.RoutingRole);
+            Assert.Equal(ToolRoutingTaxonomy.SourceExplicit, tool.RoutingSource);
+            Assert.False(tool.IsPackInfoTool);
+            Assert.False(tool.IsEnvironmentDiscoverTool);
+            Assert.True(tool.SupportsConnectivityProbe);
+            Assert.Equal("ops_connectivity_probe", tool.ProbeToolName);
+            Assert.True(tool.IsSetupAware);
+            Assert.Equal("ops_inventory_setup", tool.SetupToolName);
+            Assert.True(tool.IsHandoffAware);
+            Assert.Equal(new[] { "system" }, tool.HandoffTargetPackIds);
+            Assert.Equal(new[] { "system_info" }, tool.HandoffTargetToolNames);
+            Assert.True(tool.IsRecoveryAware);
+            Assert.Equal(new[] { "ops_inventory_setup" }, tool.RecoveryToolNames);
+            Assert.True(tool.IsExecutionAware);
+            Assert.Contains("inventory", tool.Tags ?? Array.Empty<string>(), StringComparer.OrdinalIgnoreCase);
+            Assert.Contains("Query server inventory", tool.RepresentativeExamples, StringComparer.OrdinalIgnoreCase);
+        } finally {
+            if (Directory.Exists(tempRoot)) {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void CreateDeferredDescriptorPreview_OrdersManifestToolDefinitionsByCatalogPriorityInsteadOfName() {
+        var tempRoot = TempPathTestHelper.CreateTempDirectoryPath("ix-chat-plugin-tool-preview-order");
+        var pluginRoot = Path.Combine(tempRoot, "plugins");
+        var pluginFolder = Path.Combine(pluginRoot, "ops-bundle");
+        Directory.CreateDirectory(pluginFolder);
+
+        try {
+            File.WriteAllText(Path.Combine(pluginFolder, "ix-plugin.json"), """
+            {
+              "schemaVersion": 1,
+              "pluginId": "ops-bundle",
+              "displayName": "Ops Bundle",
+              "packIds": ["ops_inventory"],
+              "sourceKind": "closed_source",
+              "entryAssembly": "Ops.Bundle.dll",
+              "entryType": "Ops.Bundle.PluginPack",
+              "tools": [
+                {
+                  "name": "ops_pack_info",
+                  "description": "Explain the ops inventory pack.",
+                  "packId": "ops_inventory",
+                  "category": "system",
+                  "routingRole": "pack_info"
+                },
+                {
+                  "name": "ops_connectivity_probe",
+                  "description": "Probe connectivity for ops inventory.",
+                  "packId": "ops_inventory",
+                  "category": "system",
+                  "routingRole": "diagnostic"
+                },
+                {
+                  "name": "ops_zeta_query",
+                  "description": "Query inventory from deferred manifest metadata.",
+                  "packId": "ops_inventory",
+                  "category": "system",
+                  "routingRole": "operational",
+                  "supportsConnectivityProbe": true,
+                  "probeToolName": "ops_connectivity_probe",
+                  "representativeExamples": ["query server inventory"]
+                }
+              ]
+            }
+            """);
+
+            var preview = ToolPackBootstrap.CreateDeferredDescriptorPreview(new ToolPackBootstrapOptions {
+                EnableDefaultPluginPaths = false,
+                PluginPaths = new[] { pluginRoot }
+            });
+
+            Assert.Collection(
+                preview.ToolDefinitions,
+                tool => Assert.Equal("ops_zeta_query", tool.Name),
+                tool => Assert.Equal("ops_connectivity_probe", tool.Name),
+                tool => Assert.Equal("ops_pack_info", tool.Name));
+        } finally {
+            if (Directory.Exists(tempRoot)) {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public void BuildToolDefinitionDtos_PreservesRepresentativePackMetadataFromOrchestrationCatalog() {
         var adPack = new ActiveDirectoryToolPack(new ActiveDirectoryToolOptions());
         var eventLogPack = new EventLogToolPack(new EventLogToolOptions());
@@ -1144,6 +1513,74 @@ public sealed class ToolPackBootstrapMetadataTests {
     }
 
     [Fact]
+    public void BuildToolDefinitionDtos_OrdersOperationalToolsBeforeHelpersAndPackInfo() {
+        var definitions = new ToolDefinition[] {
+            new(
+                "ops_pack_info",
+                "Explain the ops inventory pack.",
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "ops_inventory",
+                    Role = ToolRoutingTaxonomy.RolePackInfo
+                }),
+            new(
+                "ops_environment_discover",
+                "Discover ops inventory runtime context.",
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "ops_inventory",
+                    Role = ToolRoutingTaxonomy.RoleEnvironmentDiscover
+                }),
+            new(
+                "ops_connectivity_probe",
+                "Probe remote connectivity for ops inventory.",
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "ops_inventory",
+                    Role = ToolRoutingTaxonomy.RoleDiagnostic
+                }),
+            new(
+                "ops_inventory_query",
+                "Query remote inventory.",
+                ToolSchema.Object(("computer_name", ToolSchema.String("Target host."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "ops_inventory",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                },
+                authentication: new ToolAuthenticationContract {
+                    IsAuthenticationAware = true,
+                    SupportsConnectivityProbe = true,
+                    ProbeToolName = "ops_connectivity_probe"
+                })
+        };
+        var orchestrationCatalog = ToolOrchestrationCatalog.Build(definitions);
+        var packAvailability = new[] {
+            new ToolPackAvailabilityInfo {
+                Id = "ops_inventory",
+                Name = "Ops Inventory",
+                SourceKind = "closed_source",
+                Enabled = true
+            }
+        };
+
+        var orderedNames = ToolCatalogExportBuilder.BuildToolDefinitionDtos(definitions, orchestrationCatalog, packAvailability)
+            .Select(static tool => tool.Name)
+            .ToArray();
+
+        Assert.Collection(
+            orderedNames,
+            name => Assert.Equal("ops_inventory_query", name),
+            name => Assert.Equal("ops_environment_discover", name),
+            name => Assert.Equal("ops_connectivity_probe", name),
+            name => Assert.Equal("ops_pack_info", name));
+    }
+
+    [Fact]
     public void BuildPackInfoDtos_ProjectsRuntimePackMetadata() {
         var packs = new ToolPackAvailabilityInfo[] {
             new() {
@@ -1170,6 +1607,8 @@ public sealed class ToolPackBootstrapMetadataTests {
         Assert.Equal(new[] { "serverops", "host_inventory" }, dto.Aliases);
         Assert.Equal(new[] { "host_inventory", "remote_analysis" }, dto.CapabilityTags);
         Assert.Equal(new[] { "computerx", "server_inventory", "cpu", "memory" }, dto.SearchTokens);
+        Assert.Equal("active", dto.ActivationState);
+        Assert.False(dto.CanActivateOnDemand);
     }
 
     [Fact]
@@ -1207,6 +1646,8 @@ public sealed class ToolPackBootstrapMetadataTests {
         Assert.Equal("computerx", dto.EngineId);
         Assert.Equal(new[] { "host_inventory", "remote_analysis" }, dto.CapabilityTags);
         Assert.False(dto.Enabled);
+        Assert.Equal("disabled", dto.ActivationState);
+        Assert.False(dto.CanActivateOnDemand);
         Assert.Equal("Temporarily unavailable.", dto.DisabledReason);
     }
 
@@ -1237,6 +1678,8 @@ public sealed class ToolPackBootstrapMetadataTests {
         Assert.Equal(new[] { "host_inventory", "remote_analysis" }, dto.CapabilityTags);
         Assert.Empty(dto.Aliases);
         Assert.Empty(dto.SearchTokens);
+        Assert.Equal("active", dto.ActivationState);
+        Assert.False(dto.CanActivateOnDemand);
     }
 
     [Fact]
@@ -1283,6 +1726,8 @@ public sealed class ToolPackBootstrapMetadataTests {
         Assert.Equal("closed_source", dto.Origin);
         Assert.Equal(ToolPackSourceKind.ClosedSource, dto.SourceKind);
         Assert.True(dto.Enabled);
+        Assert.Equal("active", dto.ActivationState);
+        Assert.False(dto.CanActivateOnDemand);
         Assert.Equal(new[] { "ops_inventory" }, dto.PackIds);
         Assert.Empty(dto.SkillDirectories);
         Assert.Empty(dto.SkillIds);
@@ -1323,6 +1768,8 @@ public sealed class ToolPackBootstrapMetadataTests {
         Assert.Equal("unknown", dto.Origin);
         Assert.Equal(ToolPackSourceKind.ClosedSource, dto.SourceKind);
         Assert.True(dto.IsDangerous);
+        Assert.Equal("active", dto.ActivationState);
+        Assert.False(dto.CanActivateOnDemand);
         Assert.Equal(new[] { "ops_inventory" }, dto.PackIds);
         Assert.Equal(new[] { "reporting.custom" }, dto.SkillIds);
     }
@@ -1365,10 +1812,66 @@ public sealed class ToolPackBootstrapMetadataTests {
         Assert.Equal("plugin_folder", dto.Origin);
         Assert.Equal(ToolPackSourceKind.ClosedSource, dto.SourceKind);
         Assert.True(dto.Enabled);
+        Assert.Equal("active", dto.ActivationState);
+        Assert.False(dto.CanActivateOnDemand);
         Assert.Equal(new[] { "ops_inventory" }, dto.PackIds);
         Assert.Equal("C:\\plugins\\ops-bundle", dto.RootPath);
         Assert.Equal(new[] { "C:\\plugins\\ops-bundle\\skills" }, dto.SkillDirectories);
         Assert.Equal(new[] { "inventory-test", "network-recon" }, dto.SkillIds);
+    }
+
+    [Fact]
+    public void BuildPackInfoDtos_DescriptorOnlyAvailabilityProjectsDeferredActivationState() {
+        var packs = new ToolPackAvailabilityInfo[] {
+            new() {
+                Id = "ops_inventory",
+                Name = "Ops Inventory",
+                Tier = ToolCapabilityTier.ReadOnly,
+                SourceKind = "closed_source",
+                Enabled = true,
+                DescriptorOnly = true
+            }
+        };
+
+        var dto = Assert.Single(ToolCatalogExportBuilder.BuildPackInfoDtos(packs, orchestrationCatalog: null));
+
+        Assert.True(dto.Enabled);
+        Assert.Equal("deferred", dto.ActivationState);
+        Assert.True(dto.CanActivateOnDemand);
+    }
+
+    [Fact]
+    public void BuildPluginInfoDtos_DescriptorOnlyAvailabilityProjectsDeferredActivationState() {
+        var packs = new[] {
+            new ToolPackInfoDto {
+                Id = "ops_inventory",
+                Name = "Ops Inventory",
+                Tier = CapabilityTier.ReadOnly,
+                Enabled = true,
+                ActivationState = "deferred",
+                CanActivateOnDemand = true,
+                IsDangerous = false,
+                SourceKind = ToolPackSourceKind.ClosedSource
+            }
+        };
+        var plugins = new[] {
+            new ToolPluginAvailabilityInfo {
+                Id = "ops_bundle",
+                Name = "Ops Bundle",
+                Origin = "plugin_folder",
+                SourceKind = "closed_source",
+                DefaultEnabled = true,
+                Enabled = true,
+                DescriptorOnly = true,
+                PackIds = new[] { "ops_inventory" }
+            }
+        };
+
+        var dto = Assert.Single(ToolCatalogExportBuilder.BuildPluginInfoDtos(plugins, packs));
+
+        Assert.True(dto.Enabled);
+        Assert.Equal("deferred", dto.ActivationState);
+        Assert.True(dto.CanActivateOnDemand);
     }
 
     private sealed class TestPackRuntimeSettings : IToolPackRuntimeSettings {
@@ -1381,6 +1884,7 @@ public sealed class ToolPackBootstrapMetadataTests {
         public bool UseDefaultBuiltInToolAssemblyNames { get; init; } = true;
         public IReadOnlyList<string> BuiltInToolAssemblyNames { get; init; } = Array.Empty<string>();
         public IReadOnlyList<string> BuiltInToolProbePaths { get; init; } = Array.Empty<string>();
+        public bool EnableWorkspaceBuiltInToolOutputProbing { get; init; }
         public bool EnableDefaultPluginPaths { get; init; } = true;
         public IReadOnlyList<string> PluginPaths { get; init; } = Array.Empty<string>();
         public IReadOnlyList<string> DisabledPackIds { get; init; } = Array.Empty<string>();
@@ -1542,6 +2046,45 @@ public sealed class ToolPackBootstrapMetadataTests {
 
         public void Register(ToolRegistry registry) {
             throw new NotSupportedException();
+        }
+    }
+
+    private sealed class OfficeImoDisabledProbeToolPack : IToolPack {
+        public static int ConstructorCallCount { get; set; }
+
+        public OfficeImoDisabledProbeToolPack() {
+            ConstructorCallCount++;
+        }
+
+        public ToolPackDescriptor Descriptor { get; } = new() {
+            Id = "officeimo",
+            Name = "Office Documents (OfficeIMO)",
+            Tier = ToolCapabilityTier.ReadOnly,
+            SourceKind = "open_source"
+        };
+
+        public void Register(ToolRegistry registry) {
+            _ = registry;
+        }
+    }
+
+    private sealed class PowerShellDisabledByDefaultProbeToolPack : IToolPack {
+        public static int ConstructorCallCount { get; set; }
+
+        public PowerShellDisabledByDefaultProbeToolPack() {
+            ConstructorCallCount++;
+        }
+
+        public ToolPackDescriptor Descriptor { get; } = new() {
+            Id = "powershell",
+            Name = "PowerShell Runtime",
+            Tier = ToolCapabilityTier.DangerousWrite,
+            IsDangerous = true,
+            SourceKind = "builtin"
+        };
+
+        public void Register(ToolRegistry registry) {
+            _ = registry;
         }
     }
 

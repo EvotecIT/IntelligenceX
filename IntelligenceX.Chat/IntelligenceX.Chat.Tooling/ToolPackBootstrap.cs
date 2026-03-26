@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.Common;
 
@@ -80,6 +81,12 @@ public sealed record ToolPackBootstrapOptions {
     /// Additional trusted probe roots searched when built-in tool assemblies are not resolvable from the dependency graph.
     /// </summary>
     public IReadOnlyList<string> BuiltInToolProbePaths { get; init; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Includes recursive workspace project-output probing (for example repo-local bin folders) in discovery fingerprint generation.
+    /// Disabled by default so warm startup cache validation does not pay repo-scan costs unless explicitly opted in for dev workflows.
+    /// </summary>
+    public bool EnableWorkspaceBuiltInToolOutputProbing { get; init; }
 
     /// <summary>
     /// Shared authentication probe store used by probe-aware packs.
@@ -203,6 +210,11 @@ public interface IToolPackRuntimeSettings {
     IReadOnlyList<string> BuiltInToolProbePaths { get; }
 
     /// <summary>
+    /// Includes recursive workspace project-output probing in discovery fingerprint generation.
+    /// </summary>
+    bool EnableWorkspaceBuiltInToolOutputProbing { get; }
+
+    /// <summary>
     /// Enables default plugin search roots.
     /// </summary>
     bool EnableDefaultPluginPaths { get; }
@@ -280,6 +292,10 @@ public sealed record ToolPackAvailabilityInfo {
     /// </summary>
     public bool Enabled { get; init; }
     /// <summary>
+    /// Whether this availability entry comes from descriptor-only preview metadata rather than live activation.
+    /// </summary>
+    public bool DescriptorOnly { get; init; }
+    /// <summary>
     /// Human-readable reason when the pack is unavailable.
     /// </summary>
     public string? DisabledReason { get; init; }
@@ -317,6 +333,10 @@ public sealed record ToolPluginAvailabilityInfo {
     /// Whether any pack from this plugin is enabled in the current runtime.
     /// </summary>
     public bool Enabled { get; init; }
+    /// <summary>
+    /// Whether this availability entry comes from descriptor-only preview metadata rather than live activation.
+    /// </summary>
+    public bool DescriptorOnly { get; init; }
     /// <summary>
     /// Human-readable reason when the plugin is unavailable.
     /// </summary>
@@ -398,6 +418,10 @@ public sealed record ToolPluginCatalogInfo {
 /// </summary>
 public sealed record ToolPackBootstrapResult {
     /// <summary>
+    /// Deferred or cached tool definitions known without loading live pack implementations.
+    /// </summary>
+    public IReadOnlyList<ToolDefinitionDto> ToolDefinitions { get; init; } = Array.Empty<ToolDefinitionDto>();
+    /// <summary>
     /// Loaded tool packs.
     /// </summary>
     public IReadOnlyList<IToolPack> Packs { get; init; } = Array.Empty<IToolPack>();
@@ -420,6 +444,7 @@ public sealed record ToolPackBootstrapResult {
 /// </summary>
 public static partial class ToolPackBootstrap {
     private const string DisabledByRuntimeConfigurationReason = "Disabled by runtime configuration.";
+    private const string DisabledByPluginManifestDefaultReason = "Disabled by plugin manifest default.";
     private const string UnavailableReasonFallback = "Pack could not be loaded in this runtime.";
     /// <summary>
     /// Canonical hint message used when plugin-only mode resolves to an empty pack set.
@@ -494,6 +519,7 @@ public static partial class ToolPackBootstrap {
             UseDefaultBuiltInToolAssemblyNames = settings.UseDefaultBuiltInToolAssemblyNames,
             BuiltInToolAssemblyNames = builtInToolAssemblyNames,
             BuiltInToolProbePaths = builtInToolProbePaths,
+            EnableWorkspaceBuiltInToolOutputProbing = settings.EnableWorkspaceBuiltInToolOutputProbing,
             EnableDefaultPluginPaths = settings.EnableDefaultPluginPaths,
             PluginPaths = pluginPaths,
             DisabledPackIds = disabledPackIds,
@@ -604,6 +630,50 @@ public static partial class ToolPackBootstrap {
     }
 
     /// <summary>
+    /// Builds a descriptor-only preview of built-in pack availability without constructing runtime packs.
+    /// </summary>
+    /// <param name="options">Bootstrap options.</param>
+    /// <returns>Descriptor-backed built-in pack/plugin metadata with no live packs.</returns>
+    public static ToolPackBootstrapResult CreateBuiltInDescriptorPreview(ToolPackBootstrapOptions options) {
+        if (options is null) {
+            throw new ArgumentNullException(nameof(options));
+        }
+
+        return CreateBuiltInDescriptorPreviewCore(options);
+    }
+
+    /// <summary>
+    /// Builds a deferred descriptor preview of known built-in packs and plugin manifests without constructing runtime packs.
+    /// </summary>
+    /// <param name="options">Bootstrap options.</param>
+    /// <returns>Descriptor-backed pack/plugin metadata suitable for deferred startup previews.</returns>
+    public static ToolPackBootstrapResult CreateDeferredDescriptorPreview(ToolPackBootstrapOptions options) {
+        if (options is null) {
+            throw new ArgumentNullException(nameof(options));
+        }
+
+        return CreateDeferredDescriptorPreviewCore(options);
+    }
+
+    /// <summary>
+    /// Activates a single normalized pack id on demand without bootstrapping the full tool surface.
+    /// </summary>
+    /// <param name="options">Bootstrap options.</param>
+    /// <param name="packId">Normalized or raw target pack identifier.</param>
+    /// <param name="existingPacks">Already loaded packs that should be treated as active for duplicate detection.</param>
+    /// <returns>Loaded pack/plugin metadata for the requested activation target only.</returns>
+    public static ToolPackBootstrapResult ActivatePackOnDemand(
+        ToolPackBootstrapOptions options,
+        string packId,
+        IEnumerable<IToolPack>? existingPacks = null) {
+        if (options is null) {
+            throw new ArgumentNullException(nameof(options));
+        }
+
+        return ActivatePackOnDemandCore(options, packId, existingPacks);
+    }
+
+    /// <summary>
     /// Builds the default tool packs together with structured per-pack availability diagnostics.
     /// </summary>
     /// <param name="options">Bootstrap options.</param>
@@ -665,7 +735,7 @@ public static partial class ToolPackBootstrap {
                     UpsertAvailability(
                         availabilityById,
                         CreateAvailabilityFromDescriptor(
-                            descriptor: builtInPack.Pack.Descriptor,
+                            descriptor: builtInPack.Descriptor,
                             enabled: false,
                             disabledReason: disabledReason));
                     UpsertPluginAvailability(
@@ -680,11 +750,13 @@ public static partial class ToolPackBootstrap {
                     return;
                 }
 
-                packs.Add(builtInPack.Pack);
+                if (builtInPack.Pack is not null) {
+                    packs.Add(builtInPack.Pack);
+                }
                 UpsertAvailability(
                     availabilityById,
                         CreateAvailabilityFromDescriptor(
-                            descriptor: builtInPack.Pack.Descriptor,
+                            descriptor: builtInPack.Descriptor,
                             enabled: true,
                             disabledReason: null));
                 UpsertPluginAvailability(

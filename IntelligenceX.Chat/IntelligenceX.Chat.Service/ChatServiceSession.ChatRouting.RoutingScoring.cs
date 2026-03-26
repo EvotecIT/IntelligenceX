@@ -29,6 +29,12 @@ internal sealed partial class ChatServiceSession {
     private const int PlannerStructuredMutatingActionPriorityBoost = 140;
     private const int PlannerContractHelperPriorityStep = 45;
     private const int PlannerContractHelperPriorityMaxBoost = 180;
+    private const int PlannerDeterministicHandoffTargetToolPriorityBoost = 520;
+    private const int PlannerDeterministicPreferredToolPriorityBoost = 480;
+    private const int PlannerDeterministicPreferredPackPriorityBoost = 140;
+    private const int PlannerDeterministicHandoffTargetPackPriorityBoost = 120;
+    private const int PlannerDeterministicPackPreferredEntryPriorityBoost = 45;
+    private const int PlannerDeterministicPackPreferredProbePriorityBoost = 35;
     private const int PlannerWriteFollowUpPriorityPenalty = 90;
     private const int PlannerAuthFollowUpPriorityPenalty = 55;
     private const double WeightedRoutingRemoteCapableScoreBoost = 3.5d;
@@ -57,11 +63,14 @@ internal sealed partial class ChatServiceSession {
         IReadOnlyCollection<string> preferredToolNames,
         IReadOnlyCollection<string> handoffTargetToolNames,
         IReadOnlyCollection<string> preferredPackIds,
-        IReadOnlyCollection<string> handoffTargetPackIds) {
+        IReadOnlyCollection<string> handoffTargetPackIds,
+        IReadOnlyDictionary<string, int>? helperDemandByToolName = null,
+        IReadOnlySet<string>? suppressibleExactTargetPackIds = null) {
         if (definitions.Count == 0 || limit <= 0) {
             return Array.Empty<ToolDefinition>();
         }
 
+        var exactTargetToolNames = BuildExactContractTargetToolNameSet(preferredToolNames, handoffTargetToolNames);
         var targetedDefinitions = new List<ToolDefinition>(definitions.Count);
         for (var i = 0; i < definitions.Count; i++) {
             var definition = definitions[i];
@@ -80,6 +89,15 @@ internal sealed partial class ChatServiceSession {
                 continue;
             }
 
+            if (ShouldSuppressRedundantSiblingHelperTool(
+                    definition,
+                    toolOrchestrationCatalog,
+                    exactTargetToolNames,
+                    helperDemandByToolName,
+                    suppressibleExactTargetPackIds)) {
+                continue;
+            }
+
             targetedDefinitions.Add(definition);
         }
 
@@ -87,10 +105,37 @@ internal sealed partial class ChatServiceSession {
             return SelectDeterministicToolSubset(definitions, limit, toolOrchestrationCatalog);
         }
 
+        var deterministicOrder = SelectDeterministicToolSubset(
+            targetedDefinitions,
+            targetedDefinitions.Count,
+            toolOrchestrationCatalog);
+        var deterministicIndexByToolName = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < deterministicOrder.Count; i++) {
+            var name = (deterministicOrder[i].Name ?? string.Empty).Trim();
+            if (name.Length == 0 || deterministicIndexByToolName.ContainsKey(name)) {
+                continue;
+            }
+
+            deterministicIndexByToolName[name] = i;
+        }
+
         var selected = new List<ToolDefinition>(limit);
         var selectedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var targetedOrdered = SelectDeterministicToolSubset(targetedDefinitions, limit, toolOrchestrationCatalog);
-        for (var i = 0; i < targetedOrdered.Count && selected.Count < limit; i++) {
+        var targetedOrdered = targetedDefinitions
+            .OrderByDescending(definition => GetPlannerContractTargetDeterministicPriority(
+                definition,
+                toolOrchestrationCatalog,
+                preferredToolNames,
+                handoffTargetToolNames,
+                preferredPackIds,
+                handoffTargetPackIds))
+            .ThenBy(definition => {
+                var name = (definition.Name ?? string.Empty).Trim();
+                return deterministicIndexByToolName.TryGetValue(name, out var index) ? index : int.MaxValue;
+            })
+            .ThenBy(static definition => definition.Name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        for (var i = 0; i < targetedOrdered.Length && selected.Count < limit; i++) {
             var definition = targetedOrdered[i];
             var name = (definition.Name ?? string.Empty).Trim();
             if (name.Length == 0 || !selectedNames.Add(name)) {
@@ -116,6 +161,47 @@ internal sealed partial class ChatServiceSession {
         }
 
         return selected.Count == 0 ? Array.Empty<ToolDefinition>() : selected;
+    }
+
+    private static int GetPlannerContractTargetDeterministicPriority(
+        ToolDefinition definition,
+        ToolOrchestrationCatalog toolOrchestrationCatalog,
+        IReadOnlyCollection<string> preferredToolNames,
+        IReadOnlyCollection<string> handoffTargetToolNames,
+        IReadOnlyCollection<string> preferredPackIds,
+        IReadOnlyCollection<string> handoffTargetPackIds) {
+        if (definition is null) {
+            return 0;
+        }
+
+        var priority = 0;
+        var toolName = (definition.Name ?? string.Empty).Trim();
+        var packId = ResolveToolPackId(definition, toolOrchestrationCatalog);
+        if (handoffTargetToolNames.Contains(toolName)) {
+            priority += PlannerDeterministicHandoffTargetToolPriorityBoost;
+        }
+
+        if (preferredToolNames.Contains(toolName)) {
+            priority += PlannerDeterministicPreferredToolPriorityBoost;
+        }
+
+        if (preferredPackIds.Contains(packId)) {
+            priority += PlannerDeterministicPreferredPackPriorityBoost;
+        }
+
+        if (handoffTargetPackIds.Contains(packId)) {
+            priority += PlannerDeterministicHandoffTargetPackPriorityBoost;
+        }
+
+        if (ToolIsPackPreferredEntryTool(definition, toolOrchestrationCatalog)) {
+            priority += PlannerDeterministicPackPreferredEntryPriorityBoost;
+        }
+
+        if (ToolIsPackPreferredProbeTool(definition, toolOrchestrationCatalog)) {
+            priority += PlannerDeterministicPackPreferredProbePriorityBoost;
+        }
+
+        return priority;
     }
 
     private static IReadOnlyList<ToolDefinition> EnsureContractTargetedToolSelection(

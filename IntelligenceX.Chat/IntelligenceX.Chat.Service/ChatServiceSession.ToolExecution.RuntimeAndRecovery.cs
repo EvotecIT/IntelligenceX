@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -276,6 +277,27 @@ internal sealed partial class ChatServiceSession {
             .ConfigureAwait(false);
     }
 
+    private static string BuildToolActivationBootstrapMessage(string? toolName) {
+        var label = (toolName ?? string.Empty).Trim();
+        if (label.Length == 0) {
+            label = "tool";
+        }
+
+        return $"Bootstrapping tooling on demand for {label}.";
+    }
+
+    private static string BuildPackActivationMessage(string? toolName, string? packId) {
+        var label = (toolName ?? string.Empty).Trim();
+        if (label.Length == 0) {
+            label = "tool";
+        }
+
+        var normalizedPackId = ToolPackBootstrap.NormalizePackId(packId);
+        return normalizedPackId.Length == 0
+            ? $"Activating the owning pack on demand for {label}."
+            : $"Activating pack '{normalizedPackId}' on demand for {label}.";
+    }
+
     private static string BuildToolCanceledMessage(string? toolName) {
         var label = (toolName ?? string.Empty).Trim();
         if (label.Length == 0) {
@@ -299,17 +321,9 @@ internal sealed partial class ChatServiceSession {
 
     private async Task<ToolOutputDto> ExecuteToolAsync(string threadId, string userRequest, ToolCall call, int toolTimeoutSeconds,
         CancellationToken cancellationToken, ToolExecutionStatusWriter? statusWriter = null) {
-        if (!_registry.TryGet(call.Name, out var tool)) {
-            var hints = new List<string> { "Call list_tools to list available tools." };
-            hints.AddRange(ToolExecutionAvailabilityHints.BuildRegistrationHintLines(_registry.GetDefinitions()));
-            hints.Add("Check that the correct packs are enabled.");
-            var output = ToolOutputEnvelope.Error(
-                errorCode: "tool_not_registered",
-                error: $"Tool '{call.Name}' is not registered.",
-                hints: hints,
-                isTransient: false);
-
-            return BuildToolOutputDto(call.CallId, output);
+        var (tool, toolDefinition, toolResolutionFailure) = await ResolveToolForExecutionAsync(call, cancellationToken, statusWriter).ConfigureAwait(false);
+        if (toolResolutionFailure is not null) {
+            return toolResolutionFailure;
         }
 
         if (TryBuildDomainIntentHostScopeGuardrailOutput(threadId, userRequest, call, out var guardrailOutput)) {
@@ -317,10 +331,6 @@ internal sealed partial class ChatServiceSession {
         }
 
         // Retry profile wiring is enforced in this execution loop.
-        ToolDefinition? toolDefinition = null;
-        if (_registry.TryGetDefinition(call.Name, out var registeredDefinition) && registeredDefinition is not null) {
-            toolDefinition = ToolSelectionMetadata.Enrich(registeredDefinition, tool.GetType());
-        }
         var profile = ResolveRetryProfile(toolDefinition);
         var currentCall = call;
         var projectionFallbackAttempted = false;
@@ -439,6 +449,187 @@ internal sealed partial class ChatServiceSession {
         return lastFailure ?? await ExecuteToolAttemptAsync(tool, call, toolTimeoutSeconds, cancellationToken).ConfigureAwait(false);
     }
 
+    private async Task<(ITool Tool, ToolDefinition? Definition, ToolOutputDto? FailureOutput)> ResolveToolForExecutionAsync(
+        ToolCall call,
+        CancellationToken cancellationToken,
+        ToolExecutionStatusWriter? statusWriter) {
+        if (TryResolveRegisteredTool(call.Name, out var tool, out var definition)) {
+            return (tool, definition, null);
+        }
+
+        if (TryResolveDeferredActivationPackId(call.Name, out var activationPackId)) {
+            await TryWriteToolExecutionTransitionStatusAsync(
+                    statusWriter,
+                    ChatStatusCodes.ToolCall,
+                    call,
+                    BuildPackActivationMessage(call.Name, activationPackId))
+                .ConfigureAwait(false);
+            try {
+                _ = TryActivatePackOnDemand(activationPackId, out _);
+            } catch (Exception ex) {
+                if (TryResolveRegisteredTool(call.Name, out tool, out definition)) {
+                    return (tool, definition, null);
+                }
+
+                return (default!, null, BuildToolBootstrapFailureOutput(call.CallId, call.Name, ex));
+            }
+
+            if (TryResolveRegisteredTool(call.Name, out tool, out definition)) {
+                return (tool, definition, null);
+            }
+        }
+
+        var startupToolingBootstrapTask = Volatile.Read(ref _startupToolingBootstrapTask);
+        var activationAttempted = startupToolingBootstrapTask is null || !startupToolingBootstrapTask.IsCompletedSuccessfully;
+        if (activationAttempted) {
+            var activationTask = startupToolingBootstrapTask ?? EnsureStartupToolingBootstrapTaskStarted(cancellationToken);
+            await TryWriteToolExecutionTransitionStatusAsync(
+                    statusWriter,
+                    ChatStatusCodes.ToolCall,
+                    call,
+                    BuildToolActivationBootstrapMessage(call.Name))
+                .ConfigureAwait(false);
+            try {
+                await activationTask.ConfigureAwait(false);
+            } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
+                throw;
+            } catch (Exception ex) {
+                return (default!, null, BuildToolBootstrapFailureOutput(call.CallId, call.Name, ex));
+            }
+
+            if (TryResolveRegisteredTool(call.Name, out tool, out definition)) {
+                return (tool, definition, null);
+            }
+        }
+
+        return (default!, null, BuildToolNotRegisteredOutput(call.CallId, call.Name, activationAttempted));
+    }
+
+    private bool TryResolveDeferredActivationPackId(string? toolName, [NotNullWhen(true)] out string? packId) {
+        packId = null;
+        var normalizedToolName = (toolName ?? string.Empty).Trim();
+        if (normalizedToolName.Length == 0) {
+            return false;
+        }
+
+        if (_toolOrchestrationCatalog.TryGetEntry(normalizedToolName, out var orchestrationEntry)) {
+            var normalizedPackId = ToolPackBootstrap.NormalizePackId(orchestrationEntry.PackId);
+            if (normalizedPackId.Length > 0) {
+                packId = normalizedPackId;
+                return true;
+            }
+        }
+
+        var cachedToolDefinitions = Volatile.Read(ref _cachedToolDefinitions);
+        for (var i = 0; i < cachedToolDefinitions.Length; i++) {
+            var definition = cachedToolDefinitions[i];
+            if (!string.Equals(definition.Name, normalizedToolName, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            var normalizedPackId = ToolPackBootstrap.NormalizePackId(definition.PackId);
+            if (normalizedPackId.Length == 0) {
+                continue;
+            }
+
+            packId = normalizedPackId;
+            return true;
+        }
+
+        if (_deferredDescriptorPreviewToolDefinitions.Length == 0) {
+            _ = TryGetDeferredDescriptorPreviewCapabilitySnapshot(out _);
+        }
+
+        var deferredDescriptorPreviewToolDefinitions = _deferredDescriptorPreviewToolDefinitions;
+        for (var i = 0; i < deferredDescriptorPreviewToolDefinitions.Length; i++) {
+            var definition = deferredDescriptorPreviewToolDefinitions[i];
+            if (!string.Equals(definition.Name, normalizedToolName, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            var normalizedPackId = ToolPackBootstrap.NormalizePackId(definition.PackId);
+            if (normalizedPackId.Length == 0) {
+                continue;
+            }
+
+            packId = normalizedPackId;
+            return true;
+        }
+
+        return false;
+    }
+
+    private bool TryResolveRegisteredTool(string? toolName, out ITool tool, out ToolDefinition? definition) {
+        tool = default!;
+        definition = null;
+        var normalizedToolName = (toolName ?? string.Empty).Trim();
+        if (normalizedToolName.Length == 0 || !_registry.TryGet(normalizedToolName, out tool)) {
+            return false;
+        }
+
+        if (_registry.TryGetDefinition(normalizedToolName, out var registeredDefinition) && registeredDefinition is not null) {
+            definition = ToolSelectionMetadata.Enrich(registeredDefinition, tool.GetType());
+        }
+
+        return true;
+    }
+
+    private bool TryResolveRegisteredOrDeferredActivatedTool(string? toolName, out ITool tool, out ToolDefinition? definition) {
+        if (TryResolveRegisteredTool(toolName, out tool, out definition)) {
+            return true;
+        }
+
+        if (!TryResolveDeferredActivationPackId(toolName, out var activationPackId)) {
+            tool = default!;
+            definition = null;
+            return false;
+        }
+
+        try {
+            _ = TryActivatePackOnDemand(activationPackId, out _);
+        } catch {
+            tool = default!;
+            definition = null;
+            return false;
+        }
+
+        return TryResolveRegisteredTool(toolName, out tool, out definition);
+    }
+
+    private ToolOutputDto BuildToolNotRegisteredOutput(string callId, string? toolName, bool activationAttempted) {
+        var hints = new List<string> { "Call list_tools to list available tools." };
+        hints.AddRange(ToolExecutionAvailabilityHints.BuildRegistrationHintLines(_registry.GetDefinitions()));
+        if (activationAttempted) {
+            hints.Add("Tooling activation completed, but this tool is still not available in the active catalog.");
+        }
+
+        hints.Add("Check that the correct packs are enabled.");
+        var output = ToolOutputEnvelope.Error(
+            errorCode: "tool_not_registered",
+            error: $"Tool '{toolName}' is not registered.",
+            hints: hints,
+            isTransient: false);
+
+        return BuildToolOutputDto(callId, output);
+    }
+
+    private static ToolOutputDto BuildToolBootstrapFailureOutput(string callId, string? toolName, Exception exception) {
+        var detail = (exception?.GetBaseException().Message ?? exception?.Message ?? "Tool bootstrap failed.").Trim();
+        if (detail.Length == 0) {
+            detail = "Tool bootstrap failed.";
+        }
+
+        var output = ToolOutputEnvelope.Error(
+            errorCode: "tool_bootstrap_failed",
+            error: $"Couldn't activate tooling for '{toolName}': {detail}",
+            hints: new[] {
+                "Call hello or list_tools to inspect startup warnings and capability snapshot details.",
+                "Check that the requested pack or plugin can load in this runtime."
+            },
+            isTransient: false);
+        return BuildToolOutputDto(callId, output);
+    }
+
     private static Task TryWriteToolExecutionTransitionStatusAsync(
         ToolExecutionStatusWriter? statusWriter,
         string status,
@@ -547,8 +738,7 @@ internal sealed partial class ChatServiceSession {
         var normalizedHelperToolName = (helperToolName ?? string.Empty).Trim();
         if (normalizedHelperToolName.Length == 0
             || string.Equals(normalizedHelperToolName, failedCall.Name, StringComparison.OrdinalIgnoreCase)
-            || !_registry.TryGet(normalizedHelperToolName, out helperTool)
-            || !_registry.TryGetDefinition(normalizedHelperToolName, out var helperDefinition)
+            || !TryResolveRegisteredOrDeferredActivatedTool(normalizedHelperToolName, out helperTool, out var helperDefinition)
             || helperDefinition is null
             || helperDefinition.WriteGovernance?.IsWriteCapable == true
             || !TryBuildRecoveryHelperArguments(failedCall, helperDefinition, out var helperArguments)) {

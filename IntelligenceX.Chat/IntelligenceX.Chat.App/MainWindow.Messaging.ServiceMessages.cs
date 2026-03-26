@@ -92,6 +92,7 @@ public sealed partial class MainWindow : Window {
                     MarkTurnStatusStage(status);
                     var assistantStatusSignalChanged = ApplyActiveTurnStatusSignal(requestConversation, status.Status);
                     var routingInsightUpdated = ApplyToolRoutingInsight(status);
+                    var routingPromptExposureUpdated = ApplyRoutingMetaPromptExposure(status);
                     var activityText = IsTerminalChatStatus(status.Status) ? null : FormatActivityText(status);
                     var timelineChanged = AppendActivityTimeline(status, activityText ?? string.Empty);
                     var normalizedActivityText = activityText ?? string.Empty;
@@ -107,11 +108,14 @@ public sealed partial class MainWindow : Window {
                     if (timelineChanged) {
                         RequestServiceDrivenSessionPublish();
                     }
+                    if (routingPromptExposureUpdated) {
+                        RequestServiceDrivenSessionPublish();
+                    }
                     if ((assistantTimelineChanged || assistantStatusSignalChanged)
                         && string.Equals(requestConversation.Id, _activeConversationId, StringComparison.OrdinalIgnoreCase)) {
                         QueueTranscriptRender("chat_status_timeline");
                     }
-                    if (routingInsightUpdated) {
+                    if (routingInsightUpdated || routingPromptExposureUpdated) {
                         _ = PublishOptionsStateSafeAsync();
                     }
                     if (VerboseServiceLogs || _debugMode) {

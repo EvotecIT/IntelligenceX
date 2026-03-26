@@ -70,6 +70,7 @@ internal static partial class Program {
         public bool UseDefaultBuiltInToolAssemblyNames { get; set; } = true;
         public List<string> BuiltInToolAssemblyNames { get; } = new();
         public List<string> BuiltInToolProbePaths { get; } = new();
+        public bool EnableWorkspaceBuiltInToolOutputProbing { get; set; }
         public bool EnableDefaultPluginPaths { get; set; } = true;
         public List<string> PluginPaths { get; } = new();
         public List<string> DisabledPackIds { get; } = new();
@@ -89,6 +90,7 @@ internal static partial class Program {
         IReadOnlyList<string> IToolPackRuntimeSettings.AllowedRoots => AllowedRoots;
         IReadOnlyList<string> IToolPackRuntimeSettings.BuiltInToolAssemblyNames => BuiltInToolAssemblyNames;
         IReadOnlyList<string> IToolPackRuntimeSettings.BuiltInToolProbePaths => BuiltInToolProbePaths;
+        bool IToolPackRuntimeSettings.EnableWorkspaceBuiltInToolOutputProbing => EnableWorkspaceBuiltInToolOutputProbing;
         IReadOnlyList<string> IToolPackRuntimeSettings.PluginPaths => PluginPaths;
         IReadOnlyList<string> IToolPackRuntimeSettings.DisabledPackIds => DisabledPackIds;
         IReadOnlyList<string> IToolPackRuntimeSettings.EnabledPackIds => EnabledPackIds;
@@ -326,6 +328,12 @@ internal static partial class Program {
                             return options;
                         }
                         options.BuiltInToolProbePaths.Add(builtInToolProbePath);
+                        break;
+                    case "--enable-workspace-built-in-tool-output-probing":
+                        options.EnableWorkspaceBuiltInToolOutputProbing = true;
+                        break;
+                    case "--disable-workspace-built-in-tool-output-probing":
+                        options.EnableWorkspaceBuiltInToolOutputProbing = false;
                         break;
                     case "--no-default-built-in-tool-assemblies":
                         options.UseDefaultBuiltInToolAssemblyNames = false;
@@ -632,6 +640,7 @@ internal static partial class Program {
                 PowerShellAllowWrite = PowerShellAllowWrite,
                 EnableBuiltInPackLoading = EnableBuiltInPackLoading,
                 UseDefaultBuiltInToolAssemblyNames = UseDefaultBuiltInToolAssemblyNames,
+                EnableWorkspaceBuiltInToolOutputProbing = EnableWorkspaceBuiltInToolOutputProbing,
                 EnableDefaultPluginPaths = EnableDefaultPluginPaths,
                 WriteGovernanceMode = WriteGovernanceMode,
                 RequireWriteGovernanceRuntime = RequireWriteGovernanceRuntime,
@@ -710,6 +719,7 @@ internal static partial class Program {
             PowerShellAllowWrite = source.PowerShellAllowWrite;
             EnableBuiltInPackLoading = source.EnableBuiltInPackLoading;
             UseDefaultBuiltInToolAssemblyNames = source.UseDefaultBuiltInToolAssemblyNames;
+            EnableWorkspaceBuiltInToolOutputProbing = source.EnableWorkspaceBuiltInToolOutputProbing;
             EnableDefaultPluginPaths = source.EnableDefaultPluginPaths;
             WriteGovernanceMode = source.WriteGovernanceMode;
             RequireWriteGovernanceRuntime = source.RequireWriteGovernanceRuntime;

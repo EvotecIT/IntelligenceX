@@ -64,6 +64,7 @@
     cancelable: false,
     cancelRequested: false,
     activityTimeline: [],
+    routingPromptExposureHistory: [],
     statusTimeline: [],
     lastTurnMetrics: null,
     latencySummary: null,
@@ -112,6 +113,7 @@
       toolCatalogRoutingCatalog: null,
       toolCatalogPlugins: [],
       toolCatalogCapabilitySnapshot: null,
+      latestRoutingPromptExposure: null,
       profileApplyMode: "session",
       profile: {
         userName: "",
@@ -2022,6 +2024,7 @@
     var p = state.options.policy;
     var fallbackRoutingCatalog = normalizeRoutingCatalog(state.options ? state.options.toolCatalogRoutingCatalog : null);
     var fallbackCapabilitySnapshot = normalizeCapabilitySnapshot(state.options ? state.options.toolCatalogCapabilitySnapshot : null);
+    var routingPromptExposure = normalizeRoutingPromptExposure(state.options ? state.options.latestRoutingPromptExposure : null);
     var fallbackPlugins = normalizePlugins(state.options ? state.options.toolCatalogPlugins : null);
     if (fallbackPlugins.length === 0) {
       fallbackPlugins = resolveCapabilitySnapshotPlugins(fallbackCapabilitySnapshot);
@@ -2031,6 +2034,9 @@
       policyEl.innerHTML = usingToolCatalogPreview
         ? "<span class='options-k'>Policy</span><span class='options-v'>Not available</span><span class='options-k'>Bootstrap preview</span><span class='options-v'>Using tool catalog</span>"
         : "<span class='options-k'>Policy</span><span class='options-v'>Not available</span>";
+      if (routingPromptExposure) {
+        appendOptionsKv(policyEl, "Prompt exposure", routingPromptExposure.strategy + " (" + routingPromptExposure.selectedToolCount + "/" + routingPromptExposure.totalToolCount + ")");
+      }
       if (startupWarningsEl) {
         startupWarningsEl.hidden = true;
         startupWarningsEl.innerHTML = "";
@@ -2044,7 +2050,7 @@
         pluginRootsEl.innerHTML = "";
       }
       if (routingCatalogEl) {
-        renderRoutingCatalogPolicy(routingCatalogEl, fallbackRoutingCatalog);
+        renderRoutingCatalogPolicy(routingCatalogEl, fallbackRoutingCatalog, routingPromptExposure);
       }
       if (capabilitySnapshotEl) {
         renderCapabilitySnapshotPolicy(capabilitySnapshotEl, fallbackCapabilitySnapshot);
@@ -2094,6 +2100,7 @@
         ? "N/A"
         : ("remote-capable " + capabilityAutonomy.remoteCapableToolCount + ", cross-pack " + capabilityAutonomy.crossPackHandoffToolCount)],
       ["Routing families", !routingCatalog ? "N/A" : String(routingCatalog.familyActions.length)],
+      ["Prompt exposure", !routingPromptExposure ? "Not available" : (routingPromptExposure.strategy + " (" + routingPromptExposure.selectedToolCount + "/" + routingPromptExposure.totalToolCount + ")")],
       ["Plugin roots", pluginSearchPaths.length === 0 ? "None" : String(pluginSearchPaths.length)],
       ["Runtime notices", runtimeNotices.length === 0 ? "None" : String(runtimeNotices.length)],
       ["Tool bootstrap", !startupBootstrap ? "N/A" : formatStartupBootstrapSummary(startupBootstrap)]
@@ -2111,7 +2118,7 @@
     }
 
     renderPluginPolicyDetails(pluginDetailsEl, plugins);
-    renderRoutingCatalogPolicy(routingCatalogEl, routingCatalog);
+    renderRoutingCatalogPolicy(routingCatalogEl, routingCatalog, routingPromptExposure);
     renderCapabilitySnapshotPolicy(capabilitySnapshotEl, capabilitySnapshot);
     renderPolicyList(pluginsEl, formatPluginPolicyLines(plugins), "Plugin sources");
     renderPolicyList(pluginRootsEl, pluginSearchPaths, "Plugin search roots");
@@ -2406,6 +2413,33 @@
     };
   }
 
+  function normalizeRoutingPromptExposure(value) {
+    if (!value || typeof value !== "object") {
+      return null;
+    }
+
+    var strategy = typeof value.strategy === "string" ? value.strategy.trim() : "";
+    if (!strategy) {
+      return null;
+    }
+
+    var selectedToolCount = toNonNegativeInt(value.selectedToolCount);
+    var totalToolCount = toNonNegativeInt(value.totalToolCount);
+    if (selectedToolCount > totalToolCount) {
+      selectedToolCount = totalToolCount;
+    }
+
+    return {
+      requestId: typeof value.requestId === "string" ? value.requestId.trim() : "",
+      threadId: typeof value.threadId === "string" ? value.threadId.trim() : "",
+      strategy: strategy,
+      selectedToolCount: selectedToolCount,
+      totalToolCount: totalToolCount,
+      reordered: value.reordered === true,
+      topToolNames: toStringArray(value.topToolNames)
+    };
+  }
+
   function resolveCapabilitySnapshotPlugins(capabilitySnapshot) {
     if (!capabilitySnapshot || !capabilitySnapshot.toolingSnapshot) {
       return [];
@@ -2632,7 +2666,7 @@
     }
   }
 
-  function renderRoutingCatalogPolicy(host, routingCatalog) {
+  function renderRoutingCatalogPolicy(host, routingCatalog, routingPromptExposure) {
     if (!host) {
       return;
     }
@@ -2640,50 +2674,65 @@
     host.innerHTML = "";
     host.classList.remove("options-policy-list-warn");
 
-    if (!routingCatalog) {
+    if (!routingCatalog && !routingPromptExposure) {
       host.hidden = true;
       return;
     }
 
     var lines = [];
-    lines.push("health: " + (routingCatalog.isHealthy ? "healthy" : "degraded"));
-    lines.push("explicit-ready: " + (routingCatalog.isExplicitRoutingReady ? "yes" : "no"));
-    lines.push("routing-aware: " + routingCatalog.routingAwareTools + "/" + routingCatalog.totalTools);
-    lines.push("routing source: explicit " + routingCatalog.explicitRoutingTools + ", inferred " + routingCatalog.inferredRoutingTools);
-    lines.push("contract-aware: setup " + routingCatalog.setupAwareTools + ", handoff " + routingCatalog.handoffAwareTools + ", recovery " + routingCatalog.recoveryAwareTools);
-    lines.push("autonomy surface: remote-capable " + routingCatalog.remoteCapableTools + ", cross-pack handoffs " + routingCatalog.crossPackHandoffTools);
-    for (var i = 0; i < routingCatalog.autonomyReadinessHighlights.length; i++) {
-      lines.push("autonomy readiness: " + routingCatalog.autonomyReadinessHighlights[i]);
-    }
-    lines.push("domain-family tools: " + routingCatalog.domainFamilyTools);
-    if (routingCatalog.missingRoutingContractTools > 0) {
-      lines.push("missing contracts: " + routingCatalog.missingRoutingContractTools);
-    }
-    if (routingCatalog.missingPackIdTools > 0) {
-      lines.push("missing pack id: " + routingCatalog.missingPackIdTools);
-    }
-    if (routingCatalog.missingRoleTools > 0) {
-      lines.push("missing role: " + routingCatalog.missingRoleTools);
-    }
-    if (routingCatalog.expectedDomainFamilyMissingTools > 0) {
-      lines.push("expected family missing: " + routingCatalog.expectedDomainFamilyMissingTools);
-    }
-    if (routingCatalog.domainFamilyMissingActionTools > 0) {
-      lines.push("family missing action: " + routingCatalog.domainFamilyMissingActionTools);
-    }
-    if (routingCatalog.actionWithoutFamilyTools > 0) {
-      lines.push("action without family: " + routingCatalog.actionWithoutFamilyTools);
-    }
-    if (routingCatalog.familyActionConflictFamilies > 0) {
-      lines.push("family action conflicts: " + routingCatalog.familyActionConflictFamilies);
+    if (!routingCatalog) {
+      lines.push("catalog: unavailable");
+    } else {
+      lines.push("health: " + (routingCatalog.isHealthy ? "healthy" : "degraded"));
+      lines.push("explicit-ready: " + (routingCatalog.isExplicitRoutingReady ? "yes" : "no"));
+      lines.push("routing-aware: " + routingCatalog.routingAwareTools + "/" + routingCatalog.totalTools);
+      lines.push("routing source: explicit " + routingCatalog.explicitRoutingTools + ", inferred " + routingCatalog.inferredRoutingTools);
+      lines.push("contract-aware: setup " + routingCatalog.setupAwareTools + ", handoff " + routingCatalog.handoffAwareTools + ", recovery " + routingCatalog.recoveryAwareTools);
+      lines.push("autonomy surface: remote-capable " + routingCatalog.remoteCapableTools + ", cross-pack handoffs " + routingCatalog.crossPackHandoffTools);
+      for (var i = 0; i < routingCatalog.autonomyReadinessHighlights.length; i++) {
+        lines.push("autonomy readiness: " + routingCatalog.autonomyReadinessHighlights[i]);
+      }
+      lines.push("domain-family tools: " + routingCatalog.domainFamilyTools);
+      if (routingCatalog.missingRoutingContractTools > 0) {
+        lines.push("missing contracts: " + routingCatalog.missingRoutingContractTools);
+      }
+      if (routingCatalog.missingPackIdTools > 0) {
+        lines.push("missing pack id: " + routingCatalog.missingPackIdTools);
+      }
+      if (routingCatalog.missingRoleTools > 0) {
+        lines.push("missing role: " + routingCatalog.missingRoleTools);
+      }
+      if (routingCatalog.expectedDomainFamilyMissingTools > 0) {
+        lines.push("expected family missing: " + routingCatalog.expectedDomainFamilyMissingTools);
+      }
+      if (routingCatalog.domainFamilyMissingActionTools > 0) {
+        lines.push("family missing action: " + routingCatalog.domainFamilyMissingActionTools);
+      }
+      if (routingCatalog.actionWithoutFamilyTools > 0) {
+        lines.push("action without family: " + routingCatalog.actionWithoutFamilyTools);
+      }
+      if (routingCatalog.familyActionConflictFamilies > 0) {
+        lines.push("family action conflicts: " + routingCatalog.familyActionConflictFamilies);
+      }
+
+      for (var i = 0; i < routingCatalog.familyActions.length; i++) {
+        var familyAction = routingCatalog.familyActions[i];
+        lines.push("family " + familyAction.family + " -> " + familyAction.actionId + " (" + familyAction.toolCount + ")");
+      }
     }
 
-    for (var i = 0; i < routingCatalog.familyActions.length; i++) {
-      var familyAction = routingCatalog.familyActions[i];
-      lines.push("family " + familyAction.family + " -> " + familyAction.actionId + " (" + familyAction.toolCount + ")");
+    if (routingPromptExposure) {
+      lines.push("latest prompt exposure: " + routingPromptExposure.strategy + " (" + routingPromptExposure.selectedToolCount + "/" + routingPromptExposure.totalToolCount + ")");
+      if (routingPromptExposure.requestId || routingPromptExposure.threadId) {
+        lines.push("prompt source: " + (routingPromptExposure.requestId || "n/a") + " @ " + (routingPromptExposure.threadId || "n/a"));
+      }
+      lines.push("prompt reordered: " + (routingPromptExposure.reordered ? "yes" : "no"));
+      if (routingPromptExposure.topToolNames.length > 0) {
+        lines.push("prompt top tools: " + routingPromptExposure.topToolNames.join(", "));
+      }
     }
 
-    if (!routingCatalog.isHealthy) {
+    if (routingCatalog && !routingCatalog.isHealthy) {
       host.classList.add("options-policy-list-warn");
     }
 

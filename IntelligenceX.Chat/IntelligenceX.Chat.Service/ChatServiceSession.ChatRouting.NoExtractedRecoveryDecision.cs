@@ -134,13 +134,22 @@ internal sealed partial class ChatServiceSession {
                 throw new System.InvalidOperationException("Prompt recovery decision must be non-empty before applying.");
         }
 
+        var promptOptions = await CopyChatOptionsWithPromptAwareToolOrderingAndEmitStatusAsync(
+                writer,
+                request.RequestId,
+                threadId,
+                options,
+                prompt,
+                strategy: "prompt_recovery",
+                newThreadOverride: false)
+            .ConfigureAwait(false);
         return await RunModelPhaseWithProgressAsync(
                 client,
                 writer,
                 request.RequestId,
                 threadId,
                 ChatInput.FromText(prompt),
-                CopyChatOptions(options, newThreadOverride: false),
+                promptOptions,
                 turnToken,
                 phaseStatus: phaseStatus,
                 phaseMessage: phaseMessage,

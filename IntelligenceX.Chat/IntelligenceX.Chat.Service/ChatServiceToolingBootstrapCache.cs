@@ -66,6 +66,25 @@ internal sealed class ChatServiceToolingBootstrapCache {
         }
     }
 
+    public bool TryGetPersistedPreviewSnapshot(string previewCacheKey, out ChatServiceToolingBootstrapPersistedSnapshot snapshot) {
+        var normalizedPreviewCacheKey = NormalizePreviewCacheKey(previewCacheKey, cacheKey: null);
+        if (normalizedPreviewCacheKey.Length == 0) {
+            snapshot = null!;
+            return false;
+        }
+
+        lock (_sync) {
+            if (_persistedSnapshot is null
+                || !string.Equals(_persistedSnapshot.PreviewCacheKey, normalizedPreviewCacheKey, StringComparison.Ordinal)) {
+                snapshot = null!;
+                return false;
+            }
+
+            snapshot = _persistedSnapshot;
+            return true;
+        }
+    }
+
     public void StoreSnapshot(string cacheKey, ChatServiceToolingBootstrapSnapshot snapshot) {
         if (snapshot is null) {
             throw new ArgumentNullException(nameof(snapshot));
@@ -99,6 +118,7 @@ internal sealed class ChatServiceToolingBootstrapCache {
         return new ChatServiceToolingBootstrapPersistedSnapshot {
             SchemaVersion = PersistedSnapshotSchemaVersion,
             CacheKey = cacheKey,
+            PreviewCacheKey = NormalizePreviewCacheKey(previewCacheKey: null, cacheKey),
             CachedAtUtc = DateTime.UtcNow,
             ToolDefinitions = snapshot.ToolDefinitions ?? Array.Empty<ToolDefinitionDto>(),
             PackSummaries = snapshot.PackSummaries ?? Array.Empty<ToolPackInfoDto>(),
@@ -148,12 +168,17 @@ internal sealed class ChatServiceToolingBootstrapCache {
             if (normalizedCacheKey.Length == 0) {
                 return null;
             }
+            var normalizedPreviewCacheKey = NormalizePreviewCacheKey(snapshot.PreviewCacheKey, normalizedCacheKey);
+            if (normalizedPreviewCacheKey.Length == 0) {
+                return null;
+            }
             if (snapshot.RuntimePolicyDiagnostics is null || snapshot.RoutingCatalogDiagnostics is null) {
                 return null;
             }
 
             return snapshot with {
                 CacheKey = normalizedCacheKey,
+                PreviewCacheKey = normalizedPreviewCacheKey,
                 ToolDefinitions = snapshot.ToolDefinitions ?? Array.Empty<ToolDefinitionDto>(),
                 PackSummaries = snapshot.PackSummaries ?? Array.Empty<ToolPackInfoDto>(),
                 PackAvailability = snapshot.PackAvailability ?? Array.Empty<ToolPackAvailabilityInfo>(),
@@ -207,6 +232,40 @@ internal sealed class ChatServiceToolingBootstrapCache {
             // Best-effort cleanup.
         }
     }
+
+    private static string NormalizePreviewCacheKey(string? previewCacheKey, string? cacheKey) {
+        var normalizedPreviewCacheKey = CanonicalizeCacheKey(previewCacheKey, removeDiscoveryFingerprint: true);
+        if (normalizedPreviewCacheKey.Length > 0) {
+            return normalizedPreviewCacheKey;
+        }
+
+        return CanonicalizeCacheKey(cacheKey, removeDiscoveryFingerprint: true);
+    }
+
+    private static string CanonicalizeCacheKey(string? key, bool removeDiscoveryFingerprint) {
+        var normalizedKey = (key ?? string.Empty).Trim();
+        if (normalizedKey.Length == 0) {
+            return string.Empty;
+        }
+
+        var segments = normalizedKey
+            .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (segments.Length == 0) {
+            return string.Empty;
+        }
+
+        var builder = new System.Text.StringBuilder(normalizedKey.Length + 1);
+        for (var i = 0; i < segments.Length; i++) {
+            if (removeDiscoveryFingerprint
+                && segments[i].StartsWith("discovery_fingerprint=", StringComparison.Ordinal)) {
+                continue;
+            }
+
+            builder.Append(segments[i]).Append(';');
+        }
+
+        return builder.ToString();
+    }
 }
 
 internal sealed record ChatServiceToolingBootstrapSnapshot {
@@ -229,6 +288,7 @@ internal sealed record ChatServiceToolingBootstrapSnapshot {
 internal sealed record ChatServiceToolingBootstrapPersistedSnapshot {
     public int SchemaVersion { get; init; }
     public required string CacheKey { get; init; }
+    public string PreviewCacheKey { get; init; } = string.Empty;
     public DateTime CachedAtUtc { get; init; }
     public required ToolDefinitionDto[] ToolDefinitions { get; init; }
     public ToolPackInfoDto[] PackSummaries { get; init; } = Array.Empty<ToolPackInfoDto>();

@@ -41,7 +41,8 @@ internal static class TranscriptForensicsExporter {
         string? threadId,
         IReadOnlyList<(string Role, string Text, DateTime Time, string? Model)> liveMessages,
         IReadOnlyList<ChatMessageState>? persistedMessages,
-        RuntimeToolingSupportSnapshot? tooling = null) {
+        RuntimeToolingSupportSnapshot? tooling = null,
+        TranscriptForensicsTurnDiagnosticsSnapshot? turnDiagnostics = null) {
         ArgumentNullException.ThrowIfNull(markdownOptions);
         ArgumentNullException.ThrowIfNull(liveMessages);
 
@@ -60,6 +61,7 @@ internal static class TranscriptForensicsExporter {
             TimestampFormat = string.IsNullOrWhiteSpace(timestampFormat) ? "HH:mm:ss" : timestampFormat.Trim(),
             Renderer = BuildRendererSnapshot(),
             Tooling = tooling,
+            TurnDiagnostics = turnDiagnostics,
             Live = liveSnapshot,
             Persisted = persistedSnapshot
         };
@@ -192,8 +194,64 @@ internal sealed class TranscriptForensicsBundle {
     public string TimestampFormat { get; set; } = "HH:mm:ss";
     public TranscriptForensicsRendererSnapshot Renderer { get; set; } = new();
     public RuntimeToolingSupportSnapshot? Tooling { get; set; }
+    public TranscriptForensicsTurnDiagnosticsSnapshot? TurnDiagnostics { get; set; }
     public TranscriptForensicsConversationSnapshot Live { get; set; } = new();
     public TranscriptForensicsConversationSnapshot? Persisted { get; set; }
+}
+
+internal sealed class TranscriptForensicsTurnDiagnosticsSnapshot {
+    public List<string> ActivityTimeline { get; set; } = new();
+    public List<TranscriptForensicsRoutingPromptExposureSnapshot> RoutingPromptExposureHistory { get; set; } = new();
+    public TranscriptForensicsTurnMetricsSnapshot? LastTurnMetrics { get; set; }
+}
+
+internal sealed class TranscriptForensicsRoutingPromptExposureSnapshot {
+    public string? RequestId { get; set; }
+    public string? ThreadId { get; set; }
+    public string Strategy { get; set; } = string.Empty;
+    public int SelectedToolCount { get; set; }
+    public int TotalToolCount { get; set; }
+    public bool Reordered { get; set; }
+    public List<string> TopToolNames { get; set; } = new();
+}
+
+internal sealed class TranscriptForensicsTurnMetricsSnapshot {
+    public string RequestId { get; set; } = string.Empty;
+    public DateTime CompletedUtc { get; set; }
+    public long DurationMs { get; set; }
+    public long? TtftMs { get; set; }
+    public long? QueueWaitMs { get; set; }
+    public long? AuthProbeMs { get; set; }
+    public long? ConnectMs { get; set; }
+    public long? EnsureThreadMs { get; set; }
+    public long? WeightedSubsetSelectionMs { get; set; }
+    public long? ResolveModelMs { get; set; }
+    public long? DispatchToFirstStatusMs { get; set; }
+    public long? DispatchToModelSelectedMs { get; set; }
+    public long? DispatchToFirstToolRunningMs { get; set; }
+    public long? DispatchToFirstDeltaMs { get; set; }
+    public long? DispatchToLastDeltaMs { get; set; }
+    public long? StreamDurationMs { get; set; }
+    public int ToolCallsCount { get; set; }
+    public int ToolRounds { get; set; }
+    public int ProjectionFallbackCount { get; set; }
+    public string Outcome { get; set; } = string.Empty;
+    public string? ErrorCode { get; set; }
+    public long? PromptTokens { get; set; }
+    public long? CompletionTokens { get; set; }
+    public long? TotalTokens { get; set; }
+    public long? CachedPromptTokens { get; set; }
+    public long? ReasoningTokens { get; set; }
+    public string? Model { get; set; }
+    public string? RequestedModel { get; set; }
+    public string? Transport { get; set; }
+    public string? EndpointHost { get; set; }
+    public List<TranscriptForensicsAutonomyCounterSnapshot> AutonomyCounters { get; set; } = new();
+}
+
+internal sealed class TranscriptForensicsAutonomyCounterSnapshot {
+    public string Name { get; set; } = string.Empty;
+    public int Count { get; set; }
 }
 
 internal sealed class TranscriptForensicsRendererSnapshot {

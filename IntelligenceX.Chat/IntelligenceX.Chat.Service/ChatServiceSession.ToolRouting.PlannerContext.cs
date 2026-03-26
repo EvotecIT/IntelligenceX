@@ -4,6 +4,8 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using IntelligenceX.Chat.Tooling;
+using IntelligenceX.OpenAI.Chat;
+using IntelligenceX.OpenAI.ToolCalling;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.Common;
 
@@ -77,10 +79,17 @@ internal sealed partial class ChatServiceSession {
             continuationSourceTool,
             continuationReason,
             continuationConfidence) = ResolvePlannerStructuredNextActionHints(normalizedThreadId, definitions);
+        var deferredPreferenceHints = ResolveDeferredToolPreferenceHints(
+            normalizedRequest,
+            options: null,
+            maxPreferredPackIds: MaxPlannerContextPackIds,
+            maxPreferredToolNames: MaxPlannerContextToolNames);
         var backgroundHints = ResolvePlannerBackgroundPreparationHints(normalizedThreadId);
         if (!hasCheckpoint
             && structuredPreferredPackIds.Length == 0
             && structuredPreferredToolNames.Length == 0
+            && deferredPreferenceHints.PreferredPackIds.Length == 0
+            && deferredPreferenceHints.PreferredToolNames.Length == 0
             && structuredSourceToolNames.Length == 0
             && structuredNextActionReason.Length == 0
             && !structuredNextActionConfidence.HasValue
@@ -102,12 +111,14 @@ internal sealed partial class ChatServiceSession {
         var preferredPackIds = NormalizeDistinctStrings(
             (hasCheckpoint ? checkpoint.PriorAnswerPlanPreferredPackIds : Array.Empty<string>())
             .Concat(structuredPreferredPackIds)
+            .Concat(deferredPreferenceHints.PreferredPackIds)
             .Select(static packId => NormalizePackId(packId))
             .Where(static packId => packId.Length > 0),
             MaxPlannerContextPackIds);
         var preferredToolNames = NormalizeDistinctStrings(
             (hasCheckpoint ? checkpoint.PriorAnswerPlanPreferredToolNames : Array.Empty<string>())
-            .Concat(structuredPreferredToolNames),
+            .Concat(structuredPreferredToolNames)
+            .Concat(deferredPreferenceHints.PreferredToolNames),
             MaxPlannerContextToolNames);
         var preferredDeferredWorkCapabilityIds = NormalizeDistinctStrings(
             (hasCheckpoint ? checkpoint.PriorAnswerPlanPreferredDeferredWorkCapabilityIds : Array.Empty<string>())
@@ -147,146 +158,163 @@ internal sealed partial class ChatServiceSession {
             handoffTargetPackIds,
             handoffTargetToolNames);
 
-        if ((!hasCheckpoint || !checkpoint.PriorAnswerPlanRequiresLiveExecution)
-            && (!hasCheckpoint || checkpoint.PriorAnswerPlanMissingLiveEvidence.Length == 0)
-            && preferredPackIds.Length == 0
-            && preferredToolNames.Length == 0
-            && preferredDeferredWorkCapabilityIds.Length == 0
-            && preferredExecutionBackends.Length == 0
-            && sourceToolNames.Length == 0
-            && structuredNextActionReason.Length == 0
-            && !structuredNextActionConfidence.HasValue
-            && handoffTargetPackIds.Length == 0
-            && handoffTargetToolNames.Length == 0
-            && continuationSourceTool.Length == 0
-            && continuationReason.Length == 0
-            && continuationConfidence.Length == 0
-            && !backgroundHints.PreparationAllowed
-            && backgroundHints.PendingReadOnlyActions <= 0
-            && backgroundHints.PendingUnknownActions <= 0
-            && backgroundHints.FollowUpClasses.Length == 0
-            && backgroundHints.PriorityFocus.Length == 0
-            && backgroundHints.FollowUpFocus.Length == 0
-            && backgroundHints.RecentEvidenceTools.Length == 0
-            && matchingSkills.Length == 0
-            && (!hasCheckpoint || !checkpoint.PriorAnswerPlanAllowCachedEvidenceReuse)) {
+        var context = new PlannerContextMetadata(
+            RequiresLiveExecution: hasCheckpoint && checkpoint.PriorAnswerPlanRequiresLiveExecution,
+            MissingLiveEvidence: hasCheckpoint ? checkpoint.PriorAnswerPlanMissingLiveEvidence : string.Empty,
+            PreferredPackIds: preferredPackIds,
+            PreferredToolNames: preferredToolNames,
+            PreferredDeferredWorkCapabilityIds: preferredDeferredWorkCapabilityIds,
+            StructuredNextActionSourceToolNames: sourceToolNames,
+            StructuredNextActionReason: structuredNextActionReason,
+            StructuredNextActionConfidence: structuredNextActionConfidence,
+            PreferredExecutionBackends: preferredExecutionBackends,
+            HandoffTargetPackIds: handoffTargetPackIds,
+            HandoffTargetToolNames: handoffTargetToolNames,
+            ContinuationSourceTool: continuationSourceTool,
+            ContinuationReason: continuationReason,
+            ContinuationConfidence: continuationConfidence,
+            BackgroundPreparationAllowed: backgroundHints.PreparationAllowed,
+            BackgroundPendingReadOnlyActions: backgroundHints.PendingReadOnlyActions,
+            BackgroundPendingUnknownActions: backgroundHints.PendingUnknownActions,
+            BackgroundFollowUpClasses: backgroundHints.FollowUpClasses,
+            BackgroundPriorityFocus: backgroundHints.PriorityFocus,
+            BackgroundFollowUpFocus: backgroundHints.FollowUpFocus,
+            BackgroundRecentEvidenceTools: backgroundHints.RecentEvidenceTools,
+            MatchingSkills: matchingSkills,
+            AllowCachedEvidenceReuse: hasCheckpoint && checkpoint.PriorAnswerPlanAllowCachedEvidenceReuse);
+        if (!HasPlannerContextSignals(context)) {
             return normalizedRequest;
         }
 
-        var builder = new StringBuilder(normalizedRequest.Length + 512);
-        builder.AppendLine(normalizedRequest);
-        builder.AppendLine();
-        builder.AppendLine("[Planner context]");
-        builder.AppendLine(PlannerContextMarker);
-        builder.Append("requires_live_execution: ")
-            .AppendLine(hasCheckpoint && checkpoint.PriorAnswerPlanRequiresLiveExecution ? "true" : "false");
-        if (hasCheckpoint && checkpoint.PriorAnswerPlanMissingLiveEvidence.Length > 0) {
-            builder.Append("missing_live_evidence: ")
-                .AppendLine(checkpoint.PriorAnswerPlanMissingLiveEvidence);
+        return BuildPlannerContextText(context, normalizedRequest);
+    }
+
+    private void AppendToolRoundReplayPlannerContextIfNeeded(
+        ChatInput replayInput,
+        string threadId,
+        string requestText,
+        IReadOnlyList<ToolDefinition> currentVisibleDefinitions,
+        IReadOnlyList<ToolCall> executedCalls) {
+        ArgumentNullException.ThrowIfNull(replayInput);
+        ArgumentNullException.ThrowIfNull(currentVisibleDefinitions);
+        ArgumentNullException.ThrowIfNull(executedCalls);
+
+        if (!TryBuildToolRoundReplayPlannerContextText(
+                threadId,
+                requestText,
+                currentVisibleDefinitions,
+                executedCalls,
+                out var plannerContextText)) {
+            return;
         }
 
-        if (preferredPackIds.Length > 0) {
-            builder.Append("preferred_pack_ids: ")
-                .AppendLine(string.Join(", ", preferredPackIds));
+        replayInput.AddText(plannerContextText);
+    }
+
+    private bool TryBuildToolRoundReplayPlannerContextText(
+        string threadId,
+        string requestText,
+        IReadOnlyList<ToolDefinition> currentVisibleDefinitions,
+        IReadOnlyList<ToolCall> executedCalls,
+        out string plannerContextText) {
+        ArgumentNullException.ThrowIfNull(currentVisibleDefinitions);
+        ArgumentNullException.ThrowIfNull(executedCalls);
+
+        plannerContextText = string.Empty;
+        var context = BuildToolRoundReplayPlannerContextMetadata(
+            threadId,
+            requestText,
+            currentVisibleDefinitions,
+            executedCalls);
+        if (!HasPlannerContextSignals(context)) {
+            return false;
         }
 
-        if (preferredToolNames.Length > 0) {
-            builder.Append("preferred_tool_names: ")
-                .AppendLine(string.Join(", ", preferredToolNames));
+        plannerContextText = BuildPlannerContextText(context);
+        return plannerContextText.Length > 0;
+    }
+
+    private PlannerContextMetadata BuildToolRoundReplayPlannerContextMetadata(
+        string threadId,
+        string requestText,
+        IReadOnlyList<ToolDefinition> currentVisibleDefinitions,
+        IReadOnlyList<ToolCall> executedCalls) {
+        if (currentVisibleDefinitions.Count == 0 || executedCalls.Count == 0) {
+            return default;
         }
 
-        if (preferredDeferredWorkCapabilityIds.Length > 0) {
-            builder.Append("preferred_deferred_work_capability_ids: ")
-                .AppendLine(string.Join(", ", preferredDeferredWorkCapabilityIds));
+        var sourceToolNames = NormalizeDistinctStrings(
+            executedCalls
+                .Select(static call => NormalizeToolNameForAnswerPlan(call.Name))
+                .Where(static toolName => toolName.Length > 0),
+            MaxPlannerContextSourceTools);
+        if (sourceToolNames.Length == 0) {
+            return default;
         }
 
-        if (sourceToolNames.Length > 0) {
-            builder.Append("structured_next_action_source_tools: ")
-                .AppendLine(string.Join(", ", sourceToolNames));
+        var sourcePackIds = NormalizeDistinctStrings(
+            sourceToolNames
+                .Select(toolName =>
+                    TryGetToolDefinitionByName(currentVisibleDefinitions, toolName, out var definition)
+                        ? ResolveToolPackId(definition, _toolOrchestrationCatalog)
+                        : string.Empty)
+                .Select(static packId => NormalizePackId(packId))
+                .Where(static packId => packId.Length > 0),
+            MaxPlannerContextPackIds);
+        var (handoffTargetPackIds, handoffTargetToolNames) = CollectPlannerHandoffTargets(sourceToolNames);
+        var preferredPackIds = handoffTargetPackIds.Length > 0 ? handoffTargetPackIds : sourcePackIds;
+        var preferredToolNames = handoffTargetToolNames.Length > 0
+            ? handoffTargetToolNames
+            : NormalizeDistinctStrings(sourceToolNames, MaxPlannerContextToolNames);
+        var normalizedThreadId = (threadId ?? string.Empty).Trim();
+        var preferredExecutionBackends = normalizedThreadId.Length == 0
+            ? Array.Empty<string>()
+            : CollectThreadToolExecutionBackendHints(normalizedThreadId, preferredToolNames, sourceToolNames);
+        var continuationSourceTool = NormalizeToolNameForAnswerPlan(executedCalls[executedCalls.Count - 1].Name);
+        var structuredNextActionReason = handoffTargetPackIds.Length > 0 || handoffTargetToolNames.Length > 0
+            ? "continue with the declared handoff target from the prior tool result"
+            : "continue with the active tool scope from the prior tool result";
+        WorkingMemoryCheckpoint checkpoint = default;
+        if (normalizedThreadId.Length > 0) {
+            TryGetWorkingMemoryCheckpoint(normalizedThreadId, out checkpoint);
         }
 
-        if (structuredNextActionReason.Length > 0) {
-            builder.Append("structured_next_action_reason: ")
-                .AppendLine(structuredNextActionReason);
-        }
-
-        if (structuredNextActionConfidence.HasValue) {
-            builder.Append("structured_next_action_confidence: ")
-                .AppendLine(structuredNextActionConfidence.Value.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture));
-        }
-
-        if (preferredExecutionBackends.Length > 0) {
-            builder.Append("preferred_execution_backends: ")
-                .AppendLine(string.Join(", ", preferredExecutionBackends));
-        }
-
-        if (handoffTargetPackIds.Length > 0) {
-            builder.Append("handoff_target_pack_ids: ")
-                .AppendLine(string.Join(", ", handoffTargetPackIds));
-        }
-
-        if (handoffTargetToolNames.Length > 0) {
-            builder.Append("handoff_target_tool_names: ")
-                .AppendLine(string.Join(", ", handoffTargetToolNames));
-        }
-
-        if (continuationSourceTool.Length > 0) {
-            builder.Append("continuation_source_tool: ")
-                .AppendLine(continuationSourceTool);
-        }
-
-        if (continuationReason.Length > 0) {
-            builder.Append("continuation_reason: ")
-                .AppendLine(continuationReason);
-        }
-
-        if (continuationConfidence.Length > 0) {
-            builder.Append("continuation_confidence: ")
-                .AppendLine(continuationConfidence);
-        }
-
-        if (backgroundHints.PreparationAllowed) {
-            builder.AppendLine("background_preparation_allowed: true");
-        }
-
-        if (backgroundHints.PendingReadOnlyActions > 0) {
-            builder.Append("background_pending_read_only_actions: ")
-                .AppendLine(backgroundHints.PendingReadOnlyActions.ToString(System.Globalization.CultureInfo.InvariantCulture));
-        }
-
-        if (backgroundHints.PendingUnknownActions > 0) {
-            builder.Append("background_pending_unknown_actions: ")
-                .AppendLine(backgroundHints.PendingUnknownActions.ToString(System.Globalization.CultureInfo.InvariantCulture));
-        }
-
-        if (backgroundHints.FollowUpClasses.Length > 0) {
-            builder.Append("background_follow_up_classes: ")
-                .AppendLine(string.Join(", ", backgroundHints.FollowUpClasses));
-        }
-
-        if (backgroundHints.PriorityFocus.Length > 0) {
-            builder.Append("background_priority_focus: ")
-                .AppendLine(backgroundHints.PriorityFocus);
-        }
-
-        if (backgroundHints.FollowUpFocus.Length > 0) {
-            builder.Append("background_follow_up_focus: ")
-                .AppendLine(backgroundHints.FollowUpFocus);
-        }
-
-        if (backgroundHints.RecentEvidenceTools.Length > 0) {
-            builder.Append("background_recent_evidence_tools: ")
-                .AppendLine(string.Join(", ", backgroundHints.RecentEvidenceTools));
-        }
-
-        if (matchingSkills.Length > 0) {
-            builder.Append("matching_skills: ")
-                .AppendLine(string.Join(", ", matchingSkills));
-        }
-
-        builder.Append("allow_cached_evidence_reuse: ")
-            .AppendLine(hasCheckpoint && checkpoint.PriorAnswerPlanAllowCachedEvidenceReuse ? "true" : "false");
-        return builder.ToString().TrimEnd();
+        var matchingSkills = ResolvePlannerMatchingSkills(
+            requestText,
+            checkpoint,
+            preferredPackIds,
+            preferredToolNames,
+            Array.Empty<string>(),
+            sourceToolNames,
+            structuredNextActionReason,
+            Array.Empty<string>(),
+            string.Empty,
+            handoffTargetPackIds,
+            handoffTargetToolNames);
+        return new PlannerContextMetadata(
+            RequiresLiveExecution: false,
+            MissingLiveEvidence: string.Empty,
+            PreferredPackIds: preferredPackIds,
+            PreferredToolNames: preferredToolNames,
+            PreferredDeferredWorkCapabilityIds: Array.Empty<string>(),
+            StructuredNextActionSourceToolNames: sourceToolNames,
+            StructuredNextActionReason: structuredNextActionReason,
+            StructuredNextActionConfidence: null,
+            PreferredExecutionBackends: preferredExecutionBackends,
+            HandoffTargetPackIds: handoffTargetPackIds,
+            HandoffTargetToolNames: handoffTargetToolNames,
+            ContinuationSourceTool: continuationSourceTool,
+            ContinuationReason: structuredNextActionReason,
+            ContinuationConfidence: string.Empty,
+            BackgroundPreparationAllowed: false,
+            BackgroundPendingReadOnlyActions: 0,
+            BackgroundPendingUnknownActions: 0,
+            BackgroundFollowUpClasses: Array.Empty<string>(),
+            BackgroundPriorityFocus: string.Empty,
+            BackgroundFollowUpFocus: string.Empty,
+            BackgroundRecentEvidenceTools: Array.Empty<string>(),
+            MatchingSkills: matchingSkills,
+            AllowCachedEvidenceReuse: false);
     }
 
     private (
@@ -831,6 +859,157 @@ internal sealed partial class ChatServiceSession {
             MatchingSkills: matchingSkills,
             AllowCachedEvidenceReuse: allowCachedEvidenceReuse);
         return sawMarker && parsedAnyStructuredValue;
+    }
+
+    private static bool HasPlannerContextSignals(PlannerContextMetadata context) {
+        return context.RequiresLiveExecution
+               || context.MissingLiveEvidence.Length > 0
+               || context.PreferredPackIds.Length > 0
+               || context.PreferredToolNames.Length > 0
+               || context.PreferredDeferredWorkCapabilityIds.Length > 0
+               || context.StructuredNextActionSourceToolNames.Length > 0
+               || context.StructuredNextActionReason.Length > 0
+               || context.StructuredNextActionConfidence.HasValue
+               || context.PreferredExecutionBackends.Length > 0
+               || context.HandoffTargetPackIds.Length > 0
+               || context.HandoffTargetToolNames.Length > 0
+               || context.ContinuationSourceTool.Length > 0
+               || context.ContinuationReason.Length > 0
+               || context.ContinuationConfidence.Length > 0
+               || context.BackgroundPreparationAllowed
+               || context.BackgroundPendingReadOnlyActions > 0
+               || context.BackgroundPendingUnknownActions > 0
+               || context.BackgroundFollowUpClasses.Length > 0
+               || context.BackgroundPriorityFocus.Length > 0
+               || context.BackgroundFollowUpFocus.Length > 0
+               || context.BackgroundRecentEvidenceTools.Length > 0
+               || context.MatchingSkills.Length > 0
+               || context.AllowCachedEvidenceReuse;
+    }
+
+    private static string BuildPlannerContextText(PlannerContextMetadata context, string? requestText = null) {
+        if (!HasPlannerContextSignals(context)) {
+            return string.Empty;
+        }
+
+        var normalizedRequest = (requestText ?? string.Empty).Trim();
+        var builder = new StringBuilder((normalizedRequest.Length > 0 ? normalizedRequest.Length : 0) + 512);
+        if (normalizedRequest.Length > 0) {
+            builder.AppendLine(normalizedRequest);
+            builder.AppendLine();
+        }
+
+        builder.AppendLine("[Planner context]");
+        builder.AppendLine(PlannerContextMarker);
+        builder.Append("requires_live_execution: ")
+            .AppendLine(context.RequiresLiveExecution ? "true" : "false");
+        if (context.MissingLiveEvidence.Length > 0) {
+            builder.Append("missing_live_evidence: ")
+                .AppendLine(context.MissingLiveEvidence);
+        }
+
+        if (context.PreferredPackIds.Length > 0) {
+            builder.Append("preferred_pack_ids: ")
+                .AppendLine(string.Join(", ", context.PreferredPackIds));
+        }
+
+        if (context.PreferredToolNames.Length > 0) {
+            builder.Append("preferred_tool_names: ")
+                .AppendLine(string.Join(", ", context.PreferredToolNames));
+        }
+
+        if (context.PreferredDeferredWorkCapabilityIds.Length > 0) {
+            builder.Append("preferred_deferred_work_capability_ids: ")
+                .AppendLine(string.Join(", ", context.PreferredDeferredWorkCapabilityIds));
+        }
+
+        if (context.StructuredNextActionSourceToolNames.Length > 0) {
+            builder.Append("structured_next_action_source_tools: ")
+                .AppendLine(string.Join(", ", context.StructuredNextActionSourceToolNames));
+        }
+
+        if (context.StructuredNextActionReason.Length > 0) {
+            builder.Append("structured_next_action_reason: ")
+                .AppendLine(context.StructuredNextActionReason);
+        }
+
+        if (context.StructuredNextActionConfidence.HasValue) {
+            builder.Append("structured_next_action_confidence: ")
+                .AppendLine(context.StructuredNextActionConfidence.Value.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture));
+        }
+
+        if (context.PreferredExecutionBackends.Length > 0) {
+            builder.Append("preferred_execution_backends: ")
+                .AppendLine(string.Join(", ", context.PreferredExecutionBackends));
+        }
+
+        if (context.HandoffTargetPackIds.Length > 0) {
+            builder.Append("handoff_target_pack_ids: ")
+                .AppendLine(string.Join(", ", context.HandoffTargetPackIds));
+        }
+
+        if (context.HandoffTargetToolNames.Length > 0) {
+            builder.Append("handoff_target_tool_names: ")
+                .AppendLine(string.Join(", ", context.HandoffTargetToolNames));
+        }
+
+        if (context.ContinuationSourceTool.Length > 0) {
+            builder.Append("continuation_source_tool: ")
+                .AppendLine(context.ContinuationSourceTool);
+        }
+
+        if (context.ContinuationReason.Length > 0) {
+            builder.Append("continuation_reason: ")
+                .AppendLine(context.ContinuationReason);
+        }
+
+        if (context.ContinuationConfidence.Length > 0) {
+            builder.Append("continuation_confidence: ")
+                .AppendLine(context.ContinuationConfidence);
+        }
+
+        if (context.BackgroundPreparationAllowed) {
+            builder.AppendLine("background_preparation_allowed: true");
+        }
+
+        if (context.BackgroundPendingReadOnlyActions > 0) {
+            builder.Append("background_pending_read_only_actions: ")
+                .AppendLine(context.BackgroundPendingReadOnlyActions.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        }
+
+        if (context.BackgroundPendingUnknownActions > 0) {
+            builder.Append("background_pending_unknown_actions: ")
+                .AppendLine(context.BackgroundPendingUnknownActions.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        }
+
+        if (context.BackgroundFollowUpClasses.Length > 0) {
+            builder.Append("background_follow_up_classes: ")
+                .AppendLine(string.Join(", ", context.BackgroundFollowUpClasses));
+        }
+
+        if (context.BackgroundPriorityFocus.Length > 0) {
+            builder.Append("background_priority_focus: ")
+                .AppendLine(context.BackgroundPriorityFocus);
+        }
+
+        if (context.BackgroundFollowUpFocus.Length > 0) {
+            builder.Append("background_follow_up_focus: ")
+                .AppendLine(context.BackgroundFollowUpFocus);
+        }
+
+        if (context.BackgroundRecentEvidenceTools.Length > 0) {
+            builder.Append("background_recent_evidence_tools: ")
+                .AppendLine(string.Join(", ", context.BackgroundRecentEvidenceTools));
+        }
+
+        if (context.MatchingSkills.Length > 0) {
+            builder.Append("matching_skills: ")
+                .AppendLine(string.Join(", ", context.MatchingSkills));
+        }
+
+        builder.Append("allow_cached_evidence_reuse: ")
+            .AppendLine(context.AllowCachedEvidenceReuse ? "true" : "false");
+        return builder.ToString().TrimEnd();
     }
 
     private static string NormalizeDeferredWorkCapabilityId(string? value) {
