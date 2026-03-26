@@ -12,7 +12,11 @@ on:
     types:
       - completed
   workflow_dispatch:
-    {}
+    inputs:
+      min_free_gb:
+        description: 'Minimum free disk (GiB) required after cleanup'
+        required: false
+        default: '20'
 
 permissions:
   contents: read
@@ -24,12 +28,13 @@ concurrency:
 jobs:
   cleanup-linux-runner:
     if: ${{ github.event.repository.private }}
-    uses: EvotecIT/PSPublishModule/.github/workflows/powerforge-github-runner-housekeeping.yml@aeafc6ee579a474a14e9f6542ffbd1a2eb81e615
+    uses: EvotecIT/PSPublishModule/.github/workflows/powerforge-github-runner-housekeeping.yml@8cd12880dbf23918a9058997f9307527aa4eebc5
     with:
       config-path: ./.powerforge/runner-housekeeping.json
       apply: true
-      powerforge-ref: aeafc6ee579a474a14e9f6542ffbd1a2eb81e615
+      powerforge-ref: 8cd12880dbf23918a9058997f9307527aa4eebc5
       runner-labels: '["self-hosted","ubuntu"]'
+      runner-min-free-gb: ${{ github.event_name == 'workflow_dispatch' && inputs.min_free_gb || vars.IX_RUNNER_HOUSEKEEPING_MIN_FREE_GB }}
       report-artifact-name: runner-housekeeping-reports
     secrets:
       github-token: ${{ secrets.GITHUB_TOKEN }}
