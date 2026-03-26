@@ -17,14 +17,18 @@ This file defines how automated agents should operate in this repo. Follow it fo
 1. List PRs: `gh pr list --repo EvotecIT/IntelligenceX --state open`.
 2. Inspect details: `gh pr view <num> --repo EvotecIT/IntelligenceX`.
 3. Check CI: `gh pr checks <num> --repo EvotecIT/IntelligenceX`.
-4. If CI fails, inspect logs: `gh run view <run-id> --repo EvotecIT/IntelligenceX --log --job <job-id>`.
-5. Classify CI failures before making code changes:
+4. Check for unresolved review threads when mergeability stays blocked after checks pass:
+   - `gh api graphql -f query='query { repository(owner:"EvotecIT", name:"IntelligenceX") { pullRequest(number:<num>) { reviewThreads(first:100) { nodes { id isResolved isOutdated path line comments(first:10) { nodes { author { login } body url } } } } } } }'`
+   - If branch protection requires conversation resolution, unresolved review threads are merge blockers even when the latest review summary says “safe to merge”.
+   - Resolve stale threads only after verifying the underlying issue is truly addressed in code; do not auto-resolve live unresolved concerns.
+5. If CI fails, inspect logs: `gh run view <run-id> --repo EvotecIT/IntelligenceX --log --job <job-id>`.
+6. Classify CI failures before making code changes:
    - Actionable: compilation/test failures, lints, static analysis findings, reviewer bot blockers. Fix in code and re-run checks.
    - Infra-blocked: GitHub billing/spend-limit, runner capacity/unavailable, third-party premium/auth gating (Copilot/Claude/etc), or GitHub outage. Do not churn on code changes. Record the blocker and proceed per the PR Handling Loop infra rule.
-6. Do not chase provider/auth diagnostics unless they cause a required check to fail (the reviewer workflow is designed to fail-open for many provider issues).
-7. Rebase onto `origin/master` before merge if needed.
-8. Merge only when all required checks pass and the PR is mergeable.
-9. Merge with squash + delete branch: `gh pr merge <num> --repo EvotecIT/IntelligenceX --squash --delete-branch`.
+7. Do not chase provider/auth diagnostics unless they cause a required check to fail (the reviewer workflow is designed to fail-open for many provider issues).
+8. Rebase onto `origin/master` before merge if needed.
+9. Merge only when all required checks pass and the PR is mergeable.
+10. Merge with squash + delete branch: `gh pr merge <num> --repo EvotecIT/IntelligenceX --squash --delete-branch`.
 
 **Dependabot + Workflow-Only PRs**
 - On Dependabot PRs, comments may be authored by `github-actions` rather than the IntelligenceX GitHub App. This is expected: GitHub typically does not expose repo secrets (including app private keys) to Dependabot PR workflows.
@@ -52,6 +56,7 @@ When an agent is assigned a PR to improve or unblock, it must iterate until merg
 6. Apply fixes in a single coherent batch (avoid micro-commits that "poke" the bot repeatedly), then re-run checks and re-check bot output:
    Run: `gh pr checks <num> --repo EvotecIT/IntelligenceX`
    If the bot posts new todo/critical items, repeat.
+   Also verify unresolved review threads before declaring the PR merge-ready; if `gh pr view --json mergeStateStatus` still shows `BLOCKED` while checks are green, inspect `reviewThreads` and resolve only the stale addressed threads.
 7. Infra-blocked escape hatch:
    - If required checks cannot run due to infra-blocked reasons (billing/spend limit, runner outage/capacity, third-party premium/auth gating), stop iterating.
    - Create a single tracking item (preferred: sync explicit bot checklist items into `TODO.md`, otherwise create a GitHub issue) with a link to the failed run/check.
@@ -67,6 +72,10 @@ When an agent is assigned a PR to improve or unblock, it must iterate until merg
    - maintainers explicitly decide to accept the risk
    - the PR is infra-blocked and recorded per step 7
    - the only remaining bot todo/critical items are classified as churn per step 8, recorded in `TODO.md`, and surfaced to maintainers in a status summary comment
+11. Final merge gate:
+   - Do not assume `mergeable` is enough.
+   - Check `mergeStateStatus` via `gh pr view <num> --json mergeStateStatus,mergeable`.
+   - If `mergeStateStatus` is `BLOCKED` with green checks, unresolved review threads are the first thing to inspect before looking for other policy causes.
 
 **Commenting Hygiene (Avoid Shell Foot-Guns)**
 - When posting PR comments from a shell, prefer `--body-file -` with a single-quoted heredoc to avoid accidental command substitution (for example backticks interpreted by zsh):
