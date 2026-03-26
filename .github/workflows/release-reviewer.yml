@@ -61,4 +61,4 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -- release reviewer
+          dotnet run --framework net8.0 --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -- release reviewer

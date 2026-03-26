@@ -2,6 +2,39 @@ namespace IntelligenceX.Tests;
 
 #if !NET472
 internal static partial class Program {
+    private static void TestSetupWorkflowUpgradeRenamesLegacyReusableWorkflowReference() {
+        const string beginMarker = "# INTELLIGENCEX:BEGIN";
+        const string endMarker = "# INTELLIGENCEX:END";
+        var seed = """
+name: IntelligenceX Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+jobs:
+  __IX_BEGIN__
+  review:
+    uses: ./.github/workflows/review-intelligencex-reusable.yml
+    with:
+      provider: openai
+      model: gpt-5.4
+  __IX_END__
+""";
+        seed = seed.Replace("__IX_BEGIN__", beginMarker).Replace("__IX_END__", endMarker);
+
+        var upgraded = SetupRunner.BuildWorkflowYamlFromSeedForTests(
+            new[] { "--provider", "copilot" },
+            seed);
+
+        AssertContainsText(upgraded, "uses: ./.github/workflows/review-intelligencex-core.yml",
+            "workflow upgrade renames legacy reusable workflow reference");
+        AssertEqual(false, upgraded.Contains("review-intelligencex-reusable.yml", StringComparison.Ordinal),
+            "workflow upgrade removes legacy reusable workflow reference");
+        AssertContainsText(upgraded, "needs-ai-review",
+            "workflow upgrade keeps safety gate when renaming legacy reusable workflow");
+    }
+
     private static void TestSetupWorkflowUpgradePreservesLocalReusableWorkflowReference() {
         const string beginMarker = "# INTELLIGENCEX:BEGIN";
         const string endMarker = "# INTELLIGENCEX:END";

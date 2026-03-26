@@ -462,6 +462,8 @@ internal static partial class Program {
             TestSetupOnboardingContractVerificationRejectsMissingAutodetectMetadata);
         failed += Run("Setup workflow upgrade preserves custom sections outside managed block",
             TestSetupWorkflowUpgradePreservesCustomSectionsOutsideManagedBlock);
+        failed += Run("Setup workflow upgrade renames legacy reusable workflow reference",
+            TestSetupWorkflowUpgradeRenamesLegacyReusableWorkflowReference);
         failed += Run("Setup workflow upgrade preserves local reusable workflow reference",
             TestSetupWorkflowUpgradePreservesLocalReusableWorkflowReference);
         failed += Run("Setup workflow upgrade preserves outside managed block verbatim",
