@@ -1,0 +1,29 @@
+name: GitHub Housekeeping
+
+on:
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: 'Apply deletions (true/false)'
+        required: false
+        default: 'true'
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: github-housekeeping-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  housekeeping:
+    uses: EvotecIT/PSPublishModule/.github/workflows/reusable-github-housekeeping.yml@327a0f5f7188bc7ce47d0594fc507c0a3b4ae0b9
+    with:
+      config-path: ./.powerforge/github-housekeeping.json
+      apply: ${{ github.event_name == 'workflow_dispatch' && inputs.apply == 'true' || github.event_name != 'workflow_dispatch' }}
+      powerforge-ref: 327a0f5f7188bc7ce47d0594fc507c0a3b4ae0b9
+    secrets:
+      github-token: ${{ secrets.GITHUB_TOKEN }}
