@@ -36,7 +36,7 @@ jobs:
   build:
     runs-on: ${{ fromJSON((github.event.repository.private && vars.IX_FORCE_GITHUB_HOSTED != 'true') && '["self-hosted","ubuntu"]' || '["ubuntu-latest"]') }}
     permissions:
-      contents: read
+      contents: write
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
@@ -47,8 +47,8 @@ jobs:
 
       - name: Publish reviewer
         env:
-          INTELLIGENCEX_REVIEWER_TOKEN: ${{ secrets.INTELLIGENCEX_RELEASE_TOKEN }}
-          INTELLIGENCEX_RELEASE_TOKEN: ${{ secrets.INTELLIGENCEX_RELEASE_TOKEN }}
+          INTELLIGENCEX_REVIEWER_TOKEN: ${{ secrets.INTELLIGENCEX_RELEASE_TOKEN != '' && secrets.INTELLIGENCEX_RELEASE_TOKEN || github.token }}
+          INTELLIGENCEX_RELEASE_TOKEN: ${{ secrets.INTELLIGENCEX_RELEASE_TOKEN != '' && secrets.INTELLIGENCEX_RELEASE_TOKEN || github.token }}
           GITHUB_TOKEN: ''
           GH_TOKEN: ''
           INTELLIGENCEX_REVIEWER_TAG: ${{ inputs.release_tag }}
