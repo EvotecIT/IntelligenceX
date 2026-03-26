@@ -1607,7 +1607,7 @@ public sealed class ToolPackBootstrapMetadataTests {
         Assert.Equal(new[] { "serverops", "host_inventory" }, dto.Aliases);
         Assert.Equal(new[] { "host_inventory", "remote_analysis" }, dto.CapabilityTags);
         Assert.Equal(new[] { "computerx", "server_inventory", "cpu", "memory" }, dto.SearchTokens);
-        Assert.Equal("active", dto.ActivationState);
+        Assert.Equal(ToolActivationStates.Active, dto.ActivationState);
         Assert.False(dto.CanActivateOnDemand);
     }
 
@@ -1646,7 +1646,7 @@ public sealed class ToolPackBootstrapMetadataTests {
         Assert.Equal("computerx", dto.EngineId);
         Assert.Equal(new[] { "host_inventory", "remote_analysis" }, dto.CapabilityTags);
         Assert.False(dto.Enabled);
-        Assert.Equal("disabled", dto.ActivationState);
+        Assert.Equal(ToolActivationStates.Disabled, dto.ActivationState);
         Assert.False(dto.CanActivateOnDemand);
         Assert.Equal("Temporarily unavailable.", dto.DisabledReason);
     }
@@ -1678,7 +1678,7 @@ public sealed class ToolPackBootstrapMetadataTests {
         Assert.Equal(new[] { "host_inventory", "remote_analysis" }, dto.CapabilityTags);
         Assert.Empty(dto.Aliases);
         Assert.Empty(dto.SearchTokens);
-        Assert.Equal("active", dto.ActivationState);
+        Assert.Equal(ToolActivationStates.Active, dto.ActivationState);
         Assert.False(dto.CanActivateOnDemand);
     }
 
@@ -1726,7 +1726,7 @@ public sealed class ToolPackBootstrapMetadataTests {
         Assert.Equal("closed_source", dto.Origin);
         Assert.Equal(ToolPackSourceKind.ClosedSource, dto.SourceKind);
         Assert.True(dto.Enabled);
-        Assert.Equal("active", dto.ActivationState);
+        Assert.Equal(ToolActivationStates.Active, dto.ActivationState);
         Assert.False(dto.CanActivateOnDemand);
         Assert.Equal(new[] { "ops_inventory" }, dto.PackIds);
         Assert.Empty(dto.SkillDirectories);
@@ -1768,7 +1768,7 @@ public sealed class ToolPackBootstrapMetadataTests {
         Assert.Equal("unknown", dto.Origin);
         Assert.Equal(ToolPackSourceKind.ClosedSource, dto.SourceKind);
         Assert.True(dto.IsDangerous);
-        Assert.Equal("active", dto.ActivationState);
+        Assert.Equal(ToolActivationStates.Active, dto.ActivationState);
         Assert.False(dto.CanActivateOnDemand);
         Assert.Equal(new[] { "ops_inventory" }, dto.PackIds);
         Assert.Equal(new[] { "reporting.custom" }, dto.SkillIds);
@@ -1812,7 +1812,7 @@ public sealed class ToolPackBootstrapMetadataTests {
         Assert.Equal("plugin_folder", dto.Origin);
         Assert.Equal(ToolPackSourceKind.ClosedSource, dto.SourceKind);
         Assert.True(dto.Enabled);
-        Assert.Equal("active", dto.ActivationState);
+        Assert.Equal(ToolActivationStates.Active, dto.ActivationState);
         Assert.False(dto.CanActivateOnDemand);
         Assert.Equal(new[] { "ops_inventory" }, dto.PackIds);
         Assert.Equal("C:\\plugins\\ops-bundle", dto.RootPath);
@@ -1836,7 +1836,7 @@ public sealed class ToolPackBootstrapMetadataTests {
         var dto = Assert.Single(ToolCatalogExportBuilder.BuildPackInfoDtos(packs, orchestrationCatalog: null));
 
         Assert.True(dto.Enabled);
-        Assert.Equal("deferred", dto.ActivationState);
+        Assert.Equal(ToolActivationStates.Deferred, dto.ActivationState);
         Assert.True(dto.CanActivateOnDemand);
     }
 
@@ -1848,7 +1848,7 @@ public sealed class ToolPackBootstrapMetadataTests {
                 Name = "Ops Inventory",
                 Tier = CapabilityTier.ReadOnly,
                 Enabled = true,
-                ActivationState = "deferred",
+                ActivationState = ToolActivationStates.Deferred,
                 CanActivateOnDemand = true,
                 IsDangerous = false,
                 SourceKind = ToolPackSourceKind.ClosedSource
@@ -1870,7 +1870,7 @@ public sealed class ToolPackBootstrapMetadataTests {
         var dto = Assert.Single(ToolCatalogExportBuilder.BuildPluginInfoDtos(plugins, packs));
 
         Assert.True(dto.Enabled);
-        Assert.Equal("deferred", dto.ActivationState);
+        Assert.Equal(ToolActivationStates.Deferred, dto.ActivationState);
         Assert.True(dto.CanActivateOnDemand);
     }
 

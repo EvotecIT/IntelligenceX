@@ -86,24 +86,18 @@ public sealed partial class MainWindow : Window {
             return false;
         }
 
-        if (!TryParseRoutingMetaPayload(
-                status.Message,
-                out var strategy,
-                out var selectedToolCount,
-                out var totalToolCount,
-                out var promptExposureReordered,
-                out var promptExposureTopToolNames)) {
+        if (!TryParseRoutingMetaPayloadSnapshot(status.Message, out var payload)) {
             return false;
         }
 
         var nextSnapshot = new RoutingPromptExposureSnapshot(
             NormalizeRoutingPromptExposureIdentifier(status.RequestId),
             NormalizeRoutingPromptExposureIdentifier(status.ThreadId),
-            strategy,
-            selectedToolCount,
-            totalToolCount,
-            promptExposureReordered,
-            promptExposureTopToolNames);
+            payload.Strategy,
+            payload.SelectedToolCount,
+            payload.TotalToolCount,
+            payload.PromptExposureReordered,
+            payload.PromptExposureTopToolNames);
         lock (_turnDiagnosticsSync) {
             if (EqualityComparer<RoutingPromptExposureSnapshot?>.Default.Equals(_latestRoutingPromptExposure, nextSnapshot)) {
                 return false;
@@ -244,14 +238,33 @@ public sealed partial class MainWindow : Window {
         out int totalToolCount,
         out bool promptExposureReordered,
         out string[] promptExposureTopToolNames) {
-        strategy = "updated";
-        selectedToolCount = 0;
-        totalToolCount = 0;
-        promptExposureReordered = false;
-        promptExposureTopToolNames = Array.Empty<string>();
+        if (!TryParseRoutingMetaPayloadSnapshot(payload, out var snapshot)) {
+            strategy = "updated";
+            selectedToolCount = 0;
+            totalToolCount = 0;
+            promptExposureReordered = false;
+            promptExposureTopToolNames = Array.Empty<string>();
+            return false;
+        }
+
+        strategy = snapshot.Strategy;
+        selectedToolCount = snapshot.SelectedToolCount;
+        totalToolCount = snapshot.TotalToolCount;
+        promptExposureReordered = snapshot.PromptExposureReordered;
+        promptExposureTopToolNames = snapshot.PromptExposureTopToolNames;
+        return true;
+    }
+
+    private static bool TryParseRoutingMetaPayloadSnapshot(string? payload, out RoutingMetaPayloadSnapshot snapshot) {
+        var strategy = "updated";
+        var selectedToolCount = 0;
+        var totalToolCount = 0;
+        var promptExposureReordered = false;
+        var promptExposureTopToolNames = Array.Empty<string>();
 
         var json = (payload ?? string.Empty).Trim();
         if (json.Length == 0 || json[0] != '{' || json.Length > MaxRoutingInsightPayloadChars) {
+            snapshot = default;
             return false;
         }
 
@@ -263,6 +276,7 @@ public sealed partial class MainWindow : Window {
             });
             var root = doc.RootElement;
             if (root.ValueKind != JsonValueKind.Object) {
+                snapshot = default;
                 return false;
             }
 
@@ -323,8 +337,20 @@ public sealed partial class MainWindow : Window {
                 }
             }
 
-            return hasStrategy && hasSelectedToolCount && hasTotalToolCount;
+            if (!hasStrategy || !hasSelectedToolCount || !hasTotalToolCount) {
+                snapshot = default;
+                return false;
+            }
+
+            snapshot = new RoutingMetaPayloadSnapshot(
+                strategy,
+                selectedToolCount,
+                totalToolCount,
+                promptExposureReordered,
+                promptExposureTopToolNames);
+            return true;
         } catch (JsonException) {
+            snapshot = default;
             return false;
         }
     }

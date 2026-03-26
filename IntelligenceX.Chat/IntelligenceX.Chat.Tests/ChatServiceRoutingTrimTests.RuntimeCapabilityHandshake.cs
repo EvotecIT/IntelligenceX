@@ -1049,13 +1049,13 @@ public sealed partial class ChatServiceRoutingTrimTests {
             snapshot.ToolingSnapshot.Packs,
             static pack => string.Equals(pack.Id, "eventlog", StringComparison.OrdinalIgnoreCase)
                            && pack.Enabled
-                           && string.Equals(pack.ActivationState, "deferred", StringComparison.OrdinalIgnoreCase)
+                           && string.Equals(pack.ActivationState, ToolActivationStates.Deferred, StringComparison.OrdinalIgnoreCase)
                            && pack.CanActivateOnDemand);
         Assert.Contains(
             snapshot.ToolingSnapshot.Plugins,
             static plugin => string.Equals(plugin.Id, "eventlog", StringComparison.OrdinalIgnoreCase)
                              && plugin.Enabled
-                             && string.Equals(plugin.ActivationState, "deferred", StringComparison.OrdinalIgnoreCase)
+                             && string.Equals(plugin.ActivationState, ToolActivationStates.Deferred, StringComparison.OrdinalIgnoreCase)
                              && plugin.CanActivateOnDemand);
         Assert.Contains("runtime_bootstrap_state: deferred", instructionsText, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("tooling_snapshot: deferred_descriptor_preview", instructionsText, StringComparison.OrdinalIgnoreCase);
@@ -1107,7 +1107,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
                 snapshot.ToolingSnapshot.Plugins,
                 plugin => string.Equals(plugin.Id, "ops_bundle", StringComparison.OrdinalIgnoreCase)
                           && plugin.PackIds.Contains(declaredPackId, StringComparer.OrdinalIgnoreCase)
-                          && string.Equals(plugin.ActivationState, "deferred", StringComparison.OrdinalIgnoreCase)
+                          && string.Equals(plugin.ActivationState, ToolActivationStates.Deferred, StringComparison.OrdinalIgnoreCase)
                           && plugin.CanActivateOnDemand);
             Assert.Contains("tooling_snapshot_plugins:", instructionsText, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("|deferred|", instructionsText, StringComparison.OrdinalIgnoreCase);

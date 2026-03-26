@@ -924,11 +924,6 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static string FormatCapabilitySnapshotActivationState(string? activationState, bool enabled) {
-        var normalized = (activationState ?? string.Empty).Trim().ToLowerInvariant();
-        if (normalized.Length > 0) {
-            return normalized;
-        }
-
-        return enabled ? "active" : "disabled";
+        return ToolActivationStates.NormalizeOrDefault(activationState, enabled);
     }
 }

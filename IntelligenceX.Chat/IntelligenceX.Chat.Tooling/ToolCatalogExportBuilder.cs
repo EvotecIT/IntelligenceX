@@ -15,9 +15,6 @@ namespace IntelligenceX.Chat.Tooling;
 /// Shared projection helpers for lightweight tool catalog exports used by Chat host and service surfaces.
 /// </summary>
 public static class ToolCatalogExportBuilder {
-    private const string ActivationStateActive = "active";
-    private const string ActivationStateDeferred = "deferred";
-    private const string ActivationStateDisabled = "disabled";
     private const int ToolCatalogOrderPriorityOperational = 0;
     private const int ToolCatalogOrderPriorityResolver = 1;
     private const int ToolCatalogOrderPriorityDiagnostic = 2;
@@ -108,7 +105,7 @@ public static class ToolCatalogExportBuilder {
                     SourceKind = pack.SourceKind,
                     DefaultEnabled = pack.Enabled,
                     Enabled = pack.Enabled,
-                    ActivationState = ResolveActivationState(pack.Enabled, IsDeferredActivationState(pack.ActivationState)),
+                    ActivationState = ToolActivationStates.Resolve(pack.Enabled, ToolActivationStates.IsDeferred(pack.ActivationState)),
                     CanActivateOnDemand = pack.CanActivateOnDemand,
                     DisabledReason = pack.Enabled ? null : pack.DisabledReason,
                     IsDangerous = pack.IsDangerous || pack.Tier == CapabilityTier.DangerousWrite,
@@ -713,7 +710,7 @@ public static class ToolCatalogExportBuilder {
             Description = string.IsNullOrWhiteSpace(pack.Description) ? null : pack.Description.Trim(),
             Tier = MapTier(pack.Tier),
             Enabled = pack.Enabled,
-            ActivationState = ResolveActivationState(pack.Enabled, pack.DescriptorOnly),
+            ActivationState = ToolActivationStates.Resolve(pack.Enabled, pack.DescriptorOnly),
             CanActivateOnDemand = pack.Enabled && pack.DescriptorOnly,
             DisabledReason = pack.Enabled || string.IsNullOrWhiteSpace(pack.DisabledReason) ? null : pack.DisabledReason.Trim(),
             IsDangerous = pack.IsDangerous || pack.Tier == ToolCapabilityTier.DangerousWrite || exposesWriteCapability,
@@ -738,7 +735,7 @@ public static class ToolCatalogExportBuilder {
             Name = ResolvePackDisplayName(packMetadata.PackId, packMetadata),
             Tier = MapTier(packMetadata.Tier),
             Enabled = true,
-            ActivationState = ActivationStateActive,
+            ActivationState = ToolActivationStates.Active,
             CanActivateOnDemand = false,
             IsDangerous = isDangerous,
             SourceKind = ResolvePackSourceKind(packMetadata),
@@ -858,7 +855,7 @@ public static class ToolCatalogExportBuilder {
             SourceKind = ResolvePluginSourceKind(plugin, resolvedPacks),
             DefaultEnabled = plugin.DefaultEnabled,
             Enabled = plugin.Enabled,
-            ActivationState = ResolveActivationState(plugin.Enabled, plugin.DescriptorOnly),
+            ActivationState = ToolActivationStates.Resolve(plugin.Enabled, plugin.DescriptorOnly),
             CanActivateOnDemand = plugin.Enabled && plugin.DescriptorOnly,
             DisabledReason = plugin.Enabled ? null : plugin.DisabledReason,
             IsDangerous = resolvedDangerous,
@@ -878,35 +875,23 @@ public static class ToolCatalogExportBuilder {
             .ToDictionary(static group => group.Key, static group => group.First().Value, StringComparer.OrdinalIgnoreCase);
     }
 
-    private static string ResolveActivationState(bool enabled, bool descriptorOnly) {
-        if (!enabled) {
-            return ActivationStateDisabled;
-        }
-
-        return descriptorOnly ? ActivationStateDeferred : ActivationStateActive;
-    }
-
-    private static bool IsDeferredActivationState(string? activationState) {
-        return string.Equals(activationState, ActivationStateDeferred, StringComparison.OrdinalIgnoreCase);
-    }
-
     private static string ResolvePluginActivationState(
         ToolPluginAvailabilityInfo? availability,
         IReadOnlyList<ToolPackInfoDto> resolvedPacks,
         bool enabled) {
         if (availability is not null) {
-            return ResolveActivationState(availability.Enabled, availability.DescriptorOnly);
+            return ToolActivationStates.Resolve(availability.Enabled, availability.DescriptorOnly);
         }
 
         if (!enabled) {
-            return ActivationStateDisabled;
+            return ToolActivationStates.Disabled;
         }
 
-        if (resolvedPacks.Count > 0 && resolvedPacks.All(static pack => IsDeferredActivationState(pack.ActivationState))) {
-            return ActivationStateDeferred;
+        if (resolvedPacks.Count > 0 && resolvedPacks.All(static pack => ToolActivationStates.IsDeferred(pack.ActivationState))) {
+            return ToolActivationStates.Deferred;
         }
 
-        return ActivationStateActive;
+        return ToolActivationStates.Active;
     }
 
     private static bool ResolvePluginCanActivateOnDemand(

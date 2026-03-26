@@ -2500,6 +2500,133 @@ public sealed class ChatServiceToolingBootstrapTests {
     }
 
     [Fact]
+    public async Task RunBackgroundSchedulerDaemonAsync_ExecutesDeferredPluginTargetWithoutStartingFullBootstrap() {
+        var tempRoot = TempPathTestHelper.CreateTempDirectoryPath("ix-chat-background-daemon-activation");
+        var pluginRoot = Path.Combine(tempRoot, "plugins");
+        var pluginFolder = Path.Combine(pluginRoot, "ops-bundle");
+        Directory.CreateDirectory(pluginFolder);
+
+        try {
+            var options = ChatServiceTestSessionFactory.CreateIsolatedOptions();
+            options.EnableBackgroundSchedulerDaemon = true;
+            options.BackgroundSchedulerPollSeconds = 1;
+            options.BackgroundSchedulerBurstLimit = 1;
+            options.EnableBuiltInPackLoading = false;
+            options.EnableDefaultPluginPaths = false;
+            options.RuntimePluginPaths.Add(pluginRoot);
+
+            var testAssembly = Assembly.GetExecutingAssembly();
+            var sourceAssemblyPath = testAssembly.Location;
+            var entryAssemblyName = Path.GetFileName(sourceAssemblyPath);
+            File.Copy(sourceAssemblyPath, Path.Combine(pluginFolder, entryAssemblyName), overwrite: true);
+            var entryType = typeof(PluginFolderLoaderTests.PluginFolderLoaderSyntheticCatalogPack).FullName;
+            Assert.False(string.IsNullOrWhiteSpace(entryType));
+
+            File.WriteAllText(Path.Combine(pluginFolder, "ix-plugin.json"), $$"""
+            {
+              "schemaVersion": 1,
+              "pluginId": "ops-bundle",
+              "displayName": "Ops Bundle",
+              "version": "1.2.3",
+              "packIds": ["plugin_loader_synthetic_catalog"],
+              "defaultEnabled": true,
+              "sourceKind": "closed_source",
+              "entryAssembly": "{{entryAssemblyName}}",
+              "entryType": "{{entryType}}",
+              "tools": [
+                {
+                  "name": "plugin_loader_synthetic_probe",
+                  "description": "Probe the synthetic plugin runtime.",
+                  "category": "inventory",
+                  "supportsLocalExecution": true,
+                  "supportsRemoteExecution": false
+                }
+              ]
+            }
+            """);
+
+            var session = new ChatServiceSession(options, Stream.Null);
+            session.SetCachedToolDefinitionsForTesting(new[] {
+                new ToolDefinitionDto {
+                    Name = "plugin_loader_synthetic_probe",
+                    Description = "Probe the synthetic plugin runtime.",
+                    PackId = "plugin_loader_synthetic_catalog"
+                }
+            });
+
+            const string threadId = "thread-background-daemon-deferred-plugin";
+            var definitions = new[] {
+                new ToolDefinition(
+                    name: "seed_plugin_probe_followup",
+                    description: "Seed a deferred plugin follow-up.",
+                    handoff: new ToolHandoffContract {
+                        IsHandoffAware = true,
+                        OutboundRoutes = new[] {
+                            new ToolHandoffRoute {
+                                TargetPackId = "plugin_loader_synthetic_catalog",
+                                TargetToolName = "plugin_loader_synthetic_probe",
+                                TargetRole = ToolRoutingTaxonomy.RoleOperational,
+                                FollowUpKind = ToolHandoffFollowUpKinds.Enrichment,
+                                FollowUpPriority = ToolHandoffFollowUpPriorities.High,
+                                Bindings = new[] {
+                                    new ToolHandoffBinding {
+                                        SourceField = "target",
+                                        TargetArgument = "target"
+                                    }
+                                }
+                            }
+                        }
+                    })
+            };
+
+            session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(definitions));
+            session.RememberToolHandoffBackgroundWorkForTesting(
+                threadId,
+                definitions,
+                new[] {
+                    new ToolCallDto {
+                        CallId = "call-background-daemon-deferred-plugin",
+                        Name = "seed_plugin_probe_followup",
+                        ArgumentsJson = """{"target":"srv-daemon.contoso.com"}"""
+                    }
+                },
+                new[] {
+                    new ToolOutputDto {
+                        CallId = "call-background-daemon-deferred-plugin",
+                        Ok = true,
+                        Output = """{"ok":true}"""
+                    }
+                });
+
+            using var cancellationTokenSource = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            var daemonTask = session.RunBackgroundSchedulerDaemonAsync(cancellationTokenSource.Token);
+
+            SessionCapabilityBackgroundSchedulerDto? summary = null;
+            for (var attempt = 0; attempt < 40; attempt++) {
+                summary = session.BuildBackgroundSchedulerSummaryForTesting();
+                if (summary.CompletedItemCount > 0) {
+                    break;
+                }
+
+                await Task.Delay(TimeSpan.FromMilliseconds(50), CancellationToken.None);
+            }
+
+            Assert.NotNull(summary);
+            Assert.Equal(1, summary!.CompletedItemCount);
+            Assert.Contains(threadId, summary.ThreadSummaries.Select(static item => item.ThreadId), StringComparer.Ordinal);
+            Assert.Contains("plugin_loader_synthetic_probe", session.GetRegisteredToolNamesForTesting(), StringComparer.OrdinalIgnoreCase);
+            Assert.Null(session.GetStartupToolingBootstrapTaskForTesting());
+
+            await cancellationTokenSource.CancelAsync();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await daemonTask);
+        } finally {
+            if (Directory.Exists(tempRoot)) {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public void TryBuildScheduledBackgroundWorkToolCallForTesting_ClaimsDeferredPluginTargetWithoutStartupBootstrap() {
         var tempRoot = TempPathTestHelper.CreateTempDirectoryPath("ix-chat-background-claim-activation");
         var pluginRoot = Path.Combine(tempRoot, "plugins");

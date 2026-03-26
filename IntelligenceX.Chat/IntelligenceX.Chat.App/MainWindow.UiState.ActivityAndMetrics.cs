@@ -205,17 +205,11 @@ public sealed partial class MainWindow : Window {
         }
 
         if (string.Equals(status.Status, ChatStatusCodes.RoutingMeta, StringComparison.OrdinalIgnoreCase)) {
-            if (TryParseRoutingMetaPayload(
-                    status.Message,
-                    out var strategy,
-                    out var selectedToolCount,
-                    out var totalToolCount,
-                    out var promptExposureReordered,
-                    out var promptExposureTopToolNames)) {
-                return $"Routing strategy {strategy} ({selectedToolCount}/{totalToolCount} tools)"
+            if (TryParseRoutingMetaPayloadSnapshot(status.Message, out var routingMetaPayload)) {
+                return $"Routing strategy {routingMetaPayload.Strategy} ({routingMetaPayload.SelectedToolCount}/{routingMetaPayload.TotalToolCount} tools)"
                        + BuildRoutingMetaPromptExposureSuffix(
-                           promptExposureReordered,
-                           promptExposureTopToolNames,
+                           routingMetaPayload.PromptExposureReordered,
+                           routingMetaPayload.PromptExposureTopToolNames,
                            MaxRoutingMetaPromptExposureActivityNames);
             }
 
@@ -442,27 +436,21 @@ public sealed partial class MainWindow : Window {
     }
 
     private static string BuildRoutingMetaTimelineLabel(string? payload) {
-        if (!TryParseRoutingMetaPayload(
-                payload,
-                out var strategy,
-                out var selectedToolCount,
-                out var totalToolCount,
-                out var promptExposureReordered,
-                out var promptExposureTopToolNames)) {
+        if (!TryParseRoutingMetaPayloadSnapshot(payload, out var routingMetaPayload)) {
             return "route strategy";
         }
 
-        var normalizedStrategy = (strategy ?? string.Empty).Trim();
+        var normalizedStrategy = (routingMetaPayload.Strategy ?? string.Empty).Trim();
         if (normalizedStrategy.Length == 0) {
             normalizedStrategy = "strategy";
         }
 
-        var boundedSelectedToolCount = Math.Max(0, selectedToolCount);
-        var boundedTotalToolCount = Math.Max(boundedSelectedToolCount, totalToolCount);
+        var boundedSelectedToolCount = Math.Max(0, routingMetaPayload.SelectedToolCount);
+        var boundedTotalToolCount = Math.Max(boundedSelectedToolCount, routingMetaPayload.TotalToolCount);
         return "route " + normalizedStrategy + " (" + boundedSelectedToolCount + "/" + boundedTotalToolCount + ")"
                + BuildRoutingMetaPromptExposureSuffix(
-                   promptExposureReordered,
-                   promptExposureTopToolNames,
+                   routingMetaPayload.PromptExposureReordered,
+                   routingMetaPayload.PromptExposureTopToolNames,
                    MaxRoutingMetaPromptExposureTimelineNames);
     }
 }

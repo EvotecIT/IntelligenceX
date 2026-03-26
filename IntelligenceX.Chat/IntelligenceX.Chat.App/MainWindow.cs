@@ -637,6 +637,13 @@ public sealed partial class MainWindow : Window {
         bool Reordered,
         string[] TopToolNames);
 
+    private readonly record struct RoutingMetaPayloadSnapshot(
+        string Strategy,
+        int SelectedToolCount,
+        int TotalToolCount,
+        bool PromptExposureReordered,
+        string[] PromptExposureTopToolNames);
+
     private sealed class UserProfileIntent {
         public string? UserName { get; set; }
         public bool HasUserName { get; set; }

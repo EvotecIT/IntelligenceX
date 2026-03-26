@@ -35,7 +35,7 @@ public sealed record PluginInfoDto {
     /// </summary>
     public required bool Enabled { get; init; }
     /// <summary>
-    /// Activation state for the current session (<c>active</c>, <c>deferred</c>, or <c>disabled</c>).
+    /// Activation state for the current session. See <see cref="ToolActivationStates"/>.
     /// </summary>
     public string? ActivationState { get; init; }
     /// <summary>
