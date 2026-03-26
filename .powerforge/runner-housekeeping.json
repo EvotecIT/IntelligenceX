@@ -1,0 +1,19 @@
+{
+  "$schema": "https://raw.githubusercontent.com/EvotecIT/PSPublishModule/main/Schemas/github.housekeeping.schema.json",
+  "repository": "EvotecIT/IntelligenceX",
+  "tokenEnvName": "GITHUB_TOKEN",
+  "dryRun": false,
+  "artifacts": {
+    "enabled": false
+  },
+  "caches": {
+    "enabled": false
+  },
+  "runner": {
+    "enabled": true,
+    "minFreeGb": 20,
+    "diagnosticsRetentionDays": 14,
+    "actionsRetentionDays": 7,
+    "toolCacheRetentionDays": 30
+  }
+}
