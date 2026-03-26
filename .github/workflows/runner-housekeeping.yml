@@ -28,11 +28,11 @@ concurrency:
 jobs:
   cleanup-linux-runner:
     if: ${{ github.event.repository.private }}
-    uses: EvotecIT/PSPublishModule/.github/workflows/powerforge-github-runner-housekeeping.yml@8cd12880dbf23918a9058997f9307527aa4eebc5
+    uses: EvotecIT/PSPublishModule/.github/workflows/powerforge-github-runner-housekeeping.yml@97b0d38217ab995e611a12d162ae41505b7bfed1
     with:
       config-path: ./.powerforge/runner-housekeeping.json
       apply: true
-      powerforge-ref: 8cd12880dbf23918a9058997f9307527aa4eebc5
+      powerforge-ref: 97b0d38217ab995e611a12d162ae41505b7bfed1
       runner-labels: '["self-hosted","ubuntu"]'
       runner-min-free-gb: ${{ github.event_name == 'workflow_dispatch' && inputs.min_free_gb || vars.IX_RUNNER_HOUSEKEEPING_MIN_FREE_GB }}
       report-artifact-name: runner-housekeeping-reports
