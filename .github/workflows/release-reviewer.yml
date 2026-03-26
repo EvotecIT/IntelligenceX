@@ -47,9 +47,8 @@ jobs:
 
       - name: Publish reviewer
         env:
-          INTELLIGENCEX_REVIEWER_TOKEN: ${{ secrets.INTELLIGENCEX_RELEASE_TOKEN != '' && secrets.INTELLIGENCEX_RELEASE_TOKEN || github.token }}
-          INTELLIGENCEX_RELEASE_TOKEN: ${{ secrets.INTELLIGENCEX_RELEASE_TOKEN != '' && secrets.INTELLIGENCEX_RELEASE_TOKEN || github.token }}
-          GITHUB_TOKEN: ''
+          INTELLIGENCEX_RELEASE_TOKEN: ${{ secrets.INTELLIGENCEX_RELEASE_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
           GH_TOKEN: ''
           INTELLIGENCEX_REVIEWER_TAG: ${{ inputs.release_tag }}
           INTELLIGENCEX_REVIEWER_TITLE: ${{ inputs.release_title }}
@@ -61,4 +60,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          release_repo="${INTELLIGENCEX_REVIEWER_REPO_SLUG:-${GITHUB_REPOSITORY}}"
+          if [[ "$release_repo" == "$GITHUB_REPOSITORY" ]]; then
+            export INTELLIGENCEX_REVIEWER_TOKEN="${GITHUB_TOKEN}"
+          else
+            export INTELLIGENCEX_REVIEWER_TOKEN="${INTELLIGENCEX_RELEASE_TOKEN:-}"
+          fi
           dotnet run --framework net8.0 --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -- release reviewer
