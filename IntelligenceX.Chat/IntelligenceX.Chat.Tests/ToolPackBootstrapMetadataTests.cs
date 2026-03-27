@@ -232,6 +232,52 @@ public sealed class ToolPackBootstrapMetadataTests {
     }
 
     [Fact]
+    public void GetTrustedBuiltInCompanionAssemblyPathsForTesting_ExcludesUnrelatedSiblingDlls() {
+        var repoRoot = FindRepoRoot();
+        var eventLogOutputRoot = Path.Combine(
+            repoRoot,
+            "IntelligenceX.Tools",
+            "IntelligenceX.Tools.EventLog",
+            "bin",
+            "Release",
+            "net10.0-windows");
+        var trustedAssemblySourcePath = Path.Combine(eventLogOutputRoot, "IntelligenceX.Tools.EventLog.dll");
+        var trustedDepsSourcePath = Path.Combine(eventLogOutputRoot, "IntelligenceX.Tools.EventLog.deps.json");
+        var actualDependencySourcePath = Path.Combine(eventLogOutputRoot, "System.Diagnostics.EventLog.dll");
+        var unrelatedAssemblySourcePath = ResolveFirstExistingAssemblyPath(
+            repoRoot,
+            @"IntelligenceX.Tools\IntelligenceX.Tools.DomainDetective\bin\Release\net10.0\IntelligenceX.Tools.DomainDetective.dll",
+            @"IntelligenceX.Tools\IntelligenceX.Tools.Email\bin\Release\net10.0\IntelligenceX.Tools.Email.dll",
+            @"IntelligenceX.Tools\IntelligenceX.Tools.DnsClientX\bin\Release\net10.0\IntelligenceX.Tools.DnsClientX.dll");
+
+        Assert.True(File.Exists(trustedAssemblySourcePath), $"Expected trusted assembly '{trustedAssemblySourcePath}' to exist.");
+        Assert.True(File.Exists(trustedDepsSourcePath), $"Expected trusted deps file '{trustedDepsSourcePath}' to exist.");
+        Assert.True(File.Exists(actualDependencySourcePath), $"Expected actual dependency '{actualDependencySourcePath}' to exist.");
+        Assert.True(!string.IsNullOrWhiteSpace(unrelatedAssemblySourcePath), "Expected at least one unrelated built-in tool assembly output to exist.");
+
+        var tempRoot = Path.Combine(Path.GetTempPath(), "ix-chat-companion-filter-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempRoot);
+
+        try {
+            var trustedAssemblyPath = Path.Combine(tempRoot, Path.GetFileName(trustedAssemblySourcePath));
+            var trustedDepsPath = Path.Combine(tempRoot, Path.GetFileName(trustedDepsSourcePath));
+            var actualDependencyPath = Path.Combine(tempRoot, Path.GetFileName(actualDependencySourcePath));
+            var unrelatedAssemblyPath = Path.Combine(tempRoot, Path.GetFileName(unrelatedAssemblySourcePath));
+
+            File.Copy(trustedAssemblySourcePath, trustedAssemblyPath, overwrite: true);
+            File.Copy(trustedDepsSourcePath, trustedDepsPath, overwrite: true);
+            File.Copy(actualDependencySourcePath, actualDependencyPath, overwrite: true);
+            File.Copy(unrelatedAssemblySourcePath!, unrelatedAssemblyPath, overwrite: true);
+
+            var companionPaths = ToolPackBootstrap.GetTrustedBuiltInCompanionAssemblyPathsForTesting(trustedAssemblyPath);
+
+            Assert.DoesNotContain(Path.GetFullPath(unrelatedAssemblyPath), companionPaths, StringComparer.OrdinalIgnoreCase);
+        } finally {
+            Directory.Delete(tempRoot, recursive: true);
+        }
+    }
+
+    [Fact]
     public void BuildDiscoveryFingerprint_Changes_WhenWorkspaceBuiltInOutputProbingChanges() {
         var disabledFingerprint = ToolPackBootstrap.BuildDiscoveryFingerprint(new ToolPackBootstrapOptions {
             EnableBuiltInPackLoading = false,
@@ -2204,5 +2250,29 @@ public sealed class ToolPackBootstrapMetadataTests {
             "closed_source" => ToolPackSourceKind.ClosedSource,
             _ => ToolPackSourceKind.Builtin
         };
+    }
+
+    private static string FindRepoRoot() {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null) {
+            if (File.Exists(Path.Combine(directory.FullName, "IntelligenceX.sln"))) {
+                return directory.FullName;
+            }
+
+            directory = directory.Parent;
+        }
+
+        throw new InvalidOperationException("Unable to locate repository root from test base directory.");
+    }
+
+    private static string? ResolveFirstExistingAssemblyPath(string repoRoot, params string[] relativePaths) {
+        for (var i = 0; i < relativePaths.Length; i++) {
+            var candidate = Path.Combine(repoRoot, relativePaths[i]);
+            if (File.Exists(candidate)) {
+                return candidate;
+            }
+        }
+
+        return null;
     }
 }

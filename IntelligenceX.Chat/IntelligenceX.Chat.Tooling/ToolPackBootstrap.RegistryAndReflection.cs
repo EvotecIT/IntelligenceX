@@ -1449,36 +1449,9 @@ public static partial class ToolPackBootstrap {
     }
 
     private static void PreloadTrustedBuiltInCompanionAssemblies_NoLock(string trustedAssemblyPath) {
-        if (string.IsNullOrWhiteSpace(trustedAssemblyPath)) {
-            return;
-        }
-
-        string normalizedTrustedAssemblyPath;
-        string? trustedAssemblyDirectory;
-        try {
-            normalizedTrustedAssemblyPath = Path.GetFullPath(trustedAssemblyPath);
-            trustedAssemblyDirectory = Path.GetDirectoryName(normalizedTrustedAssemblyPath);
-        } catch (Exception) {
-            return;
-        }
-
-        if (string.IsNullOrWhiteSpace(trustedAssemblyDirectory) || !Directory.Exists(trustedAssemblyDirectory)) {
-            return;
-        }
-
-        IEnumerable<string> candidateAssemblyPaths;
-        try {
-            candidateAssemblyPaths = Directory.EnumerateFiles(trustedAssemblyDirectory, "*.dll", SearchOption.TopDirectoryOnly)
-                .Select(Path.GetFullPath)
-                .Where(path => !string.Equals(path, normalizedTrustedAssemblyPath, StringComparison.OrdinalIgnoreCase))
-                .OrderByDescending(static path => Path.GetFileName(path).StartsWith("System.", StringComparison.OrdinalIgnoreCase))
-                .ThenByDescending(static path => Path.GetFileName(path).StartsWith("Microsoft.", StringComparison.OrdinalIgnoreCase))
-                .ThenBy(static path => path, StringComparer.OrdinalIgnoreCase);
-        } catch (Exception) {
-            return;
-        }
-
-        foreach (var candidateAssemblyPath in candidateAssemblyPaths) {
+        var candidateAssemblyPaths = GetTrustedBuiltInCompanionAssemblyPathsCore(trustedAssemblyPath);
+        for (var i = 0; i < candidateAssemblyPaths.Count; i++) {
+            var candidateAssemblyPath = candidateAssemblyPaths[i];
             try {
                 var candidateAssemblyName = AssemblyName.GetAssemblyName(candidateAssemblyPath);
                 var requestedName = (candidateAssemblyName.Name ?? string.Empty).Trim();
@@ -1499,6 +1472,73 @@ public static partial class ToolPackBootstrap {
                 // Ignore companion preload failures. The runtime resolver still has a chance to load them lazily.
             }
         }
+    }
+
+    internal static IReadOnlyList<string> GetTrustedBuiltInCompanionAssemblyPathsForTesting(string trustedAssemblyPath) {
+        lock (BuiltInToolDependencyResolverGate) {
+            return GetTrustedBuiltInCompanionAssemblyPathsCore(trustedAssemblyPath);
+        }
+    }
+
+    private static IReadOnlyList<string> GetTrustedBuiltInCompanionAssemblyPathsCore(string trustedAssemblyPath) {
+        if (string.IsNullOrWhiteSpace(trustedAssemblyPath)) {
+            return Array.Empty<string>();
+        }
+
+        string normalizedTrustedAssemblyPath;
+        string? trustedAssemblyDirectory;
+        AssemblyDependencyResolver dependencyResolver;
+        try {
+            normalizedTrustedAssemblyPath = Path.GetFullPath(trustedAssemblyPath);
+            trustedAssemblyDirectory = Path.GetDirectoryName(normalizedTrustedAssemblyPath);
+            dependencyResolver = new AssemblyDependencyResolver(normalizedTrustedAssemblyPath);
+        } catch (Exception) {
+            return Array.Empty<string>();
+        }
+
+        if (string.IsNullOrWhiteSpace(trustedAssemblyDirectory) || !Directory.Exists(trustedAssemblyDirectory)) {
+            return Array.Empty<string>();
+        }
+
+        List<string> candidateAssemblyPaths;
+        try {
+            candidateAssemblyPaths = Directory.EnumerateFiles(trustedAssemblyDirectory, "*.dll", SearchOption.TopDirectoryOnly)
+                .Select(Path.GetFullPath)
+                .Where(path => !string.Equals(path, normalizedTrustedAssemblyPath, StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(static path => Path.GetFileName(path).StartsWith("System.", StringComparison.OrdinalIgnoreCase))
+                .ThenByDescending(static path => Path.GetFileName(path).StartsWith("Microsoft.", StringComparison.OrdinalIgnoreCase))
+                .ThenBy(static path => path, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        } catch (Exception) {
+            return Array.Empty<string>();
+        }
+
+        var filteredCandidateAssemblyPaths = new List<string>();
+        foreach (var candidateAssemblyPath in candidateAssemblyPaths) {
+            try {
+                var candidateAssemblyName = AssemblyName.GetAssemblyName(candidateAssemblyPath);
+                var requestedName = (candidateAssemblyName.Name ?? string.Empty).Trim();
+                if (requestedName.Length == 0) {
+                    continue;
+                }
+
+                var resolvedAssemblyPath = dependencyResolver.ResolveAssemblyToPath(candidateAssemblyName);
+                if (string.IsNullOrWhiteSpace(resolvedAssemblyPath)) {
+                    continue;
+                }
+
+                var normalizedResolvedAssemblyPath = Path.GetFullPath(resolvedAssemblyPath);
+                if (!string.Equals(normalizedResolvedAssemblyPath, candidateAssemblyPath, StringComparison.OrdinalIgnoreCase)) {
+                    continue;
+                }
+
+                filteredCandidateAssemblyPaths.Add(candidateAssemblyPath);
+            } catch (Exception) {
+                // Ignore malformed or unrelated sibling assemblies and keep companion filtering usable.
+            }
+        }
+
+        return filteredCandidateAssemblyPaths;
     }
 
     private static IReadOnlyList<string> BuildTrustedBuiltInDependencyProbeRoots(string trustedAssemblyPath, ToolPackBootstrapOptions options) {
