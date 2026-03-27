@@ -72,8 +72,57 @@ public sealed class HostRuntimeSelfReportTests {
         Assert.True(analysis.ModelRequested);
         Assert.True(analysis.ToolingRequested);
         Assert.Equal("What model/tools for DNS/AD?", analysis.UserRequestLiteral);
-        Assert.True(analysis.FromStructuredDirective);
-        Assert.Equal(RuntimeSelfReportDetectionSource.StructuredDirective, analysis.DetectionSource);
+        Assert.False(analysis.FromStructuredDirective);
+        Assert.Equal(RuntimeSelfReportDetectionSource.LexicalFallback, analysis.DetectionSource);
+    }
+
+    [Fact]
+    public void Analyze_DoesNotTrustDirectiveWithoutStructuredDetectionSource() {
+        var userText = string.Join(
+            Environment.NewLine,
+            RuntimeSelfReportDirective.BuildLines(
+                "Czego teraz uzywasz?",
+                compactReply: true,
+                toolingRequested: false));
+
+        var analysis = RuntimeSelfReportTurnClassifier.Analyze(userText);
+
+        Assert.False(analysis.IsRuntimeIntrospectionQuestion);
+        Assert.False(analysis.FromStructuredDirective);
+        Assert.Equal(RuntimeSelfReportDetectionSource.None, analysis.DetectionSource);
+    }
+
+    [Fact]
+    public void Analyze_DoesNotTrustDirectiveWithLexicalFallbackDetectionSource() {
+        var userText = string.Join(
+            Environment.NewLine,
+            RuntimeSelfReportDirective.BuildLines(
+                "Czego teraz uzywasz?",
+                compactReply: true,
+                detectionSource: RuntimeSelfReportDetectionSource.LexicalFallback,
+                toolingRequested: false));
+
+        var analysis = RuntimeSelfReportTurnClassifier.Analyze(userText);
+
+        Assert.False(analysis.IsRuntimeIntrospectionQuestion);
+        Assert.False(analysis.FromStructuredDirective);
+        Assert.Equal(RuntimeSelfReportDetectionSource.None, analysis.DetectionSource);
+    }
+
+    [Fact]
+    public void Analyze_DoesNotTrustStructuredDirectiveWithoutUserRequestLiteral() {
+        var userText = string.Join(
+            Environment.NewLine,
+            RuntimeSelfReportDirective.Marker,
+            "reply_shape: compact",
+            "detection_source: structured_directive",
+            "model_requested: true");
+
+        var analysis = RuntimeSelfReportTurnClassifier.Analyze(userText);
+
+        Assert.False(analysis.IsRuntimeIntrospectionQuestion);
+        Assert.False(analysis.FromStructuredDirective);
+        Assert.Equal(RuntimeSelfReportDetectionSource.None, analysis.DetectionSource);
     }
 
     [Fact]

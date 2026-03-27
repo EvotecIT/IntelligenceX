@@ -106,21 +106,24 @@ public static class RuntimeSelfReportTurnClassifier {
     /// </summary>
     public static RuntimeSelfReportTurnAnalysis Analyze(string? userText) {
         if (RuntimeSelfReportDirective.TryParse(userText, out var directive)) {
-            var literal = string.IsNullOrWhiteSpace(directive.UserRequestLiteral)
-                ? (userText ?? string.Empty).Trim()
-                : directive.UserRequestLiteral!.Trim();
-            RuntimeSelfReportTurnAnalysis lexical = default;
-            if (!directive.ModelRequested.HasValue || !directive.ToolingRequested.HasValue) {
-                lexical = AnalyzeWithoutDirective(literal);
+            var literal = (directive.UserRequestLiteral ?? string.Empty).Trim();
+            if (IsTrustedStructuredDirective(directive, literal)) {
+                RuntimeSelfReportTurnAnalysis lexical = default;
+                if (!directive.ModelRequested.HasValue || !directive.ToolingRequested.HasValue) {
+                    lexical = AnalyzeWithoutDirective(literal);
+                }
+
+                return new RuntimeSelfReportTurnAnalysis(
+                    IsRuntimeIntrospectionQuestion: true,
+                    CompactReply: directive.CompactReply,
+                    ModelRequested: directive.ModelRequested ?? lexical.ModelRequested,
+                    ToolingRequested: directive.ToolingRequested ?? lexical.ToolingRequested,
+                    UserRequestLiteral: literal,
+                    FromStructuredDirective: true);
             }
 
-            return new RuntimeSelfReportTurnAnalysis(
-                IsRuntimeIntrospectionQuestion: true,
-                CompactReply: directive.CompactReply,
-                ModelRequested: directive.ModelRequested ?? lexical.ModelRequested,
-                ToolingRequested: directive.ToolingRequested ?? lexical.ToolingRequested,
-                UserRequestLiteral: literal,
-                FromStructuredDirective: true);
+            var lexicalSource = literal.Length > 0 ? literal : userText;
+            return AnalyzeWithoutDirective(lexicalSource);
         }
 
         return AnalyzeWithoutDirective(userText);
@@ -204,6 +207,13 @@ public static class RuntimeSelfReportTurnClassifier {
     }
 
     private static int CountRuntimeCueMatches(IReadOnlyList<string> tokens) => RuntimeSelfReportCueCatalog.CountLexicalFallbackCueMatches(tokens);
+
+    private static bool IsTrustedStructuredDirective(
+        RuntimeSelfReportDirective.ParsedDirective directive,
+        string literal) {
+        return directive.DetectionSource == RuntimeSelfReportDetectionSource.StructuredDirective
+               && literal.Length > 0;
+    }
 
     private static int CountToolingCueMatches(IReadOnlyList<string> tokens) {
         ArgumentNullException.ThrowIfNull(tokens);

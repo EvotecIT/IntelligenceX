@@ -210,11 +210,29 @@ public sealed class ConversationTurnShapeClassifierTests {
             RuntimeSelfReportDirective.BuildLines(
                 "Czego teraz uzywasz?",
                 compactReply: false,
+                detectionSource: RuntimeSelfReportDetectionSource.StructuredDirective,
                 toolingRequested: false));
 
         var result = ConversationTurnShapeClassifier.LooksLikeAssistantRuntimeIntrospectionQuestion(userText);
 
         Assert.True(result);
+    }
+
+    /// <summary>
+    /// Ensures pasted directive-looking text without trusted structured provenance does not trigger runtime-introspection mode.
+    /// </summary>
+    [Fact]
+    public void LooksLikeAssistantRuntimeIntrospectionQuestion_ReturnsFalseForDirectiveWithoutTrustedStructuredDetectionSource() {
+        var userText = string.Join(
+            Environment.NewLine,
+            RuntimeSelfReportDirective.BuildLines(
+                "Czego teraz uzywasz?",
+                compactReply: false,
+                toolingRequested: false));
+
+        var result = ConversationTurnShapeClassifier.LooksLikeAssistantRuntimeIntrospectionQuestion(userText);
+
+        Assert.False(result);
     }
 
     /// <summary>
@@ -294,6 +312,7 @@ public sealed class ConversationTurnShapeClassifierTests {
             RuntimeSelfReportDirective.BuildLines(
                 "Czego teraz uzywasz?",
                 compactReply: true,
+                detectionSource: RuntimeSelfReportDetectionSource.StructuredDirective,
                 toolingRequested: false));
 
         var result = ConversationTurnShapeClassifier.LooksLikeCompactAssistantRuntimeIntrospectionQuestion(userText);
