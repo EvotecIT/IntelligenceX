@@ -232,6 +232,91 @@ public sealed class ToolPackBootstrapMetadataTests {
     }
 
     [Fact]
+    public void GetTrustedBuiltInCompanionAssemblyPathsForTesting_ExcludesUnrelatedSiblingDlls() {
+        var repoRoot = FindRepoRoot();
+        var eventLogOutputRoot = Path.Combine(
+            repoRoot,
+            "IntelligenceX.Tools",
+            "IntelligenceX.Tools.EventLog",
+            "bin",
+            "Release",
+            "net10.0-windows");
+        var trustedAssemblySourcePath = Path.Combine(eventLogOutputRoot, "IntelligenceX.Tools.EventLog.dll");
+        var trustedDepsSourcePath = Path.Combine(eventLogOutputRoot, "IntelligenceX.Tools.EventLog.deps.json");
+        var actualDependencySourcePath = Path.Combine(eventLogOutputRoot, "System.Diagnostics.EventLog.dll");
+        var unrelatedAssemblySourcePath = ResolveFirstExistingAssemblyPath(
+            repoRoot,
+            @"IntelligenceX.Tools\IntelligenceX.Tools.DomainDetective\bin\Release\net10.0\IntelligenceX.Tools.DomainDetective.dll",
+            @"IntelligenceX.Tools\IntelligenceX.Tools.Email\bin\Release\net10.0\IntelligenceX.Tools.Email.dll",
+            @"IntelligenceX.Tools\IntelligenceX.Tools.DnsClientX\bin\Release\net10.0\IntelligenceX.Tools.DnsClientX.dll");
+
+        Assert.True(File.Exists(trustedAssemblySourcePath), $"Expected trusted assembly '{trustedAssemblySourcePath}' to exist.");
+        Assert.True(File.Exists(trustedDepsSourcePath), $"Expected trusted deps file '{trustedDepsSourcePath}' to exist.");
+        Assert.True(File.Exists(actualDependencySourcePath), $"Expected actual dependency '{actualDependencySourcePath}' to exist.");
+        Assert.True(!string.IsNullOrWhiteSpace(unrelatedAssemblySourcePath), "Expected at least one unrelated built-in tool assembly output to exist.");
+
+        var tempRoot = Path.Combine(Path.GetTempPath(), "ix-chat-companion-filter-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempRoot);
+
+        try {
+            var trustedAssemblyPath = Path.Combine(tempRoot, Path.GetFileName(trustedAssemblySourcePath));
+            var trustedDepsPath = Path.Combine(tempRoot, Path.GetFileName(trustedDepsSourcePath));
+            var actualDependencyPath = Path.Combine(tempRoot, Path.GetFileName(actualDependencySourcePath));
+            var unrelatedAssemblyPath = Path.Combine(tempRoot, Path.GetFileName(unrelatedAssemblySourcePath));
+
+            File.Copy(trustedAssemblySourcePath, trustedAssemblyPath, overwrite: true);
+            File.Copy(trustedDepsSourcePath, trustedDepsPath, overwrite: true);
+            File.Copy(actualDependencySourcePath, actualDependencyPath, overwrite: true);
+            File.Copy(unrelatedAssemblySourcePath!, unrelatedAssemblyPath, overwrite: true);
+
+            var companionPaths = ToolPackBootstrap.GetTrustedBuiltInCompanionAssemblyPathsForTesting(trustedAssemblyPath);
+
+            Assert.DoesNotContain(Path.GetFullPath(unrelatedAssemblyPath), companionPaths, StringComparer.OrdinalIgnoreCase);
+        } finally {
+            Directory.Delete(tempRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void ResolveTrustedBuiltInToolDependencyAssemblyForTesting_ReusesAlreadyLoadedCompanionAfterPreload() {
+        var repoRoot = FindRepoRoot();
+        var eventLogOutputRoot = Path.Combine(
+            repoRoot,
+            "IntelligenceX.Tools",
+            "IntelligenceX.Tools.EventLog",
+            "bin",
+            "Release",
+            "net10.0-windows");
+        var trustedAssemblyPath = Path.Combine(eventLogOutputRoot, "IntelligenceX.Tools.EventLog.dll");
+        var dependencyAssemblyPath = Path.Combine(eventLogOutputRoot, "System.Diagnostics.EventLog.dll");
+
+        Assert.True(File.Exists(trustedAssemblyPath), $"Expected trusted assembly '{trustedAssemblyPath}' to exist.");
+        Assert.True(File.Exists(dependencyAssemblyPath), $"Expected dependency assembly '{dependencyAssemblyPath}' to exist.");
+
+        ToolPackBootstrap.EnsureBuiltInToolDependencyResolverConfiguredForTesting(
+            trustedAssemblyPath,
+            new ToolPackBootstrapOptions());
+
+        var dependencyAssemblyName = AssemblyName.GetAssemblyName(dependencyAssemblyPath);
+        var expectedLoadedAssembly = AppDomain.CurrentDomain.GetAssemblies()
+            .FirstOrDefault(loadedAssembly =>
+                string.Equals(loadedAssembly.GetName().Name, dependencyAssemblyName.Name, StringComparison.OrdinalIgnoreCase));
+
+        Assert.NotNull(expectedLoadedAssembly);
+
+        var loadAttempts = 0;
+        var resolvedAssembly = ToolPackBootstrap.ResolveTrustedBuiltInToolDependencyAssemblyForTesting(
+            dependencyAssemblyName,
+            _ => {
+                loadAttempts++;
+                throw new InvalidOperationException("Resolver should reuse the already loaded companion assembly.");
+            });
+
+        Assert.Same(expectedLoadedAssembly, resolvedAssembly);
+        Assert.Equal(0, loadAttempts);
+    }
+
+    [Fact]
     public void BuildDiscoveryFingerprint_Changes_WhenWorkspaceBuiltInOutputProbingChanges() {
         var disabledFingerprint = ToolPackBootstrap.BuildDiscoveryFingerprint(new ToolPackBootstrapOptions {
             EnableBuiltInPackLoading = false,
@@ -415,6 +500,40 @@ public sealed class ToolPackBootstrapMetadataTests {
 
             Assert.True(resolved);
             Assert.Equal(Path.GetFullPath(destinationAssemblyPath), trustedAssemblyPath, ignoreCase: true);
+        } finally {
+            Directory.Delete(tempRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void BuildTrustedBuiltInDependencyProbeRoots_IncludesTrustedAssemblyDirectoryBeforeConfiguredProbeRoots() {
+        var buildProbeRootsMethod = typeof(ToolPackBootstrap).GetMethod(
+            "BuildTrustedBuiltInDependencyProbeRoots",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(buildProbeRootsMethod);
+
+        var tempRoot = Path.Combine(Path.GetTempPath(), "ix-chat-built-in-deps-" + Guid.NewGuid().ToString("N"));
+        var trustedAssemblyRoot = Path.Combine(tempRoot, "trusted");
+        var configuredProbeRoot = Path.Combine(tempRoot, "configured");
+        Directory.CreateDirectory(trustedAssemblyRoot);
+        Directory.CreateDirectory(configuredProbeRoot);
+
+        try {
+            var trustedAssemblyPath = Path.Combine(trustedAssemblyRoot, "Synthetic.Tools.dll");
+            File.WriteAllBytes(trustedAssemblyPath, Array.Empty<byte>());
+
+            var probeRoots = Assert.IsAssignableFrom<IReadOnlyList<string>>(buildProbeRootsMethod!.Invoke(
+                null,
+                new object?[] {
+                    trustedAssemblyPath,
+                    new ToolPackBootstrapOptions {
+                        BuiltInToolProbePaths = new[] { configuredProbeRoot }
+                    }
+                }));
+
+            Assert.True(probeRoots.Count >= 2);
+            Assert.Equal(Path.GetFullPath(trustedAssemblyRoot), probeRoots[0], ignoreCase: true);
+            Assert.Contains(probeRoots, path => string.Equals(path, Path.GetFullPath(configuredProbeRoot), StringComparison.OrdinalIgnoreCase));
         } finally {
             Directory.Delete(tempRoot, recursive: true);
         }
@@ -2170,5 +2289,29 @@ public sealed class ToolPackBootstrapMetadataTests {
             "closed_source" => ToolPackSourceKind.ClosedSource,
             _ => ToolPackSourceKind.Builtin
         };
+    }
+
+    private static string FindRepoRoot() {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null) {
+            if (File.Exists(Path.Combine(directory.FullName, "IntelligenceX.sln"))) {
+                return directory.FullName;
+            }
+
+            directory = directory.Parent;
+        }
+
+        throw new InvalidOperationException("Unable to locate repository root from test base directory.");
+    }
+
+    private static string? ResolveFirstExistingAssemblyPath(string repoRoot, params string[] relativePaths) {
+        for (var i = 0; i < relativePaths.Length; i++) {
+            var candidate = Path.Combine(repoRoot, relativePaths[i]);
+            if (File.Exists(candidate)) {
+                return candidate;
+            }
+        }
+
+        return null;
     }
 }

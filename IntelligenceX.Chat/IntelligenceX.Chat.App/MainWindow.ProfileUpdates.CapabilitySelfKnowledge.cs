@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using IntelligenceX.Chat.Abstractions;
 using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Tools;
@@ -27,12 +28,14 @@ public sealed partial class MainWindow {
             _toolCatalogCapabilitySnapshot,
             BuildToolCatalogExecutionSummary(),
             _toolCatalogDefinitions.Count == 0 ? null : _toolCatalogDefinitions.Values,
-            runtimeIntrospectionMode);
+            runtimeIntrospectionMode,
+            RuntimeSelfReportDetectionSource.None);
     }
 
     internal static IReadOnlyList<string> BuildCapabilitySelfKnowledgeLines(
         SessionPolicyDto? sessionPolicy,
-        bool runtimeIntrospectionMode = false) {
+        bool runtimeIntrospectionMode = false,
+        RuntimeSelfReportDetectionSource runtimeSelfReportDetectionSource = RuntimeSelfReportDetectionSource.None) {
         return BuildCapabilitySelfKnowledgeLines(
             sessionPolicy,
             toolCatalogPacks: null,
@@ -41,7 +44,8 @@ public sealed partial class MainWindow {
             toolCatalogCapabilitySnapshot: null,
             toolCatalogExecutionSummary: null,
             toolCatalogTools: null,
-            runtimeIntrospectionMode: runtimeIntrospectionMode);
+            runtimeIntrospectionMode: runtimeIntrospectionMode,
+            runtimeSelfReportDetectionSource: runtimeSelfReportDetectionSource);
     }
 
     internal static IReadOnlyList<string> BuildCapabilitySelfKnowledgeLines(
@@ -52,7 +56,8 @@ public sealed partial class MainWindow {
         SessionCapabilitySnapshotDto? toolCatalogCapabilitySnapshot = null,
         ToolCatalogExecutionSummary? toolCatalogExecutionSummary = null,
         IReadOnlyCollection<ToolDefinitionDto>? toolCatalogTools = null,
-        bool runtimeIntrospectionMode = false) {
+        bool runtimeIntrospectionMode = false,
+        RuntimeSelfReportDetectionSource runtimeSelfReportDetectionSource = RuntimeSelfReportDetectionSource.None) {
         var lines = new List<string>();
         var toolingMetadata = RuntimeToolingMetadataResolver.Resolve(
             sessionPolicy,
@@ -63,6 +68,9 @@ public sealed partial class MainWindow {
         var effectivePacks = toolingMetadata.Packs;
         var effectivePlugins = toolingMetadata.Plugins;
         var routingCatalog = sessionPolicy?.RoutingCatalog ?? toolCatalogRoutingCatalog;
+        var narrowRuntimeIntrospectionContext = ShouldNarrowRuntimeIntrospectionCapabilitySelfKnowledge(
+            runtimeIntrospectionMode,
+            runtimeSelfReportDetectionSource);
         var enabledPackNames = BuildEnabledPackDisplayNames(effectivePacks);
         if (enabledPackNames.Count > 0) {
             lines.Add("Areas you can help with here include " + string.Join(", ", enabledPackNames) + ".");
@@ -75,9 +83,11 @@ public sealed partial class MainWindow {
                 lines.Add("Remote reachability right now is " + DescribeReachabilityMode(snapshot.RemoteReachabilityMode) + ".");
             }
 
-            AddExecutionLocalityGuidance(lines, effectivePacks, toolCatalogExecutionSummary);
+            if (!narrowRuntimeIntrospectionContext) {
+                AddExecutionLocalityGuidance(lines, effectivePacks, toolCatalogExecutionSummary);
+            }
 
-            if (snapshot.Autonomy is not null) {
+            if (!narrowRuntimeIntrospectionContext && snapshot.Autonomy is not null) {
                 var remoteCapablePackNames = BuildPackDisplayNamesForIds(effectivePacks, snapshot.Autonomy.RemoteCapablePackIds);
                 if (remoteCapablePackNames.Count > 0) {
                     lines.Add(ToolCapabilityGuidanceText.BuildRemoteReadyAreasLine(remoteCapablePackNames));
@@ -95,7 +105,7 @@ public sealed partial class MainWindow {
                 }
             }
 
-            if (snapshot.Autonomy is null && effectivePacks.Length > 0) {
+            if (!narrowRuntimeIntrospectionContext && snapshot.Autonomy is null && effectivePacks.Length > 0) {
                 var remoteCapablePackNames = BuildRemoteCapablePackDisplayNames(effectivePacks);
                 if (remoteCapablePackNames.Count > 0) {
                     lines.Add(ToolCapabilityGuidanceText.BuildRemoteReadyAreasLine(remoteCapablePackNames));
@@ -111,48 +121,56 @@ public sealed partial class MainWindow {
                 }
             }
 
-            var routingReadinessHighlights = NormalizeRoutingAutonomyHighlights(routingCatalog?.AutonomyReadinessHighlights);
-            if (routingReadinessHighlights.Count > 0) {
-                lines.Add("Routing autonomy right now includes " + string.Join("; ", routingReadinessHighlights) + ".");
-            }
+            if (!narrowRuntimeIntrospectionContext) {
+                var routingReadinessHighlights = NormalizeRoutingAutonomyHighlights(routingCatalog?.AutonomyReadinessHighlights);
+                if (routingReadinessHighlights.Count > 0) {
+                    lines.Add("Routing autonomy right now includes " + string.Join("; ", routingReadinessHighlights) + ".");
+                }
 
-            AddPluginSourceGuidance(lines, effectivePlugins, effectivePacks, runtimeIntrospectionMode);
-            AddDeferredWorkAffordanceGuidance(lines, snapshot, runtimeIntrospectionMode);
+                AddPluginSourceGuidance(lines, effectivePlugins, effectivePacks, runtimeIntrospectionMode);
+                AddDeferredWorkAffordanceGuidance(lines, snapshot, runtimeIntrospectionMode);
 
-            if (snapshot.ParityMissingCapabilityCount > 0) {
-                lines.Add($"There are {snapshot.ParityMissingCapabilityCount} upstream read-only capability gaps still not surfaced through chat, so do not promise them as live tools yet.");
-            } else if (snapshot.ParityAttentionCount > 0) {
-                lines.Add("Some upstream capability families are intentionally governed or still gated, so keep promises anchored to the live registered tools above.");
+                if (snapshot.ParityMissingCapabilityCount > 0) {
+                    lines.Add($"There are {snapshot.ParityMissingCapabilityCount} upstream read-only capability gaps still not surfaced through chat, so do not promise them as live tools yet.");
+                } else if (snapshot.ParityAttentionCount > 0) {
+                    lines.Add("Some upstream capability families are intentionally governed or still gated, so keep promises anchored to the live registered tools above.");
+                }
             }
         } else {
             if (enabledPackNames.Count == 0) {
                 lines.Add("Session capabilities are still loading, so avoid pretending to have tools you cannot verify.");
             } else {
                 lines.Add(ToolCapabilityGuidanceText.BuildToolingAvailabilityLine(toolingAvailable: true));
-                AddExecutionLocalityGuidance(lines, effectivePacks, toolCatalogExecutionSummary);
-
-                var remoteCapablePackNames = BuildRemoteCapablePackDisplayNames(effectivePacks);
-                if (remoteCapablePackNames.Count > 0) {
-                    lines.Add(ToolCapabilityGuidanceText.BuildRemoteReadyAreasLine(remoteCapablePackNames));
+                if (!narrowRuntimeIntrospectionContext) {
+                    AddExecutionLocalityGuidance(lines, effectivePacks, toolCatalogExecutionSummary);
                 }
 
-                var crossPackTargetNames = BuildCrossPackTargetDisplayNames(effectivePacks);
-                if (crossPackTargetNames.Count > 0) {
-                    lines.Add(ToolRepresentativeExamples.BuildCrossPackAvailabilityLine(crossPackTargetNames, "live"));
-                }
+                if (!narrowRuntimeIntrospectionContext) {
+                    var remoteCapablePackNames = BuildRemoteCapablePackDisplayNames(effectivePacks);
+                    if (remoteCapablePackNames.Count > 0) {
+                        lines.Add(ToolCapabilityGuidanceText.BuildRemoteReadyAreasLine(remoteCapablePackNames));
+                    }
 
-                if (HasContractGuidedPackAutonomy(effectivePacks)) {
-                    lines.Add(ToolCapabilityGuidanceText.BuildContractGuidedAutonomyLine());
+                    var crossPackTargetNames = BuildCrossPackTargetDisplayNames(effectivePacks);
+                    if (crossPackTargetNames.Count > 0) {
+                        lines.Add(ToolRepresentativeExamples.BuildCrossPackAvailabilityLine(crossPackTargetNames, "live"));
+                    }
+
+                    if (HasContractGuidedPackAutonomy(effectivePacks)) {
+                        lines.Add(ToolCapabilityGuidanceText.BuildContractGuidedAutonomyLine());
+                    }
                 }
             }
 
-            var routingReadinessHighlights = NormalizeRoutingAutonomyHighlights(routingCatalog?.AutonomyReadinessHighlights);
-            if (routingReadinessHighlights.Count > 0) {
-                lines.Add("Routing autonomy right now includes " + string.Join("; ", routingReadinessHighlights) + ".");
-            }
+            if (!narrowRuntimeIntrospectionContext) {
+                var routingReadinessHighlights = NormalizeRoutingAutonomyHighlights(routingCatalog?.AutonomyReadinessHighlights);
+                if (routingReadinessHighlights.Count > 0) {
+                    lines.Add("Routing autonomy right now includes " + string.Join("; ", routingReadinessHighlights) + ".");
+                }
 
-            AddPluginSourceGuidance(lines, effectivePlugins, effectivePacks, runtimeIntrospectionMode);
-            AddDeferredWorkAffordanceGuidance(lines, snapshot, runtimeIntrospectionMode);
+                AddPluginSourceGuidance(lines, effectivePlugins, effectivePacks, runtimeIntrospectionMode);
+                AddDeferredWorkAffordanceGuidance(lines, snapshot, runtimeIntrospectionMode);
+            }
         }
 
         var representativeExamples = runtimeIntrospectionMode
@@ -167,6 +185,10 @@ public sealed partial class MainWindow {
                 lines.Add("If tooling details are still sparse, answer with only confirmed runtime or model facts and say the rest is still loading.");
             }
 
+            if (narrowRuntimeIntrospectionContext) {
+                lines.Add("For lexical-fallback runtime self-report, stay anchored to the confirmed enabled areas, tooling availability, and reachability above until the user asks for deeper runtime provenance.");
+            }
+
             lines.Add("For runtime self-report, mention only the live tooling or capability areas that are relevant to the user's scope.");
             lines.Add("Keep this section practical and concise; exact runtime/model/tool limits belong in the runtime capability handshake.");
         } else {
@@ -176,6 +198,13 @@ public sealed partial class MainWindow {
         }
 
         return lines;
+    }
+
+    private static bool ShouldNarrowRuntimeIntrospectionCapabilitySelfKnowledge(
+        bool runtimeIntrospectionMode,
+        RuntimeSelfReportDetectionSource runtimeSelfReportDetectionSource) {
+        return runtimeIntrospectionMode
+               && runtimeSelfReportDetectionSource == RuntimeSelfReportDetectionSource.LexicalFallback;
     }
 
     private static List<string> BuildEnabledPackDisplayNames(IReadOnlyList<ToolPackInfoDto>? packs) {

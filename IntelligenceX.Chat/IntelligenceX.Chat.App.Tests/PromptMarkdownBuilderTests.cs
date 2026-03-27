@@ -1,4 +1,5 @@
 using System;
+using IntelligenceX.Chat.Abstractions;
 using IntelligenceX.Chat.App.Markdown;
 using Xunit;
 
@@ -39,6 +40,160 @@ public sealed class PromptMarkdownBuilderTests {
         Assert.True(memoryIndex > profileIndex);
         Assert.Contains("Check replication health and show a table.", markdown);
         Assert.Contains("Use this only as stable session metadata", markdown, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Ensures the thin request path can still carry a structured runtime self-report directive.
+    /// </summary>
+    [Fact]
+    public void BuildThinServiceRequest_IncludesRuntimeSelfReportDirectiveWhenProvided() {
+        var markdown = PromptMarkdownBuilder.BuildThinServiceRequest(
+            userText: "What model/tools for DNS/AD?",
+            runtimeSelfReportDirectiveLines: RuntimeSelfReportDirective.BuildLines(
+                "What model/tools for DNS/AD?",
+                compactReply: true,
+                toolingRequested: true));
+
+        Assert.Contains("User request:", markdown, StringComparison.Ordinal);
+        Assert.Contains("What model/tools for DNS/AD?", markdown, StringComparison.Ordinal);
+        Assert.Contains("ix:runtime-self-report:v1", markdown, StringComparison.Ordinal);
+        Assert.Contains("reply_shape: compact", markdown, StringComparison.Ordinal);
+        Assert.Contains("tooling_requested: true", markdown, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures weak lexical-fallback runtime self-report turns do not carry persistent-memory context on the thin path.
+    /// </summary>
+    [Fact]
+    public void BuildThinServiceRequest_OmitsPersistentMemoryForLexicalFallbackRuntimeSelfReport() {
+        var analysis = RuntimeSelfReportTurnClassifier.Analyze("What model are you using?");
+
+        var markdown = PromptMarkdownBuilder.BuildThinServiceRequest(
+            userText: "What model are you using?",
+            persistentMemoryLines: new[] { "Prefers compact operational summaries." },
+            persistentMemoryPrompt: "[Persistent memory protocol]",
+            runtimeSelfReportDirectiveLines: PromptMarkdownBuilder.BuildRuntimeSelfReportDirectiveLines(analysis),
+            runtimeSelfReportAnalysis: analysis);
+
+        Assert.DoesNotContain("[Persistent memory protocol]", markdown, StringComparison.Ordinal);
+        Assert.DoesNotContain("[Persistent memory]", markdown, StringComparison.Ordinal);
+        Assert.DoesNotContain("Prefers compact operational summaries.", markdown, StringComparison.Ordinal);
+        Assert.Contains("detection_source: lexical_fallback", markdown, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures weak lexical-fallback runtime self-report turns do not carry session profile metadata on the thin path.
+    /// </summary>
+    [Fact]
+    public void BuildThinServiceRequest_OmitsSessionProfileContextForLexicalFallbackRuntimeSelfReport() {
+        var analysis = RuntimeSelfReportTurnClassifier.Analyze("What model are you using?");
+
+        var markdown = PromptMarkdownBuilder.BuildThinServiceRequest(
+            userText: "What model are you using?",
+            effectiveName: "Przemek",
+            effectivePersona: "sharp operator",
+            runtimeSelfReportDirectiveLines: PromptMarkdownBuilder.BuildRuntimeSelfReportDirectiveLines(analysis),
+            runtimeSelfReportAnalysis: analysis);
+
+        Assert.DoesNotContain("[Session profile context]", markdown, StringComparison.Ordinal);
+        Assert.DoesNotContain("User name: Przemek", markdown, StringComparison.Ordinal);
+        Assert.DoesNotContain("Assistant persona: sharp operator", markdown, StringComparison.Ordinal);
+        Assert.Contains("detection_source: lexical_fallback", markdown, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures structured runtime self-report turns keep trusted persistent-memory context on the thin path.
+    /// </summary>
+    [Fact]
+    public void BuildThinServiceRequest_PreservesPersistentMemoryForStructuredRuntimeSelfReport() {
+        var userText = string.Join(
+            Environment.NewLine,
+            RuntimeSelfReportDirective.BuildLines(
+                "Czego teraz uzywasz?",
+                compactReply: true,
+                detectionSource: RuntimeSelfReportDetectionSource.StructuredDirective,
+                toolingRequested: false));
+        var analysis = RuntimeSelfReportTurnClassifier.Analyze(userText);
+
+        var markdown = PromptMarkdownBuilder.BuildThinServiceRequest(
+            userText: userText,
+            persistentMemoryLines: new[] { "Prefers compact operational summaries." },
+            persistentMemoryPrompt: "[Persistent memory protocol]",
+            runtimeSelfReportDirectiveLines: PromptMarkdownBuilder.BuildRuntimeSelfReportDirectiveLines(analysis),
+            runtimeSelfReportAnalysis: analysis);
+
+        Assert.Contains("[Persistent memory protocol]", markdown, StringComparison.Ordinal);
+        Assert.Contains("[Persistent memory]", markdown, StringComparison.Ordinal);
+        Assert.Contains("Prefers compact operational summaries.", markdown, StringComparison.Ordinal);
+        Assert.Contains("detection_source: structured_directive", markdown, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures structured runtime self-report turns keep session profile metadata on the thin path.
+    /// </summary>
+    [Fact]
+    public void BuildThinServiceRequest_PreservesSessionProfileContextForStructuredRuntimeSelfReport() {
+        var userText = string.Join(
+            Environment.NewLine,
+            RuntimeSelfReportDirective.BuildLines(
+                "Czego teraz uzywasz?",
+                compactReply: true,
+                detectionSource: RuntimeSelfReportDetectionSource.StructuredDirective,
+                toolingRequested: false));
+        var analysis = RuntimeSelfReportTurnClassifier.Analyze(userText);
+
+        var markdown = PromptMarkdownBuilder.BuildThinServiceRequest(
+            userText: userText,
+            effectiveName: "Przemek",
+            effectivePersona: "sharp operator",
+            runtimeSelfReportDirectiveLines: PromptMarkdownBuilder.BuildRuntimeSelfReportDirectiveLines(analysis),
+            runtimeSelfReportAnalysis: analysis);
+
+        Assert.Contains("[Session profile context]", markdown, StringComparison.Ordinal);
+        Assert.Contains("User name: Przemek", markdown, StringComparison.Ordinal);
+        Assert.Contains("Assistant persona: sharp operator", markdown, StringComparison.Ordinal);
+        Assert.Contains("detection_source: structured_directive", markdown, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures runtime self-report directive generation can be shared by thin and full prompt paths.
+    /// </summary>
+    [Fact]
+    public void BuildRuntimeSelfReportDirectiveLines_ReturnsCompactDirectiveForRuntimeQuestion() {
+        var lines = PromptMarkdownBuilder.BuildRuntimeSelfReportDirectiveLines(
+            RuntimeSelfReportTurnClassifier.Analyze("What model/tools for DNS/AD?"));
+
+        Assert.NotNull(lines);
+        Assert.Contains(RuntimeSelfReportDirective.Marker, lines!);
+        Assert.Contains("reply_shape: compact", lines!);
+        Assert.Contains("detection_source: lexical_fallback", lines!);
+        Assert.Contains("model_requested: true", lines!);
+        Assert.Contains("tooling_requested: true", lines!);
+    }
+
+    /// <summary>
+    /// Ensures tooling-only runtime introspection asks can narrow the structured directive away from model focus.
+    /// </summary>
+    [Fact]
+    public void BuildRuntimeSelfReportDirectiveLines_CanMarkToolingOnlyRuntimeQuestion() {
+        var lines = PromptMarkdownBuilder.BuildRuntimeSelfReportDirectiveLines(
+            RuntimeSelfReportTurnClassifier.Analyze("What tools are available right now?"));
+
+        Assert.NotNull(lines);
+        Assert.Contains("detection_source: lexical_fallback", lines!);
+        Assert.Contains("model_requested: false", lines!);
+        Assert.Contains("tooling_requested: true", lines!);
+    }
+
+    /// <summary>
+    /// Ensures directive generation stays disabled for ordinary non-meta turns.
+    /// </summary>
+    [Fact]
+    public void BuildRuntimeSelfReportDirectiveLines_ReturnsNullForNonRuntimeTurn() {
+        var lines = PromptMarkdownBuilder.BuildRuntimeSelfReportDirectiveLines(
+            RuntimeSelfReportTurnClassifier.Analyze("Check replication health across all DCs."));
+
+        Assert.Null(lines);
     }
 
     /// <summary>
@@ -255,9 +410,17 @@ public sealed class PromptMarkdownBuilderTests {
 
         Assert.Contains("[Conversation mode]", markdown);
         Assert.Contains("Mode: assistant_runtime_introspection_compact", markdown);
+        Assert.Contains("ix:runtime-self-report:v1", markdown, StringComparison.Ordinal);
+        Assert.Contains("reply_shape: compact", markdown, StringComparison.Ordinal);
+        Assert.Contains("detection_source: lexical_fallback", markdown, StringComparison.Ordinal);
+        Assert.Contains("model_requested: true", markdown, StringComparison.Ordinal);
+        Assert.Contains("tooling_requested: true", markdown, StringComparison.Ordinal);
+        Assert.Contains("user_request_literal: \"What model/tools for DNS/AD?\"", markdown, StringComparison.Ordinal);
         Assert.Contains("one or two short human sentences", markdown, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Do not use headings, bullet lists, inventories", markdown, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("mention the relevant tooling in plain language", markdown, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("lightweight lexical fallback", markdown, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Do not broaden a lexical-fallback self-report turn", markdown, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Do not run live checks", markdown, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -285,9 +448,329 @@ public sealed class PromptMarkdownBuilderTests {
 
         Assert.Contains("[Capability self-knowledge]", markdown);
         Assert.Contains("Mode: assistant_runtime_introspection_question", markdown);
+        Assert.Contains("ix:runtime-self-report:v1", markdown, StringComparison.Ordinal);
+        Assert.Contains("reply_shape: default", markdown, StringComparison.Ordinal);
+        Assert.Contains("detection_source: lexical_fallback", markdown, StringComparison.Ordinal);
+        Assert.Contains("model_requested: true", markdown, StringComparison.Ordinal);
+        Assert.Contains("tooling_requested: true", markdown, StringComparison.Ordinal);
         Assert.Contains("[Runtime capability handshake]", markdown);
         Assert.Contains("exact runtime/model/tool limits belong in the runtime capability handshake", markdown, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("lightweight lexical fallback", markdown, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("invite the task", markdown, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Ensures lexical-fallback runtime turns get a tighter runtime/capability budget than the structured runtime path.
+    /// </summary>
+    [Fact]
+    public void BuildServiceRequest_TrimsRuntimeHandshakeMoreAggressivelyForLexicalFallbackRuntimeTurn() {
+        var markdown = PromptMarkdownBuilder.BuildServiceRequest(
+            userText: "What model and tools are you using right now?",
+            effectiveName: null,
+            effectivePersona: null,
+            onboardingInProgress: false,
+            missingOnboardingFields: Array.Empty<string>(),
+            includeLiveProfileUpdates: false,
+            executionBehaviorPrompt: string.Empty,
+            capabilitySelfKnowledgeLines: new[] {
+                "cap-1",
+                "cap-2",
+                "cap-3"
+            },
+            runtimeCapabilityLines: new[] {
+                "runtime-1",
+                "runtime-2",
+                "runtime-3",
+                "runtime-4",
+                "runtime-5"
+            });
+
+        Assert.Contains("detection_source: lexical_fallback", markdown, StringComparison.Ordinal);
+        Assert.Contains("cap-1", markdown, StringComparison.Ordinal);
+        Assert.Contains("cap-2", markdown, StringComparison.Ordinal);
+        Assert.DoesNotContain("cap-3", markdown, StringComparison.Ordinal);
+        Assert.Contains("runtime-1", markdown, StringComparison.Ordinal);
+        Assert.Contains("runtime-4", markdown, StringComparison.Ordinal);
+        Assert.DoesNotContain("runtime-5", markdown, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures lexical-fallback runtime turns drop unrelated persistent-memory context on the full prompt path.
+    /// </summary>
+    [Fact]
+    public void BuildServiceRequest_OmitsPersistentMemoryForLexicalFallbackRuntimeTurn() {
+        var markdown = PromptMarkdownBuilder.BuildServiceRequest(
+            userText: "What model and tools are you using right now?",
+            effectiveName: null,
+            effectivePersona: null,
+            onboardingInProgress: false,
+            missingOnboardingFields: Array.Empty<string>(),
+            includeLiveProfileUpdates: false,
+            executionBehaviorPrompt: string.Empty,
+            persistentMemoryLines: new[] { "Prefers compact operational summaries." },
+            persistentMemoryPrompt: "[Persistent memory protocol]");
+
+        Assert.Contains("detection_source: lexical_fallback", markdown, StringComparison.Ordinal);
+        Assert.Contains("Ignore unrelated persistent memory", markdown, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("[Persistent memory protocol]", markdown, StringComparison.Ordinal);
+        Assert.DoesNotContain("[Persistent memory]", markdown, StringComparison.Ordinal);
+        Assert.DoesNotContain("Prefers compact operational summaries.", markdown, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures lexical-fallback runtime turns drop low-priority transcript and style context on the full prompt path.
+    /// </summary>
+    [Fact]
+    public void BuildServiceRequest_OmitsLowPriorityContextForLexicalFallbackRuntimeTurn() {
+        var markdown = PromptMarkdownBuilder.BuildServiceRequest(
+            userText: "What model and tools are you using right now?",
+            effectiveName: null,
+            effectivePersona: "sharp operator",
+            onboardingInProgress: false,
+            missingOnboardingFields: Array.Empty<string>(),
+            includeLiveProfileUpdates: false,
+            executionBehaviorPrompt: string.Empty,
+            localContextLines: new[] { "Assistant: Previous answer about replication health." },
+            conversationStyleLines: new[] { "Recent user style is terse and direct." },
+            personaGuidanceLines: new[] { "Prefer crisp and highly compressed delivery." },
+            continuationStateLines: new[] { "There is a pending follow-up about replication." });
+
+        Assert.Contains("detection_source: lexical_fallback", markdown, StringComparison.Ordinal);
+        Assert.DoesNotContain("[Conversation style]", markdown, StringComparison.Ordinal);
+        Assert.DoesNotContain("[Continuation state]", markdown, StringComparison.Ordinal);
+        Assert.DoesNotContain("[Persona guidance]", markdown, StringComparison.Ordinal);
+        Assert.DoesNotContain("[Local transcript context fallback]", markdown, StringComparison.Ordinal);
+        Assert.DoesNotContain("Recent user style is terse and direct.", markdown, StringComparison.Ordinal);
+        Assert.DoesNotContain("pending follow-up about replication", markdown, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("crisp and highly compressed delivery", markdown, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Ensures lexical-fallback runtime turns drop session profile metadata on the full prompt path.
+    /// </summary>
+    [Fact]
+    public void BuildServiceRequest_OmitsSessionProfileContextForLexicalFallbackRuntimeTurn() {
+        var markdown = PromptMarkdownBuilder.BuildServiceRequest(
+            userText: "What model and tools are you using right now?",
+            effectiveName: "Przemek",
+            effectivePersona: "sharp operator",
+            onboardingInProgress: false,
+            missingOnboardingFields: Array.Empty<string>(),
+            includeLiveProfileUpdates: false,
+            executionBehaviorPrompt: string.Empty);
+
+        Assert.Contains("detection_source: lexical_fallback", markdown, StringComparison.Ordinal);
+        Assert.DoesNotContain("[Session profile context]", markdown, StringComparison.Ordinal);
+        Assert.DoesNotContain("User name: Przemek", markdown, StringComparison.Ordinal);
+        Assert.DoesNotContain("Assistant persona: sharp operator", markdown, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures lexical-fallback runtime turns drop generic execution-behavior scaffolding on the full prompt path.
+    /// </summary>
+    [Fact]
+    public void BuildServiceRequest_OmitsExecutionBehaviorForLexicalFallbackRuntimeTurn() {
+        var markdown = PromptMarkdownBuilder.BuildServiceRequest(
+            userText: "What model and tools are you using right now?",
+            effectiveName: null,
+            effectivePersona: null,
+            onboardingInProgress: false,
+            missingOnboardingFields: Array.Empty<string>(),
+            includeLiveProfileUpdates: false,
+            executionBehaviorPrompt: "[Execution behavior]\n- Retry tools before asking user.");
+
+        Assert.Contains("detection_source: lexical_fallback", markdown, StringComparison.Ordinal);
+        Assert.DoesNotContain("[Execution behavior]", markdown, StringComparison.Ordinal);
+        Assert.DoesNotContain("Retry tools before asking user.", markdown, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures explicitly structured runtime self-report turns keep the trusted structured-scope guidance in the full prompt path.
+    /// </summary>
+    [Fact]
+    public void BuildServiceRequest_UsesStructuredDirectiveGuidanceForStructuredRuntimeIntrospectionQuestion() {
+        var userText = string.Join(
+            Environment.NewLine,
+            RuntimeSelfReportDirective.BuildLines(
+                "Czego teraz uzywasz?",
+                compactReply: false,
+                detectionSource: RuntimeSelfReportDetectionSource.StructuredDirective,
+                toolingRequested: false));
+
+        var markdown = PromptMarkdownBuilder.BuildServiceRequest(
+            userText: userText,
+            effectiveName: null,
+            effectivePersona: null,
+            onboardingInProgress: false,
+            missingOnboardingFields: Array.Empty<string>(),
+            includeLiveProfileUpdates: false,
+            executionBehaviorPrompt: string.Empty);
+
+        Assert.Contains("[Conversation mode]", markdown);
+        Assert.Contains("Mode: assistant_runtime_introspection_question", markdown);
+        Assert.Contains("detection_source: structured_directive", markdown, StringComparison.Ordinal);
+        Assert.Contains("structured scope", markdown, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("lightweight lexical fallback", markdown, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Ensures structured runtime self-report turns keep the broader runtime/capability budget.
+    /// </summary>
+    [Fact]
+    public void BuildServiceRequest_KeepsBroaderRuntimeHandshakeBudgetForStructuredRuntimeTurn() {
+        var userText = string.Join(
+            Environment.NewLine,
+            RuntimeSelfReportDirective.BuildLines(
+                "Czego teraz uzywasz?",
+                compactReply: false,
+                detectionSource: RuntimeSelfReportDetectionSource.StructuredDirective,
+                toolingRequested: false));
+
+        var markdown = PromptMarkdownBuilder.BuildServiceRequest(
+            userText: userText,
+            effectiveName: null,
+            effectivePersona: null,
+            onboardingInProgress: false,
+            missingOnboardingFields: Array.Empty<string>(),
+            includeLiveProfileUpdates: false,
+            executionBehaviorPrompt: string.Empty,
+            capabilitySelfKnowledgeLines: new[] {
+                "cap-1",
+                "cap-2",
+                "cap-3"
+            },
+            runtimeCapabilityLines: new[] {
+                "runtime-1",
+                "runtime-2",
+                "runtime-3",
+                "runtime-4",
+                "runtime-5"
+            });
+
+        Assert.Contains("detection_source: structured_directive", markdown, StringComparison.Ordinal);
+        Assert.Contains("cap-3", markdown, StringComparison.Ordinal);
+        Assert.Contains("runtime-5", markdown, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures structured runtime self-report turns keep persistent-memory context on the trusted full prompt path.
+    /// </summary>
+    [Fact]
+    public void BuildServiceRequest_PreservesPersistentMemoryForStructuredRuntimeTurn() {
+        var userText = string.Join(
+            Environment.NewLine,
+            RuntimeSelfReportDirective.BuildLines(
+                "Czego teraz uzywasz?",
+                compactReply: false,
+                detectionSource: RuntimeSelfReportDetectionSource.StructuredDirective,
+                toolingRequested: false));
+
+        var markdown = PromptMarkdownBuilder.BuildServiceRequest(
+            userText: userText,
+            effectiveName: null,
+            effectivePersona: null,
+            onboardingInProgress: false,
+            missingOnboardingFields: Array.Empty<string>(),
+            includeLiveProfileUpdates: false,
+            executionBehaviorPrompt: string.Empty,
+            persistentMemoryLines: new[] { "Prefers compact operational summaries." },
+            persistentMemoryPrompt: "[Persistent memory protocol]");
+
+        Assert.Contains("detection_source: structured_directive", markdown, StringComparison.Ordinal);
+        Assert.Contains("[Persistent memory protocol]", markdown, StringComparison.Ordinal);
+        Assert.Contains("[Persistent memory]", markdown, StringComparison.Ordinal);
+        Assert.Contains("Prefers compact operational summaries.", markdown, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures trusted structured runtime turns keep low-priority context available when explicitly provided.
+    /// </summary>
+    [Fact]
+    public void BuildServiceRequest_PreservesLowPriorityContextForStructuredRuntimeTurn() {
+        var userText = string.Join(
+            Environment.NewLine,
+            RuntimeSelfReportDirective.BuildLines(
+                "Czego teraz uzywasz?",
+                compactReply: false,
+                detectionSource: RuntimeSelfReportDetectionSource.StructuredDirective,
+                toolingRequested: false));
+
+        var markdown = PromptMarkdownBuilder.BuildServiceRequest(
+            userText: userText,
+            effectiveName: null,
+            effectivePersona: "sharp operator",
+            onboardingInProgress: false,
+            missingOnboardingFields: Array.Empty<string>(),
+            includeLiveProfileUpdates: false,
+            executionBehaviorPrompt: string.Empty,
+            localContextLines: new[] { "Assistant: Previous answer about replication health." },
+            conversationStyleLines: new[] { "Recent user style is terse and direct." },
+            personaGuidanceLines: new[] { "Prefer crisp and highly compressed delivery." },
+            continuationStateLines: new[] { "There is a pending follow-up about replication." });
+
+        Assert.Contains("detection_source: structured_directive", markdown, StringComparison.Ordinal);
+        Assert.Contains("[Conversation style]", markdown, StringComparison.Ordinal);
+        Assert.Contains("[Continuation state]", markdown, StringComparison.Ordinal);
+        Assert.Contains("[Persona guidance]", markdown, StringComparison.Ordinal);
+        Assert.Contains("[Local transcript context fallback]", markdown, StringComparison.Ordinal);
+        Assert.Contains("Recent user style is terse and direct.", markdown, StringComparison.Ordinal);
+        Assert.Contains("pending follow-up about replication", markdown, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("crisp and highly compressed delivery", markdown, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Ensures structured runtime self-report turns keep session profile metadata on the full prompt path.
+    /// </summary>
+    [Fact]
+    public void BuildServiceRequest_PreservesSessionProfileContextForStructuredRuntimeTurn() {
+        var userText = string.Join(
+            Environment.NewLine,
+            RuntimeSelfReportDirective.BuildLines(
+                "Czego teraz uzywasz?",
+                compactReply: false,
+                detectionSource: RuntimeSelfReportDetectionSource.StructuredDirective,
+                toolingRequested: false));
+
+        var markdown = PromptMarkdownBuilder.BuildServiceRequest(
+            userText: userText,
+            effectiveName: "Przemek",
+            effectivePersona: "sharp operator",
+            onboardingInProgress: false,
+            missingOnboardingFields: Array.Empty<string>(),
+            includeLiveProfileUpdates: false,
+            executionBehaviorPrompt: string.Empty);
+
+        Assert.Contains("detection_source: structured_directive", markdown, StringComparison.Ordinal);
+        Assert.Contains("[Session profile context]", markdown, StringComparison.Ordinal);
+        Assert.Contains("User name: Przemek", markdown, StringComparison.Ordinal);
+        Assert.Contains("Assistant persona: sharp operator", markdown, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures structured runtime self-report turns keep execution-behavior guidance on the trusted full prompt path.
+    /// </summary>
+    [Fact]
+    public void BuildServiceRequest_PreservesExecutionBehaviorForStructuredRuntimeTurn() {
+        var userText = string.Join(
+            Environment.NewLine,
+            RuntimeSelfReportDirective.BuildLines(
+                "Czego teraz uzywasz?",
+                compactReply: false,
+                detectionSource: RuntimeSelfReportDetectionSource.StructuredDirective,
+                toolingRequested: false));
+
+        var markdown = PromptMarkdownBuilder.BuildServiceRequest(
+            userText: userText,
+            effectiveName: null,
+            effectivePersona: null,
+            onboardingInProgress: false,
+            missingOnboardingFields: Array.Empty<string>(),
+            includeLiveProfileUpdates: false,
+            executionBehaviorPrompt: "[Execution behavior]\n- Retry tools before asking user.");
+
+        Assert.Contains("detection_source: structured_directive", markdown, StringComparison.Ordinal);
+        Assert.Contains("[Execution behavior]", markdown, StringComparison.Ordinal);
+        Assert.Contains("Retry tools before asking user.", markdown, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -340,7 +823,7 @@ public sealed class PromptMarkdownBuilderTests {
     }
 
     /// <summary>
-    /// Ensures low-priority supplemental sections are trimmed when prompt context grows too large.
+    /// Ensures lexical-fallback runtime turns keep only higher-priority runtime context when prompt context grows too large.
     /// </summary>
     [Fact]
     public void BuildServiceRequest_TrimsLowPrioritySupplementalSectionsUnderBudgetPressure() {
@@ -377,10 +860,12 @@ public sealed class PromptMarkdownBuilderTests {
                 "runtime-1", "runtime-2", "runtime-3", "runtime-4", "runtime-5", "runtime-6", "runtime-7", "runtime-8", "runtime-9"
             });
 
-        Assert.Contains("continuation-1", markdown, StringComparison.Ordinal);
+        Assert.DoesNotContain("continuation-1", markdown, StringComparison.Ordinal);
+        Assert.DoesNotContain(Environment.NewLine + "- style-1" + Environment.NewLine, markdown, StringComparison.Ordinal);
+        Assert.DoesNotContain(Environment.NewLine + "- persona-1" + Environment.NewLine, markdown, StringComparison.Ordinal);
         Assert.Contains("runtime-1", markdown, StringComparison.Ordinal);
-        Assert.DoesNotContain("local-5", markdown, StringComparison.Ordinal);
-        Assert.DoesNotContain("memory-5", markdown, StringComparison.Ordinal);
+        Assert.DoesNotContain("local-1", markdown, StringComparison.Ordinal);
+        Assert.DoesNotContain("memory-1", markdown, StringComparison.Ordinal);
     }
 
     /// <summary>

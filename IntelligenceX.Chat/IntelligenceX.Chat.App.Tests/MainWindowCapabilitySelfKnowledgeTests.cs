@@ -1,4 +1,5 @@
 using System;
+using IntelligenceX.Chat.Abstractions;
 using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.App;
@@ -693,6 +694,73 @@ public sealed class MainWindowCapabilitySelfKnowledgeTests {
         Assert.Contains(lines, line => line.Contains("Ops Bundle", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(lines, line => line.Contains("plugin folder", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(lines, line => line.Contains("(disabled)", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Ensures lexical-fallback runtime introspection narrows broader provenance/autonomy guidance until the user asks more explicitly.
+    /// </summary>
+    [Fact]
+    public void BuildCapabilitySelfKnowledgeLines_RuntimeMode_LexicalFallbackSuppressesBroaderProvenanceGuidance() {
+        var lines = MainWindow.BuildCapabilitySelfKnowledgeLines(
+            sessionPolicy: null,
+            toolCatalogPacks: new[] {
+                new ToolPackInfoDto { Id = "system", Name = "System", Tier = CapabilityTier.ReadOnly, Enabled = true, IsDangerous = false }
+            },
+            toolCatalogPlugins: new[] {
+                new PluginInfoDto {
+                    Id = "ops_bundle",
+                    Name = "Ops Bundle",
+                    Origin = "plugin_folder",
+                    SourceKind = ToolPackSourceKind.ClosedSource,
+                    DefaultEnabled = true,
+                    Enabled = true,
+                    IsDangerous = false,
+                    PackIds = new[] { "system" }
+                }
+            },
+            toolCatalogRoutingCatalog: new SessionRoutingCatalogDiagnosticsDto {
+                AutonomyReadinessHighlights = new[] { "remote host-targeting is ready for representative tools." }
+            },
+            toolCatalogCapabilitySnapshot: new SessionCapabilitySnapshotDto {
+                RegisteredTools = 1,
+                EnabledPackCount = 1,
+                PluginCount = 1,
+                EnabledPluginCount = 1,
+                ToolingAvailable = true,
+                AllowedRootCount = 1,
+                RemoteReachabilityMode = "local_only",
+                FamilyActions = Array.Empty<SessionRoutingFamilyActionSummaryDto>(),
+                DeferredWorkAffordances = new[] {
+                    new SessionCapabilityDeferredWorkAffordanceDto {
+                        CapabilityId = "email",
+                        DisplayName = "Email",
+                        Summary = "Compose or send email follow-up.",
+                        AvailabilityMode = "pack_declared",
+                        SupportsBackgroundExecution = true,
+                        PackIds = new[] { "system" },
+                        RoutingFamilies = Array.Empty<string>(),
+                        RepresentativeExamples = new[] { "send an email summary after the run" }
+                    }
+                }
+            },
+            toolCatalogTools: new[] {
+                new ToolDefinitionDto {
+                    Name = "system_metrics_summary",
+                    Description = "Collect system metrics.",
+                    PackId = "system",
+                    PackName = "System",
+                    ExecutionScope = "local_or_remote",
+                    SupportsRemoteHostTargeting = true
+                }
+            },
+            runtimeIntrospectionMode: true,
+            runtimeSelfReportDetectionSource: RuntimeSelfReportDetectionSource.LexicalFallback);
+
+        Assert.Contains(lines, line => line.Contains("confirmed enabled areas", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(lines, line => line.Contains("Registered tool sources currently visible include", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(lines, line => line.Contains("Deferred follow-up affordances currently registered", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(lines, line => line.Contains("Routing autonomy right now includes", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(lines, line => line.Contains("execution-aware tools", StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>

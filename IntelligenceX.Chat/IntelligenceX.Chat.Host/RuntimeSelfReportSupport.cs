@@ -10,7 +10,12 @@ namespace IntelligenceX.Chat.Host;
 
 internal static class RuntimeSelfReportSupport {
     internal static bool LooksLikeCompactRuntimeSelfReportQuestion(string? userText) {
-        return RuntimeSelfReportTurnClassifier.LooksLikeCompactRuntimeIntrospectionQuestion(userText);
+        return LooksLikeCompactRuntimeSelfReportQuestion(RuntimeSelfReportTurnClassifier.Analyze(userText));
+    }
+
+    internal static bool LooksLikeCompactRuntimeSelfReportQuestion(
+        RuntimeSelfReportTurnClassifier.RuntimeSelfReportTurnAnalysis runtimeSelfReportAnalysis) {
+        return runtimeSelfReportAnalysis.CompactReply;
     }
 
     internal static string BuildCompactRuntimeSelfReportInput(
@@ -18,20 +23,53 @@ internal static class RuntimeSelfReportSupport {
         OpenAITransportKind transport,
         string? model,
         IReadOnlyList<ToolDefinition> toolDefinitions) {
-        var normalizedUserText = (userText ?? string.Empty).Trim();
+        return BuildCompactRuntimeSelfReportInput(
+            RuntimeSelfReportTurnClassifier.Analyze(userText),
+            transport,
+            model,
+            toolDefinitions);
+    }
+
+    internal static string BuildCompactRuntimeSelfReportInput(
+        RuntimeSelfReportTurnClassifier.RuntimeSelfReportTurnAnalysis runtimeSelfReportAnalysis,
+        OpenAITransportKind transport,
+        string? model,
+        IReadOnlyList<ToolDefinition> toolDefinitions) {
+        var normalizedUserText = runtimeSelfReportAnalysis.UserRequestLiteral;
         var builder = new StringBuilder();
         builder.AppendLine("[Runtime self-report facts]");
         builder.AppendLine("ix:runtime-self-report:v1");
         builder.Append("active_model: ").AppendLine(string.IsNullOrWhiteSpace(model) ? "(provider default)" : model.Trim());
         builder.Append("transport: ").AppendLine(DescribeCompactTransport(transport));
-        builder.Append("tooling_requested: ").AppendLine(ContainsToolingCue(normalizedUserText) ? "true" : "false");
-        builder.Append("available_pack_ids: ").AppendLine(FormatCompactAvailability(CollectAvailablePackIds(toolDefinitions)));
-        builder.Append("available_domain_families: ").AppendLine(FormatCompactAvailability(CollectAvailableDomainFamilies(toolDefinitions)));
+        builder.Append("detection_source: ").AppendLine(DescribeDetectionSource(runtimeSelfReportAnalysis.DetectionSource));
+        var modelRequested = runtimeSelfReportAnalysis.ModelRequested;
+        builder.Append("model_requested: ").AppendLine(modelRequested ? "true" : "false");
+        var toolingRequested = runtimeSelfReportAnalysis.ToolingRequested;
+        builder.Append("tooling_requested: ").AppendLine(toolingRequested ? "true" : "false");
+        if (ShouldIncludeCompactAvailabilityInventory(runtimeSelfReportAnalysis.DetectionSource)) {
+            builder.Append("available_pack_ids: ").AppendLine(FormatCompactAvailability(CollectAvailablePackIds(toolDefinitions)));
+            builder.Append("available_domain_families: ").AppendLine(FormatCompactAvailability(CollectAvailableDomainFamilies(toolDefinitions)));
+        } else {
+            builder.AppendLine("available_pack_ids: suppressed_for_lexical_fallback");
+            builder.AppendLine("available_domain_families: suppressed_for_lexical_fallback");
+        }
         builder.AppendLine("reply_shape: compact");
         builder.AppendLine("reply_rules:");
         builder.AppendLine("- Answer in 1-2 short human sentences.");
-        builder.AppendLine("- Mention the exact active model when the user asks about model or runtime.");
-        builder.AppendLine("- Mention tooling only if the user asked about tooling.");
+        builder.AppendLine(modelRequested
+            ? "- Mention the exact active model when the user asked about model or runtime."
+            : "- Do not mention the active model unless the user asked about model or runtime.");
+        builder.AppendLine(toolingRequested
+            ? "- Mention tooling because the user explicitly asked about tooling."
+            : "- Do not mention tooling unless the user explicitly asked about tooling.");
+        if (runtimeSelfReportAnalysis.DetectionSource == RuntimeSelfReportDetectionSource.LexicalFallback) {
+            builder.AppendLine("- This request came from lightweight lexical fallback, so answer only the exact runtime or tooling facet already marked above.");
+            builder.AppendLine("- Do not expand into extra capability detail, inventory breadth, or speculative explanations beyond the exact requested facet.");
+            builder.AppendLine("- Treat pack or domain-family inventory as suppressed unless the user asks for deeper runtime provenance explicitly.");
+        } else if (runtimeSelfReportAnalysis.DetectionSource == RuntimeSelfReportDetectionSource.StructuredDirective) {
+            builder.AppendLine("- This request was explicitly marked as runtime self-report, so follow the structured scope above without reinterpreting the user text.");
+        }
+
         builder.AppendLine("- Do not use headings, bullet lists, inventories, or capability maps.");
         builder.AppendLine();
         builder.Append("user_request_literal: ").AppendLine(EscapePromptLiteral(normalizedUserText));
@@ -46,6 +84,18 @@ internal static class RuntimeSelfReportSupport {
             OpenAITransportKind.CopilotCli => "copilot-cli",
             _ => transport.ToString().Trim().ToLowerInvariant()
         };
+    }
+
+    private static string DescribeDetectionSource(RuntimeSelfReportDetectionSource detectionSource) {
+        return detectionSource switch {
+            RuntimeSelfReportDetectionSource.LexicalFallback => "lexical_fallback",
+            RuntimeSelfReportDetectionSource.StructuredDirective => "structured_directive",
+            _ => "none"
+        };
+    }
+
+    private static bool ShouldIncludeCompactAvailabilityInventory(RuntimeSelfReportDetectionSource detectionSource) {
+        return detectionSource != RuntimeSelfReportDetectionSource.LexicalFallback;
     }
 
     private static IReadOnlyList<string> CollectAvailablePackIds(IReadOnlyList<ToolDefinition> toolDefinitions) {
@@ -78,13 +128,6 @@ internal static class RuntimeSelfReportSupport {
 
     private static string FormatCompactAvailability(IReadOnlyList<string> values) {
         return values.Count == 0 ? "(none)" : string.Join(", ", values);
-    }
-
-    private static bool ContainsToolingCue(string text) {
-        var normalized = (text ?? string.Empty).Trim();
-        return normalized.IndexOf("tool", StringComparison.OrdinalIgnoreCase) >= 0
-               || normalized.IndexOf("pack", StringComparison.OrdinalIgnoreCase) >= 0
-               || normalized.IndexOf("plugin", StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
     private static string EscapePromptLiteral(string text) {

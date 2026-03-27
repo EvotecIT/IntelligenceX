@@ -1,3 +1,4 @@
+using IntelligenceX.Chat.Abstractions;
 using IntelligenceX.Chat.App;
 using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Abstractions.Protocol;
@@ -144,6 +145,75 @@ public sealed class MainWindowPromptContextGatingTests {
     }
 
     /// <summary>
+    /// Ensures lexical-fallback runtime self-report narrows capability self-knowledge to direct runtime facts instead of broader provenance detail.
+    /// </summary>
+    [Fact]
+    public void SelectCapabilitySelfKnowledgeLines_NarrowsRuntimeModeLinesForLexicalFallbackRuntimeQuestion() {
+        var result = MainWindow.SelectCapabilitySelfKnowledgeLines(
+            sessionPolicy: null,
+            toolCatalogPacks: new[] {
+                new ToolPackInfoDto { Id = "system", Name = "System", Tier = CapabilityTier.ReadOnly, Enabled = true, IsDangerous = false }
+            },
+            toolCatalogPlugins: new[] {
+                new PluginInfoDto {
+                    Id = "ops_bundle",
+                    Name = "Ops Bundle",
+                    Origin = "plugin_folder",
+                    SourceKind = ToolPackSourceKind.ClosedSource,
+                    DefaultEnabled = true,
+                    Enabled = true,
+                    IsDangerous = false,
+                    PackIds = new[] { "system" }
+                }
+            },
+            toolCatalogRoutingCatalog: new SessionRoutingCatalogDiagnosticsDto {
+                AutonomyReadinessHighlights = new[] { "remote host-targeting is ready for representative tools." }
+            },
+            toolCatalogCapabilitySnapshot: new SessionCapabilitySnapshotDto {
+                RegisteredTools = 1,
+                EnabledPackCount = 1,
+                PluginCount = 1,
+                EnabledPluginCount = 1,
+                ToolingAvailable = true,
+                AllowedRootCount = 1,
+                RemoteReachabilityMode = "local_only",
+                FamilyActions = Array.Empty<SessionRoutingFamilyActionSummaryDto>(),
+                DeferredWorkAffordances = new[] {
+                    new SessionCapabilityDeferredWorkAffordanceDto {
+                        CapabilityId = "email",
+                        DisplayName = "Email",
+                        Summary = "Compose or send email follow-up.",
+                        AvailabilityMode = "pack_declared",
+                        SupportsBackgroundExecution = true,
+                        PackIds = new[] { "system" },
+                        RoutingFamilies = Array.Empty<string>(),
+                        RepresentativeExamples = new[] { "send an email summary after the run" }
+                    }
+                }
+            },
+            toolCatalogTools: new[] {
+                new ToolDefinitionDto {
+                    Name = "system_metrics_summary",
+                    Description = "Collect system metrics.",
+                    PackId = "system",
+                    PackName = "System",
+                    ExecutionScope = "local_or_remote",
+                    SupportsRemoteHostTargeting = true
+                }
+            },
+            assistantCapabilityQuestion: false,
+            assistantRuntimeIntrospectionQuestion: true,
+            runtimeSelfReportDetectionSource: RuntimeSelfReportDetectionSource.LexicalFallback);
+
+        Assert.NotNull(result);
+        Assert.Contains(result!, line => line.Contains("confirmed enabled areas", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(result!, line => line.Contains("runtime capability handshake", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(result!, line => line.Contains("Registered tool sources currently visible include", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(result!, line => line.Contains("Deferred follow-up affordances currently registered", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(result!, line => line.Contains("Routing autonomy right now includes", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
     /// Ensures capability-question prompt context can surface tool-backed live examples when the tool catalog is available.
     /// </summary>
     [Fact]
@@ -206,6 +276,68 @@ public sealed class MainWindowPromptContextGatingTests {
             compactAssistantRuntimeIntrospectionQuestion: false);
 
         Assert.False(result);
+    }
+
+    /// <summary>
+    /// Ensures lexical-fallback runtime self-report prefers the compact runtime handshake path even when the raw question is broader.
+    /// </summary>
+    [Fact]
+    public void ShouldUseCompactRuntimeCapabilityContext_ReturnsTrueForLexicalFallbackRuntimeQuestion() {
+        var result = MainWindow.ShouldUseCompactRuntimeCapabilityContext(
+            assistantRuntimeIntrospectionQuestion: true,
+            compactAssistantRuntimeIntrospectionQuestion: false,
+            runtimeSelfReportDetectionSource: RuntimeSelfReportDetectionSource.LexicalFallback);
+
+        Assert.True(result);
+    }
+
+    /// <summary>
+    /// Ensures structured runtime self-report keeps the broader handshake path unless the turn is explicitly compact.
+    /// </summary>
+    [Fact]
+    public void ShouldUseCompactRuntimeCapabilityContext_ReturnsFalseForStructuredRuntimeQuestion() {
+        var result = MainWindow.ShouldUseCompactRuntimeCapabilityContext(
+            assistantRuntimeIntrospectionQuestion: true,
+            compactAssistantRuntimeIntrospectionQuestion: false,
+            runtimeSelfReportDetectionSource: RuntimeSelfReportDetectionSource.StructuredDirective);
+
+        Assert.False(result);
+    }
+
+    /// <summary>
+    /// Ensures compact lexical-fallback runtime handshakes omit execution-locality detail to stay narrowly scoped.
+    /// </summary>
+    [Fact]
+    public void ShouldIncludeExecutionLocalityInRuntimeCapabilityContext_ReturnsFalseForCompactLexicalFallbackRuntimeTurn() {
+        var result = MainWindow.ShouldIncludeExecutionLocalityInRuntimeCapabilityContext(
+            compactSelfReport: true,
+            runtimeSelfReportDetectionSource: RuntimeSelfReportDetectionSource.LexicalFallback);
+
+        Assert.False(result);
+    }
+
+    /// <summary>
+    /// Ensures compact structured runtime handshakes can still keep execution-locality detail on the trusted path.
+    /// </summary>
+    [Fact]
+    public void ShouldIncludeExecutionLocalityInRuntimeCapabilityContext_ReturnsTrueForCompactStructuredRuntimeTurn() {
+        var result = MainWindow.ShouldIncludeExecutionLocalityInRuntimeCapabilityContext(
+            compactSelfReport: true,
+            runtimeSelfReportDetectionSource: RuntimeSelfReportDetectionSource.StructuredDirective);
+
+        Assert.True(result);
+    }
+
+    /// <summary>
+    /// Ensures broader runtime handshakes always keep execution-locality detail regardless of provenance.
+    /// </summary>
+    [Fact]
+    public void ShouldIncludeExecutionLocalityInRuntimeCapabilityContext_ReturnsTrueForBroaderRuntimeTurn() {
+        var result = MainWindow.ShouldIncludeExecutionLocalityInRuntimeCapabilityContext(
+            compactSelfReport: false,
+            runtimeSelfReportDetectionSource: RuntimeSelfReportDetectionSource.LexicalFallback);
+
+        Assert.True(result);
     }
 
     /// <summary>

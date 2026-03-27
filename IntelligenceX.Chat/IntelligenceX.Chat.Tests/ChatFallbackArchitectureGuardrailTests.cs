@@ -191,6 +191,42 @@ public sealed class ChatFallbackArchitectureGuardrailTests {
     }
 
     [Fact]
+    public void ChatHostProject_ShouldNotReferenceBundledToolPackProjects_Directly() {
+        var repoRoot = FindRepoRoot();
+        var source = File.ReadAllText(Path.Combine(
+            repoRoot,
+            "IntelligenceX.Chat",
+            "IntelligenceX.Chat.Host",
+            "IntelligenceX.Chat.Host.csproj"));
+
+        var disallowedPackProjectTokens = new[] {
+            "IntelligenceX.Tools.DnsClientX",
+            "IntelligenceX.Tools.DomainDetective",
+            "IntelligenceX.Tools.Email",
+            "IntelligenceX.Tools.EventLog",
+            "IntelligenceX.Tools.FileSystem",
+            "IntelligenceX.Tools.OfficeIMO",
+            "IntelligenceX.Tools.PowerShell",
+            "IntelligenceX.Tools.ReviewerSetup"
+        };
+
+        for (var i = 0; i < disallowedPackProjectTokens.Length; i++) {
+            Assert.DoesNotContain(disallowedPackProjectTokens[i], source, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
+    public void PublishChatHostScript_ShouldBundleAndValidateToolArtifacts_WithoutHostProjectCoupling() {
+        var source = File.ReadAllText(GetBuildScriptPath(@"Build\Chat\Publish-ChatHost.ps1"));
+
+        Assert.Contains("function Publish-BundledToolProjects", source, StringComparison.Ordinal);
+        Assert.Contains("Publish-BundledToolProjects -OutputPath $OutDir", source, StringComparison.Ordinal);
+        Assert.Contains("Assert-ChatHostArtifacts -RootPath $OutDir", source, StringComparison.Ordinal);
+        Assert.Contains(@"Artifacts\ChatHostPublish", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("/p:IncludePrivateToolPacks=true", source, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void ChatRuntimeSurface_ShouldNotHardcodePackIdsInAppOrService() {
         var repoRoot = FindRepoRoot();
         var roots = new[] {
@@ -230,6 +266,11 @@ public sealed class ChatFallbackArchitectureGuardrailTests {
     private static string GetToolingSourceFilePath(string fileName) {
         var repoRoot = FindRepoRoot();
         return Path.Combine(repoRoot, "IntelligenceX.Chat", "IntelligenceX.Chat.Tooling", fileName);
+    }
+
+    private static string GetBuildScriptPath(string relativePath) {
+        var repoRoot = FindRepoRoot();
+        return Path.Combine(repoRoot, relativePath);
     }
 
     private static string FindRepoRoot() {

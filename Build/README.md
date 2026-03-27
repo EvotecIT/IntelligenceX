@@ -86,6 +86,10 @@ Keep these specialist helpers:
   - direct NuGet-style tool-pack packaging helper
 - `Advanced\Package-Portable.ps1`
   - fallback/manual portable bundle helper
+  - can smoke-test the finished bundle with `-SmokeScenarioPreset runtime-only` or `-SmokeScenarioPreset runtime-and-toolful`
+- `Chat\Test-PortableChatBundle.ps1`
+  - direct packaged-bundle smoke runner
+  - accepts explicit `-ScenarioFile` values or the same named presets for quick validation
 - `Advanced\Build-Installer.ps1`
   - fallback/manual MSI helper
 - `Chat\Run-Chat*.ps1`

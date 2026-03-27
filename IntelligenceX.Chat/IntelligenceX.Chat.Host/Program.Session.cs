@@ -9,6 +9,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using IntelligenceX.Chat.Abstractions;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.Tooling;
 using IntelligenceX.Json;
@@ -138,8 +139,9 @@ internal static partial class Program {
             var noTextToolOutputDirectRetryUsed = false;
 
             var toolDefs = _registry.GetDefinitions();
-            var inputText = RuntimeSelfReportSupport.LooksLikeCompactRuntimeSelfReportQuestion(text)
-                ? RuntimeSelfReportSupport.BuildCompactRuntimeSelfReportInput(text, _options.OpenAITransport, _options.Model, toolDefs)
+            var runtimeSelfReportAnalysis = RuntimeSelfReportTurnClassifier.Analyze(text);
+            var inputText = RuntimeSelfReportSupport.LooksLikeCompactRuntimeSelfReportQuestion(runtimeSelfReportAnalysis)
+                ? RuntimeSelfReportSupport.BuildCompactRuntimeSelfReportInput(runtimeSelfReportAnalysis, _options.OpenAITransport, _options.Model, toolDefs)
                 : text;
             var input = ChatInput.FromText(inputText);
             var chatOptions = new ChatOptions {

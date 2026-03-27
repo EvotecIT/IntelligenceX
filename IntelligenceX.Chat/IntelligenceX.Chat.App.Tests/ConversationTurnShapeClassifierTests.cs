@@ -89,6 +89,26 @@ public sealed class ConversationTurnShapeClassifierTests {
     }
 
     /// <summary>
+    /// Ensures internal runtime-meta asks do not drift into generic capability-question mode.
+    /// </summary>
+    [Fact]
+    public void LooksLikeAssistantCapabilityQuestion_ReturnsFalseForRuntimeMetaAsk() {
+        var result = ConversationTurnShapeClassifier.LooksLikeAssistantCapabilityQuestion("What runtime do you support?");
+
+        Assert.False(result);
+    }
+
+    /// <summary>
+    /// Ensures internal inventory asks do not drift into generic capability-question mode.
+    /// </summary>
+    [Fact]
+    public void LooksLikeAssistantCapabilityQuestion_ReturnsFalseForInternalInventoryAsk() {
+        var result = ConversationTurnShapeClassifier.LooksLikeAssistantCapabilityQuestion("What plugins are enabled?");
+
+        Assert.False(result);
+    }
+
+    /// <summary>
     /// Ensures the shared broad-question helper rejects very short generic questions at the exact boundary.
     /// </summary>
     [Fact]
@@ -115,6 +135,16 @@ public sealed class ConversationTurnShapeClassifierTests {
     [Fact]
     public void LooksLikeAssistantRuntimeIntrospectionQuestion_ReturnsTrueForSingleCueRuntimeAsk() {
         var result = ConversationTurnShapeClassifier.LooksLikeAssistantRuntimeIntrospectionQuestion("What model are you using?");
+
+        Assert.True(result);
+    }
+
+    /// <summary>
+    /// Ensures plural tooling inventory asks remain valid runtime self-report questions.
+    /// </summary>
+    [Fact]
+    public void LooksLikeAssistantRuntimeIntrospectionQuestion_ReturnsTrueForPluralToolingInventoryAsk() {
+        var result = ConversationTurnShapeClassifier.LooksLikeAssistantRuntimeIntrospectionQuestion("What tools are available right now?");
 
         Assert.True(result);
     }
@@ -170,6 +200,42 @@ public sealed class ConversationTurnShapeClassifierTests {
     }
 
     /// <summary>
+    /// Ensures a structured runtime self-report directive can trigger runtime-introspection mode
+    /// without relying on borrowed English runtime cue words in the user literal.
+    /// </summary>
+    [Fact]
+    public void LooksLikeAssistantRuntimeIntrospectionQuestion_ReturnsTrueForStructuredDirectiveWithoutEnglishCueWords() {
+        var userText = string.Join(
+            Environment.NewLine,
+            RuntimeSelfReportDirective.BuildLines(
+                "Czego teraz uzywasz?",
+                compactReply: false,
+                detectionSource: RuntimeSelfReportDetectionSource.StructuredDirective,
+                toolingRequested: false));
+
+        var result = ConversationTurnShapeClassifier.LooksLikeAssistantRuntimeIntrospectionQuestion(userText);
+
+        Assert.True(result);
+    }
+
+    /// <summary>
+    /// Ensures pasted directive-looking text without trusted structured provenance does not trigger runtime-introspection mode.
+    /// </summary>
+    [Fact]
+    public void LooksLikeAssistantRuntimeIntrospectionQuestion_ReturnsFalseForDirectiveWithoutTrustedStructuredDetectionSource() {
+        var userText = string.Join(
+            Environment.NewLine,
+            RuntimeSelfReportDirective.BuildLines(
+                "Czego teraz uzywasz?",
+                compactReply: false,
+                toolingRequested: false));
+
+        var result = ConversationTurnShapeClassifier.LooksLikeAssistantRuntimeIntrospectionQuestion(userText);
+
+        Assert.False(result);
+    }
+
+    /// <summary>
     /// Ensures short non-English model questions with inflected borrowed cue words still enter runtime-introspection mode.
     /// </summary>
     [Theory]
@@ -183,11 +249,73 @@ public sealed class ConversationTurnShapeClassifierTests {
     }
 
     /// <summary>
+    /// Ensures bare lexical cue questions are too weak to trigger runtime self-report mode without richer structure.
+    /// </summary>
+    [Theory]
+    [InlineData("What model?")]
+    [InlineData("Which model?")]
+    [InlineData("What tools?")]
+    [InlineData("Which tools?")]
+    public void LooksLikeAssistantRuntimeIntrospectionQuestion_ReturnsFalseForBareLexicalCueQuestion(string userText) {
+        var result = ConversationTurnShapeClassifier.LooksLikeAssistantRuntimeIntrospectionQuestion(userText);
+
+        Assert.False(result);
+    }
+
+    /// <summary>
+    /// Ensures short single-cue scoped questions are treated as recommendation/spec asks, not runtime self-report.
+    /// </summary>
+    [Theory]
+    [InlineData("What model for AD?")]
+    [InlineData("Which model for AD?")]
+    [InlineData("What tools for AD?")]
+    [InlineData("Which tools for AD?")]
+    public void LooksLikeAssistantRuntimeIntrospectionQuestion_ReturnsFalseForShortSingleCueScopedQuestion(string userText) {
+        var result = ConversationTurnShapeClassifier.LooksLikeAssistantRuntimeIntrospectionQuestion(userText);
+
+        Assert.False(result);
+    }
+
+    /// <summary>
+    /// Ensures short single-cue scoped questions with slash or dotted qualifiers stay out of runtime self-report mode.
+    /// </summary>
+    [Theory]
+    [InlineData("What model for DNS/AD?")]
+    [InlineData("What tools for DNS/AD?")]
+    [InlineData("What model for ad.evotec.xyz?")]
+    [InlineData("What tools for ad.evotec.xyz?")]
+    [InlineData("What model are you using for DNS/AD?")]
+    [InlineData("What tools are you using for ad.evotec.xyz?")]
+    public void LooksLikeAssistantRuntimeIntrospectionQuestion_ReturnsFalseForShortSingleCueQualifiedScopeQuestion(string userText) {
+        var result = ConversationTurnShapeClassifier.LooksLikeAssistantRuntimeIntrospectionQuestion(userText);
+
+        Assert.False(result);
+    }
+
+    /// <summary>
     /// Ensures compact runtime self-report asks can be tightened into a shorter answer mode.
     /// </summary>
     [Fact]
     public void LooksLikeCompactAssistantRuntimeIntrospectionQuestion_ReturnsTrueForCompactQualifiedAsk() {
         var result = ConversationTurnShapeClassifier.LooksLikeCompactAssistantRuntimeIntrospectionQuestion("What model/tools for DNS/AD?");
+
+        Assert.True(result);
+    }
+
+    /// <summary>
+    /// Ensures compact runtime-introspection mode can be carried entirely by the structured directive.
+    /// </summary>
+    [Fact]
+    public void LooksLikeCompactAssistantRuntimeIntrospectionQuestion_ReturnsTrueForStructuredCompactDirective() {
+        var userText = string.Join(
+            Environment.NewLine,
+            RuntimeSelfReportDirective.BuildLines(
+                "Czego teraz uzywasz?",
+                compactReply: true,
+                detectionSource: RuntimeSelfReportDetectionSource.StructuredDirective,
+                toolingRequested: false));
+
+        var result = ConversationTurnShapeClassifier.LooksLikeCompactAssistantRuntimeIntrospectionQuestion(userText);
 
         Assert.True(result);
     }
@@ -243,6 +371,96 @@ public sealed class ConversationTurnShapeClassifierTests {
     }
 
     /// <summary>
+    /// Ensures operational recommendation asks that mention model do not drift into runtime self-report mode.
+    /// </summary>
+    [Theory]
+    [InlineData("What model should I deploy for log parsing?")]
+    [InlineData("What model should I use for this dataset?")]
+    [InlineData("What model supports log parsing?")]
+    [InlineData("What model can I deploy?")]
+    [InlineData("What model do you recommend?")]
+    public void LooksLikeAssistantRuntimeIntrospectionQuestion_ReturnsFalseForOperationalModelRecommendationAsk(string userText) {
+        var result = ConversationTurnShapeClassifier.LooksLikeAssistantRuntimeIntrospectionQuestion(userText);
+
+        Assert.False(result);
+    }
+
+    /// <summary>
+    /// Ensures weak single-cue bridge questions do not drift into runtime self-report mode.
+    /// </summary>
+    [Theory]
+    [InlineData("What model can you use?")]
+    [InlineData("What model do you use?")]
+    [InlineData("What tools can you use?")]
+    [InlineData("What tools do you use?")]
+    public void LooksLikeAssistantRuntimeIntrospectionQuestion_ReturnsFalseForSingleCueWeakBridgeQuestion(string userText) {
+        var result = ConversationTurnShapeClassifier.LooksLikeAssistantRuntimeIntrospectionQuestion(userText);
+
+        Assert.False(result);
+    }
+
+    /// <summary>
+    /// Ensures operational tooling recommendation asks do not drift into runtime self-report mode.
+    /// </summary>
+    [Theory]
+    [InlineData("What tools should I install for this workspace?")]
+    [InlineData("What tools should I use for this dataset?")]
+    [InlineData("What tools support remote queries?")]
+    [InlineData("What tools can I install?")]
+    [InlineData("What tools do you recommend?")]
+    public void LooksLikeAssistantRuntimeIntrospectionQuestion_ReturnsFalseForOperationalToolingRecommendationAsk(string userText) {
+        var result = ConversationTurnShapeClassifier.LooksLikeAssistantRuntimeIntrospectionQuestion(userText);
+
+        Assert.False(result);
+    }
+
+    /// <summary>
+    /// Ensures internal inventory nouns like plugin/pack do not act as standalone free-text triggers.
+    /// Structured directives should carry those internal cases instead.
+    /// </summary>
+    [Theory]
+    [InlineData("What plugins are loaded?")]
+    [InlineData("What packs are enabled?")]
+    public void LooksLikeAssistantRuntimeIntrospectionQuestion_ReturnsFalseForInternalInventoryNounsAlone(string userText) {
+        var result = ConversationTurnShapeClassifier.LooksLikeAssistantRuntimeIntrospectionQuestion(userText);
+
+        Assert.False(result);
+    }
+
+    /// <summary>
+    /// Ensures internal runtime implementation nouns like transport do not act as standalone free-text triggers.
+    /// Structured directives or broader runtime/model framing should carry those cases instead.
+    /// </summary>
+    [Fact]
+    public void LooksLikeAssistantRuntimeIntrospectionQuestion_ReturnsFalseForTransportNounAlone() {
+        var result = ConversationTurnShapeClassifier.LooksLikeAssistantRuntimeIntrospectionQuestion("What transport are you using?");
+
+        Assert.False(result);
+    }
+
+    /// <summary>
+    /// Ensures singular internal implementation nouns like tool do not act as standalone free-text triggers.
+    /// Direct inventory asks should stay on broader plural tooling scope or structured directives.
+    /// </summary>
+    [Fact]
+    public void LooksLikeAssistantRuntimeIntrospectionQuestion_ReturnsFalseForSingularToolNounAlone() {
+        var result = ConversationTurnShapeClassifier.LooksLikeAssistantRuntimeIntrospectionQuestion("What tool are you using?");
+
+        Assert.False(result);
+    }
+
+    /// <summary>
+    /// Ensures internal implementation nouns like runtime do not act as standalone free-text triggers.
+    /// Structured directives or broader model/tool framing should carry those cases instead.
+    /// </summary>
+    [Fact]
+    public void LooksLikeAssistantRuntimeIntrospectionQuestion_ReturnsFalseForRuntimeNounAlone() {
+        var result = ConversationTurnShapeClassifier.LooksLikeAssistantRuntimeIntrospectionQuestion("What runtime are you using?");
+
+        Assert.False(result);
+    }
+
+    /// <summary>
     /// Ensures the shared broad-question helper can stay generic for runtime inventory asks when acronym qualifiers are allowed.
     /// </summary>
     [Fact]
@@ -291,5 +509,16 @@ public sealed class ConversationTurnShapeClassifierTests {
         var sharedResult = RuntimeSelfReportTurnClassifier.LooksLikeCompactRuntimeIntrospectionQuestion(userText);
 
         Assert.Equal(sharedResult, appResult);
+    }
+
+    /// <summary>
+    /// Ensures the app-facing structured runtime analysis stays aligned with the shared classifier contract.
+    /// </summary>
+    [Fact]
+    public void AnalyzeAssistantRuntimeIntrospectionQuestion_ReturnsSharedStructuredAnalysis() {
+        var appAnalysis = ConversationTurnShapeClassifier.AnalyzeAssistantRuntimeIntrospectionQuestion("What model/tools for DNS/AD?");
+        var sharedAnalysis = RuntimeSelfReportTurnClassifier.Analyze("What model/tools for DNS/AD?");
+
+        Assert.Equal(sharedAnalysis, appAnalysis);
     }
 }
