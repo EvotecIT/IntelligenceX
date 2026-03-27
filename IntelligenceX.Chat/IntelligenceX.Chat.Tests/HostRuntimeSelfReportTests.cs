@@ -379,6 +379,27 @@ public sealed class HostRuntimeSelfReportTests {
     }
 
     [Fact]
+    public void RuntimeSelfReportDirective_ParsesMixedCaseDirectiveKeys() {
+        var request = string.Join(
+            Environment.NewLine,
+            RuntimeSelfReportDirective.Marker,
+            "Reply_Shape: compact",
+            "DETECTION_SOURCE: structured_directive",
+            "MODEL_REQUESTED: true",
+            "Tooling_Requested: false",
+            "User_Request_Literal: \"Czego teraz uzywasz?\"");
+
+        var parsed = RuntimeSelfReportDirective.TryParse(request, out var directive);
+
+        Assert.True(parsed);
+        Assert.True(directive.CompactReply);
+        Assert.Equal(RuntimeSelfReportDetectionSource.StructuredDirective, directive.DetectionSource);
+        Assert.True(directive.ModelRequested);
+        Assert.False(directive.ToolingRequested);
+        Assert.Equal("Czego teraz uzywasz?", directive.UserRequestLiteral);
+    }
+
+    [Fact]
     public void BuildCompactRuntimeSelfReportInput_CanSuppressModelMentionForToolingOnlyQuestion() {
         var prompt = RuntimeSelfReportSupport.BuildCompactRuntimeSelfReportInput(
             "What tools are available right now?",

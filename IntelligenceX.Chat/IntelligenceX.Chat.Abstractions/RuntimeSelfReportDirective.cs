@@ -87,28 +87,28 @@ public static class RuntimeSelfReportDirective {
                     break;
                 }
 
-                if (line.StartsWith(ReplyShapeKey, StringComparison.OrdinalIgnoreCase)) {
-                    compactReply = line.AsSpan(ReplyShapeKey.Length).Trim().Equals("compact".AsSpan(), StringComparison.OrdinalIgnoreCase);
+                if (TryReadDirectiveValue(line, ReplyShapeKey, out var replyShapeValue)) {
+                    compactReply = replyShapeValue.AsSpan().Equals("compact".AsSpan(), StringComparison.OrdinalIgnoreCase);
                     continue;
                 }
 
-                if (line.StartsWith(DetectionSourceKey, StringComparison.OrdinalIgnoreCase)) {
-                    detectionSource = ParseDetectionSource(line[DetectionSourceKey.Length..].Trim());
+                if (TryReadDirectiveValue(line, DetectionSourceKey, out var detectionSourceValue)) {
+                    detectionSource = ParseDetectionSource(detectionSourceValue);
                     continue;
                 }
 
-                if (line.StartsWith(ModelRequestedKey, StringComparison.OrdinalIgnoreCase)) {
-                    modelRequested = line.AsSpan(ModelRequestedKey.Length).Trim().Equals("true".AsSpan(), StringComparison.OrdinalIgnoreCase);
+                if (TryReadDirectiveValue(line, ModelRequestedKey, out var modelRequestedValue)) {
+                    modelRequested = modelRequestedValue.AsSpan().Equals("true".AsSpan(), StringComparison.OrdinalIgnoreCase);
                     continue;
                 }
 
-                if (line.StartsWith(ToolingRequestedKey, StringComparison.OrdinalIgnoreCase)) {
-                    toolingRequested = line.AsSpan(ToolingRequestedKey.Length).Trim().Equals("true".AsSpan(), StringComparison.OrdinalIgnoreCase);
+                if (TryReadDirectiveValue(line, ToolingRequestedKey, out var toolingRequestedValue)) {
+                    toolingRequested = toolingRequestedValue.AsSpan().Equals("true".AsSpan(), StringComparison.OrdinalIgnoreCase);
                     continue;
                 }
 
-                if (line.StartsWith(UserRequestLiteralKey, StringComparison.OrdinalIgnoreCase)) {
-                    userRequestLiteral = UnescapePromptLiteral(line[UserRequestLiteralKey.Length..].Trim());
+                if (TryReadDirectiveValue(line, UserRequestLiteralKey, out var userRequestLiteralValue)) {
+                    userRequestLiteral = UnescapePromptLiteral(userRequestLiteralValue);
                 }
             }
 
@@ -118,6 +118,26 @@ public static class RuntimeSelfReportDirective {
 
         directive = default;
         return false;
+    }
+
+    private static bool TryReadDirectiveValue(string line, string expectedKey, out string value) {
+        value = string.Empty;
+        if (string.IsNullOrWhiteSpace(line) || string.IsNullOrWhiteSpace(expectedKey)) {
+            return false;
+        }
+
+        var separatorIndex = line.IndexOf(':');
+        if (separatorIndex < 0) {
+            return false;
+        }
+
+        var actualKey = line[..(separatorIndex + 1)];
+        if (!actualKey.Equals(expectedKey, StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        value = line[(separatorIndex + 1)..].Trim();
+        return true;
     }
 
     /// <summary>
