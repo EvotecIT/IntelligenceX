@@ -191,7 +191,7 @@ public sealed class ChatFallbackArchitectureGuardrailTests {
     }
 
     [Fact]
-    public void ChatHostProject_ShouldBundleExpectedBuiltInToolPackProjects_ForPublishableRuntime() {
+    public void ChatHostProject_ShouldNotReferenceBundledToolPackProjects_Directly() {
         var repoRoot = FindRepoRoot();
         var source = File.ReadAllText(Path.Combine(
             repoRoot,
@@ -199,7 +199,7 @@ public sealed class ChatFallbackArchitectureGuardrailTests {
             "IntelligenceX.Chat.Host",
             "IntelligenceX.Chat.Host.csproj"));
 
-        var bundledBuiltInPackProjectTokens = new[] {
+        var disallowedPackProjectTokens = new[] {
             "IntelligenceX.Tools.DnsClientX",
             "IntelligenceX.Tools.DomainDetective",
             "IntelligenceX.Tools.Email",
@@ -210,80 +210,20 @@ public sealed class ChatFallbackArchitectureGuardrailTests {
             "IntelligenceX.Tools.ReviewerSetup"
         };
 
-        for (var i = 0; i < bundledBuiltInPackProjectTokens.Length; i++) {
-            Assert.Contains(bundledBuiltInPackProjectTokens[i], source, StringComparison.OrdinalIgnoreCase);
-        }
-
-        Assert.Contains("Condition=\"'$(IncludePrivateToolPacks)' == 'true'\"", source, StringComparison.Ordinal);
-
-        var privatePackProjectTokens = new[] {
-            "IntelligenceX.Tools.System",
-            "IntelligenceX.Tools.ADPlayground",
-            "IntelligenceX.Tools.TestimoX",
-            "IntelligenceX.Tools.TestimoX.Analytics"
-        };
-
-        for (var i = 0; i < privatePackProjectTokens.Length; i++) {
-            Assert.Contains(privatePackProjectTokens[i], source, StringComparison.OrdinalIgnoreCase);
+        for (var i = 0; i < disallowedPackProjectTokens.Length; i++) {
+            Assert.DoesNotContain(disallowedPackProjectTokens[i], source, StringComparison.OrdinalIgnoreCase);
         }
     }
 
     [Fact]
-    public void ChatHostBuildOutput_ShouldContainExpectedBundledToolAssemblies_AndPrivateCompanionsWhenPresent() {
-        var hostOutputDirectory = ResolveHostOutputDirectory();
+    public void PublishChatHostScript_ShouldBundleAndValidateToolArtifacts_WithoutHostProjectCoupling() {
+        var source = File.ReadAllText(GetBuildScriptPath(@"Build\Chat\Publish-ChatHost.ps1"));
 
-        Assert.True(Directory.Exists(hostOutputDirectory), $"Expected host output directory '{hostOutputDirectory}' to exist.");
-        Assert.True(File.Exists(Path.Combine(hostOutputDirectory, "IntelligenceX.Chat.Host.dll")));
-
-        var bundledToolAssemblies = new[] {
-            "IntelligenceX.Tools.DnsClientX.dll",
-            "IntelligenceX.Tools.DomainDetective.dll",
-            "IntelligenceX.Tools.Email.dll",
-            "IntelligenceX.Tools.EventLog.dll",
-            "IntelligenceX.Tools.FileSystem.dll",
-            "IntelligenceX.Tools.OfficeIMO.dll",
-            "IntelligenceX.Tools.PowerShell.dll",
-            "IntelligenceX.Tools.ReviewerSetup.dll"
-        };
-
-        for (var i = 0; i < bundledToolAssemblies.Length; i++) {
-            Assert.True(
-                File.Exists(Path.Combine(hostOutputDirectory, bundledToolAssemblies[i])),
-                $"Expected bundled host output assembly '{bundledToolAssemblies[i]}' in '{hostOutputDirectory}'.");
-        }
-
-        Assert.True(
-            File.Exists(Path.Combine(hostOutputDirectory, "System.Diagnostics.EventLog.dll")),
-            "Expected EventLog runtime dependency 'System.Diagnostics.EventLog.dll' to be copied beside the host output.");
-
-        var privateToolAssemblies = new[] {
-            "IntelligenceX.Tools.System.dll",
-            "IntelligenceX.Tools.ADPlayground.dll",
-            "IntelligenceX.Tools.TestimoX.dll",
-            "IntelligenceX.Tools.TestimoX.Analytics.dll"
-        };
-
-        var anyPrivateToolAssemblyPresent = false;
-        for (var i = 0; i < privateToolAssemblies.Length; i++) {
-            if (File.Exists(Path.Combine(hostOutputDirectory, privateToolAssemblies[i]))) {
-                anyPrivateToolAssemblyPresent = true;
-                break;
-            }
-        }
-
-        if (!anyPrivateToolAssemblyPresent) {
-            return;
-        }
-
-        for (var i = 0; i < privateToolAssemblies.Length; i++) {
-            Assert.True(
-                File.Exists(Path.Combine(hostOutputDirectory, privateToolAssemblies[i])),
-                $"Expected private host output assembly '{privateToolAssemblies[i]}' when private pack bundling is enabled.");
-        }
-
-        Assert.True(
-            File.Exists(Path.Combine(hostOutputDirectory, "ADPlayground.Monitoring.dll")),
-            "Expected private ADPlayground companion dependency 'ADPlayground.Monitoring.dll' when private pack bundling is enabled.");
+        Assert.Contains("function Publish-BundledToolProjects", source, StringComparison.Ordinal);
+        Assert.Contains("Publish-BundledToolProjects -OutputPath $OutDir", source, StringComparison.Ordinal);
+        Assert.Contains("Assert-ChatHostArtifacts -RootPath $OutDir", source, StringComparison.Ordinal);
+        Assert.Contains(@"Artifacts\ChatHostPublish", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("/p:IncludePrivateToolPacks=true", source, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -328,26 +268,9 @@ public sealed class ChatFallbackArchitectureGuardrailTests {
         return Path.Combine(repoRoot, "IntelligenceX.Chat", "IntelligenceX.Chat.Tooling", fileName);
     }
 
-    private static string ResolveHostOutputDirectory() {
+    private static string GetBuildScriptPath(string relativePath) {
         var repoRoot = FindRepoRoot();
-        var buildConfiguration = ResolveCurrentBuildConfiguration();
-        return Path.Combine(repoRoot, "IntelligenceX.Chat", "IntelligenceX.Chat.Host", "bin", buildConfiguration, "net10.0-windows");
-    }
-
-    private static string ResolveCurrentBuildConfiguration() {
-        var fullPath = Path.GetFullPath(AppContext.BaseDirectory)
-            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-        var pathParts = fullPath.Split(
-            new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar },
-            StringSplitOptions.RemoveEmptyEntries);
-
-        for (var i = 0; i < pathParts.Length - 1; i++) {
-            if (string.Equals(pathParts[i], "bin", StringComparison.OrdinalIgnoreCase)) {
-                return pathParts[i + 1];
-            }
-        }
-
-        return "Release";
+        return Path.Combine(repoRoot, relativePath);
     }
 
     private static string FindRepoRoot() {

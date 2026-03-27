@@ -45,6 +45,63 @@ function Invoke-DotNet {
     }
 }
 
+function Publish-BundledToolProjects {
+    param(
+        [Parameter(Mandatory)]
+        [string] $OutputPath
+    )
+
+    $bundledToolProjects = @(
+        @{ Path = 'IntelligenceX.Tools\IntelligenceX.Tools.DnsClientX\IntelligenceX.Tools.DnsClientX.csproj'; Framework = 'net10.0' },
+        @{ Path = 'IntelligenceX.Tools\IntelligenceX.Tools.DomainDetective\IntelligenceX.Tools.DomainDetective.csproj'; Framework = 'net10.0' },
+        @{ Path = 'IntelligenceX.Tools\IntelligenceX.Tools.Email\IntelligenceX.Tools.Email.csproj'; Framework = 'net10.0' },
+        @{ Path = 'IntelligenceX.Tools\IntelligenceX.Tools.EventLog\IntelligenceX.Tools.EventLog.csproj'; Framework = 'net10.0-windows' },
+        @{ Path = 'IntelligenceX.Tools\IntelligenceX.Tools.FileSystem\IntelligenceX.Tools.FileSystem.csproj'; Framework = 'net10.0-windows' },
+        @{ Path = 'IntelligenceX.Tools\IntelligenceX.Tools.OfficeIMO\IntelligenceX.Tools.OfficeIMO.csproj'; Framework = 'net10.0' },
+        @{ Path = 'IntelligenceX.Tools\IntelligenceX.Tools.PowerShell\IntelligenceX.Tools.PowerShell.csproj'; Framework = 'net10.0-windows' },
+        @{ Path = 'IntelligenceX.Tools\IntelligenceX.Tools.ReviewerSetup\IntelligenceX.Tools.ReviewerSetup.csproj'; Framework = 'net10.0-windows' }
+    )
+
+    if ($IncludePrivateToolPacks) {
+        $bundledToolProjects += @(
+            @{ Path = 'IntelligenceX.Tools\IntelligenceX.Tools.System\IntelligenceX.Tools.System.csproj'; Framework = 'net10.0-windows' },
+            @{ Path = 'IntelligenceX.Tools\IntelligenceX.Tools.ADPlayground\IntelligenceX.Tools.ADPlayground.csproj'; Framework = 'net10.0-windows' },
+            @{ Path = 'IntelligenceX.Tools\IntelligenceX.Tools.TestimoX\IntelligenceX.Tools.TestimoX.csproj'; Framework = 'net10.0-windows' },
+            @{ Path = 'IntelligenceX.Tools\IntelligenceX.Tools.TestimoX.Analytics\IntelligenceX.Tools.TestimoX.Analytics.csproj'; Framework = 'net10.0-windows' }
+        )
+    }
+
+    foreach ($toolProject in $bundledToolProjects) {
+        $toolProjectPath = Join-Path $script:RepoRoot $toolProject.Path
+        $publishArgs = @(
+            'publish',
+            $toolProjectPath,
+            '-c',
+            $Configuration,
+            '-f',
+            $toolProject.Framework,
+            '-r',
+            $Runtime,
+            '-o',
+            $OutputPath,
+            '--no-self-contained'
+        )
+        if ($NoBuild) {
+            $publishArgs += '--no-build'
+        }
+        if (-not [string]::IsNullOrWhiteSpace($TestimoXRoot)) {
+            $resolved = [System.IO.Path]::GetFullPath($TestimoXRoot)
+            if (-not $resolved.EndsWith([System.IO.Path]::DirectorySeparatorChar)) {
+                $resolved += [System.IO.Path]::DirectorySeparatorChar
+            }
+            $publishArgs += "/p:TestimoXRoot=$resolved"
+        }
+
+        Write-Step "Bundle tool project: $toolProjectPath"
+        Invoke-DotNet -Args $publishArgs -WorkingDirectory $script:RepoRoot
+    }
+}
+
 $script:RepoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $hostProject = Join-Path $script:RepoRoot 'IntelligenceX.Chat\IntelligenceX.Chat.Host\IntelligenceX.Chat.Host.csproj'
 . (Join-Path $script:RepoRoot 'Build\Internal\Assert-ChatHostArtifacts.ps1')
@@ -91,15 +148,12 @@ if ($SingleFile) {
 if ($NoBuild) {
     $publishArgs += '--no-build'
 }
-if ($IncludePrivateToolPacks) {
-    $publishArgs += '/p:IncludePrivateToolPacks=true'
-    if (-not [string]::IsNullOrWhiteSpace($TestimoXRoot)) {
-        $resolved = [System.IO.Path]::GetFullPath($TestimoXRoot)
-        if (-not $resolved.EndsWith([System.IO.Path]::DirectorySeparatorChar)) {
-            $resolved += [System.IO.Path]::DirectorySeparatorChar
-        }
-        $publishArgs += "/p:TestimoXRoot=$resolved"
+if (-not [string]::IsNullOrWhiteSpace($TestimoXRoot)) {
+    $resolved = [System.IO.Path]::GetFullPath($TestimoXRoot)
+    if (-not $resolved.EndsWith([System.IO.Path]::DirectorySeparatorChar)) {
+        $resolved += [System.IO.Path]::DirectorySeparatorChar
     }
+    $publishArgs += "/p:TestimoXRoot=$resolved"
 }
 
 Write-Header 'Publish Chat Host'
@@ -113,6 +167,7 @@ Write-Step "Include private tool packs: $([bool]$IncludePrivateToolPacks)"
 Write-Step "Output: $OutDir"
 
 Invoke-DotNet -Args $publishArgs -WorkingDirectory $script:RepoRoot
+Publish-BundledToolProjects -OutputPath $OutDir
 
 Write-Header 'Validate Published Artifacts'
 Assert-ChatHostArtifacts -RootPath $OutDir -IncludePrivateToolPacks:$IncludePrivateToolPacks

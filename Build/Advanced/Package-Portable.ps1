@@ -381,6 +381,7 @@ $serviceProject = Join-Path $script:RepoRoot 'IntelligenceX.Chat\IntelligenceX.C
 $exportScript = Join-Path $script:RepoRoot 'Build\Internal\Export-PluginFolders.ps1'
 $completeBundleScript = Join-Path $script:RepoRoot 'Build\Internal\Complete-PortableBundle.ps1'
 $smokeBundleScript = Join-Path $script:RepoRoot 'Build\Chat\Test-PortableChatBundle.ps1'
+$publishHostScript = Join-Path $script:RepoRoot 'Build\Chat\Publish-ChatHost.ps1'
 
 Write-Header 'Package Portable Chat Bundle'
 Write-Step "Frontend: $frontendNormalized"
@@ -405,9 +406,37 @@ if ($frontendNormalized -eq 'app') {
     Publish-Project -ProjectPath $serviceProject -OutputPath $serviceOut -FrameworkOverride $Framework -DisableSingleFile -AdditionalArgs @('/p:WarningsNotAsErrors=NU1510')
 } else {
     Write-Header 'Publish Host (primary app)'
-    Publish-Project -ProjectPath $hostProject -OutputPath $bundleRoot
-    Write-Step 'Validate published host artifacts'
-    Assert-ChatHostArtifacts -RootPath $bundleRoot -IncludePrivateToolPacks:$IncludePrivateToolPacks
+    $publishHostArgs = @(
+        '-NoLogo',
+        '-NoProfile',
+        '-File',
+        $publishHostScript,
+        '-Runtime',
+        $Runtime,
+        '-Configuration',
+        $Configuration,
+        '-Framework',
+        $Framework,
+        '-OutDir',
+        $bundleRoot
+    )
+    if ($SelfContained) {
+        $publishHostArgs += '-SelfContained'
+    }
+    if ($NoBuild) {
+        $publishHostArgs += '-NoBuild'
+    }
+    if ($IncludePrivateToolPacks) {
+        $publishHostArgs += '-IncludePrivateToolPacks'
+    }
+    if (-not [string]::IsNullOrWhiteSpace($TestimoXRoot)) {
+        $publishHostArgs += @('-TestimoXRoot', $TestimoXRoot)
+    }
+
+    & pwsh @publishHostArgs
+    if ($LASTEXITCODE -ne 0) {
+        throw "Host publish helper failed with exit code $LASTEXITCODE."
+    }
 
     if ($IncludeService) {
         Write-Header 'Publish Service (optional advanced mode)'
