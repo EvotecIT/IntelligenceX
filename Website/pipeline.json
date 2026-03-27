@@ -6,6 +6,17 @@
   "profilePath": "./_temp/pipeline-profile.json",
   "steps": [
     {
+      "task": "engine-lock",
+      "id": "engine-lock-ci",
+      "modes": ["ci"],
+      "operation": "verify",
+      "path": "./.powerforge/engine-lock.json",
+      "failOnDrift": true,
+      "requireImmutableRef": true,
+      "reportPath": "./_reports/engine-lock.json",
+      "summaryPath": "./_reports/engine-lock.md"
+    },
+    {
       "task": "dotnet-build",
       "id": "build-library",
       "project": "../IntelligenceX/IntelligenceX.csproj",
