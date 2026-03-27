@@ -56,3 +56,9 @@ These are still valid, but they are no longer the default path:
 - `Build/Advanced/Build-Installer.ps1`
 
 Keep them for manual recovery, special-case signing, and edge-case release work.
+
+Useful portable smoke options on the fallback path:
+- `-SmokeScenarioPreset runtime-only`
+- `-SmokeScenarioPreset runtime-and-toolful`
+- Example:
+  `pwsh ./Build/Advanced/Package-Portable.ps1 -Frontend host -Runtime win-x64 -PluginMode all -IncludePrivateToolPacks -TestimoXRoot C:\Support\GitHub\TestimoX -IncludePortableHelpers -SmokeScenarioPreset runtime-and-toolful`

@@ -1,4 +1,28 @@
-# Create a portable chat bundle (single user-facing app + plugin folders + optional service).
+<#
+.SYNOPSIS
+Creates a portable Chat bundle with optional smoke validation.
+
+.DESCRIPTION
+Publishes the selected frontend, exports plugin folders, validates bundled host
+artifacts, and can smoke-test the finished bundle with explicit scenario files
+or a named preset release suite.
+
+.PARAMETER SmokeScenarioPreset
+Named smoke suite to run after the bundle is built. Supported values:
+  - runtime-only
+  - runtime-and-toolful
+
+.EXAMPLE
+pwsh ./Build/Advanced/Package-Portable.ps1 `
+  -Frontend host `
+  -Runtime win-x64 `
+  -PluginMode all `
+  -IncludePrivateToolPacks `
+  -TestimoXRoot C:\Support\GitHub\TestimoX `
+  -IncludePortableHelpers `
+  -SmokeScenarioPreset runtime-and-toolful `
+  -SmokeScenarioOutput ./artifacts/chat-live-portable-bundle-preset
+#>
 
 [CmdletBinding()] param(
     [ValidateSet('win-x64','win-arm64')]
@@ -27,6 +51,13 @@
     [bool] $LeanBundle = $true,
     [switch] $IncludePortableHelpers,
     [switch] $IncludeBundleMetadata,
+    [string[]] $SmokeScenarioFile,
+    [ValidateSet('runtime-only','runtime-and-toolful')]
+    [string] $SmokeScenarioPreset,
+    [string] $SmokeScenarioOutput,
+    [string[]] $SmokeAllowRoot,
+    [int] $SmokeTurnTimeoutSeconds = 120,
+    [int] $SmokeToolTimeoutSeconds = 60,
 
     [string] $OutDir,
     [string] $BundleName,
@@ -314,6 +345,8 @@ function New-PortableReadme {
 
 $script:RepoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 . (Join-Path $script:RepoRoot 'Build\Internal\Resolve-ReleaseDefaults.ps1')
+. (Join-Path $script:RepoRoot 'Build\Internal\Assert-ChatHostArtifacts.ps1')
+. (Join-Path $script:RepoRoot 'Build\Internal\Resolve-ChatSmokeScenarioPreset.ps1')
 
 if ([string]::IsNullOrWhiteSpace($OutDir)) {
     $OutDir = Join-Path $script:RepoRoot ("Artifacts\Portable\{0}" -f $Runtime)
@@ -329,6 +362,11 @@ $frontendNormalized = $Frontend.ToLowerInvariant()
 $primaryExecutable = Resolve-PrimaryExecutableName -FrontendName $frontendNormalized
 $serviceIncluded = [bool]$IncludeService
 
+if ($frontendNormalized -eq 'host' -and $SingleFile) {
+    Write-Warn 'Single-file packaging is not supported for Chat.Host bundles; disabling PublishSingleFile and keeping loose tool-pack/runtime assemblies.'
+    $SingleFile = $false
+}
+
 if ($ClearOut -and (Test-Path $bundleRoot)) {
     Write-Step "Clearing bundle directory: $bundleRoot"
     Remove-Item -Recurse -Force $bundleRoot
@@ -342,6 +380,7 @@ $appProject = Join-Path $script:RepoRoot 'IntelligenceX.Chat\IntelligenceX.Chat.
 $serviceProject = Join-Path $script:RepoRoot 'IntelligenceX.Chat\IntelligenceX.Chat.Service\IntelligenceX.Chat.Service.csproj'
 $exportScript = Join-Path $script:RepoRoot 'Build\Internal\Export-PluginFolders.ps1'
 $completeBundleScript = Join-Path $script:RepoRoot 'Build\Internal\Complete-PortableBundle.ps1'
+$smokeBundleScript = Join-Path $script:RepoRoot 'Build\Chat\Test-PortableChatBundle.ps1'
 
 Write-Header 'Package Portable Chat Bundle'
 Write-Step "Frontend: $frontendNormalized"
@@ -367,6 +406,8 @@ if ($frontendNormalized -eq 'app') {
 } else {
     Write-Header 'Publish Host (primary app)'
     Publish-Project -ProjectPath $hostProject -OutputPath $bundleRoot
+    Write-Step 'Validate published host artifacts'
+    Assert-ChatHostArtifacts -RootPath $bundleRoot -IncludePrivateToolPacks:$IncludePrivateToolPacks
 
     if ($IncludeService) {
         Write-Header 'Publish Service (optional advanced mode)'
@@ -433,6 +474,29 @@ if ($Zip) {
     $zipPath = Join-Path $OutDir ("{0}-{1}.zip" -f $BundleName, $timestamp)
     Write-Step "Zip -> $zipPath"
     New-ZipFromFolder -FolderPath $bundleRoot -ZipPath $zipPath
+}
+
+$resolvedSmokeScenarioFiles = @(
+    @(Resolve-ChatSmokeScenarioPreset -RepoRoot $script:RepoRoot -PresetName $SmokeScenarioPreset) +
+    @($SmokeScenarioFile | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+)
+
+if ($resolvedSmokeScenarioFiles.Count -gt 0) {
+    Write-Header 'Smoke Test Portable Bundle'
+    $smokeArgs = @{
+        BundleRoot = $bundleRoot
+        ScenarioFile = $resolvedSmokeScenarioFiles
+        TurnTimeoutSeconds = $SmokeTurnTimeoutSeconds
+        ToolTimeoutSeconds = $SmokeToolTimeoutSeconds
+    }
+    if (-not [string]::IsNullOrWhiteSpace($SmokeScenarioOutput)) {
+        $smokeArgs.ScenarioOutput = $SmokeScenarioOutput
+    }
+    if ($SmokeAllowRoot -and $SmokeAllowRoot.Count -gt 0) {
+        $smokeArgs.AllowRoot = @($SmokeAllowRoot | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    }
+
+    & $smokeBundleScript @smokeArgs
 }
 
 Write-Ok "Portable bundle ready: $bundleRoot"

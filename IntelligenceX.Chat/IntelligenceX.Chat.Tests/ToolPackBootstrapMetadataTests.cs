@@ -421,6 +421,40 @@ public sealed class ToolPackBootstrapMetadataTests {
     }
 
     [Fact]
+    public void BuildTrustedBuiltInDependencyProbeRoots_IncludesTrustedAssemblyDirectoryBeforeConfiguredProbeRoots() {
+        var buildProbeRootsMethod = typeof(ToolPackBootstrap).GetMethod(
+            "BuildTrustedBuiltInDependencyProbeRoots",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(buildProbeRootsMethod);
+
+        var tempRoot = Path.Combine(Path.GetTempPath(), "ix-chat-built-in-deps-" + Guid.NewGuid().ToString("N"));
+        var trustedAssemblyRoot = Path.Combine(tempRoot, "trusted");
+        var configuredProbeRoot = Path.Combine(tempRoot, "configured");
+        Directory.CreateDirectory(trustedAssemblyRoot);
+        Directory.CreateDirectory(configuredProbeRoot);
+
+        try {
+            var trustedAssemblyPath = Path.Combine(trustedAssemblyRoot, "Synthetic.Tools.dll");
+            File.WriteAllBytes(trustedAssemblyPath, Array.Empty<byte>());
+
+            var probeRoots = Assert.IsAssignableFrom<IReadOnlyList<string>>(buildProbeRootsMethod!.Invoke(
+                null,
+                new object?[] {
+                    trustedAssemblyPath,
+                    new ToolPackBootstrapOptions {
+                        BuiltInToolProbePaths = new[] { configuredProbeRoot }
+                    }
+                }));
+
+            Assert.True(probeRoots.Count >= 2);
+            Assert.Equal(Path.GetFullPath(trustedAssemblyRoot), probeRoots[0], ignoreCase: true);
+            Assert.Contains(probeRoots, path => string.Equals(path, Path.GetFullPath(configuredProbeRoot), StringComparison.OrdinalIgnoreCase));
+        } finally {
+            Directory.Delete(tempRoot, recursive: true);
+        }
+    }
+
+    [Fact]
     public void CreateDefaultReadOnlyPacks_LoadsBuiltInPacks_WithTrustedAssemblyResolution() {
         var warnings = new List<string>();
         var packs = ToolPackBootstrap.CreateDefaultReadOnlyPacks(new ToolPackBootstrapOptions {

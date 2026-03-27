@@ -21,18 +21,6 @@ internal static class ConversationTurnShapeClassifier {
     private const int SubstantiveAssistantTokenFloor = 18;
     private const int SubstantiveAssistantLengthFloor = 120;
     private const int SubstantiveAssistantSentenceFloor = 2;
-    private static readonly string[] AssistantRuntimeCueWords = {
-        "model",
-        "runtime",
-        "tool",
-        "tools",
-        "pack",
-        "packs",
-        "plugin",
-        "plugins",
-        "transport"
-    };
-
     /// <summary>
     /// Returns <see langword="true"/> when the text looks like a compact follow-up that depends on prior context.
     /// </summary>
@@ -135,7 +123,7 @@ internal static class ConversationTurnShapeClassifier {
             return false;
         }
 
-        if (ContainsUppercaseAcronymToken(text) || CountRuntimeCueMatches(tokens) > 0) {
+        if (ContainsUppercaseAcronymToken(text) || CountCapabilityBlockedMetaCueMatches(tokens) > 0) {
             return false;
         }
 
@@ -151,11 +139,18 @@ internal static class ConversationTurnShapeClassifier {
     }
 
     /// <summary>
+    /// Produces the shared structured runtime self-report analysis for app-side prompt shaping.
+    /// </summary>
+    internal static RuntimeSelfReportTurnClassifier.RuntimeSelfReportTurnAnalysis AnalyzeAssistantRuntimeIntrospectionQuestion(string? userText) {
+        return RuntimeSelfReportTurnClassifier.Analyze(userText);
+    }
+
+    /// <summary>
     /// Returns <see langword="true"/> when the user is explicitly asking about the active runtime, model, or tool inventory.
     /// This keeps detailed runtime self-reporting opt-in instead of always-on.
     /// </summary>
     internal static bool LooksLikeAssistantRuntimeIntrospectionQuestion(string? userText) {
-        return RuntimeSelfReportTurnClassifier.LooksLikeRuntimeIntrospectionQuestion(userText);
+        return AnalyzeAssistantRuntimeIntrospectionQuestion(userText).IsRuntimeIntrospectionQuestion;
     }
 
     /// <summary>
@@ -163,7 +158,7 @@ internal static class ConversationTurnShapeClassifier {
     /// should stay to one or two short sentences rather than a broader inventory-style answer.
     /// </summary>
     internal static bool LooksLikeCompactAssistantRuntimeIntrospectionQuestion(string? userText) {
-        return RuntimeSelfReportTurnClassifier.LooksLikeCompactRuntimeIntrospectionQuestion(userText);
+        return AnalyzeAssistantRuntimeIntrospectionQuestion(userText).CompactReply;
     }
 
     private static bool ContainsDigit(string text) {
@@ -255,21 +250,8 @@ internal static class ConversationTurnShapeClassifier {
         return RuntimeSelfReportTurnClassifier.LooksLikeBroadGenericQuestionShape(text, tokens, allowUppercaseAcronyms);
     }
 
-    private static int CountRuntimeCueMatches(IReadOnlyList<string> tokens) {
-        ArgumentNullException.ThrowIfNull(tokens);
-
-        var matches = 0;
-        for (var i = 0; i < tokens.Count; i++) {
-            var token = tokens[i];
-            for (var j = 0; j < AssistantRuntimeCueWords.Length; j++) {
-                if (string.Equals(token, AssistantRuntimeCueWords[j], StringComparison.OrdinalIgnoreCase)) {
-                    matches++;
-                    break;
-                }
-            }
-        }
-
-        return matches;
+    private static int CountCapabilityBlockedMetaCueMatches(IReadOnlyList<string> tokens) {
+        return RuntimeSelfReportCueCatalog.CountCapabilityBlockedMetaCueMatches(tokens);
     }
 
     private static List<string> CollectLetterDigitTokens(string text, int maxTokens) {

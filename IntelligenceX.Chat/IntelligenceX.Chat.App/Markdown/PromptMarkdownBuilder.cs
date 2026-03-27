@@ -16,6 +16,8 @@ internal static class PromptMarkdownBuilder {
     private const int MaxPersonaGuidanceLines = 4;
     private const int MaxCapabilitySelfKnowledgeLines = 6;
     private const int MaxRuntimeCapabilityLines = 8;
+    private const int LexicalFallbackRuntimeCapabilityLines = 4;
+    private const int LexicalFallbackCapabilitySelfKnowledgeLines = 2;
     private const int MaxPersistentMemoryLines = 4;
     private const int MaxLocalContextLines = 4;
 
@@ -54,14 +56,22 @@ internal static class PromptMarkdownBuilder {
         string? effectiveName = null,
         string? effectivePersona = null,
         IReadOnlyList<string>? persistentMemoryLines = null,
-        string? persistentMemoryPrompt = null) {
+        string? persistentMemoryPrompt = null,
+        IReadOnlyList<string>? runtimeSelfReportDirectiveLines = null,
+        RuntimeSelfReportTurnClassifier.RuntimeSelfReportTurnAnalysis? runtimeSelfReportAnalysis = null) {
         var request = (userText ?? string.Empty).Trim();
-        var hasName = !string.IsNullOrWhiteSpace(effectiveName);
-        var hasPersona = !string.IsNullOrWhiteSpace(effectivePersona);
+        var resolvedRuntimeSelfReportAnalysis = runtimeSelfReportAnalysis ?? RuntimeSelfReportTurnClassifier.Analyze(request);
+        var suppressProfileContext = ShouldSuppressProfileContextForRuntimeSelfReport(resolvedRuntimeSelfReportAnalysis);
+        var hasName = !suppressProfileContext && !string.IsNullOrWhiteSpace(effectiveName);
+        var hasPersona = !suppressProfileContext && !string.IsNullOrWhiteSpace(effectivePersona);
+        var suppressPersistentMemory = ShouldSuppressPersistentMemoryForRuntimeSelfReport(resolvedRuntimeSelfReportAnalysis);
         var remainingBudget = MaxPersistentMemoryLines;
-        var trimmedPersistentMemoryLines = TakeBudget(persistentMemoryLines, MaxPersistentMemoryLines, ref remainingBudget);
-        var hasPersistentMemoryPrompt = !string.IsNullOrWhiteSpace(persistentMemoryPrompt);
-        var hasMetadata = hasName || hasPersona || hasPersistentMemoryPrompt || (trimmedPersistentMemoryLines is { Count: > 0 });
+        var trimmedPersistentMemoryLines = suppressPersistentMemory
+            ? null
+            : TakeBudget(persistentMemoryLines, MaxPersistentMemoryLines, ref remainingBudget);
+        var hasPersistentMemoryPrompt = !suppressPersistentMemory && !string.IsNullOrWhiteSpace(persistentMemoryPrompt);
+        var hasRuntimeDirective = runtimeSelfReportDirectiveLines is { Count: > 0 };
+        var hasMetadata = hasName || hasPersona || hasPersistentMemoryPrompt || (trimmedPersistentMemoryLines is { Count: > 0 }) || hasRuntimeDirective;
 
         if (!hasMetadata) {
             return request;
@@ -101,7 +111,28 @@ internal static class PromptMarkdownBuilder {
             }
         }
 
+        if (runtimeSelfReportDirectiveLines is { Count: > 0 }) {
+            markdown.BlankLine();
+            for (var i = 0; i < runtimeSelfReportDirectiveLines.Count; i++) {
+                markdown.Raw(runtimeSelfReportDirectiveLines[i]);
+            }
+        }
+
         return markdown.Build();
+    }
+
+    internal static IReadOnlyList<string>? BuildRuntimeSelfReportDirectiveLines(
+        RuntimeSelfReportTurnClassifier.RuntimeSelfReportTurnAnalysis runtimeSelfReportAnalysis) {
+        if (!runtimeSelfReportAnalysis.IsRuntimeIntrospectionQuestion) {
+            return null;
+        }
+
+        return RuntimeSelfReportDirective.BuildLines(
+            runtimeSelfReportAnalysis.UserRequestLiteral,
+            runtimeSelfReportAnalysis.CompactReply,
+            runtimeSelfReportAnalysis.DetectionSource,
+            runtimeSelfReportAnalysis.ModelRequested,
+            runtimeSelfReportAnalysis.ToolingRequested);
     }
 
     /// <summary>
@@ -126,6 +157,7 @@ internal static class PromptMarkdownBuilder {
     /// <param name="capabilitySelfKnowledgeLines">Optional human-facing capability self-knowledge lines.</param>
     /// <param name="runtimeCapabilityLines">Optional runtime capability handshake lines.</param>
     /// <param name="proactiveExecutionEnabled">Optional proactive execution mode guidance.</param>
+    /// <param name="runtimeSelfReportAnalysis">Optional precomputed runtime self-report analysis to keep prompt shaping aligned with the caller.</param>
     /// <returns>Request text to send to service/model.</returns>
     public static string BuildServiceRequest(
         string userText,
@@ -146,35 +178,63 @@ internal static class PromptMarkdownBuilder {
         string? persistentMemoryPrompt = null,
         IReadOnlyList<string>? capabilitySelfKnowledgeLines = null,
         IReadOnlyList<string>? runtimeCapabilityLines = null,
-        bool? proactiveExecutionEnabled = null) {
-        var hasName = !string.IsNullOrWhiteSpace(effectiveName);
-        var hasPersona = !string.IsNullOrWhiteSpace(effectivePersona);
+        bool? proactiveExecutionEnabled = null,
+        RuntimeSelfReportTurnClassifier.RuntimeSelfReportTurnAnalysis? runtimeSelfReportAnalysis = null) {
+        var resolvedRuntimeSelfReportAnalysis = runtimeSelfReportAnalysis ?? RuntimeSelfReportTurnClassifier.Analyze(userText);
+        var suppressProfileContext = ShouldSuppressProfileContextForRuntimeSelfReport(resolvedRuntimeSelfReportAnalysis);
+        var hasName = !suppressProfileContext && !string.IsNullOrWhiteSpace(effectiveName);
+        var hasPersona = !suppressProfileContext && !string.IsNullOrWhiteSpace(effectivePersona);
+        var suppressPersistentMemory = ShouldSuppressPersistentMemoryForRuntimeSelfReport(resolvedRuntimeSelfReportAnalysis);
+        var suppressLowPriorityContext = ShouldSuppressLowPriorityContextForRuntimeSelfReport(resolvedRuntimeSelfReportAnalysis);
+        var suppressExecutionBehavior = ShouldSuppressExecutionBehaviorForRuntimeSelfReport(resolvedRuntimeSelfReportAnalysis);
+        var effectiveExecutionBehaviorPrompt = suppressExecutionBehavior ? string.Empty : executionBehaviorPrompt;
         var conversationTurnMode = ResolveConversationTurnMode(
             userText,
+            resolvedRuntimeSelfReportAnalysis,
             localContextLines,
             recentAssistantAnswerWasSubstantive,
             recentAssistantAskedQuestion);
         var remainingSupplementalLineBudget = MaxSupplementalContextLines;
-        var trimmedContinuationStateLines = TakeBudget(continuationStateLines, MaxContinuationStateLines, ref remainingSupplementalLineBudget);
-        var trimmedConversationStyleLines = TakeBudget(conversationStyleLines, MaxConversationStyleLines, ref remainingSupplementalLineBudget);
+        var trimmedContinuationStateLines = suppressLowPriorityContext
+            ? null
+            : TakeBudget(continuationStateLines, MaxContinuationStateLines, ref remainingSupplementalLineBudget);
+        var trimmedConversationStyleLines = suppressLowPriorityContext
+            ? null
+            : TakeBudget(conversationStyleLines, MaxConversationStyleLines, ref remainingSupplementalLineBudget);
         var trimmedCapabilityAnswerStyleLines = TakeBudget(capabilityAnswerStyleLines, MaxCapabilityAnswerStyleLines, ref remainingSupplementalLineBudget);
-        var trimmedPersonaGuidanceLines = TakeBudget(personaGuidanceLines, MaxPersonaGuidanceLines, ref remainingSupplementalLineBudget);
+        var trimmedPersonaGuidanceLines = suppressLowPriorityContext
+            ? null
+            : TakeBudget(personaGuidanceLines, MaxPersonaGuidanceLines, ref remainingSupplementalLineBudget);
         IReadOnlyList<string>? trimmedCapabilitySelfKnowledgeLines;
         IReadOnlyList<string>? trimmedRuntimeCapabilityLines;
         if (runtimeCapabilityLines is { Count: > 0 }) {
-            var runtimeLineBudget = conversationTurnMode.IsCompactAssistantRuntimeIntrospectionQuestion ? 2 : MaxRuntimeCapabilityLines;
+            var runtimeLineBudget = conversationTurnMode.IsCompactAssistantRuntimeIntrospectionQuestion
+                ? 2
+                : resolvedRuntimeSelfReportAnalysis.DetectionSource == RuntimeSelfReportDetectionSource.LexicalFallback
+                    ? LexicalFallbackRuntimeCapabilityLines
+                    : MaxRuntimeCapabilityLines;
             trimmedRuntimeCapabilityLines = TakeBudget(runtimeCapabilityLines, runtimeLineBudget, ref remainingSupplementalLineBudget);
-            trimmedCapabilitySelfKnowledgeLines = TakeBudget(capabilitySelfKnowledgeLines, maxLines: 3, ref remainingSupplementalLineBudget);
+            var capabilitySelfKnowledgeLineBudget = resolvedRuntimeSelfReportAnalysis.DetectionSource == RuntimeSelfReportDetectionSource.LexicalFallback
+                ? LexicalFallbackCapabilitySelfKnowledgeLines
+                : 3;
+            trimmedCapabilitySelfKnowledgeLines = TakeBudget(
+                capabilitySelfKnowledgeLines,
+                maxLines: capabilitySelfKnowledgeLineBudget,
+                ref remainingSupplementalLineBudget);
         } else {
             trimmedCapabilitySelfKnowledgeLines = TakeBudget(capabilitySelfKnowledgeLines, MaxCapabilitySelfKnowledgeLines, ref remainingSupplementalLineBudget);
             trimmedRuntimeCapabilityLines = TakeBudget(runtimeCapabilityLines, MaxRuntimeCapabilityLines, ref remainingSupplementalLineBudget);
         }
 
-        var trimmedPersistentMemoryLines = TakeBudget(persistentMemoryLines, MaxPersistentMemoryLines, ref remainingSupplementalLineBudget);
-        var trimmedLocalContextLines = TakeBudget(localContextLines, MaxLocalContextLines, ref remainingSupplementalLineBudget);
+        var trimmedPersistentMemoryLines = suppressPersistentMemory
+            ? null
+            : TakeBudget(persistentMemoryLines, MaxPersistentMemoryLines, ref remainingSupplementalLineBudget);
+        var trimmedLocalContextLines = suppressLowPriorityContext
+            ? null
+            : TakeBudget(localContextLines, MaxLocalContextLines, ref remainingSupplementalLineBudget);
         var hasSupplementalContext = includeLiveProfileUpdates
-                                     || !string.IsNullOrWhiteSpace(executionBehaviorPrompt)
                                      || !string.IsNullOrWhiteSpace(persistentMemoryPrompt)
+                                     || !string.IsNullOrWhiteSpace(effectiveExecutionBehaviorPrompt)
                                      || (trimmedLocalContextLines is { Count: > 0 })
                                      || (trimmedConversationStyleLines is { Count: > 0 })
                                      || (trimmedCapabilityAnswerStyleLines is { Count: > 0 })
@@ -210,6 +270,10 @@ internal static class PromptMarkdownBuilder {
                     .Bullet("Name only the active model/runtime and the relevant tooling scope the user asked about, then stop.")
                     .Bullet("If the user adds qualifiers like DNS or AD, mention the relevant tooling in plain language instead of naming internal packs or long tool lists.")
                     .Bullet("Do not run live checks, probes, or environment discovery just to answer a self-report question.");
+                AppendRuntimeSelfReportModeSourceGuidance(markdown, resolvedRuntimeSelfReportAnalysis);
+                AppendRuntimeSelfReportDirective(
+                    markdown,
+                    BuildRuntimeSelfReportDirectiveLines(resolvedRuntimeSelfReportAnalysis));
             } else if (conversationTurnMode.IsAssistantRuntimeIntrospectionQuestion) {
                 markdown
                     .Bullet("Answer the runtime or tooling question directly in short human terms instead of sounding like a diagnostics screen.")
@@ -219,6 +283,10 @@ internal static class PromptMarkdownBuilder {
                     .Bullet("For compact meta-questions, prefer one or two short sentences over bullet inventories unless the user explicitly asks for a breakdown.")
                     .Bullet("Prefer one short paragraph by default; use lists only if the user explicitly asks for a breakdown.")
                     .Bullet("Do not run live checks, probes, or environment discovery just to answer a self-report question.");
+                AppendRuntimeSelfReportModeSourceGuidance(markdown, resolvedRuntimeSelfReportAnalysis);
+                AppendRuntimeSelfReportDirective(
+                    markdown,
+                    BuildRuntimeSelfReportDirectiveLines(resolvedRuntimeSelfReportAnalysis));
             } else if (conversationTurnMode.IsLowContextShortTurn) {
                 markdown
                     .Bullet("Respond like a real person first; do not front-load menus, onboarding, or scope taxonomies.")
@@ -378,8 +446,8 @@ internal static class PromptMarkdownBuilder {
             markdown.BlankLine();
         }
 
-        if (!string.IsNullOrWhiteSpace(executionBehaviorPrompt)) {
-            markdown.Raw(executionBehaviorPrompt).BlankLine();
+        if (!string.IsNullOrWhiteSpace(effectiveExecutionBehaviorPrompt)) {
+            markdown.Raw(effectiveExecutionBehaviorPrompt).BlankLine();
         }
 
         if (proactiveExecutionEnabled.HasValue) {
@@ -400,7 +468,7 @@ internal static class PromptMarkdownBuilder {
             markdown.BlankLine();
         }
 
-        if (!string.IsNullOrWhiteSpace(persistentMemoryPrompt)) {
+        if (!suppressPersistentMemory && !string.IsNullOrWhiteSpace(persistentMemoryPrompt)) {
             markdown.Raw(persistentMemoryPrompt.Trim()).BlankLine();
         }
 
@@ -443,8 +511,63 @@ internal static class PromptMarkdownBuilder {
         return markdown.Build();
     }
 
+    private static void AppendRuntimeSelfReportDirective(MarkdownComposer markdown, IReadOnlyList<string>? directiveLines) {
+        if (directiveLines is not { Count: > 0 }) {
+            return;
+        }
+
+        for (var i = 0; i < directiveLines.Count; i++) {
+            markdown.Raw(directiveLines[i]);
+        }
+    }
+
+    private static void AppendRuntimeSelfReportModeSourceGuidance(
+        MarkdownComposer markdown,
+        RuntimeSelfReportTurnClassifier.RuntimeSelfReportTurnAnalysis runtimeSelfReportAnalysis) {
+        if (!runtimeSelfReportAnalysis.IsRuntimeIntrospectionQuestion) {
+            return;
+        }
+
+        if (runtimeSelfReportAnalysis.DetectionSource == RuntimeSelfReportDetectionSource.LexicalFallback) {
+            markdown
+                .Bullet("This runtime self-report turn was inferred from lightweight lexical fallback, so answer only the exact runtime or tooling facet already marked by the directive.")
+                .Bullet("Do not broaden a lexical-fallback self-report turn into extra capability detail, inventory breadth, or speculative explanations.")
+                .Bullet("Ignore unrelated persistent memory or long-tail profile preferences unless they are explicitly needed to answer the marked runtime facet.");
+            return;
+        }
+
+        if (runtimeSelfReportAnalysis.DetectionSource == RuntimeSelfReportDetectionSource.StructuredDirective) {
+            markdown.Bullet("This runtime self-report turn carries explicit structured scope, so follow the marked model/tooling fields directly without reinterpreting the raw text.");
+        }
+    }
+
+    private static bool ShouldSuppressPersistentMemoryForRuntimeSelfReport(
+        RuntimeSelfReportTurnClassifier.RuntimeSelfReportTurnAnalysis runtimeSelfReportAnalysis) {
+        return runtimeSelfReportAnalysis.IsRuntimeIntrospectionQuestion
+               && runtimeSelfReportAnalysis.DetectionSource == RuntimeSelfReportDetectionSource.LexicalFallback;
+    }
+
+    private static bool ShouldSuppressProfileContextForRuntimeSelfReport(
+        RuntimeSelfReportTurnClassifier.RuntimeSelfReportTurnAnalysis runtimeSelfReportAnalysis) {
+        return runtimeSelfReportAnalysis.IsRuntimeIntrospectionQuestion
+               && runtimeSelfReportAnalysis.DetectionSource == RuntimeSelfReportDetectionSource.LexicalFallback;
+    }
+
+    private static bool ShouldSuppressLowPriorityContextForRuntimeSelfReport(
+        RuntimeSelfReportTurnClassifier.RuntimeSelfReportTurnAnalysis runtimeSelfReportAnalysis) {
+        return runtimeSelfReportAnalysis.IsRuntimeIntrospectionQuestion
+               && runtimeSelfReportAnalysis.DetectionSource == RuntimeSelfReportDetectionSource.LexicalFallback;
+    }
+
+    private static bool ShouldSuppressExecutionBehaviorForRuntimeSelfReport(
+        RuntimeSelfReportTurnClassifier.RuntimeSelfReportTurnAnalysis runtimeSelfReportAnalysis) {
+        return runtimeSelfReportAnalysis.IsRuntimeIntrospectionQuestion
+               && runtimeSelfReportAnalysis.DetectionSource == RuntimeSelfReportDetectionSource.LexicalFallback;
+    }
+
     private static ConversationTurnMode ResolveConversationTurnMode(
         string? userText,
+        RuntimeSelfReportTurnClassifier.RuntimeSelfReportTurnAnalysis? runtimeSelfReportAnalysis,
         IReadOnlyList<string>? localContextLines,
         bool recentAssistantAnswerWasSubstantive,
         bool recentAssistantAskedQuestion) {
@@ -453,15 +576,17 @@ internal static class PromptMarkdownBuilder {
             return new ConversationTurnMode("direct_task", string.Empty, RequiresEnvelope: false);
         }
 
+        var resolvedRuntimeSelfReportAnalysis = runtimeSelfReportAnalysis ?? RuntimeSelfReportTurnClassifier.Analyze(normalized);
+
         if (ConversationTurnShapeClassifier.LooksLikeAssistantCapabilityQuestion(normalized)) {
             return new ConversationTurnMode("assistant_capability_question", string.Empty, RequiresEnvelope: true);
         }
 
-        if (ConversationTurnShapeClassifier.LooksLikeCompactAssistantRuntimeIntrospectionQuestion(normalized)) {
+        if (resolvedRuntimeSelfReportAnalysis.CompactReply) {
             return new ConversationTurnMode("assistant_runtime_introspection_compact", string.Empty, RequiresEnvelope: true);
         }
 
-        if (ConversationTurnShapeClassifier.LooksLikeAssistantRuntimeIntrospectionQuestion(normalized)) {
+        if (resolvedRuntimeSelfReportAnalysis.IsRuntimeIntrospectionQuestion) {
             return new ConversationTurnMode("assistant_runtime_introspection_question", string.Empty, RequiresEnvelope: true);
         }
 

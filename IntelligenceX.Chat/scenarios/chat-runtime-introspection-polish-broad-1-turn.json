@@ -1,0 +1,16 @@
+{
+  "name": "chat-runtime-introspection-polish-broad-1-turn",
+  "tags": ["chat", "runtime", "persona", "natural", "strict", "live", "language-neutral"],
+  "defaults": {
+    "assert_clean_completion": true
+  },
+  "turns": [
+    {
+      "name": "Polish broad runtime self-awareness ask",
+      "user": "Jakiego modelu i jakich narzedzi uzywasz teraz?",
+      "assert_contains_any": ["model", "narzed", "tool", "tooling", "gpt"],
+      "assert_not_contains": ["Runtime capability handshake", "pack ids", "/act "],
+      "forbid_tools": ["*"]
+    }
+  ]
+}

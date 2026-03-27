@@ -4,6 +4,26 @@ using System.Collections.Generic;
 namespace IntelligenceX.Chat.Abstractions;
 
 /// <summary>
+/// Indicates how runtime self-report mode was detected for a turn.
+/// </summary>
+public enum RuntimeSelfReportDetectionSource {
+    /// <summary>
+    /// The turn was not classified as a runtime self-report question.
+    /// </summary>
+    None,
+
+    /// <summary>
+    /// Detection relied on the minimal free-text lexical fallback.
+    /// </summary>
+    LexicalFallback,
+
+    /// <summary>
+    /// Detection came from a structured runtime self-report directive.
+    /// </summary>
+    StructuredDirective
+}
+
+/// <summary>
 /// Shared classifier for compact runtime self-report turns so app and host stay behaviorally aligned.
 /// </summary>
 public static class RuntimeSelfReportTurnClassifier {
@@ -13,70 +33,97 @@ public static class RuntimeSelfReportTurnClassifier {
     private const int CompactRuntimeQuestionTokenLimit = 7;
     private const int ShortRuntimeQuestionTokenLimit = 5;
     private const int GenericQuestionLongLetterTokenLength = 10;
+    private const int ConcretePlanningQuestionMinimumTokens = 5;
+    private const int ConcretePlanningPostCueVerbLikeTokenLength = 6;
+    private const int ConcretePlanningAdditionalConcreteTokenLength = 6;
+    private const int ConcretePlanningAdditionalConcreteTokenCount = 1;
+    private const int ConcretePlanningShortBridgeTokenLength = 3;
+    private const int ShortSingleCueQuestionTokenLimit = 4;
+
+    /// <summary>
+    /// Structured runtime self-report analysis shared across app and host consumers.
+    /// </summary>
+    /// <param name="IsRuntimeIntrospectionQuestion">Whether the turn is an explicit runtime self-report question.</param>
+    /// <param name="CompactReply">Whether the reply should stay in the compact runtime-answer shape.</param>
+    /// <param name="ModelRequested">Whether model/runtime identity details were requested.</param>
+    /// <param name="ToolingRequested">Whether tooling details were requested.</param>
+    /// <param name="UserRequestLiteral">Normalized user request literal carried forward for prompt building.</param>
+    /// <param name="FromStructuredDirective">Whether the analysis was sourced from a structured directive rather than lexical fallback.</param>
+    public readonly record struct RuntimeSelfReportTurnAnalysis(
+        bool IsRuntimeIntrospectionQuestion,
+        bool CompactReply,
+        bool ModelRequested,
+        bool ToolingRequested,
+        string UserRequestLiteral,
+        bool FromStructuredDirective) {
+        /// <summary>
+        /// Gets the normalized detection source for the analysis result.
+        /// </summary>
+        public RuntimeSelfReportDetectionSource DetectionSource => !IsRuntimeIntrospectionQuestion
+            ? RuntimeSelfReportDetectionSource.None
+            : FromStructuredDirective
+                ? RuntimeSelfReportDetectionSource.StructuredDirective
+                : RuntimeSelfReportDetectionSource.LexicalFallback;
+    }
     private const int RuntimeCueAffixLengthLimit = 2;
     private static readonly string[] RuntimeCueBlockedAffixes = {
         "s",
         "es"
     };
-    private static readonly string[] RuntimeCueWords = {
-        "model",
-        "runtime",
-        "tool",
-        "tools",
-        "pack",
-        "packs",
-        "plugin",
-        "plugins",
-        "transport"
-    };
-
     /// <summary>
     /// Returns <see langword="true"/> when the text looks like a runtime/model/tool self-report question.
     /// </summary>
     public static bool LooksLikeRuntimeIntrospectionQuestion(string? userText) {
-        var text = (userText ?? string.Empty).Trim();
-        if (text.Length == 0
-            || text.Length > RuntimeQuestionLengthLimit
-            || !ContainsQuestionSignal(text)
-            || ContainsBlockedRuntimeMetaPunctuation(text)) {
-            return false;
-        }
-
-        var tokens = CollectLetterDigitTokens(text, RuntimeQuestionTokenLimit + 1);
-        if (tokens.Count == 0 || tokens.Count > RuntimeQuestionTokenLimit) {
-            return false;
-        }
-
-        var runtimeCueMatches = CountRuntimeCueMatches(tokens);
-        if (runtimeCueMatches == 0) {
-            return false;
-        }
-
-        if (tokens.Count <= ShortRuntimeQuestionTokenLimit) {
-            return !LooksLikeConcreteQuestionLead(tokens);
-        }
-
-        // Runtime self-report asks often carry enterprise qualifiers like DNS/AD.
-        // Allow uppercase acronyms here only so those meta-questions are not
-        // misclassified as concrete operational tasks.
-        return LooksLikeBroadGenericQuestionShape(text, tokens, allowUppercaseAcronyms: true);
+        return Analyze(userText).IsRuntimeIntrospectionQuestion;
     }
 
     /// <summary>
     /// Returns <see langword="true"/> when a runtime self-report ask is compact enough for a short meta reply.
     /// </summary>
     public static bool LooksLikeCompactRuntimeIntrospectionQuestion(string? userText) {
-        var text = (userText ?? string.Empty).Trim();
-        if (!LooksLikeRuntimeIntrospectionQuestion(text)) {
-            return false;
+        return Analyze(userText).CompactReply;
+    }
+
+    /// <summary>
+    /// Returns <see langword="true"/> when the runtime self-report ask explicitly includes tooling scope
+    /// or a structured directive has already declared that tooling details are desired.
+    /// </summary>
+    public static bool LooksLikeToolingScopedRuntimeIntrospectionQuestion(string? userText) {
+        return Analyze(userText).ToolingRequested;
+    }
+
+    /// <summary>
+    /// Returns <see langword="true"/> when the runtime self-report ask explicitly includes model/runtime identity
+    /// or the structured directive has already declared that model details are desired.
+    /// </summary>
+    public static bool LooksLikeModelScopedRuntimeIntrospectionQuestion(string? userText) {
+        return Analyze(userText).ModelRequested;
+    }
+
+    /// <summary>
+    /// Produces a structured runtime self-report analysis so app and host can share one normalized view
+    /// instead of re-running multiple cue/scope checks independently.
+    /// </summary>
+    public static RuntimeSelfReportTurnAnalysis Analyze(string? userText) {
+        if (RuntimeSelfReportDirective.TryParse(userText, out var directive)) {
+            var literal = string.IsNullOrWhiteSpace(directive.UserRequestLiteral)
+                ? (userText ?? string.Empty).Trim()
+                : directive.UserRequestLiteral!.Trim();
+            RuntimeSelfReportTurnAnalysis lexical = default;
+            if (!directive.ModelRequested.HasValue || !directive.ToolingRequested.HasValue) {
+                lexical = AnalyzeWithoutDirective(literal);
+            }
+
+            return new RuntimeSelfReportTurnAnalysis(
+                IsRuntimeIntrospectionQuestion: true,
+                CompactReply: directive.CompactReply,
+                ModelRequested: directive.ModelRequested ?? lexical.ModelRequested,
+                ToolingRequested: directive.ToolingRequested ?? lexical.ToolingRequested,
+                UserRequestLiteral: literal,
+                FromStructuredDirective: true);
         }
 
-        if (text.Length > CompactRuntimeQuestionLengthLimit) {
-            return false;
-        }
-
-        var tokens = CollectLetterDigitTokens(text, CompactRuntimeQuestionTokenLimit + 1);
-        return tokens.Count > 0 && tokens.Count <= CompactRuntimeQuestionTokenLimit;
+        return AnalyzeWithoutDirective(userText);
     }
 
     /// <summary>
@@ -102,17 +149,94 @@ public static class RuntimeSelfReportTurnClassifier {
         return false;
     }
 
-    private static int CountRuntimeCueMatches(IReadOnlyList<string> tokens) {
+    private static RuntimeSelfReportTurnAnalysis AnalyzeWithoutDirective(string? userText) {
+        var text = (userText ?? string.Empty).Trim();
+        if (text.Length == 0
+            || text.Length > RuntimeQuestionLengthLimit
+            || !ContainsQuestionSignal(text)
+            || ContainsBlockedRuntimeMetaPunctuation(text)) {
+            return new RuntimeSelfReportTurnAnalysis(false, false, false, false, text, false);
+        }
+
+        var tokens = CollectLetterDigitTokens(text, RuntimeQuestionTokenLimit + 1);
+        if (tokens.Count == 0 || tokens.Count > RuntimeQuestionTokenLimit) {
+            return new RuntimeSelfReportTurnAnalysis(false, false, false, false, text, false);
+        }
+
+        var runtimeCueMatches = CountRuntimeCueMatches(tokens);
+        if (runtimeCueMatches == 0) {
+            return new RuntimeSelfReportTurnAnalysis(false, false, false, false, text, false);
+        }
+
+        if (LooksLikeBareLexicalCueQuestion(tokens, runtimeCueMatches)) {
+            return new RuntimeSelfReportTurnAnalysis(false, false, false, false, text, false);
+        }
+
+        if (LooksLikeShortSingleCueFallbackQuestion(text, tokens, runtimeCueMatches)) {
+            return new RuntimeSelfReportTurnAnalysis(false, false, false, false, text, false);
+        }
+
+        if (LooksLikeShortSingleCueScopedQualifierQuestion(text, tokens, runtimeCueMatches)) {
+            return new RuntimeSelfReportTurnAnalysis(false, false, false, false, text, false);
+        }
+
+        if (LooksLikeSingleCueWeakBridgeQuestion(text, tokens, runtimeCueMatches)) {
+            return new RuntimeSelfReportTurnAnalysis(false, false, false, false, text, false);
+        }
+
+        if (LooksLikeConcreteSingleModelPlanningQuestion(tokens)
+            || LooksLikeConcreteToolingPlanningQuestion(tokens)) {
+            return new RuntimeSelfReportTurnAnalysis(false, false, false, false, text, false);
+        }
+
+        var isRuntimeQuestion = tokens.Count <= ShortRuntimeQuestionTokenLimit
+            ? !LooksLikeConcreteQuestionLead(tokens)
+            : LooksLikeBroadGenericQuestionShape(text, tokens, allowUppercaseAcronyms: true);
+        if (!isRuntimeQuestion) {
+            return new RuntimeSelfReportTurnAnalysis(false, false, false, false, text, false);
+        }
+
+        var toolingRequested = CountToolingCueMatches(tokens) > 0;
+        var modelRequested = CountModelCueMatches(tokens) > 0 || !toolingRequested;
+        var compactReply = text.Length <= CompactRuntimeQuestionLengthLimit
+                           && tokens.Count <= CompactRuntimeQuestionTokenLimit;
+        return new RuntimeSelfReportTurnAnalysis(true, compactReply, modelRequested, toolingRequested, text, false);
+    }
+
+    private static int CountRuntimeCueMatches(IReadOnlyList<string> tokens) => RuntimeSelfReportCueCatalog.CountLexicalFallbackCueMatches(tokens);
+
+    private static int CountToolingCueMatches(IReadOnlyList<string> tokens) {
         ArgumentNullException.ThrowIfNull(tokens);
 
         var matches = 0;
         for (var i = 0; i < tokens.Count; i++) {
             var token = tokens[i];
-            for (var j = 0; j < RuntimeCueWords.Length; j++) {
-                if (IsRuntimeCueToken(token, RuntimeCueWords[j])) {
-                    matches++;
-                    break;
-                }
+            if (IsRuntimeCueToken(token, "tool")
+                || IsRuntimeCueToken(token, "tools")
+                || IsRuntimeCueToken(token, "pack")
+                || IsRuntimeCueToken(token, "packs")
+                || IsRuntimeCueToken(token, "plugin")) {
+                matches++;
+                continue;
+            }
+
+            if (IsRuntimeCueToken(token, "plugins")) {
+                matches++;
+            }
+        }
+
+        return matches;
+    }
+
+    private static int CountModelCueMatches(IReadOnlyList<string> tokens) {
+        ArgumentNullException.ThrowIfNull(tokens);
+
+        var matches = 0;
+        for (var i = 0; i < tokens.Count; i++) {
+            var token = tokens[i];
+            if (IsRuntimeCueToken(token, "model")
+                || IsRuntimeCueToken(token, "runtime")) {
+                matches++;
             }
         }
 
@@ -256,6 +380,205 @@ public static class RuntimeSelfReportTurnClassifier {
         }
 
         return false;
+    }
+
+    private static bool LooksLikeConcreteSingleModelPlanningQuestion(IReadOnlyList<string> tokens) {
+        ArgumentNullException.ThrowIfNull(tokens);
+
+        if (tokens.Count < ConcretePlanningQuestionMinimumTokens
+            || CountToolingCueMatches(tokens) > 0
+            || CountModelCueMatches(tokens) != 1) {
+            return false;
+        }
+
+        var modelCueIndex = -1;
+        for (var i = 0; i < tokens.Count; i++) {
+            if (IsRuntimeCueToken(tokens[i], "model")) {
+                modelCueIndex = i;
+                break;
+            }
+        }
+
+        if (modelCueIndex < 0 || modelCueIndex >= tokens.Count - 3) {
+            return false;
+        }
+
+        return HasConcretePlanningTailAfterCue(tokens, modelCueIndex);
+    }
+
+    private static bool LooksLikeConcreteToolingPlanningQuestion(IReadOnlyList<string> tokens) {
+        ArgumentNullException.ThrowIfNull(tokens);
+
+        if (tokens.Count < ConcretePlanningQuestionMinimumTokens
+            || CountToolingCueMatches(tokens) != 1
+            || CountModelCueMatches(tokens) > 0) {
+            return false;
+        }
+
+        var toolingCueIndex = -1;
+        for (var i = 0; i < tokens.Count; i++) {
+            if (IsRuntimeCueToken(tokens[i], "tool")
+                || IsRuntimeCueToken(tokens[i], "tools")) {
+                toolingCueIndex = i;
+                break;
+            }
+        }
+
+        if (toolingCueIndex < 0 || toolingCueIndex >= tokens.Count - 3) {
+            return false;
+        }
+
+        return HasConcretePlanningTailAfterCue(tokens, toolingCueIndex);
+    }
+
+    private static bool LooksLikeBareLexicalCueQuestion(IReadOnlyList<string> tokens, int runtimeCueMatches) {
+        ArgumentNullException.ThrowIfNull(tokens);
+
+        return runtimeCueMatches == 1
+               && tokens.Count <= 2;
+    }
+
+    private static bool LooksLikeShortSingleCueFallbackQuestion(string text, IReadOnlyList<string> tokens, int runtimeCueMatches) {
+        ArgumentNullException.ThrowIfNull(tokens);
+
+        if (runtimeCueMatches != 1 || tokens.Count > ShortSingleCueQuestionTokenLimit) {
+            return false;
+        }
+
+        if (ContainsShortSingleCuePreservingPunctuation(text) || ContainsInflectedLexicalFallbackCue(tokens)) {
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool LooksLikeShortSingleCueScopedQualifierQuestion(string text, IReadOnlyList<string> tokens, int runtimeCueMatches) {
+        ArgumentNullException.ThrowIfNull(tokens);
+
+        if (runtimeCueMatches != 1) {
+            return false;
+        }
+
+        var normalized = (text ?? string.Empty).Trim();
+        return normalized.IndexOf('/') >= 0
+               || normalized.IndexOf('.') >= 0
+               || ContainsUppercaseAcronymToken(normalized);
+    }
+
+    private static bool LooksLikeSingleCueWeakBridgeQuestion(string text, IReadOnlyList<string> tokens, int runtimeCueMatches) {
+        ArgumentNullException.ThrowIfNull(tokens);
+
+        if (runtimeCueMatches != 1
+            || tokens.Count < ConcretePlanningQuestionMinimumTokens
+            || ContainsShortSingleCuePreservingPunctuation(text)
+            || ContainsInflectedLexicalFallbackCue(tokens)) {
+            return false;
+        }
+
+        var cueIndex = FindFirstLexicalFallbackCueIndex(tokens);
+        if (cueIndex < 0 || cueIndex >= tokens.Count - 1) {
+            return false;
+        }
+
+        return GetMaxTokenLength(tokens, cueIndex + 1) <= 4;
+    }
+
+    private static bool ContainsShortSingleCuePreservingPunctuation(string text) {
+        var normalized = (text ?? string.Empty).Trim();
+        for (var i = 0; i < normalized.Length; i++) {
+            var ch = normalized[i];
+            if (ch is ':' or '_' or '`') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool ContainsInflectedLexicalFallbackCue(IReadOnlyList<string> tokens) {
+        ArgumentNullException.ThrowIfNull(tokens);
+
+        for (var i = 0; i < tokens.Count; i++) {
+            var token = (tokens[i] ?? string.Empty).Trim();
+            if (token.Length == 0) {
+                continue;
+            }
+
+            for (var j = 0; j < RuntimeSelfReportCueCatalog.LexicalFallbackCueWords.Length; j++) {
+                var cueWord = RuntimeSelfReportCueCatalog.LexicalFallbackCueWords[j];
+                if (IsRuntimeCueToken(token, cueWord)
+                    && !string.Equals(token, cueWord, StringComparison.OrdinalIgnoreCase)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static int FindFirstLexicalFallbackCueIndex(IReadOnlyList<string> tokens) {
+        ArgumentNullException.ThrowIfNull(tokens);
+
+        for (var i = 0; i < tokens.Count; i++) {
+            var token = (tokens[i] ?? string.Empty).Trim();
+            if (token.Length == 0) {
+                continue;
+            }
+
+            for (var j = 0; j < RuntimeSelfReportCueCatalog.LexicalFallbackCueWords.Length; j++) {
+                if (IsRuntimeCueToken(token, RuntimeSelfReportCueCatalog.LexicalFallbackCueWords[j])) {
+                    return i;
+                }
+            }
+        }
+
+        return -1;
+    }
+
+    private static int GetMaxTokenLength(IReadOnlyList<string> tokens, int startIndex) {
+        ArgumentNullException.ThrowIfNull(tokens);
+
+        var maxLength = 0;
+        for (var i = Math.Max(0, startIndex); i < tokens.Count; i++) {
+            if (tokens[i].Length > maxLength) {
+                maxLength = tokens[i].Length;
+            }
+        }
+
+        return maxLength;
+    }
+
+    private static bool HasConcretePlanningTailAfterCue(IReadOnlyList<string> tokens, int cueIndex) {
+        ArgumentNullException.ThrowIfNull(tokens);
+
+        if (cueIndex < 0 || cueIndex >= tokens.Count - 2) {
+            return false;
+        }
+
+        if (tokens[cueIndex + 1].Length >= ConcretePlanningPostCueVerbLikeTokenLength) {
+            return CountConcreteTailTokens(tokens, cueIndex + 2) >= ConcretePlanningAdditionalConcreteTokenCount;
+        }
+
+        if (cueIndex < tokens.Count - 3
+            && tokens[cueIndex + 1].Length <= ConcretePlanningShortBridgeTokenLength
+            && tokens[cueIndex + 2].Length <= ConcretePlanningShortBridgeTokenLength) {
+            return CountConcreteTailTokens(tokens, cueIndex + 3) >= ConcretePlanningAdditionalConcreteTokenCount;
+        }
+
+        return false;
+    }
+
+    private static int CountConcreteTailTokens(IReadOnlyList<string> tokens, int startIndex) {
+        ArgumentNullException.ThrowIfNull(tokens);
+
+        var count = 0;
+        for (var i = Math.Max(0, startIndex); i < tokens.Count; i++) {
+            if (tokens[i].Length >= ConcretePlanningAdditionalConcreteTokenLength) {
+                count++;
+            }
+        }
+
+        return count;
     }
 
     private static bool ContainsUppercaseAcronymToken(string text) {

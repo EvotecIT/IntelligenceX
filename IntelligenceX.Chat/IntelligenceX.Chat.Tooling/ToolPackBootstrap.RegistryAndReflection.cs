@@ -17,6 +17,11 @@ namespace IntelligenceX.Chat.Tooling;
 public static partial class ToolPackBootstrap {
     private const string BuiltInToolAssemblyManifestResourceSuffix = ".BuiltInToolAssemblies.txt";
     private const string BuiltInToolProbePathsEnvironmentVariable = "INTELLIGENCEX_BUILTIN_TOOL_PROBE_PATHS";
+    private static readonly object BuiltInToolDependencyResolverGate = new();
+    private static readonly HashSet<string> BuiltInToolDependencyResolverProbeRoots = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly HashSet<string> BuiltInToolDependencyResolverAssemblyPaths = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly List<AssemblyDependencyResolver> BuiltInToolDependencyResolvers = new();
+    private static bool BuiltInToolDependencyResolverRegistered;
     private static readonly IReadOnlyList<KnownBuiltInPackBootstrapMetadata> KnownBuiltInPackBootstrapMetadataByIdentity = new[] {
         CreateKnownBuiltInPackBootstrapMetadata(
             id: "active_directory",
@@ -1337,6 +1342,7 @@ public static partial class ToolPackBootstrap {
                 return null;
             }
 
+            EnsureBuiltInToolDependencyResolverConfigured(trustedAssemblyPath, options);
             return AssemblyLoadContext.Default.LoadFromAssemblyPath(trustedAssemblyPath);
         } catch (Exception ex) {
             Warn(
@@ -1403,6 +1409,221 @@ public static partial class ToolPackBootstrap {
         }
 
         return false;
+    }
+
+    private static void EnsureBuiltInToolDependencyResolverConfigured(string trustedAssemblyPath, ToolPackBootstrapOptions options) {
+        if (string.IsNullOrWhiteSpace(trustedAssemblyPath)) {
+            return;
+        }
+
+        var probeRoots = BuildTrustedBuiltInDependencyProbeRoots(trustedAssemblyPath, options);
+
+        lock (BuiltInToolDependencyResolverGate) {
+            RegisterTrustedBuiltInDependencyResolver_NoLock(trustedAssemblyPath);
+            PreloadTrustedBuiltInCompanionAssemblies_NoLock(trustedAssemblyPath);
+
+            for (var i = 0; i < probeRoots.Count; i++) {
+                var candidate = probeRoots[i];
+                if (string.IsNullOrWhiteSpace(candidate)) {
+                    continue;
+                }
+
+                try {
+                    var normalizedPath = Path.GetFullPath(candidate);
+                    if (Directory.Exists(normalizedPath)) {
+                        BuiltInToolDependencyResolverProbeRoots.Add(normalizedPath);
+                    }
+                } catch (Exception) {
+                    // Ignore malformed runtime probe roots and keep the resolver usable.
+                }
+            }
+
+            if (BuiltInToolDependencyResolverRegistered) {
+                return;
+            }
+
+            AssemblyLoadContext.Default.Resolving += ResolveTrustedBuiltInToolDependencyAssembly;
+            AppDomain.CurrentDomain.AssemblyResolve += ResolveTrustedBuiltInToolDependencyAssemblyFromAppDomain;
+            BuiltInToolDependencyResolverRegistered = true;
+        }
+    }
+
+    private static void PreloadTrustedBuiltInCompanionAssemblies_NoLock(string trustedAssemblyPath) {
+        if (string.IsNullOrWhiteSpace(trustedAssemblyPath)) {
+            return;
+        }
+
+        string normalizedTrustedAssemblyPath;
+        string? trustedAssemblyDirectory;
+        try {
+            normalizedTrustedAssemblyPath = Path.GetFullPath(trustedAssemblyPath);
+            trustedAssemblyDirectory = Path.GetDirectoryName(normalizedTrustedAssemblyPath);
+        } catch (Exception) {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(trustedAssemblyDirectory) || !Directory.Exists(trustedAssemblyDirectory)) {
+            return;
+        }
+
+        IEnumerable<string> candidateAssemblyPaths;
+        try {
+            candidateAssemblyPaths = Directory.EnumerateFiles(trustedAssemblyDirectory, "*.dll", SearchOption.TopDirectoryOnly)
+                .Select(Path.GetFullPath)
+                .Where(path => !string.Equals(path, normalizedTrustedAssemblyPath, StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(static path => Path.GetFileName(path).StartsWith("System.", StringComparison.OrdinalIgnoreCase))
+                .ThenByDescending(static path => Path.GetFileName(path).StartsWith("Microsoft.", StringComparison.OrdinalIgnoreCase))
+                .ThenBy(static path => path, StringComparer.OrdinalIgnoreCase);
+        } catch (Exception) {
+            return;
+        }
+
+        foreach (var candidateAssemblyPath in candidateAssemblyPaths) {
+            try {
+                var candidateAssemblyName = AssemblyName.GetAssemblyName(candidateAssemblyPath);
+                var requestedName = (candidateAssemblyName.Name ?? string.Empty).Trim();
+                if (requestedName.Length == 0) {
+                    continue;
+                }
+
+                var alreadyLoaded = AppDomain.CurrentDomain.GetAssemblies()
+                    .Any(loadedAssembly =>
+                        string.Equals(loadedAssembly.GetName().Name, requestedName, StringComparison.OrdinalIgnoreCase));
+                if (alreadyLoaded) {
+                    continue;
+                }
+
+                RegisterTrustedBuiltInDependencyResolver_NoLock(candidateAssemblyPath);
+                AssemblyLoadContext.Default.LoadFromAssemblyPath(candidateAssemblyPath);
+            } catch (Exception) {
+                // Ignore companion preload failures. The runtime resolver still has a chance to load them lazily.
+            }
+        }
+    }
+
+    private static IReadOnlyList<string> BuildTrustedBuiltInDependencyProbeRoots(string trustedAssemblyPath, ToolPackBootstrapOptions options) {
+        var probeRoots = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        void AddProbeRoot(string? candidate) {
+            if (string.IsNullOrWhiteSpace(candidate)) {
+                return;
+            }
+
+            try {
+                var normalizedPath = Path.GetFullPath(candidate);
+                if (Directory.Exists(normalizedPath) && seen.Add(normalizedPath)) {
+                    probeRoots.Add(normalizedPath);
+                }
+            } catch (Exception) {
+                // Ignore malformed runtime probe roots and keep the resolver usable.
+            }
+        }
+
+        AddProbeRoot(Path.GetDirectoryName(trustedAssemblyPath));
+        var configuredProbeRoots = ResolveBuiltInToolAssemblyProbePaths(options, typeof(ToolPackBootstrap).Assembly);
+        for (var i = 0; i < configuredProbeRoots.Count; i++) {
+            AddProbeRoot(configuredProbeRoots[i]);
+        }
+
+        return probeRoots;
+    }
+
+    private static void RegisterTrustedBuiltInDependencyResolver_NoLock(string trustedAssemblyPath) {
+        if (string.IsNullOrWhiteSpace(trustedAssemblyPath)) {
+            return;
+        }
+
+        try {
+            var normalizedTrustedAssemblyPath = Path.GetFullPath(trustedAssemblyPath);
+            if (!File.Exists(normalizedTrustedAssemblyPath)) {
+                return;
+            }
+
+            if (BuiltInToolDependencyResolverAssemblyPaths.Add(normalizedTrustedAssemblyPath)) {
+                BuiltInToolDependencyResolvers.Add(new AssemblyDependencyResolver(normalizedTrustedAssemblyPath));
+            }
+        } catch (Exception) {
+            // Ignore malformed assembly paths and keep the resolver usable.
+        }
+    }
+
+    private static Assembly? ResolveTrustedBuiltInToolDependencyAssembly(AssemblyLoadContext context, AssemblyName assemblyName) {
+        return ResolveTrustedBuiltInToolDependencyAssemblyCore(
+            assemblyName,
+            loadAssembly: trustedAssemblyPath => context.LoadFromAssemblyPath(trustedAssemblyPath));
+    }
+
+    private static Assembly? ResolveTrustedBuiltInToolDependencyAssemblyFromAppDomain(object? sender, ResolveEventArgs args) {
+        _ = sender;
+        if (string.IsNullOrWhiteSpace(args.Name)) {
+            return null;
+        }
+
+        return ResolveTrustedBuiltInToolDependencyAssemblyCore(
+            new AssemblyName(args.Name),
+            loadAssembly: trustedAssemblyPath => AssemblyLoadContext.Default.LoadFromAssemblyPath(trustedAssemblyPath));
+    }
+
+    private static Assembly? ResolveTrustedBuiltInToolDependencyAssemblyCore(
+        AssemblyName assemblyName,
+        Func<string, Assembly> loadAssembly) {
+        var requestedName = (assemblyName.Name ?? string.Empty).Trim();
+        if (requestedName.Length == 0) {
+            return null;
+        }
+
+        var alreadyLoaded = AppDomain.CurrentDomain.GetAssemblies()
+            .FirstOrDefault(loadedAssembly =>
+                string.Equals(loadedAssembly.GetName().Name, requestedName, StringComparison.OrdinalIgnoreCase));
+        if (alreadyLoaded is not null) {
+            return alreadyLoaded;
+        }
+
+        AssemblyDependencyResolver[] dependencyResolvers;
+        string[] probeRoots;
+        lock (BuiltInToolDependencyResolverGate) {
+            if (BuiltInToolDependencyResolvers.Count == 0 && BuiltInToolDependencyResolverProbeRoots.Count == 0) {
+                return null;
+            }
+
+            dependencyResolvers = BuiltInToolDependencyResolvers.ToArray();
+            probeRoots = BuiltInToolDependencyResolverProbeRoots.ToArray();
+        }
+
+        for (var i = 0; i < dependencyResolvers.Length; i++) {
+            try {
+                var resolvedAssemblyPath = dependencyResolvers[i].ResolveAssemblyToPath(assemblyName);
+                if (string.IsNullOrWhiteSpace(resolvedAssemblyPath)) {
+                    continue;
+                }
+
+                var normalizedResolvedPath = Path.GetFullPath(resolvedAssemblyPath);
+                if (!File.Exists(normalizedResolvedPath)) {
+                    continue;
+                }
+
+                lock (BuiltInToolDependencyResolverGate) {
+                    RegisterTrustedBuiltInDependencyResolver_NoLock(normalizedResolvedPath);
+                }
+                return loadAssembly(normalizedResolvedPath);
+            } catch (Exception) {
+                // Ignore resolver failures and continue with trusted probe roots.
+            }
+        }
+
+        if (!TryResolveTrustedToolAssemblyPathFromProbeRoots(assemblyName, probeRoots, out var trustedAssemblyPath)) {
+            return null;
+        }
+
+        try {
+            lock (BuiltInToolDependencyResolverGate) {
+                RegisterTrustedBuiltInDependencyResolver_NoLock(trustedAssemblyPath);
+            }
+            return loadAssembly(trustedAssemblyPath);
+        } catch (Exception) {
+            return null;
+        }
     }
 
     private static IReadOnlyList<string> ResolveBuiltInToolAssemblyProbePaths(ToolPackBootstrapOptions options, Assembly bootstrapAssembly) {

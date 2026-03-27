@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using IntelligenceX.Chat.Abstractions;
 using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.App.Markdown;
@@ -17,9 +18,10 @@ public sealed partial class MainWindow {
             profileIntent.HasAssistantPersona,
             profileIntent.HasThemePreset);
         var onboardingInProgress = !_appState.OnboardingCompleted;
+        var runtimeSelfReportAnalysis = ConversationTurnShapeClassifier.AnalyzeAssistantRuntimeIntrospectionQuestion(userText);
         var assistantCapabilityQuestion = ConversationTurnShapeClassifier.LooksLikeAssistantCapabilityQuestion(userText);
-        var compactAssistantRuntimeIntrospectionQuestion = ConversationTurnShapeClassifier.LooksLikeCompactAssistantRuntimeIntrospectionQuestion(userText);
-        var assistantRuntimeIntrospectionQuestion = ConversationTurnShapeClassifier.LooksLikeAssistantRuntimeIntrospectionQuestion(userText);
+        var compactAssistantRuntimeIntrospectionQuestion = runtimeSelfReportAnalysis.CompactReply;
+        var assistantRuntimeIntrospectionQuestion = runtimeSelfReportAnalysis.IsRuntimeIntrospectionQuestion;
         var includeOnboardingContext = ShouldIncludeAmbientOnboardingContext(
             userText,
             onboardingInProgress,
@@ -31,12 +33,16 @@ public sealed partial class MainWindow {
             includeLiveProfileUpdates);
 
         if (shouldUseThinRequestEnvelope) {
+            var runtimeSelfReportDirectiveLines = PromptMarkdownBuilder.BuildRuntimeSelfReportDirectiveLines(runtimeSelfReportAnalysis);
+
             return PromptMarkdownBuilder.BuildThinServiceRequest(
                 userText: userText,
                 effectiveName: effectiveName,
                 effectivePersona: effectivePersona,
                 persistentMemoryLines: memoryContextLines,
-                persistentMemoryPrompt: _persistentMemoryEnabled ? PromptAssets.GetPersistentMemoryPrompt() : string.Empty);
+                persistentMemoryPrompt: _persistentMemoryEnabled ? PromptAssets.GetPersistentMemoryPrompt() : string.Empty,
+                runtimeSelfReportDirectiveLines: runtimeSelfReportDirectiveLines,
+                runtimeSelfReportAnalysis: runtimeSelfReportAnalysis);
         }
 
         IReadOnlyList<string> missingFields = includeOnboardingContext ? BuildMissingOnboardingFields() : Array.Empty<string>();
@@ -60,11 +66,15 @@ public sealed partial class MainWindow {
             _toolCatalogCapabilitySnapshot,
             _toolCatalogDefinitions.Count == 0 ? null : _toolCatalogDefinitions.Values,
             assistantCapabilityQuestion,
-            assistantRuntimeIntrospectionQuestion);
+            assistantRuntimeIntrospectionQuestion,
+            runtimeSelfReportAnalysis.DetectionSource);
         var runtimeCapabilityLines = assistantRuntimeIntrospectionQuestion
-            ? BuildRuntimeCapabilityContextLines(ShouldUseCompactRuntimeCapabilityContext(
-                assistantRuntimeIntrospectionQuestion,
-                compactAssistantRuntimeIntrospectionQuestion))
+            ? BuildRuntimeCapabilityContextLines(
+                compactSelfReport: ShouldUseCompactRuntimeCapabilityContext(
+                    assistantRuntimeIntrospectionQuestion,
+                    compactAssistantRuntimeIntrospectionQuestion,
+                    runtimeSelfReportAnalysis.DetectionSource),
+                runtimeSelfReportDetectionSource: runtimeSelfReportAnalysis.DetectionSource)
             : null;
         var proactiveExecutionEnabled = ResolveProactiveExecutionGuidanceMode(
             _proactiveModeEnabled,
@@ -92,7 +102,8 @@ public sealed partial class MainWindow {
             persistentMemoryPrompt: _persistentMemoryEnabled ? PromptAssets.GetPersistentMemoryPrompt() : string.Empty,
             capabilitySelfKnowledgeLines: capabilitySelfKnowledgeLines,
             runtimeCapabilityLines: runtimeCapabilityLines,
-            proactiveExecutionEnabled: proactiveExecutionEnabled);
+            proactiveExecutionEnabled: proactiveExecutionEnabled,
+            runtimeSelfReportAnalysis: runtimeSelfReportAnalysis);
     }
 
     internal static bool? ResolveProactiveExecutionGuidanceMode(
@@ -117,7 +128,8 @@ public sealed partial class MainWindow {
     internal static IReadOnlyList<string>? SelectCapabilitySelfKnowledgeLines(
         SessionPolicyDto? sessionPolicy,
         bool assistantCapabilityQuestion,
-        bool assistantRuntimeIntrospectionQuestion) {
+        bool assistantRuntimeIntrospectionQuestion,
+        RuntimeSelfReportDetectionSource runtimeSelfReportDetectionSource = RuntimeSelfReportDetectionSource.None) {
         return SelectCapabilitySelfKnowledgeLines(
             sessionPolicy,
             toolCatalogPacks: null,
@@ -126,7 +138,8 @@ public sealed partial class MainWindow {
             toolCatalogCapabilitySnapshot: null,
             toolCatalogTools: null,
             assistantCapabilityQuestion,
-            assistantRuntimeIntrospectionQuestion);
+            assistantRuntimeIntrospectionQuestion,
+            runtimeSelfReportDetectionSource);
     }
 
     internal static IReadOnlyList<string>? SelectCapabilitySelfKnowledgeLines(
@@ -137,7 +150,8 @@ public sealed partial class MainWindow {
         SessionCapabilitySnapshotDto? toolCatalogCapabilitySnapshot,
         IReadOnlyCollection<ToolDefinitionDto>? toolCatalogTools,
         bool assistantCapabilityQuestion,
-        bool assistantRuntimeIntrospectionQuestion) {
+        bool assistantRuntimeIntrospectionQuestion,
+        RuntimeSelfReportDetectionSource runtimeSelfReportDetectionSource = RuntimeSelfReportDetectionSource.None) {
         if (assistantCapabilityQuestion) {
             return BuildCapabilitySelfKnowledgeLines(
                 sessionPolicy,
@@ -147,7 +161,8 @@ public sealed partial class MainWindow {
                 toolCatalogCapabilitySnapshot,
                 toolCatalogExecutionSummary: null,
                 toolCatalogTools: toolCatalogTools,
-                runtimeIntrospectionMode: false);
+                runtimeIntrospectionMode: false,
+                runtimeSelfReportDetectionSource: runtimeSelfReportDetectionSource);
         }
 
         if (assistantRuntimeIntrospectionQuestion) {
@@ -159,7 +174,8 @@ public sealed partial class MainWindow {
                 toolCatalogCapabilitySnapshot,
                 toolCatalogExecutionSummary: null,
                 toolCatalogTools: toolCatalogTools,
-                runtimeIntrospectionMode: true);
+                runtimeIntrospectionMode: true,
+                runtimeSelfReportDetectionSource: runtimeSelfReportDetectionSource);
         }
 
         return null;
@@ -172,7 +188,8 @@ public sealed partial class MainWindow {
         SessionCapabilitySnapshotDto? toolCatalogCapabilitySnapshot,
         IReadOnlyCollection<ToolDefinitionDto>? toolCatalogTools,
         bool assistantCapabilityQuestion,
-        bool assistantRuntimeIntrospectionQuestion) {
+        bool assistantRuntimeIntrospectionQuestion,
+        RuntimeSelfReportDetectionSource runtimeSelfReportDetectionSource = RuntimeSelfReportDetectionSource.None) {
         return SelectCapabilitySelfKnowledgeLines(
             sessionPolicy,
             toolCatalogPacks,
@@ -181,13 +198,23 @@ public sealed partial class MainWindow {
             toolCatalogCapabilitySnapshot,
             toolCatalogTools,
             assistantCapabilityQuestion,
-            assistantRuntimeIntrospectionQuestion);
+            assistantRuntimeIntrospectionQuestion,
+            runtimeSelfReportDetectionSource);
     }
 
     internal static bool ShouldUseCompactRuntimeCapabilityContext(
         bool assistantRuntimeIntrospectionQuestion,
-        bool compactAssistantRuntimeIntrospectionQuestion) {
-        return assistantRuntimeIntrospectionQuestion && compactAssistantRuntimeIntrospectionQuestion;
+        bool compactAssistantRuntimeIntrospectionQuestion,
+        RuntimeSelfReportDetectionSource runtimeSelfReportDetectionSource = RuntimeSelfReportDetectionSource.None) {
+        if (!assistantRuntimeIntrospectionQuestion) {
+            return false;
+        }
+
+        if (compactAssistantRuntimeIntrospectionQuestion) {
+            return true;
+        }
+
+        return runtimeSelfReportDetectionSource == RuntimeSelfReportDetectionSource.LexicalFallback;
     }
 
     internal static bool ShouldIncludeLiveProfileUpdates(

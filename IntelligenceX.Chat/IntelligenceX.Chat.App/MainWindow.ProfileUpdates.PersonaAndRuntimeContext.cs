@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using IntelligenceX.Chat.Abstractions;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.Client;
 
@@ -46,7 +47,9 @@ public sealed partial class MainWindow {
         return lines.Count == 0 ? Array.Empty<string>() : lines;
     }
 
-    private IReadOnlyList<string> BuildRuntimeCapabilityContextLines(bool compactSelfReport = false) {
+    private IReadOnlyList<string> BuildRuntimeCapabilityContextLines(
+        bool compactSelfReport = false,
+        RuntimeSelfReportDetectionSource runtimeSelfReportDetectionSource = RuntimeSelfReportDetectionSource.None) {
         var lines = new List<string>();
         var options = BuildChatRequestOptions();
         var selectedModel = options?.Model;
@@ -70,7 +73,9 @@ public sealed partial class MainWindow {
                           knownToolCount,
                           enabledTools,
                           disabledTools));
-            lines.Add("Execution locality for enabled tools: " + DescribeExecutionLocalitySummary(executionSummary, compact: true));
+            if (ShouldIncludeExecutionLocalityInRuntimeCapabilityContext(compactSelfReport, runtimeSelfReportDetectionSource)) {
+                lines.Add("Execution locality for enabled tools: " + DescribeExecutionLocalitySummary(executionSummary, compact: true));
+            }
         } else {
             lines.Add("Runtime transport: " + transportLabel + ", active model for this turn: " + modelLabel);
             lines.Add("Tool availability for this turn: "
@@ -120,6 +125,16 @@ public sealed partial class MainWindow {
             lines.Add("Assistant rule: when asked about current runtime/model/tools, answer from these runtime lines and do not infer unavailable capabilities.");
         }
         return lines;
+    }
+
+    internal static bool ShouldIncludeExecutionLocalityInRuntimeCapabilityContext(
+        bool compactSelfReport,
+        RuntimeSelfReportDetectionSource runtimeSelfReportDetectionSource = RuntimeSelfReportDetectionSource.None) {
+        if (!compactSelfReport) {
+            return true;
+        }
+
+        return runtimeSelfReportDetectionSource != RuntimeSelfReportDetectionSource.LexicalFallback;
     }
 
     private void AppendWriteToolCapabilityContextLines(List<string> lines) {

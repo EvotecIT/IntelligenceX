@@ -1,0 +1,16 @@
+{
+  "name": "chat-runtime-introspection-polish-1-turn",
+  "tags": ["chat", "runtime", "persona", "natural", "strict", "live", "no-tools", "language-neutral"],
+  "defaults": {
+    "assert_clean_completion": true
+  },
+  "turns": [
+    {
+      "name": "Polish compact runtime self-awareness ask",
+      "user": "Jakiego modelu uzywasz?",
+      "assert_contains_any": ["model", "gpt"],
+      "assert_not_contains": ["Runtime capability handshake", "pack ids", "/act "],
+      "forbid_tools": ["*"]
+    }
+  ]
+}
