@@ -278,6 +278,45 @@ public sealed class ToolPackBootstrapMetadataTests {
     }
 
     [Fact]
+    public void ResolveTrustedBuiltInToolDependencyAssemblyForTesting_ReusesAlreadyLoadedCompanionAfterPreload() {
+        var repoRoot = FindRepoRoot();
+        var eventLogOutputRoot = Path.Combine(
+            repoRoot,
+            "IntelligenceX.Tools",
+            "IntelligenceX.Tools.EventLog",
+            "bin",
+            "Release",
+            "net10.0-windows");
+        var trustedAssemblyPath = Path.Combine(eventLogOutputRoot, "IntelligenceX.Tools.EventLog.dll");
+        var dependencyAssemblyPath = Path.Combine(eventLogOutputRoot, "System.Diagnostics.EventLog.dll");
+
+        Assert.True(File.Exists(trustedAssemblyPath), $"Expected trusted assembly '{trustedAssemblyPath}' to exist.");
+        Assert.True(File.Exists(dependencyAssemblyPath), $"Expected dependency assembly '{dependencyAssemblyPath}' to exist.");
+
+        ToolPackBootstrap.EnsureBuiltInToolDependencyResolverConfiguredForTesting(
+            trustedAssemblyPath,
+            new ToolPackBootstrapOptions());
+
+        var dependencyAssemblyName = AssemblyName.GetAssemblyName(dependencyAssemblyPath);
+        var expectedLoadedAssembly = AppDomain.CurrentDomain.GetAssemblies()
+            .FirstOrDefault(loadedAssembly =>
+                string.Equals(loadedAssembly.GetName().Name, dependencyAssemblyName.Name, StringComparison.OrdinalIgnoreCase));
+
+        Assert.NotNull(expectedLoadedAssembly);
+
+        var loadAttempts = 0;
+        var resolvedAssembly = ToolPackBootstrap.ResolveTrustedBuiltInToolDependencyAssemblyForTesting(
+            dependencyAssemblyName,
+            _ => {
+                loadAttempts++;
+                throw new InvalidOperationException("Resolver should reuse the already loaded companion assembly.");
+            });
+
+        Assert.Same(expectedLoadedAssembly, resolvedAssembly);
+        Assert.Equal(0, loadAttempts);
+    }
+
+    [Fact]
     public void BuildDiscoveryFingerprint_Changes_WhenWorkspaceBuiltInOutputProbingChanges() {
         var disabledFingerprint = ToolPackBootstrap.BuildDiscoveryFingerprint(new ToolPackBootstrapOptions {
             EnableBuiltInPackLoading = false,

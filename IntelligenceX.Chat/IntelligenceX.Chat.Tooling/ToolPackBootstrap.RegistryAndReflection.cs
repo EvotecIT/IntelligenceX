@@ -1613,9 +1613,7 @@ public static partial class ToolPackBootstrap {
             return null;
         }
 
-        var alreadyLoaded = AppDomain.CurrentDomain.GetAssemblies()
-            .FirstOrDefault(loadedAssembly =>
-                string.Equals(loadedAssembly.GetName().Name, requestedName, StringComparison.OrdinalIgnoreCase));
+        var alreadyLoaded = FindAlreadyLoadedAssembly_NoLock(requestedName);
         if (alreadyLoaded is not null) {
             return alreadyLoaded;
         }
@@ -1645,6 +1643,10 @@ public static partial class ToolPackBootstrap {
 
                 lock (BuiltInToolDependencyResolverGate) {
                     RegisterTrustedBuiltInDependencyResolver_NoLock(normalizedResolvedPath);
+                    var loadedResolvedAssembly = FindAlreadyLoadedAssembly_NoLock(requestedName, normalizedResolvedPath);
+                    if (loadedResolvedAssembly is not null) {
+                        return loadedResolvedAssembly;
+                    }
                 }
                 return loadAssembly(normalizedResolvedPath);
             } catch (Exception) {
@@ -1659,8 +1661,51 @@ public static partial class ToolPackBootstrap {
         try {
             lock (BuiltInToolDependencyResolverGate) {
                 RegisterTrustedBuiltInDependencyResolver_NoLock(trustedAssemblyPath);
+                var loadedResolvedAssembly = FindAlreadyLoadedAssembly_NoLock(requestedName, trustedAssemblyPath);
+                if (loadedResolvedAssembly is not null) {
+                    return loadedResolvedAssembly;
+                }
             }
             return loadAssembly(trustedAssemblyPath);
+        } catch (Exception) {
+            return null;
+        }
+    }
+
+    internal static void EnsureBuiltInToolDependencyResolverConfiguredForTesting(string trustedAssemblyPath, ToolPackBootstrapOptions? options = null) {
+        EnsureBuiltInToolDependencyResolverConfigured(trustedAssemblyPath, options ?? new ToolPackBootstrapOptions());
+    }
+
+    internal static Assembly? ResolveTrustedBuiltInToolDependencyAssemblyForTesting(AssemblyName assemblyName, Func<string, Assembly> loadAssembly) {
+        return ResolveTrustedBuiltInToolDependencyAssemblyCore(assemblyName, loadAssembly);
+    }
+
+    private static Assembly? FindAlreadyLoadedAssembly_NoLock(string requestedName, string? assemblyPath = null) {
+        var normalizedAssemblyPath = NormalizeLoadedAssemblyPath(assemblyPath);
+        foreach (var loadedAssembly in AppDomain.CurrentDomain.GetAssemblies()) {
+            if (!string.IsNullOrWhiteSpace(normalizedAssemblyPath)) {
+                var loadedAssemblyPath = NormalizeLoadedAssemblyPath(loadedAssembly.Location);
+                if (!string.IsNullOrWhiteSpace(loadedAssemblyPath)
+                    && string.Equals(loadedAssemblyPath, normalizedAssemblyPath, StringComparison.OrdinalIgnoreCase)) {
+                    return loadedAssembly;
+                }
+            }
+
+            if (string.Equals(loadedAssembly.GetName().Name, requestedName, StringComparison.OrdinalIgnoreCase)) {
+                return loadedAssembly;
+            }
+        }
+
+        return null;
+    }
+
+    private static string? NormalizeLoadedAssemblyPath(string? assemblyPath) {
+        if (string.IsNullOrWhiteSpace(assemblyPath)) {
+            return null;
+        }
+
+        try {
+            return Path.GetFullPath(assemblyPath);
         } catch (Exception) {
             return null;
         }
