@@ -357,7 +357,7 @@ public static class ProviderLimitForecasting {
         }
 
         if ((hottestWindow.UsedPercent ?? 0d) <= 0.05d) {
-            return "No live API usage yet in this account's coding windows.";
+            return "No live API usage yet in this account's live windows.";
         }
 
         if (hottestForecast?.ExhaustsBeforeReset == true) {

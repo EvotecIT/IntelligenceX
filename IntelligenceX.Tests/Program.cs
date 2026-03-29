@@ -17,6 +17,8 @@ internal static partial class Program {
         failed += Run("Config load invalid JSON", TestConfigLoadInvalidJsonThrows);
         failed += Run("Copilot idle event", TestCopilotIdleEvent);
         failed += Run("ChatGPT usage parse", TestChatGptUsageParse);
+        failed += Run("ChatGPT usage parse ignores legacy code review rate limit",
+            TestChatGptUsageParseIgnoresLegacyCodeReviewRateLimit);
         failed += Run("ChatGPT daily token breakdown parse", TestChatGptDailyTokenBreakdownParse);
         failed += Run("ChatGPT usage cache invalid JSON", TestChatGptUsageCacheInvalidJson);
         failed += Run("ChatGPT usage cache account path", TestChatGptUsageCacheAccountPath);
@@ -85,6 +87,8 @@ internal static partial class Program {
             TestProviderLimitForecastingKeepsEarlyWeeklyPaceAsTight);
         failed += Run("Provider limit forecasting keeps current account when not hard avoid",
             TestProviderLimitForecastingKeepsCurrentAccountWhenNotHardAvoid);
+        failed += Run("Provider limit forecasting uses live-window wording for zero usage",
+            TestProviderLimitForecastingUsesLiveWindowWordingForZeroUsage);
         failed += Run("Usage telemetry overview builder builds cards and heatmaps",
             TestUsageTelemetryOverviewBuilderBuildsCardsAndHeatmaps);
         failed += Run("Usage telemetry overview builder estimates API cost for mini and nano models",

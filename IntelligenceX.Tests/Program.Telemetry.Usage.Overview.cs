@@ -345,6 +345,38 @@ internal static partial class Program {
         AssertEqual("Tight", advisories[0].StatusLabel, "selected account stays in tight state");
     }
 
+    private static void TestProviderLimitForecastingUsesLiveWindowWordingForZeroUsage() {
+        var now = new DateTimeOffset(2026, 03, 29, 18, 00, 00, TimeSpan.Zero);
+        var snapshot = new ProviderLimitSnapshot(
+            "codex",
+            "Codex",
+            "OpenAI usage API",
+            "pro",
+            "acct-a@example.com",
+            Array.Empty<ProviderLimitWindow>(),
+            null,
+            null,
+            now,
+            new[] {
+                new ProviderLimitAccountSnapshot(
+                    "acct-a",
+                    "acct-a@example.com",
+                    "pro",
+                    new[] {
+                        new ProviderLimitWindow("global-secondary", "Global Weekly", 0d, now.AddDays(6), windowDuration: TimeSpan.FromDays(7))
+                    },
+                    null,
+                    null,
+                    now,
+                    isSelected: true)
+            });
+
+        var advisories = ProviderLimitForecasting.BuildAccountAdvisories(snapshot, now);
+        AssertEqual(1, advisories.Count, "zero-usage advisory count");
+        AssertEqual("Clear", advisories[0].StatusLabel, "zero-usage status remains clear");
+        AssertContainsText(advisories[0].Summary ?? string.Empty, "live windows", "zero-usage summary uses generalized live-window wording");
+    }
+
     private static void TestUsageTelemetryOverviewBuilderBuildsCopilotActivitySectionWithoutTokens() {
         var builder = new UsageTelemetryOverviewBuilder();
         var events = new[] {

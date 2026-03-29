@@ -457,6 +457,24 @@ internal static partial class Program {
         AssertEqual(9, snapshot.Credits.ApproxCloudMessages![1], "approx cloud messages");
     }
 
+    private static void TestChatGptUsageParseIgnoresLegacyCodeReviewRateLimit() {
+        const string json = "{"
+            + "\"plan_type\":\"pro\","
+            + "\"rate_limit\":{\"allowed\":true,\"limit_reached\":false,\"primary_window\":{\"used_percent\":12.5,\"limit_window_seconds\":18000,\"reset_after_seconds\":120}},"
+            + "\"code_review_rate_limit\":{\"allowed\":false,\"limit_reached\":true,\"primary_window\":{\"used_percent\":100,\"limit_window_seconds\":18000,\"reset_after_seconds\":900}}"
+            + "}";
+        var obj = JsonLite.Parse(json).AsObject();
+        AssertNotNull(obj, "legacy usage json");
+        var snapshot = ChatGptUsageSnapshot.FromJson(obj!);
+        AssertEqual("pro", snapshot.PlanType, "legacy plan type");
+        AssertNotNull(snapshot.RateLimit, "legacy primary rate limit");
+        AssertEqual(0, snapshot.AdditionalRateLimits.Count, "legacy code review limit does not become additional rate limit");
+        AssertNotNull(snapshot.Additional, "legacy additional payload");
+        AssertNotNull(snapshot.Additional!.GetObject("code_review_rate_limit"), "legacy code review limit preserved as additional field");
+        var serialized = snapshot.ToJson();
+        AssertNotNull(serialized.GetObject("code_review_rate_limit"), "legacy code review limit preserved in raw serialization");
+    }
+
     private static void TestChatGptDailyTokenBreakdownParse() {
         const string json = "{"
             + "\"data\":["
