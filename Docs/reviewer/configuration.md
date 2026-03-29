@@ -313,7 +313,6 @@ Use this to skip the main review and only assess existing review threads.
 ```
 
 For OpenAI, the footer uses the ChatGPT account usage snapshot. For Claude, it uses the live Anthropic provider-limit snapshot.
-When code-review rate-limit windows are present, their labels are prefixed with `code review` in the usage line so they remain distinct from general limits.
 
 ## Usage budget guard (credits vs weekly limit)
 

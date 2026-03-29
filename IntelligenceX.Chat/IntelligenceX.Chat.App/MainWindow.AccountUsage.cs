@@ -36,8 +36,7 @@ public sealed partial class MainWindow : Window {
         string? UsageSnapshotSource,
         bool? CreditsHasCredits,
         bool? CreditsUnlimited,
-        double? CreditsBalance,
-        bool? CodeReviewLimitReached);
+        double? CreditsBalance);
 
     private sealed record ActiveUsageIdentity(string Key, string Label);
 
@@ -184,8 +183,7 @@ public sealed partial class MainWindow : Window {
             UsageSnapshotSource: null,
             CreditsHasCredits: null,
             CreditsUnlimited: null,
-            CreditsBalance: null,
-            CodeReviewLimitReached: null);
+            CreditsBalance: null);
     }
 
     private static long SafeUsageValue(long? value) {
@@ -378,10 +376,6 @@ public sealed partial class MainWindow : Window {
             creditsBalance = null;
         }
 
-        var codeReviewLimitReached = usage.CodeReviewRateLimit is null
-            ? (bool?)null
-            : usage.CodeReviewRateLimit.LimitReached;
-
         lock (_turnDiagnosticsSync) {
             if (!_accountUsageByKey.TryGetValue(identity.Key, out var current)) {
                 current = CreateEmptyUsageSnapshot(identity);
@@ -414,8 +408,7 @@ public sealed partial class MainWindow : Window {
                 UsageSnapshotSource = snapshotSource,
                 CreditsHasCredits = creditsHasCredits,
                 CreditsUnlimited = creditsUnlimited,
-                CreditsBalance = creditsBalance,
-                CodeReviewLimitReached = codeReviewLimitReached
+                CreditsBalance = creditsBalance
             };
 
             TrimAccountUsageCacheLocked();
@@ -562,8 +555,7 @@ public sealed partial class MainWindow : Window {
                     UsageSnapshotSource: NormalizeOptionalText(item.UsageSnapshotSource),
                     CreditsHasCredits: item.CreditsHasCredits,
                     CreditsUnlimited: item.CreditsUnlimited,
-                    CreditsBalance: creditsBalance,
-                    CodeReviewLimitReached: item.CodeReviewLimitReached);
+                    CreditsBalance: creditsBalance);
             }
 
             TrimAccountUsageCacheLocked();
@@ -596,8 +588,7 @@ public sealed partial class MainWindow : Window {
                 UsageSnapshotSource = snapshot.UsageSnapshotSource,
                 CreditsHasCredits = snapshot.CreditsHasCredits,
                 CreditsUnlimited = snapshot.CreditsUnlimited,
-                CreditsBalance = snapshot.CreditsBalance,
-                CodeReviewLimitReached = snapshot.CodeReviewLimitReached
+                CreditsBalance = snapshot.CreditsBalance
             });
         }
 

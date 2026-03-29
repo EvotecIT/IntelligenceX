@@ -79,8 +79,6 @@ internal static partial class Program {
             TestProviderLimitForecastingDescribesAccountRunway);
         failed += Run("Provider limit forecasting keeps unavailable accounts visible",
             TestProviderLimitForecastingKeepsUnavailableAccountsVisible);
-        failed += Run("Provider limit forecasting prefers coding windows over review windows",
-            TestProviderLimitForecastingPrefersCodingWindowsOverReviewWindows);
         failed += Run("Provider limit forecasting uses watch closely for pace risk",
             TestProviderLimitForecastingUsesWatchCloselyForPaceRisk);
         failed += Run("Provider limit forecasting keeps early weekly pace as tight",

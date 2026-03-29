@@ -348,7 +348,6 @@ public static partial class ReviewerApp {
     private static BudgetAvailability EvaluateWeeklyBudget(ChatGptUsageSnapshot snapshot, out string detail) {
         var observations = new List<(BudgetAvailability Availability, string Detail)>();
         AddWeeklyObservations(snapshot.RateLimit, string.Empty, observations);
-        AddWeeklyObservations(snapshot.CodeReviewRateLimit, CodeReviewPrefix.Trim(), observations);
         if (observations.Count == 0) {
             detail = "weekly limit unavailable";
             return BudgetAvailability.Unknown;
@@ -561,16 +560,6 @@ public static partial class ReviewerApp {
             lines.Add(secondary);
         }
 
-        var codePrimary = FormatRateLimitLine(snapshot.CodeReviewRateLimit?.PrimaryWindow, UsageLimitLineKind.CodeReviewPrimary);
-        if (!string.IsNullOrWhiteSpace(codePrimary)) {
-            lines.Add(codePrimary);
-        }
-
-        var codeSecondary = FormatRateLimitLine(snapshot.CodeReviewRateLimit?.SecondaryWindow, UsageLimitLineKind.CodeReviewSecondary);
-        if (!string.IsNullOrWhiteSpace(codeSecondary)) {
-            lines.Add(codeSecondary);
-        }
-
         if (snapshot.Credits is not null) {
             if (snapshot.Credits.Unlimited) {
                 lines.Add("credits: unlimited");
@@ -620,9 +609,7 @@ public static partial class ReviewerApp {
 
     private enum UsageLimitLineKind {
         GeneralPrimary,
-        GeneralSecondary,
-        CodeReviewPrimary,
-        CodeReviewSecondary
+        GeneralSecondary
     }
 
     private static string? FormatRateLimitLine(ChatGptRateLimitWindow? window, UsageLimitLineKind lineKind) {
@@ -635,43 +622,20 @@ public static partial class ReviewerApp {
         }
         var fallbackLabel = GetUsageLimitFallbackLabel(lineKind);
         var windowLabel = FormatWindowLabel(window);
-        var label = fallbackLabel;
-        if (!string.IsNullOrWhiteSpace(windowLabel)) {
-            label = IsCodeReviewWindow(lineKind)
-                ? FormatCodeReviewLabel(windowLabel, IsSecondaryWindow(lineKind))
-                : windowLabel;
-        }
+        var label = !string.IsNullOrWhiteSpace(windowLabel) ? windowLabel : fallbackLabel;
         return $"{label}: {remaining}% remaining";
-    }
-
-    private static string FormatCodeReviewLabel(string windowLabel, bool isSecondaryWindow) {
-        var label = windowLabel.Trim();
-        // Secondary suffix ownership lives here for code-review labels.
-        // If upstream window labels ever include a secondary suffix, this guard avoids double-appending.
-        if (isSecondaryWindow && !label.EndsWith(SecondaryWindowSuffix, StringComparison.OrdinalIgnoreCase)) {
-            label += SecondaryWindowSuffix;
-        }
-        return CodeReviewPrefix + label;
     }
 
     private static string GetUsageLimitFallbackLabel(UsageLimitLineKind lineKind) {
         return lineKind switch {
             UsageLimitLineKind.GeneralPrimary => "rate limit",
             UsageLimitLineKind.GeneralSecondary => "rate limit (secondary)",
-            UsageLimitLineKind.CodeReviewPrimary => CodeReviewPrefix + "limit",
-            UsageLimitLineKind.CodeReviewSecondary => CodeReviewPrefix + "limit (secondary)",
             _ => throw new ArgumentOutOfRangeException(nameof(lineKind), lineKind, "Unsupported usage limit line kind")
         };
     }
 
-    private static bool IsCodeReviewWindow(UsageLimitLineKind lineKind) {
-        return lineKind == UsageLimitLineKind.CodeReviewPrimary
-            || lineKind == UsageLimitLineKind.CodeReviewSecondary;
-    }
-
     private static bool IsSecondaryWindow(UsageLimitLineKind lineKind) {
-        return lineKind == UsageLimitLineKind.GeneralSecondary
-            || lineKind == UsageLimitLineKind.CodeReviewSecondary;
+        return lineKind == UsageLimitLineKind.GeneralSecondary;
     }
 
     private static string? FormatWindowLabel(ChatGptRateLimitWindow window) {
@@ -742,4 +706,3 @@ public static partial class ReviewerApp {
     }
 
 }
-

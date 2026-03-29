@@ -140,7 +140,6 @@ internal static class UsageRunner {
         }
 
         PrintRateLimit("Rate limit", snapshot.RateLimit);
-        PrintRateLimit("Code review limit", snapshot.CodeReviewRateLimit);
 
         if (snapshot.Credits is not null) {
             Console.WriteLine("Credits:");

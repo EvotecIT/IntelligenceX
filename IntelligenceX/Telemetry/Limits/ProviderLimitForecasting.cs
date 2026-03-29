@@ -357,9 +357,7 @@ public static class ProviderLimitForecasting {
         }
 
         if ((hottestWindow.UsedPercent ?? 0d) <= 0.05d) {
-            return IsSupplementalWindow(hottestWindow)
-                ? "No live API usage yet in this account's tracked windows."
-                : "No live API usage yet in this account's coding windows.";
+            return "No live API usage yet in this account's coding windows.";
         }
 
         if (hottestForecast?.ExhaustsBeforeReset == true) {
@@ -456,26 +454,7 @@ public static class ProviderLimitForecasting {
     }
 
     private static IReadOnlyList<ProviderLimitWindow> GetAdvisoryWindows(IReadOnlyList<ProviderLimitWindow> windows) {
-        if (windows.Count == 0) {
-            return windows;
-        }
-
-        var primaryWindows = windows
-            .Where(static window => !IsSupplementalWindow(window))
-            .ToArray();
-        return primaryWindows.Length > 0 ? primaryWindows : windows;
-    }
-
-    private static bool IsSupplementalWindow(ProviderLimitWindow window) {
-        if (window is null) {
-            return false;
-        }
-
-        if (window.Key.StartsWith("code-review", StringComparison.OrdinalIgnoreCase)) {
-            return true;
-        }
-
-        return window.Label.StartsWith("Code review", StringComparison.OrdinalIgnoreCase);
+        return windows;
     }
 }
 

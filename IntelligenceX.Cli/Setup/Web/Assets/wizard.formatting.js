@@ -152,7 +152,6 @@ function formatUsageResult(data) {
   if (usage.email) lines.push(`Email: ${usage.email}`);
   if (usage.accountId) lines.push(`Account: ${usage.accountId}`);
   if (usage.rateLimit) lines.push(formatRateLimit('Rate limit', usage.rateLimit));
-  if (usage.codeReviewRateLimit) lines.push(formatRateLimit('Code review limit', usage.codeReviewRateLimit));
   if (usage.credits) {
     const c = usage.credits;
     lines.push(`Credits: ${c.hasCredits ? 'yes' : 'no'}${c.unlimited ? ' (unlimited)' : ''}`);

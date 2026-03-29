@@ -684,9 +684,8 @@ internal static partial class Program {
         failed += Run("Review usage integration display", TestReviewUsageIntegrationDisplay);
         failed += Run("Review usage summary line", TestReviewUsageSummaryLine);
         failed += Run("Review Claude usage summary line", TestReviewClaudeUsageSummaryLine);
-        failed += Run("Review usage summary disambiguates code review weekly", TestReviewUsageSummaryDisambiguatesCodeReviewWeekly);
-        failed += Run("Review usage summary disambiguates code review weekly secondary", TestReviewUsageSummaryDisambiguatesCodeReviewWeeklySecondary);
-        failed += Run("Review usage summary prefixes non-weekly code review", TestReviewUsageSummaryPrefixesNonWeeklyCodeReview);
+        failed += Run("Review usage summary includes weekly window", TestReviewUsageSummaryIncludesWeeklyWindow);
+        failed += Run("Review usage summary uses secondary fallback label", TestReviewUsageSummaryUsesSecondaryFallbackLabel);
         failed += Run("Review usage budget guard blocks exhausted credits and weekly", TestReviewUsageBudgetGuardBlocksWhenCreditsAndWeeklyExhausted);
         failed += Run("Review usage budget guard allows credits fallback", TestReviewUsageBudgetGuardAllowsCreditsFallback);
         failed += Run("Review Claude usage budget guard blocks when weekly exhausted",
