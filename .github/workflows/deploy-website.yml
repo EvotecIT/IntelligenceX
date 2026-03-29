@@ -19,41 +19,70 @@ concurrency:
   group: pages
   cancel-in-progress: false
 
-env:
-  # Pinned to a PowerForge commit that keeps release-hub support and clears current NuGet vulnerability gates.
-  POWERFORGE_REPOSITORY: EvotecIT/PSPublishModule
-  POWERFORGE_REF: 4751f06a2a52d926fc222a709ea6f0fff3d022c7
-
 jobs:
   build:
     runs-on: ${{ fromJSON((github.event.repository.private && vars.IX_FORCE_GITHUB_HOSTED != 'true') && '["self-hosted","linux"]' || '["ubuntu-latest"]') }}
+    env:
+      PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.cache/ms-playwright
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
-        with:
-          dotnet-version: '10.0.x'
-
-      - name: Checkout PSPublishModule
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-        with:
-          repository: ${{ env.POWERFORGE_REPOSITORY }}
-          ref: ${{ env.POWERFORGE_REF }}
-          path: PSPublishModule
-
-      - name: Restore and build PowerForge.Web.Cli
+      - name: Resolve PowerForgeWeb tool lock
+        id: powerforge
+        shell: pwsh
         run: |
-          dotnet restore PSPublishModule/PowerForge.Web.Cli/PowerForge.Web.Cli.csproj --force-evaluate
-          dotnet build PSPublishModule/PowerForge.Web.Cli/PowerForge.Web.Cli.csproj -c Release --no-restore
+          $lockPath = 'Website/.powerforge/tool-lock.json'
+          $lock = Get-Content -LiteralPath $lockPath -Raw | ConvertFrom-Json
+          if ($null -eq $lock) {
+            throw "Invalid PowerForge tool lock JSON: $lockPath"
+          }
+
+          "repository=$([string]$lock.repository)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "tag=$([string]$lock.tag)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "asset=$([string]$lock.asset)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "binary_path=$([string]$lock.binaryPath)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "sha256=$([string]$lock.sha256)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Download PowerForgeWeb
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          asset_url="https://github.com/${{ steps.powerforge.outputs.repository }}/releases/download/${{ steps.powerforge.outputs.tag }}/${{ steps.powerforge.outputs.asset }}"
+          curl -fsSL \
+            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+            -o "${RUNNER_TEMP}/powerforgeweb.zip" \
+            "${asset_url}"
+
+      - name: Verify PowerForgeWeb checksum
+        if: ${{ steps.powerforge.outputs.sha256 != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "${{ steps.powerforge.outputs.sha256 }}  ${RUNNER_TEMP}/powerforgeweb.zip" | sha256sum --check --status
+
+      - name: Extract PowerForgeWeb
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf ./.powerforge-bin
+          mkdir -p ./.powerforge-bin/current
+          unzip -q "${RUNNER_TEMP}/powerforgeweb.zip" -d ./.powerforge-bin/current
+          chmod +x "./.powerforge-bin/current/${{ steps.powerforge.outputs.binary_path }}" || true
+
+      - name: Initialize Playwright cache directory
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${PLAYWRIGHT_BROWSERS_PATH}"
 
       - name: Build website
-        working-directory: Website
         env:
           GITHUB_TOKEN: ${{ github.token }}
           INDEXNOW_KEY: ${{ secrets.INDEXNOW_KEY }}
-        run: dotnet ../PSPublishModule/PowerForge.Web.Cli/bin/Release/net10.0/PowerForge.Web.Cli.dll pipeline --config pipeline.json --mode ci
+        run: ./.powerforge-bin/current/${{ steps.powerforge.outputs.binary_path }} pipeline --config Website/pipeline.json --mode ci
 
       - name: Verify website output
         run: |
@@ -129,6 +158,14 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
+      - name: Cleanup Playwright cache
+        if: always()
+        shell: bash
+        run: |
+          if [ -n "${PLAYWRIGHT_BROWSERS_PATH:-}" ] && [ -d "${PLAYWRIGHT_BROWSERS_PATH}" ]; then
+            rm -rf "${PLAYWRIGHT_BROWSERS_PATH}"
+          fi
+
   deploy:
     needs: build
     runs-on: ${{ fromJSON((github.event.repository.private && vars.IX_FORCE_GITHUB_HOSTED != 'true') && '["self-hosted","linux"]' || '["ubuntu-latest"]') }}
@@ -158,36 +195,63 @@ jobs:
           fi
           echo "enabled=true" >> "$GITHUB_OUTPUT"
 
-      - name: Setup .NET
-        if: steps.cloudflare.outputs.enabled == 'true'
-        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
-        with:
-          dotnet-version: '10.0.x'
-
       - name: Checkout
         if: steps.cloudflare.outputs.enabled == 'true'
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
-      - name: Checkout PSPublishModule
+      - name: Resolve PowerForgeWeb tool lock
         if: steps.cloudflare.outputs.enabled == 'true'
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-        with:
-          repository: ${{ env.POWERFORGE_REPOSITORY }}
-          ref: ${{ env.POWERFORGE_REF }}
-          path: PSPublishModule
-
-      - name: Restore and build PowerForge.Web.Cli
-        if: steps.cloudflare.outputs.enabled == 'true'
+        id: powerforge
+        shell: pwsh
         run: |
-          dotnet restore PSPublishModule/PowerForge.Web.Cli/PowerForge.Web.Cli.csproj --force-evaluate
-          dotnet build PSPublishModule/PowerForge.Web.Cli/PowerForge.Web.Cli.csproj -c Release --no-restore
+          $lockPath = 'Website/.powerforge/tool-lock.json'
+          $lock = Get-Content -LiteralPath $lockPath -Raw | ConvertFrom-Json
+          if ($null -eq $lock) {
+            throw "Invalid PowerForge tool lock JSON: $lockPath"
+          }
+
+          "repository=$([string]$lock.repository)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "tag=$([string]$lock.tag)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "asset=$([string]$lock.asset)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "binary_path=$([string]$lock.binaryPath)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "sha256=$([string]$lock.sha256)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Download PowerForgeWeb
+        if: steps.cloudflare.outputs.enabled == 'true'
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          asset_url="https://github.com/${{ steps.powerforge.outputs.repository }}/releases/download/${{ steps.powerforge.outputs.tag }}/${{ steps.powerforge.outputs.asset }}"
+          curl -fsSL \
+            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+            -o "${RUNNER_TEMP}/powerforgeweb.zip" \
+            "${asset_url}"
+
+      - name: Verify PowerForgeWeb checksum
+        if: ${{ steps.cloudflare.outputs.enabled == 'true' && steps.powerforge.outputs.sha256 != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "${{ steps.powerforge.outputs.sha256 }}  ${RUNNER_TEMP}/powerforgeweb.zip" | sha256sum --check --status
+
+      - name: Extract PowerForgeWeb
+        if: steps.cloudflare.outputs.enabled == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf ./.powerforge-bin
+          mkdir -p ./.powerforge-bin/current
+          unzip -q "${RUNNER_TEMP}/powerforgeweb.zip" -d ./.powerforge-bin/current
+          chmod +x "./.powerforge-bin/current/${{ steps.powerforge.outputs.binary_path }}" || true
 
       - name: Purge Cloudflare cache (key routes)
         if: steps.cloudflare.outputs.enabled == 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
-          dotnet PSPublishModule/PowerForge.Web.Cli/bin/Release/net10.0/PowerForge.Web.Cli.dll \
+          ./.powerforge-bin/current/${{ steps.powerforge.outputs.binary_path }} \
             cloudflare purge \
             --zone-id "${{ secrets.CLOUDFLARE_ZONE_ID_IX }}" \
             --token-env CLOUDFLARE_API_TOKEN \
@@ -196,7 +260,7 @@ jobs:
       - name: Verify Cloudflare cache status (key routes)
         if: steps.cloudflare.outputs.enabled == 'true'
         run: |
-          dotnet PSPublishModule/PowerForge.Web.Cli/bin/Release/net10.0/PowerForge.Web.Cli.dll \
+          ./.powerforge-bin/current/${{ steps.powerforge.outputs.binary_path }} \
             cloudflare verify \
             --site-config "Website/site.json" \
             --warmup 1 \
