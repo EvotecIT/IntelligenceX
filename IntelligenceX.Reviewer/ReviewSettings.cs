@@ -41,6 +41,27 @@ internal enum ReviewProvider {
     Claude
 }
 
+internal sealed class ReviewCiContextSettings {
+    public bool Enabled { get; set; }
+    public bool IncludeCheckSummary { get; set; } = true;
+    public bool IncludeFailedRuns { get; set; } = true;
+    public string IncludeFailureSnippets { get; set; } = "off";
+    public int MaxFailedRuns { get; set; } = 3;
+    public int MaxSnippetCharsPerRun { get; set; } = 4000;
+    public bool ClassifyInfraFailures { get; set; } = true;
+}
+
+internal sealed class ReviewSwarmSettings {
+    public bool Enabled { get; set; }
+    public bool ShadowMode { get; set; }
+    public IReadOnlyList<string> Reviewers { get; set; } = new[] { "correctness", "security", "reliability", "tests" };
+    public int MaxParallel { get; set; } = 4;
+    public bool PublishSubreviews { get; set; }
+    public string? AggregatorModel { get; set; }
+    public bool FailOpenOnPartial { get; set; } = true;
+    public bool Metrics { get; set; } = true;
+}
+
 internal sealed partial class ReviewSettings {
     private static readonly IReadOnlyList<string> DefaultContextDenyPatterns = new[] {
         "\\bpoem(s)?\\b",
@@ -372,6 +393,8 @@ internal sealed partial class ReviewSettings {
     public bool IncludeRelatedPrs { get; set; }
     public string? RelatedPrsQuery { get; set; }
     public int MaxRelatedPrs { get; set; } = 5;
+    public ReviewCiContextSettings CiContext { get; } = new();
+    public ReviewSwarmSettings Swarm { get; } = new();
     public AnalysisSettings Analysis { get; } = new AnalysisSettings();
 
     public string? CodexPath { get; set; }

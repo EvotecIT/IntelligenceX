@@ -88,6 +88,15 @@ project={{ProjectNumber}}
         AssertContainsText(rendered, "--issue-review artifacts/triage/ix-issue-review.json", "workflow passes issue review artifact to project sync");
         AssertContainsText(rendered, "--apply-labels", "workflow enables label application");
         AssertContainsText(rendered, "--apply-link-comments", "workflow enables PR issue suggestion comments");
+        AssertContainsText(rendered, "apply_pr_watch_governance_labels", "workflow exposes governance label input");
+        AssertContainsText(rendered, "IX_TRIAGE_APPLY_PR_WATCH_GOVERNANCE_LABELS", "workflow reads governance label repo variable");
+        AssertContainsText(rendered, "--apply-pr-watch-governance-labels", "workflow can opt into governance label sync");
+        AssertContainsText(rendered, "apply_pr_watch_governance_fields", "workflow exposes governance field input");
+        AssertContainsText(rendered, "IX_TRIAGE_APPLY_PR_WATCH_GOVERNANCE_FIELDS", "workflow reads governance field repo variable");
+        AssertContainsText(rendered, "--apply-pr-watch-governance-fields", "workflow can opt into governance field sync");
+        AssertContainsText(rendered, "include_pr_watch_governance_views", "workflow exposes governance view input");
+        AssertContainsText(rendered, "IX_TRIAGE_INCLUDE_PR_WATCH_GOVERNANCE_VIEWS", "workflow reads governance view repo variable");
+        AssertContainsText(rendered, "--include-pr-watch-governance-views", "workflow can opt into governance view profile");
         AssertContainsText(rendered, "--enforce-contract", "workflow enforces vision contract");
         AssertContainsText(rendered, "--fail-on-drift", "workflow enables vision drift gate");
         AssertContainsText(rendered, "default: \"0.70\"", "workflow dispatch default includes drift threshold");
@@ -113,6 +122,10 @@ project={{ProjectNumber}}
         AssertContainsText(rendered, "--method PATCH", "workflow updates existing summary comment");
         AssertContainsText(rendered, "--method POST", "workflow creates summary comment when missing");
         AssertContainsText(rendered, "Latest Summaries", "workflow dashboard includes latest summaries section");
+        AssertContainsText(rendered, "PR Babysit Governance", "workflow dashboard includes pr-watch governance section");
+        AssertContainsText(rendered, "pr-watch-rollup-tracker:weekly-governance", "workflow dashboard looks for weekly governance tracker");
+        AssertContainsText(rendered, "pr-watch-rollup-tracker:schedule", "workflow dashboard falls back to nightly schedule tracker");
+        AssertContainsText(rendered, "Governance status:", "workflow dashboard includes governance status line");
         AssertContainsText(rendered, "Maintainer Quick Links", "workflow dashboard includes quick links section");
     }
 
@@ -129,6 +142,10 @@ project={{ProjectNumber}}
         AssertContainsText(rendered, "--method PATCH", "index workflow updates existing summary comment");
         AssertContainsText(rendered, "--method POST", "index workflow creates summary comment when missing");
         AssertContainsText(rendered, "Latest Summaries", "index workflow dashboard includes latest summaries section");
+        AssertContainsText(rendered, "PR Babysit Governance", "index workflow dashboard includes pr-watch governance section");
+        AssertContainsText(rendered, "pr-watch-rollup-tracker:weekly-governance", "index workflow dashboard looks for weekly governance tracker");
+        AssertContainsText(rendered, "pr-watch-rollup-tracker:schedule", "index workflow dashboard falls back to nightly schedule tracker");
+        AssertContainsText(rendered, "Governance status:", "index workflow dashboard includes governance status line");
         AssertContainsText(rendered, "Maintainer Quick Links", "index workflow dashboard includes quick links section");
     }
 

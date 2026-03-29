@@ -70,6 +70,33 @@
         "reviewUsageBudgetAllowCredits": { "type": "boolean" },
         "reviewUsageBudgetAllowWeeklyLimit": { "type": "boolean" },
         "structuredFindings": { "type": "boolean" },
+        "ciContext": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "includeCheckSummary": { "type": "boolean" },
+            "includeFailedRuns": { "type": "boolean" },
+            "includeFailureSnippets": { "type": "string", "enum": ["off", "auto", "always"] },
+            "maxFailedRuns": { "type": "integer", "minimum": 0 },
+            "maxSnippetCharsPerRun": { "type": "integer", "minimum": 0 },
+            "classifyInfraFailures": { "type": "boolean" }
+          }
+        },
+        "swarm": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "shadowMode": { "type": "boolean" },
+            "reviewers": { "type": "array", "items": { "type": "string" } },
+            "maxParallel": { "type": "integer", "minimum": 1 },
+            "publishSubreviews": { "type": "boolean" },
+            "aggregatorModel": { "type": "string" },
+            "failOpenOnPartial": { "type": "boolean" },
+            "metrics": { "type": "boolean" }
+          }
+        },
         "openaiTransport": { "type": "string", "enum": ["native", "appserver"] },
         "openaiAccountId": { "type": "string" },
         "openaiAccountIds": { "type": "array", "items": { "type": "string" } },

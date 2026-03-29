@@ -19,6 +19,16 @@ internal static partial class Program {
         AssertEqual(true,
             IntelligenceX.Cli.Todo.ProjectViewCatalog.DefaultViews.All(view => view.SuggestedColumns.Count > 0),
             "default views expose suggested columns guidance");
+        AssertEqual(false, names.Contains("Governance Review", StringComparer.OrdinalIgnoreCase), "optional governance view excluded by default");
+    }
+
+    private static void TestProjectViewCatalogBuildRecommendedViewsIncludesOptionalGovernanceView() {
+        var views = IntelligenceX.Cli.Todo.ProjectViewCatalog.BuildRecommendedViews(includePrWatchGovernanceViews: true);
+        var governance = views.Single(view => view.Name.Equals("Governance Review", StringComparison.OrdinalIgnoreCase));
+
+        AssertEqual("TABLE", governance.Layout, "governance view layout");
+        AssertContainsText(governance.Filter, "\"PR Governance Signal\":\"policy-review-suggested\"", "governance filter uses governance signal field");
+        AssertEqual(true, governance.SuggestedColumns.Contains("PR Governance Summary", StringComparer.OrdinalIgnoreCase), "governance summary column included");
     }
 
     private static void TestProjectViewCatalogFindMissingDefaultViewsReturnsMissingOnly() {
@@ -50,6 +60,79 @@ internal static partial class Program {
 
         var missing = IntelligenceX.Cli.Todo.ProjectViewCatalog.FindMissingDefaultViews(existing);
         AssertEqual(0, missing.Count, "no missing views when all defaults exist");
+    }
+
+    private static void TestProjectViewCatalogFindMissingRecommendedViewsIncludesGovernanceViewWhenEnabled() {
+        var existing = IntelligenceX.Cli.Todo.ProjectViewCatalog.DefaultViews
+            .ToDictionary(
+                view => view.Name,
+                view => new IntelligenceX.Cli.Todo.ProjectV2Client.ProjectView(
+                    $"id-{view.Name}",
+                    view.Name,
+                    view.Layout,
+                    $"https://example.test/{view.Name}"),
+                StringComparer.OrdinalIgnoreCase);
+
+        var missing = IntelligenceX.Cli.Todo.ProjectViewCatalog.FindMissingRecommendedViews(
+                existing,
+                includePrWatchGovernanceViews: true)
+            .Select(view => view.Name)
+            .ToList();
+
+        AssertEqual(true, missing.Contains("Governance Review", StringComparer.OrdinalIgnoreCase), "governance view missing when optional profile enabled");
+    }
+
+    private static void TestProjectConfigReaderReadsPrWatchGovernanceFeatures() {
+        const string json = """
+{
+  "schema": "intelligencex.project-config.v1",
+  "owner": "EvotecIT",
+  "repo": "EvotecIT/IntelligenceX",
+  "project": {
+    "number": 321
+  },
+  "features": {
+    "prWatchGovernance": {
+      "labels": true,
+      "fields": true,
+      "views": true
+    }
+  }
+}
+""";
+
+        var ok = IntelligenceX.Cli.Todo.ProjectConfigReader.TryReadFromJson(json, out var config, out var error);
+
+        AssertEqual(true, ok, $"project config parses ({error})");
+        AssertEqual("EvotecIT", config.Owner, "owner parsed");
+        AssertEqual("EvotecIT/IntelligenceX", config.Repo, "repo parsed");
+        AssertEqual(321, config.ProjectNumber, "project number parsed");
+        AssertEqual(true, config.Features.PrWatchGovernanceLabels, "labels feature parsed");
+        AssertEqual(true, config.Features.PrWatchGovernanceFields, "fields feature parsed");
+        AssertEqual(true, config.Features.PrWatchGovernanceViews, "views feature parsed");
+    }
+
+    private static void TestProjectConfigReaderFallsBackToLegacyGovernanceViewFlag() {
+        const string json = """
+{
+  "schema": "intelligencex.project-config.v1",
+  "owner": "EvotecIT",
+  "repo": "EvotecIT/IntelligenceX",
+  "project": {
+    "number": 654
+  },
+  "views": {
+    "includePrWatchGovernanceViews": true
+  }
+}
+""";
+
+        var ok = IntelligenceX.Cli.Todo.ProjectConfigReader.TryReadFromJson(json, out var config, out var error);
+
+        AssertEqual(true, ok, $"legacy project config parses ({error})");
+        AssertEqual(false, config.Features.PrWatchGovernanceLabels, "legacy labels feature stays false");
+        AssertEqual(false, config.Features.PrWatchGovernanceFields, "legacy fields feature stays false");
+        AssertEqual(true, config.Features.PrWatchGovernanceViews, "legacy view feature fallback parsed");
     }
 #endif
 }

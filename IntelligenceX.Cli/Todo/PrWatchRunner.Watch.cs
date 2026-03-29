@@ -8,6 +8,8 @@ using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 using IntelligenceX.Cli.GitHub;
+using IntelligenceX.GitHub;
+using IntelligenceX.Json;
 
 namespace IntelligenceX.Cli.Todo;
 
@@ -93,14 +95,14 @@ internal static partial class PrWatchRunner {
         var pr = await ResolvePrAsync(options).ConfigureAwait(false);
         var statePath = ResolveStatePath(options, pr);
         var state = LoadState(statePath);
-        var checks = await GetChecksAsync(pr).ConfigureAwait(false);
-        var checksSummary = SummarizeChecks(checks);
+        var checksSummary = await GetCheckSummaryAsync(pr).ConfigureAwait(false);
         var failedRuns = await GetFailedRunsForHeadShaAsync(pr).ConfigureAwait(false);
         var newReviewItems = await GetNewReviewItemsAsync(pr, state, authenticatedLogin, options.ApprovedBots).ConfigureAwait(false);
 
         var retryState = new RetryState(
             CurrentShaRetriesUsed: GetRetriesUsed(state, pr.HeadSha),
-            MaxFlakyRetries: options.MaxFlakyRetries
+            MaxFlakyRetries: options.MaxFlakyRetries,
+            RetryFailurePolicy: options.RetryFailurePolicy
         );
         var retryDedupeKey = BuildRetryActionDedupeKey(pr.Repo, pr.Number, pr.HeadSha, failedRuns.Select(item => item.RunId));
         var allowRetryAction = !ShouldSuppressRetryAction(
@@ -109,7 +111,8 @@ internal static partial class PrWatchRunner {
             retryDedupeKey,
             options.RetryCooldownMinutes,
             DateTimeOffset.UtcNow);
-        var actions = RecommendActions(pr, checksSummary, failedRuns, newReviewItems, retryState, out var stopReason, allowRetryAction);
+        var actions = RecommendActions(pr, checksSummary, failedRuns, newReviewItems, retryState, out var stopReason,
+            allowRetryAction, options.RetryFailurePolicy);
 
         state.Repo = pr.Repo;
         state.PrNumber = pr.Number;
@@ -382,54 +385,40 @@ internal static partial class PrWatchRunner {
         );
     }
 
-    private static async Task<IReadOnlyList<JsonElement>> GetChecksAsync(PrState pr) {
-        var (code, stdout, stderr) = await GhCli.RunAsync(TimeSpan.FromSeconds(90),
-            "pr", "checks", pr.Number.ToString(CultureInfo.InvariantCulture), "--repo", pr.Repo,
-            "--json", "name,state,bucket,link,workflow,event,startedAt,completedAt").ConfigureAwait(false);
-        if (code != 0) {
-            throw new InvalidOperationException(!string.IsNullOrWhiteSpace(stderr)
-                ? stderr.Trim()
-                : "Failed to load PR checks.");
+    private static async Task<CheckSummary> GetCheckSummaryAsync(PrState pr) {
+        if (string.IsNullOrWhiteSpace(pr.HeadSha)) {
+            return new CheckSummary(PendingCount: 0, FailedCount: 0, PassedCount: 0, AllTerminal: true);
         }
 
-        using var doc = JsonDocument.Parse(stdout);
-        if (doc.RootElement.ValueKind != JsonValueKind.Array) {
-            throw new InvalidOperationException("Unexpected payload from `gh pr checks`.");
-        }
-
-        var list = new List<JsonElement>();
-        foreach (var item in doc.RootElement.EnumerateArray()) {
-            list.Add(item.Clone());
-        }
-        return list;
-    }
-
-    private static CheckSummary SummarizeChecks(IReadOnlyList<JsonElement> checks) {
-        var pending = 0;
-        var failed = 0;
-        var passed = 0;
-        foreach (var check in checks) {
-            var bucket = ReadString(check, "bucket");
-            var state = ReadString(check, "state");
-            var isPending = bucket.Equals("pending", StringComparison.OrdinalIgnoreCase) || PendingCheckStates.Contains(state);
-            if (isPending) {
-                pending++;
+        var checkRuns = new List<GitHubCheckRunInfo>();
+        for (var page = 1; page <= 20; page++) {
+            var endpoint =
+                $"repos/{pr.Repo}/commits/{pr.HeadSha}/check-runs?per_page=100&page={page.ToString(CultureInfo.InvariantCulture)}";
+            var (code, stdout, stderr) = await GhCli.RunAsync(TimeSpan.FromSeconds(90), "api", endpoint).ConfigureAwait(false);
+            if (code != 0) {
+                throw new InvalidOperationException(!string.IsNullOrWhiteSpace(stderr)
+                    ? stderr.Trim()
+                    : "Failed to load PR checks for current SHA.");
             }
 
-            if (bucket.Equals("fail", StringComparison.OrdinalIgnoreCase)) {
-                failed++;
+            var root = JsonLite.Parse(stdout)?.AsObject();
+            var pageRuns = GitHubCiSignals.ParseCheckRuns(root);
+            if (pageRuns.Count == 0) {
+                break;
             }
 
-            if (bucket.Equals("pass", StringComparison.OrdinalIgnoreCase)) {
-                passed++;
+            checkRuns.AddRange(pageRuns);
+            if (pageRuns.Count < 100) {
+                break;
             }
         }
 
+        var snapshot = GitHubCiSignals.SummarizeCheckRuns(checkRuns);
         return new CheckSummary(
-            PendingCount: pending,
-            FailedCount: failed,
-            PassedCount: passed,
-            AllTerminal: pending == 0
+            PendingCount: snapshot.PendingCount,
+            FailedCount: snapshot.FailedCount,
+            PassedCount: snapshot.PassedCount,
+            AllTerminal: snapshot.PendingCount == 0
         );
     }
 
@@ -447,43 +436,95 @@ internal static partial class PrWatchRunner {
                 : "Failed to load workflow runs for current SHA.");
         }
 
-        using var doc = JsonDocument.Parse(stdout);
-        if (doc.RootElement.ValueKind != JsonValueKind.Object ||
-            !doc.RootElement.TryGetProperty("workflow_runs", out var runsNode) ||
-            runsNode.ValueKind != JsonValueKind.Array) {
-            return Array.Empty<FailedRun>();
-        }
-
-        var failedRuns = new List<FailedRun>();
-        foreach (var run in runsNode.EnumerateArray()) {
-            var headSha = ReadString(run, "head_sha");
-            if (!headSha.Equals(pr.HeadSha, StringComparison.OrdinalIgnoreCase)) {
-                continue;
-            }
-
-            var conclusion = ReadString(run, "conclusion");
-            if (!FailedRunConclusions.Contains(conclusion)) {
-                continue;
-            }
-
-            var runId = ReadLongAsString(run, "id");
-            if (string.IsNullOrWhiteSpace(runId)) {
-                continue;
-            }
-
-            failedRuns.Add(new FailedRun(
-                RunId: runId,
-                WorkflowName: ReadString(run, "name"),
-                Status: ReadString(run, "status"),
-                Conclusion: conclusion,
-                Url: ReadString(run, "html_url")
-            ));
-        }
-
-        return failedRuns
-            .OrderBy(item => item.WorkflowName, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(item => item.RunId, StringComparer.OrdinalIgnoreCase)
+        var runs = GitHubCiSignals.ParseFailedWorkflowRuns(JsonLite.Parse(stdout)?.AsObject(), pr.HeadSha, maxResults: 100)
+            .Where(item => !string.IsNullOrWhiteSpace(item.RunId))
+            .Select(item => new FailedRun(
+                RunId: item.RunId!,
+                WorkflowName: item.Name,
+                Status: item.Status,
+                Conclusion: item.Conclusion ?? string.Empty,
+                Url: item.Url ?? string.Empty,
+                FailureKind: "unknown",
+                FailureEvidence: string.Empty))
             .ToList();
+
+        if (runs.Count == 0) {
+            return runs;
+        }
+
+        var enriched = new List<FailedRun>(runs.Count);
+        foreach (var run in runs) {
+            if (enriched.Count < MaxFailedRunEvidenceFetch) {
+                enriched.Add(await TryEnrichFailedRunAsync(pr, run).ConfigureAwait(false));
+            } else {
+                enriched.Add(run);
+            }
+        }
+
+        return enriched;
+    }
+
+    private static async Task<FailedRun> TryEnrichFailedRunAsync(PrState pr, FailedRun run) {
+        if (string.IsNullOrWhiteSpace(run.RunId)) {
+            return run;
+        }
+
+        try {
+            var evidence = await GetWorkflowFailureEvidenceAsync(pr.Repo, run.RunId).ConfigureAwait(false);
+            if (evidence is null || !evidence.HasData) {
+                return run;
+            }
+
+            return run with {
+                FailureKind = MapFailureKind(evidence.Kind),
+                FailureEvidence = evidence.Summary
+            };
+        } catch (Exception ex) {
+            Console.Error.WriteLine(
+                $"Failed to load workflow failure evidence for run {run.RunId}: {ex.Message}");
+            return run;
+        }
+    }
+
+    private static async Task<GitHubWorkflowFailureEvidence?> GetWorkflowFailureEvidenceAsync(string repo, string runId) {
+        if (string.IsNullOrWhiteSpace(repo) || string.IsNullOrWhiteSpace(runId)) {
+            return null;
+        }
+
+        var jobs = new List<GitHubWorkflowJobInfo>();
+        for (var page = 1; page <= 20; page++) {
+            var endpoint =
+                $"repos/{repo}/actions/runs/{runId}/jobs?per_page=100&page={page.ToString(CultureInfo.InvariantCulture)}";
+            var (code, stdout, stderr) = await GhCli.RunAsync(TimeSpan.FromSeconds(90), "api", endpoint).ConfigureAwait(false);
+            if (code != 0) {
+                throw new InvalidOperationException(!string.IsNullOrWhiteSpace(stderr)
+                    ? stderr.Trim()
+                    : $"Failed to load workflow jobs for run {runId}.");
+            }
+
+            var root = JsonLite.Parse(stdout)?.AsObject();
+            var pageJobs = GitHubCiSignals.ParseWorkflowJobs(root);
+            if (pageJobs.Count == 0) {
+                break;
+            }
+
+            jobs.AddRange(pageJobs);
+            if (pageJobs.Count < 100) {
+                break;
+            }
+        }
+
+        var evidence = GitHubCiSignals.SummarizeWorkflowFailureEvidence(jobs, MaxFailedRunEvidenceChars);
+        return evidence.HasData ? evidence : null;
+    }
+
+    private static string MapFailureKind(GitHubWorkflowFailureKind kind) {
+        return PrWatchRunner.NormalizeFailureKind(kind switch {
+            GitHubWorkflowFailureKind.Actionable => "actionable",
+            GitHubWorkflowFailureKind.Operational => "operational",
+            GitHubWorkflowFailureKind.Mixed => "mixed",
+            _ => "unknown"
+        });
     }
 
     private static async Task<IReadOnlyList<ReviewItem>> GetNewReviewItemsAsync(PrState pr, RunnerState state,

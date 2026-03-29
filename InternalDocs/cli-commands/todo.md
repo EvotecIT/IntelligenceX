@@ -114,6 +114,7 @@ Options:
 - `--poll-seconds <n>` (watch mode base interval; default `60`)
 - `--max-flaky-retries <n>` (classification budget ceiling; default `3`)
 - `--retry-cooldown-minutes <n>` (suppress repeat retry recommendation during cooldown; default `15`)
+- `--retry-failure-policy <any|non-actionable-only>` (default `any`; use `non-actionable-only` to suppress retry suggestions for likely code/test failures)
 - `--state-file <path>` (override watcher-state file path)
 - `--approved-bot <login>` (repeatable approved bot allow-list extension)
 - `--apply-retry` (once mode only; executes `retry_failed_checks` if eligible)
@@ -144,14 +145,17 @@ Workflow automation:
   - `pr` (specific PR number/URL),
   - `max_prs`,
   - `max_flaky_retries`,
+  - `retry_failure_policy`,
   - `include_drafts`,
   - `approved_bots`.
 - `.github/workflows/ix-pr-babysit-assist-retry.yml` provides manual guarded retry assist for one PR using `todo pr-watch-assist-retry`:
   - requires `confirm_apply_retries=RETRY_CHECKS`,
   - executes `pr-watch --apply-retry` in once mode,
+  - supports optional `retry_failure_policy` (`any` by default, `non-actionable-only` opt-in),
   - persists retry state and cooldown metadata in `artifacts/pr-watch/ix-pr-watch-*.json`.
 - `.github/workflows/ix-pr-babysit-nightly-consolidation.yml` runs daily consolidation using `todo pr-watch-consolidate` (supports `workflow_dispatch` and reusable `workflow_call`) with:
   - `max_prs`,
+  - `retry_failure_policy`,
   - `stale_days`,
   - `include_drafts`,
   - `approved_bots`,
@@ -159,6 +163,7 @@ Workflow automation:
   - empty/omitted workflow inputs are normalized by CLI defaults (including source fallback from `GITHUB_EVENT_NAME`).
 - Optional tracker issue controls:
   - `publish_tracking_issue`,
+  - `apply_governance_signal_label`,
   - `tracker_issue_title`,
   - `tracker_issue_labels`.
 - `.github/workflows/ix-pr-babysit-weekly-governance.yml` runs weekly governance consolidation by calling nightly consolidation with weekly defaults:
@@ -166,6 +171,7 @@ Workflow automation:
   - `stale_days=14`,
   - `source=weekly-governance`,
   - `publish_tracking_issue=true`.
+  - manual `workflow_dispatch` also exposes optional overrides for `retry_failure_policy`, tracker publishing, governance-signal labeling, tracker title/labels, and the weekly scan window.
 - Workflow artifacts:
   - per-PR snapshots under `artifacts/pr-watch/snapshots/`,
   - rollup JSON `artifacts/pr-watch/ix-pr-watch-rollup.json`,
@@ -176,6 +182,12 @@ Workflow automation:
   - nightly metrics JSON `artifacts/pr-watch/ix-pr-watch-nightly-metrics.json`,
   - nightly metrics history JSON `artifacts/pr-watch/ix-pr-watch-nightly-metrics-history.json`,
   - nightly tracker issue body markdown `artifacts/pr-watch/ix-pr-watch-nightly-tracker.md`.
+- Monitor and nightly rollups now include failed workflow-run evidence totals and kind breakdowns (`actionable`, `operational`, `mixed`, `unknown`) to support retry-policy tuning.
+- Nightly metrics/tracker summaries also include conservative retry-policy guidance derived from repeated failure-profile dominance across metrics history.
+- Stable retry-policy guidance now also counts as a governance signal for tracker publishing, but the recommendation is still advisory only and never flips workflow inputs automatically.
+- The nightly metrics JSON now includes a compact `governanceSignals.retryPolicyReviewSuggested` flag plus suggested policy metadata for machine-readable governance consumers.
+- The nightly/weekly markdown summary now also prints a compact top-level `Governance:` line for quick portfolio scanning.
+- When `apply_governance_signal_label=true`, tracker issue sync also manages the label `ix/retry-policy-review-suggested` so maintainers can filter/sort governance recommendations directly in GitHub; this is still opt-in and removed when the signal clears.
 - Tracker issue automation:
   - source-scoped upsert marker: `<!-- intelligencex:pr-watch-rollup-tracker:<source> -->`
   - create/update open issue per source with latest bucket/metric snapshot
@@ -270,10 +282,13 @@ Options:
 - `--apply-labels` (managed IX label sync; stale `ix/*` labels in managed families are removed)
 - `--ensure-labels` / `--no-ensure-labels`
 - `--apply-link-comments`
+- `--apply-pr-watch-governance-labels` (opt-in; sync the live `pr-watch` governance suggestion onto PR items via managed label `ix/pr-watch:policy-review-suggested`)
+- `--apply-pr-watch-governance-fields` (opt-in; sync optional PR project fields `PR Governance Signal` and `PR Governance Summary` from live `pr-watch` tracker state)
 - `--dry-run`
 
 Behavior:
 - `Issue Review Action` and `Issue Review Action Confidence` are synced on issue items when `ix-issue-review.json` is available.
+- Generated project configs now also carry a machine-readable `features.prWatchGovernance` block so downstream tooling can tell whether governance labels, fields, or views were intended without inferring from current project state.
 
 ## Project Bootstrap (Project + Workflow in one command)
 
@@ -301,6 +316,7 @@ Options:
 - `--view-template-project <n>` pass template-copy through to `project-init`
 - `--view-template-owner <login>` template owner override for `project-init`
 - `--ensure-default-views` / `--no-ensure-default-views` pass-through to `project-init`
+- `--include-pr-watch-governance-views` pass optional governance view + field profile through to `project-init`
 - `--control-issue <n>` set `IX_TRIAGE_CONTROL_ISSUE` to an existing issue number
 - `--create-control-issue` create a control issue and set `IX_TRIAGE_CONTROL_ISSUE`
 - `--control-issue-title <text>` customize the title when creating a control issue
@@ -318,6 +334,7 @@ Options:
 - `--repo <owner/name>` repository context for issue posting
 - `--out <path>` output markdown path
 - `--print` print markdown to stdout
+- `--include-pr-watch-governance-views` include optional `Governance Review` view profile in coverage
 - `--issue <n>` upsert comment on existing issue
 - `--create-issue` create issue with checklist markdown body
 - `--issue-title <text>` custom issue title when creating
@@ -335,6 +352,7 @@ Options:
 - `--repo <owner/name>` repository context for issue posting
 - `--out <path>` output markdown path
 - `--print` print markdown to stdout
+- `--include-pr-watch-governance-views` include optional `Governance Review` view profile in coverage
 - `--issue <n>` upsert comment on existing issue
 - `--create-issue` create issue with apply-plan markdown body
 - `--issue-title <text>` custom issue title when creating
@@ -355,6 +373,10 @@ Behavior:
 - `triage-project-sync.yml` upserts a single marker comment with the latest combined triage + issue-review + vision markdown summary on the control issue.
 - Both workflows also upsert a shared `intelligencex:triage-control-dashboard` comment linking to the latest summary comments.
 - The shared dashboard comment includes quick links: control issue, `VISION.md`, project board (when `artifacts/triage/ix-project-config.json` is available), project-view apply issue (`IX_PROJECT_VIEW_APPLY_ISSUE`), and bootstrap links comment.
+- `triage-project-sync.yml` can also opt into applying the managed PR label `ix/pr-watch:policy-review-suggested` from live `pr-watch` tracker state by using `workflow_dispatch` input `apply_pr_watch_governance_labels` or repo variable `IX_TRIAGE_APPLY_PR_WATCH_GOVERNANCE_LABELS`.
+- The same workflow can independently opt into syncing optional project fields `PR Governance Signal` and `PR Governance Summary` by using `workflow_dispatch` input `apply_pr_watch_governance_fields` or repo variable `IX_TRIAGE_APPLY_PR_WATCH_GOVERNANCE_FIELDS`.
+- The same workflow can independently opt into the optional `Governance Review` project-view profile by using `workflow_dispatch` input `include_pr_watch_governance_views` or repo variable `IX_TRIAGE_INCLUDE_PR_WATCH_GOVERNANCE_VIEWS`.
+- When `artifacts/triage/ix-project-config.json` is present, `todo project-sync` now also honors `features.prWatchGovernance` as the default source of truth for governance label/field sync intent, while `--no-apply-pr-watch-governance-labels` and `--no-apply-pr-watch-governance-fields` keep those defaults overridable per run.
 - `todo project-bootstrap --create-control-issue` can configure the control issue variable automatically.
 
 ## Legacy Script

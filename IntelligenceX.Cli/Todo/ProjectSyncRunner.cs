@@ -75,10 +75,20 @@ internal static partial class ProjectSyncRunner {
         string? PullRequestReviewLatency = null,
         string? PullRequestMergeConflictRisk = null,
         string? IssueReviewAction = null,
-        double? IssueReviewActionConfidence = null
+        double? IssueReviewActionConfidence = null,
+        bool PrWatchGovernanceSuggested = false,
+        string? PrWatchGovernanceSummary = null,
+        string? PrWatchGovernanceSource = null
     );
 
-    private sealed class Options {
+    internal sealed record PrWatchGovernanceContext(
+        string Source,
+        bool RetryPolicyReviewSuggested,
+        string SummaryLine,
+        string TrackerIssueUrl
+    );
+
+    internal sealed class Options {
         public string? Owner { get; set; }
         public int? ProjectNumber { get; set; }
         public string Repo { get; set; } = "EvotecIT/IntelligenceX";
@@ -92,6 +102,10 @@ internal static partial class ProjectSyncRunner {
         public bool ApplyLabels { get; set; }
         public bool EnsureLabels { get; set; } = true;
         public bool ApplyLinkComments { get; set; }
+        public bool ApplyPrWatchGovernanceLabels { get; set; }
+        public bool ApplyPrWatchGovernanceLabelsSpecified { get; set; }
+        public bool ApplyPrWatchGovernanceFields { get; set; }
+        public bool ApplyPrWatchGovernanceFieldsSpecified { get; set; }
         public double LinkCommentMinConfidence { get; set; } = DefaultIssueCommentMinConfidence;
         public int LinkCommentMaxIssues { get; set; } = 3;
         public bool DryRun { get; set; }
@@ -105,6 +119,23 @@ internal static partial class ProjectSyncRunner {
             return 0;
         }
 
+        ProjectConfigDocument? projectConfig = null;
+        string? projectConfigError = null;
+        if (File.Exists(options.ConfigPath)) {
+            if (ProjectConfigReader.TryReadFromFile(options.ConfigPath, out var loadedConfig, out var configError)) {
+                projectConfig = loadedConfig;
+                ApplyProjectConfigFeatureDefaults(options, loadedConfig.Features);
+            } else {
+                projectConfigError = configError;
+                if (!HasExplicitProjectTarget(options)) {
+                    Console.Error.WriteLine(projectConfigError);
+                    return 1;
+                }
+
+                Console.Error.WriteLine($"Warning: {projectConfigError}");
+            }
+        }
+
         var (authCode, _, authErr) = await GhCli.RunAsync("auth", "status").ConfigureAwait(false);
         if (authCode != 0) {
             Console.Error.WriteLine("gh is not authenticated. Run `gh auth login`.");
@@ -114,7 +145,7 @@ internal static partial class ProjectSyncRunner {
             return 1;
         }
 
-        if (!TryResolveProjectTarget(options, out var owner, out var projectNumber, out var resolveError)) {
+        if (!TryResolveProjectTarget(options, projectConfig, projectConfigError, out var owner, out var projectNumber, out var resolveError)) {
             Console.Error.WriteLine(resolveError);
             return 1;
         }
@@ -126,7 +157,32 @@ internal static partial class ProjectSyncRunner {
 
         List<ProjectSyncEntry> entries;
         try {
-            entries = LoadEntries(options.TriagePath, options.VisionPath, options.IssueReviewPath, options.MaxItems);
+            PrWatchGovernanceContext? prWatchGovernance = null;
+            if (options.ApplyPrWatchGovernanceLabels || options.ApplyPrWatchGovernanceFields) {
+                prWatchGovernance = await TryLoadPrWatchGovernanceContextAsync(options.Repo).ConfigureAwait(false);
+            }
+
+            entries = LoadEntries(
+                options.TriagePath,
+                options.VisionPath,
+                options.IssueReviewPath,
+                options.MaxItems,
+                prWatchGovernance);
+
+            if (options.ApplyPrWatchGovernanceLabels || options.ApplyPrWatchGovernanceFields) {
+                var mode = options.ApplyPrWatchGovernanceLabels && options.ApplyPrWatchGovernanceFields
+                    ? "labels+fields"
+                    : options.ApplyPrWatchGovernanceLabels
+                        ? "labels"
+                        : "fields";
+                if (prWatchGovernance is null) {
+                    Console.WriteLine($"PR-watch governance {mode}: no tracker context found; governance sync will stay clear.");
+                } else {
+                    Console.WriteLine(
+                        $"PR-watch governance {mode}: source={prWatchGovernance.Source}; " +
+                        $"retryPolicyReviewSuggested={(prWatchGovernance.RetryPolicyReviewSuggested ? "true" : "false")}.");
+                }
+            }
         } catch (Exception ex) {
             Console.Error.WriteLine(ex.Message);
             return 1;
@@ -150,7 +206,7 @@ internal static partial class ProjectSyncRunner {
         try {
             fields = await client.GetProjectFieldsByNameAsync(owner, projectNumber).ConfigureAwait(false);
             if (options.EnsureFields) {
-                fields = await EnsureFieldsAsync(client, owner, projectNumber).ConfigureAwait(false);
+                fields = await EnsureFieldsAsync(client, owner, projectNumber, options.ApplyPrWatchGovernanceFields).ConfigureAwait(false);
             }
         } catch (Exception ex) {
             Console.Error.WriteLine(ex.Message);
@@ -220,7 +276,13 @@ internal static partial class ProjectSyncRunner {
             }
 
             if (!options.DryRun) {
-                updatedFieldValues += await ApplyUpdatesAsync(client, project.Id, item.Id, fields, entry).ConfigureAwait(false);
+                updatedFieldValues += await ApplyUpdatesAsync(
+                    client,
+                    project.Id,
+                    item.Id,
+                    fields,
+                    entry,
+                    options.ApplyPrWatchGovernanceFields).ConfigureAwait(false);
             }
 
             if (options.ApplyLabels) {
@@ -338,7 +400,7 @@ internal static partial class ProjectSyncRunner {
         return 0;
     }
 
-    private static Options ParseOptions(string[] args) {
+    internal static Options ParseOptions(string[] args) {
         var options = new Options();
         for (var i = 0; i < args.Length; i++) {
             var arg = args[i];
@@ -414,6 +476,22 @@ internal static partial class ProjectSyncRunner {
                 case "--apply-link-comments":
                     options.ApplyLinkComments = true;
                     break;
+                case "--apply-pr-watch-governance-labels":
+                    options.ApplyPrWatchGovernanceLabels = true;
+                    options.ApplyPrWatchGovernanceLabelsSpecified = true;
+                    break;
+                case "--no-apply-pr-watch-governance-labels":
+                    options.ApplyPrWatchGovernanceLabels = false;
+                    options.ApplyPrWatchGovernanceLabelsSpecified = true;
+                    break;
+                case "--apply-pr-watch-governance-fields":
+                    options.ApplyPrWatchGovernanceFields = true;
+                    options.ApplyPrWatchGovernanceFieldsSpecified = true;
+                    break;
+                case "--no-apply-pr-watch-governance-fields":
+                    options.ApplyPrWatchGovernanceFields = false;
+                    options.ApplyPrWatchGovernanceFieldsSpecified = true;
+                    break;
                 case "--link-comment-min-confidence":
                     if (i + 1 < args.Length &&
                         double.TryParse(args[++i], NumberStyles.Float, CultureInfo.InvariantCulture, out var minConfidence)) {
@@ -462,6 +540,10 @@ internal static partial class ProjectSyncRunner {
         Console.WriteLine("  --ensure-labels          Ensure IX labels exist before applying labels (default)");
         Console.WriteLine("  --no-ensure-labels       Skip label ensure step");
         Console.WriteLine("  --apply-link-comments    Upsert marker comments on PRs/issues and delete stale managed suggestion comments");
+        Console.WriteLine("  --apply-pr-watch-governance-labels  Add/remove the managed PR governance label from live pr-watch tracker state");
+        Console.WriteLine("  --no-apply-pr-watch-governance-labels  Force governance label sync off even if config enables it");
+        Console.WriteLine("  --apply-pr-watch-governance-fields  Sync optional PR governance fields from live pr-watch tracker state");
+        Console.WriteLine("  --no-apply-pr-watch-governance-fields  Force governance field sync off even if config enables it");
         Console.WriteLine("  --link-comment-min-confidence <0-1>  Min confidence for suggestion comments (default: 0.55)");
         Console.WriteLine("  --link-comment-max-issues <n>  Max related issues to include per PR comment (1-10, default: 3)");
         Console.WriteLine("  --dry-run                Compute sync plan without writing project changes");
@@ -469,7 +551,27 @@ internal static partial class ProjectSyncRunner {
         Console.WriteLine("Required token scopes for sync: `read:project` and `project`.");
     }
 
-    private static bool TryResolveProjectTarget(Options options, out string owner, out int projectNumber, out string error) {
+    internal static void ApplyProjectConfigFeatureDefaults(Options options, ProjectConfigFeatures features) {
+        if (!options.ApplyPrWatchGovernanceLabelsSpecified) {
+            options.ApplyPrWatchGovernanceLabels = features.PrWatchGovernanceLabels;
+        }
+
+        if (!options.ApplyPrWatchGovernanceFieldsSpecified) {
+            options.ApplyPrWatchGovernanceFields = features.PrWatchGovernanceFields;
+        }
+    }
+
+    private static bool HasExplicitProjectTarget(Options options) {
+        return !string.IsNullOrWhiteSpace(options.Owner) && options.ProjectNumber.GetValueOrDefault() > 0;
+    }
+
+    private static bool TryResolveProjectTarget(
+        Options options,
+        ProjectConfigDocument? projectConfig,
+        string? projectConfigError,
+        out string owner,
+        out int projectNumber,
+        out string error) {
         owner = options.Owner?.Trim() ?? string.Empty;
         projectNumber = options.ProjectNumber ?? 0;
         error = string.Empty;
@@ -483,20 +585,19 @@ internal static partial class ProjectSyncRunner {
             return false;
         }
 
-        try {
-            using var doc = JsonDocument.Parse(File.ReadAllText(options.ConfigPath));
-            var root = doc.RootElement;
-            if (string.IsNullOrWhiteSpace(owner)) {
-                owner = ReadString(root, "owner");
-            }
-            if (projectNumber <= 0 &&
-                TryGetProperty(root, "project", out var projectObj) &&
-                projectObj.ValueKind == JsonValueKind.Object) {
-                projectNumber = ReadInt(projectObj, "number");
-            }
-        } catch (Exception ex) {
-            error = $"Failed to parse project config at {options.ConfigPath}: {ex.Message}";
+        if (!string.IsNullOrWhiteSpace(projectConfigError)) {
+            error = projectConfigError;
             return false;
+        }
+
+        if (projectConfig is not null) {
+            if (string.IsNullOrWhiteSpace(owner)) {
+                owner = projectConfig.Owner;
+            }
+
+            if (projectNumber <= 0) {
+                projectNumber = projectConfig.ProjectNumber;
+            }
         }
 
         if (string.IsNullOrWhiteSpace(owner) || projectNumber <= 0) {

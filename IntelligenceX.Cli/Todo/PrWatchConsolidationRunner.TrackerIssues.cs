@@ -9,6 +9,11 @@ using IntelligenceX.Cli.GitHub;
 namespace IntelligenceX.Cli.Todo;
 
 internal static partial class PrWatchConsolidationRunner {
+    internal readonly record struct TrackerIssueLabelPlan(
+        IReadOnlyList<string> LabelsToAdd,
+        IReadOnlyList<string> LabelsToRemove
+    );
+
     private static async Task<string> SyncTrackerIssueAsync(Options options, JsonObject rollup, JsonObject metrics) {
         var existing = await FindOpenTrackerIssuesAsync(options).ConfigureAwait(false);
         var plan = BuildTrackerIssueSyncPlan(rollup, metrics, existing);
@@ -23,7 +28,7 @@ internal static partial class PrWatchConsolidationRunner {
             return string.Empty;
         }
 
-        return await UpsertTrackerIssueAsync(options, plan.CanonicalIssue).ConfigureAwait(false);
+        return await UpsertTrackerIssueAsync(options, plan.CanonicalIssue, metrics).ConfigureAwait(false);
     }
 
     private static async Task<List<JsonObject>> FindOpenTrackerIssuesAsync(Options options) {
@@ -33,7 +38,7 @@ internal static partial class PrWatchConsolidationRunner {
             "--repo", options.Repo,
             "--state", "open",
             "--limit", "200",
-            "--json", "number,url,body").ConfigureAwait(false);
+            "--json", "number,url,title,body,labels").ConfigureAwait(false);
         if (listCode != 0) {
             throw new InvalidOperationException($"gh issue list failed: {listErr.Trim()}");
         }
@@ -46,7 +51,7 @@ internal static partial class PrWatchConsolidationRunner {
             .ToList();
     }
 
-    private static async Task<string> UpsertTrackerIssueAsync(Options options, JsonObject? existing) {
+    private static async Task<string> UpsertTrackerIssueAsync(Options options, JsonObject? existing, JsonObject metrics) {
         var title = string.IsNullOrWhiteSpace(options.TrackerIssueTitle)
             ? $"IX PR Babysit Rollup Tracker ({options.Source})"
             : options.TrackerIssueTitle;
@@ -80,13 +85,24 @@ internal static partial class PrWatchConsolidationRunner {
             }
         }
 
-        foreach (var label in options.TrackerIssueLabels) {
+        var labelPlan = BuildTrackerIssueLabelPlan(options, metrics, existing);
+        foreach (var label in labelPlan.LabelsToAdd) {
             var (labelCode, _, labelErr) = await GhCli.RunAsync(
                 "issue", "edit", issueNumber.ToString(CultureInfo.InvariantCulture),
                 "--repo", options.Repo,
                 "--add-label", label).ConfigureAwait(false);
             if (labelCode != 0) {
                 Console.Error.WriteLine($"Warning: failed to add tracker label '{label}': {labelErr.Trim()}");
+            }
+        }
+
+        foreach (var label in labelPlan.LabelsToRemove) {
+            var (labelCode, _, labelErr) = await GhCli.RunAsync(
+                "issue", "edit", issueNumber.ToString(CultureInfo.InvariantCulture),
+                "--repo", options.Repo,
+                "--remove-label", label).ConfigureAwait(false);
+            if (labelCode != 0) {
+                Console.Error.WriteLine($"Warning: failed to remove tracker label '{label}': {labelErr.Trim()}");
             }
         }
 
@@ -125,13 +141,31 @@ internal static partial class PrWatchConsolidationRunner {
         IReadOnlyList<JsonObject> matchingOpenIssues) =>
         BuildTrackerIssueSyncPlan(rollup, metrics, matchingOpenIssues);
 
+    internal static TrackerIssueLabelPlan BuildTrackerIssueLabelPlanForTests(
+        IReadOnlyCollection<string> trackerIssueLabels,
+        bool applyGovernanceSignalLabel,
+        JsonObject metrics,
+        JsonObject? existingIssue = null) {
+        var options = new Options {
+            ApplyGovernanceSignalLabel = applyGovernanceSignalLabel
+        };
+        foreach (var label in trackerIssueLabels) {
+            options.TrackerIssueLabels.Add(label);
+        }
+        return BuildTrackerIssueLabelPlan(options, metrics, existingIssue);
+    }
+
     private static TrackerSignals ReadTrackerSignals(JsonObject rollup, JsonObject metrics) {
         var ratios = metrics["ratiosPct"] as JsonObject;
+        var governanceSignals = metrics["governanceSignals"] as JsonObject;
+        var retryPolicyGuidance = metrics["retryPolicyGuidance"] as JsonObject;
         return new TrackerSignals(
             FailedTargets: (rollup["failedTargets"] as JsonArray)?.Count ?? 0,
             StaleInfraBlocked: (rollup["staleInfraBlocked"] as JsonArray)?.Count ?? 0,
             ReviewRequired: (rollup["reviewRequired"] as JsonArray)?.Count ?? 0,
             RetryBudgetExhausted: (rollup["retryBudgetExhausted"] as JsonArray)?.Count ?? 0,
+            RetryPolicyChangeRecommended: ReadBool(governanceSignals ?? new JsonObject(), "retryPolicyReviewSuggested") ||
+                ReadBool(retryPolicyGuidance ?? new JsonObject(), "shouldConsiderChange"),
             StaleOpenPrsRatioPct: ReadDoubleNullable(ratios, "staleOpenPrs").GetValueOrDefault(),
             ReviewRequiredRatioPct: ReadDoubleNullable(ratios, "reviewRequiredPrs").GetValueOrDefault(),
             RetryBudgetExhaustedRatioPct: ReadDoubleNullable(ratios, "retryBudgetExhaustedPrs").GetValueOrDefault(),
@@ -161,6 +195,51 @@ internal static partial class PrWatchConsolidationRunner {
             PublishTrackerIssue: true,
             CanonicalIssue: canonicalIssue,
             IssuesToClose: duplicates);
+    }
+
+    private static TrackerIssueLabelPlan BuildTrackerIssueLabelPlan(Options options, JsonObject metrics, JsonObject? existingIssue) {
+        var existingLabels = ReadIssueLabelNames(existingIssue);
+        var labelsToAdd = new List<string>();
+        var labelsToRemove = new List<string>();
+
+        foreach (var label in options.TrackerIssueLabels.OrderBy(static value => value, StringComparer.OrdinalIgnoreCase)) {
+            if (!existingLabels.Contains(label)) {
+                labelsToAdd.Add(label);
+            }
+        }
+
+        if (options.ApplyGovernanceSignalLabel) {
+            var governanceSignals = metrics["governanceSignals"] as JsonObject;
+            var shouldApplyGovernanceLabel = ReadBool(governanceSignals ?? new JsonObject(), "retryPolicyReviewSuggested");
+            if (shouldApplyGovernanceLabel) {
+                if (!existingLabels.Contains(GovernanceRetryPolicyTrackerLabel)) {
+                    labelsToAdd.Add(GovernanceRetryPolicyTrackerLabel);
+                }
+            } else if (existingLabels.Contains(GovernanceRetryPolicyTrackerLabel)) {
+                labelsToRemove.Add(GovernanceRetryPolicyTrackerLabel);
+            }
+        }
+
+        return new TrackerIssueLabelPlan(
+            LabelsToAdd: labelsToAdd,
+            LabelsToRemove: labelsToRemove);
+    }
+
+    private static HashSet<string> ReadIssueLabelNames(JsonObject? issue) {
+        var labels = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var nodes = issue?["labels"] as JsonArray;
+        if (nodes is null) {
+            return labels;
+        }
+
+        foreach (var node in nodes.OfType<JsonObject>()) {
+            var name = ReadString(node, "name");
+            if (!string.IsNullOrWhiteSpace(name)) {
+                labels.Add(name);
+            }
+        }
+
+        return labels;
     }
 
     private static string FormatRatio(double value) => value.ToString("0.##", CultureInfo.InvariantCulture);

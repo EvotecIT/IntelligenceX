@@ -197,6 +197,83 @@ Use `providerFallback` to opt into a secondary provider when the primary provide
 }
 ```
 
+## CI-aware reviewer context (optional)
+
+Use this when you want the reviewer to be aware of GitHub check state and failing workflow runs for the current PR SHA.
+
+All of these settings are optional and default to off unless you explicitly enable them.
+
+```json
+{
+  "review": {
+    "ciContext": {
+      "enabled": true,
+      "includeCheckSummary": true,
+      "includeFailedRuns": true,
+      "includeFailureSnippets": "off",
+      "maxFailedRuns": 3,
+      "maxSnippetCharsPerRun": 4000,
+      "classifyInfraFailures": true
+    }
+  }
+}
+```
+
+Recommended rollout:
+- start with `includeFailureSnippets: "off"`
+- enable snippets only after you confirm summary-level CI awareness is useful for your repo
+
+Current implementation note:
+- the reviewer currently injects check summaries and failed-run metadata when enabled
+- detailed failure-snippet capture is reserved for a later rollout slice
+
+GitHub Actions input/env aliases:
+- `ci_context_enabled` / `REVIEW_CI_CONTEXT_ENABLED`
+- `ci_context_include_check_summary` / `REVIEW_CI_CONTEXT_INCLUDE_CHECK_SUMMARY`
+- `ci_context_include_failed_runs` / `REVIEW_CI_CONTEXT_INCLUDE_FAILED_RUNS`
+- `ci_context_include_failure_snippets` / `REVIEW_CI_CONTEXT_INCLUDE_FAILURE_SNIPPETS`
+- `ci_context_max_failed_runs` / `REVIEW_CI_CONTEXT_MAX_FAILED_RUNS`
+- `ci_context_max_snippet_chars_per_run` / `REVIEW_CI_CONTEXT_MAX_SNIPPET_CHARS_PER_RUN`
+- `ci_context_classify_infra_failures` / `REVIEW_CI_CONTEXT_CLASSIFY_INFRA_FAILURES`
+
+## Swarm review shadow mode (optional)
+
+Use this to opt into multi-reviewer orchestration without changing the public reviewer comment yet.
+
+All swarm settings are optional and default to off unless you explicitly enable them.
+
+```json
+{
+  "review": {
+    "swarm": {
+      "enabled": true,
+      "shadowMode": true,
+      "reviewers": ["correctness", "security", "reliability", "tests"],
+      "maxParallel": 4,
+      "publishSubreviews": false,
+      "aggregatorModel": "gpt-5.4",
+      "failOpenOnPartial": true,
+      "metrics": true
+    }
+  }
+}
+```
+
+Recommended rollout:
+- enable `shadowMode` first
+- keep `publishSubreviews: false`
+- compare cost, latency, and finding quality before enabling public swarm output
+
+GitHub Actions input/env aliases:
+- `swarm_enabled` / `REVIEW_SWARM_ENABLED`
+- `swarm_shadow_mode` / `REVIEW_SWARM_SHADOW_MODE`
+- `swarm_reviewers` / `REVIEW_SWARM_REVIEWERS`
+- `swarm_max_parallel` / `REVIEW_SWARM_MAX_PARALLEL`
+- `swarm_publish_subreviews` / `REVIEW_SWARM_PUBLISH_SUBREVIEWS`
+- `swarm_aggregator_model` / `REVIEW_SWARM_AGGREGATOR_MODEL`
+- `swarm_fail_open_on_partial` / `REVIEW_SWARM_FAIL_OPEN_ON_PARTIAL`
+- `swarm_metrics` / `REVIEW_SWARM_METRICS`
+
 ## Provider health checks + circuit breaker
 
 Use this to preflight providers before request execution and temporarily open a breaker after repeated failures.
@@ -597,6 +674,13 @@ Prefer `directTokenEnv` over `directToken` to avoid committing secrets to source
 - `reviewUsageBudgetGuard`: fail early when configured usage budget sources are exhausted
 - `reviewUsageBudgetAllowCredits`: allow runs when credits are available
 - `reviewUsageBudgetAllowWeeklyLimit`: allow runs when weekly limit capacity is available
+- `ciContext.enabled`: opt into reviewer-side CI/check awareness (default off)
+- `ciContext.includeCheckSummary`: include PR check counts and failing check names when CI context is enabled
+- `ciContext.includeFailedRuns`: include failed workflow run metadata for the current SHA when CI context is enabled
+- `ciContext.includeFailureSnippets`: `off|auto|always` for bounded failed job/step summaries when CI context is enabled
+- `ciContext.maxFailedRuns`: cap failing workflow runs included in reviewer context
+- `ciContext.maxSnippetCharsPerRun`: cap failure evidence chars per failed run
+- `ciContext.classifyInfraFailures`: separate infra-blocked failures from actionable code/test failures
 - `githubMaxConcurrency`: limit concurrent GitHub API requests (default 4)
 - `languageHints`: include language-aware hint block in the prompt
 - `reviewBudgetSummary`: include a note when review context is truncated
@@ -612,6 +696,14 @@ Prefer `directTokenEnv` over `directToken` to avoid committing secrets to source
   The bundled GitHub workflow exports `REVIEW_FAIL_OPEN=true` and `REVIEW_FAIL_OPEN_TRANSIENT_ONLY=false` so provider auth/runtime failures leave a summary comment instead of blocking CI.
 - `summaryStability`: reuse the previous summary (same commit) as prompt context to avoid noisy rewrites
 - `structuredFindings`: emit a structured findings JSON block for automation
+- `swarm.enabled`: opt into swarm review orchestration (default off)
+- `swarm.shadowMode`: run swarm internally without replacing the public review output
+- `swarm.reviewers`: selected swarm reviewer roles
+- `swarm.maxParallel`: swarm concurrency cap
+- `swarm.publishSubreviews`: whether sub-review outputs can be published directly (recommended false)
+- `swarm.aggregatorModel`: optional model override for the swarm aggregator pass
+- `swarm.failOpenOnPartial`: allow swarm aggregation to proceed when one sub-reviewer fails
+- `swarm.metrics`: emit swarm metrics/artifacts for comparison and rollout evaluation
 - `skipPaths`: if **all** changed files in a PR match these globs, skip reviewing the entire PR
 - `skipBinaryFiles`: skip binary assets (images, archives, executables) from review context (default true)
 - `skipGeneratedFiles`: skip generated files (build output, generated sources) from review context (default true)

@@ -397,6 +397,219 @@ internal static partial class Program {
         AssertEqual(1, extras.ReviewThreads.Count, "triage-only forces thread load");
     }
 
+    private static void TestBuildExtrasIncludesCiContextSection() {
+        using var server = new LocalHttpServer(request => {
+            if (request.Path == "/repos/owner/repo/commits/head/check-runs?per_page=100&page=1") {
+                return new HttpResponse("""
+{"check_runs":[
+  {"name":"unit-tests","status":"completed","conclusion":"failure","details_url":"https://example.local/checks/1"},
+  {"name":"lint","status":"completed","conclusion":"success","details_url":"https://example.local/checks/2"},
+  {"name":"integration","status":"in_progress","conclusion":null,"details_url":"https://example.local/checks/3"}
+]}
+""");
+            }
+            if (request.Path == "/repos/owner/repo/actions/runs?head_sha=head&per_page=100") {
+                return new HttpResponse("""
+{"workflow_runs":[
+  {"id":100,"name":"CI","status":"completed","conclusion":"failure","head_sha":"head","html_url":"https://example.local/runs/1"},
+  {"id":200,"name":"Infra","status":"completed","conclusion":"timed_out","head_sha":"head","html_url":"https://example.local/runs/2"},
+  {"id":300,"name":"Other Sha","status":"completed","conclusion":"failure","head_sha":"other","html_url":"https://example.local/runs/3"}
+]}
+""");
+            }
+            if (request.Path == "/repos/owner/repo/actions/runs/100/jobs?per_page=100&page=1") {
+                return new HttpResponse("""
+{"jobs":[
+  {"name":"build-and-test","status":"completed","conclusion":"failure","steps":[
+    {"name":"Checkout","status":"completed","conclusion":"success"},
+    {"name":"dotnet test","status":"completed","conclusion":"failure"}
+  ]}
+]}
+""");
+            }
+            if (request.Path == "/repos/owner/repo/actions/runs/200/jobs?per_page=100&page=1") {
+                return new HttpResponse("""
+{"jobs":[
+  {"name":"bootstrap","status":"completed","conclusion":"timed_out","steps":[
+    {"name":"Set up job","status":"completed","conclusion":"timed_out"}
+  ]}
+]}
+""");
+            }
+            return null;
+        });
+
+        using var github = new GitHubClient("token", server.BaseUri.ToString().TrimEnd('/'));
+        var settings = new ReviewSettings {
+            IncludeIssueComments = false,
+            IncludeReviewComments = false,
+            IncludeReviewThreads = false,
+            ReviewThreadsAutoResolveAI = false,
+            ReviewThreadsAutoResolveStale = false
+        };
+        settings.CiContext.Enabled = true;
+        settings.CiContext.IncludeCheckSummary = true;
+        settings.CiContext.IncludeFailedRuns = true;
+        settings.CiContext.IncludeFailureSnippets = "always";
+        settings.CiContext.MaxFailedRuns = 5;
+        settings.CiContext.MaxSnippetCharsPerRun = 200;
+        settings.CiContext.ClassifyInfraFailures = true;
+
+        var context = new PullRequestContext("owner/repo", "owner", "repo", 1, "Title", null, false, "head", "base",
+            Array.Empty<string>(), "owner/repo", false, null);
+
+        var extras = CallBuildExtrasAsync(github, context, settings, false);
+
+        AssertContainsText(extras.CiContextSection, "CI / checks context:", "build extras ci context header");
+        AssertContainsText(extras.CiContextSection, "Head SHA head check-runs: passed 1, failed 1, pending 1.",
+            "build extras ci context counts");
+        AssertContainsText(extras.CiContextSection, "Failing check-runs: unit-tests (failure).",
+            "build extras ci context failed checks");
+        AssertContainsText(extras.CiContextSection, "CI (failure) https://example.local/runs/1",
+            "build extras ci context failed workflow");
+        AssertContainsText(extras.CiContextSection, "Infra (timed_out) https://example.local/runs/2",
+            "build extras ci context timed out workflow");
+        AssertContainsText(extras.CiContextSection, "[likely code/test]: job build-and-test: failed step dotnet test (failure)",
+            "build extras ci context actionable snippet");
+        AssertContainsText(extras.CiContextSection, "[likely operational/infra]: job bootstrap: failed step Set up job (timed_out)",
+            "build extras ci context operational snippet");
+        AssertContainsText(extras.CiContextSection,
+            "Failure evidence is summarized from failed GitHub Actions jobs/steps only",
+            "build extras ci context failure evidence note");
+        AssertContainsText(extras.CiContextSection,
+            "cancelled or timed-out workflow runs may be operational rather than code failures",
+            "build extras ci context operational note");
+    }
+
+    private static void TestBuildExtrasCiContextAutoSkipsOperationalOnlySnippets() {
+        using var server = new LocalHttpServer(request => {
+            if (request.Path == "/repos/owner/repo/commits/head/check-runs?per_page=100&page=1") {
+                return new HttpResponse("""
+{"check_runs":[
+  {"name":"infra","status":"completed","conclusion":"timed_out","details_url":"https://example.local/checks/9"}
+]}
+""");
+            }
+            if (request.Path == "/repos/owner/repo/actions/runs?head_sha=head&per_page=100") {
+                return new HttpResponse("""
+{"workflow_runs":[
+  {"id":200,"name":"Infra","status":"completed","conclusion":"timed_out","head_sha":"head","html_url":"https://example.local/runs/2"}
+]}
+""");
+            }
+            if (request.Path == "/repos/owner/repo/actions/runs/200/jobs?per_page=100&page=1") {
+                return new HttpResponse("""
+{"jobs":[
+  {"name":"bootstrap","status":"completed","conclusion":"timed_out","steps":[
+    {"name":"Set up job","status":"completed","conclusion":"timed_out"}
+  ]}
+]}
+""");
+            }
+            return null;
+        });
+
+        using var github = new GitHubClient("token", server.BaseUri.ToString().TrimEnd('/'));
+        var settings = new ReviewSettings {
+            IncludeIssueComments = false,
+            IncludeReviewComments = false,
+            IncludeReviewThreads = false,
+            ReviewThreadsAutoResolveAI = false,
+            ReviewThreadsAutoResolveStale = false
+        };
+        settings.CiContext.Enabled = true;
+        settings.CiContext.IncludeFailedRuns = true;
+        settings.CiContext.IncludeFailureSnippets = "auto";
+        settings.CiContext.MaxSnippetCharsPerRun = 200;
+        settings.CiContext.ClassifyInfraFailures = true;
+
+        var context = new PullRequestContext("owner/repo", "owner", "repo", 1, "Title", null, false, "head", "base",
+            Array.Empty<string>(), "owner/repo", false, null);
+
+        var extras = CallBuildExtrasAsync(github, context, settings, false);
+
+        AssertContainsText(extras.CiContextSection, "Infra (timed_out) https://example.local/runs/2 [likely operational/infra]",
+            "build extras ci context auto classification");
+        AssertEqual(false, extras.CiContextSection.Contains("Set up job (timed_out)", StringComparison.Ordinal),
+            "build extras ci context auto skips operational snippet");
+        AssertEqual(false, extras.CiContextSection.Contains(
+                "Failure evidence is summarized from failed GitHub Actions jobs/steps only", StringComparison.Ordinal),
+            "build extras ci context auto skips note without included snippets");
+    }
+
+    private static void TestBuildExtrasCiContextFailureIsSupplemental() {
+        using var server = new LocalHttpServer(request => {
+            if (request.Path == "/repos/owner/repo/commits/head/check-runs?per_page=100&page=1") {
+                return new HttpResponse("{\"message\":\"forbidden\"}", null, 403, "Forbidden");
+            }
+            return null;
+        });
+
+        using var github = new GitHubClient("token", server.BaseUri.ToString().TrimEnd('/'));
+        var settings = new ReviewSettings {
+            IncludeIssueComments = false,
+            IncludeReviewComments = false,
+            IncludeReviewThreads = false,
+            ReviewThreadsAutoResolveAI = false,
+            ReviewThreadsAutoResolveStale = false
+        };
+        settings.CiContext.Enabled = true;
+
+        var context = new PullRequestContext("owner/repo", "owner", "repo", 1, "Title", null, false, "head", "base",
+            Array.Empty<string>(), "owner/repo", false, null);
+
+        var extras = CallBuildExtrasAsync(github, context, settings, false);
+
+        AssertEqual(string.Empty, extras.CiContextSection, "build extras ci context failure remains supplemental");
+    }
+
+    private static void TestBuildExtrasCiFailureEvidenceFailureIsSupplemental() {
+        using var server = new LocalHttpServer(request => {
+            if (request.Path == "/repos/owner/repo/commits/head/check-runs?per_page=100&page=1") {
+                return new HttpResponse("""
+{"check_runs":[
+  {"name":"unit-tests","status":"completed","conclusion":"failure","details_url":"https://example.local/checks/1"}
+]}
+""");
+            }
+            if (request.Path == "/repos/owner/repo/actions/runs?head_sha=head&per_page=100") {
+                return new HttpResponse("""
+{"workflow_runs":[
+  {"id":100,"name":"CI","status":"completed","conclusion":"failure","head_sha":"head","html_url":"https://example.local/runs/1"}
+]}
+""");
+            }
+            if (request.Path == "/repos/owner/repo/actions/runs/100/jobs?per_page=100&page=1") {
+                return new HttpResponse("{\"message\":\"forbidden\"}", null, 403, "Forbidden");
+            }
+            return null;
+        });
+
+        using var github = new GitHubClient("token", server.BaseUri.ToString().TrimEnd('/'));
+        var settings = new ReviewSettings {
+            IncludeIssueComments = false,
+            IncludeReviewComments = false,
+            IncludeReviewThreads = false,
+            ReviewThreadsAutoResolveAI = false,
+            ReviewThreadsAutoResolveStale = false
+        };
+        settings.CiContext.Enabled = true;
+        settings.CiContext.IncludeCheckSummary = true;
+        settings.CiContext.IncludeFailedRuns = true;
+        settings.CiContext.IncludeFailureSnippets = "always";
+        settings.CiContext.MaxSnippetCharsPerRun = 200;
+
+        var context = new PullRequestContext("owner/repo", "owner", "repo", 1, "Title", null, false, "head", "base",
+            Array.Empty<string>(), "owner/repo", false, null);
+
+        var extras = CallBuildExtrasAsync(github, context, settings, false);
+
+        AssertContainsText(extras.CiContextSection, "CI (failure) https://example.local/runs/1",
+            "build extras ci evidence failure still keeps workflow");
+        AssertEqual(false, extras.CiContextSection.Contains("failed step", StringComparison.Ordinal),
+            "build extras ci evidence failure does not inject snippet");
+    }
+
     private static void TestBuildExtrasCapturesStaleAutoResolvePermissionFailures() {
         using var server = new LocalHttpServer(request => {
             if (!request.Path.Equals("/graphql", StringComparison.OrdinalIgnoreCase)) {

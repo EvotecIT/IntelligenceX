@@ -24,6 +24,7 @@ internal static class ProjectViewApplyRunner {
         public string ConfigPath { get; set; } = DefaultConfigPath;
         public string OutputPath { get; set; } = DefaultOutputPath;
         public bool Print { get; set; }
+        public bool IncludePrWatchGovernanceViews { get; set; }
         public int? IssueNumber { get; set; }
         public bool CreateIssue { get; set; }
         public string IssueTitle { get; set; } = DefaultIssueTitle;
@@ -49,7 +50,13 @@ internal static class ProjectViewApplyRunner {
             return 1;
         }
 
-        if (!TryResolveProjectTarget(options, out var owner, out var projectNumber, out var repo, out var resolveError)) {
+        if (!TryResolveProjectTarget(
+                options,
+                out var owner,
+                out var projectNumber,
+                out var repo,
+                out var includePrWatchGovernanceViews,
+                out var resolveError)) {
             Console.Error.WriteLine(resolveError);
             return 1;
         }
@@ -79,13 +86,14 @@ internal static class ProjectViewApplyRunner {
             Console.Error.WriteLine($"Warning: unable to probe project view creation capability: {ex.Message}");
         }
 
-        var missing = ProjectViewCatalog.FindMissingDefaultViews(views);
+        var missing = ProjectViewCatalog.FindMissingRecommendedViews(views, includePrWatchGovernanceViews);
         var markdown = BuildApplyMarkdown(
             repo,
             owner,
             projectNumber,
             project.Url,
             views,
+            includePrWatchGovernanceViews,
             directCreateSupported,
             DateTimeOffset.UtcNow);
 
@@ -127,9 +135,10 @@ internal static class ProjectViewApplyRunner {
             }
         }
 
-        var present = ProjectViewCatalog.DefaultViews.Count - missing.Count;
+        var recommendedViews = ProjectViewCatalog.BuildRecommendedViews(includePrWatchGovernanceViews);
+        var present = recommendedViews.Count - missing.Count;
         Console.WriteLine($"Project view apply target: {owner}#{projectNumber} ({project.Url})");
-        Console.WriteLine($"Default view coverage: {present}/{ProjectViewCatalog.DefaultViews.Count}");
+        Console.WriteLine($"Default view coverage: {present}/{recommendedViews.Count}");
         Console.WriteLine($"Missing default views: {missing.Count}");
         Console.WriteLine($"Direct API view-create support: {(directCreateSupported ? "available" : "unavailable")}");
         Console.WriteLine($"Apply plan output: {options.OutputPath}");
@@ -156,10 +165,12 @@ internal static class ProjectViewApplyRunner {
         int projectNumber,
         string projectUrl,
         IReadOnlyDictionary<string, ProjectV2Client.ProjectView> viewsByName,
+        bool includePrWatchGovernanceViews,
         bool directCreateSupported,
         DateTimeOffset generatedAtUtc) {
-        var missing = ProjectViewCatalog.FindMissingDefaultViews(viewsByName);
-        var present = ProjectViewCatalog.DefaultViews.Count - missing.Count;
+        var recommendedViews = ProjectViewCatalog.BuildRecommendedViews(includePrWatchGovernanceViews);
+        var missing = ProjectViewCatalog.FindMissingRecommendedViews(viewsByName, includePrWatchGovernanceViews);
+        var present = recommendedViews.Count - missing.Count;
 
         var builder = new StringBuilder();
         builder.AppendLine(CommentMarker);
@@ -171,7 +182,7 @@ internal static class ProjectViewApplyRunner {
         if (!string.IsNullOrWhiteSpace(projectUrl)) {
             builder.AppendLine($"- Project URL: {projectUrl}");
         }
-        builder.AppendLine($"- Default view coverage: {present}/{ProjectViewCatalog.DefaultViews.Count}");
+        builder.AppendLine($"- Default view coverage: {present}/{recommendedViews.Count}");
         builder.AppendLine($"- Missing default views: {missing.Count}");
         builder.AppendLine($"- Direct API view-create support: {(directCreateSupported ? "available" : "unavailable")}");
         builder.AppendLine();
@@ -262,6 +273,9 @@ internal static class ProjectViewApplyRunner {
                 case "--print":
                     options.Print = true;
                     break;
+                case "--include-pr-watch-governance-views":
+                    options.IncludePrWatchGovernanceViews = true;
+                    break;
                 case "--issue":
                     if (i + 1 < args.Length &&
                         int.TryParse(args[++i], NumberStyles.Integer, CultureInfo.InvariantCulture, out var issueNumber) &&
@@ -326,6 +340,7 @@ internal static class ProjectViewApplyRunner {
         Console.WriteLine("  --config <path>         Project config JSON from project-init (default: artifacts/triage/ix-project-config.json)");
         Console.WriteLine("  --out <path>            Apply-plan markdown output path (default: artifacts/triage/ix-project-view-apply.md)");
         Console.WriteLine("  --print                 Print apply-plan markdown to stdout");
+        Console.WriteLine("  --include-pr-watch-governance-views  Include optional governance review view profile in coverage");
         Console.WriteLine("  --issue <n>             Upsert apply-plan comment on an existing issue");
         Console.WriteLine("  --create-issue          Create an apply-plan issue with rendered markdown body");
         Console.WriteLine("  --issue-title <text>    Apply-plan issue title when --create-issue is used");
@@ -340,10 +355,12 @@ internal static class ProjectViewApplyRunner {
         out string owner,
         out int projectNumber,
         out string repo,
+        out bool includePrWatchGovernanceViews,
         out string error) {
         owner = options.Owner?.Trim() ?? string.Empty;
         projectNumber = options.ProjectNumber ?? 0;
         repo = options.Repo?.Trim() ?? string.Empty;
+        includePrWatchGovernanceViews = options.IncludePrWatchGovernanceViews;
         error = string.Empty;
 
         if (!string.IsNullOrWhiteSpace(owner) && projectNumber > 0) {
@@ -355,27 +372,21 @@ internal static class ProjectViewApplyRunner {
             return false;
         }
 
-        try {
-            using var doc = JsonDocument.Parse(File.ReadAllText(options.ConfigPath));
-            var root = doc.RootElement;
-
-            if (string.IsNullOrWhiteSpace(owner)) {
-                owner = ReadString(root, "owner");
-            }
-
-            if (projectNumber <= 0 &&
-                TryGetProperty(root, "project", out var projectObj) &&
-                projectObj.ValueKind == JsonValueKind.Object) {
-                projectNumber = ReadInt(projectObj, "number");
-            }
-
-            if (string.IsNullOrWhiteSpace(repo)) {
-                repo = ReadString(root, "repo");
-            }
-        } catch (Exception ex) {
-            error = $"Failed to parse project config at {options.ConfigPath}: {ex.Message}";
+        if (!ProjectConfigReader.TryReadFromFile(options.ConfigPath, out var config, out var configError)) {
+            error = configError;
             return false;
         }
+
+        if (string.IsNullOrWhiteSpace(owner)) {
+            owner = config.Owner;
+        }
+        if (projectNumber <= 0) {
+            projectNumber = config.ProjectNumber;
+        }
+        if (string.IsNullOrWhiteSpace(repo) && !string.IsNullOrWhiteSpace(config.Repo)) {
+            repo = config.Repo;
+        }
+        includePrWatchGovernanceViews |= config.Features.PrWatchGovernanceViews;
 
         if (string.IsNullOrWhiteSpace(owner) || projectNumber <= 0) {
             error = "Unable to resolve owner/project from arguments or config.";

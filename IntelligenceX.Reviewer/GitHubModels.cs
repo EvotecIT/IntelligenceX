@@ -132,3 +132,48 @@ internal sealed class PullRequestReviewThreadComment {
     public string? Path { get; }
     public int? Line { get; }
 }
+
+internal sealed class ReviewCheckRun {
+    public ReviewCheckRun(string name, string status, string? conclusion, string? detailsUrl) {
+        Name = name;
+        Status = status;
+        Conclusion = conclusion;
+        DetailsUrl = detailsUrl;
+    }
+
+    public string Name { get; }
+    public string Status { get; }
+    public string? Conclusion { get; }
+    public string? DetailsUrl { get; }
+}
+
+internal sealed class ReviewCheckSnapshot {
+    public ReviewCheckSnapshot(int passedCount, int failedCount, int pendingCount, IReadOnlyList<ReviewCheckRun> failedChecks) {
+        PassedCount = passedCount;
+        FailedCount = failedCount;
+        PendingCount = pendingCount;
+        FailedChecks = failedChecks;
+    }
+
+    public int PassedCount { get; }
+    public int FailedCount { get; }
+    public int PendingCount { get; }
+    public IReadOnlyList<ReviewCheckRun> FailedChecks { get; }
+    public bool HasData => PassedCount > 0 || FailedCount > 0 || PendingCount > 0 || FailedChecks.Count > 0;
+}
+
+internal sealed class ReviewWorkflowRun {
+    public ReviewWorkflowRun(string? runId, string name, string status, string? conclusion, string? url) {
+        RunId = runId;
+        Name = name;
+        Status = status;
+        Conclusion = conclusion;
+        Url = url;
+    }
+
+    public string? RunId { get; }
+    public string Name { get; }
+    public string Status { get; }
+    public string? Conclusion { get; }
+    public string? Url { get; }
+}

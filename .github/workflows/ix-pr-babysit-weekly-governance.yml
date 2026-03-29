@@ -4,6 +4,50 @@ on:
   schedule:
     - cron: "41 3 * * 1"
   workflow_dispatch:
+    inputs:
+      max_prs:
+        description: "Maximum PRs to scan"
+        required: false
+        default: "300"
+      retry_failure_policy:
+        description: "Retry planning policy"
+        required: false
+        default: "any"
+        type: choice
+        options:
+          - any
+          - non-actionable-only
+      stale_days:
+        description: "PR age threshold for stale/no-progress governance buckets"
+        required: false
+        default: "14"
+      include_drafts:
+        description: "Include draft PRs"
+        required: false
+        default: false
+        type: boolean
+      approved_bots:
+        description: "Comma-separated bot logins that count as approved review bots"
+        required: false
+        default: "intelligencex-review,intelligencex-review[bot],chatgpt-codex-connector[bot]"
+      publish_tracking_issue:
+        description: "Create or update the weekly governance tracker issue"
+        required: false
+        default: true
+        type: boolean
+      apply_governance_signal_label:
+        description: "When true, manage the governance signal label on the tracker issue"
+        required: false
+        default: false
+        type: boolean
+      tracker_issue_title:
+        description: "Optional tracker issue title override"
+        required: false
+        default: ""
+      tracker_issue_labels:
+        description: "Optional comma-separated tracker issue labels"
+        required: false
+        default: ""
 
 permissions:
   actions: read
@@ -12,13 +56,31 @@ permissions:
   pull-requests: read
 
 jobs:
-  weekly-consolidation:
+  weekly-consolidation-scheduled:
+    if: github.event_name != 'workflow_dispatch'
     uses: ./.github/workflows/ix-pr-babysit-nightly-consolidation.yml
     with:
       max_prs: "300"
+      retry_failure_policy: "any"
       stale_days: "14"
       include_drafts: false
       approved_bots: "intelligencex-review,intelligencex-review[bot],chatgpt-codex-connector[bot]"
       source: "weekly-governance"
       publish_tracking_issue: true
+    secrets: inherit
+
+  weekly-consolidation-manual:
+    if: github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/ix-pr-babysit-nightly-consolidation.yml
+    with:
+      max_prs: ${{ inputs.max_prs }}
+      retry_failure_policy: ${{ inputs.retry_failure_policy }}
+      stale_days: ${{ inputs.stale_days }}
+      include_drafts: ${{ inputs.include_drafts }}
+      approved_bots: ${{ inputs.approved_bots }}
+      source: "weekly-governance"
+      publish_tracking_issue: ${{ inputs.publish_tracking_issue }}
+      apply_governance_signal_label: ${{ inputs.apply_governance_signal_label }}
+      tracker_issue_title: ${{ inputs.tracker_issue_title }}
+      tracker_issue_labels: ${{ inputs.tracker_issue_labels }}
     secrets: inherit

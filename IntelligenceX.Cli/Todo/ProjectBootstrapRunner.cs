@@ -34,6 +34,7 @@ internal static class ProjectBootstrapRunner {
         public bool VisibilitySpecified { get; set; }
         public bool LinkRepo { get; set; } = true;
         public bool EnsureDefaultViews { get; set; } = true;
+        public bool IncludePrWatchGovernanceViews { get; set; }
         public int? ViewTemplateProjectNumber { get; set; }
         public string? ViewTemplateOwner { get; set; }
         public string ConfigPath { get; set; } = DefaultConfigPath;
@@ -255,6 +256,9 @@ internal static class ProjectBootstrapRunner {
 
         result.Add(options.LinkRepo ? "--link-repo" : "--no-link-repo");
         result.Add(options.EnsureDefaultViews ? "--ensure-default-views" : "--no-ensure-default-views");
+        if (options.IncludePrWatchGovernanceViews) {
+            result.Add("--include-pr-watch-governance-views");
+        }
 
         if (options.ViewTemplateProjectNumber.HasValue && options.ViewTemplateProjectNumber.Value > 0) {
             result.Add("--view-template-project");
@@ -341,6 +345,9 @@ internal static class ProjectBootstrapRunner {
                     break;
                 case "--no-ensure-default-views":
                     options.EnsureDefaultViews = false;
+                    break;
+                case "--include-pr-watch-governance-views":
+                    options.IncludePrWatchGovernanceViews = true;
                     break;
                 case "--view-template-project":
                     if (i + 1 < args.Length &&
@@ -478,6 +485,7 @@ internal static class ProjectBootstrapRunner {
         Console.WriteLine("  --no-link-repo            Do not link project to repo");
         Console.WriteLine("  --ensure-default-views    Validate default IX view set presence (default)");
         Console.WriteLine("  --no-ensure-default-views Skip default view coverage checks");
+        Console.WriteLine("  --include-pr-watch-governance-views Add optional governance review view profile during project-init");
         Console.WriteLine("  --view-template-project <n> Copy from a template project to preserve saved views");
         Console.WriteLine("  --view-template-owner <login> Owner of --view-template-project");
         Console.WriteLine("  --config-out <path>       Project config path (default: artifacts/triage/ix-project-config.json)");

@@ -99,8 +99,10 @@ Observe-mode babysitter automation:
   - event-driven runs target the triggering PR automatically,
   - PR-triggered monitor runs are forced onto GitHub-hosted runners (security hardening),
   - `pull_request_review_comment` is intentionally excluded to avoid duplicate paired monitor runs from the same review action,
-  - `workflow_dispatch` supports manual targeted runs with optional `pr` override and policy inputs (`max_prs`, `max_flaky_retries`, `include_drafts`, `approved_bots`)
+- `workflow_dispatch` supports manual targeted runs with optional `pr` override and policy inputs (`max_prs`, `max_flaky_retries`, `include_drafts`, `approved_bots`)
+- `retry_failure_policy` controls whether retry suggestions use legacy `any` mode or the opt-in smarter `non-actionable-only` mode
 - Outputs: per-PR snapshots + rollup summary + audit log (`ix-pr-watch-audit.jsonl`) in `artifacts/pr-watch/`
+- Monitor and nightly rollups now include failed workflow-run totals plus `actionable` / `operational` / `mixed` / `unknown` evidence counts
 
 Guarded retry assist automation:
 
@@ -109,6 +111,7 @@ Guarded retry assist automation:
 - Engine command: `intelligencex todo pr-watch-assist-retry`
 - Safety: requires explicit confirmation token `RETRY_CHECKS`
 - Scope: retries failed checks only when `pr-watch` plans an eligible `retry_failed_checks` action (dedupe + cooldown aware)
+- `retry_failure_policy=non-actionable-only` makes retry planning suppress likely code/test breakages while still allowing operational or unknown failures
 - Audit: emits execution outcomes (`success`/`skipped`/`failed`) into `artifacts/pr-watch/ix-pr-watch-audit.jsonl`
 
 Nightly consolidation automation:
@@ -117,13 +120,26 @@ Nightly consolidation automation:
 - Schedule: daily consolidation sweep (plus `workflow_dispatch` and reusable `workflow_call`)
 - Engine command: `intelligencex todo pr-watch-consolidate`
 - Inputs: `max_prs`, `stale_days`, `include_drafts`, `approved_bots`, `source`
+- Inputs also include optional `retry_failure_policy` (`any` by default, `non-actionable-only` opt-in)
 - Optional tracker issue inputs: `publish_tracking_issue`, `tracker_issue_title`, `tracker_issue_labels`
+- Optional governance labeling input: `apply_governance_signal_label` (default `false`)
 - Outputs:
   - rollup JSON: `artifacts/pr-watch/ix-pr-watch-nightly-rollup.json`
   - markdown summary: `artifacts/pr-watch/ix-pr-watch-nightly-summary.md`
   - metrics JSON: `artifacts/pr-watch/ix-pr-watch-nightly-metrics.json`
   - metrics history JSON: `artifacts/pr-watch/ix-pr-watch-nightly-metrics-history.json`
   - tracker issue body markdown: `artifacts/pr-watch/ix-pr-watch-nightly-tracker.md`
+- Nightly rollups and tracker summaries also surface failed workflow-run kind breakdowns so maintainers can judge whether failures look infra-like or code-like before adjusting retry policy
+- Nightly metrics also emit conservative retry-policy guidance based on consecutive failure-profile trends, for example suggesting `non-actionable-only` only after repeated operational/unknown-dominant runs
+- When that guidance becomes stable enough to recommend a change, weekly/nightly tracker output treats it as a governance signal, but it remains advisory only; workflow inputs are not changed automatically
+- Nightly metrics now also expose that recommendation as a machine-readable `governanceSignals` block so downstream governance/reporting flows can sort on policy-review suggestions without scraping markdown
+- Nightly and weekly markdown summaries now also include a compact `Governance:` line near the top so maintainers can spot active policy-review recommendations without opening tracker details
+- If `apply_governance_signal_label=true`, the tracker issue will also manage the repo-facing label `ix/retry-policy-review-suggested` based on the current governance signal; this remains opt-in and is removed again when the signal clears
+- `triage-project-sync.yml` can also opt into syncing that live governance signal onto PR project items via the managed label `ix/pr-watch:policy-review-suggested`, using `workflow_dispatch` input `apply_pr_watch_governance_labels` or repo variable `IX_TRIAGE_APPLY_PR_WATCH_GOVERNANCE_LABELS`; this path is also off by default
+- `triage-project-sync.yml` can independently opt into syncing optional project fields `PR Governance Signal` and `PR Governance Summary` from the same live tracker state by using `workflow_dispatch` input `apply_pr_watch_governance_fields` or repo variable `IX_TRIAGE_APPLY_PR_WATCH_GOVERNANCE_FIELDS`; this path is also off by default
+- `triage-project-sync.yml` can also independently opt into the optional `Governance Review` project view profile by using `workflow_dispatch` input `include_pr_watch_governance_views` or repo variable `IX_TRIAGE_INCLUDE_PR_WATCH_GOVERNANCE_VIEWS`; this keeps the default view set unchanged for teams that are not using the governance fields
+- Generated project configs now persist that governance intent in `features.prWatchGovernance`; project-view checklist/apply uses it for optional governance view coverage, and `todo project-sync` uses it for governance label/field defaults when a config file is present
+- `todo project-sync` also supports `--no-apply-pr-watch-governance-labels` and `--no-apply-pr-watch-governance-fields`, so config-backed defaults remain overridable per run
 - Consolidation buckets include:
   - stale infra-like blockers,
   - review-required/stuck PRs,
@@ -138,8 +154,10 @@ Weekly governance automation:
 - Workflow: `.github/workflows/ix-pr-babysit-weekly-governance.yml`
 - Schedule: weekly consolidation sweep (Monday)
 - Implementation: calls the nightly consolidation workflow via `workflow_call` with weekly profile defaults (`max_prs=300`, `stale_days=14`, `source=weekly-governance`)
+- Manual `workflow_dispatch` also exposes optional overrides for `retry_failure_policy`, tracker publishing, governance-signal labeling, tracker title/labels, and the weekly scan window so teams can opt in deliberately without changing the scheduled defaults
 - Outputs: same rollup/summary/metrics schema as nightly consolidation for comparable trend analysis
 - Tracker issue: enabled by default (`publish_tracking_issue=true`) for weekly governance runs
+- Stable retry-policy recommendations can keep the weekly governance tracker issue open even when blocker buckets are otherwise quiet, so maintainers can opt in deliberately
 
 ### Cadence matrix
 

@@ -270,8 +270,18 @@ internal static partial class Program {
         failed += Run("Doctor missing auth store fails", TestDoctorMissingAuthStoreFails);
         failed += Run("Doctor multiple bundles warns", TestDoctorMultipleBundlesWarns);
         failed += Run("Todo help", TestTodoHelp);
+        failed += Run("GitHub ci signals summarize check runs", TestGitHubCiSignalsSummarizeCheckRunsCountsAndFailures);
+        failed += Run("GitHub ci signals parse failed workflow runs", TestGitHubCiSignalsParseFailedWorkflowRunsFiltersHeadShaAndSorts);
+        failed += Run("GitHub ci signals summarize workflow failure evidence",
+            TestGitHubCiSignalsSummarizeWorkflowFailureEvidenceClassifiesKinds);
         failed += Run("Todo pr-watch ready-to-merge stop", TestPrWatchRecommendActionsReadyToMergeStops);
         failed += Run("Todo pr-watch prioritizes review before retry", TestPrWatchRecommendActionsPrioritizesReviewBeforeRetry);
+        failed += Run("Todo pr-watch suppresses retry for actionable failures",
+            TestPrWatchRecommendActionsSuppressesRetryForActionableFailures);
+        failed += Run("Todo pr-watch legacy retry policy keeps actionable retry",
+            TestPrWatchRecommendActionsLegacyPolicyKeepsRetryForActionableFailures);
+        failed += Run("Todo pr-watch non-actionable retry policy allows operational or unknown failures",
+            TestPrWatchShouldSuggestRetryForNonActionablePolicy);
         failed += Run("Todo pr-watch source precedence", TestPrWatchDetermineReviewSourceTypeUsesPrecedence);
         failed += Run("Todo pr-watch retry dedupe key stability", TestPrWatchRetryDedupeKeyIsStableAcrossRunOrdering);
         failed += Run("Todo pr-watch retry suppression by matching dedupe key", TestPrWatchRetrySuppressionByMatchingDedupeKey);
@@ -291,6 +301,20 @@ internal static partial class Program {
             TestPrWatchConsolidationTrackerIssuePublishesWhenRatiosOrBucketsNonZero);
         failed += Run("Todo pr-watch consolidation tracker signals handle missing ratios",
             TestPrWatchConsolidationTrackerSignalsHandleMissingRatios);
+        failed += Run("Todo pr-watch consolidation tracker publishes when retry policy guidance requests change",
+            TestPrWatchConsolidationTrackerPublishesWhenRetryPolicyGuidanceRequestsChange);
+        failed += Run("Todo pr-watch consolidation tracker label plan adds governance label when opted in",
+            TestPrWatchConsolidationTrackerLabelPlanAddsGovernanceLabelWhenOptedIn);
+        failed += Run("Todo pr-watch consolidation tracker label plan removes governance label when signal clears",
+            TestPrWatchConsolidationTrackerLabelPlanRemovesGovernanceLabelWhenSignalClears);
+        failed += Run("Todo pr-watch monitor rollup includes failed run kinds",
+            TestPrWatchMonitorRollupIncludesFailedRunKinds);
+        failed += Run("Todo pr-watch consolidation failure kinds flow into rollup metrics and summary",
+            TestPrWatchConsolidationFailureKindsFlowIntoRollupMetricsAndSummary);
+        failed += Run("Todo pr-watch retry policy guidance suggests non-actionable-only after operational streak",
+            TestPrWatchRetryPolicyGuidanceSuggestsNonActionableOnlyAfterOperationalStreak);
+        failed += Run("Todo pr-watch retry policy guidance keeps any when actionable trend is not stable",
+            TestPrWatchRetryPolicyGuidanceKeepsAnyWhenActionableTrendIsNotStable);
         failed += Run("Todo pr-watch monitor compose source tag appends action", TestPrWatchMonitorComposeSourceTagAppendsActionWhenPresent);
         failed += Run("Todo pr-watch monitor compose source tag skips empty action", TestPrWatchMonitorComposeSourceTagSkipsEmptyAction);
         failed += Run("Todo pr-watch monitor resolves event action from payload", TestPrWatchMonitorResolveEventActionFromPayload);
@@ -307,6 +331,8 @@ internal static partial class Program {
             TestPrWatchMonitorWorkflowExcludesReviewCommentTrigger);
         failed += Run("Todo pr-watch nightly workflow uses direct CLI invocation",
             TestPrWatchNightlyConsolidationWorkflowUsesDirectCliInvocation);
+        failed += Run("Todo pr-watch weekly governance workflow exposes optional overrides",
+            TestPrWatchWeeklyGovernanceWorkflowExposesOptionalOverrides);
         failed += Run("Todo pr-watch assist workflow uses direct CLI invocation",
             TestPrWatchAssistRetryWorkflowUsesDirectCliInvocation);
         failed += Run("Todo pr-watch workflow parser supports scalar types value",
@@ -375,19 +401,33 @@ internal static partial class Program {
         failed += Run("Todo vision check fail on drift exits non-zero", TestVisionCheckRunFailsOnHighConfidenceDrift);
         failed += Run("Todo vision check rejects malformed drift thresholds", TestVisionCheckRejectsMalformedDriftThresholds);
         failed += Run("Todo project fields defaults", TestProjectFieldCatalogDefaultsIncludeVisionAndDecisionFields);
+        failed += Run("Todo project fields optional governance profile", TestProjectFieldCatalogBuildEnsureFieldCatalogIncludesOptionalPrWatchGovernanceFields);
         failed += Run("Todo project labels include decision taxonomy", TestProjectLabelCatalogDefaultsIncludeDecisionLabels);
         failed += Run("Todo project labels include dynamic category and tag taxonomy", TestProjectLabelCatalogBuildEnsureCatalogIncludesDynamicCategoryAndTags);
         failed += Run("Todo project views include queue and merge views", TestProjectViewCatalogDefaultsIncludeQueueAndMergeViews);
+        failed += Run("Todo project views optional governance profile", TestProjectViewCatalogBuildRecommendedViewsIncludesOptionalGovernanceView);
         failed += Run("Todo project views missing detection", TestProjectViewCatalogFindMissingDefaultViewsReturnsMissingOnly);
         failed += Run("Todo project views full coverage has no missing", TestProjectViewCatalogFindMissingDefaultViewsReturnsEmptyWhenComplete);
+        failed += Run("Todo project views governance profile missing detection", TestProjectViewCatalogFindMissingRecommendedViewsIncludesGovernanceViewWhenEnabled);
+        failed += Run("Todo project config reader parses governance features", TestProjectConfigReaderReadsPrWatchGovernanceFeatures);
+        failed += Run("Todo project config reader falls back to legacy governance view flag", TestProjectConfigReaderFallsBackToLegacyGovernanceViewFlag);
         failed += Run("Todo project view checklist markdown includes marker and coverage", TestProjectViewChecklistMarkdownIncludesMarkerAndCoverage);
         failed += Run("Todo project view checklist markdown includes apply instructions", TestProjectViewChecklistMarkdownIncludesApplyInstructions);
+        failed += Run("Todo project view checklist markdown includes governance view when enabled", TestProjectViewChecklistMarkdownIncludesOptionalGovernanceViewWhenEnabled);
         failed += Run("Todo project view apply markdown includes missing views and platform note", TestProjectViewApplyMarkdownIncludesMissingViewsAndPlatformNote);
         failed += Run("Todo project view apply markdown all views present shows completed checklist", TestProjectViewApplyMarkdownAllViewsPresentShowsCompletedChecklist);
+        failed += Run("Todo project view apply markdown includes governance view when enabled", TestProjectViewApplyMarkdownIncludesOptionalGovernanceViewWhenEnabled);
         failed += Run("Todo project sync merges vision and canonical", TestProjectSyncBuildEntriesMergesVisionAndCanonical);
         failed += Run("Todo project sync parses category/tag confidence fields", TestProjectSyncBuildEntriesParsesCategoryAndTagConfidences);
         failed += Run("Todo project sync merges issue review action signals", TestProjectSyncBuildEntriesMergesIssueReviewSignals);
+        failed += Run("Todo project sync parses governance no-flags", TestProjectSyncParseOptionsSupportsGovernanceNoFlags);
+        failed += Run("Todo project sync config defaults enable governance apply modes", TestProjectSyncApplyProjectConfigFeatureDefaultsUsesConfigWhenUnspecified);
+        failed += Run("Todo project sync config defaults respect explicit governance overrides", TestProjectSyncApplyProjectConfigFeatureDefaultsRespectsExplicitOverrides);
         failed += Run("Todo project sync labels include tags and high-confidence match", TestProjectSyncBuildLabelsIncludesTagsAndHighConfidenceIssueMatch);
+        failed += Run("Todo project sync governance context prefers weekly tracker and parses signal", TestProjectSyncGovernanceContextPrefersWeeklyTrackerAndParsesSignal);
+        failed += Run("Todo project sync governance context falls back to schedule tracker", TestProjectSyncGovernanceContextFallsBackToScheduleTracker);
+        failed += Run("Todo project sync governance field values use suggested signal", TestProjectSyncBuildPrWatchGovernanceFieldValuesUseSuggestedSignal);
+        failed += Run("Todo project sync governance field values clear when inactive", TestProjectSyncBuildPrWatchGovernanceFieldValuesClearWhenInactive);
         failed += Run("Todo project sync labels normalize dynamic category and tags", TestProjectSyncBuildLabelsNormalizesDynamicCategoryAndTags);
         failed += Run("Todo project sync labels skip low-confidence category/tags", TestProjectSyncBuildLabelsSkipsLowConfidenceCategoryAndTags);
         failed += Run("Todo project sync labels mark low-confidence match for review", TestProjectSyncBuildLabelsUsesNeedsReviewForLowConfidenceIssueMatch);
@@ -575,6 +615,12 @@ internal static partial class Program {
         failed += Run("Triage-only loads threads", TestTriageOnlyLoadsThreads);
         failed += Run("Build extras captures stale auto-resolve permission failures",
             TestBuildExtrasCapturesStaleAutoResolvePermissionFailures);
+        failed += Run("Build extras includes ci context section", TestBuildExtrasIncludesCiContextSection);
+        failed += Run("Build extras ci context auto skips operational-only snippets",
+            TestBuildExtrasCiContextAutoSkipsOperationalOnlySnippets);
+        failed += Run("Build extras ci context failure is supplemental", TestBuildExtrasCiContextFailureIsSupplemental);
+        failed += Run("Build extras ci failure evidence failure is supplemental",
+            TestBuildExtrasCiFailureEvidenceFailureIsSupplemental);
         failed += Run("Triage thread hydration uses fallback client when provided",
             TestTriageThreadHydrationUsesFallbackClientWhenProvided);
         failed += Run("Review code host env", TestReviewCodeHostEnv);
@@ -600,6 +646,8 @@ internal static partial class Program {
         failed += Run("Review merge-blocker policy env normalizes whitespace",
             TestReviewMergeBlockerPolicyEnvNormalizesWhitespace);
         failed += Run("Review settings load config then env precedence", TestReviewSettingsLoadConfigThenEnvPrecedence);
+        failed += Run("Review settings load config then env precedence for ciContext and swarm",
+            TestReviewSettingsLoadConfigThenEnvPrecedenceForCiContextAndSwarm);
         failed += Run("Review settings load config allows zero for non-negative limits",
             TestReviewSettingsLoadConfigAllowsZeroForNonNegativeLimits);
         failed += Run("Review settings env allows zero for non-negative limits",
@@ -650,6 +698,7 @@ internal static partial class Program {
         failed += Run("Prompt narrative mode freedom", TestPromptBuilderNarrativeModeFreedom);
         failed += Run("Prompt merge blocker sections default", TestPromptBuilderMergeBlockerSectionsDefault);
         failed += Run("Prompt merge blocker sections compact default", TestPromptBuilderMergeBlockerSectionsCompactDefault);
+        failed += Run("Prompt includes ci context section", TestPromptBuilderIncludesCiContextSection);
         failed += Run("Redaction defaults", TestRedactionDefaults);
         failed += Run("Review budget note", TestReviewBudgetNote);
         failed += Run("Review budget note empty", TestReviewBudgetNoteEmpty);

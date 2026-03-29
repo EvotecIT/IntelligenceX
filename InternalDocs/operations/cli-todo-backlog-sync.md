@@ -243,6 +243,11 @@ For `triage-index-scheduled.yml`, IX upserts a single marker comment (latest onl
 For `triage-project-sync.yml`, IX upserts a single marker comment (latest only) that includes triage, issue-review, and vision markdown summaries.
 Both workflows also upsert a shared `intelligencex:triage-control-dashboard` comment linking to the latest summary comments.
 The dashboard comment also includes quick links for maintainers (control issue, vision file, project board when config is available, project-view apply issue variable, and bootstrap links comment).
+It now also looks for open `pr-watch` tracker issues (`weekly-governance` first, then `schedule`) and surfaces the compact governance status line when one is available.
+When teams want that same live governance signal on synced PR items, `triage-project-sync.yml` can also opt into the managed label path via `apply_pr_watch_governance_labels` or repo variable `IX_TRIAGE_APPLY_PR_WATCH_GOVERNANCE_LABELS`; default remains off.
+The same workflow can independently opt into syncing project fields `PR Governance Signal` and `PR Governance Summary` via `apply_pr_watch_governance_fields` or repo variable `IX_TRIAGE_APPLY_PR_WATCH_GOVERNANCE_FIELDS`; this also stays off by default.
+It can also independently opt into the optional `Governance Review` project view profile via `include_pr_watch_governance_views` or repo variable `IX_TRIAGE_INCLUDE_PR_WATCH_GOVERNANCE_VIEWS`, so governance-focused teams get a dedicated board lane without changing the default project view baseline.
+Generated project configs now persist that intent in `features.prWatchGovernance`, which gives downstream tooling a stable source of truth instead of forcing it to infer governance enablement from current field/view state.
 `todo project-bootstrap --create-control-issue` can set this variable for you automatically.
 
 ## Options

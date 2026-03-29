@@ -55,4 +55,4 @@ Description:
 
 Changed files:
 {{Files}}
-{{IssueCommentsSection}}{{ReviewCommentsSection}}{{ReviewThreadsSection}}{{RelatedPrsSection}}
+{{CiContextSection}}{{IssueCommentsSection}}{{ReviewCommentsSection}}{{ReviewThreadsSection}}{{RelatedPrsSection}}

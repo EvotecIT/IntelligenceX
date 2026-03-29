@@ -65,6 +65,8 @@ internal static class ReviewConfigLoader {
         ApplyCommentMode(reviewObj, settings);
         ApplyLength(reviewObj, settings);
         ApplyContext(reviewObj, settings);
+        ApplyCiContext(reviewObj, settings);
+        ApplySwarm(reviewObj, settings);
         ApplyCodex(root, settings);
         ApplyOpenAiCompatible(reviewObj, settings);
         ApplyAnthropic(reviewObj, settings);
@@ -339,6 +341,49 @@ internal static class ReviewConfigLoader {
         settings.IncludeRelatedPrs = ReadBool(obj, "includeRelatedPrs", includeRelatedPrs);
         settings.RelatedPrsQuery = obj.GetString("relatedPrsQuery") ?? settings.RelatedPrsQuery;
         settings.MaxRelatedPrs = ReadInt(obj, "maxRelatedPrs", settings.MaxRelatedPrs);
+    }
+
+    private static void ApplyCiContext(JsonObject reviewObj, ReviewSettings settings) {
+        var ciContext = reviewObj.GetObject("ciContext");
+        if (ciContext is null) {
+            return;
+        }
+
+        settings.CiContext.Enabled = ReadBool(ciContext, "enabled", settings.CiContext.Enabled);
+        settings.CiContext.IncludeCheckSummary =
+            ReadBool(ciContext, "includeCheckSummary", settings.CiContext.IncludeCheckSummary);
+        settings.CiContext.IncludeFailedRuns =
+            ReadBool(ciContext, "includeFailedRuns", settings.CiContext.IncludeFailedRuns);
+        settings.CiContext.IncludeFailureSnippets = ReviewSettings.NormalizeCiContextFailureSnippets(
+            ciContext.GetString("includeFailureSnippets"),
+            settings.CiContext.IncludeFailureSnippets);
+        settings.CiContext.MaxFailedRuns =
+            ReadNonNegativeInt(ciContext, "maxFailedRuns", settings.CiContext.MaxFailedRuns);
+        settings.CiContext.MaxSnippetCharsPerRun =
+            ReadNonNegativeInt(ciContext, "maxSnippetCharsPerRun", settings.CiContext.MaxSnippetCharsPerRun);
+        settings.CiContext.ClassifyInfraFailures =
+            ReadBool(ciContext, "classifyInfraFailures", settings.CiContext.ClassifyInfraFailures);
+    }
+
+    private static void ApplySwarm(JsonObject reviewObj, ReviewSettings settings) {
+        var swarm = reviewObj.GetObject("swarm");
+        if (swarm is null) {
+            return;
+        }
+
+        settings.Swarm.Enabled = ReadBool(swarm, "enabled", settings.Swarm.Enabled);
+        settings.Swarm.ShadowMode = ReadBool(swarm, "shadowMode", settings.Swarm.ShadowMode);
+        var reviewers = ReadStringList(swarm, "reviewers");
+        if (reviewers is not null) {
+            settings.Swarm.Reviewers = ReviewSettings.NormalizeSwarmReviewers(reviewers, settings.Swarm.Reviewers);
+        }
+        settings.Swarm.MaxParallel = Math.Max(1, ReadInt(swarm, "maxParallel", settings.Swarm.MaxParallel));
+        settings.Swarm.PublishSubreviews =
+            ReadBool(swarm, "publishSubreviews", settings.Swarm.PublishSubreviews);
+        settings.Swarm.AggregatorModel = swarm.GetString("aggregatorModel") ?? settings.Swarm.AggregatorModel;
+        settings.Swarm.FailOpenOnPartial =
+            ReadBool(swarm, "failOpenOnPartial", settings.Swarm.FailOpenOnPartial);
+        settings.Swarm.Metrics = ReadBool(swarm, "metrics", settings.Swarm.Metrics);
     }
 
     private static void ApplyCodex(JsonObject root, ReviewSettings settings) {

@@ -443,6 +443,26 @@ internal static partial class Program {
         AssertContainsText(prompt, "Merge-blocker sections: todo list.", "prompt merge blocker compact sections");
     }
 
+    private static void TestPromptBuilderIncludesCiContextSection() {
+        var context = BuildContext();
+        var files = BuildFiles("src/app.cs");
+        var settings = new ReviewSettings();
+        var extras = new ReviewContextExtras {
+            CiContextSection = """
+
+CI / checks context:
+- Head SHA abc1234 check-runs: passed 3, failed 1, pending 0.
+- Failing check-runs: unit-tests (failure).
+
+"""
+        };
+
+        var prompt = PromptBuilder.Build(context, files, settings, null, extras, inlineSupported: false);
+
+        AssertContainsText(prompt, "CI / checks context:", "prompt ci context header");
+        AssertContainsText(prompt, "unit-tests (failure)", "prompt ci context failing check");
+    }
+
     private static void TestRedactionDefaults() {
         var settings = new ReviewSettings { RedactPii = true };
         var input = "Authorization: Bearer abc123";
