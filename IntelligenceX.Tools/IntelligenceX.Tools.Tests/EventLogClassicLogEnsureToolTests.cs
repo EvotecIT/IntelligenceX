@@ -10,6 +10,15 @@ namespace IntelligenceX.Tools.Tests;
 
 public sealed class EventLogClassicLogEnsureToolTests {
     [Fact]
+    public void ResolveOverflowActionName_FallsBackToOverwriteAsNeeded_WhenRequestAndSnapshotAreMissing() {
+        var effectiveOverflowAction = EventLogClassicLogEnsureTool.ResolveOverflowActionName(
+            requestedOverflowAction: null,
+            currentOverflowAction: null);
+
+        Assert.Equal("overwrite_as_needed", effectiveOverflowAction);
+    }
+
+    [Fact]
     public async Task InvokeAsync_RetentionDaysWithoutOverwriteOlder_ShouldFailValidation() {
         var tool = new EventLogClassicLogEnsureTool(new EventLogToolOptions());
 

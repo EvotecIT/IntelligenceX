@@ -216,6 +216,9 @@ public sealed class EventLogClassicLogEnsureTool : EventLogToolBase, ITool {
         var warnings = new List<string>(plan.Warnings);
 
         if (request.Apply && plan.Changed) {
+            var overflowActionName = ResolveOverflowActionName(
+                request.RequestedOverflowAction,
+                before.OverflowAction);
             var retentionDays = request.RequestedRetentionDays
                 ?? before.MinimumRetentionDays
                 ?? 7;
@@ -225,7 +228,7 @@ public sealed class EventLogClassicLogEnsureTool : EventLogToolBase, ITool {
                 sourceName: request.SourceName,
                 machineName: request.MachineName,
                 maximumKilobytes: request.RequestedMaximumKilobytes ?? 0,
-                overflowActionName: request.RequestedOverflowAction ?? before.OverflowAction,
+                overflowActionName: overflowActionName,
                 retentionDays: retentionDays,
                 sourceLogName: request.LogName);
             if (!writeSucceeded) {
@@ -393,6 +396,14 @@ public sealed class EventLogClassicLogEnsureTool : EventLogToolBase, ITool {
             "Call eventlog_providers_list to verify the requested source/provider name does not conflict with an existing registration.",
             "Custom classic log creation on remote hosts can require administrative rights and compatible Event Log / registry access."
         };
+    }
+
+    internal static string ResolveOverflowActionName(
+        string? requestedOverflowAction,
+        string? currentOverflowAction) {
+        return requestedOverflowAction
+            ?? currentOverflowAction
+            ?? "overwrite_as_needed";
     }
 
     private static string CreateSuccessResponse(ClassicLogEnsureResult result) {
