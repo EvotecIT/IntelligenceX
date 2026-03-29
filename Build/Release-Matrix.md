@@ -21,6 +21,7 @@ Use this as the quick "which command do I run?" map.
 
 Useful release-time overrides on the unified path:
 - `-IncludeSymbols`
+- `-ToolOutputs Portable,Installer` or `-SkipToolOutputs Installer` on `Build-Project.ps1` when you want output-level selection without dropping to granular scripts
 - `-SignInstaller`
   Normal case: set `CERT_THUMBPRINT` once and let the wrapper resolve it automatically.
   Override case: pass `-SignThumbprint` explicitly for one run.
@@ -39,13 +40,11 @@ Useful release-time overrides on the unified path:
 
 ## Full Release Path
 
-Normal `Frontend app` release uses the unified PowerForge path first.
+Normal `Frontend app` release stays on the unified PowerForge path.
 
-It falls back to legacy helpers only for these cases:
-- `-Frontend host`
-- explicitly skipping plugin packaging, portable bundle, or installer steps
+`Build-Release.ps1` now maps package / portable / installer choices onto PowerForge release output selection instead of re-implementing the release workflow in PowerShell.
 
-When fallback happens, `Build-Release.ps1` prints the exact reason in the console.
+`-Frontend host` is not modeled by the unified release config yet, so use the legacy helpers directly for that path.
 
 ## Legacy Helpers Still Kept
 
