@@ -188,6 +188,7 @@ Workflow automation:
 - The nightly metrics JSON now includes a compact `governanceSignals.retryPolicyReviewSuggested` flag plus suggested policy metadata for machine-readable governance consumers.
 - The nightly/weekly markdown summary now also prints a compact top-level `Governance:` line for quick portfolio scanning.
 - When `apply_governance_signal_label=true`, tracker issue sync also manages the label `ix/retry-policy-review-suggested` so maintainers can filter/sort governance recommendations directly in GitHub; this is still opt-in and removed when the signal clears.
+- The weekly governance wrapper now also supports scheduled opt-in for that tracker label via repo variable `IX_PR_WATCH_APPLY_GOVERNANCE_SIGNAL_LABEL=true`, while manual runs still use the explicit `apply_governance_signal_label` workflow input.
 - Tracker issue automation:
   - source-scoped upsert marker: `<!-- intelligencex:pr-watch-rollup-tracker:<source> -->`
   - create/update open issue per source with latest bucket/metric snapshot

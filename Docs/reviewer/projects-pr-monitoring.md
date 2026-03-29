@@ -123,6 +123,7 @@ Nightly consolidation automation:
 - Inputs also include optional `retry_failure_policy` (`any` by default, `non-actionable-only` opt-in)
 - Optional tracker issue inputs: `publish_tracking_issue`, `tracker_issue_title`, `tracker_issue_labels`
 - Optional governance labeling input: `apply_governance_signal_label` (default `false`)
+- Weekly governance scheduled runs can also opt into tracker governance labeling via repo variable `IX_PR_WATCH_APPLY_GOVERNANCE_SIGNAL_LABEL=true`; manual runs continue to use the explicit `apply_governance_signal_label` input
 - Outputs:
   - rollup JSON: `artifacts/pr-watch/ix-pr-watch-nightly-rollup.json`
   - markdown summary: `artifacts/pr-watch/ix-pr-watch-nightly-summary.md`

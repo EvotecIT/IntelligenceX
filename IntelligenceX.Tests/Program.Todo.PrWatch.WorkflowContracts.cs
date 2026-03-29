@@ -44,6 +44,10 @@ internal static partial class Program {
         AssertContainsText(content, "tracker_issue_labels:", "weekly governance workflow should expose tracker label override");
         AssertContainsText(content, "uses: ./.github/workflows/ix-pr-babysit-nightly-consolidation.yml",
             "weekly governance workflow should remain a wrapper over nightly consolidation");
+        AssertContainsText(content, "IX_PR_WATCH_APPLY_GOVERNANCE_SIGNAL_LABEL",
+            "weekly governance workflow should support scheduled governance label opt-in via repo variable");
+        AssertContainsText(content, "apply_governance_signal_label: ${{ vars.IX_PR_WATCH_APPLY_GOVERNANCE_SIGNAL_LABEL == 'true' }}",
+            "weekly governance scheduled path should pass governance label input through to nightly workflow");
     }
 
     private static void TestPrWatchAssistRetryWorkflowUsesDirectCliInvocation() {

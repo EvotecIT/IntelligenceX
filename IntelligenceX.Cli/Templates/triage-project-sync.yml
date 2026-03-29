@@ -122,12 +122,12 @@ jobs:
             APPLY_PR_WATCH_GOVERNANCE_FIELDS="${{ inputs.apply_pr_watch_governance_fields }}"
           fi
 
-          EXTRA_ARGS=""
+          EXTRA_ARGS=()
           if [ "$APPLY_PR_WATCH_GOVERNANCE_LABELS" = "true" ]; then
-            EXTRA_ARGS="$EXTRA_ARGS --apply-pr-watch-governance-labels"
+            EXTRA_ARGS+=(--apply-pr-watch-governance-labels)
           fi
           if [ "$APPLY_PR_WATCH_GOVERNANCE_FIELDS" = "true" ]; then
-            EXTRA_ARGS="$EXTRA_ARGS --apply-pr-watch-governance-fields"
+            EXTRA_ARGS+=(--apply-pr-watch-governance-fields)
           fi
 
           dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- \
@@ -140,7 +140,7 @@ jobs:
             --max-items "$MAX_ITEMS" \
             --apply-labels \
             --apply-link-comments \
-            $EXTRA_ARGS
+            "${EXTRA_ARGS[@]}"
 
       - name: Build project view apply plan
         env:
@@ -157,9 +157,9 @@ jobs:
             INCLUDE_PR_WATCH_GOVERNANCE_VIEWS="${{ inputs.include_pr_watch_governance_views }}"
           fi
 
-          VIEW_ARGS=""
+          VIEW_ARGS=()
           if [ "$INCLUDE_PR_WATCH_GOVERNANCE_VIEWS" = "true" ]; then
-            VIEW_ARGS="$VIEW_ARGS --include-pr-watch-governance-views"
+            VIEW_ARGS+=(--include-pr-watch-governance-views)
           fi
 
           dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- \
@@ -168,7 +168,7 @@ jobs:
             --owner "$OWNER" \
             --project "$PROJECT_NUMBER" \
             --out artifacts/triage/ix-project-view-apply.md \
-            $VIEW_ARGS
+            "${VIEW_ARGS[@]}"
 
       - name: Upload triage artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

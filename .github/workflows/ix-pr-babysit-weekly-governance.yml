@@ -67,6 +67,7 @@ jobs:
       approved_bots: "intelligencex-review,intelligencex-review[bot],chatgpt-codex-connector[bot]"
       source: "weekly-governance"
       publish_tracking_issue: true
+      apply_governance_signal_label: ${{ vars.IX_PR_WATCH_APPLY_GOVERNANCE_SIGNAL_LABEL == 'true' }}
     secrets: inherit
 
   weekly-consolidation-manual:
