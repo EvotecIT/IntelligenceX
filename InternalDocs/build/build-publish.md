@@ -105,8 +105,8 @@ Quick reference:
 Current staged notes:
 - WinAppSDK single-file publish still has app-specific runtime expectations, so keep validating the portable app output when changing startup/bootstrap code.
 - `Build-Release.ps1` remains the repo-specific full release wrapper when you want workspace validation, package assets, portable chat bundle, MSI, and release manifests/checksums in one command.
-- `Build-Release.ps1` now prefers the unified `Build-Project.ps1` / PowerForge path for the normal `Frontend app` release flow, and PowerForge itself now stages the produced package/portable/MSI assets into the release folder. It falls back to the legacy granular scripts only for edge cases like `Frontend host` or deliberately skipping granular steps.
-- when `Build-Release.ps1` falls back, it now prints the exact reason so the path choice is visible in the console output.
+- `Build-Release.ps1` is now a thin wrapper over `Build-Project.ps1` for the normal `Frontend app` release flow, and PowerForge itself stages the produced package/portable/MSI assets into the release folder.
+- `Build-Release.ps1` no longer re-implements skip/fallback orchestration in PowerShell; unsupported cases like `Frontend host` now fail fast and point callers at the advanced helpers directly.
 - `Build\Advanced\Package-Portable.ps1` remains a valid fallback/manual entrypoint, but it now reuses the same bundle-finishing helper as the PowerForge path instead of owning that logic outright.
 - `Build\Advanced\Build-Installer.ps1` remains a valid fallback/manual entrypoint, but the default MSI path is now `Build-Project.ps1` -> PowerForge DotNetPublish.
 - `Build\powerforge.dotnetpublish.json` is now the active unified CLI/tray/chat-host/chat-service/chat-app publish config.

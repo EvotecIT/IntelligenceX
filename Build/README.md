@@ -8,9 +8,9 @@ Use these as the main entrypoints:
   - workspace preflight is now declared in `release.json` + `workspace.validation.json`, not hard-coded in the script
 - `Build-Release.ps1`
   - repo-level release wrapper when you want workspace validation + package assets + portable chat bundle + MSI
-  - default `Frontend app` flow now uses the unified `Build-Project.ps1` / PowerForge path to stage a categorized release folder directly
-  - only falls back to legacy helpers for edge cases like host mode or deliberately skipping granular steps
-  - when it falls back, it now prints the reason instead of silently switching paths
+  - now a thin compatibility wrapper over `Build-Project.ps1`
+  - `Frontend app` stays on the unified `Build-Project.ps1` / PowerForge path and maps release intent to package / portable / installer outputs
+  - `Frontend host` is no longer silently rerouted through a fallback path; use the advanced helpers directly until the unified config models that release flow
 - `Build-Workspace.ps1`
   - thin compatibility wrapper over `powerforge workspace validate`
 - `workspace.validation.json`
@@ -48,6 +48,7 @@ pwsh ./Build/Build-Project.ps1 -ToolsOnly -Targets IntelligenceX.Chat.App -Style
 pwsh ./Build/Build-Project.ps1 -ToolsOnly -Targets IntelligenceX.Chat.App -Styles PortableCompat -SignInstaller -SignThumbprint <thumbprint>
 pwsh ./Build/Build-Project.ps1 -ToolsOnly -Targets IntelligenceX.Chat.App -Styles PortableCompat -SignInstaller -SignSubjectName "Evotec Code Signing" -SignOnFailure Warn
 pwsh ./Build/Build-Project.ps1 -ToolsOnly -Targets IntelligenceX.Chat.App -Styles PortableCompat
+pwsh ./Build/Build-Project.ps1 -ToolsOnly -Targets IntelligenceX.Chat.App -Styles PortableCompat -ToolOutputs Portable,Installer
 pwsh ./Build/Build-Project.ps1 -StageRoot ./Artifacts/Releases/demo -SkipChecksums
 pwsh ./Build/Build-Release.ps1 -Runtime win-x64 -Configuration Release
 pwsh ./Build/Run-Project.ps1 -ListTargets
@@ -108,5 +109,6 @@ Keep these specialist helpers:
 The main workspace-validation logic is no longer owned by `Build-Workspace.ps1`, and the normal publish path no longer owns that orchestration either.
 `Build-Workspace.ps1` now forwards into `powerforge workspace validate`, and `Build-Project.ps1` forwards into `powerforge release`, so the readable source of truth lives in `workspace.validation.json`, `release.json`, and `powerforge.dotnetpublish.json`.
 `Build-Release.ps1` now relies on the same unified release engine for the normal app flow, including final release staging into `nuget`, `portable`, `installer`, `tools`, and `metadata`.
+The wrapper now expresses only high-level release intent and lets PowerForge decide which internal DotNetPublish steps still need to run.
 
 The old standalone publish wrappers for CLI/chat/tray were removed because `Build-Project.ps1` now covers those targets through PowerForge.
