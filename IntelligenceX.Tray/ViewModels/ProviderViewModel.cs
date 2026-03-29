@@ -1081,22 +1081,8 @@ public sealed class ProviderViewModel : ViewModelBase {
             return "No live windows";
         }
 
-        var reviewCount = windows.Count(static window => window.Key.StartsWith("code-review", StringComparison.OrdinalIgnoreCase));
-        var codingCount = windows.Count - reviewCount;
-        if (codingCount > 0 && reviewCount > 0) {
-            return codingCount.ToString(CultureInfo.InvariantCulture)
-                   + " coding + "
-                   + reviewCount.ToString(CultureInfo.InvariantCulture)
-                   + " review";
-        }
-
-        if (codingCount > 0) {
-            return codingCount.ToString(CultureInfo.InvariantCulture)
-                   + (codingCount == 1 ? " coding window" : " coding windows");
-        }
-
-        return reviewCount.ToString(CultureInfo.InvariantCulture)
-               + (reviewCount == 1 ? " review window" : " review windows");
+        return windows.Count.ToString(CultureInfo.InvariantCulture)
+               + (windows.Count == 1 ? " live window" : " live windows");
     }
 
     private void PopulateLimitWindows(
