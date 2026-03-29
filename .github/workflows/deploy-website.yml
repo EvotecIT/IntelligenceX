@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   website-deploy:
-    uses: EvotecIT/PSPublishModule/.github/workflows/powerforge-website-deploy.yml@53d00f50bc525a6e2e4163cb80170d61c815432c
+    uses: EvotecIT/PSPublishModule/.github/workflows/powerforge-website-deploy.yml@7a64f111a4d7bf7f52a34a4392ad3ced67b6049c
     with:
       website_root: Website
       pipeline_config: Website/pipeline.json
@@ -26,7 +26,7 @@ jobs:
       engine_mode: binary
       runner_labels_json: ${{ (github.event.repository.private && vars.IX_FORCE_GITHUB_HOSTED != 'true') && '["self-hosted","linux"]' || '["ubuntu-latest"]' }}
       powerforge_repository: EvotecIT/PSPublishModule
-      powerforge_ref: 53d00f50bc525a6e2e4163cb80170d61c815432c
+      powerforge_ref: 7a64f111a4d7bf7f52a34a4392ad3ced67b6049c
       powerforge_tool_lock_path: Website/.powerforge/tool-lock.json
     secrets:
       indexnow_key: ${{ secrets.INDEXNOW_KEY }}
