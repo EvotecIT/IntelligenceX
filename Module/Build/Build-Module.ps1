@@ -1,4 +1,4 @@
-Import-Module "PSPublishModule" -RequiredVersion '2.0.27' -Force
+Import-Module "PSPublishModule" -Force
 
 Build-Module -ModuleName 'IntelligenceX' {
     # Usual defaults as per standard module

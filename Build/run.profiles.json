@@ -43,7 +43,7 @@
       "Name": "Tray",
       "Kind": "Project",
       "ProjectPath": "IntelligenceX.Tray/IntelligenceX.Tray.csproj",
-      "Framework": "net10.0-windows",
+      "Framework": "project-defined",
       "PassExtraArgs": true,
       "Description": "Windows tray app shell.",
       "Example": "pwsh ./Build/Run-Project.ps1 -Target Tray"
