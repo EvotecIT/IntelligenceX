@@ -140,7 +140,7 @@ jobs:
             --max-items "$MAX_ITEMS" \
             --apply-labels \
             --apply-link-comments \
-            ${EXTRA_ARGS[@]}
+            "${EXTRA_ARGS[@]}"
 
       - name: Build project view apply plan
         env:
@@ -168,7 +168,7 @@ jobs:
             --owner "$OWNER" \
             --project "$PROJECT_NUMBER" \
             --out artifacts/triage/ix-project-view-apply.md \
-            ${VIEW_ARGS[@]}
+            "${VIEW_ARGS[@]}"
 
       - name: Upload triage artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
