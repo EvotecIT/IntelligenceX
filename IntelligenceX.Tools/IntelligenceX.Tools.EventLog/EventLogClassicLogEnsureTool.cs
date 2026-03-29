@@ -401,9 +401,16 @@ public sealed class EventLogClassicLogEnsureTool : EventLogToolBase, ITool {
     internal static string ResolveOverflowActionName(
         string? requestedOverflowAction,
         string? currentOverflowAction) {
-        return requestedOverflowAction
-            ?? currentOverflowAction
-            ?? "overwrite_as_needed";
+        if (!string.IsNullOrWhiteSpace(requestedOverflowAction)) {
+            return requestedOverflowAction;
+        }
+
+        if (ClassicLogOverflowActions.TryNormalize(currentOverflowAction, out var normalizedCurrentOverflowAction, out _)
+            && !string.IsNullOrWhiteSpace(normalizedCurrentOverflowAction)) {
+            return normalizedCurrentOverflowAction;
+        }
+
+        return "overwrite_as_needed";
     }
 
     private static string CreateSuccessResponse(ClassicLogEnsureResult result) {

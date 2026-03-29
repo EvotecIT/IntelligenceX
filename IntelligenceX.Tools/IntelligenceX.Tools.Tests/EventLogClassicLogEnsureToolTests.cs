@@ -19,6 +19,24 @@ public sealed class EventLogClassicLogEnsureToolTests {
     }
 
     [Fact]
+    public void ResolveOverflowActionName_NormalizesCurrentSnapshotValue_WhenRequestIsMissing() {
+        var effectiveOverflowAction = EventLogClassicLogEnsureTool.ResolveOverflowActionName(
+            requestedOverflowAction: null,
+            currentOverflowAction: "Overwrite_Older");
+
+        Assert.Equal("overwrite_older", effectiveOverflowAction);
+    }
+
+    [Fact]
+    public void ResolveOverflowActionName_FallsBackToOverwriteAsNeeded_WhenSnapshotValueIsUnknown() {
+        var effectiveOverflowAction = EventLogClassicLogEnsureTool.ResolveOverflowActionName(
+            requestedOverflowAction: null,
+            currentOverflowAction: "archive_forever");
+
+        Assert.Equal("overwrite_as_needed", effectiveOverflowAction);
+    }
+
+    [Fact]
     public async Task InvokeAsync_RetentionDaysWithoutOverwriteOlder_ShouldFailValidation() {
         var tool = new EventLogClassicLogEnsureTool(new EventLogToolOptions());
 
