@@ -9,12 +9,10 @@ permissions:
 
 jobs:
   website-build:
-    uses: EvotecIT/PSPublishModule/.github/workflows/powerforge-website-ci.yml@7a64f111defc840b870ecb866b84f8da37bf768f
+    uses: EvotecIT/PSPublishModule/.github/workflows/powerforge-website-ci.yml@68ab4a27bf48b1727d55371747df2baf0ff60af0
     with:
       website_root: Website
       pipeline_config: Website/pipeline.json
-      engine_mode: binary
       runner_labels_json: ${{ (github.event.repository.private && vars.IX_FORCE_GITHUB_HOSTED != 'true') && '["self-hosted","linux"]' || '["ubuntu-latest"]' }}
-      powerforge_repository: EvotecIT/PSPublishModule
-      powerforge_ref: 7a64f111defc840b870ecb866b84f8da37bf768f
-      powerforge_tool_lock_path: Website/.powerforge/tool-lock.json
+      powerforge_ref: 68ab4a27bf48b1727d55371747df2baf0ff60af0
+      powerforge_web_tag: PowerForgeWeb-v1.0.0-preview-20260328151156
