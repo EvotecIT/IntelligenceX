@@ -875,6 +875,55 @@ body.pf-api-docs .pf-combobox-option.active {
 
 .member-toggle input:hover { border-color: var(--pf-accent); }
 
+.example-origin {
+  margin: 0.35rem 0 0.45rem;
+}
+
+.example-origin-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.18rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid var(--pf-border);
+  background: var(--pf-bg-alt);
+  color: var(--pf-muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: none;
+}
+
+.example-origin-badge.example-origin-authored {
+  border-color: rgba(16, 185, 129, 0.42);
+  background: rgba(6, 95, 70, 0.22);
+  color: #7dd3a7;
+}
+
+.example-origin-badge.example-origin-imported {
+  border-color: rgba(56, 189, 248, 0.42);
+  background: rgba(8, 47, 73, 0.28);
+  color: #7dd3fc;
+}
+
+.example-origin-badge.example-origin-generated {
+  border-color: rgba(245, 158, 11, 0.42);
+  background: rgba(120, 53, 15, 0.26);
+  color: #fcd34d;
+}
+
+.example-origin-badge.example-origin-other {
+  border-color: rgba(148, 163, 184, 0.32);
+  background: rgba(30, 41, 59, 0.5);
+  color: var(--pf-ink);
+}
+
+.example-media-meta {
+  margin: -0.1rem 0 0;
+  color: var(--pf-muted);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
 .member-return {
   font-size: 0.8rem;
   color: var(--pf-muted);

@@ -28,7 +28,7 @@ concurrency:
 jobs:
   cleanup-linux-runner:
     if: ${{ github.event.repository.private }}
-    uses: EvotecIT/PSPublishModule/.github/workflows/powerforge-github-runner-housekeeping.yml@97b0d38217ab995e611a12d162ae41505b7bfed1
+    uses: EvotecIT/PSPublishModule/.github/workflows/powerforge-github-runner-housekeeping.yml@c892bb2ce884b30e62898118f365d041464d551f
     with:
       config-path: ./.powerforge/runner-housekeeping.json
       apply: true

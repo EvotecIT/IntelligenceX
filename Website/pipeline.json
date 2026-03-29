@@ -94,8 +94,8 @@
       "nav": "./site.json",
       "navContextPath": "/",
       "css": "/css/main.css,/css/api.css",
-      "sourceRoot": "..",
-      "sourceUrl": "https://github.com/EvotecIT/IntelligenceX/blob/master/{path}#L{line}",
+      "sourceRoot": "../IntelligenceX",
+      "sourceUrl": "https://github.com/EvotecIT/IntelligenceX/blob/master/IntelligenceX/{root}/{pathNoRoot}#L{line}",
       "quickStartTypes": "CopilotClient,ChatInput,ToolRunner,ToolRegistry,AnalysisPack,JsonArray",
       "injectCriticalCss": true
     },

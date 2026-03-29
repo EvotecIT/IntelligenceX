@@ -34,10 +34,15 @@ param(
     [string] $SignUrl,
     [string] $SignCsp,
     [string] $SignKeyContainer,
+    [bool] $UseTestimoXSignThumbprintFallback = $true,
     [string[]] $Targets,
     [string[]] $Runtimes,
     [string[]] $Frameworks,
     [string[]] $Styles,
+    [ValidateSet('Tool', 'Portable', 'Installer', 'Store')]
+    [string[]] $ToolOutputs,
+    [ValidateSet('Tool', 'Portable', 'Installer', 'Store')]
+    [string[]] $SkipToolOutputs,
     [string] $TestimoXRoot
 )
 
@@ -115,7 +120,7 @@ Add-Option '--sign-csp' $SignCsp
 Add-Option '--sign-key-container' $SignKeyContainer
 
 if ($SignInstaller) {
-    $resolvedSignThumbprint = Resolve-DefaultSignThumbprint -RepoRoot $repoRoot -ExplicitThumbprint $SignThumbprint -UseTestimoXFallback $true
+    $resolvedSignThumbprint = Resolve-DefaultSignThumbprint -RepoRoot $repoRoot -ExplicitThumbprint $SignThumbprint -UseTestimoXFallback $UseTestimoXSignThumbprintFallback
     if (-not [string]::IsNullOrWhiteSpace($resolvedSignThumbprint)) {
         $SignThumbprint = $resolvedSignThumbprint
     }
@@ -139,6 +144,8 @@ Add-CsvOption '--target' $Targets
 Add-CsvOption '--rid' $Runtimes
 Add-CsvOption '--framework' $Frameworks
 Add-CsvOption '--style' $Styles
+Add-CsvOption '--tool-output' $ToolOutputs
+Add-CsvOption '--skip-tool-output' $SkipToolOutputs
 
 if (-not [string]::IsNullOrWhiteSpace($TestimoXRoot)) {
     $resolvedTestimoXRoot = [System.IO.Path]::GetFullPath($TestimoXRoot)
