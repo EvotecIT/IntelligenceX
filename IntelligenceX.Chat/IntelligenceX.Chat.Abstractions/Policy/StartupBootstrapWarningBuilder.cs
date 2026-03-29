@@ -28,9 +28,9 @@ public static class StartupBootstrapWarningBuilder {
             $"[startup] tooling bootstrap timings total={NormalizeToken(total)} " +
             $"policy={NormalizeToken(policy)} " +
             $"options={NormalizeToken(options)} " +
-            $"packs={NormalizeToken(packs)} " +
-            $"register={NormalizeToken(register)} " +
-            $"finalize={NormalizeToken(finalize)} " +
+            $"descriptorDiscovery={NormalizeToken(packs)} " +
+            $"packActivation={NormalizeToken(register)} " +
+            $"activationFinalize={NormalizeToken(finalize)} " +
             $"registry={NormalizeToken(registry)} " +
             $"tools={Math.Max(0, tools)} packsLoaded={Math.Max(0, packsLoaded)} packsDisabled={Math.Max(0, packsDisabled)} pluginRoots={Math.Max(0, pluginRoots)}.");
     }
@@ -49,6 +49,40 @@ public static class StartupBootstrapWarningBuilder {
     /// </summary>
     public static string BuildPersistedPreviewRestoredSummary() {
         return "[startup] tooling bootstrap preview restored from persisted cache while runtime rebuild continues.";
+    }
+
+    /// <summary>
+    /// Builds the warning emitted when a persisted preview payload is ignored and the runtime must rebuild live tooling metadata.
+    /// </summary>
+    public static string BuildPersistedPreviewIgnoredSummary(
+        string reason,
+        int? expectedSchemaVersion = null,
+        int? actualSchemaVersion = null,
+        string? detail = null) {
+        var warning = string.Create(
+            CultureInfo.InvariantCulture,
+            $"[startup] tooling bootstrap persisted preview ignored reason={NormalizeToken(reason)}");
+
+        if (expectedSchemaVersion.HasValue) {
+            warning += string.Create(
+                CultureInfo.InvariantCulture,
+                $" expectedSchemaVersion={Math.Max(0, expectedSchemaVersion.Value)}");
+        }
+
+        if (actualSchemaVersion.HasValue) {
+            warning += string.Create(
+                CultureInfo.InvariantCulture,
+                $" actualSchemaVersion={Math.Max(0, actualSchemaVersion.Value)}");
+        }
+
+        var normalizedDetail = (detail ?? string.Empty).Trim();
+        if (normalizedDetail.Length > 0) {
+            warning += string.Create(
+                CultureInfo.InvariantCulture,
+                $" detail={NormalizeToken(normalizedDetail)}");
+        }
+
+        return warning + ".";
     }
 
     /// <summary>

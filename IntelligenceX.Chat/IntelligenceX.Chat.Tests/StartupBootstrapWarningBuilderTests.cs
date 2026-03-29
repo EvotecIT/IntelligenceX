@@ -20,7 +20,7 @@ public sealed class StartupBootstrapWarningBuilderTests {
             pluginRoots: 3);
 
         Assert.Equal(
-            "[startup] tooling bootstrap timings total=1.8s policy=50ms options=20ms packs=1.6s register=200ms finalize=120ms registry=320ms tools=200 packsLoaded=14 packsDisabled=2 pluginRoots=3.",
+            "[startup] tooling bootstrap timings total=1.8s policy=50ms options=20ms descriptorDiscovery=1.6s packActivation=200ms activationFinalize=120ms registry=320ms tools=200 packsLoaded=14 packsDisabled=2 pluginRoots=3.",
             warning);
     }
 
@@ -67,6 +67,18 @@ public sealed class StartupBootstrapWarningBuilderTests {
 
         Assert.Equal(
             "[startup] tooling bootstrap preview restored from persisted cache while runtime rebuild continues.",
+            warning);
+    }
+
+    [Fact]
+    public void BuildPersistedPreviewIgnoredSummary_EmitsCanonicalSchemaMismatchEnvelope() {
+        var warning = StartupBootstrapWarningBuilder.BuildPersistedPreviewIgnoredSummary(
+            reason: "schema_mismatch",
+            expectedSchemaVersion: 4,
+            actualSchemaVersion: 3);
+
+        Assert.Equal(
+            "[startup] tooling bootstrap persisted preview ignored reason=schema_mismatch expectedSchemaVersion=4 actualSchemaVersion=3.",
             warning);
     }
 }

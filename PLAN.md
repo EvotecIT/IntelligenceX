@@ -160,6 +160,37 @@ Build a contract-first architecture where:
 - [x] Documentation cleanup increment (2026-03-04): refreshed ADR wording in `InternalDocs/architecture/adr-0001-chat-tools-contract-boundary.md` so cross-pack fallback references are historical/current-state accurate (no stale present-tense behavior claims).
 - [x] Fallback-marker cleanup checkpoint (2026-03-04): verified runtime Chat service no longer contains legacy cross-pack fallback telemetry/constants/symbols; only active projection-fallback metadata markers remain (`projection_fallback_*`) for view-argument recovery diagnostics.
 
+## Planning Extension (2026-03-25)
+
+- [x] Startup preview truthfulness hardening (2026-03-29): persisted descriptor-preview startup now emits explicit `descriptor preview` bootstrap telemetry/cache-mode/status detail instead of replaying stale full-bootstrap timings from a prior live activation.
+- [x] Startup phase telemetry rename (2026-03-29): live bootstrap now emits explicit `descriptor_discovery`, `pack_activation`, and `registry_activation_finalize` phases, and app summaries/status text now reflects the descriptor-first lifecycle instead of legacy `pack load / pack register` wording.
+- [x] Startup disabled-pack activation trim (2026-03-29): descriptor-only disabled known built-ins no longer consume raw `pack_load_progress` activation steps on the default bootstrap path; availability still publishes, but disabled toggles now avoid both constructor work and fake activation-progress churn.
+- [x] Versioned descriptor snapshot contract (2026-03-29): persisted tooling bootstrap cache now writes and prefers an explicit versioned descriptor/capability snapshot payload for preview-safe metadata (`hello`/`list_tools`/first-paint), with legacy top-level fallback and fail-open diagnostics when the nested descriptor snapshot schema is stale.
+- [x] Workspace output probing hardening (2026-03-29): built-in pack assembly resolution now honors `EnableWorkspaceBuiltInToolOutputProbing` on the live load path too, so repo-local `bin` scanning stays opt-in for dev/bootstrap recovery instead of leaking into default startup.
+- [x] Built-in discovery metadata-first refactor (2026-03-29): default built-in assembly allowlist now starts from `KnownBuiltInPackBootstrapMetadata` assembly identities, with dependency-graph and embedded manifest reads left as compatibility fallbacks instead of primary discovery sources.
+- [x] Descriptor-first first-paint startup (2026-03-29): app startup/connection flows now treat persisted-preview `hello` policy snapshots as sufficient metadata for first paint, seed plugins from `hello`, skip inline `list_tools` when descriptor metadata is already present, and queue the final metadata refresh in the background instead of blocking startup on full activation semantics.
+- [x] Activation-on-demand status truthfulness (2026-03-29): deferred chat pack activation now emits explicit in-progress routing status before descriptor-matched or handoff-target pack activation work starts, then follows with the existing activated/ready notices once live tool schemas are actually available.
+- [x] Phase-based bootstrap reporting compatibility (2026-03-29): shared/app/UI startup summaries and signal thresholds now resolve canonical `descriptor_discovery`, `pack_activation`, and `registry_activation_finalize` durations from phase telemetry first, using legacy aggregate fields only as backward-compatible fallback.
+- [x] Startup release-gate coverage expansion (2026-03-29): app/runtime tests now explicitly lock zero-pack startup sparsity, plugin-only persisted-preview metadata/snapshot projection, and descriptor-first shell bootstrap summary labels so these startup modes stay protected without depending on the externally blocked shared Chat test project.
+- [x] Known built-in pre-activation filtering (2026-03-29): default startup now trims disabled known built-in assemblies out of live discovery before assembly/type reflection work, while still publishing descriptor-only disabled availability and preserving truthful on-demand disabled-pack activation results.
+- [x] Workspace probing opt-in hardening (2026-03-29): workspace/project-output assembly fallback now stays isolated behind explicit opt-in/test-only workspace-root helpers, and known built-ins selected without a resolvable trusted path now report truthful unavailable availability instead of silently disappearing from on-demand activation results.
+- [x] Structured-only runtime self-report classification checkpoint (2026-03-29): app/shared runtime-introspection classifiers no longer promote raw cue-word asks like `model` / `tools` into runtime self-report mode; trusted `ix:runtime-self-report:v1` directives now carry runtime mode explicitly, while legacy lexical-fallback prompt branches stay covered only through explicit precomputed-analysis tests.
+- [x] Multilingual prompt-mode release-gate checkpoint (2026-03-29): app prompt/gating tests now explicitly lock non-English broad capability asks (`Co mozesz zrobic dla mnie?`) into conversational capability mode, and also lock plain cue-word runtime asks out of implicit runtime self-report mode unless trusted `ix:runtime-self-report:v1` metadata is present.
+- [x] Literal-confirmation routing-prelude checkpoint (2026-03-29): shared Chat routing tests now explicitly prove bare confirmations like `go ahead` / `go ahead?` stay fresh turns with no structured continuation context, compact follow-up flag, or continuation expansion unless real pending-action/continuation state already exists.
+- [x] Shape-based capability boundary checkpoint (2026-03-29): app capability-question classification no longer depends on exact English internal-noun blockers like `model` / `tool` / `plugin`; it now uses broader open-ended question shape so broad capability asks still enter conversational capability mode while short runtime/inventory asks remain out through dedicated classifier and prompt regressions.
+- [x] Obsolete runtime cue-catalog removal checkpoint (2026-03-30): the old English internal-noun blocker catalog (`RuntimeSelfReportCueCatalog`) is now deleted entirely after the app/runtime capability boundary moved to shape- and directive-based handling, and shared host tests no longer freeze that unused English-only list in place.
+- [x] Contract-backed host-target hint checkpoint (2026-03-30): host retry/scenario prompts no longer tell the model to infer or default remote host targets from prose; they now instruct it to use declared host-target arguments only when concrete thread inputs already exist, otherwise ask for the minimal missing target input instead of guessing defaults.
+- [x] Known-host hint consolidation checkpoint (2026-03-30): duplicate “remaining discovered DCs/hosts” prose policy was removed from host retry/scenario prompts; distinct-target coverage guidance now lives only in the structured known-host hint that appears when concrete prior host/DC inputs actually exist.
+- [x] Ordered known-host summary checkpoint (2026-03-30): the structured known-host hint now reports ordered distinct host/DC candidates from prior tool inputs instead of carrying a second prose rule about distinct-target coverage; prompt tests now lock duplicate filtering and the removal of the old narrative instruction.
+- [x] No-text warning known-host checkpoint (2026-03-30): host no-text fallback warnings now surface the same structured known-host/DC summary when concrete prior targets exist, so recovery warnings keep contract/locality context and thread-known target context together.
+- [x] Split tooling bootstrap into two explicit phases: `descriptor_discovery` and `pack_activation`, with startup/status telemetry for both phases.
+- [x] Ensure disabled packs are filtered before constructor/reflection-heavy activation work so pack toggles reduce startup cost, not only runtime exposure.
+- [x] Keep workspace/project-output assembly probing available only for explicit dev/bootstrap repair modes, not on the default warm path.
+- [x] Make built-in pack discovery descriptor/manifest-first so the embedded built-in assembly manifest remains transitional metadata instead of a hard architectural dependency.
+- [x] Add activation-on-demand for packs/tools selected after descriptor-only startup, with truthful status emission while activation is in progress.
+- [ ] Remove remaining English-triggered control flow for runtime/capability classification; English descriptions/examples remain allowed, but user-intent routing must stay structure-first or contract-backed.
+- [ ] Add release gates for zero-pack startup, plugin-only startup, persisted descriptor-preview startup, and multilingual runtime-introspection/capability asks that do not rely on borrowed English cue words.
+
 ## Hard Decisions (Locked)
 
 - [x] `D1` Remove Chat-owned cross-pack fallback execution logic (no legacy compatibility layer).
@@ -176,6 +207,11 @@ Build a contract-first architecture where:
 - [x] `G4` Chat deterministic routing now relies on contract metadata rather than suffix/prefix family-key inference paths.
 - [x] `G5` Tools metadata enrichment hardcoded pack/category inference maps removed from `IntelligenceX/Tools/ToolSelectionMetadata.cs` in favor of contract/tag metadata.
 - [x] `G6` Fallback behavior is partly metadata-driven, partly hardcoded; split must become tool-contract only.
+- [ ] `G7` Warm-path tooling bootstrap still computes an expensive discovery fingerprint before persisted preview reuse, so startup can pay plugin scan/probe costs even when cache data is valid.
+- [ ] `G8` Disabled packs are still discovered/instantiated before runtime enablement is applied, so `EnabledPackIds`/`DisabledPackIds` are not yet strong startup-cost controls.
+- [ ] `G9` Built-in pack onboarding still depends on Chat-owned assembly discovery metadata instead of pack-owned descriptor exports.
+- [ ] `G10` App/runtime introspection classification still uses English runtime cue words in control flow, which conflicts with language-neutral routing goals.
+- [ ] `G11` Host prompt hints still carry some runtime fallback guidance (for example remote-host inference) that should move into explicit tool/setup contracts.
 
 ## Phase 0 - Baseline And Guardrails
 
@@ -234,6 +270,24 @@ Build a contract-first architecture where:
 5. [x] Add contract tests per pack proving no Chat changes are needed to register and route new tools.
 6. [x] Add one synthetic sample pack in tests to prove plug-in registration works without Chat edits.
 
+## Phase 5A - Descriptor-First Startup And Lazy Activation
+
+1. [x] Add a lightweight persisted `PackDescriptorSnapshot` / capability snapshot contract that includes pack ids, tool ids, roles, execution scope, setup/auth/mutability metadata, handoff edges, and version/fingerprint data without requiring full tool activation.
+2. [ ] Refactor startup so persisted descriptor snapshots can satisfy `hello`, `list_tools`, and app first-paint before full pack activation completes.
+3. [ ] Split runtime bootstrap telemetry into explicit `descriptor_discovery`, `descriptor_cache_hit`, `pack_activation`, and `registry_activation_finalize` phases.
+4. [ ] Make pack enablement filtering happen before constructor/reflection-heavy activation work for built-in and plugin packs.
+5. [x] Make workspace `bin` probing and other repair-oriented discovery fallbacks opt-in for dev/bootstrap recovery only, not part of the default warm path.
+6. [ ] Add activation-on-demand for descriptor-known tools/packs so the runtime can activate only the selected capability area when a turn first needs it.
+7. [ ] Add zero-pack, plugin-only, descriptor-preview, and lazy-activation regression suites with latency budget assertions.
+
+## Phase 5B - Language-Neutral Turn Classification And Prompting
+
+1. [ ] Remove English cue-word gating from app/runtime capability and runtime-introspection classifiers while keeping question-shape, punctuation, and structured-context signals.
+2. [ ] Ensure user-intent routing, safety gating, and execution decisions never depend on literal English phrases when equivalent structured contract/state is available.
+3. [ ] Keep English descriptions, examples, and prompt text allowed as explanatory metadata, but prevent those strings from becoming routing/safety control flow.
+4. [ ] Move remote-target/default-host inference hints out of host prompt text and into explicit tool/setup/execution contracts where they can be tested and surfaced consistently.
+5. [ ] Add multilingual tests covering runtime introspection and capability questions that do not rely on borrowed English nouns like `model`, `tool`, or `plugin`.
+
 ## Phase 6 - Typed Tool Surface (Less Stringly, More Models)
 
 1. [x] Add optional typed tool interface/adapter pattern in `IntelligenceX.Tools.Common` (request/response model typed; envelope serialization centralized).
@@ -264,7 +318,9 @@ Build a contract-first architecture where:
 1. [ ] `Track A (Contracts)` Tools contract types + validation + pack migration templates.
 2. [ ] `Track B (Chat Core)` Orchestration catalog + heuristic removal + fallback deletion.
 3. [ ] `Track C (Tests/Quality)` Architecture tests + regression suite updates + docs.
-4. [ ] Merge order: Track A foundational contracts first, Track B next, Track C continuously.
+4. [ ] `Track D (Startup/Activation)` Descriptor snapshot, preview startup, lazy activation, and warm-path perf hardening.
+5. [ ] `Track E (Language Neutrality)` Turn classification cleanup, multilingual regressions, and prompt/control-flow separation.
+6. [ ] Merge order: Track A foundational contracts first, Track B next, Tracks C/D/E continuously once contract boundaries stay stable.
 
 ## Immediate Next Steps (Post-Audit)
 
@@ -272,6 +328,11 @@ Build a contract-first architecture where:
 2. [x] Add startup churn diagnostics classification in app status/debug (for example `auth_wait`, `pipe_retry`, `metadata_retry`, `runtime_disconnect`) so connect/disconnect loops are attributable without log digging.
 3. [x] Add end-to-end regression covering contextual follow-up scope-shift + host structured next-action finalize path using routed rewrite text to prevent stale single-host replay regressions.
 4. [x] Run full release preflight (`dotnet build`, `dotnet test`, harness net8/net10) before PR merge.
+5. [ ] Add descriptor-snapshot contract and persisted preview payload versioning for startup-safe capability self-knowledge.
+6. [ ] Refactor tooling bootstrap cache-key validation so persisted preview reuse does not require full discovery fingerprint recomputation on the warm path.
+7. [ ] Filter disabled packs before activation work and add a regression proving startup cost decreases when packs are disabled.
+8. [ ] Remove English runtime cue-word routing in app/shared classifiers and replace it with structure-first classification plus multilingual tests.
+9. [ ] Replace host-side remote target/default host prompt hints with contract-backed execution/setup metadata.
 
 ## Definition Of Done
 
@@ -282,6 +343,11 @@ Build a contract-first architecture where:
 - [x] `DoD5` New synthetic pack/tool can be added in tests without Chat code changes.
 - [x] `DoD6` DomainDetective vs ADPlayground separation enforced by contracts/tests.
 - [x] `DoD7` Full build/test suite passes after legacy fallback removal.
+- [ ] `DoD8` `hello`, `list_tools`, and first-paint startup can complete from persisted descriptor/capability snapshots before full pack activation finishes.
+- [ ] `DoD9` Disabling packs measurably reduces startup activation cost instead of only hiding tools from runtime exposure.
+- [ ] `DoD10` Built-in pack onboarding does not require Chat runtime code edits to learn the pack's contract surface.
+- [ ] `DoD11` Runtime/capability classification and routing no longer depend on hardcoded English cue words or literal confirmation phrases.
+- [ ] `DoD12` Zero-pack, plugin-only, lazy-activation, and multilingual capability/runtime-introspection suites pass under release gates.
 
 ## Suggested Session Plan
 
@@ -291,3 +357,6 @@ Build a contract-first architecture where:
 4. [ ] Session 4: Phase 5 pack migrations (ADPlayground/DomainDetective/DnsClientX first).
 5. [ ] Session 5: Phase 6 typed-surface migration start + analyzer guardrails.
 6. [ ] Session 6: Phase 7/8 cleanup, docs, and final quality gate.
+7. [ ] Session 7: Phase 5A descriptor snapshot + preview-startup contract and warm-path cache validation.
+8. [ ] Session 8: Phase 5A lazy activation + disabled-pack preactivation filtering + startup perf budgets.
+9. [ ] Session 9: Phase 5B language-neutral classifier cleanup + multilingual runtime/capability tests.

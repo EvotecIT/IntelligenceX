@@ -81,8 +81,8 @@ internal static partial class Program {
 
         if (matchedEntries.Any(static entry => entry.SupportsRemoteHostTargeting && entry.SupportsRemoteExecution)) {
             lines.Add(includeRemoteHostFallbackHint
-                ? "- If a remote-capable tool is missing host or machine input, default to the first discovered/source host/DC from prior turns when thread context provides one."
-                : "- If a remote-capable tool is missing host or machine input, infer it from prior thread context when available.");
+                ? "- For remote-capable tools, use declared host or machine target arguments only when prior tool inputs in this thread already provide concrete values; otherwise ask for the minimal missing target input."
+                : "- For remote-capable tools, do not guess default host or machine targets; ask for the minimal missing target input when no concrete thread value is already available.");
         }
 
         return lines;

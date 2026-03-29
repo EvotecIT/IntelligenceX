@@ -480,6 +480,22 @@ public sealed partial class UiShellAssetsTests {
     }
 
     /// <summary>
+    /// Ensures the shell summary keeps descriptor-first bootstrap labels for persisted preview and live startup phases.
+    /// </summary>
+    [Fact]
+    public void Load_IncludesDescriptorFirstStartupBootstrapSummaryLabels() {
+        var scriptPath = Path.Combine(UiDirectory, "Shell.10.core.js");
+        var script = File.ReadAllText(scriptPath);
+
+        AssertContainsAll(
+            script,
+            "segments.push(\"descriptor-preview\");",
+            "segments.push(\"descriptor-discovery \" + formatStartupBootstrapDuration(descriptorDiscoveryMs));",
+            "segments.push(\"pack-activation \" + formatStartupBootstrapDuration(packActivationMs));",
+            "segments.push(\"activation-finalize \" + formatStartupBootstrapDuration(activationFinalizeMs));");
+    }
+
+    /// <summary>
     /// Ensures split JavaScript files are explicitly tracked by manifest,
     /// so adding/renaming files cannot silently change runtime composition.
     /// </summary>

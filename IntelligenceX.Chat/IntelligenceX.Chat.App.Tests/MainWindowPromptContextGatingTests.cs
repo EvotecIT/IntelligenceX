@@ -53,12 +53,40 @@ public sealed class MainWindowPromptContextGatingTests {
     }
 
     /// <summary>
+    /// Ensures non-English capability questions do not reactivate ambient onboarding context either.
+    /// </summary>
+    [Fact]
+    public void ShouldIncludeAmbientOnboardingContext_ReturnsFalseForNonEnglishCapabilityQuestion() {
+        var result = MainWindow.ShouldIncludeAmbientOnboardingContext(
+            userText: "Co mozesz zrobic dla mnie?",
+            onboardingInProgress: true,
+            assistantCapabilityQuestion: true,
+            assistantRuntimeIntrospectionQuestion: false);
+
+        Assert.False(result);
+    }
+
+    /// <summary>
     /// Ensures assistant-capability questions do not turn proactive execution hints back on.
     /// </summary>
     [Fact]
     public void ShouldIncludeProactiveExecutionMode_ReturnsFalseForCapabilityQuestion() {
         var result = MainWindow.ShouldIncludeProactiveExecutionMode(
             userText: "What can you do for me today?",
+            assistantCapabilityQuestion: true,
+            assistantRuntimeIntrospectionQuestion: false,
+            recentAssistantAskedQuestion: false);
+
+        Assert.False(result);
+    }
+
+    /// <summary>
+    /// Ensures non-English capability questions also keep proactive execution mode off.
+    /// </summary>
+    [Fact]
+    public void ShouldIncludeProactiveExecutionMode_ReturnsFalseForNonEnglishCapabilityQuestion() {
+        var result = MainWindow.ShouldIncludeProactiveExecutionMode(
+            userText: "Co mozesz zrobic dla mnie?",
             assistantCapabilityQuestion: true,
             assistantRuntimeIntrospectionQuestion: false,
             recentAssistantAskedQuestion: false);

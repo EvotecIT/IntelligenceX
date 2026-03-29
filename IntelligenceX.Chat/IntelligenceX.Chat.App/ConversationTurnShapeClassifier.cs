@@ -13,6 +13,10 @@ internal static class ConversationTurnShapeClassifier {
     private const int FollowUpQuestionTokenLimit = 8;
     private const int CapabilityQuestionLengthLimit = 96;
     private const int CapabilityQuestionTokenLimit = 12;
+    private const int CapabilityQuestionShortTokenLengthLimit = 3;
+    private const int CapabilityQuestionShortTokenRunLength = 3;
+    private const int CapabilityQuestionAbstractTokenLength = 10;
+    private const int CapabilityQuestionCompactSubstantiveTokenLength = 6;
     private const int GenericQuestionLongLetterTokenLength = 10;
     private const int LowContextShortTurnTokenLimit = 3;
     private const int LowContextShortTurnLengthLimit = 24;
@@ -123,7 +127,7 @@ internal static class ConversationTurnShapeClassifier {
             return false;
         }
 
-        if (ContainsUppercaseAcronymToken(text) || CountCapabilityBlockedMetaCueMatches(tokens) > 0) {
+        if (ContainsUppercaseAcronymToken(text)) {
             return false;
         }
 
@@ -135,7 +139,11 @@ internal static class ConversationTurnShapeClassifier {
             return false;
         }
 
-        return LooksLikeBroadGenericQuestionShape(text, tokens);
+        if (!LooksLikeBroadGenericQuestionShape(text, tokens)) {
+            return false;
+        }
+
+        return LooksLikeOpenEndedCapabilityQuestionShape(tokens);
     }
 
     /// <summary>
@@ -250,10 +258,6 @@ internal static class ConversationTurnShapeClassifier {
         return RuntimeSelfReportTurnClassifier.LooksLikeBroadGenericQuestionShape(text, tokens, allowUppercaseAcronyms);
     }
 
-    private static int CountCapabilityBlockedMetaCueMatches(IReadOnlyList<string> tokens) {
-        return RuntimeSelfReportCueCatalog.CountCapabilityBlockedMetaCueMatches(tokens);
-    }
-
     private static List<string> CollectLetterDigitTokens(string text, int maxTokens) {
         var normalized = (text ?? string.Empty).Trim();
         var tokens = new List<string>(Math.Max(0, Math.Min(maxTokens, 8)));
@@ -303,6 +307,141 @@ internal static class ConversationTurnShapeClassifier {
         }
 
         return hasNonAsciiLetter;
+    }
+
+    private static bool LooksLikeOpenEndedCapabilityQuestionShape(IReadOnlyList<string> tokens) {
+        ArgumentNullException.ThrowIfNull(tokens);
+
+        if (tokens.Count <= 3) {
+            return false;
+        }
+
+        if (tokens.Count == 4) {
+            return HasShortTokenRun(
+                tokens,
+                startIndexInclusive: 1,
+                endIndexExclusive: tokens.Count,
+                runLength: CapabilityQuestionShortTokenRunLength,
+                maxTokenLength: CapabilityQuestionShortTokenLengthLimit);
+        }
+
+        if (tokens.Count == 5) {
+            return HasAllLetterTokenAtLeast(tokens, CapabilityQuestionAbstractTokenLength)
+                   || LooksLikeCompactOpenEndedCapabilityFiveTokenShape(tokens);
+        }
+
+        if (LooksLikeAbstractOpenEndedCapabilityQuestion(tokens)) {
+            return true;
+        }
+
+        return HasShortTokenRun(
+            tokens,
+            startIndexInclusive: 1,
+            endIndexExclusive: tokens.Count - 1,
+            runLength: CapabilityQuestionShortTokenRunLength,
+            maxTokenLength: CapabilityQuestionShortTokenLengthLimit);
+    }
+
+    private static bool LooksLikeAbstractOpenEndedCapabilityQuestion(IReadOnlyList<string> tokens) {
+        ArgumentNullException.ThrowIfNull(tokens);
+
+        return tokens.Count >= 6
+               && IsAllLettersAtLeast(tokens[1], CapabilityQuestionAbstractTokenLength)
+               && HasShortTokenRun(
+                   tokens,
+                   startIndexInclusive: 2,
+                   endIndexExclusive: tokens.Count - 1,
+                   runLength: 2,
+                   maxTokenLength: CapabilityQuestionShortTokenLengthLimit);
+    }
+
+    private static bool LooksLikeCompactOpenEndedCapabilityFiveTokenShape(IReadOnlyList<string> tokens) {
+        ArgumentNullException.ThrowIfNull(tokens);
+
+        return tokens.Count == 5
+               && tokens[0].Length > 0
+               && tokens[0].Length <= CapabilityQuestionShortTokenLengthLimit
+               && tokens[1].Length >= CapabilityQuestionCompactSubstantiveTokenLength
+               && tokens[2].Length >= CapabilityQuestionCompactSubstantiveTokenLength
+               && tokens[3].Length > 0
+               && tokens[3].Length <= CapabilityQuestionShortTokenLengthLimit
+               && tokens[4].Length > CapabilityQuestionShortTokenLengthLimit;
+    }
+
+    private static bool HasShortTokenRun(
+        IReadOnlyList<string> tokens,
+        int startIndexInclusive,
+        int endIndexExclusive,
+        int runLength,
+        int maxTokenLength) {
+        ArgumentNullException.ThrowIfNull(tokens);
+
+        if (tokens.Count == 0
+            || startIndexInclusive < 0
+            || endIndexExclusive > tokens.Count
+            || startIndexInclusive >= endIndexExclusive
+            || runLength <= 0
+            || maxTokenLength <= 0) {
+            return false;
+        }
+
+        var currentRun = 0;
+        for (var i = startIndexInclusive; i < endIndexExclusive; i++) {
+            if (tokens[i].Length > 0 && tokens[i].Length <= maxTokenLength) {
+                currentRun++;
+                if (currentRun >= runLength) {
+                    return true;
+                }
+            } else {
+                currentRun = 0;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool HasAllLetterTokenAtLeast(IReadOnlyList<string> tokens, int minLength) {
+        ArgumentNullException.ThrowIfNull(tokens);
+
+        if (minLength <= 0) {
+            return false;
+        }
+
+        for (var i = 0; i < tokens.Count; i++) {
+            var token = tokens[i];
+            if (token.Length < minLength) {
+                continue;
+            }
+
+            var allLetters = true;
+            for (var j = 0; j < token.Length; j++) {
+                if (!char.IsLetter(token[j])) {
+                    allLetters = false;
+                    break;
+                }
+            }
+
+            if (allLetters) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsAllLettersAtLeast(string token, int minLength) {
+        var normalized = (token ?? string.Empty).Trim();
+        if (normalized.Length < minLength) {
+            return false;
+        }
+
+        for (var i = 0; i < normalized.Length; i++) {
+            if (!char.IsLetter(normalized[i])) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static bool ContainsUppercaseAcronymToken(string text) {

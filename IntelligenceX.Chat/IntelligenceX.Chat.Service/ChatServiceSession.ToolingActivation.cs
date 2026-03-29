@@ -96,6 +96,13 @@ internal sealed partial class ChatServiceSession {
             : $"Handoff target pack '{normalizedPackId}' was already active for the next same-turn tool phase.";
     }
 
+    private static string BuildDeferredHandoffTargetPackActivationPendingMessage(string packId) {
+        var normalizedPackId = ToolPackBootstrap.NormalizePackId(packId);
+        return normalizedPackId.Length == 0
+            ? "Activating a handoff target pack for the next same-turn tool phase..."
+            : $"Activating handoff target pack '{normalizedPackId}' for the next same-turn tool phase...";
+    }
+
     private static string BuildDeferredChatPackActivationMessage(string packId) {
         var normalizedPackId = ToolPackBootstrap.NormalizePackId(packId);
         return normalizedPackId.Length == 0
@@ -110,6 +117,13 @@ internal sealed partial class ChatServiceSession {
             : $"Descriptor-matched pack '{normalizedPackId}' was already active before chat routing.";
     }
 
+    private static string BuildDeferredChatPackActivationPendingMessage(string packId) {
+        var normalizedPackId = ToolPackBootstrap.NormalizePackId(packId);
+        return normalizedPackId.Length == 0
+            ? "Activating a descriptor-matched pack before chat routing..."
+            : $"Activating descriptor-matched pack '{normalizedPackId}' before chat routing...";
+    }
+
     private static string BuildDeferredBootstrapAvoidancePackActivationMessage(string packId) {
         var normalizedPackId = ToolPackBootstrap.NormalizePackId(packId);
         return normalizedPackId.Length == 0
@@ -122,6 +136,13 @@ internal sealed partial class ChatServiceSession {
         return normalizedPackId.Length == 0
             ? "Descriptor-matched pack was already active before waiting for tooling bootstrap."
             : $"Descriptor-matched pack '{normalizedPackId}' was already active before waiting for tooling bootstrap.";
+    }
+
+    private static string BuildDeferredBootstrapAvoidancePackActivationPendingMessage(string packId) {
+        var normalizedPackId = ToolPackBootstrap.NormalizePackId(packId);
+        return normalizedPackId.Length == 0
+            ? "Activating a descriptor-matched pack before waiting for tooling bootstrap..."
+            : $"Activating descriptor-matched pack '{normalizedPackId}' before waiting for tooling bootstrap...";
     }
 
     private static bool ShouldAttemptDeferredChatPackActivation(
@@ -179,6 +200,14 @@ internal sealed partial class ChatServiceSession {
         for (var i = 0; i < inactiveTargetPackIds.Length; i++) {
             cancellationToken.ThrowIfCancellationRequested();
             var packId = inactiveTargetPackIds[i];
+            await TryWriteStatusAsync(
+                    writer,
+                    requestId,
+                    threadId,
+                    status: ChatStatusCodes.Routing,
+                    message: BuildDeferredHandoffTargetPackActivationPendingMessage(packId))
+                .ConfigureAwait(false);
+
             if (!TryActivatePackOnDemand(packId, out _)) {
                 continue;
             }
@@ -223,6 +252,7 @@ internal sealed partial class ChatServiceSession {
                     request.Text ?? string.Empty,
                     request.Options,
                     BuildDeferredChatPackActivationReadyMessage,
+                    BuildDeferredChatPackActivationPendingMessage,
                     BuildDeferredChatPackActivationMessage,
                     cancellationToken)
                 .ConfigureAwait(false)) {
@@ -240,6 +270,7 @@ internal sealed partial class ChatServiceSession {
                 request.Text ?? string.Empty,
                 request.Options,
                 BuildDeferredBootstrapAvoidancePackActivationReadyMessage,
+                BuildDeferredBootstrapAvoidancePackActivationPendingMessage,
                 BuildDeferredBootstrapAvoidancePackActivationMessage,
                 cancellationToken)
             .ConfigureAwait(false);
@@ -252,10 +283,12 @@ internal sealed partial class ChatServiceSession {
         string requestText,
         ChatRequestOptions? options,
         Func<string, string> activeStatusMessageFactory,
+        Func<string, string> pendingStatusMessageFactory,
         Func<string, string> activatedStatusMessageFactory,
         CancellationToken cancellationToken) {
         ArgumentNullException.ThrowIfNull(writer);
         ArgumentNullException.ThrowIfNull(activeStatusMessageFactory);
+        ArgumentNullException.ThrowIfNull(pendingStatusMessageFactory);
         ArgumentNullException.ThrowIfNull(activatedStatusMessageFactory);
 
         if (!TryResolveDeferredActivationPlanForChatRequest(requestText, options, out var activationPlan)
@@ -269,6 +302,7 @@ internal sealed partial class ChatServiceSession {
                 threadId,
                 activationPlan.PrimaryPackIds,
                 activeStatusMessageFactory,
+                pendingStatusMessageFactory,
                 activatedStatusMessageFactory,
                 cancellationToken)
             .ConfigureAwait(false);
@@ -278,6 +312,7 @@ internal sealed partial class ChatServiceSession {
                 threadId,
                 activationPlan.HandoffPrewarmPackIds,
                 BuildDeferredHandoffTargetPackActivationReadyMessage,
+                BuildDeferredHandoffTargetPackActivationPendingMessage,
                 BuildDeferredHandoffTargetPackActivationMessage,
                 cancellationToken)
             .ConfigureAwait(false);
@@ -290,6 +325,7 @@ internal sealed partial class ChatServiceSession {
         string threadId,
         IReadOnlyList<string> packIds,
         Func<string, string> activeStatusMessageFactory,
+        Func<string, string> pendingStatusMessageFactory,
         Func<string, string> activatedStatusMessageFactory,
         CancellationToken cancellationToken) {
         if (packIds is not { Count: > 0 }) {
@@ -318,6 +354,14 @@ internal sealed partial class ChatServiceSession {
                     .ConfigureAwait(false);
                 continue;
             }
+
+            await TryWriteStatusAsync(
+                    writer,
+                    requestId,
+                    threadId,
+                    status: ChatStatusCodes.Routing,
+                    message: pendingStatusMessageFactory(packId))
+                .ConfigureAwait(false);
 
             if (TryActivatePackOnDemand(packId, out _)) {
                 prepared = true;

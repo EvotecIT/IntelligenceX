@@ -66,7 +66,11 @@ public sealed class PromptMarkdownBuilderTests {
     /// </summary>
     [Fact]
     public void BuildThinServiceRequest_OmitsPersistentMemoryForLexicalFallbackRuntimeSelfReport() {
-        var analysis = RuntimeSelfReportTurnClassifier.Analyze("What model are you using?");
+        var analysis = CreateLexicalFallbackAnalysis(
+            "What model are you using?",
+            compactReply: true,
+            modelRequested: true,
+            toolingRequested: false);
 
         var markdown = PromptMarkdownBuilder.BuildThinServiceRequest(
             userText: "What model are you using?",
@@ -86,7 +90,11 @@ public sealed class PromptMarkdownBuilderTests {
     /// </summary>
     [Fact]
     public void BuildThinServiceRequest_OmitsSessionProfileContextForLexicalFallbackRuntimeSelfReport() {
-        var analysis = RuntimeSelfReportTurnClassifier.Analyze("What model are you using?");
+        var analysis = CreateLexicalFallbackAnalysis(
+            "What model are you using?",
+            compactReply: true,
+            modelRequested: true,
+            toolingRequested: false);
 
         var markdown = PromptMarkdownBuilder.BuildThinServiceRequest(
             userText: "What model are you using?",
@@ -160,8 +168,11 @@ public sealed class PromptMarkdownBuilderTests {
     /// </summary>
     [Fact]
     public void BuildRuntimeSelfReportDirectiveLines_ReturnsCompactDirectiveForRuntimeQuestion() {
-        var lines = PromptMarkdownBuilder.BuildRuntimeSelfReportDirectiveLines(
-            RuntimeSelfReportTurnClassifier.Analyze("What model/tools for DNS/AD?"));
+        var lines = PromptMarkdownBuilder.BuildRuntimeSelfReportDirectiveLines(CreateLexicalFallbackAnalysis(
+            "What model/tools for DNS/AD?",
+            compactReply: true,
+            modelRequested: true,
+            toolingRequested: true));
 
         Assert.NotNull(lines);
         Assert.Contains(RuntimeSelfReportDirective.Marker, lines!);
@@ -176,8 +187,11 @@ public sealed class PromptMarkdownBuilderTests {
     /// </summary>
     [Fact]
     public void BuildRuntimeSelfReportDirectiveLines_CanMarkToolingOnlyRuntimeQuestion() {
-        var lines = PromptMarkdownBuilder.BuildRuntimeSelfReportDirectiveLines(
-            RuntimeSelfReportTurnClassifier.Analyze("What tools are available right now?"));
+        var lines = PromptMarkdownBuilder.BuildRuntimeSelfReportDirectiveLines(CreateLexicalFallbackAnalysis(
+            "What tools are available right now?",
+            compactReply: true,
+            modelRequested: false,
+            toolingRequested: true));
 
         Assert.NotNull(lines);
         Assert.Contains("detection_source: lexical_fallback", lines!);
@@ -192,6 +206,17 @@ public sealed class PromptMarkdownBuilderTests {
     public void BuildRuntimeSelfReportDirectiveLines_ReturnsNullForNonRuntimeTurn() {
         var lines = PromptMarkdownBuilder.BuildRuntimeSelfReportDirectiveLines(
             RuntimeSelfReportTurnClassifier.Analyze("Check replication health across all DCs."));
+
+        Assert.Null(lines);
+    }
+
+    /// <summary>
+    /// Ensures plain cue-word runtime asks do not auto-upgrade into structured runtime directives without trusted metadata.
+    /// </summary>
+    [Fact]
+    public void BuildRuntimeSelfReportDirectiveLines_ReturnsNullForNaturalCueWordAskWithoutTrustedDirective() {
+        var lines = PromptMarkdownBuilder.BuildRuntimeSelfReportDirectiveLines(
+            RuntimeSelfReportTurnClassifier.Analyze("What model are you using?"));
 
         Assert.Null(lines);
     }
@@ -340,6 +365,26 @@ public sealed class PromptMarkdownBuilderTests {
     }
 
     /// <summary>
+    /// Ensures non-English broad capability asks still enter the conversational capability mode without borrowed English nouns.
+    /// </summary>
+    [Fact]
+    public void BuildServiceRequest_IncludesConversationModeForNonEnglishAssistantCapabilityQuestion() {
+        var markdown = PromptMarkdownBuilder.BuildServiceRequest(
+            userText: "Co mozesz zrobic dla mnie?",
+            effectiveName: null,
+            effectivePersona: null,
+            onboardingInProgress: false,
+            missingOnboardingFields: Array.Empty<string>(),
+            includeLiveProfileUpdates: false,
+            executionBehaviorPrompt: string.Empty);
+
+        Assert.Contains("[Conversation mode]", markdown);
+        Assert.Contains("Mode: assistant_capability_question", markdown);
+        Assert.Contains("Answer naturally in human terms", markdown, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Do not dump low-level runtime details", markdown, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
     /// Ensures capability-answer style guidance can be embedded separately from general conversation style.
     /// </summary>
     [Fact]
@@ -399,6 +444,11 @@ public sealed class PromptMarkdownBuilderTests {
     /// </summary>
     [Fact]
     public void BuildServiceRequest_IncludesConversationModeForRuntimeIntrospectionQuestion() {
+        var analysis = CreateLexicalFallbackAnalysis(
+            "What model/tools for DNS/AD?",
+            compactReply: true,
+            modelRequested: true,
+            toolingRequested: true);
         var markdown = PromptMarkdownBuilder.BuildServiceRequest(
             userText: "What model/tools for DNS/AD?",
             effectiveName: null,
@@ -406,7 +456,8 @@ public sealed class PromptMarkdownBuilderTests {
             onboardingInProgress: false,
             missingOnboardingFields: Array.Empty<string>(),
             includeLiveProfileUpdates: false,
-            executionBehaviorPrompt: string.Empty);
+            executionBehaviorPrompt: string.Empty,
+            runtimeSelfReportAnalysis: analysis);
 
         Assert.Contains("[Conversation mode]", markdown);
         Assert.Contains("Mode: assistant_runtime_introspection_compact", markdown);
@@ -429,6 +480,11 @@ public sealed class PromptMarkdownBuilderTests {
     /// </summary>
     [Fact]
     public void BuildServiceRequest_RuntimeHandshakeTakesPriorityOverGenericCapabilityTail() {
+        var analysis = CreateLexicalFallbackAnalysis(
+            "What model and tools are you using right now?",
+            compactReply: false,
+            modelRequested: true,
+            toolingRequested: true);
         var markdown = PromptMarkdownBuilder.BuildServiceRequest(
             userText: "What model and tools are you using right now?",
             effectiveName: null,
@@ -444,7 +500,8 @@ public sealed class PromptMarkdownBuilderTests {
             runtimeCapabilityLines: new[] {
                 "Runtime transport: native, active model for this turn: gpt-5.4",
                 "Tool availability for this turn: available (enabled tools: 20, disabled: 0)."
-            });
+            },
+            runtimeSelfReportAnalysis: analysis);
 
         Assert.Contains("[Capability self-knowledge]", markdown);
         Assert.Contains("Mode: assistant_runtime_introspection_question", markdown);
@@ -464,6 +521,11 @@ public sealed class PromptMarkdownBuilderTests {
     /// </summary>
     [Fact]
     public void BuildServiceRequest_TrimsRuntimeHandshakeMoreAggressivelyForLexicalFallbackRuntimeTurn() {
+        var analysis = CreateLexicalFallbackAnalysis(
+            "What model and tools are you using right now?",
+            compactReply: false,
+            modelRequested: true,
+            toolingRequested: true);
         var markdown = PromptMarkdownBuilder.BuildServiceRequest(
             userText: "What model and tools are you using right now?",
             effectiveName: null,
@@ -483,7 +545,8 @@ public sealed class PromptMarkdownBuilderTests {
                 "runtime-3",
                 "runtime-4",
                 "runtime-5"
-            });
+            },
+            runtimeSelfReportAnalysis: analysis);
 
         Assert.Contains("detection_source: lexical_fallback", markdown, StringComparison.Ordinal);
         Assert.Contains("cap-1", markdown, StringComparison.Ordinal);
@@ -499,6 +562,11 @@ public sealed class PromptMarkdownBuilderTests {
     /// </summary>
     [Fact]
     public void BuildServiceRequest_OmitsPersistentMemoryForLexicalFallbackRuntimeTurn() {
+        var analysis = CreateLexicalFallbackAnalysis(
+            "What model and tools are you using right now?",
+            compactReply: false,
+            modelRequested: true,
+            toolingRequested: true);
         var markdown = PromptMarkdownBuilder.BuildServiceRequest(
             userText: "What model and tools are you using right now?",
             effectiveName: null,
@@ -508,7 +576,8 @@ public sealed class PromptMarkdownBuilderTests {
             includeLiveProfileUpdates: false,
             executionBehaviorPrompt: string.Empty,
             persistentMemoryLines: new[] { "Prefers compact operational summaries." },
-            persistentMemoryPrompt: "[Persistent memory protocol]");
+            persistentMemoryPrompt: "[Persistent memory protocol]",
+            runtimeSelfReportAnalysis: analysis);
 
         Assert.Contains("detection_source: lexical_fallback", markdown, StringComparison.Ordinal);
         Assert.Contains("Ignore unrelated persistent memory", markdown, StringComparison.OrdinalIgnoreCase);
@@ -522,6 +591,11 @@ public sealed class PromptMarkdownBuilderTests {
     /// </summary>
     [Fact]
     public void BuildServiceRequest_OmitsLowPriorityContextForLexicalFallbackRuntimeTurn() {
+        var analysis = CreateLexicalFallbackAnalysis(
+            "What model and tools are you using right now?",
+            compactReply: false,
+            modelRequested: true,
+            toolingRequested: true);
         var markdown = PromptMarkdownBuilder.BuildServiceRequest(
             userText: "What model and tools are you using right now?",
             effectiveName: null,
@@ -533,7 +607,8 @@ public sealed class PromptMarkdownBuilderTests {
             localContextLines: new[] { "Assistant: Previous answer about replication health." },
             conversationStyleLines: new[] { "Recent user style is terse and direct." },
             personaGuidanceLines: new[] { "Prefer crisp and highly compressed delivery." },
-            continuationStateLines: new[] { "There is a pending follow-up about replication." });
+            continuationStateLines: new[] { "There is a pending follow-up about replication." },
+            runtimeSelfReportAnalysis: analysis);
 
         Assert.Contains("detection_source: lexical_fallback", markdown, StringComparison.Ordinal);
         Assert.DoesNotContain("[Conversation style]", markdown, StringComparison.Ordinal);
@@ -550,6 +625,11 @@ public sealed class PromptMarkdownBuilderTests {
     /// </summary>
     [Fact]
     public void BuildServiceRequest_OmitsSessionProfileContextForLexicalFallbackRuntimeTurn() {
+        var analysis = CreateLexicalFallbackAnalysis(
+            "What model and tools are you using right now?",
+            compactReply: false,
+            modelRequested: true,
+            toolingRequested: true);
         var markdown = PromptMarkdownBuilder.BuildServiceRequest(
             userText: "What model and tools are you using right now?",
             effectiveName: "Przemek",
@@ -557,7 +637,8 @@ public sealed class PromptMarkdownBuilderTests {
             onboardingInProgress: false,
             missingOnboardingFields: Array.Empty<string>(),
             includeLiveProfileUpdates: false,
-            executionBehaviorPrompt: string.Empty);
+            executionBehaviorPrompt: string.Empty,
+            runtimeSelfReportAnalysis: analysis);
 
         Assert.Contains("detection_source: lexical_fallback", markdown, StringComparison.Ordinal);
         Assert.DoesNotContain("[Session profile context]", markdown, StringComparison.Ordinal);
@@ -570,6 +651,11 @@ public sealed class PromptMarkdownBuilderTests {
     /// </summary>
     [Fact]
     public void BuildServiceRequest_OmitsExecutionBehaviorForLexicalFallbackRuntimeTurn() {
+        var analysis = CreateLexicalFallbackAnalysis(
+            "What model and tools are you using right now?",
+            compactReply: false,
+            modelRequested: true,
+            toolingRequested: true);
         var markdown = PromptMarkdownBuilder.BuildServiceRequest(
             userText: "What model and tools are you using right now?",
             effectiveName: null,
@@ -577,7 +663,8 @@ public sealed class PromptMarkdownBuilderTests {
             onboardingInProgress: false,
             missingOnboardingFields: Array.Empty<string>(),
             includeLiveProfileUpdates: false,
-            executionBehaviorPrompt: "[Execution behavior]\n- Retry tools before asking user.");
+            executionBehaviorPrompt: "[Execution behavior]\n- Retry tools before asking user.",
+            runtimeSelfReportAnalysis: analysis);
 
         Assert.Contains("detection_source: lexical_fallback", markdown, StringComparison.Ordinal);
         Assert.DoesNotContain("[Execution behavior]", markdown, StringComparison.Ordinal);
@@ -611,6 +698,47 @@ public sealed class PromptMarkdownBuilderTests {
         Assert.Contains("detection_source: structured_directive", markdown, StringComparison.Ordinal);
         Assert.Contains("structured scope", markdown, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("lightweight lexical fallback", markdown, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Ensures plain cue-word runtime asks no longer auto-enter runtime self-report mode without trusted directive metadata.
+    /// </summary>
+    [Fact]
+    public void BuildServiceRequest_DoesNotAutoEnterRuntimeIntrospectionModeForNaturalCueWordAskWithoutTrustedDirective() {
+        var markdown = PromptMarkdownBuilder.BuildServiceRequest(
+            userText: "What model are you using?",
+            effectiveName: null,
+            effectivePersona: null,
+            onboardingInProgress: false,
+            missingOnboardingFields: Array.Empty<string>(),
+            includeLiveProfileUpdates: false,
+            executionBehaviorPrompt: string.Empty);
+
+        Assert.DoesNotContain("assistant_runtime_introspection", markdown, StringComparison.Ordinal);
+        Assert.DoesNotContain("assistant_capability_question", markdown, StringComparison.Ordinal);
+        Assert.DoesNotContain("ix:runtime-self-report:v1", markdown, StringComparison.Ordinal);
+        Assert.DoesNotContain("detection_source: lexical_fallback", markdown, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures broader runtime inventory asks do not fall back into generic capability mode when no trusted runtime directive exists.
+    /// </summary>
+    [Theory]
+    [InlineData("What tools are available right now?")]
+    [InlineData("What model and tools are you using right now?")]
+    public void BuildServiceRequest_DoesNotAutoEnterCapabilityModeForRuntimeInventoryAskWithoutTrustedDirective(string userText) {
+        var markdown = PromptMarkdownBuilder.BuildServiceRequest(
+            userText: userText,
+            effectiveName: null,
+            effectivePersona: null,
+            onboardingInProgress: false,
+            missingOnboardingFields: Array.Empty<string>(),
+            includeLiveProfileUpdates: false,
+            executionBehaviorPrompt: string.Empty);
+
+        Assert.DoesNotContain("assistant_runtime_introspection", markdown, StringComparison.Ordinal);
+        Assert.DoesNotContain("assistant_capability_question", markdown, StringComparison.Ordinal);
+        Assert.DoesNotContain("ix:runtime-self-report:v1", markdown, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -778,6 +906,11 @@ public sealed class PromptMarkdownBuilderTests {
     /// </summary>
     [Fact]
     public void BuildServiceRequest_UsesCompactRuntimeHandshakeBudgetForCompactRuntimeAsk() {
+        var analysis = CreateLexicalFallbackAnalysis(
+            "What model/tools for DNS/AD?",
+            compactReply: true,
+            modelRequested: true,
+            toolingRequested: true);
         var markdown = PromptMarkdownBuilder.BuildServiceRequest(
             userText: "What model/tools for DNS/AD?",
             effectiveName: null,
@@ -790,7 +923,8 @@ public sealed class PromptMarkdownBuilderTests {
                 "runtime-1",
                 "runtime-2",
                 "runtime-3"
-            });
+            },
+            runtimeSelfReportAnalysis: analysis);
 
         Assert.Contains("Mode: assistant_runtime_introspection_compact", markdown);
         Assert.Contains("runtime-1", markdown, StringComparison.Ordinal);
@@ -827,6 +961,11 @@ public sealed class PromptMarkdownBuilderTests {
     /// </summary>
     [Fact]
     public void BuildServiceRequest_TrimsLowPrioritySupplementalSectionsUnderBudgetPressure() {
+        var analysis = CreateLexicalFallbackAnalysis(
+            "What model and tools are you using right now?",
+            compactReply: false,
+            modelRequested: true,
+            toolingRequested: true);
         var markdown = PromptMarkdownBuilder.BuildServiceRequest(
             userText: "What model and tools are you using right now?",
             effectiveName: "Przemek",
@@ -858,7 +997,8 @@ public sealed class PromptMarkdownBuilderTests {
             },
             runtimeCapabilityLines: new[] {
                 "runtime-1", "runtime-2", "runtime-3", "runtime-4", "runtime-5", "runtime-6", "runtime-7", "runtime-8", "runtime-9"
-            });
+            },
+            runtimeSelfReportAnalysis: analysis);
 
         Assert.DoesNotContain("continuation-1", markdown, StringComparison.Ordinal);
         Assert.DoesNotContain(Environment.NewLine + "- style-1" + Environment.NewLine, markdown, StringComparison.Ordinal);
@@ -1153,5 +1293,19 @@ public sealed class PromptMarkdownBuilderTests {
         Assert.Contains("memory-3", markdown);
         Assert.DoesNotContain("memory-4", markdown);
         Assert.DoesNotContain("local-1", markdown);
+    }
+
+    private static RuntimeSelfReportTurnClassifier.RuntimeSelfReportTurnAnalysis CreateLexicalFallbackAnalysis(
+        string literal,
+        bool compactReply,
+        bool modelRequested,
+        bool toolingRequested) {
+        return new RuntimeSelfReportTurnClassifier.RuntimeSelfReportTurnAnalysis(
+            IsRuntimeIntrospectionQuestion: true,
+            CompactReply: compactReply,
+            ModelRequested: modelRequested,
+            ToolingRequested: toolingRequested,
+            UserRequestLiteral: literal,
+            FromStructuredDirective: false);
     }
 }

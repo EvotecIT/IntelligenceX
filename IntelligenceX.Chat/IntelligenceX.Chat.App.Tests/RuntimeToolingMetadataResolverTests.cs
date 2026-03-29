@@ -266,6 +266,68 @@ public sealed class RuntimeToolingMetadataResolverTests {
     }
 
     /// <summary>
+    /// Ensures zero-pack startup stays sparse instead of inventing runtime tooling provenance.
+    /// </summary>
+    [Fact]
+    public void Resolve_ReturnsUnknownForZeroPackZeroPluginStartup() {
+        var resolution = RuntimeToolingMetadataResolver.Resolve(
+            sessionPolicy: null,
+            toolCatalogPacks: Array.Empty<ToolPackInfoDto>(),
+            toolCatalogPlugins: Array.Empty<PluginInfoDto>(),
+            toolCatalogCapabilitySnapshot: null);
+
+        Assert.Equal("unknown", resolution.Source);
+        Assert.Null(resolution.CapabilitySnapshot);
+        Assert.Empty(resolution.Packs);
+        Assert.Empty(resolution.Plugins);
+    }
+
+    /// <summary>
+    /// Ensures plugin-only persisted preview metadata survives without requiring any pack projection.
+    /// </summary>
+    [Fact]
+    public void Resolve_PreservesPluginOnlyPersistedPreviewMetadata() {
+        var capabilitySnapshot = new SessionCapabilitySnapshotDto {
+            RegisteredTools = 0,
+            EnabledPackCount = 0,
+            PluginCount = 1,
+            EnabledPluginCount = 1,
+            ToolingAvailable = true,
+            AllowedRootCount = 0,
+            ToolingSnapshot = new SessionCapabilityToolingSnapshotDto {
+                Source = "persisted_preview",
+                Packs = Array.Empty<ToolPackInfoDto>(),
+                Plugins = new[] {
+                    new PluginInfoDto {
+                        Id = "ops_bundle",
+                        Name = "Ops Bundle",
+                        Enabled = true,
+                        DefaultEnabled = true,
+                        Origin = "plugin_folder",
+                        SourceKind = ToolPackSourceKind.ClosedSource,
+                        IsDangerous = false,
+                        PackIds = new[] { "eventlog" },
+                        SkillIds = new[] { "event-triage" }
+                    }
+                }
+            }
+        };
+
+        var resolution = RuntimeToolingMetadataResolver.Resolve(
+            sessionPolicy: null,
+            toolCatalogPacks: Array.Empty<ToolPackInfoDto>(),
+            toolCatalogPlugins: Array.Empty<PluginInfoDto>(),
+            toolCatalogCapabilitySnapshot: capabilitySnapshot);
+
+        Assert.Equal("persisted_preview", resolution.Source);
+        Assert.Same(capabilitySnapshot, resolution.CapabilitySnapshot);
+        Assert.Empty(resolution.Packs);
+        var plugin = Assert.Single(resolution.Plugins);
+        Assert.Equal("ops_bundle", plugin.Id);
+        Assert.True(plugin.Enabled);
+    }
+
+    /// <summary>
     /// Ensures the app publishes nested tooling provenance inside capability-snapshot JSON for the shell fallback path.
     /// </summary>
     [Fact]

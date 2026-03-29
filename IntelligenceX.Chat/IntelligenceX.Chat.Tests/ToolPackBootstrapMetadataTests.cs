@@ -180,20 +180,42 @@ public sealed class ToolPackBootstrapMetadataTests {
     }
 
     [Fact]
-    public void DiscoverDefaultBuiltInAssemblyNames_UsesToolingAssemblyReferences_InsteadOfOutputFolderEnumeration() {
+    public void AddBuiltInToolAssemblyNamesFromKnownMetadata_ExposesStableBuiltInAllowlist() {
+        var metadataDiscoveryMethod = typeof(ToolPackBootstrap).GetMethod(
+            "AddBuiltInToolAssemblyNamesFromKnownMetadata",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(metadataDiscoveryMethod);
+
+        var discovered = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        metadataDiscoveryMethod!.Invoke(null, new object[] { discovered });
+
+        Assert.Contains("IntelligenceX.Tools.ADPlayground", discovered, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("IntelligenceX.Tools.System", discovered, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("IntelligenceX.Tools.TestimoX", discovered, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("IntelligenceX.Tools.TestimoX.Analytics", discovered, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("IntelligenceX.Tools.Common", discovered, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void DiscoverDefaultBuiltInAssemblyNames_UsesKnownBuiltInMetadataBeforeFallbacks() {
         var defaultDiscoveryMethod = typeof(ToolPackBootstrap).GetMethod(
             "DiscoverDefaultBuiltInAssemblyNames",
             BindingFlags.NonPublic | BindingFlags.Static);
         Assert.NotNull(defaultDiscoveryMethod);
+        var metadataDiscoveryMethod = typeof(ToolPackBootstrap).GetMethod(
+            "AddBuiltInToolAssemblyNamesFromKnownMetadata",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(metadataDiscoveryMethod);
 
         var discoveredDefaultAssemblyNames = Assert.IsAssignableFrom<IEnumerable<string>>(defaultDiscoveryMethod!.Invoke(null, new object?[] { null }));
         var discovered = new HashSet<string>(
             discoveredDefaultAssemblyNames.Where(static name => !string.IsNullOrWhiteSpace(name)),
             StringComparer.OrdinalIgnoreCase);
+        var expectedMetadataNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        metadataDiscoveryMethod!.Invoke(null, new object[] { expectedMetadataNames });
 
-        Assert.Contains("IntelligenceX.Tools.System", discovered, StringComparer.OrdinalIgnoreCase);
-        Assert.Contains("IntelligenceX.Tools.TestimoX", discovered, StringComparer.OrdinalIgnoreCase);
-        Assert.Contains("IntelligenceX.Tools.TestimoX.Analytics", discovered, StringComparer.OrdinalIgnoreCase);
+        Assert.True(expectedMetadataNames.Count > 0);
+        Assert.All(expectedMetadataNames, assemblyName => Assert.Contains(assemblyName, discovered, StringComparer.OrdinalIgnoreCase));
         Assert.DoesNotContain("IntelligenceX.Tools.Common", discovered, StringComparer.OrdinalIgnoreCase);
     }
 
@@ -405,6 +427,58 @@ public sealed class ToolPackBootstrapMetadataTests {
     }
 
     [Fact]
+    public void ResolveAllowedBuiltInAssemblyNames_SkipsExplicitlyDisabledKnownBuiltInAssembly_BeforeDiscovery() {
+        var method = typeof(ToolPackBootstrap).GetMethod(
+            "ResolveAllowedBuiltInAssemblyNames",
+            BindingFlags.NonPublic | BindingFlags.Static,
+            binder: null,
+            types: new[] { typeof(ToolPackBootstrapOptions), typeof(string) },
+            modifiers: null);
+        Assert.NotNull(method);
+
+        var allowed = Assert.IsType<HashSet<string>>(method!.Invoke(null, new object?[] {
+            new ToolPackBootstrapOptions {
+                UseDefaultBuiltInToolAssemblyNames = false,
+                BuiltInToolAssemblyNames = new[] {
+                    "IntelligenceX.Tools.OfficeIMO",
+                    "IntelligenceX.Tools.System"
+                },
+                DisabledPackIds = new[] { "officeimo" }
+            },
+            null
+        }));
+
+        Assert.DoesNotContain("IntelligenceX.Tools.OfficeIMO", allowed, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("IntelligenceX.Tools.System", allowed, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ResolveAllowedBuiltInAssemblyNames_KeepsDisabledKnownTargetAssembly_ForOnDemandActivation() {
+        var method = typeof(ToolPackBootstrap).GetMethod(
+            "ResolveAllowedBuiltInAssemblyNames",
+            BindingFlags.NonPublic | BindingFlags.Static,
+            binder: null,
+            types: new[] { typeof(ToolPackBootstrapOptions), typeof(string) },
+            modifiers: null);
+        Assert.NotNull(method);
+
+        var allowed = Assert.IsType<HashSet<string>>(method!.Invoke(null, new object?[] {
+            new ToolPackBootstrapOptions {
+                UseDefaultBuiltInToolAssemblyNames = false,
+                BuiltInToolAssemblyNames = new[] {
+                    "IntelligenceX.Tools.OfficeIMO",
+                    "IntelligenceX.Tools.System"
+                },
+                DisabledPackIds = new[] { "officeimo" }
+            },
+            "officeimo"
+        }));
+
+        Assert.Contains("IntelligenceX.Tools.OfficeIMO", allowed, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("IntelligenceX.Tools.System", allowed, StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void TryResolveTrustedToolAssemblyPath_ResolvesLoadablePath_ForDiscoveredToolAssembly() {
         var enumerateAssembliesMethod = typeof(ToolPackBootstrap).GetMethod(
             "EnumerateToolAssemblyNamesForDiscovery",
@@ -473,6 +547,59 @@ public sealed class ToolPackBootstrapMetadataTests {
             Assert.True(resolved, $"Failed to resolve trusted path for '{assemblyName.Name}'.");
             Assert.False(string.IsNullOrWhiteSpace(trustedAssemblyPath));
             Assert.True(File.Exists(trustedAssemblyPath), $"Resolved path '{trustedAssemblyPath}' for '{assemblyName.Name}' does not exist.");
+        }
+    }
+
+    [Fact]
+    public void TryResolveTrustedToolAssemblyPathFromWorkspaceProjectOutputsForTesting_ResolvesSyntheticWorkspaceOutput() {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "ix-chat-workspace-probe-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempRoot);
+        try {
+            var bootstrapAssemblyPath = Path.Combine(tempRoot, "bootstrap", "IntelligenceX.Chat.Tooling.dll");
+            Directory.CreateDirectory(Path.GetDirectoryName(bootstrapAssemblyPath)!);
+            File.WriteAllText(Path.Combine(tempRoot, "IntelligenceX.sln"), string.Empty);
+
+            var workspaceAssemblyPath = Path.Combine(
+                tempRoot,
+                "IntelligenceX.Tools",
+                "IntelligenceX.Tools.System",
+                "bin",
+                "Release",
+                "net10.0-windows",
+                "IntelligenceX.Tools.System.dll");
+            Directory.CreateDirectory(Path.GetDirectoryName(workspaceAssemblyPath)!);
+            File.Copy(typeof(SystemToolPack).Assembly.Location, workspaceAssemblyPath, overwrite: true);
+
+            var resolved = ToolPackBootstrap.TryResolveTrustedToolAssemblyPathFromWorkspaceProjectOutputsForTesting(
+                new AssemblyName("IntelligenceX.Tools.System"),
+                bootstrapAssemblyPath,
+                out var trustedAssemblyPath);
+
+            Assert.True(resolved);
+            Assert.Equal(Path.GetFullPath(workspaceAssemblyPath), trustedAssemblyPath, ignoreCase: true);
+        } finally {
+            Directory.Delete(tempRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void TryResolveTrustedToolAssemblyPathFromWorkspaceProjectOutputsForTesting_ReturnsFalse_WhenSyntheticWorkspaceOutputMissing() {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "ix-chat-workspace-probe-missing-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempRoot);
+        try {
+            var bootstrapAssemblyPath = Path.Combine(tempRoot, "bootstrap", "IntelligenceX.Chat.Tooling.dll");
+            Directory.CreateDirectory(Path.GetDirectoryName(bootstrapAssemblyPath)!);
+            File.WriteAllText(Path.Combine(tempRoot, "IntelligenceX.sln"), string.Empty);
+
+            var resolved = ToolPackBootstrap.TryResolveTrustedToolAssemblyPathFromWorkspaceProjectOutputsForTesting(
+                new AssemblyName("IntelligenceX.Tools.System"),
+                bootstrapAssemblyPath,
+                out var trustedAssemblyPath);
+
+            Assert.False(resolved);
+            Assert.Equal(string.Empty, trustedAssemblyPath);
+        } finally {
+            Directory.Delete(tempRoot, recursive: true);
         }
     }
 
@@ -896,6 +1023,102 @@ public sealed class ToolPackBootstrapMetadataTests {
             string.Equals(pack.Id, "officeimo", StringComparison.OrdinalIgnoreCase));
         Assert.False(officeImo.Enabled);
         Assert.Equal("Disabled by runtime configuration.", officeImo.DisabledReason);
+    }
+
+    [Fact]
+    public void ActivatePackOnDemand_ReturnsDisabledKnownPackAvailability_WithoutAssemblyDiscovery() {
+        var result = ToolPackBootstrap.ActivatePackOnDemand(
+            new ToolPackBootstrapOptions {
+                UseDefaultBuiltInToolAssemblyNames = false,
+                BuiltInToolAssemblyNames = Array.Empty<string>(),
+                EnablePluginFolderLoading = false,
+                EnableDefaultPluginPaths = false,
+                DisabledPackIds = new[] { "officeimo" }
+            },
+            "officeimo");
+
+        Assert.Empty(result.Packs);
+
+        var officeImo = Assert.Single(result.PackAvailability, static pack =>
+            string.Equals(pack.Id, "officeimo", StringComparison.OrdinalIgnoreCase));
+        Assert.False(officeImo.Enabled);
+        Assert.Equal("Disabled by runtime configuration.", officeImo.DisabledReason);
+
+        var plugin = Assert.Single(result.PluginAvailability, static plugin =>
+            string.Equals(plugin.Id, "officeimo", StringComparison.OrdinalIgnoreCase));
+        Assert.False(plugin.Enabled);
+        Assert.Equal("Disabled by runtime configuration.", plugin.DisabledReason);
+    }
+
+    [Fact]
+    public void ActivatePackOnDemand_ReturnsUnavailableKnownPackAvailability_WhenKnownBuiltInAssemblyIsNotAllowed() {
+        var result = ToolPackBootstrap.ActivatePackOnDemand(
+            new ToolPackBootstrapOptions {
+                UseDefaultBuiltInToolAssemblyNames = false,
+                BuiltInToolAssemblyNames = Array.Empty<string>(),
+                EnablePluginFolderLoading = false,
+                EnableDefaultPluginPaths = false
+            },
+            "active_directory");
+
+        Assert.Empty(result.Packs);
+
+        var activeDirectory = Assert.Single(result.PackAvailability, static pack =>
+            string.Equals(pack.Id, "active_directory", StringComparison.OrdinalIgnoreCase));
+        Assert.False(activeDirectory.Enabled);
+        Assert.Equal("Pack could not be loaded in this runtime.", activeDirectory.DisabledReason);
+
+        var plugin = Assert.Single(result.PluginAvailability, static plugin =>
+            string.Equals(plugin.Id, "active_directory", StringComparison.OrdinalIgnoreCase));
+        Assert.False(plugin.Enabled);
+        Assert.Equal("Pack could not be loaded in this runtime.", plugin.DisabledReason);
+    }
+
+    [Fact]
+    public void CreateDefaultReadOnlyPacksWithAvailability_SkipsPackLoadProgress_ForExplicitlyDisabledKnownPack() {
+        var enabledWarnings = new List<string>();
+        ToolPackBootstrap.CreateDefaultReadOnlyPacksWithAvailability(new ToolPackBootstrapOptions {
+            DisabledPackIds = DisableDefaultsExcept("eventlog"),
+            EnableDefaultPluginPaths = false,
+            OnBootstrapWarning = enabledWarnings.Add
+        });
+
+        var disabledWarnings = new List<string>();
+        var disabledResult = ToolPackBootstrap.CreateDefaultReadOnlyPacksWithAvailability(new ToolPackBootstrapOptions {
+            DisabledPackIds = DefaultEnabledKnownPackIds,
+            EnableDefaultPluginPaths = false,
+            OnBootstrapWarning = disabledWarnings.Add
+        });
+
+        Assert.Contains(
+            enabledWarnings,
+            static warning => warning.StartsWith("[startup] pack_load_progress pack='eventlog'", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(
+            disabledWarnings,
+            static warning => warning.StartsWith("[startup] pack_load_progress pack='eventlog'", StringComparison.OrdinalIgnoreCase));
+
+        var eventLog = Assert.Single(disabledResult.PackAvailability, static pack =>
+            string.Equals(pack.Id, "eventlog", StringComparison.OrdinalIgnoreCase));
+        Assert.False(eventLog.Enabled);
+        Assert.Equal("Disabled by runtime configuration.", eventLog.DisabledReason);
+    }
+
+    [Fact]
+    public void CreateDefaultReadOnlyPacksWithAvailability_SkipsPackLoadProgress_ForDefaultDisabledKnownPack() {
+        var warnings = new List<string>();
+        var result = ToolPackBootstrap.CreateDefaultReadOnlyPacksWithAvailability(new ToolPackBootstrapOptions {
+            EnableDefaultPluginPaths = false,
+            OnBootstrapWarning = warnings.Add
+        });
+
+        Assert.DoesNotContain(
+            warnings,
+            static warning => warning.StartsWith("[startup] pack_load_progress pack='powershell'", StringComparison.OrdinalIgnoreCase));
+
+        var powerShell = Assert.Single(result.PackAvailability, static pack =>
+            string.Equals(pack.Id, "powershell", StringComparison.OrdinalIgnoreCase));
+        Assert.False(powerShell.Enabled);
+        Assert.Equal("Disabled by runtime configuration.", powerShell.DisabledReason);
     }
 
     [Fact]

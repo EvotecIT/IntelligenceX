@@ -258,7 +258,8 @@ Check AD0 reboot
         Assert.Contains("inspect event logs", prompt, StringComparison.Ordinal);
         Assert.Contains("eventlog_named_events_catalog -> eventlog_named_events_query", prompt, StringComparison.Ordinal);
         Assert.Contains("Cross-pack follow-up pivots are available into System", prompt, StringComparison.Ordinal);
-        Assert.Contains("If a remote-capable tool is missing host or machine input", prompt, StringComparison.Ordinal);
+        Assert.Contains("use declared host or machine target arguments only when prior tool inputs in this thread already provide concrete values", prompt, StringComparison.Ordinal);
+        Assert.Contains("ask for the minimal missing target input", prompt, StringComparison.Ordinal);
         Assert.Contains("Final response must include these literals: UTC.", prompt, StringComparison.Ordinal);
     }
 

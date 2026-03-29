@@ -1,4 +1,5 @@
 using IntelligenceX.Chat.App;
+using IntelligenceX.Chat.Abstractions.Policy;
 using Xunit;
 
 namespace IntelligenceX.Chat.App.Tests;
@@ -7,6 +8,26 @@ namespace IntelligenceX.Chat.App.Tests;
 /// Tests deferred startup metadata rerun scheduling decisions.
 /// </summary>
 public sealed class MainWindowStartupMetadataSyncRerunTests {
+    private static SessionPolicyDto CreatePolicy(
+        SessionStartupBootstrapTelemetryDto? startupBootstrap = null,
+        ToolPackInfoDto[]? packs = null,
+        PluginInfoDto[]? plugins = null,
+        SessionCapabilitySnapshotDto? capabilitySnapshot = null,
+        string[]? startupWarnings = null) {
+        return new SessionPolicyDto {
+            ReadOnly = true,
+            DangerousToolsEnabled = false,
+            MaxToolRounds = 8,
+            ParallelTools = true,
+            AllowMutatingParallelToolCalls = false,
+            Packs = packs ?? Array.Empty<ToolPackInfoDto>(),
+            Plugins = plugins ?? Array.Empty<PluginInfoDto>(),
+            CapabilitySnapshot = capabilitySnapshot,
+            StartupWarnings = startupWarnings ?? Array.Empty<string>(),
+            StartupBootstrap = startupBootstrap
+        };
+    }
+
     /// <summary>
     /// Ensures busy metadata sync requests ask for rerun only when explicitly requested.
     /// </summary>
@@ -151,6 +172,72 @@ public sealed class MainWindowStartupMetadataSyncRerunTests {
             toolCatalogPhaseSucceeded);
 
         Assert.Equal(expectedToken, token);
+    }
+
+    /// <summary>
+    /// Ensures persisted-preview hello policy can satisfy first-paint tooling metadata when descriptor snapshot data is already present.
+    /// </summary>
+    [Fact]
+    public void ShouldSatisfyStartupToolCatalogFromHelloPolicy_ReturnsTrueForPersistedPreviewSnapshot() {
+        var shouldSatisfy = MainWindow.ShouldSatisfyStartupToolCatalogFromHelloPolicy(
+            CreatePolicy(
+                startupBootstrap: new SessionStartupBootstrapTelemetryDto {
+                    TotalMs = 1,
+                    Phases = new[] {
+                        StartupBootstrapContracts.CreatePhase(StartupBootstrapContracts.PhaseDescriptorCacheHitId, 1, 1)
+                    }
+                },
+                capabilitySnapshot: new SessionCapabilitySnapshotDto {
+                    RegisteredTools = 0,
+                    EnabledPackCount = 1,
+                    PluginCount = 0,
+                    EnabledPluginCount = 0,
+                    ToolingAvailable = true,
+                    AllowedRootCount = 0,
+                    ToolingSnapshot = new SessionCapabilityToolingSnapshotDto {
+                        Source = "persisted_preview",
+                        Packs = new[] {
+                            new ToolPackInfoDto {
+                                Id = "eventlog",
+                                Name = "EventLog",
+                                Tier = CapabilityTier.ReadOnly,
+                                Enabled = true,
+                                IsDangerous = false
+                            }
+                        },
+                        Plugins = Array.Empty<PluginInfoDto>()
+                    }
+                }));
+
+        Assert.True(shouldSatisfy);
+    }
+
+    /// <summary>
+    /// Ensures startup does not skip inline tool-catalog sync when persisted-preview markers exist without usable tooling metadata.
+    /// </summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ShouldSatisfyStartupToolCatalogFromHelloPolicy_ReturnsFalseWithoutUsableMetadata(
+        bool persistedPreview) {
+        var startupBootstrap = persistedPreview
+            ? new SessionStartupBootstrapTelemetryDto {
+                TotalMs = 1,
+                Phases = new[] {
+                    StartupBootstrapContracts.CreatePhase(StartupBootstrapContracts.PhaseDescriptorCacheHitId, 1, 1)
+                }
+            }
+            : new SessionStartupBootstrapTelemetryDto {
+                TotalMs = 250,
+                Phases = new[] {
+                    StartupBootstrapContracts.CreatePhase(StartupBootstrapContracts.PhaseDescriptorDiscoveryId, 250, 1)
+                }
+            };
+
+        var shouldSatisfy = MainWindow.ShouldSatisfyStartupToolCatalogFromHelloPolicy(
+            CreatePolicy(startupBootstrap: startupBootstrap));
+
+        Assert.False(shouldSatisfy);
     }
 
     /// <summary>

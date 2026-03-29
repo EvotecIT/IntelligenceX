@@ -656,8 +656,9 @@ internal sealed partial class ChatServiceSession {
         var runtimePolicyOptions = BuildRuntimePolicyOptions(_options);
         var resolvedRuntimePolicyOptions = ToolRuntimePolicyBootstrap.ResolveOptions(runtimePolicyOptions);
         var previewCacheKey = BuildToolingBootstrapPreviewCacheKey(_options, runtimePolicyOptions, resolvedRuntimePolicyOptions);
+        var previewDiscoveryFingerprint = BuildToolingBootstrapPreviewFingerprint(_options, runtimePolicyOptions);
         if (_toolingBootstrapCache is not null
-            && _toolingBootstrapCache.TryGetPersistedPreviewSnapshot(previewCacheKey, out var persistedPreview)
+            && _toolingBootstrapCache.TryGetPersistedPreviewSnapshot(previewCacheKey, previewDiscoveryFingerprint, out var persistedPreview)
             && persistedPreview.ToolDefinitions.Length > 0) {
             tools = persistedPreview.ToolDefinitions;
             packs = persistedPreview.PackSummaries ?? Array.Empty<ToolPackInfoDto>();

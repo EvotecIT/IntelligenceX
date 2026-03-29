@@ -22,6 +22,7 @@ public static class StartupBootstrapWarningFormatter {
         RegexOptions.CultureInvariant | RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private const string PackWarningPrefix = "[pack warning]";
     private const string PersistedPreviewRestoredWarning = "[startup] tooling bootstrap preview restored from persisted cache while runtime rebuild continues.";
+    private const string PersistedPreviewIgnoredPrefix = "[startup] tooling bootstrap persisted preview ignored ";
     private const string PluginProgressSummaryPrefix = "[startup] plugin load progress: processed ";
     private const string ToolingBootstrapTimingPrefix = "[startup] tooling bootstrap timings ";
     private const string ToolingBootstrapCacheHitPrefix = "[startup] tooling bootstrap cache hit ";
@@ -127,6 +128,14 @@ public static class StartupBootstrapWarningFormatter {
             return true;
         }
 
+        if (TryReadPersistedPreviewIgnoredReason(normalized, out var ignoredReason)) {
+            statusText = ignoredReason.IndexOf("schema_mismatch", StringComparison.OrdinalIgnoreCase) >= 0
+                ? "Starting runtime... discarded stale persisted tool preview, rebuilding live runtime"
+                : "Starting runtime... discarded invalid persisted tool preview, rebuilding live runtime";
+            allowDuringSend = true;
+            return true;
+        }
+
         return false;
     }
 
@@ -136,6 +145,14 @@ public static class StartupBootstrapWarningFormatter {
     public static bool IsPersistedPreviewRestoredWarning(string? warning) {
         var normalized = (warning ?? string.Empty).Trim();
         return string.Equals(normalized, PersistedPreviewRestoredWarning, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Determines whether a warning matches the persisted-preview ignored envelope.
+    /// </summary>
+    public static bool IsPersistedPreviewIgnoredWarning(string? warning) {
+        var normalized = (warning ?? string.Empty).Trim();
+        return normalized.StartsWith(PersistedPreviewIgnoredPrefix, StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool TryBuildIndexedPhaseStatus(
@@ -276,6 +293,15 @@ public static class StartupBootstrapWarningFormatter {
         }
 
         return true;
+    }
+
+    private static bool TryReadPersistedPreviewIgnoredReason(string normalizedWarning, out string reason) {
+        reason = string.Empty;
+        if (!IsPersistedPreviewIgnoredWarning(normalizedWarning)) {
+            return false;
+        }
+
+        return TryReadTokenValue(normalizedWarning, "reason=", out reason);
     }
 
     private static int? TryReadElapsedMs(string normalizedWarning) {

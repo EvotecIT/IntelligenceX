@@ -2181,6 +2181,8 @@
       runtimePolicyMs: toNonNegativeInt(value.runtimePolicyMs),
       bootstrapOptionsMs: toNonNegativeInt(value.bootstrapOptionsMs),
       packLoadMs: toNonNegativeInt(value.packLoadMs),
+      packRegisterMs: toNonNegativeInt(value.packRegisterMs),
+      registryFinalizeMs: toNonNegativeInt(value.registryFinalizeMs),
       registryMs: toNonNegativeInt(value.registryMs),
       tools: toNonNegativeInt(value.tools),
       packsLoaded: toNonNegativeInt(value.packsLoaded),
@@ -2190,11 +2192,59 @@
       slowPackTopCount: toNonNegativeInt(value.slowPackTopCount),
       packProgressProcessed: toNonNegativeInt(value.packProgressProcessed),
       packProgressTotal: toNonNegativeInt(value.packProgressTotal),
+      phases: Array.isArray(value.phases) ? value.phases.map(function (phase) {
+        return {
+          id: typeof phase?.id === "string" ? phase.id.trim() : "",
+          label: typeof phase?.label === "string" ? phase.label.trim() : "",
+          durationMs: toNonNegativeInt(phase?.durationMs),
+          order: toNonNegativeInt(phase?.order)
+        };
+      }) : [],
       slowPluginCount: toNonNegativeInt(value.slowPluginCount),
       slowPluginTopCount: toNonNegativeInt(value.slowPluginTopCount),
       pluginProgressProcessed: toNonNegativeInt(value.pluginProgressProcessed),
-      pluginProgressTotal: toNonNegativeInt(value.pluginProgressTotal)
+      pluginProgressTotal: toNonNegativeInt(value.pluginProgressTotal),
+      slowestPhaseId: typeof value.slowestPhaseId === "string" ? value.slowestPhaseId.trim() : "",
+      slowestPhaseLabel: typeof value.slowestPhaseLabel === "string" ? value.slowestPhaseLabel.trim() : "",
+      slowestPhaseMs: toNonNegativeInt(value.slowestPhaseMs)
     };
+  }
+
+  function resolveStartupBootstrapPhaseDuration(telemetry, phaseId) {
+    if (!telemetry || !phaseId) {
+      return 0;
+    }
+
+    if (Array.isArray(telemetry.phases)) {
+      for (var i = 0; i < telemetry.phases.length; i += 1) {
+        var phase = telemetry.phases[i];
+        if (phase && typeof phase.id === "string" && phase.id.trim().toLowerCase() === phaseId.toLowerCase()) {
+          return toNonNegativeInt(phase.durationMs);
+        }
+      }
+    }
+
+    switch (phaseId) {
+      case "runtime_policy":
+        return telemetry.runtimePolicyMs;
+      case "bootstrap_options":
+        return telemetry.bootstrapOptionsMs;
+      case "descriptor_discovery":
+      case "pack_load":
+        return telemetry.packLoadMs;
+      case "pack_activation":
+      case "pack_register":
+        return telemetry.packRegisterMs;
+      case "registry_activation_finalize":
+      case "registry_finalize":
+        return telemetry.registryFinalizeMs;
+      default:
+        return 0;
+    }
+  }
+
+  function hasStartupBootstrapPhase(telemetry, phaseId) {
+    return resolveStartupBootstrapPhaseDuration(telemetry, phaseId) > 0;
   }
 
   function formatStartupBootstrapDuration(ms) {
@@ -2215,8 +2265,17 @@
     }
 
     var segments = [];
+    var descriptorDiscoveryMs = resolveStartupBootstrapPhaseDuration(telemetry, "descriptor_discovery");
+    var packActivationMs = resolveStartupBootstrapPhaseDuration(telemetry, "pack_activation");
+    var activationFinalizeMs = resolveStartupBootstrapPhaseDuration(telemetry, "registry_activation_finalize");
     segments.push("total " + formatStartupBootstrapDuration(telemetry.totalMs));
-    segments.push("pack-load " + formatStartupBootstrapDuration(telemetry.packLoadMs));
+    if (hasStartupBootstrapPhase(telemetry, "descriptor_cache_hit")) {
+      segments.push("descriptor-preview");
+    } else {
+      segments.push("descriptor-discovery " + formatStartupBootstrapDuration(descriptorDiscoveryMs));
+      segments.push("pack-activation " + formatStartupBootstrapDuration(packActivationMs));
+      segments.push("activation-finalize " + formatStartupBootstrapDuration(activationFinalizeMs));
+    }
     segments.push("registry " + formatStartupBootstrapDuration(telemetry.registryMs));
     segments.push("tools " + String(telemetry.tools));
     segments.push("enabled-packs " + String(telemetry.packsLoaded) + "/" + String(Math.max(telemetry.packsLoaded, telemetry.packsDisabled + telemetry.packsLoaded)));

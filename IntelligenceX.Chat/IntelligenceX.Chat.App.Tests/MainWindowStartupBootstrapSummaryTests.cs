@@ -43,19 +43,19 @@ public sealed class MainWindowStartupBootstrapSummaryTests {
             Phases = new[] {
                 StartupBootstrapContracts.CreatePhase(StartupBootstrapContracts.PhaseRuntimePolicyId, 50, 1),
                 StartupBootstrapContracts.CreatePhase(StartupBootstrapContracts.PhaseBootstrapOptionsId, 30, 2),
-                StartupBootstrapContracts.CreatePhase(StartupBootstrapContracts.PhasePackLoadId, 800, 3),
+                StartupBootstrapContracts.CreatePhase(StartupBootstrapContracts.PhaseDescriptorDiscoveryId, 800, 3),
                 new SessionStartupBootstrapPhaseTelemetryDto { Id = "registry_build", Label = "registry build", DurationMs = 120, Order = 4 }
             },
-            SlowestPhaseId = StartupBootstrapContracts.PhasePackLoadId,
-            SlowestPhaseLabel = StartupBootstrapContracts.PhasePackLoadLabel,
+            SlowestPhaseId = StartupBootstrapContracts.PhaseDescriptorDiscoveryId,
+            SlowestPhaseLabel = StartupBootstrapContracts.PhaseDescriptorDiscoveryLabel,
             SlowestPhaseMs = 800
         };
 
         var lines = MainWindow.BuildStartupBootstrapSummaryLines(telemetry);
 
-        Assert.Contains("- Startup phases: runtime policy 50ms, bootstrap options 30ms, pack load 800ms, registry build 120ms", lines);
-        Assert.Contains("- Slowest phase: pack load (800ms, 80%)", lines);
-        Assert.Contains("- Total: 1.0s (pack load 800ms, pack register 90ms, registry finalize 30ms, registry total 120ms)", lines);
+        Assert.Contains("- Startup phases: runtime policy 50ms, bootstrap options 30ms, descriptor discovery 800ms, registry build 120ms", lines);
+        Assert.Contains("- Slowest phase: descriptor discovery (800ms, 80%)", lines);
+        Assert.Contains("- Total: 1.0s (descriptor discovery 800ms, pack activation 90ms, activation finalize 30ms, registry total 120ms)", lines);
     }
 
     /// <summary>
@@ -73,19 +73,34 @@ public sealed class MainWindowStartupBootstrapSummaryTests {
     }
 
     /// <summary>
+    /// Uses canonical phase telemetry for startup signal gating even when legacy aggregate fields are absent.
+    /// </summary>
+    [Fact]
+    public void IsStartupBootstrapSignalWorthy_ReturnsTrueForSlowCanonicalDescriptorPhaseWithoutLegacyFields() {
+        var telemetry = new SessionStartupBootstrapTelemetryDto {
+            TotalMs = 850,
+            Phases = new[] {
+                StartupBootstrapContracts.CreatePhase(StartupBootstrapContracts.PhaseDescriptorDiscoveryId, 850, 1)
+            }
+        };
+
+        Assert.True(MainWindow.IsStartupBootstrapSignalWorthy(telemetry));
+    }
+
+    /// <summary>
     /// Produces concise header-status detail with total bootstrap and slowest phase timing.
     /// </summary>
     [Fact]
     public void BuildStartupBootstrapStatusDetail_IncludesTotalAndSlowestPhase() {
         var telemetry = new SessionStartupBootstrapTelemetryDto {
             TotalMs = 1800,
-            SlowestPhaseLabel = StartupBootstrapContracts.PhasePackRegisterLabel,
+            SlowestPhaseLabel = StartupBootstrapContracts.PhasePackActivationLabel,
             SlowestPhaseMs = 1200
         };
 
         var detail = MainWindow.BuildStartupBootstrapStatusDetail(telemetry);
 
-        Assert.Equal("tool bootstrap 1.8s (slowest: pack register 1.2s)", detail);
+        Assert.Equal("tool bootstrap 1.8s (slowest: pack activation 1.2s)", detail);
     }
 
     /// <summary>
@@ -96,6 +111,51 @@ public sealed class MainWindowStartupBootstrapSummaryTests {
         var detail = MainWindow.BuildStartupBootstrapStatusDetail(null);
 
         Assert.Equal(string.Empty, detail);
+    }
+
+    /// <summary>
+    /// Returns descriptor-preview detail instead of replaying full-bootstrap timing text while persisted preview is active.
+    /// </summary>
+    [Fact]
+    public void BuildStartupBootstrapStatusDetail_ReturnsDescriptorPreviewDetailForPreviewTelemetry() {
+        var detail = MainWindow.BuildStartupBootstrapStatusDetail(new SessionStartupBootstrapTelemetryDto {
+            TotalMs = 1,
+            Tools = 17,
+            PacksLoaded = 3,
+            Phases = new[] {
+                StartupBootstrapContracts.CreatePhase(StartupBootstrapContracts.PhaseDescriptorCacheHitId, 1, 1)
+            },
+            SlowestPhaseId = StartupBootstrapContracts.PhaseDescriptorCacheHitId,
+            SlowestPhaseLabel = StartupBootstrapContracts.PhaseDescriptorCacheHitLabel,
+            SlowestPhaseMs = 1
+        });
+
+        Assert.Equal("descriptor preview (3 packs, 17 tools)", detail);
+    }
+
+    /// <summary>
+    /// Uses canonical phase telemetry in summary totals even when legacy split fields remain unset.
+    /// </summary>
+    [Fact]
+    public void BuildStartupBootstrapSummaryLines_UsesCanonicalPhaseDurationsWhenLegacyFieldsMissing() {
+        var telemetry = new SessionStartupBootstrapTelemetryDto {
+            TotalMs = 1000,
+            RegistryMs = 120,
+            Tools = 42,
+            PacksLoaded = 4,
+            Phases = new[] {
+                StartupBootstrapContracts.CreatePhase(StartupBootstrapContracts.PhaseDescriptorDiscoveryId, 800, 1),
+                StartupBootstrapContracts.CreatePhase(StartupBootstrapContracts.PhasePackActivationId, 90, 2),
+                StartupBootstrapContracts.CreatePhase(StartupBootstrapContracts.PhaseRegistryActivationFinalizeId, 30, 3)
+            },
+            SlowestPhaseId = StartupBootstrapContracts.PhaseDescriptorDiscoveryId,
+            SlowestPhaseLabel = StartupBootstrapContracts.PhaseDescriptorDiscoveryLabel,
+            SlowestPhaseMs = 800
+        };
+
+        var lines = MainWindow.BuildStartupBootstrapSummaryLines(telemetry);
+
+        Assert.Contains("- Total: 1.0s (descriptor discovery 800ms, pack activation 90ms, activation finalize 30ms, registry total 120ms)", lines);
     }
 
     /// <summary>
@@ -130,6 +190,23 @@ public sealed class MainWindowStartupBootstrapSummaryTests {
     }
 
     /// <summary>
+    /// Classifies startup bootstrap cache mode as persisted-preview when telemetry explicitly reports descriptor-preview startup.
+    /// </summary>
+    [Fact]
+    public void ResolveStartupBootstrapCacheModeTokenFromPolicy_ReturnsPersistedPreviewForPreviewPhase() {
+        var policy = CreatePolicy(new SessionStartupBootstrapTelemetryDto {
+            TotalMs = 1,
+            Phases = new[] {
+                StartupBootstrapContracts.CreatePhase(StartupBootstrapContracts.PhaseDescriptorCacheHitId, 1, 1)
+            }
+        });
+
+        var mode = MainWindow.ResolveStartupBootstrapCacheModeTokenFromPolicy(policy);
+
+        Assert.Equal(StartupBootstrapContracts.CacheModePersistedPreview, mode);
+    }
+
+    /// <summary>
     /// Classifies startup bootstrap cache mode as miss when bootstrap telemetry exists without cache-hit markers.
     /// </summary>
     [Fact]
@@ -137,7 +214,7 @@ public sealed class MainWindowStartupBootstrapSummaryTests {
         var policy = CreatePolicy(new SessionStartupBootstrapTelemetryDto {
             TotalMs = 880,
             Phases = new[] {
-                StartupBootstrapContracts.CreatePhase(StartupBootstrapContracts.PhasePackLoadId, 700, 1)
+                StartupBootstrapContracts.CreatePhase(StartupBootstrapContracts.PhaseDescriptorDiscoveryId, 700, 1)
             }
         });
 

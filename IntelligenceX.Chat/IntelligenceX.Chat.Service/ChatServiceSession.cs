@@ -180,6 +180,11 @@ internal sealed partial class ChatServiceSession {
         _toolOrchestrationCatalog = ToolOrchestrationCatalog.Build(Array.Empty<ToolDefinition>());
         UpdatePackMetadataIndexes(Array.Empty<ToolPackDescriptor>());
         TryApplyPersistedToolingBootstrapPreview();
+        if (_startupWarnings.Length == 0
+            && _toolingBootstrapCache is not null
+            && _toolingBootstrapCache.TryGetPersistedSnapshotLoadWarning(out var persistedSnapshotLoadWarning)) {
+            _startupWarnings = NormalizeDistinctStrings(new[] { persistedSnapshotLoadWarning }, maxItems: 64);
+        }
 
         _json = new JsonSerializerOptions {
             TypeInfoResolver = ChatServiceJsonContext.Default

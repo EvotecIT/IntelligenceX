@@ -693,7 +693,8 @@ public static partial class ToolPackBootstrap {
         var availabilityById = new Dictionary<string, ToolPackAvailabilityInfo>(StringComparer.OrdinalIgnoreCase);
         var pluginAvailabilityById = new Dictionary<string, ToolPluginAvailabilityInfo>(StringComparer.OrdinalIgnoreCase);
         var pluginCatalogById = new Dictionary<string, ToolPluginCatalogInfo>(StringComparer.OrdinalIgnoreCase);
-        var knownBootstrapStepTotal = builtInPacks.Count + (options.EnablePluginFolderLoading ? 1 : 0);
+        var builtInBootstrapStepCount = builtInPacks.Count(static candidate => candidate.Pack is not null);
+        var knownBootstrapStepTotal = builtInBootstrapStepCount + (options.EnablePluginFolderLoading ? 1 : 0);
         var knownBootstrapStepIndex = 0;
 
         void RunBootstrapStep(string stepId, Action action) {
@@ -724,6 +725,25 @@ public static partial class ToolPackBootstrap {
 
         for (var i = 0; i < builtInPacks.Count; i++) {
             var builtInPack = builtInPacks[i];
+            if (builtInPack.Pack is null) {
+                UpsertAvailability(
+                    availabilityById,
+                    CreateAvailabilityFromDescriptor(
+                        descriptor: builtInPack.Descriptor,
+                        enabled: false,
+                        disabledReason: DisabledByRuntimeConfigurationReason));
+                UpsertPluginAvailability(
+                    pluginAvailabilityById,
+                    CreateBuiltInPluginAvailability(
+                        builtInPack,
+                        enabled: false,
+                        disabledReason: DisabledByRuntimeConfigurationReason));
+                UpsertPluginCatalog(
+                    pluginCatalogById,
+                    CreateBuiltInPluginCatalog(builtInPack));
+                continue;
+            }
+
             RunBootstrapStep(builtInPack.PackId, () => {
                 var enabled = ResolveKnownPackEnabled(
                     packId: builtInPack.PackId,

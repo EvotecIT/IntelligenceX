@@ -810,6 +810,7 @@ public sealed partial class MainWindow : Window {
                 }
             } else {
                 var helloStopwatch = Stopwatch.StartNew();
+                var satisfyToolCatalogFromHelloPolicy = false;
                 try {
                     UpdateStartupMetadataSyncPhase("syncing session policy");
                     LogStartupConnectPhase("hello", "begin");
@@ -823,6 +824,7 @@ public sealed partial class MainWindow : Window {
                         : Array.Empty<PluginInfoDto>();
                     _toolCatalogRoutingCatalog = hello.Policy?.RoutingCatalog;
                     _toolCatalogCapabilitySnapshot = hello.Policy?.CapabilitySnapshot;
+                    satisfyToolCatalogFromHelloPolicy = ShouldSatisfyStartupToolCatalogFromHelloPolicy(_sessionPolicy);
                     SeedBackgroundSchedulerSnapshot(hello.Policy?.CapabilitySnapshot?.BackgroundScheduler);
                     RecordStartupBootstrapCacheMode(_sessionPolicy);
                     RecordStartupHelloPhaseDiagnostics(helloStopwatch.Elapsed, attempts: 1, success: true);
@@ -838,25 +840,30 @@ public sealed partial class MainWindow : Window {
                         AppendSystem(SystemNotice.HelloFailed(ex.Message));
                     }
                 }
-            }
-
-            if (!deferredMetadataPlan.DeferStartupMetadataSync) {
-                var listToolsStopwatch = Stopwatch.StartNew();
-                try {
-                    UpdateStartupMetadataSyncPhase("loading tool catalog");
-                    LogStartupConnectPhase("list_tools", "begin");
-                    var toolList = await _client.RequestAsync<ToolListMessage>(new ListToolsRequest { RequestId = NextId() }, CancellationToken.None).ConfigureAwait(false);
-                    UpdateToolCatalog(toolList.Tools, toolList.RoutingCatalog, toolList.Packs, toolList.Plugins, toolList.CapabilitySnapshot);
-                    SeedBackgroundSchedulerSnapshot(toolList.CapabilitySnapshot?.BackgroundScheduler);
-                    RecordStartupListToolsPhaseDiagnostics(listToolsStopwatch.Elapsed, attempts: 1, success: true);
-                    inlineToolCatalogPhaseSucceeded = true;
-                    LogStartupConnectPhase("list_tools", "done");
-                } catch (Exception ex) {
-                    LogStartupConnectPhase("list_tools", "failed");
-                    ClearToolCatalogCache(clearCatalogMetadata: false);
-                    RecordStartupListToolsPhaseDiagnostics(listToolsStopwatch.Elapsed, attempts: 1, success: false);
-                    if (VerboseServiceLogs || _debugMode) {
-                        AppendSystem(SystemNotice.ListToolsFailed(ex.Message));
+                if (!deferredMetadataPlan.DeferStartupMetadataSync) {
+                    if (satisfyToolCatalogFromHelloPolicy) {
+                        RecordStartupListToolsPhaseDiagnostics(TimeSpan.Zero, attempts: 1, success: true);
+                        inlineToolCatalogPhaseSucceeded = true;
+                        LogStartupConnectPhase("list_tools", "satisfied_by_persisted_preview");
+                    } else {
+                        var listToolsStopwatch = Stopwatch.StartNew();
+                        try {
+                            UpdateStartupMetadataSyncPhase("loading tool catalog");
+                            LogStartupConnectPhase("list_tools", "begin");
+                            var toolList = await _client.RequestAsync<ToolListMessage>(new ListToolsRequest { RequestId = NextId() }, CancellationToken.None).ConfigureAwait(false);
+                            UpdateToolCatalog(toolList.Tools, toolList.RoutingCatalog, toolList.Packs, toolList.Plugins, toolList.CapabilitySnapshot);
+                            SeedBackgroundSchedulerSnapshot(toolList.CapabilitySnapshot?.BackgroundScheduler);
+                            RecordStartupListToolsPhaseDiagnostics(listToolsStopwatch.Elapsed, attempts: 1, success: true);
+                            inlineToolCatalogPhaseSucceeded = true;
+                            LogStartupConnectPhase("list_tools", "done");
+                        } catch (Exception ex) {
+                            LogStartupConnectPhase("list_tools", "failed");
+                            ClearToolCatalogCache(clearCatalogMetadata: false);
+                            RecordStartupListToolsPhaseDiagnostics(listToolsStopwatch.Elapsed, attempts: 1, success: false);
+                            if (VerboseServiceLogs || _debugMode) {
+                                AppendSystem(SystemNotice.ListToolsFailed(ex.Message));
+                            }
+                        }
                     }
                 }
             }
