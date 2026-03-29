@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.Versioning;
 using System.Threading;
 using System.Threading.Tasks;
@@ -95,10 +94,12 @@ public sealed class EventLogCollectorSubscriptionsListTool : EventLogToolBase, I
         var request = context.Request;
         var machineName = ToolArgs.NormalizeOptional(request.MachineName);
 
-        IReadOnlyList<SubscriptionInfo> subscriptions;
+        IReadOnlyList<CollectorSubscriptionSnapshot> matchedRows;
         try {
-            subscriptions = SearchEvents.GetCollectorSubscriptions(machineName)
-                .ToArray();
+            matchedRows = SearchEvents.GetCollectorSubscriptionSnapshots(
+                machineName,
+                request.NameContains,
+                request.EnabledOnly);
         } catch (Exception ex) {
             return Task.FromResult(ErrorFromException(
                 ex,
@@ -106,36 +107,18 @@ public sealed class EventLogCollectorSubscriptionsListTool : EventLogToolBase, I
                 fallbackErrorCode: "query_failed",
                 invalidOperationErrorCode: "query_failed"));
         }
-
-        IEnumerable<SubscriptionInfo> query = subscriptions;
-        if (!string.IsNullOrWhiteSpace(request.NameContains)) {
-            query = query.Where(subscription =>
-                !string.IsNullOrWhiteSpace(subscription.Name)
-                && subscription.Name.IndexOf(request.NameContains, StringComparison.OrdinalIgnoreCase) >= 0);
-        }
-
-        if (request.EnabledOnly) {
-            query = query.Where(static subscription => subscription.Enabled == true);
-        }
-
-        var matchedRows = query
-            .OrderBy(static subscription => subscription.Name, StringComparer.OrdinalIgnoreCase)
-            .ToList();
         var truncated = matchedRows.Count > request.MaxResults;
         var selectedRows = (truncated ? matchedRows.Take(request.MaxResults) : matchedRows)
             .Select(subscription => new CollectorSubscriptionViewRow(
-                SubscriptionName: subscription.Name,
-                MachineName: ToolArgs.NormalizeOptional(subscription.MachineName) ?? machineName ?? Environment.MachineName,
-                IsEnabled: subscription.Enabled,
-                Description: ToolArgs.NormalizeOptional(subscription.Description),
-                ContentFormat: ToolArgs.NormalizeOptional(subscription.ContentFormat),
-                DeliveryMode: ToolArgs.NormalizeOptional(subscription.DeliveryMode),
-                HasXml: !string.IsNullOrWhiteSpace(subscription.RawXml),
-                QueryCount: subscription.Queries?.Count ?? 0,
-                Queries: subscription.Queries?
-                    .Where(static value => !string.IsNullOrWhiteSpace(value))
-                    .Select(static value => value.Trim())
-                    .ToArray() ?? Array.Empty<string>()))
+                SubscriptionName: subscription.SubscriptionName,
+                MachineName: subscription.MachineName,
+                IsEnabled: subscription.IsEnabled,
+                Description: subscription.Description,
+                ContentFormat: subscription.ContentFormat,
+                DeliveryMode: subscription.DeliveryMode,
+                HasXml: subscription.HasXml,
+                QueryCount: subscription.QueryCount,
+                Queries: subscription.Queries))
             .ToList();
 
         var result = new CollectorSubscriptionsListResult(

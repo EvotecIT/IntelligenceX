@@ -22,7 +22,7 @@ public sealed class EventLogChannelPolicySetTool : EventLogToolBase, ITool {
         string LogName,
         bool? RequestedIsEnabled,
         long? RequestedMaximumSizeBytes,
-        global::System.Diagnostics.Eventing.Reader.EventLogMode? RequestedMode,
+        string? RequestedMode,
         bool Apply);
 
     private sealed record ChannelPolicySnapshot(
@@ -78,13 +78,6 @@ public sealed class EventLogChannelPolicySetTool : EventLogToolBase, ITool {
         string PreviewMessage,
         string ApplyMessage);
 
-    private static readonly IReadOnlyDictionary<string, global::System.Diagnostics.Eventing.Reader.EventLogMode> ModeByName =
-        new Dictionary<string, global::System.Diagnostics.Eventing.Reader.EventLogMode>(StringComparer.OrdinalIgnoreCase) {
-            ["circular"] = global::System.Diagnostics.Eventing.Reader.EventLogMode.Circular,
-            ["retain"] = global::System.Diagnostics.Eventing.Reader.EventLogMode.Retain,
-            ["auto_backup"] = global::System.Diagnostics.Eventing.Reader.EventLogMode.AutoBackup
-        };
-
     private static readonly ToolDefinition DefinitionValue = new(
         "eventlog_channel_policy_set",
         "Governed Event Log channel policy changes for enable/disable, size, and retention mode. Dry-run by default; apply=true performs the write.",
@@ -93,7 +86,7 @@ public sealed class EventLogChannelPolicySetTool : EventLogToolBase, ITool {
                 ("log_name", ToolSchema.String("Exact Windows Event Log channel name to manage.")),
                 ("is_enabled", ToolSchema.Boolean("Optional target enabled state for the channel.")),
                 ("maximum_size_bytes", ToolSchema.Integer("Optional target maximum size in bytes for the channel.")),
-                ("mode", ToolSchema.String("Optional retention mode for the channel.").Enum("circular", "retain", "auto_backup")),
+                ("mode", ToolSchema.String("Optional retention mode for the channel.").Enum(ChannelPolicyModeNames.Names)),
                 ("apply", ToolSchema.Boolean("When true, performs the channel policy write. Otherwise returns a dry-run preview.")))
             .Required("log_name")
             .WithWriteGovernanceDefaults(),
@@ -138,15 +131,12 @@ public sealed class EventLogChannelPolicySetTool : EventLogToolBase, ITool {
                 requestedMaximumSizeBytes = Math.Min(maximumSizeRaw.Value, 1_099_511_627_776L);
             }
 
-            if (!ToolEnumBinders.TryParseOptional(
-                    reader.OptionalString("mode"),
-                    ModeByName,
-                    "mode",
-                    out global::System.Diagnostics.Eventing.Reader.EventLogMode? requestedMode,
-                    out var modeError)) {
+            var modeProbe = new ChannelPolicy();
+            if (!modeProbe.TrySetModeName(reader.OptionalString("mode"), out var modeError)) {
                 return ToolRequestBindingResult<ChannelPolicySetRequest>.Failure(
                     modeError ?? "mode must be one of: circular, retain, auto_backup.");
             }
+            var requestedMode = modeProbe.ModeName;
 
             if (requestedIsEnabled is null && requestedMaximumSizeBytes is null && requestedMode is null) {
                 return ToolRequestBindingResult<ChannelPolicySetRequest>.Failure(
@@ -213,13 +203,17 @@ public sealed class EventLogChannelPolicySetTool : EventLogToolBase, ITool {
         ChannelPolicyApplyDetails? applyDetails = null;
 
         if (request.Apply && plan.Changed) {
-            var applyResult = SearchEvents.SetChannelPolicyDetailed(new ChannelPolicy {
+            var policy = new ChannelPolicy {
                 LogName = request.LogName,
                 MachineName = request.MachineName,
                 IsEnabled = request.RequestedIsEnabled,
-                MaximumSizeInBytes = request.RequestedMaximumSizeBytes,
-                Mode = request.RequestedMode
-            });
+                MaximumSizeInBytes = request.RequestedMaximumSizeBytes
+            };
+            if (!policy.TrySetModeName(request.RequestedMode, out var modeError)) {
+                return ToolResultV2.Error("invalid_argument", modeError ?? "mode must be one of: circular, retain, auto_backup.");
+            }
+
+            var applyResult = SearchEvents.SetChannelPolicyDetailed(policy);
 
             writeExecuted = applyResult.Success || applyResult.PartialSuccess || applyResult.AppliedProperties.Count > 0;
             partialSuccess = applyResult.PartialSuccess || applyResult.SkippedOrUnsupported.Count > 0;
@@ -260,7 +254,7 @@ public sealed class EventLogChannelPolicySetTool : EventLogToolBase, ITool {
             Message: request.Apply ? plan.ApplyMessage : plan.PreviewMessage,
             RequestedIsEnabled: request.RequestedIsEnabled,
             RequestedMaximumSizeBytes: request.RequestedMaximumSizeBytes,
-            RequestedMode: request.RequestedMode is null ? null : NormalizeMode(request.RequestedMode.Value),
+            RequestedMode: request.RequestedMode,
             RequestedChanges: plan.RequestedChanges,
             Warnings: warnings,
             Before: before,
@@ -305,15 +299,15 @@ public sealed class EventLogChannelPolicySetTool : EventLogToolBase, ITool {
             after = after with { MaximumSizeBytes = request.RequestedMaximumSizeBytes.Value };
         }
 
-        if (request.RequestedMode.HasValue) {
+        if (!string.IsNullOrWhiteSpace(request.RequestedMode)) {
             requestedChanges.Add("mode");
-            after = after with { Mode = NormalizeMode(request.RequestedMode.Value) };
+            after = after with { Mode = request.RequestedMode };
         }
 
         var changed =
             (request.RequestedIsEnabled.HasValue && request.RequestedIsEnabled != before.IsEnabled)
             || (request.RequestedMaximumSizeBytes.HasValue && request.RequestedMaximumSizeBytes != before.MaximumSizeBytes)
-            || (request.RequestedMode is not null && !string.Equals(before.Mode, NormalizeMode(request.RequestedMode.Value), StringComparison.OrdinalIgnoreCase));
+            || (!string.IsNullOrWhiteSpace(request.RequestedMode) && !string.Equals(before.Mode, request.RequestedMode, StringComparison.OrdinalIgnoreCase));
 
         if (!changed) {
             const string noChangeMessage = "Requested channel policy already matches the current state. No change required.";
@@ -345,7 +339,7 @@ public sealed class EventLogChannelPolicySetTool : EventLogToolBase, ITool {
             MaximumSizeBytes: policy.MaximumSizeInBytes,
             LogFilePath: ToolArgs.NormalizeOptional(policy.LogFilePath),
             Isolation: policy.Isolation?.ToString(),
-            Mode: policy.Mode is null ? null : NormalizeMode(policy.Mode.Value),
+            Mode: policy.ModeName,
             HasSecurityDescriptor: !string.IsNullOrWhiteSpace(policy.SecurityDescriptor));
     }
 
@@ -422,15 +416,6 @@ public sealed class EventLogChannelPolicySetTool : EventLogToolBase, ITool {
             facts: facts,
             meta: meta,
             summaryTitle: "Event Log channel policy");
-    }
-
-    private static string NormalizeMode(global::System.Diagnostics.Eventing.Reader.EventLogMode mode) {
-        return mode switch {
-            global::System.Diagnostics.Eventing.Reader.EventLogMode.Circular => "circular",
-            global::System.Diagnostics.Eventing.Reader.EventLogMode.Retain => "retain",
-            global::System.Diagnostics.Eventing.Reader.EventLogMode.AutoBackup => "auto_backup",
-            _ => mode.ToString().ToLowerInvariant()
-        };
     }
 
     private static string FormatNullableBoolean(bool? value) {

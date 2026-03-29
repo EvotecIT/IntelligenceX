@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.Versioning;
 using System.Threading;
@@ -23,7 +22,7 @@ public sealed class EventLogClassicLogEnsureTool : EventLogToolBase, ITool {
         string LogName,
         string SourceName,
         int? RequestedMaximumKilobytes,
-        OverflowAction? RequestedOverflowAction,
+        string? RequestedOverflowAction,
         int? RequestedRetentionDays,
         bool Apply);
 
@@ -78,13 +77,6 @@ public sealed class EventLogClassicLogEnsureTool : EventLogToolBase, ITool {
         string ApplyMessage,
         IReadOnlyList<string> Warnings);
 
-    private static readonly IReadOnlyDictionary<string, OverflowAction> OverflowActionByName =
-        new Dictionary<string, OverflowAction>(StringComparer.OrdinalIgnoreCase) {
-            ["overwrite_as_needed"] = OverflowAction.OverwriteAsNeeded,
-            ["overwrite_older"] = OverflowAction.OverwriteOlder,
-            ["do_not_overwrite"] = OverflowAction.DoNotOverwrite
-        };
-
     private static readonly ToolDefinition DefinitionValue = new(
         "eventlog_classic_log_ensure",
         "Governed classic Windows Event Log provisioning for ensuring a custom log and source exist with optional size and overflow configuration. Dry-run by default; apply=true performs the write.",
@@ -93,7 +85,7 @@ public sealed class EventLogClassicLogEnsureTool : EventLogToolBase, ITool {
                 ("log_name", ToolSchema.String("Exact classic Windows Event Log name to ensure.")),
                 ("source_name", ToolSchema.String("Optional event source/provider name to ensure for the log. Defaults to log_name.")),
                 ("maximum_kilobytes", ToolSchema.Integer("Optional maximum log size in kilobytes to apply when ensuring the log.")),
-                ("overflow_action", ToolSchema.String("Optional overflow policy to apply when ensuring the log.").Enum("overwrite_as_needed", "overwrite_older", "do_not_overwrite")),
+                ("overflow_action", ToolSchema.String("Optional overflow policy to apply when ensuring the log.").Enum(ClassicLogOverflowActions.Names)),
                 ("retention_days", ToolSchema.Integer("Optional retention days. Supported only when overflow_action=overwrite_older.")),
                 ("apply", ToolSchema.Boolean("When true, performs the classic log ensure write. Otherwise returns a dry-run preview.")))
             .Required("log_name")
@@ -139,11 +131,9 @@ public sealed class EventLogClassicLogEnsureTool : EventLogToolBase, ITool {
                 requestedMaximumKilobytes = (int)Math.Min(requestedMaximumKilobytesRaw.Value, 4_194_240);
             }
 
-            if (!ToolEnumBinders.TryParseOptional(
+            if (!ClassicLogOverflowActions.TryNormalize(
                     reader.OptionalString("overflow_action"),
-                    OverflowActionByName,
-                    "overflow_action",
-                    out OverflowAction? requestedOverflowAction,
+                    out var requestedOverflowAction,
                     out var overflowActionError)) {
                 return ToolRequestBindingResult<ClassicLogEnsureRequest>.Failure(
                     overflowActionError ?? "overflow_action must be one of: overwrite_as_needed, overwrite_older, do_not_overwrite.");
@@ -160,7 +150,7 @@ public sealed class EventLogClassicLogEnsureTool : EventLogToolBase, ITool {
                         "retention_days must be between 1 and 3650.");
                 }
 
-                if (requestedOverflowAction != OverflowAction.OverwriteOlder) {
+                if (!string.Equals(requestedOverflowAction, "overwrite_older", StringComparison.OrdinalIgnoreCase)) {
                     return ToolRequestBindingResult<ClassicLogEnsureRequest>.Failure(
                         "retention_days is supported only when overflow_action=overwrite_older.");
                 }
@@ -226,9 +216,9 @@ public sealed class EventLogClassicLogEnsureTool : EventLogToolBase, ITool {
         var warnings = new List<string>(plan.Warnings);
 
         if (request.Apply && plan.Changed) {
-            var overflowAction = request.RequestedOverflowAction
-                ?? ParseOverflowAction(before.OverflowAction)
-                ?? OverflowAction.OverwriteAsNeeded;
+            var overflowActionName = ResolveOverflowActionName(
+                request.RequestedOverflowAction,
+                before.OverflowAction);
             var retentionDays = request.RequestedRetentionDays
                 ?? before.MinimumRetentionDays
                 ?? 7;
@@ -238,7 +228,7 @@ public sealed class EventLogClassicLogEnsureTool : EventLogToolBase, ITool {
                 sourceName: request.SourceName,
                 machineName: request.MachineName,
                 maximumKilobytes: request.RequestedMaximumKilobytes ?? 0,
-                overflowAction: overflowAction,
+                overflowActionName: overflowActionName,
                 retentionDays: retentionDays,
                 sourceLogName: request.LogName);
             if (!writeSucceeded) {
@@ -270,7 +260,7 @@ public sealed class EventLogClassicLogEnsureTool : EventLogToolBase, ITool {
             WriteExecuted: writeExecuted,
             Message: request.Apply ? plan.ApplyMessage : plan.PreviewMessage,
             RequestedMaximumKilobytes: request.RequestedMaximumKilobytes,
-            RequestedOverflowAction: request.RequestedOverflowAction is null ? null : NormalizeOverflowAction(request.RequestedOverflowAction.Value),
+            RequestedOverflowAction: request.RequestedOverflowAction,
             RequestedRetentionDays: request.RequestedRetentionDays,
             RequestedChanges: plan.RequestedChanges,
             Warnings: warnings,
@@ -283,45 +273,19 @@ public sealed class EventLogClassicLogEnsureTool : EventLogToolBase, ITool {
 
     private static (ClassicLogSnapshot? Snapshot, string? ErrorResponse) TryGetClassicLogSnapshot(ClassicLogEnsureRequest request) {
         try {
-            var logExists = SearchEvents.LogExists(request.LogName, request.MachineName);
-            var sourceExists = string.IsNullOrWhiteSpace(request.MachineName)
-                ? System.Diagnostics.EventLog.SourceExists(request.SourceName)
-                : System.Diagnostics.EventLog.SourceExists(request.SourceName, request.MachineName);
-
-            string? sourceRegisteredLogName = null;
-            if (sourceExists) {
-                sourceRegisteredLogName = ToolArgs.NormalizeOptional(
-                    System.Diagnostics.EventLog.LogNameFromSourceName(request.SourceName, request.MachineName ?? "."));
-            }
-
-            string? logDisplayName = null;
-            int? maximumKilobytes = null;
-            string? overflowAction = null;
-            int? minimumRetentionDays = null;
-
-            if (logExists) {
-                using var log = string.IsNullOrWhiteSpace(request.MachineName)
-                    ? new System.Diagnostics.EventLog(request.LogName)
-                    : new System.Diagnostics.EventLog(request.LogName, request.MachineName);
-                logDisplayName = ToolArgs.NormalizeOptional(log.LogDisplayName);
-                maximumKilobytes = log.MaximumKilobytes > int.MaxValue
-                    ? int.MaxValue
-                    : (int)log.MaximumKilobytes;
-                overflowAction = NormalizeOverflowAction(log.OverflowAction);
-                minimumRetentionDays = log.MinimumRetentionDays;
-            }
+            var state = SearchEvents.GetClassicLogState(request.LogName, request.SourceName, request.MachineName);
 
             return (new ClassicLogSnapshot(
                 LogName: request.LogName,
                 MachineName: request.TargetMachineName,
                 SourceName: request.SourceName,
-                LogExists: logExists,
-                SourceExists: sourceExists,
-                SourceRegisteredLogName: sourceRegisteredLogName,
-                LogDisplayName: logDisplayName,
-                MaximumKilobytes: maximumKilobytes,
-                OverflowAction: overflowAction,
-                MinimumRetentionDays: minimumRetentionDays), null);
+                LogExists: state.LogExists,
+                SourceExists: state.SourceExists,
+                SourceRegisteredLogName: ToolArgs.NormalizeOptional(state.SourceRegisteredLogName),
+                LogDisplayName: ToolArgs.NormalizeOptional(state.LogDisplayName),
+                MaximumKilobytes: state.MaximumKilobytes,
+                OverflowAction: ToolArgs.NormalizeOptional(state.OverflowActionName),
+                MinimumRetentionDays: state.MinimumRetentionDays), null);
         } catch (Exception ex) {
             return (null, ErrorFromException(
                 ex,
@@ -374,11 +338,10 @@ public sealed class EventLogClassicLogEnsureTool : EventLogToolBase, ITool {
             after = after with { MaximumKilobytes = request.RequestedMaximumKilobytes.Value };
         }
 
-        if (request.RequestedOverflowAction.HasValue) {
-            var requestedOverflowAction = NormalizeOverflowAction(request.RequestedOverflowAction.Value);
-            if (!string.Equals(before.OverflowAction, requestedOverflowAction, StringComparison.OrdinalIgnoreCase)) {
+        if (!string.IsNullOrWhiteSpace(request.RequestedOverflowAction)) {
+            if (!string.Equals(before.OverflowAction, request.RequestedOverflowAction, StringComparison.OrdinalIgnoreCase)) {
                 requestedChanges.Add("overflow_action");
-                after = after with { OverflowAction = requestedOverflowAction };
+                after = after with { OverflowAction = request.RequestedOverflowAction };
             }
         }
 
@@ -435,6 +398,21 @@ public sealed class EventLogClassicLogEnsureTool : EventLogToolBase, ITool {
         };
     }
 
+    internal static string ResolveOverflowActionName(
+        string? requestedOverflowAction,
+        string? currentOverflowAction) {
+        if (!string.IsNullOrWhiteSpace(requestedOverflowAction)) {
+            return requestedOverflowAction;
+        }
+
+        if (ClassicLogOverflowActions.TryNormalize(currentOverflowAction, out var normalizedCurrentOverflowAction, out _)
+            && !string.IsNullOrWhiteSpace(normalizedCurrentOverflowAction)) {
+            return normalizedCurrentOverflowAction;
+        }
+
+        return "overwrite_as_needed";
+    }
+
     private static string CreateSuccessResponse(ClassicLogEnsureResult result) {
         var facts = new List<(string Key, string Value)> {
             ("Mode", result.Apply ? "apply" : "dry-run"),
@@ -487,25 +465,6 @@ public sealed class EventLogClassicLogEnsureTool : EventLogToolBase, ITool {
             facts: facts,
             meta: meta,
             summaryTitle: "Classic Event Log ensure");
-    }
-
-    private static OverflowAction? ParseOverflowAction(string? value) {
-        if (string.IsNullOrWhiteSpace(value)) {
-            return null;
-        }
-
-        return OverflowActionByName.TryGetValue(value.Trim(), out var overflowAction)
-            ? overflowAction
-            : null;
-    }
-
-    private static string NormalizeOverflowAction(OverflowAction overflowAction) {
-        return overflowAction switch {
-            OverflowAction.OverwriteAsNeeded => "overwrite_as_needed",
-            OverflowAction.OverwriteOlder => "overwrite_older",
-            OverflowAction.DoNotOverwrite => "do_not_overwrite",
-            _ => overflowAction.ToString().ToLowerInvariant()
-        };
     }
 
     private static string FormatBoolean(bool value) {

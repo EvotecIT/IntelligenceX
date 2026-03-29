@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.Versioning;
 using System.Threading;
@@ -298,45 +297,19 @@ public sealed class EventLogClassicLogRemoveTool : EventLogToolBase, ITool {
 
     private static (ClassicLogSnapshot? Snapshot, string? ErrorResponse) TryGetClassicLogSnapshot(ClassicLogRemoveRequest request) {
         try {
-            var logExists = SearchEvents.LogExists(request.LogName, request.MachineName);
-            var sourceExists = string.IsNullOrWhiteSpace(request.MachineName)
-                ? System.Diagnostics.EventLog.SourceExists(request.SourceName)
-                : System.Diagnostics.EventLog.SourceExists(request.SourceName, request.MachineName);
-
-            string? sourceRegisteredLogName = null;
-            if (sourceExists) {
-                sourceRegisteredLogName = ToolArgs.NormalizeOptional(
-                    System.Diagnostics.EventLog.LogNameFromSourceName(request.SourceName, request.MachineName ?? "."));
-            }
-
-            string? logDisplayName = null;
-            int? maximumKilobytes = null;
-            string? overflowAction = null;
-            int? minimumRetentionDays = null;
-
-            if (logExists) {
-                using var log = string.IsNullOrWhiteSpace(request.MachineName)
-                    ? new System.Diagnostics.EventLog(request.LogName)
-                    : new System.Diagnostics.EventLog(request.LogName, request.MachineName);
-                logDisplayName = ToolArgs.NormalizeOptional(log.LogDisplayName);
-                maximumKilobytes = log.MaximumKilobytes > int.MaxValue
-                    ? int.MaxValue
-                    : (int)log.MaximumKilobytes;
-                overflowAction = NormalizeOverflowAction(log.OverflowAction);
-                minimumRetentionDays = log.MinimumRetentionDays;
-            }
+            var state = SearchEvents.GetClassicLogState(request.LogName, request.SourceName, request.MachineName);
 
             return (new ClassicLogSnapshot(
                 LogName: request.LogName,
                 MachineName: request.TargetMachineName,
                 SourceName: request.SourceName,
-                LogExists: logExists,
-                SourceExists: sourceExists,
-                SourceRegisteredLogName: sourceRegisteredLogName,
-                LogDisplayName: logDisplayName,
-                MaximumKilobytes: maximumKilobytes,
-                OverflowAction: overflowAction,
-                MinimumRetentionDays: minimumRetentionDays,
+                LogExists: state.LogExists,
+                SourceExists: state.SourceExists,
+                SourceRegisteredLogName: ToolArgs.NormalizeOptional(state.SourceRegisteredLogName),
+                LogDisplayName: ToolArgs.NormalizeOptional(state.LogDisplayName),
+                MaximumKilobytes: state.MaximumKilobytes,
+                OverflowAction: ToolArgs.NormalizeOptional(state.OverflowActionName),
+                MinimumRetentionDays: state.MinimumRetentionDays,
                 IsReservedLogName: IsReservedClassicLogName(request.LogName)), null);
         } catch (Exception ex) {
             return (null, ErrorFromException(
@@ -506,15 +479,6 @@ public sealed class EventLogClassicLogRemoveTool : EventLogToolBase, ITool {
 
     private static bool IsReservedClassicLogName(string logName) {
         return ReservedClassicLogNames.Contains(logName ?? string.Empty);
-    }
-
-    private static string NormalizeOverflowAction(OverflowAction overflowAction) {
-        return overflowAction switch {
-            OverflowAction.OverwriteAsNeeded => "overwrite_as_needed",
-            OverflowAction.OverwriteOlder => "overwrite_older",
-            OverflowAction.DoNotOverwrite => "do_not_overwrite",
-            _ => overflowAction.ToString().ToLowerInvariant()
-        };
     }
 
     private static string FormatBoolean(bool value) {

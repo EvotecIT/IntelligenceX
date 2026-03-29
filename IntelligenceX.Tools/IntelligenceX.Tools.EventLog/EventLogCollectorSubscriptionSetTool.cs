@@ -1,11 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
-using System.Linq;
 using System.Runtime.Versioning;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Xml;
 using EventViewerX;
 using IntelligenceX.Json;
 using IntelligenceX.Tools;
@@ -30,29 +28,12 @@ public sealed class EventLogCollectorSubscriptionSetTool : EventLogToolBase, ITo
         CollectorSubscriptionXmlDetails? RequestedSubscriptionXmlDetails,
         bool Apply);
 
-    private sealed record CollectorSubscriptionSnapshot(
-        string SubscriptionName,
-        string MachineName,
-        string? Description,
-        bool? IsEnabled,
-        string? ContentFormat,
-        string? DeliveryMode,
-        string? RawXml,
-        bool HasXml,
-        int QueryCount,
-        IReadOnlyList<string> Queries);
-
     private sealed record CollectorSubscriptionRollbackArguments(
         string SubscriptionName,
         string? MachineName,
         bool? IsEnabled,
         string? SubscriptionXml,
         bool Apply);
-
-    private sealed record CollectorSubscriptionXmlDetails(
-        string NormalizedXml,
-        string? Description,
-        IReadOnlyList<string> Queries);
 
     private sealed record CollectorSubscriptionApplyDetails(
         bool Success,
@@ -133,8 +114,8 @@ public sealed class EventLogCollectorSubscriptionSetTool : EventLogToolBase, ITo
             var subscriptionXml = ToolArgs.NormalizeOptional(reader.OptionalString("subscription_xml"));
             CollectorSubscriptionXmlDetails? xmlDetails = null;
             if (!string.IsNullOrWhiteSpace(subscriptionXml)) {
-                if (!TryParseSubscriptionXml(subscriptionXml, out xmlDetails, out var xmlError)) {
-                    return ToolRequestBindingResult<CollectorSubscriptionSetRequest>.Failure(xmlError);
+                if (!CollectorSubscriptionXml.TryNormalize(subscriptionXml, out xmlDetails, out var xmlError)) {
+                    return ToolRequestBindingResult<CollectorSubscriptionSetRequest>.Failure(NormalizeSubscriptionXmlError(xmlError));
                 }
 
                 subscriptionXml = xmlDetails!.NormalizedXml;
@@ -176,8 +157,7 @@ public sealed class EventLogCollectorSubscriptionSetTool : EventLogToolBase, ITo
         var request = context.Request;
         var beforeAttempt = TryGetCollectorSubscriptionSnapshot(
             request.SubscriptionName,
-            request.MachineName,
-            request.TargetMachineName);
+            request.MachineName);
         if (beforeAttempt.ErrorResponse is not null) {
             return beforeAttempt.ErrorResponse;
         }
@@ -228,7 +208,7 @@ public sealed class EventLogCollectorSubscriptionSetTool : EventLogToolBase, ITo
             }
 
             if (!string.IsNullOrWhiteSpace(request.RequestedSubscriptionXml)
-                && !AreEquivalentXml(before.RawXml, request.RequestedSubscriptionXml)) {
+                && !CollectorSubscriptionXml.AreEquivalent(before.RawXml, request.RequestedSubscriptionXml)) {
                 var xmlSuccess = SearchEvents.SetCollectorSubscriptionXml(
                     request.SubscriptionName,
                     request.RequestedSubscriptionXml,
@@ -260,8 +240,7 @@ public sealed class EventLogCollectorSubscriptionSetTool : EventLogToolBase, ITo
 
             var afterAttempt = TryGetCollectorSubscriptionSnapshot(
                 request.SubscriptionName,
-                request.MachineName,
-                request.TargetMachineName);
+                request.MachineName);
             if (afterAttempt.ErrorResponse is not null || afterAttempt.Snapshot is null) {
                 postChangeVerified = false;
                 warnings.Add("Post-change verification could not re-read the collector subscription after the write.");
@@ -294,16 +273,9 @@ public sealed class EventLogCollectorSubscriptionSetTool : EventLogToolBase, ITo
 
     private static (CollectorSubscriptionSnapshot? Snapshot, string? ErrorResponse) TryGetCollectorSubscriptionSnapshot(
         string subscriptionName,
-        string? machineName,
-        string targetMachineName) {
+        string? machineName) {
         try {
-            var subscription = SearchEvents.GetCollectorSubscriptions(machineName)
-                .FirstOrDefault(item =>
-                    !string.IsNullOrWhiteSpace(item.Name)
-                    && string.Equals(item.Name, subscriptionName, StringComparison.OrdinalIgnoreCase));
-            return subscription is null
-                ? (null, null)
-                : (CreateSnapshot(subscription, targetMachineName), null);
+            return (SearchEvents.GetCollectorSubscriptionSnapshot(subscriptionName, machineName), null);
         } catch (Exception ex) {
             return (null, ErrorFromException(
                 ex,
@@ -339,7 +311,7 @@ public sealed class EventLogCollectorSubscriptionSetTool : EventLogToolBase, ITo
         var changed =
             (request.RequestedIsEnabled.HasValue && request.RequestedIsEnabled != before.IsEnabled)
             || (!string.IsNullOrWhiteSpace(request.RequestedSubscriptionXml)
-                && !AreEquivalentXml(before.RawXml, request.RequestedSubscriptionXml));
+                && !CollectorSubscriptionXml.AreEquivalent(before.RawXml, request.RequestedSubscriptionXml));
 
         if (changed) {
             warnings.Add(RestartWarning);
@@ -365,25 +337,6 @@ public sealed class EventLogCollectorSubscriptionSetTool : EventLogToolBase, ITo
             PreviewMessage: $"Preview only: collector subscription '{request.SubscriptionName}' would be updated.",
             ApplyMessage: $"Collector subscription '{request.SubscriptionName}' updated.",
             Warnings: warnings.ToArray());
-    }
-
-    private static CollectorSubscriptionSnapshot CreateSnapshot(SubscriptionInfo subscription, string targetMachineName) {
-        var queries = subscription.Queries?
-            .Where(static query => !string.IsNullOrWhiteSpace(query))
-            .Select(static query => query.Trim())
-            .ToArray() ?? Array.Empty<string>();
-
-        return new CollectorSubscriptionSnapshot(
-            SubscriptionName: subscription.Name,
-            MachineName: string.IsNullOrWhiteSpace(subscription.MachineName) ? targetMachineName : subscription.MachineName,
-            Description: ToolArgs.NormalizeOptional(subscription.Description),
-            IsEnabled: subscription.Enabled,
-            ContentFormat: ToolArgs.NormalizeOptional(subscription.ContentFormat),
-            DeliveryMode: ToolArgs.NormalizeOptional(subscription.DeliveryMode),
-            RawXml: ToolArgs.NormalizeOptional(subscription.RawXml),
-            HasXml: !string.IsNullOrWhiteSpace(subscription.RawXml),
-            QueryCount: queries.Length,
-            Queries: queries);
     }
 
     private static CollectorSubscriptionRollbackArguments BuildRollbackArguments(
@@ -453,115 +406,14 @@ public sealed class EventLogCollectorSubscriptionSetTool : EventLogToolBase, ITo
             summaryTitle: "Event Log collector subscription");
     }
 
-    private static bool TryParseSubscriptionXml(
-        string subscriptionXml,
-        out CollectorSubscriptionXmlDetails? details,
-        out string error) {
-        details = null;
-        error = string.Empty;
-
-        if (string.IsNullOrWhiteSpace(subscriptionXml)) {
-            error = "subscription_xml cannot be blank when supplied.";
-            return false;
-        }
-
-        try {
-            using var reader = XmlReader.Create(new System.IO.StringReader(subscriptionXml), CreateSubscriptionXmlReaderSettings());
-            if (!TryReadSubscriptionXmlDetails(reader, out var description, out var queries, out error)) {
-                return false;
-            }
-
-            details = new CollectorSubscriptionXmlDetails(
-                NormalizedXml: NormalizeXml(subscriptionXml),
-                Description: description,
-                Queries: queries);
-            return true;
-        } catch (XmlException ex) {
-            error = $"subscription_xml is not valid XML: {ex.Message}";
-            return false;
-        } catch (ArgumentException ex) {
-            error = $"subscription_xml is invalid: {ex.Message}";
-            return false;
-        }
-    }
-
-    private static XmlReaderSettings CreateSubscriptionXmlReaderSettings() {
-        return new XmlReaderSettings {
-            DtdProcessing = DtdProcessing.Prohibit,
-            XmlResolver = null
+    private static string NormalizeSubscriptionXmlError(string? error) {
+        return error switch {
+            null => "subscription_xml is invalid.",
+            "XML cannot be null or empty." => "subscription_xml cannot be blank when supplied.",
+            "Root element must be <Subscription>." => "subscription_xml root element must be <Subscription>.",
+            _ when error.StartsWith("Invalid XML content: ", StringComparison.Ordinal) => "subscription_xml is not valid XML: " + error["Invalid XML content: ".Length..],
+            _ => $"subscription_xml is invalid: {error}"
         };
-    }
-
-    private static bool TryReadSubscriptionXmlDetails(
-        XmlReader reader,
-        out string? description,
-        out IReadOnlyList<string> queries,
-        out string error) {
-        description = null;
-        var collectedQueries = new List<string>();
-        error = string.Empty;
-
-        reader.MoveToContent();
-        if (!reader.LocalName.Equals("Subscription", StringComparison.OrdinalIgnoreCase)) {
-            error = "subscription_xml root element must be <Subscription>.";
-            queries = Array.Empty<string>();
-            return false;
-        }
-
-        while (reader.Read()) {
-            if (reader.NodeType != XmlNodeType.Element) {
-                continue;
-            }
-
-            if (reader.LocalName.Equals("Description", StringComparison.OrdinalIgnoreCase)) {
-                description = ToolArgs.NormalizeOptional(reader.ReadElementContentAsString());
-                continue;
-            }
-
-            if (reader.LocalName.Equals("Select", StringComparison.OrdinalIgnoreCase)) {
-                var query = ToolArgs.NormalizeOptional(reader.ReadElementContentAsString());
-                if (!string.IsNullOrWhiteSpace(query)) {
-                    collectedQueries.Add(query);
-                }
-            }
-        }
-
-        queries = collectedQueries.ToArray();
-        return true;
-    }
-
-    private static string NormalizeXml(string subscriptionXml) {
-        using var reader = XmlReader.Create(new System.IO.StringReader(subscriptionXml), CreateSubscriptionXmlReaderSettings());
-        using var writerBuffer = new System.IO.StringWriter(CultureInfo.InvariantCulture);
-        using var writer = XmlWriter.Create(writerBuffer, new XmlWriterSettings {
-            OmitXmlDeclaration = true,
-            Indent = false,
-            NewLineHandling = NewLineHandling.None
-        });
-
-        while (reader.Read()) {
-            writer.WriteNode(reader, true);
-        }
-
-        writer.Flush();
-        return writerBuffer.ToString();
-    }
-
-    private static bool AreEquivalentXml(string? left, string? right) {
-        return string.Equals(
-            NormalizeXmlForComparison(left),
-            NormalizeXmlForComparison(right),
-            StringComparison.Ordinal);
-    }
-
-    private static string? NormalizeXmlForComparison(string? xml) {
-        if (string.IsNullOrWhiteSpace(xml)) {
-            return null;
-        }
-
-        return TryParseSubscriptionXml(xml, out var details, out _)
-            ? details!.NormalizedXml
-            : xml.Trim();
     }
 
     private static string FormatBoolean(bool value) {
