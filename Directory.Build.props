@@ -10,10 +10,10 @@
     <DefaultSignThumbprint Condition="'$(DefaultSignThumbprint)' == '' and '$(CODE_SIGN_THUMBPRINT)' != ''">$(CODE_SIGN_THUMBPRINT)</DefaultSignThumbprint>
     <DefaultSignThumbprint Condition="'$(DefaultSignThumbprint)' == '' and '$(INTELLIGENCEX_SIGN_THUMBPRINT)' != ''">$(INTELLIGENCEX_SIGN_THUMBPRINT)</DefaultSignThumbprint>
     <TestimoXRoot Condition="'$(TestimoXRoot)' == '' and '$(TESTIMOX_ROOT)' != ''">$(TESTIMOX_ROOT)</TestimoXRoot>
-    <TestimoXRoot Condition="'$(TestimoXRoot)' == '' and Exists('$(MSBuildThisFileDirectory)..\TestimoX\ADPlayground\ADPlayground.csproj')">$(MSBuildThisFileDirectory)..\TestimoX\</TestimoXRoot>
     <TestimoXRoot Condition="'$(TestimoXRoot)' == '' and Exists('$(MSBuildThisFileDirectory)..\TestimoX-master\ADPlayground\ADPlayground.csproj')">$(MSBuildThisFileDirectory)..\TestimoX-master\</TestimoXRoot>
-    <TestimoXRoot Condition="'$(TestimoXRoot)' == '' and Exists('$(MSBuildThisFileDirectory)..\..\TestimoX\ADPlayground\ADPlayground.csproj')">$(MSBuildThisFileDirectory)..\..\TestimoX\</TestimoXRoot>
+    <TestimoXRoot Condition="'$(TestimoXRoot)' == '' and Exists('$(MSBuildThisFileDirectory)..\TestimoX\ADPlayground\ADPlayground.csproj')">$(MSBuildThisFileDirectory)..\TestimoX\</TestimoXRoot>
     <TestimoXRoot Condition="'$(TestimoXRoot)' == '' and Exists('$(MSBuildThisFileDirectory)..\..\TestimoX-master\ADPlayground\ADPlayground.csproj')">$(MSBuildThisFileDirectory)..\..\TestimoX-master\</TestimoXRoot>
+    <TestimoXRoot Condition="'$(TestimoXRoot)' == '' and Exists('$(MSBuildThisFileDirectory)..\..\TestimoX\ADPlayground\ADPlayground.csproj')">$(MSBuildThisFileDirectory)..\..\TestimoX\</TestimoXRoot>
     <TestimoXRoot Condition="'$(TestimoXRoot)' != '' and !HasTrailingSlash('$(TestimoXRoot)')">$(TestimoXRoot)\</TestimoXRoot>
   </PropertyGroup>
 </Project>
