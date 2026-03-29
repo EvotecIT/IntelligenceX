@@ -95,12 +95,14 @@ project={{ProjectNumber}}
         AssertContainsText(rendered, "IX_TRIAGE_APPLY_PR_WATCH_GOVERNANCE_FIELDS", "workflow reads governance field repo variable");
         AssertContainsText(rendered, "--apply-pr-watch-governance-fields", "workflow can opt into governance field sync");
         AssertContainsText(rendered, "EXTRA_ARGS=()", "workflow uses shell arrays for optional sync args");
-        AssertContainsText(rendered, "\"${EXTRA_ARGS[@]}\"", "workflow applies optional sync args via array expansion");
+        AssertContainsText(rendered, "${EXTRA_ARGS[@]}", "workflow applies optional sync args via array expansion");
+        AssertEqual(false, rendered.Contains("\"${EXTRA_ARGS[@]}\"", StringComparison.Ordinal), "workflow should not quote sync arg array expansion");
         AssertContainsText(rendered, "include_pr_watch_governance_views", "workflow exposes governance view input");
         AssertContainsText(rendered, "IX_TRIAGE_INCLUDE_PR_WATCH_GOVERNANCE_VIEWS", "workflow reads governance view repo variable");
         AssertContainsText(rendered, "--include-pr-watch-governance-views", "workflow can opt into governance view profile");
         AssertContainsText(rendered, "VIEW_ARGS=()", "workflow uses shell arrays for optional view args");
-        AssertContainsText(rendered, "\"${VIEW_ARGS[@]}\"", "workflow applies optional view args via array expansion");
+        AssertContainsText(rendered, "${VIEW_ARGS[@]}", "workflow applies optional view args via array expansion");
+        AssertEqual(false, rendered.Contains("\"${VIEW_ARGS[@]}\"", StringComparison.Ordinal), "workflow should not quote view arg array expansion");
         AssertContainsText(rendered, "--enforce-contract", "workflow enforces vision contract");
         AssertContainsText(rendered, "--fail-on-drift", "workflow enables vision drift gate");
         AssertContainsText(rendered, "default: \"0.70\"", "workflow dispatch default includes drift threshold");
