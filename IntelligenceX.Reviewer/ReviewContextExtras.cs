@@ -3,6 +3,7 @@ using System.Collections.Generic;
 namespace IntelligenceX.Reviewer;
 
 internal sealed class ReviewContextExtras {
+    public string CiContextSection { get; set; } = string.Empty;
     public string IssueCommentsSection { get; set; } = string.Empty;
     public string ReviewCommentsSection { get; set; } = string.Empty;
     public string ReviewThreadsSection { get; set; } = string.Empty;

@@ -37,21 +37,14 @@ internal static partial class PrWatchRunner {
     private const int DefaultRetryCooldownMinutes = 15;
     private const int MaxRetryCooldownMinutes = 24 * 60;
     private const int MaxPollSeconds = 60 * 60;
-    private static readonly HashSet<string> PendingCheckStates = new(StringComparer.OrdinalIgnoreCase) {
-        "QUEUED",
-        "IN_PROGRESS",
-        "PENDING",
-        "WAITING",
-        "REQUESTED"
-    };
-    private static readonly HashSet<string> FailedRunConclusions = new(StringComparer.OrdinalIgnoreCase) {
-        "failure",
-        "timed_out",
-        "cancelled",
-        "action_required",
-        "startup_failure",
-        "stale"
-    };
+    private const int MaxFailedRunEvidenceFetch = 5;
+    private const int MaxFailedRunEvidenceChars = 240;
+    private const string FailureKindActionable = "actionable";
+    private const string FailureKindOperational = "operational";
+    private const string FailureKindMixed = "mixed";
+    private const string FailureKindUnknown = "unknown";
+    private const string RetryFailurePolicyAny = "any";
+    private const string RetryFailurePolicyNonActionableOnly = "non-actionable-only";
     private static readonly HashSet<string> TrustedAuthorAssociations = new(StringComparer.OrdinalIgnoreCase) {
         "OWNER",
         "MEMBER",
@@ -103,7 +96,9 @@ internal static partial class PrWatchRunner {
         string WorkflowName,
         string Status,
         string Conclusion,
-        string Url
+        string Url,
+        string FailureKind,
+        string FailureEvidence
     );
 
     internal sealed record ReviewItem(
@@ -126,7 +121,8 @@ internal static partial class PrWatchRunner {
 
     internal sealed record RetryState(
         int CurrentShaRetriesUsed,
-        int MaxFlakyRetries
+        int MaxFlakyRetries,
+        string RetryFailurePolicy
     );
 
     internal sealed record AuditRecord(
@@ -177,6 +173,7 @@ internal static partial class PrWatchRunner {
         public int PollSeconds { get; set; } = DefaultPollSeconds;
         public int MaxFlakyRetries { get; set; } = 3;
         public int RetryCooldownMinutes { get; set; } = DefaultRetryCooldownMinutes;
+        public string RetryFailurePolicy { get; set; } = RetryFailurePolicyAny;
         public bool ApplyRetry { get; set; }
         public string ConfirmApplyRetry { get; set; } = string.Empty;
         public string Phase { get; set; } = DefaultPhase;
@@ -299,7 +296,8 @@ internal static partial class PrWatchRunner {
                 if (retryOutcome.Applied) {
                     var refreshedRetryState = new RetryState(
                         CurrentShaRetriesUsed: GetRetriesUsed(result.State, result.Snapshot.Pr.HeadSha),
-                        MaxFlakyRetries: options.MaxFlakyRetries
+                        MaxFlakyRetries: options.MaxFlakyRetries,
+                        RetryFailurePolicy: options.RetryFailurePolicy
                     );
                     var retryDedupeKey = BuildRetryActionDedupeKey(
                         result.Snapshot.Pr.Repo,
@@ -319,7 +317,8 @@ internal static partial class PrWatchRunner {
                         result.Snapshot.NewReviewItems,
                         refreshedRetryState,
                         out var refreshedStopReason,
-                        allowRetryAction);
+                        allowRetryAction,
+                        options.RetryFailurePolicy);
 
                     result = result with {
                         Snapshot = result.Snapshot with {
@@ -377,9 +376,10 @@ internal static partial class PrWatchRunner {
 
     internal static IReadOnlyList<RecommendedAction> RecommendActions(PrState pr, CheckSummary checks,
         IReadOnlyList<FailedRun> failedRuns, IReadOnlyList<ReviewItem> newReviewItems, RetryState retryState, out string? stopReason,
-        bool allowRetryAction = true) {
+        bool allowRetryAction = true, string? retryFailurePolicy = null) {
         var actions = new List<RecommendedAction>();
         stopReason = null;
+        var normalizedRetryFailurePolicy = NormalizeRetryFailurePolicy(retryFailurePolicy ?? retryState.RetryFailurePolicy);
 
         var hasActionableReviewItems = newReviewItems.Any(item =>
             item.SourceType.Equals(ReviewSourceTrustedHuman, StringComparison.OrdinalIgnoreCase) ||
@@ -412,7 +412,11 @@ internal static partial class PrWatchRunner {
             }
 
             actions.Add(new RecommendedAction(ActionDiagnoseCiFailure));
-            if (allowRetryAction && checks.AllTerminal && failedRuns.Count > 0 && retryState.CurrentShaRetriesUsed < retryState.MaxFlakyRetries) {
+            if (allowRetryAction &&
+                checks.AllTerminal &&
+                failedRuns.Count > 0 &&
+                retryState.CurrentShaRetriesUsed < retryState.MaxFlakyRetries &&
+                ShouldSuggestRetryForFailedRuns(failedRuns, normalizedRetryFailurePolicy)) {
                 var dedupeKey = BuildRetryActionDedupeKey(pr.Repo, pr.Number, pr.HeadSha, failedRuns.Select(item => item.RunId));
                 actions.Add(new RecommendedAction(ActionRetryFailedChecks, dedupeKey));
             }
@@ -440,6 +444,42 @@ internal static partial class PrWatchRunner {
         }
 
         return false;
+    }
+
+    internal static string NormalizeFailureKind(string? failureKind) {
+        var normalized = (failureKind ?? string.Empty).Trim().ToLowerInvariant();
+        return normalized switch {
+            FailureKindActionable => FailureKindActionable,
+            FailureKindOperational => FailureKindOperational,
+            FailureKindMixed => FailureKindMixed,
+            _ => FailureKindUnknown
+        };
+    }
+
+    internal static string NormalizeRetryFailurePolicy(string? retryFailurePolicy) {
+        var normalized = (retryFailurePolicy ?? string.Empty).Trim().ToLowerInvariant();
+        return normalized switch {
+            RetryFailurePolicyNonActionableOnly => RetryFailurePolicyNonActionableOnly,
+            RetryFailurePolicyAny => RetryFailurePolicyAny,
+            _ => RetryFailurePolicyAny
+        };
+    }
+
+    internal static bool ShouldSuggestRetryForFailedRuns(IReadOnlyList<FailedRun> failedRuns, string? retryFailurePolicy = null) {
+        if (failedRuns is null || failedRuns.Count == 0) {
+            return false;
+        }
+
+        var normalizedRetryFailurePolicy = NormalizeRetryFailurePolicy(retryFailurePolicy);
+        if (normalizedRetryFailurePolicy.Equals(RetryFailurePolicyAny, StringComparison.OrdinalIgnoreCase)) {
+            return true;
+        }
+
+        return !failedRuns.Any(static run => {
+            var kind = NormalizeFailureKind(run.FailureKind);
+            return kind.Equals(FailureKindActionable, StringComparison.OrdinalIgnoreCase) ||
+                   kind.Equals(FailureKindMixed, StringComparison.OrdinalIgnoreCase);
+        });
     }
 
     internal static string NormalizePhase(string? phase) {
@@ -521,7 +561,7 @@ internal static partial class PrWatchRunner {
 
     private static string ResolvePlannedActionReason(WatchSnapshot snapshot, RecommendedAction action) {
         if (action.Name.Equals(ActionRetryFailedChecks, StringComparison.OrdinalIgnoreCase)) {
-            return "retry_budget_available";
+            return $"retry_budget_available:{NormalizeRetryFailurePolicy(snapshot.RetryState.RetryFailurePolicy)}";
         }
 
         if (action.Name.Equals(ActionDiagnoseCiFailure, StringComparison.OrdinalIgnoreCase)) {

@@ -21,6 +21,7 @@ internal static class PrWatchMonitorRunner {
         public string PrSpec { get; set; } = string.Empty;
         public int MaxPrs { get; set; } = 100;
         public int MaxFlakyRetries { get; set; } = 3;
+        public string RetryFailurePolicy { get; set; } = PrWatchRunner.NormalizeRetryFailurePolicy(null);
         public bool IncludeDrafts { get; set; }
         public string Source { get; set; } = Environment.GetEnvironmentVariable("GITHUB_EVENT_NAME") ?? "manual_cli";
         public bool SourceExplicitlySet { get; set; }
@@ -55,6 +56,7 @@ internal static class PrWatchMonitorRunner {
                     repo: options.Repo,
                     prSpec: target,
                     maxFlakyRetries: options.MaxFlakyRetries,
+                    retryFailurePolicy: options.RetryFailurePolicy,
                     phase: "observe",
                     source: options.Source,
                     runLink: options.RunLink,
@@ -67,6 +69,11 @@ internal static class PrWatchMonitorRunner {
                     .Select(static action => ReadString(action, "name"))
                     .Where(static name => !string.IsNullOrWhiteSpace(name))
                     .ToArray();
+                var failedRunKinds = SummarizeFailureKinds(
+                    (snapshot["failedRuns"] as JsonArray ?? new JsonArray())
+                    .OfType<JsonObject>()
+                    .Select(static run => ReadString(run, "failureKind")));
+                var failedRunCount = (snapshot["failedRuns"] as JsonArray ?? new JsonArray()).Count;
 
                 var number = ReadInt(pr, "number");
                 WriteJson(Path.Combine(options.SnapshotDir, $"pr-{number.ToString(CultureInfo.InvariantCulture)}.json"), snapshot);
@@ -80,6 +87,10 @@ internal static class PrWatchMonitorRunner {
                         ["passedCount"] = ReadInt(checks, "passedCount"),
                         ["failedCount"] = ReadInt(checks, "failedCount"),
                         ["pendingCount"] = ReadInt(checks, "pendingCount")
+                    },
+                    ["failedRuns"] = new JsonObject {
+                        ["count"] = failedRunCount,
+                        ["byKind"] = BuildFailureKindCountsNode(failedRunKinds)
                     }
                 });
             }
@@ -107,6 +118,7 @@ internal static class PrWatchMonitorRunner {
                 case "--pr": options.PrSpec = Next(args, ref i, arg); break;
                 case "--max-prs": options.MaxPrs = ParseInt(Next(args, ref i, arg), options.MaxPrs, arg, 1, 2000); break;
                 case "--max-flaky-retries": options.MaxFlakyRetries = ParseInt(Next(args, ref i, arg), options.MaxFlakyRetries, arg, 1, 50); break;
+                case "--retry-failure-policy": options.RetryFailurePolicy = PrWatchRunner.NormalizeRetryFailurePolicy(Next(args, ref i, arg)); break;
                 case "--include-drafts": options.IncludeDrafts = ParseBool(Next(args, ref i, arg), options.IncludeDrafts, arg); break;
                 case "--approved-bot": options.ApprovedBots.Add(Next(args, ref i, arg)); break;
                 case "--approved-bots": AddCsv(options.ApprovedBots, Next(args, ref i, arg)); break;
@@ -243,14 +255,21 @@ internal static class PrWatchMonitorRunner {
             .GroupBy(static action => action, StringComparer.OrdinalIgnoreCase)
             .OrderBy(static group => group.Key, StringComparer.OrdinalIgnoreCase)
             .Select(group => (JsonNode)new JsonObject { ["action"] = group.Key, ["count"] = group.Count() }).ToArray();
+        var failedRunKinds = SummarizeFailureKinds(rows.SelectMany(static row => ExpandFailureKinds(row)));
+        var totalFailedRuns = rows.Sum(static row => ReadFailedRunCount(row));
 
         return new JsonObject {
             ["schema"] = "intelligencex.pr-watch.rollup.v1",
             ["repo"] = options.Repo,
+            ["retryFailurePolicy"] = options.RetryFailurePolicy,
             ["generatedAtUtc"] = DateTimeOffset.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture),
             ["totalSnapshots"] = rows.Count,
             ["stopReasons"] = new JsonArray(stopReasons),
             ["actionCounts"] = new JsonArray(actionCounts),
+            ["failedRuns"] = new JsonObject {
+                ["count"] = totalFailedRuns,
+                ["byKind"] = BuildFailureKindCountsNode(failedRunKinds)
+            },
             ["prs"] = new JsonArray(rows.OrderBy(static row => ReadInt(row, "number")).Select(static row => (JsonNode)row).ToArray())
         };
     }
@@ -267,7 +286,74 @@ internal static class PrWatchMonitorRunner {
         builder.AppendLine();
         builder.AppendLine("## Snapshot counts");
         builder.AppendLine($"- PRs scanned: {ReadInt(rollup, "totalSnapshots")}");
+        builder.AppendLine($"- Retry policy: `{ReadString(rollup, "retryFailurePolicy")}`");
+        builder.AppendLine($"- Failed workflow runs: {ReadInt(rollup["failedRuns"] as JsonObject ?? new JsonObject(), "count")}");
+        builder.AppendLine($"- Failed run kinds: actionable={ReadFailedRunKindCount(rollup, "actionable")}, operational={ReadFailedRunKindCount(rollup, "operational")}, mixed={ReadFailedRunKindCount(rollup, "mixed")}, unknown={ReadFailedRunKindCount(rollup, "unknown")}");
         return builder.ToString();
+    }
+
+    internal static JsonObject BuildRollupForTests(string repo, string retryFailurePolicy, IReadOnlyList<JsonObject> rows) {
+        var options = new Options {
+            Repo = repo,
+            RetryFailurePolicy = PrWatchRunner.NormalizeRetryFailurePolicy(retryFailurePolicy)
+        };
+        return BuildRollup(options, rows);
+    }
+
+    internal static string BuildSummaryForTests(string repo, string retryFailurePolicy, JsonObject rollup) {
+        var options = new Options {
+            Repo = repo,
+            RetryFailurePolicy = PrWatchRunner.NormalizeRetryFailurePolicy(retryFailurePolicy)
+        };
+        return BuildSummary(options, rollup);
+    }
+
+    private static Dictionary<string, int> SummarizeFailureKinds(IEnumerable<string> kinds) {
+        var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase) {
+            ["actionable"] = 0,
+            ["operational"] = 0,
+            ["mixed"] = 0,
+            ["unknown"] = 0
+        };
+
+        foreach (var kind in kinds) {
+            var normalized = PrWatchRunner.NormalizeFailureKind(kind);
+            counts[normalized] = counts.TryGetValue(normalized, out var existing) ? existing + 1 : 1;
+        }
+
+        return counts;
+    }
+
+    private static IEnumerable<string> ExpandFailureKinds(JsonObject row) {
+        var failedRuns = row["failedRuns"] as JsonObject;
+        var byKind = failedRuns?["byKind"] as JsonObject;
+        foreach (var kind in new[] { "actionable", "operational", "mixed", "unknown" }) {
+            var count = ReadInt(byKind ?? new JsonObject(), kind);
+            for (var i = 0; i < count; i++) {
+                yield return kind;
+            }
+        }
+    }
+
+    private static JsonObject BuildFailureKindCountsNode(IReadOnlyDictionary<string, int> counts) {
+        return new JsonObject {
+            ["actionable"] = ReadFailureKindCount(counts, "actionable"),
+            ["operational"] = ReadFailureKindCount(counts, "operational"),
+            ["mixed"] = ReadFailureKindCount(counts, "mixed"),
+            ["unknown"] = ReadFailureKindCount(counts, "unknown")
+        };
+    }
+
+    private static int ReadFailureKindCount(IReadOnlyDictionary<string, int> counts, string kind) =>
+        counts.TryGetValue(kind, out var value) ? value : 0;
+
+    private static int ReadFailedRunCount(JsonObject row) =>
+        ReadInt(row["failedRuns"] as JsonObject ?? new JsonObject(), "count");
+
+    private static int ReadFailedRunKindCount(JsonObject rollup, string kind) {
+        var failedRuns = rollup["failedRuns"] as JsonObject;
+        var byKind = failedRuns?["byKind"] as JsonObject;
+        return ReadInt(byKind ?? new JsonObject(), kind);
     }
 
     private static string? ResolveRunLink() {
@@ -296,6 +382,7 @@ internal static class PrWatchMonitorRunner {
         Console.WriteLine("  --pr <number|url>");
         Console.WriteLine("  --max-prs <n>");
         Console.WriteLine("  --max-flaky-retries <n>");
+        Console.WriteLine("  --retry-failure-policy <any|non-actionable-only>");
         Console.WriteLine("  --include-drafts <bool>");
         Console.WriteLine("  --approved-bot <login> (repeatable)");
         Console.WriteLine("  --approved-bots <csv>");

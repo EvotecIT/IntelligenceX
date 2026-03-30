@@ -20,6 +20,7 @@ internal static partial class Program {
             123,
             "https://github.com/orgs/EvotecIT/projects/123",
             existingViews,
+            includePrWatchGovernanceViews: false,
             new DateTimeOffset(2026, 02, 15, 22, 00, 00, TimeSpan.Zero));
 
         AssertContainsText(markdown, "intelligencex:project-view-checklist", "checklist marker present");
@@ -38,10 +39,26 @@ internal static partial class Program {
             123,
             "https://github.com/orgs/EvotecIT/projects/123",
             new Dictionary<string, IntelligenceX.Cli.Todo.ProjectV2Client.ProjectView>(StringComparer.OrdinalIgnoreCase),
+            includePrWatchGovernanceViews: false,
             new DateTimeOffset(2026, 02, 15, 22, 05, 00, TimeSpan.Zero));
 
         AssertContainsText(markdown, "How To Complete Missing Views", "instruction section present");
         AssertContainsText(markdown, "Select `+ New view` in GitHub Projects.", "manual apply step present");
+    }
+
+    private static void TestProjectViewChecklistMarkdownIncludesOptionalGovernanceViewWhenEnabled() {
+        var markdown = IntelligenceX.Cli.Todo.ProjectViewChecklistRunner.BuildChecklistMarkdown(
+            "EvotecIT/IntelligenceX",
+            "EvotecIT",
+            123,
+            "https://github.com/orgs/EvotecIT/projects/123",
+            new Dictionary<string, IntelligenceX.Cli.Todo.ProjectV2Client.ProjectView>(StringComparer.OrdinalIgnoreCase),
+            includePrWatchGovernanceViews: true,
+            new DateTimeOffset(2026, 02, 15, 22, 10, 00, TimeSpan.Zero));
+
+        AssertContainsText(markdown, "Default view coverage: 0/6", "coverage includes optional governance view");
+        AssertContainsText(markdown, "**Governance Review** (`TABLE`) - missing", "optional governance view listed");
+        AssertContainsText(markdown, "\"PR Governance Signal\":\"policy-review-suggested\"", "governance view filter guidance included");
     }
 #endif
 }

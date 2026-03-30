@@ -117,13 +117,50 @@ internal static class ProjectViewCatalog {
             })
     };
 
-    public static IReadOnlyList<ProjectViewDefinition> FindMissingDefaultViews(
-        IReadOnlyDictionary<string, ProjectV2Client.ProjectView> existingViews) {
-        if (existingViews.Count == 0) {
-            return DefaultViews.ToList();
+    public static readonly IReadOnlyList<ProjectViewDefinition> OptionalPrWatchGovernanceViews = new[] {
+        new ProjectViewDefinition(
+            "Governance Review",
+            "TABLE",
+            "Pull requests carrying a live pr-watch governance recommendation that need maintainer policy review.",
+            "is:open \"Triage Kind\":\"pull_request\" \"PR Governance Signal\":\"policy-review-suggested\"",
+            new[] {
+                "Title",
+                "Status",
+                "PR Governance Signal",
+                "PR Governance Summary",
+                "PR Merge Readiness",
+                "PR Check Health",
+                "Signal Quality",
+                "IX Suggested Decision",
+                "Triage Score"
+            })
+    };
+
+    public static IReadOnlyList<ProjectViewDefinition> BuildRecommendedViews(bool includePrWatchGovernanceViews) {
+        if (!includePrWatchGovernanceViews) {
+            return DefaultViews;
         }
 
-        return DefaultViews
+        var combined = new List<ProjectViewDefinition>(DefaultViews.Count + OptionalPrWatchGovernanceViews.Count);
+        combined.AddRange(DefaultViews);
+        combined.AddRange(OptionalPrWatchGovernanceViews);
+        return combined;
+    }
+
+    public static IReadOnlyList<ProjectViewDefinition> FindMissingDefaultViews(
+        IReadOnlyDictionary<string, ProjectV2Client.ProjectView> existingViews) {
+        return FindMissingRecommendedViews(existingViews, includePrWatchGovernanceViews: false);
+    }
+
+    public static IReadOnlyList<ProjectViewDefinition> FindMissingRecommendedViews(
+        IReadOnlyDictionary<string, ProjectV2Client.ProjectView> existingViews,
+        bool includePrWatchGovernanceViews) {
+        var recommended = BuildRecommendedViews(includePrWatchGovernanceViews);
+        if (existingViews.Count == 0) {
+            return recommended.ToList();
+        }
+
+        return recommended
             .Where(view => !existingViews.ContainsKey(view.Name))
             .ToList();
     }

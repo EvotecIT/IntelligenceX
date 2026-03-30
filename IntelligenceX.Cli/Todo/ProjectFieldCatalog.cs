@@ -112,8 +112,26 @@ internal static class ProjectFieldCatalog {
         })
     };
 
+    public static readonly IReadOnlyList<ProjectFieldDefinition> OptionalPrWatchGovernanceFields = new[] {
+        new ProjectFieldDefinition("PR Governance Signal", "SINGLE_SELECT", new[] {
+            "policy-review-suggested"
+        }),
+        new ProjectFieldDefinition("PR Governance Summary", "TEXT", Array.Empty<string>())
+    };
+
+    public static IReadOnlyList<ProjectFieldDefinition> BuildEnsureFieldCatalog(bool includePrWatchGovernance) {
+        if (!includePrWatchGovernance) {
+            return DefaultFields;
+        }
+
+        var combined = new List<ProjectFieldDefinition>(DefaultFields.Count + OptionalPrWatchGovernanceFields.Count);
+        combined.AddRange(DefaultFields);
+        combined.AddRange(OptionalPrWatchGovernanceFields);
+        return combined;
+    }
+
     public static bool TryGetField(string name, out ProjectFieldDefinition field) {
-        foreach (var candidate in DefaultFields) {
+        foreach (var candidate in BuildEnsureFieldCatalog(includePrWatchGovernance: true)) {
             if (candidate.Name.Equals(name, StringComparison.OrdinalIgnoreCase)) {
                 field = candidate;
                 return true;

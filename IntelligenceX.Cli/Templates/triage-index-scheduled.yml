@@ -146,6 +146,29 @@ jobs:
               PROJECT_URL="$(jq -r '.project.url // empty' "$PROJECT_CONFIG_PATH" 2>/dev/null || true)"
             fi
 
+            PR_WATCH_GOVERNANCE_SOURCE=""
+            PR_WATCH_GOVERNANCE_LINK=""
+            PR_WATCH_GOVERNANCE_STATUS=""
+            PR_WATCH_WEEKLY_GOVERNANCE="$(gh api --paginate \
+              "repos/${{ github.repository }}/issues?state=open&per_page=100" \
+              --jq '.[] | select((.pull_request | not) and ((.body // "") | contains("<!-- intelligencex:pr-watch-rollup-tracker:weekly-governance -->"))) | "\(.html_url)\t\(((.body // "") | split("\n") | map(select(startswith("- Governance: "))) | .[0] // "" | ltrimstr("- Governance: "))"' \
+              | head -n 1)"
+            if [ -n "$PR_WATCH_WEEKLY_GOVERNANCE" ]; then
+              PR_WATCH_GOVERNANCE_SOURCE="weekly-governance"
+              PR_WATCH_GOVERNANCE_LINK="$(printf '%s' "$PR_WATCH_WEEKLY_GOVERNANCE" | cut -f1)"
+              PR_WATCH_GOVERNANCE_STATUS="$(printf '%s' "$PR_WATCH_WEEKLY_GOVERNANCE" | cut -f2-)"
+            else
+              PR_WATCH_SCHEDULE_GOVERNANCE="$(gh api --paginate \
+                "repos/${{ github.repository }}/issues?state=open&per_page=100" \
+                --jq '.[] | select((.pull_request | not) and ((.body // "") | contains("<!-- intelligencex:pr-watch-rollup-tracker:schedule -->"))) | "\(.html_url)\t\(((.body // "") | split("\n") | map(select(startswith("- Governance: "))) | .[0] // "" | ltrimstr("- Governance: "))"' \
+                | head -n 1)"
+              if [ -n "$PR_WATCH_SCHEDULE_GOVERNANCE" ]; then
+                PR_WATCH_GOVERNANCE_SOURCE="schedule"
+                PR_WATCH_GOVERNANCE_LINK="$(printf '%s' "$PR_WATCH_SCHEDULE_GOVERNANCE" | cut -f1)"
+                PR_WATCH_GOVERNANCE_STATUS="$(printf '%s' "$PR_WATCH_SCHEDULE_GOVERNANCE" | cut -f2-)"
+              fi
+            fi
+
             {
               echo "$DASHBOARD_MARKER"
               echo "# IX Triage Control Dashboard"
@@ -161,6 +184,25 @@ jobs:
                 echo "- Triage Project Sync: $PROJECT_SYNC_LINK"
               else
                 echo "- Triage Project Sync: _not available yet_"
+              fi
+              if [ -n "$PR_WATCH_GOVERNANCE_LINK" ]; then
+                echo "- PR Babysit Governance ($PR_WATCH_GOVERNANCE_SOURCE): $PR_WATCH_GOVERNANCE_LINK"
+              else
+                echo "- PR Babysit Governance: _not available yet_"
+              fi
+              echo
+              echo "## PR Babysit Governance"
+              echo
+              if [ -n "$PR_WATCH_GOVERNANCE_LINK" ]; then
+                echo "- Source: \`$PR_WATCH_GOVERNANCE_SOURCE\`"
+                echo "- Tracker issue: $PR_WATCH_GOVERNANCE_LINK"
+                if [ -n "$PR_WATCH_GOVERNANCE_STATUS" ]; then
+                  echo "- Governance status: $PR_WATCH_GOVERNANCE_STATUS"
+                else
+                  echo "- Governance status: _tracker found, but no compact governance line was present_"
+                fi
+              else
+                echo "- Governance status: _not available yet_"
               fi
               echo
               echo "## Maintainer Quick Links"

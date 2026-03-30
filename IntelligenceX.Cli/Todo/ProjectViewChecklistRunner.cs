@@ -24,6 +24,7 @@ internal static class ProjectViewChecklistRunner {
         public string ConfigPath { get; set; } = DefaultConfigPath;
         public string OutputPath { get; set; } = DefaultOutputPath;
         public bool Print { get; set; }
+        public bool IncludePrWatchGovernanceViews { get; set; }
         public int? IssueNumber { get; set; }
         public bool CreateIssue { get; set; }
         public string IssueTitle { get; set; } = DefaultIssueTitle;
@@ -47,7 +48,13 @@ internal static class ProjectViewChecklistRunner {
             return 1;
         }
 
-        if (!TryResolveProjectTarget(options, out var owner, out var projectNumber, out var repo, out var resolveError)) {
+        if (!TryResolveProjectTarget(
+                options,
+                out var owner,
+                out var projectNumber,
+                out var repo,
+                out var includePrWatchGovernanceViews,
+                out var resolveError)) {
             Console.Error.WriteLine(resolveError);
             return 1;
         }
@@ -76,6 +83,7 @@ internal static class ProjectViewChecklistRunner {
             projectNumber,
             project.Url,
             views,
+            includePrWatchGovernanceViews,
             DateTimeOffset.UtcNow);
 
         WriteText(options.OutputPath, markdown);
@@ -105,11 +113,12 @@ internal static class ProjectViewChecklistRunner {
             Console.WriteLine(markdown);
         }
 
-        var missing = ProjectViewCatalog.FindMissingDefaultViews(views);
-        var present = ProjectViewCatalog.DefaultViews.Count - missing.Count;
+        var recommendedViews = ProjectViewCatalog.BuildRecommendedViews(includePrWatchGovernanceViews);
+        var missing = ProjectViewCatalog.FindMissingRecommendedViews(views, includePrWatchGovernanceViews);
+        var present = recommendedViews.Count - missing.Count;
 
         Console.WriteLine($"Project view checklist target: {owner}#{projectNumber} ({project.Url})");
-        Console.WriteLine($"Default view coverage: {present}/{ProjectViewCatalog.DefaultViews.Count}");
+        Console.WriteLine($"Default view coverage: {present}/{recommendedViews.Count}");
         Console.WriteLine($"Views discovered: {views.Count}");
         Console.WriteLine($"Checklist output: {options.OutputPath}");
         if (issueCreated && issueNumber.HasValue) {
@@ -130,9 +139,11 @@ internal static class ProjectViewChecklistRunner {
         int projectNumber,
         string projectUrl,
         IReadOnlyDictionary<string, ProjectV2Client.ProjectView> viewsByName,
+        bool includePrWatchGovernanceViews,
         DateTimeOffset generatedAtUtc) {
-        var missing = ProjectViewCatalog.FindMissingDefaultViews(viewsByName);
-        var present = ProjectViewCatalog.DefaultViews.Count - missing.Count;
+        var recommendedViews = ProjectViewCatalog.BuildRecommendedViews(includePrWatchGovernanceViews);
+        var missing = ProjectViewCatalog.FindMissingRecommendedViews(viewsByName, includePrWatchGovernanceViews);
+        var present = recommendedViews.Count - missing.Count;
 
         var builder = new StringBuilder();
         builder.AppendLine(CommentMarker);
@@ -144,12 +155,12 @@ internal static class ProjectViewChecklistRunner {
         if (!string.IsNullOrWhiteSpace(projectUrl)) {
             builder.AppendLine($"- Project URL: {projectUrl}");
         }
-        builder.AppendLine($"- Default view coverage: {present}/{ProjectViewCatalog.DefaultViews.Count}");
+        builder.AppendLine($"- Default view coverage: {present}/{recommendedViews.Count}");
         builder.AppendLine();
         builder.AppendLine("## Default Views");
         builder.AppendLine();
 
-        foreach (var view in ProjectViewCatalog.DefaultViews) {
+        foreach (var view in recommendedViews) {
             if (viewsByName.TryGetValue(view.Name, out var existing)) {
                 builder.AppendLine($"- [x] **{view.Name}** (`{view.Layout}`) - present");
                 if (!string.IsNullOrWhiteSpace(existing.Url)) {
@@ -229,6 +240,9 @@ internal static class ProjectViewChecklistRunner {
                 case "--print":
                     options.Print = true;
                     break;
+                case "--include-pr-watch-governance-views":
+                    options.IncludePrWatchGovernanceViews = true;
+                    break;
                 case "--issue":
                     if (i + 1 < args.Length &&
                         int.TryParse(args[++i], NumberStyles.Integer, CultureInfo.InvariantCulture, out var issueNumber) &&
@@ -287,6 +301,7 @@ internal static class ProjectViewChecklistRunner {
         Console.WriteLine("  --config <path>         Project config JSON from project-init (default: artifacts/triage/ix-project-config.json)");
         Console.WriteLine("  --out <path>            Checklist markdown output path (default: artifacts/triage/ix-project-view-checklist.md)");
         Console.WriteLine("  --print                 Print checklist markdown to stdout");
+        Console.WriteLine("  --include-pr-watch-governance-views  Include optional governance review view profile in coverage");
         Console.WriteLine("  --issue <n>             Upsert checklist comment on an existing issue");
         Console.WriteLine("  --create-issue          Create a checklist issue with rendered checklist body");
         Console.WriteLine("  --issue-title <text>    Checklist issue title when --create-issue is used");
@@ -299,10 +314,12 @@ internal static class ProjectViewChecklistRunner {
         out string owner,
         out int projectNumber,
         out string repo,
+        out bool includePrWatchGovernanceViews,
         out string error) {
         owner = options.Owner?.Trim() ?? string.Empty;
         projectNumber = options.ProjectNumber ?? 0;
         repo = options.Repo?.Trim() ?? string.Empty;
+        includePrWatchGovernanceViews = options.IncludePrWatchGovernanceViews;
         error = string.Empty;
 
         if (!string.IsNullOrWhiteSpace(owner) && projectNumber > 0) {
@@ -314,27 +331,21 @@ internal static class ProjectViewChecklistRunner {
             return false;
         }
 
-        try {
-            using var doc = JsonDocument.Parse(File.ReadAllText(options.ConfigPath));
-            var root = doc.RootElement;
-
-            if (string.IsNullOrWhiteSpace(owner)) {
-                owner = ReadString(root, "owner");
-            }
-
-            if (projectNumber <= 0 &&
-                TryGetProperty(root, "project", out var projectObj) &&
-                projectObj.ValueKind == JsonValueKind.Object) {
-                projectNumber = ReadInt(projectObj, "number");
-            }
-
-            if (string.IsNullOrWhiteSpace(repo)) {
-                repo = ReadString(root, "repo");
-            }
-        } catch (Exception ex) {
-            error = $"Failed to parse project config at {options.ConfigPath}: {ex.Message}";
+        if (!ProjectConfigReader.TryReadFromFile(options.ConfigPath, out var config, out var configError)) {
+            error = configError;
             return false;
         }
+
+        if (string.IsNullOrWhiteSpace(owner)) {
+            owner = config.Owner;
+        }
+        if (projectNumber <= 0) {
+            projectNumber = config.ProjectNumber;
+        }
+        if (string.IsNullOrWhiteSpace(repo) && !string.IsNullOrWhiteSpace(config.Repo)) {
+            repo = config.Repo;
+        }
+        includePrWatchGovernanceViews |= config.Features.PrWatchGovernanceViews;
 
         if (string.IsNullOrWhiteSpace(owner) || projectNumber <= 0) {
             error = "Unable to resolve owner/project from arguments or config.";

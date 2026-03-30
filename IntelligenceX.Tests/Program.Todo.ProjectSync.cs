@@ -39,6 +39,17 @@ internal static partial class Program {
         AssertEqual(true, names.Contains("Triage Score", StringComparer.OrdinalIgnoreCase), "has Triage Score");
         AssertEqual(true, names.Contains("IX Suggested Decision", StringComparer.OrdinalIgnoreCase), "has IX Suggested Decision");
         AssertEqual(true, names.Contains("Maintainer Decision", StringComparer.OrdinalIgnoreCase), "has Maintainer Decision");
+        AssertEqual(false, names.Contains("PR Governance Signal", StringComparer.OrdinalIgnoreCase), "optional governance signal field excluded by default");
+        AssertEqual(false, names.Contains("PR Governance Summary", StringComparer.OrdinalIgnoreCase), "optional governance summary field excluded by default");
+    }
+
+    private static void TestProjectFieldCatalogBuildEnsureFieldCatalogIncludesOptionalPrWatchGovernanceFields() {
+        var names = IntelligenceX.Cli.Todo.ProjectFieldCatalog.BuildEnsureFieldCatalog(includePrWatchGovernance: true)
+            .Select(field => field.Name)
+            .ToList();
+
+        AssertEqual(true, names.Contains("PR Governance Signal", StringComparer.OrdinalIgnoreCase), "optional governance signal field included when enabled");
+        AssertEqual(true, names.Contains("PR Governance Summary", StringComparer.OrdinalIgnoreCase), "optional governance summary field included when enabled");
     }
 
     private static void TestProjectLabelCatalogDefaultsIncludeDecisionLabels() {
@@ -52,6 +63,7 @@ internal static partial class Program {
         AssertEqual(true, labels.Contains("ix/signal:low", StringComparer.OrdinalIgnoreCase), "signal low label");
         AssertEqual(true, labels.Contains("ix/match:linked-pr", StringComparer.OrdinalIgnoreCase), "issue linked-pr label");
         AssertEqual(true, labels.Contains("ix/match:needs-review-pr", StringComparer.OrdinalIgnoreCase), "issue needs-review-pr label");
+        AssertEqual(true, labels.Contains("ix/pr-watch:policy-review-suggested", StringComparer.OrdinalIgnoreCase), "pr-watch governance label");
     }
 
     private static void TestProjectLabelCatalogBuildEnsureCatalogIncludesDynamicCategoryAndTags() {
@@ -65,6 +77,53 @@ internal static partial class Program {
         AssertEqual(true, labels.Any(label => label.Name.Equals("ix/tag:release-candidate", StringComparison.OrdinalIgnoreCase)), "dynamic normalized tag label present");
         AssertEqual(true, labels.Any(label => label.Name.Equals("ix/tag:unknown-tag", StringComparison.OrdinalIgnoreCase)), "dynamic passthrough tag label present");
         AssertEqual(1, labels.Count(label => label.Name.Equals("ix/tag:docs", StringComparison.OrdinalIgnoreCase)), "known tag label deduped");
+    }
+
+    private static void TestProjectSyncParseOptionsSupportsGovernanceNoFlags() {
+        var options = IntelligenceX.Cli.Todo.ProjectSyncRunner.ParseOptions(new[] {
+            "--repo", "EvotecIT/IntelligenceX",
+            "--no-apply-pr-watch-governance-labels",
+            "--no-apply-pr-watch-governance-fields"
+        });
+
+        AssertEqual(false, options.ApplyPrWatchGovernanceLabels, "governance labels disabled");
+        AssertEqual(true, options.ApplyPrWatchGovernanceLabelsSpecified, "governance labels explicit disable recorded");
+        AssertEqual(false, options.ApplyPrWatchGovernanceFields, "governance fields disabled");
+        AssertEqual(true, options.ApplyPrWatchGovernanceFieldsSpecified, "governance fields explicit disable recorded");
+    }
+
+    private static void TestProjectSyncApplyProjectConfigFeatureDefaultsUsesConfigWhenUnspecified() {
+        var options = IntelligenceX.Cli.Todo.ProjectSyncRunner.ParseOptions(new[] {
+            "--repo", "EvotecIT/IntelligenceX"
+        });
+
+        IntelligenceX.Cli.Todo.ProjectSyncRunner.ApplyProjectConfigFeatureDefaults(
+            options,
+            new IntelligenceX.Cli.Todo.ProjectConfigFeatures(
+                PrWatchGovernanceLabels: true,
+                PrWatchGovernanceFields: true,
+                PrWatchGovernanceViews: true));
+
+        AssertEqual(true, options.ApplyPrWatchGovernanceLabels, "config enables governance labels");
+        AssertEqual(true, options.ApplyPrWatchGovernanceFields, "config enables governance fields");
+    }
+
+    private static void TestProjectSyncApplyProjectConfigFeatureDefaultsRespectsExplicitOverrides() {
+        var options = IntelligenceX.Cli.Todo.ProjectSyncRunner.ParseOptions(new[] {
+            "--repo", "EvotecIT/IntelligenceX",
+            "--no-apply-pr-watch-governance-labels",
+            "--apply-pr-watch-governance-fields"
+        });
+
+        IntelligenceX.Cli.Todo.ProjectSyncRunner.ApplyProjectConfigFeatureDefaults(
+            options,
+            new IntelligenceX.Cli.Todo.ProjectConfigFeatures(
+                PrWatchGovernanceLabels: true,
+                PrWatchGovernanceFields: false,
+                PrWatchGovernanceViews: true));
+
+        AssertEqual(false, options.ApplyPrWatchGovernanceLabels, "explicit no-labels wins over config");
+        AssertEqual(true, options.ApplyPrWatchGovernanceFields, "explicit apply-fields wins over config");
     }
 
     private static void TestProjectSyncBuildEntriesMergesVisionAndCanonical() {
@@ -432,7 +491,8 @@ internal static partial class Program {
             MatchedIssueConfidence: 0.95,
             VisionFit: "aligned",
             VisionConfidence: 0.9,
-            SuggestedDecision: "merge-candidate"
+            SuggestedDecision: "merge-candidate",
+            PrWatchGovernanceSuggested: true
         );
 
         var labels = IntelligenceX.Cli.Todo.ProjectSyncRunner.BuildLabelsForEntry(entry);
@@ -444,6 +504,100 @@ internal static partial class Program {
         AssertEqual(false, labels.Contains("ix/match:needs-review", StringComparer.OrdinalIgnoreCase), "no review label for high confidence");
         AssertEqual(true, labels.Contains("ix/decision:merge-candidate", StringComparer.OrdinalIgnoreCase), "decision label");
         AssertEqual(true, labels.Contains("ix/duplicate:clustered", StringComparer.OrdinalIgnoreCase), "duplicate label");
+        AssertEqual(true, labels.Contains("ix/pr-watch:policy-review-suggested", StringComparer.OrdinalIgnoreCase), "pr-watch governance label");
+    }
+
+    private static void TestProjectSyncGovernanceContextPrefersWeeklyTrackerAndParsesSignal() {
+        const string issuesJson = """
+[
+  {
+    "html_url": "https://github.com/EvotecIT/IntelligenceX/issues/201",
+    "body": "<!-- intelligencex:pr-watch-rollup-tracker:schedule -->\n- Governance: no active policy-review suggestions"
+  },
+  {
+    "html_url": "https://github.com/EvotecIT/IntelligenceX/issues/202",
+    "body": "<!-- intelligencex:pr-watch-rollup-tracker:weekly-governance -->\n- Governance: retry-policy-review-suggested=yes; suggested policy `non-actionable-only`; confidence high; streak 3; profile operational_or_unknown"
+  }
+]
+""";
+
+        using var issuesDoc = System.Text.Json.JsonDocument.Parse(issuesJson);
+        var context = IntelligenceX.Cli.Todo.ProjectSyncRunner.SelectPrWatchGovernanceContextFromIssueList(issuesDoc.RootElement);
+
+        AssertEqual(true, context is not null, "weekly governance context found");
+        AssertEqual("weekly-governance", context!.Source, "weekly tracker preferred");
+        AssertEqual(true, context.RetryPolicyReviewSuggested, "signal parsed from governance line");
+        AssertContainsText(context.SummaryLine, "retry-policy-review-suggested=yes", "summary line preserved");
+        AssertContainsText(context.TrackerIssueUrl, "/issues/202", "weekly tracker url preserved");
+    }
+
+    private static void TestProjectSyncGovernanceContextFallsBackToScheduleTracker() {
+        const string issuesJson = """
+[
+  {
+    "html_url": "https://github.com/EvotecIT/IntelligenceX/issues/301",
+    "body": "<!-- intelligencex:pr-watch-rollup-tracker:schedule -->\n- Governance: no active policy-review suggestions"
+  }
+]
+""";
+
+        using var issuesDoc = System.Text.Json.JsonDocument.Parse(issuesJson);
+        var context = IntelligenceX.Cli.Todo.ProjectSyncRunner.SelectPrWatchGovernanceContextFromIssueList(issuesDoc.RootElement);
+
+        AssertEqual(true, context is not null, "schedule governance context found");
+        AssertEqual("schedule", context!.Source, "schedule tracker used as fallback");
+        AssertEqual(false, context.RetryPolicyReviewSuggested, "inactive governance signal stays false");
+        AssertEqual("no active policy-review suggestions", context.SummaryLine, "summary line normalized");
+    }
+
+    private static void TestProjectSyncBuildPrWatchGovernanceFieldValuesUseSuggestedSignal() {
+        var entry = new IntelligenceX.Cli.Todo.ProjectSyncRunner.ProjectSyncEntry(
+            Number: 55,
+            Url: "https://github.com/EvotecIT/IntelligenceX/pull/55",
+            Kind: "pull_request",
+            TriageScore: 84.1,
+            DuplicateCluster: null,
+            CanonicalItem: null,
+            Category: "maintenance",
+            Tags: Array.Empty<string>(),
+            MatchedIssueUrl: null,
+            MatchedIssueConfidence: null,
+            VisionFit: null,
+            VisionConfidence: null,
+            PrWatchGovernanceSuggested: true,
+            PrWatchGovernanceSummary: "retry-policy-review-suggested=yes; suggested policy `non-actionable-only`; confidence high",
+            PrWatchGovernanceSource: "weekly-governance"
+        );
+
+        var signal = IntelligenceX.Cli.Todo.ProjectSyncRunner.BuildPrWatchGovernanceSignalFieldValue(entry);
+        var summary = IntelligenceX.Cli.Todo.ProjectSyncRunner.BuildPrWatchGovernanceSummaryFieldValue(entry);
+
+        AssertEqual("policy-review-suggested", signal, "governance signal field value");
+        AssertContainsText(summary, "[weekly-governance]", "summary includes source prefix");
+        AssertContainsText(summary, "retry-policy-review-suggested=yes", "summary includes governance payload");
+    }
+
+    private static void TestProjectSyncBuildPrWatchGovernanceFieldValuesClearWhenInactive() {
+        var entry = new IntelligenceX.Cli.Todo.ProjectSyncRunner.ProjectSyncEntry(
+            Number: 56,
+            Url: "https://github.com/EvotecIT/IntelligenceX/issues/56",
+            Kind: "issue",
+            TriageScore: 61.0,
+            DuplicateCluster: null,
+            CanonicalItem: null,
+            Category: "maintenance",
+            Tags: Array.Empty<string>(),
+            MatchedIssueUrl: null,
+            MatchedIssueConfidence: null,
+            VisionFit: null,
+            VisionConfidence: null,
+            PrWatchGovernanceSuggested: false,
+            PrWatchGovernanceSummary: "retry-policy-review-suggested=yes",
+            PrWatchGovernanceSource: "weekly-governance"
+        );
+
+        AssertEqual(string.Empty, IntelligenceX.Cli.Todo.ProjectSyncRunner.BuildPrWatchGovernanceSignalFieldValue(entry), "inactive governance signal clears field");
+        AssertEqual(string.Empty, IntelligenceX.Cli.Todo.ProjectSyncRunner.BuildPrWatchGovernanceSummaryFieldValue(entry), "inactive governance summary clears field");
     }
 
     private static void TestProjectSyncBuildLabelsNormalizesDynamicCategoryAndTags() {

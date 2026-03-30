@@ -114,6 +114,17 @@ The project-sync workflow template runs `issue-review` in proposal mode before s
 - `artifacts/triage/ix-issue-review.json`
 - `artifacts/triage/ix-issue-review.md`
 - `artifacts/triage/ix-project-view-apply.md`
+- a control-issue dashboard comment that can also surface the open `pr-watch` governance tracker status when weekly or daily tracker issues exist
+
+The shared triage control dashboard now checks for open `pr-watch` tracker issues with source markers `weekly-governance` first and `schedule` second. When found, it links the tracker issue and copies the compact `Governance:` status line into the dashboard so maintainers can see retry-policy guidance without leaving the control issue.
+
+If you want that same live governance signal to show up directly on synced PR items, `triage-project-sync.yml` can also opt into a managed PR label path. Manual runs expose `apply_pr_watch_governance_labels`, and scheduled runs can read repo variable `IX_TRIAGE_APPLY_PR_WATCH_GOVERNANCE_LABELS`. Both stay off by default.
+
+For teams that prefer project-board sorting over labels, the same workflow can also opt into project fields `PR Governance Signal` and `PR Governance Summary`. Manual runs expose `apply_pr_watch_governance_fields`, and scheduled runs can read repo variable `IX_TRIAGE_APPLY_PR_WATCH_GOVERNANCE_FIELDS`. This is independent from the label toggle and also stays off by default.
+
+If those fields are enabled and teams want a dedicated board lane for them, the workflow can also opt into the optional `Governance Review` view profile. Manual runs expose `include_pr_watch_governance_views`, and scheduled runs can read repo variable `IX_TRIAGE_INCLUDE_PR_WATCH_GOVERNANCE_VIEWS`. The bootstrap CLI can also pass this profile through to `project-init` with `--include-pr-watch-governance-views`.
+
+Generated `ix-project-config.json` files now also carry a machine-readable `features.prWatchGovernance` block. The view-assist commands use that intent as a default when resolving optional governance view coverage from config, and `todo project-sync` now uses the same config intent for governance label/field defaults when a config file is present. One-off runs can still force either path off with `--no-apply-pr-watch-governance-labels` or `--no-apply-pr-watch-governance-fields`.
 
 Recommended rollout:
 

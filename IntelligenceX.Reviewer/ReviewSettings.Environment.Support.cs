@@ -324,6 +324,102 @@ internal sealed partial class ReviewSettings {
         }
     }
 
+    private static void ApplyEnvironmentCiContextSettings(ReviewSettings settings) {
+        var enabled = GetInput("ci_context_enabled", "REVIEW_CI_CONTEXT_ENABLED");
+        if (!string.IsNullOrWhiteSpace(enabled)) {
+            settings.CiContext.Enabled = ParseBoolean(enabled, settings.CiContext.Enabled);
+        }
+
+        var includeCheckSummary = GetInput(
+            "ci_context_include_check_summary",
+            "REVIEW_CI_CONTEXT_INCLUDE_CHECK_SUMMARY");
+        if (!string.IsNullOrWhiteSpace(includeCheckSummary)) {
+            settings.CiContext.IncludeCheckSummary =
+                ParseBoolean(includeCheckSummary, settings.CiContext.IncludeCheckSummary);
+        }
+
+        var includeFailedRuns = GetInput(
+            "ci_context_include_failed_runs",
+            "REVIEW_CI_CONTEXT_INCLUDE_FAILED_RUNS");
+        if (!string.IsNullOrWhiteSpace(includeFailedRuns)) {
+            settings.CiContext.IncludeFailedRuns =
+                ParseBoolean(includeFailedRuns, settings.CiContext.IncludeFailedRuns);
+        }
+
+        var includeFailureSnippets = GetInput(
+            "ci_context_include_failure_snippets",
+            "REVIEW_CI_CONTEXT_INCLUDE_FAILURE_SNIPPETS");
+        if (!string.IsNullOrWhiteSpace(includeFailureSnippets)) {
+            settings.CiContext.IncludeFailureSnippets =
+                NormalizeCiContextFailureSnippets(includeFailureSnippets, settings.CiContext.IncludeFailureSnippets);
+        }
+
+        var maxFailedRuns = GetInput("ci_context_max_failed_runs", "REVIEW_CI_CONTEXT_MAX_FAILED_RUNS");
+        if (!string.IsNullOrWhiteSpace(maxFailedRuns)) {
+            settings.CiContext.MaxFailedRuns = ParseNonNegativeInt(maxFailedRuns, settings.CiContext.MaxFailedRuns);
+        }
+
+        var maxSnippetCharsPerRun = GetInput(
+            "ci_context_max_snippet_chars_per_run",
+            "REVIEW_CI_CONTEXT_MAX_SNIPPET_CHARS_PER_RUN");
+        if (!string.IsNullOrWhiteSpace(maxSnippetCharsPerRun)) {
+            settings.CiContext.MaxSnippetCharsPerRun =
+                ParseNonNegativeInt(maxSnippetCharsPerRun, settings.CiContext.MaxSnippetCharsPerRun);
+        }
+
+        var classifyInfraFailures = GetInput(
+            "ci_context_classify_infra_failures",
+            "REVIEW_CI_CONTEXT_CLASSIFY_INFRA_FAILURES");
+        if (!string.IsNullOrWhiteSpace(classifyInfraFailures)) {
+            settings.CiContext.ClassifyInfraFailures =
+                ParseBoolean(classifyInfraFailures, settings.CiContext.ClassifyInfraFailures);
+        }
+    }
+
+    private static void ApplyEnvironmentSwarmSettings(ReviewSettings settings) {
+        var enabled = GetInput("swarm_enabled", "REVIEW_SWARM_ENABLED");
+        if (!string.IsNullOrWhiteSpace(enabled)) {
+            settings.Swarm.Enabled = ParseBoolean(enabled, settings.Swarm.Enabled);
+        }
+
+        var shadowMode = GetInput("swarm_shadow_mode", "REVIEW_SWARM_SHADOW_MODE");
+        if (!string.IsNullOrWhiteSpace(shadowMode)) {
+            settings.Swarm.ShadowMode = ParseBoolean(shadowMode, settings.Swarm.ShadowMode);
+        }
+
+        var reviewers = GetInput("swarm_reviewers", "REVIEW_SWARM_REVIEWERS");
+        if (!string.IsNullOrWhiteSpace(reviewers)) {
+            settings.Swarm.Reviewers = NormalizeSwarmReviewers(ParseList(reviewers), settings.Swarm.Reviewers);
+        }
+
+        var maxParallel = GetInput("swarm_max_parallel", "REVIEW_SWARM_MAX_PARALLEL");
+        if (!string.IsNullOrWhiteSpace(maxParallel)) {
+            settings.Swarm.MaxParallel = Math.Max(1, ParsePositiveInt(maxParallel, settings.Swarm.MaxParallel));
+        }
+
+        var publishSubreviews = GetInput("swarm_publish_subreviews", "REVIEW_SWARM_PUBLISH_SUBREVIEWS");
+        if (!string.IsNullOrWhiteSpace(publishSubreviews)) {
+            settings.Swarm.PublishSubreviews =
+                ParseBoolean(publishSubreviews, settings.Swarm.PublishSubreviews);
+        }
+
+        var aggregatorModel = GetInput("swarm_aggregator_model", "REVIEW_SWARM_AGGREGATOR_MODEL");
+        if (!string.IsNullOrWhiteSpace(aggregatorModel)) {
+            settings.Swarm.AggregatorModel = aggregatorModel;
+        }
+
+        var failOpenOnPartial = GetInput("swarm_fail_open_on_partial", "REVIEW_SWARM_FAIL_OPEN_ON_PARTIAL");
+        if (!string.IsNullOrWhiteSpace(failOpenOnPartial)) {
+            settings.Swarm.FailOpenOnPartial =
+                ParseBoolean(failOpenOnPartial, settings.Swarm.FailOpenOnPartial);
+        }
+
+        var metrics = GetInput("swarm_metrics", "REVIEW_SWARM_METRICS");
+        if (!string.IsNullOrWhiteSpace(metrics)) {
+            settings.Swarm.Metrics = ParseBoolean(metrics, settings.Swarm.Metrics);
+        }
+    }
+
     private static void ApplyEnvironmentRetryAndDiagnosticsSettings(ReviewSettings settings) {
         var waitSeconds = GetInput("wait_seconds", "REVIEW_WAIT_SECONDS");
         if (!string.IsNullOrWhiteSpace(waitSeconds)) {

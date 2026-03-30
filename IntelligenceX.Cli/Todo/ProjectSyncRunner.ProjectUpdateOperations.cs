@@ -13,9 +13,10 @@ internal static partial class ProjectSyncRunner {
     private static async Task<IReadOnlyDictionary<string, ProjectV2Client.ProjectField>> EnsureFieldsAsync(
         ProjectV2Client client,
         string owner,
-        int projectNumber) {
+        int projectNumber,
+        bool includePrWatchGovernanceFields) {
         var fields = await client.GetProjectFieldsByNameAsync(owner, projectNumber).ConfigureAwait(false);
-        foreach (var field in ProjectFieldCatalog.DefaultFields) {
+        foreach (var field in ProjectFieldCatalog.BuildEnsureFieldCatalog(includePrWatchGovernanceFields)) {
             if (fields.ContainsKey(field.Name)) {
                 continue;
             }
@@ -49,7 +50,8 @@ internal static partial class ProjectSyncRunner {
         string projectId,
         string itemId,
         IReadOnlyDictionary<string, ProjectV2Client.ProjectField> fields,
-        ProjectSyncEntry entry) {
+        ProjectSyncEntry entry,
+        bool applyPrWatchGovernanceFields) {
         var updated = 0;
         var isPullRequest = entry.Kind.Equals("pull_request", StringComparison.OrdinalIgnoreCase);
         var isIssue = entry.Kind.Equals("issue", StringComparison.OrdinalIgnoreCase);
@@ -179,6 +181,30 @@ internal static partial class ProjectSyncRunner {
                 await client.SetSingleSelectFieldAsync(projectId, itemId, pullRequestMergeConflictRiskField.Id, optionId).ConfigureAwait(false);
             } else {
                 await client.ClearFieldAsync(projectId, itemId, pullRequestMergeConflictRiskField.Id).ConfigureAwait(false);
+            }
+            updated++;
+        }
+
+        if (applyPrWatchGovernanceFields &&
+            fields.TryGetValue("PR Governance Signal", out var prGovernanceSignalField)) {
+            var governanceSignal = BuildPrWatchGovernanceSignalFieldValue(entry);
+            if (isPullRequest &&
+                !string.IsNullOrWhiteSpace(governanceSignal) &&
+                TryResolveOptionId(prGovernanceSignalField, governanceSignal, out var optionId)) {
+                await client.SetSingleSelectFieldAsync(projectId, itemId, prGovernanceSignalField.Id, optionId).ConfigureAwait(false);
+            } else {
+                await client.ClearFieldAsync(projectId, itemId, prGovernanceSignalField.Id).ConfigureAwait(false);
+            }
+            updated++;
+        }
+
+        if (applyPrWatchGovernanceFields &&
+            fields.TryGetValue("PR Governance Summary", out var prGovernanceSummaryField)) {
+            var governanceSummary = BuildPrWatchGovernanceSummaryFieldValue(entry);
+            if (isPullRequest && !string.IsNullOrWhiteSpace(governanceSummary)) {
+                await client.SetTextFieldAsync(projectId, itemId, prGovernanceSummaryField.Id, governanceSummary).ConfigureAwait(false);
+            } else {
+                await client.ClearFieldAsync(projectId, itemId, prGovernanceSummaryField.Id).ConfigureAwait(false);
             }
             updated++;
         }

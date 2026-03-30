@@ -189,6 +189,42 @@ internal sealed partial class ReviewSettings {
         };
     }
 
+    internal static string NormalizeCiContextFailureSnippets(string? value, string fallback) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            return fallback;
+        }
+        var normalized = value.Trim().ToLowerInvariant();
+        return normalized switch {
+            "off" or "false" or "none" => "off",
+            "auto" or "smart" => "auto",
+            "always" or "on" or "true" => "always",
+            _ => fallback
+        };
+    }
+
+    internal static IReadOnlyList<string> NormalizeSwarmReviewers(IEnumerable<string>? values, IReadOnlyList<string>? fallback = null) {
+        if (values is null) {
+            return fallback ?? Array.Empty<string>();
+        }
+
+        var list = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var value in values) {
+            if (string.IsNullOrWhiteSpace(value)) {
+                continue;
+            }
+            var normalized = value.Trim().ToLowerInvariant();
+            if (normalized.Length == 0) {
+                continue;
+            }
+            if (seen.Add(normalized)) {
+                list.Add(normalized);
+            }
+        }
+
+        return list.Count == 0 ? fallback ?? Array.Empty<string>() : list;
+    }
+
     private static CopilotTransportKind ParseCopilotTransport(string? value, CopilotTransportKind fallback) {
         if (string.IsNullOrWhiteSpace(value)) {
             return fallback;

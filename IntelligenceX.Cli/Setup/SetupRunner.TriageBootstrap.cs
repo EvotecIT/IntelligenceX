@@ -305,8 +305,9 @@ internal static partial class SetupRunner {
                 projectNumber,
                 project.Url,
                 views,
-                directCreateSupported,
-                DateTimeOffset.UtcNow);
+                includePrWatchGovernanceViews: false,
+                directCreateSupported: directCreateSupported,
+                generatedAtUtc: DateTimeOffset.UtcNow);
 
             var issueNumber = await github.CreateIssueAsync(owner, repo, DefaultProjectViewApplyIssueTitle, markdown)
                 .ConfigureAwait(false);

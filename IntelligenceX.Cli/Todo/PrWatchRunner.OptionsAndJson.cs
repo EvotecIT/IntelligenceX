@@ -126,6 +126,14 @@ internal static partial class PrWatchRunner {
                         options.ShowHelp = true;
                     }
                     break;
+                case "--retry-failure-policy":
+                    if (i + 1 < args.Length) {
+                        options.RetryFailurePolicy = NormalizeRetryFailurePolicy(args[++i]);
+                    } else {
+                        options.ParseFailed = true;
+                        options.ShowHelp = true;
+                    }
+                    break;
                 case "--state-file":
                     if (i + 1 < args.Length) {
                         options.StateFilePath = args[++i];
@@ -254,6 +262,7 @@ internal static partial class PrWatchRunner {
         Console.WriteLine("  --poll-seconds <n>          Base poll interval in watch mode (default: 60)");
         Console.WriteLine("  --max-flaky-retries <n>     Retry budget for recommendation classification (default: 3)");
         Console.WriteLine("  --retry-cooldown-minutes <n> Suppress repeated retry recommendations during cooldown (default: 15)");
+        Console.WriteLine("  --retry-failure-policy <any|non-actionable-only> Retry suggestion policy (default: any)");
         Console.WriteLine("  --state-file <path>         Optional watcher state file path");
         Console.WriteLine("  --approved-bot <login>      Additional approved bot login (repeatable)");
         Console.WriteLine("  --apply-retry               Execute retry_failed_checks action if eligible (once mode only)");

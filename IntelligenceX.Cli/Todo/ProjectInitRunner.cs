@@ -26,6 +26,7 @@ internal static class ProjectInitRunner {
         public bool LinkRepo { get; set; } = true;
         public bool EnsureLabels { get; set; } = true;
         public bool EnsureDefaultViews { get; set; } = true;
+        public bool IncludePrWatchGovernanceViews { get; set; }
         public int? ViewTemplateProjectNumber { get; set; }
         public string? ViewTemplateOwner { get; set; }
         public string OutputPath { get; set; } = Path.Combine("artifacts", "triage", "ix-project-config.json");
@@ -115,7 +116,7 @@ internal static class ProjectInitRunner {
 
         IReadOnlyDictionary<string, ProjectV2Client.ProjectField> fields;
         try {
-            fields = await EnsureFieldsAsync(client, owner, project.Number).ConfigureAwait(false);
+            fields = await EnsureFieldsAsync(client, owner, project.Number, options.IncludePrWatchGovernanceViews).ConfigureAwait(false);
         } catch (Exception ex) {
             Console.Error.WriteLine(ex.Message);
             return 1;
@@ -154,13 +155,14 @@ internal static class ProjectInitRunner {
         }
 
         var missingDefaultViews = options.EnsureDefaultViews
-            ? ProjectViewCatalog.FindMissingDefaultViews(views)
+            ? ProjectViewCatalog.FindMissingRecommendedViews(views, options.IncludePrWatchGovernanceViews)
             : Array.Empty<ProjectViewDefinition>();
-        var defaultViewCoverage = ProjectViewCatalog.DefaultViews.Count - missingDefaultViews.Count;
+        var recommendedViewCount = ProjectViewCatalog.BuildRecommendedViews(options.IncludePrWatchGovernanceViews).Count;
+        var defaultViewCoverage = recommendedViewCount - missingDefaultViews.Count;
 
         if (options.EnsureDefaultViews && missingDefaultViews.Count > 0) {
             Console.Error.WriteLine(
-                $"Warning: missing recommended default views ({missingDefaultViews.Count}/{ProjectViewCatalog.DefaultViews.Count}): " +
+                $"Warning: missing recommended default views ({missingDefaultViews.Count}/{recommendedViewCount}): " +
                 string.Join(", ", missingDefaultViews.Select(view => view.Name)));
             if (!options.ViewTemplateProjectNumber.HasValue) {
                 Console.Error.WriteLine(
@@ -176,6 +178,7 @@ internal static class ProjectInitRunner {
             views,
             options.EnsureLabels,
             options.EnsureDefaultViews,
+            options.IncludePrWatchGovernanceViews,
             options.ViewTemplateProjectNumber,
             options.ViewTemplateOwner,
             copiedFromTemplate);
@@ -183,7 +186,7 @@ internal static class ProjectInitRunner {
 
         Console.WriteLine($"Project ready: #{project.Number} ({project.Url})");
         Console.WriteLine($"Fields ensured: {fields.Count}");
-        Console.WriteLine($"Views discovered: {views.Count} (default coverage: {defaultViewCoverage}/{ProjectViewCatalog.DefaultViews.Count})");
+        Console.WriteLine($"Views discovered: {views.Count} (default coverage: {defaultViewCoverage}/{recommendedViewCount})");
         Console.WriteLine($"Project config written: {options.OutputPath}");
         return 0;
     }
@@ -251,6 +254,9 @@ internal static class ProjectInitRunner {
                 case "--no-ensure-default-views":
                     options.EnsureDefaultViews = false;
                     break;
+                case "--include-pr-watch-governance-views":
+                    options.IncludePrWatchGovernanceViews = true;
+                    break;
                 case "--view-template-project":
                     if (i + 1 < args.Length &&
                         int.TryParse(args[++i], NumberStyles.Integer, CultureInfo.InvariantCulture, out var templateNumber) &&
@@ -299,6 +305,7 @@ internal static class ProjectInitRunner {
         Console.WriteLine("  --no-ensure-labels       Skip repo label setup");
         Console.WriteLine("  --ensure-default-views   Validate default IX view set presence (default)");
         Console.WriteLine("  --no-ensure-default-views Skip default view coverage checks");
+        Console.WriteLine("  --include-pr-watch-governance-views  Add optional governance fields + recommended governance review view profile");
         Console.WriteLine("  --view-template-project <n> Copy from an existing template project to preserve saved views");
         Console.WriteLine("  --view-template-owner <login> Owner of --view-template-project (defaults to --owner/repo owner)");
         Console.WriteLine("  --out <path>             Write project config JSON (default: artifacts/triage/ix-project-config.json)");
@@ -317,9 +324,10 @@ internal static class ProjectInitRunner {
     private static async Task<IReadOnlyDictionary<string, ProjectV2Client.ProjectField>> EnsureFieldsAsync(
         ProjectV2Client client,
         string owner,
-        int projectNumber) {
+        int projectNumber,
+        bool includePrWatchGovernanceViews) {
         var fields = await client.GetProjectFieldsByNameAsync(owner, projectNumber).ConfigureAwait(false);
-        foreach (var field in ProjectFieldCatalog.DefaultFields) {
+        foreach (var field in ProjectFieldCatalog.BuildEnsureFieldCatalog(includePrWatchGovernanceViews)) {
             if (fields.ContainsKey(field.Name)) {
                 continue;
             }
@@ -357,6 +365,7 @@ internal static class ProjectInitRunner {
         IReadOnlyDictionary<string, ProjectV2Client.ProjectView> views,
         bool labelsEnsured,
         bool defaultViewsEnsured,
+        bool includePrWatchGovernanceViews,
         int? viewTemplateProjectNumber,
         string? viewTemplateOwner,
         bool copiedFromTemplate) {
@@ -377,8 +386,9 @@ internal static class ProjectInitRunner {
             .ToList();
 
         var defaultMissingViews = defaultViewsEnsured
-            ? ProjectViewCatalog.FindMissingDefaultViews(views).Select(view => view.Name).ToList()
+            ? ProjectViewCatalog.FindMissingRecommendedViews(views, includePrWatchGovernanceViews).Select(view => view.Name).ToList()
             : new List<string>();
+        var recommendedViews = ProjectViewCatalog.BuildRecommendedViews(includePrWatchGovernanceViews);
         var viewsJson = views.Values
             .OrderBy(view => view.Name, StringComparer.OrdinalIgnoreCase)
             .Select(view => new {
@@ -394,6 +404,13 @@ internal static class ProjectInitRunner {
             generatedAtUtc = DateTimeOffset.UtcNow.UtcDateTime.ToString("o", CultureInfo.InvariantCulture),
             owner,
             repo,
+            features = new {
+                prWatchGovernance = new {
+                    labels = false,
+                    fields = includePrWatchGovernanceViews,
+                    views = includePrWatchGovernanceViews
+                }
+            },
             project = new {
                 id = project.Id,
                 number = project.Number,
@@ -417,17 +434,18 @@ internal static class ProjectInitRunner {
             },
             views = new {
                 ensured = defaultViewsEnsured,
+                includePrWatchGovernanceViews,
                 copiedFromTemplate,
                 templateProjectNumber = viewTemplateProjectNumber,
                 templateOwner = viewTemplateOwner,
                 defaultCoverage = new {
-                    required = ProjectViewCatalog.DefaultViews.Count,
+                    required = recommendedViews.Count,
                     present = defaultViewsEnsured
-                        ? ProjectViewCatalog.DefaultViews.Count - defaultMissingViews.Count
+                        ? recommendedViews.Count - defaultMissingViews.Count
                         : 0,
                     missing = defaultMissingViews
                 },
-                recommended = ProjectViewCatalog.DefaultViews
+                recommended = recommendedViews
                     .Select(view => new {
                         name = view.Name,
                         layout = view.Layout,

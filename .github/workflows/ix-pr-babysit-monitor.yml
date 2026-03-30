@@ -29,6 +29,10 @@ on:
         description: "Retry budget classification ceiling for pr-watch snapshots"
         required: false
         default: "3"
+      retry_failure_policy:
+        description: "Retry planning mode: any or non-actionable-only"
+        required: false
+        default: "any"
       include_drafts:
         description: "Include draft PRs in scan mode"
         required: false
@@ -88,6 +92,7 @@ jobs:
           --pr "${{ github.event.inputs.pr }}"
           --max-prs "${{ github.event.inputs.max_prs }}"
           --max-flaky-retries "${{ github.event.inputs.max_flaky_retries }}"
+          --retry-failure-policy "${{ github.event.inputs.retry_failure_policy }}"
           --include-drafts "${{ github.event.inputs.include_drafts }}"
           --approved-bots "${{ github.event.inputs.approved_bots }}"
           --run-link "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

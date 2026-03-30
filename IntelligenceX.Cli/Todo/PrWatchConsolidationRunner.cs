@@ -16,6 +16,12 @@ internal static partial class PrWatchConsolidationRunner {
     private const string DefaultRepo = "EvotecIT/IntelligenceX";
     private const string DefaultSource = "manual_cli";
     private const string ConfirmSchema = "intelligencex.pr-watch.snapshot.v1";
+    private const string GovernanceRetryPolicyTrackerLabel = "ix/retry-policy-review-suggested";
+    private const string FailureProfileNone = "none";
+    private const string FailureProfileBalanced = "balanced";
+    private const string FailureProfileOperationalOrUnknown = "operational_or_unknown";
+    private const string FailureProfileActionableOrMixed = "actionable_or_mixed";
+    private const int RetryPolicyGuidanceMinStreak = 2;
     private static readonly SemaphoreSlim ConsoleCaptureGate = new(1, 1);
     private static readonly JsonSerializerOptions CompactJson = new() { WriteIndented = false };
 
@@ -23,6 +29,7 @@ internal static partial class PrWatchConsolidationRunner {
         public string Repo { get; set; } = DefaultRepo;
         public int MaxPrs { get; set; } = 200;
         public int MaxFlakyRetries { get; set; } = 3;
+        public string RetryFailurePolicy { get; set; } = PrWatchRunner.NormalizeRetryFailurePolicy(null);
         public int StaleDays { get; set; } = 7;
         public bool IncludeDrafts { get; set; }
         public string Source { get; set; } = ResolveDefaultSource();
@@ -34,6 +41,7 @@ internal static partial class PrWatchConsolidationRunner {
         public string MetricsHistoryPath { get; set; } = Path.Combine("artifacts", "pr-watch", "ix-pr-watch-nightly-metrics-history.json");
         public string TrackerPath { get; set; } = Path.Combine("artifacts", "pr-watch", "ix-pr-watch-nightly-tracker.md");
         public bool PublishTrackingIssue { get; set; } = true;
+        public bool ApplyGovernanceSignalLabel { get; set; }
         public string TrackerIssueTitle { get; set; } = string.Empty;
         public HashSet<string> TrackerIssueLabels { get; } = new(StringComparer.OrdinalIgnoreCase);
         public HashSet<string> ApprovedBots { get; } = new(StringComparer.OrdinalIgnoreCase) {
@@ -56,6 +64,11 @@ internal static partial class PrWatchConsolidationRunner {
         int PassedCount,
         int FailedCount,
         int PendingCount,
+        int FailedRunCount,
+        int FailedRunActionableCount,
+        int FailedRunOperationalCount,
+        int FailedRunMixedCount,
+        int FailedRunUnknownCount,
         int? DaysSinceUpdate,
         List<string> Actions
     );
@@ -65,6 +78,7 @@ internal static partial class PrWatchConsolidationRunner {
         int StaleInfraBlocked,
         int ReviewRequired,
         int RetryBudgetExhausted,
+        bool RetryPolicyChangeRecommended,
         double StaleOpenPrsRatioPct,
         double ReviewRequiredRatioPct,
         double RetryBudgetExhaustedRatioPct,
@@ -75,6 +89,7 @@ internal static partial class PrWatchConsolidationRunner {
             StaleInfraBlocked > 0 ||
             ReviewRequired > 0 ||
             RetryBudgetExhausted > 0 ||
+            RetryPolicyChangeRecommended ||
             StaleOpenPrsRatioPct > 0 ||
             ReviewRequiredRatioPct > 0 ||
             RetryBudgetExhaustedRatioPct > 0 ||
@@ -110,6 +125,7 @@ internal static partial class PrWatchConsolidationRunner {
                         repo: options.Repo,
                         prSpec: meta.Number.ToString(CultureInfo.InvariantCulture),
                         maxFlakyRetries: options.MaxFlakyRetries,
+                        retryFailurePolicy: options.RetryFailurePolicy,
                         phase: "observe",
                         source: options.Source,
                         runLink: options.RunLink,
@@ -125,8 +141,9 @@ internal static partial class PrWatchConsolidationRunner {
             var rollup = BuildRollup(options, metas.Count, rows, failedTargets);
             WriteJson(options.RollupPath, rollup);
 
-            var previousMetrics = LoadPreviousMetrics(options.MetricsHistoryPath);
-            var metrics = BuildMetrics(options, rollup, rows, previousMetrics);
+            var metricsHistory = LoadMetricsHistory(options.MetricsHistoryPath);
+            var previousMetrics = metricsHistory.LastOrDefault() as JsonObject;
+            var metrics = BuildMetrics(options, rollup, rows, previousMetrics, metricsHistory);
             WriteJson(options.MetricsPath, metrics);
             UpdateMetricsHistory(options.MetricsHistoryPath, metrics);
 
@@ -157,6 +174,7 @@ internal static partial class PrWatchConsolidationRunner {
                 case "--repo": options.Repo = Next(args, ref i, arg); break;
                 case "--max-prs": options.MaxPrs = ParseInt(Next(args, ref i, arg), options.MaxPrs, arg, 1, 2000); break;
                 case "--max-flaky-retries": options.MaxFlakyRetries = ParseInt(Next(args, ref i, arg), options.MaxFlakyRetries, arg, 1, 50); break;
+                case "--retry-failure-policy": options.RetryFailurePolicy = PrWatchRunner.NormalizeRetryFailurePolicy(Next(args, ref i, arg)); break;
                 case "--stale-days": options.StaleDays = ParseInt(Next(args, ref i, arg), options.StaleDays, arg, 1, 3650); break;
                 case "--include-drafts": options.IncludeDrafts = ParseBool(Next(args, ref i, arg), options.IncludeDrafts, arg); break;
                 case "--approved-bot": options.ApprovedBots.Add(Next(args, ref i, arg)); break;
@@ -170,6 +188,7 @@ internal static partial class PrWatchConsolidationRunner {
                 case "--metrics-history-path": options.MetricsHistoryPath = Next(args, ref i, arg); break;
                 case "--tracker-path": options.TrackerPath = Next(args, ref i, arg); break;
                 case "--publish-tracking-issue": options.PublishTrackingIssue = ParseBool(Next(args, ref i, arg), options.PublishTrackingIssue, arg); break;
+                case "--apply-governance-signal-label": options.ApplyGovernanceSignalLabel = ParseBool(Next(args, ref i, arg), options.ApplyGovernanceSignalLabel, arg); break;
                 case "--tracker-issue-title": options.TrackerIssueTitle = Next(args, ref i, arg); break;
                 case "--tracker-issue-label": options.TrackerIssueLabels.Add(Next(args, ref i, arg)); break;
                 case "--tracker-issue-labels": AddCsv(options.TrackerIssueLabels, Next(args, ref i, arg)); break;
@@ -215,6 +234,7 @@ internal static partial class PrWatchConsolidationRunner {
         string repo,
         string prSpec,
         int maxFlakyRetries,
+        string retryFailurePolicy,
         string phase,
         string source,
         string? runLink,
@@ -226,6 +246,7 @@ internal static partial class PrWatchConsolidationRunner {
             "--repo", repo,
             "--pr", prSpec,
             "--max-flaky-retries", maxFlakyRetries.ToString(CultureInfo.InvariantCulture),
+            "--retry-failure-policy", PrWatchRunner.NormalizeRetryFailurePolicy(retryFailurePolicy),
             "--phase", phase,
             "--source", source,
             "--once"
@@ -287,6 +308,11 @@ internal static partial class PrWatchConsolidationRunner {
             .Select(static action => ReadString(action, "name"))
             .Where(static name => !string.IsNullOrWhiteSpace(name))
             .ToList();
+        var failedRunKinds = SummarizeFailureKinds(
+            (snapshot["failedRuns"] as JsonArray ?? new JsonArray())
+            .OfType<JsonObject>()
+            .Select(static run => ReadString(run, "failureKind")));
+        var failedRunCount = (snapshot["failedRuns"] as JsonArray ?? new JsonArray()).Count;
         int? daysSinceUpdate = null;
         if (updatedAt.HasValue) {
             daysSinceUpdate = (int)Math.Floor((DateTimeOffset.UtcNow - updatedAt.Value).TotalDays);
@@ -303,6 +329,11 @@ internal static partial class PrWatchConsolidationRunner {
             PassedCount: ReadInt(checks, "passedCount"),
             FailedCount: ReadInt(checks, "failedCount"),
             PendingCount: ReadInt(checks, "pendingCount"),
+            FailedRunCount: failedRunCount,
+            FailedRunActionableCount: ReadFailureKindCount(failedRunKinds, "actionable"),
+            FailedRunOperationalCount: ReadFailureKindCount(failedRunKinds, "operational"),
+            FailedRunMixedCount: ReadFailureKindCount(failedRunKinds, "mixed"),
+            FailedRunUnknownCount: ReadFailureKindCount(failedRunKinds, "unknown"),
             DaysSinceUpdate: daysSinceUpdate,
             Actions: actions);
     }
@@ -312,6 +343,7 @@ internal static partial class PrWatchConsolidationRunner {
         var reviewRequired = rows.Where(row => IsOpen(row) && IsReviewBlocking(row.ReviewDecision)).ToList();
         var retryBudgetExhausted = rows.Where(static row => string.Equals(row.StopReason, "retry_budget_exhausted", StringComparison.OrdinalIgnoreCase)).ToList();
         var noProgress = rows.Where(row => IsOpen(row) && (row.DaysSinceUpdate ?? -1) >= options.StaleDays && (row.Actions.Contains("idle_wait", StringComparer.OrdinalIgnoreCase) || string.Equals(row.StopReason, "retry_budget_exhausted", StringComparison.OrdinalIgnoreCase) || IsReviewBlocking(row.ReviewDecision))).ToList();
+        var totalFailedRuns = rows.Sum(static row => row.FailedRunCount);
 
         var noProgressBuckets = noProgress
             .GroupBy(row => $"{AgeClass(row.DaysSinceUpdate)}::{ProgressClass(row)}", StringComparer.OrdinalIgnoreCase)
@@ -326,11 +358,21 @@ internal static partial class PrWatchConsolidationRunner {
         return new JsonObject {
             ["schema"] = "intelligencex.pr-watch.nightly.v1",
             ["repo"] = options.Repo,
+            ["retryFailurePolicy"] = options.RetryFailurePolicy,
             ["generatedAtUtc"] = DateTimeOffset.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture),
             ["staleDaysThreshold"] = options.StaleDays,
             ["totalTargets"] = totalTargets,
             ["totalSnapshots"] = rows.Count,
             ["failedTargets"] = new JsonArray(failedTargets.OrderBy(static n => n).Select(static n => (JsonNode)n).ToArray()),
+            ["failedRuns"] = new JsonObject {
+                ["count"] = totalFailedRuns,
+                ["byKind"] = new JsonObject {
+                    ["actionable"] = rows.Sum(static row => row.FailedRunActionableCount),
+                    ["operational"] = rows.Sum(static row => row.FailedRunOperationalCount),
+                    ["mixed"] = rows.Sum(static row => row.FailedRunMixedCount),
+                    ["unknown"] = rows.Sum(static row => row.FailedRunUnknownCount)
+                }
+            },
             ["staleInfraBlocked"] = BuildPrArray(staleInfra),
             ["reviewRequired"] = BuildPrArray(reviewRequired),
             ["retryBudgetExhausted"] = BuildPrArray(retryBudgetExhausted),
@@ -355,6 +397,15 @@ internal static partial class PrWatchConsolidationRunner {
                     ["passedCount"] = row.PassedCount,
                     ["failedCount"] = row.FailedCount,
                     ["pendingCount"] = row.PendingCount
+                },
+                ["failedRuns"] = new JsonObject {
+                    ["count"] = row.FailedRunCount,
+                    ["byKind"] = new JsonObject {
+                        ["actionable"] = row.FailedRunActionableCount,
+                        ["operational"] = row.FailedRunOperationalCount,
+                        ["mixed"] = row.FailedRunMixedCount,
+                        ["unknown"] = row.FailedRunUnknownCount
+                    }
                 }
             }).ToArray();
         return new JsonArray(nodes);
@@ -365,7 +416,8 @@ internal static partial class PrWatchConsolidationRunner {
     private static string AgeClass(int? days) => !days.HasValue ? "unknown" : days >= 30 ? "30d_plus" : days >= 14 ? "14_29d" : days >= 7 ? "7_13d" : "under_7d";
     private static string ProgressClass(RowData row) => string.Equals(row.StopReason, "retry_budget_exhausted", StringComparison.OrdinalIgnoreCase) ? "retry_budget_exhausted" : IsReviewBlocking(row.ReviewDecision) ? "review_required" : row.Actions.Contains("idle_wait", StringComparer.OrdinalIgnoreCase) ? "idle_wait" : row.Actions.Contains("diagnose_ci_failure", StringComparer.OrdinalIgnoreCase) ? "ci_failure" : "other";
 
-    private static JsonObject BuildMetrics(Options options, JsonObject rollup, IReadOnlyList<RowData> rows, JsonObject? previousMetrics) {
+    private static JsonObject BuildMetrics(Options options, JsonObject rollup, IReadOnlyList<RowData> rows, JsonObject? previousMetrics,
+        JsonArray? metricsHistory = null) {
         var totalSnapshots = rows.Count;
         var staleOpenPrs = rows.Count(row => (row.DaysSinceUpdate ?? -1) >= options.StaleDays);
         var reviewRequiredPrs = rows.Count(row => IsReviewBlocking(row.ReviewDecision) && IsOpen(row));
@@ -382,6 +434,11 @@ internal static partial class PrWatchConsolidationRunner {
         var reviewRatio = Ratio(reviewRequiredPrs, totalSnapshots);
         var retryRatio = Ratio(retryBudgetExhaustedPrs, totalSnapshots);
         var noProgressRatio = Ratio(noProgressPrs, totalSnapshots);
+        var totalFailedRuns = rows.Sum(static row => row.FailedRunCount);
+        var actionableFailedRuns = rows.Sum(static row => row.FailedRunActionableCount);
+        var operationalFailedRuns = rows.Sum(static row => row.FailedRunOperationalCount);
+        var mixedFailedRuns = rows.Sum(static row => row.FailedRunMixedCount);
+        var unknownFailedRuns = rows.Sum(static row => row.FailedRunUnknownCount);
 
         var previousTotals = previousMetrics?["totals"] as JsonObject;
         var previousRatios = previousMetrics?["ratiosPct"] as JsonObject;
@@ -389,6 +446,10 @@ internal static partial class PrWatchConsolidationRunner {
         var previousReview = ReadIntNullable(previousTotals, "reviewRequiredPrs");
         var previousNoProgress = ReadIntNullable(previousTotals, "noProgressPrs");
         var previousStaleRatio = ReadDoubleNullable(previousRatios, "staleOpenPrs");
+        var retryPolicyGuidance = BuildRetryPolicyGuidance(options.RetryFailurePolicy, actionableFailedRuns, operationalFailedRuns,
+            mixedFailedRuns, unknownFailedRuns, metricsHistory);
+        var governanceSignals = BuildGovernanceSignals(retryPolicyGuidance);
+        var governanceSummary = BuildGovernanceSummary(governanceSignals);
 
         return new JsonObject {
             ["schema"] = "intelligencex.pr-watch.metrics.v1",
@@ -404,7 +465,8 @@ internal static partial class PrWatchConsolidationRunner {
                 ["staleOpenPrs"] = staleOpenPrs,
                 ["reviewRequiredPrs"] = reviewRequiredPrs,
                 ["retryBudgetExhaustedPrs"] = retryBudgetExhaustedPrs,
-                ["noProgressPrs"] = noProgressPrs
+                ["noProgressPrs"] = noProgressPrs,
+                ["failedWorkflowRuns"] = totalFailedRuns
             },
             ["ratiosPct"] = new JsonObject {
                 ["staleOpenPrs"] = staleRatio,
@@ -412,6 +474,18 @@ internal static partial class PrWatchConsolidationRunner {
                 ["retryBudgetExhaustedPrs"] = retryRatio,
                 ["noProgressPrs"] = noProgressRatio
             },
+            ["failedRuns"] = new JsonObject {
+                ["count"] = totalFailedRuns,
+                ["byKind"] = new JsonObject {
+                    ["actionable"] = actionableFailedRuns,
+                    ["operational"] = operationalFailedRuns,
+                    ["mixed"] = mixedFailedRuns,
+                    ["unknown"] = unknownFailedRuns
+                }
+            },
+            ["retryPolicyGuidance"] = retryPolicyGuidance,
+            ["governanceSignals"] = governanceSignals,
+            ["governanceSummary"] = governanceSummary,
             ["mediansDays"] = new JsonObject {
                 ["medianAllDaysSinceUpdate"] = Median(allDays),
                 ["medianNoProgressDaysSinceUpdate"] = Median(noProgressDays)
@@ -429,16 +503,15 @@ internal static partial class PrWatchConsolidationRunner {
         };
     }
 
-    private static JsonObject? LoadPreviousMetrics(string historyPath) {
+    private static JsonArray LoadMetricsHistory(string historyPath) {
         if (!File.Exists(historyPath)) {
-            return null;
+            return new JsonArray();
         }
 
         try {
-            var history = JsonNode.Parse(File.ReadAllText(historyPath)) as JsonArray;
-            return history?.LastOrDefault() as JsonObject;
+            return JsonNode.Parse(File.ReadAllText(historyPath)) as JsonArray ?? new JsonArray();
         } catch {
-            return null;
+            return new JsonArray();
         }
     }
 
@@ -463,6 +536,7 @@ internal static partial class PrWatchConsolidationRunner {
 
     private static string BuildTrackerBody(Options options, JsonObject rollup, JsonObject metrics) {
         var signals = ReadTrackerSignals(rollup, metrics);
+        var governanceSummary = metrics["governanceSummary"] as JsonObject;
         var builder = new StringBuilder();
         builder.AppendLine(TrackerMarker(options.Source));
         builder.AppendLine("# IX PR Babysit Rollup Tracker");
@@ -470,6 +544,8 @@ internal static partial class PrWatchConsolidationRunner {
         builder.AppendLine($"- Generated: {DateTimeOffset.UtcNow.ToString("yyyy-MM-dd HH:mm:ss 'UTC'", CultureInfo.InvariantCulture)}");
         builder.AppendLine($"- Repo: `{options.Repo}`");
         builder.AppendLine($"- Source: `{options.Source}`");
+        builder.AppendLine($"- Retry policy: `{ReadString(rollup, "retryFailurePolicy")}`");
+        builder.AppendLine($"- Governance: {FormatGovernanceSummary(governanceSummary)}");
         if (!string.IsNullOrWhiteSpace(options.RunLink)) {
             builder.AppendLine($"- Workflow run: {options.RunLink}");
         }
@@ -480,6 +556,21 @@ internal static partial class PrWatchConsolidationRunner {
         builder.AppendLine($"- Review-required ratio: {FormatRatio(signals.ReviewRequiredRatioPct)}%");
         builder.AppendLine($"- No-progress ratio: {FormatRatio(signals.NoProgressRatioPct)}%");
         builder.AppendLine();
+        builder.AppendLine("## CI failure evidence");
+        builder.AppendLine($"- Failed workflow runs: {ReadInt(rollup["failedRuns"] as JsonObject ?? new JsonObject(), "count")}");
+        builder.AppendLine($"- Actionable: {ReadFailedRunKindCount(rollup, "actionable")}");
+        builder.AppendLine($"- Operational: {ReadFailedRunKindCount(rollup, "operational")}");
+        builder.AppendLine($"- Mixed: {ReadFailedRunKindCount(rollup, "mixed")}");
+        builder.AppendLine($"- Unknown: {ReadFailedRunKindCount(rollup, "unknown")}");
+        builder.AppendLine($"- Guidance: {FormatRetryPolicyGuidance(metrics["retryPolicyGuidance"] as JsonObject)}");
+        if (signals.RetryPolicyChangeRecommended) {
+            builder.AppendLine();
+            builder.AppendLine("## Governance recommendation");
+            builder.AppendLine("- Stable nightly failure-profile trends suggest revisiting the retry policy.");
+            builder.AppendLine($"- Suggested policy: `{ReadRetryPolicySuggestedPolicy(metrics["retryPolicyGuidance"] as JsonObject)}`");
+            builder.AppendLine("- This is advisory only; workflow inputs remain unchanged until a maintainer opts in.");
+        }
+        builder.AppendLine();
         builder.AppendLine("## Buckets");
         builder.AppendLine($"- Stale infra blockers: {signals.StaleInfraBlocked}");
         builder.AppendLine($"- Stuck review-required: {signals.ReviewRequired}");
@@ -489,11 +580,14 @@ internal static partial class PrWatchConsolidationRunner {
 
     private static string BuildSummary(Options options, JsonObject rollup, JsonObject metrics, string trackerIssueUrl) {
         var signals = ReadTrackerSignals(rollup, metrics);
+        var governanceSummary = metrics["governanceSummary"] as JsonObject;
         var builder = new StringBuilder();
         builder.AppendLine("# IX PR Babysit Nightly Consolidation");
         builder.AppendLine();
         builder.AppendLine($"- Generated: {DateTimeOffset.UtcNow.ToString("yyyy-MM-dd HH:mm:ss 'UTC'", CultureInfo.InvariantCulture)}");
         builder.AppendLine($"- Repo: `{options.Repo}`");
+        builder.AppendLine($"- Retry policy: `{ReadString(rollup, "retryFailurePolicy")}`");
+        builder.AppendLine($"- Governance: {FormatGovernanceSummary(governanceSummary)}");
         if (!string.IsNullOrWhiteSpace(options.RunLink)) {
             builder.AppendLine($"- Workflow run: {options.RunLink}");
         }
@@ -502,6 +596,21 @@ internal static partial class PrWatchConsolidationRunner {
         builder.AppendLine($"- Targets scanned: {ReadInt(rollup, "totalTargets")}");
         builder.AppendLine($"- Snapshots captured: {ReadInt(rollup, "totalSnapshots")}");
         builder.AppendLine($"- Failed targets: {(rollup["failedTargets"] as JsonArray)?.Count ?? 0}");
+        builder.AppendLine($"- Failed workflow runs: {ReadInt(rollup["failedRuns"] as JsonObject ?? new JsonObject(), "count")}");
+        builder.AppendLine();
+        builder.AppendLine("## CI failure evidence");
+        builder.AppendLine($"- Actionable: {ReadFailedRunKindCount(rollup, "actionable")}");
+        builder.AppendLine($"- Operational: {ReadFailedRunKindCount(rollup, "operational")}");
+        builder.AppendLine($"- Mixed: {ReadFailedRunKindCount(rollup, "mixed")}");
+        builder.AppendLine($"- Unknown: {ReadFailedRunKindCount(rollup, "unknown")}");
+        builder.AppendLine($"- Guidance: {FormatRetryPolicyGuidance(metrics["retryPolicyGuidance"] as JsonObject)}");
+        if (signals.RetryPolicyChangeRecommended) {
+            builder.AppendLine();
+            builder.AppendLine("## Governance recommendation");
+            builder.AppendLine("- Stable nightly failure-profile trends suggest revisiting the retry policy.");
+            builder.AppendLine($"- Suggested policy: `{ReadRetryPolicySuggestedPolicy(metrics["retryPolicyGuidance"] as JsonObject)}`");
+            builder.AppendLine("- This is advisory only; workflow inputs remain unchanged until a maintainer opts in.");
+        }
         builder.AppendLine();
         builder.AppendLine("## Buckets");
         builder.AppendLine($"- Stale infra blockers: {signals.StaleInfraBlocked}");
@@ -519,6 +628,245 @@ internal static partial class PrWatchConsolidationRunner {
             builder.AppendLine($"- {trackerIssueUrl}");
         }
         return builder.ToString();
+    }
+
+    internal static JsonObject BuildRollupForTests(string repo, int staleDays, string retryFailurePolicy,
+        IReadOnlyList<JsonObject> snapshots, IReadOnlyList<int>? failedTargets = null) {
+        var options = new Options {
+            Repo = repo,
+            StaleDays = staleDays,
+            RetryFailurePolicy = PrWatchRunner.NormalizeRetryFailurePolicy(retryFailurePolicy)
+        };
+        var rows = snapshots.Select(static snapshot => BuildRow(snapshot, updatedAt: null)).ToList();
+        return BuildRollup(options, snapshots.Count, rows, failedTargets ?? Array.Empty<int>());
+    }
+
+    internal static JsonObject BuildMetricsForTests(string repo, int staleDays, string retryFailurePolicy,
+        IReadOnlyList<JsonObject> snapshots, JsonObject? previousMetrics = null, JsonArray? metricsHistory = null) {
+        var options = new Options {
+            Repo = repo,
+            StaleDays = staleDays,
+            RetryFailurePolicy = PrWatchRunner.NormalizeRetryFailurePolicy(retryFailurePolicy)
+        };
+        var rows = snapshots.Select(static snapshot => BuildRow(snapshot, updatedAt: null)).ToList();
+        var rollup = BuildRollup(options, snapshots.Count, rows, Array.Empty<int>());
+        return BuildMetrics(options, rollup, rows, previousMetrics, metricsHistory);
+    }
+
+    internal static string BuildSummaryForTests(string repo, int staleDays, string retryFailurePolicy, JsonObject rollup,
+        JsonObject metrics) {
+        var options = new Options {
+            Repo = repo,
+            StaleDays = staleDays,
+            RetryFailurePolicy = PrWatchRunner.NormalizeRetryFailurePolicy(retryFailurePolicy)
+        };
+        return BuildSummary(options, rollup, metrics, trackerIssueUrl: string.Empty);
+    }
+
+    internal static string BuildTrackerBodyForTests(string repo, int staleDays, string retryFailurePolicy, JsonObject rollup,
+        JsonObject metrics) {
+        var options = new Options {
+            Repo = repo,
+            StaleDays = staleDays,
+            RetryFailurePolicy = PrWatchRunner.NormalizeRetryFailurePolicy(retryFailurePolicy),
+            Source = "schedule"
+        };
+        return BuildTrackerBody(options, rollup, metrics);
+    }
+
+    private static Dictionary<string, int> SummarizeFailureKinds(IEnumerable<string> kinds) {
+        var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase) {
+            ["actionable"] = 0,
+            ["operational"] = 0,
+            ["mixed"] = 0,
+            ["unknown"] = 0
+        };
+
+        foreach (var kind in kinds) {
+            var normalized = PrWatchRunner.NormalizeFailureKind(kind);
+            counts[normalized] = counts.TryGetValue(normalized, out var existing) ? existing + 1 : 1;
+        }
+
+        return counts;
+    }
+
+    private static int ReadFailureKindCount(IReadOnlyDictionary<string, int> counts, string kind) =>
+        counts.TryGetValue(kind, out var value) ? value : 0;
+
+    private static int ReadFailedRunKindCount(JsonObject rollup, string kind) {
+        var failedRuns = rollup["failedRuns"] as JsonObject;
+        var byKind = failedRuns?["byKind"] as JsonObject;
+        return ReadInt(byKind ?? new JsonObject(), kind);
+    }
+
+    private static JsonObject BuildRetryPolicyGuidance(string currentPolicy, int actionable, int operational, int mixed, int unknown,
+        JsonArray? metricsHistory) {
+        var normalizedCurrentPolicy = PrWatchRunner.NormalizeRetryFailurePolicy(currentPolicy);
+        var currentProfile = ClassifyFailureProfile(actionable, operational, mixed, unknown);
+        var streak = CountFailureProfileStreak(currentProfile, actionable, operational, mixed, unknown, metricsHistory);
+        var confidence = streak >= 3 ? "high" : streak >= RetryPolicyGuidanceMinStreak ? "medium" : "low";
+        var suggestedPolicy = normalizedCurrentPolicy;
+        var shouldConsiderChange = false;
+        string reason;
+
+        if (currentProfile.Equals(FailureProfileOperationalOrUnknown, StringComparison.OrdinalIgnoreCase) &&
+            normalizedCurrentPolicy.Equals("any", StringComparison.OrdinalIgnoreCase) &&
+            streak >= RetryPolicyGuidanceMinStreak) {
+            suggestedPolicy = "non-actionable-only";
+            shouldConsiderChange = true;
+            reason = $"Operational/unknown CI failures dominated for {streak} consecutive run(s).";
+        } else if (currentProfile.Equals(FailureProfileActionableOrMixed, StringComparison.OrdinalIgnoreCase) &&
+                   normalizedCurrentPolicy.Equals("non-actionable-only", StringComparison.OrdinalIgnoreCase) &&
+                   streak >= RetryPolicyGuidanceMinStreak) {
+            suggestedPolicy = "any";
+            shouldConsiderChange = true;
+            reason = $"Actionable/mixed CI failures dominated for {streak} consecutive run(s).";
+        } else if (currentProfile.Equals(FailureProfileNone, StringComparison.OrdinalIgnoreCase)) {
+            reason = "No failed workflow runs in the current snapshot.";
+        } else if (currentProfile.Equals(FailureProfileBalanced, StringComparison.OrdinalIgnoreCase)) {
+            reason = "Current CI failure mix is balanced; keep the existing retry policy for now.";
+        } else {
+            reason = $"Current CI failure profile is {currentProfile.Replace('_', ' ')}; no policy change is recommended yet.";
+        }
+
+        return new JsonObject {
+            ["currentPolicy"] = normalizedCurrentPolicy,
+            ["suggestedPolicy"] = suggestedPolicy,
+            ["dominantFailureProfile"] = currentProfile,
+            ["dominanceStreak"] = streak,
+            ["confidence"] = confidence,
+            ["shouldConsiderChange"] = shouldConsiderChange,
+            ["reason"] = reason
+        };
+    }
+
+    private static string ClassifyFailureProfile(int actionable, int operational, int mixed, int unknown) {
+        var operationalSide = operational + unknown;
+        var actionableSide = actionable + mixed;
+        if (operationalSide == 0 && actionableSide == 0) {
+            return FailureProfileNone;
+        }
+
+        if (operationalSide == actionableSide) {
+            return FailureProfileBalanced;
+        }
+
+        return operationalSide > actionableSide ? FailureProfileOperationalOrUnknown : FailureProfileActionableOrMixed;
+    }
+
+    private static int CountFailureProfileStreak(string currentProfile, int actionable, int operational, int mixed, int unknown,
+        JsonArray? metricsHistory) {
+        if (currentProfile.Equals(FailureProfileNone, StringComparison.OrdinalIgnoreCase) ||
+            currentProfile.Equals(FailureProfileBalanced, StringComparison.OrdinalIgnoreCase)) {
+            return 1;
+        }
+
+        var streak = 1;
+        if (metricsHistory is null || metricsHistory.Count == 0) {
+            return streak;
+        }
+
+        for (var i = metricsHistory.Count - 1; i >= 0; i--) {
+            if (metricsHistory[i] is not JsonObject metric) {
+                continue;
+            }
+
+            var profile = ReadFailureProfileFromMetrics(metric);
+            if (!profile.Equals(currentProfile, StringComparison.OrdinalIgnoreCase)) {
+                break;
+            }
+
+            streak++;
+        }
+
+        return streak;
+    }
+
+    private static string ReadFailureProfileFromMetrics(JsonObject metric) {
+        var guidance = metric["retryPolicyGuidance"] as JsonObject;
+        var explicitProfile = ReadString(guidance ?? new JsonObject(), "dominantFailureProfile");
+        if (!string.IsNullOrWhiteSpace(explicitProfile)) {
+            return explicitProfile;
+        }
+
+        var failedRuns = metric["failedRuns"] as JsonObject;
+        var byKind = failedRuns?["byKind"] as JsonObject;
+        return ClassifyFailureProfile(
+            ReadInt(byKind ?? new JsonObject(), "actionable"),
+            ReadInt(byKind ?? new JsonObject(), "operational"),
+            ReadInt(byKind ?? new JsonObject(), "mixed"),
+            ReadInt(byKind ?? new JsonObject(), "unknown"));
+    }
+
+    private static string FormatRetryPolicyGuidance(JsonObject? guidance) {
+        if (guidance is null) {
+            return "No retry policy guidance available.";
+        }
+
+        var suggestedPolicy = ReadString(guidance, "suggestedPolicy");
+        var currentPolicy = ReadString(guidance, "currentPolicy");
+        var confidence = ReadString(guidance, "confidence");
+        var reason = ReadString(guidance, "reason");
+        var shouldConsiderChange = ReadBool(guidance, "shouldConsiderChange");
+
+        if (shouldConsiderChange && !string.IsNullOrWhiteSpace(suggestedPolicy) && !string.IsNullOrWhiteSpace(confidence)) {
+            return $"Consider `{suggestedPolicy}` ({confidence} confidence). {reason}";
+        }
+
+        if (!string.IsNullOrWhiteSpace(currentPolicy)) {
+            return $"Keep `{currentPolicy}`. {reason}";
+        }
+
+        return string.IsNullOrWhiteSpace(reason) ? "No retry policy guidance available." : reason;
+    }
+
+    private static JsonObject BuildGovernanceSignals(JsonObject? retryPolicyGuidance) {
+        var guidance = retryPolicyGuidance ?? new JsonObject();
+        var shouldConsiderChange = ReadBool(guidance, "shouldConsiderChange");
+        var suggestedPolicy = ReadString(guidance, "suggestedPolicy");
+        var currentPolicy = ReadString(guidance, "currentPolicy");
+        var confidence = ReadString(guidance, "confidence");
+        var dominantFailureProfile = ReadString(guidance, "dominantFailureProfile");
+        var dominanceStreak = ReadInt(guidance, "dominanceStreak");
+        var reason = ReadString(guidance, "reason");
+
+        return new JsonObject {
+            ["retryPolicyReviewSuggested"] = shouldConsiderChange,
+            ["currentRetryFailurePolicy"] = string.IsNullOrWhiteSpace(currentPolicy) ? null : currentPolicy,
+            ["suggestedRetryFailurePolicy"] = string.IsNullOrWhiteSpace(suggestedPolicy) ? null : suggestedPolicy,
+            ["confidence"] = string.IsNullOrWhiteSpace(confidence) ? null : confidence,
+            ["dominantFailureProfile"] = string.IsNullOrWhiteSpace(dominantFailureProfile) ? null : dominantFailureProfile,
+            ["dominanceStreak"] = dominanceStreak > 0 ? dominanceStreak : null,
+            ["reason"] = string.IsNullOrWhiteSpace(reason) ? null : reason,
+            ["source"] = "retry_policy_guidance"
+        };
+    }
+
+    private static JsonObject BuildGovernanceSummary(JsonObject? governanceSignals) {
+        var signals = governanceSignals ?? new JsonObject();
+        var suggested = ReadString(signals, "suggestedRetryFailurePolicy");
+        var confidence = ReadString(signals, "confidence");
+        var profile = ReadString(signals, "dominantFailureProfile");
+        var streak = ReadInt(signals, "dominanceStreak");
+        var active = ReadBool(signals, "retryPolicyReviewSuggested");
+        var summary = !active
+            ? "no active policy-review suggestions"
+            : $"retry-policy-review-suggested=yes; suggested policy `{suggested}`; confidence {confidence}; streak {streak}; profile {profile}";
+
+        return new JsonObject {
+            ["retryPolicyReviewSuggested"] = active,
+            ["summaryLine"] = summary
+        };
+    }
+
+    private static string FormatGovernanceSummary(JsonObject? governanceSummary) {
+        var summary = ReadString(governanceSummary ?? new JsonObject(), "summaryLine");
+        return string.IsNullOrWhiteSpace(summary) ? "no active policy-review suggestions" : summary;
+    }
+
+    private static string ReadRetryPolicySuggestedPolicy(JsonObject? guidance) {
+        var suggestedPolicy = ReadString(guidance ?? new JsonObject(), "suggestedPolicy");
+        return string.IsNullOrWhiteSpace(suggestedPolicy) ? "unknown" : suggestedPolicy;
     }
 
     private static string Next(string[] args, ref int index, string argName) {
@@ -616,6 +964,7 @@ internal static partial class PrWatchConsolidationRunner {
         Console.WriteLine("  --repo <owner/name>");
         Console.WriteLine("  --max-prs <n>");
         Console.WriteLine("  --max-flaky-retries <n>");
+        Console.WriteLine("  --retry-failure-policy <any|non-actionable-only>");
         Console.WriteLine("  --stale-days <n>");
         Console.WriteLine("  --include-drafts <bool>");
         Console.WriteLine("  --approved-bot <login> (repeatable)");
@@ -629,6 +978,7 @@ internal static partial class PrWatchConsolidationRunner {
         Console.WriteLine("  --metrics-history-path <path>");
         Console.WriteLine("  --tracker-path <path>");
         Console.WriteLine("  --publish-tracking-issue <bool>");
+        Console.WriteLine("  --apply-governance-signal-label <bool>");
         Console.WriteLine("  --tracker-issue-title <text>");
         Console.WriteLine("  --tracker-issue-label <label> (repeatable)");
         Console.WriteLine("  --tracker-issue-labels <csv>");

@@ -10,6 +10,11 @@ on:
         required: false
         default: "200"
         type: string
+      retry_failure_policy:
+        description: "Retry planning mode for per-PR snapshots: any or non-actionable-only"
+        required: false
+        default: "any"
+        type: string
       stale_days:
         description: "Age threshold (days) used for stale/no-progress buckets"
         required: false
@@ -35,6 +40,11 @@ on:
         required: false
         default: true
         type: boolean
+      apply_governance_signal_label:
+        description: "When true, manage a retry-policy governance label on the tracker issue"
+        required: false
+        default: false
+        type: boolean
       tracker_issue_title:
         description: "Optional explicit tracker issue title (defaults to source-specific title)"
         required: false
@@ -51,6 +61,10 @@ on:
         description: "Max open PRs to scan"
         required: false
         default: "200"
+      retry_failure_policy:
+        description: "Retry planning mode for per-PR snapshots: any or non-actionable-only"
+        required: false
+        default: "any"
       stale_days:
         description: "Age threshold (days) used for stale/no-progress buckets"
         required: false
@@ -70,6 +84,11 @@ on:
         default: ""
       publish_tracking_issue:
         description: "When true, create/update a source-specific tracker issue with latest rollup"
+        required: false
+        default: false
+        type: boolean
+      apply_governance_signal_label:
+        description: "When true, manage a retry-policy governance label on the tracker issue"
         required: false
         default: false
         type: boolean
@@ -135,6 +154,7 @@ jobs:
           --repo "${{ github.repository }}"
           --max-prs "${{ inputs.max_prs }}"
           --max-flaky-retries "3"
+          --retry-failure-policy "${{ inputs.retry_failure_policy }}"
           --stale-days "${{ inputs.stale_days }}"
           --include-drafts "${{ inputs.include_drafts }}"
           --approved-bots "${{ inputs.approved_bots }}"
@@ -147,6 +167,7 @@ jobs:
           --metrics-history-path "${PR_WATCH_METRICS_HISTORY_PATH}"
           --tracker-path "${PR_WATCH_NIGHTLY_TRACKER_PATH}"
           --publish-tracking-issue "${{ inputs.publish_tracking_issue }}"
+          --apply-governance-signal-label "${{ inputs.apply_governance_signal_label }}"
           --tracker-issue-title "${{ inputs.tracker_issue_title }}"
           --tracker-issue-labels "${{ inputs.tracker_issue_labels }}"
 

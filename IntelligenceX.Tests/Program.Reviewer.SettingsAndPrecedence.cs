@@ -183,6 +183,80 @@ internal static partial class Program {
         }
     }
 
+    private static void TestReviewSettingsLoadConfigThenEnvPrecedenceForCiContextAndSwarm() {
+        var previousConfigPath = Environment.GetEnvironmentVariable("REVIEW_CONFIG_PATH");
+        var previousCiContextEnabled = Environment.GetEnvironmentVariable("REVIEW_CI_CONTEXT_ENABLED");
+        var previousCiContextMaxFailedRuns = Environment.GetEnvironmentVariable("REVIEW_CI_CONTEXT_MAX_FAILED_RUNS");
+        var previousSwarmEnabled = Environment.GetEnvironmentVariable("REVIEW_SWARM_ENABLED");
+        var previousSwarmMaxParallel = Environment.GetEnvironmentVariable("REVIEW_SWARM_MAX_PARALLEL");
+        var configPath = Path.Combine(Path.GetTempPath(), $"intelligencex-review-ci-swarm-{Guid.NewGuid():N}.json");
+        try {
+            File.WriteAllText(configPath, """
+{
+  "review": {
+    "ciContext": {
+      "enabled": true,
+      "includeCheckSummary": false,
+      "includeFailedRuns": false,
+      "includeFailureSnippets": "always",
+      "maxFailedRuns": 7,
+      "maxSnippetCharsPerRun": 900,
+      "classifyInfraFailures": false
+    },
+    "swarm": {
+      "enabled": true,
+      "shadowMode": true,
+      "reviewers": ["security", "tests", "security"],
+      "maxParallel": 0,
+      "publishSubreviews": true,
+      "aggregatorModel": "gpt-test",
+      "failOpenOnPartial": false,
+      "metrics": false
+    }
+  }
+}
+""");
+
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", configPath);
+            Environment.SetEnvironmentVariable("REVIEW_CI_CONTEXT_ENABLED", "false");
+            Environment.SetEnvironmentVariable("REVIEW_CI_CONTEXT_MAX_FAILED_RUNS", "2");
+            Environment.SetEnvironmentVariable("REVIEW_SWARM_ENABLED", "false");
+            Environment.SetEnvironmentVariable("REVIEW_SWARM_MAX_PARALLEL", "3");
+
+            var settings = ReviewSettings.Load();
+
+            AssertEqual(false, settings.CiContext.Enabled, "review settings env ciContext enabled precedence");
+            AssertEqual(false, settings.CiContext.IncludeCheckSummary, "review settings ciContext config includeCheckSummary");
+            AssertEqual(false, settings.CiContext.IncludeFailedRuns, "review settings ciContext config includeFailedRuns");
+            AssertEqual("always", settings.CiContext.IncludeFailureSnippets,
+                "review settings ciContext config includeFailureSnippets");
+            AssertEqual(2, settings.CiContext.MaxFailedRuns, "review settings env ciContext maxFailedRuns precedence");
+            AssertEqual(900, settings.CiContext.MaxSnippetCharsPerRun, "review settings ciContext config maxSnippetChars");
+            AssertEqual(false, settings.CiContext.ClassifyInfraFailures,
+                "review settings ciContext config classifyInfraFailures");
+
+            AssertEqual(false, settings.Swarm.Enabled, "review settings env swarm enabled precedence");
+            AssertEqual(true, settings.Swarm.ShadowMode, "review settings swarm config shadowMode");
+            AssertSequenceEqual(new[] { "security", "tests" }, settings.Swarm.Reviewers.ToArray(),
+                "review settings swarm reviewers normalization");
+            AssertEqual(3, settings.Swarm.MaxParallel, "review settings env swarm maxParallel precedence");
+            AssertEqual(true, settings.Swarm.PublishSubreviews, "review settings swarm config publishSubreviews");
+            AssertEqual("gpt-test", settings.Swarm.AggregatorModel ?? string.Empty,
+                "review settings swarm config aggregatorModel");
+            AssertEqual(false, settings.Swarm.FailOpenOnPartial, "review settings swarm config failOpenOnPartial");
+            AssertEqual(false, settings.Swarm.Metrics, "review settings swarm config metrics");
+        } finally {
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", previousConfigPath);
+            Environment.SetEnvironmentVariable("REVIEW_CI_CONTEXT_ENABLED", previousCiContextEnabled);
+            Environment.SetEnvironmentVariable("REVIEW_CI_CONTEXT_MAX_FAILED_RUNS", previousCiContextMaxFailedRuns);
+            Environment.SetEnvironmentVariable("REVIEW_SWARM_ENABLED", previousSwarmEnabled);
+            Environment.SetEnvironmentVariable("REVIEW_SWARM_MAX_PARALLEL", previousSwarmMaxParallel);
+            if (File.Exists(configPath)) {
+                File.Delete(configPath);
+            }
+        }
+    }
+
     private static void TestSetupGeneratedReviewerConfigValidatesAndLoadsWithCanonicalRelatedPrs() {
         var previousConfigPath = Environment.GetEnvironmentVariable("REVIEW_CONFIG_PATH");
         var configPath = Path.Combine(Path.GetTempPath(), $"intelligencex-setup-reviewer-config-{Guid.NewGuid():N}.json");

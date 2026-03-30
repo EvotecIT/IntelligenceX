@@ -10,7 +10,12 @@ using IntelligenceX.Cli.GitHub;
 namespace IntelligenceX.Cli.Todo;
 
 internal static partial class ProjectSyncRunner {
-    private static List<ProjectSyncEntry> LoadEntries(string triagePath, string visionPath, string issueReviewPath, int maxItems) {
+    private static List<ProjectSyncEntry> LoadEntries(
+        string triagePath,
+        string visionPath,
+        string issueReviewPath,
+        int maxItems,
+        PrWatchGovernanceContext? prWatchGovernance = null) {
         using var triageDoc = JsonDocument.Parse(File.ReadAllText(triagePath));
         JsonDocument? visionDoc = null;
         JsonDocument? issueReviewDoc = null;
@@ -25,7 +30,8 @@ internal static partial class ProjectSyncRunner {
             triageDoc.RootElement,
             visionDoc?.RootElement,
             maxItems,
-            issueReviewDoc?.RootElement);
+            issueReviewDoc?.RootElement,
+            prWatchGovernance);
         visionDoc?.Dispose();
         issueReviewDoc?.Dispose();
         return entries;
@@ -35,7 +41,8 @@ internal static partial class ProjectSyncRunner {
         JsonElement triageRoot,
         JsonElement? visionRoot,
         int maxItems,
-        JsonElement? issueReviewRoot = null) {
+        JsonElement? issueReviewRoot = null,
+        PrWatchGovernanceContext? prWatchGovernance = null) {
         var entriesByUrl = new Dictionary<string, ProjectSyncEntry>(StringComparer.OrdinalIgnoreCase);
         var idToUrl = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var clusterToCanonicalId = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -263,6 +270,20 @@ internal static partial class ProjectSyncRunner {
                     MatchedPullRequestUrl = byUrlMatch.Url,
                     MatchedPullRequestConfidence = byUrlMatch.Confidence,
                     MatchedPullRequestReason = byUrlMatch.Reason
+                };
+            }
+        }
+
+        if (prWatchGovernance is not null) {
+            foreach (var pair in entriesByUrl.ToList()) {
+                if (!pair.Value.Kind.Equals("pull_request", StringComparison.OrdinalIgnoreCase)) {
+                    continue;
+                }
+
+                entriesByUrl[pair.Key] = pair.Value with {
+                    PrWatchGovernanceSuggested = prWatchGovernance.RetryPolicyReviewSuggested,
+                    PrWatchGovernanceSummary = prWatchGovernance.SummaryLine,
+                    PrWatchGovernanceSource = prWatchGovernance.Source
                 };
             }
         }

@@ -21,6 +21,7 @@ internal static partial class Program {
             123,
             "https://github.com/orgs/EvotecIT/projects/123",
             existingViews,
+            includePrWatchGovernanceViews: false,
             directCreateSupported: false,
             new DateTimeOffset(2026, 02, 15, 23, 10, 00, TimeSpan.Zero));
 
@@ -50,6 +51,7 @@ internal static partial class Program {
             123,
             "https://github.com/orgs/EvotecIT/projects/123",
             existingViews,
+            includePrWatchGovernanceViews: false,
             directCreateSupported: true,
             new DateTimeOffset(2026, 02, 15, 23, 15, 00, TimeSpan.Zero));
 
@@ -57,6 +59,22 @@ internal static partial class Program {
         AssertContainsText(markdown, "Missing default views: 0", "missing count is zero");
         AssertContainsText(markdown, "- [x] All recommended IX default views are present.", "completed checklist message");
         AssertContainsText(markdown, "Direct API view-create support: available", "capability line included");
+    }
+
+    private static void TestProjectViewApplyMarkdownIncludesOptionalGovernanceViewWhenEnabled() {
+        var markdown = IntelligenceX.Cli.Todo.ProjectViewApplyRunner.BuildApplyMarkdown(
+            "EvotecIT/IntelligenceX",
+            "EvotecIT",
+            123,
+            "https://github.com/orgs/EvotecIT/projects/123",
+            new Dictionary<string, IntelligenceX.Cli.Todo.ProjectV2Client.ProjectView>(StringComparer.OrdinalIgnoreCase),
+            includePrWatchGovernanceViews: true,
+            directCreateSupported: true,
+            new DateTimeOffset(2026, 02, 15, 23, 20, 00, TimeSpan.Zero));
+
+        AssertContainsText(markdown, "Default view coverage: 0/6", "coverage includes optional governance view");
+        AssertContainsText(markdown, "Missing default views: 6", "missing count includes optional governance view");
+        AssertContainsText(markdown, "**Governance Review** (`TABLE`)", "optional governance view appears in apply plan");
     }
 #endif
 }

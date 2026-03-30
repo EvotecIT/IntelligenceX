@@ -87,6 +87,10 @@ internal static partial class ProjectSyncRunner {
             labels.Add("ix/duplicate:clustered");
         }
 
+        if (isPullRequest && entry.PrWatchGovernanceSuggested) {
+            labels.Add("ix/pr-watch:policy-review-suggested");
+        }
+
         return labels
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(label => label, StringComparer.OrdinalIgnoreCase)
@@ -212,6 +216,28 @@ internal static partial class ProjectSyncRunner {
         }
 
         return string.Join(Environment.NewLine, reasons);
+    }
+
+    internal static string BuildPrWatchGovernanceSignalFieldValue(ProjectSyncEntry entry) {
+        if (!entry.Kind.Equals("pull_request", StringComparison.OrdinalIgnoreCase) || !entry.PrWatchGovernanceSuggested) {
+            return string.Empty;
+        }
+
+        return "policy-review-suggested";
+    }
+
+    internal static string BuildPrWatchGovernanceSummaryFieldValue(ProjectSyncEntry entry) {
+        if (!entry.Kind.Equals("pull_request", StringComparison.OrdinalIgnoreCase) ||
+            !entry.PrWatchGovernanceSuggested ||
+            string.IsNullOrWhiteSpace(entry.PrWatchGovernanceSummary)) {
+            return string.Empty;
+        }
+
+        if (string.IsNullOrWhiteSpace(entry.PrWatchGovernanceSource)) {
+            return entry.PrWatchGovernanceSummary.Trim();
+        }
+
+        return $"[{entry.PrWatchGovernanceSource.Trim()}] {entry.PrWatchGovernanceSummary.Trim()}";
     }
 
     internal static string BuildRelatedPullRequestsFieldValue(ProjectSyncEntry entry, int maxPullRequests) {

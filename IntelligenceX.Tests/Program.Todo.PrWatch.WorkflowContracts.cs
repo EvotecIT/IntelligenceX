@@ -25,10 +25,29 @@ internal static partial class Program {
         var content = File.ReadAllText(workflowPath);
 
         AssertContainsText(content, "todo pr-watch-consolidate", "nightly workflow should invoke consolidation CLI command");
+        AssertContainsText(content, "--retry-failure-policy", "nightly workflow should pass retry failure policy through to the CLI");
+        AssertContainsText(content, "--apply-governance-signal-label", "nightly workflow should pass governance label option through to the CLI");
         AssertEqual(false, content.Contains("set -euo pipefail", StringComparison.Ordinal),
             "nightly workflow should avoid shell wrapper logic");
         AssertEqual(false, content.Contains("if [ -z \"${MAX_PRS}\" ]", StringComparison.Ordinal),
             "nightly workflow should keep defaulting logic in CLI, not YAML shell conditionals");
+    }
+
+    private static void TestPrWatchWeeklyGovernanceWorkflowExposesOptionalOverrides() {
+        var workflowPath = ResolveRepoFilePath(".github", "workflows", "ix-pr-babysit-weekly-governance.yml");
+        var content = File.ReadAllText(workflowPath);
+
+        AssertContainsText(content, "workflow_dispatch:", "weekly governance workflow should support manual dispatch");
+        AssertContainsText(content, "retry_failure_policy:", "weekly governance workflow should expose retry policy override");
+        AssertContainsText(content, "publish_tracking_issue:", "weekly governance workflow should expose tracker publishing override");
+        AssertContainsText(content, "apply_governance_signal_label:", "weekly governance workflow should expose governance label override");
+        AssertContainsText(content, "tracker_issue_labels:", "weekly governance workflow should expose tracker label override");
+        AssertContainsText(content, "uses: ./.github/workflows/ix-pr-babysit-nightly-consolidation.yml",
+            "weekly governance workflow should remain a wrapper over nightly consolidation");
+        AssertContainsText(content, "IX_PR_WATCH_APPLY_GOVERNANCE_SIGNAL_LABEL",
+            "weekly governance workflow should support scheduled governance label opt-in via repo variable");
+        AssertContainsText(content, "apply_governance_signal_label: ${{ vars.IX_PR_WATCH_APPLY_GOVERNANCE_SIGNAL_LABEL == 'true' }}",
+            "weekly governance scheduled path should pass governance label input through to nightly workflow");
     }
 
     private static void TestPrWatchAssistRetryWorkflowUsesDirectCliInvocation() {
@@ -36,6 +55,7 @@ internal static partial class Program {
         var content = File.ReadAllText(workflowPath);
 
         AssertContainsText(content, "todo pr-watch-assist-retry", "assist workflow should invoke assist CLI command");
+        AssertContainsText(content, "--retry-failure-policy", "assist workflow should pass retry failure policy through to the CLI");
         AssertEqual(false, content.Contains("set -euo pipefail", StringComparison.Ordinal),
             "assist workflow should avoid shell wrapper logic");
     }

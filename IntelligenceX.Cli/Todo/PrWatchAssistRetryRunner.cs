@@ -19,6 +19,7 @@ internal static class PrWatchAssistRetryRunner {
         public string PrSpec { get; set; } = string.Empty;
         public int MaxFlakyRetries { get; set; } = 3;
         public int RetryCooldownMinutes { get; set; } = 15;
+        public string RetryFailurePolicy { get; set; } = PrWatchRunner.NormalizeRetryFailurePolicy(null);
         public string ConfirmApplyRetries { get; set; } = string.Empty;
         public string Source { get; set; } = Environment.GetEnvironmentVariable("GITHUB_EVENT_NAME") ?? "manual_cli";
         public string? RunLink { get; set; } = ResolveRunLink();
@@ -50,6 +51,7 @@ internal static class PrWatchAssistRetryRunner {
                 repo: options.Repo,
                 prSpec: options.PrSpec,
                 maxFlakyRetries: options.MaxFlakyRetries,
+                retryFailurePolicy: options.RetryFailurePolicy,
                 phase: "assist",
                 source: options.Source,
                 runLink: options.RunLink,
@@ -80,6 +82,7 @@ internal static class PrWatchAssistRetryRunner {
                 case "--pr": options.PrSpec = Next(args, ref i, arg); break;
                 case "--max-flaky-retries": options.MaxFlakyRetries = ParseInt(Next(args, ref i, arg), options.MaxFlakyRetries, arg, 1, 50); break;
                 case "--retry-cooldown-minutes": options.RetryCooldownMinutes = ParseInt(Next(args, ref i, arg), options.RetryCooldownMinutes, arg, 1, 1440); break;
+                case "--retry-failure-policy": options.RetryFailurePolicy = PrWatchRunner.NormalizeRetryFailurePolicy(Next(args, ref i, arg)); break;
                 case "--confirm-apply-retries": options.ConfirmApplyRetries = Next(args, ref i, arg); break;
                 case "--approved-bot": options.ApprovedBots.Add(Next(args, ref i, arg)); break;
                 case "--approved-bots": AddCsv(options.ApprovedBots, Next(args, ref i, arg)); break;
@@ -115,7 +118,30 @@ internal static class PrWatchAssistRetryRunner {
         builder.AppendLine($"- Head SHA: `{ReadString(pr, "headSha")}`");
         builder.AppendLine($"- Stop reason: `{ReadString(snapshot, "stopReason")}`");
         builder.AppendLine($"- Retry usage: {ReadInt(retryState, "currentShaRetriesUsed")}/{ReadInt(retryState, "maxFlakyRetries")}");
+        builder.AppendLine($"- Retry policy: `{ReadString(retryState, "retryFailurePolicy")}`");
+        var failedRuns = (snapshot["failedRuns"] as JsonArray ?? new JsonArray())
+            .OfType<JsonObject>()
+            .ToList();
+        if (failedRuns.Count > 0) {
+            builder.AppendLine($"- Failed workflow runs: {failedRuns.Count}");
+        }
         builder.AppendLine();
+        if (failedRuns.Count > 0) {
+            builder.AppendLine("## Failed run evidence");
+            foreach (var run in failedRuns.Take(5)) {
+                var name = ReadString(run, "workflowName");
+                var conclusion = ReadString(run, "conclusion");
+                var url = ReadString(run, "url");
+                var kind = ReadString(run, "failureKind");
+                var evidence = ReadString(run, "failureEvidence");
+                var label = string.IsNullOrWhiteSpace(kind) || kind.Equals("unknown", StringComparison.OrdinalIgnoreCase)
+                    ? string.Empty
+                    : $" [{kind}]";
+                var detail = string.IsNullOrWhiteSpace(evidence) ? string.Empty : $": {evidence}";
+                builder.AppendLine($"- {name} ({conclusion}){label}{detail} {url}".TrimEnd());
+            }
+            builder.AppendLine();
+        }
         builder.AppendLine("## Planned actions");
         if (actions.Count == 0) {
             builder.AppendLine("- none");
@@ -151,6 +177,7 @@ internal static class PrWatchAssistRetryRunner {
         Console.WriteLine("  --pr <number|url>");
         Console.WriteLine("  --max-flaky-retries <n>");
         Console.WriteLine("  --retry-cooldown-minutes <n>");
+        Console.WriteLine("  --retry-failure-policy <any|non-actionable-only>");
         Console.WriteLine("  --confirm-apply-retries RETRY_CHECKS");
         Console.WriteLine("  --approved-bot <login> (repeatable)");
         Console.WriteLine("  --approved-bots <csv>");

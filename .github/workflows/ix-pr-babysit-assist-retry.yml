@@ -10,6 +10,10 @@ on:
         description: "Per-SHA retry budget ceiling"
         required: false
         default: "3"
+      retry_failure_policy:
+        description: "Retry planning mode: any or non-actionable-only"
+        required: false
+        default: "any"
       retry_cooldown_minutes:
         description: "Cooldown before re-planning retry for same SHA"
         required: false
@@ -72,6 +76,7 @@ jobs:
           --repo "${{ github.repository }}"
           --pr "${{ inputs.pr }}"
           --max-flaky-retries "${{ inputs.max_flaky_retries }}"
+          --retry-failure-policy "${{ inputs.retry_failure_policy }}"
           --retry-cooldown-minutes "${{ inputs.retry_cooldown_minutes }}"
           --approved-bots "${{ inputs.approved_bots }}"
           --confirm-apply-retries "${{ inputs.confirm_apply_retries }}"

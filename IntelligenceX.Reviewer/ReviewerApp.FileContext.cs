@@ -1,3 +1,5 @@
+using IntelligenceX.GitHub;
+
 namespace IntelligenceX.Reviewer;
 
 public static partial class ReviewerApp {
@@ -113,6 +115,24 @@ public static partial class ReviewerApp {
         GitHubClient? fallbackGithub,
         PullRequestContext context, ReviewSettings settings, CancellationToken cancellationToken, bool forceReviewThreads) {
         var extras = new ReviewContextExtras();
+        if (settings.CiContext.Enabled && settings.CodeHost == ReviewCodeHost.GitHub) {
+            try {
+                var readGithub = fallbackGithub ?? github;
+                var checkSnapshot = await readGithub.GetCheckSnapshotAsync(context.Owner, context.Repo, context.HeadSha, cancellationToken)
+                    .ConfigureAwait(false);
+                var failedRuns = settings.CiContext.IncludeFailedRuns
+                    ? await readGithub.GetFailedWorkflowRunsAsync(context.Owner, context.Repo, context.HeadSha,
+                            settings.CiContext.MaxFailedRuns, cancellationToken)
+                        .ConfigureAwait(false)
+                    : Array.Empty<ReviewWorkflowRun>();
+                var failureEvidence = await LoadCiFailureEvidenceAsync(readGithub, context, settings, failedRuns, cancellationToken)
+                    .ConfigureAwait(false);
+                extras.CiContextSection = BuildCiContextSection(context, settings, checkSnapshot, failedRuns, failureEvidence);
+            } catch (Exception ex) {
+                // CI/check context is supplemental; avoid failing the whole review on rate limits or permission gaps.
+                Console.Error.WriteLine($"Failed to load CI/check context: {ex.Message}");
+            }
+        }
         if (settings.IncludeIssueComments) {
             try {
                 var comments = await codeHostReader.ListIssueCommentsAsync(context, settings.MaxComments, cancellationToken)
@@ -165,6 +185,149 @@ public static partial class ReviewerApp {
             }
         }
         return extras;
+    }
+
+    private static string BuildCiContextSection(PullRequestContext context, ReviewSettings settings, ReviewCheckSnapshot snapshot,
+        IReadOnlyList<ReviewWorkflowRun> failedRuns, IReadOnlyDictionary<string, GitHubWorkflowFailureEvidence> failureEvidence) {
+        if (!settings.CiContext.Enabled) {
+            return string.Empty;
+        }
+
+        var lines = new List<string>();
+        if (settings.CiContext.IncludeCheckSummary && snapshot.HasData) {
+            lines.Add($"- Head SHA {ShortSha(context.HeadSha)} check-runs: passed {snapshot.PassedCount}, failed {snapshot.FailedCount}, pending {snapshot.PendingCount}.");
+            if (snapshot.FailedChecks.Count > 0) {
+                var failedChecks = string.Join("; ", snapshot.FailedChecks
+                    .Take(5)
+                    .Select(item => $"{item.Name} ({item.Conclusion ?? item.Status})"));
+                lines.Add($"- Failing check-runs: {failedChecks}.");
+            }
+        }
+
+        if (settings.CiContext.IncludeFailedRuns && failedRuns.Count > 0) {
+            lines.Add("- Failed workflow runs on the current head SHA:");
+            foreach (var run in failedRuns.Take(settings.CiContext.MaxFailedRuns)) {
+                var conclusion = string.IsNullOrWhiteSpace(run.Conclusion) ? run.Status : run.Conclusion;
+                var url = string.IsNullOrWhiteSpace(run.Url) ? string.Empty : $" {run.Url}";
+                var evidence = TryGetFailureEvidence(run, failureEvidence);
+                var classification = DescribeCiFailureKind(evidence?.Kind, settings.CiContext.ClassifyInfraFailures);
+                var snippet = ResolveCiFailureSnippet(evidence, settings);
+                var detail = string.IsNullOrWhiteSpace(snippet) ? string.Empty : $": {snippet}";
+                lines.Add($"  - {run.Name} ({conclusion}){url}{classification}{detail}".TrimEnd());
+            }
+        }
+
+        if (lines.Count == 0) {
+            return string.Empty;
+        }
+
+        if (settings.CiContext.ClassifyInfraFailures &&
+            failedRuns.Any(run => GitHubCiSignals.IsPotentiallyOperationalConclusion(run.Conclusion))) {
+            lines.Add("- Note: cancelled or timed-out workflow runs may be operational rather than code failures; confirm before treating them as merge blockers.");
+        }
+
+        if (ShouldIncludeAnyFailureSnippets(settings, failureEvidence)) {
+            lines.Add("- Failure evidence is summarized from failed GitHub Actions jobs/steps only; it is bounded context, not a raw log dump.");
+        }
+
+        lines.Add("- Treat CI/check context as supporting operational evidence only. Do not merely restate failing checks; connect them to the diff only when evidence supports that link.");
+
+        var sb = new StringBuilder();
+        sb.AppendLine();
+        sb.AppendLine("CI / checks context:");
+        foreach (var line in lines) {
+            sb.AppendLine(line);
+        }
+        sb.AppendLine();
+        return sb.ToString();
+    }
+
+    private static async Task<IReadOnlyDictionary<string, GitHubWorkflowFailureEvidence>> LoadCiFailureEvidenceAsync(
+        GitHubClient github, PullRequestContext context, ReviewSettings settings, IReadOnlyList<ReviewWorkflowRun> failedRuns,
+        CancellationToken cancellationToken) {
+        if (!settings.CiContext.Enabled ||
+            string.Equals(settings.CiContext.IncludeFailureSnippets, "off", StringComparison.OrdinalIgnoreCase) ||
+            settings.CiContext.MaxSnippetCharsPerRun <= 0 ||
+            failedRuns.Count == 0) {
+            return new Dictionary<string, GitHubWorkflowFailureEvidence>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        var map = new Dictionary<string, GitHubWorkflowFailureEvidence>(StringComparer.OrdinalIgnoreCase);
+        foreach (var run in failedRuns.Take(settings.CiContext.MaxFailedRuns)) {
+            if (string.IsNullOrWhiteSpace(run.RunId)) {
+                continue;
+            }
+
+            try {
+                var evidence = await github.GetWorkflowFailureEvidenceAsync(context.Owner, context.Repo, run.RunId,
+                        settings.CiContext.MaxSnippetCharsPerRun, cancellationToken)
+                    .ConfigureAwait(false);
+                if (evidence is not null && evidence.HasData) {
+                    map[run.RunId] = evidence;
+                }
+            } catch (Exception ex) {
+                Console.Error.WriteLine(
+                    $"Failed to load CI failure evidence for workflow run {run.RunId}: {ex.Message}");
+            }
+        }
+
+        return map;
+    }
+
+    private static GitHubWorkflowFailureEvidence? TryGetFailureEvidence(ReviewWorkflowRun run,
+        IReadOnlyDictionary<string, GitHubWorkflowFailureEvidence> failureEvidence) {
+        if (string.IsNullOrWhiteSpace(run.RunId)) {
+            return null;
+        }
+
+        return failureEvidence.TryGetValue(run.RunId, out var evidence) ? evidence : null;
+    }
+
+    private static string DescribeCiFailureKind(GitHubWorkflowFailureKind? kind, bool classifyInfraFailures) {
+        if (!classifyInfraFailures || kind is null) {
+            return string.Empty;
+        }
+
+        return kind.Value switch {
+            GitHubWorkflowFailureKind.Actionable => " [likely code/test]",
+            GitHubWorkflowFailureKind.Operational => " [likely operational/infra]",
+            GitHubWorkflowFailureKind.Mixed => " [mixed operational + code/test]",
+            _ => string.Empty
+        };
+    }
+
+    private static string ResolveCiFailureSnippet(GitHubWorkflowFailureEvidence? evidence, ReviewSettings settings) {
+        if (evidence is null || !evidence.HasData) {
+            return string.Empty;
+        }
+
+        var mode = ReviewSettings.NormalizeCiContextFailureSnippets(settings.CiContext.IncludeFailureSnippets, "off");
+        if (string.Equals(mode, "off", StringComparison.OrdinalIgnoreCase)) {
+            return string.Empty;
+        }
+
+        if (string.Equals(mode, "auto", StringComparison.OrdinalIgnoreCase) &&
+            settings.CiContext.ClassifyInfraFailures &&
+            evidence.Kind == GitHubWorkflowFailureKind.Operational) {
+            return string.Empty;
+        }
+
+        return TrimComment(evidence.Summary, settings.CiContext.MaxSnippetCharsPerRun);
+    }
+
+    private static bool ShouldIncludeAnyFailureSnippets(ReviewSettings settings,
+        IReadOnlyDictionary<string, GitHubWorkflowFailureEvidence> failureEvidence) {
+        if (failureEvidence.Count == 0) {
+            return false;
+        }
+
+        foreach (var evidence in failureEvidence.Values) {
+            if (!string.IsNullOrWhiteSpace(ResolveCiFailureSnippet(evidence, settings))) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static string BuildIssueCommentsSection(IReadOnlyList<IssueComment> comments, ReviewSettings settings) {
