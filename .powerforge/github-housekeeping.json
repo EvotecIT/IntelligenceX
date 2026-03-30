@@ -1,5 +1,5 @@
 {
-  "$schema": "https://raw.githubusercontent.com/EvotecIT/PSPublishModule/97b0d38217ab995e611a12d162ae41505b7bfed1/Schemas/github.housekeeping.schema.json",
+  "$schema": "https://raw.githubusercontent.com/EvotecIT/PSPublishModule/06fbc3f015c2da91bb1b49e1a1323c21aced7cdf/Schemas/github.housekeeping.schema.json",
   "repository": "EvotecIT/IntelligenceX",
   "tokenEnvName": "GITHUB_TOKEN",
   "artifacts": {

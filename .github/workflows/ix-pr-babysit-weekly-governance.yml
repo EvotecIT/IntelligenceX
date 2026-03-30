@@ -67,6 +67,23 @@ jobs:
       approved_bots: "intelligencex-review,intelligencex-review[bot],chatgpt-codex-connector[bot]"
       source: "weekly-governance"
       publish_tracking_issue: true
+      apply_governance_signal_label: ${{ vars.IX_PR_WATCH_APPLY_GOVERNANCE_SIGNAL_LABEL == 'true' }}
+    secrets: inherit
+
+  weekly-consolidation-manual:
+    if: github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/ix-pr-babysit-nightly-consolidation.yml
+    with:
+      max_prs: ${{ inputs.max_prs }}
+      retry_failure_policy: ${{ inputs.retry_failure_policy }}
+      stale_days: ${{ inputs.stale_days }}
+      include_drafts: ${{ inputs.include_drafts }}
+      approved_bots: ${{ inputs.approved_bots }}
+      source: "weekly-governance"
+      publish_tracking_issue: ${{ inputs.publish_tracking_issue }}
+      apply_governance_signal_label: ${{ inputs.apply_governance_signal_label }}
+      tracker_issue_title: ${{ inputs.tracker_issue_title }}
+      tracker_issue_labels: ${{ inputs.tracker_issue_labels }}
     secrets: inherit
 
   weekly-consolidation-manual:
