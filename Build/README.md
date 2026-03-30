@@ -16,6 +16,8 @@ Use these as the main entrypoints:
 - `workspace.validation.json`
   - declarative workspace-validation contract used by `Build-Workspace.ps1`
   - also consumed by `Build-Project.ps1` through unified `powerforge release`
+- `powerforge.plugins.json`
+  - declarative plugin catalog used by `Internal\Export-PluginFolders.ps1` and `Advanced\Publish-Plugins.ps1`
 - `Run-Project.ps1`
   - unified local runtime entrypoint for `Chat.Host`, `Chat.App`, `Chat.Service`, `Tray`, and `Cli`
   - prints the resolved PowerForge command so it is easier to see what will actually run
@@ -84,7 +86,8 @@ Signing is also resolved centrally for the normal case:
 Keep these specialist helpers:
 
 - `Advanced\Publish-Plugins.ps1`
-  - direct NuGet-style tool-pack packaging helper
+  - thin wrapper over `powerforge plugin pack`
+  - shares the repo plugin/package catalog in `Build\powerforge.plugins.json`
 - `Advanced\Package-Portable.ps1`
   - fallback/manual portable bundle helper
   - can smoke-test the finished bundle with `-SmokeScenarioPreset runtime-only` or `-SmokeScenarioPreset runtime-and-toolful`
@@ -97,8 +100,12 @@ Keep these specialist helpers:
   - chat runtime and validation harness scripts
 - `Chat\Compare-ChatScenarioReports.ps1`, `Chat\Get-ChatScenarioCoverage.ps1`
   - scenario analysis helpers
-- `Internal\Export-PluginFolders.ps1`, `Internal\Complete-PortableBundle.ps1`
-  - internal plumbing reused by the publish/bundle scripts
+- `Internal\Complete-PortableBundle.ps1`
+  - thin bundle-finishing helper reused by the publish/bundle scripts
+  - delegates generic archive/delete/metadata work to `powerforge dotnet bundle-postprocess`
+- `Internal\Export-PluginFolders.ps1`
+  - thin wrapper over `powerforge plugin export`
+  - repo-specific choices now live in `Build\powerforge.plugins.json`
 - `Internal\Resolve-TestimoXRoot.ps1`
   - shared private-engine root resolver used by workspace/plugin scripts
 - `Internal\Resolve-ReleaseDefaults.ps1`

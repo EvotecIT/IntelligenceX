@@ -43,6 +43,7 @@ param(
     [string[]] $ToolOutputs,
     [ValidateSet('Tool', 'Portable', 'Installer', 'Store')]
     [string[]] $SkipToolOutputs,
+    [string[]] $InstallerProperties,
     [string] $TestimoXRoot
 )
 
@@ -146,6 +147,7 @@ Add-CsvOption '--framework' $Frameworks
 Add-CsvOption '--style' $Styles
 Add-CsvOption '--tool-output' $ToolOutputs
 Add-CsvOption '--skip-tool-output' $SkipToolOutputs
+Add-CsvOption '--installer-property' $InstallerProperties
 
 if (-not [string]::IsNullOrWhiteSpace($TestimoXRoot)) {
     $resolvedTestimoXRoot = [System.IO.Path]::GetFullPath($TestimoXRoot)

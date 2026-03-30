@@ -108,6 +108,7 @@ Current staged notes:
 - `Build-Release.ps1` is now a thin wrapper over `Build-Project.ps1` for the normal `Frontend app` release flow, and PowerForge itself stages the produced package/portable/MSI assets into the release folder.
 - `Build-Release.ps1` no longer re-implements skip/fallback orchestration in PowerShell; unsupported cases like `Frontend host` now fail fast and point callers at the advanced helpers directly.
 - `Build\Advanced\Package-Portable.ps1` remains a valid fallback/manual entrypoint, but it now reuses the same bundle-finishing helper as the PowerForge path instead of owning that logic outright.
+- `Build\Internal\Complete-PortableBundle.ps1` is now thin: it exports plugin folders, generates IntelligenceX-specific launcher/README files, and delegates archive/delete/metadata mechanics to `powerforge dotnet bundle-postprocess`.
 - `Build\Advanced\Build-Installer.ps1` remains a valid fallback/manual entrypoint, but the default MSI path is now `Build-Project.ps1` -> PowerForge DotNetPublish.
 - `Build\powerforge.dotnetpublish.json` is now the active unified CLI/tray/chat-host/chat-service/chat-app publish config.
 - `Build\release.json` now also owns the normal workspace-preflight hook through `WorkspaceValidation`, so `Build-Project.ps1` stays thin.
@@ -195,12 +196,18 @@ pwsh ./Build/Advanced/Package-Portable.ps1 -Runtime win-x64 -Configuration Relea
 pwsh ./Build/Advanced/Package-Portable.ps1 -Runtime win-x64 -Configuration Release -PluginMode all -TestimoXRoot C:\Support\GitHub\TestimoX -IncludeService
 ```
 
+The portable finisher no longer owns generic zip/delete/metadata mechanics itself.
+Those reusable steps now live in `Build\powerforge.dotnetpublish.json` + `powerforge dotnet bundle-postprocess`, while `Complete-PortableBundle.ps1` keeps only IntelligenceX-specific content generation.
+
 Folder-based plugins (recommended when shipping app bundles):
 
 ```powershell
 pwsh ./Build/Internal/Export-PluginFolders.ps1 -Mode public -Configuration Release
 pwsh ./Build/Internal/Export-PluginFolders.ps1 -Mode private -Configuration Release -TestimoXRoot C:\Support\GitHub\TestimoX
 ```
+
+The readable source of truth for folder-plugin export is now `Build/powerforge.plugins.json`.
+`Build/Internal/Export-PluginFolders.ps1` is just a thin compatibility wrapper over `powerforge plugin export`.
 
 Each plugin is exported as a folder (not just one `.dll`) because dependencies are usually required beside the entry assembly.
 
@@ -224,6 +231,9 @@ pwsh ./Build/Advanced/Publish-Plugins.ps1 -Mode public -Configuration Release
 # Private packs (requires TestimoXRoot/private feed)
 pwsh ./Build/Advanced/Publish-Plugins.ps1 -Mode private -Configuration Release -TestimoXRoot C:\Support\GitHub\TestimoX
 ```
+
+The readable source of truth for plugin NuGet pack selection is also `Build/powerforge.plugins.json`.
+`Build/Advanced/Publish-Plugins.ps1` is now a thin compatibility wrapper over `powerforge plugin pack`.
 
 Optional push:
 

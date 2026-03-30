@@ -1,5 +1,3 @@
-# Pack and optionally publish tool-pack plugins.
-
 [CmdletBinding()] param(
     [ValidateSet('public','private','all')]
     [string] $Mode = 'public',
@@ -13,6 +11,7 @@
     [switch] $NoBuild,
     [switch] $IncludeSymbols,
     [string] $TestimoXRoot,
+    [string] $ConfigPath,
 
     [switch] $Push,
     [string] $Source,
@@ -23,117 +22,57 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-function Write-Header($text) { Write-Host "`n=== $text ===" -ForegroundColor Cyan }
-function Write-Step($text)   { Write-Host "[+] $text" -ForegroundColor Yellow }
-function Write-Ok($text)     { Write-Host "[OK] $text" -ForegroundColor Green }
-
-function Invoke-DotNet {
-    param(
-        [Parameter(Mandatory)]
-        [string[]] $Args,
-        [string] $WorkingDirectory
-    )
-
-    if ([string]::IsNullOrWhiteSpace($WorkingDirectory)) {
-        $WorkingDirectory = $script:RepoRoot
-    }
-
-    Push-Location $WorkingDirectory
-    try {
-        & dotnet @Args
-        if ($LASTEXITCODE -ne 0) {
-            throw "dotnet command failed with exit code ${LASTEXITCODE}: dotnet $($Args -join ' ')"
-        }
-    } finally {
-        Pop-Location
-    }
-}
-
 $script:RepoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
+. (Join-Path $script:RepoRoot 'Build\Internal\Build.ScriptSupport.ps1')
+. (Join-Path $script:RepoRoot 'Build\Internal\Resolve-PowerForgeCli.ps1')
 . (Join-Path $script:RepoRoot 'Build\Internal\Resolve-TestimoXRoot.ps1')
 
 if ([string]::IsNullOrWhiteSpace($OutDir)) {
     $OutDir = Join-Path $script:RepoRoot 'Artifacts\NuGet'
 }
-New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
+if ([string]::IsNullOrWhiteSpace($ConfigPath)) {
+    $ConfigPath = Join-Path $script:RepoRoot 'Build\powerforge.plugins.json'
+}
 
-$publicProjects = @(
-    'IntelligenceX.Tools\IntelligenceX.Tools.Common\IntelligenceX.Tools.Common.csproj',
-    'IntelligenceX.Tools\IntelligenceX.Tools.FileSystem\IntelligenceX.Tools.FileSystem.csproj',
-    'IntelligenceX.Tools\IntelligenceX.Tools.Email\IntelligenceX.Tools.Email.csproj',
-    'IntelligenceX.Tools\IntelligenceX.Tools.EventLog\IntelligenceX.Tools.EventLog.csproj',
-    'IntelligenceX.Tools\IntelligenceX.Tools.PowerShell\IntelligenceX.Tools.PowerShell.csproj',
-    'IntelligenceX.Tools\IntelligenceX.Tools.ReviewerSetup\IntelligenceX.Tools.ReviewerSetup.csproj'
-)
+$OutDir = [System.IO.Path]::GetFullPath($OutDir)
+$ConfigPath = [System.IO.Path]::GetFullPath($ConfigPath)
+if (-not (Test-Path -LiteralPath $ConfigPath)) {
+    throw "Plugin catalog config not found: $ConfigPath"
+}
 
-$privateProjects = @(
-    'IntelligenceX.Tools\IntelligenceX.Tools.System\IntelligenceX.Tools.System.csproj',
-    'IntelligenceX.Tools\IntelligenceX.Tools.ADPlayground\IntelligenceX.Tools.ADPlayground.csproj',
-    'IntelligenceX.Tools\IntelligenceX.Tools.TestimoX\IntelligenceX.Tools.TestimoX.csproj'
-)
-
-$selected = switch ($Mode) {
-    'public' { @($publicProjects) }
-    'private' { @($privateProjects) }
-    'all' { @($publicProjects + $privateProjects | Select-Object -Unique) }
+$groups = switch ($Mode) {
+    'public' { @('pack-public') }
+    'private' { @('pack-private') }
+    'all' { @('pack-public', 'pack-private') }
     default { throw "Unexpected mode: $Mode" }
 }
 
-$needsPrivateRoot = $selected | Where-Object { $privateProjects -contains $_ } | Select-Object -First 1
-$privateArg = $null
-if ($needsPrivateRoot) {
-    $resolvedTestimoXRoot = Resolve-TestimoXRoot -Provided $TestimoXRoot -RepoRoot $script:RepoRoot
-    $privateArg = "/p:TestimoXRoot=$resolvedTestimoXRoot"
+$cli = Resolve-PowerForgeCliInvocation -RepoRoot $script:RepoRoot
+$pluginArgs = [System.Collections.Generic.List[string]]::new()
+$pluginArgs.AddRange([string[]] $cli.Prefix)
+$pluginArgs.Add('plugin')
+$pluginArgs.Add('pack')
+$pluginArgs.Add('--config')
+$pluginArgs.Add($ConfigPath)
+$pluginArgs.Add('--configuration')
+$pluginArgs.Add($Configuration)
+$pluginArgs.Add('--output-root')
+$pluginArgs.Add($OutDir)
+$pluginArgs.Add('--group')
+$pluginArgs.Add(($groups -join ','))
+if ($NoBuild) {
+    $pluginArgs.Add('--no-build')
 }
-
-Write-Header 'Pack Plugins'
-Write-Step "Mode: $Mode"
-Write-Step "Output: $OutDir"
-
-foreach ($project in $selected) {
-    Write-Step "Pack: $project"
-    $packArgs = @(
-        'pack',
-        $project,
-        '-c',
-        $Configuration,
-        '-o',
-        $OutDir,
-        '/p:ContinuousIntegrationBuild=true'
-    )
-
-    if ($NoBuild) {
-        $packArgs += '--no-build'
-    }
-    if (-not [string]::IsNullOrWhiteSpace($PackageVersion)) {
-        $packArgs += "/p:PackageVersion=$PackageVersion"
-    } elseif (-not [string]::IsNullOrWhiteSpace($VersionSuffix)) {
-        $packArgs += "/p:VersionSuffix=$VersionSuffix"
-    }
-    if ($IncludeSymbols) {
-        $packArgs += '/p:IncludeSymbols=true'
-        $packArgs += '/p:SymbolPackageFormat=snupkg'
-    }
-    if ($privateArg -and ($privateProjects -contains $project)) {
-        $packArgs += $privateArg
-    }
-
-    Invoke-DotNet -Args $packArgs -WorkingDirectory $script:RepoRoot
+if ($IncludeSymbols) {
+    $pluginArgs.Add('--include-symbols')
 }
-
-$producedPackages = Get-ChildItem -Path $OutDir -File -Filter '*.nupkg' |
-    Where-Object { $_.Name -notlike '*.snupkg' -and $_.Name -notlike '*.symbols.nupkg' } |
-    Sort-Object Name
-
-if ($producedPackages.Count -eq 0) {
-    throw "No NuGet packages were produced in $OutDir."
+if (-not [string]::IsNullOrWhiteSpace($PackageVersion)) {
+    $pluginArgs.Add('--package-version')
+    $pluginArgs.Add($PackageVersion)
+} elseif (-not [string]::IsNullOrWhiteSpace($VersionSuffix)) {
+    $pluginArgs.Add('--version-suffix')
+    $pluginArgs.Add($VersionSuffix)
 }
-
-Write-Header 'Produced Packages'
-foreach ($pkg in $producedPackages) {
-    Write-Host "- $($pkg.Name)"
-}
-
 if ($Push) {
     if ([string]::IsNullOrWhiteSpace($Source)) {
         throw "When -Push is specified, provide -Source."
@@ -142,15 +81,60 @@ if ($Push) {
         throw "When -Push is specified, provide -ApiKey."
     }
 
-    Write-Header 'Push Packages'
-    foreach ($pkg in $producedPackages) {
-        Write-Step "Push: $($pkg.Name)"
-        $pushArgs = @('nuget', 'push', $pkg.FullName, '--source', $Source, '--api-key', $ApiKey)
-        if ($SkipDuplicate) {
-            $pushArgs += '--skip-duplicate'
-        }
-        Invoke-DotNet -Args $pushArgs -WorkingDirectory $script:RepoRoot
+    $pluginArgs.Add('--push')
+    $pluginArgs.Add('--source')
+    $pluginArgs.Add($Source)
+    $pluginArgs.Add('--api-key')
+    $pluginArgs.Add($ApiKey)
+    if ($SkipDuplicate) {
+        $pluginArgs.Add('--skip-duplicate')
     }
+}
+
+$needsPrivateRoot = $groups -contains 'pack-private'
+$resolvedTestimoXRoot = $null
+if ($needsPrivateRoot) {
+    $resolvedTestimoXRoot = Resolve-TestimoXRoot -Provided $TestimoXRoot -RepoRoot $script:RepoRoot
+}
+
+Write-Header 'Pack Plugins'
+Write-Step "Mode: $Mode"
+Write-Step "Groups: $($groups -join ', ')"
+Write-Step "Config: $ConfigPath"
+Write-Step "Output: $OutDir"
+Write-Step "No build: $([bool] $NoBuild)"
+Write-Step "Include symbols: $([bool] $IncludeSymbols)"
+if (-not [string]::IsNullOrWhiteSpace($PackageVersion)) {
+    Write-Step "PackageVersion: $PackageVersion"
+} elseif (-not [string]::IsNullOrWhiteSpace($VersionSuffix)) {
+    Write-Step "VersionSuffix: $VersionSuffix"
+}
+if ($Push) {
+    Write-Step "Push source: $Source"
+    Write-Step "Skip duplicate: $([bool] $SkipDuplicate)"
+}
+if (-not [string]::IsNullOrWhiteSpace($resolvedTestimoXRoot)) {
+    Write-Step "TestimoXRoot: $resolvedTestimoXRoot"
+}
+Write-Step ("PowerForge: " + (Format-CommandLine -Command $cli.Command -Arguments $pluginArgs))
+
+if ($needsPrivateRoot) {
+    $previousTestimoXRoot = $env:TESTIMOX_ROOT
+    $previousLegacyTestimoXRoot = $env:TestimoXRoot
+    $env:TESTIMOX_ROOT = $resolvedTestimoXRoot
+    $env:TestimoXRoot = $resolvedTestimoXRoot
+    try {
+        & $cli.Command @pluginArgs
+    } finally {
+        $env:TESTIMOX_ROOT = $previousTestimoXRoot
+        $env:TestimoXRoot = $previousLegacyTestimoXRoot
+    }
+} else {
+    & $cli.Command @pluginArgs
+}
+
+if ($LASTEXITCODE -ne 0) {
+    throw "PowerForge plugin pack failed with exit code ${LASTEXITCODE}."
 }
 
 Write-Ok 'Plugin packaging complete.'

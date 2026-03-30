@@ -27,57 +27,6 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-function Convert-PluginFoldersToArchives {
-    param(
-        [Parameter(Mandatory)]
-        [string] $PluginsRoot
-    )
-
-    if (-not (Test-Path $PluginsRoot)) {
-        return
-    }
-
-    $pluginDirs = Get-ChildItem -Path $PluginsRoot -Directory -ErrorAction SilentlyContinue |
-        Sort-Object Name
-    foreach ($pluginDir in $pluginDirs) {
-        $archivePath = Join-Path $PluginsRoot ($pluginDir.Name + '.ix-plugin.zip')
-        if (Test-Path $archivePath) {
-            Remove-Item -Force $archivePath
-        }
-
-        [System.IO.Compression.ZipFile]::CreateFromDirectory($pluginDir.FullName, $archivePath)
-        Remove-Item -Recurse -Force $pluginDir.FullName
-    }
-}
-
-function Remove-BundleSymbols {
-    param(
-        [Parameter(Mandatory)]
-        [string] $BundleRootPath
-    )
-
-    if ($IncludeSymbols) {
-        return
-    }
-
-    Get-ChildItem -Path $BundleRootPath -Recurse -File -Filter '*.pdb' -ErrorAction SilentlyContinue |
-        Remove-Item -Force -ErrorAction SilentlyContinue
-}
-
-function Remove-BundleDiagnostics {
-    param(
-        [Parameter(Mandatory)]
-        [string] $BundleRootPath
-    )
-
-    if (-not $LeanBundle) {
-        return
-    }
-
-    Get-ChildItem -Path $BundleRootPath -Recurse -File -Filter 'createdump.exe' -ErrorAction SilentlyContinue |
-        Remove-Item -Force -ErrorAction SilentlyContinue
-}
-
 function New-PortableLauncherScripts {
     param(
         [Parameter(Mandatory)]
@@ -200,17 +149,11 @@ function New-PortableReadme {
     Set-Content -Path (Join-Path $BundleRootPath 'README.md') -Value ($lines -join "`r`n") -Encoding UTF8
 }
 
-function Resolve-PrimaryExecutableName {
-    param([Parameter(Mandatory)][string] $FrontendName)
-
-    if ($FrontendName -eq 'app') {
-        return 'IntelligenceX.Chat.App.exe'
-    }
-
-    return 'IntelligenceX.Chat.Host.exe'
-}
-
 $script:RepoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
+. (Join-Path $script:RepoRoot 'Build\Internal\Build.ScriptSupport.ps1')
+. (Join-Path $script:RepoRoot 'Build\Internal\Resolve-ReleaseDefaults.ps1')
+. (Join-Path $script:RepoRoot 'Build\Internal\Resolve-PowerForgeCli.ps1')
+
 $bundleRootFull = [System.IO.Path]::GetFullPath($BundleRoot)
 $pluginsOut = Join-Path $bundleRootFull 'plugins'
 $frontendNormalized = $Frontend.ToLowerInvariant()
@@ -226,61 +169,87 @@ New-Item -ItemType Directory -Path $bundleRootFull -Force | Out-Null
 New-Item -ItemType Directory -Path $pluginsOut -Force | Out-Null
 
 $exportScript = Join-Path $script:RepoRoot 'Build\Internal\Export-PluginFolders.ps1'
-$exportArgs = @(
-    '-NoLogo',
-    '-NoProfile',
-    '-File',
-    $exportScript,
-    '-Mode',
-    $PluginMode,
-    '-Configuration',
-    $Configuration,
-    '-Framework',
-    $Framework,
-    '-OutDir',
-    $pluginsOut
-)
+$exportParameters = @{
+    Mode = $PluginMode
+    Configuration = $Configuration
+    Framework = $Framework
+    OutDir = $pluginsOut
+}
 if ($IncludeSymbols) {
-    $exportArgs += '-IncludeSymbols'
+    $exportParameters.IncludeSymbols = $true
 }
 if (-not [string]::IsNullOrWhiteSpace($TestimoXRoot)) {
-    $exportArgs += @('-TestimoXRoot', $TestimoXRoot)
+    $exportParameters.TestimoXRoot = $TestimoXRoot
 }
 
-& pwsh @exportArgs
-if ($LASTEXITCODE -ne 0) {
-    throw "Plugin export failed with exit code $LASTEXITCODE."
-}
-
-if ($LeanBundle) {
-    Convert-PluginFoldersToArchives -PluginsRoot $pluginsOut
-}
+Write-Header 'Export Plugin Folders'
+Invoke-ScriptFile -ScriptPath $exportScript -Parameters $exportParameters -FailureContext 'Plugin export failed.' -FailureHint 'Check POWERFORGE_ROOT if you are testing against a local PSPublishModule worktree.'
 
 if ($IncludePortableHelpers) {
     New-PortableLauncherScripts -BundleRootPath $bundleRootFull -PrimaryExecutableName $PrimaryExecutable
     New-PortableReadme -BundleRootPath $bundleRootFull -FrontendValue $frontendNormalized -PrimaryExecutableName $PrimaryExecutable -RuntimeValue $Runtime -FrameworkValue $Framework -PluginModeValue $PluginMode -ServiceIncluded ([bool]$IncludeService)
 }
 
-Remove-BundleSymbols -BundleRootPath $bundleRootFull
-Remove-BundleDiagnostics -BundleRootPath $bundleRootFull
+if ($LeanBundle -or (-not $IncludeSymbols) -or $IncludeBundleMetadata) {
+    $powerForgeCli = Resolve-PowerForgeCliInvocation -RepoRoot $script:RepoRoot
+    $postProcessArgs = @($powerForgeCli.Prefix) + @(
+        'dotnet',
+        'bundle-postprocess',
+        '--config',
+        (Join-Path $script:RepoRoot 'Build\powerforge.dotnetpublish.json'),
+        '--bundle',
+        'IntelligenceX.Chat.Portable',
+        '--bundle-root',
+        $bundleRootFull,
+        '--target',
+        ($(if ($frontendNormalized -eq 'app') { 'IntelligenceX.Chat.App' } else { 'IntelligenceX.Chat.Host' })),
+        '--rid',
+        $Runtime,
+        '--framework',
+        $Framework,
+        '--style',
+        'PortableCompat',
+        '--configuration',
+        $Configuration,
+        '--token',
+        "bundleName=$BundleName",
+        '--token',
+        "frontend=$frontendNormalized",
+        '--token',
+        "primaryExecutable=$PrimaryExecutable",
+        '--token',
+        "appFramework=$AppFramework",
+        '--token',
+        "pluginMode=$PluginMode",
+        '--token',
+        "includeService=$([bool]$IncludeService)",
+        '--token',
+        "includePrivateToolPacks=$([bool]$IncludePrivateToolPacks)",
+        '--token',
+        "includeSymbols=$([bool]$IncludeSymbols)",
+        '--token',
+        "leanBundle=$LeanBundle",
+        '--token',
+        "includePortableHelpers=$([bool]$IncludePortableHelpers)"
+    )
 
-if ($IncludeBundleMetadata) {
-    $bundleMetadata = [ordered]@{
-        schemaVersion = 1
-        bundleName = $BundleName
-        frontend = $frontendNormalized
-        primaryExecutable = $PrimaryExecutable
-        runtime = $Runtime
-        framework = $Framework
-        appFramework = $AppFramework
-        configuration = $Configuration
-        pluginMode = $PluginMode
-        includeService = [bool]$IncludeService
-        includePrivateToolPacks = [bool]$IncludePrivateToolPacks
-        includeSymbols = [bool]$IncludeSymbols
-        leanBundle = $LeanBundle
-        includePortableHelpers = [bool]$IncludePortableHelpers
-        createdUtc = (Get-Date).ToUniversalTime().ToString('o')
+    if (-not $LeanBundle) {
+        $postProcessArgs += '--skip-archive'
     }
-    $bundleMetadata | ConvertTo-Json -Depth 5 | Set-Content -Path (Join-Path $bundleRootFull 'portable-bundle.json') -Encoding UTF8
+    if (-not $IncludeBundleMetadata) {
+        $postProcessArgs += '--skip-metadata'
+    }
+    if (-not $IncludeSymbols) {
+        $postProcessArgs += @('--delete-pattern', '**/*.pdb')
+    }
+    if ($LeanBundle) {
+        $postProcessArgs += @('--delete-pattern', '**/createdump.exe')
+    }
+
+    Write-Header 'Bundle Post-Process'
+    Write-Step (Format-CommandLine -Command $powerForgeCli.Command -Arguments $postProcessArgs)
+    & $powerForgeCli.Command @postProcessArgs
+    if ($LASTEXITCODE -ne 0) {
+        throw "PowerForge bundle post-process failed with exit code $LASTEXITCODE."
+    }
 }
