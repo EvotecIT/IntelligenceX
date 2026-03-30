@@ -49,6 +49,12 @@ $ErrorActionPreference = 'Stop'
 $script:RepoRoot = (Get-Item (Split-Path -Parent $MyInvocation.MyCommand.Path)).Parent.FullName
 . (Join-Path $script:RepoRoot 'Build\Internal\Build.ScriptSupport.ps1')
 
+function Has-BoundNonEmptyOption {
+    param([string] $Name)
+
+    return $PSBoundParameters.ContainsKey($Name) -and -not [string]::IsNullOrWhiteSpace([string] $PSBoundParameters[$Name])
+}
+
 if ([string]::IsNullOrWhiteSpace($ReleaseId)) {
     $ReleaseId = Get-Date -Format 'yyyyMMdd-HHmmss'
 }
@@ -123,17 +129,18 @@ if ($SignInstaller) {
     $parameters['SignInstaller'] = $true
     $parameters['UseTestimoXSignThumbprintFallback'] = $UseTestimoXSignThumbprintFallback
 }
-${hasExplicitSigningOverride} =
-    $PSBoundParameters.ContainsKey('SignToolPath') -or
-    $PSBoundParameters.ContainsKey('SignThumbprint') -or
-    $PSBoundParameters.ContainsKey('SignSubjectName') -or
-    $PSBoundParameters.ContainsKey('SignOnMissingTool') -or
-    $PSBoundParameters.ContainsKey('SignOnFailure') -or
-    $PSBoundParameters.ContainsKey('SignTimestampUrl') -or
-    $PSBoundParameters.ContainsKey('SignDescription') -or
-    $PSBoundParameters.ContainsKey('SignUrl') -or
-    $PSBoundParameters.ContainsKey('SignCsp') -or
-    $PSBoundParameters.ContainsKey('SignKeyContainer')
+$hasExplicitSigningOverride = @(
+    'SignToolPath'
+    'SignThumbprint'
+    'SignSubjectName'
+    'SignOnMissingTool'
+    'SignOnFailure'
+    'SignTimestampUrl'
+    'SignDescription'
+    'SignUrl'
+    'SignCsp'
+    'SignKeyContainer'
+) | Where-Object { Has-BoundNonEmptyOption $_ } | Select-Object -First 1
 $enableSigning = $SignInstaller -or $hasExplicitSigningOverride
 
 if ($enableSigning -and -not [string]::IsNullOrWhiteSpace($SignToolPath)) {
