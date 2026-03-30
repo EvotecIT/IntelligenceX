@@ -6,6 +6,8 @@ param(
     [switch] $PublishProjectGitHub,
     [switch] $PublishToolGitHub,
     [switch] $SkipWorkspaceBuild,
+    [switch] $SkipRestore,
+    [switch] $SkipBuild,
     [ValidateSet('oss', 'full-private')]
     [string] $WorkspaceProfile,
     [ValidateSet('Debug', 'Release')]
@@ -16,8 +18,11 @@ param(
     [switch] $IncludeChat,
     [switch] $PackagesOnly,
     [switch] $ToolsOnly,
+    [string] $OutputRoot,
     [string] $StageRoot,
     [string] $ManifestJsonPath,
+    [switch] $AllowOutputOutsideProjectRoot,
+    [switch] $AllowManifestOutsideProjectRoot,
     [string] $ChecksumsPath,
     [switch] $SkipChecksums,
     [switch] $IncludeSymbols,
@@ -102,23 +107,44 @@ Add-Flag '--publish-tool-github' $PublishToolGitHub
 Add-Flag '--packages-only' $PackagesOnly
 Add-Flag '--tools-only' $ToolsOnly
 Add-Flag '--keep-symbols' $IncludeSymbols
-Add-Flag '--sign' $SignInstaller
 Add-Flag '--skip-workspace-validation' $SkipWorkspaceBuild
+Add-Flag '--skip-restore' $SkipRestore
+Add-Flag '--skip-build' $SkipBuild
 
 Add-Option '--stage-root' $StageRoot
+Add-Option '--output-root' $OutputRoot
 Add-Option '--manifest-json' $ManifestJsonPath
+Add-Flag '--allow-output-outside-project-root' $AllowOutputOutsideProjectRoot
+Add-Flag '--allow-manifest-outside-project-root' $AllowManifestOutsideProjectRoot
 Add-Option '--checksums-path' $ChecksumsPath
 Add-Flag '--skip-release-checksums' $SkipChecksums
 Add-Option '--workspace-profile' $WorkspaceProfile
-Add-Option '--sign-tool-path' $SignToolPath
-Add-Option '--sign-subject-name' $SignSubjectName
-Add-Option '--sign-on-missing-tool' $SignOnMissingTool
-Add-Option '--sign-on-failure' $SignOnFailure
-Add-Option '--sign-timestamp-url' $SignTimestampUrl
-Add-Option '--sign-description' $SignDescription
-Add-Option '--sign-url' $SignUrl
-Add-Option '--sign-csp' $SignCsp
-Add-Option '--sign-key-container' $SignKeyContainer
+${hasExplicitSigningOverride} =
+    $PSBoundParameters.ContainsKey('SignToolPath') -or
+    $PSBoundParameters.ContainsKey('SignThumbprint') -or
+    $PSBoundParameters.ContainsKey('SignSubjectName') -or
+    $PSBoundParameters.ContainsKey('SignOnMissingTool') -or
+    $PSBoundParameters.ContainsKey('SignOnFailure') -or
+    $PSBoundParameters.ContainsKey('SignTimestampUrl') -or
+    $PSBoundParameters.ContainsKey('SignDescription') -or
+    $PSBoundParameters.ContainsKey('SignUrl') -or
+    $PSBoundParameters.ContainsKey('SignCsp') -or
+    $PSBoundParameters.ContainsKey('SignKeyContainer')
+$enableSigning = $SignInstaller -or $hasExplicitSigningOverride
+
+Add-Flag '--sign' $enableSigning
+
+if ($enableSigning) {
+    Add-Option '--sign-tool-path' $SignToolPath
+    Add-Option '--sign-subject-name' $SignSubjectName
+    Add-Option '--sign-on-missing-tool' $SignOnMissingTool
+    Add-Option '--sign-on-failure' $SignOnFailure
+    Add-Option '--sign-timestamp-url' $SignTimestampUrl
+    Add-Option '--sign-description' $SignDescription
+    Add-Option '--sign-url' $SignUrl
+    Add-Option '--sign-csp' $SignCsp
+    Add-Option '--sign-key-container' $SignKeyContainer
+}
 
 if ($SignInstaller) {
     $resolvedSignThumbprint = Resolve-DefaultSignThumbprint -RepoRoot $repoRoot -ExplicitThumbprint $SignThumbprint -UseTestimoXFallback $UseTestimoXSignThumbprintFallback
@@ -126,7 +152,9 @@ if ($SignInstaller) {
         $SignThumbprint = $resolvedSignThumbprint
     }
 }
-Add-Option '--sign-thumbprint' $SignThumbprint
+if ($enableSigning) {
+    Add-Option '--sign-thumbprint' $SignThumbprint
+}
 
 if ($SkipTests) {
     Add-Option '--workspace-disable-feature' 'tests'
