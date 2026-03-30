@@ -128,7 +128,14 @@
         ],
         "OutputPath": "Artifacts/IntelligenceX.Chat.Service/{rid}/{framework}/{style}",
         "Zip": true,
-        "ZipNameTemplate": "IntelligenceX.Chat.Service-{framework}-{rid}-{style}.zip"
+        "ZipNameTemplate": "IntelligenceX.Chat.Service-{framework}-{rid}-{style}.zip",
+        "StyleOverrides": {
+          "PortableCompat": {
+            "MsBuildProperties": {
+              "PublishSingleFile": "false"
+            }
+          }
+        }
       }
     },
     {
@@ -149,6 +156,7 @@
         "StyleOverrides": {
           "PortableCompat": {
             "MsBuildProperties": {
+              "PublishSingleFile": "false",
               "EnableMsixTooling": "true",
               "WindowsAppSDKSelfContained": "true"
             }
@@ -210,7 +218,33 @@
             "-IncludeBundleMetadata"
           ]
         }
-      ]
+      ],
+      "PostProcess": {
+        "ArchiveDirectories": [
+          {
+            "Path": "plugins",
+            "Mode": "ChildDirectories",
+            "ArchiveNameTemplate": "{name}.ix-plugin.zip",
+            "DeleteSource": true
+          }
+        ],
+        "Metadata": {
+          "Path": "portable-bundle.json",
+          "IncludeStandardProperties": true,
+          "Properties": {
+            "bundleName": "{bundleName}",
+            "frontend": "{frontend}",
+            "primaryExecutable": "{primaryExecutable}",
+            "appFramework": "{appFramework}",
+            "pluginMode": "{pluginMode}",
+            "includeService": "{includeService}",
+            "includePrivateToolPacks": "{includePrivateToolPacks}",
+            "includeSymbols": "{includeSymbols}",
+            "leanBundle": "{leanBundle}",
+            "includePortableHelpers": "{includePortableHelpers}"
+          }
+        }
+      }
     }
   ],
   "Installers": [

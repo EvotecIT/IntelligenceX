@@ -81,25 +81,26 @@ dotnet build IntelligenceX.sln -c Release
 ### Package plugin NuGets
 
 ```powershell
-pwsh ./Build/Publish-Plugins.ps1 -Mode public -Configuration Release
+pwsh ./Build/Advanced/Publish-Plugins.ps1 -Mode public -Configuration Release
 ```
 
 ### Export folder-based plugins
 
 ```powershell
-pwsh ./Build/Export-PluginFolders.ps1 -Mode public -Configuration Release
+pwsh ./Build/Internal/Export-PluginFolders.ps1 -Mode public -Configuration Release
 ```
 
 Optional diagnostics export (keeps symbols):
 
 ```powershell
-pwsh ./Build/Export-PluginFolders.ps1 -Mode public -Configuration Release -IncludeSymbols
+pwsh ./Build/Internal/Export-PluginFolders.ps1 -Mode public -Configuration Release -IncludeSymbols
 ```
 
 Default outputs:
 
 - NuGet packages: `Artifacts/NuGet`
 - Folder plugins: `Artifacts/Plugins/<PackageId>/`
+- plugin/package selection lives in `Build/powerforge.plugins.json`
 
 Folder plugin delivery contract:
 
@@ -107,6 +108,7 @@ Folder plugin delivery contract:
 - include `ix-plugin.json` with `sourceKind` and `entryAssembly`
 - strip debug symbol files (`*.pdb`) in Release exports by default
 - client drops plugin folder into plugin search roots used by `ToolPackBootstrap`
+- repo-specific plugin selection and manifest aliases are declared in `Build/powerforge.plugins.json`
 
 ## 7. Enforcement
 

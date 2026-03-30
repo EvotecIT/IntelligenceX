@@ -123,34 +123,34 @@ if ($SignInstaller) {
     $parameters['SignInstaller'] = $true
     $parameters['UseTestimoXSignThumbprintFallback'] = $UseTestimoXSignThumbprintFallback
 }
-if (-not [string]::IsNullOrWhiteSpace($SignToolPath)) {
+if ($PSBoundParameters.ContainsKey('SignToolPath') -and -not [string]::IsNullOrWhiteSpace($SignToolPath)) {
     $parameters['SignToolPath'] = $SignToolPath
 }
-if (-not [string]::IsNullOrWhiteSpace($SignThumbprint)) {
+if ($PSBoundParameters.ContainsKey('SignThumbprint') -and -not [string]::IsNullOrWhiteSpace($SignThumbprint)) {
     $parameters['SignThumbprint'] = $SignThumbprint
 }
-if (-not [string]::IsNullOrWhiteSpace($SignSubjectName)) {
+if ($PSBoundParameters.ContainsKey('SignSubjectName') -and -not [string]::IsNullOrWhiteSpace($SignSubjectName)) {
     $parameters['SignSubjectName'] = $SignSubjectName
 }
-if (-not [string]::IsNullOrWhiteSpace($SignOnMissingTool)) {
+if ($PSBoundParameters.ContainsKey('SignOnMissingTool') -and -not [string]::IsNullOrWhiteSpace($SignOnMissingTool)) {
     $parameters['SignOnMissingTool'] = $SignOnMissingTool
 }
-if (-not [string]::IsNullOrWhiteSpace($SignOnFailure)) {
+if ($PSBoundParameters.ContainsKey('SignOnFailure') -and -not [string]::IsNullOrWhiteSpace($SignOnFailure)) {
     $parameters['SignOnFailure'] = $SignOnFailure
 }
-if (-not [string]::IsNullOrWhiteSpace($SignTimestampUrl)) {
+if ($PSBoundParameters.ContainsKey('SignTimestampUrl') -and -not [string]::IsNullOrWhiteSpace($SignTimestampUrl)) {
     $parameters['SignTimestampUrl'] = $SignTimestampUrl
 }
-if (-not [string]::IsNullOrWhiteSpace($SignDescription)) {
+if ($PSBoundParameters.ContainsKey('SignDescription') -and -not [string]::IsNullOrWhiteSpace($SignDescription)) {
     $parameters['SignDescription'] = $SignDescription
 }
-if (-not [string]::IsNullOrWhiteSpace($SignUrl)) {
+if ($PSBoundParameters.ContainsKey('SignUrl') -and -not [string]::IsNullOrWhiteSpace($SignUrl)) {
     $parameters['SignUrl'] = $SignUrl
 }
-if (-not [string]::IsNullOrWhiteSpace($SignCsp)) {
+if ($PSBoundParameters.ContainsKey('SignCsp') -and -not [string]::IsNullOrWhiteSpace($SignCsp)) {
     $parameters['SignCsp'] = $SignCsp
 }
-if (-not [string]::IsNullOrWhiteSpace($SignKeyContainer)) {
+if ($PSBoundParameters.ContainsKey('SignKeyContainer') -and -not [string]::IsNullOrWhiteSpace($SignKeyContainer)) {
     $parameters['SignKeyContainer'] = $SignKeyContainer
 }
 if (-not [string]::IsNullOrWhiteSpace($TestimoXRoot)) {
