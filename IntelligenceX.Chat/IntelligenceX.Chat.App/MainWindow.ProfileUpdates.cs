@@ -247,17 +247,31 @@ public sealed partial class MainWindow : Window {
     private void ApplyHelloPolicyToolCatalogPreview(
         SessionPolicyDto? policy,
         bool clearExistingToolDefinitions) {
-        _toolCatalogPacks = policy?.Packs is { } helloPacks
-            ? helloPacks
-            : Array.Empty<ToolPackInfoDto>();
-        _toolCatalogPlugins = policy?.Plugins is { } helloPlugins
-            ? helloPlugins
-            : Array.Empty<PluginInfoDto>();
-        _toolCatalogRoutingCatalog = policy?.RoutingCatalog;
-        _toolCatalogCapabilitySnapshot = policy?.CapabilitySnapshot;
-        if (clearExistingToolDefinitions) {
+        var previewPlan = BuildHelloPolicyToolCatalogPreviewPlan(policy, clearExistingToolDefinitions);
+        _toolCatalogPacks = previewPlan.Packs;
+        _toolCatalogPlugins = previewPlan.Plugins;
+        _toolCatalogRoutingCatalog = previewPlan.RoutingCatalog;
+        _toolCatalogCapabilitySnapshot = previewPlan.CapabilitySnapshot;
+        if (previewPlan.ClearExistingToolDefinitions) {
             ClearToolCatalogCache(clearCatalogMetadata: false);
         }
+    }
+
+    internal static (
+        ToolPackInfoDto[] Packs,
+        PluginInfoDto[] Plugins,
+        SessionRoutingCatalogDiagnosticsDto? RoutingCatalog,
+        SessionCapabilitySnapshotDto? CapabilitySnapshot,
+        bool ClearExistingToolDefinitions)
+        BuildHelloPolicyToolCatalogPreviewPlan(
+            SessionPolicyDto? policy,
+            bool clearExistingToolDefinitions) {
+        return (
+            policy?.Packs is { } helloPacks ? helloPacks : Array.Empty<ToolPackInfoDto>(),
+            policy?.Plugins is { } helloPlugins ? helloPlugins : Array.Empty<PluginInfoDto>(),
+            policy?.RoutingCatalog,
+            policy?.CapabilitySnapshot,
+            clearExistingToolDefinitions);
     }
 
     private void SetToolEnabled(string toolName, bool enabled) {
