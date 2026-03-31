@@ -496,6 +496,7 @@ public sealed partial class UiShellAssetsTests {
             "segments.push(\"descriptor-discovery \" + formatStartupBootstrapDuration(descriptorDiscoveryMs));",
             "segments.push(\"pack-activation \" + formatStartupBootstrapDuration(packActivationMs));",
             "segments.push(\"activation-finalize \" + formatStartupBootstrapDuration(activationFinalizeMs));");
+        Assert.DoesNotContain("function resolveStartupBootstrapPhaseDuration", script, StringComparison.Ordinal);
         Assert.DoesNotContain("case \"pack_load\":", script, StringComparison.Ordinal);
         Assert.DoesNotContain("case \"pack_register\":", script, StringComparison.Ordinal);
         Assert.DoesNotContain("case \"registry_finalize\":", script, StringComparison.Ordinal);

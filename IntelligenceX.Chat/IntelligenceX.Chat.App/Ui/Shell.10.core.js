@@ -2213,38 +2213,19 @@
     };
   }
 
-  function resolveStartupBootstrapPhaseDuration(telemetry, phaseId) {
-    if (!telemetry || !phaseId) {
-      return 0;
+  function hasStartupBootstrapPhaseId(telemetry, phaseId) {
+    if (!telemetry || !phaseId || !Array.isArray(telemetry.phases)) {
+      return false;
     }
 
-    switch (phaseId) {
-      case "runtime_policy":
-        return telemetry.runtimePolicyMs;
-      case "bootstrap_options":
-        return telemetry.bootstrapOptionsMs;
-      case "descriptor_discovery":
-        return telemetry.descriptorDiscoveryMs;
-      case "pack_activation":
-        return telemetry.packActivationMs;
-      case "registry_activation_finalize":
-        return telemetry.registryActivationFinalizeMs;
-      default:
-        if (Array.isArray(telemetry.phases)) {
-          for (var i = 0; i < telemetry.phases.length; i += 1) {
-            var phase = telemetry.phases[i];
-            if (phase && typeof phase.id === "string" && phase.id.trim().toLowerCase() === phaseId.toLowerCase()) {
-              return toNonNegativeInt(phase.durationMs);
-            }
-          }
-        }
-
-        return 0;
+    for (var i = 0; i < telemetry.phases.length; i += 1) {
+      var phase = telemetry.phases[i];
+      if (phase && typeof phase.id === "string" && phase.id.trim().toLowerCase() === phaseId.toLowerCase()) {
+        return true;
+      }
     }
-  }
 
-  function hasStartupBootstrapPhase(telemetry, phaseId) {
-    return resolveStartupBootstrapPhaseDuration(telemetry, phaseId) > 0;
+    return false;
   }
 
   function formatStartupBootstrapDuration(ms) {
@@ -2265,11 +2246,11 @@
     }
 
     var segments = [];
-    var descriptorDiscoveryMs = resolveStartupBootstrapPhaseDuration(telemetry, "descriptor_discovery");
-    var packActivationMs = resolveStartupBootstrapPhaseDuration(telemetry, "pack_activation");
-    var activationFinalizeMs = resolveStartupBootstrapPhaseDuration(telemetry, "registry_activation_finalize");
+    var descriptorDiscoveryMs = toNonNegativeInt(telemetry.descriptorDiscoveryMs);
+    var packActivationMs = toNonNegativeInt(telemetry.packActivationMs);
+    var activationFinalizeMs = toNonNegativeInt(telemetry.registryActivationFinalizeMs);
     segments.push("total " + formatStartupBootstrapDuration(telemetry.totalMs));
-    if (hasStartupBootstrapPhase(telemetry, "descriptor_cache_hit")) {
+    if (hasStartupBootstrapPhaseId(telemetry, "descriptor_cache_hit")) {
       segments.push("descriptor-preview");
     } else {
       segments.push("descriptor-discovery " + formatStartupBootstrapDuration(descriptorDiscoveryMs));

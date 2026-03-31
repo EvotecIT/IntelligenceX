@@ -862,6 +862,7 @@ internal sealed partial class ChatServiceSession {
             SlowestPhaseLabel = slowestPhase?.Label,
             SlowestPhaseMs = slowestPhase?.DurationMs ?? 0
         });
+        // Persist the exact deferred descriptor-preview fingerprint used by warm-path validation.
         var previewDiscoveryFingerprint = BuildToolingBootstrapPreviewFingerprint(_options, runtimePolicyOptions);
         ApplyLiveToolingBootstrapState(
             registry,
@@ -895,7 +896,7 @@ internal sealed partial class ChatServiceSession {
                 CapabilitySnapshot = BuildRuntimeCapabilitySnapshot(),
                 ToolOrchestrationCatalog = toolOrchestrationCatalog
             },
-            previewDiscoveryFingerprint);
+            previewDiscoveryFingerprint: previewDiscoveryFingerprint);
 
         if (clearRoutingCaches) {
             ClearToolRoutingCaches();
