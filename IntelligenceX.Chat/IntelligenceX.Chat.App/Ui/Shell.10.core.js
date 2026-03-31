@@ -2176,6 +2176,27 @@
       return null;
     }
 
+    var phases = Array.isArray(value.phases) ? value.phases.map(function (phase) {
+      return {
+        id: typeof phase?.id === "string" ? phase.id.trim() : "",
+        label: typeof phase?.label === "string" ? phase.label.trim() : "",
+        durationMs: toNonNegativeInt(phase?.durationMs),
+        order: toNonNegativeInt(phase?.order)
+      };
+    }) : [];
+    var descriptorDiscoveryMs = toNonNegativeInt(value.descriptorDiscoveryMs);
+    if (descriptorDiscoveryMs <= 0) {
+      descriptorDiscoveryMs = readStartupBootstrapPhaseMs(phases, "descriptor_discovery");
+    }
+    var packActivationMs = toNonNegativeInt(value.packActivationMs);
+    if (packActivationMs <= 0) {
+      packActivationMs = readStartupBootstrapPhaseMs(phases, "pack_activation");
+    }
+    var registryActivationFinalizeMs = toNonNegativeInt(value.registryActivationFinalizeMs);
+    if (registryActivationFinalizeMs <= 0) {
+      registryActivationFinalizeMs = readStartupBootstrapPhaseMs(phases, "registry_activation_finalize");
+    }
+
     return {
       totalMs: toNonNegativeInt(value.totalMs),
       runtimePolicyMs: toNonNegativeInt(value.runtimePolicyMs),
@@ -2184,9 +2205,9 @@
       packRegisterMs: toNonNegativeInt(value.packRegisterMs),
       registryFinalizeMs: toNonNegativeInt(value.registryFinalizeMs),
       registryMs: toNonNegativeInt(value.registryMs),
-      descriptorDiscoveryMs: toNonNegativeInt(value.descriptorDiscoveryMs),
-      packActivationMs: toNonNegativeInt(value.packActivationMs),
-      registryActivationFinalizeMs: toNonNegativeInt(value.registryActivationFinalizeMs),
+      descriptorDiscoveryMs: descriptorDiscoveryMs,
+      packActivationMs: packActivationMs,
+      registryActivationFinalizeMs: registryActivationFinalizeMs,
       tools: toNonNegativeInt(value.tools),
       packsLoaded: toNonNegativeInt(value.packsLoaded),
       packsDisabled: toNonNegativeInt(value.packsDisabled),
@@ -2195,14 +2216,7 @@
       slowPackTopCount: toNonNegativeInt(value.slowPackTopCount),
       packProgressProcessed: toNonNegativeInt(value.packProgressProcessed),
       packProgressTotal: toNonNegativeInt(value.packProgressTotal),
-      phases: Array.isArray(value.phases) ? value.phases.map(function (phase) {
-        return {
-          id: typeof phase?.id === "string" ? phase.id.trim() : "",
-          label: typeof phase?.label === "string" ? phase.label.trim() : "",
-          durationMs: toNonNegativeInt(phase?.durationMs),
-          order: toNonNegativeInt(phase?.order)
-        };
-      }) : [],
+      phases: phases,
       slowPluginCount: toNonNegativeInt(value.slowPluginCount),
       slowPluginTopCount: toNonNegativeInt(value.slowPluginTopCount),
       pluginProgressProcessed: toNonNegativeInt(value.pluginProgressProcessed),
@@ -2211,6 +2225,21 @@
       slowestPhaseLabel: typeof value.slowestPhaseLabel === "string" ? value.slowestPhaseLabel.trim() : "",
       slowestPhaseMs: toNonNegativeInt(value.slowestPhaseMs)
     };
+  }
+
+  function readStartupBootstrapPhaseMs(phases, phaseId) {
+    if (!Array.isArray(phases) || !phaseId) {
+      return 0;
+    }
+
+    for (var i = 0; i < phases.length; i += 1) {
+      var phase = phases[i];
+      if (phase && phase.id === phaseId) {
+        return toNonNegativeInt(phase.durationMs);
+      }
+    }
+
+    return 0;
   }
 
   function hasStartupBootstrapPhaseId(telemetry, phaseId) {

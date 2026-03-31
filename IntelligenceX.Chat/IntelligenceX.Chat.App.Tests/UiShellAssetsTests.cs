@@ -489,13 +489,17 @@ public sealed partial class UiShellAssetsTests {
 
         AssertContainsAll(
             script,
-            "descriptorDiscoveryMs: toNonNegativeInt(value.descriptorDiscoveryMs),",
-            "packActivationMs: toNonNegativeInt(value.packActivationMs),",
-            "registryActivationFinalizeMs: toNonNegativeInt(value.registryActivationFinalizeMs),",
+            "descriptorDiscoveryMs = readStartupBootstrapPhaseMs(phases, \"descriptor_discovery\");",
+            "packActivationMs = readStartupBootstrapPhaseMs(phases, \"pack_activation\");",
+            "registryActivationFinalizeMs = readStartupBootstrapPhaseMs(phases, \"registry_activation_finalize\");",
+            "descriptorDiscoveryMs: descriptorDiscoveryMs,",
+            "packActivationMs: packActivationMs,",
+            "registryActivationFinalizeMs: registryActivationFinalizeMs,",
             "segments.push(\"descriptor-preview\");",
             "segments.push(\"descriptor-discovery \" + formatStartupBootstrapDuration(descriptorDiscoveryMs));",
             "segments.push(\"pack-activation \" + formatStartupBootstrapDuration(packActivationMs));",
             "segments.push(\"activation-finalize \" + formatStartupBootstrapDuration(activationFinalizeMs));");
+        Assert.Contains("function readStartupBootstrapPhaseMs(phases, phaseId)", script, StringComparison.Ordinal);
         Assert.DoesNotContain("function resolveStartupBootstrapPhaseDuration", script, StringComparison.Ordinal);
         Assert.DoesNotContain("case \"pack_load\":", script, StringComparison.Ordinal);
         Assert.DoesNotContain("case \"pack_register\":", script, StringComparison.Ordinal);
