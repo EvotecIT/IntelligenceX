@@ -17,6 +17,21 @@ public static class StartupBootstrapContracts {
     public const string PhaseBootstrapOptionsId = "bootstrap_options";
 
     /// <summary>
+    /// Canonical phase id for descriptor discovery timing.
+    /// </summary>
+    public const string PhaseDescriptorDiscoveryId = "descriptor_discovery";
+
+    /// <summary>
+    /// Canonical phase id for pack activation timing.
+    /// </summary>
+    public const string PhasePackActivationId = "pack_activation";
+
+    /// <summary>
+    /// Canonical phase id for registry activation finalization timing.
+    /// </summary>
+    public const string PhaseRegistryActivationFinalizeId = "registry_activation_finalize";
+
+    /// <summary>
     /// Canonical phase id for tool-pack loading timing.
     /// </summary>
     public const string PhasePackLoadId = "pack_load";
@@ -30,6 +45,11 @@ public static class StartupBootstrapContracts {
     /// Canonical phase id for registry finalization timing.
     /// </summary>
     public const string PhaseRegistryFinalizeId = "registry_finalize";
+
+    /// <summary>
+    /// Canonical phase id for persisted descriptor-preview startup hits.
+    /// </summary>
+    public const string PhaseDescriptorCacheHitId = "descriptor_cache_hit";
 
     /// <summary>
     /// Canonical phase id for persisted tooling bootstrap cache hits.
@@ -47,6 +67,21 @@ public static class StartupBootstrapContracts {
     public const string PhaseBootstrapOptionsLabel = "bootstrap options";
 
     /// <summary>
+    /// Canonical label for descriptor discovery timing.
+    /// </summary>
+    public const string PhaseDescriptorDiscoveryLabel = "descriptor discovery";
+
+    /// <summary>
+    /// Canonical label for pack activation timing.
+    /// </summary>
+    public const string PhasePackActivationLabel = "pack activation";
+
+    /// <summary>
+    /// Canonical label for registry activation finalization timing.
+    /// </summary>
+    public const string PhaseRegistryActivationFinalizeLabel = "activation finalize";
+
+    /// <summary>
     /// Canonical label for tool-pack loading timing.
     /// </summary>
     public const string PhasePackLoadLabel = "pack load";
@@ -60,6 +95,11 @@ public static class StartupBootstrapContracts {
     /// Canonical label for registry finalization timing.
     /// </summary>
     public const string PhaseRegistryFinalizeLabel = "registry finalize";
+
+    /// <summary>
+    /// Canonical label for persisted descriptor-preview startup hits.
+    /// </summary>
+    public const string PhaseDescriptorCacheHitLabel = "descriptor preview";
 
     /// <summary>
     /// Canonical label for persisted tooling bootstrap cache hits.
@@ -106,11 +146,65 @@ public static class StartupBootstrapContracts {
         return normalized switch {
             PhaseRuntimePolicyId => PhaseRuntimePolicyLabel,
             PhaseBootstrapOptionsId => PhaseBootstrapOptionsLabel,
+            PhaseDescriptorDiscoveryId => PhaseDescriptorDiscoveryLabel,
+            PhasePackActivationId => PhasePackActivationLabel,
+            PhaseRegistryActivationFinalizeId => PhaseRegistryActivationFinalizeLabel,
             PhasePackLoadId => PhasePackLoadLabel,
             PhasePackRegisterId => PhasePackRegisterLabel,
             PhaseRegistryFinalizeId => PhaseRegistryFinalizeLabel,
+            PhaseDescriptorCacheHitId => PhaseDescriptorCacheHitLabel,
             PhaseCacheHitId => PhaseCacheHitLabel,
             _ => normalized
+        };
+    }
+
+    /// <summary>
+    /// Resolves the effective duration for a canonical startup phase, preferring explicit phase
+    /// telemetry and falling back to legacy aggregate timing fields for compatibility.
+    /// </summary>
+    public static long ResolvePhaseDuration(SessionStartupBootstrapTelemetryDto? telemetry, string? phaseId) {
+        if (telemetry is null) {
+            return 0;
+        }
+
+        var normalized = (phaseId ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return 0;
+        }
+
+        if (telemetry.Phases is { Length: > 0 } phases) {
+            for (var i = 0; i < phases.Length; i++) {
+                if (string.Equals((phases[i].Id ?? string.Empty).Trim(), normalized, StringComparison.OrdinalIgnoreCase)) {
+                    return Math.Max(0, phases[i].DurationMs);
+                }
+            }
+        }
+
+        return normalized switch {
+            PhaseRuntimePolicyId => Math.Max(0, telemetry.RuntimePolicyMs),
+            PhaseBootstrapOptionsId => Math.Max(0, telemetry.BootstrapOptionsMs),
+            PhaseDescriptorDiscoveryId => Math.Max(0, telemetry.DescriptorDiscoveryMs > 0 ? telemetry.DescriptorDiscoveryMs : telemetry.PackLoadMs),
+            PhasePackLoadId => Math.Max(0, telemetry.PackLoadMs > 0 ? telemetry.PackLoadMs : telemetry.DescriptorDiscoveryMs),
+            PhasePackActivationId => Math.Max(0, telemetry.PackActivationMs > 0 ? telemetry.PackActivationMs : telemetry.PackRegisterMs),
+            PhasePackRegisterId => Math.Max(0, telemetry.PackRegisterMs > 0 ? telemetry.PackRegisterMs : telemetry.PackActivationMs),
+            PhaseRegistryActivationFinalizeId => Math.Max(0, telemetry.RegistryActivationFinalizeMs > 0 ? telemetry.RegistryActivationFinalizeMs : telemetry.RegistryFinalizeMs),
+            PhaseRegistryFinalizeId => Math.Max(0, telemetry.RegistryFinalizeMs > 0 ? telemetry.RegistryFinalizeMs : telemetry.RegistryActivationFinalizeMs),
+            _ => 0
+        };
+    }
+
+    /// <summary>
+    /// Produces a telemetry copy with canonical phase durations pre-resolved for shell/UI consumers.
+    /// </summary>
+    public static SessionStartupBootstrapTelemetryDto WithCanonicalPhaseDurations(SessionStartupBootstrapTelemetryDto? telemetry) {
+        if (telemetry is null) {
+            return new SessionStartupBootstrapTelemetryDto();
+        }
+
+        return telemetry with {
+            DescriptorDiscoveryMs = ResolvePhaseDuration(telemetry, PhaseDescriptorDiscoveryId),
+            PackActivationMs = ResolvePhaseDuration(telemetry, PhasePackActivationId),
+            RegistryActivationFinalizeMs = ResolvePhaseDuration(telemetry, PhaseRegistryActivationFinalizeId)
         };
     }
 
@@ -119,6 +213,13 @@ public static class StartupBootstrapContracts {
     /// </summary>
     public static bool IsCacheHitPhaseId(string? phaseId) {
         return string.Equals((phaseId ?? string.Empty).Trim(), PhaseCacheHitId, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Determines whether the supplied phase id represents a persisted descriptor-preview startup state.
+    /// </summary>
+    public static bool IsPersistedPreviewPhaseId(string? phaseId) {
+        return string.Equals((phaseId ?? string.Empty).Trim(), PhaseDescriptorCacheHitId, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -131,6 +232,10 @@ public static class StartupBootstrapContracts {
             for (var i = 0; i < phases.Length; i++) {
                 if (IsCacheHitPhaseId(phases[i].Id)) {
                     return CacheModeHit;
+                }
+
+                if (IsPersistedPreviewPhaseId(phases[i].Id)) {
+                    return CacheModePersistedPreview;
                 }
             }
         }

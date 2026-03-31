@@ -444,6 +444,7 @@ public sealed partial class MainWindow : Window {
                 var enabledPackCount = 0;
                 var totalPackCount = 0;
                 var listedToolCount = 0;
+                var satisfyToolCatalogFromHelloPolicy = false;
                 const int metadataPhaseMaxAttempts = 2;
 
                 var helloStopwatch = Stopwatch.StartNew();
@@ -501,11 +502,8 @@ public sealed partial class MainWindow : Window {
                     helloStopwatch.Stop();
                     helloDuration = helloStopwatch.Elapsed;
                     _sessionPolicy = hello.Policy;
-                    _toolCatalogPacks = hello.Policy?.Packs is { } helloPacks
-                        ? helloPacks
-                        : Array.Empty<ToolPackInfoDto>();
-                    _toolCatalogRoutingCatalog = hello.Policy?.RoutingCatalog;
-                    _toolCatalogCapabilitySnapshot = hello.Policy?.CapabilitySnapshot;
+                    satisfyToolCatalogFromHelloPolicy = ShouldSatisfyStartupToolCatalogFromHelloPolicy(_sessionPolicy);
+                    ApplyHelloPolicyToolCatalogPreview(_sessionPolicy, clearExistingToolDefinitions: satisfyToolCatalogFromHelloPolicy);
                     SeedBackgroundSchedulerSnapshot(hello.Policy?.CapabilitySnapshot?.BackgroundScheduler);
                     RecordStartupBootstrapCacheMode(_sessionPolicy);
                     RecordStartupHelloPhaseDiagnostics(helloStopwatch.Elapsed, helloAttemptCount, success: true);
@@ -551,85 +549,91 @@ public sealed partial class MainWindow : Window {
                     }
                 }
 
-                var listToolsStopwatch = Stopwatch.StartNew();
-                var listToolsAttemptCount = 0;
-                try {
-                    ToolListMessage? toolList = null;
-                    for (var attempt = 1; attempt <= metadataPhaseMaxAttempts; attempt++) {
-                        listToolsAttemptCount = attempt;
-                        if (attempt == 1) {
-                            StartupLog.Write("StartupConnect.list_tools begin");
-                        } else {
-                            StartupLog.Write(
-                                "StartupConnect.list_tools retry attempt="
-                                + attempt.ToString(CultureInfo.InvariantCulture)
-                                + "/"
-                                + metadataPhaseMaxAttempts.ToString(CultureInfo.InvariantCulture));
-                        }
-
-                        try {
-                            toolList = await AwaitWithMetadataHeartbeatAsync(
-                                    operationFactory: cancellationToken => client.RequestAsync<ToolListMessage>(
-                                        new ListToolsRequest { RequestId = NextId() },
-                                        cancellationToken),
-                                    initialMessage: "Runtime connected. Loading tool catalog...",
-                                    heartbeatMessagePrefix: "Runtime connected. Tool catalog load in progress",
-                                    phase: "loading tool catalog")
-                                .ConfigureAwait(false);
-                            break;
-                        } catch (Exception ex) when (attempt < metadataPhaseMaxAttempts && ShouldRetryDeferredStartupMetadataPhaseAttempt(ex)) {
-                            StartupLog.Write(
-                                "StartupConnect.list_tools transient_retry attempt="
-                                + attempt.ToString(CultureInfo.InvariantCulture)
-                                + "/"
-                                + metadataPhaseMaxAttempts.ToString(CultureInfo.InvariantCulture)
-                                + " after "
-                                + FormatPhaseDuration(listToolsStopwatch.Elapsed)
-                                + ": "
-                                + DescribeStartupExceptionForLog(ex));
-                            await SetMetadataSyncStatusAsync(
-                                    AppendStartupStatusContext(
-                                        "Runtime connected. Tool catalog sync interrupted; retrying...",
-                                        StartupStatusPhaseStartupMetadataSync,
-                                        StartupStatusCauseMetadataRetry),
-                                    phase: "loading tool catalog")
-                                .ConfigureAwait(false);
-                            await Task.Delay(250).ConfigureAwait(false);
-                            continue;
-                        }
-                    }
-
-                    if (toolList is null) {
-                        throw new InvalidOperationException("Tool catalog sync did not complete.");
-                    }
-
-                    listToolsStopwatch.Stop();
-                    toolCatalogDuration = listToolsStopwatch.Elapsed;
-                    RecordStartupListToolsPhaseDiagnostics(listToolsStopwatch.Elapsed, listToolsAttemptCount, success: true);
-                    UpdateToolCatalog(toolList.Tools, toolList.RoutingCatalog, toolList.Packs, toolList.Plugins, toolList.CapabilitySnapshot);
-                    SeedBackgroundSchedulerSnapshot(toolList.CapabilitySnapshot?.BackgroundScheduler);
+                if (satisfyToolCatalogFromHelloPolicy) {
+                    RecordStartupListToolsPhaseDiagnostics(TimeSpan.Zero, attempts: 1, success: true);
                     toolCatalogPhaseSucceeded = true;
-                    listedToolCount = toolList.Tools?.Length ?? 0;
-                    StartupLog.Write("StartupConnect.list_tools done");
-                    var toolCatalogStatus = $"Runtime connected. Tool catalog loaded ({listedToolCount} tools, {FormatPhaseDuration(listToolsStopwatch.Elapsed)}";
-                    if (listToolsAttemptCount > 1) {
-                        toolCatalogStatus += ", retries " + (listToolsAttemptCount - 1).ToString(CultureInfo.InvariantCulture);
-                    }
-                    toolCatalogStatus += ").";
-                    await SetMetadataSyncStatusAsync(
-                            toolCatalogStatus,
-                            phase: "tool catalog loaded")
-                        .ConfigureAwait(false);
-                } catch (Exception ex) {
-                    ClearToolCatalogCache(clearCatalogMetadata: false);
-                    RecordStartupListToolsPhaseDiagnostics(listToolsStopwatch.Elapsed, listToolsAttemptCount, success: false);
-                    StartupLog.Write(
-                        "StartupConnect.list_tools failed after "
-                        + FormatPhaseDuration(listToolsStopwatch.Elapsed)
-                        + ": "
-                        + DescribeStartupExceptionForLog(ex));
-                    if (VerboseServiceLogs || _debugMode) {
-                        AppendSystem(SystemNotice.ListToolsFailed(ex.Message));
+                    StartupLog.Write("StartupConnect.list_tools satisfied_by_persisted_preview");
+                } else {
+                    var listToolsStopwatch = Stopwatch.StartNew();
+                    var listToolsAttemptCount = 0;
+                    try {
+                        ToolListMessage? toolList = null;
+                        for (var attempt = 1; attempt <= metadataPhaseMaxAttempts; attempt++) {
+                            listToolsAttemptCount = attempt;
+                            if (attempt == 1) {
+                                StartupLog.Write("StartupConnect.list_tools begin");
+                            } else {
+                                StartupLog.Write(
+                                    "StartupConnect.list_tools retry attempt="
+                                    + attempt.ToString(CultureInfo.InvariantCulture)
+                                    + "/"
+                                    + metadataPhaseMaxAttempts.ToString(CultureInfo.InvariantCulture));
+                            }
+
+                            try {
+                                toolList = await AwaitWithMetadataHeartbeatAsync(
+                                        operationFactory: cancellationToken => client.RequestAsync<ToolListMessage>(
+                                            new ListToolsRequest { RequestId = NextId() },
+                                            cancellationToken),
+                                        initialMessage: "Runtime connected. Loading tool catalog...",
+                                        heartbeatMessagePrefix: "Runtime connected. Tool catalog load in progress",
+                                        phase: "loading tool catalog")
+                                    .ConfigureAwait(false);
+                                break;
+                            } catch (Exception ex) when (attempt < metadataPhaseMaxAttempts && ShouldRetryDeferredStartupMetadataPhaseAttempt(ex)) {
+                                StartupLog.Write(
+                                    "StartupConnect.list_tools transient_retry attempt="
+                                    + attempt.ToString(CultureInfo.InvariantCulture)
+                                    + "/"
+                                    + metadataPhaseMaxAttempts.ToString(CultureInfo.InvariantCulture)
+                                    + " after "
+                                    + FormatPhaseDuration(listToolsStopwatch.Elapsed)
+                                    + ": "
+                                    + DescribeStartupExceptionForLog(ex));
+                                await SetMetadataSyncStatusAsync(
+                                        AppendStartupStatusContext(
+                                            "Runtime connected. Tool catalog sync interrupted; retrying...",
+                                            StartupStatusPhaseStartupMetadataSync,
+                                            StartupStatusCauseMetadataRetry),
+                                        phase: "loading tool catalog")
+                                    .ConfigureAwait(false);
+                                await Task.Delay(250).ConfigureAwait(false);
+                                continue;
+                            }
+                        }
+
+                        if (toolList is null) {
+                            throw new InvalidOperationException("Tool catalog sync did not complete.");
+                        }
+
+                        listToolsStopwatch.Stop();
+                        toolCatalogDuration = listToolsStopwatch.Elapsed;
+                        RecordStartupListToolsPhaseDiagnostics(listToolsStopwatch.Elapsed, listToolsAttemptCount, success: true);
+                        UpdateToolCatalog(toolList.Tools, toolList.RoutingCatalog, toolList.Packs, toolList.Plugins, toolList.CapabilitySnapshot);
+                        SeedBackgroundSchedulerSnapshot(toolList.CapabilitySnapshot?.BackgroundScheduler);
+                        toolCatalogPhaseSucceeded = true;
+                        listedToolCount = toolList.Tools?.Length ?? 0;
+                        StartupLog.Write("StartupConnect.list_tools done");
+                        var toolCatalogStatus = $"Runtime connected. Tool catalog loaded ({listedToolCount} tools, {FormatPhaseDuration(listToolsStopwatch.Elapsed)}";
+                        if (listToolsAttemptCount > 1) {
+                            toolCatalogStatus += ", retries " + (listToolsAttemptCount - 1).ToString(CultureInfo.InvariantCulture);
+                        }
+                        toolCatalogStatus += ").";
+                        await SetMetadataSyncStatusAsync(
+                                toolCatalogStatus,
+                                phase: "tool catalog loaded")
+                            .ConfigureAwait(false);
+                    } catch (Exception ex) {
+                        ClearToolCatalogCache(clearCatalogMetadata: false);
+                        RecordStartupListToolsPhaseDiagnostics(listToolsStopwatch.Elapsed, listToolsAttemptCount, success: false);
+                        StartupLog.Write(
+                            "StartupConnect.list_tools failed after "
+                            + FormatPhaseDuration(listToolsStopwatch.Elapsed)
+                            + ": "
+                            + DescribeStartupExceptionForLog(ex));
+                        if (VerboseServiceLogs || _debugMode) {
+                            AppendSystem(SystemNotice.ListToolsFailed(ex.Message));
+                        }
                     }
                 }
 

@@ -113,14 +113,14 @@ public sealed class SessionPolicyContractTests {
                             Order = 1
                         },
                         new SessionStartupBootstrapPhaseTelemetryDto {
-                            Id = StartupBootstrapContracts.PhasePackLoadId,
-                            Label = StartupBootstrapContracts.PhasePackLoadLabel,
+                            Id = StartupBootstrapContracts.PhaseDescriptorDiscoveryId,
+                            Label = StartupBootstrapContracts.PhaseDescriptorDiscoveryLabel,
                             DurationMs = 3988,
                             Order = 2
                         }
                     },
-                    SlowestPhaseId = StartupBootstrapContracts.PhasePackLoadId,
-                    SlowestPhaseLabel = StartupBootstrapContracts.PhasePackLoadLabel,
+                    SlowestPhaseId = StartupBootstrapContracts.PhaseDescriptorDiscoveryId,
+                    SlowestPhaseLabel = StartupBootstrapContracts.PhaseDescriptorDiscoveryLabel,
                     SlowestPhaseMs = 3988
                 },
                 PluginSearchPaths = new[] {
@@ -245,7 +245,7 @@ public sealed class SessionPolicyContractTests {
         Assert.Equal(5, startupBootstrap.PluginProgressProcessed);
         Assert.Equal(5, startupBootstrap.PluginProgressTotal);
         Assert.Equal(2, startupBootstrap.Phases.Length);
-        Assert.Equal(StartupBootstrapContracts.PhasePackLoadId, startupBootstrap.SlowestPhaseId);
+        Assert.Equal(StartupBootstrapContracts.PhaseDescriptorDiscoveryId, startupBootstrap.SlowestPhaseId);
         Assert.Equal(3988, startupBootstrap.SlowestPhaseMs);
         Assert.False(policy.AllowMutatingParallelToolCalls);
         Assert.Single(policy.Packs);

@@ -1,9 +1,12 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Chat.Abstractions.Protocol;
+using IntelligenceX.Chat.Abstractions.Serialization;
 using IntelligenceX.Json;
 using IntelligenceX.Tools;
 
@@ -132,6 +135,34 @@ internal sealed partial class ChatServiceSession {
 
     internal Task<bool> TryPrepareDeferredChatToolingForRequestAsyncForTesting(ChatRequest request, CancellationToken cancellationToken = default) {
         return TryPrepareDeferredChatToolingForRequestAsync(new StreamWriter(Stream.Null) { AutoFlush = true }, request.RequestId, request, cancellationToken);
+    }
+
+    internal async Task<ChatStatusMessage[]> CaptureDeferredChatToolingStatusesForTesting(
+        ChatRequest request,
+        CancellationToken cancellationToken = default) {
+        ArgumentNullException.ThrowIfNull(request);
+
+        using var stream = new MemoryStream();
+        using (var writer = new StreamWriter(stream, leaveOpen: true) { AutoFlush = true }) {
+            await TryPrepareDeferredChatToolingForRequestAsync(writer, request.RequestId, request, cancellationToken).ConfigureAwait(false);
+            await writer.FlushAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        stream.Position = 0;
+        var statuses = new List<ChatStatusMessage>();
+        using var reader = new StreamReader(stream, leaveOpen: true);
+        while (await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false) is { } line) {
+            if (string.IsNullOrWhiteSpace(line)) {
+                continue;
+            }
+
+            var message = JsonSerializer.Deserialize(line, ChatServiceJsonContext.Default.ChatServiceMessage);
+            if (message is ChatStatusMessage statusMessage) {
+                statuses.Add(statusMessage);
+            }
+        }
+
+        return statuses.ToArray();
     }
 
     internal string[] GetRegisteredToolNamesForTesting() {

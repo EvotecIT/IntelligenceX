@@ -443,14 +443,15 @@ Continue recurring-error analysis across all remaining DCs in this turn.
     }
 
     [Fact]
-    public void BuildNoToolExecutionRetryPrompt_IncludesKnownHostTargetsHint() {
+    public void BuildNoToolExecutionRetryPrompt_IncludesOrderedDistinctKnownHostTargetsHint() {
         var prompt = InvokeBuildNoToolExecutionRetryPrompt(
             userRequest: "Continue on remaining DCs.",
             assistantDraft: string.Empty,
             retryAttempt: 1,
-            knownHostTargets: new[] { "AD0", "AD1" });
+            knownHostTargets: new[] { "AD1", "AD1", "AD0" });
 
-        Assert.Contains("Known host/DC targets from prior tool inputs in this thread: AD0, AD1.", prompt);
+        Assert.Contains("Known host/DC targets from prior tool inputs in this thread (ordered distinct candidates): AD1, AD0.", prompt);
+        Assert.DoesNotContain("prefer distinct known host/DC targets before repeating one", prompt, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -498,7 +499,8 @@ Continue recurring-error analysis across all remaining DCs in this turn.
         Assert.Contains("inspect event logs", prompt, StringComparison.Ordinal);
         Assert.Contains("eventlog_named_events_catalog -> eventlog_named_events_query", prompt, StringComparison.Ordinal);
         Assert.Contains("Cross-pack follow-up pivots are available into System", prompt, StringComparison.Ordinal);
-        Assert.Contains("If a remote-capable tool is missing host or machine input", prompt, StringComparison.Ordinal);
+        Assert.Contains("use declared host or machine target arguments only when prior tool inputs in this thread already provide concrete values", prompt, StringComparison.Ordinal);
+        Assert.Contains("ask for the minimal missing target input", prompt, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -523,7 +525,8 @@ Continue recurring-error analysis across all remaining DCs in this turn.
             knownHostTargets: Array.Empty<string>(),
             toolDefinitions: toolDefinitions);
 
-        Assert.Contains("infer it from prior thread context when available", prompt, StringComparison.Ordinal);
+        Assert.Contains("do not guess default host or machine targets", prompt, StringComparison.Ordinal);
+        Assert.Contains("ask for the minimal missing target input", prompt, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -545,7 +548,8 @@ Continue recurring-error analysis across all remaining DCs in this turn.
             knownHostTargets: new[] { "AD0", "AD1" },
             toolDefinitions: toolDefinitions);
 
-        Assert.DoesNotContain("If a remote-capable tool is missing host or machine input", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("do not guess default host or machine targets", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("use declared host or machine target arguments only when prior tool inputs in this thread already provide concrete values", prompt, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -480,6 +480,36 @@ public sealed partial class UiShellAssetsTests {
     }
 
     /// <summary>
+    /// Ensures the shell summary keeps descriptor-first bootstrap labels for persisted preview and live startup phases.
+    /// </summary>
+    [Fact]
+    public void Load_IncludesDescriptorFirstStartupBootstrapSummaryLabels() {
+        var scriptPath = Path.Combine(UiDirectory, "Shell.10.core.js");
+        var script = File.ReadAllText(scriptPath);
+
+        AssertContainsAll(
+            script,
+            "descriptorDiscoveryMs = readStartupBootstrapPhaseMs(phases, \"descriptor_discovery\");",
+            "descriptorDiscoveryMs = toNonNegativeInt(value.packLoadMs);",
+            "packActivationMs = readStartupBootstrapPhaseMs(phases, \"pack_activation\");",
+            "packActivationMs = toNonNegativeInt(value.packRegisterMs);",
+            "registryActivationFinalizeMs = readStartupBootstrapPhaseMs(phases, \"registry_activation_finalize\");",
+            "registryActivationFinalizeMs = toNonNegativeInt(value.registryFinalizeMs);",
+            "descriptorDiscoveryMs: descriptorDiscoveryMs,",
+            "packActivationMs: packActivationMs,",
+            "registryActivationFinalizeMs: registryActivationFinalizeMs,",
+            "segments.push(\"descriptor-preview\");",
+            "segments.push(\"descriptor-discovery \" + formatStartupBootstrapDuration(descriptorDiscoveryMs));",
+            "segments.push(\"pack-activation \" + formatStartupBootstrapDuration(packActivationMs));",
+            "segments.push(\"activation-finalize \" + formatStartupBootstrapDuration(activationFinalizeMs));");
+        Assert.Contains("function readStartupBootstrapPhaseMs(phases, phaseId)", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("function resolveStartupBootstrapPhaseDuration", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("case \"pack_load\":", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("case \"pack_register\":", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("case \"registry_finalize\":", script, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Ensures split JavaScript files are explicitly tracked by manifest,
     /// so adding/renaming files cannot silently change runtime composition.
     /// </summary>

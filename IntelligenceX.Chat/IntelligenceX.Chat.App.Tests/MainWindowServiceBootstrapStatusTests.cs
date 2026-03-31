@@ -150,7 +150,7 @@ public sealed class MainWindowServiceBootstrapStatusTests {
     [Fact]
     public void TryBuildServiceBootstrapStatus_ParsesBootstrapTiming() {
         var parsed = MainWindow.TryBuildServiceBootstrapStatus(
-            "[pack warning] [startup] tooling bootstrap timings total=1.8s policy=50ms options=20ms packs=1.6s registry=120ms tools=200 packsLoaded=14 packsDisabled=2 pluginRoots=3.",
+            "[pack warning] [startup] tooling bootstrap timings total=1.8s policy=50ms options=20ms descriptorDiscovery=1.6s registry=120ms tools=200 packsLoaded=14 packsDisabled=2 pluginRoots=3.",
             out var statusText);
 
         Assert.True(parsed);

@@ -223,6 +223,70 @@ public sealed class RuntimeToolingSupportSnapshotTests {
     }
 
     /// <summary>
+    /// Verifies zero-pack startup does not fabricate an empty support snapshot when no runtime tooling metadata exists.
+    /// </summary>
+    [Fact]
+    public void Build_ReturnsNullForZeroPackZeroPluginStartup() {
+        var snapshot = RuntimeToolingSupportSnapshotBuilder.Build(
+            sessionPolicy: null,
+            toolCatalogPacks: Array.Empty<ToolPackInfoDto>(),
+            toolCatalogPlugins: Array.Empty<PluginInfoDto>(),
+            toolCatalogCapabilitySnapshot: null);
+
+        Assert.Null(snapshot);
+    }
+
+    /// <summary>
+    /// Verifies plugin-only persisted preview startup still yields a support snapshot with truthful preview provenance.
+    /// </summary>
+    [Fact]
+    public void Build_PreservesPluginOnlyPersistedPreviewSnapshot() {
+        var snapshot = RuntimeToolingSupportSnapshotBuilder.Build(
+            sessionPolicy: null,
+            toolCatalogPacks: Array.Empty<ToolPackInfoDto>(),
+            toolCatalogPlugins: Array.Empty<PluginInfoDto>(),
+            toolCatalogCapabilitySnapshot: new SessionCapabilitySnapshotDto {
+                RegisteredTools = 0,
+                EnabledPackCount = 0,
+                PluginCount = 1,
+                EnabledPluginCount = 1,
+                ToolingAvailable = true,
+                AllowedRootCount = 0,
+                ToolingSnapshot = new SessionCapabilityToolingSnapshotDto {
+                    Source = "persisted_preview",
+                    Packs = Array.Empty<ToolPackInfoDto>(),
+                    Plugins = new[] {
+                        new PluginInfoDto {
+                            Id = "ops_bundle",
+                            Name = "Ops Bundle",
+                            Enabled = true,
+                            DefaultEnabled = true,
+                            Origin = "plugin_folder",
+                            SourceKind = ToolPackSourceKind.ClosedSource,
+                            IsDangerous = false,
+                            Version = "1.2.3",
+                            RootPath = @"C:\plugins\ops-bundle",
+                            PackIds = new[] { "eventlog" },
+                            SkillIds = new[] { "event-triage" }
+                        }
+                    }
+                }
+            });
+
+        Assert.NotNull(snapshot);
+        Assert.Equal("persisted_preview", snapshot!.Source);
+        Assert.Equal(0, snapshot.PackCount);
+        Assert.Empty(snapshot.Packs);
+        var plugin = Assert.Single(snapshot.Plugins);
+        Assert.Equal("ops_bundle", plugin.Id);
+        Assert.Equal("Ops Bundle", plugin.Name);
+        Assert.Equal(1, snapshot.PluginCount);
+        Assert.Equal("closed_source", plugin.SourceKind);
+        Assert.Equal("eventlog", Assert.Single(plugin.PackIds));
+        Assert.Equal("event-triage", Assert.Single(plugin.SkillIds));
+    }
+
+    /// <summary>
     /// Verifies copied startup diagnostics include runtime tooling provenance when available.
     /// </summary>
     [Fact]

@@ -31,7 +31,7 @@ public sealed class StartupBootstrapWarningFormatterTests {
     [Fact]
     public void TryBuildStatusText_ParsesBootstrapTimingSummary() {
         var parsed = StartupBootstrapWarningFormatter.TryBuildStatusText(
-            "[pack warning] [startup] tooling bootstrap timings total=1.8s policy=50ms options=20ms packs=1.6s registry=120ms tools=200 packsLoaded=14 packsDisabled=2 pluginRoots=3.",
+            "[pack warning] [startup] tooling bootstrap timings total=1.8s policy=50ms options=20ms descriptorDiscovery=1.6s registry=120ms tools=200 packsLoaded=14 packsDisabled=2 pluginRoots=3.",
             out var statusText,
             out var allowDuringSend);
 
@@ -58,5 +58,31 @@ public sealed class StartupBootstrapWarningFormatterTests {
             "[startup] tooling bootstrap preview restored from persisted cache while runtime rebuild continues.");
 
         Assert.True(matched);
+    }
+
+    [Fact]
+    public void TryBuildStatusText_ParsesPersistedPreviewIgnoredSchemaMismatchWarning() {
+        var parsed = StartupBootstrapWarningFormatter.TryBuildStatusText(
+            "[startup] tooling bootstrap persisted preview ignored reason=schema_mismatch expectedSchemaVersion=4 actualSchemaVersion=3.",
+            out var statusText,
+            out var allowDuringSend);
+
+        Assert.True(parsed);
+        Assert.Equal("Starting runtime... discarded stale persisted tool preview, rebuilding live runtime", statusText);
+        Assert.True(allowDuringSend);
+        Assert.True(StartupBootstrapWarningFormatter.IsPersistedPreviewIgnoredWarning(
+            "[startup] tooling bootstrap persisted preview ignored reason=schema_mismatch expectedSchemaVersion=4 actualSchemaVersion=3."));
+    }
+
+    [Fact]
+    public void TryBuildStatusText_TreatsDescriptorSnapshotSchemaMismatchAsStalePreview() {
+        var parsed = StartupBootstrapWarningFormatter.TryBuildStatusText(
+            "[startup] tooling bootstrap persisted preview ignored reason=descriptor_snapshot_schema_mismatch expectedSchemaVersion=1 actualSchemaVersion=2.",
+            out var statusText,
+            out var allowDuringSend);
+
+        Assert.True(parsed);
+        Assert.Equal("Starting runtime... discarded stale persisted tool preview, rebuilding live runtime", statusText);
+        Assert.True(allowDuringSend);
     }
 }

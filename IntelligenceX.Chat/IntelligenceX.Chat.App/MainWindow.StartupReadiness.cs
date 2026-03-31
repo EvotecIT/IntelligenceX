@@ -1,6 +1,7 @@
 using System;
 using System.Globalization;
 using System.Threading;
+using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.App.Conversation;
 using Microsoft.UI.Xaml;
 
@@ -112,6 +113,23 @@ public sealed partial class MainWindow : Window {
         }
 
         return "Runtime is ready. Tool catalog preview is still active; refresh tools to load final metadata.";
+    }
+
+    internal static bool ShouldSatisfyStartupToolCatalogFromHelloPolicy(SessionPolicyDto? policy) {
+        if (!string.Equals(
+                ResolveStartupBootstrapCacheModeTokenFromPolicy(policy),
+                StartupBootstrapContracts.CacheModePersistedPreview,
+                StringComparison.Ordinal)) {
+            return false;
+        }
+
+        if (policy?.CapabilitySnapshot?.ToolingSnapshot is { } toolingSnapshot
+            && (toolingSnapshot.Packs is { Length: > 0 }
+                || toolingSnapshot.Plugins is { Length: > 0 })) {
+            return true;
+        }
+
+        return policy?.Packs is { Length: > 0 } || policy?.Plugins is { Length: > 0 };
     }
 
     private string BuildStartupPendingOrAuthVerificationStatusText(

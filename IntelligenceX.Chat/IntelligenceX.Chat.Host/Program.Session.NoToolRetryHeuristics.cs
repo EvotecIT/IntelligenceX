@@ -494,8 +494,7 @@ internal static partial class Program {
                 Do not use blocker-preface phrasing like "I can do that, but"; execute best-effort tools first, then report results or exact blockers.
                 For optional projection arguments (columns/sort_by), use only supported fields; if uncertain, omit projection arguments.
                 {{FormatRetryPromptHintLines(combinedHintLines)}}
-                If this is a continuation request over "remaining discovered DCs/hosts", execute multiple best-effort tool calls using distinct host/DC inputs from thread context.
-                If discovery appears empty in this turn, still use previously seen DC/host targets from thread context rather than stopping at narration.
+                If no concrete host/DC target is available from current-turn evidence or prior tool inputs in this thread, ask for the minimal missing target input instead of inventing a default host.
                 {{knownHostHint}}
                 Do not claim internal retry/exhaustion limits; this is an internal execution correction path.
                 If tools still cannot satisfy this request after a best-effort tool attempt, state the exact blocker and the minimal missing input once.

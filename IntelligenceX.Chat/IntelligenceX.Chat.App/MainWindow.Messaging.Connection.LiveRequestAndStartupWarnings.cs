@@ -266,10 +266,19 @@ public sealed partial class MainWindow : Window {
 
     internal static bool IsStartupBootstrapSignalWorthy(SessionStartupBootstrapTelemetryDto telemetry) {
         ArgumentNullException.ThrowIfNull(telemetry);
+        var descriptorDiscoveryMs = StartupBootstrapContracts.ResolvePhaseDuration(
+            telemetry,
+            StartupBootstrapContracts.PhaseDescriptorDiscoveryId);
+        var packActivationMs = StartupBootstrapContracts.ResolvePhaseDuration(
+            telemetry,
+            StartupBootstrapContracts.PhasePackActivationId);
+        var activationFinalizeMs = StartupBootstrapContracts.ResolvePhaseDuration(
+            telemetry,
+            StartupBootstrapContracts.PhaseRegistryActivationFinalizeId);
         return telemetry.TotalMs >= 1000
-               || telemetry.PackLoadMs >= 800
-               || telemetry.PackRegisterMs >= 500
-               || telemetry.RegistryFinalizeMs >= 500
+               || descriptorDiscoveryMs >= 800
+               || packActivationMs >= 500
+               || activationFinalizeMs >= 500
                || telemetry.SlowPackCount > 0
                || telemetry.SlowPackRegistrationCount > 0
                || telemetry.SlowPluginCount > 0;
@@ -277,14 +286,23 @@ public sealed partial class MainWindow : Window {
 
     internal static string[] BuildStartupBootstrapSummaryLines(SessionStartupBootstrapTelemetryDto telemetry) {
         ArgumentNullException.ThrowIfNull(telemetry);
+        var descriptorDiscoveryMs = StartupBootstrapContracts.ResolvePhaseDuration(
+            telemetry,
+            StartupBootstrapContracts.PhaseDescriptorDiscoveryId);
+        var packActivationMs = StartupBootstrapContracts.ResolvePhaseDuration(
+            telemetry,
+            StartupBootstrapContracts.PhasePackActivationId);
+        var activationFinalizeMs = StartupBootstrapContracts.ResolvePhaseDuration(
+            telemetry,
+            StartupBootstrapContracts.PhaseRegistryActivationFinalizeId);
 
         var lines = new List<string> {
             "[startup] Runtime tool bootstrap summary",
             string.Empty,
             $"- Total: {FormatBootstrapDuration(telemetry.TotalMs)} " +
-            $"(pack load {FormatBootstrapDuration(telemetry.PackLoadMs)}, " +
-            $"pack register {FormatBootstrapDuration(telemetry.PackRegisterMs)}, " +
-            $"registry finalize {FormatBootstrapDuration(telemetry.RegistryFinalizeMs)}, " +
+            $"(descriptor discovery {FormatBootstrapDuration(descriptorDiscoveryMs)}, " +
+            $"pack activation {FormatBootstrapDuration(packActivationMs)}, " +
+            $"activation finalize {FormatBootstrapDuration(activationFinalizeMs)}, " +
             $"registry total {FormatBootstrapDuration(telemetry.RegistryMs)})",
             $"- Packs loaded: {telemetry.PacksLoaded}, disabled: {telemetry.PacksDisabled}, tools: {telemetry.Tools}"
         };
@@ -344,6 +362,17 @@ public sealed partial class MainWindow : Window {
     internal static string BuildStartupBootstrapStatusDetail(SessionStartupBootstrapTelemetryDto? telemetry) {
         if (telemetry is null || telemetry.TotalMs <= 0) {
             return string.Empty;
+        }
+
+        if (telemetry.Phases is { Length: > 0 } phases
+            && phases.Any(static phase => StartupBootstrapContracts.IsPersistedPreviewPhaseId(phase.Id))) {
+            var packCount = Math.Max(0, telemetry.PacksLoaded);
+            var toolCount = Math.Max(0, telemetry.Tools);
+            if (packCount > 0 || toolCount > 0) {
+                return $"descriptor preview ({packCount} packs, {toolCount} tools)";
+            }
+
+            return "descriptor preview";
         }
 
         var detail = "tool bootstrap " + FormatBootstrapDuration(telemetry.TotalMs);

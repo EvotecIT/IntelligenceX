@@ -873,10 +873,11 @@ Continue that failure-signature collection across all remaining non-AD0 DCs in t
             transport: OpenAITransportKind.Native,
             baseUrl: null,
             toolDefinitions: toolDefinitions,
-            knownHostTargets: new[] { "AD0", "AD1" });
+            knownHostTargets: new[] { "AD1", "AD1", "AD0" });
 
         Assert.Contains("Tool locality:", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("local-only in this session", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Known host/DC targets from prior tool inputs in this thread (ordered distinct candidates): AD1, AD0.", text, StringComparison.Ordinal);
     }
 
     [Fact]

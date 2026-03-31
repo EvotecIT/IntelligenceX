@@ -379,20 +379,24 @@ internal static partial class Program {
                 toolDefinitions: toolDefinitions,
                 toolPatterns: null,
                 knownHostTargets: knownHostTargets);
+            var knownHostHint = BuildKnownHostTargetHint(knownHostTargets);
             var executionWarningBlock = string.IsNullOrWhiteSpace(executionWarning)
                 ? string.Empty
                 : "\nTooling: " + executionWarning.Trim();
+            var knownHostBlock = string.IsNullOrWhiteSpace(knownHostHint)
+                ? string.Empty
+                : "\n" + knownHostHint.Trim();
 
             if (transport == OpenAITransportKind.CompatibleHttp) {
                 var endpoint = string.IsNullOrWhiteSpace(baseUrl) ? "configured endpoint" : baseUrl!.Trim();
                 return "[warning] No response text was produced by the runtime.\n\n"
                        + "Model: " + normalizedModel + "\n"
-                       + "Endpoint: " + endpoint + executionWarningBlock + "\n\n"
+                       + "Endpoint: " + endpoint + executionWarningBlock + knownHostBlock + "\n\n"
                        + "Try a different model, then run Refresh Models and retry.";
             }
 
             return "[warning] No response text was produced by the model.\n\n"
-                   + "Model: " + normalizedModel + executionWarningBlock + "\n\n"
+                   + "Model: " + normalizedModel + executionWarningBlock + knownHostBlock + "\n\n"
                    + "Retry the turn, or choose a different model.";
         }
     }

@@ -25,6 +25,7 @@ public static partial class ToolPackBootstrap {
     private static readonly IReadOnlyList<KnownBuiltInPackBootstrapMetadata> KnownBuiltInPackBootstrapMetadataByIdentity = new[] {
         CreateKnownBuiltInPackBootstrapMetadata(
             id: "active_directory",
+            assemblyName: "IntelligenceX.Tools.ADPlayground",
             name: "ADPlayground",
             tier: ToolCapabilityTier.SensitiveRead,
             isDangerous: false,
@@ -36,6 +37,7 @@ public static partial class ToolPackBootstrap {
             capabilityTags: new[] { "directory", "domain_scope", "identity_lifecycle", "remote_analysis", "governed_write" }),
         CreateKnownBuiltInPackBootstrapMetadata(
             id: "eventlog",
+            assemblyName: "IntelligenceX.Tools.EventLog",
             name: "Event Log (EventViewerX)",
             tier: ToolCapabilityTier.SensitiveRead,
             isDangerous: false,
@@ -47,6 +49,7 @@ public static partial class ToolPackBootstrap {
             capabilityTags: new[] { "event_logs", "evtx", "local_analysis", "remote_analysis", "governed_write", "write_capable" }),
         CreateKnownBuiltInPackBootstrapMetadata(
             id: "system",
+            assemblyName: "IntelligenceX.Tools.System",
             name: "ComputerX",
             tier: ToolCapabilityTier.ReadOnly,
             isDangerous: false,
@@ -58,6 +61,7 @@ public static partial class ToolPackBootstrap {
             capabilityTags: new[] { "host_inventory", "local_analysis", "local_execution", "remote_analysis", "remote_execution", "governed_write" }),
         CreateKnownBuiltInPackBootstrapMetadata(
             id: "filesystem",
+            assemblyName: "IntelligenceX.Tools.FileSystem",
             name: "File System",
             tier: ToolCapabilityTier.ReadOnly,
             isDangerous: false,
@@ -69,6 +73,7 @@ public static partial class ToolPackBootstrap {
             capabilityTags: new[] { "disk", "filesystem", "local_analysis" }),
         CreateKnownBuiltInPackBootstrapMetadata(
             id: "email",
+            assemblyName: "IntelligenceX.Tools.Email",
             name: "Email (Mailozaurr)",
             tier: ToolCapabilityTier.SensitiveRead,
             isDangerous: false,
@@ -80,6 +85,7 @@ public static partial class ToolPackBootstrap {
             capabilityTags: new[] { "email", "imap", "smtp", "remote_analysis", ToolPackCapabilityTags.DeferredCapabilityEmail }),
         CreateKnownBuiltInPackBootstrapMetadata(
             id: "powershell",
+            assemblyName: "IntelligenceX.Tools.PowerShell",
             name: "PowerShell Runtime",
             tier: ToolCapabilityTier.DangerousWrite,
             isDangerous: true,
@@ -91,6 +97,7 @@ public static partial class ToolPackBootstrap {
             capabilityTags: new[] { ToolPackCapabilityTags.LocalExecution, ToolPackCapabilityTags.RemoteExecution, "shell", ToolPackCapabilityTags.WriteCapable }),
         CreateKnownBuiltInPackBootstrapMetadata(
             id: "testimox",
+            assemblyName: "IntelligenceX.Tools.TestimoX",
             name: "TestimoX",
             tier: ToolCapabilityTier.SensitiveRead,
             isDangerous: false,
@@ -102,6 +109,7 @@ public static partial class ToolPackBootstrap {
             capabilityTags: new[] { "configuration", "evidence", "posture", "remote_analysis" }),
         CreateKnownBuiltInPackBootstrapMetadata(
             id: "testimox_analytics",
+            assemblyName: "IntelligenceX.Tools.TestimoX.Analytics",
             name: "TestimoX Analytics",
             tier: ToolCapabilityTier.SensitiveRead,
             isDangerous: false,
@@ -113,6 +121,7 @@ public static partial class ToolPackBootstrap {
             capabilityTags: new[] { "analytics", "evidence", "local_analysis", "posture", "reporting", ToolPackCapabilityTags.DeferredCapabilityReporting }),
         CreateKnownBuiltInPackBootstrapMetadata(
             id: "officeimo",
+            assemblyName: "IntelligenceX.Tools.OfficeIMO",
             name: "Office Documents (OfficeIMO)",
             tier: ToolCapabilityTier.ReadOnly,
             isDangerous: false,
@@ -124,6 +133,7 @@ public static partial class ToolPackBootstrap {
             capabilityTags: new[] { "document_analysis", ToolPackCapabilityTags.LocalAnalysis, "office" }),
         CreateKnownBuiltInPackBootstrapMetadata(
             id: "reviewer_setup",
+            assemblyName: "IntelligenceX.Tools.ReviewerSetup",
             name: "Reviewer Setup",
             tier: ToolCapabilityTier.ReadOnly,
             isDangerous: false,
@@ -135,6 +145,7 @@ public static partial class ToolPackBootstrap {
             capabilityTags: new[] { ToolPackCapabilityTags.LocalAnalysis, "onboarding", "reviewer", "setup" }),
         CreateKnownBuiltInPackBootstrapMetadata(
             id: "dnsclientx",
+            assemblyName: "IntelligenceX.Tools.DnsClientX",
             name: "DnsClientX",
             tier: ToolCapabilityTier.ReadOnly,
             isDangerous: false,
@@ -146,6 +157,7 @@ public static partial class ToolPackBootstrap {
             capabilityTags: new[] { "dns", "network", ToolPackCapabilityTags.RemoteAnalysis }),
         CreateKnownBuiltInPackBootstrapMetadata(
             id: "domaindetective",
+            assemblyName: "IntelligenceX.Tools.DomainDetective",
             name: "DomainDetective",
             tier: ToolCapabilityTier.ReadOnly,
             isDangerous: false,
@@ -220,6 +232,58 @@ public static partial class ToolPackBootstrap {
 
         using var sha = SHA256.Create();
         var payload = string.Join("\n", lines);
+        var hash = sha.ComputeHash(Encoding.UTF8.GetBytes(payload));
+        return Convert.ToHexString(hash).ToLowerInvariant();
+    }
+
+    /// <summary>
+    /// Builds a lightweight fingerprint for the descriptor-preview surface without probing live built-in assemblies.
+    /// </summary>
+    /// <param name="options">Bootstrap options.</param>
+    /// <returns>Stable lowercase SHA-256 fingerprint for preview metadata.</returns>
+    public static string BuildDeferredDescriptorPreviewFingerprint(ToolPackBootstrapOptions options) {
+        if (options is null) {
+            throw new ArgumentNullException(nameof(options));
+        }
+
+        return BuildDeferredDescriptorPreviewFingerprint(CreateDeferredDescriptorPreviewCore(options));
+    }
+
+    /// <summary>
+    /// Builds a stable fingerprint for descriptor-preview metadata that has already been materialized.
+    /// </summary>
+    /// <param name="preview">Descriptor-preview result.</param>
+    /// <returns>Stable lowercase SHA-256 fingerprint for preview metadata.</returns>
+    public static string BuildDeferredDescriptorPreviewFingerprint(ToolPackBootstrapResult preview) {
+        if (preview is null) {
+            throw new ArgumentNullException(nameof(preview));
+        }
+
+        var normalizedPayload = new {
+            ToolDefinitions = preview.ToolDefinitions
+                .OrderBy(static tool => tool.Name, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(static tool => tool.PackId, StringComparer.OrdinalIgnoreCase)
+                .Select(static tool => tool)
+                .ToArray(),
+            PackAvailability = preview.PackAvailability
+                .OrderBy(static pack => pack.Id, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(static pack => pack.Name, StringComparer.OrdinalIgnoreCase)
+                .Select(static pack => pack)
+                .ToArray(),
+            PluginAvailability = preview.PluginAvailability
+                .OrderBy(static plugin => plugin.Id, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(static plugin => plugin.Name, StringComparer.OrdinalIgnoreCase)
+                .Select(static plugin => plugin)
+                .ToArray(),
+            PluginCatalog = preview.PluginCatalog
+                .OrderBy(static plugin => plugin.Id, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(static plugin => plugin.Name, StringComparer.OrdinalIgnoreCase)
+                .Select(static plugin => plugin)
+                .ToArray()
+        };
+
+        using var sha = SHA256.Create();
+        var payload = JsonSerializer.Serialize(normalizedPayload);
         var hash = sha.ComputeHash(Encoding.UTF8.GetBytes(payload));
         return Convert.ToHexString(hash).ToLowerInvariant();
     }
@@ -417,7 +481,31 @@ public static partial class ToolPackBootstrap {
         HashSet<string> existingPackIds) {
         var disabledPackIds = BuildNormalizedPackIdSet(options.DisabledPackIds);
         var enabledPackIds = BuildNormalizedPackIdSet(options.EnabledPackIds);
-        var packTypes = DiscoverBuiltInPackTypes(options, options.OnBootstrapWarning);
+        KnownBuiltInPackBootstrapMetadata? targetMetadata = null;
+        if (TryResolveKnownBuiltInPackBootstrapMetadata(normalizedTargetPackId, out var resolvedTargetMetadata)) {
+            targetMetadata = resolvedTargetMetadata;
+            if (existingPackIds.Contains(normalizedTargetPackId)) {
+                return new ToolPackBootstrapResult();
+            }
+
+            var targetEnabled = ResolveKnownPackEnabled(
+                packId: targetMetadata.PackId,
+                enabledByDefault: targetMetadata.DefaultEnabled,
+                disabledPackIds: disabledPackIds,
+                enabledPackIds: enabledPackIds);
+            if (!targetEnabled) {
+                return BuildBuiltInActivationResult(
+                    targetMetadata.Descriptor,
+                    pack: null,
+                    enabled: false,
+                    defaultEnabled: targetMetadata.DefaultEnabled,
+                    disabledReason: DisabledByRuntimeConfigurationReason,
+                    candidateType: typeof(ToolPackBootstrap),
+                    metadataOverride: targetMetadata);
+            }
+        }
+
+        var packTypes = DiscoverBuiltInPackTypes(options, options.OnBootstrapWarning, normalizedTargetPackId);
 
         for (var i = 0; i < packTypes.Count; i++) {
             var packType = packTypes[i];
@@ -487,6 +575,17 @@ public static partial class ToolPackBootstrap {
                 disabledReason,
                 packType,
                 metadata);
+        }
+
+        if (targetMetadata is not null) {
+            return BuildBuiltInActivationResult(
+                targetMetadata.Descriptor,
+                pack: null,
+                enabled: false,
+                defaultEnabled: targetMetadata.DefaultEnabled,
+                disabledReason: UnavailableReasonFallback,
+                candidateType: typeof(ToolPackBootstrap),
+                metadataOverride: targetMetadata);
         }
 
         return new ToolPackBootstrapResult();
@@ -650,6 +749,7 @@ public static partial class ToolPackBootstrap {
         }
 
         var candidates = new List<BuiltInPackRegistrationCandidate>();
+        var candidatePackIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var descriptorIdsByNormalizedPackId = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var disabledPackIds = BuildNormalizedPackIdSet(options.DisabledPackIds);
         var enabledPackIds = BuildNormalizedPackIdSet(options.EnabledPackIds);
@@ -661,6 +761,7 @@ public static partial class ToolPackBootstrap {
                     descriptorIdsByNormalizedPackId,
                     disabledCandidate.Descriptor);
                 candidates.Add(disabledCandidate);
+                candidatePackIds.Add(disabledCandidate.PackId);
                 continue;
             }
 
@@ -704,6 +805,34 @@ public static partial class ToolPackBootstrap {
                 PackType: packType,
                 Pack: normalizedPack,
                 DefaultEnabled: defaultEnabled));
+            candidatePackIds.Add(normalizedPackId);
+        }
+
+        for (var i = 0; i < KnownBuiltInPackBootstrapMetadataByIdentity.Count; i++) {
+            var metadata = KnownBuiltInPackBootstrapMetadataByIdentity[i];
+            if (candidatePackIds.Contains(metadata.PackId)) {
+                continue;
+            }
+
+            var enabled = ResolveKnownPackEnabled(
+                packId: metadata.PackId,
+                enabledByDefault: metadata.DefaultEnabled,
+                disabledPackIds: disabledPackIds,
+                enabledPackIds: enabledPackIds);
+            if (enabled) {
+                continue;
+            }
+
+            EnsureNoPackIdentityNormalizationCollisions(
+                descriptorIdsByNormalizedPackId,
+                metadata.Descriptor);
+            candidates.Add(new BuiltInPackRegistrationCandidate(
+                PackId: metadata.PackId,
+                Descriptor: metadata.Descriptor,
+                PackType: typeof(ToolPackBootstrap),
+                Pack: null,
+                DefaultEnabled: metadata.DefaultEnabled));
+            candidatePackIds.Add(metadata.PackId);
         }
 
         return candidates
@@ -737,6 +866,26 @@ public static partial class ToolPackBootstrap {
             Pack: null,
             DefaultEnabled: metadata.DefaultEnabled);
         return true;
+    }
+
+    private static bool TryResolveKnownBuiltInPackBootstrapMetadata(
+        string packId,
+        out KnownBuiltInPackBootstrapMetadata metadata) {
+        metadata = null!;
+        var normalizedPackId = NormalizePackId(packId);
+        if (normalizedPackId.Length == 0) {
+            return false;
+        }
+
+        for (var i = 0; i < KnownBuiltInPackBootstrapMetadataByIdentity.Count; i++) {
+            var candidate = KnownBuiltInPackBootstrapMetadataByIdentity[i];
+            if (string.Equals(candidate.PackId, normalizedPackId, StringComparison.OrdinalIgnoreCase)) {
+                metadata = candidate;
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool TryResolveKnownBuiltInPackBootstrapMetadata(
@@ -788,6 +937,7 @@ public static partial class ToolPackBootstrap {
 
     private static KnownBuiltInPackBootstrapMetadata CreateKnownBuiltInPackBootstrapMetadata(
         string id,
+        string assemblyName,
         string name,
         ToolCapabilityTier tier,
         bool isDangerous,
@@ -827,6 +977,7 @@ public static partial class ToolPackBootstrap {
 
         return new KnownBuiltInPackBootstrapMetadata(
             PackId: NormalizePackId(id),
+            AssemblyName: assemblyName.Trim(),
             Descriptor: descriptor,
             DefaultEnabled: !isDangerous && tier != ToolCapabilityTier.DangerousWrite,
             IdentityTokens: identityTokens
@@ -1061,10 +1212,17 @@ public static partial class ToolPackBootstrap {
     }
 
     private static IReadOnlyList<Type> DiscoverBuiltInPackTypes(ToolPackBootstrapOptions options, Action<string>? onWarning) {
+        return DiscoverBuiltInPackTypes(options, onWarning, targetPackId: null);
+    }
+
+    private static IReadOnlyList<Type> DiscoverBuiltInPackTypes(
+        ToolPackBootstrapOptions options,
+        Action<string>? onWarning,
+        string? targetPackId) {
         var toolPackTypes = new List<Type>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
 
-        foreach (var assemblyName in EnumerateToolAssemblyNamesForDiscovery(options)) {
+        foreach (var assemblyName in EnumerateToolAssemblyNamesForDiscovery(options, targetPackId)) {
             var assembly = TryLoadToolAssembly(assemblyName, options, onWarning);
             if (assembly is null) {
                 continue;
@@ -1093,12 +1251,18 @@ public static partial class ToolPackBootstrap {
     }
 
     private static IEnumerable<AssemblyName> EnumerateToolAssemblyNamesForDiscovery(ToolPackBootstrapOptions options) {
+        return EnumerateToolAssemblyNamesForDiscovery(options, targetPackId: null);
+    }
+
+    private static IEnumerable<AssemblyName> EnumerateToolAssemblyNamesForDiscovery(
+        ToolPackBootstrapOptions options,
+        string? targetPackId) {
         if (options is null) {
             throw new ArgumentNullException(nameof(options));
         }
 
         var discovered = new Dictionary<string, AssemblyName>(StringComparer.OrdinalIgnoreCase);
-        var allowedAssemblyNames = ResolveAllowedBuiltInAssemblyNames(options);
+        var allowedAssemblyNames = ResolveAllowedBuiltInAssemblyNames(options, targetPackId);
         if (allowedAssemblyNames.Count == 0) {
             return Array.Empty<AssemblyName>();
         }
@@ -1137,6 +1301,12 @@ public static partial class ToolPackBootstrap {
     }
 
     private static HashSet<string> ResolveAllowedBuiltInAssemblyNames(ToolPackBootstrapOptions options) {
+        return ResolveAllowedBuiltInAssemblyNames(options, targetPackId: null);
+    }
+
+    private static HashSet<string> ResolveAllowedBuiltInAssemblyNames(
+        ToolPackBootstrapOptions options,
+        string? targetPackId) {
         var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if (options.UseDefaultBuiltInToolAssemblyNames) {
             var discoveredDefaultAssemblyNames = DiscoverDefaultBuiltInAssemblyNames(options.OnBootstrapWarning);
@@ -1172,12 +1342,52 @@ public static partial class ToolPackBootstrap {
             }
         }
 
+        var skippedKnownAssemblyNames = ResolveDisabledKnownBuiltInAssemblyNamesForDiscovery(options, targetPackId);
+        if (skippedKnownAssemblyNames.Count > 0) {
+            allowed.RemoveWhere(skippedKnownAssemblyNames.Contains);
+        }
+
         return allowed;
+    }
+
+    private static HashSet<string> ResolveDisabledKnownBuiltInAssemblyNamesForDiscovery(
+        ToolPackBootstrapOptions options,
+        string? targetPackId) {
+        var skipped = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var disabledPackIds = BuildNormalizedPackIdSet(options.DisabledPackIds);
+        var enabledPackIds = BuildNormalizedPackIdSet(options.EnabledPackIds);
+        var normalizedTargetPackId = NormalizePackId(targetPackId);
+
+        for (var i = 0; i < KnownBuiltInPackBootstrapMetadataByIdentity.Count; i++) {
+            var metadata = KnownBuiltInPackBootstrapMetadataByIdentity[i];
+            if (normalizedTargetPackId.Length > 0
+                && string.Equals(metadata.PackId, normalizedTargetPackId, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            var enabled = ResolveKnownPackEnabled(
+                packId: metadata.PackId,
+                enabledByDefault: metadata.DefaultEnabled,
+                disabledPackIds: disabledPackIds,
+                enabledPackIds: enabledPackIds);
+            if (enabled) {
+                continue;
+            }
+
+            var assemblyName = (metadata.AssemblyName ?? string.Empty).Trim();
+            if (assemblyName.Length > 0 && IsBuiltInToolAssemblyName(assemblyName)) {
+                skipped.Add(assemblyName);
+            }
+        }
+
+        return skipped;
     }
 
     private static IReadOnlyList<string> DiscoverDefaultBuiltInAssemblyNames(Action<string>? onWarning) {
         try {
             var discovered = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            AddBuiltInToolAssemblyNamesFromKnownMetadata(discovered);
+
             var bootstrapAssembly = typeof(ToolPackBootstrap).Assembly;
             foreach (var depsFilePath in EnumerateDependencyContextFiles(bootstrapAssembly)) {
                 using var stream = File.OpenRead(depsFilePath);
@@ -1190,7 +1400,7 @@ public static partial class ToolPackBootstrap {
             if (discovered.Count == 0) {
                 Warn(
                     onWarning,
-                    "[startup] built_in_pack_default_discovery_failed reason='dependency graph and embedded manifest did not expose built-in tool assemblies.'",
+                    "[startup] built_in_pack_default_discovery_failed reason='known metadata, dependency graph, and embedded manifest did not expose built-in tool assemblies.'",
                     shouldWarn: true);
                 return Array.Empty<string>();
             }
@@ -1204,6 +1414,19 @@ public static partial class ToolPackBootstrap {
                 $"[startup] built_in_pack_default_discovery_failed reason='{NormalizeDisabledReason(ex.Message)}'",
                 shouldWarn: true);
             return Array.Empty<string>();
+        }
+    }
+
+    private static void AddBuiltInToolAssemblyNamesFromKnownMetadata(HashSet<string> discovered) {
+        if (discovered is null) {
+            return;
+        }
+
+        for (var i = 0; i < KnownBuiltInPackBootstrapMetadataByIdentity.Count; i++) {
+            var assemblyName = (KnownBuiltInPackBootstrapMetadataByIdentity[i].AssemblyName ?? string.Empty).Trim();
+            if (assemblyName.Length > 0 && IsBuiltInToolAssemblyName(assemblyName)) {
+                discovered.Add(assemblyName);
+            }
         }
     }
 
@@ -1357,7 +1580,7 @@ public static partial class ToolPackBootstrap {
         return TryResolveTrustedToolAssemblyPath(
             assemblyName,
             options,
-            includeWorkspaceProjectOutputs: true,
+            includeWorkspaceProjectOutputs: options.EnableWorkspaceBuiltInToolOutputProbing,
             out trustedAssemblyPath);
     }
 
@@ -1366,13 +1589,26 @@ public static partial class ToolPackBootstrap {
         ToolPackBootstrapOptions options,
         bool includeWorkspaceProjectOutputs,
         out string trustedAssemblyPath) {
+        return TryResolveTrustedToolAssemblyPathCore(
+            assemblyName,
+            options,
+            includeWorkspaceProjectOutputs,
+            typeof(ToolPackBootstrap).Assembly.Location,
+            out trustedAssemblyPath);
+    }
+
+    private static bool TryResolveTrustedToolAssemblyPathCore(
+        AssemblyName assemblyName,
+        ToolPackBootstrapOptions options,
+        bool includeWorkspaceProjectOutputs,
+        string bootstrapAssemblyPath,
+        out string trustedAssemblyPath) {
         trustedAssemblyPath = string.Empty;
         var assemblyNameValue = (assemblyName.Name ?? string.Empty).Trim();
         if (assemblyNameValue.Length == 0) {
             return false;
         }
 
-        var bootstrapAssemblyPath = typeof(ToolPackBootstrap).Assembly.Location;
         if (string.IsNullOrWhiteSpace(bootstrapAssemblyPath)) {
             return false;
         }
@@ -1401,7 +1637,7 @@ public static partial class ToolPackBootstrap {
         if (includeWorkspaceProjectOutputs) {
             if (TryResolveTrustedToolAssemblyPathFromWorkspaceProjectOutputs(
                     assemblyName,
-                    typeof(ToolPackBootstrap).Assembly,
+                    bootstrapAssemblyPath,
                     out var workspaceProjectOutputPath)) {
                 trustedAssemblyPath = workspaceProjectOutputPath;
                 return true;
@@ -1680,6 +1916,30 @@ public static partial class ToolPackBootstrap {
         return ResolveTrustedBuiltInToolDependencyAssemblyCore(assemblyName, loadAssembly);
     }
 
+    internal static bool TryResolveTrustedToolAssemblyPathForTesting(
+        AssemblyName assemblyName,
+        ToolPackBootstrapOptions options,
+        bool includeWorkspaceProjectOutputs,
+        string bootstrapAssemblyPath,
+        out string trustedAssemblyPath) {
+        return TryResolveTrustedToolAssemblyPathCore(
+            assemblyName,
+            options,
+            includeWorkspaceProjectOutputs,
+            bootstrapAssemblyPath,
+            out trustedAssemblyPath);
+    }
+
+    internal static bool TryResolveTrustedToolAssemblyPathFromWorkspaceProjectOutputsForTesting(
+        AssemblyName assemblyName,
+        string bootstrapAssemblyPath,
+        out string trustedAssemblyPath) {
+        return TryResolveTrustedToolAssemblyPathFromWorkspaceProjectOutputs(
+            assemblyName,
+            bootstrapAssemblyPath,
+            out trustedAssemblyPath);
+    }
+
     private static Assembly? FindAlreadyLoadedAssembly_NoLock(string requestedName, string? assemblyPath = null) {
         var normalizedAssemblyPath = NormalizeLoadedAssemblyPath(assemblyPath);
         foreach (var loadedAssembly in AppDomain.CurrentDomain.GetAssemblies()) {
@@ -1801,7 +2061,7 @@ public static partial class ToolPackBootstrap {
 
     private static bool TryResolveTrustedToolAssemblyPathFromWorkspaceProjectOutputs(
         AssemblyName assemblyName,
-        Assembly bootstrapAssembly,
+        string bootstrapAssemblyPath,
         out string trustedAssemblyPath) {
         trustedAssemblyPath = string.Empty;
         var assemblyNameValue = (assemblyName.Name ?? string.Empty).Trim();
@@ -1809,7 +2069,7 @@ public static partial class ToolPackBootstrap {
             return false;
         }
 
-        var repoRoot = TryFindWorkspaceRepoRoot(bootstrapAssembly.Location);
+        var repoRoot = TryFindWorkspaceRepoRoot(bootstrapAssemblyPath);
         if (string.IsNullOrWhiteSpace(repoRoot)) {
             return false;
         }
@@ -2723,6 +2983,7 @@ public static partial class ToolPackBootstrap {
 
     private sealed record KnownBuiltInPackBootstrapMetadata(
         string PackId,
+        string AssemblyName,
         ToolPackDescriptor Descriptor,
         bool DefaultEnabled,
         string[] IdentityTokens);

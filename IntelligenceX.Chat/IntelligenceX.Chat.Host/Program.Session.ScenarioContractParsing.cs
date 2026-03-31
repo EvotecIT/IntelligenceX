@@ -633,7 +633,13 @@ internal static partial class Program {
                 return string.Empty;
             }
 
-            return "Known host/DC targets from prior tool inputs in this thread: "
+            if (values.Count == 1) {
+                return "Known host/DC target from prior tool inputs in this thread: "
+                       + values[0]
+                       + ".";
+            }
+
+            return "Known host/DC targets from prior tool inputs in this thread (ordered distinct candidates): "
                    + string.Join(", ", values)
                    + ".";
         }
@@ -885,8 +891,7 @@ internal static partial class Program {
                 Do not repeat identical tool-call signatures unless there is no alternative; prioritize missing distinct input coverage.
                 Do not use forbidden tool input values specified by the contract; if a drafted call contains one, replace it with an allowed value before execution.
                 Infer missing read-only inputs from prior tool outputs where possible.
-                For continuation requests over remaining discovered DCs/hosts, execute calls across at least two distinct host/DC inputs.
-                If current discovery returns zero hosts, use previously seen DC/host targets from this thread as fallback and proceed with best-effort execution.
+                If no concrete host/DC target is available from current-turn evidence or prior tool inputs in this thread, ask for the minimal missing target input instead of inventing a default host.
                 {{knownHostHint}}
                 Do not claim internal retry/exhaustion limits; this is an internal execution correction path.
                 If tools still cannot satisfy the missing contract requirements after best effort, state the exact blocker once.

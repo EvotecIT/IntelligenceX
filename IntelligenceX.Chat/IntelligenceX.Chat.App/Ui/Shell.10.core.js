@@ -2176,12 +2176,47 @@
       return null;
     }
 
+    var phases = Array.isArray(value.phases) ? value.phases.map(function (phase) {
+      return {
+        id: typeof phase?.id === "string" ? phase.id.trim() : "",
+        label: typeof phase?.label === "string" ? phase.label.trim() : "",
+        durationMs: toNonNegativeInt(phase?.durationMs),
+        order: toNonNegativeInt(phase?.order)
+      };
+    }) : [];
+    var descriptorDiscoveryMs = toNonNegativeInt(value.descriptorDiscoveryMs);
+    if (descriptorDiscoveryMs <= 0) {
+      descriptorDiscoveryMs = readStartupBootstrapPhaseMs(phases, "descriptor_discovery");
+    }
+    if (descriptorDiscoveryMs <= 0) {
+      descriptorDiscoveryMs = toNonNegativeInt(value.packLoadMs);
+    }
+    var packActivationMs = toNonNegativeInt(value.packActivationMs);
+    if (packActivationMs <= 0) {
+      packActivationMs = readStartupBootstrapPhaseMs(phases, "pack_activation");
+    }
+    if (packActivationMs <= 0) {
+      packActivationMs = toNonNegativeInt(value.packRegisterMs);
+    }
+    var registryActivationFinalizeMs = toNonNegativeInt(value.registryActivationFinalizeMs);
+    if (registryActivationFinalizeMs <= 0) {
+      registryActivationFinalizeMs = readStartupBootstrapPhaseMs(phases, "registry_activation_finalize");
+    }
+    if (registryActivationFinalizeMs <= 0) {
+      registryActivationFinalizeMs = toNonNegativeInt(value.registryFinalizeMs);
+    }
+
     return {
       totalMs: toNonNegativeInt(value.totalMs),
       runtimePolicyMs: toNonNegativeInt(value.runtimePolicyMs),
       bootstrapOptionsMs: toNonNegativeInt(value.bootstrapOptionsMs),
       packLoadMs: toNonNegativeInt(value.packLoadMs),
+      packRegisterMs: toNonNegativeInt(value.packRegisterMs),
+      registryFinalizeMs: toNonNegativeInt(value.registryFinalizeMs),
       registryMs: toNonNegativeInt(value.registryMs),
+      descriptorDiscoveryMs: descriptorDiscoveryMs,
+      packActivationMs: packActivationMs,
+      registryActivationFinalizeMs: registryActivationFinalizeMs,
       tools: toNonNegativeInt(value.tools),
       packsLoaded: toNonNegativeInt(value.packsLoaded),
       packsDisabled: toNonNegativeInt(value.packsDisabled),
@@ -2190,11 +2225,45 @@
       slowPackTopCount: toNonNegativeInt(value.slowPackTopCount),
       packProgressProcessed: toNonNegativeInt(value.packProgressProcessed),
       packProgressTotal: toNonNegativeInt(value.packProgressTotal),
+      phases: phases,
       slowPluginCount: toNonNegativeInt(value.slowPluginCount),
       slowPluginTopCount: toNonNegativeInt(value.slowPluginTopCount),
       pluginProgressProcessed: toNonNegativeInt(value.pluginProgressProcessed),
-      pluginProgressTotal: toNonNegativeInt(value.pluginProgressTotal)
+      pluginProgressTotal: toNonNegativeInt(value.pluginProgressTotal),
+      slowestPhaseId: typeof value.slowestPhaseId === "string" ? value.slowestPhaseId.trim() : "",
+      slowestPhaseLabel: typeof value.slowestPhaseLabel === "string" ? value.slowestPhaseLabel.trim() : "",
+      slowestPhaseMs: toNonNegativeInt(value.slowestPhaseMs)
     };
+  }
+
+  function readStartupBootstrapPhaseMs(phases, phaseId) {
+    if (!Array.isArray(phases) || !phaseId) {
+      return 0;
+    }
+
+    for (var i = 0; i < phases.length; i += 1) {
+      var phase = phases[i];
+      if (phase && phase.id === phaseId) {
+        return toNonNegativeInt(phase.durationMs);
+      }
+    }
+
+    return 0;
+  }
+
+  function hasStartupBootstrapPhaseId(telemetry, phaseId) {
+    if (!telemetry || !phaseId || !Array.isArray(telemetry.phases)) {
+      return false;
+    }
+
+    for (var i = 0; i < telemetry.phases.length; i += 1) {
+      var phase = telemetry.phases[i];
+      if (phase && typeof phase.id === "string" && phase.id.trim().toLowerCase() === phaseId.toLowerCase()) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   function formatStartupBootstrapDuration(ms) {
@@ -2215,8 +2284,17 @@
     }
 
     var segments = [];
+    var descriptorDiscoveryMs = toNonNegativeInt(telemetry.descriptorDiscoveryMs);
+    var packActivationMs = toNonNegativeInt(telemetry.packActivationMs);
+    var activationFinalizeMs = toNonNegativeInt(telemetry.registryActivationFinalizeMs);
     segments.push("total " + formatStartupBootstrapDuration(telemetry.totalMs));
-    segments.push("pack-load " + formatStartupBootstrapDuration(telemetry.packLoadMs));
+    if (hasStartupBootstrapPhaseId(telemetry, "descriptor_cache_hit")) {
+      segments.push("descriptor-preview");
+    } else {
+      segments.push("descriptor-discovery " + formatStartupBootstrapDuration(descriptorDiscoveryMs));
+      segments.push("pack-activation " + formatStartupBootstrapDuration(packActivationMs));
+      segments.push("activation-finalize " + formatStartupBootstrapDuration(activationFinalizeMs));
+    }
     segments.push("registry " + formatStartupBootstrapDuration(telemetry.registryMs));
     segments.push("tools " + String(telemetry.tools));
     segments.push("enabled-packs " + String(telemetry.packsLoaded) + "/" + String(Math.max(telemetry.packsLoaded, telemetry.packsDisabled + telemetry.packsLoaded)));

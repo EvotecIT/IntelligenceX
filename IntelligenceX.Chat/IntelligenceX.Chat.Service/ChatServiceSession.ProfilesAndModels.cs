@@ -782,9 +782,9 @@ internal sealed partial class ChatServiceSession {
         var startupPhases = new[] {
             StartupBootstrapContracts.CreatePhase(StartupBootstrapContracts.PhaseRuntimePolicyId, runtimePolicyMs, 1),
             StartupBootstrapContracts.CreatePhase(StartupBootstrapContracts.PhaseBootstrapOptionsId, bootstrapOptionsMs, 2),
-            StartupBootstrapContracts.CreatePhase(StartupBootstrapContracts.PhasePackLoadId, packLoadMs, 3),
-            StartupBootstrapContracts.CreatePhase(StartupBootstrapContracts.PhasePackRegisterId, packRegisterMs, 4),
-            StartupBootstrapContracts.CreatePhase(StartupBootstrapContracts.PhaseRegistryFinalizeId, registryFinalizeMs, 5)
+            StartupBootstrapContracts.CreatePhase(StartupBootstrapContracts.PhaseDescriptorDiscoveryId, packLoadMs, 3),
+            StartupBootstrapContracts.CreatePhase(StartupBootstrapContracts.PhasePackActivationId, packRegisterMs, 4),
+            StartupBootstrapContracts.CreatePhase(StartupBootstrapContracts.PhaseRegistryActivationFinalizeId, registryFinalizeMs, 5)
         };
         var slowestPhase = startupPhases
             .OrderByDescending(static phase => phase.DurationMs)
@@ -823,7 +823,7 @@ internal sealed partial class ChatServiceSession {
         var packAvailability = bootstrapResult.PackAvailability.ToArray();
         var pluginAvailability = bootstrapResult.PluginAvailability.ToArray();
         var pluginCatalog = bootstrapResult.PluginCatalog.ToArray();
-        var startupBootstrap = new SessionStartupBootstrapTelemetryDto {
+        var startupBootstrap = StartupBootstrapContracts.WithCanonicalPhaseDurations(new SessionStartupBootstrapTelemetryDto {
             TotalMs = totalMs,
             RuntimePolicyMs = runtimePolicyMs,
             BootstrapOptionsMs = bootstrapOptionsMs,
@@ -851,7 +851,9 @@ internal sealed partial class ChatServiceSession {
             SlowestPhaseId = slowestPhase?.Id,
             SlowestPhaseLabel = slowestPhase?.Label,
             SlowestPhaseMs = slowestPhase?.DurationMs ?? 0
-        };
+        });
+        // Persist the exact deferred descriptor-preview fingerprint used by warm-path validation.
+        var previewDiscoveryFingerprint = BuildToolingBootstrapPreviewFingerprint(_options, runtimePolicyOptions);
         ApplyLiveToolingBootstrapState(
             registry,
             toolDefinitions,
@@ -883,7 +885,8 @@ internal sealed partial class ChatServiceSession {
                 RoutingCatalogDiagnostics = routingCatalogDiagnostics,
                 CapabilitySnapshot = BuildRuntimeCapabilitySnapshot(),
                 ToolOrchestrationCatalog = toolOrchestrationCatalog
-            });
+            },
+            previewDiscoveryFingerprint: previewDiscoveryFingerprint);
 
         if (clearRoutingCaches) {
             ClearToolRoutingCaches();
@@ -913,7 +916,7 @@ internal sealed partial class ChatServiceSession {
             snapshot.StartupBootstrap.Tools,
             snapshot.StartupBootstrap.PacksLoaded));
         var startupWarnings = NormalizeDistinctStrings(warnings, maxItems: 64);
-        var startupBootstrap = snapshot.StartupBootstrap with {
+        var startupBootstrap = StartupBootstrapContracts.WithCanonicalPhaseDurations(snapshot.StartupBootstrap with {
             TotalMs = cacheHitMs,
             RuntimePolicyMs = cacheHitMs,
             BootstrapOptionsMs = 0,
@@ -927,7 +930,7 @@ internal sealed partial class ChatServiceSession {
             SlowestPhaseId = StartupBootstrapContracts.PhaseCacheHitId,
             SlowestPhaseLabel = StartupBootstrapContracts.PhaseCacheHitLabel,
             SlowestPhaseMs = cacheHitMs
-        };
+        });
         ApplyLiveToolingBootstrapState(
             snapshot.Registry,
             snapshot.ToolDefinitions,
@@ -953,9 +956,15 @@ internal sealed partial class ChatServiceSession {
         }
 
         var runtimePolicyOptions = BuildRuntimePolicyOptions(_options);
-        var resolvedRuntimePolicyOptions = ToolRuntimePolicyBootstrap.ResolveOptions(runtimePolicyOptions);
-        var bootstrapPreviewCacheKey = BuildToolingBootstrapPreviewCacheKey(_options, runtimePolicyOptions, resolvedRuntimePolicyOptions);
-        if (!_toolingBootstrapCache.TryGetPersistedPreviewSnapshot(bootstrapPreviewCacheKey, out var persistedSnapshot)) {
+        var previewCacheKey = BuildToolingBootstrapPreviewCacheKey(
+            _options,
+            runtimePolicyOptions,
+            ToolRuntimePolicyBootstrap.ResolveOptions(runtimePolicyOptions));
+        var previewDiscoveryFingerprint = BuildToolingBootstrapPreviewFingerprint(_options, runtimePolicyOptions);
+        if (!_toolingBootstrapCache.TryGetPersistedPreviewSnapshot(
+                previewCacheKey,
+                previewDiscoveryFingerprint,
+                out var persistedSnapshot)) {
             return false;
         }
 
@@ -974,7 +983,7 @@ internal sealed partial class ChatServiceSession {
         _pluginSearchPaths = snapshot.PluginSearchPaths.ToArray();
         _runtimePolicyDiagnostics = snapshot.RuntimePolicyDiagnostics;
         _routingCatalogDiagnostics = snapshot.RoutingCatalogDiagnostics;
-        _startupBootstrap = snapshot.StartupBootstrap;
+        _startupBootstrap = BuildPersistedPreviewStartupBootstrap(snapshot);
         UpdatePackMetadataIndexesFromAvailability(_packAvailability);
 
         var warnings = new List<string>(snapshot.StartupWarnings.Length + 1);
@@ -999,6 +1008,51 @@ internal sealed partial class ChatServiceSession {
         ToolRuntimePolicyOptions runtimePolicyOptions,
         ToolRuntimePolicyResolvedOptions resolvedRuntimePolicyOptions) {
         return BuildToolingBootstrapCacheKeyBuilder(options, runtimePolicyOptions, resolvedRuntimePolicyOptions).ToString();
+    }
+
+    private static string BuildToolingBootstrapPreviewFingerprint(
+        ServiceOptions options,
+        ToolRuntimePolicyOptions runtimePolicyOptions) {
+        var runtimePolicyContext = ToolRuntimePolicyBootstrap.CreateContext(runtimePolicyOptions);
+        var bootstrapOptions = ToolPackBootstrap.CreateRuntimeBootstrapOptions(options, runtimePolicyContext);
+        return ToolPackBootstrap.BuildDeferredDescriptorPreviewFingerprint(bootstrapOptions);
+    }
+
+    private static SessionStartupBootstrapTelemetryDto BuildPersistedPreviewStartupBootstrap(
+        ChatServiceToolingBootstrapPersistedSnapshot snapshot) {
+        var toolDefinitions = snapshot.ToolDefinitions ?? Array.Empty<ToolDefinitionDto>();
+        var packAvailability = snapshot.PackAvailability ?? Array.Empty<ToolPackAvailabilityInfo>();
+        var pluginSearchPaths = snapshot.PluginSearchPaths ?? Array.Empty<string>();
+        var enabledPackCount = 0;
+        var disabledPackCount = 0;
+        for (var i = 0; i < packAvailability.Length; i++) {
+            if (packAvailability[i].Enabled) {
+                enabledPackCount++;
+            } else {
+                disabledPackCount++;
+            }
+        }
+
+        const long previewRestoreMs = 1;
+        return StartupBootstrapContracts.WithCanonicalPhaseDurations(new SessionStartupBootstrapTelemetryDto {
+            TotalMs = previewRestoreMs,
+            RuntimePolicyMs = 0,
+            BootstrapOptionsMs = 0,
+            PackLoadMs = 0,
+            PackRegisterMs = 0,
+            RegistryFinalizeMs = 0,
+            RegistryMs = 0,
+            Tools = toolDefinitions.Length,
+            PacksLoaded = enabledPackCount,
+            PacksDisabled = disabledPackCount,
+            PluginRoots = pluginSearchPaths.Length,
+            Phases = new[] {
+                StartupBootstrapContracts.CreatePhase(StartupBootstrapContracts.PhaseDescriptorCacheHitId, previewRestoreMs, 1)
+            },
+            SlowestPhaseId = StartupBootstrapContracts.PhaseDescriptorCacheHitId,
+            SlowestPhaseLabel = StartupBootstrapContracts.PhaseDescriptorCacheHitLabel,
+            SlowestPhaseMs = previewRestoreMs
+        });
     }
 
     private static StringBuilder BuildToolingBootstrapCacheKeyBuilder(

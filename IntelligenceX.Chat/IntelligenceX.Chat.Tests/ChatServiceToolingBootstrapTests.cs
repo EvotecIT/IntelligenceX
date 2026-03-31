@@ -48,6 +48,24 @@ public sealed class ChatServiceToolingBootstrapTests {
         return (previewCacheKey, cacheKey);
     }
 
+    private static string BuildToolingBootstrapPreviewFingerprint(ServiceOptions options) {
+        var runtimePolicyOptionsMethod = typeof(ChatServiceSession).GetMethod(
+            "BuildRuntimePolicyOptions",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        var previewFingerprintMethod = typeof(ChatServiceSession).GetMethod(
+            "BuildToolingBootstrapPreviewFingerprint",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(runtimePolicyOptionsMethod);
+        Assert.NotNull(previewFingerprintMethod);
+
+        var runtimePolicyOptions = Assert.IsType<ToolRuntimePolicyOptions>(runtimePolicyOptionsMethod!.Invoke(
+            null,
+            new object[] { options }));
+        return Assert.IsType<string>(previewFingerprintMethod!.Invoke(
+            null,
+            new object?[] { options, runtimePolicyOptions }));
+    }
+
     [Fact]
     public void RebuildToolingFromOptions_RefreshesPackAvailabilitySnapshot() {
         var rebuildMethod = typeof(ChatServiceSession).GetMethod("RebuildToolingFromOptions", BindingFlags.NonPublic | BindingFlags.Instance);
@@ -344,9 +362,9 @@ public sealed class ChatServiceToolingBootstrapTests {
 
         Assert.Equal(5, startupBootstrap.Phases.Length);
         Assert.Equal(StartupBootstrapContracts.PhaseRuntimePolicyId, startupBootstrap.Phases[0].Id);
-        Assert.Equal(StartupBootstrapContracts.PhasePackLoadId, startupBootstrap.Phases[2].Id);
-        Assert.Equal(StartupBootstrapContracts.PhasePackRegisterId, startupBootstrap.Phases[3].Id);
-        Assert.Equal(StartupBootstrapContracts.PhaseRegistryFinalizeId, startupBootstrap.Phases[4].Id);
+        Assert.Equal(StartupBootstrapContracts.PhaseDescriptorDiscoveryId, startupBootstrap.Phases[2].Id);
+        Assert.Equal(StartupBootstrapContracts.PhasePackActivationId, startupBootstrap.Phases[3].Id);
+        Assert.Equal(StartupBootstrapContracts.PhaseRegistryActivationFinalizeId, startupBootstrap.Phases[4].Id);
         Assert.True(startupBootstrap.Phases[2].DurationMs >= 1);
         Assert.False(string.IsNullOrWhiteSpace(startupBootstrap.SlowestPhaseId));
         Assert.True(startupBootstrap.SlowestPhaseMs >= 1);
@@ -718,6 +736,130 @@ public sealed class ChatServiceToolingBootstrapTests {
     }
 
     [Fact]
+    public void RebuildToolingCore_DoesNotReusePreviewKeyForFullSnapshot_WhenStrictCacheKeyDiffers() {
+        var rebuildCoreMethod = typeof(ChatServiceSession).GetMethod(
+            "RebuildToolingCore",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        var startupBootstrapField = typeof(ChatServiceSession).GetField("_startupBootstrap", BindingFlags.NonPublic | BindingFlags.Instance);
+        var startupWarningsField = typeof(ChatServiceSession).GetField("_startupWarnings", BindingFlags.NonPublic | BindingFlags.Instance);
+        var cachedToolDefinitionsField = typeof(ChatServiceSession).GetField("_cachedToolDefinitions", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(rebuildCoreMethod);
+        Assert.NotNull(startupBootstrapField);
+        Assert.NotNull(startupWarningsField);
+        Assert.NotNull(cachedToolDefinitionsField);
+
+        var cachePath = CreateToolingBootstrapCachePath("tooling-cache-preview-cache-hit");
+        var cacheDirectory = Path.GetDirectoryName(cachePath);
+        if (!string.IsNullOrWhiteSpace(cacheDirectory)) {
+            Directory.CreateDirectory(cacheDirectory);
+        }
+
+        try {
+            var options = ChatServiceTestSessionFactory.CreateIsolatedOptions();
+            options.EnableBuiltInPackLoading = false;
+            options.EnableDefaultPluginPaths = false;
+            var (previewCacheKey, cacheKey) = BuildToolingBootstrapKeys(options);
+            var previewFingerprint = BuildToolingBootstrapPreviewFingerprint(options);
+            var diagnostics = ToolRuntimePolicyBootstrap.BuildDiagnostics(
+                ToolRuntimePolicyBootstrap.CreateContext(new ToolRuntimePolicyOptions()));
+            var routingDiagnostics = ToolRoutingCatalogDiagnosticsBuilder.Build(Array.Empty<ToolDefinition>());
+            var cache = new ChatServiceToolingBootstrapCache(cachePath);
+            cache.StoreSnapshot(
+                previewCacheKey + "discovery_fingerprint=stale-fingerprint;",
+                new ChatServiceToolingBootstrapSnapshot {
+                    Registry = new ToolRegistry(),
+                    ToolDefinitions = new[] {
+                        new ToolDefinitionDto {
+                            Name = "preview_cache_tool",
+                            Description = "Preview cache hit tool",
+                            PackId = "preview_pack"
+                        }
+                    },
+                    PackSummaries = new[] {
+                        new ToolPackInfoDto {
+                            Id = "preview_pack",
+                            Name = "Preview Pack",
+                            Tier = CapabilityTier.ReadOnly,
+                            Enabled = true,
+                            IsDangerous = false,
+                            SourceKind = ToolPackSourceKind.ClosedSource
+                        }
+                    },
+                    Packs = Array.Empty<IToolPack>(),
+                    PackAvailability = new[] {
+                        new ToolPackAvailabilityInfo {
+                            Id = "preview_pack",
+                            Name = "Preview Pack",
+                            SourceKind = "closed_source",
+                            Enabled = true
+                        }
+                    },
+                    PluginAvailability = Array.Empty<ToolPluginAvailabilityInfo>(),
+                    PluginCatalog = Array.Empty<ToolPluginCatalogInfo>(),
+                    StartupWarnings = Array.Empty<string>(),
+                    StartupBootstrap = new SessionStartupBootstrapTelemetryDto {
+                        Tools = 1,
+                        PacksLoaded = 1
+                    },
+                    PluginSearchPaths = Array.Empty<string>(),
+                    RuntimePolicyDiagnostics = diagnostics,
+                    RoutingCatalogDiagnostics = routingDiagnostics,
+                    CapabilitySnapshot = new SessionCapabilitySnapshotDto {
+                        RegisteredTools = 1,
+                        EnabledPackCount = 1,
+                        PluginCount = 0,
+                        EnabledPluginCount = 0,
+                        ToolingAvailable = true,
+                        AllowedRootCount = 0,
+                        EnabledPackIds = new[] { "preview_pack" },
+                        EnabledPluginIds = Array.Empty<string>(),
+                        RoutingFamilies = Array.Empty<string>(),
+                        FamilyActions = Array.Empty<SessionRoutingFamilyActionSummaryDto>(),
+                        Skills = Array.Empty<string>(),
+                        HealthyTools = new[] { "preview_cache_tool" }
+                    },
+                    ToolOrchestrationCatalog = ToolOrchestrationCatalog.Build(Array.Empty<ToolDefinition>())
+                },
+                previewFingerprint);
+
+            Assert.NotEqual(previewCacheKey, cacheKey);
+            Assert.False(cache.TryGetSnapshot(cacheKey, out _));
+
+            var session = new ChatServiceSession(options, Stream.Null, cache);
+            var previewToolDefinitions = Assert.IsType<ToolDefinitionDto[]>(cachedToolDefinitionsField!.GetValue(session));
+            Assert.Equal("preview_cache_tool", Assert.Single(previewToolDefinitions).Name);
+
+            rebuildCoreMethod!.Invoke(session, new object?[] { false });
+
+            var startupBootstrap = Assert.IsType<SessionStartupBootstrapTelemetryDto>(startupBootstrapField!.GetValue(session));
+            Assert.DoesNotContain(
+                startupBootstrap.Phases,
+                static phase => string.Equals(
+                    phase.Id,
+                    StartupBootstrapContracts.PhaseCacheHitId,
+                    StringComparison.Ordinal));
+
+            var startupWarnings = Assert.IsType<string[]>(startupWarningsField!.GetValue(session));
+            Assert.DoesNotContain(
+                startupWarnings,
+                static warning => warning.Contains("tooling bootstrap cache hit", StringComparison.OrdinalIgnoreCase));
+
+            var cachedToolDefinitions = Assert.IsType<ToolDefinitionDto[]>(cachedToolDefinitionsField.GetValue(session));
+            Assert.DoesNotContain(
+                cachedToolDefinitions,
+                static definition => string.Equals(definition.Name, "preview_cache_tool", StringComparison.Ordinal));
+        } finally {
+            try {
+                if (File.Exists(cachePath)) {
+                    File.Delete(cachePath);
+                }
+            } catch {
+                // Best-effort test cleanup.
+            }
+        }
+    }
+
+    [Fact]
     public void ToolingBootstrapCache_PersistsSnapshotToDisk_AndRestoresToolDefinitions() {
         var cachePath = CreateToolingBootstrapCachePath("tooling-cache-roundtrip");
         var cacheDirectory = Path.GetDirectoryName(cachePath);
@@ -934,7 +1076,226 @@ public sealed class ChatServiceToolingBootstrapTests {
             var reloaded = new ChatServiceToolingBootstrapCache(cachePath);
             Assert.True(reloaded.TryGetPersistedPreviewSnapshot(expectedPreviewCacheKey, out var persistedSnapshot));
             Assert.Equal("legacy_tool", Assert.Single(persistedSnapshot.ToolDefinitions).Name);
+            Assert.False(string.IsNullOrWhiteSpace(persistedSnapshot.PreviewDiscoveryFingerprint));
             Assert.False(reloaded.TryGetPersistedSnapshot(expectedPreviewCacheKey, out _));
+        } finally {
+            try {
+                if (File.Exists(cachePath)) {
+                    File.Delete(cachePath);
+                }
+            } catch {
+                // Best-effort test cleanup.
+            }
+        }
+    }
+
+    [Fact]
+    public void ToolingBootstrapCache_StoresVersionedDescriptorSnapshotContract() {
+        var cachePath = CreateToolingBootstrapCachePath("tooling-cache-descriptor-snapshot-contract");
+        var cacheDirectory = Path.GetDirectoryName(cachePath);
+        if (!string.IsNullOrWhiteSpace(cacheDirectory)) {
+            Directory.CreateDirectory(cacheDirectory);
+        }
+
+        try {
+            var diagnostics = ToolRuntimePolicyBootstrap.BuildDiagnostics(
+                ToolRuntimePolicyBootstrap.CreateContext(new ToolRuntimePolicyOptions()));
+            var routingDiagnostics = ToolRoutingCatalogDiagnosticsBuilder.Build(Array.Empty<ToolDefinition>());
+            var cache = new ChatServiceToolingBootstrapCache(cachePath);
+            cache.StoreSnapshot(
+                "write_mode=Disabled;discovery_fingerprint=current;",
+                new ChatServiceToolingBootstrapSnapshot {
+                    Registry = new ToolRegistry(),
+                    ToolDefinitions = new[] {
+                        new ToolDefinitionDto {
+                            Name = "descriptor_preview_tool",
+                            Description = "Descriptor-preview tool",
+                            PackId = "preview_pack"
+                        }
+                    },
+                    PackSummaries = new[] {
+                        new ToolPackInfoDto {
+                            Id = "preview_pack",
+                            Name = "Preview Pack",
+                            Tier = CapabilityTier.ReadOnly,
+                            Enabled = true,
+                            IsDangerous = false,
+                            SourceKind = ToolPackSourceKind.ClosedSource
+                        }
+                    },
+                    Packs = Array.Empty<IToolPack>(),
+                    PackAvailability = new[] {
+                        new ToolPackAvailabilityInfo {
+                            Id = "preview_pack",
+                            Name = "Preview Pack",
+                            SourceKind = "closed_source",
+                            Enabled = true
+                        }
+                    },
+                    PluginAvailability = Array.Empty<ToolPluginAvailabilityInfo>(),
+                    StartupWarnings = Array.Empty<string>(),
+                    StartupBootstrap = new SessionStartupBootstrapTelemetryDto(),
+                    PluginSearchPaths = Array.Empty<string>(),
+                    RuntimePolicyDiagnostics = diagnostics,
+                    RoutingCatalogDiagnostics = routingDiagnostics,
+                    CapabilitySnapshot = new SessionCapabilitySnapshotDto {
+                        RegisteredTools = 1,
+                        EnabledPackCount = 1,
+                        PluginCount = 0,
+                        EnabledPluginCount = 0,
+                        ToolingAvailable = true,
+                        AllowedRootCount = 0,
+                        EnabledPackIds = new[] { "preview_pack" },
+                        EnabledPluginIds = Array.Empty<string>(),
+                        RoutingFamilies = Array.Empty<string>(),
+                        FamilyActions = Array.Empty<SessionRoutingFamilyActionSummaryDto>(),
+                        Skills = Array.Empty<string>(),
+                        HealthyTools = new[] { "descriptor_preview_tool" }
+                    },
+                    ToolOrchestrationCatalog = ToolOrchestrationCatalog.Build(Array.Empty<ToolDefinition>())
+                });
+
+            using var document = JsonDocument.Parse(File.ReadAllText(cachePath));
+            Assert.True(document.RootElement.TryGetProperty("DescriptorSnapshot", out var descriptorSnapshot));
+            Assert.Equal(1, descriptorSnapshot.GetProperty("SchemaVersion").GetInt32());
+            Assert.Equal(
+                "descriptor_preview_tool",
+                descriptorSnapshot.GetProperty("ToolDefinitions")[0].GetProperty("Name").GetString());
+            Assert.False(string.IsNullOrWhiteSpace(
+                descriptorSnapshot.GetProperty("PreviewDiscoveryFingerprint").GetString()));
+        } finally {
+            try {
+                if (File.Exists(cachePath)) {
+                    File.Delete(cachePath);
+                }
+            } catch {
+                // Best-effort test cleanup.
+            }
+        }
+    }
+
+    [Fact]
+    public void ToolingBootstrapCache_LoadPrefersVersionedDescriptorSnapshotContract() {
+        var cachePath = CreateToolingBootstrapCachePath("tooling-cache-descriptor-snapshot-preferred");
+        var cacheDirectory = Path.GetDirectoryName(cachePath);
+        if (!string.IsNullOrWhiteSpace(cacheDirectory)) {
+            Directory.CreateDirectory(cacheDirectory);
+        }
+
+        try {
+            const string previewCacheKey = "write_mode=Disabled;";
+            var diagnostics = ToolRuntimePolicyBootstrap.BuildDiagnostics(
+                ToolRuntimePolicyBootstrap.CreateContext(new ToolRuntimePolicyOptions()));
+            var routingDiagnostics = ToolRoutingCatalogDiagnosticsBuilder.Build(Array.Empty<ToolDefinition>());
+            var persistedSnapshot = new ChatServiceToolingBootstrapPersistedSnapshot {
+                SchemaVersion = 4,
+                CacheKey = previewCacheKey + "discovery_fingerprint=stale-fingerprint;",
+                PreviewCacheKey = previewCacheKey,
+                CachedAtUtc = DateTime.UtcNow,
+                ToolDefinitions = new[] {
+                    new ToolDefinitionDto {
+                        Name = "legacy_stale_tool",
+                        Description = "Legacy stale tool",
+                        PackId = "legacy_pack"
+                    }
+                },
+                PackSummaries = new[] {
+                    new ToolPackInfoDto {
+                        Id = "legacy_pack",
+                        Name = "Legacy Pack",
+                        Tier = CapabilityTier.ReadOnly,
+                        Enabled = true,
+                        IsDangerous = false,
+                        SourceKind = ToolPackSourceKind.ClosedSource
+                    }
+                },
+                PackAvailability = new[] {
+                    new ToolPackAvailabilityInfo {
+                        Id = "legacy_pack",
+                        Name = "Legacy Pack",
+                        SourceKind = "closed_source",
+                        Enabled = true
+                    }
+                },
+                PluginAvailability = Array.Empty<ToolPluginAvailabilityInfo>(),
+                PluginCatalog = Array.Empty<ToolPluginCatalogInfo>(),
+                StartupWarnings = Array.Empty<string>(),
+                StartupBootstrap = new SessionStartupBootstrapTelemetryDto(),
+                PluginSearchPaths = Array.Empty<string>(),
+                RuntimePolicyDiagnostics = diagnostics,
+                RoutingCatalogDiagnostics = routingDiagnostics,
+                CapabilitySnapshot = new SessionCapabilitySnapshotDto {
+                    RegisteredTools = 1,
+                    EnabledPackCount = 1,
+                    PluginCount = 0,
+                    EnabledPluginCount = 0,
+                    ToolingAvailable = true,
+                    AllowedRootCount = 0,
+                    EnabledPackIds = new[] { "legacy_pack" },
+                    EnabledPluginIds = Array.Empty<string>(),
+                    RoutingFamilies = Array.Empty<string>(),
+                    FamilyActions = Array.Empty<SessionRoutingFamilyActionSummaryDto>(),
+                    Skills = Array.Empty<string>(),
+                    HealthyTools = new[] { "legacy_stale_tool" }
+                },
+                DescriptorSnapshot = new ChatServiceToolingBootstrapDescriptorSnapshot {
+                    SchemaVersion = 1,
+                    PreviewDiscoveryFingerprint = "descriptor-current",
+                    ToolDefinitions = new[] {
+                        new ToolDefinitionDto {
+                            Name = "descriptor_current_tool",
+                            Description = "Descriptor current tool",
+                            PackId = "descriptor_pack"
+                        }
+                    },
+                    PackSummaries = new[] {
+                        new ToolPackInfoDto {
+                            Id = "descriptor_pack",
+                            Name = "Descriptor Pack",
+                            Tier = CapabilityTier.ReadOnly,
+                            Enabled = true,
+                            IsDangerous = false,
+                            SourceKind = ToolPackSourceKind.ClosedSource
+                        }
+                    },
+                    PackAvailability = new[] {
+                        new ToolPackAvailabilityInfo {
+                            Id = "descriptor_pack",
+                            Name = "Descriptor Pack",
+                            SourceKind = "closed_source",
+                            Enabled = true
+                        }
+                    },
+                    PluginAvailability = Array.Empty<ToolPluginAvailabilityInfo>(),
+                    PluginCatalog = Array.Empty<ToolPluginCatalogInfo>(),
+                    RuntimePolicyDiagnostics = diagnostics,
+                    RoutingCatalogDiagnostics = routingDiagnostics,
+                    CapabilitySnapshot = new SessionCapabilitySnapshotDto {
+                        RegisteredTools = 1,
+                        EnabledPackCount = 1,
+                        PluginCount = 0,
+                        EnabledPluginCount = 0,
+                        ToolingAvailable = true,
+                        AllowedRootCount = 0,
+                        EnabledPackIds = new[] { "descriptor_pack" },
+                        EnabledPluginIds = Array.Empty<string>(),
+                        RoutingFamilies = Array.Empty<string>(),
+                        FamilyActions = Array.Empty<SessionRoutingFamilyActionSummaryDto>(),
+                        Skills = Array.Empty<string>(),
+                        HealthyTools = new[] { "descriptor_current_tool" }
+                    }
+                }
+            };
+
+            File.WriteAllText(cachePath, JsonSerializer.Serialize(persistedSnapshot));
+
+            var cache = new ChatServiceToolingBootstrapCache(cachePath);
+            Assert.True(cache.TryGetPersistedPreviewSnapshot(previewCacheKey, out var previewSnapshot));
+            Assert.Equal("descriptor_current_tool", Assert.Single(previewSnapshot.ToolDefinitions).Name);
+            Assert.Equal("descriptor_pack", Assert.Single(previewSnapshot.PackSummaries).Id);
+            Assert.Equal("descriptor_pack", Assert.Single(previewSnapshot.PackAvailability).Id);
+            Assert.Equal("descriptor-current", previewSnapshot.PreviewDiscoveryFingerprint);
+            Assert.Equal(new[] { "descriptor_pack" }, previewSnapshot.CapabilitySnapshot.EnabledPackIds);
         } finally {
             try {
                 if (File.Exists(cachePath)) {
@@ -1260,15 +1621,381 @@ public sealed class ChatServiceToolingBootstrapTests {
             var cachedToolDefinitionsField = typeof(ChatServiceSession).GetField(
                 "_cachedToolDefinitions",
                 BindingFlags.NonPublic | BindingFlags.Instance);
+            var startupBootstrapField = typeof(ChatServiceSession).GetField(
+                "_startupBootstrap",
+                BindingFlags.NonPublic | BindingFlags.Instance);
             Assert.NotNull(persistedPreviewFlagField);
             Assert.NotNull(cachedToolDefinitionsField);
+            Assert.NotNull(startupBootstrapField);
 
             var session = new ChatServiceSession(options, Stream.Null, cache);
 
             Assert.True(Assert.IsType<bool>(persistedPreviewFlagField!.GetValue(session)));
             var toolDefinitions = Assert.IsType<ToolDefinitionDto[]>(cachedToolDefinitionsField!.GetValue(session));
             Assert.Equal("preview_tool", Assert.Single(toolDefinitions).Name);
+            var startupBootstrap = Assert.IsType<SessionStartupBootstrapTelemetryDto>(startupBootstrapField!.GetValue(session));
+            var previewPhase = Assert.Single(startupBootstrap.Phases);
+            Assert.Equal(StartupBootstrapContracts.PhaseDescriptorCacheHitId, previewPhase.Id);
+            Assert.Equal(StartupBootstrapContracts.PhaseDescriptorCacheHitLabel, previewPhase.Label);
+            Assert.Equal(1, startupBootstrap.Tools);
+            Assert.Equal(1, startupBootstrap.PacksLoaded);
             Assert.Equal(new[] { "preview_pack" }, session.BuildRuntimeCapabilitySnapshotForTesting().EnabledPackIds);
+        } finally {
+            try {
+                if (File.Exists(cachePath)) {
+                    File.Delete(cachePath);
+                }
+            } catch {
+                // Best-effort test cleanup.
+            }
+        }
+    }
+
+    [Fact]
+    public void TryGetPersistedPreviewSnapshot_RejectsMismatchedPreviewFingerprint() {
+        var cachePath = CreateToolingBootstrapCachePath("tooling-cache-preview-fingerprint-mismatch");
+        var cacheDirectory = Path.GetDirectoryName(cachePath);
+        if (!string.IsNullOrWhiteSpace(cacheDirectory)) {
+            Directory.CreateDirectory(cacheDirectory);
+        }
+
+        try {
+            var cache = new ChatServiceToolingBootstrapCache(cachePath);
+            const string previewCacheKey = "ad_dc=dc01.contoso.com;write_mode=Disabled;";
+            const string stalePreviewFingerprint = "stale-preview-fingerprint";
+            const string currentPreviewFingerprint = "current-preview-fingerprint";
+            var diagnostics = ToolRuntimePolicyBootstrap.BuildDiagnostics(
+                ToolRuntimePolicyBootstrap.CreateContext(new ToolRuntimePolicyOptions()));
+            var routingDiagnostics = ToolRoutingCatalogDiagnosticsBuilder.Build(Array.Empty<ToolDefinition>());
+
+            File.WriteAllText(
+                cachePath,
+                JsonSerializer.Serialize(new ChatServiceToolingBootstrapPersistedSnapshot {
+                    SchemaVersion = 4,
+                    CacheKey = previewCacheKey + "discovery_fingerprint=stale-fingerprint;",
+                    PreviewCacheKey = previewCacheKey,
+                    PreviewDiscoveryFingerprint = stalePreviewFingerprint,
+                    CachedAtUtc = DateTime.UtcNow,
+                    ToolDefinitions = new[] {
+                        new ToolDefinitionDto {
+                            Name = "preview_tool",
+                            Description = "Preview-only tool",
+                            PackId = "preview_pack"
+                        }
+                    },
+                    PackSummaries = Array.Empty<ToolPackInfoDto>(),
+                    PackAvailability = new[] {
+                        new ToolPackAvailabilityInfo {
+                            Id = "preview_pack",
+                            Name = "Preview Pack",
+                            SourceKind = "closed_source",
+                            Enabled = true
+                        }
+                    },
+                    PluginAvailability = Array.Empty<ToolPluginAvailabilityInfo>(),
+                    PluginCatalog = Array.Empty<ToolPluginCatalogInfo>(),
+                    StartupWarnings = Array.Empty<string>(),
+                    StartupBootstrap = new SessionStartupBootstrapTelemetryDto(),
+                    PluginSearchPaths = Array.Empty<string>(),
+                    RuntimePolicyDiagnostics = diagnostics,
+                    RoutingCatalogDiagnostics = routingDiagnostics,
+                    CapabilitySnapshot = new SessionCapabilitySnapshotDto {
+                        RegisteredTools = 1,
+                        EnabledPackCount = 1,
+                        PluginCount = 0,
+                        EnabledPluginCount = 0,
+                        ToolingAvailable = true,
+                        AllowedRootCount = 0,
+                        EnabledPackIds = new[] { "preview_pack" },
+                        EnabledPluginIds = Array.Empty<string>(),
+                        RoutingFamilies = Array.Empty<string>(),
+                        FamilyActions = Array.Empty<SessionRoutingFamilyActionSummaryDto>(),
+                        Skills = Array.Empty<string>(),
+                        HealthyTools = new[] { "preview_tool" }
+                    }
+                }));
+
+            cache = new ChatServiceToolingBootstrapCache(cachePath);
+            Assert.False(cache.TryGetPersistedPreviewSnapshot(previewCacheKey, currentPreviewFingerprint, out _));
+            Assert.True(cache.TryGetPersistedSnapshotLoadWarning(out var warning));
+            Assert.Contains("preview_fingerprint_mismatch", warning, StringComparison.OrdinalIgnoreCase);
+        } finally {
+            try {
+                if (File.Exists(cachePath)) {
+                    File.Delete(cachePath);
+                }
+            } catch {
+                // Best-effort test cleanup.
+            }
+        }
+    }
+
+    [Fact]
+    public void StoreSnapshot_PersistsProvidedPreviewFingerprint_ForDeferredPreviewValidation() {
+        var cachePath = CreateToolingBootstrapCachePath("tooling-cache-preview-fingerprint-alignment");
+        var cacheDirectory = Path.GetDirectoryName(cachePath);
+        if (!string.IsNullOrWhiteSpace(cacheDirectory)) {
+            Directory.CreateDirectory(cacheDirectory);
+        }
+
+        try {
+            var options = new ServiceOptions();
+            var (previewCacheKey, cacheKey) = BuildToolingBootstrapKeys(options);
+            var previewFingerprint = BuildToolingBootstrapPreviewFingerprint(options);
+            var diagnostics = ToolRuntimePolicyBootstrap.BuildDiagnostics(
+                ToolRuntimePolicyBootstrap.CreateContext(new ToolRuntimePolicyOptions()));
+            var routingDiagnostics = ToolRoutingCatalogDiagnosticsBuilder.Build(Array.Empty<ToolDefinition>());
+
+            var cache = new ChatServiceToolingBootstrapCache(cachePath);
+            cache.StoreSnapshot(
+                cacheKey,
+                new ChatServiceToolingBootstrapSnapshot {
+                    Registry = new ToolRegistry(),
+                    ToolDefinitions = new[] {
+                        new ToolDefinitionDto {
+                            Name = "synthetic_live_tool",
+                            Description = "Only present in the live snapshot shape",
+                            PackId = "synthetic_pack"
+                        }
+                    },
+                    PackSummaries = Array.Empty<ToolPackInfoDto>(),
+                    Packs = Array.Empty<IToolPack>(),
+                    PackAvailability = new[] {
+                        new ToolPackAvailabilityInfo {
+                            Id = "synthetic_pack",
+                            Name = "Synthetic Pack",
+                            SourceKind = "closed_source",
+                            Enabled = true
+                        }
+                    },
+                    PluginAvailability = Array.Empty<ToolPluginAvailabilityInfo>(),
+                    PluginCatalog = Array.Empty<ToolPluginCatalogInfo>(),
+                    StartupWarnings = Array.Empty<string>(),
+                    StartupBootstrap = new SessionStartupBootstrapTelemetryDto(),
+                    PluginSearchPaths = Array.Empty<string>(),
+                    RuntimePolicyDiagnostics = diagnostics,
+                    RoutingCatalogDiagnostics = routingDiagnostics,
+                    CapabilitySnapshot = new SessionCapabilitySnapshotDto {
+                        RegisteredTools = 1,
+                        EnabledPackCount = 1,
+                        PluginCount = 0,
+                        EnabledPluginCount = 0,
+                        ToolingAvailable = true,
+                        AllowedRootCount = 0,
+                        EnabledPackIds = new[] { "synthetic_pack" },
+                        EnabledPluginIds = Array.Empty<string>(),
+                        RoutingFamilies = Array.Empty<string>(),
+                        FamilyActions = Array.Empty<SessionRoutingFamilyActionSummaryDto>(),
+                        Skills = Array.Empty<string>(),
+                        HealthyTools = new[] { "synthetic_live_tool" }
+                    },
+                    ToolOrchestrationCatalog = ToolOrchestrationCatalog.Build(Array.Empty<ToolDefinition>())
+                },
+                previewFingerprint);
+
+            var reloaded = new ChatServiceToolingBootstrapCache(cachePath);
+            Assert.True(reloaded.TryGetPersistedPreviewSnapshot(previewCacheKey, previewFingerprint, out var previewSnapshot));
+            Assert.Equal("synthetic_live_tool", Assert.Single(previewSnapshot.ToolDefinitions).Name);
+            Assert.Equal(previewFingerprint, previewSnapshot.PreviewDiscoveryFingerprint);
+        } finally {
+            try {
+                if (File.Exists(cachePath)) {
+                    File.Delete(cachePath);
+                }
+            } catch {
+                // Best-effort test cleanup.
+            }
+        }
+    }
+
+    [Fact]
+    public void Constructor_EmitsStartupWarning_WhenDescriptorSnapshotSchemaMismatchIsIgnored() {
+        var cachePath = CreateToolingBootstrapCachePath("tooling-cache-descriptor-snapshot-schema-mismatch");
+        var cacheDirectory = Path.GetDirectoryName(cachePath);
+        if (!string.IsNullOrWhiteSpace(cacheDirectory)) {
+            Directory.CreateDirectory(cacheDirectory);
+        }
+
+        try {
+            var options = new ServiceOptions();
+            var (previewCacheKey, _) = BuildToolingBootstrapKeys(options);
+            var diagnostics = ToolRuntimePolicyBootstrap.BuildDiagnostics(
+                ToolRuntimePolicyBootstrap.CreateContext(new ToolRuntimePolicyOptions()));
+            var routingDiagnostics = ToolRoutingCatalogDiagnosticsBuilder.Build(Array.Empty<ToolDefinition>());
+            var persistedSnapshot = new ChatServiceToolingBootstrapPersistedSnapshot {
+                SchemaVersion = 4,
+                CacheKey = previewCacheKey + "discovery_fingerprint=stale-fingerprint;",
+                PreviewCacheKey = previewCacheKey,
+                CachedAtUtc = DateTime.UtcNow,
+                ToolDefinitions = new[] {
+                    new ToolDefinitionDto {
+                        Name = "legacy_preview_tool",
+                        Description = "Legacy preview tool",
+                        PackId = "preview_pack"
+                    }
+                },
+                PackSummaries = Array.Empty<ToolPackInfoDto>(),
+                PackAvailability = new[] {
+                    new ToolPackAvailabilityInfo {
+                        Id = "preview_pack",
+                        Name = "Preview Pack",
+                        SourceKind = "closed_source",
+                        Enabled = true
+                    }
+                },
+                PluginAvailability = Array.Empty<ToolPluginAvailabilityInfo>(),
+                PluginCatalog = Array.Empty<ToolPluginCatalogInfo>(),
+                StartupWarnings = Array.Empty<string>(),
+                StartupBootstrap = new SessionStartupBootstrapTelemetryDto(),
+                PluginSearchPaths = Array.Empty<string>(),
+                RuntimePolicyDiagnostics = diagnostics,
+                RoutingCatalogDiagnostics = routingDiagnostics,
+                CapabilitySnapshot = new SessionCapabilitySnapshotDto {
+                    RegisteredTools = 1,
+                    EnabledPackCount = 1,
+                    PluginCount = 0,
+                    EnabledPluginCount = 0,
+                    ToolingAvailable = true,
+                    AllowedRootCount = 0,
+                    EnabledPackIds = new[] { "preview_pack" },
+                    EnabledPluginIds = Array.Empty<string>(),
+                    RoutingFamilies = Array.Empty<string>(),
+                    FamilyActions = Array.Empty<SessionRoutingFamilyActionSummaryDto>(),
+                    Skills = Array.Empty<string>(),
+                    HealthyTools = new[] { "legacy_preview_tool" }
+                },
+                DescriptorSnapshot = new ChatServiceToolingBootstrapDescriptorSnapshot {
+                    SchemaVersion = 2,
+                    PreviewDiscoveryFingerprint = "stale-descriptor-preview",
+                    ToolDefinitions = Array.Empty<ToolDefinitionDto>(),
+                    PackSummaries = Array.Empty<ToolPackInfoDto>(),
+                    PackAvailability = Array.Empty<ToolPackAvailabilityInfo>(),
+                    PluginAvailability = Array.Empty<ToolPluginAvailabilityInfo>(),
+                    PluginCatalog = Array.Empty<ToolPluginCatalogInfo>(),
+                    RuntimePolicyDiagnostics = diagnostics,
+                    RoutingCatalogDiagnostics = routingDiagnostics
+                }
+            };
+
+            File.WriteAllText(cachePath, JsonSerializer.Serialize(persistedSnapshot));
+
+            var cache = new ChatServiceToolingBootstrapCache(cachePath);
+            Assert.True(cache.TryGetPersistedSnapshotLoadWarning(out var cacheLoadWarning));
+            Assert.Contains("descriptor_snapshot_schema_mismatch", cacheLoadWarning, StringComparison.OrdinalIgnoreCase);
+
+            var startupWarningsField = typeof(ChatServiceSession).GetField(
+                "_startupWarnings",
+                BindingFlags.NonPublic | BindingFlags.Instance);
+            var cachedToolDefinitionsField = typeof(ChatServiceSession).GetField(
+                "_cachedToolDefinitions",
+                BindingFlags.NonPublic | BindingFlags.Instance);
+            Assert.NotNull(startupWarningsField);
+            Assert.NotNull(cachedToolDefinitionsField);
+
+            var session = new ChatServiceSession(options, Stream.Null, cache);
+
+            var startupWarnings = Assert.IsType<string[]>(startupWarningsField!.GetValue(session));
+            Assert.Contains(
+                startupWarnings,
+                static warning => warning.Contains("persisted preview ignored", StringComparison.OrdinalIgnoreCase)
+                    && warning.Contains("descriptor_snapshot_schema_mismatch", StringComparison.OrdinalIgnoreCase));
+
+            var toolDefinitions = Assert.IsType<ToolDefinitionDto[]>(cachedToolDefinitionsField!.GetValue(session));
+            Assert.Empty(toolDefinitions);
+        } finally {
+            try {
+                if (File.Exists(cachePath)) {
+                    File.Delete(cachePath);
+                }
+            } catch {
+                // Best-effort test cleanup.
+            }
+        }
+    }
+
+    [Fact]
+    public void Constructor_EmitsStartupWarning_WhenPersistedPreviewSchemaMismatchIsIgnored() {
+        var cachePath = CreateToolingBootstrapCachePath("tooling-cache-preview-schema-mismatch");
+        var cacheDirectory = Path.GetDirectoryName(cachePath);
+        if (!string.IsNullOrWhiteSpace(cacheDirectory)) {
+            Directory.CreateDirectory(cacheDirectory);
+        }
+
+        try {
+            var options = new ServiceOptions();
+            var (previewCacheKey, _) = BuildToolingBootstrapKeys(options);
+            var diagnostics = ToolRuntimePolicyBootstrap.BuildDiagnostics(
+                ToolRuntimePolicyBootstrap.CreateContext(new ToolRuntimePolicyOptions()));
+            var routingDiagnostics = ToolRoutingCatalogDiagnosticsBuilder.Build(Array.Empty<ToolDefinition>());
+            var persistedSnapshot = new ChatServiceToolingBootstrapPersistedSnapshot {
+                SchemaVersion = 3,
+                CacheKey = previewCacheKey + "discovery_fingerprint=stale-fingerprint;",
+                PreviewCacheKey = previewCacheKey,
+                CachedAtUtc = DateTime.UtcNow,
+                ToolDefinitions = new[] {
+                    new ToolDefinitionDto {
+                        Name = "preview_tool",
+                        Description = "Preview-only tool",
+                        PackId = "preview_pack"
+                    }
+                },
+                PackSummaries = Array.Empty<ToolPackInfoDto>(),
+                PackAvailability = new[] {
+                    new ToolPackAvailabilityInfo {
+                        Id = "preview_pack",
+                        Name = "Preview Pack",
+                        SourceKind = "closed_source",
+                        Enabled = true
+                    }
+                },
+                PluginAvailability = Array.Empty<ToolPluginAvailabilityInfo>(),
+                PluginCatalog = Array.Empty<ToolPluginCatalogInfo>(),
+                StartupWarnings = Array.Empty<string>(),
+                StartupBootstrap = new SessionStartupBootstrapTelemetryDto(),
+                PluginSearchPaths = Array.Empty<string>(),
+                RuntimePolicyDiagnostics = diagnostics,
+                RoutingCatalogDiagnostics = routingDiagnostics,
+                CapabilitySnapshot = new SessionCapabilitySnapshotDto {
+                    RegisteredTools = 1,
+                    EnabledPackCount = 1,
+                    PluginCount = 0,
+                    EnabledPluginCount = 0,
+                    ToolingAvailable = true,
+                    AllowedRootCount = 0,
+                    EnabledPackIds = new[] { "preview_pack" },
+                    EnabledPluginIds = Array.Empty<string>(),
+                    RoutingFamilies = Array.Empty<string>(),
+                    FamilyActions = Array.Empty<SessionRoutingFamilyActionSummaryDto>(),
+                    Skills = Array.Empty<string>(),
+                    HealthyTools = new[] { "preview_tool" }
+                }
+            };
+
+            File.WriteAllText(cachePath, JsonSerializer.Serialize(persistedSnapshot));
+
+            var cache = new ChatServiceToolingBootstrapCache(cachePath);
+            Assert.True(cache.TryGetPersistedSnapshotLoadWarning(out var cacheLoadWarning));
+            Assert.Contains("schema_mismatch", cacheLoadWarning, StringComparison.OrdinalIgnoreCase);
+
+            var startupWarningsField = typeof(ChatServiceSession).GetField(
+                "_startupWarnings",
+                BindingFlags.NonPublic | BindingFlags.Instance);
+            var cachedToolDefinitionsField = typeof(ChatServiceSession).GetField(
+                "_cachedToolDefinitions",
+                BindingFlags.NonPublic | BindingFlags.Instance);
+            Assert.NotNull(startupWarningsField);
+            Assert.NotNull(cachedToolDefinitionsField);
+
+            var session = new ChatServiceSession(options, Stream.Null, cache);
+
+            var startupWarnings = Assert.IsType<string[]>(startupWarningsField!.GetValue(session));
+            Assert.Contains(
+                startupWarnings,
+                static warning => warning.Contains("persisted preview ignored", StringComparison.OrdinalIgnoreCase)
+                    && warning.Contains("schema_mismatch", StringComparison.OrdinalIgnoreCase));
+
+            var toolDefinitions = Assert.IsType<ToolDefinitionDto[]>(cachedToolDefinitionsField!.GetValue(session));
+            Assert.Empty(toolDefinitions);
         } finally {
             try {
                 if (File.Exists(cachePath)) {
@@ -2194,6 +2921,78 @@ public sealed class ChatServiceToolingBootstrapTests {
             Assert.Contains(
                 session.GetRegisteredToolNamesForTesting(),
                 static toolName => string.Equals(toolName, "plugin_loader_synthetic_probe", StringComparison.OrdinalIgnoreCase));
+        } finally {
+            if (Directory.Exists(tempRoot)) {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task CaptureDeferredChatToolingStatusesForTesting_EmitsPendingAndActivatedRoutingStatuses() {
+        var tempRoot = TempPathTestHelper.CreateTempDirectoryPath("ix-chat-deferred-chat-statuses");
+        var pluginRoot = Path.Combine(tempRoot, "plugins");
+        var pluginFolder = Path.Combine(pluginRoot, "ops-bundle");
+        Directory.CreateDirectory(pluginFolder);
+
+        try {
+            var options = ChatServiceTestSessionFactory.CreateIsolatedOptions();
+            options.EnableBuiltInPackLoading = false;
+            options.EnableDefaultPluginPaths = false;
+            options.RuntimePluginPaths.Add(pluginRoot);
+
+            var testAssembly = Assembly.GetExecutingAssembly();
+            var sourceAssemblyPath = testAssembly.Location;
+            var entryAssemblyName = Path.GetFileName(sourceAssemblyPath);
+            File.Copy(sourceAssemblyPath, Path.Combine(pluginFolder, entryAssemblyName), overwrite: true);
+            var entryType = typeof(PluginFolderLoaderTests.PluginFolderLoaderSyntheticCatalogPack).FullName;
+            Assert.False(string.IsNullOrWhiteSpace(entryType));
+
+            File.WriteAllText(Path.Combine(pluginFolder, "ix-plugin.json"), $$"""
+            {
+              "schemaVersion": 1,
+              "pluginId": "ops-bundle",
+              "displayName": "Ops Bundle",
+              "version": "1.2.3",
+              "packIds": ["plugin_loader_synthetic_catalog"],
+              "defaultEnabled": true,
+              "sourceKind": "closed_source",
+              "entryAssembly": "{{entryAssemblyName}}",
+              "entryType": "{{entryType}}",
+              "tools": [
+                {
+                  "name": "plugin_loader_synthetic_probe",
+                  "description": "Probe the synthetic plugin runtime.",
+                  "category": "inventory",
+                  "supportsLocalExecution": true,
+                  "supportsRemoteExecution": false,
+                  "representativeExamples": ["show synthetic plugin probe status"]
+                }
+              ]
+            }
+            """);
+
+            var session = new ChatServiceSession(options, Stream.Null);
+
+            var statuses = await session.CaptureDeferredChatToolingStatusesForTesting(new ChatRequest {
+                RequestId = "req_chat_status",
+                Text = "please run plugin_loader_synthetic_probe"
+            });
+
+            Assert.Collection(
+                statuses,
+                first => {
+                    Assert.Equal(ChatStatusCodes.Routing, first.Status);
+                    Assert.Equal(
+                        "Activating descriptor-matched pack 'plugin_loader_synthetic_catalog' before chat routing...",
+                        first.Message);
+                },
+                second => {
+                    Assert.Equal(ChatStatusCodes.Routing, second.Status);
+                    Assert.Equal(
+                        "Activated descriptor-matched pack 'plugin_loader_synthetic_catalog' before chat routing.",
+                        second.Message);
+                });
         } finally {
             if (Directory.Exists(tempRoot)) {
                 Directory.Delete(tempRoot, recursive: true);

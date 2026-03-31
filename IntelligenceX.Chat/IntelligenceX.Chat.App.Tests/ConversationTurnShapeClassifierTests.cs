@@ -109,6 +109,18 @@ public sealed class ConversationTurnShapeClassifierTests {
     }
 
     /// <summary>
+    /// Ensures broader runtime inventory asks also stay out of generic capability mode.
+    /// </summary>
+    [Theory]
+    [InlineData("What tools are available right now?")]
+    [InlineData("What model and tools are you using right now?")]
+    public void LooksLikeAssistantCapabilityQuestion_ReturnsFalseForRuntimeInventoryBridgeAsk(string userText) {
+        var result = ConversationTurnShapeClassifier.LooksLikeAssistantCapabilityQuestion(userText);
+
+        Assert.False(result);
+    }
+
+    /// <summary>
     /// Ensures the shared broad-question helper rejects very short generic questions at the exact boundary.
     /// </summary>
     [Fact]
@@ -120,83 +132,21 @@ public sealed class ConversationTurnShapeClassifierTests {
     }
 
     /// <summary>
-    /// Ensures explicit model/tool self-report asks are recognized as runtime introspection questions.
+    /// Ensures raw cue-word runtime asks do not enter runtime-introspection mode without trusted structured provenance.
     /// </summary>
-    [Fact]
-    public void LooksLikeAssistantRuntimeIntrospectionQuestion_ReturnsTrueForRuntimeSelfReportAsk() {
-        var result = ConversationTurnShapeClassifier.LooksLikeAssistantRuntimeIntrospectionQuestion("What model and tools are you using right now?");
+    [Theory]
+    [InlineData("What model and tools are you using right now?")]
+    [InlineData("What model are you using?")]
+    [InlineData("What tools are available right now?")]
+    [InlineData("What model/tools for DNS/AD?")]
+    [InlineData("What model/tools for ad.evotec.xyz?")]
+    [InlineData("What model: gpt-5?")]
+    [InlineData("What model_name are you using?")]
+    [InlineData("What `model` are you using?")]
+    public void LooksLikeAssistantRuntimeIntrospectionQuestion_ReturnsFalseForNaturalCueWordRuntimeAskWithoutTrustedDirective(string userText) {
+        var result = ConversationTurnShapeClassifier.LooksLikeAssistantRuntimeIntrospectionQuestion(userText);
 
-        Assert.True(result);
-    }
-
-    /// <summary>
-    /// Ensures explicit single-cue runtime questions still enter runtime-introspection mode.
-    /// </summary>
-    [Fact]
-    public void LooksLikeAssistantRuntimeIntrospectionQuestion_ReturnsTrueForSingleCueRuntimeAsk() {
-        var result = ConversationTurnShapeClassifier.LooksLikeAssistantRuntimeIntrospectionQuestion("What model are you using?");
-
-        Assert.True(result);
-    }
-
-    /// <summary>
-    /// Ensures plural tooling inventory asks remain valid runtime self-report questions.
-    /// </summary>
-    [Fact]
-    public void LooksLikeAssistantRuntimeIntrospectionQuestion_ReturnsTrueForPluralToolingInventoryAsk() {
-        var result = ConversationTurnShapeClassifier.LooksLikeAssistantRuntimeIntrospectionQuestion("What tools are available right now?");
-
-        Assert.True(result);
-    }
-
-    /// <summary>
-    /// Ensures compact enterprise-style runtime asks with slashes and acronyms still enter runtime-introspection mode.
-    /// </summary>
-    [Fact]
-    public void LooksLikeAssistantRuntimeIntrospectionQuestion_ReturnsTrueForSlashQualifiedRuntimeAsk() {
-        var result = ConversationTurnShapeClassifier.LooksLikeAssistantRuntimeIntrospectionQuestion("What model/tools for DNS/AD?");
-
-        Assert.True(result);
-    }
-
-    /// <summary>
-    /// Ensures dotted scope qualifiers do not block runtime introspection when the user is still asking about model/tooling.
-    /// </summary>
-    [Fact]
-    public void LooksLikeAssistantRuntimeIntrospectionQuestion_ReturnsTrueForDomainQualifiedRuntimeAsk() {
-        var result = ConversationTurnShapeClassifier.LooksLikeAssistantRuntimeIntrospectionQuestion("What model/tools for ad.evotec.xyz?");
-
-        Assert.True(result);
-    }
-
-    /// <summary>
-    /// Ensures compact runtime self-report asks remain valid when users include colon punctuation in a natural meta question.
-    /// </summary>
-    [Fact]
-    public void LooksLikeAssistantRuntimeIntrospectionQuestion_ReturnsTrueForColonQualifiedRuntimeAsk() {
-        var result = ConversationTurnShapeClassifier.LooksLikeAssistantRuntimeIntrospectionQuestion("What model: gpt-5?");
-
-        Assert.True(result);
-    }
-
-    /// <summary>
-    /// Ensures compact runtime self-report asks remain valid when runtime cues use common underscore token styles.
-    /// </summary>
-    [Fact]
-    public void LooksLikeAssistantRuntimeIntrospectionQuestion_ReturnsTrueForUnderscoreQualifiedRuntimeAsk() {
-        var result = ConversationTurnShapeClassifier.LooksLikeAssistantRuntimeIntrospectionQuestion("What model_name are you using?");
-
-        Assert.True(result);
-    }
-
-    /// <summary>
-    /// Ensures compact runtime self-report asks remain valid when runtime cues are wrapped in inline backticks.
-    /// </summary>
-    [Fact]
-    public void LooksLikeAssistantRuntimeIntrospectionQuestion_ReturnsTrueForBacktickQualifiedRuntimeAsk() {
-        var result = ConversationTurnShapeClassifier.LooksLikeAssistantRuntimeIntrospectionQuestion("What `model` are you using?");
-
-        Assert.True(result);
+        Assert.False(result);
     }
 
     /// <summary>
@@ -212,6 +162,22 @@ public sealed class ConversationTurnShapeClassifierTests {
                 compactReply: false,
                 detectionSource: RuntimeSelfReportDetectionSource.StructuredDirective,
                 toolingRequested: false));
+
+        var result = ConversationTurnShapeClassifier.LooksLikeAssistantRuntimeIntrospectionQuestion(userText);
+
+        Assert.True(result);
+    }
+
+    /// <summary>
+    /// Ensures trusted structured directives can still carry English literals without asking the classifier to infer runtime mode from those words.
+    /// </summary>
+    [Fact]
+    public void LooksLikeAssistantRuntimeIntrospectionQuestion_ReturnsTrueForStructuredDirectiveWithEnglishLiteral() {
+        var userText = BuildStructuredRuntimeRequest(
+            "What model and tools are you using right now?",
+            compactReply: false,
+            modelRequested: true,
+            toolingRequested: true);
 
         var result = ConversationTurnShapeClassifier.LooksLikeAssistantRuntimeIntrospectionQuestion(userText);
 
@@ -236,16 +202,16 @@ public sealed class ConversationTurnShapeClassifierTests {
     }
 
     /// <summary>
-    /// Ensures short non-English model questions with inflected borrowed cue words still enter runtime-introspection mode.
+    /// Ensures multilingual borrowed cue words alone no longer trigger runtime-introspection mode without a trusted directive.
     /// </summary>
     [Theory]
     [InlineData("Jakiego modelu uzywasz?")]
     [InlineData("Z jakiego modelu korzystasz?")]
     [InlineData("¿Que modelo usas?")]
-    public void LooksLikeAssistantRuntimeIntrospectionQuestion_ReturnsTrueForShortInflectedModelAsk(string userText) {
+    public void LooksLikeAssistantRuntimeIntrospectionQuestion_ReturnsFalseForShortInflectedModelAskWithoutTrustedDirective(string userText) {
         var result = ConversationTurnShapeClassifier.LooksLikeAssistantRuntimeIntrospectionQuestion(userText);
 
-        Assert.True(result);
+        Assert.False(result);
     }
 
     /// <summary>
@@ -293,27 +259,14 @@ public sealed class ConversationTurnShapeClassifierTests {
     }
 
     /// <summary>
-    /// Ensures compact runtime self-report asks can be tightened into a shorter answer mode.
-    /// </summary>
-    [Fact]
-    public void LooksLikeCompactAssistantRuntimeIntrospectionQuestion_ReturnsTrueForCompactQualifiedAsk() {
-        var result = ConversationTurnShapeClassifier.LooksLikeCompactAssistantRuntimeIntrospectionQuestion("What model/tools for DNS/AD?");
-
-        Assert.True(result);
-    }
-
-    /// <summary>
-    /// Ensures compact runtime-introspection mode can be carried entirely by the structured directive.
+    /// Ensures compact runtime self-report mode can still be carried entirely by trusted structured metadata.
     /// </summary>
     [Fact]
     public void LooksLikeCompactAssistantRuntimeIntrospectionQuestion_ReturnsTrueForStructuredCompactDirective() {
-        var userText = string.Join(
-            Environment.NewLine,
-            RuntimeSelfReportDirective.BuildLines(
-                "Czego teraz uzywasz?",
-                compactReply: true,
-                detectionSource: RuntimeSelfReportDetectionSource.StructuredDirective,
-                toolingRequested: false));
+        var userText = BuildStructuredRuntimeRequest(
+            "Czego teraz uzywasz?",
+            compactReply: true,
+            toolingRequested: false);
 
         var result = ConversationTurnShapeClassifier.LooksLikeCompactAssistantRuntimeIntrospectionQuestion(userText);
 
@@ -321,11 +274,17 @@ public sealed class ConversationTurnShapeClassifierTests {
     }
 
     /// <summary>
-    /// Ensures broader runtime inventory asks keep the normal runtime-introspection mode.
+    /// Ensures broader structured runtime inventory asks keep the normal runtime-introspection mode.
     /// </summary>
     [Fact]
-    public void LooksLikeCompactAssistantRuntimeIntrospectionQuestion_ReturnsFalseForBroaderRuntimeAsk() {
-        var result = ConversationTurnShapeClassifier.LooksLikeCompactAssistantRuntimeIntrospectionQuestion("What model and tools are you using right now?");
+    public void LooksLikeCompactAssistantRuntimeIntrospectionQuestion_ReturnsFalseForBroaderStructuredRuntimeAsk() {
+        var userText = BuildStructuredRuntimeRequest(
+            "What model and tools are you using right now?",
+            compactReply: false,
+            modelRequested: true,
+            toolingRequested: true);
+
+        var result = ConversationTurnShapeClassifier.LooksLikeCompactAssistantRuntimeIntrospectionQuestion(userText);
 
         Assert.False(result);
     }
@@ -516,9 +475,28 @@ public sealed class ConversationTurnShapeClassifierTests {
     /// </summary>
     [Fact]
     public void AnalyzeAssistantRuntimeIntrospectionQuestion_ReturnsSharedStructuredAnalysis() {
-        var appAnalysis = ConversationTurnShapeClassifier.AnalyzeAssistantRuntimeIntrospectionQuestion("What model/tools for DNS/AD?");
-        var sharedAnalysis = RuntimeSelfReportTurnClassifier.Analyze("What model/tools for DNS/AD?");
+        var userText = BuildStructuredRuntimeRequest(
+            "Czego teraz uzywasz?",
+            compactReply: false,
+            toolingRequested: false);
+        var appAnalysis = ConversationTurnShapeClassifier.AnalyzeAssistantRuntimeIntrospectionQuestion(userText);
+        var sharedAnalysis = RuntimeSelfReportTurnClassifier.Analyze(userText);
 
         Assert.Equal(sharedAnalysis, appAnalysis);
+    }
+
+    private static string BuildStructuredRuntimeRequest(
+        string literal,
+        bool compactReply,
+        bool? modelRequested = null,
+        bool? toolingRequested = null) {
+        return string.Join(
+            Environment.NewLine,
+            RuntimeSelfReportDirective.BuildLines(
+                literal,
+                compactReply: compactReply,
+                detectionSource: RuntimeSelfReportDetectionSource.StructuredDirective,
+                modelRequested: modelRequested,
+                toolingRequested: toolingRequested));
     }
 }

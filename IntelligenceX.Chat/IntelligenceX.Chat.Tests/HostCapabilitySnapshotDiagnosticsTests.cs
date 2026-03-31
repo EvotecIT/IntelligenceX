@@ -674,7 +674,7 @@ public sealed class HostCapabilitySnapshotDiagnosticsTests {
 
     [Fact]
     public void FormatPackWarningForConsole_FormatsStructuredBootstrapWarnings() {
-        const string warning = "[pack warning] [startup] tooling bootstrap timings total=1.8s policy=50ms options=20ms packs=1.6s registry=120ms tools=200 packsLoaded=14 packsDisabled=2 pluginRoots=3.";
+        const string warning = "[pack warning] [startup] tooling bootstrap timings total=1.8s policy=50ms options=20ms descriptorDiscovery=1.6s registry=120ms tools=200 packsLoaded=14 packsDisabled=2 pluginRoots=3.";
 
         var formatted = HostProgram.FormatPackWarningForConsole(warning);
 

@@ -208,6 +208,8 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
     [Theory]
     [InlineData("run now")]
+    [InlineData("go ahead")]
+    [InlineData("go ahead?")]
     [InlineData("開始")]
     public void ResolveFollowUpTurnClassification_DoesNotMarkCompactWithoutStructuredContext_ForShortFreshIntent(string userRequest) {
         var (continuationFollowUpTurn, compactFollowUpTurn) = ChatServiceSession.ResolveFollowUpTurnClassificationForTesting(
@@ -218,6 +220,22 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         Assert.False(continuationFollowUpTurn);
         Assert.False(compactFollowUpTurn);
+    }
+
+    [Theory]
+    [InlineData("go ahead")]
+    [InlineData("go ahead?")]
+    public void ResolveRoutingPreludeForTesting_DoesNotCreateStructuredContinuationContextForLiteralConfirmationWithoutPendingState(string userRequest) {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+
+        var result = session.ResolveRoutingPreludeForTesting("thread-literal-confirmation-no-pending", userRequest);
+
+        Assert.Equal(userRequest, result.UserRequest);
+        Assert.Equal(userRequest, result.RoutedUserRequest);
+        Assert.False(result.ContinuationExpandedFromContext);
+        Assert.False(result.HasStructuredContinuationContext);
+        Assert.False(result.ContinuationFollowUpTurn);
+        Assert.False(result.CompactFollowUpTurn);
     }
 
     [Fact]
