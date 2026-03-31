@@ -244,6 +244,22 @@ public sealed partial class MainWindow : Window {
         }
     }
 
+    private void ApplyHelloPolicyToolCatalogPreview(
+        SessionPolicyDto? policy,
+        bool clearExistingToolDefinitions) {
+        _toolCatalogPacks = policy?.Packs is { } helloPacks
+            ? helloPacks
+            : Array.Empty<ToolPackInfoDto>();
+        _toolCatalogPlugins = policy?.Plugins is { } helloPlugins
+            ? helloPlugins
+            : Array.Empty<PluginInfoDto>();
+        _toolCatalogRoutingCatalog = policy?.RoutingCatalog;
+        _toolCatalogCapabilitySnapshot = policy?.CapabilitySnapshot;
+        if (clearExistingToolDefinitions) {
+            ClearToolCatalogCache(clearCatalogMetadata: false);
+        }
+    }
+
     private void SetToolEnabled(string toolName, bool enabled) {
         if (string.IsNullOrWhiteSpace(toolName)) {
             return;

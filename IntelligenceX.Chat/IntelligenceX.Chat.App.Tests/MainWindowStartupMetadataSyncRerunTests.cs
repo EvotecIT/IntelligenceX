@@ -1,5 +1,10 @@
 using IntelligenceX.Chat.App;
 using IntelligenceX.Chat.Abstractions.Policy;
+using IntelligenceX.Chat.Abstractions.Protocol;
+using System;
+using System.Collections.Generic;
+using System.Reflection;
+using System.Runtime.CompilerServices;
 using Xunit;
 
 namespace IntelligenceX.Chat.App.Tests;
@@ -8,6 +13,99 @@ namespace IntelligenceX.Chat.App.Tests;
 /// Tests deferred startup metadata rerun scheduling decisions.
 /// </summary>
 public sealed class MainWindowStartupMetadataSyncRerunTests {
+    private static readonly MethodInfo ApplyHelloPolicyToolCatalogPreviewMethod = typeof(MainWindow).GetMethod(
+        "ApplyHelloPolicyToolCatalogPreview",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("ApplyHelloPolicyToolCatalogPreview method not found.");
+    private static readonly FieldInfo ToolCatalogPacksField = typeof(MainWindow).GetField(
+        "_toolCatalogPacks",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_toolCatalogPacks field not found.");
+    private static readonly FieldInfo ToolCatalogPluginsField = typeof(MainWindow).GetField(
+        "_toolCatalogPlugins",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_toolCatalogPlugins field not found.");
+    private static readonly FieldInfo ToolCatalogRoutingCatalogField = typeof(MainWindow).GetField(
+        "_toolCatalogRoutingCatalog",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_toolCatalogRoutingCatalog field not found.");
+    private static readonly FieldInfo ToolCatalogCapabilitySnapshotField = typeof(MainWindow).GetField(
+        "_toolCatalogCapabilitySnapshot",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_toolCatalogCapabilitySnapshot field not found.");
+    private static readonly FieldInfo ToolDescriptionsField = typeof(MainWindow).GetField(
+        "_toolDescriptions",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_toolDescriptions field not found.");
+    private static readonly FieldInfo ToolDisplayNamesField = typeof(MainWindow).GetField(
+        "_toolDisplayNames",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_toolDisplayNames field not found.");
+    private static readonly FieldInfo ToolCategoriesField = typeof(MainWindow).GetField(
+        "_toolCategories",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_toolCategories field not found.");
+    private static readonly FieldInfo ToolTagsField = typeof(MainWindow).GetField(
+        "_toolTags",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_toolTags field not found.");
+    private static readonly FieldInfo ToolPackIdsField = typeof(MainWindow).GetField(
+        "_toolPackIds",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_toolPackIds field not found.");
+    private static readonly FieldInfo ToolPackNamesField = typeof(MainWindow).GetField(
+        "_toolPackNames",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_toolPackNames field not found.");
+    private static readonly FieldInfo ToolCatalogDefinitionsField = typeof(MainWindow).GetField(
+        "_toolCatalogDefinitions",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_toolCatalogDefinitions field not found.");
+    private static readonly FieldInfo ToolParametersField = typeof(MainWindow).GetField(
+        "_toolParameters",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_toolParameters field not found.");
+    private static readonly FieldInfo ToolWriteCapabilitiesField = typeof(MainWindow).GetField(
+        "_toolWriteCapabilities",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_toolWriteCapabilities field not found.");
+    private static readonly FieldInfo ToolExecutionAwarenessField = typeof(MainWindow).GetField(
+        "_toolExecutionAwareness",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_toolExecutionAwareness field not found.");
+    private static readonly FieldInfo ToolExecutionContractIdsField = typeof(MainWindow).GetField(
+        "_toolExecutionContractIds",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_toolExecutionContractIds field not found.");
+    private static readonly FieldInfo ToolExecutionScopesField = typeof(MainWindow).GetField(
+        "_toolExecutionScopes",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_toolExecutionScopes field not found.");
+    private static readonly FieldInfo ToolSupportsLocalExecutionField = typeof(MainWindow).GetField(
+        "_toolSupportsLocalExecution",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_toolSupportsLocalExecution field not found.");
+    private static readonly FieldInfo ToolSupportsRemoteExecutionField = typeof(MainWindow).GetField(
+        "_toolSupportsRemoteExecution",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_toolSupportsRemoteExecution field not found.");
+    private static readonly FieldInfo ToolStatesField = typeof(MainWindow).GetField(
+        "_toolStates",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_toolStates field not found.");
+    private static readonly FieldInfo ToolRoutingConfidenceField = typeof(MainWindow).GetField(
+        "_toolRoutingConfidence",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_toolRoutingConfidence field not found.");
+    private static readonly FieldInfo ToolRoutingReasonField = typeof(MainWindow).GetField(
+        "_toolRoutingReason",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_toolRoutingReason field not found.");
+    private static readonly FieldInfo ToolRoutingScoreField = typeof(MainWindow).GetField(
+        "_toolRoutingScore",
+        BindingFlags.NonPublic | BindingFlags.Instance)
+        ?? throw new InvalidOperationException("_toolRoutingScore field not found.");
+
     private static SessionPolicyDto CreatePolicy(
         SessionStartupBootstrapTelemetryDto? startupBootstrap = null,
         ToolPackInfoDto[]? packs = null,
@@ -241,6 +339,85 @@ public sealed class MainWindowStartupMetadataSyncRerunTests {
     }
 
     /// <summary>
+    /// Ensures persisted-preview hello policy clears stale tool definitions before treating inline list_tools as satisfied.
+    /// </summary>
+    [Fact]
+    public void ApplyHelloPolicyToolCatalogPreview_ClearsStaleDefinitions_WhenSatisfyingPersistedPreview() {
+        var window = CreateWindowForHelloPolicyPreview();
+        var staleDefinitions = GetToolCatalogDefinitions(window);
+        staleDefinitions["stale_tool"] = new ToolDefinitionDto {
+            Name = "stale_tool",
+            Description = "Stale",
+            PackId = "stale_pack"
+        };
+
+        var policy = CreatePolicy(
+            startupBootstrap: new SessionStartupBootstrapTelemetryDto {
+                TotalMs = 1,
+                Phases = new[] {
+                    StartupBootstrapContracts.CreatePhase(StartupBootstrapContracts.PhaseDescriptorCacheHitId, 1, 1)
+                }
+            },
+            packs: new[] {
+                new ToolPackInfoDto {
+                    Id = "eventlog",
+                    Name = "EventLog",
+                    Tier = CapabilityTier.ReadOnly,
+                    Enabled = true,
+                    IsDangerous = false
+                }
+            },
+            plugins: new[] {
+                new PluginInfoDto {
+                    Id = "ops_bundle",
+                    Name = "Ops Bundle",
+                    Enabled = true,
+                    Origin = "plugin_folder",
+                    IsDangerous = false
+                }
+            },
+            capabilitySnapshot: new SessionCapabilitySnapshotDto {
+                RegisteredTools = 0,
+                EnabledPackCount = 1,
+                PluginCount = 1,
+                EnabledPluginCount = 1,
+                ToolingAvailable = true,
+                AllowedRootCount = 0,
+                ToolingSnapshot = new SessionCapabilityToolingSnapshotDto {
+                    Source = "persisted_preview",
+                    Packs = new[] {
+                        new ToolPackInfoDto {
+                            Id = "eventlog",
+                            Name = "EventLog",
+                            Tier = CapabilityTier.ReadOnly,
+                            Enabled = true,
+                            IsDangerous = false
+                        }
+                    },
+                    Plugins = new[] {
+                        new PluginInfoDto {
+                            Id = "ops_bundle",
+                            Name = "Ops Bundle",
+                            Enabled = true,
+                            Origin = "plugin_folder",
+                            IsDangerous = false
+                        }
+                    }
+                }
+            });
+
+        InvokeApplyHelloPolicyToolCatalogPreview(window, policy, clearExistingToolDefinitions: true);
+
+        Assert.Empty(GetToolCatalogDefinitions(window));
+        var packs = Assert.IsType<ToolPackInfoDto[]>(ToolCatalogPacksField.GetValue(window));
+        var plugins = Assert.IsType<PluginInfoDto[]>(ToolCatalogPluginsField.GetValue(window));
+        var capabilitySnapshot = Assert.IsType<SessionCapabilitySnapshotDto>(ToolCatalogCapabilitySnapshotField.GetValue(window));
+        Assert.Equal("eventlog", Assert.Single(packs).Id);
+        Assert.Equal("ops_bundle", Assert.Single(plugins).Id);
+        Assert.Equal("persisted_preview", capabilitySnapshot.ToolingSnapshot?.Source);
+    }
+
+    /// <summary>
     /// Ensures failure-recovery retry budget is consumed atomically and capped by configured limit.
     /// </summary>
     [Fact]
@@ -280,5 +457,51 @@ public sealed class MainWindowStartupMetadataSyncRerunTests {
         var shouldRetry = MainWindow.ShouldRetryDeferredStartupMetadataPhaseAttempt(ex);
 
         Assert.Equal(expected, shouldRetry);
+    }
+
+    private static void InvokeApplyHelloPolicyToolCatalogPreview(
+        MainWindow window,
+        SessionPolicyDto? policy,
+        bool clearExistingToolDefinitions) {
+        try {
+            ApplyHelloPolicyToolCatalogPreviewMethod.Invoke(window, new object?[] { policy, clearExistingToolDefinitions });
+        } catch (TargetInvocationException ex) {
+            throw ex.InnerException ?? ex;
+        }
+    }
+
+    private static MainWindow CreateWindowForHelloPolicyPreview() {
+        var window = (MainWindow)RuntimeHelpers.GetUninitializedObject(typeof(MainWindow));
+        SetField(ToolCatalogPacksField, window, Array.Empty<ToolPackInfoDto>());
+        SetField(ToolCatalogPluginsField, window, Array.Empty<PluginInfoDto>());
+        SetField(ToolCatalogRoutingCatalogField, window, null!);
+        SetField(ToolCatalogCapabilitySnapshotField, window, null!);
+        SetField(ToolDescriptionsField, window, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
+        SetField(ToolDisplayNamesField, window, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
+        SetField(ToolCategoriesField, window, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
+        SetField(ToolTagsField, window, new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase));
+        SetField(ToolPackIdsField, window, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
+        SetField(ToolPackNamesField, window, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
+        SetField(ToolCatalogDefinitionsField, window, new Dictionary<string, ToolDefinitionDto>(StringComparer.OrdinalIgnoreCase));
+        SetField(ToolParametersField, window, new Dictionary<string, ToolParameterDto[]>(StringComparer.OrdinalIgnoreCase));
+        SetField(ToolWriteCapabilitiesField, window, new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase));
+        SetField(ToolExecutionAwarenessField, window, new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase));
+        SetField(ToolExecutionContractIdsField, window, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
+        SetField(ToolExecutionScopesField, window, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
+        SetField(ToolSupportsLocalExecutionField, window, new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase));
+        SetField(ToolSupportsRemoteExecutionField, window, new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase));
+        SetField(ToolStatesField, window, new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase));
+        SetField(ToolRoutingConfidenceField, window, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
+        SetField(ToolRoutingReasonField, window, new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
+        SetField(ToolRoutingScoreField, window, new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase));
+        return window;
+    }
+
+    private static Dictionary<string, ToolDefinitionDto> GetToolCatalogDefinitions(MainWindow window) {
+        return Assert.IsType<Dictionary<string, ToolDefinitionDto>>(ToolCatalogDefinitionsField.GetValue(window));
+    }
+
+    private static void SetField(FieldInfo field, object target, object? value) {
+        field.SetValue(target, value);
     }
 }

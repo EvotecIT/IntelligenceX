@@ -816,15 +816,8 @@ public sealed partial class MainWindow : Window {
                     LogStartupConnectPhase("hello", "begin");
                     var hello = await _client.RequestAsync<HelloMessage>(new HelloRequest { RequestId = NextId() }, CancellationToken.None).ConfigureAwait(false);
                     _sessionPolicy = hello.Policy;
-                    _toolCatalogPacks = hello.Policy?.Packs is { } helloPacks
-                        ? helloPacks
-                        : Array.Empty<ToolPackInfoDto>();
-                    _toolCatalogPlugins = hello.Policy?.Plugins is { } helloPlugins
-                        ? helloPlugins
-                        : Array.Empty<PluginInfoDto>();
-                    _toolCatalogRoutingCatalog = hello.Policy?.RoutingCatalog;
-                    _toolCatalogCapabilitySnapshot = hello.Policy?.CapabilitySnapshot;
                     satisfyToolCatalogFromHelloPolicy = ShouldSatisfyStartupToolCatalogFromHelloPolicy(_sessionPolicy);
+                    ApplyHelloPolicyToolCatalogPreview(_sessionPolicy, clearExistingToolDefinitions: satisfyToolCatalogFromHelloPolicy);
                     SeedBackgroundSchedulerSnapshot(hello.Policy?.CapabilitySnapshot?.BackgroundScheduler);
                     RecordStartupBootstrapCacheMode(_sessionPolicy);
                     RecordStartupHelloPhaseDiagnostics(helloStopwatch.Elapsed, attempts: 1, success: true);
