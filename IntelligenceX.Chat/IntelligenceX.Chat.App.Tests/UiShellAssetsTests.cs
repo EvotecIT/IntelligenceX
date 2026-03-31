@@ -490,8 +490,11 @@ public sealed partial class UiShellAssetsTests {
         AssertContainsAll(
             script,
             "descriptorDiscoveryMs = readStartupBootstrapPhaseMs(phases, \"descriptor_discovery\");",
+            "descriptorDiscoveryMs = toNonNegativeInt(value.packLoadMs);",
             "packActivationMs = readStartupBootstrapPhaseMs(phases, \"pack_activation\");",
+            "packActivationMs = toNonNegativeInt(value.packRegisterMs);",
             "registryActivationFinalizeMs = readStartupBootstrapPhaseMs(phases, \"registry_activation_finalize\");",
+            "registryActivationFinalizeMs = toNonNegativeInt(value.registryFinalizeMs);",
             "descriptorDiscoveryMs: descriptorDiscoveryMs,",
             "packActivationMs: packActivationMs,",
             "registryActivationFinalizeMs: registryActivationFinalizeMs,",

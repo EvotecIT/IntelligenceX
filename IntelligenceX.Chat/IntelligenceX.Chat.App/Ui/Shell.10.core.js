@@ -2188,13 +2188,22 @@
     if (descriptorDiscoveryMs <= 0) {
       descriptorDiscoveryMs = readStartupBootstrapPhaseMs(phases, "descriptor_discovery");
     }
+    if (descriptorDiscoveryMs <= 0) {
+      descriptorDiscoveryMs = toNonNegativeInt(value.packLoadMs);
+    }
     var packActivationMs = toNonNegativeInt(value.packActivationMs);
     if (packActivationMs <= 0) {
       packActivationMs = readStartupBootstrapPhaseMs(phases, "pack_activation");
     }
+    if (packActivationMs <= 0) {
+      packActivationMs = toNonNegativeInt(value.packRegisterMs);
+    }
     var registryActivationFinalizeMs = toNonNegativeInt(value.registryActivationFinalizeMs);
     if (registryActivationFinalizeMs <= 0) {
       registryActivationFinalizeMs = readStartupBootstrapPhaseMs(phases, "registry_activation_finalize");
+    }
+    if (registryActivationFinalizeMs <= 0) {
+      registryActivationFinalizeMs = toNonNegativeInt(value.registryFinalizeMs);
     }
 
     return {
