@@ -81,4 +81,18 @@ public sealed class StartupBootstrapContractsTests {
 
         Assert.Equal(87, duration);
     }
+
+    [Fact]
+    public void WithCanonicalPhaseDurations_PopulatesCanonicalFieldsFromLegacyFallbacks() {
+        var normalized = StartupBootstrapContracts.WithCanonicalPhaseDurations(
+            new SessionStartupBootstrapTelemetryDto {
+                PackLoadMs = 41,
+                PackRegisterMs = 52,
+                RegistryFinalizeMs = 63
+            });
+
+        Assert.Equal(41, normalized.DescriptorDiscoveryMs);
+        Assert.Equal(52, normalized.PackActivationMs);
+        Assert.Equal(63, normalized.RegistryActivationFinalizeMs);
+    }
 }

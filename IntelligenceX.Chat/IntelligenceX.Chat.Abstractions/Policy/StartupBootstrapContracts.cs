@@ -183,10 +183,28 @@ public static class StartupBootstrapContracts {
         return normalized switch {
             PhaseRuntimePolicyId => Math.Max(0, telemetry.RuntimePolicyMs),
             PhaseBootstrapOptionsId => Math.Max(0, telemetry.BootstrapOptionsMs),
-            PhaseDescriptorDiscoveryId or PhasePackLoadId => Math.Max(0, telemetry.PackLoadMs),
-            PhasePackActivationId or PhasePackRegisterId => Math.Max(0, telemetry.PackRegisterMs),
-            PhaseRegistryActivationFinalizeId or PhaseRegistryFinalizeId => Math.Max(0, telemetry.RegistryFinalizeMs),
+            PhaseDescriptorDiscoveryId => Math.Max(0, telemetry.DescriptorDiscoveryMs > 0 ? telemetry.DescriptorDiscoveryMs : telemetry.PackLoadMs),
+            PhasePackLoadId => Math.Max(0, telemetry.PackLoadMs > 0 ? telemetry.PackLoadMs : telemetry.DescriptorDiscoveryMs),
+            PhasePackActivationId => Math.Max(0, telemetry.PackActivationMs > 0 ? telemetry.PackActivationMs : telemetry.PackRegisterMs),
+            PhasePackRegisterId => Math.Max(0, telemetry.PackRegisterMs > 0 ? telemetry.PackRegisterMs : telemetry.PackActivationMs),
+            PhaseRegistryActivationFinalizeId => Math.Max(0, telemetry.RegistryActivationFinalizeMs > 0 ? telemetry.RegistryActivationFinalizeMs : telemetry.RegistryFinalizeMs),
+            PhaseRegistryFinalizeId => Math.Max(0, telemetry.RegistryFinalizeMs > 0 ? telemetry.RegistryFinalizeMs : telemetry.RegistryActivationFinalizeMs),
             _ => 0
+        };
+    }
+
+    /// <summary>
+    /// Produces a telemetry copy with canonical phase durations pre-resolved for shell/UI consumers.
+    /// </summary>
+    public static SessionStartupBootstrapTelemetryDto WithCanonicalPhaseDurations(SessionStartupBootstrapTelemetryDto? telemetry) {
+        if (telemetry is null) {
+            return new SessionStartupBootstrapTelemetryDto();
+        }
+
+        return telemetry with {
+            DescriptorDiscoveryMs = ResolvePhaseDuration(telemetry, PhaseDescriptorDiscoveryId),
+            PackActivationMs = ResolvePhaseDuration(telemetry, PhasePackActivationId),
+            RegistryActivationFinalizeMs = ResolvePhaseDuration(telemetry, PhaseRegistryActivationFinalizeId)
         };
     }
 

@@ -141,7 +141,10 @@ internal sealed class ChatServiceToolingBootstrapCache {
         }
     }
 
-    public void StoreSnapshot(string cacheKey, ChatServiceToolingBootstrapSnapshot snapshot) {
+    public void StoreSnapshot(
+        string cacheKey,
+        ChatServiceToolingBootstrapSnapshot snapshot,
+        string? previewDiscoveryFingerprint = null) {
         if (snapshot is null) {
             throw new ArgumentNullException(nameof(snapshot));
         }
@@ -155,7 +158,7 @@ internal sealed class ChatServiceToolingBootstrapCache {
             _cacheKey = normalizedCacheKey;
             _previewCacheKey = NormalizePreviewCacheKey(previewCacheKey: null, normalizedCacheKey);
             _snapshot = snapshot;
-            _persistedSnapshot = BuildPersistedSnapshot(normalizedCacheKey, snapshot);
+            _persistedSnapshot = BuildPersistedSnapshot(normalizedCacheKey, snapshot, previewDiscoveryFingerprint);
             _persistedSnapshotLoadWarning = null;
             SavePersistedSnapshot(_persistedSnapshotPath, _persistedSnapshot);
         }
@@ -174,8 +177,9 @@ internal sealed class ChatServiceToolingBootstrapCache {
 
     private static ChatServiceToolingBootstrapPersistedSnapshot BuildPersistedSnapshot(
         string cacheKey,
-        ChatServiceToolingBootstrapSnapshot snapshot) {
-        var descriptorSnapshot = BuildDescriptorSnapshot(snapshot);
+        ChatServiceToolingBootstrapSnapshot snapshot,
+        string? previewDiscoveryFingerprint) {
+        var descriptorSnapshot = BuildDescriptorSnapshot(snapshot, previewDiscoveryFingerprint);
         return new ChatServiceToolingBootstrapPersistedSnapshot {
             SchemaVersion = PersistedSnapshotSchemaVersion,
             CacheKey = cacheKey,
@@ -187,7 +191,8 @@ internal sealed class ChatServiceToolingBootstrapCache {
             PluginAvailability = descriptorSnapshot.PluginAvailability,
             PluginCatalog = descriptorSnapshot.PluginCatalog,
             StartupWarnings = snapshot.StartupWarnings ?? Array.Empty<string>(),
-            StartupBootstrap = snapshot.StartupBootstrap ?? new SessionStartupBootstrapTelemetryDto(),
+            StartupBootstrap = StartupBootstrapContracts.WithCanonicalPhaseDurations(
+                snapshot.StartupBootstrap ?? new SessionStartupBootstrapTelemetryDto()),
             PluginSearchPaths = snapshot.PluginSearchPaths ?? Array.Empty<string>(),
             RuntimePolicyDiagnostics = descriptorSnapshot.RuntimePolicyDiagnostics,
             RoutingCatalogDiagnostics = descriptorSnapshot.RoutingCatalogDiagnostics,
@@ -198,10 +203,14 @@ internal sealed class ChatServiceToolingBootstrapCache {
     }
 
     private static ChatServiceToolingBootstrapDescriptorSnapshot BuildDescriptorSnapshot(
-        ChatServiceToolingBootstrapSnapshot snapshot) {
+        ChatServiceToolingBootstrapSnapshot snapshot,
+        string? previewDiscoveryFingerprint) {
+        var normalizedPreviewDiscoveryFingerprint = (previewDiscoveryFingerprint ?? string.Empty).Trim();
         return new ChatServiceToolingBootstrapDescriptorSnapshot {
             SchemaVersion = PersistedDescriptorSnapshotSchemaVersion,
-            PreviewDiscoveryFingerprint = BuildPreviewDiscoveryFingerprint(snapshot),
+            PreviewDiscoveryFingerprint = normalizedPreviewDiscoveryFingerprint.Length > 0
+                ? normalizedPreviewDiscoveryFingerprint
+                : BuildPreviewDiscoveryFingerprint(snapshot),
             ToolDefinitions = snapshot.ToolDefinitions ?? Array.Empty<ToolDefinitionDto>(),
             PackSummaries = snapshot.PackSummaries ?? Array.Empty<ToolPackInfoDto>(),
             PackAvailability = snapshot.PackAvailability ?? Array.Empty<ToolPackAvailabilityInfo>(),
@@ -277,7 +286,8 @@ internal sealed class ChatServiceToolingBootstrapCache {
                 PluginAvailability = descriptorSnapshot.PluginAvailability,
                 PluginCatalog = descriptorSnapshot.PluginCatalog,
                 StartupWarnings = snapshot.StartupWarnings ?? Array.Empty<string>(),
-                StartupBootstrap = snapshot.StartupBootstrap ?? new SessionStartupBootstrapTelemetryDto(),
+                StartupBootstrap = StartupBootstrapContracts.WithCanonicalPhaseDurations(
+                    snapshot.StartupBootstrap ?? new SessionStartupBootstrapTelemetryDto()),
                 PluginSearchPaths = snapshot.PluginSearchPaths ?? Array.Empty<string>(),
                 RuntimePolicyDiagnostics = descriptorSnapshot.RuntimePolicyDiagnostics,
                 RoutingCatalogDiagnostics = descriptorSnapshot.RoutingCatalogDiagnostics,

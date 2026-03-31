@@ -48,6 +48,24 @@ public sealed class ChatServiceToolingBootstrapTests {
         return (previewCacheKey, cacheKey);
     }
 
+    private static string BuildToolingBootstrapPreviewFingerprint(ServiceOptions options) {
+        var runtimePolicyOptionsMethod = typeof(ChatServiceSession).GetMethod(
+            "BuildRuntimePolicyOptions",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        var previewFingerprintMethod = typeof(ChatServiceSession).GetMethod(
+            "BuildToolingBootstrapPreviewFingerprint",
+            BindingFlags.NonPublic | BindingFlags.Static);
+        Assert.NotNull(runtimePolicyOptionsMethod);
+        Assert.NotNull(previewFingerprintMethod);
+
+        var runtimePolicyOptions = Assert.IsType<ToolRuntimePolicyOptions>(runtimePolicyOptionsMethod!.Invoke(
+            null,
+            new object[] { options }));
+        return Assert.IsType<string>(previewFingerprintMethod!.Invoke(
+            null,
+            new object?[] { options, runtimePolicyOptions }));
+    }
+
     [Fact]
     public void RebuildToolingFromOptions_RefreshesPackAvailabilitySnapshot() {
         var rebuildMethod = typeof(ChatServiceSession).GetMethod("RebuildToolingFromOptions", BindingFlags.NonPublic | BindingFlags.Instance);
@@ -1692,6 +1710,84 @@ public sealed class ChatServiceToolingBootstrapTests {
             Assert.False(cache.TryGetPersistedPreviewSnapshot(previewCacheKey, currentPreviewFingerprint, out _));
             Assert.True(cache.TryGetPersistedSnapshotLoadWarning(out var warning));
             Assert.Contains("preview_fingerprint_mismatch", warning, StringComparison.OrdinalIgnoreCase);
+        } finally {
+            try {
+                if (File.Exists(cachePath)) {
+                    File.Delete(cachePath);
+                }
+            } catch {
+                // Best-effort test cleanup.
+            }
+        }
+    }
+
+    [Fact]
+    public void StoreSnapshot_PersistsProvidedPreviewFingerprint_ForDeferredPreviewValidation() {
+        var cachePath = CreateToolingBootstrapCachePath("tooling-cache-preview-fingerprint-alignment");
+        var cacheDirectory = Path.GetDirectoryName(cachePath);
+        if (!string.IsNullOrWhiteSpace(cacheDirectory)) {
+            Directory.CreateDirectory(cacheDirectory);
+        }
+
+        try {
+            var options = new ServiceOptions();
+            var (previewCacheKey, cacheKey) = BuildToolingBootstrapKeys(options);
+            var previewFingerprint = BuildToolingBootstrapPreviewFingerprint(options);
+            var diagnostics = ToolRuntimePolicyBootstrap.BuildDiagnostics(
+                ToolRuntimePolicyBootstrap.CreateContext(new ToolRuntimePolicyOptions()));
+            var routingDiagnostics = ToolRoutingCatalogDiagnosticsBuilder.Build(Array.Empty<ToolDefinition>());
+
+            var cache = new ChatServiceToolingBootstrapCache(cachePath);
+            cache.StoreSnapshot(
+                cacheKey,
+                new ChatServiceToolingBootstrapSnapshot {
+                    Registry = new ToolRegistry(),
+                    ToolDefinitions = new[] {
+                        new ToolDefinitionDto {
+                            Name = "synthetic_live_tool",
+                            Description = "Only present in the live snapshot shape",
+                            PackId = "synthetic_pack"
+                        }
+                    },
+                    PackSummaries = Array.Empty<ToolPackInfoDto>(),
+                    Packs = Array.Empty<IToolPack>(),
+                    PackAvailability = new[] {
+                        new ToolPackAvailabilityInfo {
+                            Id = "synthetic_pack",
+                            Name = "Synthetic Pack",
+                            SourceKind = "closed_source",
+                            Enabled = true
+                        }
+                    },
+                    PluginAvailability = Array.Empty<ToolPluginAvailabilityInfo>(),
+                    PluginCatalog = Array.Empty<ToolPluginCatalogInfo>(),
+                    StartupWarnings = Array.Empty<string>(),
+                    StartupBootstrap = new SessionStartupBootstrapTelemetryDto(),
+                    PluginSearchPaths = Array.Empty<string>(),
+                    RuntimePolicyDiagnostics = diagnostics,
+                    RoutingCatalogDiagnostics = routingDiagnostics,
+                    CapabilitySnapshot = new SessionCapabilitySnapshotDto {
+                        RegisteredTools = 1,
+                        EnabledPackCount = 1,
+                        PluginCount = 0,
+                        EnabledPluginCount = 0,
+                        ToolingAvailable = true,
+                        AllowedRootCount = 0,
+                        EnabledPackIds = new[] { "synthetic_pack" },
+                        EnabledPluginIds = Array.Empty<string>(),
+                        RoutingFamilies = Array.Empty<string>(),
+                        FamilyActions = Array.Empty<SessionRoutingFamilyActionSummaryDto>(),
+                        Skills = Array.Empty<string>(),
+                        HealthyTools = new[] { "synthetic_live_tool" }
+                    },
+                    ToolOrchestrationCatalog = ToolOrchestrationCatalog.Build(Array.Empty<ToolDefinition>())
+                },
+                previewFingerprint);
+
+            var reloaded = new ChatServiceToolingBootstrapCache(cachePath);
+            Assert.True(reloaded.TryGetPersistedPreviewSnapshot(previewCacheKey, previewFingerprint, out var previewSnapshot));
+            Assert.Equal("synthetic_live_tool", Assert.Single(previewSnapshot.ToolDefinitions).Name);
+            Assert.Equal(previewFingerprint, previewSnapshot.PreviewDiscoveryFingerprint);
         } finally {
             try {
                 if (File.Exists(cachePath)) {

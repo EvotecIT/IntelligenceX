@@ -489,10 +489,16 @@ public sealed partial class UiShellAssetsTests {
 
         AssertContainsAll(
             script,
+            "descriptorDiscoveryMs: toNonNegativeInt(value.descriptorDiscoveryMs),",
+            "packActivationMs: toNonNegativeInt(value.packActivationMs),",
+            "registryActivationFinalizeMs: toNonNegativeInt(value.registryActivationFinalizeMs),",
             "segments.push(\"descriptor-preview\");",
             "segments.push(\"descriptor-discovery \" + formatStartupBootstrapDuration(descriptorDiscoveryMs));",
             "segments.push(\"pack-activation \" + formatStartupBootstrapDuration(packActivationMs));",
             "segments.push(\"activation-finalize \" + formatStartupBootstrapDuration(activationFinalizeMs));");
+        Assert.DoesNotContain("case \"pack_load\":", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("case \"pack_register\":", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("case \"registry_finalize\":", script, StringComparison.Ordinal);
     }
 
     /// <summary>

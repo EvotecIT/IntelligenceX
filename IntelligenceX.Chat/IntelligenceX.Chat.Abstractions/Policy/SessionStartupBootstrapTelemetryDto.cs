@@ -42,6 +42,21 @@ public sealed record SessionStartupBootstrapTelemetryDto {
     public long RegistryMs { get; init; }
 
     /// <summary>
+    /// Canonical descriptor-discovery phase duration in milliseconds.
+    /// </summary>
+    public long DescriptorDiscoveryMs { get; init; }
+
+    /// <summary>
+    /// Canonical pack-activation phase duration in milliseconds.
+    /// </summary>
+    public long PackActivationMs { get; init; }
+
+    /// <summary>
+    /// Canonical registry-activation-finalize phase duration in milliseconds.
+    /// </summary>
+    public long RegistryActivationFinalizeMs { get; init; }
+
+    /// <summary>
     /// Total registered tool definitions.
     /// </summary>
     public int Tools { get; init; }

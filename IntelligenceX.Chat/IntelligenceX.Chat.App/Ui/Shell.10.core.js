@@ -2184,6 +2184,9 @@
       packRegisterMs: toNonNegativeInt(value.packRegisterMs),
       registryFinalizeMs: toNonNegativeInt(value.registryFinalizeMs),
       registryMs: toNonNegativeInt(value.registryMs),
+      descriptorDiscoveryMs: toNonNegativeInt(value.descriptorDiscoveryMs),
+      packActivationMs: toNonNegativeInt(value.packActivationMs),
+      registryActivationFinalizeMs: toNonNegativeInt(value.registryActivationFinalizeMs),
       tools: toNonNegativeInt(value.tools),
       packsLoaded: toNonNegativeInt(value.packsLoaded),
       packsDisabled: toNonNegativeInt(value.packsDisabled),
@@ -2215,30 +2218,27 @@
       return 0;
     }
 
-    if (Array.isArray(telemetry.phases)) {
-      for (var i = 0; i < telemetry.phases.length; i += 1) {
-        var phase = telemetry.phases[i];
-        if (phase && typeof phase.id === "string" && phase.id.trim().toLowerCase() === phaseId.toLowerCase()) {
-          return toNonNegativeInt(phase.durationMs);
-        }
-      }
-    }
-
     switch (phaseId) {
       case "runtime_policy":
         return telemetry.runtimePolicyMs;
       case "bootstrap_options":
         return telemetry.bootstrapOptionsMs;
       case "descriptor_discovery":
-      case "pack_load":
-        return telemetry.packLoadMs;
+        return telemetry.descriptorDiscoveryMs;
       case "pack_activation":
-      case "pack_register":
-        return telemetry.packRegisterMs;
+        return telemetry.packActivationMs;
       case "registry_activation_finalize":
-      case "registry_finalize":
-        return telemetry.registryFinalizeMs;
+        return telemetry.registryActivationFinalizeMs;
       default:
+        if (Array.isArray(telemetry.phases)) {
+          for (var i = 0; i < telemetry.phases.length; i += 1) {
+            var phase = telemetry.phases[i];
+            if (phase && typeof phase.id === "string" && phase.id.trim().toLowerCase() === phaseId.toLowerCase()) {
+              return toNonNegativeInt(phase.durationMs);
+            }
+          }
+        }
+
         return 0;
     }
   }
