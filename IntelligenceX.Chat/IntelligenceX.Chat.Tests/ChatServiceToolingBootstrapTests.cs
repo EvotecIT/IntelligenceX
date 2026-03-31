@@ -736,7 +736,7 @@ public sealed class ChatServiceToolingBootstrapTests {
     }
 
     [Fact]
-    public void RebuildToolingCore_UsesPreviewKeyCacheHit_WhenPersistedPreviewWasRestored() {
+    public void RebuildToolingCore_DoesNotReusePreviewKeyForFullSnapshot_WhenStrictCacheKeyDiffers() {
         var rebuildCoreMethod = typeof(ChatServiceSession).GetMethod(
             "RebuildToolingCore",
             BindingFlags.NonPublic | BindingFlags.Instance);
@@ -755,8 +755,11 @@ public sealed class ChatServiceToolingBootstrapTests {
         }
 
         try {
-            var options = new ServiceOptions();
+            var options = ChatServiceTestSessionFactory.CreateIsolatedOptions();
+            options.EnableBuiltInPackLoading = false;
+            options.EnableDefaultPluginPaths = false;
             var (previewCacheKey, cacheKey) = BuildToolingBootstrapKeys(options);
+            var previewFingerprint = BuildToolingBootstrapPreviewFingerprint(options);
             var diagnostics = ToolRuntimePolicyBootstrap.BuildDiagnostics(
                 ToolRuntimePolicyBootstrap.CreateContext(new ToolRuntimePolicyOptions()));
             var routingDiagnostics = ToolRoutingCatalogDiagnosticsBuilder.Build(Array.Empty<ToolDefinition>());
@@ -816,11 +819,11 @@ public sealed class ChatServiceToolingBootstrapTests {
                         HealthyTools = new[] { "preview_cache_tool" }
                     },
                     ToolOrchestrationCatalog = ToolOrchestrationCatalog.Build(Array.Empty<ToolDefinition>())
-                });
+                },
+                previewFingerprint);
 
             Assert.NotEqual(previewCacheKey, cacheKey);
             Assert.False(cache.TryGetSnapshot(cacheKey, out _));
-            Assert.True(cache.TryGetSnapshotByPreviewCacheKey(previewCacheKey, out _));
 
             var session = new ChatServiceSession(options, Stream.Null, cache);
             var previewToolDefinitions = Assert.IsType<ToolDefinitionDto[]>(cachedToolDefinitionsField!.GetValue(session));
@@ -829,16 +832,22 @@ public sealed class ChatServiceToolingBootstrapTests {
             rebuildCoreMethod!.Invoke(session, new object?[] { false });
 
             var startupBootstrap = Assert.IsType<SessionStartupBootstrapTelemetryDto>(startupBootstrapField!.GetValue(session));
-            Assert.Single(startupBootstrap.Phases);
-            Assert.Equal(StartupBootstrapContracts.PhaseCacheHitId, startupBootstrap.Phases[0].Id);
+            Assert.DoesNotContain(
+                startupBootstrap.Phases,
+                static phase => string.Equals(
+                    phase.Id,
+                    StartupBootstrapContracts.PhaseCacheHitId,
+                    StringComparison.Ordinal));
 
             var startupWarnings = Assert.IsType<string[]>(startupWarningsField!.GetValue(session));
-            Assert.Contains(
+            Assert.DoesNotContain(
                 startupWarnings,
                 static warning => warning.Contains("tooling bootstrap cache hit", StringComparison.OrdinalIgnoreCase));
 
             var cachedToolDefinitions = Assert.IsType<ToolDefinitionDto[]>(cachedToolDefinitionsField.GetValue(session));
-            Assert.Equal("preview_cache_tool", Assert.Single(cachedToolDefinitions).Name);
+            Assert.DoesNotContain(
+                cachedToolDefinitions,
+                static definition => string.Equals(definition.Name, "preview_cache_tool", StringComparison.Ordinal));
         } finally {
             try {
                 if (File.Exists(cachePath)) {

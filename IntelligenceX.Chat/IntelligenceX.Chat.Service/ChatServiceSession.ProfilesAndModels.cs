@@ -709,16 +709,6 @@ internal sealed partial class ChatServiceSession {
             TryApplyPersistedToolingBootstrapPreview();
         }
 
-        var bootstrapPreviewCacheKey = BuildToolingBootstrapPreviewCacheKey(_options, runtimePolicyOptions, resolvedRuntimePolicyOptions);
-        if (!clearRoutingCaches
-            && _servingPersistedToolingBootstrapPreview
-            && _toolingBootstrapCache is not null
-            && _toolingBootstrapCache.TryGetSnapshotByPreviewCacheKey(bootstrapPreviewCacheKey, out var previewCachedSnapshot)) {
-            var cacheHitStopwatch = Stopwatch.StartNew();
-            ApplyToolingBootstrapCacheSnapshot(previewCachedSnapshot, clearRoutingCaches, cacheHitStopwatch.Elapsed);
-            return;
-        }
-
         var bootstrapCacheKey = BuildToolingBootstrapCacheKey(_options, runtimePolicyOptions, resolvedRuntimePolicyOptions);
         if (!clearRoutingCaches
             && _toolingBootstrapCache is not null

@@ -21,7 +21,6 @@ internal sealed class ChatServiceToolingBootstrapCache {
     private readonly object _sync = new();
     private readonly string _persistedSnapshotPath;
     private string _cacheKey = string.Empty;
-    private string _previewCacheKey = string.Empty;
     private ChatServiceToolingBootstrapSnapshot? _snapshot;
     private ChatServiceToolingBootstrapPersistedSnapshot? _persistedSnapshot;
     private string? _persistedSnapshotLoadWarning;
@@ -41,25 +40,6 @@ internal sealed class ChatServiceToolingBootstrapCache {
         lock (_sync) {
             if (_snapshot is null
                 || !string.Equals(_cacheKey, normalizedCacheKey, StringComparison.Ordinal)) {
-                snapshot = null!;
-                return false;
-            }
-
-            snapshot = _snapshot;
-            return true;
-        }
-    }
-
-    public bool TryGetSnapshotByPreviewCacheKey(string previewCacheKey, out ChatServiceToolingBootstrapSnapshot snapshot) {
-        var normalizedPreviewCacheKey = NormalizePreviewCacheKey(previewCacheKey, cacheKey: null);
-        if (normalizedPreviewCacheKey.Length == 0) {
-            snapshot = null!;
-            return false;
-        }
-
-        lock (_sync) {
-            if (_snapshot is null
-                || !string.Equals(_previewCacheKey, normalizedPreviewCacheKey, StringComparison.Ordinal)) {
                 snapshot = null!;
                 return false;
             }
@@ -156,7 +136,6 @@ internal sealed class ChatServiceToolingBootstrapCache {
 
         lock (_sync) {
             _cacheKey = normalizedCacheKey;
-            _previewCacheKey = NormalizePreviewCacheKey(previewCacheKey: null, normalizedCacheKey);
             _snapshot = snapshot;
             _persistedSnapshot = BuildPersistedSnapshot(normalizedCacheKey, snapshot, previewDiscoveryFingerprint);
             _persistedSnapshotLoadWarning = null;
@@ -167,7 +146,6 @@ internal sealed class ChatServiceToolingBootstrapCache {
     public void Clear() {
         lock (_sync) {
             _cacheKey = string.Empty;
-            _previewCacheKey = string.Empty;
             _snapshot = null;
             _persistedSnapshot = null;
             _persistedSnapshotLoadWarning = null;
