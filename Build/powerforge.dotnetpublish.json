@@ -164,7 +164,6 @@
         "StyleOverrides": {
           "PortableCompat": {
             "MsBuildProperties": {
-              "SkipChatServiceSidecarBuild": "true",
               "PublishSingleFile": "false",
               "EnableMsixTooling": "true",
               "WindowsAppSDKSelfContained": "true"

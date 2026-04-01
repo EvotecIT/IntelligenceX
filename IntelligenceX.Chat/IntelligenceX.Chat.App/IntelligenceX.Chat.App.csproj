@@ -89,7 +89,7 @@
   </Target>
 
   <Target Name="CopyChatServiceSidecarToPublish" AfterTargets="Publish"
-          Condition="'$(SkipChatServiceSidecarBuild)' != 'true' AND Exists('$(ChatServiceBin)IntelligenceX.Chat.Service.dll') AND Exists('$(ChatAppPublishDir)')">
+          Condition="Exists('$(ChatServiceBin)IntelligenceX.Chat.Service.dll') AND Exists('$(ChatAppPublishDir)')">
     <ItemGroup>
       <_ChatServiceFilesForPublish Include="$(ChatServiceBin)**\\*.*" />
       <_ChatServiceFilesForPublish Remove="@(_ChatServiceFilesForPublish)" Condition="!Exists('%(Identity)')" />

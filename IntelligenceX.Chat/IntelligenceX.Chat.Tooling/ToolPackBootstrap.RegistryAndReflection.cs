@@ -2002,11 +2002,15 @@ public static partial class ToolPackBootstrap {
             }
         }
 
-        if (!string.IsNullOrWhiteSpace(Environment.ProcessPath) && File.Exists(Environment.ProcessPath)) {
-            return Environment.ProcessPath;
-        }
-
         return null;
+    }
+
+    internal static string? TryGetAssemblyFilePathForTesting(Assembly assembly) {
+        return TryGetAssemblyFilePath(assembly);
+    }
+
+    internal static bool TryResolveLoadedAssemblyLocationForTesting(AssemblyName assemblyName, out string location) {
+        return TryResolveLoadedAssemblyLocation(assemblyName, out location);
     }
 
     private static IReadOnlyList<string> ResolveBuiltInToolAssemblyProbePaths(ToolPackBootstrapOptions options, Assembly bootstrapAssembly) {
