@@ -49,10 +49,15 @@ $ErrorActionPreference = 'Stop'
 $script:RepoRoot = (Get-Item (Split-Path -Parent $MyInvocation.MyCommand.Path)).Parent.FullName
 . (Join-Path $script:RepoRoot 'Build\Internal\Build.ScriptSupport.ps1')
 
+$script:BoundCliParameters = @{}
+foreach ($entry in $PSBoundParameters.GetEnumerator()) {
+    $script:BoundCliParameters[$entry.Key] = $entry.Value
+}
+
 function Has-BoundNonEmptyOption {
     param([string] $Name)
 
-    return $PSBoundParameters.ContainsKey($Name) -and -not [string]::IsNullOrWhiteSpace([string] $PSBoundParameters[$Name])
+    return $script:BoundCliParameters.ContainsKey($Name) -and -not [string]::IsNullOrWhiteSpace([string] $script:BoundCliParameters[$Name])
 }
 
 if ([string]::IsNullOrWhiteSpace($ReleaseId)) {

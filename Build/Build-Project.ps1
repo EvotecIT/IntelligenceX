@@ -59,6 +59,11 @@ $repoRoot = (Get-Item (Split-Path -Parent $MyInvocation.MyCommand.Path)).Parent.
 . (Join-Path $repoRoot 'Build\Internal\Resolve-PowerForgeCli.ps1')
 . (Join-Path $repoRoot 'Build\Internal\Resolve-ReleaseDefaults.ps1')
 
+$script:BoundCliParameters = @{}
+foreach ($entry in $PSBoundParameters.GetEnumerator()) {
+    $script:BoundCliParameters[$entry.Key] = $entry.Value
+}
+
 if ($Plan -and $Validate) {
     throw 'Use either -Plan or -Validate, not both.'
 }
@@ -102,7 +107,7 @@ function Add-CsvOption {
 function Has-BoundNonEmptyOption {
     param([string] $Name)
 
-    return $PSBoundParameters.ContainsKey($Name) -and -not [string]::IsNullOrWhiteSpace([string] $PSBoundParameters[$Name])
+    return $script:BoundCliParameters.ContainsKey($Name) -and -not [string]::IsNullOrWhiteSpace([string] $script:BoundCliParameters[$Name])
 }
 
 Add-Flag '--plan' $Plan
