@@ -55,17 +55,25 @@
   </ItemGroup>
 
   <PropertyGroup>
-    <ChatServiceTfm>net10.0-windows</ChatServiceTfm>
-    <ChatServiceBin>$(MSBuildThisFileDirectory)..\\IntelligenceX.Chat.Service\\bin\\$(Configuration)\\$(ChatServiceTfm)\\</ChatServiceBin>
+    <ChatServiceDefaultTfm>net10.0-windows</ChatServiceDefaultTfm>
+    <ChatServiceResolvedTfm Condition="'$(ChatServiceTfm)' != ''">$(ChatServiceTfm)</ChatServiceResolvedTfm>
+    <ChatServiceResolvedTfm Condition="'$(ChatServiceResolvedTfm)' == ''">$(ChatServiceDefaultTfm)</ChatServiceResolvedTfm>
+    <ChatServiceBin>$(MSBuildThisFileDirectory)..\\IntelligenceX.Chat.Service\\bin\\$(Configuration)\\$(ChatServiceResolvedTfm)\\</ChatServiceBin>
     <ChatAppPublishDir>$(MSBuildProjectDirectory)\\bin\\$(Configuration)\\$(TargetFramework)\\$(RuntimeIdentifier)\\publish\\</ChatAppPublishDir>
     <ChatServicePublishOutDir>$(ChatAppPublishDir)service\\</ChatServicePublishOutDir>
   </PropertyGroup>
+
+  <Target Name="ValidateChatServiceSidecarInputs" BeforeTargets="BuildChatServiceSidecar"
+          Condition="'$(SkipChatServiceSidecarBuild)' != 'true' AND Exists('$(MSBuildThisFileDirectory)..\\IntelligenceX.Chat.Service\\IntelligenceX.Chat.Service.csproj')">
+    <Error Condition="'$(ChatServiceResolvedTfm)' == ''"
+           Text="Chat service sidecar target framework could not be resolved. Set ChatServiceTfm explicitly or keep the default ChatServiceDefaultTfm." />
+  </Target>
 
   <Target Name="BuildChatServiceSidecar" BeforeTargets="Build"
           Condition="'$(SkipChatServiceSidecarBuild)' != 'true' AND Exists('$(MSBuildThisFileDirectory)..\\IntelligenceX.Chat.Service\\IntelligenceX.Chat.Service.csproj')">
     <MSBuild Projects="$(MSBuildThisFileDirectory)..\\IntelligenceX.Chat.Service\\IntelligenceX.Chat.Service.csproj"
              Targets="Restore;Build"
-             Properties="Configuration=$(Configuration);TargetFramework=$(ChatServiceTfm);RuntimeIdentifier=;SelfContained=false" />
+             Properties="Configuration=$(Configuration);TargetFramework=$(ChatServiceResolvedTfm);RuntimeIdentifier=;SelfContained=false" />
   </Target>
 
   <Target Name="CopyChatServiceSidecar" AfterTargets="Build"
