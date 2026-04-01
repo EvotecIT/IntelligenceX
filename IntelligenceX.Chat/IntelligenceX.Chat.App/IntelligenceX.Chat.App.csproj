@@ -65,7 +65,7 @@
           Condition="'$(SkipChatServiceSidecarBuild)' != 'true' AND Exists('$(MSBuildThisFileDirectory)..\\IntelligenceX.Chat.Service\\IntelligenceX.Chat.Service.csproj')">
     <MSBuild Projects="$(MSBuildThisFileDirectory)..\\IntelligenceX.Chat.Service\\IntelligenceX.Chat.Service.csproj"
              Targets="Restore;Build"
-             Properties="Configuration=$(Configuration);RuntimeIdentifier=;SelfContained=false" />
+             Properties="Configuration=$(Configuration);TargetFramework=$(ChatServiceTfm);RuntimeIdentifier=;SelfContained=false" />
   </Target>
 
   <Target Name="CopyChatServiceSidecar" AfterTargets="Build"
@@ -89,7 +89,7 @@
   </Target>
 
   <Target Name="CopyChatServiceSidecarToPublish" AfterTargets="Publish"
-          Condition="Exists('$(ChatServiceBin)IntelligenceX.Chat.Service.dll') AND Exists('$(ChatAppPublishDir)')">
+          Condition="'$(SkipChatServiceSidecarBuild)' != 'true' AND Exists('$(ChatServiceBin)IntelligenceX.Chat.Service.dll') AND Exists('$(ChatAppPublishDir)')">
     <ItemGroup>
       <_ChatServiceFilesForPublish Include="$(ChatServiceBin)**\\*.*" />
       <_ChatServiceFilesForPublish Remove="@(_ChatServiceFilesForPublish)" Condition="!Exists('%(Identity)')" />
