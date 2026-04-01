@@ -59,6 +59,7 @@
     <ChatServiceResolvedTfm Condition="'$(ChatServiceTfm)' != ''">$(ChatServiceTfm)</ChatServiceResolvedTfm>
     <ChatServiceResolvedTfm Condition="'$(ChatServiceResolvedTfm)' == ''">$(ChatServiceDefaultTfm)</ChatServiceResolvedTfm>
     <ChatServiceBin>$(MSBuildThisFileDirectory)..\\IntelligenceX.Chat.Service\\bin\\$(Configuration)\\$(ChatServiceResolvedTfm)\\</ChatServiceBin>
+    <ChatServiceExpectedAssembly>$(ChatServiceBin)IntelligenceX.Chat.Service.dll</ChatServiceExpectedAssembly>
     <ChatAppPublishDir>$(MSBuildProjectDirectory)\\bin\\$(Configuration)\\$(TargetFramework)\\$(RuntimeIdentifier)\\publish\\</ChatAppPublishDir>
     <ChatServicePublishOutDir>$(ChatAppPublishDir)service\\</ChatServicePublishOutDir>
   </PropertyGroup>
@@ -76,8 +77,14 @@
              Properties="Configuration=$(Configuration);TargetFramework=$(ChatServiceResolvedTfm);RuntimeIdentifier=;SelfContained=false" />
   </Target>
 
+  <Target Name="ValidateChatServiceSidecarOutput" AfterTargets="BuildChatServiceSidecar"
+          Condition="'$(SkipChatServiceSidecarBuild)' != 'true' AND Exists('$(MSBuildThisFileDirectory)..\\IntelligenceX.Chat.Service\\IntelligenceX.Chat.Service.csproj')">
+    <Error Condition="!Exists('$(ChatServiceExpectedAssembly)')"
+           Text="Chat service sidecar build did not produce the expected output for '$(ChatServiceResolvedTfm)' at '$(ChatServiceExpectedAssembly)'." />
+  </Target>
+
   <Target Name="CopyChatServiceSidecar" AfterTargets="Build"
-          Condition="Exists('$(ChatServiceBin)IntelligenceX.Chat.Service.dll')">
+          Condition="Exists('$(ChatServiceExpectedAssembly)')">
     <ItemGroup>
       <_ChatServiceFiles Include="$(ChatServiceBin)**\\*.*" />
       <_ChatServiceFiles Remove="@(_ChatServiceFiles)" Condition="!Exists('%(Identity)')" />
@@ -97,7 +104,7 @@
   </Target>
 
   <Target Name="CopyChatServiceSidecarToPublish" AfterTargets="Publish"
-          Condition="Exists('$(ChatServiceBin)IntelligenceX.Chat.Service.dll') AND Exists('$(ChatAppPublishDir)')">
+          Condition="Exists('$(ChatServiceExpectedAssembly)') AND Exists('$(ChatAppPublishDir)')">
     <ItemGroup>
       <_ChatServiceFilesForPublish Include="$(ChatServiceBin)**\\*.*" />
       <_ChatServiceFilesForPublish Remove="@(_ChatServiceFilesForPublish)" Condition="!Exists('%(Identity)')" />
