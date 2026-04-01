@@ -49,6 +49,17 @@ $ErrorActionPreference = 'Stop'
 $script:RepoRoot = (Get-Item (Split-Path -Parent $MyInvocation.MyCommand.Path)).Parent.FullName
 . (Join-Path $script:RepoRoot 'Build\Internal\Build.ScriptSupport.ps1')
 
+$script:BoundCliParameters = @{}
+foreach ($entry in $PSBoundParameters.GetEnumerator()) {
+    $script:BoundCliParameters[$entry.Key] = $entry.Value
+}
+
+function Has-BoundNonEmptyOption {
+    param([string] $Name)
+
+    return $script:BoundCliParameters.ContainsKey($Name) -and -not [string]::IsNullOrWhiteSpace([string] $script:BoundCliParameters[$Name])
+}
+
 if ([string]::IsNullOrWhiteSpace($ReleaseId)) {
     $ReleaseId = Get-Date -Format 'yyyyMMdd-HHmmss'
 }
@@ -123,34 +134,48 @@ if ($SignInstaller) {
     $parameters['SignInstaller'] = $true
     $parameters['UseTestimoXSignThumbprintFallback'] = $UseTestimoXSignThumbprintFallback
 }
-if ($PSBoundParameters.ContainsKey('SignToolPath') -and -not [string]::IsNullOrWhiteSpace($SignToolPath)) {
+$hasExplicitSigningOverride = @(
+    'SignToolPath'
+    'SignThumbprint'
+    'SignSubjectName'
+    'SignOnMissingTool'
+    'SignOnFailure'
+    'SignTimestampUrl'
+    'SignDescription'
+    'SignUrl'
+    'SignCsp'
+    'SignKeyContainer'
+) | Where-Object { Has-BoundNonEmptyOption $_ } | Select-Object -First 1
+$enableSigning = $SignInstaller -or $hasExplicitSigningOverride
+
+if ($enableSigning -and -not [string]::IsNullOrWhiteSpace($SignToolPath)) {
     $parameters['SignToolPath'] = $SignToolPath
 }
-if ($PSBoundParameters.ContainsKey('SignThumbprint') -and -not [string]::IsNullOrWhiteSpace($SignThumbprint)) {
+if ($enableSigning -and -not [string]::IsNullOrWhiteSpace($SignThumbprint)) {
     $parameters['SignThumbprint'] = $SignThumbprint
 }
-if ($PSBoundParameters.ContainsKey('SignSubjectName') -and -not [string]::IsNullOrWhiteSpace($SignSubjectName)) {
+if ($enableSigning -and -not [string]::IsNullOrWhiteSpace($SignSubjectName)) {
     $parameters['SignSubjectName'] = $SignSubjectName
 }
-if ($PSBoundParameters.ContainsKey('SignOnMissingTool') -and -not [string]::IsNullOrWhiteSpace($SignOnMissingTool)) {
+if ($enableSigning -and -not [string]::IsNullOrWhiteSpace($SignOnMissingTool)) {
     $parameters['SignOnMissingTool'] = $SignOnMissingTool
 }
-if ($PSBoundParameters.ContainsKey('SignOnFailure') -and -not [string]::IsNullOrWhiteSpace($SignOnFailure)) {
+if ($enableSigning -and -not [string]::IsNullOrWhiteSpace($SignOnFailure)) {
     $parameters['SignOnFailure'] = $SignOnFailure
 }
-if ($PSBoundParameters.ContainsKey('SignTimestampUrl') -and -not [string]::IsNullOrWhiteSpace($SignTimestampUrl)) {
+if ($enableSigning -and -not [string]::IsNullOrWhiteSpace($SignTimestampUrl)) {
     $parameters['SignTimestampUrl'] = $SignTimestampUrl
 }
-if ($PSBoundParameters.ContainsKey('SignDescription') -and -not [string]::IsNullOrWhiteSpace($SignDescription)) {
+if ($enableSigning -and -not [string]::IsNullOrWhiteSpace($SignDescription)) {
     $parameters['SignDescription'] = $SignDescription
 }
-if ($PSBoundParameters.ContainsKey('SignUrl') -and -not [string]::IsNullOrWhiteSpace($SignUrl)) {
+if ($enableSigning -and -not [string]::IsNullOrWhiteSpace($SignUrl)) {
     $parameters['SignUrl'] = $SignUrl
 }
-if ($PSBoundParameters.ContainsKey('SignCsp') -and -not [string]::IsNullOrWhiteSpace($SignCsp)) {
+if ($enableSigning -and -not [string]::IsNullOrWhiteSpace($SignCsp)) {
     $parameters['SignCsp'] = $SignCsp
 }
-if ($PSBoundParameters.ContainsKey('SignKeyContainer') -and -not [string]::IsNullOrWhiteSpace($SignKeyContainer)) {
+if ($enableSigning -and -not [string]::IsNullOrWhiteSpace($SignKeyContainer)) {
     $parameters['SignKeyContainer'] = $SignKeyContainer
 }
 if (-not [string]::IsNullOrWhiteSpace($TestimoXRoot)) {

@@ -6,6 +6,8 @@ param(
     [switch] $PublishProjectGitHub,
     [switch] $PublishToolGitHub,
     [switch] $SkipWorkspaceBuild,
+    [switch] $SkipRestore,
+    [switch] $SkipBuild,
     [ValidateSet('oss', 'full-private')]
     [string] $WorkspaceProfile,
     [ValidateSet('Debug', 'Release')]
@@ -16,8 +18,11 @@ param(
     [switch] $IncludeChat,
     [switch] $PackagesOnly,
     [switch] $ToolsOnly,
+    [string] $OutputRoot,
     [string] $StageRoot,
     [string] $ManifestJsonPath,
+    [switch] $AllowOutputOutsideProjectRoot,
+    [switch] $AllowManifestOutsideProjectRoot,
     [string] $ChecksumsPath,
     [switch] $SkipChecksums,
     [switch] $IncludeSymbols,
@@ -53,6 +58,11 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = (Get-Item (Split-Path -Parent $MyInvocation.MyCommand.Path)).Parent.FullName
 . (Join-Path $repoRoot 'Build\Internal\Resolve-PowerForgeCli.ps1')
 . (Join-Path $repoRoot 'Build\Internal\Resolve-ReleaseDefaults.ps1')
+
+$script:BoundCliParameters = @{}
+foreach ($entry in $PSBoundParameters.GetEnumerator()) {
+    $script:BoundCliParameters[$entry.Key] = $entry.Value
+}
 
 if ($Plan -and $Validate) {
     throw 'Use either -Plan or -Validate, not both.'
@@ -94,6 +104,12 @@ function Add-CsvOption {
     }
 }
 
+function Has-BoundNonEmptyOption {
+    param([string] $Name)
+
+    return $script:BoundCliParameters.ContainsKey($Name) -and -not [string]::IsNullOrWhiteSpace([string] $script:BoundCliParameters[$Name])
+}
+
 Add-Flag '--plan' $Plan
 Add-Flag '--validate' $Validate
 Add-Flag '--publish-nuget' $PublishNuget
@@ -102,23 +118,45 @@ Add-Flag '--publish-tool-github' $PublishToolGitHub
 Add-Flag '--packages-only' $PackagesOnly
 Add-Flag '--tools-only' $ToolsOnly
 Add-Flag '--keep-symbols' $IncludeSymbols
-Add-Flag '--sign' $SignInstaller
 Add-Flag '--skip-workspace-validation' $SkipWorkspaceBuild
+Add-Flag '--skip-restore' $SkipRestore
+Add-Flag '--skip-build' $SkipBuild
 
 Add-Option '--stage-root' $StageRoot
+Add-Option '--output-root' $OutputRoot
 Add-Option '--manifest-json' $ManifestJsonPath
+Add-Flag '--allow-output-outside-project-root' $AllowOutputOutsideProjectRoot
+Add-Flag '--allow-manifest-outside-project-root' $AllowManifestOutsideProjectRoot
 Add-Option '--checksums-path' $ChecksumsPath
 Add-Flag '--skip-release-checksums' $SkipChecksums
 Add-Option '--workspace-profile' $WorkspaceProfile
-Add-Option '--sign-tool-path' $SignToolPath
-Add-Option '--sign-subject-name' $SignSubjectName
-Add-Option '--sign-on-missing-tool' $SignOnMissingTool
-Add-Option '--sign-on-failure' $SignOnFailure
-Add-Option '--sign-timestamp-url' $SignTimestampUrl
-Add-Option '--sign-description' $SignDescription
-Add-Option '--sign-url' $SignUrl
-Add-Option '--sign-csp' $SignCsp
-Add-Option '--sign-key-container' $SignKeyContainer
+$hasExplicitSigningOverride = @(
+    'SignToolPath'
+    'SignThumbprint'
+    'SignSubjectName'
+    'SignOnMissingTool'
+    'SignOnFailure'
+    'SignTimestampUrl'
+    'SignDescription'
+    'SignUrl'
+    'SignCsp'
+    'SignKeyContainer'
+) | Where-Object { Has-BoundNonEmptyOption $_ } | Select-Object -First 1
+$enableSigning = $SignInstaller -or $hasExplicitSigningOverride
+
+Add-Flag '--sign' $enableSigning
+
+if ($enableSigning) {
+    Add-Option '--sign-tool-path' $SignToolPath
+    Add-Option '--sign-subject-name' $SignSubjectName
+    Add-Option '--sign-on-missing-tool' $SignOnMissingTool
+    Add-Option '--sign-on-failure' $SignOnFailure
+    Add-Option '--sign-timestamp-url' $SignTimestampUrl
+    Add-Option '--sign-description' $SignDescription
+    Add-Option '--sign-url' $SignUrl
+    Add-Option '--sign-csp' $SignCsp
+    Add-Option '--sign-key-container' $SignKeyContainer
+}
 
 if ($SignInstaller) {
     $resolvedSignThumbprint = Resolve-DefaultSignThumbprint -RepoRoot $repoRoot -ExplicitThumbprint $SignThumbprint -UseTestimoXFallback $UseTestimoXSignThumbprintFallback
@@ -126,7 +164,9 @@ if ($SignInstaller) {
         $SignThumbprint = $resolvedSignThumbprint
     }
 }
-Add-Option '--sign-thumbprint' $SignThumbprint
+if ($enableSigning) {
+    Add-Option '--sign-thumbprint' $SignThumbprint
+}
 
 if ($SkipTests) {
     Add-Option '--workspace-disable-feature' 'tests'
