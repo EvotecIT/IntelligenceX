@@ -206,7 +206,6 @@ internal sealed partial class ChatServiceSession {
             Email = string.IsNullOrWhiteSpace(snapshot.Email) ? null : snapshot.Email.Trim(),
             PlanType = string.IsNullOrWhiteSpace(snapshot.PlanType) ? null : snapshot.PlanType.Trim(),
             RateLimit = MapNativeRateLimit(snapshot.RateLimit),
-            CodeReviewRateLimit = MapNativeRateLimit(snapshot.CodeReviewRateLimit),
             Credits = MapNativeCredits(snapshot.Credits),
             RetrievedAtUtc = retrievedAtUtc.Kind == DateTimeKind.Utc ? retrievedAtUtc : retrievedAtUtc.ToUniversalTime(),
             Source = normalizedSource

@@ -258,7 +258,6 @@ internal sealed partial class WebApi {
         public string? Email { get; set; }
         public string? AccountId { get; set; }
         public UsageRateLimit? RateLimit { get; set; }
-        public UsageRateLimit? CodeReviewRateLimit { get; set; }
         public UsageCredits? Credits { get; set; }
 
         public static UsageSnapshot From(ChatGptUsageSnapshot snapshot) {
@@ -267,7 +266,6 @@ internal sealed partial class WebApi {
                 Email = snapshot.Email,
                 AccountId = snapshot.AccountId,
                 RateLimit = UsageRateLimit.From(snapshot.RateLimit),
-                CodeReviewRateLimit = UsageRateLimit.From(snapshot.CodeReviewRateLimit),
                 Credits = UsageCredits.From(snapshot.Credits)
             };
         }

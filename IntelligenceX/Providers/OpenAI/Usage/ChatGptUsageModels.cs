@@ -13,7 +13,7 @@ public sealed class ChatGptUsageSnapshot {
     /// Initializes a new usage snapshot.
     /// </summary>
     public ChatGptUsageSnapshot(string? userId, string? accountId, string? email, string? planType,
-        ChatGptRateLimitStatus? rateLimit, ChatGptRateLimitStatus? codeReviewRateLimit,
+        ChatGptRateLimitStatus? rateLimit,
         IReadOnlyList<ChatGptNamedRateLimit>? additionalRateLimits,
         ChatGptCreditsSnapshot? credits, JsonObject raw, JsonObject? additional) {
         UserId = userId;
@@ -21,7 +21,6 @@ public sealed class ChatGptUsageSnapshot {
         Email = email;
         PlanType = planType;
         RateLimit = rateLimit;
-        CodeReviewRateLimit = codeReviewRateLimit;
         AdditionalRateLimits = additionalRateLimits ?? Array.Empty<ChatGptNamedRateLimit>();
         Credits = credits;
         Raw = raw;
@@ -48,10 +47,6 @@ public sealed class ChatGptUsageSnapshot {
     /// Gets the main rate limit status.
     /// </summary>
     public ChatGptRateLimitStatus? RateLimit { get; }
-    /// <summary>
-    /// Gets the code review rate limit status.
-    /// </summary>
-    public ChatGptRateLimitStatus? CodeReviewRateLimit { get; }
     /// <summary>
     /// Gets the credits snapshot.
     /// </summary>
@@ -80,13 +75,12 @@ public sealed class ChatGptUsageSnapshot {
         var email = obj.GetString("email");
         var planType = obj.GetString("plan_type") ?? obj.GetString("planType");
         var rateLimit = ChatGptRateLimitStatus.FromJson(obj.GetObject("rate_limit") ?? obj.GetObject("rateLimit"));
-        var codeReview = ChatGptRateLimitStatus.FromJson(obj.GetObject("code_review_rate_limit") ?? obj.GetObject("codeReviewRateLimit"));
         var additionalRateLimits = ReadAdditionalRateLimits(obj.GetArray("additional_rate_limits") ?? obj.GetArray("additionalRateLimits"));
         var credits = ChatGptCreditsSnapshot.FromJson(obj.GetObject("credits"));
         var additional = obj.ExtractAdditional(
             "user_id", "userId", "account_id", "accountId", "email", "plan_type", "planType",
-            "rate_limit", "rateLimit", "code_review_rate_limit", "codeReviewRateLimit", "additional_rate_limits", "additionalRateLimits", "credits", "promo");
-        return new ChatGptUsageSnapshot(userId, accountId, email, planType, rateLimit, codeReview, additionalRateLimits, credits, obj, additional);
+            "rate_limit", "rateLimit", "additional_rate_limits", "additionalRateLimits", "credits", "promo");
+        return new ChatGptUsageSnapshot(userId, accountId, email, planType, rateLimit, additionalRateLimits, credits, obj, additional);
     }
 
     /// <summary>
@@ -111,9 +105,6 @@ public sealed class ChatGptUsageSnapshot {
         }
         if (RateLimit is not null) {
             obj.Add("rate_limit", RateLimit.ToJson());
-        }
-        if (CodeReviewRateLimit is not null) {
-            obj.Add("code_review_rate_limit", CodeReviewRateLimit.ToJson());
         }
         if (AdditionalRateLimits.Count > 0) {
             var array = new JsonArray();

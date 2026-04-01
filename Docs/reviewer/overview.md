@@ -168,4 +168,3 @@ By default:
 ## Usage and credits line
 
 Enable `reviewUsageSummary` to append limits/credits. OpenAI uses the ChatGPT account snapshot, while Claude uses the live Anthropic provider-limit snapshot. See [Configuration](/docs/reviewer/configuration/).
-When a code-review rate-limit window is present, its label is explicitly prefixed with `code review` (for example, `code review weekly limit`) so it is distinct from general limits.

@@ -228,8 +228,6 @@ internal static partial class Program {
             + "\"plan_type\":\"pro\","
             + "\"rate_limit\":{\"allowed\":true,\"limit_reached\":false,"
             + "\"primary_window\":{\"used_percent\":12.5,\"limit_window_seconds\":18000,\"reset_after_seconds\":120}},"
-            + "\"code_review_rate_limit\":{\"allowed\":true,\"limit_reached\":false,"
-            + "\"primary_window\":{\"used_percent\":25.0,\"limit_window_seconds\":18000,\"reset_after_seconds\":120}},"
             + "\"credits\":{\"has_credits\":true,\"unlimited\":false,\"balance\":4.52}"
             + "}";
         var obj = JsonLite.Parse(json).AsObject();
@@ -247,7 +245,6 @@ internal static partial class Program {
 
         AssertContainsText(comment, "### Model & Usage 🤖", "usage integration section");
         AssertContainsText(comment, "- Usage: 5h limit: 87.5% remaining", "usage integration 5h");
-        AssertContainsText(comment, "code review 5h limit: 75% remaining", "usage integration code review 5h");
     }
 
     private static void TestReviewUsageSummaryLine() {
@@ -255,8 +252,6 @@ internal static partial class Program {
             + "\"plan_type\":\"pro\","
             + "\"rate_limit\":{\"allowed\":true,\"limit_reached\":false,"
             + "\"primary_window\":{\"used_percent\":12.5,\"limit_window_seconds\":18000,\"reset_after_seconds\":120}},"
-            + "\"code_review_rate_limit\":{\"allowed\":true,\"limit_reached\":false,"
-            + "\"primary_window\":{\"used_percent\":25.0,\"limit_window_seconds\":18000,\"reset_after_seconds\":120}},"
             + "\"credits\":{\"has_credits\":true,\"unlimited\":false,\"balance\":4.52}"
             + "}";
         var obj = JsonLite.Parse(json).AsObject();
@@ -268,73 +263,43 @@ internal static partial class Program {
         AssertEqual(false, line.IndexOf("\n", StringComparison.Ordinal) >= 0, "usage summary is single line");
     }
 
-    private static void TestReviewUsageSummaryDisambiguatesCodeReviewWeekly() {
+    private static void TestReviewUsageSummaryIncludesWeeklyWindow() {
         const string json = "{"
             + "\"plan_type\":\"pro\","
             + "\"rate_limit\":{\"allowed\":true,\"limit_reached\":false,"
             + "\"primary_window\":{\"used_percent\":20.0,\"limit_window_seconds\":18000,\"reset_after_seconds\":120},"
             + "\"secondary_window\":{\"used_percent\":61.0,\"limit_window_seconds\":604800,\"reset_after_seconds\":120}},"
-            + "\"code_review_rate_limit\":{\"allowed\":true,\"limit_reached\":false,"
-            + "\"primary_window\":{\"used_percent\":26.0,\"limit_window_seconds\":604800,\"reset_after_seconds\":120}},"
             + "\"credits\":{\"has_credits\":true,\"unlimited\":false,\"balance\":4.52}"
             + "}";
         var obj = JsonLite.Parse(json).AsObject();
-        AssertNotNull(obj, "usage summary disambiguation json");
+        AssertNotNull(obj, "usage summary weekly json");
         var snapshot = ChatGptUsageSnapshot.FromJson(obj!);
         var line = CallFormatUsageSummary(snapshot);
         var parts = ParseUsageSummaryParts(line);
-        AssertEqual(4, parts.Count, "usage part count weekly");
+        AssertEqual(3, parts.Count, "usage part count weekly");
+        AssertContains(parts, "5h limit: 80% remaining", "primary label");
         AssertContains(parts, "weekly limit: 39% remaining", "weekly label");
-        AssertContains(parts, "code review weekly limit: 74% remaining", "code review weekly label");
-        AssertEqual(false, ContainsUsageSummaryPart(parts, "weekly limit: 74% remaining"), "plain duplicate weekly label removed");
-        AssertEqual(false, ContainsUsageSummaryPart(parts, "weekly limit (secondary): 74% remaining"), "plain secondary weekly label removed");
     }
 
-    private static void TestReviewUsageSummaryDisambiguatesCodeReviewWeeklySecondary() {
+    private static void TestReviewUsageSummaryUsesSecondaryFallbackLabel() {
         const string json = "{"
             + "\"plan_type\":\"pro\","
             + "\"rate_limit\":{\"allowed\":true,\"limit_reached\":false,"
-            + "\"secondary_window\":{\"used_percent\":61.0,\"limit_window_seconds\":604800,\"reset_after_seconds\":120}},"
-            + "\"code_review_rate_limit\":{\"allowed\":true,\"limit_reached\":false,"
-            + "\"secondary_window\":{\"used_percent\":26.0,\"limit_window_seconds\":604800,\"reset_after_seconds\":120}},"
+            + "\"secondary_window\":{\"used_percent\":26.0,\"reset_after_seconds\":120}},"
             + "\"credits\":{\"has_credits\":true,\"unlimited\":false,\"balance\":4.52}"
             + "}";
         var obj = JsonLite.Parse(json).AsObject();
-        AssertNotNull(obj, "usage summary secondary disambiguation json");
+        AssertNotNull(obj, "usage summary secondary fallback json");
         var snapshot = ChatGptUsageSnapshot.FromJson(obj!);
         var line = CallFormatUsageSummary(snapshot);
         var parts = ParseUsageSummaryParts(line);
-        AssertEqual(3, parts.Count, "usage part count weekly secondary");
-        AssertContains(parts, "weekly limit: 39% remaining", "weekly label secondary");
-        AssertContains(parts, "code review weekly limit (secondary): 74% remaining", "code review weekly secondary label");
-        AssertEqual(false, ContainsUsageSummaryPart(parts, "weekly limit (secondary): 74% remaining"), "plain weekly secondary label removed");
-        AssertEqual(false, ContainsUsageSummaryPart(parts, "weekly limit: 74% remaining"), "plain weekly label removed secondary");
-    }
-
-    private static void TestReviewUsageSummaryPrefixesNonWeeklyCodeReview() {
-        const string json = "{"
-            + "\"plan_type\":\"pro\","
-            + "\"rate_limit\":{\"allowed\":true,\"limit_reached\":false,"
-            + "\"primary_window\":{\"used_percent\":10.0,\"limit_window_seconds\":18000,\"reset_after_seconds\":120}},"
-            + "\"code_review_rate_limit\":{\"allowed\":true,\"limit_reached\":false,"
-            + "\"primary_window\":{\"used_percent\":25.0,\"limit_window_seconds\":18000,\"reset_after_seconds\":120}}"
-            + "}";
-        var obj = JsonLite.Parse(json).AsObject();
-        AssertNotNull(obj, "usage summary non-weekly disambiguation json");
-        var snapshot = ChatGptUsageSnapshot.FromJson(obj!);
-        var line = CallFormatUsageSummary(snapshot);
-        var parts = ParseUsageSummaryParts(line);
-        AssertEqual(2, parts.Count, "usage part count non-weekly");
-        AssertContains(parts, "5h limit: 90% remaining", "general non-weekly label");
-        AssertContains(parts, "code review 5h limit: 75% remaining", "code review non-weekly label");
-        AssertEqual(false, ContainsUsageSummaryPart(parts, "5h limit: 75% remaining"), "plain non-weekly code review label removed");
+        AssertEqual(2, parts.Count, "usage part count secondary fallback");
+        AssertContains(parts, "rate limit (secondary): 74% remaining", "secondary fallback label");
     }
 
     private static void TestReviewUsageBudgetGuardBlocksWhenCreditsAndWeeklyExhausted() {
         const string json = "{"
             + "\"rate_limit\":{\"allowed\":false,\"limit_reached\":true,"
-            + "\"secondary_window\":{\"used_percent\":100.0,\"limit_window_seconds\":604800,\"reset_after_seconds\":600}},"
-            + "\"code_review_rate_limit\":{\"allowed\":false,\"limit_reached\":true,"
             + "\"secondary_window\":{\"used_percent\":100.0,\"limit_window_seconds\":604800,\"reset_after_seconds\":600}},"
             + "\"credits\":{\"has_credits\":false,\"unlimited\":false,\"balance\":0}"
             + "}";

@@ -274,7 +274,6 @@ public sealed partial class ProviderLimitSnapshotService {
         var windows = new List<ProviderLimitWindow>();
         AddOpenAiStatusWindows(windows, "global", "Global", snapshot.RateLimit);
         AddOpenAiAdditionalRateLimitWindows(windows, snapshot.AdditionalRateLimits);
-        AddOpenAiStatusWindows(windows, "code-review", "Code review", snapshot.CodeReviewRateLimit);
 
         var summaryParts = new List<string>();
         if (snapshot.Credits is not null) {

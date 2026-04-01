@@ -436,7 +436,6 @@ internal static partial class Program {
         const string json = "{"
             + "\"plan_type\":\"pro\","
             + "\"rate_limit\":{\"allowed\":true,\"limit_reached\":false,\"primary_window\":{\"used_percent\":12.5,\"limit_window_seconds\":18000,\"reset_after_seconds\":120}},"
-            + "\"code_review_rate_limit\":{\"allowed\":true,\"limit_reached\":false},"
             + "\"additional_rate_limits\":[{\"limit_name\":\"GPT-5.3-Codex-Spark\",\"metered_feature\":\"codex_bengalfox\",\"rate_limit\":{\"allowed\":true,\"limit_reached\":false,\"secondary_window\":{\"used_percent\":44,\"limit_window_seconds\":604800,\"reset_after_seconds\":3600}}}],"
             + "\"credits\":{\"has_credits\":true,\"unlimited\":false,\"balance\":4.52,\"approx_local_messages\":[1,6],\"approx_cloud_messages\":[3,9]}"
             + "}";
@@ -448,7 +447,6 @@ internal static partial class Program {
         AssertEqual(true, snapshot.RateLimit!.Allowed, "rate allowed");
         AssertNotNull(snapshot.RateLimit.PrimaryWindow, "primary window");
         AssertEqual(18000L, snapshot.RateLimit.PrimaryWindow!.LimitWindowSeconds, "window seconds");
-        AssertNotNull(snapshot.CodeReviewRateLimit, "code review rate limit");
         AssertEqual(1, snapshot.AdditionalRateLimits.Count, "additional rate limits count");
         AssertEqual("GPT-5.3-Codex-Spark", snapshot.AdditionalRateLimits[0].LimitName, "additional rate limit name");
         AssertNotNull(snapshot.AdditionalRateLimits[0].RateLimit, "additional rate limit payload");
@@ -457,6 +455,24 @@ internal static partial class Program {
         AssertNotNull(snapshot.Credits, "credits");
         AssertEqual(true, snapshot.Credits!.HasCredits, "credits has");
         AssertEqual(9, snapshot.Credits.ApproxCloudMessages![1], "approx cloud messages");
+    }
+
+    private static void TestChatGptUsageParseIgnoresLegacyCodeReviewRateLimit() {
+        const string json = "{"
+            + "\"plan_type\":\"pro\","
+            + "\"rate_limit\":{\"allowed\":true,\"limit_reached\":false,\"primary_window\":{\"used_percent\":12.5,\"limit_window_seconds\":18000,\"reset_after_seconds\":120}},"
+            + "\"code_review_rate_limit\":{\"allowed\":false,\"limit_reached\":true,\"primary_window\":{\"used_percent\":100,\"limit_window_seconds\":18000,\"reset_after_seconds\":900}}"
+            + "}";
+        var obj = JsonLite.Parse(json).AsObject();
+        AssertNotNull(obj, "legacy usage json");
+        var snapshot = ChatGptUsageSnapshot.FromJson(obj!);
+        AssertEqual("pro", snapshot.PlanType, "legacy plan type");
+        AssertNotNull(snapshot.RateLimit, "legacy primary rate limit");
+        AssertEqual(0, snapshot.AdditionalRateLimits.Count, "legacy code review limit does not become additional rate limit");
+        AssertNotNull(snapshot.Additional, "legacy additional payload");
+        AssertNotNull(snapshot.Additional!.GetObject("code_review_rate_limit"), "legacy code review limit preserved as additional field");
+        var serialized = snapshot.ToJson();
+        AssertNotNull(serialized.GetObject("code_review_rate_limit"), "legacy code review limit preserved in raw serialization");
     }
 
     private static void TestChatGptDailyTokenBreakdownParse() {

@@ -82,8 +82,7 @@ public sealed partial class MainWindow {
             usageSnapshotSource = snapshot.UsageSnapshotSource ?? string.Empty,
             creditsHasCredits = snapshot.CreditsHasCredits,
             creditsUnlimited = snapshot.CreditsUnlimited,
-            creditsBalance = snapshot.CreditsBalance,
-            codeReviewLimitReached = snapshot.CodeReviewLimitReached
+            creditsBalance = snapshot.CreditsBalance
         };
     }
 }

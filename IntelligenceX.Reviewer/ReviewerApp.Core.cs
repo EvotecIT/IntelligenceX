@@ -7,7 +7,6 @@ public static partial class ReviewerApp {
     private const string ThreadReplyMarker = "<!-- intelligencex:thread-reply -->";
     private const string UsageSummaryPrefix = "Usage: ";
     private const string UsageSummarySeparator = " | ";
-    private const string CodeReviewPrefix = "code review ";
     private const string SecondaryWindowSuffix = " (secondary)";
     private static int _integrationForbiddenHintLogged;
     private static readonly HashSet<string> BinaryExtensions = new(StringComparer.OrdinalIgnoreCase) {

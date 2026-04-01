@@ -345,5 +345,4 @@ internal sealed class ChatAccountUsageState {
     public bool? CreditsHasCredits { get; set; }
     public bool? CreditsUnlimited { get; set; }
     public double? CreditsBalance { get; set; }
-    public bool? CodeReviewLimitReached { get; set; }
 }

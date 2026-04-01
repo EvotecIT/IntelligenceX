@@ -30,10 +30,6 @@ public sealed class LoginStatusMessageSerializationTests {
                         ResetAtUnixSeconds = 1771527600
                     }
                 },
-                CodeReviewRateLimit = new NativeRateLimitStatusDto {
-                    Allowed = true,
-                    LimitReached = true
-                },
                 Credits = new NativeCreditsSnapshotDto {
                     HasCredits = true,
                     Unlimited = false,

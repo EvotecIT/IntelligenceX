@@ -133,10 +133,6 @@ public sealed record NativeUsageSnapshotDto {
     /// </summary>
     public NativeRateLimitStatusDto? RateLimit { get; init; }
     /// <summary>
-    /// Code-review specific rate-limit status.
-    /// </summary>
-    public NativeRateLimitStatusDto? CodeReviewRateLimit { get; init; }
-    /// <summary>
     /// Credits snapshot when exposed by provider endpoints.
     /// </summary>
     public NativeCreditsSnapshotDto? Credits { get; init; }

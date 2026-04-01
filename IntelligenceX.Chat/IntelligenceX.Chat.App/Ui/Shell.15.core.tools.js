@@ -2710,9 +2710,6 @@
           if (usage.rateLimitReached === true) {
             usageMetaParts.push("limit reached");
           }
-          if (usage.codeReviewLimitReached === true) {
-            usageMetaParts.push("code review limit reached");
-          }
           if (usage.creditsUnlimited === true) {
             usageMetaParts.push("credits unlimited");
           } else if (typeof usage.creditsBalance === "number" && isFinite(usage.creditsBalance)) {

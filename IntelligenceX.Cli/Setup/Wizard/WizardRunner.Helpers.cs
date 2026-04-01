@@ -333,7 +333,6 @@ internal static partial class WizardRunner {
         }
 
         AddRateLimitRows(table, "Rate limit", snapshot.RateLimit);
-        AddRateLimitRows(table, "Code review limit", snapshot.CodeReviewRateLimit);
 
         if (snapshot.Credits is not null) {
             table.AddRow("Credits (has)", snapshot.Credits.HasCredits.ToString());
