@@ -200,10 +200,8 @@ internal static partial class PluginFolderToolPackLoader {
             return false;
         }
 
-        string? loadedLocation;
-        try {
-            loadedLocation = NormalizePath(loadedAssembly.Location);
-        } catch {
+        var loadedLocation = TryGetLoadedAssemblyPath(loadedAssembly);
+        if (string.IsNullOrWhiteSpace(loadedLocation)) {
             return false;
         }
 
@@ -255,6 +253,18 @@ internal static partial class PluginFolderToolPackLoader {
         }
 
         return true;
+    }
+
+    private static string? TryGetLoadedAssemblyPath(Assembly loadedAssembly) {
+        ArgumentNullException.ThrowIfNull(loadedAssembly);
+
+        try {
+            return NormalizePath(loadedAssembly.Location);
+        } catch (NotSupportedException) {
+            return null;
+        } catch {
+            return null;
+        }
     }
 
     private static IReadOnlyList<Type> ResolveCandidatePackTypes(

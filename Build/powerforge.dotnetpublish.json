@@ -92,7 +92,15 @@
         ],
         "OutputPath": "Artifacts/IntelligenceX.Tray/{rid}/{framework}/{style}",
         "Zip": true,
-        "ZipNameTemplate": "IntelligenceX.Tray-{framework}-{rid}-{style}.zip"
+        "ZipNameTemplate": "IntelligenceX.Tray-{framework}-{rid}-{style}.zip",
+        "StyleOverrides": {
+          "PortableCompat": {
+            "MsBuildProperties": {
+              "PublishSingleFile": "false",
+              "WindowsAppSDKSelfContained": "true"
+            }
+          }
+        }
       }
     },
     {

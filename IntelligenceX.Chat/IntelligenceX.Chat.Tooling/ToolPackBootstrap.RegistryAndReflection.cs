@@ -1026,7 +1026,7 @@ public static partial class ToolPackBootstrap {
                 continue;
             }
 
-            var candidate = NormalizeDiscoveryPath(loadedAssembly.Location);
+            var candidate = NormalizeDiscoveryPath(TryGetAssemblyFilePath(loadedAssembly));
             if (candidate.Length == 0) {
                 continue;
             }
@@ -1486,8 +1486,14 @@ public static partial class ToolPackBootstrap {
             }
         }
 
-        var bootstrapAssemblyPath = bootstrapAssembly.Location;
+        var bootstrapAssemblyPath = TryGetAssemblyFilePath(bootstrapAssembly);
         if (string.IsNullOrWhiteSpace(bootstrapAssemblyPath)) {
+            var depsFileName = $"{bootstrapAssembly.GetName().Name}.deps.json";
+            var appContextDepsFile = Path.Combine(AppContext.BaseDirectory, depsFileName);
+            if (File.Exists(appContextDepsFile) && seen.Add(appContextDepsFile)) {
+                yield return appContextDepsFile;
+            }
+
             yield break;
         }
 
@@ -1593,7 +1599,7 @@ public static partial class ToolPackBootstrap {
             assemblyName,
             options,
             includeWorkspaceProjectOutputs,
-            typeof(ToolPackBootstrap).Assembly.Location,
+            TryGetAssemblyFilePath(typeof(ToolPackBootstrap).Assembly),
             out trustedAssemblyPath);
     }
 
@@ -1601,7 +1607,7 @@ public static partial class ToolPackBootstrap {
         AssemblyName assemblyName,
         ToolPackBootstrapOptions options,
         bool includeWorkspaceProjectOutputs,
-        string bootstrapAssemblyPath,
+        string? bootstrapAssemblyPath,
         out string trustedAssemblyPath) {
         trustedAssemblyPath = string.Empty;
         var assemblyNameValue = (assemblyName.Name ?? string.Empty).Trim();
@@ -1944,7 +1950,7 @@ public static partial class ToolPackBootstrap {
         var normalizedAssemblyPath = NormalizeLoadedAssemblyPath(assemblyPath);
         foreach (var loadedAssembly in AppDomain.CurrentDomain.GetAssemblies()) {
             if (!string.IsNullOrWhiteSpace(normalizedAssemblyPath)) {
-                var loadedAssemblyPath = NormalizeLoadedAssemblyPath(loadedAssembly.Location);
+                var loadedAssemblyPath = NormalizeLoadedAssemblyPath(TryGetAssemblyFilePath(loadedAssembly));
                 if (!string.IsNullOrWhiteSpace(loadedAssemblyPath)
                     && string.Equals(loadedAssemblyPath, normalizedAssemblyPath, StringComparison.OrdinalIgnoreCase)) {
                     return loadedAssembly;
@@ -1969,6 +1975,42 @@ public static partial class ToolPackBootstrap {
         } catch (Exception) {
             return null;
         }
+    }
+
+    private static string? TryGetAssemblyFilePath(Assembly assembly) {
+        ArgumentNullException.ThrowIfNull(assembly);
+
+        try {
+            var location = assembly.Location;
+            if (!string.IsNullOrWhiteSpace(location)) {
+                return location;
+            }
+        } catch (NotSupportedException) {
+            // Single-file apps can throw when probing Assembly.Location.
+        }
+
+        var assemblyName = assembly.GetName().Name;
+        if (!string.IsNullOrWhiteSpace(assemblyName)) {
+            var candidateDll = Path.Combine(AppContext.BaseDirectory, $"{assemblyName}.dll");
+            if (File.Exists(candidateDll)) {
+                return candidateDll;
+            }
+
+            var candidateExe = Path.Combine(AppContext.BaseDirectory, $"{assemblyName}.exe");
+            if (File.Exists(candidateExe)) {
+                return candidateExe;
+            }
+        }
+
+        return null;
+    }
+
+    internal static string? TryGetAssemblyFilePathForTesting(Assembly assembly) {
+        return TryGetAssemblyFilePath(assembly);
+    }
+
+    internal static bool TryResolveLoadedAssemblyLocationForTesting(AssemblyName assemblyName, out string location) {
+        return TryResolveLoadedAssemblyLocation(assemblyName, out location);
     }
 
     private static IReadOnlyList<string> ResolveBuiltInToolAssemblyProbePaths(ToolPackBootstrapOptions options, Assembly bootstrapAssembly) {
@@ -2008,7 +2050,7 @@ public static partial class ToolPackBootstrap {
             }
         }
 
-        var bootstrapAssemblyPath = bootstrapAssembly.Location;
+        var bootstrapAssemblyPath = TryGetAssemblyFilePath(bootstrapAssembly);
         if (!string.IsNullOrWhiteSpace(bootstrapAssemblyPath)) {
             AddProbeRoot(Path.GetDirectoryName(bootstrapAssemblyPath));
         }

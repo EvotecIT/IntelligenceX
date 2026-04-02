@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Reflection.Emit;
 using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Chat.Abstractions.Policy;
@@ -251,6 +252,28 @@ public sealed class ToolPackBootstrapMetadataTests {
         } finally {
             Environment.SetEnvironmentVariable("INTELLIGENCEX_BUILTIN_TOOL_PROBE_PATHS", previousValue);
         }
+    }
+
+    [Fact]
+    public void TryGetAssemblyFilePathForTesting_DoesNotCollapseUnknownAssembliesToProcessPath() {
+        var assembly = AssemblyBuilder.DefineDynamicAssembly(
+            new AssemblyName("ToolPackBootstrapSingleFileFallbackSynthetic"),
+            AssemblyBuilderAccess.Run);
+
+        var resolved = ToolPackBootstrap.TryGetAssemblyFilePathForTesting(assembly);
+
+        Assert.Null(resolved);
+    }
+
+    [Fact]
+    public void TryResolveLoadedAssemblyLocationForTesting_IgnoresLoadedAssembliesWithoutStableFilePaths() {
+        var assemblyName = new AssemblyName("ToolPackBootstrapLoadedAssemblyPathSynthetic");
+        AssemblyBuilder.DefineDynamicAssembly(assemblyName, AssemblyBuilderAccess.Run);
+
+        var resolved = ToolPackBootstrap.TryResolveLoadedAssemblyLocationForTesting(assemblyName, out var location);
+
+        Assert.False(resolved);
+        Assert.Equal(string.Empty, location);
     }
 
     [Fact]

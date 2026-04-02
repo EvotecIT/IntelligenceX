@@ -55,21 +55,36 @@
   </ItemGroup>
 
   <PropertyGroup>
-    <ChatServiceTfm>net10.0-windows</ChatServiceTfm>
-    <ChatServiceBin>$(MSBuildThisFileDirectory)..\\IntelligenceX.Chat.Service\\bin\\$(Configuration)\\$(ChatServiceTfm)\\</ChatServiceBin>
+    <ChatServiceDefaultTfm>net10.0-windows</ChatServiceDefaultTfm>
+    <ChatServiceResolvedTfm Condition="'$(ChatServiceTfm)' != ''">$(ChatServiceTfm)</ChatServiceResolvedTfm>
+    <ChatServiceResolvedTfm Condition="'$(ChatServiceResolvedTfm)' == ''">$(ChatServiceDefaultTfm)</ChatServiceResolvedTfm>
+    <ChatServiceBin>$(MSBuildThisFileDirectory)..\\IntelligenceX.Chat.Service\\bin\\$(Configuration)\\$(ChatServiceResolvedTfm)\\</ChatServiceBin>
+    <ChatServiceExpectedAssembly>$(ChatServiceBin)IntelligenceX.Chat.Service.dll</ChatServiceExpectedAssembly>
     <ChatAppPublishDir>$(MSBuildProjectDirectory)\\bin\\$(Configuration)\\$(TargetFramework)\\$(RuntimeIdentifier)\\publish\\</ChatAppPublishDir>
     <ChatServicePublishOutDir>$(ChatAppPublishDir)service\\</ChatServicePublishOutDir>
   </PropertyGroup>
 
-  <Target Name="BuildChatServiceSidecar" BeforeTargets="Build"
+  <Target Name="ValidateChatServiceSidecarInputs" BeforeTargets="BuildChatServiceSidecar"
+          Condition="'$(SkipChatServiceSidecarBuild)' != 'true' AND Exists('$(MSBuildThisFileDirectory)..\\IntelligenceX.Chat.Service\\IntelligenceX.Chat.Service.csproj')">
+    <Error Condition="'$(ChatServiceResolvedTfm)' == ''"
+           Text="Chat service sidecar target framework could not be resolved. Set ChatServiceTfm explicitly or keep the default ChatServiceDefaultTfm." />
+  </Target>
+
+  <Target Name="BuildChatServiceSidecar" BeforeTargets="Build;Publish"
           Condition="'$(SkipChatServiceSidecarBuild)' != 'true' AND Exists('$(MSBuildThisFileDirectory)..\\IntelligenceX.Chat.Service\\IntelligenceX.Chat.Service.csproj')">
     <MSBuild Projects="$(MSBuildThisFileDirectory)..\\IntelligenceX.Chat.Service\\IntelligenceX.Chat.Service.csproj"
              Targets="Restore;Build"
-             Properties="Configuration=$(Configuration);RuntimeIdentifier=;SelfContained=false" />
+             Properties="Configuration=$(Configuration);TargetFramework=$(ChatServiceResolvedTfm);RuntimeIdentifier=;SelfContained=false;NoBuild=false" />
+  </Target>
+
+  <Target Name="ValidateChatServiceSidecarOutput" AfterTargets="BuildChatServiceSidecar"
+          Condition="'$(SkipChatServiceSidecarBuild)' != 'true' AND Exists('$(MSBuildThisFileDirectory)..\\IntelligenceX.Chat.Service\\IntelligenceX.Chat.Service.csproj')">
+    <Error Condition="!Exists('$(ChatServiceExpectedAssembly)')"
+           Text="Chat service sidecar build did not produce the expected output for '$(ChatServiceResolvedTfm)' at '$(ChatServiceExpectedAssembly)'." />
   </Target>
 
   <Target Name="CopyChatServiceSidecar" AfterTargets="Build"
-          Condition="Exists('$(ChatServiceBin)IntelligenceX.Chat.Service.dll')">
+          Condition="Exists('$(ChatServiceExpectedAssembly)')">
     <ItemGroup>
       <_ChatServiceFiles Include="$(ChatServiceBin)**\\*.*" />
       <_ChatServiceFiles Remove="@(_ChatServiceFiles)" Condition="!Exists('%(Identity)')" />
@@ -89,7 +104,7 @@
   </Target>
 
   <Target Name="CopyChatServiceSidecarToPublish" AfterTargets="Publish"
-          Condition="Exists('$(ChatServiceBin)IntelligenceX.Chat.Service.dll') AND Exists('$(ChatAppPublishDir)')">
+          Condition="Exists('$(ChatServiceExpectedAssembly)') AND Exists('$(ChatAppPublishDir)')">
     <ItemGroup>
       <_ChatServiceFilesForPublish Include="$(ChatServiceBin)**\\*.*" />
       <_ChatServiceFilesForPublish Remove="@(_ChatServiceFilesForPublish)" Condition="!Exists('%(Identity)')" />
