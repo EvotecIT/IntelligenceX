@@ -70,11 +70,11 @@
            Text="Chat service sidecar target framework could not be resolved. Set ChatServiceTfm explicitly or keep the default ChatServiceDefaultTfm." />
   </Target>
 
-  <Target Name="BuildChatServiceSidecar" BeforeTargets="Build"
+  <Target Name="BuildChatServiceSidecar" BeforeTargets="Build;Publish"
           Condition="'$(SkipChatServiceSidecarBuild)' != 'true' AND Exists('$(MSBuildThisFileDirectory)..\\IntelligenceX.Chat.Service\\IntelligenceX.Chat.Service.csproj')">
     <MSBuild Projects="$(MSBuildThisFileDirectory)..\\IntelligenceX.Chat.Service\\IntelligenceX.Chat.Service.csproj"
              Targets="Restore;Build"
-             Properties="Configuration=$(Configuration);TargetFramework=$(ChatServiceResolvedTfm);RuntimeIdentifier=;SelfContained=false" />
+             Properties="Configuration=$(Configuration);TargetFramework=$(ChatServiceResolvedTfm);RuntimeIdentifier=;SelfContained=false;NoBuild=false" />
   </Target>
 
   <Target Name="ValidateChatServiceSidecarOutput" AfterTargets="BuildChatServiceSidecar"
