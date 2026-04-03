@@ -281,6 +281,42 @@ internal static partial class Program {
         AssertEqual(true, overlaps[0].SampleSharedStargazers.Contains("bob", StringComparer.OrdinalIgnoreCase), "github stargazer sample contains bob");
     }
 
+    private static void TestGitHubObservabilitySummaryKeepsFullRepositorySetForCorrelations() {
+        var repositories = new[] {
+            CreateObservedRepositoryTrend("Owner/Repo01", stars: 10, starDelta: 1),
+            CreateObservedRepositoryTrend("Owner/Repo02", stars: 20, starDelta: 2),
+            CreateObservedRepositoryTrend("Owner/Repo03", stars: 30, starDelta: 3),
+            CreateObservedRepositoryTrend("Owner/Repo04", stars: 40, starDelta: 4),
+            CreateObservedRepositoryTrend("Owner/Repo05", stars: 50, starDelta: 5),
+            CreateObservedRepositoryTrend("Owner/Repo06", stars: 60, starDelta: 6),
+            CreateObservedRepositoryTrend("Owner/Repo07", stars: 70, starDelta: 7)
+        };
+
+        var summary = new GitHubObservabilitySummaryData(
+            dbPath: @"C:\telemetry\usage.db",
+            enabledWatchCount: repositories.Length,
+            snapshotRepositoryCount: repositories.Length,
+            comparableRepositoryCount: repositories.Length,
+            totalStars: repositories.Sum(static repository => repository.Stars),
+            totalForks: repositories.Sum(static repository => repository.Forks),
+            totalWatchers: repositories.Sum(static repository => repository.Watchers),
+            positiveStarDelta: repositories.Sum(static repository => Math.Max(0, repository.StarDelta)),
+            positiveForkDelta: 0,
+            positiveWatcherDelta: 0,
+            changedRepositoryCount: repositories.Length,
+            latestCaptureAtUtc: new DateTimeOffset(2026, 03, 12, 10, 30, 0, TimeSpan.Zero),
+            repositories: repositories,
+            correlations: Array.Empty<GitHubObservedCorrelationData>());
+
+        AssertEqual(7, summary.Repositories.Count, "github observability summary keeps full repository set");
+        AssertEqual(6, summary.FeaturedRepositories.Count, "github observability summary still caps featured repositories");
+        AssertEqual("Owner/Repo07", summary.FeaturedRepositories[0].RepositoryNameWithOwner, "github observability summary ranks strongest featured repository first");
+        AssertEqual(
+            false,
+            summary.FeaturedRepositories.Any(static repository => string.Equals(repository.RepositoryNameWithOwner, "Owner/Repo01", StringComparison.Ordinal)),
+            "github observability summary omits lower-ranked repository from featured list");
+    }
+
     private static void TestGitHubObservabilitySummaryTracksStargazerCoverageStatus() {
         var summary = new GitHubObservabilitySummaryData(
             dbPath: @"C:\telemetry\usage.db",
@@ -362,6 +398,30 @@ internal static partial class Program {
         AssertEqual(false, summary.HasFreshForkCoverage, "github fork coverage fresh");
         AssertEqual(true, summary.HasStaleForkCoverage, "github fork coverage stale");
         AssertEqual("alice/IntelligenceX", summary.StrongestForkChange?.ForkRepositoryNameWithOwner, "github fork coverage strongest fork change");
+    }
+
+    private static GitHubObservedRepositoryTrendData CreateObservedRepositoryTrend(string repositoryNameWithOwner, int stars, int starDelta) {
+        return new GitHubObservedRepositoryTrendData(
+            repositoryNameWithOwner: repositoryNameWithOwner,
+            stars: stars,
+            forks: 10,
+            watchers: 5,
+            openIssues: 1,
+            starDelta: starDelta,
+            forkDelta: 0,
+            watcherDelta: 0,
+            openIssueDelta: 0,
+            currentCapturedAtUtc: new DateTimeOffset(2026, 03, 12, 10, 30, 0, TimeSpan.Zero),
+            previousCapturedAtUtc: new DateTimeOffset(2026, 03, 11, 10, 30, 0, TimeSpan.Zero),
+            trendPoints: new[] {
+                new GitHubObservedTrendPointData(new DateTime(2026, 03, 06), 0d, 0, 0, 0),
+                new GitHubObservedTrendPointData(new DateTime(2026, 03, 07), 0d, 0, 0, 0),
+                new GitHubObservedTrendPointData(new DateTime(2026, 03, 08), 0d, 0, 0, 0),
+                new GitHubObservedTrendPointData(new DateTime(2026, 03, 09), 0d, 0, 0, 0),
+                new GitHubObservedTrendPointData(new DateTime(2026, 03, 10), starDelta, starDelta, 0, 0),
+                new GitHubObservedTrendPointData(new DateTime(2026, 03, 11), starDelta, starDelta, 0, 0),
+                new GitHubObservedTrendPointData(new DateTime(2026, 03, 12), starDelta, starDelta, 0, 0)
+            });
     }
 
     private static void TestGitHubObservabilitySummaryBuildsStarCorrelations() {

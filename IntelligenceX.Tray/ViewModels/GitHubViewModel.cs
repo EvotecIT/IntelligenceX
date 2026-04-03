@@ -644,7 +644,7 @@ public sealed class GitHubViewModel : ViewModelBase {
         ApplyForkMomentumSummary(data);
 
         WatchedRepositories.Clear();
-        foreach (var repository in data.Repositories) {
+        foreach (var repository in data.FeaturedRepositories) {
             var slashIndex = repository.RepositoryNameWithOwner.IndexOf('/');
             var trendBars = BuildTrendBars(repository.TrendPoints);
             WatchedRepositories.Add(new GitHubWatchedRepositoryViewModel {

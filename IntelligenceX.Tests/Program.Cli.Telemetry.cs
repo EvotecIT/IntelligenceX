@@ -1,11 +1,13 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Threading.Tasks;
 #if !NET472
 using IntelligenceX.Cli.GitHub;
 using IntelligenceX.Cli.Telemetry;
 #endif
+using IntelligenceX.Telemetry.GitHub;
 using IntelligenceX.Telemetry.Usage;
 
 namespace IntelligenceX.Tests;
@@ -253,6 +255,52 @@ internal static partial class Program {
             AssertContainsText(listStdout, "\"stargazerLogin\":\"alice\"", "telemetry github sync stargazers list alice");
             AssertContainsText(listStdout, "\"stargazerLogin\":\"bob\"", "telemetry github sync stargazers list bob");
             AssertEqual(string.Empty, listStderr, "telemetry github sync stargazers list stderr");
+        } finally {
+            try {
+                if (Directory.Exists(temp)) {
+                    Directory.Delete(temp, recursive: true);
+                }
+            } catch {
+                // best-effort cleanup
+            }
+        }
+    }
+
+    private static void TestTelemetryGitHubWatchesSyncMarksEmptyForkAndStargazerCapturesFresh() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-cli-telemetry-github-sync-empty-captures-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        var dbPath = Path.Combine(temp, "usage.db");
+        const string repo = "EvotecIT/IntelligenceX";
+        const string capturedAtText = "2026-03-17T10:05:00Z";
+        try {
+            var (addExit, _, addStderr) = RunCliDispatchWithCapturedOutput(
+                new[] {
+                    "telemetry", "github", "watches", "add",
+                    "--db", dbPath,
+                    "--repo", repo
+                },
+                () => false,
+                _ => Task.FromResult(0));
+            AssertEqual(0, addExit, "telemetry github sync empty captures setup add exit");
+            AssertEqual(string.Empty, addStderr, "telemetry github sync empty captures setup add stderr");
+
+            var (syncExit, syncStdout, syncStderr) = RunGitHubTelemetrySyncWithCapturedOutput(
+                new[] { "--db", dbPath, "--captured-at", capturedAtText, "--forks", "--stargazers", "--json" },
+                _ => Task.FromResult(CreateGitHubRepositoryImpactSummary(130, 22, 18, 4)),
+                (_, _) => Task.FromResult<IReadOnlyList<GitHubRepositoryForkInsight>>(Array.Empty<GitHubRepositoryForkInsight>()),
+                (_, _) => Task.FromResult<IReadOnlyList<GitHubRepositoryStargazerRecord>>(Array.Empty<GitHubRepositoryStargazerRecord>()));
+
+            AssertEqual(0, syncExit, "telemetry github sync empty captures exit");
+            AssertContainsText(syncStdout, "\"forksIncluded\":true", "telemetry github sync empty captures forks included");
+            AssertContainsText(syncStdout, "\"stargazersIncluded\":true", "telemetry github sync empty captures stargazers included");
+            AssertContainsText(syncStdout, "\"recordedCount\":0", "telemetry github sync empty captures recorded zero");
+            AssertEqual(string.Empty, syncStderr, "telemetry github sync empty captures stderr");
+
+            using var forkStore = new SqliteGitHubRepositoryForkSnapshotStore(dbPath);
+            using var stargazerStore = new SqliteGitHubRepositoryStargazerSnapshotStore(dbPath);
+            var expectedCaptureAtUtc = DateTimeOffset.Parse(capturedAtText, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal);
+            AssertEqual(expectedCaptureAtUtc, forkStore.GetLatestCaptureAtUtcByParentRepository(repo), "telemetry github sync empty captures persists fork watermark");
+            AssertEqual(expectedCaptureAtUtc, stargazerStore.GetLatestCaptureAtUtcByRepository(repo), "telemetry github sync empty captures persists stargazer watermark");
         } finally {
             try {
                 if (Directory.Exists(temp)) {

@@ -68,14 +68,6 @@ internal sealed class GitHubObservabilitySummaryService {
             .Where(static delta => delta.PreviousCapturedAtUtc.HasValue)
             .ToArray();
 
-        var rankedRepositories = repositories
-            .OrderByDescending(static repository => repository.PreviousCapturedAtUtc.HasValue)
-            .ThenByDescending(static repository => repository.PreviousCapturedAtUtc.HasValue ? GetMomentumScore(repository) : 0d)
-            .ThenByDescending(static repository => repository.Stars)
-            .ThenByDescending(static repository => repository.Forks)
-            .ThenBy(static repository => repository.RepositoryNameWithOwner, StringComparer.OrdinalIgnoreCase)
-            .Take(6)
-            .ToArray();
         var correlations = BuildCorrelations(repositories);
         var starCorrelations = BuildStarCorrelations(repositories);
         var allForkSnapshots = forkSnapshotStore.GetAll();
@@ -143,7 +135,7 @@ internal sealed class GitHubObservabilitySummaryService {
                 delta.WatcherDelta != 0 ||
                 delta.OpenIssueDelta != 0),
             latestCaptureAtUtc: latestCaptureAtUtc,
-            repositories: rankedRepositories,
+            repositories: repositories,
             correlations: correlations,
             starCorrelations: starCorrelations,
             forkNetworkOverlaps: forkNetworkOverlaps,
@@ -760,6 +752,14 @@ internal sealed class GitHubObservabilitySummaryData {
     public int ChangedRepositoryCount { get; }
     public DateTimeOffset? LatestCaptureAtUtc { get; }
     public IReadOnlyList<GitHubObservedRepositoryTrendData> Repositories { get; }
+    public IReadOnlyList<GitHubObservedRepositoryTrendData> FeaturedRepositories => Repositories
+        .OrderByDescending(static repository => repository.PreviousCapturedAtUtc.HasValue)
+        .ThenByDescending(static repository => repository.PreviousCapturedAtUtc.HasValue ? ComputeRepositoryMomentumScore(repository) : 0d)
+        .ThenByDescending(static repository => repository.Stars)
+        .ThenByDescending(static repository => repository.Forks)
+        .ThenBy(static repository => repository.RepositoryNameWithOwner, StringComparer.OrdinalIgnoreCase)
+        .Take(6)
+        .ToArray();
     public IReadOnlyList<GitHubObservedCorrelationData> Correlations { get; }
     public IReadOnlyList<GitHubObservedStarCorrelationData> StarCorrelations { get; }
     public IReadOnlyList<GitHubObservedForkNetworkOverlapData> ForkNetworkOverlaps { get; }
@@ -828,6 +828,17 @@ internal sealed class GitHubObservabilitySummaryData {
         .ThenByDescending(static overlap => overlap.OverlapRatio)
         .ThenBy(static overlap => overlap.RepositoryANameWithOwner, StringComparer.OrdinalIgnoreCase)
         .FirstOrDefault();
+
+    private static double ComputeRepositoryMomentumScore(GitHubObservedRepositoryTrendData repository) {
+        if (!repository.PreviousCapturedAtUtc.HasValue) {
+            return 0d;
+        }
+
+        return Math.Abs(repository.StarDelta) * 5d
+               + Math.Abs(repository.ForkDelta) * 4d
+               + Math.Abs(repository.WatcherDelta) * 3d
+               + Math.Abs(repository.OpenIssueDelta);
+    }
 }
 
 /// <summary>

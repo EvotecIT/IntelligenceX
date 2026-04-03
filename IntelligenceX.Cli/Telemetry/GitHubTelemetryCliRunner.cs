@@ -300,6 +300,7 @@ internal static class GitHubTelemetryCliRunner {
                     recordedForkSnapshots.Add(forkSnapshot);
                 }
 
+                forkStore.MarkParentRepositoryCaptured(watch.RepositoryNameWithOwner, capturedAtUtc);
                 forkResults.Add((watch.RepositoryNameWithOwner, recordedForkSnapshots.ToArray()));
             }
 
@@ -318,6 +319,7 @@ internal static class GitHubTelemetryCliRunner {
                 recordedStargazerSnapshots.Add(stargazerSnapshot);
             }
 
+            stargazerStore.MarkRepositoryCaptured(watch.RepositoryNameWithOwner, capturedAtUtc);
             stargazerResults.Add((watch.RepositoryNameWithOwner, recordedStargazerSnapshots.ToArray()));
         }
 
