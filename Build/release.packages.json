@@ -1,0 +1,54 @@
+{
+  "$schema": "https://raw.githubusercontent.com/EvotecIT/PSPublishModule/main/Schemas/powerforge.release.schema.json",
+  "SchemaVersion": 1,
+  "WorkspaceValidation": {
+    "ConfigPath": "workspace.validation.json",
+    "Profile": "full-private"
+  },
+  "Outputs": {
+    "Staging": {
+      "RootPath": "../Artifacts/UploadReady",
+      "PackagesPath": "NuGet",
+      "MetadataPath": "Metadata",
+      "PackagesNameTemplate": "{PackageId}.{Version}{Extension}"
+    }
+  },
+  "Packages": {
+    "RootPath": "..",
+    "ExpectedVersion": "0.1.X",
+    "IncludeProjects": [
+      "IntelligenceX"
+    ],
+    "ExcludeDirectories": [
+      ".worktrees",
+      ".claude",
+      "Artifacts",
+      "Website",
+      "WebsiteArtifacts"
+    ],
+    "Configuration": "Release",
+    "StagingPath": "Artifacts/ProjectBuild",
+    "CleanStaging": true,
+    "PlanOutputPath": "Artifacts/ProjectBuild/project.build.plan.json",
+    "UpdateVersions": true,
+    "Build": true,
+    "PublishNuget": false,
+    "PublishGitHub": false,
+    "CreateReleaseZip": true,
+    "PublishSource": "https://api.nuget.org/v3/index.json",
+    "PublishApiKeyFilePath": "C:\\Support\\Important\\NugetOrgEvotec.txt",
+    "SkipDuplicate": true,
+    "PublishFailFast": true,
+    "GitHubAccessTokenFilePath": "C:\\Support\\Important\\GithubAPI.txt",
+    "GitHubUsername": "EvotecIT",
+    "GitHubRepositoryName": "IntelligenceX",
+    "GitHubReleaseMode": "Single",
+    "GitHubPrimaryProject": "IntelligenceX",
+    "GitHubTagTemplate": "{Repo}-packages-v{PrimaryVersion}",
+    "GitHubTagConflictPolicy": "Reuse",
+    "GitHubIsPreRelease": false,
+    "GitHubIncludeProjectNameInTag": false,
+    "GitHubGenerateReleaseNotes": true,
+    "GitHubReleaseName": "{Repo} packages {PrimaryVersion}"
+  }
+}

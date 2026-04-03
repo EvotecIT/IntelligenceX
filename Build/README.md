@@ -10,6 +10,7 @@ Use these as the main entrypoints:
   - repo-level release wrapper when you want workspace validation + package assets + portable chat bundle + MSI
   - now a thin compatibility wrapper over `Build-Project.ps1`
   - `Frontend app` stays on the unified `Build-Project.ps1` / PowerForge path and maps release intent to package / portable / installer outputs
+  - defaults to a release-facing `Artifacts\UploadReady\<release-id>` root with `NuGet`, `GitHub`, `Winget`, and metadata outputs
   - `Frontend host` is no longer silently rerouted through a fallback path; use the advanced helpers directly until the unified config models that release flow
 - `Build-Workspace.ps1`
   - thin compatibility wrapper over `powerforge workspace validate`
@@ -18,6 +19,10 @@ Use these as the main entrypoints:
   - also consumed by `Build-Project.ps1` through unified `powerforge release`
 - `powerforge.plugins.json`
   - declarative plugin catalog used by `Internal\Export-PluginFolders.ps1` and `Advanced\Publish-Plugins.ps1`
+- `release.json`
+  - now declares the release-facing `UploadReady` layout and default Winget manifest generation for Tray + Chat
+- `release.packages.json`
+  - package-only unified release config used automatically by `Build-Project.ps1 -PackagesOnly` when you stay on the default config path
 - `Run-Project.ps1`
   - unified local runtime entrypoint for `Chat.Host`, `Chat.App`, `Chat.Service`, `Tray`, and `Cli`
   - prints the resolved PowerForge command so it is easier to see what will actually run
@@ -53,6 +58,7 @@ pwsh ./Build/Build-Project.ps1 -ToolsOnly -Targets IntelligenceX.Chat.App -Style
 pwsh ./Build/Build-Project.ps1 -ToolsOnly -Targets IntelligenceX.Chat.App -Styles PortableCompat -ToolOutputs Portable,Installer
 pwsh ./Build/Build-Project.ps1 -StageRoot ./Artifacts/Releases/demo -SkipChecksums
 pwsh ./Build/Build-Release.ps1 -Runtime win-x64 -Configuration Release
+pwsh ./Build/Build-Release.ps1 -Runtime win-x64 -Configuration Release -OutDir ./Artifacts/UploadReady/manual-smoke
 pwsh ./Build/Run-Project.ps1 -ListTargets
 pwsh ./Build/Run-Project.ps1 -Target Chat.App
 pwsh ./Build/Run-Project.ps1 -Target Chat.Host -AllowRoot C:\Support\GitHub
@@ -117,5 +123,8 @@ The main workspace-validation logic is no longer owned by `Build-Workspace.ps1`,
 `Build-Workspace.ps1` now forwards into `powerforge workspace validate`, and `Build-Project.ps1` forwards into `powerforge release`, so the readable source of truth lives in `workspace.validation.json`, `release.json`, and `powerforge.dotnetpublish.json`.
 `Build-Release.ps1` now relies on the same unified release engine for the normal app flow, including final release staging into `nuget`, `portable`, `installer`, `tools`, and `metadata`.
 The wrapper now expresses only high-level release intent and lets PowerForge decide which internal DotNetPublish steps still need to run.
+The checked-in `release.json` now narrows the public NuGet lane to the main `IntelligenceX` package and uses the unified `UploadReady` staging + Winget manifest flow for desktop-app release handoff.
+When you run `Build-Project.ps1 -PackagesOnly` without overriding `-ConfigPath`, the wrapper now switches to `Build\release.packages.json` so package-only runs do not trip over the desktop-app Winget requirements in `Build\release.json`.
+User-supplied `-StageRoot`, `-OutputRoot`, `-ManifestJsonPath`, and `-ChecksumsPath` values are resolved from the repo root now, so `.\Artifacts\...` behaves the way it looks from the shell prompt.
 
 The old standalone publish wrappers for CLI/chat/tray were removed because `Build-Project.ps1` now covers those targets through PowerForge.

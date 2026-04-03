@@ -59,6 +59,31 @@ $repoRoot = (Get-Item (Split-Path -Parent $MyInvocation.MyCommand.Path)).Parent.
 . (Join-Path $repoRoot 'Build\Internal\Resolve-PowerForgeCli.ps1')
 . (Join-Path $repoRoot 'Build\Internal\Resolve-ReleaseDefaults.ps1')
 
+function Resolve-RepoRelativePath {
+    param([string] $PathValue)
+
+    if ([string]::IsNullOrWhiteSpace($PathValue)) {
+        return $PathValue
+    }
+
+    if ([System.IO.Path]::IsPathRooted($PathValue)) {
+        return [System.IO.Path]::GetFullPath($PathValue)
+    }
+
+    return [System.IO.Path]::GetFullPath((Join-Path $repoRoot $PathValue))
+}
+
+$defaultConfigPath = Resolve-RepoRelativePath (Join-Path $PSScriptRoot 'release.json')
+$configPathWasExplicit = $PSBoundParameters.ContainsKey('ConfigPath')
+$resolvedConfigPath = Resolve-RepoRelativePath $ConfigPath
+if (-not $configPathWasExplicit -and $PackagesOnly -and [string]::Equals($resolvedConfigPath, $defaultConfigPath, [System.StringComparison]::OrdinalIgnoreCase)) {
+    $packagesConfigPath = Join-Path $PSScriptRoot 'release.packages.json'
+    if (Test-Path -LiteralPath $packagesConfigPath) {
+        $ConfigPath = $packagesConfigPath
+    }
+}
+$ConfigPath = Resolve-RepoRelativePath $ConfigPath
+
 $script:BoundCliParameters = @{}
 foreach ($entry in $PSBoundParameters.GetEnumerator()) {
     $script:BoundCliParameters[$entry.Key] = $entry.Value
@@ -122,12 +147,12 @@ Add-Flag '--skip-workspace-validation' $SkipWorkspaceBuild
 Add-Flag '--skip-restore' $SkipRestore
 Add-Flag '--skip-build' $SkipBuild
 
-Add-Option '--stage-root' $StageRoot
-Add-Option '--output-root' $OutputRoot
-Add-Option '--manifest-json' $ManifestJsonPath
+Add-Option '--stage-root' (Resolve-RepoRelativePath $StageRoot)
+Add-Option '--output-root' (Resolve-RepoRelativePath $OutputRoot)
+Add-Option '--manifest-json' (Resolve-RepoRelativePath $ManifestJsonPath)
 Add-Flag '--allow-output-outside-project-root' $AllowOutputOutsideProjectRoot
 Add-Flag '--allow-manifest-outside-project-root' $AllowManifestOutsideProjectRoot
-Add-Option '--checksums-path' $ChecksumsPath
+Add-Option '--checksums-path' (Resolve-RepoRelativePath $ChecksumsPath)
 Add-Flag '--skip-release-checksums' $SkipChecksums
 Add-Option '--workspace-profile' $WorkspaceProfile
 $hasExplicitSigningOverride = @(

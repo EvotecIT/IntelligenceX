@@ -6,22 +6,21 @@
     "Profile": "full-private"
   },
   "Outputs": {
-    "ManifestJsonPath": "../Artifacts/UnifiedRelease/release-manifest.json",
-    "ChecksumsPath": "../Artifacts/UnifiedRelease/SHA256SUMS.txt"
+    "Staging": {
+      "RootPath": "../Artifacts/UploadReady",
+      "PackagesPath": "NuGet",
+      "PortablePath": "GitHub",
+      "InstallerPath": "GitHub",
+      "ToolsPath": "GitHub",
+      "MetadataPath": "Metadata",
+      "PackagesNameTemplate": "{PackageId}.{Version}{Extension}"
+    }
   },
   "Packages": {
     "RootPath": "..",
     "ExpectedVersion": "0.1.X",
     "IncludeProjects": [
-      "IntelligenceX.Tools.Common",
-      "IntelligenceX.Tools.FileSystem",
-      "IntelligenceX.Tools.Email",
-      "IntelligenceX.Tools.EventLog",
-      "IntelligenceX.Tools.PowerShell",
-      "IntelligenceX.Tools.ReviewerSetup",
-      "IntelligenceX.Tools.System",
-      "IntelligenceX.Tools.ADPlayground",
-      "IntelligenceX.Tools.TestimoX"
+      "IntelligenceX"
     ],
     "ExcludeDirectories": [
       ".worktrees",
@@ -67,5 +66,66 @@
       "TagTemplate": "{Target}-v{Version}",
       "ReleaseNameTemplate": "{Target} {Version}"
     }
+  },
+  "Winget": {
+    "Enabled": true,
+    "OutputPath": "../Artifacts/UploadReady/Winget",
+    "InstallerUrlTemplate": "https://github.com/EvotecIT/IntelligenceX/releases/download/v{PackageVersion}/{FileName}",
+    "Packages": [
+      {
+        "PackageIdentifier": "EvotecIT.IntelligenceX.Tray",
+        "PackageVersion": "1.0.0",
+        "Publisher": "Evotec",
+        "PackageName": "IntelligenceX Tray",
+        "License": "MIT",
+        "ShortDescription": "Windows tray app for IntelligenceX local chat and workflows.",
+        "Tags": [
+          "intelligencex",
+          "tray",
+          "chat"
+        ],
+        "Installers": [
+          {
+            "Category": "Portable",
+            "Target": "IntelligenceX.Tray",
+            "Runtime": "win-x64",
+            "InstallerType": "zip",
+            "NestedInstallerType": "portable",
+            "RelativeFilePath": "IntelligenceX.Tray.exe"
+          },
+          {
+            "Category": "Portable",
+            "Target": "IntelligenceX.Tray",
+            "Runtime": "win-arm64",
+            "InstallerType": "zip",
+            "NestedInstallerType": "portable",
+            "RelativeFilePath": "IntelligenceX.Tray.exe"
+          }
+        ]
+      },
+      {
+        "PackageIdentifier": "EvotecIT.IntelligenceX.Chat",
+        "PackageVersion": "1.0.0",
+        "Publisher": "Evotec",
+        "PackageName": "IntelligenceX Chat",
+        "License": "MIT",
+        "ShortDescription": "Portable Windows chat app for IntelligenceX local workflows.",
+        "Tags": [
+          "intelligencex",
+          "chat",
+          "portable"
+        ],
+        "Installers": [
+          {
+            "Category": "Portable",
+            "Target": "IntelligenceX.Chat.App",
+            "Runtime": "win-x64",
+            "InstallerType": "zip",
+            "NestedInstallerType": "portable",
+            "RelativeFilePath": "IntelligenceX.Chat.App.exe"
+          }
+        ]
+      }
+    ]
   }
 }
