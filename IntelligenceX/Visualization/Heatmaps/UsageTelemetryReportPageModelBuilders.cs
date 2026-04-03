@@ -418,18 +418,19 @@ internal static class UsageTelemetryReportPageModelBuilders {
         if (summary is null) {
             return null;
         }
-        if (summary.Repositories.Count == 0) {
+        var featuredRepositories = summary.FeaturedRepositories;
+        if (featuredRepositories.Count == 0) {
             return null;
         }
 
         var maxScore = Math.Max(
             1d,
-            summary.Repositories
+            featuredRepositories
                 .Select(static repository => ComputeWatchedRepositoryScore(repository))
                 .DefaultIfEmpty(1d)
                 .Max());
 
-        var rows = summary.Repositories
+        var rows = featuredRepositories
             .Select(repository => new UsageTelemetryOverviewInsightRow(
                 label: repository.RepositoryNameWithOwner,
                 value: BuildWatchedRepositoryValue(repository),

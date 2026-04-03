@@ -47,6 +47,8 @@ internal static partial class Program {
             TestGitHubObservabilitySummaryBuildsSharedForkNetworkOverlaps);
         failed += Run("GitHub observability summary builds shared stargazer audience overlaps",
             TestGitHubObservabilitySummaryBuildsSharedStargazerAudienceOverlaps);
+        failed += Run("GitHub observability summary keeps full repository set for correlations",
+            TestGitHubObservabilitySummaryKeepsFullRepositorySetForCorrelations);
         failed += Run("GitHub observability summary tracks stargazer coverage status",
             TestGitHubObservabilitySummaryTracksStargazerCoverageStatus);
         failed += Run("GitHub observability summary tracks fork coverage status",
@@ -319,6 +321,8 @@ internal static partial class Program {
         failed += Run("Telemetry GitHub watches sync and snapshots list json", TestTelemetryGitHubWatchesSyncAndSnapshotsListJson);
         failed += Run("Telemetry GitHub watches sync can record forks json", TestTelemetryGitHubWatchesSyncCanRecordForksJson);
         failed += Run("Telemetry GitHub watches sync can record stargazers json", TestTelemetryGitHubWatchesSyncCanRecordStargazersJson);
+        failed += Run("Telemetry GitHub watches sync marks empty fork and stargazer captures fresh",
+            TestTelemetryGitHubWatchesSyncMarksEmptyForkAndStargazerCapturesFresh);
         failed += Run("Telemetry GitHub forks discover json", TestTelemetryGitHubForksDiscoverJson);
         failed += Run("Telemetry GitHub forks record and history json", TestTelemetryGitHubForksRecordAndHistoryJson);
         failed += Run("Telemetry GitHub stargazers capture and list json", TestTelemetryGitHubStargazersCaptureAndListJson);
