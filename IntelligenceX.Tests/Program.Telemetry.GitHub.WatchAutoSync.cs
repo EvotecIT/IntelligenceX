@@ -179,6 +179,86 @@ internal static partial class Program {
         }
     }
 
+    private static void TestGitHubRepositoryWatchAutoSyncServiceMarksEmptyForkAndStargazerCapturesFresh() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-gh-watch-auto-sync-empty-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        var dbPath = Path.Combine(temp, "usage.db");
+        try {
+            var watch = new GitHubRepositoryWatchRecord(
+                GitHubRepositoryWatchRecord.CreateStableId("EvotecIT/IntelligenceX"),
+                "EvotecIT/IntelligenceX",
+                new DateTimeOffset(2026, 04, 01, 9, 0, 0, TimeSpan.Zero));
+            using (var watchStore = new SqliteGitHubRepositoryWatchStore(dbPath)) {
+                watchStore.Upsert(watch);
+            }
+
+            var firstCaptureAtUtc = new DateTimeOffset(2026, 04, 03, 12, 0, 0, TimeSpan.Zero);
+            var firstClientCalls = 0;
+            var firstService = new GitHubRepositoryWatchAutoSyncService(
+                _ => {
+                    firstClientCalls++;
+                    return new FakeGitHubRepositoryWatchAutoSyncClient(
+                        (repositoryNameWithOwner, _) => Task.FromResult<GitHubRepoInfo?>(
+                            new GitHubRepoInfo(
+                                repositoryNameWithOwner,
+                                stars: 144,
+                                forks: 21,
+                                description: "Repo description",
+                                language: "C#",
+                                languageColor: null,
+                                watchers: 13,
+                                openIssues: 4,
+                                pushedAtUtc: firstCaptureAtUtc.AddHours(-2),
+                                isArchived: false,
+                                isFork: false)),
+                        (_, _, _) => Task.FromResult<IReadOnlyList<GitHubRepositoryForkInfo>>(Array.Empty<GitHubRepositoryForkInfo>()),
+                        (_, _, _) => Task.FromResult<IReadOnlyList<GitHubRepositoryStargazerInfo>>(Array.Empty<GitHubRepositoryStargazerInfo>()));
+                },
+                () => dbPath,
+                () => firstCaptureAtUtc);
+
+            var firstResult = firstService.SyncIfNeededAsync("token-value", cancellationToken: CancellationToken.None).GetAwaiter().GetResult();
+
+            AssertEqual(GitHubRepositoryWatchAutoSyncStatus.Updated, firstResult.Status, "github watch auto sync empty capture initial status");
+            AssertEqual(1, firstClientCalls, "github watch auto sync empty capture created client once");
+            AssertEqual(1, firstResult.SnapshotSyncCount, "github watch auto sync empty capture snapshot count");
+            AssertEqual(1, firstResult.ForkRepositorySyncCount, "github watch auto sync empty capture fork repo count");
+            AssertEqual(0, firstResult.ForkSnapshotCount, "github watch auto sync empty capture fork snapshot count");
+            AssertEqual(1, firstResult.StargazerRepositorySyncCount, "github watch auto sync empty capture stargazer repo count");
+            AssertEqual(0, firstResult.StargazerSnapshotCount, "github watch auto sync empty capture stargazer snapshot count");
+
+            var secondClientCalls = 0;
+            var secondService = new GitHubRepositoryWatchAutoSyncService(
+                _ => {
+                    secondClientCalls++;
+                    return new FakeGitHubRepositoryWatchAutoSyncClient(
+                        (_, _) => Task.FromResult<GitHubRepoInfo?>(null),
+                        (_, _, _) => Task.FromResult<IReadOnlyList<GitHubRepositoryForkInfo>>(Array.Empty<GitHubRepositoryForkInfo>()),
+                        (_, _, _) => Task.FromResult<IReadOnlyList<GitHubRepositoryStargazerInfo>>(Array.Empty<GitHubRepositoryStargazerInfo>()));
+                },
+                () => dbPath,
+                () => firstCaptureAtUtc.AddMinutes(20));
+
+            var secondResult = secondService.SyncIfNeededAsync("token-value", cancellationToken: CancellationToken.None).GetAwaiter().GetResult();
+
+            AssertEqual(GitHubRepositoryWatchAutoSyncStatus.Fresh, secondResult.Status, "github watch auto sync empty capture follow-up status");
+            AssertEqual(0, secondClientCalls, "github watch auto sync empty capture avoids re-sync while fresh");
+
+            using var forkStore = new SqliteGitHubRepositoryForkSnapshotStore(dbPath);
+            using var stargazerStore = new SqliteGitHubRepositoryStargazerSnapshotStore(dbPath);
+            AssertEqual(firstCaptureAtUtc, forkStore.GetLatestCaptureAtUtcByParentRepository(watch.RepositoryNameWithOwner), "github watch auto sync empty capture fork watermark");
+            AssertEqual(firstCaptureAtUtc, stargazerStore.GetLatestCaptureAtUtcByRepository(watch.RepositoryNameWithOwner), "github watch auto sync empty capture stargazer watermark");
+        } finally {
+            try {
+                if (Directory.Exists(temp)) {
+                    Directory.Delete(temp, recursive: true);
+                }
+            } catch {
+                // best-effort cleanup
+            }
+        }
+    }
+
     private sealed class FakeGitHubRepositoryWatchAutoSyncClient : IGitHubRepositoryWatchAutoSyncClient {
         private readonly Func<string, CancellationToken, Task<GitHubRepoInfo?>> _fetchRepositoryAsync;
         private readonly Func<string, int, CancellationToken, Task<IReadOnlyList<GitHubRepositoryForkInfo>>> _fetchUsefulForksAsync;

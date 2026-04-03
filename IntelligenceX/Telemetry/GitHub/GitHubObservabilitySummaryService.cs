@@ -83,13 +83,13 @@ internal sealed class GitHubObservabilitySummaryService {
         var watchedRepositoryNames = new HashSet<string>(watches.Select(static watch => watch.RepositoryNameWithOwner), StringComparer.OrdinalIgnoreCase);
         var forkNetworkOverlaps = BuildForkNetworkOverlaps(allForkSnapshots, watchedRepositoryNames);
         var latestForkSnapshots = BuildLatestForkSnapshots(allForkSnapshots, watchedRepositoryNames);
-        var latestForkSnapshotsByRepository = latestForkSnapshots
-            .GroupBy(static snapshot => snapshot.ParentRepositoryNameWithOwner, StringComparer.OrdinalIgnoreCase)
-            .Select(static group => group
-                .OrderByDescending(static snapshot => snapshot.CapturedAtUtc)
-                .ThenByDescending(static snapshot => snapshot.Score)
-                .ThenBy(static snapshot => snapshot.ForkRepositoryNameWithOwner, StringComparer.OrdinalIgnoreCase)
-                .First())
+        var latestForkCapturesByRepository = watches
+            .Select(static watch => watch.RepositoryNameWithOwner)
+            .Select(repositoryNameWithOwner => new {
+                RepositoryNameWithOwner = repositoryNameWithOwner,
+                CapturedAtUtc = forkSnapshotStore.GetLatestCaptureAtUtcByParentRepository(repositoryNameWithOwner)
+            })
+            .Where(static entry => entry.CapturedAtUtc.HasValue)
             .ToArray();
         var forkChanges = GitHubRepositoryForkHistoryAnalytics.BuildLatestChanges(
                 allForkSnapshots.Where(snapshot => watchedRepositoryNames.Contains(snapshot.ParentRepositoryNameWithOwner)))
@@ -105,25 +105,25 @@ internal sealed class GitHubObservabilitySummaryService {
         var latestCaptureAtUtc = latestDeltas.Count == 0
             ? (DateTimeOffset?)null
             : latestDeltas.Max(static delta => delta.CurrentCapturedAtUtc);
-        var latestForkCaptureAtUtc = latestForkSnapshotsByRepository.Length == 0
+        var latestForkCaptureAtUtc = latestForkCapturesByRepository.Length == 0
             ? (DateTimeOffset?)null
-            : latestForkSnapshotsByRepository.Max(static snapshot => snapshot.CapturedAtUtc);
+            : latestForkCapturesByRepository.Max(static entry => entry.CapturedAtUtc!.Value);
         var laggingForkRepositoryCount = latestCaptureAtUtc.HasValue
-            ? latestForkSnapshotsByRepository.Count(snapshot => snapshot.CapturedAtUtc < latestCaptureAtUtc.Value)
+            ? latestForkCapturesByRepository.Count(entry => entry.CapturedAtUtc!.Value < latestCaptureAtUtc.Value)
             : 0;
-        var latestStargazerSnapshots = BuildLatestStargazerSnapshots(allStargazerSnapshots, watchedRepositoryNames);
-        var latestStargazerSnapshotsByRepository = latestStargazerSnapshots
-            .GroupBy(static snapshot => snapshot.RepositoryNameWithOwner, StringComparer.OrdinalIgnoreCase)
-            .Select(static group => group
-                .OrderByDescending(static snapshot => snapshot.CapturedAtUtc)
-                .ThenByDescending(static snapshot => snapshot.Id, StringComparer.OrdinalIgnoreCase)
-                .First())
+        var latestStargazerCapturesByRepository = watches
+            .Select(static watch => watch.RepositoryNameWithOwner)
+            .Select(repositoryNameWithOwner => new {
+                RepositoryNameWithOwner = repositoryNameWithOwner,
+                CapturedAtUtc = stargazerSnapshotStore.GetLatestCaptureAtUtcByRepository(repositoryNameWithOwner)
+            })
+            .Where(static entry => entry.CapturedAtUtc.HasValue)
             .ToArray();
-        var latestStargazerCaptureAtUtc = latestStargazerSnapshotsByRepository.Length == 0
+        var latestStargazerCaptureAtUtc = latestStargazerCapturesByRepository.Length == 0
             ? (DateTimeOffset?)null
-            : latestStargazerSnapshotsByRepository.Max(static snapshot => snapshot.CapturedAtUtc);
+            : latestStargazerCapturesByRepository.Max(static entry => entry.CapturedAtUtc!.Value);
         var laggingStargazerRepositoryCount = latestCaptureAtUtc.HasValue
-            ? latestStargazerSnapshotsByRepository.Count(snapshot => snapshot.CapturedAtUtc < latestCaptureAtUtc.Value)
+            ? latestStargazerCapturesByRepository.Count(entry => entry.CapturedAtUtc!.Value < latestCaptureAtUtc.Value)
             : 0;
 
         return new GitHubObservabilitySummaryData(
@@ -150,12 +150,12 @@ internal sealed class GitHubObservabilitySummaryService {
             observedForkOwnerCount: CountDistinctForkOwners(allForkSnapshots, watchedRepositoryNames),
             forkChanges: forkChanges,
             latestForkCaptureAtUtc: latestForkCaptureAtUtc,
-            forkSnapshotRepositoryCount: latestForkSnapshotsByRepository.Length,
+            forkSnapshotRepositoryCount: latestForkCapturesByRepository.Length,
             laggingForkRepositoryCount: laggingForkRepositoryCount,
             stargazerAudienceOverlaps: stargazerAudienceOverlaps,
             observedStargazerCount: CountDistinctStargazers(allStargazerSnapshots, watchedRepositoryNames),
             latestStargazerCaptureAtUtc: latestStargazerCaptureAtUtc,
-            stargazerSnapshotRepositoryCount: latestStargazerSnapshotsByRepository.Length,
+            stargazerSnapshotRepositoryCount: latestStargazerCapturesByRepository.Length,
             laggingStargazerRepositoryCount: laggingStargazerRepositoryCount);
 #endif
     }

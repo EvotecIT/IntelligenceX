@@ -16,6 +16,13 @@ internal interface IGitHubRepositoryStargazerSnapshotStore {
     void Upsert(GitHubRepositoryStargazerSnapshotRecord snapshot);
 
     /// <summary>
+    /// Records that a repository stargazer capture was attempted, even if no audience rows were returned.
+    /// </summary>
+    /// <param name="repositoryNameWithOwner">Repository in owner/name form.</param>
+    /// <param name="capturedAtUtc">UTC time when the capture completed.</param>
+    void MarkRepositoryCaptured(string repositoryNameWithOwner, DateTimeOffset capturedAtUtc);
+
+    /// <summary>
     /// Returns stargazer snapshots for one repository ordered by capture time and stargazer login.
     /// </summary>
     /// <param name="repositoryNameWithOwner">Repository in owner/name form.</param>

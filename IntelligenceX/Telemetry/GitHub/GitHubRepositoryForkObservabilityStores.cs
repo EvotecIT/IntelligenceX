@@ -8,6 +8,8 @@ namespace IntelligenceX.Telemetry.GitHub;
 internal sealed class InMemoryGitHubRepositoryForkSnapshotStore : IGitHubRepositoryForkSnapshotStore {
     private readonly ConcurrentDictionary<string, GitHubRepositoryForkSnapshotRecord> _snapshots =
         new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, DateTimeOffset> _capturedAtByParentRepository =
+        new(StringComparer.OrdinalIgnoreCase);
 
     /// <inheritdoc />
     public void Upsert(GitHubRepositoryForkSnapshotRecord snapshot) {
@@ -16,6 +18,13 @@ internal sealed class InMemoryGitHubRepositoryForkSnapshotStore : IGitHubReposit
         }
 
         _snapshots[snapshot.Id] = snapshot;
+        _capturedAtByParentRepository[snapshot.ParentRepositoryNameWithOwner] = snapshot.CapturedAtUtc;
+    }
+
+    /// <inheritdoc />
+    public void MarkParentRepositoryCaptured(string parentRepositoryNameWithOwner, DateTimeOffset capturedAtUtc) {
+        var normalized = GitHubRepositoryIdentity.NormalizeNameWithOwner(parentRepositoryNameWithOwner);
+        _capturedAtByParentRepository[normalized] = capturedAtUtc.ToUniversalTime();
     }
 
     /// <inheritdoc />
@@ -53,10 +62,15 @@ internal sealed class InMemoryGitHubRepositoryForkSnapshotStore : IGitHubReposit
     /// <inheritdoc />
     public DateTimeOffset? GetLatestCaptureAtUtcByParentRepository(string parentRepositoryNameWithOwner) {
         var normalized = GitHubRepositoryIdentity.NormalizeNameWithOwner(parentRepositoryNameWithOwner);
-        return _snapshots.Values
+        var latestSnapshotCaptureAtUtc = _snapshots.Values
             .Where(value => string.Equals(value.ParentRepositoryNameWithOwner, normalized, StringComparison.OrdinalIgnoreCase))
             .Select(static value => (DateTimeOffset?)value.CapturedAtUtc)
             .OrderByDescending(static value => value)
             .FirstOrDefault();
+        return _capturedAtByParentRepository.TryGetValue(normalized, out var captureStatusAtUtc)
+            ? !latestSnapshotCaptureAtUtc.HasValue || captureStatusAtUtc > latestSnapshotCaptureAtUtc.Value
+                ? captureStatusAtUtc
+                : latestSnapshotCaptureAtUtc
+            : latestSnapshotCaptureAtUtc;
     }
 }

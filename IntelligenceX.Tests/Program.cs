@@ -55,6 +55,8 @@ internal static partial class Program {
             TestGitHubRepositoryWatchAutoSyncServiceSyncsStaleSnapshotsAndStargazers);
         failed += Run("GitHub watch auto sync service skips fresh repositories",
             TestGitHubRepositoryWatchAutoSyncServiceSkipsFreshRepositories);
+        failed += Run("GitHub watch auto sync service marks empty fork and stargazer captures fresh",
+            TestGitHubRepositoryWatchAutoSyncServiceMarksEmptyForkAndStargazerCapturesFresh);
         failed += Run("GitHub local activity correlation summary builds repo signals",
             TestGitHubLocalActivityCorrelationSummaryBuildsRepoSignals);
         failed += Run("GitHub repository cluster summary builds related repo signals",
@@ -195,6 +197,8 @@ internal static partial class Program {
             TestUsageTelemetryOverviewPageModelBuilderAddsGitHubLocalAlignmentWhenProvided);
         failed += Run("Usage overview page model builder adds top-level GitHub local alignment when provided",
             TestUsageTelemetryOverviewPageModelBuilderAddsTopLevelGitHubLocalAlignmentWhenProvided);
+        failed += Run("Usage overview page model builder excludes GitHub provider from local alignment input",
+            TestUsageTelemetryOverviewPageModelBuilderExcludesGitHubProviderFromLocalAlignmentInput);
         failed += Run("Usage overview page model builder adds churn usage correlation when provided",
             TestUsageTelemetryOverviewPageModelBuilderAddsChurnUsageCorrelationWhenProvided);
         failed += Run("Usage GitHub wrapped page model builder builds owner panels",

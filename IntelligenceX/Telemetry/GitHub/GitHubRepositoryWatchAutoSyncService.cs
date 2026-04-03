@@ -389,6 +389,7 @@ internal sealed class GitHubRepositoryWatchAutoSyncService {
                         repositoryNameWithOwner,
                         Math.Max(1, options.ForkLimit),
                         cancellationToken).ConfigureAwait(false);
+                    forkStore.MarkParentRepositoryCaptured(repositoryNameWithOwner, capturedAtUtc);
                     foreach (var fork in forks) {
                         forkStore.Upsert(CreateForkSnapshot(repositoryNameWithOwner, fork, capturedAtUtc));
                         forkSnapshotCount++;
@@ -412,6 +413,7 @@ internal sealed class GitHubRepositoryWatchAutoSyncService {
                         repositoryNameWithOwner,
                         Math.Max(1, options.StargazerLimit),
                         cancellationToken).ConfigureAwait(false);
+                    stargazerStore.MarkRepositoryCaptured(repositoryNameWithOwner, capturedAtUtc);
                     foreach (var stargazer in stargazers) {
                         stargazerStore.Upsert(CreateStargazerSnapshot(repositoryNameWithOwner, stargazer, capturedAtUtc));
                         stargazerSnapshotCount++;

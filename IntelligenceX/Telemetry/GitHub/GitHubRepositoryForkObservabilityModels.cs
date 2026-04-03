@@ -17,6 +17,13 @@ public interface IGitHubRepositoryForkSnapshotStore {
     void Upsert(GitHubRepositoryForkSnapshotRecord snapshot);
 
     /// <summary>
+    /// Records that a parent repository fork capture was attempted, even when no useful forks were returned.
+    /// </summary>
+    /// <param name="parentRepositoryNameWithOwner">Parent repository in owner/name form.</param>
+    /// <param name="capturedAtUtc">UTC time when the capture completed.</param>
+    void MarkParentRepositoryCaptured(string parentRepositoryNameWithOwner, DateTimeOffset capturedAtUtc);
+
+    /// <summary>
     /// Returns fork snapshots for one parent repository ordered by capture time and fork name.
     /// </summary>
     /// <param name="parentRepositoryNameWithOwner">Parent repository in owner/name form.</param>

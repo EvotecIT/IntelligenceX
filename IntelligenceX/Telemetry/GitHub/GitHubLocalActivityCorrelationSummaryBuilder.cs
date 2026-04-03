@@ -55,13 +55,13 @@ internal static class GitHubLocalActivityCorrelationSummaryBuilder {
             return GitHubLocalActivityCorrelationSummaryData.Empty;
         }
 
-        var recentEndDay = trendDays[trendDays.Length - 1].DayUtc.Date;
+        var recentEndDay = NormalizeUtcDay(trendDays[trendDays.Length - 1].DayUtc);
         var recentStartDay = recentEndDay.AddDays(-(RecentWindowDays - 1));
         var recentDays = Enumerable.Range(0, RecentWindowDays)
-            .Select(offset => recentStartDay.AddDays(offset))
+            .Select(offset => NormalizeUtcDay(recentStartDay.AddDays(offset)))
             .ToArray();
 
-        var churnByDay = trendDays.ToDictionary(static day => day.DayUtc.Date, static day => day);
+        var churnByDay = trendDays.ToDictionary(static day => NormalizeUtcDay(day.DayUtc), static day => day);
         var usageByDay = BuildUsageByDay(providerSeries);
         var localSignalByDay = new Dictionary<DateTime, double>(RecentWindowDays);
         var activeLocalDays = 0;
@@ -104,7 +104,7 @@ internal static class GitHubLocalActivityCorrelationSummaryBuilder {
         IReadOnlyList<DateTime> recentDays) {
         var repoSignals = repository.TrendPoints
             .Where(static point => point.DayUtc != default)
-            .ToDictionary(static point => point.DayUtc.Date, static point => point.Score);
+            .ToDictionary(static point => NormalizeUtcDay(point.DayUtc), static point => point.Score);
         var overlapDays = recentDays
             .Where(day => localSignalByDay.ContainsKey(day) && repoSignals.ContainsKey(day))
             .ToArray();
@@ -152,13 +152,18 @@ internal static class GitHubLocalActivityCorrelationSummaryBuilder {
         var usageByDay = new Dictionary<DateTime, double>();
         foreach (var provider in providerSeries.Where(static provider => !string.Equals(NormalizeProviderId(provider.ProviderId), "github", StringComparison.OrdinalIgnoreCase))) {
             foreach (var day in provider.Days.Where(static day => day.Day != default)) {
-                usageByDay[day.Day.Date] = usageByDay.TryGetValue(day.Day.Date, out var existing)
+                var normalizedDay = NormalizeUtcDay(day.Day);
+                usageByDay[normalizedDay] = usageByDay.TryGetValue(normalizedDay, out var existing)
                     ? existing + day.ActivityValue
                     : day.ActivityValue;
             }
         }
 
         return usageByDay;
+    }
+
+    private static DateTime NormalizeUtcDay(DateTime day) {
+        return DateTime.SpecifyKind(day.Date, DateTimeKind.Utc);
     }
 
     private static double ComputeLocalSignal(int changedLines, double activityValue) {

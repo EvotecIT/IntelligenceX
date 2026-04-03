@@ -1431,6 +1431,46 @@ internal static partial class Program {
         AssertContainsText(page.GitHubLocalAlignment.Headline, "Strongest local sync", "overview page model top-level github local alignment headline");
     }
 
+    private static void TestUsageTelemetryOverviewPageModelBuilderExcludesGitHubProviderFromLocalAlignmentInput() {
+        var summary = new UsageSummarySnapshot {
+            Metric = UsageSummaryMetric.TotalTokens,
+            StartDayUtc = new DateTime(2026, 03, 01),
+            EndDayUtc = new DateTime(2026, 03, 12),
+            TotalValue = 25_000m,
+            TotalDays = 12,
+            ActiveDays = 9,
+            PeakDayUtc = new DateTime(2026, 03, 12),
+            PeakValue = 8_200m
+        };
+        var overview = new UsageTelemetryOverviewDocument(
+            title: "Usage Overview",
+            subtitle: "GitHub local alignment exclusion",
+            metric: UsageSummaryMetric.TotalTokens,
+            units: "tokens",
+            summary: summary,
+            cards: Array.Empty<UsageTelemetryOverviewCard>(),
+            heatmaps: Array.Empty<UsageTelemetryOverviewHeatmap>(),
+            providerSections: new[] {
+                CreateSampleCorrelationOverviewSection(
+                    "codex",
+                    "Codex",
+                    new double[] { 160, 0, 450, 0, 300, 250, 560 }),
+                CreateSampleCorrelationOverviewSection(
+                    "github",
+                    "GitHub",
+                    new double[] { 6000, 5000, 4200, 3800, 4400, 4100, 6200 })
+            },
+            metadata: new JsonObject());
+
+        var page = UsageTelemetryReportPageModelBuilders.BuildOverview(
+            overview,
+            gitHubObservabilitySummary: CreateSampleGitHubObservabilitySummary(),
+            gitCodeChurnSummary: CreateSampleGitCodeChurnSummary());
+
+        AssertNotNull(page.GitHubLocalAlignment, "overview page model github local alignment exists when github provider section is present");
+        AssertContainsText(page.GitHubLocalAlignment!.Note ?? string.Empty, "1.72K recent usage units", "overview page model github local alignment excludes github provider usage");
+    }
+
     private static void TestUsageTelemetryOverviewPageModelBuilderAddsChurnUsageCorrelationWhenProvided() {
         var summary = new UsageSummarySnapshot {
             Metric = UsageSummaryMetric.TotalTokens,

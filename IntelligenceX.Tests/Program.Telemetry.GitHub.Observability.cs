@@ -833,6 +833,10 @@ internal static partial class Program {
                 AssertEqual("someone/IntelligenceX", byParent[0].ForkRepositoryNameWithOwner, "github fork sqlite fork repo");
                 AssertEqual(72.5d, byParent[0].Score, "github fork sqlite score");
                 AssertEqual("18 stars | updated within 14 days", byParent[0].ReasonsSummary, "github fork sqlite reason summary");
+
+                var emptyCaptureAtUtc = new DateTimeOffset(2026, 3, 16, 12, 0, 0, TimeSpan.Zero);
+                reopened.MarkParentRepositoryCaptured("EvotecIT/PSWriteHTML", emptyCaptureAtUtc);
+                AssertEqual(emptyCaptureAtUtc, reopened.GetLatestCaptureAtUtcByParentRepository("EvotecIT/PSWriteHTML"), "github fork sqlite capture watermark persists without rows");
             }
         } finally {
             TryDeleteUsageTelemetryTempDirectory(tempDir);
@@ -864,6 +868,11 @@ internal static partial class Program {
                 AssertEqual("alice", byRepository[0].StargazerLogin, "github stargazer sqlite login");
                 AssertEqual("https://github.com/alice", byRepository[0].ProfileUrl, "github stargazer sqlite profile url");
                 AssertEqual(1, reopened.GetByStargazer("alice").Count, "github stargazer sqlite by login count");
+                AssertEqual(1, reopened.GetByStargazer("ALICE").Count, "github stargazer sqlite login lookup ignores case");
+
+                var emptyCaptureAtUtc = capturedAtUtc.AddHours(2);
+                reopened.MarkRepositoryCaptured("EvotecIT/PSWriteHTML", emptyCaptureAtUtc);
+                AssertEqual(emptyCaptureAtUtc, reopened.GetLatestCaptureAtUtcByRepository("EvotecIT/PSWriteHTML"), "github stargazer sqlite capture watermark persists without rows");
             }
         } finally {
             TryDeleteUsageTelemetryTempDirectory(tempDir);

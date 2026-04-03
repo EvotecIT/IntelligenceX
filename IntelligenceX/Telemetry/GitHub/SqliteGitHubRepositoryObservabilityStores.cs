@@ -591,6 +591,31 @@ ON CONFLICT(id) DO UPDATE SET
     }
 
     /// <inheritdoc />
+    public void MarkParentRepositoryCaptured(string parentRepositoryNameWithOwner, DateTimeOffset capturedAtUtc) {
+        var normalized = GitHubRepositoryIdentity.NormalizeNameWithOwner(parentRepositoryNameWithOwner);
+        var normalizedCapturedAtUtc = capturedAtUtc.ToUniversalTime();
+        lock (_gate) {
+            _db.ExecuteNonQuery(
+                _dbPath,
+                @"
+INSERT INTO ix_github_repository_fork_capture_status (
+  parent_repository_name_with_owner,
+  captured_at_utc
+)
+VALUES (
+  @parent_repository_name_with_owner,
+  @captured_at_utc
+)
+ON CONFLICT(parent_repository_name_with_owner) DO UPDATE SET
+  captured_at_utc = excluded.captured_at_utc;",
+                parameters: new Dictionary<string, object?> {
+                    ["@parent_repository_name_with_owner"] = normalized,
+                    ["@captured_at_utc"] = normalizedCapturedAtUtc.ToString("O", CultureInfo.InvariantCulture)
+                });
+        }
+    }
+
+    /// <inheritdoc />
     public IReadOnlyList<GitHubRepositoryForkSnapshotRecord> GetByParentRepository(string parentRepositoryNameWithOwner) {
         var normalized = GitHubRepositoryIdentity.NormalizeNameWithOwner(parentRepositoryNameWithOwner);
         lock (_gate) {
@@ -704,9 +729,16 @@ ORDER BY parent_repository_name_with_owner, captured_at_utc, fork_repository_nam
                 _dbPath,
                 @"
 SELECT captured_at_utc
-FROM ix_github_repository_fork_snapshots
-WHERE parent_repository_name_with_owner = @parent_repository_name_with_owner
-ORDER BY captured_at_utc DESC, id DESC
+FROM (
+  SELECT captured_at_utc
+  FROM ix_github_repository_fork_snapshots
+  WHERE parent_repository_name_with_owner = @parent_repository_name_with_owner
+  UNION ALL
+  SELECT captured_at_utc
+  FROM ix_github_repository_fork_capture_status
+  WHERE parent_repository_name_with_owner = @parent_repository_name_with_owner
+)
+ORDER BY captured_at_utc DESC
 LIMIT 1;",
                 parameters: new Dictionary<string, object?> {
                     ["@parent_repository_name_with_owner"] = normalized
@@ -831,6 +863,31 @@ ON CONFLICT(id) DO UPDATE SET
     }
 
     /// <inheritdoc />
+    public void MarkRepositoryCaptured(string repositoryNameWithOwner, DateTimeOffset capturedAtUtc) {
+        var normalized = GitHubRepositoryIdentity.NormalizeNameWithOwner(repositoryNameWithOwner);
+        var normalizedCapturedAtUtc = capturedAtUtc.ToUniversalTime();
+        lock (_gate) {
+            _db.ExecuteNonQuery(
+                _dbPath,
+                @"
+INSERT INTO ix_github_repository_stargazer_capture_status (
+  repository_name_with_owner,
+  captured_at_utc
+)
+VALUES (
+  @repository_name_with_owner,
+  @captured_at_utc
+)
+ON CONFLICT(repository_name_with_owner) DO UPDATE SET
+  captured_at_utc = excluded.captured_at_utc;",
+                parameters: new Dictionary<string, object?> {
+                    ["@repository_name_with_owner"] = normalized,
+                    ["@captured_at_utc"] = normalizedCapturedAtUtc.ToString("O", CultureInfo.InvariantCulture)
+                });
+        }
+    }
+
+    /// <inheritdoc />
     public IReadOnlyList<GitHubRepositoryStargazerSnapshotRecord> GetByRepository(string repositoryNameWithOwner) {
         var normalized = GitHubRepositoryIdentity.NormalizeNameWithOwner(repositoryNameWithOwner);
         lock (_gate) {
@@ -915,9 +972,16 @@ ORDER BY repository_name_with_owner, captured_at_utc, stargazer_login, id;"));
                 _dbPath,
                 @"
 SELECT captured_at_utc
-FROM ix_github_repository_stargazer_snapshots
-WHERE repository_name_with_owner = @repository_name_with_owner
-ORDER BY captured_at_utc DESC, id DESC
+FROM (
+  SELECT captured_at_utc
+  FROM ix_github_repository_stargazer_snapshots
+  WHERE repository_name_with_owner = @repository_name_with_owner
+  UNION ALL
+  SELECT captured_at_utc
+  FROM ix_github_repository_stargazer_capture_status
+  WHERE repository_name_with_owner = @repository_name_with_owner
+)
+ORDER BY captured_at_utc DESC
 LIMIT 1;",
                 parameters: new Dictionary<string, object?> {
                     ["@repository_name_with_owner"] = normalized
@@ -1029,6 +1093,11 @@ CREATE TABLE IF NOT EXISTS ix_github_repository_fork_snapshots (
   reasons_summary TEXT NULL
 );
 
+CREATE TABLE IF NOT EXISTS ix_github_repository_fork_capture_status (
+  parent_repository_name_with_owner TEXT PRIMARY KEY,
+  captured_at_utc TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS ix_github_repository_stargazer_snapshots (
   id TEXT PRIMARY KEY,
   repository_name_with_owner TEXT NOT NULL,
@@ -1037,6 +1106,11 @@ CREATE TABLE IF NOT EXISTS ix_github_repository_stargazer_snapshots (
   starred_at_utc TEXT NULL,
   profile_url TEXT NULL,
   avatar_url TEXT NULL
+);
+
+CREATE TABLE IF NOT EXISTS ix_github_repository_stargazer_capture_status (
+  repository_name_with_owner TEXT PRIMARY KEY,
+  captured_at_utc TEXT NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS ix_github_repository_watches_repo
@@ -1058,6 +1132,11 @@ CREATE INDEX IF NOT EXISTS ix_github_repository_fork_snapshots_fork_time
         db.ExecuteNonQuery(
             fullPath,
             @"
+CREATE INDEX IF NOT EXISTS ix_github_repository_fork_capture_status_time
+  ON ix_github_repository_fork_capture_status(captured_at_utc);");
+        db.ExecuteNonQuery(
+            fullPath,
+            @"
 CREATE INDEX IF NOT EXISTS ix_github_repository_stargazer_snapshots_repo_time
   ON ix_github_repository_stargazer_snapshots(repository_name_with_owner, captured_at_utc);
 
@@ -1068,6 +1147,11 @@ CREATE INDEX IF NOT EXISTS ix_github_repository_stargazer_snapshots_login_time
             @"
 CREATE INDEX IF NOT EXISTS ix_github_repository_stargazer_snapshots_login_time_nocase
   ON ix_github_repository_stargazer_snapshots(stargazer_login COLLATE NOCASE, captured_at_utc);");
+        db.ExecuteNonQuery(
+            fullPath,
+            @"
+CREATE INDEX IF NOT EXISTS ix_github_repository_stargazer_capture_status_time
+  ON ix_github_repository_stargazer_capture_status(captured_at_utc);");
     }
 
     public static string? Normalize(string? value) {
