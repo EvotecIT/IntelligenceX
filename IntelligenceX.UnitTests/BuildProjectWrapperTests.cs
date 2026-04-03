@@ -59,11 +59,20 @@ public sealed class BuildProjectWrapperTests {
         using var releaseDoc = JsonDocument.Parse(releaseJson);
         Assert.Equal("../Artifacts/UploadReady", releaseDoc.RootElement.GetProperty("Outputs").GetProperty("Staging").GetProperty("RootPath").GetString());
         Assert.Equal("Winget", releaseDoc.RootElement.GetProperty("Winget").GetProperty("OutputPath").GetString());
+        Assert.Equal("IntelligenceX", releaseDoc.RootElement.GetProperty("Packages").GetProperty("GitHubPrimaryProject").GetString());
+        var includeProjects = releaseDoc.RootElement.GetProperty("Packages").GetProperty("IncludeProjects").EnumerateArray().Select(element => element.GetString()).ToArray();
+        Assert.Single(includeProjects);
+        Assert.Equal("IntelligenceX", includeProjects[0]);
+
+        foreach (var wingetPackage in releaseDoc.RootElement.GetProperty("Winget").GetProperty("Packages").EnumerateArray()) {
+            Assert.False(wingetPackage.TryGetProperty("PackageVersion", out _));
+        }
 
         var packagesJson = File.ReadAllText(Path.Combine(repoRoot, "Build", "release.packages.json"));
         using var packagesDoc = JsonDocument.Parse(packagesJson);
         Assert.Equal("../Artifacts/UploadReady", packagesDoc.RootElement.GetProperty("Outputs").GetProperty("Staging").GetProperty("RootPath").GetString());
         Assert.False(packagesDoc.RootElement.TryGetProperty("Winget", out _));
+        Assert.Equal("IntelligenceX", packagesDoc.RootElement.GetProperty("Packages").GetProperty("GitHubPrimaryProject").GetString());
     }
 
     private static void RunBuildProject(string repoRoot, CliCaptureHarness harness, params string[] scriptArgs) {
