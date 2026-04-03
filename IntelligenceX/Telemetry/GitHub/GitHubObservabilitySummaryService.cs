@@ -135,7 +135,7 @@ internal sealed class GitHubObservabilitySummaryService {
                 delta.WatcherDelta != 0 ||
                 delta.OpenIssueDelta != 0),
             latestCaptureAtUtc: latestCaptureAtUtc,
-            repositories: repositories,
+            repositories: repositories.ToArray(),
             correlations: correlations,
             starCorrelations: starCorrelations,
             forkNetworkOverlaps: forkNetworkOverlaps,
@@ -496,7 +496,7 @@ internal sealed class GitHubObservabilitySummaryService {
         return points;
     }
 
-    private static double GetMomentumScore(GitHubObservedRepositoryTrendData repository) {
+    internal static double GetMomentumScore(GitHubObservedRepositoryTrendData repository) {
         if (!repository.PreviousCapturedAtUtc.HasValue) {
             return 0d;
         }
@@ -723,7 +723,16 @@ internal sealed class GitHubObservabilitySummaryData {
         PositiveWatcherDelta = Math.Max(0, positiveWatcherDelta);
         ChangedRepositoryCount = Math.Max(0, changedRepositoryCount);
         LatestCaptureAtUtc = latestCaptureAtUtc?.ToUniversalTime();
-        Repositories = repositories ?? Array.Empty<GitHubObservedRepositoryTrendData>();
+        var normalizedRepositories = repositories?.ToArray() ?? Array.Empty<GitHubObservedRepositoryTrendData>();
+        Repositories = normalizedRepositories;
+        FeaturedRepositories = normalizedRepositories
+            .OrderByDescending(static repository => repository.PreviousCapturedAtUtc.HasValue)
+            .ThenByDescending(static repository => repository.PreviousCapturedAtUtc.HasValue ? GitHubObservabilitySummaryService.GetMomentumScore(repository) : 0d)
+            .ThenByDescending(static repository => repository.Stars)
+            .ThenByDescending(static repository => repository.Forks)
+            .ThenBy(static repository => repository.RepositoryNameWithOwner, StringComparer.OrdinalIgnoreCase)
+            .Take(6)
+            .ToArray();
         Correlations = correlations ?? Array.Empty<GitHubObservedCorrelationData>();
         StarCorrelations = starCorrelations ?? Array.Empty<GitHubObservedStarCorrelationData>();
         ForkNetworkOverlaps = forkNetworkOverlaps ?? Array.Empty<GitHubObservedForkNetworkOverlapData>();
@@ -752,14 +761,7 @@ internal sealed class GitHubObservabilitySummaryData {
     public int ChangedRepositoryCount { get; }
     public DateTimeOffset? LatestCaptureAtUtc { get; }
     public IReadOnlyList<GitHubObservedRepositoryTrendData> Repositories { get; }
-    public IReadOnlyList<GitHubObservedRepositoryTrendData> FeaturedRepositories => Repositories
-        .OrderByDescending(static repository => repository.PreviousCapturedAtUtc.HasValue)
-        .ThenByDescending(static repository => repository.PreviousCapturedAtUtc.HasValue ? ComputeRepositoryMomentumScore(repository) : 0d)
-        .ThenByDescending(static repository => repository.Stars)
-        .ThenByDescending(static repository => repository.Forks)
-        .ThenBy(static repository => repository.RepositoryNameWithOwner, StringComparer.OrdinalIgnoreCase)
-        .Take(6)
-        .ToArray();
+    public IReadOnlyList<GitHubObservedRepositoryTrendData> FeaturedRepositories { get; }
     public IReadOnlyList<GitHubObservedCorrelationData> Correlations { get; }
     public IReadOnlyList<GitHubObservedStarCorrelationData> StarCorrelations { get; }
     public IReadOnlyList<GitHubObservedForkNetworkOverlapData> ForkNetworkOverlaps { get; }
@@ -828,17 +830,6 @@ internal sealed class GitHubObservabilitySummaryData {
         .ThenByDescending(static overlap => overlap.OverlapRatio)
         .ThenBy(static overlap => overlap.RepositoryANameWithOwner, StringComparer.OrdinalIgnoreCase)
         .FirstOrDefault();
-
-    private static double ComputeRepositoryMomentumScore(GitHubObservedRepositoryTrendData repository) {
-        if (!repository.PreviousCapturedAtUtc.HasValue) {
-            return 0d;
-        }
-
-        return Math.Abs(repository.StarDelta) * 5d
-               + Math.Abs(repository.ForkDelta) * 4d
-               + Math.Abs(repository.WatcherDelta) * 3d
-               + Math.Abs(repository.OpenIssueDelta);
-    }
 }
 
 /// <summary>
