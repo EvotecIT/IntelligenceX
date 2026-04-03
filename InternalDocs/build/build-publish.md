@@ -115,6 +115,7 @@ Current staged notes:
 - `Build\release.json` now also owns the normal workspace-preflight hook through `WorkspaceValidation`, so `Build-Project.ps1` stays thin.
 - `Build\release.packages.json` keeps the package-only lane thin as well, so `Build-Project.ps1 -PackagesOnly` can stage the main `IntelligenceX` package without also requiring desktop-app Winget assets.
 - `Build-Project.ps1` now resolves user-supplied release output paths from the repo root, which removes the old surprise where `.\Artifacts\...` ended up under `Build\Artifacts\...` because PowerForge resolved them relative to the config file.
+- `POWERFORGE_CLI_PATH` is now the most explicit local override for wrapper validation when you want `Build-Project.ps1` and related scripts to use one exact built CLI or script path instead of sibling-repo discovery.
 - `Build\Internal\Resolve-TestimoXRoot.ps1` is now the shared resolver used by workspace/plugin scripts instead of duplicating that logic in multiple files.
 - `Build\Internal\Resolve-ReleaseDefaults.ps1` is now the shared helper for release-specific defaults like the primary executable name and the TestimoX signing-thumbprint fallback.
 - `Build\Internal\Build.ScriptSupport.ps1` is now the shared helper for front-door script console output plus strict `dotnet` / nested-script invocation.
