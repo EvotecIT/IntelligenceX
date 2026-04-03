@@ -4,6 +4,28 @@ function Resolve-PowerForgeCliInvocation {
         [string] $RepoRoot
     )
 
+    if (-not [string]::IsNullOrWhiteSpace($env:POWERFORGE_CLI_PATH)) {
+        $explicitCliPath = [System.IO.Path]::GetFullPath($env:POWERFORGE_CLI_PATH)
+        if (-not (Test-Path -LiteralPath $explicitCliPath)) {
+            throw "POWERFORGE_CLI_PATH does not exist: $explicitCliPath"
+        }
+
+        $extension = [System.IO.Path]::GetExtension($explicitCliPath)
+        if ($extension -and $extension.Equals('.ps1', [System.StringComparison]::OrdinalIgnoreCase)) {
+            return @{
+                Command = 'pwsh'
+                Prefix = @('-NoProfile', '-File', $explicitCliPath)
+                Source = $explicitCliPath
+            }
+        }
+
+        return @{
+            Command = $explicitCliPath
+            Prefix = @()
+            Source = $explicitCliPath
+        }
+    }
+
     function Get-LatestCliSourceWriteTimeUtc {
         param(
             [Parameter(Mandatory)]

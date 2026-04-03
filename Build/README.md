@@ -126,5 +126,6 @@ The wrapper now expresses only high-level release intent and lets PowerForge dec
 The checked-in `release.json` now narrows the public NuGet lane to the main `IntelligenceX` package and uses the unified `UploadReady` staging + Winget manifest flow for desktop-app release handoff.
 When you run `Build-Project.ps1 -PackagesOnly` without overriding `-ConfigPath`, the wrapper now switches to `Build\release.packages.json` so package-only runs do not trip over the desktop-app Winget requirements in `Build\release.json`.
 User-supplied `-StageRoot`, `-OutputRoot`, `-ManifestJsonPath`, and `-ChecksumsPath` values are resolved from the repo root now, so `.\Artifacts\...` behaves the way it looks from the shell prompt.
+Set `POWERFORGE_CLI_PATH` when you want the wrappers to use a specific built CLI or script explicitly instead of auto-resolving a sibling PSPublishModule checkout.
 
 The old standalone publish wrappers for CLI/chat/tray were removed because `Build-Project.ps1` now covers those targets through PowerForge.
