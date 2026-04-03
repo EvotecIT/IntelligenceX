@@ -91,6 +91,7 @@ What this covers today:
 - style choice through PowerForge (`FrameworkDependent` for smaller runtime-required outputs, `PortableCompat` for self-contained outputs)
 - symbol-preserving outputs and MSI signing can now be requested through the unified `Build-Project.ps1` / `powerforge release` path as well
 - repo-level release staging can now stay on the unified path as well through `-StageRoot` / `Build-Release.ps1`, which copies assets into `nuget`, `portable`, `installer`, `tools`, and `metadata` without a repo-local manifest-copy helper
+- the checked-in `Build/release.json` now uses PowerForge `UploadReady` staging by default so local and CI release handoff land in one root with `NuGet`, `GitHub`, `Winget`, and metadata instead of scattered artifact folders
 - signing policy can now be selected from the unified path as well (`Warn` / `Fail` / `Skip`), which is useful when USB-token middleware like SafeNet may pop interactive PIN/password UI
 - optional GitHub release publishing for the package asset set
 - optional GitHub release publishing for CLI/tray/chat assets, including MSI outputs when produced by DotNetPublish
@@ -112,6 +113,8 @@ Current staged notes:
 - `Build\Advanced\Build-Installer.ps1` remains a valid fallback/manual entrypoint, but the default MSI path is now `Build-Project.ps1` -> PowerForge DotNetPublish.
 - `Build\powerforge.dotnetpublish.json` is now the active unified CLI/tray/chat-host/chat-service/chat-app publish config.
 - `Build\release.json` now also owns the normal workspace-preflight hook through `WorkspaceValidation`, so `Build-Project.ps1` stays thin.
+- `Build\release.packages.json` keeps the package-only lane thin as well, so `Build-Project.ps1 -PackagesOnly` can stage the main `IntelligenceX` package without also requiring desktop-app Winget assets.
+- `Build-Project.ps1` now resolves user-supplied release output paths from the repo root, which removes the old surprise where `.\Artifacts\...` ended up under `Build\Artifacts\...` because PowerForge resolved them relative to the config file.
 - `Build\Internal\Resolve-TestimoXRoot.ps1` is now the shared resolver used by workspace/plugin scripts instead of duplicating that logic in multiple files.
 - `Build\Internal\Resolve-ReleaseDefaults.ps1` is now the shared helper for release-specific defaults like the primary executable name and the TestimoX signing-thumbprint fallback.
 - `Build\Internal\Build.ScriptSupport.ps1` is now the shared helper for front-door script console output plus strict `dotnet` / nested-script invocation.
@@ -131,12 +134,17 @@ This single command orchestrates:
 - release manifest + SHA256 checksums
 
 Default output:
-- `Artifacts\Releases\<release-id>\nuget`
-- `Artifacts\Releases\<release-id>\portable`
-- `Artifacts\Releases\<release-id>\installer`
-- `Artifacts\Releases\<release-id>\metadata`
-- `Artifacts\Releases\<release-id>\release-manifest.json`
-- `Artifacts\Releases\<release-id>\SHA256SUMS.txt`
+- `Artifacts\UploadReady\<release-id>\NuGet`
+- `Artifacts\UploadReady\<release-id>\GitHub`
+- `Artifacts\UploadReady\<release-id>\Winget`
+- `Artifacts\UploadReady\<release-id>\Metadata`
+- `Artifacts\UploadReady\<release-id>\release-manifest.json`
+- `Artifacts\UploadReady\<release-id>\SHA256SUMS.txt`
+
+Current release intent:
+- the unified package lane now stages the main `IntelligenceX` NuGet package rather than the internal tool-pack nupkgs
+- the unified app lane stages Tray portable and Chat portable assets into `GitHub`
+- PowerForge also emits Tray + Chat Winget manifests from those same staged files under `Winget`
 
 Installer-only (build from an existing portable payload or package one on demand):
 

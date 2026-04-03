@@ -64,7 +64,7 @@ if ([string]::IsNullOrWhiteSpace($ReleaseId)) {
     $ReleaseId = Get-Date -Format 'yyyyMMdd-HHmmss'
 }
 if ([string]::IsNullOrWhiteSpace($OutDir)) {
-    $OutDir = Join-Path $script:RepoRoot ("Artifacts\Releases\{0}" -f $ReleaseId)
+    $OutDir = Join-Path $script:RepoRoot ("Artifacts\UploadReady\{0}" -f $ReleaseId)
 }
 if ($ClearOut -and (Test-Path -LiteralPath $OutDir)) {
     Remove-Item -LiteralPath $OutDir -Recurse -Force

@@ -381,6 +381,7 @@ build/*
 !Build/README.md
 !Build/Release-Matrix.md
 !Build/release.json
+!Build/release.packages.json
 !Build/powerforge.plugins.json
 !Build/powerforge.dotnetpublish.json
 !Build/Run-Project.ps1
