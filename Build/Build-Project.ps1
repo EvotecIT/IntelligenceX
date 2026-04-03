@@ -1,5 +1,5 @@
 param(
-    [string] $ConfigPath = "$PSScriptRoot\release.json",
+    [string] $ConfigPath,
     [switch] $Plan,
     [switch] $Validate,
     [switch] $PublishNuget,
@@ -58,6 +58,10 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = (Get-Item (Split-Path -Parent $MyInvocation.MyCommand.Path)).Parent.FullName
 . (Join-Path $repoRoot 'Build\Internal\Resolve-PowerForgeCli.ps1')
 . (Join-Path $repoRoot 'Build\Internal\Resolve-ReleaseDefaults.ps1')
+
+if ([string]::IsNullOrWhiteSpace($ConfigPath)) {
+    $ConfigPath = Join-Path $PSScriptRoot 'release.json'
+}
 
 function Resolve-RepoRelativePath {
     param([string] $PathValue)

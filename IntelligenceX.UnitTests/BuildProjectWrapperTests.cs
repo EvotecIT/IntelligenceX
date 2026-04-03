@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Threading.Tasks;
 using Xunit;
 
 namespace IntelligenceX.UnitTests;
@@ -12,9 +13,9 @@ public sealed class BuildProjectWrapperTests {
     public void PackagesOnly_DefaultConfig_UsesReleasePackagesConfig_AndRepoRootPaths() {
         var repoRoot = FindRepoRoot();
         using var harness = CliCaptureHarness.Create();
-        var stageRoot = @".\Artifacts\WrapperTests\packages-only";
-        var manifestPath = @".\Artifacts\WrapperTests\packages-only\manifest.json";
-        var checksumsPath = @".\Artifacts\WrapperTests\packages-only\SHA256SUMS.txt";
+        var stageRoot = Path.Combine(".", "Artifacts", "WrapperTests", "packages-only");
+        var manifestPath = Path.Combine(".", "Artifacts", "WrapperTests", "packages-only", "manifest.json");
+        var checksumsPath = Path.Combine(".", "Artifacts", "WrapperTests", "packages-only", "SHA256SUMS.txt");
 
         RunBuildProject(
             repoRoot,
@@ -44,7 +45,7 @@ public sealed class BuildProjectWrapperTests {
             harness,
             "-Plan",
             "-PackagesOnly",
-            "-ConfigPath", @".\Build\release.json");
+            "-ConfigPath", Path.Combine(".", "Build", "release.json"));
 
         var args = harness.ReadCapturedArgs();
         AssertContainsOption(args, "--config", Path.Combine(repoRoot, "Build", "release.json"));
@@ -67,7 +68,7 @@ public sealed class BuildProjectWrapperTests {
 
     private static void RunBuildProject(string repoRoot, CliCaptureHarness harness, params string[] scriptArgs) {
         var psi = new ProcessStartInfo {
-            FileName = "pwsh",
+            FileName = ResolvePwshPath(),
             WorkingDirectory = repoRoot,
             RedirectStandardError = true,
             RedirectStandardOutput = true,
@@ -84,11 +85,11 @@ public sealed class BuildProjectWrapperTests {
         psi.Environment["POWERFORGE_CLI_PATH"] = harness.ScriptPath;
 
         using var process = Process.Start(psi) ?? throw new InvalidOperationException("Failed to start Build-Project.ps1");
-        var stdout = process.StandardOutput.ReadToEnd();
-        var stderr = process.StandardError.ReadToEnd();
-        process.WaitForExit();
+        var stdoutTask = process.StandardOutput.ReadToEndAsync();
+        var stderrTask = process.StandardError.ReadToEndAsync();
+        Task.WhenAll(stdoutTask, stderrTask, process.WaitForExitAsync()).GetAwaiter().GetResult();
 
-        Assert.True(process.ExitCode == 0, $"Build-Project.ps1 failed.{Environment.NewLine}STDOUT:{Environment.NewLine}{stdout}{Environment.NewLine}STDERR:{Environment.NewLine}{stderr}");
+        Assert.True(process.ExitCode == 0, $"Build-Project.ps1 failed.{Environment.NewLine}STDOUT:{Environment.NewLine}{stdoutTask.Result}{Environment.NewLine}STDERR:{Environment.NewLine}{stderrTask.Result}");
     }
 
     private static void AssertContainsOption(string[] args, string optionName, string expectedValue) {
@@ -113,6 +114,39 @@ public sealed class BuildProjectWrapperTests {
         }
 
         throw new InvalidOperationException("Could not locate repository root from " + AppContext.BaseDirectory);
+    }
+
+    private static string ResolvePwshPath() {
+        var pathEnv = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
+        var pathSegments = pathEnv.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var candidates = new[] {
+            OperatingSystem.IsWindows() ? "pwsh.exe" : "pwsh",
+            OperatingSystem.IsWindows()
+                ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "PowerShell", "7", "pwsh.exe")
+                : "/usr/local/bin/pwsh",
+            OperatingSystem.IsWindows()
+                ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "PowerShell", "7-preview", "pwsh.exe")
+                : "/opt/homebrew/bin/pwsh"
+        };
+
+        foreach (var candidate in candidates.Where(value => !string.IsNullOrWhiteSpace(value))) {
+            if (Path.IsPathRooted(candidate)) {
+                if (File.Exists(candidate)) {
+                    return candidate;
+                }
+
+                continue;
+            }
+
+            foreach (var segment in pathSegments) {
+                var fullPath = Path.Combine(segment, candidate);
+                if (File.Exists(fullPath)) {
+                    return fullPath;
+                }
+            }
+        }
+
+        return OperatingSystem.IsWindows() ? "pwsh.exe" : "pwsh";
     }
 
     private sealed class CliCaptureHarness : IDisposable {
