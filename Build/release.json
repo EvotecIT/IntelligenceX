@@ -46,7 +46,7 @@
     "GitHubUsername": "EvotecIT",
     "GitHubRepositoryName": "IntelligenceX",
     "GitHubReleaseMode": "Single",
-    "GitHubPrimaryProject": "IntelligenceX.Tools.Common",
+    "GitHubPrimaryProject": "IntelligenceX",
     "GitHubTagTemplate": "{Repo}-packages-v{PrimaryVersion}",
     "GitHubTagConflictPolicy": "Reuse",
     "GitHubIsPreRelease": false,
@@ -69,12 +69,11 @@
   },
   "Winget": {
     "Enabled": true,
-    "OutputPath": "../Artifacts/UploadReady/Winget",
+    "OutputPath": "Winget",
     "InstallerUrlTemplate": "https://github.com/EvotecIT/IntelligenceX/releases/download/v{PackageVersion}/{FileName}",
     "Packages": [
       {
         "PackageIdentifier": "EvotecIT.IntelligenceX.Tray",
-        "PackageVersion": "1.0.0",
         "Publisher": "Evotec",
         "PackageName": "IntelligenceX Tray",
         "License": "MIT",
@@ -105,7 +104,6 @@
       },
       {
         "PackageIdentifier": "EvotecIT.IntelligenceX.Chat",
-        "PackageVersion": "1.0.0",
         "Publisher": "Evotec",
         "PackageName": "IntelligenceX Chat",
         "License": "MIT",
