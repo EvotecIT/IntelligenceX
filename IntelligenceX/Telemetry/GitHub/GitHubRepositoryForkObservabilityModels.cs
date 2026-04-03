@@ -35,6 +35,13 @@ public interface IGitHubRepositoryForkSnapshotStore {
     /// </summary>
     /// <returns>All persisted fork snapshots.</returns>
     IReadOnlyList<GitHubRepositoryForkSnapshotRecord> GetAll();
+
+    /// <summary>
+    /// Returns the most recent capture time for one parent repository when available.
+    /// </summary>
+    /// <param name="parentRepositoryNameWithOwner">Parent repository in owner/name form.</param>
+    /// <returns>Most recent capture time for the parent repository.</returns>
+    DateTimeOffset? GetLatestCaptureAtUtcByParentRepository(string parentRepositoryNameWithOwner);
 }
 
 /// <summary>

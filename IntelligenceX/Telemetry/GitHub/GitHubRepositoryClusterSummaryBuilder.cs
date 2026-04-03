@@ -9,7 +9,7 @@ namespace IntelligenceX.Telemetry.GitHub;
 /// <summary>
 /// Combines star-sync, shared stargazers, fork-network overlap, and local-pulse alignment into related repo clusters.
 /// </summary>
-public static class GitHubRepositoryClusterSummaryBuilder {
+internal static class GitHubRepositoryClusterSummaryBuilder {
     private const double MinimumStarCorrelation = 0.45d;
     private const double MinimumLocalCorrelation = 0.25d;
     private const int MinimumSignals = 2;
@@ -188,7 +188,7 @@ public static class GitHubRepositoryClusterSummaryBuilder {
     }
 }
 
-public sealed class GitHubRepositoryClusterSummaryData {
+internal sealed class GitHubRepositoryClusterSummaryData {
     public static GitHubRepositoryClusterSummaryData Empty { get; } = new(
         watchedRepositoryCount: 0,
         locallyAlignedRepositoryCount: 0,
@@ -216,7 +216,7 @@ public sealed class GitHubRepositoryClusterSummaryData {
         .FirstOrDefault();
 }
 
-public sealed class GitHubRepositoryClusterData {
+internal sealed class GitHubRepositoryClusterData {
     public GitHubRepositoryClusterData(
         string repositoryANameWithOwner,
         string repositoryBNameWithOwner,

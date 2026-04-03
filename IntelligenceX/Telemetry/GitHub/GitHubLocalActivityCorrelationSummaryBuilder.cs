@@ -11,7 +11,7 @@ namespace IntelligenceX.Telemetry.GitHub;
 /// <summary>
 /// Correlates watched GitHub repository momentum with local code churn and telemetry activity.
 /// </summary>
-public static class GitHubLocalActivityCorrelationSummaryBuilder {
+internal static class GitHubLocalActivityCorrelationSummaryBuilder {
     private const int RecentWindowDays = 7;
     private const double MinimumCorrelationMagnitude = 0.25d;
 
@@ -28,7 +28,7 @@ public static class GitHubLocalActivityCorrelationSummaryBuilder {
             .Select(group => new GitCodeUsageProviderSeriesData(
                 group.Key,
                 group.Key,
-                group.GroupBy(static usageEvent => usageEvent.TimestampUtc.ToLocalTime().Date)
+                group.GroupBy(static usageEvent => usageEvent.TimestampUtc.UtcDateTime.Date)
                     .Select(static dayGroup => new GitCodeUsageDailyValueData(
                         dayGroup.Key,
                         dayGroup.Sum(static usageEvent => usageEvent.TotalTokens ?? 0L),
@@ -150,7 +150,7 @@ public static class GitHubLocalActivityCorrelationSummaryBuilder {
         }
 
         var usageByDay = new Dictionary<DateTime, double>();
-        foreach (var provider in providerSeries) {
+        foreach (var provider in providerSeries.Where(static provider => !string.Equals(NormalizeProviderId(provider.ProviderId), "github", StringComparison.OrdinalIgnoreCase))) {
             foreach (var day in provider.Days.Where(static day => day.Day != default)) {
                 usageByDay[day.Day.Date] = usageByDay.TryGetValue(day.Day.Date, out var existing)
                     ? existing + day.ActivityValue
@@ -203,7 +203,7 @@ public static class GitHubLocalActivityCorrelationSummaryBuilder {
     }
 }
 
-public sealed class GitHubLocalActivityCorrelationSummaryData {
+internal sealed class GitHubLocalActivityCorrelationSummaryData {
     public static GitHubLocalActivityCorrelationSummaryData Empty { get; } = new(
         repositoryName: null,
         watchedRepositoryCount: 0,
@@ -247,7 +247,7 @@ public sealed class GitHubLocalActivityCorrelationSummaryData {
         .FirstOrDefault();
 }
 
-public sealed class GitHubLocalActivityRepositoryCorrelationData {
+internal sealed class GitHubLocalActivityRepositoryCorrelationData {
     public GitHubLocalActivityRepositoryCorrelationData(
         string repositoryNameWithOwner,
         double correlation,

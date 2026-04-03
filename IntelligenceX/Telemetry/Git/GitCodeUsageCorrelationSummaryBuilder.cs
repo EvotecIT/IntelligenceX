@@ -11,7 +11,7 @@ namespace IntelligenceX.Telemetry.Git;
 /// <summary>
 /// Builds a compact summary that compares local git churn with recent telemetry usage patterns.
 /// </summary>
-public static class GitCodeUsageCorrelationSummaryBuilder {
+internal static class GitCodeUsageCorrelationSummaryBuilder {
     private const int RecentWindowDays = 7;
     private const double MinimumCorrelationMagnitude = 0.25d;
 
@@ -209,7 +209,7 @@ public static class GitCodeUsageCorrelationSummaryBuilder {
 /// <summary>
 /// Compact repository churn vs usage summary.
 /// </summary>
-public sealed class GitCodeUsageCorrelationSummaryData {
+internal sealed class GitCodeUsageCorrelationSummaryData {
     public static GitCodeUsageCorrelationSummaryData Empty { get; } = new(
         repositoryName: null,
         activityUnitsLabel: "usage",
@@ -301,7 +301,7 @@ public sealed class GitCodeUsageCorrelationSummaryData {
 /// <summary>
 /// One provider-level churn vs usage correlation result.
 /// </summary>
-public sealed class GitCodeUsageProviderCorrelationData {
+internal sealed class GitCodeUsageProviderCorrelationData {
     public GitCodeUsageProviderCorrelationData(
         string providerId,
         string providerDisplayName,
@@ -334,7 +334,7 @@ public sealed class GitCodeUsageProviderCorrelationData {
 /// <summary>
 /// Daily usage/activity series for one provider.
 /// </summary>
-public sealed class GitCodeUsageProviderSeriesData {
+internal sealed class GitCodeUsageProviderSeriesData {
     public GitCodeUsageProviderSeriesData(
         string providerId,
         string providerDisplayName,
@@ -352,7 +352,7 @@ public sealed class GitCodeUsageProviderSeriesData {
 /// <summary>
 /// One daily activity point for churn-vs-usage comparison.
 /// </summary>
-public sealed class GitCodeUsageDailyValueData {
+internal sealed class GitCodeUsageDailyValueData {
     public GitCodeUsageDailyValueData(
         DateTime day,
         double activityValue,

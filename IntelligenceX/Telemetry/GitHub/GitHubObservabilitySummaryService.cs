@@ -11,7 +11,7 @@ namespace IntelligenceX.Telemetry.GitHub;
 /// <summary>
 /// Loads compact GitHub repository watch momentum data for UI and report surfaces.
 /// </summary>
-public sealed class GitHubObservabilitySummaryService {
+internal sealed class GitHubObservabilitySummaryService {
     /// <summary>
     /// Reads the local GitHub observability snapshot store and summarizes the latest tracked state.
     /// </summary>
@@ -673,7 +673,7 @@ public sealed class GitHubObservabilitySummaryService {
 /// <summary>
 /// Compact GitHub watch summary consumed by tray and report view models.
 /// </summary>
-public sealed class GitHubObservabilitySummaryData {
+internal sealed class GitHubObservabilitySummaryData {
     public static GitHubObservabilitySummaryData Empty { get; } = new(
         dbPath: null,
         enabledWatchCount: 0,
@@ -833,7 +833,7 @@ public sealed class GitHubObservabilitySummaryData {
 /// <summary>
 /// Single watched repository trend row.
 /// </summary>
-public sealed class GitHubObservedRepositoryTrendData {
+internal sealed class GitHubObservedRepositoryTrendData {
     public GitHubObservedRepositoryTrendData(
         string repositoryNameWithOwner,
         int stars,
@@ -878,7 +878,7 @@ public sealed class GitHubObservedRepositoryTrendData {
 /// <summary>
 /// Single recent trend point derived from daily snapshot deltas.
 /// </summary>
-public sealed class GitHubObservedTrendPointData {
+internal sealed class GitHubObservedTrendPointData {
     public static GitHubObservedTrendPointData Empty { get; } = new(default, 0d, 0, 0, 0);
 
     public GitHubObservedTrendPointData(
@@ -904,7 +904,7 @@ public sealed class GitHubObservedTrendPointData {
 /// <summary>
 /// Pairwise repository movement correlation derived from watched daily trend points.
 /// </summary>
-public sealed class GitHubObservedCorrelationData {
+internal sealed class GitHubObservedCorrelationData {
     public GitHubObservedCorrelationData(
         string repositoryANameWithOwner,
         string repositoryBNameWithOwner,
@@ -934,7 +934,7 @@ public sealed class GitHubObservedCorrelationData {
 /// <summary>
 /// Pairwise star-delta correlation derived from watched daily star movement.
 /// </summary>
-public sealed class GitHubObservedStarCorrelationData {
+internal sealed class GitHubObservedStarCorrelationData {
     public GitHubObservedStarCorrelationData(
         string repositoryANameWithOwner,
         string repositoryBNameWithOwner,
@@ -970,7 +970,7 @@ public sealed class GitHubObservedStarCorrelationData {
 /// <summary>
 /// Shared fork-owner overlap between two watched repositories.
 /// </summary>
-public sealed class GitHubObservedForkNetworkOverlapData {
+internal sealed class GitHubObservedForkNetworkOverlapData {
     public GitHubObservedForkNetworkOverlapData(
         string repositoryANameWithOwner,
         string repositoryBNameWithOwner,
@@ -1000,7 +1000,7 @@ public sealed class GitHubObservedForkNetworkOverlapData {
 /// <summary>
 /// Shared stargazer-audience overlap between two watched repositories.
 /// </summary>
-public sealed class GitHubObservedStargazerAudienceOverlapData {
+internal sealed class GitHubObservedStargazerAudienceOverlapData {
     public GitHubObservedStargazerAudienceOverlapData(
         string repositoryANameWithOwner,
         string repositoryBNameWithOwner,

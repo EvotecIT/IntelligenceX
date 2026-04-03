@@ -697,6 +697,30 @@ ORDER BY parent_repository_name_with_owner, captured_at_utc, fork_repository_nam
     }
 
     /// <inheritdoc />
+    public DateTimeOffset? GetLatestCaptureAtUtcByParentRepository(string parentRepositoryNameWithOwner) {
+        var normalized = GitHubRepositoryIdentity.NormalizeNameWithOwner(parentRepositoryNameWithOwner);
+        lock (_gate) {
+            var table = SqliteGitHubObservabilitySchema.QueryAsTable(_db.Query(
+                _dbPath,
+                @"
+SELECT captured_at_utc
+FROM ix_github_repository_fork_snapshots
+WHERE parent_repository_name_with_owner = @parent_repository_name_with_owner
+ORDER BY captured_at_utc DESC, id DESC
+LIMIT 1;",
+                parameters: new Dictionary<string, object?> {
+                    ["@parent_repository_name_with_owner"] = normalized
+                }));
+
+            if (table is null || table.Rows.Count == 0) {
+                return null;
+            }
+
+            return SqliteGitHubObservabilitySchema.ReadNullableDateTimeOffset(table.Rows[0], "captured_at_utc");
+        }
+    }
+
+    /// <inheritdoc />
     public void Dispose() {
         _db.Dispose();
     }
@@ -742,7 +766,7 @@ ORDER BY parent_repository_name_with_owner, captured_at_utc, fork_repository_nam
 /// <summary>
 /// SQLite-backed store for persisted stargazer observations.
 /// </summary>
-public sealed class SqliteGitHubRepositoryStargazerSnapshotStore : IGitHubRepositoryStargazerSnapshotStore, IDisposable {
+internal sealed class SqliteGitHubRepositoryStargazerSnapshotStore : IGitHubRepositoryStargazerSnapshotStore, IDisposable {
     private readonly object _gate = new();
     private readonly SQLite _db = new();
     private readonly string _dbPath;
@@ -852,7 +876,7 @@ SELECT
   profile_url,
   avatar_url
 FROM ix_github_repository_stargazer_snapshots
-WHERE stargazer_login = @stargazer_login
+WHERE stargazer_login = @stargazer_login COLLATE NOCASE
 ORDER BY captured_at_utc, repository_name_with_owner, id;",
                 parameters: new Dictionary<string, object?> {
                     ["@stargazer_login"] = normalized
@@ -880,6 +904,30 @@ FROM ix_github_repository_stargazer_snapshots
 ORDER BY repository_name_with_owner, captured_at_utc, stargazer_login, id;"));
 
             return ReadStargazerSnapshots(table);
+        }
+    }
+
+    /// <inheritdoc />
+    public DateTimeOffset? GetLatestCaptureAtUtcByRepository(string repositoryNameWithOwner) {
+        var normalized = GitHubRepositoryIdentity.NormalizeNameWithOwner(repositoryNameWithOwner);
+        lock (_gate) {
+            var table = SqliteGitHubObservabilitySchema.QueryAsTable(_db.Query(
+                _dbPath,
+                @"
+SELECT captured_at_utc
+FROM ix_github_repository_stargazer_snapshots
+WHERE repository_name_with_owner = @repository_name_with_owner
+ORDER BY captured_at_utc DESC, id DESC
+LIMIT 1;",
+                parameters: new Dictionary<string, object?> {
+                    ["@repository_name_with_owner"] = normalized
+                }));
+
+            if (table is null || table.Rows.Count == 0) {
+                return null;
+            }
+
+            return SqliteGitHubObservabilitySchema.ReadNullableDateTimeOffset(table.Rows[0], "captured_at_utc");
         }
     }
 
@@ -1015,6 +1063,11 @@ CREATE INDEX IF NOT EXISTS ix_github_repository_stargazer_snapshots_repo_time
 
 CREATE INDEX IF NOT EXISTS ix_github_repository_stargazer_snapshots_login_time
   ON ix_github_repository_stargazer_snapshots(stargazer_login, captured_at_utc);");
+        db.ExecuteNonQuery(
+            fullPath,
+            @"
+CREATE INDEX IF NOT EXISTS ix_github_repository_stargazer_snapshots_login_time_nocase
+  ON ix_github_repository_stargazer_snapshots(stargazer_login COLLATE NOCASE, captured_at_utc);");
     }
 
     public static string? Normalize(string? value) {

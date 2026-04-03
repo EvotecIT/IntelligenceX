@@ -49,4 +49,14 @@ internal sealed class InMemoryGitHubRepositoryForkSnapshotStore : IGitHubReposit
             .ThenBy(value => value.Id, StringComparer.OrdinalIgnoreCase)
             .ToArray();
     }
+
+    /// <inheritdoc />
+    public DateTimeOffset? GetLatestCaptureAtUtcByParentRepository(string parentRepositoryNameWithOwner) {
+        var normalized = GitHubRepositoryIdentity.NormalizeNameWithOwner(parentRepositoryNameWithOwner);
+        return _snapshots.Values
+            .Where(value => string.Equals(value.ParentRepositoryNameWithOwner, normalized, StringComparison.OrdinalIgnoreCase))
+            .Select(static value => (DateTimeOffset?)value.CapturedAtUtc)
+            .OrderByDescending(static value => value)
+            .FirstOrDefault();
+    }
 }

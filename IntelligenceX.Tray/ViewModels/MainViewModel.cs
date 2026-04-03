@@ -84,7 +84,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     private DateTimeOffset _usageDirtyAtUtc;
     private string? _latestUsageChangePath;
 
-    public MainViewModel(
+    internal MainViewModel(
         UsageTelemetrySnapshotService usageService,
         ProviderLimitSnapshotService limitService,
         GitHubService gitHubService,

@@ -967,7 +967,7 @@ public sealed class ProviderViewModel : ViewModelBase {
         }
     }
 
-    public void ApplyCodeChurnSummary(GitCodeChurnSummaryData? summary) {
+    internal void ApplyCodeChurnSummary(GitCodeChurnSummaryData? summary) {
         _codeChurnSummary = summary ?? GitCodeChurnSummaryData.Empty;
         RebuildCodeChurnBars();
         OnPropertyChanged(nameof(HasCodeChurn));
@@ -985,14 +985,14 @@ public sealed class ProviderViewModel : ViewModelBase {
         }
     }
 
-    public void ApplyGitHubLocalActivityCorrelationSummary(GitHubLocalActivityCorrelationSummaryData? summary) {
+    internal void ApplyGitHubLocalActivityCorrelationSummary(GitHubLocalActivityCorrelationSummaryData? summary) {
         _gitHubLocalActivityCorrelationSummary = summary ?? GitHubLocalActivityCorrelationSummaryData.Empty;
         if (IsCombinedProvider) {
             RebuildSelectedRangeViews();
         }
     }
 
-    public void ApplyGitHubRepositoryClusterSummary(GitHubRepositoryClusterSummaryData? summary) {
+    internal void ApplyGitHubRepositoryClusterSummary(GitHubRepositoryClusterSummaryData? summary) {
         _gitHubRepositoryClusterSummary = summary ?? GitHubRepositoryClusterSummaryData.Empty;
         if (IsCombinedProvider) {
             RebuildSelectedRangeViews();

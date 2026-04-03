@@ -106,7 +106,15 @@ internal static class GitHubWrappedHtmlRenderer {
         }
         sb.AppendLine("      </div>");
 
-        if (page.WatchedRepositories is not null || page.WatchedCorrelations is not null || page.WatchedStarCorrelations is not null || page.WatchedRepoClusters is not null || page.WatchedStargazerAudience is not null || page.WatchedForkNetwork is not null || page.WatchedForkMomentum is not null || page.WatchedLocalAlignment is not null) {
+        if (page.WatchedRepositories is not null
+            || page.WatchedCorrelations is not null
+            || page.WatchedStarCorrelations is not null
+            || page.WatchedRepoClusters is not null
+            || page.WatchedStargazerAudience is not null
+            || page.WatchedForkNetwork is not null
+            || page.WatchedForkMomentum is not null
+            || page.WatchedLocalAlignment is not null
+            || page.TopRepositoriesByHealth is not null) {
             sb.AppendLine("      <div class=\"split-grid\">");
             if (page.WatchedRepositories is not null) {
                 AppendInsightPanel(sb, page.WatchedRepositories, "Watched repo momentum");

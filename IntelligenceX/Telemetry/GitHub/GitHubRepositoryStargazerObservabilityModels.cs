@@ -8,7 +8,7 @@ namespace IntelligenceX.Telemetry.GitHub;
 /// <summary>
 /// Contract for persisted GitHub stargazer observations.
 /// </summary>
-public interface IGitHubRepositoryStargazerSnapshotStore {
+internal interface IGitHubRepositoryStargazerSnapshotStore {
     /// <summary>
     /// Inserts or replaces a stargazer snapshot.
     /// </summary>
@@ -34,12 +34,19 @@ public interface IGitHubRepositoryStargazerSnapshotStore {
     /// </summary>
     /// <returns>All persisted stargazer snapshots.</returns>
     IReadOnlyList<GitHubRepositoryStargazerSnapshotRecord> GetAll();
+
+    /// <summary>
+    /// Returns the most recent capture time for one repository when available.
+    /// </summary>
+    /// <param name="repositoryNameWithOwner">Repository in owner/name form.</param>
+    /// <returns>Most recent capture time for the repository.</returns>
+    DateTimeOffset? GetLatestCaptureAtUtcByRepository(string repositoryNameWithOwner);
 }
 
 /// <summary>
 /// Canonical persisted observation of a repository stargazer at a point in time.
 /// </summary>
-public sealed class GitHubRepositoryStargazerSnapshotRecord {
+internal sealed class GitHubRepositoryStargazerSnapshotRecord {
     /// <summary>
     /// Initializes a new stargazer snapshot record.
     /// </summary>

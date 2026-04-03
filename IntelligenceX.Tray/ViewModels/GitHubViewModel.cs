@@ -620,7 +620,7 @@ public sealed class GitHubViewModel : ViewModelBase {
         WatchedRepositories.Clear();
     }
 
-    public void ApplyObservabilitySummary(GitHubObservabilitySummaryData data) {
+    internal void ApplyObservabilitySummary(GitHubObservabilitySummaryData data) {
         data ??= GitHubObservabilitySummaryData.Empty;
         WatchCount = data.EnabledWatchCount;
         TrackedRepositoryCount = data.SnapshotRepositoryCount;
@@ -661,7 +661,7 @@ public sealed class GitHubViewModel : ViewModelBase {
         }
     }
 
-    public void ApplyLocalActivityCorrelationSummary(GitHubLocalActivityCorrelationSummaryData data) {
+    internal void ApplyLocalActivityCorrelationSummary(GitHubLocalActivityCorrelationSummaryData data) {
         data ??= GitHubLocalActivityCorrelationSummaryData.Empty;
         if (data.StrongestPositiveCorrelation is not null) {
             PositiveLocalAlignmentRepositoryText = BuildLocalAlignmentRepositoryText(data.StrongestPositiveCorrelation);
@@ -682,7 +682,7 @@ public sealed class GitHubViewModel : ViewModelBase {
         OnPropertyChanged(nameof(LocalAlignmentHeadlineText));
     }
 
-    public void ApplyRepositoryClusterSummary(GitHubRepositoryClusterSummaryData data) {
+    internal void ApplyRepositoryClusterSummary(GitHubRepositoryClusterSummaryData data) {
         data ??= GitHubRepositoryClusterSummaryData.Empty;
         if (data.StrongestCluster is null) {
             RepositoryClusterPairText = string.Empty;

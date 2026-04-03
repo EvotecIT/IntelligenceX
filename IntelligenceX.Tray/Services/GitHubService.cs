@@ -149,7 +149,7 @@ public sealed class GitHubService {
                 node.TryGetProperty("description", out var d) && d.ValueKind == JsonValueKind.String ? d.GetString() : null,
                 lang,
                 langColor,
-                node.TryGetProperty("watchers_count", out var w) ? w.GetInt32() : 0,
+                node.TryGetProperty("subscribers_count", out var w) ? w.GetInt32() : 0,
                 node.TryGetProperty("open_issues_count", out var issues) ? issues.GetInt32() : 0,
                 node.TryGetProperty("pushed_at", out var pushedAt) && pushedAt.ValueKind == JsonValueKind.String
                     && DateTimeOffset.TryParse(

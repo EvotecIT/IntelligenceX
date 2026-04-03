@@ -11,7 +11,7 @@ namespace IntelligenceX.Telemetry.GitHub;
 /// <summary>
 /// Controls automatic refresh of watched repository snapshots, fork networks, and stargazer audiences.
 /// </summary>
-public sealed class GitHubRepositoryWatchAutoSyncOptions {
+internal sealed class GitHubRepositoryWatchAutoSyncOptions {
     /// <summary>
     /// Gets or sets the maximum allowed age for a watched repository snapshot before it is refreshed.
     /// </summary>
@@ -51,7 +51,7 @@ public sealed class GitHubRepositoryWatchAutoSyncOptions {
 /// <summary>
 /// High-level status for an automatic watched-repository sync attempt.
 /// </summary>
-public enum GitHubRepositoryWatchAutoSyncStatus {
+internal enum GitHubRepositoryWatchAutoSyncStatus {
     /// <summary>
     /// No usable GitHub token was available.
     /// </summary>
@@ -86,7 +86,7 @@ public enum GitHubRepositoryWatchAutoSyncStatus {
 /// <summary>
 /// Result returned by automatic watched-repository sync operations.
 /// </summary>
-public sealed class GitHubRepositoryWatchAutoSyncResult {
+internal sealed class GitHubRepositoryWatchAutoSyncResult {
     /// <summary>
     /// Initializes an auto-sync result.
     /// </summary>
@@ -228,7 +228,7 @@ internal sealed class GitHubDashboardRepositoryWatchAutoSyncClient : IGitHubRepo
 /// <summary>
 /// Refreshes watched GitHub repository momentum and audience data when the local cache becomes stale.
 /// </summary>
-public sealed class GitHubRepositoryWatchAutoSyncService {
+internal sealed class GitHubRepositoryWatchAutoSyncService {
     private readonly Func<string, IGitHubRepositoryWatchAutoSyncClient> _clientFactory;
     private readonly Func<string?> _databasePathResolver;
     private readonly Func<DateTimeOffset> _utcNow;
@@ -318,13 +318,10 @@ public sealed class GitHubRepositoryWatchAutoSyncService {
             }
 
             if (options.IncludeForks) {
-                var latestForkSnapshot = forkStore.GetByParentRepository(watch.RepositoryNameWithOwner)
-                    .OrderByDescending(static snapshot => snapshot.CapturedAtUtc)
-                    .ThenByDescending(snapshot => snapshot.Id, StringComparer.OrdinalIgnoreCase)
-                    .FirstOrDefault();
-                var needsForks = latestForkSnapshot is null
-                                 || nowUtc - latestForkSnapshot.CapturedAtUtc >= forkFreshnessWindow
-                                 || latestSnapshot is not null && latestForkSnapshot.CapturedAtUtc < latestSnapshot.CapturedAtUtc;
+                var latestForkCaptureAtUtc = forkStore.GetLatestCaptureAtUtcByParentRepository(watch.RepositoryNameWithOwner);
+                var needsForks = !latestForkCaptureAtUtc.HasValue
+                                 || nowUtc - latestForkCaptureAtUtc.Value >= forkFreshnessWindow
+                                 || latestSnapshot is not null && latestForkCaptureAtUtc.Value < latestSnapshot.CapturedAtUtc;
                 if (needsForks) {
                     staleForkRepositories.Add(watch.RepositoryNameWithOwner);
                 }
@@ -334,13 +331,10 @@ public sealed class GitHubRepositoryWatchAutoSyncService {
                 continue;
             }
 
-            var latestStargazerSnapshot = stargazerStore.GetByRepository(watch.RepositoryNameWithOwner)
-                .OrderByDescending(static snapshot => snapshot.CapturedAtUtc)
-                .ThenByDescending(snapshot => snapshot.Id, StringComparer.OrdinalIgnoreCase)
-                .FirstOrDefault();
-            var needsStargazers = latestStargazerSnapshot is null
-                                  || nowUtc - latestStargazerSnapshot.CapturedAtUtc >= stargazerFreshnessWindow
-                                  || latestSnapshot is not null && latestStargazerSnapshot.CapturedAtUtc < latestSnapshot.CapturedAtUtc;
+            var latestStargazerCaptureAtUtc = stargazerStore.GetLatestCaptureAtUtcByRepository(watch.RepositoryNameWithOwner);
+            var needsStargazers = !latestStargazerCaptureAtUtc.HasValue
+                                  || nowUtc - latestStargazerCaptureAtUtc.Value >= stargazerFreshnessWindow
+                                  || latestSnapshot is not null && latestStargazerCaptureAtUtc.Value < latestSnapshot.CapturedAtUtc;
             if (needsStargazers) {
                 staleStargazerRepositories.Add(watch.RepositoryNameWithOwner);
             }
