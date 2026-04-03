@@ -2,6 +2,8 @@ using System;
 using System.IO;
 using System.Linq;
 using IntelligenceX.Json;
+using IntelligenceX.Telemetry.Git;
+using IntelligenceX.Telemetry.GitHub;
 using IntelligenceX.Telemetry.Limits;
 using IntelligenceX.Telemetry.Usage;
 using IntelligenceX.Visualization.Heatmaps;
@@ -1004,6 +1006,514 @@ internal static partial class Program {
         AssertContainsText(page.Stats[0].Value, "2026 YTD", "github wrapped card first stat value");
     }
 
+    private static void TestUsageTelemetryOverviewPageModelBuilderAddsWatchedMomentumWhenProvided() {
+        var section = CreateSampleGitHubOverviewSection();
+        var summary = new UsageSummarySnapshot {
+            Metric = UsageSummaryMetric.TotalTokens,
+            StartDayUtc = new DateTime(2025, 03, 14),
+            EndDayUtc = new DateTime(2026, 03, 12),
+            TotalValue = 0m,
+            TotalDays = 365,
+            ActiveDays = 71,
+            PeakDayUtc = new DateTime(2026, 03, 11),
+            PeakValue = 18m
+        };
+        var overview = new UsageTelemetryOverviewDocument(
+            title: "Usage Overview",
+            subtitle: "@przemyslawklys",
+            metric: UsageSummaryMetric.TotalTokens,
+            units: "tokens",
+            summary: summary,
+            cards: Array.Empty<UsageTelemetryOverviewCard>(),
+            heatmaps: Array.Empty<UsageTelemetryOverviewHeatmap>(),
+            providerSections: new[] { section });
+
+        var page = UsageTelemetryReportPageModelBuilders.BuildOverview(
+            overview,
+            CreateSampleGitHubObservabilitySummary());
+        var github = page.Sections.Single().GitHub;
+
+        AssertNotNull(github, "github page model exists with watched summary");
+        AssertEqual(5, github!.Lenses.Count, "github page model lens count with watched summary");
+        AssertEqual("watched", github.Lenses[2].Key, "github page model watched lens key");
+        AssertEqual("github-watched-repositories", github.WatchedRepositories?.Key, "github watched repositories insight key");
+        AssertEqual("github-watched-correlations", github.WatchedCorrelations?.Key, "github watched correlations insight key");
+        AssertEqual("github-watched-star-correlations", github.WatchedStarCorrelations?.Key, "github watched star correlations insight key");
+        AssertEqual("github-watched-repo-clusters", github.WatchedRepoClusters?.Key, "github watched repo clusters insight key");
+        AssertEqual("github-watched-stargazer-audience", github.WatchedStargazerAudience?.Key, "github watched stargazer audience insight key");
+        AssertContainsText(github.WatchedRepositories?.Headline ?? string.Empty, "+5 stars", "github watched repositories headline");
+        AssertContainsText(github.WatchedCorrelations?.Headline ?? string.Empty, "Strongest sync", "github watched correlations headline");
+        AssertContainsText(github.WatchedStarCorrelations?.Headline ?? string.Empty, "Strongest star sync", "github watched star correlations headline");
+        AssertContainsText(github.WatchedRepoClusters?.Headline ?? string.Empty, "Strongest cluster", "github watched repo clusters headline");
+        AssertContainsText(github.WatchedStargazerAudience?.Headline ?? string.Empty, "Strongest shared stargazers", "github watched stargazer audience headline");
+    }
+
+    private static void TestUsageTelemetryGitHubWrappedCardPageModelBuilderAddsWatchedMomentumWhenProvided() {
+        var section = CreateSampleGitHubOverviewSection();
+
+        var page = UsageTelemetryReportPageModelBuilders.BuildGitHubWrappedCard(
+            section,
+            gitHubObservabilitySummary: CreateSampleGitHubObservabilitySummary());
+
+        AssertEqual(9, page.FooterMetrics.Count, "github wrapped card footer count with watched summary");
+        AssertEqual("Watched momentum", page.FooterMetrics[2].Label, "github wrapped card watched footer label");
+        AssertContainsText(page.FooterMetrics[2].Value, "+5 stars", "github wrapped card watched footer value");
+        AssertEqual("Linked movers", page.FooterMetrics[3].Label, "github wrapped card linked movers footer label");
+        AssertContainsText(page.FooterMetrics[3].Value, "IntelligenceX", "github wrapped card linked movers footer value");
+        AssertEqual("Star sync", page.FooterMetrics[4].Label, "github wrapped card star sync footer label");
+        AssertContainsText(page.FooterMetrics[4].Value, "IntelligenceX", "github wrapped card star sync footer value");
+        AssertEqual("Related repos", page.FooterMetrics[5].Label, "github wrapped card related repos footer label");
+        AssertContainsText(page.FooterMetrics[5].Value, "IntelligenceX", "github wrapped card related repos footer value");
+        AssertEqual("Shared stargazers", page.FooterMetrics[6].Label, "github wrapped card shared stargazers footer label");
+        AssertContainsText(page.FooterMetrics[6].Value, "IntelligenceX", "github wrapped card shared stargazers footer value");
+        AssertEqual("Shared forkers", page.FooterMetrics[7].Label, "github wrapped card shared forkers footer label");
+        AssertContainsText(page.FooterMetrics[7].Value, "IntelligenceX", "github wrapped card shared forkers footer value");
+        AssertEqual("Rising forks", page.FooterMetrics[8].Label, "github wrapped card rising forks footer label");
+        AssertContainsText(page.FooterMetrics[8].Value, "alice/IntelligenceX", "github wrapped card rising forks footer value");
+    }
+
+    private static void TestUsageTelemetryOverviewPageModelBuilderAddsCodeChurnWhenProvided() {
+        var section = CreateSampleGitHubOverviewSection();
+        var summary = new UsageSummarySnapshot {
+            Metric = UsageSummaryMetric.TotalTokens,
+            StartDayUtc = new DateTime(2025, 03, 14),
+            EndDayUtc = new DateTime(2026, 03, 12),
+            TotalValue = 0m,
+            TotalDays = 365,
+            ActiveDays = 71,
+            PeakDayUtc = new DateTime(2026, 03, 12),
+            PeakValue = 18m
+        };
+        var overview = new UsageTelemetryOverviewDocument(
+            title: "GitHub Usage",
+            subtitle: "@przemyslawklys",
+            metric: UsageSummaryMetric.TotalTokens,
+            units: "contributions",
+            summary: summary,
+            cards: Array.Empty<UsageTelemetryOverviewCard>(),
+            heatmaps: Array.Empty<UsageTelemetryOverviewHeatmap>(),
+            providerSections: new[] { section },
+            metadata: new JsonObject());
+
+        var page = UsageTelemetryReportPageModelBuilders.BuildOverview(
+            overview,
+            gitCodeChurnSummary: CreateSampleGitCodeChurnSummary());
+
+        AssertNotNull(page.CodeChurn, "overview page model code churn exists");
+        AssertEqual("Code churn", page.CodeChurn!.Title, "overview page model code churn title");
+        AssertContainsText(page.CodeChurn.Headline, "+1.24K", "overview page model code churn headline");
+        AssertEqual("git-code-churn", page.CodeChurn.DailyBreakdown.Key, "overview page model code churn key");
+        AssertContainsText(page.CodeChurn.DailyBreakdown.Rows[0].Value, "+120", "overview page model code churn first row");
+    }
+
+    private static void TestUsageTelemetryOverviewPageModelBuilderAddsGitHubLocalAlignmentWhenProvided() {
+        var summary = new UsageSummarySnapshot {
+            Metric = UsageSummaryMetric.TotalTokens,
+            StartDayUtc = new DateTime(2026, 03, 01),
+            EndDayUtc = new DateTime(2026, 03, 12),
+            TotalValue = 9_400m,
+            TotalDays = 12,
+            ActiveDays = 9,
+            PeakDayUtc = new DateTime(2026, 03, 12),
+            PeakValue = 2_200m
+        };
+        var overview = new UsageTelemetryOverviewDocument(
+            title: "Usage Overview",
+            subtitle: "GitHub local alignment",
+            metric: UsageSummaryMetric.TotalTokens,
+            units: "tokens",
+            summary: summary,
+            cards: Array.Empty<UsageTelemetryOverviewCard>(),
+            heatmaps: Array.Empty<UsageTelemetryOverviewHeatmap>(),
+            providerSections: new[] {
+                CreateSampleCorrelationOverviewSection(
+                    "codex",
+                    "Codex",
+                    new double[] { 160, 0, 450, 0, 300, 250, 560 }),
+                CreateSampleGitHubOverviewSection()
+            },
+            metadata: new JsonObject());
+
+        var page = UsageTelemetryReportPageModelBuilders.BuildOverview(
+            overview,
+            gitHubObservabilitySummary: CreateSampleGitHubObservabilitySummary(),
+            gitCodeChurnSummary: CreateSampleGitCodeChurnSummary());
+
+        var githubSection = page.Sections.First(static section => string.Equals(section.ProviderId, "github", StringComparison.OrdinalIgnoreCase));
+        AssertNotNull(githubSection.GitHub, "overview page model github section exists");
+        AssertNotNull(githubSection.GitHub!.WatchedLocalAlignment, "overview page model github local alignment exists");
+        AssertEqual("github-watched-local-alignment", githubSection.GitHub.WatchedLocalAlignment!.Key, "overview page model github local alignment key");
+        AssertContainsText(githubSection.GitHub.WatchedLocalAlignment.Headline ?? string.Empty, "Strongest local", "overview page model github local alignment headline");
+    }
+
+    private static void TestUsageTelemetryOverviewPageModelBuilderAddsGitHubForkNetworkWhenProvided() {
+        var section = CreateSampleGitHubOverviewSection();
+        var summary = new UsageSummarySnapshot {
+            Metric = UsageSummaryMetric.TotalTokens,
+            StartDayUtc = new DateTime(2025, 03, 14),
+            EndDayUtc = new DateTime(2026, 03, 12),
+            TotalValue = 0m,
+            TotalDays = 365,
+            ActiveDays = 71,
+            PeakDayUtc = new DateTime(2026, 03, 12),
+            PeakValue = 18m
+        };
+        var overview = new UsageTelemetryOverviewDocument(
+            title: "GitHub Usage",
+            subtitle: "@przemyslawklys",
+            metric: UsageSummaryMetric.TotalTokens,
+            units: "contributions",
+            summary: summary,
+            cards: Array.Empty<UsageTelemetryOverviewCard>(),
+            heatmaps: Array.Empty<UsageTelemetryOverviewHeatmap>(),
+            providerSections: new[] { section },
+            metadata: new JsonObject());
+
+        var page = UsageTelemetryReportPageModelBuilders.BuildOverview(
+            overview,
+            gitHubObservabilitySummary: CreateSampleGitHubObservabilitySummary());
+
+        var githubSection = page.Sections.Single().GitHub;
+        AssertNotNull(githubSection, "github page model exists with fork network");
+        AssertNotNull(githubSection!.WatchedForkNetwork, "github page model fork network exists");
+        AssertEqual("github-watched-fork-network", githubSection.WatchedForkNetwork!.Key, "github page model fork network key");
+        AssertContainsText(githubSection.WatchedForkNetwork.Headline ?? string.Empty, "shared forkers", "github page model fork network headline");
+        AssertNotNull(githubSection.WatchedForkMomentum, "github page model fork momentum exists");
+        AssertEqual("github-watched-fork-momentum", githubSection.WatchedForkMomentum!.Key, "github page model fork momentum key");
+        AssertContainsText(githubSection.WatchedForkMomentum.Headline ?? string.Empty, "Top fork mover", "github page model fork momentum headline");
+    }
+
+    private static void TestUsageTelemetryOverviewPageModelBuilderAddsGitHubStarCorrelationWhenProvided() {
+        var section = CreateSampleGitHubOverviewSection();
+        var summary = new UsageSummarySnapshot {
+            Metric = UsageSummaryMetric.TotalTokens,
+            StartDayUtc = new DateTime(2025, 03, 14),
+            EndDayUtc = new DateTime(2026, 03, 12),
+            TotalValue = 0m,
+            TotalDays = 365,
+            ActiveDays = 71,
+            PeakDayUtc = new DateTime(2026, 03, 12),
+            PeakValue = 18m
+        };
+        var overview = new UsageTelemetryOverviewDocument(
+            title: "GitHub Usage",
+            subtitle: "@przemyslawklys",
+            metric: UsageSummaryMetric.TotalTokens,
+            units: "contributions",
+            summary: summary,
+            cards: Array.Empty<UsageTelemetryOverviewCard>(),
+            heatmaps: Array.Empty<UsageTelemetryOverviewHeatmap>(),
+            providerSections: new[] { section },
+            metadata: new JsonObject());
+
+        var page = UsageTelemetryReportPageModelBuilders.BuildOverview(
+            overview,
+            gitHubObservabilitySummary: CreateSampleGitHubObservabilitySummary());
+
+        var githubSection = page.Sections.Single().GitHub;
+        AssertNotNull(githubSection, "github page model exists with star correlation");
+        AssertNotNull(githubSection!.WatchedStarCorrelations, "github page model star correlation exists");
+        AssertEqual("github-watched-star-correlations", githubSection.WatchedStarCorrelations!.Key, "github page model star correlation key");
+        AssertContainsText(githubSection.WatchedStarCorrelations.Headline ?? string.Empty, "star sync", "github page model star correlation headline");
+    }
+
+    private static void TestUsageTelemetryOverviewPageModelBuilderAddsGitHubRepoClusterWhenProvided() {
+        var section = CreateSampleGitHubOverviewSection();
+        var summary = new UsageSummarySnapshot {
+            Metric = UsageSummaryMetric.TotalTokens,
+            StartDayUtc = new DateTime(2025, 03, 14),
+            EndDayUtc = new DateTime(2026, 03, 12),
+            TotalValue = 0m,
+            TotalDays = 365,
+            ActiveDays = 71,
+            PeakDayUtc = new DateTime(2026, 03, 12),
+            PeakValue = 18m
+        };
+        var overview = new UsageTelemetryOverviewDocument(
+            title: "GitHub Usage",
+            subtitle: "@przemyslawklys",
+            metric: UsageSummaryMetric.TotalTokens,
+            units: "contributions",
+            summary: summary,
+            cards: Array.Empty<UsageTelemetryOverviewCard>(),
+            heatmaps: Array.Empty<UsageTelemetryOverviewHeatmap>(),
+            providerSections: new[] { section },
+            metadata: new JsonObject());
+
+        var page = UsageTelemetryReportPageModelBuilders.BuildOverview(
+            overview,
+            gitHubObservabilitySummary: CreateSampleGitHubObservabilitySummary());
+
+        var githubSection = page.Sections.Single().GitHub;
+        AssertNotNull(githubSection, "github page model exists with repo cluster");
+        AssertNotNull(githubSection!.WatchedRepoClusters, "github page model repo cluster exists");
+        AssertEqual("github-watched-repo-clusters", githubSection.WatchedRepoClusters!.Key, "github page model repo cluster key");
+        AssertContainsText(githubSection.WatchedRepoClusters.Headline ?? string.Empty, "cluster", "github page model repo cluster headline");
+        AssertNotNull(page.GitHubRepoClusters, "overview page model top-level repo cluster exists");
+        AssertEqual("Related repo clusters", page.GitHubRepoClusters!.Title, "overview page model top-level repo cluster title");
+    }
+
+    private static void TestUsageTelemetryOverviewPageModelBuilderAddsGitHubStargazerAudienceWhenProvided() {
+        var summary = new UsageSummarySnapshot {
+            Metric = UsageSummaryMetric.TotalTokens,
+            StartDayUtc = new DateTime(2025, 03, 14),
+            EndDayUtc = new DateTime(2026, 03, 12),
+            TotalValue = 0m,
+            TotalDays = 365,
+            ActiveDays = 71,
+            PeakDayUtc = new DateTime(2026, 03, 12),
+            PeakValue = 18m
+        };
+        var overview = new UsageTelemetryOverviewDocument(
+            title: "GitHub Usage",
+            subtitle: "@przemyslawklys",
+            metric: UsageSummaryMetric.TotalTokens,
+            units: "contributions",
+            summary: summary,
+            cards: Array.Empty<UsageTelemetryOverviewCard>(),
+            heatmaps: Array.Empty<UsageTelemetryOverviewHeatmap>(),
+            providerSections: new[] { CreateSampleGitHubOverviewSection() },
+            metadata: new JsonObject());
+
+        var page = UsageTelemetryReportPageModelBuilders.BuildOverview(
+            overview,
+            gitHubObservabilitySummary: CreateSampleGitHubObservabilitySummary());
+
+        var githubSection = page.Sections.Single().GitHub;
+        AssertNotNull(githubSection, "github page model exists with stargazer audience");
+        AssertNotNull(githubSection!.WatchedStargazerAudience, "github page model stargazer audience exists");
+        AssertEqual("github-watched-stargazer-audience", githubSection.WatchedStargazerAudience!.Key, "github page model stargazer audience key");
+        AssertContainsText(githubSection.WatchedStargazerAudience.Headline ?? string.Empty, "shared stargazers", "github page model stargazer audience headline");
+        AssertContainsText(githubSection.WatchedStargazerAudience.Note ?? string.Empty, "3/3 watched repos captured", "github page model stargazer audience coverage note");
+    }
+
+    private static void TestUsageTelemetryOverviewPageModelBuilderAddsGitHubStargazerCoverageWithoutOverlap() {
+        var summary = new UsageSummarySnapshot {
+            Metric = UsageSummaryMetric.TotalTokens,
+            StartDayUtc = new DateTime(2025, 03, 14),
+            EndDayUtc = new DateTime(2026, 03, 12),
+            TotalValue = 0m,
+            TotalDays = 365,
+            ActiveDays = 71,
+            PeakDayUtc = new DateTime(2026, 03, 12),
+            PeakValue = 18m
+        };
+        var overview = new UsageTelemetryOverviewDocument(
+            title: "GitHub Usage",
+            subtitle: "@przemyslawklys",
+            metric: UsageSummaryMetric.TotalTokens,
+            units: "contributions",
+            summary: summary,
+            cards: Array.Empty<UsageTelemetryOverviewCard>(),
+            heatmaps: Array.Empty<UsageTelemetryOverviewHeatmap>(),
+            providerSections: new[] { CreateSampleGitHubOverviewSection() },
+            metadata: new JsonObject());
+
+        var page = UsageTelemetryReportPageModelBuilders.BuildOverview(
+            overview,
+            gitHubObservabilitySummary: new GitHubObservabilitySummaryData(
+                dbPath: @"C:\telemetry\usage.db",
+                enabledWatchCount: 3,
+                snapshotRepositoryCount: 3,
+                comparableRepositoryCount: 3,
+                totalStars: 1_063,
+                totalForks: 153,
+                totalWatchers: 54,
+                positiveStarDelta: 5,
+                positiveForkDelta: 1,
+                positiveWatcherDelta: 2,
+                changedRepositoryCount: 1,
+                latestCaptureAtUtc: new DateTimeOffset(2026, 03, 12, 10, 30, 0, TimeSpan.Zero),
+                repositories: Array.Empty<GitHubObservedRepositoryTrendData>(),
+                correlations: Array.Empty<GitHubObservedCorrelationData>(),
+                observedStargazerCount: 4,
+                latestStargazerCaptureAtUtc: new DateTimeOffset(2026, 03, 11, 10, 30, 0, TimeSpan.Zero),
+                stargazerSnapshotRepositoryCount: 2,
+                laggingStargazerRepositoryCount: 1));
+
+        var githubSection = page.Sections.Single().GitHub;
+        AssertNotNull(githubSection, "github page model exists with stargazer coverage only");
+        AssertNotNull(githubSection!.WatchedStargazerAudience, "github page model stargazer coverage insight exists");
+        AssertContainsText(githubSection.WatchedStargazerAudience!.Headline ?? string.Empty, "active", "github page model stargazer coverage headline");
+        AssertContainsText(githubSection.WatchedStargazerAudience.Note ?? string.Empty, "2/3 watched repos captured", "github page model stargazer coverage note");
+        AssertContainsText(githubSection.WatchedStargazerAudience.Note ?? string.Empty, "1 behind latest repo sync", "github page model stargazer coverage lag note");
+    }
+
+    private static void TestUsageTelemetryOverviewPageModelBuilderAddsGitHubForkCoverageWithoutOverlap() {
+        var summary = new UsageSummarySnapshot {
+            Metric = UsageSummaryMetric.TotalTokens,
+            StartDayUtc = new DateTime(2025, 03, 14),
+            EndDayUtc = new DateTime(2026, 03, 12),
+            TotalValue = 0m,
+            TotalDays = 365,
+            ActiveDays = 71,
+            PeakDayUtc = new DateTime(2026, 03, 12),
+            PeakValue = 18m
+        };
+        var overview = new UsageTelemetryOverviewDocument(
+            title: "GitHub Usage",
+            subtitle: "@przemyslawklys",
+            metric: UsageSummaryMetric.TotalTokens,
+            units: "contributions",
+            summary: summary,
+            cards: Array.Empty<UsageTelemetryOverviewCard>(),
+            heatmaps: Array.Empty<UsageTelemetryOverviewHeatmap>(),
+            providerSections: new[] { CreateSampleGitHubOverviewSection() },
+            metadata: new JsonObject());
+
+        var page = UsageTelemetryReportPageModelBuilders.BuildOverview(
+            overview,
+            gitHubObservabilitySummary: new GitHubObservabilitySummaryData(
+                dbPath: @"C:\telemetry\usage.db",
+                enabledWatchCount: 3,
+                snapshotRepositoryCount: 3,
+                comparableRepositoryCount: 3,
+                totalStars: 1_063,
+                totalForks: 153,
+                totalWatchers: 54,
+                positiveStarDelta: 5,
+                positiveForkDelta: 1,
+                positiveWatcherDelta: 2,
+                changedRepositoryCount: 1,
+                latestCaptureAtUtc: new DateTimeOffset(2026, 03, 12, 10, 30, 0, TimeSpan.Zero),
+                repositories: Array.Empty<GitHubObservedRepositoryTrendData>(),
+                correlations: Array.Empty<GitHubObservedCorrelationData>(),
+                latestForkCaptureAtUtc: new DateTimeOffset(2026, 03, 11, 10, 30, 0, TimeSpan.Zero),
+                forkSnapshotRepositoryCount: 2,
+                laggingForkRepositoryCount: 1));
+
+        var githubSection = page.Sections.Single().GitHub;
+        AssertNotNull(githubSection, "github page model exists with fork coverage only");
+        AssertNotNull(githubSection!.WatchedForkNetwork, "github page model fork coverage insight exists");
+        AssertContainsText(githubSection.WatchedForkNetwork!.Headline ?? string.Empty, "active", "github page model fork coverage headline");
+        AssertContainsText(githubSection.WatchedForkNetwork.Note ?? string.Empty, "2/3 watched repos captured", "github page model fork coverage note");
+        AssertContainsText(githubSection.WatchedForkNetwork.Note ?? string.Empty, "1 behind latest repo sync", "github page model fork coverage lag note");
+        AssertNotNull(githubSection.WatchedForkMomentum, "github page model fork momentum coverage insight exists");
+        AssertContainsText(githubSection.WatchedForkMomentum!.Note ?? string.Empty, "2/3 watched repos captured", "github page model fork momentum coverage note");
+    }
+
+    private static void TestUsageTelemetryOverviewPageModelBuilderAddsTopLevelGitHubLocalAlignmentWhenProvided() {
+        var summary = new UsageSummarySnapshot {
+            Metric = UsageSummaryMetric.TotalTokens,
+            StartDayUtc = new DateTime(2026, 03, 01),
+            EndDayUtc = new DateTime(2026, 03, 12),
+            TotalValue = 9_400m,
+            TotalDays = 12,
+            ActiveDays = 9,
+            PeakDayUtc = new DateTime(2026, 03, 12),
+            PeakValue = 2_200m
+        };
+        var overview = new UsageTelemetryOverviewDocument(
+            title: "Usage Overview",
+            subtitle: "GitHub local alignment",
+            metric: UsageSummaryMetric.TotalTokens,
+            units: "tokens",
+            summary: summary,
+            cards: Array.Empty<UsageTelemetryOverviewCard>(),
+            heatmaps: Array.Empty<UsageTelemetryOverviewHeatmap>(),
+            providerSections: new[] {
+                CreateSampleCorrelationOverviewSection(
+                    "codex",
+                    "Codex",
+                    new double[] { 160, 0, 450, 0, 300, 250, 560 }),
+                CreateSampleGitHubOverviewSection()
+            },
+            metadata: new JsonObject());
+
+        var page = UsageTelemetryReportPageModelBuilders.BuildOverview(
+            overview,
+            gitHubObservabilitySummary: CreateSampleGitHubObservabilitySummary(),
+            gitCodeChurnSummary: CreateSampleGitCodeChurnSummary());
+
+        AssertNotNull(page.GitHubLocalAlignment, "overview page model top-level github local alignment exists");
+        AssertEqual("Watched repo sync", page.GitHubLocalAlignment!.Title, "overview page model top-level github local alignment title");
+        AssertEqual("github-watched-local-alignment", page.GitHubLocalAlignment.Repositories.Key, "overview page model top-level github local alignment key");
+        AssertContainsText(page.GitHubLocalAlignment.Headline, "Strongest local sync", "overview page model top-level github local alignment headline");
+    }
+
+    private static void TestUsageTelemetryOverviewPageModelBuilderExcludesGitHubProviderFromLocalAlignmentInput() {
+        var summary = new UsageSummarySnapshot {
+            Metric = UsageSummaryMetric.TotalTokens,
+            StartDayUtc = new DateTime(2026, 03, 01),
+            EndDayUtc = new DateTime(2026, 03, 12),
+            TotalValue = 25_000m,
+            TotalDays = 12,
+            ActiveDays = 9,
+            PeakDayUtc = new DateTime(2026, 03, 12),
+            PeakValue = 8_200m
+        };
+        var overview = new UsageTelemetryOverviewDocument(
+            title: "Usage Overview",
+            subtitle: "GitHub local alignment exclusion",
+            metric: UsageSummaryMetric.TotalTokens,
+            units: "tokens",
+            summary: summary,
+            cards: Array.Empty<UsageTelemetryOverviewCard>(),
+            heatmaps: Array.Empty<UsageTelemetryOverviewHeatmap>(),
+            providerSections: new[] {
+                CreateSampleCorrelationOverviewSection(
+                    "codex",
+                    "Codex",
+                    new double[] { 160, 0, 450, 0, 300, 250, 560 }),
+                CreateSampleCorrelationOverviewSection(
+                    "github",
+                    "GitHub",
+                    new double[] { 6000, 5000, 4200, 3800, 4400, 4100, 6200 })
+            },
+            metadata: new JsonObject());
+
+        var page = UsageTelemetryReportPageModelBuilders.BuildOverview(
+            overview,
+            gitHubObservabilitySummary: CreateSampleGitHubObservabilitySummary(),
+            gitCodeChurnSummary: CreateSampleGitCodeChurnSummary());
+
+        AssertNotNull(page.GitHubLocalAlignment, "overview page model github local alignment exists when github provider section is present");
+        AssertContainsText(page.GitHubLocalAlignment!.Note ?? string.Empty, "1.72K recent usage units", "overview page model github local alignment excludes github provider usage");
+    }
+
+    private static void TestUsageTelemetryOverviewPageModelBuilderAddsChurnUsageCorrelationWhenProvided() {
+        var summary = new UsageSummarySnapshot {
+            Metric = UsageSummaryMetric.TotalTokens,
+            StartDayUtc = new DateTime(2026, 03, 01),
+            EndDayUtc = new DateTime(2026, 03, 12),
+            TotalValue = 9_400m,
+            TotalDays = 12,
+            ActiveDays = 9,
+            PeakDayUtc = new DateTime(2026, 03, 12),
+            PeakValue = 2_200m
+        };
+        var overview = new UsageTelemetryOverviewDocument(
+            title: "Usage Overview",
+            subtitle: "Correlation test",
+            metric: UsageSummaryMetric.TotalTokens,
+            units: "tokens",
+            summary: summary,
+            cards: Array.Empty<UsageTelemetryOverviewCard>(),
+            heatmaps: Array.Empty<UsageTelemetryOverviewHeatmap>(),
+            providerSections: new[] {
+                CreateSampleCorrelationOverviewSection(
+                    "codex",
+                    "Codex",
+                    new double[] { 160, 0, 450, 0, 300, 250, 560 }),
+                CreateSampleCorrelationOverviewSection(
+                    "claude",
+                    "Claude",
+                    new double[] { 560, 460, 140, 420, 120, 130, 80 })
+            },
+            metadata: new JsonObject());
+
+        var page = UsageTelemetryReportPageModelBuilders.BuildOverview(
+            overview,
+            gitCodeChurnSummary: CreateSampleGitCodeChurnSummary());
+
+        AssertNotNull(page.ChurnUsageCorrelation, "overview page model churn usage correlation exists");
+        AssertEqual("Churn x usage", page.ChurnUsageCorrelation!.Title, "overview page model churn usage title");
+        AssertContainsText(page.ChurnUsageCorrelation.Headline, "rose together", "overview page model churn usage headline");
+        AssertEqual("git-code-usage-correlation", page.ChurnUsageCorrelation.ProviderSignals.Key, "overview page model churn usage key");
+        AssertEqual("Codex", page.ChurnUsageCorrelation.ProviderSignals.Rows[0].Label, "overview page model churn usage leading provider");
+        AssertContainsText(page.ChurnUsageCorrelation.ProviderSignals.Rows[0].Value, "+", "overview page model churn usage positive correlation value");
+    }
+
     private static void TestUsageTelemetryBreakdownPageModelBuilderBuildsServerSummary() {
         var heatmap = new HeatmapDocument(
             title: "By source root",
@@ -1378,5 +1888,271 @@ internal static partial class Program {
             longestStreakDays: 204,
             currentStreakDays: 204,
             note: "Owner scope: EvotecIT, przemyslawklys · 8.99K stars across 118 public repositories · Auto-correlated owners: EvotecIT");
+    }
+
+    private static GitHubObservabilitySummaryData CreateSampleGitHubObservabilitySummary() {
+        var sampleForkChange = GitHubRepositoryForkHistoryAnalytics.CreateChange(
+            new GitHubRepositoryForkSnapshotRecord(
+                GitHubRepositoryForkSnapshotRecord.CreateStableId("EvotecIT/IntelligenceX", "alice/IntelligenceX", new DateTimeOffset(2026, 03, 11, 10, 30, 0, TimeSpan.Zero)),
+                "EvotecIT/IntelligenceX",
+                "alice/IntelligenceX",
+                new DateTimeOffset(2026, 03, 11, 10, 30, 0, TimeSpan.Zero),
+                score: 66d,
+                tier: "medium",
+                stars: 7,
+                forks: 1,
+                watchers: 2,
+                openIssues: 0),
+            new GitHubRepositoryForkSnapshotRecord(
+                GitHubRepositoryForkSnapshotRecord.CreateStableId("EvotecIT/IntelligenceX", "alice/IntelligenceX", new DateTimeOffset(2026, 03, 12, 10, 30, 0, TimeSpan.Zero)),
+                "EvotecIT/IntelligenceX",
+                "alice/IntelligenceX",
+                new DateTimeOffset(2026, 03, 12, 10, 30, 0, TimeSpan.Zero),
+                score: 82d,
+                tier: "high",
+                stars: 11,
+                forks: 1,
+                watchers: 4,
+                openIssues: 0));
+        return new GitHubObservabilitySummaryData(
+            dbPath: @"C:\telemetry\usage.db",
+            enabledWatchCount: 3,
+            snapshotRepositoryCount: 3,
+            comparableRepositoryCount: 3,
+            totalStars: 1_063,
+            totalForks: 153,
+            totalWatchers: 54,
+            positiveStarDelta: 5,
+            positiveForkDelta: 1,
+            positiveWatcherDelta: 2,
+            changedRepositoryCount: 1,
+            latestCaptureAtUtc: new DateTimeOffset(2026, 03, 12, 10, 30, 0, TimeSpan.Zero),
+            repositories: new[] {
+                new GitHubObservedRepositoryTrendData(
+                    repositoryNameWithOwner: "EvotecIT/IntelligenceX",
+                    stars: 120,
+                    forks: 20,
+                    watchers: 12,
+                    openIssues: 3,
+                    starDelta: 5,
+                    forkDelta: 1,
+                    watcherDelta: 2,
+                    openIssueDelta: -1,
+                    currentCapturedAtUtc: new DateTimeOffset(2026, 03, 12, 10, 30, 0, TimeSpan.Zero),
+                    previousCapturedAtUtc: new DateTimeOffset(2026, 03, 11, 10, 30, 0, TimeSpan.Zero),
+                    trendPoints: new[] {
+                        new GitHubObservedTrendPointData(new DateTime(2026, 03, 06), 0d, 0, 0, 0),
+                        new GitHubObservedTrendPointData(new DateTime(2026, 03, 07), 3d, 1, 0, 0),
+                        new GitHubObservedTrendPointData(new DateTime(2026, 03, 08), 6d, 1, 0, 1),
+                        new GitHubObservedTrendPointData(new DateTime(2026, 03, 09), 0d, 0, 0, 0),
+                        new GitHubObservedTrendPointData(new DateTime(2026, 03, 10), 8d, 1, 1, 0),
+                        new GitHubObservedTrendPointData(new DateTime(2026, 03, 11), 6d, 1, 0, 0),
+                        new GitHubObservedTrendPointData(new DateTime(2026, 03, 12), 9d, 1, 0, 1)
+                    }),
+                new GitHubObservedRepositoryTrendData(
+                    repositoryNameWithOwner: "EvotecIT/PSWriteHTML",
+                    stars: 410,
+                    forks: 61,
+                    watchers: 20,
+                    openIssues: 4,
+                    starDelta: 4,
+                    forkDelta: 1,
+                    watcherDelta: 1,
+                    openIssueDelta: 0,
+                    currentCapturedAtUtc: new DateTimeOffset(2026, 03, 12, 10, 30, 0, TimeSpan.Zero),
+                    previousCapturedAtUtc: new DateTimeOffset(2026, 03, 11, 10, 30, 0, TimeSpan.Zero),
+                    trendPoints: new[] {
+                        new GitHubObservedTrendPointData(new DateTime(2026, 03, 06), 3d, 1, 0, 0),
+                        new GitHubObservedTrendPointData(new DateTime(2026, 03, 07), 5d, 1, 0, 1),
+                        new GitHubObservedTrendPointData(new DateTime(2026, 03, 08), 7d, 1, 0, 1),
+                        new GitHubObservedTrendPointData(new DateTime(2026, 03, 09), 3d, 0, 0, 0),
+                        new GitHubObservedTrendPointData(new DateTime(2026, 03, 10), 8d, 1, 1, 0),
+                        new GitHubObservedTrendPointData(new DateTime(2026, 03, 11), 6d, 1, 0, 0),
+                        new GitHubObservedTrendPointData(new DateTime(2026, 03, 12), 9d, 1, 0, 1)
+                    }),
+                new GitHubObservedRepositoryTrendData(
+                    repositoryNameWithOwner: "EvotecIT/GPOZaurr",
+                    stars: 533,
+                    forks: 72,
+                    watchers: 22,
+                    openIssues: 6,
+                    starDelta: -2,
+                    forkDelta: 0,
+                    watcherDelta: -1,
+                    openIssueDelta: 1,
+                    currentCapturedAtUtc: new DateTimeOffset(2026, 03, 12, 10, 30, 0, TimeSpan.Zero),
+                    previousCapturedAtUtc: new DateTimeOffset(2026, 03, 11, 10, 30, 0, TimeSpan.Zero),
+                    trendPoints: new[] {
+                        new GitHubObservedTrendPointData(new DateTime(2026, 03, 06), -2d, -1, 0, 0),
+                        new GitHubObservedTrendPointData(new DateTime(2026, 03, 07), -4d, -1, 0, -1),
+                        new GitHubObservedTrendPointData(new DateTime(2026, 03, 08), -6d, -1, 0, -1),
+                        new GitHubObservedTrendPointData(new DateTime(2026, 03, 09), -2d, 0, 0, 0),
+                        new GitHubObservedTrendPointData(new DateTime(2026, 03, 10), -7d, -1, 0, 0),
+                        new GitHubObservedTrendPointData(new DateTime(2026, 03, 11), -5d, -1, 0, 0),
+                        new GitHubObservedTrendPointData(new DateTime(2026, 03, 12), -8d, -1, 0, -1)
+                    })
+            },
+            correlations: new[] {
+                new GitHubObservedCorrelationData(
+                    repositoryANameWithOwner: "EvotecIT/IntelligenceX",
+                    repositoryBNameWithOwner: "EvotecIT/PSWriteHTML",
+                    correlation: 0.99d,
+                    overlapDays: 7,
+                    sharedUpDays: 7,
+                    sharedDownDays: 0,
+                    opposingDays: 0),
+                new GitHubObservedCorrelationData(
+                    repositoryANameWithOwner: "EvotecIT/IntelligenceX",
+                    repositoryBNameWithOwner: "EvotecIT/GPOZaurr",
+                    correlation: -0.98d,
+                    overlapDays: 7,
+                    sharedUpDays: 0,
+                    sharedDownDays: 0,
+                    opposingDays: 7)
+            },
+            starCorrelations: new[] {
+                new GitHubObservedStarCorrelationData(
+                    repositoryANameWithOwner: "EvotecIT/IntelligenceX",
+                    repositoryBNameWithOwner: "EvotecIT/PSWriteHTML",
+                    correlation: 0.97d,
+                    overlapDays: 7,
+                    sharedGainDays: 5,
+                    sharedDropDays: 0,
+                    opposingDays: 0,
+                    repositoryARecentStarChange: 5,
+                    repositoryBRecentStarChange: 4),
+                new GitHubObservedStarCorrelationData(
+                    repositoryANameWithOwner: "EvotecIT/IntelligenceX",
+                    repositoryBNameWithOwner: "EvotecIT/GPOZaurr",
+                    correlation: -0.96d,
+                    overlapDays: 7,
+                    sharedGainDays: 0,
+                    sharedDropDays: 0,
+                    opposingDays: 5,
+                    repositoryARecentStarChange: 5,
+                    repositoryBRecentStarChange: -2)
+            },
+            stargazerAudienceOverlaps: new[] {
+                new GitHubObservedStargazerAudienceOverlapData(
+                    repositoryANameWithOwner: "EvotecIT/IntelligenceX",
+                    repositoryBNameWithOwner: "EvotecIT/PSWriteHTML",
+                    sharedStargazerCount: 2,
+                    repositoryAStargazerCount: 5,
+                    repositoryBStargazerCount: 4,
+                    overlapRatio: 0.50d,
+                    sampleSharedStargazers: new[] { "alice", "bob" })
+            },
+            forkNetworkOverlaps: new[] {
+                new GitHubObservedForkNetworkOverlapData(
+                    repositoryANameWithOwner: "EvotecIT/IntelligenceX",
+                    repositoryBNameWithOwner: "EvotecIT/PSWriteHTML",
+                    sharedForkOwnerCount: 2,
+                    repositoryAForkOwnerCount: 4,
+                    repositoryBForkOwnerCount: 3,
+                    overlapRatio: 0.67d,
+                    sampleSharedForkOwners: new[] { "alice", "bob" })
+            },
+            observedForkOwnerCount: 5,
+            forkChanges: new[] { sampleForkChange },
+            latestForkCaptureAtUtc: new DateTimeOffset(2026, 03, 12, 10, 30, 0, TimeSpan.Zero),
+            forkSnapshotRepositoryCount: 3,
+            laggingForkRepositoryCount: 0,
+            observedStargazerCount: 6,
+            latestStargazerCaptureAtUtc: new DateTimeOffset(2026, 03, 12, 10, 30, 0, TimeSpan.Zero),
+            stargazerSnapshotRepositoryCount: 3,
+            laggingStargazerRepositoryCount: 0);
+    }
+
+    private static GitCodeChurnSummaryData CreateSampleGitCodeChurnSummary() {
+        return new GitCodeChurnSummaryData(
+            repositoryRootPath: @"C:\Support\GitHub\IntelligenceX",
+            repositoryName: "IntelligenceX",
+            recentAddedLines: 1_240,
+            recentDeletedLines: 480,
+            recentFilesModified: 37,
+            recentCommitCount: 11,
+            recentActiveDayCount: 4,
+            previousAddedLines: 820,
+            previousDeletedLines: 310,
+            previousFilesModified: 24,
+            previousCommitCount: 8,
+            last30DaysAddedLines: 3_920,
+            last30DaysDeletedLines: 1_840,
+            last30DaysFilesModified: 114,
+            last30DaysCommitCount: 36,
+            last30DaysActiveDayCount: 14,
+            latestCommitAtUtc: new DateTimeOffset(2026, 03, 12, 14, 45, 0, TimeSpan.Zero),
+            trendDays: new[] {
+                new GitCodeChurnDayData(new DateTime(2026, 03, 06), 120, 40, 6, 2),
+                new GitCodeChurnDayData(new DateTime(2026, 03, 07), 0, 0, 0, 0),
+                new GitCodeChurnDayData(new DateTime(2026, 03, 08), 340, 110, 12, 3),
+                new GitCodeChurnDayData(new DateTime(2026, 03, 09), 0, 0, 0, 0),
+                new GitCodeChurnDayData(new DateTime(2026, 03, 10), 210, 90, 8, 2),
+                new GitCodeChurnDayData(new DateTime(2026, 03, 11), 180, 70, 5, 1),
+                new GitCodeChurnDayData(new DateTime(2026, 03, 12), 390, 170, 14, 3)
+            });
+    }
+
+    private static UsageTelemetryOverviewProviderSection CreateSampleCorrelationOverviewSection(
+        string providerId,
+        string title,
+        IReadOnlyList<double> recentDailyValues) {
+        return new UsageTelemetryOverviewProviderSection(
+            key: "provider-" + providerId,
+            providerId: providerId,
+            title: title,
+            subtitle: title + " recent activity",
+            heatmap: new HeatmapDocument(
+                title: title + " usage",
+                subtitle: "Correlation sample",
+                palette: HeatmapPalette.ChatGptDark(),
+                sections: new[] {
+                    new HeatmapSection(
+                        "Recent",
+                        null,
+                        new[] {
+                            new HeatmapDay(new DateTime(2026, 02, 27), 80, level: 2),
+                            new HeatmapDay(new DateTime(2026, 02, 28), 70, level: 2),
+                            new HeatmapDay(new DateTime(2026, 03, 01), 60, level: 1),
+                            new HeatmapDay(new DateTime(2026, 03, 02), 75, level: 2),
+                            new HeatmapDay(new DateTime(2026, 03, 03), 65, level: 2),
+                            new HeatmapDay(new DateTime(2026, 03, 04), 55, level: 1),
+                            new HeatmapDay(new DateTime(2026, 03, 05), 50, level: 1),
+                            new HeatmapDay(new DateTime(2026, 03, 06), recentDailyValues[0], level: 2),
+                            new HeatmapDay(new DateTime(2026, 03, 07), recentDailyValues[1], level: 1),
+                            new HeatmapDay(new DateTime(2026, 03, 08), recentDailyValues[2], level: 4),
+                            new HeatmapDay(new DateTime(2026, 03, 09), recentDailyValues[3], level: 2),
+                            new HeatmapDay(new DateTime(2026, 03, 10), recentDailyValues[4], level: 3),
+                            new HeatmapDay(new DateTime(2026, 03, 11), recentDailyValues[5], level: 3),
+                            new HeatmapDay(new DateTime(2026, 03, 12), recentDailyValues[6], level: 4)
+                        })
+                }),
+            rangeStartUtc: new DateTime(2026, 02, 27),
+            rangeEndUtc: new DateTime(2026, 03, 12),
+            latestEventUtc: new DateTimeOffset(2026, 03, 12, 12, 0, 0, TimeSpan.Zero),
+            activeDays: 12,
+            totalDays: 14,
+            accountCount: 1,
+            sourceRootCount: 1,
+            accountLabels: new[] { providerId + "@example.com" },
+            metrics: new[] {
+                new UsageTelemetryOverviewSectionMetric("tokens", "Recent usage", "2.1K", "sample", 1d, "#4da3ff")
+            },
+            composition: null,
+            spotlightCards: Array.Empty<UsageTelemetryOverviewCard>(),
+            inputTokens: 0,
+            outputTokens: 0,
+            totalTokens: 0,
+            monthlyUsageTitle: "Monthly usage",
+            monthlyUsageUnitsLabel: "tokens",
+            monthlyUsage: Array.Empty<UsageTelemetryOverviewMonthlyUsage>(),
+            additionalInsights: Array.Empty<UsageTelemetryOverviewInsightSection>(),
+            topModels: Array.Empty<UsageTelemetryOverviewTopModel>(),
+            apiCostEstimate: null,
+            mostUsedModel: null,
+            recentModel: null,
+            longestStreakDays: 0,
+            currentStreakDays: 0,
+            note: null);
     }
 }

@@ -84,6 +84,28 @@ internal static class GitHubRepositoryObservabilityMapper {
         return snapshot;
     }
 
+    public static GitHubRepositoryStargazerSnapshotRecord CreateStargazerSnapshot(
+        string repositoryNameWithOwner,
+        GitHubRepositoryStargazerRecord stargazer,
+        DateTimeOffset capturedAtUtc) {
+        ArgumentNullException.ThrowIfNull(stargazer);
+
+        var snapshot = new GitHubRepositoryStargazerSnapshotRecord(
+            GitHubRepositoryStargazerSnapshotRecord.CreateStableId(
+                repositoryNameWithOwner,
+                stargazer.Login,
+                capturedAtUtc),
+            repositoryNameWithOwner,
+            stargazer.Login,
+            capturedAtUtc) {
+            StarredAtUtc = TryParseGitHubTimestamp(stargazer.StarredAt),
+            ProfileUrl = stargazer.ProfileUrl,
+            AvatarUrl = stargazer.AvatarUrl
+        };
+
+        return snapshot;
+    }
+
     private static DateTimeOffset? TryParseGitHubTimestamp(string? value) {
         if (string.IsNullOrWhiteSpace(value)) {
             return null;

@@ -3,6 +3,8 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using IntelligenceX.Json;
+using IntelligenceX.Telemetry.Git;
+using IntelligenceX.Telemetry.GitHub;
 
 namespace IntelligenceX.Visualization.Heatmaps;
 
@@ -21,12 +23,18 @@ internal static class UsageTelemetryReportBundleWriter {
         var dataFiles = new System.Collections.Generic.List<string>();
         var lightSvgFiles = new System.Collections.Generic.List<string>();
         var darkSvgFiles = new System.Collections.Generic.List<string>();
+        var gitCodeChurnSummary = TryLoadGitCodeChurnSummary();
+        var gitHubObservabilitySummary = TryLoadGitHubObservabilitySummary();
+        var gitHubLocalAlignment = GitHubLocalActivityCorrelationSummaryBuilder.BuildFromDailySeries(
+            gitCodeChurnSummary,
+            BuildProviderDailySeries(overview),
+            gitHubObservabilitySummary);
 
         UsageTelemetryReportStaticAssets.WriteBundleAssets(outputDirectory);
 
         WriteTextFile(outputDirectory, "overview.json", JsonLite.Serialize(JsonValue.From(overview.ToJson())));
         dataFiles.Add("overview.json");
-        WriteTextFile(outputDirectory, "index.html", UsageTelemetryOverviewHtmlRenderer.Render(overview));
+        WriteTextFile(outputDirectory, "index.html", UsageTelemetryOverviewHtmlRenderer.Render(overview, gitHubObservabilitySummary, gitCodeChurnSummary));
         pages.Add("index.html");
 
         foreach (var heatmap in overview.Heatmaps) {
@@ -72,8 +80,8 @@ internal static class UsageTelemetryReportBundleWriter {
         var githubSection = overview.ProviderSections.FirstOrDefault(section =>
             string.Equals(section.ProviderId, "github", StringComparison.OrdinalIgnoreCase));
         if (githubSection is not null && HasHeatmapActivity(githubSection.Heatmap)) {
-            WriteTextFile(outputDirectory, "github-wrapped.html", GitHubWrappedHtmlRenderer.Render(githubSection, overview.Summary, overview.Metadata, overview.ProviderSections.Count));
-            WriteTextFile(outputDirectory, "github-wrapped-card.html", GitHubWrappedCardHtmlRenderer.Render(githubSection, overview.Summary, overview.Metadata, overview.ProviderSections.Count));
+            WriteTextFile(outputDirectory, "github-wrapped.html", GitHubWrappedHtmlRenderer.Render(githubSection, overview.Summary, overview.Metadata, overview.ProviderSections.Count, gitHubObservabilitySummary, gitHubLocalAlignment));
+            WriteTextFile(outputDirectory, "github-wrapped-card.html", GitHubWrappedCardHtmlRenderer.Render(githubSection, overview.Summary, overview.Metadata, overview.ProviderSections.Count, gitHubObservabilitySummary, gitHubLocalAlignment));
             pages.Add("github-wrapped.html");
             pages.Add("github-wrapped-card.html");
         }
@@ -89,6 +97,39 @@ internal static class UsageTelemetryReportBundleWriter {
 
     private static bool HasHeatmapActivity(HeatmapDocument heatmap) {
         return heatmap.Sections.Any(static section => section.Days.Count > 0);
+    }
+
+    private static GitHubObservabilitySummaryData? TryLoadGitHubObservabilitySummary() {
+        try {
+            return new GitHubObservabilitySummaryService().Load();
+        } catch {
+            return null;
+        }
+    }
+
+    private static GitCodeChurnSummaryData? TryLoadGitCodeChurnSummary() {
+        try {
+            return new GitCodeChurnSummaryService().Load();
+        } catch {
+            return null;
+        }
+    }
+
+    private static GitCodeUsageProviderSeriesData[] BuildProviderDailySeries(UsageTelemetryOverviewDocument overview) {
+        return overview.ProviderSections
+            .Where(static section => section.Heatmap.Sections.Any(static heatmapSection => heatmapSection.Days.Count > 0))
+            .Select(section => new GitCodeUsageProviderSeriesData(
+                section.ProviderId,
+                section.Title,
+                section.Heatmap.Sections
+                    .SelectMany(static heatmapSection => heatmapSection.Days)
+                    .GroupBy(static day => day.Date.Date)
+                    .Select(static group => new GitCodeUsageDailyValueData(
+                        group.Key,
+                        group.Sum(static day => day.Value),
+                        0))
+                    .ToArray()))
+            .ToArray();
     }
 
     private static HeatmapDocument CreateThemeVariant(HeatmapDocument source, bool darkMode) {

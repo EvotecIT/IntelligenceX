@@ -30,6 +30,9 @@ internal static class GitHubTelemetryCliRunner {
             if (string.Equals(command, "forks", StringComparison.OrdinalIgnoreCase)) {
                 return await RunForksAsync(rest).ConfigureAwait(false);
             }
+            if (string.Equals(command, "stargazers", StringComparison.OrdinalIgnoreCase)) {
+                return await RunStargazersAsync(rest).ConfigureAwait(false);
+            }
             if (string.Equals(command, "dashboard", StringComparison.OrdinalIgnoreCase)) {
                 return RunDashboard(rest);
             }
@@ -49,6 +52,8 @@ internal static class GitHubTelemetryCliRunner {
         Console.WriteLine("  intelligencex telemetry github snapshots list [options]");
         Console.WriteLine("  intelligencex telemetry github forks discover [options]");
         Console.WriteLine("  intelligencex telemetry github forks history [options]");
+        Console.WriteLine("  intelligencex telemetry github stargazers capture [options]");
+        Console.WriteLine("  intelligencex telemetry github stargazers list [options]");
         Console.WriteLine("  intelligencex telemetry github dashboard [options]");
         Console.WriteLine();
         Console.WriteLine("Common options:");
@@ -68,6 +73,8 @@ internal static class GitHubTelemetryCliRunner {
         Console.WriteLine("  --captured-at <iso>   Override snapshot capture time");
         Console.WriteLine("  --forks               Also discover and persist useful forks for synced repositories");
         Console.WriteLine("  --fork-limit <n>      Maximum forks to record per repository when --forks is used (default: 10)");
+        Console.WriteLine("  --stargazers          Also capture and persist recent stargazers for synced repositories");
+        Console.WriteLine("  --stargazer-limit <n> Maximum stargazers to record per repository when --stargazers is used (default: 200)");
         Console.WriteLine();
         Console.WriteLine("Snapshot list options:");
         Console.WriteLine("  --repo <owner/name>   Limit snapshots to one repository");
@@ -83,6 +90,16 @@ internal static class GitHubTelemetryCliRunner {
         Console.WriteLine("  --repo <owner/name>   Parent repository whose fork history should be summarized");
         Console.WriteLine("  --limit <n>           Maximum latest changes to return (default: 20)");
         Console.WriteLine();
+        Console.WriteLine("Stargazer capture options:");
+        Console.WriteLine("  --repo <owner/name>   Repository whose recent stargazers should be captured");
+        Console.WriteLine("  --limit <n>           Maximum stargazers to fetch (default: 200)");
+        Console.WriteLine("  --captured-at <iso>   Override recorded capture time");
+        Console.WriteLine("  --record              Persist the captured stargazers into the telemetry DB");
+        Console.WriteLine();
+        Console.WriteLine("Stargazer list options:");
+        Console.WriteLine("  --repo <owner/name>   Limit snapshots to one repository");
+        Console.WriteLine("  --login <user>        Limit snapshots to one stargazer login");
+        Console.WriteLine();
         Console.WriteLine("Dashboard options:");
         Console.WriteLine("  --repo <owner/name>   Limit the dashboard to one or more watched repositories");
         Console.WriteLine("  --limit <n>           Maximum daily deltas and fork changes per repository (default: 5)");
@@ -92,12 +109,14 @@ internal static class GitHubTelemetryCliRunner {
         string[] args,
         Func<IReadOnlyList<string>, Task<GitHubRepositoryImpactSummary>> fetchRepositoryImpactAsync,
         Func<string, int, Task<IReadOnlyList<GitHubRepositoryForkInsight>>>? discoverForksAsync = null,
+        Func<string, int, Task<IReadOnlyList<GitHubRepositoryStargazerRecord>>>? discoverStargazersAsync = null,
         Func<DateTimeOffset>? utcNow = null) {
         var options = WatchSyncOptions.Parse(args);
         return await RunWatchesSyncCoreAsync(
                 options,
                 fetchRepositoryImpactAsync,
                 discoverForksAsync ?? ((_, _) => Task.FromResult<IReadOnlyList<GitHubRepositoryForkInsight>>(Array.Empty<GitHubRepositoryForkInsight>())),
+                discoverStargazersAsync ?? ((_, _) => Task.FromResult<IReadOnlyList<GitHubRepositoryStargazerRecord>>(Array.Empty<GitHubRepositoryStargazerRecord>())),
                 utcNow ?? (() => DateTimeOffset.UtcNow))
             .ConfigureAwait(false);
     }
@@ -107,6 +126,13 @@ internal static class GitHubTelemetryCliRunner {
         Func<string, int, Task<IReadOnlyList<GitHubRepositoryForkInsight>>> discoverForksAsync) {
         var options = ForkDiscoverOptions.Parse(args);
         return await RunForkDiscoverCoreAsync(options, discoverForksAsync).ConfigureAwait(false);
+    }
+
+    internal static async Task<int> RunStargazersCaptureAsyncForTest(
+        string[] args,
+        Func<string, int, Task<IReadOnlyList<GitHubRepositoryStargazerRecord>>> discoverStargazersAsync) {
+        var options = StargazerCaptureOptions.Parse(args);
+        return await RunStargazersCaptureCoreAsync(options, discoverStargazersAsync).ConfigureAwait(false);
     }
 
     private static Task<int> RunWatchesAsync(string[] args) {
@@ -208,6 +234,7 @@ internal static class GitHubTelemetryCliRunner {
             options,
             owners => new GitHubRepositoryImpactClient().GetRepositoryImpactAsync(owners),
             (repositoryNameWithOwner, limit) => new GitHubRepositoryForkDiscoveryClient().GetUsefulForksAsync(repositoryNameWithOwner, limit),
+            (repositoryNameWithOwner, limit) => new GitHubRepositoryStargazerDiscoveryClient().GetStargazersAsync(repositoryNameWithOwner, limit),
             () => DateTimeOffset.UtcNow);
     }
 
@@ -215,11 +242,13 @@ internal static class GitHubTelemetryCliRunner {
         WatchSyncOptions options,
         Func<IReadOnlyList<string>, Task<GitHubRepositoryImpactSummary>> fetchRepositoryImpactAsync,
         Func<string, int, Task<IReadOnlyList<GitHubRepositoryForkInsight>>> discoverForksAsync,
+        Func<string, int, Task<IReadOnlyList<GitHubRepositoryStargazerRecord>>> discoverStargazersAsync,
         Func<DateTimeOffset> utcNow) {
         var dbPath = ResolveDatabasePath(options.DatabasePath);
         using var watchStore = new SqliteGitHubRepositoryWatchStore(dbPath);
         using var snapshotStore = new SqliteGitHubRepositorySnapshotStore(dbPath);
         using var forkStore = new SqliteGitHubRepositoryForkSnapshotStore(dbPath);
+        using var stargazerStore = new SqliteGitHubRepositoryStargazerSnapshotStore(dbPath);
         var service = new GitHubRepositoryObservabilityService(watchStore, snapshotStore);
         var watches = service.GetWatches(enabledOnly: true);
         if (options.Repositories.Count > 0) {
@@ -249,6 +278,7 @@ internal static class GitHubTelemetryCliRunner {
         var capturedAtUtc = options.CapturedAtUtc ?? utcNow();
         var results = new List<(GitHubRepositoryWatchRecord Watch, GitHubRepositorySnapshotRecord Snapshot, GitHubRepositorySnapshotDelta Delta)>();
         var forkResults = new List<(string RepositoryNameWithOwner, GitHubRepositoryForkSnapshotRecord[] Snapshots)>();
+        var stargazerResults = new List<(string RepositoryNameWithOwner, GitHubRepositoryStargazerSnapshotRecord[] Snapshots)>();
         foreach (var watch in watches.OrderBy(static watch => watch.RepositoryNameWithOwner, StringComparer.OrdinalIgnoreCase)) {
             if (!repositoriesByOwner.TryGetValue(watch.RepositoryNameWithOwner, out var repository)) {
                 continue;
@@ -258,22 +288,37 @@ internal static class GitHubTelemetryCliRunner {
             var delta = service.RecordSnapshot(snapshot);
             results.Add((watch, snapshot, delta));
 
-            if (!options.IncludeForks) {
+            if (options.IncludeForks) {
+                var insights = await discoverForksAsync(watch.RepositoryNameWithOwner, options.ForkLimit).ConfigureAwait(false);
+                var recordedForkSnapshots = new List<GitHubRepositoryForkSnapshotRecord>(insights.Count);
+                foreach (var insight in insights) {
+                    var forkSnapshot = GitHubRepositoryObservabilityMapper.CreateForkSnapshot(
+                        watch.RepositoryNameWithOwner,
+                        insight,
+                        capturedAtUtc);
+                    forkStore.Upsert(forkSnapshot);
+                    recordedForkSnapshots.Add(forkSnapshot);
+                }
+
+                forkResults.Add((watch.RepositoryNameWithOwner, recordedForkSnapshots.ToArray()));
+            }
+
+            if (!options.IncludeStargazers) {
                 continue;
             }
 
-            var insights = await discoverForksAsync(watch.RepositoryNameWithOwner, options.ForkLimit).ConfigureAwait(false);
-            var recordedForkSnapshots = new List<GitHubRepositoryForkSnapshotRecord>(insights.Count);
-            foreach (var insight in insights) {
-                var forkSnapshot = GitHubRepositoryObservabilityMapper.CreateForkSnapshot(
+            var stargazers = await discoverStargazersAsync(watch.RepositoryNameWithOwner, options.StargazerLimit).ConfigureAwait(false);
+            var recordedStargazerSnapshots = new List<GitHubRepositoryStargazerSnapshotRecord>(stargazers.Count);
+            foreach (var stargazer in stargazers) {
+                var stargazerSnapshot = GitHubRepositoryObservabilityMapper.CreateStargazerSnapshot(
                     watch.RepositoryNameWithOwner,
-                    insight,
+                    stargazer,
                     capturedAtUtc);
-                forkStore.Upsert(forkSnapshot);
-                recordedForkSnapshots.Add(forkSnapshot);
+                stargazerStore.Upsert(stargazerSnapshot);
+                recordedStargazerSnapshots.Add(stargazerSnapshot);
             }
 
-            forkResults.Add((watch.RepositoryNameWithOwner, recordedForkSnapshots.ToArray()));
+            stargazerResults.Add((watch.RepositoryNameWithOwner, recordedStargazerSnapshots.ToArray()));
         }
 
         if (results.Count == 0) {
@@ -294,6 +339,7 @@ internal static class GitHubTelemetryCliRunner {
                 .Add("capturedAtUtc", capturedAtUtc.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture))
                 .Add("syncedCount", results.Count)
                 .Add("forksIncluded", options.IncludeForks)
+                .Add("stargazersIncluded", options.IncludeStargazers)
                 .Add("snapshots", snapshotsArray);
             if (options.IncludeForks) {
                 var forksArray = new JsonArray();
@@ -311,6 +357,22 @@ internal static class GitHubTelemetryCliRunner {
 
                 payload.Add("forks", forksArray);
             }
+            if (options.IncludeStargazers) {
+                var stargazersArray = new JsonArray();
+                foreach (var stargazerResult in stargazerResults) {
+                    var recordedArray = new JsonArray();
+                    foreach (var snapshot in stargazerResult.Snapshots) {
+                        recordedArray.Add(ToJson(snapshot));
+                    }
+
+                    stargazersArray.Add(new JsonObject()
+                        .Add("repositoryNameWithOwner", stargazerResult.RepositoryNameWithOwner)
+                        .Add("recordedCount", stargazerResult.Snapshots.Length)
+                        .Add("snapshots", recordedArray));
+                }
+
+                payload.Add("stargazers", stargazersArray);
+            }
             Console.WriteLine(JsonLite.Serialize(JsonValue.From(payload)));
             return 0;
         }
@@ -322,6 +384,11 @@ internal static class GitHubTelemetryCliRunner {
         if (options.IncludeForks) {
             foreach (var forkResult in forkResults) {
                 Console.WriteLine($"  useful forks recorded for {forkResult.RepositoryNameWithOwner}: {forkResult.Snapshots.Length}");
+            }
+        }
+        if (options.IncludeStargazers) {
+            foreach (var stargazerResult in stargazerResults) {
+                Console.WriteLine($"  stargazer snapshots recorded for {stargazerResult.RepositoryNameWithOwner}: {stargazerResult.Snapshots.Length}");
             }
         }
 
@@ -353,6 +420,21 @@ internal static class GitHubTelemetryCliRunner {
         return command switch {
             "discover" => RunForksDiscoverAsync(rest),
             "history" => Task.FromResult(RunForksHistory(rest)),
+            _ => Task.FromResult(PrintHelpReturn())
+        };
+    }
+
+    private static Task<int> RunStargazersAsync(string[] args) {
+        if (args.Length == 0 || IsHelp(args[0])) {
+            PrintHelp();
+            return Task.FromResult(args.Length == 0 ? 1 : 0);
+        }
+
+        var command = args[0].Trim().ToLowerInvariant();
+        var rest = args.Skip(1).ToArray();
+        return command switch {
+            "capture" => RunStargazersCaptureAsync(rest),
+            "list" => Task.FromResult(RunStargazersList(rest)),
             _ => Task.FromResult(PrintHelpReturn())
         };
     }
@@ -618,6 +700,116 @@ internal static class GitHubTelemetryCliRunner {
         return 0;
     }
 
+    private static Task<int> RunStargazersCaptureAsync(string[] args) {
+        var options = StargazerCaptureOptions.Parse(args);
+        return RunStargazersCaptureCoreAsync(
+            options,
+            (repositoryNameWithOwner, limit) => new GitHubRepositoryStargazerDiscoveryClient().GetStargazersAsync(repositoryNameWithOwner, limit));
+    }
+
+    private static async Task<int> RunStargazersCaptureCoreAsync(
+        StargazerCaptureOptions options,
+        Func<string, int, Task<IReadOnlyList<GitHubRepositoryStargazerRecord>>> discoverStargazersAsync) {
+        var stargazers = await discoverStargazersAsync(options.RepositoryNameWithOwner!, options.Limit).ConfigureAwait(false);
+        var capturedAtUtc = options.CapturedAtUtc ?? DateTimeOffset.UtcNow;
+        var recordedSnapshots = Array.Empty<GitHubRepositoryStargazerSnapshotRecord>();
+        if (options.Record) {
+            var dbPath = ResolveDatabasePath(options.DatabasePath);
+            using var store = new SqliteGitHubRepositoryStargazerSnapshotStore(dbPath);
+            var snapshots = new List<GitHubRepositoryStargazerSnapshotRecord>(stargazers.Count);
+            foreach (var stargazer in stargazers) {
+                var snapshot = GitHubRepositoryObservabilityMapper.CreateStargazerSnapshot(
+                    options.RepositoryNameWithOwner!,
+                    stargazer,
+                    capturedAtUtc);
+                store.Upsert(snapshot);
+                snapshots.Add(snapshot);
+            }
+
+            recordedSnapshots = snapshots.ToArray();
+        }
+
+        if (options.Json) {
+            var stargazersArray = new JsonArray();
+            foreach (var stargazer in stargazers) {
+                stargazersArray.Add(ToJson(stargazer));
+            }
+
+            var payload = new JsonObject()
+                .Add("repositoryNameWithOwner", options.RepositoryNameWithOwner)
+                .Add("limit", options.Limit)
+                .Add("recorded", options.Record)
+                .Add("capturedAtUtc", options.Record ? capturedAtUtc.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture) : null)
+                .Add("stargazers", stargazersArray);
+            if (options.Record) {
+                var recordedArray = new JsonArray();
+                foreach (var snapshot in recordedSnapshots) {
+                    recordedArray.Add(ToJson(snapshot));
+                }
+                payload.Add("recordedSnapshots", recordedArray);
+            }
+            Console.WriteLine(JsonLite.Serialize(JsonValue.From(payload)));
+            return 0;
+        }
+
+        Console.WriteLine("Recent stargazers for " + options.RepositoryNameWithOwner);
+        if (stargazers.Count == 0) {
+            Console.WriteLine("Stargazers: none");
+            return 0;
+        }
+
+        foreach (var stargazer in stargazers) {
+            Console.WriteLine($"- {stargazer.Login} | starredAt={NormalizeOptional(stargazer.StarredAt) ?? "unknown"}");
+        }
+
+        if (options.Record) {
+            Console.WriteLine("Recorded " + recordedSnapshots.Length.ToString(CultureInfo.InvariantCulture) + " stargazer snapshot(s).");
+        }
+
+        return 0;
+    }
+
+    private static int RunStargazersList(string[] args) {
+        var options = StargazerListOptions.Parse(args);
+        var dbPath = ResolveDatabasePath(options.DatabasePath);
+        using var store = new SqliteGitHubRepositoryStargazerSnapshotStore(dbPath);
+
+        IReadOnlyList<GitHubRepositoryStargazerSnapshotRecord> snapshots;
+        if (!string.IsNullOrWhiteSpace(options.RepositoryNameWithOwner)) {
+            snapshots = store.GetByRepository(options.RepositoryNameWithOwner!);
+        } else if (!string.IsNullOrWhiteSpace(options.StargazerLogin)) {
+            snapshots = store.GetByStargazer(options.StargazerLogin!);
+        } else {
+            snapshots = store.GetAll();
+        }
+
+        if (options.Json) {
+            var snapshotsArray = new JsonArray();
+            foreach (var snapshot in snapshots) {
+                snapshotsArray.Add(ToJson(snapshot));
+            }
+
+            var payload = new JsonObject()
+                .Add("dbPath", dbPath)
+                .Add("snapshots", snapshotsArray);
+            Console.WriteLine(JsonLite.Serialize(JsonValue.From(payload)));
+            return 0;
+        }
+
+        Console.WriteLine("GitHub stargazer snapshots");
+        Console.WriteLine("Database: " + dbPath);
+        if (snapshots.Count == 0) {
+            Console.WriteLine("Snapshots: none");
+            return 0;
+        }
+
+        foreach (var snapshot in snapshots) {
+            Console.WriteLine($"- {snapshot.CapturedAtUtc:yyyy-MM-dd HH:mm:ss}Z | {snapshot.RepositoryNameWithOwner} | {snapshot.StargazerLogin}");
+        }
+
+        return 0;
+    }
+
     private static JsonObject ToJson(GitHubRepositoryWatchRecord watch) {
         return new JsonObject()
             .Add("id", watch.Id)
@@ -708,6 +900,25 @@ internal static class GitHubTelemetryCliRunner {
             .Add("createdAtUtc", snapshot.CreatedAtUtc?.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture))
             .Add("isArchived", snapshot.IsArchived)
             .Add("reasonsSummary", snapshot.ReasonsSummary);
+    }
+
+    private static JsonObject ToJson(GitHubRepositoryStargazerRecord stargazer) {
+        return new JsonObject()
+            .Add("login", stargazer.Login)
+            .Add("profileUrl", stargazer.ProfileUrl)
+            .Add("avatarUrl", stargazer.AvatarUrl)
+            .Add("starredAt", stargazer.StarredAt);
+    }
+
+    private static JsonObject ToJson(GitHubRepositoryStargazerSnapshotRecord snapshot) {
+        return new JsonObject()
+            .Add("id", snapshot.Id)
+            .Add("repositoryNameWithOwner", snapshot.RepositoryNameWithOwner)
+            .Add("stargazerLogin", snapshot.StargazerLogin)
+            .Add("capturedAtUtc", snapshot.CapturedAtUtc.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture))
+            .Add("starredAtUtc", snapshot.StarredAtUtc?.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture))
+            .Add("profileUrl", snapshot.ProfileUrl)
+            .Add("avatarUrl", snapshot.AvatarUrl);
     }
 
     private static JsonObject ToJson(GitHubRepositoryForkChange change) {
@@ -856,6 +1067,8 @@ internal static class GitHubTelemetryCliRunner {
         public DateTimeOffset? CapturedAtUtc { get; set; }
         public bool IncludeForks { get; set; }
         public int ForkLimit { get; set; } = 10;
+        public bool IncludeStargazers { get; set; }
+        public int StargazerLimit { get; set; } = 200;
 
         public static WatchSyncOptions Parse(string[] args) {
             var options = new WatchSyncOptions();
@@ -875,6 +1088,12 @@ internal static class GitHubTelemetryCliRunner {
                         break;
                     case "--fork-limit":
                         options.ForkLimit = ParsePositiveInt32(RequireValue(args, ref i, "--fork-limit"), "--fork-limit");
+                        break;
+                    case "--stargazers":
+                        options.IncludeStargazers = true;
+                        break;
+                    case "--stargazer-limit":
+                        options.StargazerLimit = ParsePositiveInt32(RequireValue(args, ref i, "--stargazer-limit"), "--stargazer-limit");
                         break;
                     case "--json":
                         options.Json = true;
@@ -939,6 +1158,76 @@ internal static class GitHubTelemetryCliRunner {
                         break;
                     default:
                         throw new InvalidOperationException("Unknown option for telemetry github dashboard: " + args[i]);
+                }
+            }
+
+            return options;
+        }
+    }
+
+    private sealed class StargazerCaptureOptions : CommonOptions {
+        public string? RepositoryNameWithOwner { get; set; }
+        public int Limit { get; set; } = 200;
+        public DateTimeOffset? CapturedAtUtc { get; set; }
+        public bool Record { get; set; }
+
+        public static StargazerCaptureOptions Parse(string[] args) {
+            var options = new StargazerCaptureOptions();
+            for (var i = 0; i < args.Length; i++) {
+                switch (args[i]) {
+                    case "--db":
+                        options.DatabasePath = RequireValue(args, ref i, "--db");
+                        break;
+                    case "--repo":
+                        options.RepositoryNameWithOwner = RequireValue(args, ref i, "--repo");
+                        break;
+                    case "--limit":
+                        options.Limit = ParsePositiveInt32(RequireValue(args, ref i, "--limit"), "--limit");
+                        break;
+                    case "--captured-at":
+                        options.CapturedAtUtc = ParseDateTimeOffset(RequireValue(args, ref i, "--captured-at"), "--captured-at");
+                        break;
+                    case "--record":
+                        options.Record = true;
+                        break;
+                    case "--json":
+                        options.Json = true;
+                        break;
+                    default:
+                        throw new InvalidOperationException("Unknown option for telemetry github stargazers capture: " + args[i]);
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(options.RepositoryNameWithOwner)) {
+                throw new InvalidOperationException("Missing required --repo for telemetry github stargazers capture.");
+            }
+
+            return options;
+        }
+    }
+
+    private sealed class StargazerListOptions : CommonOptions {
+        public string? RepositoryNameWithOwner { get; set; }
+        public string? StargazerLogin { get; set; }
+
+        public static StargazerListOptions Parse(string[] args) {
+            var options = new StargazerListOptions();
+            for (var i = 0; i < args.Length; i++) {
+                switch (args[i]) {
+                    case "--db":
+                        options.DatabasePath = RequireValue(args, ref i, "--db");
+                        break;
+                    case "--repo":
+                        options.RepositoryNameWithOwner = RequireValue(args, ref i, "--repo");
+                        break;
+                    case "--login":
+                        options.StargazerLogin = RequireValue(args, ref i, "--login");
+                        break;
+                    case "--json":
+                        options.Json = true;
+                        break;
+                    default:
+                        throw new InvalidOperationException("Unknown option for telemetry github stargazers list: " + args[i]);
                 }
             }
 

@@ -57,9 +57,13 @@ internal static partial class Program {
         AssertContainsText(stdout, "telemetry github snapshots list", "telemetry github help snapshots list");
         AssertContainsText(stdout, "telemetry github forks discover", "telemetry github help forks discover");
         AssertContainsText(stdout, "telemetry github forks history", "telemetry github help forks history");
+        AssertContainsText(stdout, "telemetry github stargazers capture", "telemetry github help stargazers capture");
+        AssertContainsText(stdout, "telemetry github stargazers list", "telemetry github help stargazers list");
         AssertContainsText(stdout, "telemetry github dashboard", "telemetry github help dashboard");
         AssertContainsText(stdout, "--forks", "telemetry github help watch sync forks option");
         AssertContainsText(stdout, "--fork-limit", "telemetry github help watch sync fork limit option");
+        AssertContainsText(stdout, "--stargazers", "telemetry github help watch sync stargazers option");
+        AssertContainsText(stdout, "--stargazer-limit", "telemetry github help watch sync stargazer limit option");
         AssertEqual(string.Empty, stderr, "telemetry github help stderr");
     }
 
@@ -212,6 +216,54 @@ internal static partial class Program {
         }
     }
 
+    private static void TestTelemetryGitHubWatchesSyncCanRecordStargazersJson() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-cli-telemetry-github-sync-stargazers-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        var dbPath = Path.Combine(temp, "usage.db");
+        try {
+            var (addExit, _, addStderr) = RunCliDispatchWithCapturedOutput(
+                new[] {
+                    "telemetry", "github", "watches", "add",
+                    "--db", dbPath,
+                    "--repo", "EvotecIT/IntelligenceX"
+                },
+                () => false,
+                _ => Task.FromResult(0));
+            AssertEqual(0, addExit, "telemetry github sync stargazers setup add exit");
+            AssertEqual(string.Empty, addStderr, "telemetry github sync stargazers setup add stderr");
+
+            var (syncExit, syncStdout, syncStderr) = RunGitHubTelemetrySyncWithCapturedOutput(
+                new[] { "--db", dbPath, "--captured-at", "2026-03-17T10:05:00Z", "--stargazers", "--stargazer-limit", "2", "--json" },
+                _ => Task.FromResult(CreateGitHubRepositoryImpactSummary(130, 22, 18, 4)),
+                discoverStargazersAsync: (_, _) => Task.FromResult(CreateStargazerRecordsSetA()));
+
+            AssertEqual(0, syncExit, "telemetry github sync stargazers exit");
+            AssertContainsText(syncStdout, "\"stargazersIncluded\":true", "telemetry github sync stargazers included");
+            AssertContainsText(syncStdout, "\"stargazers\":[", "telemetry github sync stargazers payload");
+            AssertContainsText(syncStdout, "\"recordedCount\":2", "telemetry github sync stargazers recorded count");
+            AssertContainsText(syncStdout, "\"stargazerLogin\":\"alice\"", "telemetry github sync stargazers alice");
+            AssertContainsText(syncStdout, "\"stargazerLogin\":\"bob\"", "telemetry github sync stargazers bob");
+            AssertEqual(string.Empty, syncStderr, "telemetry github sync stargazers stderr");
+
+            var (listExit, listStdout, listStderr) = RunCliDispatchWithCapturedOutput(
+                new[] { "telemetry", "github", "stargazers", "list", "--db", dbPath, "--repo", "EvotecIT/IntelligenceX", "--json" },
+                () => false,
+                _ => Task.FromResult(0));
+            AssertEqual(0, listExit, "telemetry github sync stargazers list exit");
+            AssertContainsText(listStdout, "\"stargazerLogin\":\"alice\"", "telemetry github sync stargazers list alice");
+            AssertContainsText(listStdout, "\"stargazerLogin\":\"bob\"", "telemetry github sync stargazers list bob");
+            AssertEqual(string.Empty, listStderr, "telemetry github sync stargazers list stderr");
+        } finally {
+            try {
+                if (Directory.Exists(temp)) {
+                    Directory.Delete(temp, recursive: true);
+                }
+            } catch {
+                // best-effort cleanup
+            }
+        }
+    }
+
     private static void TestTelemetryGitHubForksDiscoverJson() {
         var (exit, stdout, stderr) = RunGitHubTelemetryForksDiscoverWithCapturedOutput(
             new[] { "--repo", "EvotecIT/IntelligenceX", "--limit", "2", "--json" },
@@ -257,6 +309,40 @@ internal static partial class Program {
             AssertContainsText(historyStdout, "\"forkRepositoryNameWithOwner\":\"newperson/IntelligenceX\"", "telemetry github forks history new fork");
             AssertContainsText(historyStdout, "\"status\":\"new\"", "telemetry github forks history new status");
             AssertEqual(string.Empty, historyStderr, "telemetry github forks history stderr");
+        } finally {
+            try {
+                if (Directory.Exists(temp)) {
+                    Directory.Delete(temp, recursive: true);
+                }
+            } catch {
+                // best-effort cleanup
+            }
+        }
+    }
+
+    private static void TestTelemetryGitHubStargazersCaptureAndListJson() {
+        var temp = Path.Combine(Path.GetTempPath(), "ix-cli-telemetry-github-stargazers-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(temp);
+        var dbPath = Path.Combine(temp, "usage.db");
+        try {
+            var (captureExit, captureStdout, captureStderr) = RunGitHubTelemetryStargazersCaptureWithCapturedOutput(
+                new[] { "--db", dbPath, "--repo", "EvotecIT/IntelligenceX", "--limit", "2", "--captured-at", "2026-03-17T10:05:00Z", "--record", "--json" },
+                (_, _) => Task.FromResult(CreateStargazerRecordsSetA()));
+            AssertEqual(0, captureExit, "telemetry github stargazers capture exit");
+            AssertContainsText(captureStdout, "\"recorded\":true", "telemetry github stargazers capture recorded flag");
+            AssertContainsText(captureStdout, "\"stargazers\":[", "telemetry github stargazers capture stargazers payload");
+            AssertContainsText(captureStdout, "\"login\":\"alice\"", "telemetry github stargazers capture alice");
+            AssertContainsText(captureStdout, "\"recordedSnapshots\":[", "telemetry github stargazers capture recorded snapshots");
+            AssertEqual(string.Empty, captureStderr, "telemetry github stargazers capture stderr");
+
+            var (listExit, listStdout, listStderr) = RunCliDispatchWithCapturedOutput(
+                new[] { "telemetry", "github", "stargazers", "list", "--db", dbPath, "--repo", "EvotecIT/IntelligenceX", "--json" },
+                () => false,
+                _ => Task.FromResult(0));
+            AssertEqual(0, listExit, "telemetry github stargazers list exit");
+            AssertContainsText(listStdout, "\"stargazerLogin\":\"alice\"", "telemetry github stargazers list alice login");
+            AssertContainsText(listStdout, "\"stargazerLogin\":\"bob\"", "telemetry github stargazers list bob login");
+            AssertEqual(string.Empty, listStderr, "telemetry github stargazers list stderr");
         } finally {
             try {
                 if (Directory.Exists(temp)) {
@@ -391,7 +477,8 @@ internal static partial class Program {
     private static (int ExitCode, string StdOut, string StdErr) RunGitHubTelemetrySyncWithCapturedOutput(
         string[] args,
         Func<IReadOnlyList<string>, Task<GitHubRepositoryImpactSummary>> fetchRepositoryImpactAsync,
-        Func<string, int, Task<IReadOnlyList<GitHubRepositoryForkInsight>>>? discoverForksAsync = null) {
+        Func<string, int, Task<IReadOnlyList<GitHubRepositoryForkInsight>>>? discoverForksAsync = null,
+        Func<string, int, Task<IReadOnlyList<GitHubRepositoryStargazerRecord>>>? discoverStargazersAsync = null) {
         lock (CliDispatchConsoleLock) {
             var originalOut = Console.Out;
             var originalErr = Console.Error;
@@ -400,7 +487,7 @@ internal static partial class Program {
             Console.SetOut(outWriter);
             Console.SetError(errWriter);
             try {
-                var exit = GitHubTelemetryCliRunner.RunSyncAsyncForTest(args, fetchRepositoryImpactAsync, discoverForksAsync)
+                var exit = GitHubTelemetryCliRunner.RunSyncAsyncForTest(args, fetchRepositoryImpactAsync, discoverForksAsync, discoverStargazersAsync)
                     .GetAwaiter()
                     .GetResult();
                 return (exit, outWriter.ToString(), errWriter.ToString());
@@ -423,6 +510,28 @@ internal static partial class Program {
             Console.SetError(errWriter);
             try {
                 var exit = GitHubTelemetryCliRunner.RunForksDiscoverAsyncForTest(args, discoverForksAsync)
+                    .GetAwaiter()
+                    .GetResult();
+                return (exit, outWriter.ToString(), errWriter.ToString());
+            } finally {
+                Console.SetOut(originalOut);
+                Console.SetError(originalErr);
+            }
+        }
+    }
+
+    private static (int ExitCode, string StdOut, string StdErr) RunGitHubTelemetryStargazersCaptureWithCapturedOutput(
+        string[] args,
+        Func<string, int, Task<IReadOnlyList<GitHubRepositoryStargazerRecord>>> discoverStargazersAsync) {
+        lock (CliDispatchConsoleLock) {
+            var originalOut = Console.Out;
+            var originalErr = Console.Error;
+            using var outWriter = new StringWriter();
+            using var errWriter = new StringWriter();
+            Console.SetOut(outWriter);
+            Console.SetError(errWriter);
+            try {
+                var exit = GitHubTelemetryCliRunner.RunStargazersCaptureAsyncForTest(args, discoverStargazersAsync)
                     .GetAwaiter()
                     .GetResult();
                 return (exit, outWriter.ToString(), errWriter.ToString());
@@ -469,6 +578,21 @@ internal static partial class Program {
                 41.0,
                 "medium",
                 new[] { "7 stars", "updated within 45 days" })
+        };
+    }
+
+    private static IReadOnlyList<GitHubRepositoryStargazerRecord> CreateStargazerRecordsSetA() {
+        return new[] {
+            new GitHubRepositoryStargazerRecord(
+                "alice",
+                "https://github.com/alice",
+                "https://avatars.githubusercontent.com/u/1?v=4",
+                "2026-03-16T12:00:00Z"),
+            new GitHubRepositoryStargazerRecord(
+                "bob",
+                "https://github.com/bob",
+                "https://avatars.githubusercontent.com/u/2?v=4",
+                "2026-03-17T09:00:00Z")
         };
     }
 

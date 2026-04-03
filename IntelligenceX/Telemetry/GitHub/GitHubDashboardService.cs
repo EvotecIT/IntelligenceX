@@ -69,6 +69,232 @@ public sealed class GitHubDashboardService : IDisposable {
     }
 
     /// <summary>
+    /// Fetches a single public repository by owner/name.
+    /// </summary>
+    public async Task<GitHubRepoInfo?> FetchRepositoryAsync(
+        string repositoryNameWithOwner,
+        CancellationToken cancellationToken = default) {
+        var (owner, repository) = SplitRepositoryNameWithOwner(repositoryNameWithOwner);
+        using var document = await GetJsonAsync(
+            "/repos/" + Uri.EscapeDataString(owner) + "/" + Uri.EscapeDataString(repository),
+            cancellationToken).ConfigureAwait(false);
+        var root = document.RootElement;
+        if (root.ValueKind != JsonValueKind.Object) {
+            return null;
+        }
+
+        var resolvedNameWithOwner = NormalizeOptional(ReadString(root, "full_name")) ?? owner + "/" + repository;
+        return new GitHubRepoInfo(
+            resolvedNameWithOwner,
+            ReadInt(root, "stargazers_count"),
+            ReadInt(root, "forks_count"),
+            NormalizeOptional(ReadString(root, "description")),
+            NormalizeOptional(ReadString(root, "language")),
+            languageColor: null,
+            watchers: ReadInt(root, "subscribers_count"),
+            openIssues: ReadInt(root, "open_issues_count"),
+            pushedAtUtc: TryParseTimestamp(ReadString(root, "pushed_at")),
+            isArchived: ReadBool(root, "archived"),
+            isFork: ReadBool(root, "fork"));
+    }
+
+    /// <summary>
+    /// Fetches recent stargazers for a repository using the public REST API.
+    /// </summary>
+    public async Task<IReadOnlyList<GitHubRepositoryStargazerInfo>> FetchStargazersAsync(
+        string repositoryNameWithOwner,
+        int limit = 200,
+        CancellationToken cancellationToken = default) {
+        if (limit <= 0) {
+            return Array.Empty<GitHubRepositoryStargazerInfo>();
+        }
+
+        var (owner, repository) = SplitRepositoryNameWithOwner(repositoryNameWithOwner);
+        const int pageSize = 100;
+        var stargazers = new List<GitHubRepositoryStargazerInfo>(Math.Max(1, limit));
+        var page = 1;
+
+        while (stargazers.Count < limit) {
+            var batchSize = Math.Min(pageSize, limit - stargazers.Count);
+            using var request = new HttpRequestMessage(
+                HttpMethod.Get,
+                "/repos/"
+                + Uri.EscapeDataString(owner)
+                + "/"
+                + Uri.EscapeDataString(repository)
+                + "/stargazers?per_page="
+                + batchSize.ToString(CultureInfo.InvariantCulture)
+                + "&page="
+                + page.ToString(CultureInfo.InvariantCulture));
+            request.Headers.Accept.Clear();
+            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github.star+json"));
+
+            using var document = await GetJsonAsync(request, cancellationToken).ConfigureAwait(false);
+            if (document.RootElement.ValueKind != JsonValueKind.Array) {
+                break;
+            }
+
+            var added = 0;
+            foreach (var item in document.RootElement.EnumerateArray()) {
+                if (item.ValueKind != JsonValueKind.Object ||
+                    !TryGetProperty(item, "user", out var user) ||
+                    user.ValueKind != JsonValueKind.Object) {
+                    continue;
+                }
+
+                var login = NormalizeOptional(ReadString(user, "login"));
+                if (string.IsNullOrWhiteSpace(login)) {
+                    continue;
+                }
+
+                stargazers.Add(new GitHubRepositoryStargazerInfo(
+                    login!,
+                    NormalizeOptional(ReadString(user, "html_url")),
+                    NormalizeOptional(ReadString(user, "avatar_url")),
+                    TryParseTimestamp(ReadString(item, "starred_at"))));
+                added++;
+                if (stargazers.Count >= limit) {
+                    break;
+                }
+            }
+
+            if (added <= 0 || added < batchSize) {
+                break;
+            }
+
+            page++;
+        }
+
+        return stargazers;
+    }
+
+    /// <summary>
+    /// Fetches and ranks potentially useful forks for a repository.
+    /// </summary>
+    public async Task<IReadOnlyList<GitHubRepositoryForkInfo>> FetchUsefulForksAsync(
+        string repositoryNameWithOwner,
+        int limit = 20,
+        CancellationToken cancellationToken = default) {
+        if (string.IsNullOrWhiteSpace(repositoryNameWithOwner)) {
+            throw new ArgumentException("Repository name is required.", nameof(repositoryNameWithOwner));
+        }
+        if (limit <= 0) {
+            return Array.Empty<GitHubRepositoryForkInfo>();
+        }
+
+        var (owner, repository) = SplitRepositoryNameWithOwner(repositoryNameWithOwner);
+        const int pageSize = 50;
+        var candidates = new List<GitHubRepositoryForkInfo>(Math.Max(limit, pageSize));
+        string? cursor = null;
+
+        const string query = """
+query($owner: String!, $repo: String!, $first: Int!, $after: String) {
+  repository(owner: $owner, name: $repo) {
+    forks(first: $first, after: $after, orderBy: { field: STARGAZERS, direction: DESC }) {
+      nodes {
+        nameWithOwner
+        url
+        description
+        stargazerCount
+        forkCount
+        updatedAt
+        createdAt
+        pushedAt
+        isArchived
+        watchers {
+          totalCount
+        }
+        issues(states: OPEN) {
+          totalCount
+        }
+        primaryLanguage {
+          name
+        }
+      }
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
+    }
+  }
+}
+""";
+
+        while (candidates.Count < Math.Max(limit, pageSize)) {
+            using var document = await QueryGraphQlAsync(
+                query,
+                new Dictionary<string, object?> {
+                    ["owner"] = owner,
+                    ["repo"] = repository,
+                    ["first"] = Math.Min(pageSize, Math.Max(limit, pageSize) - candidates.Count),
+                    ["after"] = cursor
+                },
+                cancellationToken).ConfigureAwait(false);
+
+            var root = document.RootElement;
+            if (!TryGetProperty(root, "data", out var data) ||
+                !TryGetProperty(data, "repository", out var repositoryNode) ||
+                repositoryNode.ValueKind != JsonValueKind.Object ||
+                !TryGetProperty(repositoryNode, "forks", out var forksConnection) ||
+                forksConnection.ValueKind != JsonValueKind.Object) {
+                break;
+            }
+
+            var added = 0;
+            if (TryGetProperty(forksConnection, "nodes", out var nodes) && nodes.ValueKind == JsonValueKind.Array) {
+                foreach (var node in nodes.EnumerateArray()) {
+                    if (node.ValueKind != JsonValueKind.Object) {
+                        continue;
+                    }
+
+                    var nameWithOwner = NormalizeOptional(ReadString(node, "nameWithOwner"));
+                    if (string.IsNullOrWhiteSpace(nameWithOwner)) {
+                        continue;
+                    }
+
+                    candidates.Add(BuildForkInfo(
+                        repositoryNameWithOwner,
+                        nameWithOwner!,
+                        NormalizeOptional(ReadString(node, "url")),
+                        NormalizeOptional(ReadString(node, "description")),
+                        NormalizeOptional(ReadStringFromNested(node, "primaryLanguage", "name")),
+                        ReadInt(node, "stargazerCount"),
+                        ReadInt(node, "forkCount"),
+                        ReadIntFromNested(node, "watchers", "totalCount"),
+                        ReadIntFromNested(node, "issues", "totalCount"),
+                        TryParseTimestamp(ReadString(node, "pushedAt")),
+                        TryParseTimestamp(ReadString(node, "updatedAt")),
+                        TryParseTimestamp(ReadString(node, "createdAt")),
+                        ReadBool(node, "isArchived")));
+                    added++;
+                    if (candidates.Count >= Math.Max(limit, pageSize)) {
+                        break;
+                    }
+                }
+            }
+
+            if (added <= 0 ||
+                !TryGetProperty(forksConnection, "pageInfo", out var pageInfo) ||
+                pageInfo.ValueKind != JsonValueKind.Object ||
+                !ReadBool(pageInfo, "hasNextPage")) {
+                break;
+            }
+
+            cursor = NormalizeOptional(ReadString(pageInfo, "endCursor"));
+            if (string.IsNullOrWhiteSpace(cursor)) {
+                break;
+            }
+        }
+
+        return candidates
+            .OrderByDescending(static candidate => candidate.Score)
+            .ThenByDescending(static candidate => candidate.Stars)
+            .ThenBy(static candidate => candidate.RepositoryNameWithOwner, StringComparer.OrdinalIgnoreCase)
+            .Take(limit)
+            .ToArray();
+    }
+
+    /// <summary>
     /// Resolves the authenticated GitHub login from the API.
     /// </summary>
     public async Task<string?> GetAuthenticatedLoginAsync(CancellationToken cancellationToken = default) {
@@ -256,6 +482,15 @@ query($login: String!, $cursor: String) {
         stargazerCount
         forkCount
         description
+        pushedAt
+        isArchived
+        isFork
+        watchers(first: 1) {
+          totalCount
+        }
+        issues(states: OPEN) {
+          totalCount
+        }
         primaryLanguage {
           name
           color
@@ -307,7 +542,12 @@ query($login: String!, $cursor: String) {
                     ReadInt(node, "forkCount"),
                     NormalizeOptional(ReadString(node, "description")),
                     language,
-                    languageColor));
+                    languageColor,
+                    ReadIntFromNested(node, "watchers", "totalCount"),
+                    ReadIntFromNested(node, "issues", "totalCount"),
+                    TryParseTimestamp(ReadString(node, "pushedAt")),
+                    ReadBool(node, "isArchived"),
+                    ReadBool(node, "isFork")));
             }
 
             cursor = TryGetProperty(repositoriesConnection, "pageInfo", out var pageInfo) &&
@@ -336,6 +576,17 @@ query($login: String!, $cursor: String) {
 
     private async Task<JsonDocument> GetJsonAsync(string path, CancellationToken cancellationToken) {
         using var response = await _http.GetAsync(path, cancellationToken).ConfigureAwait(false);
+        var content = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+        if (!response.IsSuccessStatusCode) {
+            throw new InvalidOperationException(
+                "GitHub API request failed (" + (int)response.StatusCode + "): " + content);
+        }
+
+        return JsonDocument.Parse(content);
+    }
+
+    private async Task<JsonDocument> GetJsonAsync(HttpRequestMessage request, CancellationToken cancellationToken) {
+        using var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
         var content = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
         if (!response.IsSuccessStatusCode) {
             throw new InvalidOperationException(
@@ -390,6 +641,20 @@ query($login: String!, $cursor: String) {
             : 0;
     }
 
+    private static int ReadIntFromNested(JsonElement obj, string objectName, string propertyName) {
+        return TryGetProperty(obj, objectName, out var nested)
+               && nested.ValueKind == JsonValueKind.Object
+            ? ReadInt(nested, propertyName)
+            : 0;
+    }
+
+    private static string ReadStringFromNested(JsonElement obj, string objectName, string propertyName) {
+        return TryGetProperty(obj, objectName, out var nested)
+               && nested.ValueKind == JsonValueKind.Object
+            ? ReadString(nested, propertyName)
+            : string.Empty;
+    }
+
     private static bool ReadBool(JsonElement obj, string name) {
         return TryGetProperty(obj, name, out var value)
                && (value.ValueKind == JsonValueKind.True || value.ValueKind == JsonValueKind.False)
@@ -420,8 +685,37 @@ query($login: String!, $cursor: String) {
         return true;
     }
 
+    private static DateTimeOffset? TryParseTimestamp(string? value) {
+        var trimmed = value?.Trim();
+        if (string.IsNullOrWhiteSpace(trimmed)) {
+            return null;
+        }
+
+        return DateTimeOffset.TryParse(
+            trimmed,
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+            out var parsed)
+            ? parsed
+            : null;
+    }
+
     private static string? NormalizeOptional(string? value) {
         return string.IsNullOrWhiteSpace(value) ? null : value!.Trim();
+    }
+
+    private static (string Owner, string Repository) SplitRepositoryNameWithOwner(string repositoryNameWithOwner) {
+        if (string.IsNullOrWhiteSpace(repositoryNameWithOwner)) {
+            throw new ArgumentException("Repository name is required.", nameof(repositoryNameWithOwner));
+        }
+
+        var parts = repositoryNameWithOwner.Trim()
+            .Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length != 2) {
+            throw new ArgumentException("Repository name must be in owner/name format.", nameof(repositoryNameWithOwner));
+        }
+
+        return (parts[0].Trim(), parts[1].Trim());
     }
 
     /// <summary>
@@ -442,6 +736,89 @@ query($login: String!, $cursor: String) {
             ReadInt(user, "followers"),
             ReadInt(user, "following"),
             ReadInt(user, "public_repos"));
+    }
+
+    private static GitHubRepositoryForkInfo BuildForkInfo(
+        string parentRepositoryNameWithOwner,
+        string repositoryNameWithOwner,
+        string? url,
+        string? description,
+        string? primaryLanguage,
+        int stars,
+        int forks,
+        int watchers,
+        int openIssues,
+        DateTimeOffset? pushedAtUtc,
+        DateTimeOffset? updatedAtUtc,
+        DateTimeOffset? createdAtUtc,
+        bool isArchived) {
+        var score = 0d;
+        var reasons = new List<string>();
+        if (stars > 0) {
+            score += Math.Min(30d, stars * 1.6d);
+            reasons.Add(stars.ToString(CultureInfo.InvariantCulture) + " stars");
+        }
+        if (watchers > 0) {
+            score += Math.Min(18d, watchers * 1.5d);
+            reasons.Add(watchers.ToString(CultureInfo.InvariantCulture) + " watchers");
+        }
+        if (forks > 0) {
+            score += Math.Min(10d, forks * 0.8d);
+            reasons.Add(forks.ToString(CultureInfo.InvariantCulture) + " downstream forks");
+        }
+        if (!isArchived) {
+            score += 8d;
+            reasons.Add("active");
+        }
+        if (!string.IsNullOrWhiteSpace(description)) {
+            score += 5d;
+            reasons.Add("described");
+        }
+
+        var recencySource = pushedAtUtc ?? updatedAtUtc;
+        if (recencySource.HasValue) {
+            var recencyDays = (DateTimeOffset.UtcNow - recencySource.Value.ToUniversalTime()).TotalDays;
+            if (recencyDays <= 14d) {
+                score += 20d;
+                reasons.Add("updated within 14 days");
+            } else if (recencyDays <= 45d) {
+                score += 12d;
+                reasons.Add("updated within 45 days");
+            } else if (recencyDays <= 120d) {
+                score += 6d;
+                reasons.Add("updated within 120 days");
+            }
+        }
+
+        if (openIssues > 20) {
+            score -= 4d;
+        }
+        if (isArchived) {
+            score -= 10d;
+        }
+
+        var tier = score >= 60d
+            ? "high"
+            : score >= 35d
+                ? "medium"
+                : "low";
+        return new GitHubRepositoryForkInfo(
+            parentRepositoryNameWithOwner,
+            repositoryNameWithOwner,
+            Math.Round(score, 2),
+            tier,
+            stars,
+            forks,
+            watchers,
+            openIssues,
+            url,
+            description,
+            primaryLanguage,
+            pushedAtUtc,
+            updatedAtUtc,
+            createdAtUtc,
+            isArchived,
+            reasons);
     }
 }
 
@@ -662,6 +1039,191 @@ public sealed class GitHubDailyContrib {
 }
 
 /// <summary>
+/// Lightweight stargazer record returned by the shared dashboard client.
+/// </summary>
+public sealed class GitHubRepositoryStargazerInfo {
+    /// <summary>
+    /// Initializes a recent stargazer record.
+    /// </summary>
+    public GitHubRepositoryStargazerInfo(
+        string login,
+        string? profileUrl = null,
+        string? avatarUrl = null,
+        DateTimeOffset? starredAtUtc = null) {
+        var trimmedProfileUrl = profileUrl?.Trim();
+        if (string.IsNullOrWhiteSpace(trimmedProfileUrl)) {
+            trimmedProfileUrl = null;
+        }
+
+        var trimmedAvatarUrl = avatarUrl?.Trim();
+        if (string.IsNullOrWhiteSpace(trimmedAvatarUrl)) {
+            trimmedAvatarUrl = null;
+        }
+        Login = string.IsNullOrWhiteSpace(login)
+            ? throw new ArgumentException("Stargazer login is required.", nameof(login))
+            : login.Trim();
+        ProfileUrl = trimmedProfileUrl;
+        AvatarUrl = trimmedAvatarUrl;
+        StarredAtUtc = starredAtUtc?.ToUniversalTime();
+    }
+
+    /// <summary>
+    /// Gets the GitHub login.
+    /// </summary>
+    public string Login { get; }
+
+    /// <summary>
+    /// Gets the public profile URL when available.
+    /// </summary>
+    public string? ProfileUrl { get; }
+
+    /// <summary>
+    /// Gets the avatar URL when available.
+    /// </summary>
+    public string? AvatarUrl { get; }
+
+    /// <summary>
+    /// Gets when the repository was starred when available.
+    /// </summary>
+    public DateTimeOffset? StarredAtUtc { get; }
+}
+
+/// <summary>
+/// Ranked fork candidate returned by the shared dashboard client.
+/// </summary>
+public sealed class GitHubRepositoryForkInfo {
+    /// <summary>
+    /// Initializes a fork candidate.
+    /// </summary>
+    public GitHubRepositoryForkInfo(
+        string parentRepositoryNameWithOwner,
+        string repositoryNameWithOwner,
+        double score,
+        string tier,
+        int stars,
+        int forks,
+        int watchers,
+        int openIssues,
+        string? url = null,
+        string? description = null,
+        string? primaryLanguage = null,
+        DateTimeOffset? pushedAtUtc = null,
+        DateTimeOffset? updatedAtUtc = null,
+        DateTimeOffset? createdAtUtc = null,
+        bool isArchived = false,
+        IReadOnlyList<string>? reasons = null) {
+        ParentRepositoryNameWithOwner = string.IsNullOrWhiteSpace(parentRepositoryNameWithOwner)
+            ? throw new ArgumentException("Parent repository is required.", nameof(parentRepositoryNameWithOwner))
+            : parentRepositoryNameWithOwner.Trim();
+        RepositoryNameWithOwner = string.IsNullOrWhiteSpace(repositoryNameWithOwner)
+            ? throw new ArgumentException("Fork repository is required.", nameof(repositoryNameWithOwner))
+            : repositoryNameWithOwner.Trim();
+        Score = score;
+        Tier = string.IsNullOrWhiteSpace(tier) ? "low" : tier.Trim();
+        Stars = Math.Max(0, stars);
+        Forks = Math.Max(0, forks);
+        Watchers = Math.Max(0, watchers);
+        OpenIssues = Math.Max(0, openIssues);
+        Url = NormalizeValue(url);
+        Description = NormalizeValue(description);
+        PrimaryLanguage = NormalizeValue(primaryLanguage);
+        PushedAtUtc = pushedAtUtc?.ToUniversalTime();
+        UpdatedAtUtc = updatedAtUtc?.ToUniversalTime();
+        CreatedAtUtc = createdAtUtc?.ToUniversalTime();
+        IsArchived = isArchived;
+        Reasons = reasons ?? Array.Empty<string>();
+    }
+
+    /// <summary>
+    /// Gets the watched parent repository.
+    /// </summary>
+    public string ParentRepositoryNameWithOwner { get; }
+
+    /// <summary>
+    /// Gets the fork repository name.
+    /// </summary>
+    public string RepositoryNameWithOwner { get; }
+
+    /// <summary>
+    /// Gets the usefulness score.
+    /// </summary>
+    public double Score { get; }
+
+    /// <summary>
+    /// Gets the usefulness tier.
+    /// </summary>
+    public string Tier { get; }
+
+    /// <summary>
+    /// Gets the fork star count.
+    /// </summary>
+    public int Stars { get; }
+
+    /// <summary>
+    /// Gets the fork count of the fork itself.
+    /// </summary>
+    public int Forks { get; }
+
+    /// <summary>
+    /// Gets the watcher count.
+    /// </summary>
+    public int Watchers { get; }
+
+    /// <summary>
+    /// Gets the open issue count.
+    /// </summary>
+    public int OpenIssues { get; }
+
+    /// <summary>
+    /// Gets the public fork URL.
+    /// </summary>
+    public string? Url { get; }
+
+    /// <summary>
+    /// Gets the optional description.
+    /// </summary>
+    public string? Description { get; }
+
+    /// <summary>
+    /// Gets the primary language when available.
+    /// </summary>
+    public string? PrimaryLanguage { get; }
+
+    /// <summary>
+    /// Gets the most recent push timestamp.
+    /// </summary>
+    public DateTimeOffset? PushedAtUtc { get; }
+
+    /// <summary>
+    /// Gets the most recent update timestamp.
+    /// </summary>
+    public DateTimeOffset? UpdatedAtUtc { get; }
+
+    /// <summary>
+    /// Gets the creation timestamp.
+    /// </summary>
+    public DateTimeOffset? CreatedAtUtc { get; }
+
+    /// <summary>
+    /// Gets whether the fork is archived.
+    /// </summary>
+    public bool IsArchived { get; }
+
+    /// <summary>
+    /// Gets the score reasons.
+    /// </summary>
+    public IReadOnlyList<string> Reasons { get; }
+
+    private static string? NormalizeValue(string? value) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            return null;
+        }
+
+        return (value ?? string.Empty).Trim();
+    }
+}
+
+/// <summary>
 /// Repository summary for the dashboard.
 /// </summary>
 public sealed class GitHubRepoInfo {
@@ -674,13 +1236,23 @@ public sealed class GitHubRepoInfo {
         int forks,
         string? description,
         string? language,
-        string? languageColor) {
+        string? languageColor,
+        int watchers = 0,
+        int openIssues = 0,
+        DateTimeOffset? pushedAtUtc = null,
+        bool isArchived = false,
+        bool isFork = false) {
         NameWithOwner = string.IsNullOrWhiteSpace(nameWithOwner) ? string.Empty : nameWithOwner.Trim();
         Stars = Math.Max(0, stars);
         Forks = Math.Max(0, forks);
         Description = description;
         Language = language;
         LanguageColor = languageColor;
+        Watchers = Math.Max(0, watchers);
+        OpenIssues = Math.Max(0, openIssues);
+        PushedAtUtc = pushedAtUtc?.ToUniversalTime();
+        IsArchived = isArchived;
+        IsFork = isFork;
     }
 
     /// <summary>
@@ -699,6 +1271,16 @@ public sealed class GitHubRepoInfo {
     public int Forks { get; }
 
     /// <summary>
+    /// Gets the repository watcher count.
+    /// </summary>
+    public int Watchers { get; }
+
+    /// <summary>
+    /// Gets the repository open issue count.
+    /// </summary>
+    public int OpenIssues { get; }
+
+    /// <summary>
     /// Gets the optional repository description.
     /// </summary>
     public string? Description { get; }
@@ -712,4 +1294,19 @@ public sealed class GitHubRepoInfo {
     /// Gets the optional primary language color.
     /// </summary>
     public string? LanguageColor { get; }
+
+    /// <summary>
+    /// Gets the last pushed timestamp when available.
+    /// </summary>
+    public DateTimeOffset? PushedAtUtc { get; }
+
+    /// <summary>
+    /// Gets whether the repository is archived.
+    /// </summary>
+    public bool IsArchived { get; }
+
+    /// <summary>
+    /// Gets whether the repository itself is a fork.
+    /// </summary>
+    public bool IsFork { get; }
 }

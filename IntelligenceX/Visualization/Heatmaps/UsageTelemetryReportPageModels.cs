@@ -7,6 +7,10 @@ internal sealed record UsageTelemetryOverviewPageModel(
     string Title,
     string? Subtitle,
     IReadOnlyList<UsageTelemetryHeroStatModel> HeroStats,
+    UsageTelemetryCodeChurnPageModel? CodeChurn,
+    UsageTelemetryChurnUsageSignalPageModel? ChurnUsageCorrelation,
+    UsageTelemetryGitHubLocalPulsePageModel? GitHubLocalAlignment,
+    UsageTelemetryGitHubRepoClusterPageModel? GitHubRepoClusters,
     IReadOnlyList<UsageTelemetrySectionSwitchModel> SectionSwitches,
     IReadOnlyList<UsageTelemetryOverviewSectionPageModel> Sections,
     IReadOnlyList<UsageTelemetrySupportingBreakdownModel> SupportingBreakdowns,
@@ -15,6 +19,38 @@ internal sealed record UsageTelemetryOverviewPageModel(
     string Footnote);
 
 internal sealed record UsageTelemetryHeroStatModel(string Label, string Value);
+
+internal sealed record UsageTelemetryCodeChurnPageModel(
+    string Title,
+    string Subtitle,
+    string Headline,
+    string? Note,
+    IReadOnlyList<UsageTelemetryHeroStatModel> Stats,
+    UsageTelemetryOverviewInsightSection DailyBreakdown);
+
+internal sealed record UsageTelemetryChurnUsageSignalPageModel(
+    string Title,
+    string Subtitle,
+    string Headline,
+    string? Note,
+    IReadOnlyList<UsageTelemetryHeroStatModel> Stats,
+    UsageTelemetryOverviewInsightSection ProviderSignals);
+
+internal sealed record UsageTelemetryGitHubLocalPulsePageModel(
+    string Title,
+    string Subtitle,
+    string Headline,
+    string? Note,
+    IReadOnlyList<UsageTelemetryHeroStatModel> Stats,
+    UsageTelemetryOverviewInsightSection Repositories);
+
+internal sealed record UsageTelemetryGitHubRepoClusterPageModel(
+    string Title,
+    string Subtitle,
+    string Headline,
+    string? Note,
+    IReadOnlyList<UsageTelemetryHeroStatModel> Stats,
+    UsageTelemetryOverviewInsightSection Clusters);
 
 internal sealed record UsageTelemetrySectionSwitchModel(string Key, string Label);
 
@@ -106,6 +142,14 @@ internal sealed record UsageTelemetryGitHubSectionPageModel(
     IReadOnlyList<UsageTelemetryToggleOptionModel> OwnerScopes,
     UsageTelemetryOverviewInsightSection? YearComparison,
     UsageTelemetryOverviewInsightSection? ScopeSplit,
+    UsageTelemetryOverviewInsightSection? WatchedRepositories,
+    UsageTelemetryOverviewInsightSection? WatchedCorrelations,
+    UsageTelemetryOverviewInsightSection? WatchedStarCorrelations,
+    UsageTelemetryOverviewInsightSection? WatchedRepoClusters,
+    UsageTelemetryOverviewInsightSection? WatchedStargazerAudience,
+    UsageTelemetryOverviewInsightSection? WatchedForkNetwork,
+    UsageTelemetryOverviewInsightSection? WatchedForkMomentum,
+    UsageTelemetryOverviewInsightSection? WatchedLocalAlignment,
     UsageTelemetryOverviewInsightSection? RecentRepositories,
     UsageTelemetryOverviewInsightSection? OwnerImpact,
     UsageTelemetryOverviewInsightSection? TopRepositories,
@@ -129,6 +173,14 @@ internal sealed record UsageTelemetryGitHubWrappedPageModel(
     UsageTelemetryOverviewInsightSection? ScopeSplit,
     UsageTelemetryOverviewInsightSection? OwnerImpact,
     UsageTelemetryOverviewInsightSection? TopLanguages,
+    UsageTelemetryOverviewInsightSection? WatchedRepositories,
+    UsageTelemetryOverviewInsightSection? WatchedCorrelations,
+    UsageTelemetryOverviewInsightSection? WatchedStarCorrelations,
+    UsageTelemetryOverviewInsightSection? WatchedRepoClusters,
+    UsageTelemetryOverviewInsightSection? WatchedStargazerAudience,
+    UsageTelemetryOverviewInsightSection? WatchedForkNetwork,
+    UsageTelemetryOverviewInsightSection? WatchedForkMomentum,
+    UsageTelemetryOverviewInsightSection? WatchedLocalAlignment,
     UsageTelemetryOverviewInsightSection? RecentRepositories,
     UsageTelemetryOverviewInsightSection? TopRepositories,
     UsageTelemetryOverviewInsightSection? TopRepositoriesByForks,

@@ -6,6 +6,7 @@ public sealed class TrayPreferences {
     public string ThemeMode { get; set; } = TrayThemeService.SystemMode;
     public string AccentPreset { get; set; } = TrayThemeService.DefaultAccentPreset;
     public int AutoRefreshIntervalSeconds { get; set; } = 120;
+    public bool GitHubWatchAutoSyncEnabled { get; set; } = false;
     public bool NotificationsEnabled { get; set; } = true;
     public bool CloseHidesToTray { get; set; }
     public bool StartWithWindows { get; set; }

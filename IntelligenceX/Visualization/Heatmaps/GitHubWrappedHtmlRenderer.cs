@@ -1,6 +1,7 @@
 using System;
 using System.Text;
 using IntelligenceX.Json;
+using IntelligenceX.Telemetry.GitHub;
 using IntelligenceX.Telemetry.Usage;
 using static IntelligenceX.Visualization.Heatmaps.UsageTelemetryGitHubWrappedHtmlFragments;
 
@@ -13,12 +14,20 @@ internal static class GitHubWrappedHtmlRenderer {
         UsageTelemetryOverviewProviderSection section,
         UsageSummarySnapshot? summary = null,
         JsonObject? metadata = null,
-        int providerSectionsCount = 0) {
+        int providerSectionsCount = 0,
+        GitHubObservabilitySummaryData? gitHubObservabilitySummary = null,
+        GitHubLocalActivityCorrelationSummaryData? gitHubLocalAlignmentSummary = null) {
         if (section is null) {
             throw new ArgumentNullException(nameof(section));
         }
 
-        var page = UsageTelemetryReportPageModelBuilders.BuildGitHubWrapped(section, summary, metadata, providerSectionsCount);
+        var page = UsageTelemetryReportPageModelBuilders.BuildGitHubWrapped(
+            section,
+            summary,
+            metadata,
+            providerSectionsCount,
+            gitHubObservabilitySummary,
+            gitHubLocalAlignmentSummary);
 
         var sb = new StringBuilder(24 * 1024);
         AppendHero(sb, page);
@@ -96,6 +105,46 @@ internal static class GitHubWrappedHtmlRenderer {
             AppendRecentRepositoriesPanel(sb, page.RecentRepositories);
         }
         sb.AppendLine("      </div>");
+
+        if (page.WatchedRepositories is not null
+            || page.WatchedCorrelations is not null
+            || page.WatchedStarCorrelations is not null
+            || page.WatchedRepoClusters is not null
+            || page.WatchedStargazerAudience is not null
+            || page.WatchedForkNetwork is not null
+            || page.WatchedForkMomentum is not null
+            || page.WatchedLocalAlignment is not null
+            || page.TopRepositoriesByHealth is not null) {
+            sb.AppendLine("      <div class=\"split-grid\">");
+            if (page.WatchedRepositories is not null) {
+                AppendInsightPanel(sb, page.WatchedRepositories, "Watched repo momentum");
+            }
+            if (page.WatchedCorrelations is not null) {
+                AppendInsightPanel(sb, page.WatchedCorrelations, "Watched repo correlation");
+            }
+            if (page.WatchedStarCorrelations is not null) {
+                AppendInsightPanel(sb, page.WatchedStarCorrelations, "Watched repo star sync");
+            }
+            if (page.WatchedRepoClusters is not null) {
+                AppendInsightPanel(sb, page.WatchedRepoClusters, "Related watched repos");
+            }
+            if (page.WatchedStargazerAudience is not null) {
+                AppendInsightPanel(sb, page.WatchedStargazerAudience, "Shared stargazer audience");
+            }
+            if (page.WatchedForkNetwork is not null) {
+                AppendInsightPanel(sb, page.WatchedForkNetwork, "Shared fork network");
+            }
+            if (page.WatchedForkMomentum is not null) {
+                AppendInsightPanel(sb, page.WatchedForkMomentum, "Rising forks");
+            }
+            if (page.WatchedLocalAlignment is not null) {
+                AppendInsightPanel(sb, page.WatchedLocalAlignment, "Watched repo vs local pulse");
+            }
+            if (page.TopRepositoriesByHealth is not null) {
+                AppendInsightPanel(sb, page.TopRepositoriesByHealth, "Top repositories by health");
+            }
+            sb.AppendLine("      </div>");
+        }
 
         sb.AppendLine("      <div class=\"owner-panels\">");
         AppendOwnerPanel(sb, "all", page.TopRepositories, page.TopLanguages, null);

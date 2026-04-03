@@ -10,6 +10,8 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Media;
 using IntelligenceX.Json;
+using IntelligenceX.Telemetry.Git;
+using IntelligenceX.Telemetry.GitHub;
 using IntelligenceX.Telemetry.Limits;
 using IntelligenceX.Telemetry.Usage;
 using IntelligenceX.Tray.Services;
@@ -117,6 +119,10 @@ public sealed class ProviderViewModel : ViewModelBase {
     private IReadOnlyDictionary<string, ProviderComparisonDeltaInfo> _providerComparisonDelta = new Dictionary<string, ProviderComparisonDeltaInfo>(StringComparer.OrdinalIgnoreCase);
     private IReadOnlyDictionary<string, ProviderComparisonHistoryInfo> _providerComparisonHistory = new Dictionary<string, ProviderComparisonHistoryInfo>(StringComparer.OrdinalIgnoreCase);
     private HashSet<string> _providerComparisonFavorites = new(StringComparer.OrdinalIgnoreCase);
+    private GitCodeChurnSummaryData _codeChurnSummary = GitCodeChurnSummaryData.Empty;
+    private GitCodeUsageCorrelationSummaryData _codeUsageCorrelationSummary = GitCodeUsageCorrelationSummaryData.Empty;
+    private GitHubLocalActivityCorrelationSummaryData _gitHubLocalActivityCorrelationSummary = GitHubLocalActivityCorrelationSummaryData.Empty;
+    private GitHubRepositoryClusterSummaryData _gitHubRepositoryClusterSummary = GitHubRepositoryClusterSummaryData.Empty;
 
     public ProviderViewModel() {
         CopySummaryCommand = new RelayCommand(CopySummaryAsync);
@@ -145,6 +151,8 @@ public sealed class ProviderViewModel : ViewModelBase {
         ModelDaySummaries.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasModelDaySummaries));
         RecentActivity.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasRecentActivity));
         ProviderComparison.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasProviderComparison));
+        CombinedOverviewCards.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasCombinedOverviewCards));
+        CodeChurnBars.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasCodeChurnBars));
     }
 
     public string ProviderId {
@@ -153,6 +161,12 @@ public sealed class ProviderViewModel : ViewModelBase {
             if (SetProperty(ref _providerId, value)) {
                 OnPropertyChanged(nameof(IsCombinedProvider));
                 OnPropertyChanged(nameof(HasProviderComparison));
+                OnPropertyChanged(nameof(HasCombinedOverviewCards));
+                OnPropertyChanged(nameof(HasCodeChurn));
+                OnPropertyChanged(nameof(HasCodeChurnBars));
+                OnPropertyChanged(nameof(HasCodeUsageCorrelation));
+                OnPropertyChanged(nameof(HasPositiveCodeUsageCorrelation));
+                OnPropertyChanged(nameof(HasNegativeCodeUsageCorrelation));
             }
         }
     }
@@ -749,6 +763,12 @@ public sealed class ProviderViewModel : ViewModelBase {
     public bool HasRecentActivity => RecentActivity.Count > 0;
     public bool IsCombinedProvider => string.Equals(ProviderId, "__all__", StringComparison.Ordinal);
     public bool HasProviderComparison => IsCombinedProvider && ProviderComparison.Count > 0;
+    public bool HasCombinedOverviewCards => IsCombinedProvider && CombinedOverviewCards.Count > 0;
+    public bool HasCodeChurn => IsCombinedProvider && _codeChurnSummary.HasData;
+    public bool HasCodeChurnBars => HasCodeChurn && CodeChurnBars.Count > 0;
+    public bool HasCodeUsageCorrelation => IsCombinedProvider && _codeUsageCorrelationSummary.HasData;
+    public bool HasPositiveCodeUsageCorrelation => HasCodeUsageCorrelation && _codeUsageCorrelationSummary.StrongestPositiveCorrelation is not null;
+    public bool HasNegativeCodeUsageCorrelation => HasCodeUsageCorrelation && _codeUsageCorrelationSummary.StrongestNegativeCorrelation is not null;
     public bool HasSelectedEvent => SelectedEvent is not null;
     public bool HasActionStatusMessage => !string.IsNullOrWhiteSpace(ActionStatusMessage);
     public bool HasActiveFilters =>
@@ -767,12 +787,27 @@ public sealed class ProviderViewModel : ViewModelBase {
     public ObservableCollection<ModelUsageViewModel> ModelBreakdown { get; } = [];
     public ObservableCollection<ModelDaySummaryViewModel> ModelDaySummaries { get; } = [];
     public ObservableCollection<DailyBarViewModel> DailyBars { get; } = [];
+    public ObservableCollection<CodeChurnBarViewModel> CodeChurnBars { get; } = [];
     public ObservableCollection<ProviderLimitWindowViewModel> LimitWindows { get; } = [];
     public ObservableCollection<ProviderLimitAccountViewModel> LimitAccounts { get; } = [];
     public ObservableCollection<UsageBreakdownEntryViewModel> AccountBreakdown { get; } = [];
     public ObservableCollection<UsageBreakdownEntryViewModel> SurfaceBreakdown { get; } = [];
     public ObservableCollection<ProviderComparisonEntryViewModel> ProviderComparison { get; } = [];
+    public ObservableCollection<ProviderOverviewCardViewModel> CombinedOverviewCards { get; } = [];
     public ObservableCollection<RecentUsageItemViewModel> RecentActivity { get; } = [];
+    public string CodeChurnRepositoryText => NormalizeOptional(_codeChurnSummary.RepositoryName) ?? "Local repository";
+    public string CodeChurnAddedText => "+" + FormatTokens(_codeChurnSummary.RecentAddedLines);
+    public string CodeChurnDeletedText => "-" + FormatTokens(_codeChurnSummary.RecentDeletedLines);
+    public string CodeChurnFilesText => _codeChurnSummary.RecentFilesModified.ToString("N0", CultureInfo.CurrentCulture);
+    public string CodeChurnCommitsText => _codeChurnSummary.RecentCommitCount.ToString("N0", CultureInfo.CurrentCulture);
+    public string CodeChurnSummaryText => BuildCodeChurnSummaryText();
+    public string CodeChurnPeakDayText => BuildCodeChurnPeakDayText();
+    public string CodeUsageCorrelationHeadlineText => BuildCodeUsageCorrelationHeadlineText();
+    public string CodeUsageCorrelationSummaryText => BuildCodeUsageCorrelationSummaryText();
+    public string CodeUsagePositiveProviderText => BuildCodeUsagePositiveProviderText();
+    public string CodeUsagePositiveSummaryText => BuildCodeUsagePositiveSummaryText();
+    public string CodeUsageNegativeProviderText => BuildCodeUsageNegativeProviderText();
+    public string CodeUsageNegativeSummaryText => BuildCodeUsageNegativeSummaryText();
     public RelayCommand CopySummaryCommand { get; }
     public RelayCommand CopySelectedEventCommand { get; }
     public RelayCommand CopySelectedEventJsonCommand { get; }
@@ -927,6 +962,38 @@ public sealed class ProviderViewModel : ViewModelBase {
             ? new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             : new HashSet<string>(favoriteProviderIds.Where(static providerId => !string.IsNullOrWhiteSpace(providerId)), StringComparer.OrdinalIgnoreCase);
 
+        if (IsCombinedProvider) {
+            RebuildSelectedRangeViews();
+        }
+    }
+
+    internal void ApplyCodeChurnSummary(GitCodeChurnSummaryData? summary) {
+        _codeChurnSummary = summary ?? GitCodeChurnSummaryData.Empty;
+        RebuildCodeChurnBars();
+        OnPropertyChanged(nameof(HasCodeChurn));
+        OnPropertyChanged(nameof(HasCodeChurnBars));
+        OnPropertyChanged(nameof(CodeChurnRepositoryText));
+        OnPropertyChanged(nameof(CodeChurnAddedText));
+        OnPropertyChanged(nameof(CodeChurnDeletedText));
+        OnPropertyChanged(nameof(CodeChurnFilesText));
+        OnPropertyChanged(nameof(CodeChurnCommitsText));
+        OnPropertyChanged(nameof(CodeChurnSummaryText));
+        OnPropertyChanged(nameof(CodeChurnPeakDayText));
+
+        if (IsCombinedProvider) {
+            RebuildSelectedRangeViews();
+        }
+    }
+
+    internal void ApplyGitHubLocalActivityCorrelationSummary(GitHubLocalActivityCorrelationSummaryData? summary) {
+        _gitHubLocalActivityCorrelationSummary = summary ?? GitHubLocalActivityCorrelationSummaryData.Empty;
+        if (IsCombinedProvider) {
+            RebuildSelectedRangeViews();
+        }
+    }
+
+    internal void ApplyGitHubRepositoryClusterSummary(GitHubRepositoryClusterSummaryData? summary) {
+        _gitHubRepositoryClusterSummary = summary ?? GitHubRepositoryClusterSummaryData.Empty;
         if (IsCombinedProvider) {
             RebuildSelectedRangeViews();
         }
@@ -1268,6 +1335,7 @@ public sealed class ProviderViewModel : ViewModelBase {
 
     private void RebuildSelectedRangeViews() {
         var rangeEvents = ApplyFilters(GetRangeEvents(SelectedRange));
+        ApplyCodeUsageCorrelationSummary(BuildCodeUsageCorrelationSummary());
         TodayLabel = SelectedRange switch {
             ProviderTimeRange.Today => "Today (local)",
             ProviderTimeRange.Last7Days => "Selected range: 7 days",
@@ -1299,9 +1367,165 @@ public sealed class ProviderViewModel : ViewModelBase {
             BuildBreakdown(rangeEvents, e => NormalizeSurfaceLabel(e.Surface)),
             InputColor);
         PopulateProviderComparison(rangeEvents);
+        PopulateCombinedOverview(rangeEvents);
         PopulateRecentActivity(rangeEvents);
 
         ActionStatusMessage = string.Empty;
+    }
+
+    private void RebuildCodeChurnBars() {
+        CodeChurnBars.Clear();
+        if (!_codeChurnSummary.HasData) {
+            return;
+        }
+
+        var trendDays = _codeChurnSummary.TrendDays;
+        var maxChangedLines = trendDays.Count > 0 ? trendDays.Max(static day => day.TotalChangedLines) : 0;
+        foreach (var day in trendDays) {
+            CodeChurnBars.Add(new CodeChurnBarViewModel {
+                DayUtc = day.DayUtc,
+                DayLabel = day.DayUtc == DateTime.Now.Date ? "Today" : day.DayUtc.ToString("ddd", CultureInfo.CurrentCulture),
+                SummaryText = day.HasActivity
+                    ? "+" + FormatTokens(day.AddedLines) + " / -" + FormatTokens(day.DeletedLines)
+                    : "-",
+                BarHeight = maxChangedLines > 0
+                    ? Math.Max(2d, 48d * day.TotalChangedLines / maxChangedLines)
+                    : 2d,
+                BarBrush = FrozenBrush(day.NetLines >= 0 ? Color.FromRgb(144, 208, 160) : Color.FromRgb(240, 192, 64))
+            });
+        }
+    }
+
+    private string BuildCodeChurnSummaryText() {
+        if (!_codeChurnSummary.HasData) {
+            return "No recent git churn detected for the local repository.";
+        }
+
+        return "7d • "
+               + _codeChurnSummary.RecentFilesModified.ToString("N0", CultureInfo.CurrentCulture)
+               + " files • "
+               + _codeChurnSummary.RecentCommitCount.ToString("N0", CultureInfo.CurrentCulture)
+               + " commits • prev "
+               + "+" + FormatTokens(_codeChurnSummary.PreviousAddedLines)
+               + " / -" + FormatTokens(_codeChurnSummary.PreviousDeletedLines);
+    }
+
+    private string BuildCodeChurnPeakDayText() {
+        if (_codeChurnSummary.PeakRecentDay is not { } peakDay) {
+            return "Peak day appears once there is local git activity in the current pulse window.";
+        }
+
+        return "Peak "
+               + peakDay.DayUtc.ToString("MMM d", CultureInfo.CurrentCulture)
+               + " • +" + FormatTokens(peakDay.AddedLines)
+               + " / -" + FormatTokens(peakDay.DeletedLines)
+               + " • "
+               + peakDay.FilesModified.ToString("N0", CultureInfo.CurrentCulture)
+               + " files";
+    }
+
+    private GitCodeUsageCorrelationSummaryData BuildCodeUsageCorrelationSummary() {
+        if (!IsCombinedProvider || !_codeChurnSummary.HasData) {
+            return GitCodeUsageCorrelationSummaryData.Empty;
+        }
+
+        var filteredEvents = ApplyFilters(_usageEvents);
+        return GitCodeUsageCorrelationSummaryBuilder.Build(
+            _codeChurnSummary,
+            filteredEvents,
+            static providerId => ProviderMetadata.Resolve(providerId).DisplayName,
+            activityUnitsLabel: "usage");
+    }
+
+    private void ApplyCodeUsageCorrelationSummary(GitCodeUsageCorrelationSummaryData? summary) {
+        _codeUsageCorrelationSummary = summary ?? GitCodeUsageCorrelationSummaryData.Empty;
+        OnPropertyChanged(nameof(HasCodeUsageCorrelation));
+        OnPropertyChanged(nameof(HasPositiveCodeUsageCorrelation));
+        OnPropertyChanged(nameof(HasNegativeCodeUsageCorrelation));
+        OnPropertyChanged(nameof(CodeUsageCorrelationHeadlineText));
+        OnPropertyChanged(nameof(CodeUsageCorrelationSummaryText));
+        OnPropertyChanged(nameof(CodeUsagePositiveProviderText));
+        OnPropertyChanged(nameof(CodeUsagePositiveSummaryText));
+        OnPropertyChanged(nameof(CodeUsageNegativeProviderText));
+        OnPropertyChanged(nameof(CodeUsageNegativeSummaryText));
+    }
+
+    private string BuildCodeUsageCorrelationHeadlineText() {
+        if (!_codeUsageCorrelationSummary.HasData) {
+            return "Usage and churn correlation appears once both telemetry and local git activity overlap.";
+        }
+
+        var activityDelta = _codeUsageCorrelationSummary.ActivityDeltaRatio;
+        var churnDelta = _codeUsageCorrelationSummary.ChurnDeltaRatio;
+        var activityMoving = Math.Abs(activityDelta) >= 0.10d;
+        var churnMoving = Math.Abs(churnDelta) >= 0.10d;
+        if (!activityMoving && !churnMoving) {
+            return "Usage and churn held steady in the recent window.";
+        }
+
+        if (activityDelta >= 0d && churnDelta >= 0d) {
+            return "Usage and churn rose together across the recent 7-day pulse.";
+        }
+
+        if (activityDelta <= 0d && churnDelta <= 0d) {
+            return "Usage and churn cooled together across the recent 7-day pulse.";
+        }
+
+        return churnDelta > activityDelta
+            ? "Churn rose while usage cooled in the recent 7-day pulse."
+            : "Usage rose while churn cooled in the recent 7-day pulse.";
+    }
+
+    private string BuildCodeUsageCorrelationSummaryText() {
+        if (!_codeUsageCorrelationSummary.HasData) {
+            return "Correlation needs both local git churn and recent telemetry activity.";
+        }
+
+        return "7d usage "
+               + FormatTokens((long)Math.Round(_codeUsageCorrelationSummary.RecentActivityTotal, MidpointRounding.AwayFromZero))
+               + " vs prev "
+               + FormatTokens((long)Math.Round(_codeUsageCorrelationSummary.PreviousActivityTotal, MidpointRounding.AwayFromZero))
+               + " • churn "
+               + FormatShortSignedDelta(_codeUsageCorrelationSummary.RecentChurnVolume - _codeUsageCorrelationSummary.PreviousChurnVolume)
+               + " lines • "
+               + _codeUsageCorrelationSummary.RecentActivityDays.ToString("N0", CultureInfo.CurrentCulture)
+               + " active usage days";
+    }
+
+    private string BuildCodeUsagePositiveProviderText() {
+        return _codeUsageCorrelationSummary.StrongestPositiveCorrelation is { } correlation
+            ? correlation.ProviderDisplayName + " • " + FormatCorrelationValue(correlation.Correlation)
+            : "No aligned provider signal yet";
+    }
+
+    private string BuildCodeUsagePositiveSummaryText() {
+        if (_codeUsageCorrelationSummary.StrongestPositiveCorrelation is not { } correlation) {
+            return "Aligned providers appear once a repo and one provider move together for several days.";
+        }
+
+        return FormatTokens((long)Math.Round(correlation.RecentActivityValue, MidpointRounding.AwayFromZero))
+               + " recent usage • "
+               + correlation.SharedActiveDays.ToString("N0", CultureInfo.CurrentCulture)
+               + "/" + correlation.OverlapDays.ToString("N0", CultureInfo.CurrentCulture)
+               + " shared active days";
+    }
+
+    private string BuildCodeUsageNegativeProviderText() {
+        return _codeUsageCorrelationSummary.StrongestNegativeCorrelation is { } correlation
+            ? correlation.ProviderDisplayName + " • " + FormatCorrelationValue(correlation.Correlation)
+            : "No diverging provider signal yet";
+    }
+
+    private string BuildCodeUsageNegativeSummaryText() {
+        if (_codeUsageCorrelationSummary.StrongestNegativeCorrelation is not { } correlation) {
+            return "Diverging providers appear when local churn and one provider decouple across the same week.";
+        }
+
+        return FormatTokens((long)Math.Round(correlation.RecentActivityValue, MidpointRounding.AwayFromZero))
+               + " recent usage • "
+               + correlation.ProviderActiveDays.ToString("N0", CultureInfo.CurrentCulture)
+               + "/" + correlation.OverlapDays.ToString("N0", CultureInfo.CurrentCulture)
+               + " provider-active days";
     }
 
     private List<UsageEventRecord> GetRangeEvents(ProviderTimeRange range) {
@@ -1538,6 +1762,358 @@ public sealed class ProviderViewModel : ViewModelBase {
                 BarBrush = FrozenBrush(group.Info.TotalColor)
             });
         }
+    }
+
+    private void PopulateCombinedOverview(IReadOnlyList<UsageEventRecord> events) {
+        CombinedOverviewCards.Clear();
+        if (!IsCombinedProvider) {
+            return;
+        }
+
+        var providerGroups = events
+            .GroupBy(static e => e.ProviderId?.Trim()?.ToLowerInvariant() ?? "unknown")
+            .Where(static group => !string.IsNullOrWhiteSpace(group.Key))
+            .Select(group => new {
+                Info = ProviderMetadata.Resolve(group.Key),
+                Events = group.Count(),
+                Tokens = group.Sum(eventRecord => eventRecord.TotalTokens ?? 0L),
+                CostRollup = UsageTelemetryApiPricing.BuildDisplayCost(group)
+            })
+            .OrderByDescending(static group => group.Tokens)
+            .ThenByDescending(static group => group.Events)
+            .ThenBy(static group => group.Info.DisplayName, StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
+
+        var leadingProvider = providerGroups.FirstOrDefault();
+        CombinedOverviewCards.Add(new ProviderOverviewCardViewModel {
+            Title = "Providers",
+            MetricText = providerGroups.Count.ToString("N0", CultureInfo.CurrentCulture),
+            DetailText = leadingProvider is null
+                ? "No provider activity in the current range."
+                : "Top: "
+                  + leadingProvider.Info.DisplayName
+                  + " • " + FormatTokens(leadingProvider.Tokens)
+                  + " • " + leadingProvider.Events.ToString("N0", CultureInfo.CurrentCulture) + " events",
+            AccentBrush = FrozenBrush(leadingProvider is null ? TotalColor : leadingProvider.Info.TotalColor)
+        });
+
+        CombinedOverviewCards.Add(new ProviderOverviewCardViewModel {
+            Title = "Refresh Pulse",
+            MetricText = HasRefreshBadge ? RefreshBadgeText : "0",
+            DetailText = HasRefreshBadge
+                ? RefreshBadgeToolTip
+                : "No new activity since the previous refresh.",
+            AccentBrush = HasRefreshBadge ? FrozenBrush(Color.FromRgb(144, 208, 160)) : FrozenBrush(Color.FromRgb(96, 96, 136))
+        });
+
+        if (_codeChurnSummary.HasData) {
+            CombinedOverviewCards.Add(new ProviderOverviewCardViewModel {
+                Title = "Code Churn",
+                MetricText = CodeChurnAddedText + " / " + CodeChurnDeletedText,
+                DetailText = CodeChurnSummaryText,
+                AccentBrush = FrozenBrush(_codeChurnSummary.RecentNetLines >= 0
+                    ? Color.FromRgb(144, 208, 160)
+                    : Color.FromRgb(240, 192, 64))
+            });
+        }
+
+        if (_codeUsageCorrelationSummary.HasData) {
+            CombinedOverviewCards.Add(new ProviderOverviewCardViewModel {
+                Title = "Churn x Usage",
+                MetricText = BuildCombinedCorrelationMetricText(),
+                DetailText = BuildCombinedCorrelationDetailText(),
+                AccentBrush = FrozenBrush(BuildCombinedCorrelationAccentColor())
+            });
+        }
+
+        if (_gitHubLocalActivityCorrelationSummary.HasData) {
+            CombinedOverviewCards.Add(new ProviderOverviewCardViewModel {
+                Title = "Repo Sync",
+                MetricText = BuildCombinedGitHubLocalAlignmentMetricText(),
+                DetailText = BuildCombinedGitHubLocalAlignmentDetailText(),
+                AccentBrush = FrozenBrush(BuildCombinedGitHubLocalAlignmentAccentColor())
+            });
+        }
+
+        if (_gitHubRepositoryClusterSummary.HasData) {
+            CombinedOverviewCards.Add(new ProviderOverviewCardViewModel {
+                Title = "Repo Cluster",
+                MetricText = BuildCombinedGitHubClusterMetricText(),
+                DetailText = BuildCombinedGitHubClusterDetailText(),
+                AccentBrush = FrozenBrush(BuildCombinedGitHubClusterAccentColor())
+            });
+        }
+
+        var (healthMetric, healthDetail, healthBrush) = BuildCombinedHealthOverview();
+        CombinedOverviewCards.Add(new ProviderOverviewCardViewModel {
+            Title = "Data Health",
+            MetricText = healthMetric,
+            DetailText = healthDetail,
+            AccentBrush = healthBrush
+        });
+
+        var limitCandidate = SelectCombinedLimitCandidate();
+        CombinedOverviewCards.Add(new ProviderOverviewCardViewModel {
+            Title = "Live Limits",
+            MetricText = limitCandidate?.DisplayName ?? "No live data",
+            DetailText = limitCandidate?.HealthText ?? "No live limit data detected across providers.",
+            AccentBrush = limitCandidate?.HealthBrush ?? FrozenBrush(Color.FromRgb(96, 96, 136))
+        });
+    }
+
+    private (string Metric, string Detail, Brush AccentBrush) BuildCombinedHealthOverview() {
+        var summary = NormalizeOptional(UsageHealthSummary);
+        var detail = NormalizeOptional(UsageHealthDetail) ?? NormalizeOptional(UsageHealthAccountsText);
+        var combinedText = string.Join(" ", new[] { summary, detail }.Where(static value => !string.IsNullOrWhiteSpace(value))).ToLowerInvariant();
+
+        if (combinedText.Contains("partial", StringComparison.Ordinal) ||
+            combinedText.Contains("missing", StringComparison.Ordinal) ||
+            combinedText.Contains("stale", StringComparison.Ordinal)) {
+            return (
+                "Partial",
+                summary ?? detail ?? "Some provider roots or artifacts were incomplete during the last scan.",
+                FrozenBrush(Color.FromRgb(240, 192, 64)));
+        }
+
+        if (combinedText.Contains("cached", StringComparison.Ordinal)) {
+            return (
+                "Cached",
+                summary ?? detail ?? "The tray is currently using persisted snapshot data.",
+                FrozenBrush(Color.FromRgb(144, 144, 184)));
+        }
+
+        if (!string.IsNullOrWhiteSpace(summary) || !string.IsNullOrWhiteSpace(detail)) {
+            return (
+                "Checked",
+                summary ?? detail ?? "Usage health data is available for this refresh.",
+                FrozenBrush(Color.FromRgb(144, 208, 160)));
+        }
+
+        return (
+            "Local",
+            "No health warnings were recorded for the current explorer state.",
+            FrozenBrush(Color.FromRgb(96, 96, 136)));
+    }
+
+    private ProviderComparisonEntryViewModel? SelectCombinedLimitCandidate() {
+        return ProviderComparison
+            .Select(entry => new {
+                Entry = entry,
+                Score = BuildLimitHealthScore(entry.HealthText)
+            })
+            .Where(static item => item.Score > 0d)
+            .OrderByDescending(static item => item.Score)
+            .ThenBy(static item => item.Entry.DisplayName, StringComparer.CurrentCultureIgnoreCase)
+            .Select(static item => item.Entry)
+            .FirstOrDefault();
+    }
+
+    private static double BuildLimitHealthScore(string? healthText) {
+        if (string.IsNullOrWhiteSpace(healthText)) {
+            return 0d;
+        }
+
+        var normalized = healthText.Trim();
+        if (normalized.Contains("No live limit data", StringComparison.OrdinalIgnoreCase)) {
+            return 0d;
+        }
+
+        var percentIndex = normalized.IndexOf('%');
+        if (percentIndex > 0) {
+            var start = percentIndex - 1;
+            while (start >= 0 && (char.IsDigit(normalized[start]) || normalized[start] == '.')) {
+                start--;
+            }
+
+            var numberText = normalized.Substring(start + 1, percentIndex - start - 1);
+            if (double.TryParse(numberText, NumberStyles.Float, CultureInfo.InvariantCulture, out var percent)) {
+                return percent;
+            }
+        }
+
+        return 1d;
+    }
+
+    private string BuildCombinedCorrelationMetricText() {
+        var activityDelta = _codeUsageCorrelationSummary.ActivityDeltaRatio;
+        var churnDelta = _codeUsageCorrelationSummary.ChurnDeltaRatio;
+        var movingTogether = Math.Sign(activityDelta) == Math.Sign(churnDelta) && (Math.Abs(activityDelta) >= 0.10d || Math.Abs(churnDelta) >= 0.10d);
+        if (movingTogether) {
+            return "Moving together";
+        }
+
+        if (Math.Abs(activityDelta) < 0.10d && Math.Abs(churnDelta) < 0.10d) {
+            return "Steady";
+        }
+
+        return "Diverging";
+    }
+
+    private string BuildCombinedCorrelationDetailText() {
+        var strongest = _codeUsageCorrelationSummary.StrongestPositiveCorrelation;
+        if (strongest is null) {
+            return CodeUsageCorrelationSummaryText;
+        }
+
+        return CodeUsageCorrelationSummaryText
+               + " • aligned: "
+               + strongest.ProviderDisplayName
+               + " "
+               + FormatCorrelationValue(strongest.Correlation);
+    }
+
+    private Color BuildCombinedCorrelationAccentColor() {
+        var strongestPositive = _codeUsageCorrelationSummary.StrongestPositiveCorrelation;
+        if (strongestPositive is not null && strongestPositive.Correlation >= 0.55d) {
+            return Color.FromRgb(144, 208, 160);
+        }
+
+        var strongestNegative = _codeUsageCorrelationSummary.StrongestNegativeCorrelation;
+        if (strongestNegative is not null && strongestNegative.Correlation <= -0.55d) {
+            return Color.FromRgb(240, 192, 64);
+        }
+
+        return Color.FromRgb(144, 144, 184);
+    }
+
+    private string BuildCombinedGitHubLocalAlignmentMetricText() {
+        var strongestPositive = _gitHubLocalActivityCorrelationSummary.StrongestPositiveCorrelation;
+        if (strongestPositive is not null) {
+            return BuildShortRepositoryLabel(strongestPositive.RepositoryNameWithOwner)
+                   + " "
+                   + FormatCorrelationValue(strongestPositive.Correlation);
+        }
+
+        var strongestNegative = _gitHubLocalActivityCorrelationSummary.StrongestNegativeCorrelation;
+        if (strongestNegative is not null) {
+            return BuildShortRepositoryLabel(strongestNegative.RepositoryNameWithOwner)
+                   + " "
+                   + FormatCorrelationValue(strongestNegative.Correlation);
+        }
+
+        return _gitHubLocalActivityCorrelationSummary.WatchedRepositoryCount.ToString("N0", CultureInfo.CurrentCulture)
+               + " watched";
+    }
+
+    private string BuildCombinedGitHubLocalAlignmentDetailText() {
+        if (!_gitHubLocalActivityCorrelationSummary.HasSignals) {
+            return _gitHubLocalActivityCorrelationSummary.WatchedRepositoryCount.ToString("N0", CultureInfo.CurrentCulture)
+                   + " watched repos • waiting for overlapping local pulse data";
+        }
+
+        var parts = new List<string> {
+            _gitHubLocalActivityCorrelationSummary.RepositoryCorrelations.Count.ToString("N0", CultureInfo.CurrentCulture)
+            + " linked movers"
+        };
+
+        if (_gitHubLocalActivityCorrelationSummary.StrongestPositiveCorrelation is { } strongestPositive) {
+            parts.Add("sync: "
+                      + BuildShortRepositoryLabel(strongestPositive.RepositoryNameWithOwner)
+                      + " "
+                      + FormatCorrelationValue(strongestPositive.Correlation));
+        }
+
+        if (_gitHubLocalActivityCorrelationSummary.StrongestNegativeCorrelation is { } strongestNegative) {
+            parts.Add("diverge: "
+                      + BuildShortRepositoryLabel(strongestNegative.RepositoryNameWithOwner)
+                      + " "
+                      + FormatCorrelationValue(strongestNegative.Correlation));
+        }
+
+        parts.Add(_gitHubLocalActivityCorrelationSummary.ActiveLocalDays.ToString("N0", CultureInfo.CurrentCulture)
+                  + " active local days");
+
+        return string.Join(" • ", parts);
+    }
+
+    private Color BuildCombinedGitHubLocalAlignmentAccentColor() {
+        var strongestPositive = _gitHubLocalActivityCorrelationSummary.StrongestPositiveCorrelation;
+        if (strongestPositive is not null && strongestPositive.Correlation >= 0.55d) {
+            return Color.FromRgb(144, 208, 160);
+        }
+
+        var strongestNegative = _gitHubLocalActivityCorrelationSummary.StrongestNegativeCorrelation;
+        if (strongestNegative is not null && strongestNegative.Correlation <= -0.55d) {
+            return Color.FromRgb(240, 192, 64);
+        }
+
+        return Color.FromRgb(144, 144, 184);
+    }
+
+    private string BuildCombinedGitHubClusterMetricText() {
+        var strongest = _gitHubRepositoryClusterSummary.StrongestCluster;
+        if (strongest is null) {
+            return _gitHubRepositoryClusterSummary.WatchedRepositoryCount.ToString("N0", CultureInfo.CurrentCulture)
+                   + " watched";
+        }
+
+        return BuildShortRepositoryLabel(strongest.RepositoryANameWithOwner)
+               + " x "
+               + BuildShortRepositoryLabel(strongest.RepositoryBNameWithOwner);
+    }
+
+    private string BuildCombinedGitHubClusterDetailText() {
+        if (!_gitHubRepositoryClusterSummary.HasSignals) {
+            return _gitHubRepositoryClusterSummary.WatchedRepositoryCount.ToString("N0", CultureInfo.CurrentCulture)
+                   + " watched repos • waiting for shared momentum and audience overlap";
+        }
+
+        var strongest = _gitHubRepositoryClusterSummary.StrongestCluster!;
+        var parts = new List<string> {
+            strongest.SupportingSignalCount.ToString("N0", CultureInfo.CurrentCulture) + " signals",
+            "star sync " + FormatCorrelationValue(strongest.StarCorrelation)
+        };
+
+        if (strongest.SharedStargazerCount > 0) {
+            parts.Add(strongest.SharedStargazerCount.ToString("N0", CultureInfo.CurrentCulture) + " shared stargazers");
+        }
+        if (strongest.SharedForkOwnerCount > 0) {
+            parts.Add(strongest.SharedForkOwnerCount.ToString("N0", CultureInfo.CurrentCulture) + " shared forkers");
+        }
+        if (strongest.LocallyAlignedRepositoryCount == 2) {
+            parts.Add("both local " + FormatCorrelationValue(strongest.LocalAlignmentAverageCorrelation));
+        }
+
+        return string.Join(" • ", parts);
+    }
+
+    private Color BuildCombinedGitHubClusterAccentColor() {
+        var strongest = _gitHubRepositoryClusterSummary.StrongestCluster;
+        if (strongest is null) {
+            return Color.FromRgb(144, 144, 184);
+        }
+        if (strongest.CompositeScore >= 0.70d) {
+            return Color.FromRgb(144, 208, 160);
+        }
+        if (strongest.CompositeScore >= 0.50d) {
+            return Color.FromRgb(240, 192, 64);
+        }
+
+        return Color.FromRgb(144, 144, 184);
+    }
+
+    private static string BuildShortRepositoryLabel(string repositoryNameWithOwner) {
+        var normalized = NormalizeOptional(repositoryNameWithOwner);
+        if (string.IsNullOrWhiteSpace(normalized)) {
+            return "Repository";
+        }
+
+        var separatorIndex = normalized.LastIndexOf('/');
+        return separatorIndex >= 0 && separatorIndex < normalized.Length - 1
+            ? normalized.Substring(separatorIndex + 1)
+            : normalized;
+    }
+
+    private static string FormatCorrelationValue(double correlation) {
+        return correlation.ToString("+0.00;-0.00;0.00", CultureInfo.CurrentCulture);
+    }
+
+    private static string FormatShortSignedDelta(int value) {
+        return value switch {
+            > 0 => "+" + value.ToString("N0", CultureInfo.CurrentCulture),
+            < 0 => "-" + Math.Abs(value).ToString("N0", CultureInfo.CurrentCulture),
+            _ => "0"
+        };
     }
 
     private Task FilterToSelectedModelAsync() {

@@ -9,6 +9,8 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
 using IntelligenceX.OpenAI.Usage;
+using IntelligenceX.Telemetry.Git;
+using IntelligenceX.Telemetry.GitHub;
 using IntelligenceX.Telemetry.Limits;
 using IntelligenceX.Telemetry.Usage;
 using IntelligenceX.Tray.Services;
@@ -22,12 +24,19 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     private const int UsageChangeDebounceSeconds = 15;
     private const int RefreshHistoryDepth = 4;
     private const int FreshLimitSnapshotWindowSeconds = 75;
+    private const int GitHubWatchAutoSyncMinimumIntervalSeconds = 1800;
+    private const int GitHubWatchSnapshotFreshnessSeconds = 21600;
+    private const int GitHubWatchForkFreshnessSeconds = 86400;
+    private const int GitHubWatchStargazerFreshnessSeconds = 86400;
     private const double LimitWarningThresholdPercent = 90d;
     private const double LimitExhaustedThresholdPercent = 100d;
 
     private readonly UsageTelemetrySnapshotService _usageService;
     private readonly ProviderLimitSnapshotService _limitService;
     private readonly GitHubService _gitHubService;
+    private readonly GitCodeChurnSummaryService _gitCodeChurnSummaryService;
+    private readonly GitHubObservabilitySummaryService _gitHubObservabilitySummaryService;
+    private readonly GitHubRepositoryWatchAutoSyncService _gitHubWatchAutoSyncService;
     private readonly TrayPreferencesStore _preferencesStore;
     private readonly TrayUsageSnapshotStore _usageSnapshotStore;
     private readonly TrayPreferences _preferences;
@@ -43,6 +52,10 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     private Dictionary<string, ProviderRefreshSnapshot> _previousProviderSnapshots = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, Queue<ProviderRefreshSnapshot>> _providerRefreshHistory = new(StringComparer.OrdinalIgnoreCase);
     private UsageTelemetrySnapshotHealth? _latestUsageHealth;
+    private GitCodeChurnSummaryData _latestGitCodeChurnSummary = GitCodeChurnSummaryData.Empty;
+    private GitHubObservabilitySummaryData _latestGitHubObservabilitySummary = GitHubObservabilitySummaryData.Empty;
+    private GitHubLocalActivityCorrelationSummaryData _latestGitHubLocalActivityCorrelationSummary = GitHubLocalActivityCorrelationSummaryData.Empty;
+    private GitHubRepositoryClusterSummaryData _latestGitHubRepositoryClusterSummary = GitHubRepositoryClusterSummaryData.Empty;
     private ProviderViewModel? _selectedProvider;
     private bool _isLoading;
     private string _statusText = "Initializing...";
@@ -60,24 +73,32 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     private string _themeMode = TrayThemeService.SystemMode;
     private string _accentPreset = TrayThemeService.DefaultAccentPreset;
     private int _autoRefreshIntervalSeconds;
+    private bool _gitHubWatchAutoSyncEnabled;
     private bool _notificationsEnabled;
     private bool _closeHidesToTray;
     private bool _startWithWindows;
     private bool _hasCompletedInitialRefresh;
+    private DateTimeOffset _lastGitHubWatchAutoSyncAttemptUtc;
     private DateTimeOffset _lastUsageSnapshotScannedAtUtc;
     private DateTimeOffset _lastUsageRootDiscoveryUtc;
     private DateTimeOffset _usageDirtyAtUtc;
     private string? _latestUsageChangePath;
 
-    public MainViewModel(
+    internal MainViewModel(
         UsageTelemetrySnapshotService usageService,
         ProviderLimitSnapshotService limitService,
         GitHubService gitHubService,
+        GitCodeChurnSummaryService gitCodeChurnSummaryService,
+        GitHubObservabilitySummaryService gitHubObservabilitySummaryService,
+        GitHubRepositoryWatchAutoSyncService gitHubWatchAutoSyncService,
         TrayPreferencesStore preferencesStore,
         TrayUsageSnapshotStore usageSnapshotStore) {
         _usageService = usageService;
         _limitService = limitService;
         _gitHubService = gitHubService;
+        _gitCodeChurnSummaryService = gitCodeChurnSummaryService;
+        _gitHubObservabilitySummaryService = gitHubObservabilitySummaryService;
+        _gitHubWatchAutoSyncService = gitHubWatchAutoSyncService;
         _preferencesStore = preferencesStore;
         _usageSnapshotStore = usageSnapshotStore;
         _preferences = _preferencesStore.Load();
@@ -86,6 +107,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         _accentPreset = TrayThemeService.NormalizeAccentPreset(_preferences.AccentPreset);
         _preferences.AccentPreset = _accentPreset;
         _autoRefreshIntervalSeconds = NormalizeRefreshIntervalSeconds(_preferences.AutoRefreshIntervalSeconds);
+        _gitHubWatchAutoSyncEnabled = _preferences.GitHubWatchAutoSyncEnabled;
         _notificationsEnabled = _preferences.NotificationsEnabled;
         _closeHidesToTray = _preferences.CloseHidesToTray;
         _startWithWindows = _preferences.StartWithWindows;
@@ -158,6 +180,9 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
 
     public bool ShowUsageContent => SelectedProvider is { ProviderId: not "__github__" };
     public bool ShowGitHubContent => IsGitHubTabSelected || (!HasUsageProviders && HasGitHubProvider);
+    public bool ShowCombinedGitHubPulse => ShowUsageContent
+                                           && SelectedProvider is { ProviderId: "__all__" }
+                                           && GitHub.HasObservabilitySummary;
     public bool ShowLoadingOverlay => IsLoading && ShowUsageContent && !HasUsageProviders;
 
     public string HeaderTitle {
@@ -264,6 +289,11 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         }
     }
 
+    public bool GitHubWatchAutoSyncEnabled {
+        get => _gitHubWatchAutoSyncEnabled;
+        private set => SetProperty(ref _gitHubWatchAutoSyncEnabled, value);
+    }
+
     public string ThemeMode {
         get => _themeMode;
         private set {
@@ -365,6 +395,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         }
 
         try {
+            var codeChurnTask = Task.Run(LoadGitCodeChurnSummarySafe);
             var discoveredProviderIds = new List<string>();
             var progressiveProviderEvents = new Dictionary<string, List<UsageEventRecord>>(StringComparer.OrdinalIgnoreCase);
             var dispatcher = Application.Current.Dispatcher;
@@ -513,8 +544,12 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
                 refreshData.Health,
                 providerDelta,
                 providerHistory);
+            var codeChurnSummary = await codeChurnTask;
+            _latestGitCodeChurnSummary = codeChurnSummary;
+            ApplyCodeChurnSummary(newProviders, codeChurnSummary);
             ReplaceProviders(newProviders);
             UpdateDisplayedProviderEvents(mergedProviderData);
+            RefreshGitHubLocalActivityCorrelationSummary();
             _latestUsageHealth = refreshData.Health;
             LastRefreshed = refreshData.ScannedAtUtc.ToLocalTime();
             _lastUsageSnapshotScannedAtUtc = refreshData.ScannedAtUtc;
@@ -714,6 +749,23 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         StatusText = enabled ? "Limit notifications enabled." : "Limit notifications paused.";
     }
 
+    public void SetGitHubWatchAutoSyncEnabled(bool enabled) {
+        if (GitHubWatchAutoSyncEnabled == enabled) {
+            return;
+        }
+
+        GitHubWatchAutoSyncEnabled = enabled;
+        _preferences.GitHubWatchAutoSyncEnabled = enabled;
+        SavePreferences();
+        if (enabled) {
+            _lastGitHubWatchAutoSyncAttemptUtc = default;
+        }
+
+        StatusText = enabled
+            ? "Watched GitHub repo auto sync enabled."
+            : "Watched GitHub repo auto sync paused.";
+    }
+
     public void SetCloseHidesToTray(bool enabled) {
         if (CloseHidesToTray == enabled) {
             return;
@@ -828,6 +880,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         var hasToken = gitHubCredentials.HasToken;
         var effectiveLogin = string.IsNullOrWhiteSpace(ghLogin) ? null : ghLogin.Trim();
         var preserveExistingData = ShouldPreserveGitHubDataDuringRefresh(effectiveLogin, hasToken);
+        var observabilityTask = LoadGitHubObservabilitySummaryAsync(resolvedGitHubToken, cancellationToken);
 
         await dispatcher.InvokeAsync(() => {
             if (!IsCurrentGitHubRefresh(currentVersion, cancellationToken)) {
@@ -839,7 +892,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
             }
 
             if (!preserveExistingData && !hasToken && !GitHub.HasData) {
-                GitHub.ClearData();
+                GitHub.ClearProfileData();
             }
 
             GitHub.HasToken = hasToken;
@@ -848,11 +901,16 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         });
 
         if (!hasToken && string.IsNullOrWhiteSpace(effectiveLogin)) {
+            var observabilityRefresh = await observabilityTask.ConfigureAwait(false);
             await dispatcher.InvokeAsync(() => {
                 if (!IsLatestGitHubRefresh(currentVersion)) {
                     return;
                 }
 
+                _latestGitHubObservabilitySummary = observabilityRefresh.Summary;
+                GitHub.ApplyObservabilitySummary(observabilityRefresh.Summary);
+                RefreshGitHubLocalActivityCorrelationSummary();
+                TryApplyGitHubAutoSyncStatus(observabilityRefresh.AutoSyncResult);
                 GitHub.IsLoading = false;
             });
             Interlocked.CompareExchange(ref _gitHubRefreshCts, null, refreshCts);
@@ -861,18 +919,23 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
 
         try {
             var ghData = await _gitHubService.FetchAsync(effectiveLogin, resolvedGitHubToken, cancellationToken).ConfigureAwait(false);
+            var observabilityRefresh = await observabilityTask.ConfigureAwait(false);
             await dispatcher.InvokeAsync(() => {
                 if (!IsCurrentGitHubRefresh(currentVersion, cancellationToken)) {
                     return;
                 }
 
+                _latestGitHubObservabilitySummary = observabilityRefresh.Summary;
+                GitHub.ApplyObservabilitySummary(observabilityRefresh.Summary);
+                RefreshGitHubLocalActivityCorrelationSummary();
+                TryApplyGitHubAutoSyncStatus(observabilityRefresh.AutoSyncResult);
                 if (ghData is not null) {
                     GitHub.Apply(ghData);
                     return;
                 }
 
                 if (!preserveExistingData) {
-                    GitHub.ClearData();
+                    GitHub.ClearProfileData();
                     if (effectiveLogin is not null) {
                         GitHub.UsernameInput = effectiveLogin;
                     }
@@ -885,13 +948,18 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
             // A newer refresh superseded this one.
         } catch (Exception ghEx) {
+            var observabilityRefresh = await observabilityTask.ConfigureAwait(false);
             await dispatcher.InvokeAsync(() => {
                 if (!IsCurrentGitHubRefresh(currentVersion, cancellationToken)) {
                     return;
                 }
 
+                _latestGitHubObservabilitySummary = observabilityRefresh.Summary;
+                GitHub.ApplyObservabilitySummary(observabilityRefresh.Summary);
+                RefreshGitHubLocalActivityCorrelationSummary();
+                TryApplyGitHubAutoSyncStatus(observabilityRefresh.AutoSyncResult);
                 if (!preserveExistingData) {
-                    GitHub.ClearData();
+                    GitHub.ClearProfileData();
                     if (effectiveLogin is not null) {
                         GitHub.UsernameInput = effectiveLogin;
                     }
@@ -927,12 +995,12 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     }
 
     private void OnGitHubPropertyChanged(object? sender, PropertyChangedEventArgs e) {
-        if (!string.Equals(e.PropertyName, nameof(GitHubViewModel.UsernameInput), StringComparison.Ordinal)) {
-            return;
+        if (string.Equals(e.PropertyName, nameof(GitHubViewModel.UsernameInput), StringComparison.Ordinal)) {
+            _preferences.GitHubUsername = GitHub.UsernameInput?.Trim() ?? string.Empty;
+            SavePreferences();
         }
 
-        _preferences.GitHubUsername = GitHub.UsernameInput?.Trim() ?? string.Empty;
-        SavePreferences();
+        OnPropertyChanged(nameof(ShowCombinedGitHubPulse));
     }
 
     private void OnProviderPropertyChanged(object? sender, PropertyChangedEventArgs e) {
@@ -1160,6 +1228,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
 
         if (Providers.FirstOrDefault(provider => string.Equals(provider.ProviderId, "__all__", StringComparison.Ordinal)) is { } allProvider) {
             allProvider.SetProviderComparisonHealth(BuildProviderComparisonHealth(Providers));
+            allProvider.ApplyCodeChurnSummary(_latestGitCodeChurnSummary);
+            allProvider.ApplyGitHubLocalActivityCorrelationSummary(_latestGitHubLocalActivityCorrelationSummary);
         }
     }
 
@@ -1299,9 +1369,144 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         OnPropertyChanged(nameof(HasData));
         OnPropertyChanged(nameof(ShowUsageContent));
         OnPropertyChanged(nameof(ShowGitHubContent));
+        OnPropertyChanged(nameof(ShowCombinedGitHubPulse));
         OnPropertyChanged(nameof(ShowLoadingOverlay));
         OnPropertyChanged(nameof(HeaderRefreshCommand));
         OnPropertyChanged(nameof(HeaderRefreshLabel));
+    }
+
+    private GitHubObservabilitySummaryData LoadGitHubObservabilitySummarySafe() {
+        try {
+            return _gitHubObservabilitySummaryService.Load();
+        } catch {
+            return GitHubObservabilitySummaryData.Empty;
+        }
+    }
+
+    private async Task<GitHubObservabilityRefreshResult> LoadGitHubObservabilitySummaryAsync(
+        string? gitHubToken,
+        CancellationToken cancellationToken) {
+        GitHubRepositoryWatchAutoSyncResult? autoSyncResult = null;
+        try {
+            autoSyncResult = await TryAutoSyncGitHubObservabilityAsync(gitHubToken, cancellationToken).ConfigureAwait(false);
+        } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
+            throw;
+        } catch {
+            // Keep GitHub profile refresh resilient even if background watch sync fails.
+        }
+
+        return new GitHubObservabilityRefreshResult(LoadGitHubObservabilitySummarySafe(), autoSyncResult);
+    }
+
+    private async Task<GitHubRepositoryWatchAutoSyncResult?> TryAutoSyncGitHubObservabilityAsync(
+        string? gitHubToken,
+        CancellationToken cancellationToken) {
+        if (!GitHubWatchAutoSyncEnabled || string.IsNullOrWhiteSpace(gitHubToken)) {
+            return null;
+        }
+
+        var nowUtc = DateTimeOffset.UtcNow;
+        if (_lastGitHubWatchAutoSyncAttemptUtc != default &&
+            nowUtc - _lastGitHubWatchAutoSyncAttemptUtc < TimeSpan.FromSeconds(GitHubWatchAutoSyncMinimumIntervalSeconds)) {
+            return null;
+        }
+
+        _lastGitHubWatchAutoSyncAttemptUtc = nowUtc;
+        return await _gitHubWatchAutoSyncService.SyncIfNeededAsync(
+            gitHubToken,
+            new GitHubRepositoryWatchAutoSyncOptions {
+                SnapshotFreshnessWindow = TimeSpan.FromSeconds(GitHubWatchSnapshotFreshnessSeconds),
+                ForkFreshnessWindow = TimeSpan.FromSeconds(GitHubWatchForkFreshnessSeconds),
+                IncludeForks = true,
+                ForkLimit = 10,
+                StargazerFreshnessWindow = TimeSpan.FromSeconds(GitHubWatchStargazerFreshnessSeconds),
+                IncludeStargazers = true,
+                StargazerLimit = 200
+            },
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private void TryApplyGitHubAutoSyncStatus(GitHubRepositoryWatchAutoSyncResult? result) {
+        if (result is null || !result.ShouldSurfaceStatus || IsLoading) {
+            return;
+        }
+
+        StatusText = result.Message;
+    }
+
+    private GitCodeChurnSummaryData LoadGitCodeChurnSummarySafe() {
+        try {
+            return _gitCodeChurnSummaryService.Load();
+        } catch {
+            return GitCodeChurnSummaryData.Empty;
+        }
+    }
+
+    private GitHubLocalActivityCorrelationSummaryData BuildGitHubLocalActivityCorrelationSummary() {
+        var usageEvents = _displayedProviderEvents
+            .Where(static pair => !string.Equals(pair.Key, "github", StringComparison.OrdinalIgnoreCase))
+            .SelectMany(static pair => pair.Value)
+            .ToArray();
+        return GitHubLocalActivityCorrelationSummaryBuilder.Build(
+            _latestGitCodeChurnSummary,
+            usageEvents,
+            _latestGitHubObservabilitySummary);
+    }
+
+    private GitHubRepositoryClusterSummaryData BuildGitHubRepositoryClusterSummary() {
+        return GitHubRepositoryClusterSummaryBuilder.Build(
+            _latestGitHubObservabilitySummary,
+            _latestGitHubLocalActivityCorrelationSummary);
+    }
+
+    private void RefreshGitHubLocalActivityCorrelationSummary(IEnumerable<ProviderViewModel>? providers = null) {
+        _latestGitHubLocalActivityCorrelationSummary = BuildGitHubLocalActivityCorrelationSummary();
+        _latestGitHubRepositoryClusterSummary = BuildGitHubRepositoryClusterSummary();
+        GitHub.ApplyLocalActivityCorrelationSummary(_latestGitHubLocalActivityCorrelationSummary);
+        GitHub.ApplyRepositoryClusterSummary(_latestGitHubRepositoryClusterSummary);
+        ApplyGitHubLocalActivityCorrelationSummary(
+            providers ?? Providers,
+            _latestGitHubLocalActivityCorrelationSummary);
+        ApplyGitHubRepositoryClusterSummary(
+            providers ?? Providers,
+            _latestGitHubRepositoryClusterSummary);
+    }
+
+    private static void ApplyCodeChurnSummary(IEnumerable<ProviderViewModel> providers, GitCodeChurnSummaryData summary) {
+        foreach (var provider in providers.Where(static provider =>
+                     string.Equals(provider.ProviderId, "__all__", StringComparison.Ordinal))) {
+            provider.ApplyCodeChurnSummary(summary);
+        }
+    }
+
+    private static void ApplyGitHubLocalActivityCorrelationSummary(
+        IEnumerable<ProviderViewModel> providers,
+        GitHubLocalActivityCorrelationSummaryData summary) {
+        foreach (var provider in providers.Where(static provider =>
+                     string.Equals(provider.ProviderId, "__all__", StringComparison.Ordinal))) {
+            provider.ApplyGitHubLocalActivityCorrelationSummary(summary);
+        }
+    }
+
+    private static void ApplyGitHubRepositoryClusterSummary(
+        IEnumerable<ProviderViewModel> providers,
+        GitHubRepositoryClusterSummaryData summary) {
+        foreach (var provider in providers.Where(static provider =>
+                     string.Equals(provider.ProviderId, "__all__", StringComparison.Ordinal))) {
+            provider.ApplyGitHubRepositoryClusterSummary(summary);
+        }
+    }
+
+    private sealed class GitHubObservabilityRefreshResult {
+        public GitHubObservabilityRefreshResult(
+            GitHubObservabilitySummaryData summary,
+            GitHubRepositoryWatchAutoSyncResult? autoSyncResult) {
+            Summary = summary ?? GitHubObservabilitySummaryData.Empty;
+            AutoSyncResult = autoSyncResult;
+        }
+
+        public GitHubObservabilitySummaryData Summary { get; }
+        public GitHubRepositoryWatchAutoSyncResult? AutoSyncResult { get; }
     }
 
     private Task ToggleSelectedProviderFavoriteAsync() {
@@ -1406,8 +1611,11 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
             cachedSnapshot.Health,
             providerDelta: null,
             providerHistory: null);
+        _latestGitCodeChurnSummary = LoadGitCodeChurnSummarySafe();
+        ApplyCodeChurnSummary(cachedProviders, _latestGitCodeChurnSummary);
         ReplaceProviders(cachedProviders);
         UpdateDisplayedProviderEvents(mergedProviderData);
+        RefreshGitHubLocalActivityCorrelationSummary();
         _previousProviderSnapshots = new Dictionary<string, ProviderRefreshSnapshot>(providerSnapshots, StringComparer.OrdinalIgnoreCase);
         _latestUsageHealth = cachedSnapshot.Health;
         _lastUsageSnapshotScannedAtUtc = cachedSnapshot.ScannedAtUtc;
@@ -1500,8 +1708,10 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
             _latestUsageHealth,
             providerHistory: null,
             providerDelta: null);
+        ApplyCodeChurnSummary(progressiveProviders, _latestGitCodeChurnSummary);
         ReplaceProviders(progressiveProviders);
         UpdateDisplayedProviderEvents(providerData);
+        RefreshGitHubLocalActivityCorrelationSummary();
     }
 
     private void UpdateDisplayedProviderEvents(IEnumerable<ProviderRefreshData> providerData) {
