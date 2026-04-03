@@ -383,6 +383,236 @@
                             </StackPanel>
                         </Border>
 
+                        <Border Style="{StaticResource CardStyle}"
+                                Visibility="{Binding HasCombinedOverviewCards, Converter={StaticResource BoolToVis}}">
+                            <StackPanel>
+                                <TextBlock Text="OVERVIEW"
+                                           Style="{StaticResource SectionHeaderStyle}"
+                                           Margin="0,0,0,8" />
+                                <ItemsControl ItemsSource="{Binding CombinedOverviewCards}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <UniformGrid Columns="2" />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate DataType="{x:Type vm:ProviderOverviewCardViewModel}">
+                                            <Border Background="{StaticResource SubtleSurfaceMutedBrush}"
+                                                    BorderBrush="{StaticResource BorderBrush}"
+                                                    BorderThickness="1"
+                                                    CornerRadius="10"
+                                                    Margin="0,0,8,8"
+                                                    Padding="10,9">
+                                                <StackPanel>
+                                                    <TextBlock Text="{Binding Title}"
+                                                               FontFamily="{StaticResource AppFont}"
+                                                               FontSize="9.5"
+                                                               Foreground="{StaticResource TertiaryTextBrush}" />
+                                                    <TextBlock Text="{Binding MetricText}"
+                                                               FontFamily="{StaticResource AppFont}"
+                                                               FontSize="16"
+                                                               FontWeight="SemiBold"
+                                                               Foreground="{Binding AccentBrush}"
+                                                               Margin="0,4,0,0" />
+                                                    <TextBlock Text="{Binding DetailText}"
+                                                               FontFamily="{StaticResource AppFont}"
+                                                               FontSize="10"
+                                                               Foreground="{StaticResource SecondaryTextBrush}"
+                                                               Margin="0,4,0,0"
+                                                               TextWrapping="Wrap" />
+                                                </StackPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource CardStyle}"
+                                Visibility="{Binding HasCodeChurn, Converter={StaticResource BoolToVis}}">
+                            <StackPanel>
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="CODE CHURN"
+                                               Style="{StaticResource SectionHeaderStyle}"
+                                               Margin="0" />
+                                    <TextBlock Grid.Column="1"
+                                               Text="{Binding CodeChurnRepositoryText}"
+                                               FontFamily="{StaticResource AppFont}"
+                                               FontSize="10"
+                                               Foreground="{StaticResource TertiaryTextBrush}" />
+                                </Grid>
+
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0" Margin="0,0,8,0">
+                                        <TextBlock Style="{StaticResource LabelTextStyle}" Text="Added" />
+                                        <TextBlock Text="{Binding CodeChurnAddedText}"
+                                                   Style="{StaticResource StatValueStyle}" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Margin="0,0,8,0">
+                                        <TextBlock Style="{StaticResource LabelTextStyle}" Text="Deleted" />
+                                        <TextBlock Text="{Binding CodeChurnDeletedText}"
+                                                   Style="{StaticResource StatValueStyle}" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="2" Margin="0,0,8,0">
+                                        <TextBlock Style="{StaticResource LabelTextStyle}" Text="Files" />
+                                        <TextBlock Text="{Binding CodeChurnFilesText}"
+                                                   Style="{StaticResource StatValueStyle}" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="3">
+                                        <TextBlock Style="{StaticResource LabelTextStyle}" Text="Commits" />
+                                        <TextBlock Text="{Binding CodeChurnCommitsText}"
+                                                   Style="{StaticResource StatValueStyle}" />
+                                    </StackPanel>
+                                </Grid>
+
+                                <TextBlock Text="{Binding CodeChurnSummaryText}"
+                                           FontFamily="{StaticResource AppFont}"
+                                           FontSize="10"
+                                           Foreground="{StaticResource SecondaryTextBrush}"
+                                           TextWrapping="Wrap" />
+                                <TextBlock Text="{Binding CodeChurnPeakDayText}"
+                                           FontFamily="{StaticResource AppFont}"
+                                           FontSize="9.5"
+                                           Foreground="{StaticResource TertiaryTextBrush}"
+                                           Margin="0,4,0,8"
+                                           TextWrapping="Wrap" />
+
+                                <ItemsControl ItemsSource="{Binding CodeChurnBars}"
+                                              Visibility="{Binding HasCodeChurnBars, Converter={StaticResource BoolToVis}}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <UniformGrid Columns="7" />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate DataType="{x:Type vm:CodeChurnBarViewModel}">
+                                            <StackPanel HorizontalAlignment="Center" Margin="2,0">
+                                                <Grid Height="50" VerticalAlignment="Bottom">
+                                                    <Border CornerRadius="3"
+                                                            Background="{StaticResource SubtleSurfaceMutedBrush}"
+                                                            VerticalAlignment="Stretch" />
+                                                    <Border CornerRadius="3"
+                                                            Background="{Binding BarBrush}"
+                                                            Opacity="0.75"
+                                                            VerticalAlignment="Bottom"
+                                                            Height="{Binding BarHeight}" />
+                                                </Grid>
+                                                <TextBlock Text="{Binding DayLabel}"
+                                                           FontFamily="{StaticResource AppFont}"
+                                                           FontSize="9"
+                                                           Foreground="{StaticResource TertiaryTextBrush}"
+                                                           HorizontalAlignment="Center"
+                                                           Margin="0,4,0,0" />
+                                                <TextBlock Text="{Binding SummaryText}"
+                                                           FontFamily="{StaticResource AppFont}"
+                                                           FontSize="8"
+                                                           Foreground="{StaticResource SecondaryTextBrush}"
+                                                           HorizontalAlignment="Center"
+                                                           TextAlignment="Center"
+                                                           TextWrapping="Wrap" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource CardStyle}"
+                                Visibility="{Binding HasCodeUsageCorrelation, Converter={StaticResource BoolToVis}}">
+                            <StackPanel>
+                                <TextBlock Text="CHURN x USAGE"
+                                           Style="{StaticResource SectionHeaderStyle}"
+                                           Margin="0,0,0,8" />
+                                <TextBlock Text="{Binding CodeUsageCorrelationHeadlineText}"
+                                           FontFamily="{StaticResource AppFont}"
+                                           FontSize="12"
+                                           FontWeight="SemiBold"
+                                           Foreground="{StaticResource PrimaryTextBrush}"
+                                           TextWrapping="Wrap" />
+                                <TextBlock Text="{Binding CodeUsageCorrelationSummaryText}"
+                                           Margin="0,6,0,8"
+                                           FontFamily="{StaticResource AppFont}"
+                                           FontSize="10"
+                                           Foreground="{StaticResource SecondaryTextBrush}"
+                                           TextWrapping="Wrap" />
+
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <Border Grid.Column="0"
+                                            Margin="0,0,6,0"
+                                            Padding="10,9"
+                                            Background="{StaticResource SubtleSurfaceMutedBrush}"
+                                            BorderBrush="{StaticResource BorderBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="10"
+                                            Visibility="{Binding HasPositiveCodeUsageCorrelation, Converter={StaticResource BoolToVis}}">
+                                        <StackPanel>
+                                            <TextBlock Text="ALIGNED"
+                                                       FontFamily="{StaticResource AppFont}"
+                                                       FontSize="9.5"
+                                                       Foreground="{StaticResource TertiaryTextBrush}" />
+                                            <TextBlock Text="{Binding CodeUsagePositiveProviderText}"
+                                                       Margin="0,4,0,0"
+                                                       FontFamily="{StaticResource AppFont}"
+                                                       FontSize="12"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="{StaticResource SuccessBrush}"
+                                                       TextWrapping="Wrap" />
+                                            <TextBlock Text="{Binding CodeUsagePositiveSummaryText}"
+                                                       Margin="0,4,0,0"
+                                                       FontFamily="{StaticResource AppFont}"
+                                                       FontSize="9.5"
+                                                       Foreground="{StaticResource SecondaryTextBrush}"
+                                                       TextWrapping="Wrap" />
+                                        </StackPanel>
+                                    </Border>
+
+                                    <Border Grid.Column="1"
+                                            Margin="6,0,0,0"
+                                            Padding="10,9"
+                                            Background="{StaticResource SubtleSurfaceMutedBrush}"
+                                            BorderBrush="{StaticResource BorderBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="10"
+                                            Visibility="{Binding HasNegativeCodeUsageCorrelation, Converter={StaticResource BoolToVis}}">
+                                        <StackPanel>
+                                            <TextBlock Text="DIVERGING"
+                                                       FontFamily="{StaticResource AppFont}"
+                                                       FontSize="9.5"
+                                                       Foreground="{StaticResource TertiaryTextBrush}" />
+                                            <TextBlock Text="{Binding CodeUsageNegativeProviderText}"
+                                                       Margin="0,4,0,0"
+                                                       FontFamily="{StaticResource AppFont}"
+                                                       FontSize="12"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="{StaticResource WarningBrush}"
+                                                       TextWrapping="Wrap" />
+                                            <TextBlock Text="{Binding CodeUsageNegativeSummaryText}"
+                                                       Margin="0,4,0,0"
+                                                       FontFamily="{StaticResource AppFont}"
+                                                       FontSize="9.5"
+                                                       Foreground="{StaticResource SecondaryTextBrush}"
+                                                       TextWrapping="Wrap" />
+                                        </StackPanel>
+                                    </Border>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
                         <!-- ── TODAY'S USAGE ── -->
                         <Border Style="{StaticResource CardStyle}">
                             <StackPanel>
@@ -613,6 +843,511 @@
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource CardStyle}"
+                                Visibility="{Binding DataContext.ShowCombinedGitHubPulse, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVis}}">
+                            <StackPanel DataContext="{Binding DataContext.GitHub, RelativeSource={RelativeSource AncestorType=Window}}">
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="GITHUB PULSE"
+                                               Style="{StaticResource SectionHeaderStyle}"
+                                               Margin="0" />
+                                    <Button Grid.Column="1"
+                                            Style="{StaticResource LinkButtonStyle}"
+                                            Click="OnProviderJumpClick"
+                                            Tag="__github__">
+                                        <TextBlock FontFamily="{StaticResource AppFont}" FontSize="10.5" Text="Open" />
+                                    </Button>
+                                </Grid>
+                                <TextBlock Text="{Binding ObservabilityCoverageText}"
+                                           FontFamily="{StaticResource AppFont}"
+                                           FontSize="11"
+                                           Foreground="{StaticResource PrimaryTextBrush}"
+                                           TextWrapping="Wrap" />
+                                <TextBlock Text="{Binding ObservabilityMomentumText}"
+                                           FontFamily="{StaticResource AppFont}"
+                                           FontSize="10"
+                                           Foreground="{StaticResource SecondaryTextBrush}"
+                                           Margin="0,4,0,0"
+                                           TextWrapping="Wrap" />
+                                <TextBlock Text="{Binding ObservabilityLatestCaptureText}"
+                                           FontFamily="{StaticResource AppFont}"
+                                           FontSize="10"
+                                           Foreground="{StaticResource TertiaryTextBrush}"
+                                           Margin="0,4,0,8"
+                                           TextWrapping="Wrap" />
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0" Margin="0,0,8,0">
+                                        <TextBlock Style="{StaticResource LabelTextStyle}" Text="Watched" />
+                                        <TextBlock Text="{Binding WatchCountFormatted}"
+                                                   Style="{StaticResource StatValueStyle}" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Margin="0,0,8,0">
+                                        <TextBlock Style="{StaticResource LabelTextStyle}" Text="Star Delta" />
+                                        <TextBlock Text="{Binding PositiveStarDeltaFormatted}"
+                                                   Style="{StaticResource StatValueStyle}" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="2" Margin="0,0,8,0">
+                                        <TextBlock Style="{StaticResource LabelTextStyle}" Text="Fork Delta" />
+                                        <TextBlock Text="{Binding PositiveForkDeltaFormatted}"
+                                                   Style="{StaticResource StatValueStyle}" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="3">
+                                        <TextBlock Style="{StaticResource LabelTextStyle}" Text="Repos Moved" />
+                                        <TextBlock Text="{Binding ChangedTrackedRepositoryCountFormatted}"
+                                                   Style="{StaticResource StatValueStyle}" />
+                                    </StackPanel>
+                                </Grid>
+                                <Border Background="{StaticResource InsetPanelBrush}"
+                                        BorderBrush="{StaticResource BorderBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="10"
+                                        Padding="10,8"
+                                        Visibility="{Binding HasLeadingWatchedRepository, Converter={StaticResource BoolToVis}}">
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding LeadingWatchedRepository.FullName}"
+                                                   FontFamily="{StaticResource AppFont}"
+                                                   FontSize="11"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{StaticResource PrimaryTextBrush}" />
+                                        <TextBlock Text="{Binding LeadingWatchedRepository.DeltaSummaryText}"
+                                                   FontFamily="{StaticResource AppFont}"
+                                                   FontSize="10"
+                                                   Foreground="{StaticResource SecondaryTextBrush}"
+                                                   Margin="0,4,0,0" />
+                                        <TextBlock Text="{Binding LeadingWatchedRepository.CurrentMetricsText}"
+                                                   FontFamily="{StaticResource AppFont}"
+                                                   FontSize="10"
+                                                   Foreground="{StaticResource TertiaryTextBrush}"
+                                                   Margin="0,2,0,0" />
+                                            <TextBlock Text="{Binding LeadingWatchedRepository.TrendSummaryText}"
+                                                   FontFamily="{StaticResource AppFont}"
+                                                   FontSize="9.5"
+                                                   Foreground="{StaticResource TertiaryTextBrush}"
+                                                   Margin="0,4,0,0"
+                                                   TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Border>
+                                <Grid Margin="0,8,0,0"
+                                      Visibility="{Binding HasCorrelationSignals, Converter={StaticResource BoolToVis}}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border Grid.Column="0"
+                                            Background="{StaticResource InsetPanelBrush}"
+                                            BorderBrush="{StaticResource BorderBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="10"
+                                            Padding="10,8"
+                                            Margin="0,0,6,0"
+                                            Visibility="{Binding HasPositiveCorrelation, Converter={StaticResource BoolToVis}}">
+                                        <StackPanel>
+                                            <TextBlock Text="LINKED MOVERS"
+                                                       FontFamily="{StaticResource AppFont}"
+                                                       FontSize="9.5"
+                                                       Foreground="{StaticResource TertiaryTextBrush}" />
+                                            <TextBlock Text="{Binding PositiveCorrelationPairText}"
+                                                       FontFamily="{StaticResource AppFont}"
+                                                       FontSize="10"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="{StaticResource PrimaryTextBrush}"
+                                                       Margin="0,4,0,0"
+                                                       TextWrapping="Wrap" />
+                                            <TextBlock Text="{Binding PositiveCorrelationSummaryText}"
+                                                       FontFamily="{StaticResource AppFont}"
+                                                       FontSize="9.5"
+                                                       Foreground="{StaticResource SecondaryTextBrush}"
+                                                       Margin="0,4,0,0"
+                                                       TextWrapping="Wrap" />
+                                        </StackPanel>
+                                    </Border>
+                                    <Border Grid.Column="1"
+                                            Background="{StaticResource InsetPanelBrush}"
+                                            BorderBrush="{StaticResource BorderBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="10"
+                                            Padding="10,8"
+                                            Margin="6,0,0,0"
+                                            Visibility="{Binding HasNegativeCorrelation, Converter={StaticResource BoolToVis}}">
+                                        <StackPanel>
+                                            <TextBlock Text="DIVERGENCE"
+                                                       FontFamily="{StaticResource AppFont}"
+                                                       FontSize="9.5"
+                                                       Foreground="{StaticResource TertiaryTextBrush}" />
+                                            <TextBlock Text="{Binding NegativeCorrelationPairText}"
+                                                       FontFamily="{StaticResource AppFont}"
+                                                       FontSize="10"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="{StaticResource PrimaryTextBrush}"
+                                                       Margin="0,4,0,0"
+                                                       TextWrapping="Wrap" />
+                                            <TextBlock Text="{Binding NegativeCorrelationSummaryText}"
+                                                       FontFamily="{StaticResource AppFont}"
+                                                       FontSize="9.5"
+                                                       Foreground="{StaticResource SecondaryTextBrush}"
+                                                       Margin="0,4,0,0"
+                                                       TextWrapping="Wrap" />
+                                        </StackPanel>
+                                    </Border>
+                                </Grid>
+                                <TextBlock Text="{Binding StarCorrelationHeadlineText}"
+                                           FontFamily="{StaticResource AppFont}"
+                                           FontSize="10"
+                                           Foreground="{StaticResource SecondaryTextBrush}"
+                                           Margin="0,8,0,0"
+                                           TextWrapping="Wrap"
+                                           Visibility="{Binding HasStarCorrelationSignals, Converter={StaticResource BoolToVis}}" />
+                                <Grid Margin="0,8,0,0"
+                                      Visibility="{Binding HasStarCorrelationSignals, Converter={StaticResource BoolToVis}}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border Grid.Column="0"
+                                            Background="{StaticResource InsetPanelBrush}"
+                                            BorderBrush="{StaticResource BorderBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="10"
+                                            Padding="10,8"
+                                            Margin="0,0,6,0"
+                                            Visibility="{Binding HasPositiveStarCorrelation, Converter={StaticResource BoolToVis}}">
+                                        <StackPanel>
+                                            <TextBlock Text="STAR SYNC"
+                                                       FontFamily="{StaticResource AppFont}"
+                                                       FontSize="9.5"
+                                                       Foreground="{StaticResource TertiaryTextBrush}" />
+                                            <TextBlock Text="{Binding PositiveStarCorrelationPairText}"
+                                                       FontFamily="{StaticResource AppFont}"
+                                                       FontSize="10"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="{StaticResource PrimaryTextBrush}"
+                                                       Margin="0,4,0,0"
+                                                       TextWrapping="Wrap" />
+                                            <TextBlock Text="{Binding PositiveStarCorrelationSummaryText}"
+                                                       FontFamily="{StaticResource AppFont}"
+                                                       FontSize="9.5"
+                                                       Foreground="{StaticResource SecondaryTextBrush}"
+                                                       Margin="0,4,0,0"
+                                                       TextWrapping="Wrap" />
+                                        </StackPanel>
+                                    </Border>
+                                    <Border Grid.Column="1"
+                                            Background="{StaticResource InsetPanelBrush}"
+                                            BorderBrush="{StaticResource BorderBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="10"
+                                            Padding="10,8"
+                                            Margin="6,0,0,0"
+                                            Visibility="{Binding HasNegativeStarCorrelation, Converter={StaticResource BoolToVis}}">
+                                        <StackPanel>
+                                            <TextBlock Text="STAR DIVERGENCE"
+                                                       FontFamily="{StaticResource AppFont}"
+                                                       FontSize="9.5"
+                                                       Foreground="{StaticResource TertiaryTextBrush}" />
+                                            <TextBlock Text="{Binding NegativeStarCorrelationPairText}"
+                                                       FontFamily="{StaticResource AppFont}"
+                                                       FontSize="10"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="{StaticResource PrimaryTextBrush}"
+                                                       Margin="0,4,0,0"
+                                                       TextWrapping="Wrap" />
+                                            <TextBlock Text="{Binding NegativeStarCorrelationSummaryText}"
+                                                       FontFamily="{StaticResource AppFont}"
+                                                       FontSize="9.5"
+                                                       Foreground="{StaticResource SecondaryTextBrush}"
+                                                       Margin="0,4,0,0"
+                                                       TextWrapping="Wrap" />
+                                        </StackPanel>
+                                    </Border>
+                                </Grid>
+                                <TextBlock Text="{Binding StarCorrelationHeadlineText}"
+                                           FontFamily="{StaticResource AppFont}"
+                                           FontSize="10"
+                                           Foreground="{StaticResource SecondaryTextBrush}"
+                                           Margin="0,0,0,8"
+                                           TextWrapping="Wrap"
+                                           Visibility="{Binding HasStarCorrelationSignals, Converter={StaticResource BoolToVis}}" />
+                                <Grid Margin="0,0,0,8"
+                                      Visibility="{Binding HasStarCorrelationSignals, Converter={StaticResource BoolToVis}}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border Grid.Column="0"
+                                            Background="{StaticResource InsetPanelBrush}"
+                                            BorderBrush="{StaticResource BorderBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="10"
+                                            Padding="10,8"
+                                            Margin="0,0,6,0"
+                                            Visibility="{Binding HasPositiveStarCorrelation, Converter={StaticResource BoolToVis}}">
+                                        <StackPanel>
+                                            <TextBlock Text="STAR SYNC"
+                                                       FontFamily="{StaticResource AppFont}"
+                                                       FontSize="9.5"
+                                                       Foreground="{StaticResource TertiaryTextBrush}" />
+                                            <TextBlock Text="{Binding PositiveStarCorrelationPairText}"
+                                                       FontFamily="{StaticResource AppFont}"
+                                                       FontSize="10"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="{StaticResource PrimaryTextBrush}"
+                                                       Margin="0,4,0,0"
+                                                       TextWrapping="Wrap" />
+                                            <TextBlock Text="{Binding PositiveStarCorrelationSummaryText}"
+                                                       FontFamily="{StaticResource AppFont}"
+                                                       FontSize="9.5"
+                                                       Foreground="{StaticResource SecondaryTextBrush}"
+                                                       Margin="0,4,0,0"
+                                                       TextWrapping="Wrap" />
+                                        </StackPanel>
+                                    </Border>
+                                    <Border Grid.Column="1"
+                                            Background="{StaticResource InsetPanelBrush}"
+                                            BorderBrush="{StaticResource BorderBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="10"
+                                            Padding="10,8"
+                                            Margin="6,0,0,0"
+                                            Visibility="{Binding HasNegativeStarCorrelation, Converter={StaticResource BoolToVis}}">
+                                        <StackPanel>
+                                            <TextBlock Text="STAR DIVERGENCE"
+                                                       FontFamily="{StaticResource AppFont}"
+                                                       FontSize="9.5"
+                                                       Foreground="{StaticResource TertiaryTextBrush}" />
+                                            <TextBlock Text="{Binding NegativeStarCorrelationPairText}"
+                                                       FontFamily="{StaticResource AppFont}"
+                                                       FontSize="10"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="{StaticResource PrimaryTextBrush}"
+                                                       Margin="0,4,0,0"
+                                                       TextWrapping="Wrap" />
+                                            <TextBlock Text="{Binding NegativeStarCorrelationSummaryText}"
+                                                       FontFamily="{StaticResource AppFont}"
+                                                       FontSize="9.5"
+                                                       Foreground="{StaticResource SecondaryTextBrush}"
+                                                       Margin="0,4,0,0"
+                                                       TextWrapping="Wrap" />
+                                        </StackPanel>
+                                    </Border>
+                                </Grid>
+                                <TextBlock Text="{Binding LocalAlignmentHeadlineText}"
+                                           FontFamily="{StaticResource AppFont}"
+                                           FontSize="10"
+                                           Foreground="{StaticResource SecondaryTextBrush}"
+                                           Margin="0,8,0,0"
+                                           TextWrapping="Wrap"
+                                           Visibility="{Binding HasLocalAlignmentSignals, Converter={StaticResource BoolToVis}}" />
+                                <Grid Margin="0,8,0,0"
+                                      Visibility="{Binding HasLocalAlignmentSignals, Converter={StaticResource BoolToVis}}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border Grid.Column="0"
+                                            Background="{StaticResource InsetPanelBrush}"
+                                            BorderBrush="{StaticResource BorderBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="10"
+                                            Padding="10,8"
+                                            Margin="0,0,6,0"
+                                            Visibility="{Binding HasPositiveLocalAlignment, Converter={StaticResource BoolToVis}}">
+                                        <StackPanel>
+                                            <TextBlock Text="LOCAL SYNC"
+                                                       FontFamily="{StaticResource AppFont}"
+                                                       FontSize="9.5"
+                                                       Foreground="{StaticResource TertiaryTextBrush}" />
+                                            <TextBlock Text="{Binding PositiveLocalAlignmentRepositoryText}"
+                                                       FontFamily="{StaticResource AppFont}"
+                                                       FontSize="10"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="{StaticResource PrimaryTextBrush}"
+                                                       Margin="0,4,0,0"
+                                                       TextWrapping="Wrap" />
+                                            <TextBlock Text="{Binding PositiveLocalAlignmentSummaryText}"
+                                                       FontFamily="{StaticResource AppFont}"
+                                                       FontSize="9.5"
+                                                       Foreground="{StaticResource SecondaryTextBrush}"
+                                                       Margin="0,4,0,0"
+                                                       TextWrapping="Wrap" />
+                                        </StackPanel>
+                                    </Border>
+                                    <Border Grid.Column="1"
+                                            Background="{StaticResource InsetPanelBrush}"
+                                            BorderBrush="{StaticResource BorderBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="10"
+                                            Padding="10,8"
+                                            Margin="6,0,0,0"
+                                            Visibility="{Binding HasNegativeLocalAlignment, Converter={StaticResource BoolToVis}}">
+                                        <StackPanel>
+                                            <TextBlock Text="LOCAL DIVERGENCE"
+                                                       FontFamily="{StaticResource AppFont}"
+                                                       FontSize="9.5"
+                                                       Foreground="{StaticResource TertiaryTextBrush}" />
+                                            <TextBlock Text="{Binding NegativeLocalAlignmentRepositoryText}"
+                                                       FontFamily="{StaticResource AppFont}"
+                                                       FontSize="10"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="{StaticResource PrimaryTextBrush}"
+                                                       Margin="0,4,0,0"
+                                                       TextWrapping="Wrap" />
+                                            <TextBlock Text="{Binding NegativeLocalAlignmentSummaryText}"
+                                                       FontFamily="{StaticResource AppFont}"
+                                                       FontSize="9.5"
+                                                       Foreground="{StaticResource SecondaryTextBrush}"
+                                                       Margin="0,4,0,0"
+                                                       TextWrapping="Wrap" />
+                                        </StackPanel>
+                                    </Border>
+                                </Grid>
+                                <TextBlock Text="{Binding StargazerAudienceHeadlineText}"
+                                           FontFamily="{StaticResource AppFont}"
+                                           FontSize="10"
+                                           Foreground="{StaticResource SecondaryTextBrush}"
+                                           Margin="0,8,0,0"
+                                           TextWrapping="Wrap"
+                                           Visibility="{Binding HasStargazerAudienceInsight, Converter={StaticResource BoolToVis}}" />
+                                <Border Margin="0,8,0,0"
+                                        Background="{StaticResource InsetPanelBrush}"
+                                        BorderBrush="{StaticResource BorderBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="10"
+                                        Padding="10,8"
+                                        Visibility="{Binding HasStargazerAudienceInsight, Converter={StaticResource BoolToVis}}">
+                                    <StackPanel>
+                                        <TextBlock Text="SHARED STARGAZERS"
+                                                   FontFamily="{StaticResource AppFont}"
+                                                   FontSize="9.5"
+                                                   Foreground="{StaticResource TertiaryTextBrush}" />
+                                        <TextBlock Text="{Binding StargazerAudiencePairText}"
+                                                   FontFamily="{StaticResource AppFont}"
+                                                   FontSize="10"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{StaticResource PrimaryTextBrush}"
+                                                   Margin="0,4,0,0"
+                                                   TextWrapping="Wrap" />
+                                        <TextBlock Text="{Binding StargazerAudienceSummaryText}"
+                                                   FontFamily="{StaticResource AppFont}"
+                                                   FontSize="9.5"
+                                                   Foreground="{StaticResource SecondaryTextBrush}"
+                                                   Margin="0,4,0,0"
+                                                   TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Border>
+                                <TextBlock Text="{Binding ForkNetworkHeadlineText}"
+                                           FontFamily="{StaticResource AppFont}"
+                                           FontSize="10"
+                                           Foreground="{StaticResource SecondaryTextBrush}"
+                                           Margin="0,8,0,0"
+                                           TextWrapping="Wrap"
+                                           Visibility="{Binding HasForkNetworkInsight, Converter={StaticResource BoolToVis}}" />
+                                <Border Margin="0,8,0,0"
+                                        Background="{StaticResource InsetPanelBrush}"
+                                        BorderBrush="{StaticResource BorderBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="10"
+                                        Padding="10,8"
+                                        Visibility="{Binding HasForkNetworkInsight, Converter={StaticResource BoolToVis}}">
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding ForkNetworkCardLabelText}"
+                                                   FontFamily="{StaticResource AppFont}"
+                                                   FontSize="9.5"
+                                                   Foreground="{StaticResource TertiaryTextBrush}" />
+                                        <TextBlock Text="{Binding ForkNetworkPairText}"
+                                                   FontFamily="{StaticResource AppFont}"
+                                                   FontSize="10"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{StaticResource PrimaryTextBrush}"
+                                                   Margin="0,4,0,0"
+                                                   TextWrapping="Wrap" />
+                                        <TextBlock Text="{Binding ForkNetworkSummaryText}"
+                                                   FontFamily="{StaticResource AppFont}"
+                                                   FontSize="9.5"
+                                                   Foreground="{StaticResource SecondaryTextBrush}"
+                                                   Margin="0,4,0,0"
+                                                   TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Border>
+                                <TextBlock Text="{Binding ForkMomentumHeadlineText}"
+                                           FontFamily="{StaticResource AppFont}"
+                                           FontSize="10"
+                                           Foreground="{StaticResource SecondaryTextBrush}"
+                                           Margin="0,8,0,0"
+                                           TextWrapping="Wrap"
+                                           Visibility="{Binding HasForkMomentum, Converter={StaticResource BoolToVis}}" />
+                                <Border Margin="0,8,0,0"
+                                        Background="{StaticResource InsetPanelBrush}"
+                                        BorderBrush="{StaticResource BorderBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="10"
+                                        Padding="10,8"
+                                        Visibility="{Binding HasForkMomentum, Converter={StaticResource BoolToVis}}">
+                                    <StackPanel>
+                                        <TextBlock Text="RISING FORKS"
+                                                   FontFamily="{StaticResource AppFont}"
+                                                   FontSize="9.5"
+                                                   Foreground="{StaticResource TertiaryTextBrush}" />
+                                        <TextBlock Text="{Binding ForkMomentumPrimaryText}"
+                                                   FontFamily="{StaticResource AppFont}"
+                                                   FontSize="10"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{StaticResource PrimaryTextBrush}"
+                                                   Margin="0,4,0,0"
+                                                   TextWrapping="Wrap" />
+                                        <TextBlock Text="{Binding ForkMomentumSummaryText}"
+                                                   FontFamily="{StaticResource AppFont}"
+                                                   FontSize="9.5"
+                                                   Foreground="{StaticResource SecondaryTextBrush}"
+                                                   Margin="0,4,0,0"
+                                                   TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Border>
+                                <TextBlock Text="{Binding RepositoryClusterHeadlineText}"
+                                           FontFamily="{StaticResource AppFont}"
+                                           FontSize="10"
+                                           Foreground="{StaticResource SecondaryTextBrush}"
+                                           Margin="0,8,0,0"
+                                           TextWrapping="Wrap"
+                                           Visibility="{Binding HasRepositoryCluster, Converter={StaticResource BoolToVis}}" />
+                                <Border Margin="0,8,0,0"
+                                        Background="{StaticResource InsetPanelBrush}"
+                                        BorderBrush="{StaticResource BorderBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="10"
+                                        Padding="10,8"
+                                        Visibility="{Binding HasRepositoryCluster, Converter={StaticResource BoolToVis}}">
+                                    <StackPanel>
+                                        <TextBlock Text="RELATED REPOS"
+                                                   FontFamily="{StaticResource AppFont}"
+                                                   FontSize="9.5"
+                                                   Foreground="{StaticResource TertiaryTextBrush}" />
+                                        <TextBlock Text="{Binding RepositoryClusterPairText}"
+                                                   FontFamily="{StaticResource AppFont}"
+                                                   FontSize="10"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{StaticResource PrimaryTextBrush}"
+                                                   Margin="0,4,0,0"
+                                                   TextWrapping="Wrap" />
+                                        <TextBlock Text="{Binding RepositoryClusterSummaryText}"
+                                                   FontFamily="{StaticResource AppFont}"
+                                                   FontSize="9.5"
+                                                   Foreground="{StaticResource SecondaryTextBrush}"
+                                                   Margin="0,4,0,0"
+                                                   TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Border>
                             </StackPanel>
                         </Border>
 
@@ -1711,7 +2446,486 @@
                                            FontSize="11"
                                            Foreground="{StaticResource FavoriteBadgeBrush}"
                                            TextWrapping="Wrap"
-                                           Margin="0,8,0,0" />
+                                   Margin="0,8,0,0" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource CardStyle}"
+                                Visibility="{Binding HasObservabilitySummary, Converter={StaticResource BoolToVis}}">
+                            <StackPanel>
+                                <Grid Margin="0,0,0,8"
+                                      Visibility="{Binding HasCorrelationSignals, Converter={StaticResource BoolToVis}}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="WATCHED REPOS"
+                                               Style="{StaticResource SectionHeaderStyle}"
+                                               Margin="0" />
+                                    <TextBlock Grid.Column="1"
+                                               FontFamily="{StaticResource AppFont}"
+                                               FontSize="10"
+                                               Foreground="{StaticResource TertiaryTextBrush}"
+                                               Text="{Binding WatchCountFormatted, StringFormat={}{0} watched}" />
+                                </Grid>
+                                <TextBlock Text="{Binding ObservabilityCoverageText}"
+                                           FontFamily="{StaticResource AppFont}"
+                                           FontSize="11"
+                                           Foreground="{StaticResource PrimaryTextBrush}"
+                                           TextWrapping="Wrap" />
+                                <TextBlock Text="{Binding ObservabilityMomentumText}"
+                                           FontFamily="{StaticResource AppFont}"
+                                           FontSize="10"
+                                           Foreground="{StaticResource SecondaryTextBrush}"
+                                           Margin="0,4,0,0"
+                                           TextWrapping="Wrap" />
+                                <TextBlock Text="{Binding ObservabilityLatestCaptureText}"
+                                           FontFamily="{StaticResource AppFont}"
+                                           FontSize="10"
+                                           Foreground="{StaticResource TertiaryTextBrush}"
+                                           Margin="0,4,0,10"
+                                           TextWrapping="Wrap" />
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0" Margin="0,0,8,0">
+                                        <TextBlock Style="{StaticResource LabelTextStyle}" Text="Tracked" />
+                                        <TextBlock Text="{Binding TrackedRepositoryCountFormatted}"
+                                                   Style="{StaticResource StatValueStyle}" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Margin="0,0,8,0">
+                                        <TextBlock Style="{StaticResource LabelTextStyle}" Text="Stars" />
+                                        <TextBlock Text="{Binding TrackedStarsFormatted}"
+                                                   Style="{StaticResource StatValueStyle}" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="2" Margin="0,0,8,0">
+                                        <TextBlock Style="{StaticResource LabelTextStyle}" Text="Forks" />
+                                        <TextBlock Text="{Binding TrackedForksFormatted}"
+                                                   Style="{StaticResource StatValueStyle}" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="3">
+                                        <TextBlock Style="{StaticResource LabelTextStyle}" Text="Watchers" />
+                                        <TextBlock Text="{Binding TrackedWatchersFormatted}"
+                                                   Style="{StaticResource StatValueStyle}" />
+                                    </StackPanel>
+                                </Grid>
+                                <WrapPanel Margin="0,0,0,8">
+                                    <Border Background="{StaticResource InsetPanelBrush}"
+                                            BorderBrush="{StaticResource BorderBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="8"
+                                            Padding="6,2"
+                                            Margin="0,0,6,6">
+                                        <TextBlock Text="{Binding PositiveStarDeltaFormatted, StringFormat={}{0} stars}"
+                                                   FontFamily="{StaticResource AppFont}"
+                                                   FontSize="9.5"
+                                                   Foreground="{StaticResource SecondaryTextBrush}" />
+                                    </Border>
+                                    <Border Background="{StaticResource InsetPanelBrush}"
+                                            BorderBrush="{StaticResource BorderBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="8"
+                                            Padding="6,2"
+                                            Margin="0,0,6,6">
+                                        <TextBlock Text="{Binding PositiveForkDeltaFormatted, StringFormat={}{0} forks}"
+                                                   FontFamily="{StaticResource AppFont}"
+                                                   FontSize="9.5"
+                                                   Foreground="{StaticResource SecondaryTextBrush}" />
+                                    </Border>
+                                    <Border Background="{StaticResource InsetPanelBrush}"
+                                            BorderBrush="{StaticResource BorderBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="8"
+                                            Padding="6,2"
+                                            Margin="0,0,6,6">
+                                        <TextBlock Text="{Binding PositiveWatcherDeltaFormatted, StringFormat={}{0} watchers}"
+                                                   FontFamily="{StaticResource AppFont}"
+                                                   FontSize="9.5"
+                                                   Foreground="{StaticResource SecondaryTextBrush}" />
+                                    </Border>
+                                    <Border Background="{StaticResource InsetPanelBrush}"
+                                            BorderBrush="{StaticResource BorderBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="8"
+                                            Padding="6,2"
+                                            Margin="0,0,0,6">
+                                        <TextBlock Text="{Binding ChangedTrackedRepositoryCountFormatted, StringFormat={}{0} repos moved}"
+                                                   FontFamily="{StaticResource AppFont}"
+                                                   FontSize="9.5"
+                                                   Foreground="{StaticResource SecondaryTextBrush}" />
+                                    </Border>
+                                </WrapPanel>
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border Grid.Column="0"
+                                            Background="{StaticResource InsetPanelBrush}"
+                                            BorderBrush="{StaticResource BorderBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="10"
+                                            Padding="10,8"
+                                            Margin="0,0,6,0"
+                                            Visibility="{Binding HasPositiveCorrelation, Converter={StaticResource BoolToVis}}">
+                                        <StackPanel>
+                                            <TextBlock Text="LINKED MOVERS"
+                                                       FontFamily="{StaticResource AppFont}"
+                                                       FontSize="9.5"
+                                                       Foreground="{StaticResource TertiaryTextBrush}" />
+                                            <TextBlock Text="{Binding PositiveCorrelationPairText}"
+                                                       FontFamily="{StaticResource AppFont}"
+                                                       FontSize="10"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="{StaticResource PrimaryTextBrush}"
+                                                       Margin="0,4,0,0"
+                                                       TextWrapping="Wrap" />
+                                            <TextBlock Text="{Binding PositiveCorrelationSummaryText}"
+                                                       FontFamily="{StaticResource AppFont}"
+                                                       FontSize="9.5"
+                                                       Foreground="{StaticResource SecondaryTextBrush}"
+                                                       Margin="0,4,0,0"
+                                                       TextWrapping="Wrap" />
+                                        </StackPanel>
+                                    </Border>
+                                    <Border Grid.Column="1"
+                                            Background="{StaticResource InsetPanelBrush}"
+                                            BorderBrush="{StaticResource BorderBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="10"
+                                            Padding="10,8"
+                                            Margin="6,0,0,0"
+                                            Visibility="{Binding HasNegativeCorrelation, Converter={StaticResource BoolToVis}}">
+                                        <StackPanel>
+                                            <TextBlock Text="DIVERGENCE"
+                                                       FontFamily="{StaticResource AppFont}"
+                                                       FontSize="9.5"
+                                                       Foreground="{StaticResource TertiaryTextBrush}" />
+                                            <TextBlock Text="{Binding NegativeCorrelationPairText}"
+                                                       FontFamily="{StaticResource AppFont}"
+                                                       FontSize="10"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="{StaticResource PrimaryTextBrush}"
+                                                       Margin="0,4,0,0"
+                                                       TextWrapping="Wrap" />
+                                            <TextBlock Text="{Binding NegativeCorrelationSummaryText}"
+                                                       FontFamily="{StaticResource AppFont}"
+                                                       FontSize="9.5"
+                                                       Foreground="{StaticResource SecondaryTextBrush}"
+                                                       Margin="0,4,0,0"
+                                                       TextWrapping="Wrap" />
+                                        </StackPanel>
+                                    </Border>
+                                </Grid>
+                                <TextBlock Text="{Binding LocalAlignmentHeadlineText}"
+                                           FontFamily="{StaticResource AppFont}"
+                                           FontSize="10"
+                                           Foreground="{StaticResource SecondaryTextBrush}"
+                                           Margin="0,0,0,8"
+                                           TextWrapping="Wrap"
+                                           Visibility="{Binding HasLocalAlignmentSignals, Converter={StaticResource BoolToVis}}" />
+                                <Grid Margin="0,0,0,8"
+                                      Visibility="{Binding HasLocalAlignmentSignals, Converter={StaticResource BoolToVis}}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border Grid.Column="0"
+                                            Background="{StaticResource InsetPanelBrush}"
+                                            BorderBrush="{StaticResource BorderBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="10"
+                                            Padding="10,8"
+                                            Margin="0,0,6,0"
+                                            Visibility="{Binding HasPositiveLocalAlignment, Converter={StaticResource BoolToVis}}">
+                                        <StackPanel>
+                                            <TextBlock Text="LOCAL SYNC"
+                                                       FontFamily="{StaticResource AppFont}"
+                                                       FontSize="9.5"
+                                                       Foreground="{StaticResource TertiaryTextBrush}" />
+                                            <TextBlock Text="{Binding PositiveLocalAlignmentRepositoryText}"
+                                                       FontFamily="{StaticResource AppFont}"
+                                                       FontSize="10"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="{StaticResource PrimaryTextBrush}"
+                                                       Margin="0,4,0,0"
+                                                       TextWrapping="Wrap" />
+                                            <TextBlock Text="{Binding PositiveLocalAlignmentSummaryText}"
+                                                       FontFamily="{StaticResource AppFont}"
+                                                       FontSize="9.5"
+                                                       Foreground="{StaticResource SecondaryTextBrush}"
+                                                       Margin="0,4,0,0"
+                                                       TextWrapping="Wrap" />
+                                        </StackPanel>
+                                    </Border>
+                                    <Border Grid.Column="1"
+                                            Background="{StaticResource InsetPanelBrush}"
+                                            BorderBrush="{StaticResource BorderBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="10"
+                                            Padding="10,8"
+                                            Margin="6,0,0,0"
+                                            Visibility="{Binding HasNegativeLocalAlignment, Converter={StaticResource BoolToVis}}">
+                                        <StackPanel>
+                                            <TextBlock Text="LOCAL DIVERGENCE"
+                                                       FontFamily="{StaticResource AppFont}"
+                                                       FontSize="9.5"
+                                                       Foreground="{StaticResource TertiaryTextBrush}" />
+                                            <TextBlock Text="{Binding NegativeLocalAlignmentRepositoryText}"
+                                                       FontFamily="{StaticResource AppFont}"
+                                                       FontSize="10"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="{StaticResource PrimaryTextBrush}"
+                                                       Margin="0,4,0,0"
+                                                       TextWrapping="Wrap" />
+                                            <TextBlock Text="{Binding NegativeLocalAlignmentSummaryText}"
+                                                       FontFamily="{StaticResource AppFont}"
+                                                       FontSize="9.5"
+                                                       Foreground="{StaticResource SecondaryTextBrush}"
+                                                       Margin="0,4,0,0"
+                                                       TextWrapping="Wrap" />
+                                        </StackPanel>
+                                    </Border>
+                                </Grid>
+                                <TextBlock Text="{Binding StargazerAudienceHeadlineText}"
+                                           FontFamily="{StaticResource AppFont}"
+                                           FontSize="10"
+                                           Foreground="{StaticResource SecondaryTextBrush}"
+                                           Margin="0,0,0,8"
+                                           TextWrapping="Wrap"
+                                           Visibility="{Binding HasStargazerAudienceInsight, Converter={StaticResource BoolToVis}}" />
+                                <Border Margin="0,0,0,8"
+                                        Background="{StaticResource InsetPanelBrush}"
+                                        BorderBrush="{StaticResource BorderBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="10"
+                                        Padding="10,8"
+                                        Visibility="{Binding HasStargazerAudienceInsight, Converter={StaticResource BoolToVis}}">
+                                    <StackPanel>
+                                        <TextBlock Text="SHARED STARGAZERS"
+                                                   FontFamily="{StaticResource AppFont}"
+                                                   FontSize="9.5"
+                                                   Foreground="{StaticResource TertiaryTextBrush}" />
+                                        <TextBlock Text="{Binding StargazerAudiencePairText}"
+                                                   FontFamily="{StaticResource AppFont}"
+                                                   FontSize="10"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{StaticResource PrimaryTextBrush}"
+                                                   Margin="0,4,0,0"
+                                                   TextWrapping="Wrap" />
+                                        <TextBlock Text="{Binding StargazerAudienceSummaryText}"
+                                                   FontFamily="{StaticResource AppFont}"
+                                                   FontSize="9.5"
+                                                   Foreground="{StaticResource SecondaryTextBrush}"
+                                                   Margin="0,4,0,0"
+                                                   TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Border>
+                                <TextBlock Text="{Binding ForkNetworkHeadlineText}"
+                                           FontFamily="{StaticResource AppFont}"
+                                           FontSize="10"
+                                           Foreground="{StaticResource SecondaryTextBrush}"
+                                           Margin="0,0,0,8"
+                                           TextWrapping="Wrap"
+                                           Visibility="{Binding HasForkNetworkInsight, Converter={StaticResource BoolToVis}}" />
+                                <Border Margin="0,0,0,8"
+                                        Background="{StaticResource InsetPanelBrush}"
+                                        BorderBrush="{StaticResource BorderBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="10"
+                                        Padding="10,8"
+                                        Visibility="{Binding HasForkNetworkInsight, Converter={StaticResource BoolToVis}}">
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding ForkNetworkCardLabelText}"
+                                                   FontFamily="{StaticResource AppFont}"
+                                                   FontSize="9.5"
+                                                   Foreground="{StaticResource TertiaryTextBrush}" />
+                                        <TextBlock Text="{Binding ForkNetworkPairText}"
+                                                   FontFamily="{StaticResource AppFont}"
+                                                   FontSize="10"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{StaticResource PrimaryTextBrush}"
+                                                   Margin="0,4,0,0"
+                                                   TextWrapping="Wrap" />
+                                        <TextBlock Text="{Binding ForkNetworkSummaryText}"
+                                                   FontFamily="{StaticResource AppFont}"
+                                                   FontSize="9.5"
+                                                   Foreground="{StaticResource SecondaryTextBrush}"
+                                                   Margin="0,4,0,0"
+                                                   TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Border>
+                                <TextBlock Text="{Binding ForkMomentumHeadlineText}"
+                                           FontFamily="{StaticResource AppFont}"
+                                           FontSize="10"
+                                           Foreground="{StaticResource SecondaryTextBrush}"
+                                           Margin="0,0,0,8"
+                                           TextWrapping="Wrap"
+                                           Visibility="{Binding HasForkMomentum, Converter={StaticResource BoolToVis}}" />
+                                <Border Margin="0,0,0,8"
+                                        Background="{StaticResource InsetPanelBrush}"
+                                        BorderBrush="{StaticResource BorderBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="10"
+                                        Padding="10,8"
+                                        Visibility="{Binding HasForkMomentum, Converter={StaticResource BoolToVis}}">
+                                    <StackPanel>
+                                        <TextBlock Text="RISING FORKS"
+                                                   FontFamily="{StaticResource AppFont}"
+                                                   FontSize="9.5"
+                                                   Foreground="{StaticResource TertiaryTextBrush}" />
+                                        <TextBlock Text="{Binding ForkMomentumPrimaryText}"
+                                                   FontFamily="{StaticResource AppFont}"
+                                                   FontSize="10"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{StaticResource PrimaryTextBrush}"
+                                                   Margin="0,4,0,0"
+                                                   TextWrapping="Wrap" />
+                                        <TextBlock Text="{Binding ForkMomentumSummaryText}"
+                                                   FontFamily="{StaticResource AppFont}"
+                                                   FontSize="9.5"
+                                                   Foreground="{StaticResource SecondaryTextBrush}"
+                                                   Margin="0,4,0,0"
+                                                   TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Border>
+                                <TextBlock Text="{Binding RepositoryClusterHeadlineText}"
+                                           FontFamily="{StaticResource AppFont}"
+                                           FontSize="10"
+                                           Foreground="{StaticResource SecondaryTextBrush}"
+                                           Margin="0,0,0,8"
+                                           TextWrapping="Wrap"
+                                           Visibility="{Binding HasRepositoryCluster, Converter={StaticResource BoolToVis}}" />
+                                <Border Margin="0,0,0,8"
+                                        Background="{StaticResource InsetPanelBrush}"
+                                        BorderBrush="{StaticResource BorderBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="10"
+                                        Padding="10,8"
+                                        Visibility="{Binding HasRepositoryCluster, Converter={StaticResource BoolToVis}}">
+                                    <StackPanel>
+                                        <TextBlock Text="RELATED REPOS"
+                                                   FontFamily="{StaticResource AppFont}"
+                                                   FontSize="9.5"
+                                                   Foreground="{StaticResource TertiaryTextBrush}" />
+                                        <TextBlock Text="{Binding RepositoryClusterPairText}"
+                                                   FontFamily="{StaticResource AppFont}"
+                                                   FontSize="10"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="{StaticResource PrimaryTextBrush}"
+                                                   Margin="0,4,0,0"
+                                                   TextWrapping="Wrap" />
+                                        <TextBlock Text="{Binding RepositoryClusterSummaryText}"
+                                                   FontFamily="{StaticResource AppFont}"
+                                                   FontSize="9.5"
+                                                   Foreground="{StaticResource SecondaryTextBrush}"
+                                                   Margin="0,4,0,0"
+                                                   TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Border>
+                                <ItemsControl ItemsSource="{Binding WatchedRepositories}"
+                                              Visibility="{Binding HasWatchedRepositories, Converter={StaticResource BoolToVis}}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate DataType="{x:Type vm:GitHubWatchedRepositoryViewModel}">
+                                            <Border Background="{StaticResource SubtleSurfaceMutedBrush}"
+                                                    BorderBrush="{StaticResource BorderBrush}"
+                                                    BorderThickness="1"
+                                                    CornerRadius="10"
+                                                    Margin="0,0,0,8"
+                                                    Padding="10">
+                                                <StackPanel>
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <Button Style="{StaticResource InlineLinkButtonStyle}"
+                                                                Click="OnOpenUrlClick"
+                                                                Tag="{Binding RepositoryUrl}"
+                                                                HorizontalAlignment="Left">
+                                                            <TextBlock Text="{Binding FullName}"
+                                                                       FontFamily="{StaticResource AppFont}"
+                                                                       FontSize="11"
+                                                                       FontWeight="SemiBold"
+                                                                       Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                                       TextTrimming="CharacterEllipsis" />
+                                                        </Button>
+                                                        <Border Grid.Column="1"
+                                                                Background="{StaticResource SubtleSurfaceEmphasisBrush}"
+                                                                BorderBrush="{StaticResource BorderBrush}"
+                                                                BorderThickness="1"
+                                                                CornerRadius="8"
+                                                                Padding="6,1"
+                                                                Margin="8,0,0,0">
+                                                            <TextBlock Text="{Binding StatusText}"
+                                                                       FontFamily="{StaticResource AppFont}"
+                                                                       FontSize="9.5"
+                                                                       Foreground="{StaticResource SecondaryTextBrush}" />
+                                                        </Border>
+                                                    </Grid>
+                                                    <TextBlock Text="{Binding DeltaSummaryText}"
+                                                               FontFamily="{StaticResource AppFont}"
+                                                               FontSize="10"
+                                                               Foreground="{StaticResource PrimaryTextBrush}"
+                                                               Margin="0,6,0,0" />
+                                                    <TextBlock Text="{Binding CurrentMetricsText}"
+                                                               FontFamily="{StaticResource AppFont}"
+                                                               FontSize="10"
+                                                               Foreground="{StaticResource SecondaryTextBrush}"
+                                                               Margin="0,2,0,0" />
+                                                    <StackPanel Margin="0,6,0,0"
+                                                                Visibility="{Binding HasTrendBars, Converter={StaticResource BoolToVis}}">
+                                                        <Grid Height="24">
+                                                            <ItemsControl ItemsSource="{Binding TrendBars}">
+                                                                <ItemsControl.ItemsPanel>
+                                                                    <ItemsPanelTemplate>
+                                                                        <UniformGrid Columns="7" />
+                                                                    </ItemsPanelTemplate>
+                                                                </ItemsControl.ItemsPanel>
+                                                                <ItemsControl.ItemTemplate>
+                                                                    <DataTemplate DataType="{x:Type vm:GitHubRepoTrendBarViewModel}">
+                                                                        <Grid ToolTip="{Binding ToolTipText}">
+                                                                            <Border CornerRadius="2"
+                                                                                    Background="{StaticResource SectionStripBrush}"
+                                                                                    VerticalAlignment="Stretch"
+                                                                                    Margin="1,0" />
+                                                                            <Border CornerRadius="2"
+                                                                                    Background="{Binding BarBrush}"
+                                                                                    Opacity="0.85"
+                                                                                    VerticalAlignment="Bottom"
+                                                                                    Height="{Binding Height}"
+                                                                                    Margin="1,0" />
+                                                                        </Grid>
+                                                                    </DataTemplate>
+                                                                </ItemsControl.ItemTemplate>
+                                                            </ItemsControl>
+                                                        </Grid>
+                                                        <TextBlock Text="{Binding TrendSummaryText}"
+                                                                   FontFamily="{StaticResource AppFont}"
+                                                                   FontSize="9.5"
+                                                                   Foreground="{StaticResource TertiaryTextBrush}"
+                                                                   Margin="0,4,0,0"
+                                                                   TextWrapping="Wrap" />
+                                                    </StackPanel>
+                                                    <TextBlock Text="{Binding CaptureText}"
+                                                               FontFamily="{StaticResource AppFont}"
+                                                               FontSize="9.5"
+                                                               Foreground="{StaticResource TertiaryTextBrush}"
+                                                               Margin="0,2,0,0" />
+                                                </StackPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <TextBlock Text="{Binding ObservabilitySetupText}"
+                                           FontFamily="{StaticResource AppFont}"
+                                           FontSize="10"
+                                           Foreground="{StaticResource TertiaryTextBrush}"
+                                           TextWrapping="Wrap" />
                             </StackPanel>
                         </Border>
 
@@ -2115,16 +3329,55 @@
                             </Border>
 
                             <!-- Top repos -->
-                            <Border Style="{StaticResource CardStyle}">
+                            <Border Style="{StaticResource CardStyle}"
+                                    Visibility="{Binding HasTopRepos, Converter={StaticResource BoolToVis}}">
                                 <StackPanel>
                                     <Grid Margin="0,0,0,6">
-                                        <TextBlock Text="TOP REPOS" Style="{StaticResource SectionHeaderStyle}" Margin="0" />
+                                        <TextBlock Text="REPOSITORY LENS" Style="{StaticResource SectionHeaderStyle}" Margin="0" />
                                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                                             <TextBlock FontFamily="{StaticResource AppFont}" FontSize="10"
                                                        Foreground="{StaticResource TertiaryTextBrush}"
                                                        Text="{Binding OwnedRepositoriesFormatted, StringFormat={}{0} owned}" />
                                         </StackPanel>
                                     </Grid>
+                                    <TextBlock Text="{Binding RepoSortLabel}"
+                                               FontFamily="{StaticResource AppFont}"
+                                               FontSize="12"
+                                               FontWeight="SemiBold"
+                                               Foreground="{StaticResource PrimaryTextBrush}" />
+                                    <TextBlock Text="{Binding RepoSortHint}"
+                                               FontFamily="{StaticResource AppFont}"
+                                               FontSize="10"
+                                               Foreground="{StaticResource TertiaryTextBrush}"
+                                               Margin="0,4,0,8"
+                                               TextWrapping="Wrap" />
+                                    <WrapPanel Margin="0,0,0,10">
+                                        <ToggleButton Style="{StaticResource RangeChipStyle}"
+                                                      IsChecked="{Binding IsRepoSortStarsSelected, Mode=OneWay}"
+                                                      Click="OnGitHubRepoSortClick"
+                                                      Tag="Stars">
+                                            <TextBlock Text="Stars" />
+                                        </ToggleButton>
+                                        <ToggleButton Style="{StaticResource RangeChipStyle}"
+                                                      IsChecked="{Binding IsRepoSortForksSelected, Mode=OneWay}"
+                                                      Click="OnGitHubRepoSortClick"
+                                                      Tag="Forks">
+                                            <TextBlock Text="Forks" />
+                                        </ToggleButton>
+                                        <ToggleButton Style="{StaticResource RangeChipStyle}"
+                                                      IsChecked="{Binding IsRepoSortHealthSelected, Mode=OneWay}"
+                                                      Click="OnGitHubRepoSortClick"
+                                                      Tag="Health">
+                                            <TextBlock Text="Health" />
+                                        </ToggleButton>
+                                        <ToggleButton Style="{StaticResource RangeChipStyle}"
+                                                      IsChecked="{Binding IsRepoSortRecentSelected, Mode=OneWay}"
+                                                      Click="OnGitHubRepoSortClick"
+                                                      Tag="Recent"
+                                                      Margin="0">
+                                            <TextBlock Text="Recent" />
+                                        </ToggleButton>
+                                    </WrapPanel>
                                     <ItemsControl ItemsSource="{Binding TopRepos}">
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate DataType="{x:Type vm:GitHubRepoViewModel}">
@@ -2198,11 +3451,81 @@
                                                                    Foreground="{StaticResource SecondaryTextBrush}"
                                                                    TextWrapping="Wrap"
                                                                    Margin="0,6,0,0" />
+                                                        <WrapPanel Margin="0,6,0,0">
+                                                            <Border Background="{StaticResource InsetPanelBrush}"
+                                                                    BorderBrush="{StaticResource BorderBrush}"
+                                                                    BorderThickness="1"
+                                                                    CornerRadius="8"
+                                                                    Padding="6,2"
+                                                                    Margin="0,0,6,6">
+                                                                <TextBlock Text="{Binding RankMetricText}"
+                                                                           FontFamily="{StaticResource AppFont}"
+                                                                           FontSize="9.5"
+                                                                           Foreground="{StaticResource PrimaryTextBrush}" />
+                                                            </Border>
+                                                            <Border Background="{StaticResource SubtleSurfaceEmphasisBrush}"
+                                                                    BorderBrush="{StaticResource BorderBrush}"
+                                                                    BorderThickness="1"
+                                                                    CornerRadius="8"
+                                                                    Padding="6,2"
+                                                                    Margin="0,0,6,6">
+                                                                <TextBlock Text="{Binding StatusText}"
+                                                                           FontFamily="{StaticResource AppFont}"
+                                                                           FontSize="9.5"
+                                                                           Foreground="{StaticResource SecondaryTextBrush}" />
+                                                            </Border>
+                                                            <Border Background="{StaticResource SubtleSurfaceEmphasisBrush}"
+                                                                    BorderBrush="{StaticResource BorderBrush}"
+                                                                    BorderThickness="1"
+                                                                    CornerRadius="8"
+                                                                    Padding="6,2"
+                                                                    Margin="0,0,6,6"
+                                                                    Visibility="{Binding HasRecentPush, Converter={StaticResource BoolToVis}}">
+                                                                <TextBlock Text="{Binding PushedAtText}"
+                                                                           FontFamily="{StaticResource AppFont}"
+                                                                           FontSize="9.5"
+                                                                           Foreground="{StaticResource SecondaryTextBrush}" />
+                                                            </Border>
+                                                            <Border Background="{StaticResource SubtleSurfaceEmphasisBrush}"
+                                                                    BorderBrush="{StaticResource BorderBrush}"
+                                                                    BorderThickness="1"
+                                                                    CornerRadius="8"
+                                                                    Padding="6,2"
+                                                                    Margin="0,0,6,6">
+                                                                <TextBlock Text="{Binding WatchersFormatted, StringFormat={}{0} watchers}"
+                                                                           FontFamily="{StaticResource AppFont}"
+                                                                           FontSize="9.5"
+                                                                           Foreground="{StaticResource SecondaryTextBrush}" />
+                                                            </Border>
+                                                            <Border Background="{StaticResource SubtleSurfaceEmphasisBrush}"
+                                                                    BorderBrush="{StaticResource BorderBrush}"
+                                                                    BorderThickness="1"
+                                                                    CornerRadius="8"
+                                                                    Padding="6,2"
+                                                                    Margin="0,0,6,6">
+                                                                <TextBlock Text="{Binding OpenIssuesFormatted, StringFormat={}{0} open issues}"
+                                                                           FontFamily="{StaticResource AppFont}"
+                                                                           FontSize="9.5"
+                                                                           Foreground="{StaticResource SecondaryTextBrush}" />
+                                                            </Border>
+                                                            <Border Background="{StaticResource SubtleSurfaceEmphasisBrush}"
+                                                                    BorderBrush="{StaticResource BorderBrush}"
+                                                                    BorderThickness="1"
+                                                                    CornerRadius="8"
+                                                                    Padding="6,2"
+                                                                    Margin="0,0,0,6"
+                                                                    Visibility="{Binding IsArchived, Converter={StaticResource BoolToVis}}">
+                                                                <TextBlock Text="Archived"
+                                                                           FontFamily="{StaticResource AppFont}"
+                                                                           FontSize="9.5"
+                                                                           Foreground="{StaticResource TertiaryTextBrush}" />
+                                                            </Border>
+                                                        </WrapPanel>
                                                         <TextBlock Text="{Binding Language}"
                                                                    FontFamily="{StaticResource AppFont}"
                                                                    FontSize="10"
                                                                    Foreground="{StaticResource TertiaryTextBrush}"
-                                                                   Margin="0,6,0,0" />
+                                                                   Margin="0,0,0,0" />
                                                     </StackPanel>
                                                 </Border>
                                             </DataTemplate>

@@ -3,15 +3,34 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using IntelligenceX.Json;
+using IntelligenceX.Telemetry.Git;
+using IntelligenceX.Telemetry.GitHub;
 using IntelligenceX.Telemetry.Usage;
 
 namespace IntelligenceX.Visualization.Heatmaps;
 
 internal static class UsageTelemetryReportPageModelBuilders {
-    public static UsageTelemetryOverviewPageModel BuildOverview(UsageTelemetryOverviewDocument overview) {
+    public static UsageTelemetryOverviewPageModel BuildOverview(
+        UsageTelemetryOverviewDocument overview,
+        GitHubObservabilitySummaryData? gitHubObservabilitySummary = null,
+        GitCodeChurnSummaryData? gitCodeChurnSummary = null) {
         if (overview is null) {
             throw new ArgumentNullException(nameof(overview));
         }
+
+        var providerDailySeries = BuildProviderDailySeries(overview);
+        var churnUsageCorrelation = BuildCodeUsageCorrelationSection(
+            GitCodeUsageCorrelationSummaryBuilder.BuildFromDailySeries(
+                gitCodeChurnSummary,
+                providerDailySeries,
+                overview.Units));
+        var gitHubLocalAlignmentSummary = GitHubLocalActivityCorrelationSummaryBuilder.BuildFromDailySeries(
+            gitCodeChurnSummary,
+            providerDailySeries,
+            gitHubObservabilitySummary);
+        var gitHubLocalAlignment = BuildGitHubWatchedLocalAlignmentInsight(gitHubLocalAlignmentSummary);
+        var gitHubRepoClusterSummary = GitHubRepositoryClusterSummaryBuilder.Build(gitHubObservabilitySummary, gitHubLocalAlignmentSummary);
+        var gitHubRepoClusters = BuildGitHubWatchedRepoClusterInsight(gitHubRepoClusterSummary);
 
         var sectionSwitches = new List<UsageTelemetrySectionSwitchModel>();
         if (overview.ProviderSections.Count > 1) {
@@ -21,7 +40,7 @@ internal static class UsageTelemetryReportPageModelBuilders {
         }
 
         var sections = overview.ProviderSections
-            .Select(BuildSection)
+            .Select(section => BuildSection(section, gitHubObservabilitySummary, gitHubLocalAlignmentSummary))
             .ToArray();
 
         var supportingBreakdowns = overview.Heatmaps
@@ -49,6 +68,10 @@ internal static class UsageTelemetryReportPageModelBuilders {
                 new UsageTelemetryHeroStatModel("Sections", overview.ProviderSections.Count.ToString(CultureInfo.InvariantCulture)),
                 new UsageTelemetryHeroStatModel("Telemetry Tokens", FormatCompact(overview.Summary.TotalValue))
             },
+            CodeChurn: BuildCodeChurnSection(gitCodeChurnSummary),
+            ChurnUsageCorrelation: churnUsageCorrelation,
+            GitHubLocalAlignment: BuildGitHubLocalAlignmentSection(gitHubLocalAlignmentSummary, gitHubLocalAlignment),
+            GitHubRepoClusters: BuildGitHubRepoClusterSection(gitHubRepoClusterSummary, gitHubRepoClusters),
             SectionSwitches: sectionSwitches,
             Sections: sections,
             SupportingBreakdowns: supportingBreakdowns,
@@ -84,7 +107,10 @@ internal static class UsageTelemetryReportPageModelBuilders {
             Summary: BuildBreakdownSummary(safeKey, summaryHint, document));
     }
 
-    private static UsageTelemetryOverviewSectionPageModel BuildSection(UsageTelemetryOverviewProviderSection section) {
+    private static UsageTelemetryOverviewSectionPageModel BuildSection(
+        UsageTelemetryOverviewProviderSection section,
+        GitHubObservabilitySummaryData? gitHubObservabilitySummary,
+        GitHubLocalActivityCorrelationSummaryData? gitHubLocalAlignmentSummary) {
         var isGitHub = IsGitHubSection(section);
         var flags = new UsageTelemetryOverviewSectionFlags(
             IsGitHub: isGitHub,
@@ -109,7 +135,7 @@ internal static class UsageTelemetryReportPageModelBuilders {
             Diagnostics: UsageTelemetryReportDiagnosticsBuilder.BuildForProviderSection(section),
             HealthAccountLabels: section.AccountLabels,
             HealthInsights: BuildProviderHealthInsights(section),
-            GitHub: isGitHub ? BuildGitHubSection(section) : null);
+            GitHub: isGitHub ? BuildGitHubSection(section, gitHubObservabilitySummary, gitHubLocalAlignmentSummary) : null);
     }
 
     private static bool HasActivityData(UsageTelemetryOverviewProviderSection section) {
@@ -125,7 +151,10 @@ internal static class UsageTelemetryReportPageModelBuilders {
         return new UsageTelemetryProviderAccentColors(appearance.Input, appearance.Output, appearance.Total, appearance.Other);
     }
 
-    private static UsageTelemetryGitHubSectionPageModel BuildGitHubSection(UsageTelemetryOverviewProviderSection section) {
+    private static UsageTelemetryGitHubSectionPageModel BuildGitHubSection(
+        UsageTelemetryOverviewProviderSection section,
+        GitHubObservabilitySummaryData? gitHubObservabilitySummary,
+        GitHubLocalActivityCorrelationSummaryData? gitHubLocalAlignmentSummary) {
         var ownerSections = section.AdditionalInsights
             .Where(static insight =>
                 insight.Key.StartsWith("github-owner-", StringComparison.OrdinalIgnoreCase) &&
@@ -135,13 +164,40 @@ internal static class UsageTelemetryReportPageModelBuilders {
         var topRepositoriesByForks = FindInsight(section, "github-top-repositories-forks");
         var topRepositoriesByHealth = FindInsight(section, "github-top-repositories-health");
         var topLanguages = FindInsight(section, "github-top-languages");
+        var watchedRepositories = BuildGitHubWatchedRepositoriesInsight(gitHubObservabilitySummary);
+        var watchedCorrelations = BuildGitHubWatchedCorrelationInsight(gitHubObservabilitySummary);
+        var watchedStarCorrelations = BuildGitHubWatchedStarCorrelationInsight(gitHubObservabilitySummary);
+        var watchedRepoClusters = BuildGitHubWatchedRepoClusterInsight(
+            GitHubRepositoryClusterSummaryBuilder.Build(gitHubObservabilitySummary, gitHubLocalAlignmentSummary));
+        var watchedStargazerAudience = BuildGitHubWatchedStargazerAudienceInsight(gitHubObservabilitySummary);
+        var watchedForkNetwork = BuildGitHubWatchedForkNetworkInsight(gitHubObservabilitySummary);
+        var watchedForkMomentum = BuildGitHubWatchedForkMomentumInsight(gitHubObservabilitySummary);
+        var gitHubLocalAlignment = BuildGitHubWatchedLocalAlignmentInsight(gitHubLocalAlignmentSummary);
 
         return new UsageTelemetryGitHubSectionPageModel(
-            Lenses: BuildGitHubLenses(ownerSections, topLanguages),
+            Lenses: BuildGitHubLenses(
+                ownerSections,
+                topLanguages,
+                watchedRepositories,
+                watchedCorrelations,
+                watchedStarCorrelations,
+                watchedRepoClusters,
+                watchedStargazerAudience,
+                watchedForkNetwork,
+                watchedForkMomentum,
+                gitHubLocalAlignment),
             RepoSortModes: BuildGitHubRepoSortModes(topRepositoriesByForks, topRepositoriesByHealth),
             OwnerScopes: BuildGitHubOwnerScopes(ownerSections),
             YearComparison: FindInsight(section, "github-year-comparison"),
             ScopeSplit: FindInsight(section, "github-scope-split"),
+            WatchedRepositories: watchedRepositories,
+            WatchedCorrelations: watchedCorrelations,
+            WatchedStarCorrelations: watchedStarCorrelations,
+            WatchedRepoClusters: watchedRepoClusters,
+            WatchedStargazerAudience: watchedStargazerAudience,
+            WatchedForkNetwork: watchedForkNetwork,
+            WatchedForkMomentum: watchedForkMomentum,
+            WatchedLocalAlignment: gitHubLocalAlignment,
             RecentRepositories: FindInsight(section, "github-recent-repositories"),
             OwnerImpact: FindInsight(section, "github-owner-impact"),
             TopRepositories: FindInsight(section, "github-top-repositories"),
@@ -186,11 +242,29 @@ internal static class UsageTelemetryReportPageModelBuilders {
 
     private static UsageTelemetryToggleOptionModel[] BuildGitHubLenses(
         IReadOnlyList<UsageTelemetryOverviewInsightSection> ownerSections,
-        UsageTelemetryOverviewInsightSection? topLanguages) {
+        UsageTelemetryOverviewInsightSection? topLanguages,
+        UsageTelemetryOverviewInsightSection? watchedRepositories,
+        UsageTelemetryOverviewInsightSection? watchedCorrelations,
+        UsageTelemetryOverviewInsightSection? watchedStarCorrelations,
+        UsageTelemetryOverviewInsightSection? watchedRepoClusters,
+        UsageTelemetryOverviewInsightSection? watchedStargazerAudience,
+        UsageTelemetryOverviewInsightSection? watchedForkNetwork,
+        UsageTelemetryOverviewInsightSection? watchedForkMomentum,
+        UsageTelemetryOverviewInsightSection? watchedLocalAlignment) {
         var tabs = new List<UsageTelemetryToggleOptionModel> {
             new("impact", "Impact", IsDefault: true),
             new("recent", "Recent", IsDefault: false)
         };
+        if (watchedRepositories is not null
+            || watchedCorrelations is not null
+            || watchedStarCorrelations is not null
+            || watchedRepoClusters is not null
+            || watchedStargazerAudience is not null
+            || watchedForkNetwork is not null
+            || watchedForkMomentum is not null
+            || watchedLocalAlignment is not null) {
+            tabs.Add(new("watched", "Watched", IsDefault: false));
+        }
         if (ownerSections.Count > 0) {
             tabs.Add(new("owners", "Owners", IsDefault: false));
         }
@@ -235,12 +309,14 @@ internal static class UsageTelemetryReportPageModelBuilders {
         UsageTelemetryOverviewProviderSection section,
         UsageSummarySnapshot? summary = null,
         JsonObject? metadata = null,
-        int providerSectionsCount = 0) {
+        int providerSectionsCount = 0,
+        GitHubObservabilitySummaryData? gitHubObservabilitySummary = null,
+        GitHubLocalActivityCorrelationSummaryData? gitHubLocalAlignmentSummary = null) {
         if (section is null) {
             throw new ArgumentNullException(nameof(section));
         }
 
-        var github = BuildGitHubSection(section);
+        var github = BuildGitHubSection(section, gitHubObservabilitySummary, gitHubLocalAlignmentSummary);
         var ownerPanels = github.OwnerSections
             .OrderByDescending(static insight => ExtractOwnerMagnitude(insight.Headline))
             .ThenBy(static insight => insight.Title, StringComparer.OrdinalIgnoreCase)
@@ -268,6 +344,14 @@ internal static class UsageTelemetryReportPageModelBuilders {
             ScopeSplit: github.ScopeSplit,
             OwnerImpact: github.OwnerImpact,
             TopLanguages: github.TopLanguages,
+            WatchedRepositories: github.WatchedRepositories,
+            WatchedCorrelations: github.WatchedCorrelations,
+            WatchedStarCorrelations: github.WatchedStarCorrelations,
+            WatchedRepoClusters: github.WatchedRepoClusters,
+            WatchedStargazerAudience: github.WatchedStargazerAudience,
+            WatchedForkNetwork: github.WatchedForkNetwork,
+            WatchedForkMomentum: github.WatchedForkMomentum,
+            WatchedLocalAlignment: github.WatchedLocalAlignment,
             RecentRepositories: github.RecentRepositories,
             TopRepositories: github.TopRepositories,
             TopRepositoriesByForks: github.TopRepositoriesByForks,
@@ -279,12 +363,14 @@ internal static class UsageTelemetryReportPageModelBuilders {
         UsageTelemetryOverviewProviderSection section,
         UsageSummarySnapshot? summary = null,
         JsonObject? metadata = null,
-        int providerSectionsCount = 0) {
+        int providerSectionsCount = 0,
+        GitHubObservabilitySummaryData? gitHubObservabilitySummary = null,
+        GitHubLocalActivityCorrelationSummaryData? gitHubLocalAlignmentSummary = null) {
         if (section is null) {
             throw new ArgumentNullException(nameof(section));
         }
 
-        var github = BuildGitHubSection(section);
+        var github = BuildGitHubSection(section, gitHubObservabilitySummary, gitHubLocalAlignmentSummary);
         var yearComparisonHeadline = github.YearComparison?.Headline ?? "n/a";
         var topRepositoryHeadline = github.TopRepositories?.Headline ?? "n/a";
         var topRepositoryValue = github.TopRepositories?.Rows.FirstOrDefault()?.Value;
@@ -324,16 +410,630 @@ internal static class UsageTelemetryReportPageModelBuilders {
                 new UsageTelemetryGitHubWrappedMetricModel("Top language", topLanguageHeadline, topLanguageValue),
                 new UsageTelemetryGitHubWrappedMetricModel("Owner scope", ownerScopeValue, section.Note)
             },
-            FooterMetrics: new[] {
-                new UsageTelemetryGitHubWrappedMetricModel(
-                    "Recent repo",
-                    github.RecentRepositories?.Rows.FirstOrDefault()?.Label ?? "n/a",
-                    github.RecentRepositories?.Rows.FirstOrDefault()?.Subtitle),
-                new UsageTelemetryGitHubWrappedMetricModel(
-                    "Repository impact",
-                    github.OwnerImpact?.Headline ?? "n/a",
-                    github.OwnerImpact?.Note)
-            });
+            FooterMetrics: BuildGitHubWrappedFooterMetrics(github));
+    }
+
+    private static UsageTelemetryOverviewInsightSection? BuildGitHubWatchedRepositoriesInsight(
+        GitHubObservabilitySummaryData? summary) {
+        if (summary is null) {
+            return null;
+        }
+        if (summary.Repositories.Count == 0) {
+            return null;
+        }
+
+        var maxScore = Math.Max(
+            1d,
+            summary.Repositories
+                .Select(static repository => ComputeWatchedRepositoryScore(repository))
+                .DefaultIfEmpty(1d)
+                .Max());
+
+        var rows = summary.Repositories
+            .Select(repository => new UsageTelemetryOverviewInsightRow(
+                label: repository.RepositoryNameWithOwner,
+                value: BuildWatchedRepositoryValue(repository),
+                subtitle: BuildWatchedRepositorySubtitle(repository),
+                ratio: Math.Min(1d, ComputeWatchedRepositoryScore(repository) / maxScore),
+                href: "https://github.com/" + repository.RepositoryNameWithOwner))
+            .ToArray();
+
+        return new UsageTelemetryOverviewInsightSection(
+            key: "github-watched-repositories",
+            title: "Watched repo momentum",
+            headline: summary.ChangedRepositoryCount.ToString(CultureInfo.InvariantCulture) + " repos moved • +" + summary.PositiveStarDelta.ToString(CultureInfo.InvariantCulture) + " stars",
+            note: summary.LatestCaptureAtUtc.HasValue
+                ? "Latest watch snapshot " + summary.LatestCaptureAtUtc.Value.ToUniversalTime().ToString("yyyy-MM-dd HH:mm 'UTC'", CultureInfo.InvariantCulture) + " across "
+                  + summary.SnapshotRepositoryCount.ToString(CultureInfo.InvariantCulture) + " tracked repositories."
+                : "Watched repository momentum appears after local watch snapshots are synced.",
+            rows: rows);
+    }
+
+    private static UsageTelemetryOverviewInsightSection? BuildGitHubWatchedCorrelationInsight(
+        GitHubObservabilitySummaryData? summary) {
+        if (summary is null || summary.Correlations.Count == 0) {
+            return null;
+        }
+
+        var strongestPositive = summary.StrongestPositiveCorrelation;
+        var strongestNegative = summary.StrongestNegativeCorrelation;
+        var fallbackCorrelation = summary.Correlations[0];
+        var rows = summary.Correlations
+            .Select(static correlation => new UsageTelemetryOverviewInsightRow(
+                label: correlation.RepositoryANameWithOwner + " ↔ " + correlation.RepositoryBNameWithOwner,
+                value: BuildWatchedCorrelationValue(correlation),
+                subtitle: BuildWatchedCorrelationSubtitle(correlation),
+                ratio: Math.Abs(correlation.Correlation)))
+            .ToArray();
+
+        var primaryCorrelation = strongestPositive ?? strongestNegative ?? fallbackCorrelation;
+        var headline = primaryCorrelation.Correlation >= 0d
+            ? "Strongest sync • " + FormatCorrelationValue(primaryCorrelation.Correlation)
+            : "Strongest divergence • " + FormatCorrelationValue(primaryCorrelation.Correlation);
+        var note = strongestNegative is not null && !ReferenceEquals(primaryCorrelation, strongestNegative)
+            ? strongestNegative.RepositoryANameWithOwner + " ↔ " + strongestNegative.RepositoryBNameWithOwner
+              + " diverges most at " + FormatCorrelationValue(strongestNegative.Correlation) + "."
+            : "Based on shared daily movement across the recent watched-repo pulse window.";
+
+        return new UsageTelemetryOverviewInsightSection(
+            key: "github-watched-correlations",
+            title: "Watched repo correlation",
+            headline: headline,
+            note: note,
+            rows: rows);
+    }
+
+    private static UsageTelemetryOverviewInsightSection? BuildGitHubWatchedStarCorrelationInsight(
+        GitHubObservabilitySummaryData? summary) {
+        if (summary is null || summary.StarCorrelations.Count == 0) {
+            return null;
+        }
+
+        var strongestPositive = summary.StrongestPositiveStarCorrelation;
+        var strongestNegative = summary.StrongestNegativeStarCorrelation;
+        var fallbackCorrelation = summary.StarCorrelations[0];
+        var rows = summary.StarCorrelations
+            .Select(static correlation => new UsageTelemetryOverviewInsightRow(
+                label: correlation.RepositoryANameWithOwner + " ↔ " + correlation.RepositoryBNameWithOwner,
+                value: correlation.Correlation >= 0d
+                    ? "Star sync " + FormatCorrelationValue(correlation.Correlation)
+                    : "Star divergence " + FormatCorrelationValue(correlation.Correlation),
+                subtitle: correlation.OverlapDays.ToString(CultureInfo.InvariantCulture) + " shared days • "
+                          + FormatSigned(correlation.RepositoryARecentStarChange, "stars") + " / "
+                          + FormatSigned(correlation.RepositoryBRecentStarChange, "stars") + " • "
+                          + (correlation.Correlation >= 0d
+                              ? correlation.SharedGainDays.ToString(CultureInfo.InvariantCulture) + " gain-together days"
+                              : correlation.OpposingDays.ToString(CultureInfo.InvariantCulture) + " opposing star days"),
+                ratio: Math.Abs(correlation.Correlation)))
+            .ToArray();
+
+        var primaryCorrelation = strongestPositive ?? strongestNegative ?? fallbackCorrelation;
+        var headline = primaryCorrelation.Correlation >= 0d
+            ? "Strongest star sync • " + FormatCorrelationValue(primaryCorrelation.Correlation)
+            : "Strongest star divergence • " + FormatCorrelationValue(primaryCorrelation.Correlation);
+        var note = strongestNegative is not null && !ReferenceEquals(primaryCorrelation, strongestNegative)
+            ? strongestNegative.RepositoryANameWithOwner + " ↔ " + strongestNegative.RepositoryBNameWithOwner
+              + " diverges most at " + FormatCorrelationValue(strongestNegative.Correlation) + "."
+            : "Based only on shared daily star changes across the recent watched-repo window.";
+
+        return new UsageTelemetryOverviewInsightSection(
+            key: "github-watched-star-correlations",
+            title: "Watched repo star sync",
+            headline: headline,
+            note: note,
+            rows: rows);
+    }
+
+    private static UsageTelemetryOverviewInsightSection? BuildGitHubWatchedRepoClusterInsight(
+        GitHubRepositoryClusterSummaryData? summary) {
+        if (summary is null || !summary.HasSignals) {
+            return null;
+        }
+
+        var strongest = summary.StrongestCluster ?? summary.Clusters[0];
+        var rows = summary.Clusters
+            .Select(static cluster => new UsageTelemetryOverviewInsightRow(
+                label: cluster.RepositoryANameWithOwner + " ↔ " + cluster.RepositoryBNameWithOwner,
+                value: cluster.SupportingSignalCount.ToString(CultureInfo.InvariantCulture) + " signals • score " + cluster.CompositeScore.ToString("0.00", CultureInfo.InvariantCulture),
+                subtitle: "Star sync " + FormatCorrelationValue(cluster.StarCorrelation)
+                          + " • "
+                          + cluster.SharedStargazerCount.ToString(CultureInfo.InvariantCulture) + " shared stargazers"
+                          + " • "
+                          + cluster.SharedForkOwnerCount.ToString(CultureInfo.InvariantCulture) + " shared forkers"
+                          + (cluster.LocallyAlignedRepositoryCount == 2
+                              ? " • both local " + FormatCorrelationValue(cluster.LocalAlignmentAverageCorrelation)
+                              : string.Empty)
+                          + (cluster.SampleSharedStargazers.Count > 0
+                              ? " • " + string.Join(", ", cluster.SampleSharedStargazers)
+                              : string.Empty)
+                          + (cluster.SampleSharedForkOwners.Count > 0
+                              ? " • " + string.Join(", ", cluster.SampleSharedForkOwners)
+                              : string.Empty),
+                ratio: cluster.CompositeScore))
+            .ToArray();
+
+        return new UsageTelemetryOverviewInsightSection(
+            key: "github-watched-repo-clusters",
+            title: "Related watched repos",
+            headline: "Strongest cluster • "
+                      + BuildShortRepositoryLabel(strongest.RepositoryANameWithOwner)
+                      + " ↔ "
+                      + BuildShortRepositoryLabel(strongest.RepositoryBNameWithOwner),
+            note: strongest.SupportingSignalCount.ToString(CultureInfo.InvariantCulture)
+                  + " signals aligned • "
+                  + strongest.SharedStargazerCount.ToString(CultureInfo.InvariantCulture)
+                  + " shared stargazers • "
+                  + summary.LocallyAlignedRepositoryCount.ToString(CultureInfo.InvariantCulture)
+                  + " repos aligned with local pulse",
+            rows: rows);
+    }
+
+    private static UsageTelemetryOverviewInsightSection? BuildGitHubWatchedLocalAlignmentInsight(
+        GitHubLocalActivityCorrelationSummaryData? summary) {
+        if (summary is null || !summary.HasSignals) {
+            return null;
+        }
+
+        var strongestPositive = summary.StrongestPositiveCorrelation;
+        var strongestNegative = summary.StrongestNegativeCorrelation;
+        var fallbackCorrelation = summary.RepositoryCorrelations[0];
+        var rows = summary.RepositoryCorrelations
+            .Select(static correlation => new UsageTelemetryOverviewInsightRow(
+                label: correlation.RepositoryNameWithOwner,
+                value: correlation.Correlation >= 0d
+                    ? "Local sync " + FormatCorrelationValue(correlation.Correlation)
+                    : "Local divergence " + FormatCorrelationValue(correlation.Correlation),
+                subtitle: FormatSigned(correlation.StarDelta, "stars")
+                          + " • " + FormatSigned(correlation.ForkDelta, "forks")
+                          + " • " + FormatSigned(correlation.WatcherDelta, "watchers")
+                          + " • " + correlation.OverlapDays.ToString(CultureInfo.InvariantCulture) + " overlap days",
+                ratio: Math.Abs(correlation.Correlation),
+                href: "https://github.com/" + correlation.RepositoryNameWithOwner))
+            .ToArray();
+
+        var primaryCorrelation = strongestPositive ?? strongestNegative ?? fallbackCorrelation;
+        var headline = primaryCorrelation.Correlation >= 0d
+            ? "Strongest local sync • " + FormatCorrelationValue(primaryCorrelation.Correlation)
+            : "Strongest local divergence • " + FormatCorrelationValue(primaryCorrelation.Correlation);
+        var noteParts = new List<string> {
+            FormatCompact((double)summary.RecentChurnVolume) + " churn lines",
+            FormatCompact(summary.RecentUsageTotal) + " recent usage",
+            summary.ActiveLocalDays.ToString(CultureInfo.InvariantCulture) + " active local days"
+        };
+        if (strongestNegative is not null && !ReferenceEquals(primaryCorrelation, strongestNegative)) {
+            noteParts.Add("Diverging repo: " + strongestNegative.RepositoryNameWithOwner + " " + FormatCorrelationValue(strongestNegative.Correlation));
+        }
+
+        return new UsageTelemetryOverviewInsightSection(
+            key: "github-watched-local-alignment",
+            title: "Watched repo vs local pulse",
+            headline: headline,
+            note: string.Join(" • ", noteParts),
+            rows: rows);
+    }
+
+    private static UsageTelemetryOverviewInsightSection? BuildGitHubWatchedForkNetworkInsight(
+        GitHubObservabilitySummaryData? summary) {
+        if (summary is null || summary.EnabledWatchCount == 0) {
+            return null;
+        }
+
+        var strongest = summary.StrongestForkNetworkOverlap;
+        UsageTelemetryOverviewInsightRow[] rows;
+        string headline;
+        if (summary.ForkNetworkOverlaps.Count > 0 && strongest is not null) {
+            rows = summary.ForkNetworkOverlaps
+                .Select(static overlap => new UsageTelemetryOverviewInsightRow(
+                    label: overlap.RepositoryANameWithOwner + " ↔ " + overlap.RepositoryBNameWithOwner,
+                    value: overlap.SharedForkOwnerCount.ToString(CultureInfo.InvariantCulture) + " shared fork owners",
+                    subtitle: overlap.RepositoryAForkOwnerCount.ToString(CultureInfo.InvariantCulture)
+                              + "/" + overlap.RepositoryBForkOwnerCount.ToString(CultureInfo.InvariantCulture)
+                              + " observed owners • "
+                              + overlap.OverlapRatio.ToString("0%", CultureInfo.InvariantCulture)
+                              + " smaller-set overlap"
+                              + (overlap.SampleSharedForkOwners.Count > 0
+                                  ? " • " + string.Join(", ", overlap.SampleSharedForkOwners)
+                                  : string.Empty),
+                    ratio: overlap.OverlapRatio))
+                .ToArray();
+            headline = "Strongest shared forkers • "
+                       + BuildShortRepositoryLabel(strongest.RepositoryANameWithOwner)
+                       + " ↔ "
+                       + BuildShortRepositoryLabel(strongest.RepositoryBNameWithOwner);
+        } else {
+            rows = new[] {
+                new UsageTelemetryOverviewInsightRow(
+                    label: "Coverage",
+                    value: summary.ForkSnapshotRepositoryCount.ToString(CultureInfo.InvariantCulture)
+                           + "/"
+                           + summary.EnabledWatchCount.ToString(CultureInfo.InvariantCulture)
+                           + " watched repos",
+                    subtitle: BuildGitHubForkCoverageNote(summary),
+                    ratio: summary.EnabledWatchCount <= 0
+                        ? 0d
+                        : Math.Min(1d, summary.ForkSnapshotRepositoryCount / (double)summary.EnabledWatchCount))
+            };
+            headline = summary.HasAnyForkSnapshots
+                ? "Fork capture is active, but no shared fork-owner overlap is confirmed yet"
+                : "Fork network capture is still pending";
+        }
+
+        return new UsageTelemetryOverviewInsightSection(
+            key: "github-watched-fork-network",
+            title: "Shared fork network",
+            headline: headline,
+            note: BuildGitHubForkNetworkNote(summary, strongest),
+            rows: rows);
+    }
+
+    private static UsageTelemetryOverviewInsightSection? BuildGitHubWatchedForkMomentumInsight(
+        GitHubObservabilitySummaryData? summary) {
+        if (summary is null || summary.EnabledWatchCount == 0) {
+            return null;
+        }
+
+        var strongest = summary.StrongestForkChange;
+        UsageTelemetryOverviewInsightRow[] rows;
+        string headline;
+        if (summary.ForkChanges.Count > 0 && strongest is not null) {
+            var maxRatio = Math.Max(
+                1d,
+                summary.ForkChanges
+                    .Select(static change => Math.Max(Math.Abs(change.ScoreDelta), change.Score))
+                    .DefaultIfEmpty(1d)
+                    .Max());
+            rows = summary.ForkChanges
+                .Select(change => new UsageTelemetryOverviewInsightRow(
+                    label: change.ForkRepositoryNameWithOwner,
+                    value: change.Status + " • " + change.Score.ToString("0.##", CultureInfo.InvariantCulture) + " score",
+                    subtitle: change.ParentRepositoryNameWithOwner
+                              + " • "
+                              + change.ScoreDelta.ToString("+0.##;-0.##;0", CultureInfo.InvariantCulture)
+                              + " score delta • "
+                              + FormatSigned(change.StarDelta, "stars")
+                              + " • "
+                              + FormatSigned(change.WatcherDelta, "watchers"),
+                    ratio: Math.Min(1d, Math.Max(Math.Abs(change.ScoreDelta), change.Score) / maxRatio),
+                    href: "https://github.com/" + change.ForkRepositoryNameWithOwner))
+                .ToArray();
+            headline = "Top fork mover • " + BuildShortRepositoryLabel(strongest.ForkRepositoryNameWithOwner);
+        } else {
+            rows = new[] {
+                new UsageTelemetryOverviewInsightRow(
+                    label: "Coverage",
+                    value: summary.ForkSnapshotRepositoryCount.ToString(CultureInfo.InvariantCulture)
+                           + "/"
+                           + summary.EnabledWatchCount.ToString(CultureInfo.InvariantCulture)
+                           + " watched repos",
+                    subtitle: BuildGitHubForkCoverageNote(summary),
+                    ratio: summary.EnabledWatchCount <= 0
+                        ? 0d
+                        : Math.Min(1d, summary.ForkSnapshotRepositoryCount / (double)summary.EnabledWatchCount))
+            };
+            headline = summary.HasAnyForkSnapshots
+                ? "Fork capture is active, but no strong fork mover stands out yet"
+                : "Fork mover capture is still pending";
+        }
+
+        return new UsageTelemetryOverviewInsightSection(
+            key: "github-watched-fork-momentum",
+            title: "Rising forks",
+            headline: headline,
+            note: BuildGitHubForkMomentumNote(summary, strongest),
+            rows: rows);
+    }
+
+    private static UsageTelemetryOverviewInsightSection? BuildGitHubWatchedStargazerAudienceInsight(
+        GitHubObservabilitySummaryData? summary) {
+        if (summary is null || summary.EnabledWatchCount == 0) {
+            return null;
+        }
+
+        var strongest = summary.StrongestStargazerAudienceOverlap;
+        UsageTelemetryOverviewInsightRow[] rows;
+        string headline;
+        if (summary.StargazerAudienceOverlaps.Count > 0 && strongest is not null) {
+            rows = summary.StargazerAudienceOverlaps
+                .Select(static overlap => new UsageTelemetryOverviewInsightRow(
+                    label: overlap.RepositoryANameWithOwner + " ↔ " + overlap.RepositoryBNameWithOwner,
+                    value: overlap.SharedStargazerCount.ToString(CultureInfo.InvariantCulture) + " shared stargazers",
+                    subtitle: overlap.RepositoryAStargazerCount.ToString(CultureInfo.InvariantCulture)
+                              + "/" + overlap.RepositoryBStargazerCount.ToString(CultureInfo.InvariantCulture)
+                              + " observed stargazers • "
+                              + overlap.OverlapRatio.ToString("0%", CultureInfo.InvariantCulture)
+                              + " smaller-set overlap"
+                              + (overlap.SampleSharedStargazers.Count > 0
+                                  ? " • " + string.Join(", ", overlap.SampleSharedStargazers)
+                                  : string.Empty),
+                    ratio: overlap.OverlapRatio))
+                .ToArray();
+            headline = "Strongest shared stargazers • "
+                       + BuildShortRepositoryLabel(strongest.RepositoryANameWithOwner)
+                       + " ↔ "
+                       + BuildShortRepositoryLabel(strongest.RepositoryBNameWithOwner);
+        } else {
+            rows = new[] {
+                new UsageTelemetryOverviewInsightRow(
+                    label: "Coverage",
+                    value: summary.StargazerSnapshotRepositoryCount.ToString(CultureInfo.InvariantCulture)
+                           + "/"
+                           + summary.EnabledWatchCount.ToString(CultureInfo.InvariantCulture)
+                           + " watched repos",
+                    subtitle: BuildGitHubStargazerCoverageNote(summary),
+                    ratio: summary.EnabledWatchCount <= 0
+                        ? 0d
+                        : Math.Min(1d, summary.StargazerSnapshotRepositoryCount / (double)summary.EnabledWatchCount))
+            };
+            headline = summary.HasAnyStargazerSnapshots
+                ? "Audience capture is active, but no shared stargazer overlap is confirmed yet"
+                : "Stargazer audience capture is still pending";
+        }
+
+        return new UsageTelemetryOverviewInsightSection(
+            key: "github-watched-stargazer-audience",
+            title: "Shared stargazer audience",
+            headline: headline,
+            note: BuildGitHubStargazerAudienceNote(summary, strongest),
+            rows: rows);
+    }
+
+    private static string BuildGitHubStargazerAudienceNote(
+        GitHubObservabilitySummaryData summary,
+        GitHubObservedStargazerAudienceOverlapData? strongest) {
+        var parts = new List<string>();
+        if (strongest is not null) {
+            parts.Add(strongest.SharedStargazerCount.ToString(CultureInfo.InvariantCulture) + " shared stargazers");
+        }
+        if (summary.ObservedStargazerCount > 0) {
+            parts.Add(summary.ObservedStargazerCount.ToString(CultureInfo.InvariantCulture) + " distinct observed stargazers");
+        }
+        parts.Add(BuildGitHubStargazerCoverageNote(summary));
+        return string.Join(" • ", parts.Where(static part => !string.IsNullOrWhiteSpace(part)));
+    }
+
+    private static string BuildGitHubStargazerCoverageNote(GitHubObservabilitySummaryData summary) {
+        var parts = new List<string> {
+            summary.StargazerSnapshotRepositoryCount.ToString(CultureInfo.InvariantCulture)
+            + "/"
+            + summary.EnabledWatchCount.ToString(CultureInfo.InvariantCulture)
+            + " watched repos captured"
+        };
+        if (summary.MissingStargazerSnapshotRepositoryCount > 0) {
+            parts.Add(summary.MissingStargazerSnapshotRepositoryCount.ToString(CultureInfo.InvariantCulture) + " missing audience snapshots");
+        }
+        if (summary.LaggingStargazerRepositoryCount > 0) {
+            parts.Add(summary.LaggingStargazerRepositoryCount.ToString(CultureInfo.InvariantCulture) + " behind latest repo sync");
+        } else if (summary.HasFreshStargazerCoverage) {
+            parts.Add("aligned with latest repo sync");
+        }
+        if (summary.LatestStargazerCaptureAtUtc.HasValue) {
+            parts.Add("last audience sync " + summary.LatestStargazerCaptureAtUtc.Value.ToString("yyyy-MM-dd HH:mm 'UTC'", CultureInfo.InvariantCulture));
+        }
+
+        return string.Join(" • ", parts);
+    }
+
+    private static string BuildGitHubForkNetworkNote(
+        GitHubObservabilitySummaryData summary,
+        GitHubObservedForkNetworkOverlapData? strongest) {
+        var parts = new List<string>();
+        if (strongest is not null) {
+            parts.Add(strongest.SharedForkOwnerCount.ToString(CultureInfo.InvariantCulture) + " shared fork owners");
+        }
+        if (summary.ObservedForkOwnerCount > 0) {
+            parts.Add(summary.ObservedForkOwnerCount.ToString(CultureInfo.InvariantCulture) + " distinct observed fork owners");
+        }
+        parts.Add(BuildGitHubForkCoverageNote(summary));
+        return string.Join(" • ", parts.Where(static part => !string.IsNullOrWhiteSpace(part)));
+    }
+
+    private static string BuildGitHubForkMomentumNote(
+        GitHubObservabilitySummaryData summary,
+        GitHubRepositoryForkChange? strongest) {
+        var parts = new List<string>();
+        if (strongest is not null) {
+            parts.Add(strongest.ParentRepositoryNameWithOwner);
+            parts.Add(strongest.Status + " • " + strongest.Tier + " tier");
+        }
+        parts.Add(BuildGitHubForkCoverageNote(summary));
+        return string.Join(" • ", parts.Where(static part => !string.IsNullOrWhiteSpace(part)));
+    }
+
+    private static string BuildGitHubForkCoverageNote(GitHubObservabilitySummaryData summary) {
+        var parts = new List<string> {
+            summary.ForkSnapshotRepositoryCount.ToString(CultureInfo.InvariantCulture)
+            + "/"
+            + summary.EnabledWatchCount.ToString(CultureInfo.InvariantCulture)
+            + " watched repos captured"
+        };
+        if (summary.MissingForkSnapshotRepositoryCount > 0) {
+            parts.Add(summary.MissingForkSnapshotRepositoryCount.ToString(CultureInfo.InvariantCulture) + " missing fork snapshots");
+        }
+        if (summary.LaggingForkRepositoryCount > 0) {
+            parts.Add(summary.LaggingForkRepositoryCount.ToString(CultureInfo.InvariantCulture) + " behind latest repo sync");
+        } else if (summary.HasFreshForkCoverage) {
+            parts.Add("aligned with latest repo sync");
+        }
+        if (summary.LatestForkCaptureAtUtc.HasValue) {
+            parts.Add("last fork sync " + summary.LatestForkCaptureAtUtc.Value.ToString("yyyy-MM-dd HH:mm 'UTC'", CultureInfo.InvariantCulture));
+        }
+
+        return string.Join(" • ", parts);
+    }
+
+    private static UsageTelemetryGitHubLocalPulsePageModel? BuildGitHubLocalAlignmentSection(
+        GitHubLocalActivityCorrelationSummaryData? summary,
+        UsageTelemetryOverviewInsightSection? insight) {
+        if (summary is null || !summary.HasData || insight is null) {
+            return null;
+        }
+
+        return new UsageTelemetryGitHubLocalPulsePageModel(
+            Title: "Watched repo sync",
+            Subtitle: "Repositories whose recent GitHub momentum most closely matches the same local churn and usage pulse.",
+            Headline: BuildGitHubLocalAlignmentHeadline(summary),
+            Note: BuildGitHubLocalAlignmentNote(summary),
+            Stats: new[] {
+                new UsageTelemetryHeroStatModel("Watched repos", summary.WatchedRepositoryCount.ToString(CultureInfo.InvariantCulture)),
+                new UsageTelemetryHeroStatModel("Linked movers", summary.RepositoryCorrelations.Count.ToString(CultureInfo.InvariantCulture)),
+                new UsageTelemetryHeroStatModel("Active local days", summary.ActiveLocalDays.ToString(CultureInfo.InvariantCulture))
+            },
+            Repositories: insight);
+    }
+
+    private static UsageTelemetryGitHubRepoClusterPageModel? BuildGitHubRepoClusterSection(
+        GitHubRepositoryClusterSummaryData? summary,
+        UsageTelemetryOverviewInsightSection? insight) {
+        if (summary is null || !summary.HasData || insight is null) {
+            return null;
+        }
+
+        return new UsageTelemetryGitHubRepoClusterPageModel(
+            Title: "Related repo clusters",
+            Subtitle: "Watched repo pairs where audience overlap, star momentum, and local pulse start telling the same story.",
+            Headline: BuildGitHubRepoClusterHeadline(summary),
+            Note: BuildGitHubRepoClusterNote(summary),
+            Stats: new[] {
+                new UsageTelemetryHeroStatModel("Watched repos", summary.WatchedRepositoryCount.ToString(CultureInfo.InvariantCulture)),
+                new UsageTelemetryHeroStatModel("Clusters", summary.Clusters.Count.ToString(CultureInfo.InvariantCulture)),
+                new UsageTelemetryHeroStatModel("Local overlaps", summary.LocallyAlignedRepositoryCount.ToString(CultureInfo.InvariantCulture))
+            },
+            Clusters: insight);
+    }
+
+    private static string BuildWatchedRepositoryValue(GitHubObservedRepositoryTrendData repository) {
+        if (!repository.PreviousCapturedAtUtc.HasValue) {
+            return "Baseline";
+        }
+
+        return FormatSigned(repository.StarDelta, "stars")
+               + " · "
+               + FormatSigned(repository.ForkDelta, "forks")
+               + " · "
+               + FormatSigned(repository.WatcherDelta, "watchers");
+    }
+
+    private static string BuildWatchedRepositorySubtitle(GitHubObservedRepositoryTrendData repository) {
+        var recentPoints = repository.TrendPoints
+            .Where(static point => point.DayUtc != default)
+            .ToArray();
+        var trendWindow = recentPoints.Length == 0
+            ? "daily trend pending"
+            : recentPoints.First().DayUtc.ToString("MMM d", CultureInfo.InvariantCulture)
+              + " to "
+              + recentPoints.Last().DayUtc.ToString("MMM d", CultureInfo.InvariantCulture);
+        return FormatCompact((double)repository.Stars) + " stars · "
+               + FormatCompact((double)repository.Forks) + " forks · "
+               + FormatCompact((double)repository.Watchers) + " watchers · "
+               + trendWindow;
+    }
+
+    private static double ComputeWatchedRepositoryScore(GitHubObservedRepositoryTrendData repository) {
+        return Math.Abs(repository.StarDelta * 6d)
+               + Math.Abs(repository.ForkDelta * 8d)
+               + Math.Abs(repository.WatcherDelta * 3d)
+               + Math.Max(0, repository.OpenIssueDelta);
+    }
+
+    private static string BuildWatchedCorrelationValue(GitHubObservedCorrelationData correlation) {
+        return correlation.Correlation >= 0d
+            ? "Sync " + FormatCorrelationValue(correlation.Correlation)
+            : "Diverges " + FormatCorrelationValue(correlation.Correlation);
+    }
+
+    private static string BuildWatchedCorrelationSubtitle(GitHubObservedCorrelationData correlation) {
+        var lead = correlation.Correlation >= 0d
+            ? correlation.SharedUpDays.ToString(CultureInfo.InvariantCulture) + " up together"
+            : correlation.OpposingDays.ToString(CultureInfo.InvariantCulture) + " opposing days";
+        var trailing = correlation.Correlation >= 0d
+            ? correlation.SharedDownDays.ToString(CultureInfo.InvariantCulture) + " down together"
+            : correlation.SharedUpDays.ToString(CultureInfo.InvariantCulture) + " up together";
+        return correlation.OverlapDays.ToString(CultureInfo.InvariantCulture) + " shared days • "
+               + lead
+               + " • "
+               + trailing;
+    }
+
+    private static IReadOnlyList<UsageTelemetryGitHubWrappedMetricModel> BuildGitHubWrappedFooterMetrics(
+        UsageTelemetryGitHubSectionPageModel github) {
+        var metrics = new List<UsageTelemetryGitHubWrappedMetricModel> {
+            new(
+                "Recent repo",
+                github.RecentRepositories?.Rows.FirstOrDefault()?.Label ?? "n/a",
+                github.RecentRepositories?.Rows.FirstOrDefault()?.Subtitle),
+            new(
+                "Repository impact",
+                github.OwnerImpact?.Headline ?? "n/a",
+                github.OwnerImpact?.Note)
+        };
+        if (github.WatchedRepositories is not null) {
+            var watchedRepositories = github.WatchedRepositories;
+            metrics.Add(new UsageTelemetryGitHubWrappedMetricModel(
+                "Watched momentum",
+                watchedRepositories.Headline ?? "n/a",
+                watchedRepositories.Note));
+        }
+        if (github.WatchedCorrelations is not null) {
+            var watchedCorrelations = github.WatchedCorrelations;
+            metrics.Add(new UsageTelemetryGitHubWrappedMetricModel(
+                "Linked movers",
+                watchedCorrelations.Rows.FirstOrDefault()?.Label ?? watchedCorrelations.Headline ?? "n/a",
+                watchedCorrelations.Rows.FirstOrDefault()?.Value ?? watchedCorrelations.Note));
+        }
+        if (github.WatchedStarCorrelations is not null) {
+            var watchedStarCorrelations = github.WatchedStarCorrelations;
+            metrics.Add(new UsageTelemetryGitHubWrappedMetricModel(
+                "Star sync",
+                watchedStarCorrelations.Rows.FirstOrDefault()?.Label ?? watchedStarCorrelations.Headline ?? "n/a",
+                watchedStarCorrelations.Rows.FirstOrDefault()?.Value ?? watchedStarCorrelations.Note));
+        }
+        if (github.WatchedRepoClusters is not null) {
+            var watchedRepoClusters = github.WatchedRepoClusters;
+            metrics.Add(new UsageTelemetryGitHubWrappedMetricModel(
+                "Related repos",
+                watchedRepoClusters.Rows.FirstOrDefault()?.Label ?? watchedRepoClusters.Headline ?? "n/a",
+                watchedRepoClusters.Rows.FirstOrDefault()?.Value ?? watchedRepoClusters.Note));
+        }
+        if (github.WatchedStargazerAudience is not null) {
+            var watchedStargazerAudience = github.WatchedStargazerAudience;
+            metrics.Add(new UsageTelemetryGitHubWrappedMetricModel(
+                "Shared stargazers",
+                watchedStargazerAudience.Rows.FirstOrDefault()?.Label ?? watchedStargazerAudience.Headline ?? "n/a",
+                watchedStargazerAudience.Rows.FirstOrDefault()?.Value ?? watchedStargazerAudience.Note));
+        }
+        if (github.WatchedForkNetwork is not null) {
+            var watchedForkNetwork = github.WatchedForkNetwork;
+            metrics.Add(new UsageTelemetryGitHubWrappedMetricModel(
+                "Shared forkers",
+                watchedForkNetwork.Rows.FirstOrDefault()?.Label ?? watchedForkNetwork.Headline ?? "n/a",
+                watchedForkNetwork.Rows.FirstOrDefault()?.Value ?? watchedForkNetwork.Note));
+        }
+        if (github.WatchedForkMomentum is not null) {
+            var watchedForkMomentum = github.WatchedForkMomentum;
+            metrics.Add(new UsageTelemetryGitHubWrappedMetricModel(
+                "Rising forks",
+                watchedForkMomentum.Rows.FirstOrDefault()?.Label ?? watchedForkMomentum.Headline ?? "n/a",
+                watchedForkMomentum.Rows.FirstOrDefault()?.Value ?? watchedForkMomentum.Note));
+        }
+        if (github.WatchedLocalAlignment is not null) {
+            var watchedLocalAlignment = github.WatchedLocalAlignment;
+            metrics.Add(new UsageTelemetryGitHubWrappedMetricModel(
+                "Local sync",
+                watchedLocalAlignment.Rows.FirstOrDefault()?.Label ?? watchedLocalAlignment.Headline ?? "n/a",
+                watchedLocalAlignment.Rows.FirstOrDefault()?.Value ?? watchedLocalAlignment.Note));
+        }
+
+        return metrics;
+    }
+
+    private static string FormatSigned(int value, string suffix) {
+        return (value >= 0 ? "+" : "-")
+               + Math.Abs(value).ToString(CultureInfo.InvariantCulture)
+               + " " + suffix;
+    }
+
+    private static string FormatCorrelationValue(double correlation) {
+        return correlation.ToString("+0.00;-0.00;0.00", CultureInfo.InvariantCulture);
     }
 
     private static UsageTelemetryOverviewInsightSection? FindInsight(
@@ -341,6 +1041,235 @@ internal static class UsageTelemetryReportPageModelBuilders {
         string key) {
         return section.AdditionalInsights.FirstOrDefault(insight =>
             string.Equals(insight.Key, key, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static UsageTelemetryCodeChurnPageModel? BuildCodeChurnSection(GitCodeChurnSummaryData? summary) {
+        if (summary is null || !summary.HasData) {
+            return null;
+        }
+
+        var maxChangedLines = Math.Max(
+            1d,
+            summary.TrendDays.Count == 0
+                ? 1d
+                : summary.TrendDays.Max(static day => (double)day.TotalChangedLines));
+        var rows = summary.TrendDays
+            .Select(day => new UsageTelemetryOverviewInsightRow(
+                label: day.DayUtc.ToString("ddd, MMM d", CultureInfo.InvariantCulture),
+                value: "+" + FormatCompact((double)day.AddedLines) + " / -" + FormatCompact((double)day.DeletedLines),
+                subtitle: day.HasActivity
+                    ? day.FilesModified.ToString(CultureInfo.InvariantCulture) + " files • "
+                      + day.CommitCount.ToString(CultureInfo.InvariantCulture) + " commits • net "
+                      + FormatSigned(day.NetLines, "lines")
+                    : "No commits recorded.",
+                ratio: Math.Min(1d, day.TotalChangedLines / maxChangedLines)))
+            .ToArray();
+
+        var peakDay = summary.PeakRecentDay;
+        var note = peakDay is null
+            ? "Recent git churn appears after local commits land in this repository."
+            : "Peak day " + peakDay.DayUtc.ToString("MMM d", CultureInfo.InvariantCulture)
+              + " • +" + FormatCompact((double)peakDay.AddedLines)
+              + " / -" + FormatCompact((double)peakDay.DeletedLines)
+              + " • " + peakDay.FilesModified.ToString(CultureInfo.InvariantCulture) + " files.";
+
+        return new UsageTelemetryCodeChurnPageModel(
+            Title: "Code churn",
+            Subtitle: (summary.RepositoryName ?? "Local repository")
+                      + " • "
+                      + summary.Last30DaysActiveDayCount.ToString(CultureInfo.InvariantCulture)
+                      + " active days in the last 30",
+            Headline: "+" + FormatCompact((double)summary.RecentAddedLines)
+                      + " / -" + FormatCompact((double)summary.RecentDeletedLines)
+                      + " over the last 7 days",
+            Note: note + " Previous 7d: +" + FormatCompact((double)summary.PreviousAddedLines)
+                  + " / -" + FormatCompact((double)summary.PreviousDeletedLines)
+                  + " across " + summary.PreviousFilesModified.ToString(CultureInfo.InvariantCulture)
+                  + " files and " + summary.PreviousCommitCount.ToString(CultureInfo.InvariantCulture) + " commits.",
+            Stats: new[] {
+                new UsageTelemetryHeroStatModel("Added", "+" + FormatCompact((double)summary.RecentAddedLines)),
+                new UsageTelemetryHeroStatModel("Deleted", "-" + FormatCompact((double)summary.RecentDeletedLines)),
+                new UsageTelemetryHeroStatModel("Files", summary.RecentFilesModified.ToString(CultureInfo.InvariantCulture)),
+                new UsageTelemetryHeroStatModel("Commits", summary.RecentCommitCount.ToString(CultureInfo.InvariantCulture))
+            },
+            DailyBreakdown: new UsageTelemetryOverviewInsightSection(
+                key: "git-code-churn",
+                title: "Daily movement",
+                headline: summary.RecentActiveDayCount.ToString(CultureInfo.InvariantCulture) + " active days in the recent window",
+                note: summary.LatestCommitAtUtc.HasValue
+                    ? "Latest commit " + summary.LatestCommitAtUtc.Value.ToString("yyyy-MM-dd HH:mm 'UTC'", CultureInfo.InvariantCulture)
+                    : "Latest commit time unavailable.",
+                rows: rows));
+    }
+
+    private static UsageTelemetryChurnUsageSignalPageModel? BuildCodeUsageCorrelationSection(
+        GitCodeUsageCorrelationSummaryData? summary) {
+        if (summary is null || !summary.HasData) {
+            return null;
+        }
+
+        var rows = summary.ProviderCorrelations
+            .Take(4)
+            .Select(correlation => new UsageTelemetryOverviewInsightRow(
+                label: correlation.ProviderDisplayName,
+                value: FormatCorrelationValue(correlation.Correlation),
+                subtitle: FormatCompact(correlation.RecentActivityValue)
+                          + " recent "
+                          + summary.ActivityUnitsLabel
+                          + " • "
+                          + correlation.SharedActiveDays.ToString(CultureInfo.InvariantCulture)
+                          + "/" + correlation.OverlapDays.ToString(CultureInfo.InvariantCulture)
+                          + " shared active days",
+                ratio: Math.Min(1d, Math.Abs(correlation.Correlation))))
+            .ToArray();
+
+        var noteParts = new List<string> {
+            "Recent " + summary.ActivityUnitsLabel + ": " + FormatCompact(summary.RecentActivityTotal),
+            "Previous: " + FormatCompact(summary.PreviousActivityTotal),
+            "Recent churn: " + FormatCompact((double)summary.RecentChurnVolume) + " lines",
+            "Previous churn: " + FormatCompact((double)summary.PreviousChurnVolume) + " lines"
+        };
+        if (summary.StrongestPositiveCorrelation is not null) {
+            noteParts.Add("Aligned: " + summary.StrongestPositiveCorrelation.ProviderDisplayName + " " + FormatCorrelationValue(summary.StrongestPositiveCorrelation.Correlation));
+        }
+        if (summary.StrongestNegativeCorrelation is not null) {
+            noteParts.Add("Diverging: " + summary.StrongestNegativeCorrelation.ProviderDisplayName + " " + FormatCorrelationValue(summary.StrongestNegativeCorrelation.Correlation));
+        }
+
+        return new UsageTelemetryChurnUsageSignalPageModel(
+            Title: "Churn x usage",
+            Subtitle: (summary.RepositoryName ?? "Local repository") + " • recent telemetry alignment",
+            Headline: BuildCodeUsageCorrelationHeadline(summary),
+            Note: string.Join(" • ", noteParts),
+            Stats: new[] {
+                new UsageTelemetryHeroStatModel("Recent " + summary.ActivityUnitsLabel, FormatCompact(summary.RecentActivityTotal)),
+                new UsageTelemetryHeroStatModel("Previous " + summary.ActivityUnitsLabel, FormatCompact(summary.PreviousActivityTotal)),
+                new UsageTelemetryHeroStatModel("Recent churn", FormatCompact((double)summary.RecentChurnVolume) + " lines"),
+                new UsageTelemetryHeroStatModel("Active days", summary.RecentActivityDays.ToString(CultureInfo.InvariantCulture))
+            },
+            ProviderSignals: new UsageTelemetryOverviewInsightSection(
+                key: "git-code-usage-correlation",
+                title: "Provider signals",
+                headline: summary.HasCorrelationSignals
+                    ? summary.ProviderCorrelations.Count.ToString(CultureInfo.InvariantCulture) + " provider alignment signals"
+                    : "No provider alignment signals yet",
+                note: "Correlation is computed from the recent 7-day churn window against provider activity in the same dates.",
+                rows: rows));
+    }
+
+    private static string BuildCodeUsageCorrelationHeadline(GitCodeUsageCorrelationSummaryData summary) {
+        var activityDelta = summary.ActivityDeltaRatio;
+        var churnDelta = summary.ChurnDeltaRatio;
+        var activityMoving = Math.Abs(activityDelta) >= 0.10d;
+        var churnMoving = Math.Abs(churnDelta) >= 0.10d;
+        if (!activityMoving && !churnMoving) {
+            return "Usage and churn held steady across the recent 7-day pulse.";
+        }
+
+        if (activityDelta >= 0d && churnDelta >= 0d) {
+            return "Usage and churn rose together across the recent 7-day pulse.";
+        }
+
+        if (activityDelta <= 0d && churnDelta <= 0d) {
+            return "Usage and churn cooled together across the recent 7-day pulse.";
+        }
+
+        return churnDelta > activityDelta
+            ? "Churn rose while usage cooled across the recent 7-day pulse."
+            : "Usage rose while churn cooled across the recent 7-day pulse.";
+    }
+
+    private static string BuildGitHubLocalAlignmentHeadline(GitHubLocalActivityCorrelationSummaryData summary) {
+        var strongestPositive = summary.StrongestPositiveCorrelation;
+        var strongestNegative = summary.StrongestNegativeCorrelation;
+        if (strongestPositive is not null && strongestNegative is not null) {
+            return "Strongest local sync: "
+                   + BuildShortRepositoryLabel(strongestPositive.RepositoryNameWithOwner)
+                   + " "
+                   + FormatCorrelation(strongestPositive.Correlation)
+                   + " • divergence: "
+                   + BuildShortRepositoryLabel(strongestNegative.RepositoryNameWithOwner)
+                   + " "
+                   + FormatCorrelation(strongestNegative.Correlation);
+        }
+
+        if (strongestPositive is not null) {
+            return "Strongest local sync: "
+                   + BuildShortRepositoryLabel(strongestPositive.RepositoryNameWithOwner)
+                   + " "
+                   + FormatCorrelation(strongestPositive.Correlation);
+        }
+
+        if (strongestNegative is not null) {
+            return "Strongest local divergence: "
+                   + BuildShortRepositoryLabel(strongestNegative.RepositoryNameWithOwner)
+                   + " "
+                   + FormatCorrelation(strongestNegative.Correlation);
+        }
+
+        return "Watched repo sync appears once GitHub momentum overlaps with the same local pulse window.";
+    }
+
+    private static string BuildGitHubLocalAlignmentNote(GitHubLocalActivityCorrelationSummaryData summary) {
+        return "7d local pulse "
+               + FormatCompact((double)summary.RecentChurnVolume)
+               + " changed lines • "
+               + FormatCompact(summary.RecentUsageTotal)
+               + " recent usage units"
+               + (summary.RepositoryName is { Length: > 0 } repositoryName
+                   ? " • repo " + repositoryName
+                   : string.Empty);
+    }
+
+    private static string BuildGitHubRepoClusterHeadline(GitHubRepositoryClusterSummaryData summary) {
+        if (!summary.HasSignals || summary.StrongestCluster is null) {
+            return "Related repo clusters appear once watched repos share more than one supporting signal.";
+        }
+
+        return BuildShortRepositoryLabel(summary.StrongestCluster.RepositoryANameWithOwner)
+               + " ↔ "
+               + BuildShortRepositoryLabel(summary.StrongestCluster.RepositoryBNameWithOwner)
+               + " leads at score "
+               + summary.StrongestCluster.CompositeScore.ToString("0.00", CultureInfo.InvariantCulture);
+    }
+
+    private static string BuildGitHubRepoClusterNote(GitHubRepositoryClusterSummaryData summary) {
+        if (!summary.HasSignals) {
+            return "Clusters appear after watched repos overlap on star sync, shared stargazers, shared forkers, or the same local pulse.";
+        }
+
+        var strongest = summary.StrongestCluster!;
+        var parts = new List<string> {
+            strongest.SupportingSignalCount.ToString(CultureInfo.InvariantCulture) + " aligned signals"
+        };
+        if (strongest.SharedStargazerCount > 0) {
+            parts.Add(strongest.SharedStargazerCount.ToString(CultureInfo.InvariantCulture) + " shared stargazers");
+        }
+        if (strongest.SharedForkOwnerCount > 0) {
+            parts.Add(strongest.SharedForkOwnerCount.ToString(CultureInfo.InvariantCulture) + " shared forkers");
+        }
+        if (strongest.LocallyAlignedRepositoryCount == 2) {
+            parts.Add("both local " + FormatCorrelationValue(strongest.LocalAlignmentAverageCorrelation));
+        }
+
+        return string.Join(" • ", parts);
+    }
+
+    private static GitCodeUsageProviderSeriesData[] BuildProviderDailySeries(UsageTelemetryOverviewDocument overview) {
+        return overview.ProviderSections
+            .Where(static section => section.Heatmap.Sections.Any(static heatmapSection => heatmapSection.Days.Count > 0))
+            .Select(section => new GitCodeUsageProviderSeriesData(
+                section.ProviderId,
+                section.Title,
+                section.Heatmap.Sections
+                    .SelectMany(static heatmapSection => heatmapSection.Days)
+                    .GroupBy(static day => day.Date.Date)
+                    .Select(static group => new GitCodeUsageDailyValueData(
+                        group.Key,
+                        group.Sum(static day => day.Value),
+                        0))
+                    .ToArray()))
+            .ToArray();
     }
 
     private static string FormatRange(DateTime? startDayUtc, DateTime? endDayUtc) {
@@ -371,6 +1300,22 @@ internal static class UsageTelemetryReportPageModelBuilders {
         }
 
         return value.ToString("0", CultureInfo.InvariantCulture);
+    }
+
+    private static string BuildShortRepositoryLabel(string repositoryNameWithOwner) {
+        if (string.IsNullOrWhiteSpace(repositoryNameWithOwner)) {
+            return "Repository";
+        }
+
+        var normalized = repositoryNameWithOwner.Trim();
+        var separatorIndex = normalized.LastIndexOf('/');
+        return separatorIndex >= 0 && separatorIndex < normalized.Length - 1
+            ? normalized.Substring(separatorIndex + 1)
+            : normalized;
+    }
+
+    private static string FormatCorrelation(double value) {
+        return value.ToString("+0.00;-0.00;0.00", CultureInfo.InvariantCulture);
     }
 
     private static string FindSpotlightCardValue(

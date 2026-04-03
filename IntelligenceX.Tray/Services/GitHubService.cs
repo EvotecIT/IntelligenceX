@@ -148,7 +148,19 @@ public sealed class GitHubService {
                 node.TryGetProperty("forks_count", out var f) ? f.GetInt32() : 0,
                 node.TryGetProperty("description", out var d) && d.ValueKind == JsonValueKind.String ? d.GetString() : null,
                 lang,
-                langColor));
+                langColor,
+                node.TryGetProperty("watchers_count", out var w) ? w.GetInt32() : 0,
+                node.TryGetProperty("open_issues_count", out var issues) ? issues.GetInt32() : 0,
+                node.TryGetProperty("pushed_at", out var pushedAt) && pushedAt.ValueKind == JsonValueKind.String
+                    && DateTimeOffset.TryParse(
+                        pushedAt.GetString(),
+                        System.Globalization.CultureInfo.InvariantCulture,
+                        System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal,
+                        out var parsedPushedAt)
+                    ? parsedPushedAt
+                    : null,
+                node.TryGetProperty("archived", out var archived) && archived.ValueKind is JsonValueKind.True or JsonValueKind.False && archived.GetBoolean(),
+                node.TryGetProperty("fork", out var repoFork) && repoFork.ValueKind is JsonValueKind.True or JsonValueKind.False && repoFork.GetBoolean()));
         }
 
         return repos;

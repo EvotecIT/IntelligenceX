@@ -4,6 +4,8 @@ using System.IO;
 using IntelligenceX.Presentation;
 using H.NotifyIcon;
 using H.NotifyIcon.Core;
+using IntelligenceX.Telemetry.Git;
+using IntelligenceX.Telemetry.GitHub;
 using IntelligenceX.Telemetry.Limits;
 using IntelligenceX.Telemetry.Usage;
 using IntelligenceX.Tray.Services;
@@ -23,6 +25,7 @@ public partial class App : Application {
     private readonly List<(System.Windows.Controls.MenuItem Item, int Seconds)> _refreshIntervalItems = [];
     private readonly List<(System.Windows.Controls.MenuItem Item, string Mode)> _themeModeItems = [];
     private readonly List<(System.Windows.Controls.MenuItem Item, string Preset)> _accentPresetItems = [];
+    private System.Windows.Controls.MenuItem? _gitHubWatchAutoSyncItem;
     private System.Windows.Controls.MenuItem? _notificationsItem;
     private System.Windows.Controls.MenuItem? _startWithWindowsItem;
     private System.Windows.Controls.MenuItem? _closeHidesToTrayItem;
@@ -40,9 +43,20 @@ public partial class App : Application {
             var usageService = new UsageTelemetrySnapshotService(_usageArtifactStore);
             var limitService = new ProviderLimitSnapshotService();
             var gitHubService = new GitHubService();
+            var gitCodeChurnSummaryService = new GitCodeChurnSummaryService();
+            var gitHubObservabilitySummaryService = new GitHubObservabilitySummaryService();
+            var gitHubWatchAutoSyncService = new GitHubRepositoryWatchAutoSyncService();
             var preferencesStore = new TrayPreferencesStore();
             var usageSnapshotStore = new TrayUsageSnapshotStore();
-            _viewModel = new MainViewModel(usageService, limitService, gitHubService, preferencesStore, usageSnapshotStore);
+            _viewModel = new MainViewModel(
+                usageService,
+                limitService,
+                gitHubService,
+                gitCodeChurnSummaryService,
+                gitHubObservabilitySummaryService,
+                gitHubWatchAutoSyncService,
+                preferencesStore,
+                usageSnapshotStore);
             _viewModel.NotificationRequested += OnNotificationRequested;
             _viewModel.ThemeModeChanged += OnThemeModeChanged;
             _viewModel.AccentPresetChanged += OnAccentPresetChanged;
@@ -200,6 +214,18 @@ public partial class App : Application {
             if (_viewModel is not null) await _viewModel.OpenOpenAiCacheAsync();
         };
 
+        _gitHubWatchAutoSyncItem = new System.Windows.Controls.MenuItem {
+            Header = "Auto Sync Watched Repos",
+            IsCheckable = true,
+            ToolTip = "Refresh watched GitHub repo snapshots and stargazer audiences in the background when they become stale."
+        };
+        if (itemStyle is not null) _gitHubWatchAutoSyncItem.Style = itemStyle;
+        _gitHubWatchAutoSyncItem.Click += (_, _) => {
+            if (_viewModel is not null && _gitHubWatchAutoSyncItem is not null) {
+                _viewModel.SetGitHubWatchAutoSyncEnabled(_gitHubWatchAutoSyncItem.IsChecked);
+            }
+        };
+
         _notificationsItem = new System.Windows.Controls.MenuItem {
             Header = "Limit Notifications",
             IsCheckable = true
@@ -253,6 +279,7 @@ public partial class App : Application {
         menu.Items.Add(themeItem);
         menu.Items.Add(accentItem);
         menu.Items.Add(autoRefreshItem);
+        menu.Items.Add(_gitHubWatchAutoSyncItem);
         menu.Items.Add(cacheItem);
         menu.Items.Add(_notificationsItem);
         menu.Items.Add(_startWithWindowsItem);
@@ -317,6 +344,10 @@ public partial class App : Application {
 
         if (_notificationsItem is not null) {
             _notificationsItem.IsChecked = _viewModel.NotificationsEnabled;
+        }
+
+        if (_gitHubWatchAutoSyncItem is not null) {
+            _gitHubWatchAutoSyncItem.IsChecked = _viewModel.GitHubWatchAutoSyncEnabled;
         }
 
         if (_closeHidesToTrayItem is not null) {

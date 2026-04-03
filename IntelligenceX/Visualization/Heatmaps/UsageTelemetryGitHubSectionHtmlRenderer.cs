@@ -15,10 +15,18 @@ internal static class UsageTelemetryGitHubSectionHtmlRenderer {
 
         var yearComparison = model.YearComparison;
         var scopeSplit = model.ScopeSplit;
+        var watchedRepositories = model.WatchedRepositories;
+        var watchedCorrelations = model.WatchedCorrelations;
+        var watchedStarCorrelations = model.WatchedStarCorrelations;
+        var watchedRepoClusters = model.WatchedRepoClusters;
+        var watchedStargazerAudience = model.WatchedStargazerAudience;
+        var watchedForkNetwork = model.WatchedForkNetwork;
+        var watchedForkMomentum = model.WatchedForkMomentum;
+        var watchedLocalAlignment = model.WatchedLocalAlignment;
         var recentRepositories = model.RecentRepositories;
         var ownerImpact = model.OwnerImpact;
         var ownerSections = model.OwnerSections;
-        if (yearComparison is null && scopeSplit is null && recentRepositories is null && ownerImpact is null) {
+        if (yearComparison is null && scopeSplit is null && watchedRepositories is null && watchedCorrelations is null && watchedStarCorrelations is null && watchedRepoClusters is null && watchedStargazerAudience is null && watchedForkNetwork is null && watchedForkMomentum is null && watchedLocalAlignment is null && recentRepositories is null && ownerImpact is null) {
             return;
         }
 
@@ -31,6 +39,30 @@ internal static class UsageTelemetryGitHubSectionHtmlRenderer {
         }
         if (recentRepositories is not null) {
             AppendRecentRepositoriesCard(sb, recentRepositories);
+        }
+        if (watchedRepositories is not null) {
+            AppendFeatureCard(sb, watchedRepositories);
+        }
+        if (watchedCorrelations is not null) {
+            AppendFeatureCard(sb, watchedCorrelations);
+        }
+        if (watchedStarCorrelations is not null) {
+            AppendFeatureCard(sb, watchedStarCorrelations);
+        }
+        if (watchedRepoClusters is not null) {
+            AppendFeatureCard(sb, watchedRepoClusters);
+        }
+        if (watchedStargazerAudience is not null) {
+            AppendFeatureCard(sb, watchedStargazerAudience);
+        }
+        if (watchedForkNetwork is not null) {
+            AppendFeatureCard(sb, watchedForkNetwork);
+        }
+        if (watchedForkMomentum is not null) {
+            AppendFeatureCard(sb, watchedForkMomentum);
+        }
+        if (watchedLocalAlignment is not null) {
+            AppendFeatureCard(sb, watchedLocalAlignment);
         }
         sb.AppendLine("            </div>");
         if (ownerSections.Count > 0) {
@@ -54,6 +86,14 @@ internal static class UsageTelemetryGitHubSectionHtmlRenderer {
         var topRepositories = model.TopRepositories;
         var topRepositoriesByForks = model.TopRepositoriesByForks;
         var topRepositoriesByHealth = model.TopRepositoriesByHealth;
+        var watchedRepositories = model.WatchedRepositories;
+        var watchedCorrelations = model.WatchedCorrelations;
+        var watchedStarCorrelations = model.WatchedStarCorrelations;
+        var watchedRepoClusters = model.WatchedRepoClusters;
+        var watchedStargazerAudience = model.WatchedStargazerAudience;
+        var watchedForkNetwork = model.WatchedForkNetwork;
+        var watchedForkMomentum = model.WatchedForkMomentum;
+        var watchedLocalAlignment = model.WatchedLocalAlignment;
         var recentRepositories = model.RecentRepositories;
         var topLanguages = model.TopLanguages;
         var ownerImpact = model.OwnerImpact;
@@ -130,6 +170,30 @@ internal static class UsageTelemetryGitHubSectionHtmlRenderer {
         if (recentRepositories is not null) {
             AppendRecentRepositoriesCard(sb, recentRepositories);
         }
+        if (watchedRepositories is not null) {
+            AppendFeatureCard(sb, watchedRepositories);
+        }
+        if (watchedCorrelations is not null) {
+            AppendFeatureCard(sb, watchedCorrelations);
+        }
+        if (watchedStarCorrelations is not null) {
+            AppendFeatureCard(sb, watchedStarCorrelations);
+        }
+        if (watchedRepoClusters is not null) {
+            AppendFeatureCard(sb, watchedRepoClusters);
+        }
+        if (watchedStargazerAudience is not null) {
+            AppendFeatureCard(sb, watchedStargazerAudience);
+        }
+        if (watchedForkNetwork is not null) {
+            AppendFeatureCard(sb, watchedForkNetwork);
+        }
+        if (watchedForkMomentum is not null) {
+            AppendFeatureCard(sb, watchedForkMomentum);
+        }
+        if (watchedLocalAlignment is not null) {
+            AppendFeatureCard(sb, watchedLocalAlignment);
+        }
         if (scopeSplit is not null) {
             AppendScopeCard(sb, scopeSplit);
         }
@@ -138,6 +202,38 @@ internal static class UsageTelemetryGitHubSectionHtmlRenderer {
         }
         sb.AppendLine("              </div>");
         sb.AppendLine("            </div>");
+
+        if (watchedRepositories is not null) {
+            sb.AppendLine("            <div class=\"github-lens-panel\" data-github-lens-content=\"watched\">");
+            sb.AppendLine("              <div class=\"provider-insights tight\">");
+            AppendInsightSection(sb, watchedRepositories);
+            if (watchedCorrelations is not null) {
+                AppendInsightSection(sb, watchedCorrelations);
+            }
+            if (watchedStarCorrelations is not null) {
+                AppendInsightSection(sb, watchedStarCorrelations);
+            }
+            if (watchedRepoClusters is not null) {
+                AppendInsightSection(sb, watchedRepoClusters);
+            }
+            if (watchedStargazerAudience is not null) {
+                AppendInsightSection(sb, watchedStargazerAudience);
+            }
+            if (watchedForkNetwork is not null) {
+                AppendInsightSection(sb, watchedForkNetwork);
+            }
+            if (watchedForkMomentum is not null) {
+                AppendInsightSection(sb, watchedForkMomentum);
+            }
+            if (watchedLocalAlignment is not null) {
+                AppendInsightSection(sb, watchedLocalAlignment);
+            }
+            if (recentRepositories is not null) {
+                AppendRecentRepositoriesCard(sb, recentRepositories);
+            }
+            sb.AppendLine("              </div>");
+            sb.AppendLine("            </div>");
+        }
 
         if (ownerSections.Count > 0) {
             sb.AppendLine("            <div class=\"github-lens-panel\" data-github-lens-content=\"owners\">");

@@ -1,6 +1,7 @@
 using System;
 using System.Text;
 using IntelligenceX.Json;
+using IntelligenceX.Telemetry.GitHub;
 using IntelligenceX.Telemetry.Usage;
 using static IntelligenceX.Visualization.Heatmaps.UsageTelemetryGitHubWrappedHtmlFragments;
 
@@ -13,12 +14,20 @@ internal static class GitHubWrappedCardHtmlRenderer {
         UsageTelemetryOverviewProviderSection section,
         UsageSummarySnapshot? summary = null,
         JsonObject? metadata = null,
-        int providerSectionsCount = 0) {
+        int providerSectionsCount = 0,
+        GitHubObservabilitySummaryData? gitHubObservabilitySummary = null,
+        GitHubLocalActivityCorrelationSummaryData? gitHubLocalAlignmentSummary = null) {
         if (section is null) {
             throw new ArgumentNullException(nameof(section));
         }
 
-        var page = UsageTelemetryReportPageModelBuilders.BuildGitHubWrappedCard(section, summary, metadata, providerSectionsCount);
+        var page = UsageTelemetryReportPageModelBuilders.BuildGitHubWrappedCard(
+            section,
+            summary,
+            metadata,
+            providerSectionsCount,
+            gitHubObservabilitySummary,
+            gitHubLocalAlignmentSummary);
 
         var sb = new StringBuilder(16 * 1024);
         sb.AppendLine("  <article class=\"card wrapped-panel\">");

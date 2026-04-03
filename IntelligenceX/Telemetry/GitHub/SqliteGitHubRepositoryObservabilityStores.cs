@@ -739,6 +739,182 @@ ORDER BY parent_repository_name_with_owner, captured_at_utc, fork_repository_nam
     }
 }
 
+/// <summary>
+/// SQLite-backed store for persisted stargazer observations.
+/// </summary>
+public sealed class SqliteGitHubRepositoryStargazerSnapshotStore : IGitHubRepositoryStargazerSnapshotStore, IDisposable {
+    private readonly object _gate = new();
+    private readonly SQLite _db = new();
+    private readonly string _dbPath;
+
+    /// <summary>
+    /// Initializes a new SQLite-backed stargazer snapshot store.
+    /// </summary>
+    public SqliteGitHubRepositoryStargazerSnapshotStore(string dbPath) {
+        if (string.IsNullOrWhiteSpace(dbPath)) {
+            throw new ArgumentException("Database path cannot be empty.", nameof(dbPath));
+        }
+
+        _dbPath = Path.GetFullPath(dbPath.Trim());
+        SqliteGitHubObservabilitySchema.EnsureSchema(_db, _dbPath);
+    }
+
+    /// <inheritdoc />
+    public void Upsert(GitHubRepositoryStargazerSnapshotRecord snapshot) {
+        if (snapshot is null) {
+            throw new ArgumentNullException(nameof(snapshot));
+        }
+
+        lock (_gate) {
+            _db.ExecuteNonQuery(
+                _dbPath,
+                @"
+INSERT INTO ix_github_repository_stargazer_snapshots (
+  id,
+  repository_name_with_owner,
+  stargazer_login,
+  captured_at_utc,
+  starred_at_utc,
+  profile_url,
+  avatar_url
+)
+VALUES (
+  @id,
+  @repository_name_with_owner,
+  @stargazer_login,
+  @captured_at_utc,
+  @starred_at_utc,
+  @profile_url,
+  @avatar_url
+)
+ON CONFLICT(id) DO UPDATE SET
+  repository_name_with_owner = excluded.repository_name_with_owner,
+  stargazer_login = excluded.stargazer_login,
+  captured_at_utc = excluded.captured_at_utc,
+  starred_at_utc = excluded.starred_at_utc,
+  profile_url = excluded.profile_url,
+  avatar_url = excluded.avatar_url;",
+                parameters: new Dictionary<string, object?> {
+                    ["@id"] = snapshot.Id,
+                    ["@repository_name_with_owner"] = snapshot.RepositoryNameWithOwner,
+                    ["@stargazer_login"] = snapshot.StargazerLogin,
+                    ["@captured_at_utc"] = snapshot.CapturedAtUtc.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture),
+                    ["@starred_at_utc"] = snapshot.StarredAtUtc?.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture),
+                    ["@profile_url"] = SqliteGitHubObservabilitySchema.Normalize(snapshot.ProfileUrl),
+                    ["@avatar_url"] = SqliteGitHubObservabilitySchema.Normalize(snapshot.AvatarUrl)
+                });
+        }
+    }
+
+    /// <inheritdoc />
+    public IReadOnlyList<GitHubRepositoryStargazerSnapshotRecord> GetByRepository(string repositoryNameWithOwner) {
+        var normalized = GitHubRepositoryIdentity.NormalizeNameWithOwner(repositoryNameWithOwner);
+        lock (_gate) {
+            var table = SqliteGitHubObservabilitySchema.QueryAsTable(_db.Query(
+                _dbPath,
+                @"
+SELECT
+  id,
+  repository_name_with_owner,
+  stargazer_login,
+  captured_at_utc,
+  starred_at_utc,
+  profile_url,
+  avatar_url
+FROM ix_github_repository_stargazer_snapshots
+WHERE repository_name_with_owner = @repository_name_with_owner
+ORDER BY captured_at_utc, stargazer_login, id;",
+                parameters: new Dictionary<string, object?> {
+                    ["@repository_name_with_owner"] = normalized
+                }));
+
+            return ReadStargazerSnapshots(table);
+        }
+    }
+
+    /// <inheritdoc />
+    public IReadOnlyList<GitHubRepositoryStargazerSnapshotRecord> GetByStargazer(string stargazerLogin) {
+        var normalized = stargazerLogin?.Trim();
+        if (string.IsNullOrWhiteSpace(normalized)) {
+            return Array.Empty<GitHubRepositoryStargazerSnapshotRecord>();
+        }
+
+        lock (_gate) {
+            var table = SqliteGitHubObservabilitySchema.QueryAsTable(_db.Query(
+                _dbPath,
+                @"
+SELECT
+  id,
+  repository_name_with_owner,
+  stargazer_login,
+  captured_at_utc,
+  starred_at_utc,
+  profile_url,
+  avatar_url
+FROM ix_github_repository_stargazer_snapshots
+WHERE stargazer_login = @stargazer_login
+ORDER BY captured_at_utc, repository_name_with_owner, id;",
+                parameters: new Dictionary<string, object?> {
+                    ["@stargazer_login"] = normalized
+                }));
+
+            return ReadStargazerSnapshots(table);
+        }
+    }
+
+    /// <inheritdoc />
+    public IReadOnlyList<GitHubRepositoryStargazerSnapshotRecord> GetAll() {
+        lock (_gate) {
+            var table = SqliteGitHubObservabilitySchema.QueryAsTable(_db.Query(
+                _dbPath,
+                @"
+SELECT
+  id,
+  repository_name_with_owner,
+  stargazer_login,
+  captured_at_utc,
+  starred_at_utc,
+  profile_url,
+  avatar_url
+FROM ix_github_repository_stargazer_snapshots
+ORDER BY repository_name_with_owner, captured_at_utc, stargazer_login, id;"));
+
+            return ReadStargazerSnapshots(table);
+        }
+    }
+
+    /// <inheritdoc />
+    public void Dispose() {
+        _db.Dispose();
+    }
+
+    private static IReadOnlyList<GitHubRepositoryStargazerSnapshotRecord> ReadStargazerSnapshots(DataTable? table) {
+        if (table is null || table.Rows.Count == 0) {
+            return Array.Empty<GitHubRepositoryStargazerSnapshotRecord>();
+        }
+
+        var snapshots = new List<GitHubRepositoryStargazerSnapshotRecord>(table.Rows.Count);
+        foreach (DataRow row in table.Rows) {
+            snapshots.Add(ReadStargazerSnapshot(row));
+        }
+
+        return snapshots;
+    }
+
+    private static GitHubRepositoryStargazerSnapshotRecord ReadStargazerSnapshot(DataRow row) {
+        var snapshot = new GitHubRepositoryStargazerSnapshotRecord(
+            row["id"]?.ToString() ?? string.Empty,
+            row["repository_name_with_owner"]?.ToString() ?? string.Empty,
+            row["stargazer_login"]?.ToString() ?? string.Empty,
+            SqliteGitHubObservabilitySchema.ReadDateTimeOffset(row, "captured_at_utc")) {
+            StarredAtUtc = SqliteGitHubObservabilitySchema.ReadNullableDateTimeOffset(row, "starred_at_utc"),
+            ProfileUrl = SqliteGitHubObservabilitySchema.ReadOptionalString(row, "profile_url"),
+            AvatarUrl = SqliteGitHubObservabilitySchema.ReadOptionalString(row, "avatar_url")
+        };
+        return snapshot;
+    }
+}
+
 internal static class SqliteGitHubObservabilitySchema {
     public static void EnsureSchema(SQLite db, string dbPath) {
         if (db is null) {
@@ -805,6 +981,16 @@ CREATE TABLE IF NOT EXISTS ix_github_repository_fork_snapshots (
   reasons_summary TEXT NULL
 );
 
+CREATE TABLE IF NOT EXISTS ix_github_repository_stargazer_snapshots (
+  id TEXT PRIMARY KEY,
+  repository_name_with_owner TEXT NOT NULL,
+  stargazer_login TEXT NOT NULL,
+  captured_at_utc TEXT NOT NULL,
+  starred_at_utc TEXT NULL,
+  profile_url TEXT NULL,
+  avatar_url TEXT NULL
+);
+
 CREATE INDEX IF NOT EXISTS ix_github_repository_watches_repo
   ON ix_github_repository_watches(repository_name_with_owner);
 
@@ -821,6 +1007,14 @@ CREATE INDEX IF NOT EXISTS ix_github_repository_fork_snapshots_parent_time
 
 CREATE INDEX IF NOT EXISTS ix_github_repository_fork_snapshots_fork_time
   ON ix_github_repository_fork_snapshots(fork_repository_name_with_owner, captured_at_utc);");
+        db.ExecuteNonQuery(
+            fullPath,
+            @"
+CREATE INDEX IF NOT EXISTS ix_github_repository_stargazer_snapshots_repo_time
+  ON ix_github_repository_stargazer_snapshots(repository_name_with_owner, captured_at_utc);
+
+CREATE INDEX IF NOT EXISTS ix_github_repository_stargazer_snapshots_login_time
+  ON ix_github_repository_stargazer_snapshots(stargazer_login, captured_at_utc);");
     }
 
     public static string? Normalize(string? value) {

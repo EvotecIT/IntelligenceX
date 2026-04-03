@@ -156,6 +156,16 @@ public partial class TrayPopupWindow : Window {
         }
     }
 
+    private void OnGitHubRepoSortClick(object sender, RoutedEventArgs e) {
+        if (sender is not FrameworkElement { Tag: string rawSort, DataContext: GitHubViewModel gitHub }) {
+            return;
+        }
+
+        if (Enum.TryParse<GitHubRepoSortMode>(rawSort, ignoreCase: true, out var sort)) {
+            gitHub.SetRepoSort(sort);
+        }
+    }
+
     private void OnWindowSizeChanged(object sender, SizeChangedEventArgs e) {
         UpdateClipGeometry();
     }

@@ -39,12 +39,36 @@ internal static partial class Program {
             TestGitHubRepositoryWatchStoreLooksUpCanonicalRepository);
         failed += Run("GitHub repository snapshot analytics builds daily deltas using latest snapshot per day",
             TestGitHubRepositorySnapshotAnalyticsBuildsDailyDeltasUsingLatestSnapshotPerDay);
+        failed += Run("GitHub observability summary builds repo movement correlations",
+            TestGitHubObservabilitySummaryBuildsRepoMovementCorrelations);
+        failed += Run("GitHub observability summary builds star correlations",
+            TestGitHubObservabilitySummaryBuildsStarCorrelations);
+        failed += Run("GitHub observability summary builds shared fork network overlaps",
+            TestGitHubObservabilitySummaryBuildsSharedForkNetworkOverlaps);
+        failed += Run("GitHub observability summary builds shared stargazer audience overlaps",
+            TestGitHubObservabilitySummaryBuildsSharedStargazerAudienceOverlaps);
+        failed += Run("GitHub observability summary tracks stargazer coverage status",
+            TestGitHubObservabilitySummaryTracksStargazerCoverageStatus);
+        failed += Run("GitHub observability summary tracks fork coverage status",
+            TestGitHubObservabilitySummaryTracksForkCoverageStatus);
+        failed += Run("GitHub watch auto sync service syncs stale snapshots and stargazers",
+            TestGitHubRepositoryWatchAutoSyncServiceSyncsStaleSnapshotsAndStargazers);
+        failed += Run("GitHub watch auto sync service skips fresh repositories",
+            TestGitHubRepositoryWatchAutoSyncServiceSkipsFreshRepositories);
+        failed += Run("GitHub local activity correlation summary builds repo signals",
+            TestGitHubLocalActivityCorrelationSummaryBuildsRepoSignals);
+        failed += Run("GitHub repository cluster summary builds related repo signals",
+            TestGitHubRepositoryClusterSummaryBuildsRelatedRepoSignals);
+        failed += Run("Git code churn summary builds daily windows",
+            TestGitCodeChurnSummaryBuildsDailyWindows);
         failed += Run("GitHub repository sqlite stores persist across reopen",
             TestGitHubRepositorySqliteStoresPersistAcrossReopen);
         failed += Run("GitHub repository fork history analytics builds new and rising statuses",
             TestGitHubRepositoryForkHistoryAnalyticsBuildsNewAndRisingStatuses);
         failed += Run("GitHub repository fork sqlite store persists across reopen",
             TestGitHubRepositoryForkSqliteStorePersistsAcrossReopen);
+        failed += Run("GitHub repository stargazer sqlite store persists across reopen",
+            TestGitHubRepositoryStargazerSqliteStorePersistsAcrossReopen);
         failed += Run("Usage account binding resolver matches source root and raw label",
             TestUsageAccountBindingResolverMatchesSourceRootAndRawLabel);
         failed += Run("Usage telemetry import coordinator reimport applies account binding overrides",
@@ -151,10 +175,34 @@ internal static partial class Program {
             TestProviderLimitForecastingHandlesClaudeWindowDurations);
         failed += Run("Usage overview page model builder builds GitHub render model",
             TestUsageTelemetryOverviewPageModelBuilderBuildsGitHubRenderModel);
+        failed += Run("Usage overview page model builder adds watched momentum when provided",
+            TestUsageTelemetryOverviewPageModelBuilderAddsWatchedMomentumWhenProvided);
+        failed += Run("Usage overview page model builder adds code churn when provided",
+            TestUsageTelemetryOverviewPageModelBuilderAddsCodeChurnWhenProvided);
+        failed += Run("Usage overview page model builder adds GitHub fork network when provided",
+            TestUsageTelemetryOverviewPageModelBuilderAddsGitHubForkNetworkWhenProvided);
+        failed += Run("Usage overview page model builder adds GitHub star correlation when provided",
+            TestUsageTelemetryOverviewPageModelBuilderAddsGitHubStarCorrelationWhenProvided);
+        failed += Run("Usage overview page model builder adds GitHub repo cluster when provided",
+            TestUsageTelemetryOverviewPageModelBuilderAddsGitHubRepoClusterWhenProvided);
+        failed += Run("Usage overview page model builder adds GitHub stargazer audience when provided",
+            TestUsageTelemetryOverviewPageModelBuilderAddsGitHubStargazerAudienceWhenProvided);
+        failed += Run("Usage overview page model builder adds GitHub stargazer coverage without overlap",
+            TestUsageTelemetryOverviewPageModelBuilderAddsGitHubStargazerCoverageWithoutOverlap);
+        failed += Run("Usage overview page model builder adds GitHub fork coverage without overlap",
+            TestUsageTelemetryOverviewPageModelBuilderAddsGitHubForkCoverageWithoutOverlap);
+        failed += Run("Usage overview page model builder adds GitHub local alignment when provided",
+            TestUsageTelemetryOverviewPageModelBuilderAddsGitHubLocalAlignmentWhenProvided);
+        failed += Run("Usage overview page model builder adds top-level GitHub local alignment when provided",
+            TestUsageTelemetryOverviewPageModelBuilderAddsTopLevelGitHubLocalAlignmentWhenProvided);
+        failed += Run("Usage overview page model builder adds churn usage correlation when provided",
+            TestUsageTelemetryOverviewPageModelBuilderAddsChurnUsageCorrelationWhenProvided);
         failed += Run("Usage GitHub wrapped page model builder builds owner panels",
             TestUsageTelemetryGitHubWrappedPageModelBuilderBuildsOwnerPanels);
         failed += Run("Usage GitHub wrapped card page model builder builds metrics",
             TestUsageTelemetryGitHubWrappedCardPageModelBuilderBuildsMetrics);
+        failed += Run("Usage GitHub wrapped card page model builder adds watched momentum when provided",
+            TestUsageTelemetryGitHubWrappedCardPageModelBuilderAddsWatchedMomentumWhenProvided);
         failed += Run("Usage report bundle writer publishes shared assets",
             TestUsageTelemetryReportBundleWriterPublishesSharedAssets);
         failed += Run("IntelligenceX client emits turn completed telemetry",
@@ -266,8 +314,10 @@ internal static partial class Program {
         failed += Run("Telemetry GitHub watches add and list json", TestTelemetryGitHubWatchesAddAndListJson);
         failed += Run("Telemetry GitHub watches sync and snapshots list json", TestTelemetryGitHubWatchesSyncAndSnapshotsListJson);
         failed += Run("Telemetry GitHub watches sync can record forks json", TestTelemetryGitHubWatchesSyncCanRecordForksJson);
+        failed += Run("Telemetry GitHub watches sync can record stargazers json", TestTelemetryGitHubWatchesSyncCanRecordStargazersJson);
         failed += Run("Telemetry GitHub forks discover json", TestTelemetryGitHubForksDiscoverJson);
         failed += Run("Telemetry GitHub forks record and history json", TestTelemetryGitHubForksRecordAndHistoryJson);
+        failed += Run("Telemetry GitHub stargazers capture and list json", TestTelemetryGitHubStargazersCaptureAndListJson);
         failed += Run("Telemetry GitHub dashboard json", TestTelemetryGitHubDashboardJson);
         failed += Run("Telemetry usage accounts bind and list json", TestTelemetryUsageAccountsBindAndListJson);
         failed += Run("Telemetry usage roots add and list json", TestTelemetryUsageRootsAddAndListJson);
