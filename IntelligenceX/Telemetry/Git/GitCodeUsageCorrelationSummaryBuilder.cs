@@ -29,7 +29,7 @@ internal static class GitCodeUsageCorrelationSummaryBuilder {
             .Select(group => new GitCodeUsageProviderSeriesData(
                 group.Key,
                 providerDisplayNameSelector?.Invoke(group.Key) ?? group.Key,
-                group.GroupBy(static usageEvent => usageEvent.TimestampUtc.ToLocalTime().Date)
+                group.GroupBy(static usageEvent => NormalizeUtcDay(usageEvent.TimestampUtc.UtcDateTime))
                     .Select(static dayGroup => new GitCodeUsageDailyValueData(
                         dayGroup.Key,
                         dayGroup.Sum(static usageEvent => usageEvent.TotalTokens ?? 0L),
@@ -56,19 +56,19 @@ internal static class GitCodeUsageCorrelationSummaryBuilder {
             return GitCodeUsageCorrelationSummaryData.Empty;
         }
 
-        var recentEndDay = trendDays[trendDays.Length - 1].DayUtc.Date;
+        var recentEndDay = NormalizeUtcDay(trendDays[trendDays.Length - 1].DayUtc);
         var recentStartDay = recentEndDay.AddDays(-(RecentWindowDays - 1));
         var previousEndDay = recentStartDay.AddDays(-1);
         var previousStartDay = previousEndDay.AddDays(-(RecentWindowDays - 1));
 
         var recentDays = Enumerable.Range(0, RecentWindowDays)
-            .Select(offset => recentStartDay.AddDays(offset))
+            .Select(offset => NormalizeUtcDay(recentStartDay.AddDays(offset)))
             .ToArray();
         var previousDays = Enumerable.Range(0, RecentWindowDays)
-            .Select(offset => previousStartDay.AddDays(offset))
+            .Select(offset => NormalizeUtcDay(previousStartDay.AddDays(offset)))
             .ToArray();
 
-        var churnByDay = trendDays.ToDictionary(static day => day.DayUtc.Date, static day => day);
+        var churnByDay = trendDays.ToDictionary(static day => NormalizeUtcDay(day.DayUtc), static day => day);
         var providerCorrelations = new List<GitCodeUsageProviderCorrelationData>();
         double recentActivityTotal = 0d;
         double previousActivityTotal = 0d;
@@ -84,7 +84,7 @@ internal static class GitCodeUsageCorrelationSummaryBuilder {
 
             var dailyValues = provider.Days
                 .Where(static day => day.Day != default)
-                .GroupBy(static day => day.Day.Date)
+                .GroupBy(static day => NormalizeUtcDay(day.Day))
                 .ToDictionary(
                     static group => group.Key,
                     static group => new GitCodeUsageDailyValueData(
@@ -203,6 +203,10 @@ internal static class GitCodeUsageCorrelationSummaryBuilder {
         return string.IsNullOrWhiteSpace(normalized)
             ? "unknown"
             : normalized!.ToLowerInvariant();
+    }
+
+    private static DateTime NormalizeUtcDay(DateTime day) {
+        return DateTime.SpecifyKind(day.Date, DateTimeKind.Utc);
     }
 }
 

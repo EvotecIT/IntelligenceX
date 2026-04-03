@@ -19,7 +19,6 @@ internal static class UsageTelemetryReportPageModelBuilders {
         }
 
         var providerDailySeries = BuildProviderDailySeries(overview);
-        var providerDailySeriesExcludingGitHub = ExcludeGitHubProviderSeries(providerDailySeries);
         var churnUsageCorrelation = BuildCodeUsageCorrelationSection(
             GitCodeUsageCorrelationSummaryBuilder.BuildFromDailySeries(
                 gitCodeChurnSummary,
@@ -27,7 +26,7 @@ internal static class UsageTelemetryReportPageModelBuilders {
                 overview.Units));
         var gitHubLocalAlignmentSummary = GitHubLocalActivityCorrelationSummaryBuilder.BuildFromDailySeries(
             gitCodeChurnSummary,
-            providerDailySeriesExcludingGitHub,
+            BuildProviderDailySeries(overview, excludeGitHub: true),
             gitHubObservabilitySummary);
         var gitHubLocalAlignment = BuildGitHubWatchedLocalAlignmentInsight(gitHubLocalAlignmentSummary);
         var gitHubRepoClusterSummary = GitHubRepositoryClusterSummaryBuilder.Build(gitHubObservabilitySummary, gitHubLocalAlignmentSummary);
@@ -1256,8 +1255,11 @@ internal static class UsageTelemetryReportPageModelBuilders {
         return string.Join(" • ", parts);
     }
 
-    private static GitCodeUsageProviderSeriesData[] BuildProviderDailySeries(UsageTelemetryOverviewDocument overview) {
+    private static GitCodeUsageProviderSeriesData[] BuildProviderDailySeries(
+        UsageTelemetryOverviewDocument overview,
+        bool excludeGitHub = false) {
         return overview.ProviderSections
+            .Where(section => !excludeGitHub || !string.Equals(section.ProviderId, "github", StringComparison.OrdinalIgnoreCase))
             .Where(static section => section.Heatmap.Sections.Any(static heatmapSection => heatmapSection.Days.Count > 0))
             .Select(section => new GitCodeUsageProviderSeriesData(
                 section.ProviderId,
@@ -1270,16 +1272,6 @@ internal static class UsageTelemetryReportPageModelBuilders {
                         group.Sum(static day => day.Value),
                         0))
                     .ToArray()))
-            .ToArray();
-    }
-
-    private static GitCodeUsageProviderSeriesData[] ExcludeGitHubProviderSeries(IReadOnlyList<GitCodeUsageProviderSeriesData>? providerDailySeries) {
-        if (providerDailySeries is null || providerDailySeries.Count == 0) {
-            return Array.Empty<GitCodeUsageProviderSeriesData>();
-        }
-
-        return providerDailySeries
-            .Where(static provider => !string.Equals(provider.ProviderId, "github", StringComparison.OrdinalIgnoreCase))
             .ToArray();
     }
 
