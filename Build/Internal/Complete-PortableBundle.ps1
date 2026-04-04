@@ -166,6 +166,19 @@ function New-ZipFromFolder {
     [System.IO.Compression.ZipFile]::CreateFromDirectory($FolderPath, $ZipPath)
 }
 
+function Reset-Directory {
+    param(
+        [Parameter(Mandatory)]
+        [string] $Path
+    )
+
+    if (Test-Path -LiteralPath $Path) {
+        Remove-Item -LiteralPath $Path -Recurse -Force
+    }
+
+    New-Item -ItemType Directory -Path $Path -Force | Out-Null
+}
+
 $script:RepoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 . (Join-Path $script:RepoRoot 'Build\Internal\Build.ScriptSupport.ps1')
 . (Join-Path $script:RepoRoot 'Build\Internal\Resolve-ReleaseDefaults.ps1')
@@ -190,7 +203,7 @@ $pluginScratchRoot = $null
 $preArchivedPlugins = $false
 
 if ($LeanBundle) {
-    Get-ChildItem -LiteralPath $pluginsOut -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+    Reset-Directory -Path $pluginsOut
     $pluginScratchRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("ix-chat-plugins-{0}" -f ([System.Guid]::NewGuid().ToString('N')))
     $pluginExportRoot = Join-Path $pluginScratchRoot 'plugins'
     New-Item -ItemType Directory -Path $pluginExportRoot -Force | Out-Null
