@@ -190,6 +190,7 @@ $pluginScratchRoot = $null
 $preArchivedPlugins = $false
 
 if ($LeanBundle) {
+    Get-ChildItem -LiteralPath $pluginsOut -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
     $pluginScratchRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("ix-chat-plugins-{0}" -f ([System.Guid]::NewGuid().ToString('N')))
     $pluginExportRoot = Join-Path $pluginScratchRoot 'plugins'
     New-Item -ItemType Directory -Path $pluginExportRoot -Force | Out-Null
