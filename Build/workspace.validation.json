@@ -113,6 +113,23 @@
       "FailureContext": "Private tool build failed."
     },
     {
+      "Id": "private-tools-tests-build",
+      "Name": "Build IntelligenceX.Tools.Tests",
+      "Kind": "DotNet",
+      "RequiredFeatures": [
+        "private-tools",
+        "tests"
+      ],
+      "Arguments": [
+        "build",
+        "IntelligenceX.Tools/IntelligenceX.Tools.Tests/IntelligenceX.Tools.Tests.csproj",
+        "-c",
+        "{configuration}"
+      ],
+      "FailureContext": "Private tool-pack test build failed.",
+      "FailureHint": "Run the tool-pack test project build directly if you want compiler output first."
+    },
+    {
       "Id": "private-tools-tests",
       "Name": "Run IntelligenceX.Tools.Tests",
       "Kind": "DotNet",
