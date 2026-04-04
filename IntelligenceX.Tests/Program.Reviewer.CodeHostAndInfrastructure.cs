@@ -63,6 +63,55 @@ internal static partial class Program {
         }
     }
 
+    private static void TestReviewerValidateAuthRejectsExpiredBundleWithRefreshGuidance() {
+        var previousAuthPath = Environment.GetEnvironmentVariable("INTELLIGENCEX_AUTH_PATH");
+        var previousGitHubRepo = Environment.GetEnvironmentVariable("GITHUB_REPOSITORY");
+        var tempDir = Path.Combine(Path.GetTempPath(), "intelligencex-reviewer-auth-expired-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempDir);
+        var authPath = Path.Combine(tempDir, "auth.json");
+        try {
+            var expired = new IntelligenceX.OpenAI.Auth.AuthBundle("openai-codex", "access", "refresh",
+                DateTimeOffset.UtcNow.AddMinutes(-10));
+            var store = new IntelligenceX.OpenAI.Auth.FileAuthBundleStore(authPath);
+            store.SaveAsync(expired).GetAwaiter().GetResult();
+
+            Environment.SetEnvironmentVariable("INTELLIGENCEX_AUTH_PATH", authPath);
+            Environment.SetEnvironmentVariable("GITHUB_REPOSITORY", "owner/repo");
+
+            var settings = new ReviewSettings {
+                Provider = ReviewProvider.OpenAI,
+                OpenAITransport = OpenAITransportKind.Native
+            };
+
+            var originalOut = Console.Out;
+            var originalErr = Console.Error;
+            using var outWriter = new StringWriter();
+            using var errWriter = new StringWriter();
+            Console.SetOut(outWriter);
+            Console.SetError(errWriter);
+            try {
+                var ok = ReviewerApp.ValidateAuthForTestsAsync(settings).GetAwaiter().GetResult();
+                AssertEqual(false, ok, "expired auth validation result");
+            } finally {
+                Console.SetOut(originalOut);
+                Console.SetError(originalErr);
+            }
+
+            var error = errWriter.ToString();
+            AssertContainsText(error, "OpenAI auth bundle expired at", "expired auth message");
+            AssertContainsText(error, "intelligencex auth login --set-github-secret --repo owner/repo",
+                "expired auth remediation command");
+        } finally {
+            Environment.SetEnvironmentVariable("INTELLIGENCEX_AUTH_PATH", previousAuthPath);
+            Environment.SetEnvironmentVariable("GITHUB_REPOSITORY", previousGitHubRepo);
+            try {
+                DeleteDirectoryIfExistsWithRetries(tempDir);
+            } catch {
+                // Best-effort cleanup.
+            }
+        }
+    }
+
     private static void TestReviewCodeHostEnv() {
         var previous = Environment.GetEnvironmentVariable("REVIEW_CODE_HOST");
         try {

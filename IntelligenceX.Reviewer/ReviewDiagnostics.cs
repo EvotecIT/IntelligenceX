@@ -204,7 +204,7 @@ internal static class ReviewDiagnostics {
     }
 
     public static string BuildFailureBody(Exception ex, ReviewSettings settings, ReviewDiagnosticsSnapshot? snapshot,
-        ReviewRetryState? retryState) {
+        ReviewRetryState? retryState, string? remediationRepo = null) {
         var classification = Classify(ex);
         var sb = new StringBuilder();
         sb.AppendLine(FailureMarker);
@@ -229,6 +229,14 @@ internal static class ReviewDiagnostics {
                 lastRpc = $"{lastRpc} (id: {snapshot.LastRpcRequestId.Value})";
             }
             sb.AppendLine($"- Last RPC: {lastRpc}");
+        }
+        if (classification.Category == ReviewErrorCategory.Auth &&
+            settings.OpenAITransport == OpenAITransportKind.Native) {
+            var remediationCommand = BuildAuthRemediationCommand(remediationRepo);
+            sb.AppendLine();
+            sb.AppendLine("> OpenAI native auth is missing, expired, or stale for this reviewer run.");
+            sb.AppendLine("> Reauthenticate locally and refresh `INTELLIGENCEX_AUTH_B64` with:");
+            sb.AppendLine($"> `{remediationCommand}`");
         }
         sb.AppendLine();
         sb.AppendLine("_Re-run the workflow once connectivity is restored. Set `REVIEW_FAIL_OPEN=false` to keep failures blocking._");
@@ -269,6 +277,8 @@ internal static class ReviewDiagnostics {
             Console.Error.WriteLine($"Auth bundle: {authPath} ({(authExists ? "found" : "missing")}).");
             if (!authExists) {
                 Console.Error.WriteLine("Hint: run `intelligencex auth login` or set INTELLIGENCEX_AUTH_JSON/INTELLIGENCEX_AUTH_B64.");
+            } else if (classification.Category == ReviewErrorCategory.Auth) {
+                Console.Error.WriteLine($"Hint: refresh reviewer auth with `{BuildAuthRemediationCommand()}`.");
             }
         }
 
@@ -363,6 +373,32 @@ internal static class ReviewDiagnostics {
         });
 
         return string.Join(Environment.NewLine, lines);
+    }
+
+    internal static string BuildAuthRemediationCommand(string? repo = null) {
+        var resolvedRepo = ResolveAuthRemediationRepo(repo);
+        if (!string.IsNullOrWhiteSpace(resolvedRepo)) {
+            return $"intelligencex auth login --set-github-secret --repo {resolvedRepo}";
+        }
+        return "intelligencex auth login";
+    }
+
+    internal static string? ResolveAuthRemediationRepo(string? explicitRepo = null) {
+        if (!string.IsNullOrWhiteSpace(explicitRepo)) {
+            return explicitRepo.Trim();
+        }
+
+        var repo = Environment.GetEnvironmentVariable("INTELLIGENCEX_GITHUB_REPO");
+        if (!string.IsNullOrWhiteSpace(repo)) {
+            return repo.Trim();
+        }
+
+        repo = Environment.GetEnvironmentVariable("GITHUB_REPOSITORY");
+        if (!string.IsNullOrWhiteSpace(repo)) {
+            return repo.Trim();
+        }
+
+        return null;
     }
 
     internal static bool IsTrustedSummaryAuthor(string? author) {

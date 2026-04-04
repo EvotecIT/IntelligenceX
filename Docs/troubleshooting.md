@@ -23,6 +23,12 @@ Your OpenAI session token is expired or invalid.
 2. Update repository secret (`INTELLIGENCEX_AUTH_B64`)
 3. Confirm workflow reads the expected secret name
 
+If the reviewer log or PR summary mentions `refresh_token_reused`, the stored ChatGPT auth bundle is stale and must be replaced:
+
+```powershell
+intelligencex auth login --set-github-secret --repo EvotecIT/IntelligenceX
+```
+
 ### 403 Forbidden (GitHub API)
 
 Token or app permissions are insufficient.
