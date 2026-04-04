@@ -27,6 +27,8 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+
 function New-PortableLauncherScripts {
     param(
         [Parameter(Mandatory)]
@@ -149,6 +151,21 @@ function New-PortableReadme {
     Set-Content -Path (Join-Path $BundleRootPath 'README.md') -Value ($lines -join "`r`n") -Encoding UTF8
 }
 
+function New-ZipFromFolder {
+    param(
+        [Parameter(Mandatory)]
+        [string] $FolderPath,
+        [Parameter(Mandatory)]
+        [string] $ZipPath
+    )
+
+    if (Test-Path -LiteralPath $ZipPath) {
+        Remove-Item -LiteralPath $ZipPath -Force
+    }
+
+    [System.IO.Compression.ZipFile]::CreateFromDirectory($FolderPath, $ZipPath)
+}
+
 $script:RepoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 . (Join-Path $script:RepoRoot 'Build\Internal\Build.ScriptSupport.ps1')
 . (Join-Path $script:RepoRoot 'Build\Internal\Resolve-ReleaseDefaults.ps1')
@@ -168,12 +185,22 @@ if ([string]::IsNullOrWhiteSpace($BundleName)) {
 New-Item -ItemType Directory -Path $bundleRootFull -Force | Out-Null
 New-Item -ItemType Directory -Path $pluginsOut -Force | Out-Null
 
+$pluginExportRoot = $pluginsOut
+$pluginScratchRoot = $null
+$preArchivedPlugins = $false
+
+if ($LeanBundle) {
+    $pluginScratchRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("ix-chat-plugins-{0}" -f ([System.Guid]::NewGuid().ToString('N')))
+    $pluginExportRoot = Join-Path $pluginScratchRoot 'plugins'
+    New-Item -ItemType Directory -Path $pluginExportRoot -Force | Out-Null
+}
+
 $exportScript = Join-Path $script:RepoRoot 'Build\Internal\Export-PluginFolders.ps1'
 $exportParameters = @{
     Mode = $PluginMode
     Configuration = $Configuration
     Framework = $Framework
-    OutDir = $pluginsOut
+    OutDir = $pluginExportRoot
 }
 if ($IncludeSymbols) {
     $exportParameters.IncludeSymbols = $true
@@ -183,73 +210,90 @@ if (-not [string]::IsNullOrWhiteSpace($TestimoXRoot)) {
 }
 
 Write-Header 'Export Plugin Folders'
-Invoke-ScriptFile -ScriptPath $exportScript -Parameters $exportParameters -FailureContext 'Plugin export failed.' -FailureHint 'Check POWERFORGE_ROOT if you are testing against a local PSPublishModule worktree.'
+try {
+    Invoke-ScriptFile -ScriptPath $exportScript -Parameters $exportParameters -FailureContext 'Plugin export failed.' -FailureHint 'Check POWERFORGE_ROOT if you are testing against a local PSPublishModule worktree.'
 
-if ($IncludePortableHelpers) {
-    New-PortableLauncherScripts -BundleRootPath $bundleRootFull -PrimaryExecutableName $PrimaryExecutable
-    New-PortableReadme -BundleRootPath $bundleRootFull -FrontendValue $frontendNormalized -PrimaryExecutableName $PrimaryExecutable -RuntimeValue $Runtime -FrameworkValue $Framework -PluginModeValue $PluginMode -ServiceIncluded ([bool]$IncludeService)
-}
-
-if ($LeanBundle -or (-not $IncludeSymbols) -or $IncludeBundleMetadata) {
-    $powerForgeCli = Resolve-PowerForgeCliInvocation -RepoRoot $script:RepoRoot
-    $postProcessArgs = @($powerForgeCli.Prefix) + @(
-        'dotnet',
-        'bundle-postprocess',
-        '--config',
-        (Join-Path $script:RepoRoot 'Build\powerforge.dotnetpublish.json'),
-        '--bundle',
-        'IntelligenceX.Chat.Portable',
-        '--bundle-root',
-        $bundleRootFull,
-        '--target',
-        ($(if ($frontendNormalized -eq 'app') { 'IntelligenceX.Chat.App' } else { 'IntelligenceX.Chat.Host' })),
-        '--rid',
-        $Runtime,
-        '--framework',
-        $Framework,
-        '--style',
-        'PortableCompat',
-        '--configuration',
-        $Configuration,
-        '--token',
-        "bundleName=$BundleName",
-        '--token',
-        "frontend=$frontendNormalized",
-        '--token',
-        "primaryExecutable=$PrimaryExecutable",
-        '--token',
-        "appFramework=$AppFramework",
-        '--token',
-        "pluginMode=$PluginMode",
-        '--token',
-        "includeService=$([bool]$IncludeService)",
-        '--token',
-        "includePrivateToolPacks=$([bool]$IncludePrivateToolPacks)",
-        '--token',
-        "includeSymbols=$([bool]$IncludeSymbols)",
-        '--token',
-        "leanBundle=$LeanBundle",
-        '--token',
-        "includePortableHelpers=$([bool]$IncludePortableHelpers)"
-    )
-
-    if (-not $LeanBundle) {
-        $postProcessArgs += '--skip-archive'
-    }
-    if (-not $IncludeBundleMetadata) {
-        $postProcessArgs += '--skip-metadata'
-    }
-    if (-not $IncludeSymbols) {
-        $postProcessArgs += @('--delete-pattern', '**/*.pdb')
-    }
-    if ($LeanBundle) {
-        $postProcessArgs += @('--delete-pattern', '**/createdump.exe')
+    if ($LeanBundle -and (Test-Path -LiteralPath $pluginExportRoot)) {
+        Write-Header 'Archive Plugin Folders'
+        $pluginDirectories = Get-ChildItem -LiteralPath $pluginExportRoot -Directory -ErrorAction SilentlyContinue | Sort-Object Name
+        foreach ($pluginDirectory in @($pluginDirectories)) {
+            $pluginZipPath = Join-Path $pluginsOut ("{0}.ix-plugin.zip" -f $pluginDirectory.Name)
+            Write-Step ("Archive plugin -> {0}" -f $pluginZipPath)
+            New-ZipFromFolder -FolderPath $pluginDirectory.FullName -ZipPath $pluginZipPath
+        }
+        $preArchivedPlugins = $true
     }
 
-    Write-Header 'Bundle Post-Process'
-    Write-Step (Format-CommandLine -Command $powerForgeCli.Command -Arguments $postProcessArgs)
-    & $powerForgeCli.Command @postProcessArgs
-    if ($LASTEXITCODE -ne 0) {
-        throw "PowerForge bundle post-process failed with exit code $LASTEXITCODE."
+    if ($IncludePortableHelpers) {
+        New-PortableLauncherScripts -BundleRootPath $bundleRootFull -PrimaryExecutableName $PrimaryExecutable
+        New-PortableReadme -BundleRootPath $bundleRootFull -FrontendValue $frontendNormalized -PrimaryExecutableName $PrimaryExecutable -RuntimeValue $Runtime -FrameworkValue $Framework -PluginModeValue $PluginMode -ServiceIncluded ([bool]$IncludeService)
+    }
+
+    if ($LeanBundle -or (-not $IncludeSymbols) -or $IncludeBundleMetadata) {
+        $powerForgeCli = Resolve-PowerForgeCliInvocation -RepoRoot $script:RepoRoot
+        $postProcessArgs = @($powerForgeCli.Prefix) + @(
+            'dotnet',
+            'bundle-postprocess',
+            '--config',
+            (Join-Path $script:RepoRoot 'Build\powerforge.dotnetpublish.json'),
+            '--bundle',
+            'IntelligenceX.Chat.Portable',
+            '--bundle-root',
+            $bundleRootFull,
+            '--target',
+            ($(if ($frontendNormalized -eq 'app') { 'IntelligenceX.Chat.App' } else { 'IntelligenceX.Chat.Host' })),
+            '--rid',
+            $Runtime,
+            '--framework',
+            $Framework,
+            '--style',
+            'PortableCompat',
+            '--configuration',
+            $Configuration,
+            '--token',
+            "bundleName=$BundleName",
+            '--token',
+            "frontend=$frontendNormalized",
+            '--token',
+            "primaryExecutable=$PrimaryExecutable",
+            '--token',
+            "appFramework=$AppFramework",
+            '--token',
+            "pluginMode=$PluginMode",
+            '--token',
+            "includeService=$([bool]$IncludeService)",
+            '--token',
+            "includePrivateToolPacks=$([bool]$IncludePrivateToolPacks)",
+            '--token',
+            "includeSymbols=$([bool]$IncludeSymbols)",
+            '--token',
+            "leanBundle=$LeanBundle",
+            '--token',
+            "includePortableHelpers=$([bool]$IncludePortableHelpers)"
+        )
+
+        if ((-not $LeanBundle) -or $preArchivedPlugins) {
+            $postProcessArgs += '--skip-archive'
+        }
+        if (-not $IncludeBundleMetadata) {
+            $postProcessArgs += '--skip-metadata'
+        }
+        if (-not $IncludeSymbols) {
+            $postProcessArgs += @('--delete-pattern', '**/*.pdb')
+        }
+        if ($LeanBundle) {
+            $postProcessArgs += @('--delete-pattern', '**/createdump.exe')
+        }
+
+        Write-Header 'Bundle Post-Process'
+        Write-Step (Format-CommandLine -Command $powerForgeCli.Command -Arguments $postProcessArgs)
+        & $powerForgeCli.Command @postProcessArgs
+        if ($LASTEXITCODE -ne 0) {
+            throw "PowerForge bundle post-process failed with exit code $LASTEXITCODE."
+        }
+    }
+} finally {
+    if (-not [string]::IsNullOrWhiteSpace($pluginScratchRoot) -and (Test-Path -LiteralPath $pluginScratchRoot)) {
+        Remove-Item -LiteralPath $pluginScratchRoot -Recurse -Force -ErrorAction SilentlyContinue
     }
 }

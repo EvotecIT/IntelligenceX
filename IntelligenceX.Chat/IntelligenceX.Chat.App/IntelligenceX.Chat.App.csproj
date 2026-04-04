@@ -18,25 +18,11 @@
 
   </PropertyGroup>
 
-  <PropertyGroup>
-    <DbaClientXProjectOverride>$(DbaClientXRepoRoot)DbaClientX.SQLite\DbaClientX.SQLite.csproj</DbaClientXProjectOverride>
-    <DbaClientXProjectCandidate1>$(DbaClientXRepoRootCandidate1)DbaClientX.SQLite\DbaClientX.SQLite.csproj</DbaClientXProjectCandidate1>
-    <DbaClientXProjectCandidate2>$(DbaClientXRepoRootCandidate2)DbaClientX.SQLite\DbaClientX.SQLite.csproj</DbaClientXProjectCandidate2>
-  </PropertyGroup>
-
   <ItemGroup>
     <ProjectReference Include="..\..\IntelligenceX\IntelligenceX.csproj" />
     <ProjectReference Include="..\\IntelligenceX.Chat.Abstractions\\IntelligenceX.Chat.Abstractions.csproj" />
     <ProjectReference Include="..\\IntelligenceX.Chat.Client\\IntelligenceX.Chat.Client.csproj" />
     <ProjectReference Include="..\\IntelligenceX.Chat.ExportArtifacts\\IntelligenceX.Chat.ExportArtifacts.csproj" />
-    <ProjectReference Include="$(DbaClientXProjectOverride)"
-                      Condition="Exists('$(DbaClientXProjectOverride)')" />
-    <ProjectReference Include="$(DbaClientXProjectCandidate1)"
-                      Condition="!Exists('$(DbaClientXProjectOverride)') and Exists('$(DbaClientXProjectCandidate1)')" />
-    <ProjectReference Include="$(DbaClientXProjectCandidate2)"
-                      Condition="!Exists('$(DbaClientXProjectOverride)') and !Exists('$(DbaClientXProjectCandidate1)') and Exists('$(DbaClientXProjectCandidate2)')" />
-    <PackageReference Include="DBAClientX.SQLite" Version="0.2.0"
-                      Condition="!Exists('$(DbaClientXProjectOverride)') and !Exists('$(DbaClientXProjectCandidate1)') and !Exists('$(DbaClientXProjectCandidate2)')" />
   </ItemGroup>
 
   <ItemGroup>
@@ -74,7 +60,7 @@
           Condition="'$(SkipChatServiceSidecarBuild)' != 'true' AND Exists('$(MSBuildThisFileDirectory)..\\IntelligenceX.Chat.Service\\IntelligenceX.Chat.Service.csproj')">
     <MSBuild Projects="$(MSBuildThisFileDirectory)..\\IntelligenceX.Chat.Service\\IntelligenceX.Chat.Service.csproj"
              Targets="Restore;Build"
-             Properties="Configuration=$(Configuration);TargetFramework=$(ChatServiceResolvedTfm);RuntimeIdentifier=;SelfContained=false;NoBuild=false" />
+             Properties="Configuration=$(Configuration);TargetFramework=$(ChatServiceResolvedTfm);RuntimeIdentifier=;SelfContained=false;NoBuild=false;NETCoreSdkVersion=$(NETCoreSdkVersion)" />
   </Target>
 
   <Target Name="ValidateChatServiceSidecarOutput" AfterTargets="BuildChatServiceSidecar"
