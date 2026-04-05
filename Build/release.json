@@ -69,7 +69,7 @@
   },
   "Winget": {
     "Enabled": true,
-    "OutputPath": "Winget",
+    "OutputPath": "../Artifacts/UploadReady/Winget",
     "InstallerUrlTemplate": "https://github.com/EvotecIT/IntelligenceX/releases/download/v{PackageVersion}/{FileName}",
     "Packages": [
       {
