@@ -20,7 +20,7 @@ if (-not $IsWindows) {
 
 $repoRoot = (Get-Item (Join-Path $PSScriptRoot "..")).FullName
 if ([string]::IsNullOrWhiteSpace($ExePath)) {
-    $ExePath = Join-Path $repoRoot "IntelligenceX.Chat\IntelligenceX.Chat.App\bin\Debug\net8.0-windows10.0.26100.0\win-x64\IntelligenceX.Chat.App.exe"
+    $ExePath = Join-Path $repoRoot "IntelligenceX.Chat\IntelligenceX.Chat.App\bin\Debug\net10.0-windows10.0.26100.0\win-x64\IntelligenceX.Chat.App.exe"
 }
 
 if (-not (Test-Path $ExePath)) {

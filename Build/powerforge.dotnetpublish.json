@@ -150,7 +150,7 @@
       "Name": "IntelligenceX.Chat.App",
       "ProjectId": "chat-app",
       "Publish": {
-        "Framework": "net8.0-windows10.0.26100.0",
+        "Framework": "net10.0-windows10.0.26100.0",
         "MsBuildProperties": {
           "SkipChatServiceSidecarBuild": "true"
         },
@@ -198,7 +198,7 @@
       "Id": "IntelligenceX.Chat.Portable",
       "PrepareFromTarget": "IntelligenceX.Chat.App",
       "Frameworks": [
-        "net8.0-windows10.0.26100.0"
+        "net10.0-windows10.0.26100.0"
       ],
       "Runtimes": [
         "win-x64"
@@ -232,7 +232,7 @@
             "-Framework",
             "net10.0-windows",
             "-AppFramework",
-            "net8.0-windows10.0.26100.0",
+            "net10.0-windows10.0.26100.0",
             "-Runtime",
             "{rid}",
             "-PrimaryExecutable",
@@ -282,7 +282,7 @@
       "PrepareFromBundleId": "IntelligenceX.Chat.Portable",
       "InstallerProjectId": "chat-app-installer",
       "Frameworks": [
-        "net8.0-windows10.0.26100.0"
+        "net10.0-windows10.0.26100.0"
       ],
       "Runtimes": [
         "win-x64"
