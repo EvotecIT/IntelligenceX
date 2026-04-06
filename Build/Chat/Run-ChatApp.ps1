@@ -66,11 +66,128 @@ function Resolve-ChatAppServiceOutputPath {
     return $null
 }
 
+function Publish-ChatServiceSidecar {
+    param(
+        [Parameter(Mandatory)]
+        [string] $RepoRoot,
+        [Parameter(Mandatory)]
+        [string] $OutputPath,
+        [Parameter(Mandatory)]
+        [string] $Configuration,
+        [switch] $NoBuild
+    )
+
+    $serviceProject = Join-Path $RepoRoot 'IntelligenceX.Chat\IntelligenceX.Chat.Service\IntelligenceX.Chat.Service.csproj'
+    if (-not (Test-Path $serviceProject)) {
+        throw "Service project not found: $serviceProject"
+    }
+
+    if (Test-Path $OutputPath) {
+        Remove-Item -LiteralPath $OutputPath -Recurse -Force
+    }
+    New-Item -ItemType Directory -Path $OutputPath -Force | Out-Null
+
+    $publishArgs = @(
+        'publish',
+        $serviceProject,
+        '-c',
+        $Configuration,
+        '-f',
+        'net10.0-windows',
+        '-r',
+        'win-x64',
+        '-o',
+        $OutputPath,
+        '--no-self-contained',
+        '/p:WarningsNotAsErrors=NU1510'
+    )
+
+    if ($NoBuild) {
+        & dotnet restore $serviceProject -r win-x64
+        if ($LASTEXITCODE -ne 0) {
+            throw "dotnet restore failed with exit code $LASTEXITCODE."
+        }
+        $publishArgs += '--no-build'
+    }
+
+    Write-Step "Publish clean service sidecar: $OutputPath"
+    & dotnet @publishArgs
+    if ($LASTEXITCODE -ne 0) {
+        throw "dotnet publish failed with exit code $LASTEXITCODE."
+    }
+}
+
+function Resolve-ChatPrivateToolPackState {
+    param(
+        [Parameter(Mandatory)]
+        [string] $RepoRoot,
+        [switch] $IncludePrivateToolPacks,
+        [string] $TestimoXRoot
+    )
+
+    $explicitPrivateToolPacks = $IncludePrivateToolPacks.IsPresent -or -not [string]::IsNullOrWhiteSpace($TestimoXRoot)
+    if ($explicitPrivateToolPacks) {
+        $resolvedRoot = Resolve-TestimoXRoot -Provided $TestimoXRoot -RepoRoot $RepoRoot
+        return [pscustomobject]@{
+            Enabled = $true
+            TestimoXRoot = $resolvedRoot
+            Mode = 'explicit'
+            Message = "Private tool packs: enabled ($resolvedRoot)"
+        }
+    }
+
+    foreach ($envName in @('TESTIMOX_ROOT', 'TestimoXRoot')) {
+        $fromEnvironment = [System.Environment]::GetEnvironmentVariable($envName)
+        if ([string]::IsNullOrWhiteSpace($fromEnvironment)) {
+            continue
+        }
+
+        if (Test-TestimoXMarkers -Root $fromEnvironment) {
+            $resolvedRoot = Ensure-TestimoXTrailingSlash -Path $fromEnvironment
+            return [pscustomobject]@{
+                Enabled = $true
+                TestimoXRoot = $resolvedRoot
+                Mode = 'auto'
+                Message = "Private tool packs: auto-enabled from $envName ($resolvedRoot)"
+            }
+        }
+    }
+
+    $candidates = @(
+        (Join-Path $RepoRoot '..\TestimoX'),
+        (Join-Path $RepoRoot '..\TestimoX-master'),
+        (Join-Path $RepoRoot '..\..\TestimoX'),
+        (Join-Path $RepoRoot '..\..\TestimoX-master')
+    )
+
+    foreach ($candidate in $candidates) {
+        if (-not (Test-TestimoXMarkers -Root $candidate)) {
+            continue
+        }
+
+        $resolvedRoot = Ensure-TestimoXTrailingSlash -Path $candidate
+        return [pscustomobject]@{
+            Enabled = $true
+            TestimoXRoot = $resolvedRoot
+            Mode = 'auto'
+            Message = "Private tool packs: auto-enabled ($resolvedRoot)"
+        }
+    }
+
+    return [pscustomobject]@{
+        Enabled = $false
+        TestimoXRoot = $null
+        Mode = 'unavailable'
+        Message = 'Private tool packs: not available; continuing public-only'
+    }
+}
+
 $repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $appProject = Join-Path $repoRoot 'IntelligenceX.Chat\IntelligenceX.Chat.App\IntelligenceX.Chat.App.csproj'
 $officeImoRoot = Join-Path (Split-Path $repoRoot -Parent) 'OfficeIMO'
 $resolvedOfficeImoRoot = $null
 . (Join-Path $repoRoot 'Build\Internal\Publish-ChatBundledToolProjects.ps1')
+. (Join-Path $repoRoot 'Build\Internal\Resolve-TestimoXRoot.ps1')
 
 if (-not (Test-Path $appProject)) {
     throw "Project not found: $appProject"
@@ -78,6 +195,13 @@ if (-not (Test-Path $appProject)) {
 
 # Prevent file lock issues during build/run.
 Stop-IfRunning -Names @('IntelligenceX.Chat.App', 'IntelligenceX.Chat.Service')
+
+$privateToolPackState = Resolve-ChatPrivateToolPackState `
+    -RepoRoot $repoRoot `
+    -IncludePrivateToolPacks:$IncludePrivateToolPacks `
+    -TestimoXRoot $TestimoXRoot
+$effectiveIncludePrivateToolPacks = [bool]$privateToolPackState.Enabled
+$effectiveTestimoXRoot = $privateToolPackState.TestimoXRoot
 
 $dotnetRunArgs = @(
     'run',
@@ -98,14 +222,10 @@ if (Test-Path (Join-Path $officeImoRoot 'OfficeIMO.MarkdownRenderer\OfficeIMO.Ma
     $dotnetRunArgs += "/p:OfficeImoRepoRoot=$resolvedOfficeImoRoot"
 }
 
-if ($IncludePrivateToolPacks) {
+if ($effectiveIncludePrivateToolPacks) {
     $dotnetRunArgs += '/p:IncludePrivateToolPacks=true'
-    if (-not [string]::IsNullOrWhiteSpace($TestimoXRoot)) {
-        $resolved = [System.IO.Path]::GetFullPath($TestimoXRoot)
-        if (-not $resolved.EndsWith([System.IO.Path]::DirectorySeparatorChar)) {
-            $resolved += [System.IO.Path]::DirectorySeparatorChar
-        }
-        $dotnetRunArgs += "/p:TestimoXRoot=$resolved"
+    if (-not [string]::IsNullOrWhiteSpace($effectiveTestimoXRoot)) {
+        $dotnetRunArgs += "/p:TestimoXRoot=$effectiveTestimoXRoot"
     }
 }
 
@@ -117,6 +237,7 @@ if ($resolvedOfficeImoRoot) {
 } else {
     Write-Step 'OfficeIMO: package fallback'
 }
+Write-Step $privateToolPackState.Message
 
 Push-Location $repoRoot
 try {
@@ -131,14 +252,10 @@ try {
             $dotnetBuildArgs += "/p:UseLocalOfficeImoCheckout=true"
             $dotnetBuildArgs += "/p:OfficeImoRepoRoot=$resolvedOfficeImoRoot"
         }
-        if ($IncludePrivateToolPacks) {
+        if ($effectiveIncludePrivateToolPacks) {
             $dotnetBuildArgs += '/p:IncludePrivateToolPacks=true'
-            if (-not [string]::IsNullOrWhiteSpace($TestimoXRoot)) {
-                $resolved = [System.IO.Path]::GetFullPath($TestimoXRoot)
-                if (-not $resolved.EndsWith([System.IO.Path]::DirectorySeparatorChar)) {
-                    $resolved += [System.IO.Path]::DirectorySeparatorChar
-                }
-                $dotnetBuildArgs += "/p:TestimoXRoot=$resolved"
+            if (-not [string]::IsNullOrWhiteSpace($effectiveTestimoXRoot)) {
+                $dotnetBuildArgs += "/p:TestimoXRoot=$effectiveTestimoXRoot"
             }
         }
 
@@ -154,6 +271,13 @@ try {
         throw "Unable to resolve Chat service output under the app build output."
     }
 
+    Publish-ChatServiceSidecar `
+        -RepoRoot $repoRoot `
+        -OutputPath $serviceOutputPath `
+        -Configuration $Configuration `
+        -NoBuild:$NoBuild
+
+    # Local runs should mirror packaged Chat startup by staging tool packs into a clean sidecar.
     Write-Step "Bundle tool projects into service sidecar: $serviceOutputPath"
     Publish-ChatBundledToolProjects `
         -RepoRoot $repoRoot `
@@ -161,8 +285,8 @@ try {
         -Configuration $Configuration `
         -Runtime 'win-x64' `
         -NoBuild:$NoBuild `
-        -IncludePrivateToolPacks:$IncludePrivateToolPacks `
-        -TestimoXRoot $TestimoXRoot
+        -IncludePrivateToolPacks:$effectiveIncludePrivateToolPacks `
+        -TestimoXRoot $effectiveTestimoXRoot
 
     if (-not $dotnetRunArgs.Contains('--no-build')) {
         $dotnetRunArgs += '--no-build'
