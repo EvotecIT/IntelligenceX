@@ -752,6 +752,20 @@
       var packRuntimeDisabledByConfig = packDisabledByRuntimeConfiguration(currentPackId);
       var packUnavailable = !packAvailable && !packRuntimeDisabledByConfig;
       var packUnavailableReason = packDisabledReason(currentPackId);
+      var sourceKind = packSourceKind(currentPackId);
+      var hasPackUnavailableReason = typeof packUnavailableReason === "string"
+        ? packUnavailableReason.trim().length > 0
+        : !!packUnavailableReason;
+      // Closed-source packs without registered tools are usually metadata-only hints, not live payloads.
+      var hideMetadataOnlyClosedSourcePack = groupTools.length === 0
+        && !filter
+        && localityFilter === "all"
+        && sourceKind === "closed_source"
+        && !packRuntimeDisabledByConfig
+        && !hasPackUnavailableReason;
+      if (hideMetadataOnlyClosedSourcePack) {
+        continue;
+      }
 
       var details = document.createElement("details");
       details.className = "options-accordion";
@@ -798,7 +812,6 @@
       var summaryRight = document.createElement("div");
       summaryRight.className = "options-accordion-summary-right";
 
-      var sourceKind = packSourceKind(currentPackId);
       var autonomySummary = packAutonomySummary(currentPackId);
       var executionSummary = summarizePackExecutionLocality(groupTools);
       var sourceBadge = document.createElement("span");

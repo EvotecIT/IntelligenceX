@@ -9,6 +9,20 @@ function Ensure-TestimoXTrailingSlash {
     return ($full + [System.IO.Path]::DirectorySeparatorChar)
 }
 
+function Get-TestimoXRootCandidates {
+    param(
+        [Parameter(Mandatory)]
+        [string] $RepoRoot
+    )
+
+    return @(
+        (Join-Path $RepoRoot '..\TestimoX'),
+        (Join-Path $RepoRoot '..\TestimoX-master'),
+        (Join-Path $RepoRoot '..\..\TestimoX'),
+        (Join-Path $RepoRoot '..\..\TestimoX-master')
+    )
+}
+
 function Test-TestimoXMarkers {
     param([Parameter(Mandatory)][string] $Root)
 
@@ -56,14 +70,7 @@ function Resolve-TestimoXRoot {
         return (Ensure-TestimoXTrailingSlash -Path $fromEnvironment)
     }
 
-    $candidates = @(
-        (Join-Path $RepoRoot '..\TestimoX'),
-        (Join-Path $RepoRoot '..\TestimoX-master'),
-        (Join-Path $RepoRoot '..\..\TestimoX'),
-        (Join-Path $RepoRoot '..\..\TestimoX-master')
-    )
-
-    foreach ($candidate in $candidates) {
+    foreach ($candidate in (Get-TestimoXRootCandidates -RepoRoot $RepoRoot)) {
         if (Test-TestimoXMarkers -Root $candidate) {
             return (Ensure-TestimoXTrailingSlash -Path $candidate)
         }
