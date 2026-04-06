@@ -178,6 +178,23 @@
   ],
   "Bundles": [
     {
+      "Id": "IntelligenceX.Tray.Portable",
+      "PrepareFromTarget": "IntelligenceX.Tray",
+      "Frameworks": [
+        "net10.0-windows10.0.19041.0"
+      ],
+      "Runtimes": [
+        "win-x64",
+        "win-arm64"
+      ],
+      "Styles": [
+        "PortableCompat"
+      ],
+      "OutputPath": "Artifacts/Portable/{rid}/IntelligenceX.Tray-Portable-{rid}",
+      "Zip": true,
+      "ZipPath": "Artifacts/Portable/{rid}/IntelligenceX.Tray-Portable-{rid}.zip"
+    },
+    {
       "Id": "IntelligenceX.Chat.Portable",
       "PrepareFromTarget": "IntelligenceX.Chat.App",
       "Frameworks": [
