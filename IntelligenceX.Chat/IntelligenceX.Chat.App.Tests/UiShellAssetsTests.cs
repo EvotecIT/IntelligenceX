@@ -174,10 +174,15 @@ public sealed partial class UiShellAssetsTests {
     public void Load_IncludesToolsTabEmptySnapshotLoadingGate() {
         var coreScriptPath = Path.Combine(UiDirectory, "Shell.10.core.js");
         var coreScript = File.ReadAllText(coreScriptPath);
+        var renderingScriptPath = Path.Combine(UiDirectory, RenderingScriptFile);
+        var renderingScript = File.ReadAllText(renderingScriptPath);
 
         Assert.Contains("if (tabId === \"tools\") {", coreScript, StringComparison.Ordinal);
         Assert.Contains("state.connected && !hasVisibleToolState", coreScript, StringComparison.Ordinal);
         Assert.Contains("state.options.toolsLoading = true;", coreScript, StringComparison.Ordinal);
+        Assert.Contains("function queueActiveToolsTabRender()", renderingScript, StringComparison.Ordinal);
+        Assert.Contains("activeTab.dataset.tab !== \"tools\"", renderingScript, StringComparison.Ordinal);
+        Assert.Contains("queueActiveToolsTabRender();", renderingScript, StringComparison.Ordinal);
     }
 
     /// <summary>

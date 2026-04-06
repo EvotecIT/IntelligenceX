@@ -72,6 +72,25 @@
     updateRoutingStatusVisual();
   }
 
+  function queueActiveToolsTabRender() {
+    if (!optionsPanel || !document.body.classList.contains("options-open")) {
+      return;
+    }
+
+    var activeTab = optionsPanel.querySelector(".options-tab.active");
+    if (!activeTab || activeTab.dataset.tab !== "tools") {
+      return;
+    }
+
+    var schedule = typeof requestAnimationFrame === "function"
+      ? requestAnimationFrame
+      : function(callback) { return setTimeout(callback, 0); };
+    schedule(function() {
+      renderToolLocalityQuickFilters();
+      renderTools();
+    });
+  }
+
   function handleTranscriptNavKey(e) {
     if (getActiveModalMode() !== IX_MODAL_MODE_NONE) {
       return false;
@@ -368,6 +387,7 @@
     }
     loadDebugToolsEnabledForActiveProfile();
     renderOptions();
+    queueActiveToolsTabRender();
   };
 
   var transcriptFollowState = {
