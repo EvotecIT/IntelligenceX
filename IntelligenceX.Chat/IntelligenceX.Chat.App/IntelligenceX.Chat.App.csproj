@@ -44,6 +44,8 @@
     <ChatServiceDefaultTfm>net10.0-windows</ChatServiceDefaultTfm>
     <ChatServiceResolvedTfm Condition="'$(ChatServiceTfm)' != ''">$(ChatServiceTfm)</ChatServiceResolvedTfm>
     <ChatServiceResolvedTfm Condition="'$(ChatServiceResolvedTfm)' == ''">$(ChatServiceDefaultTfm)</ChatServiceResolvedTfm>
+    <!-- Strip inherited WinUI app globals before invoking the child build; the explicit Properties below then reassert the intended sidecar graph. -->
+    <ChatServiceSidecarRemoveProperties>TargetFramework;TargetPlatformIdentifier;TargetPlatformVersion;TargetPlatformMinVersion;RuntimeIdentifier;PlatformTarget;SelfContained;UseAppHost</ChatServiceSidecarRemoveProperties>
     <ChatServiceBin>$(MSBuildThisFileDirectory)..\\IntelligenceX.Chat.Service\\bin\\$(Configuration)\\$(ChatServiceResolvedTfm)\\</ChatServiceBin>
     <ChatServiceExpectedAssembly>$(ChatServiceBin)IntelligenceX.Chat.Service.dll</ChatServiceExpectedAssembly>
     <ChatAppPublishDir>$(MSBuildProjectDirectory)\\bin\\$(Configuration)\\$(TargetFramework)\\$(RuntimeIdentifier)\\publish\\</ChatAppPublishDir>
@@ -60,7 +62,8 @@
           Condition="'$(SkipChatServiceSidecarBuild)' != 'true' AND Exists('$(MSBuildThisFileDirectory)..\\IntelligenceX.Chat.Service\\IntelligenceX.Chat.Service.csproj')">
     <MSBuild Projects="$(MSBuildThisFileDirectory)..\\IntelligenceX.Chat.Service\\IntelligenceX.Chat.Service.csproj"
              Targets="Restore;Build"
-             Properties="Configuration=$(Configuration);TargetFramework=$(ChatServiceResolvedTfm);RuntimeIdentifier=;SelfContained=false;NoBuild=false;NETCoreSdkVersion=$(NETCoreSdkVersion)" />
+             Properties="Configuration=$(Configuration);TargetFramework=$(ChatServiceResolvedTfm);RuntimeIdentifier=;SelfContained=false;NoBuild=false;NETCoreSdkVersion=$(NETCoreSdkVersion)"
+             RemoveProperties="$(ChatServiceSidecarRemoveProperties)" />
   </Target>
 
   <Target Name="ValidateChatServiceSidecarOutput" AfterTargets="BuildChatServiceSidecar"
