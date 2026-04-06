@@ -87,11 +87,19 @@ function Publish-ChatServiceSidecar {
     }
     New-Item -ItemType Directory -Path $OutputPath -Force | Out-Null
 
+    $serviceProjectDirectory = Split-Path -Parent $serviceProject
+    $ridBuildOutputPath = Join-Path $serviceProjectDirectory ("bin\" + $Configuration + "\net10.0-windows\win-x64")
+    $hasRidBuildOutputs =
+        (Test-Path -LiteralPath $ridBuildOutputPath) -and
+        ($null -ne (Get-ChildItem -LiteralPath $ridBuildOutputPath -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1))
+
     $publishArgs = @(
         'publish',
         $serviceProject,
         '-c',
         $Configuration,
+        '-f',
+        'net10.0-windows',
         '-r',
         'win-x64',
         '-o',
@@ -105,7 +113,11 @@ function Publish-ChatServiceSidecar {
         if ($LASTEXITCODE -ne 0) {
             throw "dotnet restore failed with exit code $LASTEXITCODE."
         }
-        $publishArgs += '--no-build'
+        if ($hasRidBuildOutputs) {
+            $publishArgs += '--no-build'
+        } else {
+            Write-Step "RID-specific service build outputs not found at '$ridBuildOutputPath'; publishing with build despite -NoBuild."
+        }
     }
 
     Write-Step "Publish clean service sidecar: $OutputPath"
@@ -174,7 +186,6 @@ function Resolve-ChatPrivateToolPackState {
         Message = 'Private tool packs: not available; continuing public-only'
     }
 }
-
 $repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $appProject = Join-Path $repoRoot 'IntelligenceX.Chat\IntelligenceX.Chat.App\IntelligenceX.Chat.App.csproj'
 $officeImoRoot = Join-Path (Split-Path $repoRoot -Parent) 'OfficeIMO'
@@ -239,7 +250,8 @@ try {
             'build',
             $appProject,
             '-c',
-            $Configuration
+            $Configuration,
+            '/p:SkipChatServiceSidecarBuild=true'
         )
         if ($resolvedOfficeImoRoot) {
             $dotnetBuildArgs += "/p:UseLocalOfficeImoCheckout=true"
