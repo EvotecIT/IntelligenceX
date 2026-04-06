@@ -41,13 +41,17 @@ internal static class ServiceLaunchArguments {
     /// <param name="parentProcessId">Parent process id used for exit-on-disconnect mode.</param>
     /// <param name="profileOptions">Optional profile/runtime overrides passed to the service process.</param>
     /// <param name="additionalPluginPaths">Optional runtime-managed plugin roots passed as repeatable --plugin-path args.</param>
+    /// <param name="additionalBuiltInToolProbePaths">Optional built-in tool assembly probe roots passed as repeatable --built-in-tool-probe-path args.</param>
+    /// <param name="enableWorkspaceBuiltInToolOutputProbing">Whether workspace project output probing should be enabled for the launched service.</param>
     /// <returns>Ordered argument vector.</returns>
     public static IReadOnlyList<string> Build(
         string pipeName,
         bool detachedServiceMode,
         int parentProcessId,
         ProfileOptions? profileOptions = null,
-        IReadOnlyList<string>? additionalPluginPaths = null) {
+        IReadOnlyList<string>? additionalPluginPaths = null,
+        IReadOnlyList<string>? additionalBuiltInToolProbePaths = null,
+        bool enableWorkspaceBuiltInToolOutputProbing = false) {
         var normalizedPipe = (pipeName ?? string.Empty).Trim();
         if (normalizedPipe.Length == 0) {
             throw new ArgumentException("Pipe name cannot be empty.", nameof(pipeName));
@@ -109,6 +113,10 @@ internal static class ServiceLaunchArguments {
         }
 
         AddMultiValueArg(args, "--plugin-path", additionalPluginPaths);
+        AddMultiValueArg(args, "--built-in-tool-probe-path", additionalBuiltInToolProbePaths);
+        if (enableWorkspaceBuiltInToolOutputProbing) {
+            args.Add("--enable-workspace-built-in-tool-output-probing");
+        }
 
         return args;
     }

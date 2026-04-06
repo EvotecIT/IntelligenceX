@@ -314,6 +314,44 @@ public sealed class ServiceLaunchArgumentsTests {
         }
     }
 
+    /// <summary>
+    /// Ensures runtime-only built-in tool probe paths and workspace probing are forwarded to the service.
+    /// </summary>
+    [Fact]
+    public void Build_IncludesBuiltInToolProbePathsAndWorkspaceProbing_WhenConfigured() {
+        var unique = Guid.NewGuid().ToString("N");
+        var mainPath = Path.GetFullPath(TempPathTestHelper.CreateTempDirectoryPath("ix-built-in-main-" + unique));
+        var nestedToolsPath = Path.Combine(mainPath, "tools");
+        Directory.CreateDirectory(nestedToolsPath);
+
+        try {
+            var args = ServiceLaunchArguments.Build(
+                "intelligencex.chat",
+                detachedServiceMode: true,
+                parentProcessId: 12345,
+                profileOptions: null,
+                additionalPluginPaths: null,
+                additionalBuiltInToolProbePaths: new[] {
+                    mainPath + Path.DirectorySeparatorChar,
+                    nestedToolsPath,
+                    Path.GetFullPath(Path.Combine(mainPath, ".", "tools"))
+                },
+                enableWorkspaceBuiltInToolOutputProbing: true);
+
+            Assert.Equal(
+                new[] {
+                    NormalizeForAssertion(mainPath),
+                    NormalizeForAssertion(nestedToolsPath)
+                },
+                ExtractArgumentValues(args, "--built-in-tool-probe-path"));
+            Assert.Contains("--enable-workspace-built-in-tool-output-probing", args);
+        } finally {
+            if (Directory.Exists(mainPath)) {
+                Directory.Delete(mainPath, recursive: true);
+            }
+        }
+    }
+
     private static IReadOnlyList<string> ExtractArgumentValues(IReadOnlyList<string> args, string key) {
         var values = new List<string>();
         for (var i = 0; i < args.Count - 1; i++) {

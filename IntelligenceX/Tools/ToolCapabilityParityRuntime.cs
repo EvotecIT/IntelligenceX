@@ -405,7 +405,17 @@ public static class ToolCapabilityParityRuntime {
 
     private static bool HasPublicStaticMethod(string fullTypeName, string methodName, string assemblyName) {
         var type = TryResolveType(fullTypeName, assemblyName);
-        return type?.GetMethod(methodName, BindingFlags.Public | BindingFlags.Static | BindingFlags.IgnoreCase) is not null;
+        if (type is null) {
+            return false;
+        }
+
+        var normalizedMethodName = (methodName ?? string.Empty).Trim();
+        if (normalizedMethodName.Length == 0) {
+            return false;
+        }
+
+        return type.GetMethods(BindingFlags.Public | BindingFlags.Static)
+            .Any(method => string.Equals(method.Name, normalizedMethodName, StringComparison.OrdinalIgnoreCase));
     }
 
     private static bool HasAnyPublicStaticMethod(string fullTypeName, string assemblyName, params string[] methodNames) {

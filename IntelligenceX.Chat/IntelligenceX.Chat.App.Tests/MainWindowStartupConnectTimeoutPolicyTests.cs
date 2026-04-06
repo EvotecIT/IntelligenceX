@@ -680,6 +680,19 @@ public sealed class MainWindowStartupConnectTimeoutPolicyTests {
     }
 
     /// <summary>
+    /// Ensures built-in tool probe path resolution uses absolute directories only and never emits a relative tools fallback for root sources.
+    /// </summary>
+    [Fact]
+    public void ResolveServiceLaunchBuiltInToolProbePaths_RootSourceDirectory_DoesNotEmitRelativeFallbacks() {
+        var root = Path.GetPathRoot(AppContext.BaseDirectory);
+        Assert.False(string.IsNullOrWhiteSpace(root));
+
+        var paths = MainWindow.ResolveServiceLaunchBuiltInToolProbePaths(root!);
+        Assert.All(paths, static path => Assert.True(Path.IsPathRooted(path)));
+        Assert.DoesNotContain(paths, static path => string.Equals(path.Trim(), "tools", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
     /// Ensures tools-loading indicator is shown only while startup metadata is actively pending.
     /// </summary>
     [Theory]

@@ -57,8 +57,12 @@ public sealed partial class MainWindow {
             var pending = _pendingServiceLaunchProfileOptions;
             pending ??= CaptureCurrentServiceLaunchProfileOptions();
             var launchPluginPaths = ResolveServiceLaunchPluginPaths(serviceSourceDir);
+            var launchBuiltInToolProbePaths = ResolveServiceLaunchBuiltInToolProbePaths(serviceSourceDir);
             if (launchPluginPaths.Count > 0) {
                 StartupLog.Write("Service plugin paths configured count=" + launchPluginPaths.Count.ToString(CultureInfo.InvariantCulture));
+            }
+            if (launchBuiltInToolProbePaths.Count > 0) {
+                StartupLog.Write("Service built-in tool probe paths configured count=" + launchBuiltInToolProbePaths.Count.ToString(CultureInfo.InvariantCulture));
             }
             var launchArgs = ServiceLaunchArguments.Build(
                 pipeName,
@@ -85,7 +89,9 @@ public sealed partial class MainWindow {
                     Temperature = pending.Temperature,
                     PackToggles = pending.PackToggles
                 },
-                additionalPluginPaths: launchPluginPaths);
+                additionalPluginPaths: launchPluginPaths,
+                additionalBuiltInToolProbePaths: launchBuiltInToolProbePaths,
+                enableWorkspaceBuiltInToolOutputProbing: true);
             var hasExe = File.Exists(exe);
             var psi = new ProcessStartInfo {
                 FileName = hasExe ? exe : "dotnet",
@@ -211,7 +217,28 @@ public sealed partial class MainWindow {
         return paths;
     }
 
+    internal static IReadOnlyList<string> ResolveServiceLaunchBuiltInToolProbePaths(string serviceSourceDir) {
+        var paths = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        TryAddLaunchRuntimePath(paths, seen, serviceSourceDir);
+        if (!string.IsNullOrWhiteSpace(serviceSourceDir)) {
+            try {
+                var normalizedSourceDir = Path.GetFullPath(serviceSourceDir);
+                TryAddLaunchRuntimePath(paths, seen, Path.Combine(normalizedSourceDir, "tools"));
+            } catch {
+                // Ignore malformed source-dir values and keep the main source root if available.
+            }
+        }
+
+        return paths;
+    }
+
     private static void TryAddLaunchPluginPath(List<string> paths, HashSet<string> seen, string candidate) {
+        TryAddLaunchRuntimePath(paths, seen, candidate);
+    }
+
+    private static void TryAddLaunchRuntimePath(List<string> paths, HashSet<string> seen, string candidate) {
         if (string.IsNullOrWhiteSpace(candidate)) {
             return;
         }

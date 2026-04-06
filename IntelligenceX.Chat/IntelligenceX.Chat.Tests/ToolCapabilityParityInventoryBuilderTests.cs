@@ -16,6 +16,11 @@ namespace IntelligenceX.Chat.Tests;
 /// Tests for runtime phase-1 parity inventory generation.
 /// </summary>
 public sealed class ToolCapabilityParityInventoryBuilderTests {
+    private static class OverloadedStaticMethodProbeSource {
+        public static bool CreateLog(string logName) => !string.IsNullOrWhiteSpace(logName);
+        public static bool CreateLog(string logName, string sourceName) => !string.IsNullOrWhiteSpace(logName) && !string.IsNullOrWhiteSpace(sourceName);
+    }
+
     /// <summary>
     /// Ensures the runtime parity inventory reflects current remote-read-only coverage truth instead of crediting local-only wrappers.
     /// </summary>
@@ -1053,6 +1058,26 @@ public sealed class ToolCapabilityParityInventoryBuilderTests {
 
         Assert.Equal(ToolCapabilityParityInventoryBuilder.HealthyStatus, eventLog.Status);
         Assert.Empty(eventLog.MissingCapabilities);
+    }
+
+    /// <summary>
+    /// Ensures parity source inspection tolerates overloaded static methods instead of throwing ambiguous-match exceptions.
+    /// </summary>
+    [Fact]
+    public void EvaluateAvailableExpectations_WithOverloadedStaticMethod_DoesNotThrowAndMarksSourceAvailable() {
+        var descriptor = ToolCapabilityParityExpectationDescriptor.ForToolStaticMethod(
+            capabilityId: "classic_log_ensure_write",
+            toolName: "eventlog_classic_log_ensure",
+            typeName: typeof(OverloadedStaticMethodProbeSource).FullName!,
+            methodName: "CreateLog",
+            assemblyName: typeof(OverloadedStaticMethodProbeSource).Assembly.GetName().Name!);
+
+        var coverage = ToolCapabilityParityRuntime.EvaluateAvailableExpectations(
+            Array.Empty<ToolDefinition>(),
+            new[] { descriptor });
+
+        Assert.True(coverage.SourceAvailable);
+        Assert.Contains("classic_log_ensure_write", coverage.ExpectedCapabilities, StringComparer.OrdinalIgnoreCase);
     }
 
     /// <summary>
