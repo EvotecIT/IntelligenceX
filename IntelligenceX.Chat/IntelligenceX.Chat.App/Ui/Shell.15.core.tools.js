@@ -753,11 +753,16 @@
       var packUnavailable = !packAvailable && !packRuntimeDisabledByConfig;
       var packUnavailableReason = packDisabledReason(currentPackId);
       var sourceKind = packSourceKind(currentPackId);
+      var hasPackUnavailableReason = typeof packUnavailableReason === "string"
+        ? packUnavailableReason.trim().length > 0
+        : !!packUnavailableReason;
       // Closed-source packs without registered tools are usually metadata-only hints, not live payloads.
       var hideMetadataOnlyClosedSourcePack = groupTools.length === 0
+        && !filter
+        && localityFilter === "all"
         && sourceKind === "closed_source"
         && !packRuntimeDisabledByConfig
-        && !packUnavailableReason;
+        && !hasPackUnavailableReason;
       if (hideMetadataOnlyClosedSourcePack) {
         continue;
       }

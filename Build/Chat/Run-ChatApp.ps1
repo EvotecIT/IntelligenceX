@@ -92,8 +92,6 @@ function Publish-ChatServiceSidecar {
         $serviceProject,
         '-c',
         $Configuration,
-        '-f',
-        'net10.0-windows',
         '-r',
         'win-x64',
         '-o',
@@ -151,16 +149,11 @@ function Resolve-ChatPrivateToolPackState {
                 Message = "Private tool packs: auto-enabled from $envName ($resolvedRoot)"
             }
         }
+
+        Write-Warning "Environment variable $envName is set but does not contain required TestimoX markers: $fromEnvironment"
     }
 
-    $candidates = @(
-        (Join-Path $RepoRoot '..\TestimoX'),
-        (Join-Path $RepoRoot '..\TestimoX-master'),
-        (Join-Path $RepoRoot '..\..\TestimoX'),
-        (Join-Path $RepoRoot '..\..\TestimoX-master')
-    )
-
-    foreach ($candidate in $candidates) {
+    foreach ($candidate in (Get-TestimoXRootCandidates -RepoRoot $RepoRoot)) {
         if (-not (Test-TestimoXMarkers -Root $candidate)) {
             continue
         }
