@@ -326,6 +326,11 @@
 
   chatSidebar.addEventListener("mouseleave", function() {
     setSidebarHoverOpen(false);
+    releaseSidebarDeleteHoverSuppression();
+  });
+
+  chatSidebar.addEventListener("pointermove", function() {
+    releaseSidebarDeleteHoverSuppression();
   });
 
   var pendingDeleteTimer = 0;
@@ -338,6 +343,14 @@
   function setPendingConversationSelection(conversationId) {
     state.options.activeConversationId = String(conversationId || "").trim();
     renderConversationSelectionState();
+  }
+
+  function releaseSidebarDeleteHoverSuppression() {
+    chatSidebar.classList.remove("suppress-delete-hover");
+  }
+
+  function suppressSidebarDeleteHover() {
+    chatSidebar.classList.add("suppress-delete-hover");
   }
 
   function clearPendingDelete() {
@@ -362,6 +375,7 @@
 
       if (deleteBtn.classList.contains("armed")) {
         clearPendingDelete();
+        suppressSidebarDeleteHover();
         post("delete_conversation", { id: delId });
         return;
       }

@@ -147,6 +147,24 @@ public sealed partial class UiShellAssetsTests {
     }
 
     /// <summary>
+    /// Ensures the sidebar delete affordance is suppressed after a confirmed delete
+    /// so the next row does not inherit the same hover-visible X under the cursor.
+    /// </summary>
+    [Fact]
+    public void Load_IncludesSidebarDeleteHoverSuppression_AfterConfirmedDelete() {
+        var bindingsScriptPath = Path.Combine(UiDirectory, "Shell.20.bindings.js");
+        var bindingsScript = File.ReadAllText(bindingsScriptPath);
+        var baseCssPath = Path.Combine(UiDirectory, "Shell.10.base.css");
+        var baseCss = File.ReadAllText(baseCssPath);
+
+        Assert.Contains("function suppressSidebarDeleteHover()", bindingsScript, StringComparison.Ordinal);
+        Assert.Contains("function releaseSidebarDeleteHoverSuppression()", bindingsScript, StringComparison.Ordinal);
+        Assert.Contains("suppressSidebarDeleteHover();", bindingsScript, StringComparison.Ordinal);
+        Assert.Contains("chatSidebar.addEventListener(\"pointermove\", function() {", bindingsScript, StringComparison.Ordinal);
+        Assert.Contains(".chat-sidebar.suppress-delete-hover .chat-sidebar-item-delete", baseCss, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Ensures the debug tab exposes a dedicated startup diagnostics section for runtime bootstrap latency troubleshooting.
     /// </summary>
     [Fact]

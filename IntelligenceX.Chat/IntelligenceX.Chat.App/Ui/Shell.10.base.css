@@ -574,6 +574,12 @@ body {
   display: grid;
 }
 
+.chat-sidebar.suppress-delete-hover .chat-sidebar-item-delete,
+.chat-sidebar.suppress-delete-hover .chat-sidebar-item:hover .chat-sidebar-item-delete,
+.chat-sidebar.suppress-delete-hover .chat-sidebar-item-delete.armed {
+  display: none;
+}
+
 .chat-sidebar-item-delete:hover {
   background: rgba(255, 142, 162, 0.22);
   color: #ffdce3;
