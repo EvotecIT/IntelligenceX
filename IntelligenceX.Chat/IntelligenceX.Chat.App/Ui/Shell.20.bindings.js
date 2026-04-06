@@ -345,6 +345,40 @@
     renderConversationSelectionState();
   }
 
+  function removeConversationFromClientState(conversationId) {
+    var id = String(conversationId || "").trim();
+    if (!id || !state.options || !Array.isArray(state.options.conversations)) {
+      return;
+    }
+
+    var remaining = [];
+    var removedActive = id === String(state.options.activeConversationId || "").trim();
+    for (var i = 0; i < state.options.conversations.length; i++) {
+      var conversation = state.options.conversations[i];
+      if (!conversation || String(conversation.id || "").trim() === id) {
+        continue;
+      }
+      remaining.push(conversation);
+    }
+
+    state.options.conversations = remaining;
+    if (removedActive) {
+      var nextActiveId = "";
+      for (var j = 0; j < remaining.length; j++) {
+        if (remaining[j] && remaining[j].isSystem !== true) {
+          nextActiveId = String(remaining[j].id || "").trim();
+          break;
+        }
+      }
+      if (!nextActiveId && remaining.length > 0) {
+        nextActiveId = String((remaining[0] && remaining[0].id) || "").trim();
+      }
+      state.options.activeConversationId = nextActiveId;
+    }
+
+    renderConversationSelectionState();
+  }
+
   function releaseSidebarDeleteHoverSuppression() {
     chatSidebar.classList.remove("suppress-delete-hover");
   }
@@ -376,6 +410,7 @@
       if (deleteBtn.classList.contains("armed")) {
         clearPendingDelete();
         suppressSidebarDeleteHover();
+        removeConversationFromClientState(delId);
         post("delete_conversation", { id: delId });
         return;
       }

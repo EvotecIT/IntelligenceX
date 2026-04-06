@@ -76,6 +76,41 @@ public sealed partial class MainWindow : Window {
         return profileApplied;
     }
 
+    private bool ShouldRefreshToolCatalogOnOptionsRefresh() {
+        if (!_isConnected || _client is null) {
+            return false;
+        }
+
+        if (_toolCatalogDefinitions.Count > 0) {
+            return false;
+        }
+
+        var effectivePacks = RuntimeToolingMetadataResolver.ResolveEffectivePacks(
+            _sessionPolicy,
+            _toolCatalogPacks,
+            _toolCatalogCapabilitySnapshot);
+        return effectivePacks.Length == 0;
+    }
+
+    private async Task RefreshToolCatalogFromServiceAsync(ChatServiceClient client, bool publishOptions, bool appendWarnings) {
+        try {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(12));
+            var toolList = await client.RequestAsync<ToolListMessage>(
+                new ListToolsRequest { RequestId = NextId() },
+                cts.Token).ConfigureAwait(false);
+            UpdateToolCatalog(toolList.Tools, toolList.RoutingCatalog, toolList.Packs, toolList.Plugins, toolList.CapabilitySnapshot);
+            SeedBackgroundSchedulerSnapshot(toolList.CapabilitySnapshot?.BackgroundScheduler);
+        } catch (Exception ex) {
+            if (appendWarnings && (VerboseServiceLogs || _debugMode)) {
+                AppendSystem(SystemNotice.ListToolsFailed(ex.Message));
+            }
+        }
+
+        if (publishOptions) {
+            await PublishOptionsStateAsync().ConfigureAwait(false);
+        }
+    }
+
     private async Task RefreshBackgroundSchedulerStatusAsync(
         ChatServiceClient client,
         bool publishOptions,

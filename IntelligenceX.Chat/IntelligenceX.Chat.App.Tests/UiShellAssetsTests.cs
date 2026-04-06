@@ -157,11 +157,27 @@ public sealed partial class UiShellAssetsTests {
         var baseCssPath = Path.Combine(UiDirectory, "Shell.10.base.css");
         var baseCss = File.ReadAllText(baseCssPath);
 
+        Assert.Contains("function removeConversationFromClientState(conversationId)", bindingsScript, StringComparison.Ordinal);
         Assert.Contains("function suppressSidebarDeleteHover()", bindingsScript, StringComparison.Ordinal);
         Assert.Contains("function releaseSidebarDeleteHoverSuppression()", bindingsScript, StringComparison.Ordinal);
+        Assert.Contains("removeConversationFromClientState(delId);", bindingsScript, StringComparison.Ordinal);
         Assert.Contains("suppressSidebarDeleteHover();", bindingsScript, StringComparison.Ordinal);
         Assert.Contains("chatSidebar.addEventListener(\"pointermove\", function() {", bindingsScript, StringComparison.Ordinal);
         Assert.Contains(".chat-sidebar.suppress-delete-hover .chat-sidebar-item-delete", baseCss, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures the Tools tab enters a syncing state when opened against an empty
+    /// connected snapshot, instead of flashing "No tools registered" before refresh completes.
+    /// </summary>
+    [Fact]
+    public void Load_IncludesToolsTabEmptySnapshotLoadingGate() {
+        var coreScriptPath = Path.Combine(UiDirectory, "Shell.10.core.js");
+        var coreScript = File.ReadAllText(coreScriptPath);
+
+        Assert.Contains("if (tabId === \"tools\") {", coreScript, StringComparison.Ordinal);
+        Assert.Contains("state.connected && !hasVisibleToolState", coreScript, StringComparison.Ordinal);
+        Assert.Contains("state.options.toolsLoading = true;", coreScript, StringComparison.Ordinal);
     }
 
     /// <summary>

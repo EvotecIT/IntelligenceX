@@ -560,6 +560,17 @@
     for (var j = 0; j < contents.length; j++) {
       contents[j].classList.toggle("active", contents[j].dataset.tab === tabId);
     }
+    if (tabId === "tools") {
+      var hasVisibleToolState = state.options
+        && ((Array.isArray(state.options.tools) && state.options.tools.length > 0)
+          || (Array.isArray(state.options.packs) && state.options.packs.length > 0));
+      if (state.connected && !hasVisibleToolState) {
+        state.options.toolsLoading = true;
+        if (typeof renderTools === "function") {
+          renderTools();
+        }
+      }
+    }
     writeStorage("ixchat.options.tab", tabId);
   }
 
