@@ -163,7 +163,8 @@
       policy: null,
       packs: [],
       tools: [],
-      toolsLoading: true
+      toolsLoading: true,
+      toolsCatalogPendingCount: 0
     }
   };
 

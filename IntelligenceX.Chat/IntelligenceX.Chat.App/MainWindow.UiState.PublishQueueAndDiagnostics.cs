@@ -776,4 +776,20 @@ public sealed partial class MainWindow : Window {
         return list.ToArray();
     }
 
+    private int CountToolsHiddenWithoutCatalog() {
+        if (_toolStates.Count == 0) {
+            return 0;
+        }
+
+        var hiddenCount = 0;
+        var names = new List<string>(_toolStates.Keys);
+        for (var i = 0; i < names.Count; i++) {
+            if (!_toolDisplayNames.ContainsKey(names[i])) {
+                hiddenCount++;
+            }
+        }
+
+        return hiddenCount;
+    }
+
 }

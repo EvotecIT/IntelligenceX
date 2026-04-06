@@ -348,6 +348,11 @@
     } else {
       state.options.toolsLoading = false;
     }
+    if (typeof nextOptions.toolsCatalogPendingCount === "number" && Number.isFinite(nextOptions.toolsCatalogPendingCount)) {
+      state.options.toolsCatalogPendingCount = Math.max(0, Math.floor(nextOptions.toolsCatalogPendingCount));
+    } else {
+      state.options.toolsCatalogPendingCount = 0;
+    }
 
     var preservePreviousTools = state.options.toolsLoading
       && incomingTools.length === 0

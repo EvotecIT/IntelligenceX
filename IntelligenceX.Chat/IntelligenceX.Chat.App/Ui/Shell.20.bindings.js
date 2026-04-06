@@ -312,6 +312,7 @@
   }
 
   byId("btnSidebarNewChat").addEventListener("click", function() {
+    setPendingConversationSelection("");
     post("new_conversation");
   });
 
@@ -328,6 +329,16 @@
   });
 
   var pendingDeleteTimer = 0;
+
+  function renderConversationSelectionState() {
+    renderSidebarConversations();
+    renderOptionsConversations();
+  }
+
+  function setPendingConversationSelection(conversationId) {
+    state.options.activeConversationId = String(conversationId || "").trim();
+    renderConversationSelectionState();
+  }
 
   function clearPendingDelete() {
     if (pendingDeleteTimer) {
@@ -371,6 +382,7 @@
     if (!id) {
       return;
     }
+    setPendingConversationSelection(id);
     post("switch_conversation", { id: id });
   });
 
@@ -1723,6 +1735,7 @@
   var btnNewConversation = byId("btnNewConversation");
   if (btnNewConversation) {
     btnNewConversation.addEventListener("click", function() {
+      setPendingConversationSelection("");
       post("new_conversation");
       closeOptions();
     });
@@ -1743,6 +1756,7 @@
       }
 
       if (action === "switch") {
+        setPendingConversationSelection(id);
         post("switch_conversation", { id: id });
         return;
       }

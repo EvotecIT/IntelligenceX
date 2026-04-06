@@ -43,9 +43,10 @@ public sealed partial class UiShellAssetsTests {
         Assert.Contains("function formatExecutionScopeLabel(executionScope)", script, StringComparison.Ordinal);
         Assert.Contains("if (tool.isEnvironmentDiscoverTool) {", script, StringComparison.Ordinal);
         Assert.Contains("if (tool.supportsRemoteHostTargeting || String(tool.executionScope || \"\").toLowerCase() === \"local_or_remote\") {", script, StringComparison.Ordinal);
-        Assert.Contains("appendToolContractSummary(item, \"Target arguments\", Array.isArray(tool.targetScopeArguments) ? tool.targetScopeArguments : []);", script, StringComparison.Ordinal);
-        Assert.Contains("appendToolContractSummary(item, \"Handoff packs\", Array.isArray(tool.handoffTargetPackIds) ? tool.handoffTargetPackIds : []);", script, StringComparison.Ordinal);
-        Assert.Contains("appendToolContractSummary(item, \"Recovery tools\", Array.isArray(tool.recoveryToolNames) ? tool.recoveryToolNames : []);", script, StringComparison.Ordinal);
+        Assert.Contains("function appendToolDetailsLine(label, values) {", script, StringComparison.Ordinal);
+        Assert.Contains("appendToolDetailsLine(\"Target arguments\", Array.isArray(tool.targetScopeArguments) ? tool.targetScopeArguments : []);", script, StringComparison.Ordinal);
+        Assert.Contains("appendToolDetailsLine(\"Handoff packs\", Array.isArray(tool.handoffTargetPackIds) ? tool.handoffTargetPackIds : []);", script, StringComparison.Ordinal);
+        Assert.Contains("appendToolDetailsLine(\"Recovery tools\", Array.isArray(tool.recoveryToolNames) ? tool.recoveryToolNames : []);", script, StringComparison.Ordinal);
         Assert.Contains("tool.isEnvironmentDiscoverTool ? \"environment discover preflight bootstrap\" : \"\",", script, StringComparison.Ordinal);
         Assert.Contains("tool.isHandoffAware ? \"handoff pivot continuation\" : \"\",", script, StringComparison.Ordinal);
         Assert.Contains("tool.supportsTransientRetry ? \"transient retry\" : \"\",", script, StringComparison.Ordinal);
