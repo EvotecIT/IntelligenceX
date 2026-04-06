@@ -60,7 +60,8 @@
           Condition="'$(SkipChatServiceSidecarBuild)' != 'true' AND Exists('$(MSBuildThisFileDirectory)..\\IntelligenceX.Chat.Service\\IntelligenceX.Chat.Service.csproj')">
     <MSBuild Projects="$(MSBuildThisFileDirectory)..\\IntelligenceX.Chat.Service\\IntelligenceX.Chat.Service.csproj"
              Targets="Restore;Build"
-             Properties="Configuration=$(Configuration);TargetFramework=$(ChatServiceResolvedTfm);RuntimeIdentifier=;SelfContained=false;NoBuild=false;NETCoreSdkVersion=$(NETCoreSdkVersion)" />
+             Properties="Configuration=$(Configuration);TargetFramework=$(ChatServiceResolvedTfm);RuntimeIdentifier=;SelfContained=false;NoBuild=false;NETCoreSdkVersion=$(NETCoreSdkVersion)"
+             RemoveProperties="TargetFramework;TargetPlatformIdentifier;TargetPlatformVersion;TargetPlatformMinVersion;RuntimeIdentifier;PlatformTarget;SelfContained;UseAppHost" />
   </Target>
 
   <Target Name="ValidateChatServiceSidecarOutput" AfterTargets="BuildChatServiceSidecar"
