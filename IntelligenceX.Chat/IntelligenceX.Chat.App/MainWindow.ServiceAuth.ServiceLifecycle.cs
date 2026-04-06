@@ -64,6 +64,7 @@ public sealed partial class MainWindow {
             if (launchBuiltInToolProbePaths.Count > 0) {
                 StartupLog.Write("Service built-in tool probe paths configured count=" + launchBuiltInToolProbePaths.Count.ToString(CultureInfo.InvariantCulture));
             }
+            var enableWorkspaceBuiltInToolOutputProbing = ShouldEnableWorkspaceBuiltInToolOutputProbing(launchBuiltInToolProbePaths);
             var launchArgs = ServiceLaunchArguments.Build(
                 pipeName,
                 DetachedServiceMode,
@@ -91,7 +92,7 @@ public sealed partial class MainWindow {
                 },
                 additionalPluginPaths: launchPluginPaths,
                 additionalBuiltInToolProbePaths: launchBuiltInToolProbePaths,
-                enableWorkspaceBuiltInToolOutputProbing: true);
+                enableWorkspaceBuiltInToolOutputProbing: enableWorkspaceBuiltInToolOutputProbing);
             var hasExe = File.Exists(exe);
             var psi = new ProcessStartInfo {
                 FileName = hasExe ? exe : "dotnet",
@@ -232,6 +233,10 @@ public sealed partial class MainWindow {
         }
 
         return paths;
+    }
+
+    internal static bool ShouldEnableWorkspaceBuiltInToolOutputProbing(IReadOnlyCollection<string> launchBuiltInToolProbePaths) {
+        return launchBuiltInToolProbePaths is null || launchBuiltInToolProbePaths.Count == 0;
     }
 
     private static void TryAddLaunchPluginPath(List<string> paths, HashSet<string> seen, string candidate) {

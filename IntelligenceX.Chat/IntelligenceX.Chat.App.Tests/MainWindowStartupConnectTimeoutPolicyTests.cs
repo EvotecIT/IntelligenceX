@@ -693,6 +693,24 @@ public sealed class MainWindowStartupConnectTimeoutPolicyTests {
     }
 
     /// <summary>
+    /// Ensures workspace output probing stays opt-in once explicit launch probe paths exist.
+    /// </summary>
+    [Fact]
+    public void ShouldEnableWorkspaceBuiltInToolOutputProbing_WithExplicitProbePaths_ReturnsFalse() {
+        var shouldEnable = MainWindow.ShouldEnableWorkspaceBuiltInToolOutputProbing(new[] { @"C:\service", @"C:\service\tools" });
+        Assert.False(shouldEnable);
+    }
+
+    /// <summary>
+    /// Ensures workspace output probing remains available as a fallback when no explicit probe paths are provided.
+    /// </summary>
+    [Fact]
+    public void ShouldEnableWorkspaceBuiltInToolOutputProbing_WithoutProbePaths_ReturnsTrue() {
+        Assert.True(MainWindow.ShouldEnableWorkspaceBuiltInToolOutputProbing(Array.Empty<string>()));
+        Assert.True(MainWindow.ShouldEnableWorkspaceBuiltInToolOutputProbing(null!));
+    }
+
+    /// <summary>
     /// Ensures tools-loading indicator is shown only while startup metadata is actively pending.
     /// </summary>
     [Theory]
