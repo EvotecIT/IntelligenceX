@@ -297,11 +297,11 @@ public sealed partial class UiShellAssetsTests {
     }
 
     /// <summary>
-    /// Ensures the active conversation surface can expose thread-scoped background scheduler hints
-    /// and trigger a direct scoped refresh without opening the Session tab.
+    /// Ensures the main chat surface no longer exposes background-scheduler operator controls,
+    /// while still updating the active sidebar selection deterministically from incoming options state.
     /// </summary>
     [Fact]
-    public void Load_IncludesActiveThreadSchedulerHintSurface() {
+    public void Load_RemovesMainSurfaceSchedulerControls_AndKeepsActiveConversationStateDeterministic() {
         var html = UiShellAssets.Load();
         var helpersScriptPath = Path.Combine(UiDirectory, "Shell.12.core.helpers.js");
         var helpersScript = File.ReadAllText(helpersScriptPath);
@@ -312,60 +312,23 @@ public sealed partial class UiShellAssetsTests {
         var baseCssPath = Path.Combine(UiDirectory, "Shell.10.base.css");
         var baseCss = File.ReadAllText(baseCssPath);
 
-        Assert.Contains("id=\"activeThreadSchedulerBanner\"", html, StringComparison.Ordinal);
-        Assert.Contains("id=\"activeThreadSchedulerTitle\"", html, StringComparison.Ordinal);
-        Assert.Contains("id=\"activeThreadSchedulerMeta\"", html, StringComparison.Ordinal);
-        Assert.Contains("id=\"activeThreadSchedulerDetail\"", html, StringComparison.Ordinal);
-        Assert.Contains("id=\"btnActiveThreadSchedulerOpen\"", html, StringComparison.Ordinal);
-        Assert.Contains("id=\"btnActiveThreadSchedulerToggleMute\"", html, StringComparison.Ordinal);
-        Assert.Contains("id=\"btnActiveThreadSchedulerTempMute\"", html, StringComparison.Ordinal);
-        Assert.Contains("id=\"btnActiveThreadSchedulerTempMuteLong\"", html, StringComparison.Ordinal);
-        Assert.Contains("id=\"btnActiveThreadSchedulerMuteUntilMaintenance\"", html, StringComparison.Ordinal);
-        Assert.Contains("id=\"btnActiveThreadSchedulerMuteUntilMaintenanceStart\"", html, StringComparison.Ordinal);
-        Assert.Contains("id=\"btnActiveThreadSchedulerRefresh\"", html, StringComparison.Ordinal);
-        Assert.Contains("function findActiveConversation()", helpersScript, StringComparison.Ordinal);
-        Assert.Contains("function renderActiveConversationSchedulerHint()", helpersScript, StringComparison.Ordinal);
-        Assert.Contains("function buildActiveConversationSchedulerActivityText(chat)", helpersScript, StringComparison.Ordinal);
+        Assert.Contains("id=\"optBackgroundSchedulerSection\"", html, StringComparison.Ordinal);
         Assert.Contains("function isConversationSchedulerBlocked(chat)", helpersScript, StringComparison.Ordinal);
         Assert.Contains("function findConversationSchedulerSuppression(chat)", helpersScript, StringComparison.Ordinal);
         Assert.Contains("function formatSchedulerSuppressionExpiry(utcTicks)", helpersScript, StringComparison.Ordinal);
-        Assert.Contains("refreshButton.dataset.threadId = threadId;", helpersScript, StringComparison.Ordinal);
-        Assert.Contains("toggleMuteButton.dataset.threadId = threadId;", helpersScript, StringComparison.Ordinal);
-        Assert.Contains("toggleMuteButton.textContent = blocked ? \"Unmute Thread\" : \"Mute Thread\";", helpersScript, StringComparison.Ordinal);
         Assert.Contains("threadId: threadId,\n          queuedItemCount: 0,\n          readyItemCount: 0,\n          runningItemCount: 1", helpersScript, StringComparison.Ordinal);
         Assert.Contains("threadId: threadId,\n          queuedItemCount: 0,\n          readyItemCount: 1,\n          runningItemCount: 0", helpersScript, StringComparison.Ordinal);
-        Assert.Contains("tempMuteButton.dataset.threadId = threadId;", helpersScript, StringComparison.Ordinal);
-        Assert.Contains("tempMuteLongButton.dataset.threadId = threadId;", helpersScript, StringComparison.Ordinal);
-        Assert.Contains("muteUntilMaintenanceButton.dataset.threadId = threadId;", helpersScript, StringComparison.Ordinal);
-        Assert.Contains("muteUntilMaintenanceStartButton.dataset.threadId = threadId;", helpersScript, StringComparison.Ordinal);
-        Assert.Contains("tempMuteButton.disabled = !normalizeBool(state.connected) || blocked;", helpersScript, StringComparison.Ordinal);
-        Assert.Contains("tempMuteLongButton.disabled = !normalizeBool(state.connected) || blocked;", helpersScript, StringComparison.Ordinal);
-        Assert.Contains("muteUntilMaintenanceButton.disabled = !normalizeBool(state.connected) || blocked;", helpersScript, StringComparison.Ordinal);
-        Assert.Contains("muteUntilMaintenanceStartButton.disabled = !normalizeBool(state.connected) || blocked;", helpersScript, StringComparison.Ordinal);
-        Assert.Contains("titleEl.textContent = suppression && suppression.temporary === true ? \"BG temp\" : \"BG muted\";", helpersScript, StringComparison.Ordinal);
-        Assert.Contains("detailEl.textContent = blocked", helpersScript, StringComparison.Ordinal);
-        Assert.Contains("? (suppression && suppression.temporary === true", helpersScript, StringComparison.Ordinal);
-        Assert.Contains(": \"Daemon scheduling is muted for this thread until you unmute it.\")", helpersScript, StringComparison.Ordinal);
-        Assert.Contains("? (suppression && suppression.temporary === true", helpersScript, StringComparison.Ordinal);
-        Assert.Contains(": buildActiveConversationSchedulerActivityText(activeConversation);", helpersScript, StringComparison.Ordinal);
-        Assert.Contains("renderActiveConversationSchedulerHint();", renderingScript, StringComparison.Ordinal);
-        Assert.Contains("post(\"scheduler_refresh\", { threadId: threadId });", bindingsScript, StringComparison.Ordinal);
-        Assert.Contains("post(\"scheduler_set_thread_block\", {", bindingsScript, StringComparison.Ordinal);
-        Assert.Contains("var activeThreadSchedulerTempMuteButton = byId(\"btnActiveThreadSchedulerTempMute\");", bindingsScript, StringComparison.Ordinal);
-        Assert.Contains("durationMinutes: \"30\"", bindingsScript, StringComparison.Ordinal);
-        Assert.Contains("var activeThreadSchedulerTempMuteLongButton = byId(\"btnActiveThreadSchedulerTempMuteLong\");", bindingsScript, StringComparison.Ordinal);
-        Assert.Contains("durationMinutes: \"120\"", bindingsScript, StringComparison.Ordinal);
-        Assert.Contains("var activeThreadSchedulerMuteUntilMaintenanceButton = byId(\"btnActiveThreadSchedulerMuteUntilMaintenance\");", bindingsScript, StringComparison.Ordinal);
-        Assert.Contains("var activeThreadSchedulerMuteUntilMaintenanceStartButton = byId(\"btnActiveThreadSchedulerMuteUntilMaintenanceStart\");", bindingsScript, StringComparison.Ordinal);
-        Assert.Contains("switchOptionsTab(\"session\");", bindingsScript, StringComparison.Ordinal);
-        Assert.Contains("scopeSelect.value = threadId;", bindingsScript, StringComparison.Ordinal);
-        Assert.Contains(".chat-thread-banner {", baseCss, StringComparison.Ordinal);
-        Assert.Contains(".chat-thread-banner-detail {", baseCss, StringComparison.Ordinal);
-        Assert.Contains(".chat-thread-banner-actions {", baseCss, StringComparison.Ordinal);
-        Assert.Contains(".chat-thread-banner-btn {", baseCss, StringComparison.Ordinal);
-        Assert.Contains(".chat-thread-banner-btn-ghost {", baseCss, StringComparison.Ordinal);
-        Assert.Contains(".chat-thread-banner-btn-warn {", baseCss, StringComparison.Ordinal);
-        Assert.Contains(".chat-thread-banner-btn-warn.is-active {", baseCss, StringComparison.Ordinal);
+        Assert.Contains("if (Object.prototype.hasOwnProperty.call(nextOptions, \"activeConversationId\")) {", renderingScript, StringComparison.Ordinal);
+        Assert.Contains("state.options.activeConversationId = nextOptions.activeConversationId || \"\";", renderingScript, StringComparison.Ordinal);
+        Assert.DoesNotContain("state.options.activeConversationId = nextOptions.activeConversationId || state.options.activeConversationId;", renderingScript, StringComparison.Ordinal);
+        Assert.DoesNotContain("id=\"activeThreadSchedulerBanner\"", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("id=\"btnActiveThreadSchedulerOpen\"", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("function findActiveConversation()", helpersScript, StringComparison.Ordinal);
+        Assert.DoesNotContain("function renderActiveConversationSchedulerHint()", helpersScript, StringComparison.Ordinal);
+        Assert.DoesNotContain("function buildActiveConversationSchedulerActivityText(chat)", helpersScript, StringComparison.Ordinal);
+        Assert.DoesNotContain("post(\"scheduler_refresh\", { threadId: threadId });", bindingsScript, StringComparison.Ordinal);
+        Assert.DoesNotContain("switchOptionsTab(\"session\");", bindingsScript, StringComparison.Ordinal);
+        Assert.DoesNotContain(".chat-thread-banner {", baseCss, StringComparison.Ordinal);
     }
 
     /// <summary>

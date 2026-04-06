@@ -304,7 +304,7 @@ public sealed partial class MainWindow : Window {
 
             if (anyAttempted && lastApplySucceeded) {
                 UpdateRuntimeApplyProgress("completed", "Runtime settings applied without restarting the service process.", active: false, current.RequestId);
-                await SetStatusAsync(SessionStatus.ForConnection(_isConnected, IsEffectivelyAuthenticatedForCurrentTransport())).ConfigureAwait(false);
+                await SetStatusAsync(ResolveConnectionStatusForCurrentTransport()).ConfigureAwait(false);
             }
         } finally {
             Interlocked.Exchange(ref _localProviderApplyInFlight, 0);

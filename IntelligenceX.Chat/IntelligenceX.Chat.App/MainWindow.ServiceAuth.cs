@@ -244,6 +244,40 @@ public sealed partial class MainWindow : Window {
         return !RequiresInteractiveSignInForCurrentTransport() || _isAuthenticated;
     }
 
+    internal static SessionStatus ResolveConnectionStatus(
+        bool isConnected,
+        bool requiresInteractiveSignIn,
+        bool isAuthenticated,
+        bool loginInProgress,
+        bool hasExplicitUnauthenticatedProbeSnapshot) {
+        if (!isConnected) {
+            return SessionStatus.Disconnected();
+        }
+
+        if (!requiresInteractiveSignIn) {
+            return SessionStatus.Connected();
+        }
+
+        if (loginInProgress) {
+            return SessionStatus.WaitingForSignIn();
+        }
+
+        if (isAuthenticated || !hasExplicitUnauthenticatedProbeSnapshot) {
+            return SessionStatus.Connected();
+        }
+
+        return SessionStatus.SignInRequired();
+    }
+
+    private SessionStatus ResolveConnectionStatusForCurrentTransport() {
+        return ResolveConnectionStatus(
+            isConnected: _isConnected,
+            requiresInteractiveSignIn: RequiresInteractiveSignInForCurrentTransport(),
+            isAuthenticated: IsEffectivelyAuthenticatedForCurrentTransport(),
+            loginInProgress: _loginInProgress,
+            hasExplicitUnauthenticatedProbeSnapshot: HasExplicitUnauthenticatedEnsureLoginProbeSnapshot());
+    }
+
     private void ApplyNonNativeAuthenticationStateIfNeeded() {
         if (RequiresInteractiveSignInForCurrentTransport()) {
             return;

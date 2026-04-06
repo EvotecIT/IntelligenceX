@@ -330,7 +330,7 @@ public sealed partial class MainWindow : Window {
         _autoSignInAttempted = IsEffectivelyAuthenticatedForCurrentTransport();
         await ApplyThemeFromStateAsync().ConfigureAwait(false);
         await RenderTranscriptAsync().ConfigureAwait(false);
-        await SetStatusAsync(SessionStatus.ForConnection(_isConnected, IsEffectivelyAuthenticatedForCurrentTransport())).ConfigureAwait(false);
+        await SetStatusAsync(ResolveConnectionStatusForCurrentTransport()).ConfigureAwait(false);
         if (_isConnected && RequiresInteractiveSignInForCurrentTransport() && !_isAuthenticated) {
             _ = await RefreshAuthenticationStateAsync(updateStatus: true).ConfigureAwait(false);
         }

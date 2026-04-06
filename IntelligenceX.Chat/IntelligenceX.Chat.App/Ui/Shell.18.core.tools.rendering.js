@@ -65,7 +65,6 @@
     renderLocalModelOptions();
     renderTools();
     renderSidebarConversations();
-    renderActiveConversationSchedulerHint();
     renderProfileScopeHint();
     renderExportPreferences();
     renderDebugPanel();
@@ -317,7 +316,9 @@
     };
     state.options.activeProfileName = nextOptions.activeProfileName || state.options.activeProfileName;
     state.options.profileNames = nextOptions.profileNames || state.options.profileNames;
-    state.options.activeConversationId = nextOptions.activeConversationId || state.options.activeConversationId;
+    if (Object.prototype.hasOwnProperty.call(nextOptions, "activeConversationId")) {
+      state.options.activeConversationId = nextOptions.activeConversationId || "";
+    }
     state.options.conversations = nextOptions.conversations || [];
     state.options.profile = nextOptions.profile || state.options.profile;
     var currentLocalModel = state.options.localModel && typeof state.options.localModel === "object"

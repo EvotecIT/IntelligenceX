@@ -825,7 +825,7 @@ public sealed partial class MainWindow : Window {
                                     ? "StartupConnect.ready deferred_metadata_sync_preview_refresh_pending"
                                     : "StartupConnect.ready deferred_metadata_sync_preview_refresh_retry_limit_reached");
                         } else {
-                            await SetStatusAsync(SessionStatus.ForConnection(_isConnected, IsEffectivelyAuthenticatedForCurrentTransport())).ConfigureAwait(false);
+                            await SetStatusAsync(ResolveConnectionStatusForCurrentTransport()).ConfigureAwait(false);
                             StartupLog.Write("StartupConnect.ready deferred_metadata_sync_done");
                         }
                     } else {
@@ -885,7 +885,7 @@ public sealed partial class MainWindow : Window {
                         && (StartupStatusPhaseContextRegex.IsMatch(currentStatus)
                             || currentStatus.StartsWith("Starting runtime...", StringComparison.OrdinalIgnoreCase))) {
                         try {
-                            await SetStatusAsync(SessionStatus.ForConnection(_isConnected, IsEffectivelyAuthenticatedForCurrentTransport())).ConfigureAwait(false);
+                            await SetStatusAsync(ResolveConnectionStatusForCurrentTransport()).ConfigureAwait(false);
                             StartupLog.Write("StartupConnect.ready cleared_stale_startup_status");
                         } catch (Exception refreshEx) {
                             StartupLog.Write("StartupConnect.ready stale_status_refresh_failed: " + DescribeStartupExceptionForLog(refreshEx));

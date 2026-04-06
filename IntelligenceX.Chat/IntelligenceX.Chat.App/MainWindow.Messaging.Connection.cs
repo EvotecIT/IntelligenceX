@@ -444,7 +444,7 @@ public sealed partial class MainWindow : Window {
                 _isConnected = true;
                 ClearDispatchConnectFailure();
                 StopAutoReconnectLoop();
-                await SetStatusAsync(SessionStatus.ForConnectedAuth(IsEffectivelyAuthenticatedForCurrentTransport())).ConfigureAwait(false);
+                await SetStatusAsync(ResolveConnectionStatusForCurrentTransport()).ConfigureAwait(false);
                 return;
             }
 
@@ -957,7 +957,7 @@ public sealed partial class MainWindow : Window {
                             ? "inline_metadata_sync_preview_refresh_pending"
                             : "inline_metadata_sync_preview_refresh_retry_limit_reached");
                 } else {
-                    await SetStatusAsync(SessionStatus.ForConnection(_isConnected, IsEffectivelyAuthenticatedForCurrentTransport())).ConfigureAwait(false);
+                    await SetStatusAsync(ResolveConnectionStatusForCurrentTransport()).ConfigureAwait(false);
                     LogStartupConnectPhase("ready", "inline_metadata_sync_done");
                 }
                 await PublishOptionsStateSafeAsync().ConfigureAwait(false);
