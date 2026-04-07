@@ -508,7 +508,7 @@ public sealed partial class MainWindow : Window {
             hasSessionPolicy: _sessionPolicy is not null,
             startupFlowState: Volatile.Read(ref _startupFlowState),
             startupMetadataSyncQueued: Volatile.Read(ref _startupConnectMetadataDeferredQueued) != 0)
-            || toolsCatalogPendingCount > 0;
+            || (_isConnected && toolsCatalogPendingCount > 0);
         var conversations = BuildConversationState();
         var accountUsageState = BuildAccountUsageState();
         var activeAccountUsageState = BuildActiveAccountUsageState();

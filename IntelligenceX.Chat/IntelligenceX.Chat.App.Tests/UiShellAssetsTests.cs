@@ -186,7 +186,8 @@ public sealed partial class UiShellAssetsTests {
         Assert.Contains("function queueActiveToolsTabRender()", renderingScript, StringComparison.Ordinal);
         Assert.Contains("activeTab.dataset.tab !== \"tools\"", renderingScript, StringComparison.Ordinal);
         Assert.Contains("var keepLoadingForConnectedEmptyState = !incomingHasVisibleToolState && state.connected && toolsTabOpen;", renderingScript, StringComparison.Ordinal);
-        Assert.Contains("var preservePreviousTools = !incomingHasVisibleToolState", renderingScript, StringComparison.Ordinal);
+        Assert.Contains("var incomingReportsToolLoading = nextOptions.toolsLoading === true || incomingPendingCatalogCount > 0;", renderingScript, StringComparison.Ordinal);
+        Assert.Contains("&& incomingReportsToolLoading;", renderingScript, StringComparison.Ordinal);
         Assert.Contains("queueActiveToolsTabRender();", renderingScript, StringComparison.Ordinal);
     }
 
@@ -210,8 +211,9 @@ public sealed partial class UiShellAssetsTests {
         Assert.Contains("} else if (!packHasTools && packDeferred && packCanLoadOnDemand) {", toolsScript, StringComparison.Ordinal);
         Assert.Contains("pill.textContent = \"On-demand\";", toolsScript, StringComparison.Ordinal);
         Assert.DoesNotContain("pill.textContent = allEnabled ? \"Loaded\" : (someEnabled ? \"Partial\" : \"Disabled\");", toolsScript, StringComparison.Ordinal);
-        Assert.Contains("packAction.textContent = packMetadata", toolsScript, StringComparison.Ordinal);
-        Assert.Contains("? (packEnabledByRuntime ? \"Disable pack\" : \"Enable pack\")", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("packToggle.className = \"options-toggle options-toggle-pack\";", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("packToggle.checked = packEnabledByRuntime;", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("setPackEnabled(packIdForToggle, groupToolsForToggle, e.target.checked);", toolsScript, StringComparison.Ordinal);
     }
 
     /// <summary>

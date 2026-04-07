@@ -454,8 +454,14 @@
   }
 
   function setPackEnabled(packId, groupTools, enabled) {
+    var packMetadata = packId ? findPackById(packId) : null;
     var runtimeDisabledByConfig = !!packId && packDisabledByRuntimeConfiguration(packId);
-    if (packId && !packIsAvailable(packId) && !runtimeDisabledByConfig) {
+    if (packId && !packMetadata && !packIsAvailable(packId) && !runtimeDisabledByConfig) {
+      return;
+    }
+
+    if (packId && packMetadata) {
+      post("set_pack_enabled", { packId: packId, enabled: enabled });
       return;
     }
 
@@ -932,36 +938,56 @@
       }
       summaryRight.appendChild(pill);
 
-      var packAction = document.createElement("button");
-      packAction.type = "button";
-      packAction.className = "options-btn options-btn-sm options-btn-ghost options-pack-action";
-      packAction.disabled = packUnavailable || (!packHasTools && !packRuntimeDisabledByConfig && !packMetadata);
-      packAction.textContent = packMetadata
-        ? (packEnabledByRuntime ? "Disable pack" : "Enable pack")
-        : (allEnabled ? "Disable all" : "Enable all");
-      packAction.setAttribute("aria-label", packAction.textContent + " " + packDisplayName(currentPackId));
-      if (packUnavailable && packUnavailableReason) {
-        packAction.title = packUnavailableReason;
-      } else if (!packHasTools && packDeferred && packCanLoadOnDemand && packEnabledByRuntime) {
-        packAction.title = "Pack is enabled and can load its tool definitions on demand.";
-      } else if (packRuntimeDisabledByConfig) {
-        packAction.title = "Pack is disabled by runtime configuration. Enable it to load this pack live.";
-      } else if (!packHasTools) {
-        packAction.title = "No tools are currently registered for this pack.";
-      } else if (packMetadata) {
-        packAction.title = "Apply the runtime pack setting for this pack.";
+      if (packMetadata) {
+        var packToggle = document.createElement("input");
+        packToggle.type = "checkbox";
+        packToggle.className = "options-toggle options-toggle-pack";
+        packToggle.checked = packEnabledByRuntime;
+        packToggle.disabled = false;
+        packToggle.setAttribute("aria-label", (packEnabledByRuntime ? "Disable pack " : "Enable pack ") + packDisplayName(currentPackId));
+        if (packUnavailable && packUnavailableReason) {
+          packToggle.title = packUnavailableReason;
+        } else if (!packHasTools && packDeferred && packCanLoadOnDemand && packEnabledByRuntime) {
+          packToggle.title = "Pack is enabled and can load its tool definitions on demand.";
+        } else if (packRuntimeDisabledByConfig) {
+          packToggle.title = "Pack is disabled by runtime configuration. Enable it to load this pack live.";
+        } else {
+          packToggle.title = "Enable or disable this runtime pack.";
+        }
+        (function(packIdForToggle, groupToolsForToggle) {
+          packToggle.addEventListener("change", function(e) {
+            e.stopPropagation();
+            setPackEnabled(packIdForToggle, groupToolsForToggle, e.target.checked);
+            renderTools();
+          });
+        })(currentPackId, groupTools);
+        summaryRight.appendChild(packToggle);
       } else {
-        packAction.title = "Turn every registered tool in this pack on or off.";
+        var packAction = document.createElement("button");
+        packAction.type = "button";
+        packAction.className = "options-btn options-btn-sm options-btn-ghost options-pack-action";
+        packAction.disabled = packUnavailable || (!packHasTools && !packRuntimeDisabledByConfig);
+        packAction.textContent = allEnabled ? "Disable all" : "Enable all";
+        packAction.setAttribute("aria-label", packAction.textContent + " " + packDisplayName(currentPackId));
+        if (packUnavailable && packUnavailableReason) {
+          packAction.title = packUnavailableReason;
+        } else if (packRuntimeDisabledByConfig) {
+          packAction.title = "Pack is disabled by runtime configuration. Enable it to load this pack live.";
+        } else if (!packHasTools) {
+          packAction.title = "No tools are currently registered for this pack.";
+        } else {
+          packAction.title = "Turn every registered tool in this pack on or off.";
+        }
+        (function(packIdForToggle, groupToolsForToggle, nextEnabled) {
+          packAction.addEventListener("click", function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            setPackEnabled(packIdForToggle, groupToolsForToggle, nextEnabled);
+            renderTools();
+          });
+        })(currentPackId, groupTools, !allEnabled);
+        summaryRight.appendChild(packAction);
       }
-      (function(packIdForToggle, groupToolsForToggle, nextEnabled) {
-        packAction.addEventListener("click", function(e) {
-          e.preventDefault();
-          e.stopPropagation();
-          setPackEnabled(packIdForToggle, groupToolsForToggle, nextEnabled);
-          renderTools();
-        });
-      })(currentPackId, groupTools, packMetadata ? !packEnabledByRuntime : !allEnabled);
-      summaryRight.appendChild(packAction);
       summary.appendChild(summaryRight);
 
       details.appendChild(summary);

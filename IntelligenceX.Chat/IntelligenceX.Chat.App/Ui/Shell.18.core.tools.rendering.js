@@ -388,20 +388,21 @@
     var activeOptionsTab = optionsPanel ? optionsPanel.querySelector(".options-tab.active") : null;
     var toolsTabOpen = !!activeOptionsTab && activeOptionsTab.dataset.tab === "tools" && document.body.classList.contains("options-open");
     var keepLoadingForConnectedEmptyState = !incomingHasVisibleToolState && state.connected && toolsTabOpen;
+    var incomingPendingCatalogCount = 0;
+    if (typeof nextOptions.toolsCatalogPendingCount === "number" && Number.isFinite(nextOptions.toolsCatalogPendingCount)) {
+      incomingPendingCatalogCount = Math.max(0, Math.floor(nextOptions.toolsCatalogPendingCount));
+    }
+    var incomingReportsToolLoading = nextOptions.toolsLoading === true || incomingPendingCatalogCount > 0;
     if (typeof nextOptions.toolsLoading === "boolean") {
       state.options.toolsLoading = nextOptions.toolsLoading || keepLoadingForConnectedEmptyState;
     } else {
       state.options.toolsLoading = keepLoadingForConnectedEmptyState;
     }
-    if (typeof nextOptions.toolsCatalogPendingCount === "number" && Number.isFinite(nextOptions.toolsCatalogPendingCount)) {
-      state.options.toolsCatalogPendingCount = Math.max(0, Math.floor(nextOptions.toolsCatalogPendingCount));
-    } else {
-      state.options.toolsCatalogPendingCount = 0;
-    }
+    state.options.toolsCatalogPendingCount = incomingPendingCatalogCount;
 
     var preservePreviousTools = !incomingHasVisibleToolState
       && previousHasVisibleToolState
-      && (state.options.toolsLoading || state.connected);
+      && incomingReportsToolLoading;
     if (preservePreviousTools) {
       if (incomingPacks.length > 0) {
         state.options.packs = incomingPacks;

@@ -136,18 +136,18 @@ public sealed class MainWindowAuthReconnectStateTests {
     /// Distinguishes settled sign-in requirements from the transient "still verifying" startup state.
     /// </summary>
     [Theory]
-    [InlineData(false, true, false, false, false, 2)]
-    [InlineData(true, false, false, false, false, 0)]
-    [InlineData(true, true, false, false, false, 0)]
-    [InlineData(true, true, false, true, false, 6)]
-    [InlineData(true, true, false, false, true, 1)]
+    [InlineData(false, true, false, false, false, "Disconnected")]
+    [InlineData(true, false, false, false, false, "Connected")]
+    [InlineData(true, true, false, false, false, "Connected")]
+    [InlineData(true, true, false, true, false, "WaitingForSignIn")]
+    [InlineData(true, true, false, false, true, "SignInRequired")]
     public void ResolveConnectionStatus_ReturnsExpectedKind(
         bool isConnected,
         bool requiresInteractiveSignIn,
         bool isAuthenticated,
         bool loginInProgress,
         bool hasExplicitUnauthenticatedProbeSnapshot,
-        int expectedKind) {
+        string expectedKind) {
         var result = MainWindow.ResolveConnectionStatus(
             isConnected: isConnected,
             requiresInteractiveSignIn: requiresInteractiveSignIn,
@@ -155,6 +155,6 @@ public sealed class MainWindowAuthReconnectStateTests {
             loginInProgress: loginInProgress,
             hasExplicitUnauthenticatedProbeSnapshot: hasExplicitUnauthenticatedProbeSnapshot);
 
-        Assert.Equal(expectedKind, (int)result.Kind);
+        Assert.Equal(expectedKind, result.Kind.ToString());
     }
 }

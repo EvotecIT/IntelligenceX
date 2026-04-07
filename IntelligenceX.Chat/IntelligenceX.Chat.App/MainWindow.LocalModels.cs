@@ -81,15 +81,8 @@ public sealed partial class MainWindow : Window {
             return false;
         }
 
-        if (_toolCatalogDefinitions.Count > 0) {
-            return false;
-        }
-
-        var effectivePacks = RuntimeToolingMetadataResolver.ResolveEffectivePacks(
-            _sessionPolicy,
-            _toolCatalogPacks,
-            _toolCatalogCapabilitySnapshot);
-        return effectivePacks.Length == 0;
+        return _toolCatalogDefinitions.Count == 0
+               || CountToolsHiddenWithoutCatalog() > 0;
     }
 
     private async Task RefreshToolCatalogFromServiceAsync(ChatServiceClient client, bool publishOptions, bool appendWarnings) {
