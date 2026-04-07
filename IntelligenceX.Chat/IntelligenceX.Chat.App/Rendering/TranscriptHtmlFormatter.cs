@@ -548,13 +548,13 @@ internal static class TranscriptHtmlFormatter {
             }
 
             if (selectedAction.Length > 0) {
-                detail.Append("- Selected action: ").Append(selectedAction).AppendLine();
+                AppendExecutionBlockedMetadataLine(detail, "Selected action", selectedAction);
             }
             if (actionCommand.Length > 0) {
-                detail.Append("- Action command: `").Append(actionCommand).Append('`').AppendLine();
+                AppendExecutionBlockedMetadataLine(detail, "Action command", actionCommand);
             }
             if (reasonCode.Length > 0) {
-                detail.Append("- Reason code: `").Append(reasonCode).Append('`').AppendLine();
+                AppendExecutionBlockedMetadataLine(detail, "Reason code", reasonCode);
             }
         }
 
@@ -572,6 +572,78 @@ internal static class TranscriptHtmlFormatter {
         }
 
         return TranscriptMarkdownPreparation.PrepareOutcomeDetailBody(detail.ToString());
+    }
+
+    private static void AppendExecutionBlockedMetadataLine(StringBuilder detail, string label, string value) {
+        var normalizedValue = NormalizeExecutionBlockedMetadataValue(value);
+        if (normalizedValue.Length == 0) {
+            return;
+        }
+
+        detail.Append("- ")
+            .Append(label)
+            .Append(": ")
+            .Append(BuildExecutionBlockedMetadataCodeSpan(normalizedValue))
+            .AppendLine();
+    }
+
+    private static string NormalizeExecutionBlockedMetadataValue(string? value) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            return string.Empty;
+        }
+
+        var sb = new StringBuilder(value.Length);
+        var pendingWhitespace = false;
+        for (var i = 0; i < value.Length; i++) {
+            var ch = value[i];
+            if (char.IsControl(ch)) {
+                pendingWhitespace = sb.Length > 0;
+                continue;
+            }
+
+            if (char.IsWhiteSpace(ch)) {
+                pendingWhitespace = sb.Length > 0;
+                continue;
+            }
+
+            if (pendingWhitespace) {
+                sb.Append(' ');
+                pendingWhitespace = false;
+            }
+
+            sb.Append(ch);
+        }
+
+        return sb.ToString().Trim();
+    }
+
+    private static string BuildExecutionBlockedMetadataCodeSpan(string value) {
+        if (string.IsNullOrEmpty(value)) {
+            return "``";
+        }
+
+        var longestBacktickRun = 0;
+        var currentRun = 0;
+        for (var i = 0; i < value.Length; i++) {
+            if (value[i] == '`') {
+                currentRun++;
+                if (currentRun > longestBacktickRun) {
+                    longestBacktickRun = currentRun;
+                }
+            } else {
+                currentRun = 0;
+            }
+        }
+
+        var fence = new string('`', Math.Max(1, longestBacktickRun + 1));
+        var requiresPadding = value.Length > 0
+                              && (char.IsWhiteSpace(value[0])
+                                  || char.IsWhiteSpace(value[^1])
+                                  || value[0] == '`'
+                                  || value[^1] == '`');
+        return requiresPadding
+            ? fence + " " + value + " " + fence
+            : fence + value + fence;
     }
 
     private static string RenderBodyHtml(string text, MarkdownRendererOptions markdownOptions) {

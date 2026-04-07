@@ -552,7 +552,41 @@ public sealed partial class TranscriptHtmlFormatterTests {
         Assert.Contains(">Blocked</span>", html, StringComparison.Ordinal);
         Assert.Contains("I do not have confirmed tool output for this selected action yet.", html, StringComparison.Ordinal);
         Assert.Contains("Selected action:", html, StringComparison.Ordinal);
-        Assert.Contains("<code>execution_contract_unmet_follow_up_draft_not_blocker_like</code>", html, StringComparison.Ordinal);
+        Assert.Contains("execution_contract_unmet_follow_up_draft_not_blocker_like", html, StringComparison.Ordinal);
         Assert.DoesNotContain("ix:execution-contract:v1", html, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Ensures execution-blocked metadata is rendered as safe literal text when it contains markdown or control characters.
+    /// </summary>
+    [Fact]
+    public void Format_RendersExecutionBlockedMetadataAsEscapedLiteralText() {
+        var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
+        var now = new DateTime(2026, 4, 7, 12, 5, 14, DateTimeKind.Local);
+        var html = TranscriptHtmlFormatter.Format(new[] {
+            ("Assistant", """
+                          [Execution blocked]
+                          ix:execution-contract:v1 Waiting for confirmed tool output.
+
+                          Selected action request: <b>boom</b> **bold** /act `weird` 
+                          Action: /act `quoted` 
+                          Reason code:
+                          reason_tick_`value`
+                          """, now)
+        }, "HH:mm:ss", options);
+
+        Assert.Contains("outcome-kind-execution-blocked", html, StringComparison.Ordinal);
+        Assert.Contains("Selected action:", html, StringComparison.Ordinal);
+        Assert.Contains("boom", html, StringComparison.Ordinal);
+        Assert.Contains("bold", html, StringComparison.Ordinal);
+        Assert.Contains("weird", html, StringComparison.Ordinal);
+        Assert.Contains("quoted", html, StringComparison.Ordinal);
+        Assert.Contains("tick_", html, StringComparison.Ordinal);
+        Assert.Contains("value", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("<b>boom</b>", html, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("<strong>bold</strong>", html, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("\u0001", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("\u0002", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("\u0007", html, StringComparison.Ordinal);
     }
 }
