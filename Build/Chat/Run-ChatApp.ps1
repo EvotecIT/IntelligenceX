@@ -47,20 +47,28 @@ function Resolve-ChatAppServiceOutputPath {
         return $null
     }
 
-    $candidates = Get-ChildItem $binRoot -Directory -Recurse -ErrorAction SilentlyContinue |
-        Where-Object { $_.Name -eq 'service' -and (Test-Path (Join-Path $_.FullName 'IntelligenceX.Chat.Service.dll')) } |
+    $appOutputCandidates = Get-ChildItem $binRoot -Filter 'IntelligenceX.Chat.App.dll' -File -Recurse -ErrorAction SilentlyContinue |
         ForEach-Object {
-            $pathSegments = $_.FullName -split '[\\/]'
+            $pathSegments = $_.DirectoryName -split '[\\/]'
             [pscustomobject]@{
-                FullName = $_.FullName
+                DirectoryName = $_.DirectoryName
                 IsPublishPath = $pathSegments -contains 'publish'
+                LastWriteTimeUtc = $_.LastWriteTimeUtc
                 Depth = $pathSegments.Count
             }
         } |
-        Sort-Object @{ Expression = 'IsPublishPath'; Descending = $false }, @{ Expression = 'Depth'; Descending = $false }, FullName
+        Sort-Object @{ Expression = 'IsPublishPath'; Descending = $false },
+            @{ Expression = 'LastWriteTimeUtc'; Descending = $true },
+            @{ Expression = 'Depth'; Descending = $false },
+            DirectoryName
 
-    foreach ($candidate in $candidates) {
-        return $candidate.FullName
+    foreach ($candidate in $appOutputCandidates) {
+        $servicePath = Join-Path $candidate.DirectoryName 'service'
+        if (Test-Path (Join-Path $servicePath 'IntelligenceX.Chat.Service.dll')) {
+            return $servicePath
+        }
+
+        return $servicePath
     }
 
     return $null
@@ -87,11 +95,19 @@ function Publish-ChatServiceSidecar {
     }
     New-Item -ItemType Directory -Path $OutputPath -Force | Out-Null
 
+    $serviceProjectDirectory = Split-Path -Parent $serviceProject
+    $ridBuildOutputPath = Join-Path $serviceProjectDirectory ("bin\" + $Configuration + "\net10.0-windows\win-x64")
+    $hasRidBuildOutputs =
+        (Test-Path -LiteralPath $ridBuildOutputPath) -and
+        ($null -ne (Get-ChildItem -LiteralPath $ridBuildOutputPath -Recurse -File -ErrorAction SilentlyContinue | Select-Object -First 1))
+
     $publishArgs = @(
         'publish',
         $serviceProject,
         '-c',
         $Configuration,
+        '-f',
+        'net10.0-windows',
         '-r',
         'win-x64',
         '-o',
@@ -105,7 +121,11 @@ function Publish-ChatServiceSidecar {
         if ($LASTEXITCODE -ne 0) {
             throw "dotnet restore failed with exit code $LASTEXITCODE."
         }
-        $publishArgs += '--no-build'
+        if ($hasRidBuildOutputs) {
+            $publishArgs += '--no-build'
+        } else {
+            Write-Step "RID-specific service build outputs not found at '$ridBuildOutputPath'; publishing with build despite -NoBuild."
+        }
     }
 
     Write-Step "Publish clean service sidecar: $OutputPath"
@@ -174,7 +194,6 @@ function Resolve-ChatPrivateToolPackState {
         Message = 'Private tool packs: not available; continuing public-only'
     }
 }
-
 $repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $appProject = Join-Path $repoRoot 'IntelligenceX.Chat\IntelligenceX.Chat.App\IntelligenceX.Chat.App.csproj'
 $officeImoRoot = Join-Path (Split-Path $repoRoot -Parent) 'OfficeIMO'
@@ -239,7 +258,8 @@ try {
             'build',
             $appProject,
             '-c',
-            $Configuration
+            $Configuration,
+            '/p:SkipChatServiceSidecarBuild=true'
         )
         if ($resolvedOfficeImoRoot) {
             $dotnetBuildArgs += "/p:UseLocalOfficeImoCheckout=true"
