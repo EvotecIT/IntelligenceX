@@ -217,6 +217,22 @@ public sealed partial class UiShellAssetsTests {
     }
 
     /// <summary>
+    /// Ensures shell theme application tracks the active preset name in the DOM
+    /// so live profile theme changes remain inspectable and consistent across UI surfaces.
+    /// </summary>
+    [Fact]
+    public void Load_IncludesActiveThemeDomTracking() {
+        var renderingScriptPath = Path.Combine(UiDirectory, RenderingScriptFile);
+        var renderingScript = File.ReadAllText(renderingScriptPath);
+
+        Assert.Contains("function applyThemeName(themeName)", renderingScript, StringComparison.Ordinal);
+        Assert.Contains("document.documentElement.setAttribute(\"data-ix-theme\", normalizedThemeName);", renderingScript, StringComparison.Ordinal);
+        Assert.Contains("document.body.setAttribute(\"data-ix-theme\", normalizedThemeName);", renderingScript, StringComparison.Ordinal);
+        Assert.Contains("window.ixResetTheme = function(themeName)", renderingScript, StringComparison.Ordinal);
+        Assert.Contains("applyThemeName(themeName || \"default\");", renderingScript, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Ensures the debug tab exposes a dedicated startup diagnostics section for runtime bootstrap latency troubleshooting.
     /// </summary>
     [Fact]

@@ -288,6 +288,27 @@
   border: 1px solid rgba(168, 200, 232, 0.52);
 }
 
+.outcome-card.outcome-kind-execution-blocked {
+  border-color: rgba(196, 205, 219, 0.42);
+  background: linear-gradient(180deg, rgba(36, 44, 56, 0.96) 0%, rgba(23, 30, 41, 0.95) 100%);
+}
+
+.outcome-card.outcome-kind-execution-blocked .outcome-head {
+  background: linear-gradient(180deg, rgba(120, 133, 153, 0.2) 0%, rgba(55, 65, 81, 0.08) 100%);
+}
+
+.outcome-card.outcome-kind-execution-blocked .outcome-icon {
+  color: #eef3fb;
+  background: rgba(148, 163, 184, 0.18);
+  border-color: rgba(196, 205, 219, 0.38);
+}
+
+.outcome-card.outcome-kind-execution-blocked .outcome-badge {
+  color: #edf3fb;
+  background: rgba(148, 163, 184, 0.2);
+  border: 1px solid rgba(196, 205, 219, 0.4);
+}
+
 .outcome-card.outcome-kind-startup {
   border-color: rgba(112, 210, 255, 0.38);
   background: linear-gradient(180deg, rgba(22, 57, 84, 0.95) 0%, rgba(16, 39, 61, 0.94) 100%);
@@ -901,4 +922,3 @@ pre:hover .code-copy-btn {
   opacity: 0.55;
   cursor: default;
 }
-

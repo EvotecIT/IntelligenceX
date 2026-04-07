@@ -472,7 +472,8 @@ public sealed partial class MainWindow : Window {
         return text.StartsWith("[error]", StringComparison.OrdinalIgnoreCase)
                || text.StartsWith("[warning]", StringComparison.OrdinalIgnoreCase)
                || text.StartsWith("[limit]", StringComparison.OrdinalIgnoreCase)
-               || text.StartsWith("[canceled]", StringComparison.OrdinalIgnoreCase);
+               || text.StartsWith("[canceled]", StringComparison.OrdinalIgnoreCase)
+               || text.StartsWith("[execution blocked]", StringComparison.OrdinalIgnoreCase);
     }
 
 }

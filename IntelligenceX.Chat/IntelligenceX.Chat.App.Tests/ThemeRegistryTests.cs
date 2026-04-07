@@ -78,4 +78,17 @@ public sealed class ThemeRegistryTests {
             }
         }
     }
+
+    /// <summary>
+    /// Ensures graphite stays visually distinct from the default blue shell palette.
+    /// </summary>
+    [Fact]
+    public void GraphitePreset_UsesNeutralShellPalette() {
+        Assert.True(ThemeRegistry.TryGetVariables("graphite", out var variables));
+
+        Assert.Equal("#0d1015", variables["--ix-bg-primary"]);
+        Assert.Equal("#151a21", variables["--ix-bg-secondary"]);
+        Assert.Equal("#d1d5db", variables["--ix-accent"]);
+        Assert.DoesNotContain(variables.Values, static value => string.Equals(value, "#4cc3ff", StringComparison.OrdinalIgnoreCase));
+    }
 }

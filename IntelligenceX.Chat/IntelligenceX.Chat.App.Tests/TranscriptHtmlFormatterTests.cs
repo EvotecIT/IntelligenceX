@@ -525,4 +525,34 @@ public sealed partial class TranscriptHtmlFormatterTests {
         Assert.Contains("data-msg-index='2'", html);
         Assert.DoesNotContain("data-msg-index='1'", html);
     }
+
+    /// <summary>
+    /// Ensures execution-contract blockers render as styled outcome cards instead of raw protocol text bubbles.
+    /// </summary>
+    [Fact]
+    public void Format_RendersExecutionBlockedAsOutcomeCard() {
+        var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
+        var now = new DateTime(2026, 4, 7, 11, 47, 9, DateTimeKind.Local);
+        var html = TranscriptHtmlFormatter.Format(new[] {
+            ("Assistant", """
+                          [Execution blocked]
+                          ix:execution-contract:v1 I do not have confirmed tool output for this selected action yet.
+
+                          Selected action request: hi Follow-up: graphite would be good
+
+                          Reason code:
+                          execution_contract_unmet_follow_up_draft_not_blocker_like
+
+                          Please retry this action in this context, or use the action command below.
+                          """, now)
+        }, "HH:mm:ss", options);
+
+        Assert.Contains("outcome-card", html, StringComparison.Ordinal);
+        Assert.Contains("outcome-kind-execution-blocked", html, StringComparison.Ordinal);
+        Assert.Contains(">Blocked</span>", html, StringComparison.Ordinal);
+        Assert.Contains("I do not have confirmed tool output for this selected action yet.", html, StringComparison.Ordinal);
+        Assert.Contains("Selected action:", html, StringComparison.Ordinal);
+        Assert.Contains("<code>execution_contract_unmet_follow_up_draft_not_blocker_like</code>", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("ix:execution-contract:v1", html, StringComparison.OrdinalIgnoreCase);
+    }
 }

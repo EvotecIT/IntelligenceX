@@ -17,6 +17,7 @@ internal static class TranscriptHtmlFormatter {
     private const int MaxAssistantTurnTraceEntries = 8;
     private const string AssistantDraftBadgeText = "Draft/Thinking";
     private const string AssistantToolBadgeText = "Tool Activity";
+    private const string ExecutionContractMarker = "ix:execution-contract:v1";
     private const string CopyButtonIconSvg =
         "<svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><rect x='9' y='9' width='13' height='13' rx='2'/><path d='M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1'/></svg>";
     private static readonly Regex AssistantOutcomePrefixRegex = new(
@@ -333,7 +334,9 @@ internal static class TranscriptHtmlFormatter {
         var headline = headlineRaw.Length == 0
             ? GetOutcomeDefaultTitle(normalizedKind, role)
             : headlineRaw;
-        var detail = TranscriptMarkdownPreparation.PrepareOutcomeDetailBody(raw[match.Length..]);
+        var detail = normalizedKind.Equals("execution_blocked", StringComparison.OrdinalIgnoreCase)
+            ? PrepareExecutionBlockedOutcomeDetail(raw[match.Length..])
+            : TranscriptMarkdownPreparation.PrepareOutcomeDetailBody(raw[match.Length..]);
         var toneClass = GetAssistantOutcomeToneClass(normalizedKind);
         var badge = GetAssistantOutcomeBadge(normalizedKind);
         var iconSvg = GetAssistantOutcomeIconSvg(normalizedKind);
@@ -378,6 +381,7 @@ internal static class TranscriptHtmlFormatter {
                || kind.Equals("limit", StringComparison.OrdinalIgnoreCase)
                || kind.Equals("warning", StringComparison.OrdinalIgnoreCase)
                || kind.Equals("startup", StringComparison.OrdinalIgnoreCase)
+               || kind.Equals("execution_blocked", StringComparison.OrdinalIgnoreCase)
                || kind.Equals("cached_evidence_fallback", StringComparison.OrdinalIgnoreCase);
     }
 
@@ -400,6 +404,9 @@ internal static class TranscriptHtmlFormatter {
         if (kind.Equals("startup", StringComparison.OrdinalIgnoreCase)) {
             return isSystemRole ? "Startup diagnostics" : "Startup";
         }
+        if (kind.Equals("execution_blocked", StringComparison.OrdinalIgnoreCase)) {
+            return isSystemRole ? "System action blocked" : "Execution blocked";
+        }
         if (kind.Equals("cached_evidence_fallback", StringComparison.OrdinalIgnoreCase)) {
             return "Cached evidence fallback";
         }
@@ -420,6 +427,9 @@ internal static class TranscriptHtmlFormatter {
         if (kind.Equals("startup", StringComparison.OrdinalIgnoreCase)) {
             return "Startup";
         }
+        if (kind.Equals("execution_blocked", StringComparison.OrdinalIgnoreCase)) {
+            return "Blocked";
+        }
         if (kind.Equals("cached_evidence_fallback", StringComparison.OrdinalIgnoreCase)) {
             return "Cached";
         }
@@ -434,6 +444,9 @@ internal static class TranscriptHtmlFormatter {
         if (kind.Equals("limit", StringComparison.OrdinalIgnoreCase)
             || kind.Equals("warning", StringComparison.OrdinalIgnoreCase)) {
             return "outcome-warn";
+        }
+        if (kind.Equals("execution_blocked", StringComparison.OrdinalIgnoreCase)) {
+            return "outcome-neutral";
         }
         if (kind.Equals("startup", StringComparison.OrdinalIgnoreCase)
             || kind.Equals("cached_evidence_fallback", StringComparison.OrdinalIgnoreCase)) {
@@ -455,8 +468,110 @@ internal static class TranscriptHtmlFormatter {
             || kind.Equals("cached_evidence_fallback", StringComparison.OrdinalIgnoreCase)) {
             return "<svg width='14' height='14' viewBox='0 0 16 16' fill='none' stroke='currentColor' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'><circle cx='8' cy='8' r='6.2'/><path d='M8 6v2.8'/><path d='M8 10.7h.01'/></svg>";
         }
+        if (kind.Equals("execution_blocked", StringComparison.OrdinalIgnoreCase)) {
+            return "<svg width='14' height='14' viewBox='0 0 16 16' fill='none' stroke='currentColor' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'><rect x='3.4' y='7' width='9.2' height='6.1' rx='1.8'/><path d='M5.4 7V5.6A2.6 2.6 0 018 3a2.6 2.6 0 012.6 2.6V7'/><path d='M8 8.9v1.9'/></svg>";
+        }
 
         return "<svg width='14' height='14' viewBox='0 0 16 16' fill='none' stroke='currentColor' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'><circle cx='8' cy='8' r='6.2'/><path d='M5.7 5.7l4.6 4.6M10.3 5.7l-4.6 4.6'/></svg>";
+    }
+
+    private static string PrepareExecutionBlockedOutcomeDetail(string rawDetail) {
+        var lines = (rawDetail ?? string.Empty)
+            .Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Replace('\r', '\n')
+            .Split('\n');
+
+        string summary = string.Empty;
+        string selectedAction = string.Empty;
+        string actionCommand = string.Empty;
+        string reasonCode = string.Empty;
+        var trailingNotes = new List<string>();
+
+        for (var i = 0; i < lines.Length; i++) {
+            var line = lines[i].Trim();
+            if (line.Length == 0) {
+                continue;
+            }
+
+            if (line.IndexOf(ExecutionContractMarker, StringComparison.OrdinalIgnoreCase) >= 0) {
+                line = line.Replace(ExecutionContractMarker, string.Empty, StringComparison.OrdinalIgnoreCase)
+                    .Trim(' ', ':', '-', '\t');
+                if (line.Length == 0) {
+                    continue;
+                }
+            }
+
+            if (line.StartsWith("Selected action request:", StringComparison.OrdinalIgnoreCase)) {
+                selectedAction = line["Selected action request:".Length..].Trim();
+                continue;
+            }
+
+            if (line.StartsWith("Action:", StringComparison.OrdinalIgnoreCase)) {
+                actionCommand = line["Action:".Length..].Trim();
+                continue;
+            }
+
+            if (line.StartsWith("Reason code:", StringComparison.OrdinalIgnoreCase)) {
+                reasonCode = line["Reason code:".Length..].Trim();
+                if (reasonCode.Length == 0) {
+                    for (var j = i + 1; j < lines.Length; j++) {
+                        var next = lines[j].Trim();
+                        if (next.Length == 0) {
+                            continue;
+                        }
+
+                        reasonCode = next;
+                        i = j;
+                        break;
+                    }
+                }
+                continue;
+            }
+
+            if (summary.Length == 0) {
+                summary = line;
+                continue;
+            }
+
+            trailingNotes.Add(line);
+        }
+
+        var detail = new StringBuilder();
+        if (summary.Length > 0) {
+            detail.Append(summary);
+        }
+
+        var hasMetadata = selectedAction.Length > 0 || actionCommand.Length > 0 || reasonCode.Length > 0;
+        if (hasMetadata) {
+            if (detail.Length > 0) {
+                detail.AppendLine().AppendLine();
+            }
+
+            if (selectedAction.Length > 0) {
+                detail.Append("- Selected action: ").Append(selectedAction).AppendLine();
+            }
+            if (actionCommand.Length > 0) {
+                detail.Append("- Action command: `").Append(actionCommand).Append('`').AppendLine();
+            }
+            if (reasonCode.Length > 0) {
+                detail.Append("- Reason code: `").Append(reasonCode).Append('`').AppendLine();
+            }
+        }
+
+        if (trailingNotes.Count > 0) {
+            if (detail.Length > 0) {
+                detail.AppendLine();
+            }
+
+            for (var i = 0; i < trailingNotes.Count; i++) {
+                if (i > 0) {
+                    detail.AppendLine().AppendLine();
+                }
+                detail.Append(trailingNotes[i]);
+            }
+        }
+
+        return TranscriptMarkdownPreparation.PrepareOutcomeDetailBody(detail.ToString());
     }
 
     private static string RenderBodyHtml(string text, MarkdownRendererOptions markdownOptions) {

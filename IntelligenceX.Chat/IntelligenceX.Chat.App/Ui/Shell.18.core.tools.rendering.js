@@ -174,7 +174,20 @@
     return applyPagedScrollKey(target, e.key, 120);
   }
 
-  window.ixSetTheme = function(vars) {
+  function applyThemeName(themeName) {
+    var normalizedThemeName = typeof themeName === "string" && themeName.trim()
+      ? themeName.trim().toLowerCase()
+      : "default";
+    document.documentElement.setAttribute("data-ix-theme", normalizedThemeName);
+    if (document.body) {
+      document.body.setAttribute("data-ix-theme", normalizedThemeName);
+    }
+  }
+
+  window.ixSetTheme = function(payload) {
+    var vars = payload && payload.vars ? payload.vars : payload;
+    var themeName = payload && typeof payload.name === "string" ? payload.name : "custom";
+    applyThemeName(themeName);
     for (var key in vars) {
       if (Object.prototype.hasOwnProperty.call(vars, key) && key.indexOf("--ix-") === 0) {
         document.documentElement.style.setProperty(key, vars[key]);
@@ -182,7 +195,7 @@
     }
   };
 
-  window.ixResetTheme = function() {
+  window.ixResetTheme = function(themeName) {
     var inline = document.documentElement.style;
     var keys = [];
     for (var i = 0; i < inline.length; i++) {
@@ -194,6 +207,7 @@
     for (var j = 0; j < keys.length; j++) {
       inline.removeProperty(keys[j]);
     }
+    applyThemeName(themeName || "default");
   };
 
   window.ixSetStatus = function(text, tone) {
