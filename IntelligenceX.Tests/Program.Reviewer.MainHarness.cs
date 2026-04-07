@@ -731,6 +731,8 @@ internal static partial class Program {
             TestReviewSummaryParserMergeBlockerDetectionNoSpaceHeadingPrefixes);
         failed += Run("Review summary parser ignores checklist inside long fence code blocks",
             TestReviewSummaryParserIgnoresChecklistInsideLongFenceCodeBlocks);
+        failed += Run("Review summary parser ignores checklist inside long fence code blocks with longer closer",
+            TestReviewSummaryParserIgnoresChecklistInsideLongFenceCodeBlocksWithLongerCloser);
         failed += Run("Review summary parser merge blocker detection compact defaults",
             TestReviewSummaryParserMergeBlockerDetectionCompactDefaults);
         failed += Run("Review summary parser merge blocker detection compact aliases",
@@ -751,6 +753,10 @@ internal static partial class Program {
             TestReviewFormatterDoesNotNormalizeSectionLabelsInsideCodeBlocks);
         failed += Run("Review formatter preserves section labels inside long fence code blocks",
             TestReviewFormatterPreservesSectionLabelsInsideLongFenceCodeBlocks);
+        failed += Run("Review formatter allows longer fence closers",
+            TestReviewFormatterAllowsLongerFenceClosers);
+        failed += Run("Review formatter ignores indented fence-like lines",
+            TestReviewFormatterIgnoresIndentedFenceLikeLines);
         failed += Run("Review usage integration display", TestReviewUsageIntegrationDisplay);
         failed += Run("Review usage summary line", TestReviewUsageSummaryLine);
         failed += Run("Review Claude usage summary line", TestReviewClaudeUsageSummaryLine);

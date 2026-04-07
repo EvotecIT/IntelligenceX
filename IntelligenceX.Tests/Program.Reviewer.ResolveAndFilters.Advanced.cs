@@ -344,6 +344,55 @@ internal static partial class Program {
         AssertContainsText(normalizedComment, "\n## Critical Issues ⚠️\n\nNone.", "post-fence normalization preserved");
     }
 
+    private static void TestReviewFormatterAllowsLongerFenceClosers() {
+        var context = new PullRequestContext("owner/repo", "owner", "repo", 42, "Formatter Longer Fence Closers", "Body", false,
+            "deadbeefcafebabe", "base", Array.Empty<string>(), "owner/repo", false, null);
+        var settings = new ReviewSettings {
+            Model = "gpt-5-test",
+            Length = ReviewLength.Medium,
+            Mode = "summary"
+        };
+        var reviewBody = string.Join("\n", new[] {
+            "Summary 📝 Actual summary line.",
+            "````md",
+            "Todo List ✅ - [ ] Example only.",
+            "`````",
+            "Todo List ✅ None."
+        });
+
+        var comment = ReviewFormatter.BuildComment(context, reviewBody, settings, inlineSupported: true, inlineSuppressed: false,
+            autoResolveNote: string.Empty, budgetNote: string.Empty, usageLine: string.Empty, findingsBlock: string.Empty);
+        var normalizedComment = comment.Replace("\r\n", "\n").Replace('\r', '\n');
+
+        AssertContainsText(normalizedComment, "````md\nTodo List ✅ - [ ] Example only.\n`````",
+            "longer fence closer preserved");
+        AssertContainsText(normalizedComment, "\n## Todo List ✅\n\nNone.", "post-longer-closer normalization preserved");
+    }
+
+    private static void TestReviewFormatterIgnoresIndentedFenceLikeLines() {
+        var context = new PullRequestContext("owner/repo", "owner", "repo", 42, "Formatter Indented Fence Like Lines", "Body", false,
+            "deadbeefcafebabe", "base", Array.Empty<string>(), "owner/repo", false, null);
+        var settings = new ReviewSettings {
+            Model = "gpt-5-test",
+            Length = ReviewLength.Medium,
+            Mode = "summary"
+        };
+        var reviewBody = string.Join("\n", new[] {
+            "    ```md",
+            "    Todo List ✅ - [ ] Example only.",
+            "Summary 📝 Actual summary line.",
+            "Todo List ✅ None."
+        });
+
+        var comment = ReviewFormatter.BuildComment(context, reviewBody, settings, inlineSupported: true, inlineSuppressed: false,
+            autoResolveNote: string.Empty, budgetNote: string.Empty, usageLine: string.Empty, findingsBlock: string.Empty);
+        var normalizedComment = comment.Replace("\r\n", "\n").Replace('\r', '\n');
+
+        AssertContainsText(normalizedComment, "    ```md\n    Todo List ✅ - [ ] Example only.", "indented fence-like block preserved");
+        AssertContainsText(normalizedComment, "\n## Summary 📝\n\nActual summary line.", "post-indented-code summary normalized");
+        AssertContainsText(normalizedComment, "\n## Todo List ✅\n\nNone.", "post-indented-code todo normalized");
+    }
+
     private static void TestReviewSummaryParserMergeBlockerDetectionInlineSectionLabels() {
         var body = string.Join("\n", new[] {
             "Summary 📝 Looks good overall.",
@@ -389,6 +438,22 @@ internal static partial class Program {
         });
 
         AssertEqual(false, ReviewSummaryParser.HasMergeBlockers(body), "merge blockers ignore long fence checklist");
+    }
+
+    private static void TestReviewSummaryParserIgnoresChecklistInsideLongFenceCodeBlocksWithLongerCloser() {
+        var body = string.Join("\n", new[] {
+            "## Summary 📝",
+            "Looks good overall.",
+            "````md",
+            "Todo List ✅ - [ ] Example only.",
+            "`````",
+            "## Todo List ✅",
+            "None.",
+            "## Critical Issues ⚠️",
+            "None."
+        });
+
+        AssertEqual(false, ReviewSummaryParser.HasMergeBlockers(body), "merge blockers ignore long fence checklist with longer closer");
     }
 
     private static void TestReviewUsageIntegrationDisplay() {

@@ -48,7 +48,7 @@ internal static class ReviewFormatter {
 
         var body = string.IsNullOrWhiteSpace(reviewBody)
             ? "_No review content was produced._"
-            : NormalizeSectionLayout(reviewBody.Trim());
+            : NormalizeSectionLayout(reviewBody.TrimEnd());
 
         var template = ResolveSummaryTemplate(settings);
         var reasoningParts = new List<string>();
@@ -102,10 +102,16 @@ internal static class ReviewFormatter {
         foreach (var line in lines) {
             var rawLine = line.TrimEnd();
             var trimmedLine = rawLine.TrimStart();
+            if (IsIndentedCodeLine(rawLine)) {
+                sb.AppendLine(rawLine);
+                previousLineBlank = string.IsNullOrWhiteSpace(rawLine);
+                continue;
+            }
+
             if (TryMatchFenceDelimiter(trimmedLine, out var currentFenceMarker)) {
                 if (string.IsNullOrEmpty(fencedCodeMarker)) {
                     fencedCodeMarker = currentFenceMarker;
-                } else if (string.Equals(fencedCodeMarker, currentFenceMarker, System.StringComparison.Ordinal)) {
+                } else if (IsFenceCloserForMarker(fencedCodeMarker, currentFenceMarker)) {
                     fencedCodeMarker = string.Empty;
                 }
 
@@ -114,7 +120,7 @@ internal static class ReviewFormatter {
                 continue;
             }
 
-            if (!string.IsNullOrEmpty(fencedCodeMarker) || IsIndentedCodeLine(rawLine)) {
+            if (!string.IsNullOrEmpty(fencedCodeMarker)) {
                 sb.AppendLine(rawLine);
                 previousLineBlank = string.IsNullOrWhiteSpace(rawLine);
                 continue;
@@ -327,6 +333,11 @@ internal static class ReviewFormatter {
     private static bool IsIndentedCodeLine(string rawLine) {
         return rawLine.StartsWith("    ", System.StringComparison.Ordinal)
                || rawLine.StartsWith("\t", System.StringComparison.Ordinal);
+    }
+
+    private static bool IsFenceCloserForMarker(string openingMarker, string candidateMarker) {
+        return candidateMarker.Length >= openingMarker.Length
+               && candidateMarker[0] == openingMarker[0];
     }
 
     private static bool TryExtractHeadingPrefix(string trimmedLine, out string headingPrefix, out string content) {
