@@ -47,35 +47,28 @@ function Resolve-ChatAppServiceOutputPath {
         return $null
     }
 
-    $candidates = Get-ChildItem $binRoot -Directory -Recurse -ErrorAction SilentlyContinue |
-        Where-Object { $_.Name -eq 'service' -and (Test-Path (Join-Path $_.FullName 'IntelligenceX.Chat.Service.dll')) } |
-        ForEach-Object {
-            $pathSegments = $_.FullName -split '[\\/]'
-            [pscustomobject]@{
-                FullName = $_.FullName
-                IsPublishPath = $pathSegments -contains 'publish'
-                Depth = $pathSegments.Count
-            }
-        } |
-        Sort-Object @{ Expression = 'IsPublishPath'; Descending = $false }, @{ Expression = 'Depth'; Descending = $false }, FullName
-
-    foreach ($candidate in $candidates) {
-        return $candidate.FullName
-    }
-
     $appOutputCandidates = Get-ChildItem $binRoot -Filter 'IntelligenceX.Chat.App.dll' -File -Recurse -ErrorAction SilentlyContinue |
         ForEach-Object {
             $pathSegments = $_.DirectoryName -split '[\\/]'
             [pscustomobject]@{
                 DirectoryName = $_.DirectoryName
                 IsPublishPath = $pathSegments -contains 'publish'
+                LastWriteTimeUtc = $_.LastWriteTimeUtc
                 Depth = $pathSegments.Count
             }
         } |
-        Sort-Object @{ Expression = 'IsPublishPath'; Descending = $false }, @{ Expression = 'Depth'; Descending = $false }, DirectoryName
+        Sort-Object @{ Expression = 'IsPublishPath'; Descending = $false },
+            @{ Expression = 'LastWriteTimeUtc'; Descending = $true },
+            @{ Expression = 'Depth'; Descending = $false },
+            DirectoryName
 
     foreach ($candidate in $appOutputCandidates) {
-        return (Join-Path $candidate.DirectoryName 'service')
+        $servicePath = Join-Path $candidate.DirectoryName 'service'
+        if (Test-Path (Join-Path $servicePath 'IntelligenceX.Chat.Service.dll')) {
+            return $servicePath
+        }
+
+        return $servicePath
     }
 
     return $null
