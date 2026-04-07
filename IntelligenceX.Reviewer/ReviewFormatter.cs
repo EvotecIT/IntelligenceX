@@ -97,10 +97,29 @@ internal static class ReviewFormatter {
         var lines = reviewBody.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
         var sb = new StringBuilder();
         var previousLineBlank = true;
+        var fencedCodeMarker = string.Empty;
 
         foreach (var line in lines) {
             var rawLine = line.TrimEnd();
             var trimmedLine = rawLine.TrimStart();
+            if (TryMatchFenceDelimiter(trimmedLine, out var currentFenceMarker)) {
+                if (string.IsNullOrEmpty(fencedCodeMarker)) {
+                    fencedCodeMarker = currentFenceMarker;
+                } else if (string.Equals(fencedCodeMarker, currentFenceMarker, System.StringComparison.Ordinal)) {
+                    fencedCodeMarker = string.Empty;
+                }
+
+                sb.AppendLine(rawLine);
+                previousLineBlank = string.IsNullOrWhiteSpace(rawLine);
+                continue;
+            }
+
+            if (!string.IsNullOrEmpty(fencedCodeMarker) || IsIndentedCodeLine(rawLine)) {
+                sb.AppendLine(rawLine);
+                previousLineBlank = string.IsNullOrWhiteSpace(rawLine);
+                continue;
+            }
+
             if (TryNormalizeSectionLine(trimmedLine, out var heading, out var remainder)) {
                 if (sb.Length > 0 && !previousLineBlank) {
                     sb.AppendLine();
@@ -253,32 +272,64 @@ internal static class ReviewFormatter {
         heading = string.Empty;
         remainder = string.Empty;
 
-        if (string.IsNullOrWhiteSpace(trimmedLine)
-            || trimmedLine.StartsWith("## ", System.StringComparison.Ordinal)
-            || trimmedLine.StartsWith("### ", System.StringComparison.Ordinal)) {
+        if (string.IsNullOrWhiteSpace(trimmedLine)) {
             return false;
         }
 
+        var headingPrefix = "##";
+        var content = trimmedLine;
+        var hadHeadingPrefix = false;
+        if (trimmedLine.StartsWith("### ", System.StringComparison.Ordinal)) {
+            headingPrefix = "###";
+            content = trimmedLine.Substring(4).TrimStart();
+            hadHeadingPrefix = true;
+        } else if (trimmedLine.StartsWith("## ", System.StringComparison.Ordinal)) {
+            content = trimmedLine.Substring(3).TrimStart();
+            hadHeadingPrefix = true;
+        }
+
         foreach (var label in SectionLabels) {
-            if (!trimmedLine.StartsWith(label, System.StringComparison.Ordinal)) {
+            if (!content.StartsWith(label, System.StringComparison.Ordinal)) {
                 continue;
             }
 
-            if (trimmedLine.Length > label.Length) {
-                var next = trimmedLine[label.Length];
-                if (!char.IsWhiteSpace(next) && next != ':' && next != '-') {
+            if (content.Length > label.Length) {
+                var next = content[label.Length];
+                if (!hadHeadingPrefix && !char.IsWhiteSpace(next) && next != ':' && next != '-') {
                     continue;
                 }
             }
 
-            heading = $"## {label}";
-            remainder = trimmedLine.Substring(label.Length).TrimStart();
+            heading = $"{headingPrefix} {label}";
+            remainder = content.Substring(label.Length).TrimStart();
             if (remainder.StartsWith(":", System.StringComparison.Ordinal)) {
                 remainder = remainder.Substring(1).TrimStart();
+            }
+            if (hadHeadingPrefix && string.IsNullOrWhiteSpace(remainder)) {
+                heading = string.Empty;
+                return false;
             }
             return true;
         }
 
         return false;
+    }
+
+    private static bool TryMatchFenceDelimiter(string trimmedLine, out string marker) {
+        marker = string.Empty;
+        if (trimmedLine.StartsWith("```", System.StringComparison.Ordinal)) {
+            marker = "```";
+            return true;
+        }
+        if (trimmedLine.StartsWith("~~~", System.StringComparison.Ordinal)) {
+            marker = "~~~";
+            return true;
+        }
+        return false;
+    }
+
+    private static bool IsIndentedCodeLine(string rawLine) {
+        return rawLine.StartsWith("    ", System.StringComparison.Ordinal)
+               || rawLine.StartsWith("\t", System.StringComparison.Ordinal);
     }
 }

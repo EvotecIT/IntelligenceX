@@ -248,6 +248,55 @@ internal static partial class Program {
         AssertContainsText(normalizedComment, "\n## Tests / Coverage 🧪\n\n- Snapshot coverage looks sufficient.", "normalized tests heading");
     }
 
+    private static void TestReviewFormatterNormalizesMalformedHeadingInlineSectionLabels() {
+        var context = new PullRequestContext("owner/repo", "owner", "repo", 42, "Formatter Heading Inline Sections", "Body", false,
+            "deadbeefcafebabe", "base", Array.Empty<string>(), "owner/repo", false, null);
+        var settings = new ReviewSettings {
+            Model = "gpt-5-test",
+            Length = ReviewLength.Medium,
+            Mode = "summary"
+        };
+        var reviewBody = string.Join("\n", new[] {
+            "## Summary 📝Looks good overall.",
+            "## Todo List ✅- [ ] Fix the portable bundle cleanup.",
+            "## Other Issues 🧯- Keep the formatter/parser in sync."
+        });
+
+        var comment = ReviewFormatter.BuildComment(context, reviewBody, settings, inlineSupported: true, inlineSuppressed: false,
+            autoResolveNote: string.Empty, budgetNote: string.Empty, usageLine: string.Empty, findingsBlock: string.Empty);
+        var normalizedComment = comment.Replace("\r\n", "\n").Replace('\r', '\n');
+
+        AssertContainsText(normalizedComment, "\n## Summary 📝\n\nLooks good overall.", "normalized malformed summary heading");
+        AssertContainsText(normalizedComment, "\n## Todo List ✅\n\n- [ ] Fix the portable bundle cleanup.", "normalized malformed todo heading");
+        AssertContainsText(normalizedComment, "\n## Other Issues 🧯\n\n- Keep the formatter/parser in sync.", "normalized malformed other issues heading");
+    }
+
+    private static void TestReviewFormatterDoesNotNormalizeSectionLabelsInsideCodeBlocks() {
+        var context = new PullRequestContext("owner/repo", "owner", "repo", 42, "Formatter Code Blocks", "Body", false,
+            "deadbeefcafebabe", "base", Array.Empty<string>(), "owner/repo", false, null);
+        var settings = new ReviewSettings {
+            Model = "gpt-5-test",
+            Length = ReviewLength.Medium,
+            Mode = "summary"
+        };
+        var reviewBody = string.Join("\n", new[] {
+            "Summary 📝 Actual summary line.",
+            "```md",
+            "Todo List ✅ - [ ] Example only.",
+            "## Critical Issues ⚠️ None.",
+            "```",
+            "    Other Issues 🧯 - Still example text."
+        });
+
+        var comment = ReviewFormatter.BuildComment(context, reviewBody, settings, inlineSupported: true, inlineSuppressed: false,
+            autoResolveNote: string.Empty, budgetNote: string.Empty, usageLine: string.Empty, findingsBlock: string.Empty);
+        var normalizedComment = comment.Replace("\r\n", "\n").Replace('\r', '\n');
+
+        AssertContainsText(normalizedComment, "```md\nTodo List ✅ - [ ] Example only.\n## Critical Issues ⚠️ None.\n```",
+            "fenced code block preserved");
+        AssertContainsText(normalizedComment, "\n    Other Issues 🧯 - Still example text.", "indented code line preserved");
+    }
+
     private static void TestReviewSummaryParserMergeBlockerDetectionInlineSectionLabels() {
         var body = string.Join("\n", new[] {
             "Summary 📝 Looks good overall.",
@@ -256,6 +305,16 @@ internal static partial class Program {
         });
 
         AssertEqual(true, ReviewSummaryParser.HasMergeBlockers(body), "merge blockers inline section labels");
+    }
+
+    private static void TestReviewSummaryParserMergeBlockerDetectionHeadingInlineSectionLabels() {
+        var body = string.Join("\n", new[] {
+            "## Summary 📝Looks good overall.",
+            "## Todo List ✅- [ ] Fix the failing portable bundle cleanup.",
+            "## Critical Issues ⚠️None."
+        });
+
+        AssertEqual(true, ReviewSummaryParser.HasMergeBlockers(body), "merge blockers heading inline section labels");
     }
 
     private static void TestReviewUsageIntegrationDisplay() {
