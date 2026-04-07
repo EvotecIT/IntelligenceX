@@ -67,6 +67,16 @@
       "ReleaseNameTemplate": "{Target} {Version}"
     }
   },
+  "GitHub": {
+    "Publish": false,
+    "Owner": "EvotecIT",
+    "Repository": "IntelligenceX",
+    "TokenFilePath": "C:\\Support\\Important\\GithubAPI.txt",
+    "GenerateReleaseNotes": true,
+    "IsPreRelease": false,
+    "TagTemplate": "v{Version}",
+    "ReleaseNameTemplate": "{Repository} {Version}"
+  },
   "Winget": {
     "Enabled": true,
     "OutputPath": "Winget",
