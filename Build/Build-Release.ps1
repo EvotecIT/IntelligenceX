@@ -26,6 +26,9 @@
     [switch] $SkipPortable,
     [switch] $SkipInstaller,
     [switch] $SkipChecksums,
+    [switch] $Publish,
+    [switch] $PublishNuget,
+    [switch] $PublishGitHub,
 
     [switch] $SignInstaller,
     [string] $SignToolPath = 'signtool.exe',
@@ -130,6 +133,12 @@ if ($SkipPluginPackages) {
 } elseif ($toolOutputs.Count -eq 0) {
     $parameters['PackagesOnly'] = $true
 }
+if ($Publish -or $PublishNuget) {
+    $parameters['PublishNuget'] = $true
+}
+if ($Publish -or $PublishGitHub) {
+    $parameters['PublishProjectGitHub'] = $true
+}
 if ($SignInstaller) {
     $parameters['SignInstaller'] = $true
     $parameters['UseTestimoXSignThumbprintFallback'] = $UseTestimoXSignThumbprintFallback
@@ -192,6 +201,8 @@ Write-Step "Include symbols: $([bool]$IncludeSymbols)"
 Write-Step "Packages: $(-not $SkipPluginPackages)"
 Write-Step "Portable: $(-not $SkipPortable)"
 Write-Step "Installer: $(-not $SkipInstaller)"
+Write-Step "Publish GitHub: $([bool]($Publish -or $PublishGitHub))"
+Write-Step "Publish NuGet: $([bool]($Publish -or $PublishNuget))"
 
 Invoke-ScriptFile -ScriptPath $buildProjectScript -Parameters $parameters -FailureContext 'Unified release build failed.' -FailureHint 'Use Build-Project.ps1 -Plan to inspect the release graph, or rerun Build-Project.ps1 directly for a narrower repro.'
 
