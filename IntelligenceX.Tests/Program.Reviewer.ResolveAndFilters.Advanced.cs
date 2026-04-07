@@ -271,6 +271,27 @@ internal static partial class Program {
         AssertContainsText(normalizedComment, "\n## Other Issues 🧯\n\n- Keep the formatter/parser in sync.", "normalized malformed other issues heading");
     }
 
+    private static void TestReviewFormatterNormalizesNoSeparatorSectionLabels() {
+        var context = new PullRequestContext("owner/repo", "owner", "repo", 42, "Formatter No Separator Sections", "Body", false,
+            "deadbeefcafebabe", "base", Array.Empty<string>(), "owner/repo", false, null);
+        var settings = new ReviewSettings {
+            Model = "gpt-5-test",
+            Length = ReviewLength.Medium,
+            Mode = "summary"
+        };
+        var reviewBody = string.Join("\n", new[] {
+            "Next Steps 🚀Ship as-is after the final rerun.",
+            "##Todo List ✅- [ ] Fix the remaining parser edge case."
+        });
+
+        var comment = ReviewFormatter.BuildComment(context, reviewBody, settings, inlineSupported: true, inlineSuppressed: false,
+            autoResolveNote: string.Empty, budgetNote: string.Empty, usageLine: string.Empty, findingsBlock: string.Empty);
+        var normalizedComment = comment.Replace("\r\n", "\n").Replace('\r', '\n');
+
+        AssertContainsText(normalizedComment, "\n## Next Steps 🚀\n\nShip as-is after the final rerun.", "normalized next steps heading without separator");
+        AssertContainsText(normalizedComment, "\n## Todo List ✅\n\n- [ ] Fix the remaining parser edge case.", "normalized no-space hash heading");
+    }
+
     private static void TestReviewFormatterDoesNotNormalizeSectionLabelsInsideCodeBlocks() {
         var context = new PullRequestContext("owner/repo", "owner", "repo", 42, "Formatter Code Blocks", "Body", false,
             "deadbeefcafebabe", "base", Array.Empty<string>(), "owner/repo", false, null);
@@ -315,6 +336,16 @@ internal static partial class Program {
         });
 
         AssertEqual(true, ReviewSummaryParser.HasMergeBlockers(body), "merge blockers heading inline section labels");
+    }
+
+    private static void TestReviewSummaryParserMergeBlockerDetectionNoSpaceHeadingPrefixes() {
+        var body = string.Join("\n", new[] {
+            "##Summary 📝Looks good overall.",
+            "##Todo List ✅- [ ] Fix the failing portable bundle cleanup.",
+            "##Critical Issues ⚠️None."
+        });
+
+        AssertEqual(true, ReviewSummaryParser.HasMergeBlockers(body), "merge blockers no-space heading prefixes");
     }
 
     private static void TestReviewUsageIntegrationDisplay() {

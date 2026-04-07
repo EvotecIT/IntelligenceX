@@ -278,26 +278,11 @@ internal static class ReviewFormatter {
 
         var headingPrefix = "##";
         var content = trimmedLine;
-        var hadHeadingPrefix = false;
-        if (trimmedLine.StartsWith("### ", System.StringComparison.Ordinal)) {
-            headingPrefix = "###";
-            content = trimmedLine.Substring(4).TrimStart();
-            hadHeadingPrefix = true;
-        } else if (trimmedLine.StartsWith("## ", System.StringComparison.Ordinal)) {
-            content = trimmedLine.Substring(3).TrimStart();
-            hadHeadingPrefix = true;
-        }
+        var hadHeadingPrefix = TryExtractHeadingPrefix(trimmedLine, out headingPrefix, out content);
 
         foreach (var label in SectionLabels) {
             if (!content.StartsWith(label, System.StringComparison.Ordinal)) {
                 continue;
-            }
-
-            if (content.Length > label.Length) {
-                var next = content[label.Length];
-                if (!hadHeadingPrefix && !char.IsWhiteSpace(next) && next != ':' && next != '-') {
-                    continue;
-                }
             }
 
             heading = $"{headingPrefix} {label}";
@@ -331,5 +316,27 @@ internal static class ReviewFormatter {
     private static bool IsIndentedCodeLine(string rawLine) {
         return rawLine.StartsWith("    ", System.StringComparison.Ordinal)
                || rawLine.StartsWith("\t", System.StringComparison.Ordinal);
+    }
+
+    private static bool TryExtractHeadingPrefix(string trimmedLine, out string headingPrefix, out string content) {
+        headingPrefix = "##";
+        content = trimmedLine;
+
+        if (trimmedLine.Length >= 3
+            && trimmedLine.StartsWith("###", System.StringComparison.Ordinal)
+            && (trimmedLine.Length == 3 || trimmedLine[3] != '#')) {
+            headingPrefix = "###";
+            content = trimmedLine.Substring(3).TrimStart();
+            return true;
+        }
+
+        if (trimmedLine.Length >= 2
+            && trimmedLine.StartsWith("##", System.StringComparison.Ordinal)
+            && (trimmedLine.Length == 2 || trimmedLine[2] != '#')) {
+            content = trimmedLine.Substring(2).TrimStart();
+            return true;
+        }
+
+        return false;
     }
 }
