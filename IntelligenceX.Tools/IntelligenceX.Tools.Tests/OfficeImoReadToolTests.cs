@@ -20,7 +20,7 @@ public class OfficeImoReadToolTests {
         var propsPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "Directory.Build.props"));
         var props = LoadMsBuildProperties(propsPath);
 
-        Assert.Equal("0.1.14", props["OfficeImoReaderNuGetVersion"]);
+        Assert.Equal("0.1.16", props["OfficeImoReaderNuGetVersion"]);
     }
 
     [Fact]
