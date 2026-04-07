@@ -614,6 +614,11 @@
     renderToolLocalityQuickFilters();
 
     var allTools = state.options.tools || [];
+    var packTotalCounts = {};
+    for (var at = 0; at < allTools.length; at++) {
+      var allToolPackId = inferPackIdFromTool(allTools[at]);
+      packTotalCounts[allToolPackId] = (packTotalCounts[allToolPackId] || 0) + 1;
+    }
     var tools = allTools.slice();
     var filter = normalizeToolFilter(state.options.toolFilter);
     var localityFilter = normalizeToolLocalityFilter(state.options.toolLocalityFilter);
@@ -870,7 +875,12 @@
 
       var meta = document.createElement("span");
       meta.className = "options-accordion-meta";
-      meta.textContent = String(groupTools.length) + (groupTools.length === 1 ? " tool" : " tools");
+      var totalToolsForPack = Math.max(groupTools.length, Number(packTotalCounts[currentPackId] || 0));
+      if (localityFilter !== "all" && totalToolsForPack > groupTools.length) {
+        meta.textContent = String(groupTools.length) + " of " + String(totalToolsForPack) + " tools";
+      } else {
+        meta.textContent = String(groupTools.length) + (groupTools.length === 1 ? " tool" : " tools");
+      }
       if (autonomySummary && Number(autonomySummary.remoteCapableTools || 0) > 0) {
         meta.textContent += " • remote " + String(autonomySummary.remoteCapableTools || 0);
       }
@@ -896,36 +906,44 @@
         }
       }
       var allEnabled = actionableTools.length > 0 && enabledCount === actionableTools.length;
-      var someEnabled = enabledCount > 0;
+      var packMetadata = findPackById(currentPackId);
+      var packEnabledByRuntime = !packMetadata || normalizeBool(packMetadata.enabled);
+      var packActivation = packActivationState(currentPackId);
+      var packDeferred = packActivation === "deferred";
+      var packCanLoadOnDemand = packCanActivateOnDemand(currentPackId);
+      var packHasTools = actionableTools.length > 0;
+      var isPackLoaded = packAvailable && packEnabledByRuntime && (packActivation === "active" || (packActivation.length === 0 && packHasTools));
 
       var pill = document.createElement("span");
-      var packHasTools = actionableTools.length > 0;
-      var isPackLoaded = packHasTools && allEnabled;
       pill.className = "options-pill" + (isPackLoaded && packAvailable ? "" : " off");
       if (packUnavailable) {
         pill.textContent = "Unavailable";
-      } else if (!packHasTools && packRuntimeDisabledByConfig) {
+      } else if (!packEnabledByRuntime || packActivation === "disabled" || (!packHasTools && packRuntimeDisabledByConfig)) {
         pill.textContent = "Disabled";
+      } else if (packDeferred && packCanLoadOnDemand) {
+        pill.textContent = "On-demand";
       } else if (!packHasTools) {
         pill.textContent = "No tools";
       } else {
-        pill.textContent = allEnabled ? "Loaded" : (someEnabled ? "Partial" : "Disabled");
+        pill.textContent = "Loaded";
+      }
+      if (packHasTools && enabledCount < actionableTools.length) {
+        pill.title = String(enabledCount) + " of " + String(actionableTools.length) + " tools are currently enabled in this pack.";
       }
       summaryRight.appendChild(pill);
 
-      var packMetadata = findPackById(currentPackId);
       var packAction = document.createElement("button");
       packAction.type = "button";
       packAction.className = "options-btn options-btn-sm options-btn-ghost options-pack-action";
-      packAction.disabled = packUnavailable || (!packHasTools && !packRuntimeDisabledByConfig);
-      packAction.textContent = !packHasTools && packRuntimeDisabledByConfig
-        ? "Enable pack"
-        : allEnabled
-          ? (packMetadata ? "Disable pack" : "Disable all")
-          : (packMetadata ? "Enable pack" : "Enable all");
+      packAction.disabled = packUnavailable || (!packHasTools && !packRuntimeDisabledByConfig && !packMetadata);
+      packAction.textContent = packMetadata
+        ? (packEnabledByRuntime ? "Disable pack" : "Enable pack")
+        : (allEnabled ? "Disable all" : "Enable all");
       packAction.setAttribute("aria-label", packAction.textContent + " " + packDisplayName(currentPackId));
       if (packUnavailable && packUnavailableReason) {
         packAction.title = packUnavailableReason;
+      } else if (packDeferred && packCanLoadOnDemand && packEnabledByRuntime) {
+        packAction.title = "Pack is enabled and can load its tool definitions on demand.";
       } else if (packRuntimeDisabledByConfig) {
         packAction.title = "Pack is disabled by runtime configuration. Enable it to load this pack live.";
       } else if (!packHasTools) {
@@ -942,7 +960,7 @@
           setPackEnabled(packIdForToggle, groupToolsForToggle, nextEnabled);
           renderTools();
         });
-      })(currentPackId, groupTools, !(packHasTools && allEnabled));
+      })(currentPackId, groupTools, packMetadata ? !packEnabledByRuntime : !allEnabled);
       summaryRight.appendChild(packAction);
       summary.appendChild(summaryRight);
 

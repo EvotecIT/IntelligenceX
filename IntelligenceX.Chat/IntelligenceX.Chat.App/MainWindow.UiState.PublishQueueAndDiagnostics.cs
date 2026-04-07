@@ -474,6 +474,8 @@ public sealed partial class MainWindow : Window {
                 description = string.IsNullOrWhiteSpace(pack.Description) ? null : pack.Description.Trim(),
                 tier = pack.Tier.ToString(),
                 enabled = pack.Enabled,
+                activationState = ToolActivationStates.NormalizeOrDefault(pack.ActivationState, pack.Enabled),
+                canActivateOnDemand = pack.CanActivateOnDemand,
                 disabledReason = string.IsNullOrWhiteSpace(pack.DisabledReason) ? null : pack.DisabledReason.Trim(),
                 isDangerous = pack.IsDangerous,
                 autonomySummary = BuildPackAutonomySummaryState(pack.AutonomySummary),

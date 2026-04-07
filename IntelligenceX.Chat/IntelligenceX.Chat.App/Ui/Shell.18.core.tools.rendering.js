@@ -82,13 +82,33 @@
       return;
     }
 
+    var scheduled = false;
+    function runRender() {
+      renderToolLocalityQuickFilters();
+      renderTools();
+    }
+
     var schedule = typeof requestAnimationFrame === "function"
       ? requestAnimationFrame
       : function(callback) { return setTimeout(callback, 0); };
     schedule(function() {
-      renderToolLocalityQuickFilters();
-      renderTools();
+      scheduled = true;
+      runRender();
     });
+    setTimeout(function() {
+      if (!scheduled) {
+        runRender();
+        return;
+      }
+
+      if (state.connected
+        && Array.isArray(state.options.tools)
+        && state.options.tools.length === 0
+        && Array.isArray(state.options.packs)
+        && state.options.packs.length === 0) {
+        runRender();
+      }
+    }, 180);
   }
 
   function handleTranscriptNavKey(e) {
@@ -362,10 +382,16 @@
     state.options.policy = nextOptions.policy || null;
     var incomingPacks = Array.isArray(nextOptions.packs) ? nextOptions.packs : [];
     var incomingTools = Array.isArray(nextOptions.tools) ? nextOptions.tools : [];
+    var incomingHasVisibleToolState = incomingPacks.length > 0 || incomingTools.length > 0;
+    var previousHasVisibleToolState = (Array.isArray(state.options.packs) && state.options.packs.length > 0)
+      || (Array.isArray(state.options.tools) && state.options.tools.length > 0);
+    var activeOptionsTab = optionsPanel ? optionsPanel.querySelector(".options-tab.active") : null;
+    var toolsTabOpen = !!activeOptionsTab && activeOptionsTab.dataset.tab === "tools" && document.body.classList.contains("options-open");
+    var keepLoadingForConnectedEmptyState = !incomingHasVisibleToolState && state.connected && toolsTabOpen;
     if (typeof nextOptions.toolsLoading === "boolean") {
-      state.options.toolsLoading = nextOptions.toolsLoading;
+      state.options.toolsLoading = nextOptions.toolsLoading || keepLoadingForConnectedEmptyState;
     } else {
-      state.options.toolsLoading = false;
+      state.options.toolsLoading = keepLoadingForConnectedEmptyState;
     }
     if (typeof nextOptions.toolsCatalogPendingCount === "number" && Number.isFinite(nextOptions.toolsCatalogPendingCount)) {
       state.options.toolsCatalogPendingCount = Math.max(0, Math.floor(nextOptions.toolsCatalogPendingCount));
@@ -373,10 +399,9 @@
       state.options.toolsCatalogPendingCount = 0;
     }
 
-    var preservePreviousTools = state.options.toolsLoading
-      && incomingTools.length === 0
-      && Array.isArray(state.options.tools)
-      && state.options.tools.length > 0;
+    var preservePreviousTools = !incomingHasVisibleToolState
+      && previousHasVisibleToolState
+      && (state.options.toolsLoading || state.connected);
     if (preservePreviousTools) {
       if (incomingPacks.length > 0) {
         state.options.packs = incomingPacks;

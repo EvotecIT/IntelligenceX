@@ -178,11 +178,38 @@ public sealed partial class UiShellAssetsTests {
         var renderingScript = File.ReadAllText(renderingScriptPath);
 
         Assert.Contains("if (tabId === \"tools\") {", coreScript, StringComparison.Ordinal);
+        Assert.Contains("state.options.toolLocalityFilter = \"all\";", coreScript, StringComparison.Ordinal);
         Assert.Contains("state.connected && !hasVisibleToolState", coreScript, StringComparison.Ordinal);
         Assert.Contains("state.options.toolsLoading = true;", coreScript, StringComparison.Ordinal);
+        Assert.Contains("post(\"options_refresh\");", coreScript, StringComparison.Ordinal);
         Assert.Contains("function queueActiveToolsTabRender()", renderingScript, StringComparison.Ordinal);
         Assert.Contains("activeTab.dataset.tab !== \"tools\"", renderingScript, StringComparison.Ordinal);
+        Assert.Contains("var keepLoadingForConnectedEmptyState = !incomingHasVisibleToolState && state.connected && toolsTabOpen;", renderingScript, StringComparison.Ordinal);
+        Assert.Contains("var preservePreviousTools = !incomingHasVisibleToolState", renderingScript, StringComparison.Ordinal);
         Assert.Contains("queueActiveToolsTabRender();", renderingScript, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures pack-level status/action chrome follows runtime pack activation state
+    /// instead of misreading safe-default per-tool toggles as a partially loaded pack.
+    /// </summary>
+    [Fact]
+    public void Load_IncludesPackActivationStateDrivenToolsRendering() {
+        var helperScriptPath = Path.Combine(UiDirectory, "Shell.12.core.helpers.js");
+        var helperScript = File.ReadAllText(helperScriptPath);
+        var toolsScriptPath = Path.Combine(UiDirectory, "Shell.15.core.tools.js");
+        var toolsScript = File.ReadAllText(toolsScriptPath);
+
+        Assert.Contains("function normalizePackActivationState(value)", helperScript, StringComparison.Ordinal);
+        Assert.Contains("function packActivationState(packId)", helperScript, StringComparison.Ordinal);
+        Assert.Contains("function packCanActivateOnDemand(packId)", helperScript, StringComparison.Ordinal);
+        Assert.Contains("var packEnabledByRuntime = !packMetadata || normalizeBool(packMetadata.enabled);", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("var packActivation = packActivationState(currentPackId);", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("var packDeferred = packActivation === \"deferred\";", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("pill.textContent = \"On-demand\";", toolsScript, StringComparison.Ordinal);
+        Assert.DoesNotContain("pill.textContent = allEnabled ? \"Loaded\" : (someEnabled ? \"Partial\" : \"Disabled\");", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("packAction.textContent = packMetadata", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("? (packEnabledByRuntime ? \"Disable pack\" : \"Enable pack\")", toolsScript, StringComparison.Ordinal);
     }
 
     /// <summary>

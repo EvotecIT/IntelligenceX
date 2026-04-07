@@ -776,6 +776,33 @@
     return reason.toLowerCase().indexOf("disabled by runtime configuration") >= 0;
   }
 
+  function normalizePackActivationState(value) {
+    var normalized = String(value || "").trim().toLowerCase();
+    if (normalized === "active" || normalized === "deferred" || normalized === "disabled") {
+      return normalized;
+    }
+    return "";
+  }
+
+  function packActivationState(packId) {
+    var pack = findPackById(packId);
+    if (!pack) {
+      return "";
+    }
+
+    var normalized = normalizePackActivationState(pack.activationState);
+    if (normalized) {
+      return normalized;
+    }
+
+    return normalizeBool(pack.enabled) ? "active" : "disabled";
+  }
+
+  function packCanActivateOnDemand(packId) {
+    var pack = findPackById(packId);
+    return !!pack && normalizeBool(pack.canActivateOnDemand);
+  }
+
   function normalizePackSourceKind(value) {
     var normalized = String(value || "").trim().toLowerCase();
     if (normalized === "builtin" || normalized === "closed_source" || normalized === "open_source") {
