@@ -76,15 +76,6 @@ public sealed partial class MainWindow : Window {
         return profileApplied;
     }
 
-    private bool ShouldRefreshToolCatalogOnOptionsRefresh() {
-        if (!_isConnected || _client is null) {
-            return false;
-        }
-
-        return _toolCatalogDefinitions.Count == 0
-               || CountToolsHiddenWithoutCatalog() > 0;
-    }
-
     private async Task RefreshToolCatalogFromServiceAsync(ChatServiceClient client, bool publishOptions, bool appendWarnings) {
         try {
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(12));
@@ -395,6 +386,7 @@ public sealed partial class MainWindow : Window {
         var previousTemperature = _localProviderTemperature;
         var previousIsAuthenticated = _isAuthenticated;
         var previousAuthenticatedAccountId = _authenticatedAccountId;
+        var previousInteractiveAuthenticationStateKnown = _interactiveAuthenticationStateKnown;
         var previousLoginInProgress = _loginInProgress;
         var previousActiveNativeSlot = _activeNativeAccountSlot;
         var previousNativeSlots = SnapshotNativeAccountSlots();
@@ -469,6 +461,7 @@ public sealed partial class MainWindow : Window {
             _localProviderTemperature = previousTemperature;
             _activeNativeAccountSlot = previousActiveNativeSlot;
             RestoreNativeAccountSlotsFromSnapshot(previousNativeSlots);
+            _interactiveAuthenticationStateKnown = previousInteractiveAuthenticationStateKnown;
             _isAuthenticated = previousIsAuthenticated;
             _authenticatedAccountId = previousAuthenticatedAccountId;
             _loginInProgress = previousLoginInProgress;

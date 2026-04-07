@@ -115,9 +115,7 @@ public sealed partial class MainWindow : Window {
                 case "options_refresh":
                     await RefreshLocalRuntimeDetectionAsync(publishOptions: false).ConfigureAwait(true);
                     if (_client is not null) {
-                        if (ShouldRefreshToolCatalogOnOptionsRefresh()) {
-                            await RefreshToolCatalogFromServiceAsync(_client, publishOptions: false, appendWarnings: true).ConfigureAwait(true);
-                        }
+                        await RefreshToolCatalogFromServiceAsync(_client, publishOptions: false, appendWarnings: true).ConfigureAwait(true);
                         await RefreshBackgroundSchedulerStatusAsync(
                             _client,
                             publishOptions: false,

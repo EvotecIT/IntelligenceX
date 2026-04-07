@@ -367,17 +367,20 @@ public sealed partial class MainWindow : Window {
     private async Task DeleteConversationAsync(string conversationId) {
         var conversation = FindConversationById(conversationId);
         if (conversation is null) {
+            InvalidatePublishedOptionsState();
             await PublishOptionsStateAsync().ConfigureAwait(false);
             return;
         }
         if (IsSystemConversation(conversation)) {
             await SetStatusAsync("System conversation cannot be deleted.", SessionStatusTone.Warn).ConfigureAwait(false);
+            InvalidatePublishedOptionsState();
             await PublishOptionsStateAsync().ConfigureAwait(false);
             return;
         }
 
         if (IsTurnDispatchInProgress() && string.Equals(_activeRequestConversationId, conversation.Id, StringComparison.OrdinalIgnoreCase)) {
             await SetStatusAsync(SessionStatus.CannotDeleteActiveConversationDuringTurn()).ConfigureAwait(false);
+            InvalidatePublishedOptionsState();
             await PublishOptionsStateAsync().ConfigureAwait(false);
             return;
         }

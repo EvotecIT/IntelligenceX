@@ -401,12 +401,15 @@
       || (Array.isArray(state.options.tools) && state.options.tools.length > 0);
     var activeOptionsTab = optionsPanel ? optionsPanel.querySelector(".options-tab.active") : null;
     var toolsTabOpen = !!activeOptionsTab && activeOptionsTab.dataset.tab === "tools" && document.body.classList.contains("options-open");
-    var keepLoadingForConnectedEmptyState = !incomingHasVisibleToolState && state.connected && toolsTabOpen;
     var incomingPendingCatalogCount = 0;
     if (typeof nextOptions.toolsCatalogPendingCount === "number" && Number.isFinite(nextOptions.toolsCatalogPendingCount)) {
       incomingPendingCatalogCount = Math.max(0, Math.floor(nextOptions.toolsCatalogPendingCount));
     }
     var incomingReportsToolLoading = nextOptions.toolsLoading === true || incomingPendingCatalogCount > 0;
+    var keepLoadingForConnectedEmptyState = !incomingHasVisibleToolState
+      && state.connected
+      && toolsTabOpen
+      && incomingReportsToolLoading;
     if (typeof nextOptions.toolsLoading === "boolean") {
       state.options.toolsLoading = nextOptions.toolsLoading || keepLoadingForConnectedEmptyState;
     } else {

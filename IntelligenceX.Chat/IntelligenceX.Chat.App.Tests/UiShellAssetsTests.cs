@@ -185,8 +185,10 @@ public sealed partial class UiShellAssetsTests {
         Assert.Contains("post(\"options_refresh\");", coreScript, StringComparison.Ordinal);
         Assert.Contains("function queueActiveToolsTabRender()", renderingScript, StringComparison.Ordinal);
         Assert.Contains("activeTab.dataset.tab !== \"tools\"", renderingScript, StringComparison.Ordinal);
-        Assert.Contains("var keepLoadingForConnectedEmptyState = !incomingHasVisibleToolState && state.connected && toolsTabOpen;", renderingScript, StringComparison.Ordinal);
         Assert.Contains("var incomingReportsToolLoading = nextOptions.toolsLoading === true || incomingPendingCatalogCount > 0;", renderingScript, StringComparison.Ordinal);
+        Assert.Contains("var keepLoadingForConnectedEmptyState = !incomingHasVisibleToolState", renderingScript, StringComparison.Ordinal);
+        Assert.Contains("&& state.connected", renderingScript, StringComparison.Ordinal);
+        Assert.Contains("&& toolsTabOpen", renderingScript, StringComparison.Ordinal);
         Assert.Contains("&& incomingReportsToolLoading;", renderingScript, StringComparison.Ordinal);
         Assert.Contains("queueActiveToolsTabRender();", renderingScript, StringComparison.Ordinal);
     }

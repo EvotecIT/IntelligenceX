@@ -466,6 +466,12 @@ public sealed partial class MainWindow : Window {
         await QueueUiPublishAsync(requestSessionState: false, requestOptionsState: true).ConfigureAwait(false);
     }
 
+    private void InvalidatePublishedOptionsState() {
+        lock (_uiPublishSync) {
+            _lastPublishedOptionsStateJson = null;
+        }
+    }
+
     private async Task PublishOptionsStateCoreAsync() {
         if (!_webViewReady) {
             _lastPublishedOptionsStateJson = null;
