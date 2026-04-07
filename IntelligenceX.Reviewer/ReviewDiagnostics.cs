@@ -382,9 +382,17 @@ internal static class ReviewDiagnostics {
     internal static string BuildAuthRemediationCommand(string? repo = null) {
         var resolvedRepo = ResolveAuthRemediationRepo(repo);
         if (!string.IsNullOrWhiteSpace(resolvedRepo)) {
-            return $"intelligencex auth login --set-github-secret --repo {resolvedRepo}";
+            return $"intelligencex auth login --set-github-secret --repo {QuoteShellArgumentIfNeeded(resolvedRepo)}";
         }
         return "intelligencex auth login";
+    }
+
+    private static string QuoteShellArgumentIfNeeded(string value) {
+        if (value.IndexOfAny([' ', '\t', '\r', '\n', '"']) < 0) {
+            return value;
+        }
+
+        return $"\"{value.Replace("\"", "\\\"")}\"";
     }
 
     internal static string? ResolveAuthRemediationRepo(string? explicitRepo = null) {

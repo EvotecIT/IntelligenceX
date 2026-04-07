@@ -173,6 +173,11 @@ internal static partial class Program {
         }
     }
 
+    private static void TestBuildAuthRemediationCommandQuotesRepoWhenNeeded() {
+        var command = ReviewDiagnostics.BuildAuthRemediationCommand("owner/repo with space");
+        AssertContainsText(command, "--repo \"owner/repo with space\"", "quoted auth remediation repo");
+    }
+
     private static void TestWorkflowFailOpenLogClassificationUsesAuthRefreshLabel() {
         var failure = ReviewDiagnostics.ClassifyWorkflowFailureLog(
             "OAuth token request failed (401): refresh_token_reused. Your refresh token has already been used.");
