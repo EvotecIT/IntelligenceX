@@ -723,6 +723,16 @@ internal static partial class Program {
         failed += Run("Context deny timeout", TestContextDenyTimeout);
         failed += Run("Review summary parser", TestReviewSummaryParser);
         failed += Run("Review summary parser merge blocker detection", TestReviewSummaryParserMergeBlockerDetection);
+        failed += Run("Review summary parser merge blocker detection inline section labels",
+            TestReviewSummaryParserMergeBlockerDetectionInlineSectionLabels);
+        failed += Run("Review summary parser merge blocker detection heading inline section labels",
+            TestReviewSummaryParserMergeBlockerDetectionHeadingInlineSectionLabels);
+        failed += Run("Review summary parser merge blocker detection no-space heading prefixes",
+            TestReviewSummaryParserMergeBlockerDetectionNoSpaceHeadingPrefixes);
+        failed += Run("Review summary parser ignores checklist inside long fence code blocks",
+            TestReviewSummaryParserIgnoresChecklistInsideLongFenceCodeBlocks);
+        failed += Run("Review summary parser ignores checklist inside long fence code blocks with longer closer",
+            TestReviewSummaryParserIgnoresChecklistInsideLongFenceCodeBlocksWithLongerCloser);
         failed += Run("Review summary parser merge blocker detection compact defaults",
             TestReviewSummaryParserMergeBlockerDetectionCompactDefaults);
         failed += Run("Review summary parser merge blocker detection compact aliases",
@@ -734,6 +744,19 @@ internal static partial class Program {
         failed += Run("Review formatter model usage section", TestReviewFormatterModelUsageSection);
         failed += Run("Review formatter model usage unavailable", TestReviewFormatterModelUsageUnavailable);
         failed += Run("Review formatter golden snapshot", TestReviewFormatterGoldenSnapshot);
+        failed += Run("Review formatter normalizes inline section labels", TestReviewFormatterNormalizesInlineSectionLabels);
+        failed += Run("Review formatter normalizes malformed heading inline section labels",
+            TestReviewFormatterNormalizesMalformedHeadingInlineSectionLabels);
+        failed += Run("Review formatter normalizes no-separator section labels",
+            TestReviewFormatterNormalizesNoSeparatorSectionLabels);
+        failed += Run("Review formatter preserves section labels inside code blocks",
+            TestReviewFormatterDoesNotNormalizeSectionLabelsInsideCodeBlocks);
+        failed += Run("Review formatter preserves section labels inside long fence code blocks",
+            TestReviewFormatterPreservesSectionLabelsInsideLongFenceCodeBlocks);
+        failed += Run("Review formatter allows longer fence closers",
+            TestReviewFormatterAllowsLongerFenceClosers);
+        failed += Run("Review formatter ignores indented fence-like lines",
+            TestReviewFormatterIgnoresIndentedFenceLikeLines);
         failed += Run("Review usage integration display", TestReviewUsageIntegrationDisplay);
         failed += Run("Review usage summary line", TestReviewUsageSummaryLine);
         failed += Run("Review Claude usage summary line", TestReviewClaudeUsageSummaryLine);

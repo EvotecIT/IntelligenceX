@@ -223,6 +223,239 @@ internal static partial class Program {
         AssertTextBlockEquals(expected, comment, "review formatter golden snapshot");
     }
 
+    private static void TestReviewFormatterNormalizesInlineSectionLabels() {
+        var context = new PullRequestContext("owner/repo", "owner", "repo", 42, "Formatter Inline Sections", "Body", false,
+            "deadbeefcafebabe", "base", Array.Empty<string>(), "owner/repo", false, null);
+        var settings = new ReviewSettings {
+            Model = "gpt-5-test",
+            Length = ReviewLength.Medium,
+            Mode = "summary"
+        };
+        var reviewBody = string.Join("\n", new[] {
+            "Summary 📝 This PR fixes the section layout regression.",
+            "Todo List ✅ None.",
+            "Other Issues 🧯 - Consider a parser-side fallback too.",
+            "Tests / Coverage 🧪 - Snapshot coverage looks sufficient."
+        });
+
+        var comment = ReviewFormatter.BuildComment(context, reviewBody, settings, inlineSupported: true, inlineSuppressed: false,
+            autoResolveNote: string.Empty, budgetNote: string.Empty, usageLine: string.Empty, findingsBlock: string.Empty);
+        var normalizedComment = comment.Replace("\r\n", "\n").Replace('\r', '\n');
+
+        AssertContainsText(normalizedComment, "## Summary 📝", "normalized summary heading");
+        AssertContainsText(normalizedComment, "\n## Todo List ✅\n\nNone.", "normalized todo heading");
+        AssertContainsText(normalizedComment, "\n## Other Issues 🧯\n\n- Consider a parser-side fallback too.", "normalized other issues heading");
+        AssertContainsText(normalizedComment, "\n## Tests / Coverage 🧪\n\n- Snapshot coverage looks sufficient.", "normalized tests heading");
+    }
+
+    private static void TestReviewFormatterNormalizesMalformedHeadingInlineSectionLabels() {
+        var context = new PullRequestContext("owner/repo", "owner", "repo", 42, "Formatter Heading Inline Sections", "Body", false,
+            "deadbeefcafebabe", "base", Array.Empty<string>(), "owner/repo", false, null);
+        var settings = new ReviewSettings {
+            Model = "gpt-5-test",
+            Length = ReviewLength.Medium,
+            Mode = "summary"
+        };
+        var reviewBody = string.Join("\n", new[] {
+            "## Summary 📝Looks good overall.",
+            "## Todo List ✅- [ ] Fix the portable bundle cleanup.",
+            "## Other Issues 🧯- Keep the formatter/parser in sync."
+        });
+
+        var comment = ReviewFormatter.BuildComment(context, reviewBody, settings, inlineSupported: true, inlineSuppressed: false,
+            autoResolveNote: string.Empty, budgetNote: string.Empty, usageLine: string.Empty, findingsBlock: string.Empty);
+        var normalizedComment = comment.Replace("\r\n", "\n").Replace('\r', '\n');
+
+        AssertContainsText(normalizedComment, "\n## Summary 📝\n\nLooks good overall.", "normalized malformed summary heading");
+        AssertContainsText(normalizedComment, "\n## Todo List ✅\n\n- [ ] Fix the portable bundle cleanup.", "normalized malformed todo heading");
+        AssertContainsText(normalizedComment, "\n## Other Issues 🧯\n\n- Keep the formatter/parser in sync.", "normalized malformed other issues heading");
+    }
+
+    private static void TestReviewFormatterNormalizesNoSeparatorSectionLabels() {
+        var context = new PullRequestContext("owner/repo", "owner", "repo", 42, "Formatter No Separator Sections", "Body", false,
+            "deadbeefcafebabe", "base", Array.Empty<string>(), "owner/repo", false, null);
+        var settings = new ReviewSettings {
+            Model = "gpt-5-test",
+            Length = ReviewLength.Medium,
+            Mode = "summary"
+        };
+        var reviewBody = string.Join("\n", new[] {
+            "Next Steps 🚀Ship as-is after the final rerun.",
+            "##Todo List ✅- [ ] Fix the remaining parser edge case."
+        });
+
+        var comment = ReviewFormatter.BuildComment(context, reviewBody, settings, inlineSupported: true, inlineSuppressed: false,
+            autoResolveNote: string.Empty, budgetNote: string.Empty, usageLine: string.Empty, findingsBlock: string.Empty);
+        var normalizedComment = comment.Replace("\r\n", "\n").Replace('\r', '\n');
+
+        AssertContainsText(normalizedComment, "\n## Next Steps 🚀\n\nShip as-is after the final rerun.", "normalized next steps heading without separator");
+        AssertContainsText(normalizedComment, "\n## Todo List ✅\n\n- [ ] Fix the remaining parser edge case.", "normalized no-space hash heading");
+    }
+
+    private static void TestReviewFormatterDoesNotNormalizeSectionLabelsInsideCodeBlocks() {
+        var context = new PullRequestContext("owner/repo", "owner", "repo", 42, "Formatter Code Blocks", "Body", false,
+            "deadbeefcafebabe", "base", Array.Empty<string>(), "owner/repo", false, null);
+        var settings = new ReviewSettings {
+            Model = "gpt-5-test",
+            Length = ReviewLength.Medium,
+            Mode = "summary"
+        };
+        var reviewBody = string.Join("\n", new[] {
+            "Summary 📝 Actual summary line.",
+            "```md",
+            "Todo List ✅ - [ ] Example only.",
+            "## Critical Issues ⚠️ None.",
+            "```",
+            "    Other Issues 🧯 - Still example text."
+        });
+
+        var comment = ReviewFormatter.BuildComment(context, reviewBody, settings, inlineSupported: true, inlineSuppressed: false,
+            autoResolveNote: string.Empty, budgetNote: string.Empty, usageLine: string.Empty, findingsBlock: string.Empty);
+        var normalizedComment = comment.Replace("\r\n", "\n").Replace('\r', '\n');
+
+        AssertContainsText(normalizedComment, "```md\nTodo List ✅ - [ ] Example only.\n## Critical Issues ⚠️ None.\n```",
+            "fenced code block preserved");
+        AssertContainsText(normalizedComment, "\n    Other Issues 🧯 - Still example text.", "indented code line preserved");
+    }
+
+    private static void TestReviewFormatterPreservesSectionLabelsInsideLongFenceCodeBlocks() {
+        var context = new PullRequestContext("owner/repo", "owner", "repo", 42, "Formatter Long Fence Code Blocks", "Body", false,
+            "deadbeefcafebabe", "base", Array.Empty<string>(), "owner/repo", false, null);
+        var settings = new ReviewSettings {
+            Model = "gpt-5-test",
+            Length = ReviewLength.Medium,
+            Mode = "summary"
+        };
+        var reviewBody = string.Join("\n", new[] {
+            "Summary 📝 Actual summary line.",
+            "````md",
+            "```",
+            "Todo List ✅ - [ ] Example only.",
+            "````",
+            "Critical Issues ⚠️ None."
+        });
+
+        var comment = ReviewFormatter.BuildComment(context, reviewBody, settings, inlineSupported: true, inlineSuppressed: false,
+            autoResolveNote: string.Empty, budgetNote: string.Empty, usageLine: string.Empty, findingsBlock: string.Empty);
+        var normalizedComment = comment.Replace("\r\n", "\n").Replace('\r', '\n');
+
+        AssertContainsText(normalizedComment, "````md\n```\nTodo List ✅ - [ ] Example only.\n````",
+            "long fenced code block preserved");
+        AssertContainsText(normalizedComment, "\n## Critical Issues ⚠️\n\nNone.", "post-fence normalization preserved");
+    }
+
+    private static void TestReviewFormatterAllowsLongerFenceClosers() {
+        var context = new PullRequestContext("owner/repo", "owner", "repo", 42, "Formatter Longer Fence Closers", "Body", false,
+            "deadbeefcafebabe", "base", Array.Empty<string>(), "owner/repo", false, null);
+        var settings = new ReviewSettings {
+            Model = "gpt-5-test",
+            Length = ReviewLength.Medium,
+            Mode = "summary"
+        };
+        var reviewBody = string.Join("\n", new[] {
+            "Summary 📝 Actual summary line.",
+            "````md",
+            "Todo List ✅ - [ ] Example only.",
+            "`````",
+            "Todo List ✅ None."
+        });
+
+        var comment = ReviewFormatter.BuildComment(context, reviewBody, settings, inlineSupported: true, inlineSuppressed: false,
+            autoResolveNote: string.Empty, budgetNote: string.Empty, usageLine: string.Empty, findingsBlock: string.Empty);
+        var normalizedComment = comment.Replace("\r\n", "\n").Replace('\r', '\n');
+
+        AssertContainsText(normalizedComment, "````md\nTodo List ✅ - [ ] Example only.\n`````",
+            "longer fence closer preserved");
+        AssertContainsText(normalizedComment, "\n## Todo List ✅\n\nNone.", "post-longer-closer normalization preserved");
+    }
+
+    private static void TestReviewFormatterIgnoresIndentedFenceLikeLines() {
+        var context = new PullRequestContext("owner/repo", "owner", "repo", 42, "Formatter Indented Fence Like Lines", "Body", false,
+            "deadbeefcafebabe", "base", Array.Empty<string>(), "owner/repo", false, null);
+        var settings = new ReviewSettings {
+            Model = "gpt-5-test",
+            Length = ReviewLength.Medium,
+            Mode = "summary"
+        };
+        var reviewBody = string.Join("\n", new[] {
+            "    ```md",
+            "    Todo List ✅ - [ ] Example only.",
+            "Summary 📝 Actual summary line.",
+            "Todo List ✅ None."
+        });
+
+        var comment = ReviewFormatter.BuildComment(context, reviewBody, settings, inlineSupported: true, inlineSuppressed: false,
+            autoResolveNote: string.Empty, budgetNote: string.Empty, usageLine: string.Empty, findingsBlock: string.Empty);
+        var normalizedComment = comment.Replace("\r\n", "\n").Replace('\r', '\n');
+
+        AssertContainsText(normalizedComment, "    ```md\n    Todo List ✅ - [ ] Example only.", "indented fence-like block preserved");
+        AssertContainsText(normalizedComment, "\n## Summary 📝\n\nActual summary line.", "post-indented-code summary normalized");
+        AssertContainsText(normalizedComment, "\n## Todo List ✅\n\nNone.", "post-indented-code todo normalized");
+    }
+
+    private static void TestReviewSummaryParserMergeBlockerDetectionInlineSectionLabels() {
+        var body = string.Join("\n", new[] {
+            "Summary 📝 Looks good overall.",
+            "Todo List ✅ - [ ] Fix the failing portable bundle cleanup.",
+            "Critical Issues ⚠️ None."
+        });
+
+        AssertEqual(true, ReviewSummaryParser.HasMergeBlockers(body), "merge blockers inline section labels");
+    }
+
+    private static void TestReviewSummaryParserMergeBlockerDetectionHeadingInlineSectionLabels() {
+        var body = string.Join("\n", new[] {
+            "## Summary 📝Looks good overall.",
+            "## Todo List ✅- [ ] Fix the failing portable bundle cleanup.",
+            "## Critical Issues ⚠️None."
+        });
+
+        AssertEqual(true, ReviewSummaryParser.HasMergeBlockers(body), "merge blockers heading inline section labels");
+    }
+
+    private static void TestReviewSummaryParserMergeBlockerDetectionNoSpaceHeadingPrefixes() {
+        var body = string.Join("\n", new[] {
+            "##Summary 📝Looks good overall.",
+            "##Todo List ✅- [ ] Fix the failing portable bundle cleanup.",
+            "##Critical Issues ⚠️None."
+        });
+
+        AssertEqual(true, ReviewSummaryParser.HasMergeBlockers(body), "merge blockers no-space heading prefixes");
+    }
+
+    private static void TestReviewSummaryParserIgnoresChecklistInsideLongFenceCodeBlocks() {
+        var body = string.Join("\n", new[] {
+            "## Summary 📝",
+            "Looks good overall.",
+            "````md",
+            "```",
+            "Todo List ✅ - [ ] Example only.",
+            "````",
+            "## Todo List ✅",
+            "None.",
+            "## Critical Issues ⚠️",
+            "None."
+        });
+
+        AssertEqual(false, ReviewSummaryParser.HasMergeBlockers(body), "merge blockers ignore long fence checklist");
+    }
+
+    private static void TestReviewSummaryParserIgnoresChecklistInsideLongFenceCodeBlocksWithLongerCloser() {
+        var body = string.Join("\n", new[] {
+            "## Summary 📝",
+            "Looks good overall.",
+            "````md",
+            "Todo List ✅ - [ ] Example only.",
+            "`````",
+            "## Todo List ✅",
+            "None.",
+            "## Critical Issues ⚠️",
+            "None."
+        });
+
+        AssertEqual(false, ReviewSummaryParser.HasMergeBlockers(body), "merge blockers ignore long fence checklist with longer closer");
+    }
+
     private static void TestReviewUsageIntegrationDisplay() {
         const string json = "{"
             + "\"plan_type\":\"pro\","

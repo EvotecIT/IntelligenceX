@@ -11,6 +11,25 @@ internal static class ReviewFormatter {
     public const string StaticAnalysisInlineMarker = "<!-- intelligencex:analysis-inline -->";
     public const string ReviewedCommitMarker = "Reviewed commit:";
     private const string ProgressTemplateName = "ReviewProgress.md";
+    private static readonly string[] SectionLabels = {
+        "Summary 📝",
+        "Review Summary 📝",
+        "Todo List ✅",
+        "Critical Issues ⚠️ (if any)",
+        "Critical Issues ⚠️",
+        "Other Issues 🧯",
+        "Other Reviews 🧩",
+        "Tests / Coverage 🧪",
+        "Inline Comments 🔍",
+        "Code Quality Assessment ⭐",
+        "Excellent Aspects ✨",
+        "Security & Performance 🔐⚡",
+        "Test Quality 🧪",
+        "Documentation 📚",
+        "Backward Compatibility 🔄",
+        "Recommendations 💡",
+        "Next Steps 🚀"
+    };
 
     public static string BuildComment(PullRequestContext context, string reviewBody, ReviewSettings settings, bool inlineSupported,
         bool inlineSuppressed, string? autoResolveNote, string? budgetNote, string? usageLine, string? findingsBlock) {
@@ -29,7 +48,7 @@ internal static class ReviewFormatter {
 
         var body = string.IsNullOrWhiteSpace(reviewBody)
             ? "_No review content was produced._"
-            : reviewBody.Trim();
+            : NormalizeSectionLayout(reviewBody.TrimEnd());
 
         var template = ResolveSummaryTemplate(settings);
         var reasoningParts = new List<string>();
@@ -68,6 +87,66 @@ internal static class ReviewFormatter {
         };
 
         return TemplateRenderer.Render(template, tokens).TrimEnd();
+    }
+
+    internal static string NormalizeSectionLayout(string reviewBody) {
+        if (string.IsNullOrWhiteSpace(reviewBody)) {
+            return string.Empty;
+        }
+
+        var lines = reviewBody.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+        var sb = new StringBuilder();
+        var previousLineBlank = true;
+        var fencedCodeMarker = string.Empty;
+
+        foreach (var line in lines) {
+            var rawLine = line.TrimEnd();
+            var trimmedLine = rawLine.TrimStart();
+            if (IsIndentedCodeLine(rawLine)) {
+                sb.AppendLine(rawLine);
+                previousLineBlank = string.IsNullOrWhiteSpace(rawLine);
+                continue;
+            }
+
+            if (TryMatchFenceDelimiter(trimmedLine, out var currentFenceMarker)) {
+                if (string.IsNullOrEmpty(fencedCodeMarker)) {
+                    fencedCodeMarker = currentFenceMarker;
+                } else if (IsFenceCloserForMarker(fencedCodeMarker, currentFenceMarker)) {
+                    fencedCodeMarker = string.Empty;
+                }
+
+                sb.AppendLine(rawLine);
+                previousLineBlank = string.IsNullOrWhiteSpace(rawLine);
+                continue;
+            }
+
+            if (!string.IsNullOrEmpty(fencedCodeMarker)) {
+                sb.AppendLine(rawLine);
+                previousLineBlank = string.IsNullOrWhiteSpace(rawLine);
+                continue;
+            }
+
+            if (TryNormalizeSectionLine(trimmedLine, out var heading, out var remainder)) {
+                if (sb.Length > 0 && !previousLineBlank) {
+                    sb.AppendLine();
+                }
+
+                sb.AppendLine(heading);
+                if (!string.IsNullOrWhiteSpace(remainder)) {
+                    sb.AppendLine();
+                    sb.AppendLine(remainder);
+                    previousLineBlank = false;
+                } else {
+                    previousLineBlank = false;
+                }
+                continue;
+            }
+
+            sb.AppendLine(rawLine);
+            previousLineBlank = string.IsNullOrWhiteSpace(rawLine);
+        }
+
+        return sb.ToString().TrimEnd();
     }
 
     public static string BuildProgressComment(PullRequestContext context, ReviewSettings settings, ReviewProgress progress,
@@ -193,5 +272,93 @@ internal static class ReviewFormatter {
             return text;
         }
         return text.Substring(0, maxChars) + "...";
+    }
+
+    private static bool TryNormalizeSectionLine(string trimmedLine, out string heading, out string remainder) {
+        heading = string.Empty;
+        remainder = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(trimmedLine)) {
+            return false;
+        }
+
+        var headingPrefix = "##";
+        var content = trimmedLine;
+        var hadHeadingPrefix = TryExtractHeadingPrefix(trimmedLine, out headingPrefix, out content);
+
+        foreach (var label in SectionLabels) {
+            if (!content.StartsWith(label, System.StringComparison.Ordinal)) {
+                continue;
+            }
+
+            heading = $"{headingPrefix} {label}";
+            remainder = content.Substring(label.Length).TrimStart();
+            if (remainder.StartsWith(":", System.StringComparison.Ordinal)) {
+                remainder = remainder.Substring(1).TrimStart();
+            }
+            if (hadHeadingPrefix && string.IsNullOrWhiteSpace(remainder)) {
+                heading = string.Empty;
+                return false;
+            }
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool TryMatchFenceDelimiter(string trimmedLine, out string marker) {
+        marker = string.Empty;
+        if (string.IsNullOrEmpty(trimmedLine)) {
+            return false;
+        }
+
+        var fenceChar = trimmedLine[0];
+        if (fenceChar != '`' && fenceChar != '~') {
+            return false;
+        }
+
+        var length = 0;
+        while (length < trimmedLine.Length && trimmedLine[length] == fenceChar) {
+            length++;
+        }
+
+        if (length < 3) {
+            return false;
+        }
+
+        marker = trimmedLine.Substring(0, length);
+        return true;
+    }
+
+    private static bool IsIndentedCodeLine(string rawLine) {
+        return rawLine.StartsWith("    ", System.StringComparison.Ordinal)
+               || rawLine.StartsWith("\t", System.StringComparison.Ordinal);
+    }
+
+    private static bool IsFenceCloserForMarker(string openingMarker, string candidateMarker) {
+        return candidateMarker.Length >= openingMarker.Length
+               && candidateMarker[0] == openingMarker[0];
+    }
+
+    private static bool TryExtractHeadingPrefix(string trimmedLine, out string headingPrefix, out string content) {
+        headingPrefix = "##";
+        content = trimmedLine;
+
+        if (trimmedLine.Length >= 3
+            && trimmedLine.StartsWith("###", System.StringComparison.Ordinal)
+            && (trimmedLine.Length == 3 || trimmedLine[3] != '#')) {
+            headingPrefix = "###";
+            content = trimmedLine.Substring(3).TrimStart();
+            return true;
+        }
+
+        if (trimmedLine.Length >= 2
+            && trimmedLine.StartsWith("##", System.StringComparison.Ordinal)
+            && (trimmedLine.Length == 2 || trimmedLine[2] != '#')) {
+            content = trimmedLine.Substring(2).TrimStart();
+            return true;
+        }
+
+        return false;
     }
 }
