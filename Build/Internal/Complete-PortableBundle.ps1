@@ -11,7 +11,7 @@
     [string] $Frontend = 'app',
 
     [string] $Framework = 'net10.0-windows',
-    [string] $AppFramework = 'net8.0-windows10.0.26100.0',
+    [string] $AppFramework = 'net10.0-windows10.0.26100.0',
     [string] $Runtime = 'win-x64',
     [string] $PrimaryExecutable,
     [switch] $IncludeService,

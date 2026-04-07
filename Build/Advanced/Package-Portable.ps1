@@ -35,7 +35,7 @@ pwsh ./Build/Advanced/Package-Portable.ps1 `
     [string] $Frontend = 'app',
 
     [string] $Framework = 'net10.0-windows',
-    [string] $AppFramework = 'net8.0-windows10.0.26100.0',
+    [string] $AppFramework = 'net10.0-windows10.0.26100.0',
     [switch] $SelfContained = $true,
     [switch] $SingleFile = $true,
     [switch] $Trim,

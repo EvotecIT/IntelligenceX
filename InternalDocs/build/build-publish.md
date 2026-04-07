@@ -169,7 +169,7 @@ Chat (single app default = Host, service optional):
 ```powershell
 pwsh ./Build/Build-Project.ps1 -ToolsOnly -Targets IntelligenceX.Chat.Host -Runtimes win-x64 -Frameworks net10.0-windows -Styles FrameworkDependent
 pwsh ./Build/Build-Project.ps1 -ToolsOnly -Targets IntelligenceX.Chat.Service -Runtimes win-x64 -Frameworks net10.0-windows -Styles PortableCompat
-pwsh ./Build/Build-Project.ps1 -ToolsOnly -Targets IntelligenceX.Chat.App -Runtimes win-x64 -Frameworks net8.0-windows10.0.26100.0 -Styles PortableCompat
+pwsh ./Build/Build-Project.ps1 -ToolsOnly -Targets IntelligenceX.Chat.App -Runtimes win-x64 -Frameworks net10.0-windows10.0.26100.0 -Styles PortableCompat
 ```
 
 Tray app:
