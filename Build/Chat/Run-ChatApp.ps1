@@ -63,6 +63,21 @@ function Resolve-ChatAppServiceOutputPath {
         return $candidate.FullName
     }
 
+    $appOutputCandidates = Get-ChildItem $binRoot -Filter 'IntelligenceX.Chat.App.dll' -File -Recurse -ErrorAction SilentlyContinue |
+        ForEach-Object {
+            $pathSegments = $_.DirectoryName -split '[\\/]'
+            [pscustomobject]@{
+                DirectoryName = $_.DirectoryName
+                IsPublishPath = $pathSegments -contains 'publish'
+                Depth = $pathSegments.Count
+            }
+        } |
+        Sort-Object @{ Expression = 'IsPublishPath'; Descending = $false }, @{ Expression = 'Depth'; Descending = $false }, DirectoryName
+
+    foreach ($candidate in $appOutputCandidates) {
+        return (Join-Path $candidate.DirectoryName 'service')
+    }
+
     return $null
 }
 
