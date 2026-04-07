@@ -625,6 +625,8 @@ internal static partial class Program {
             TestTriageThreadHydrationUsesFallbackClientWhenProvided);
         failed += Run("Review code host env", TestReviewCodeHostEnv);
         failed += Run("Reviewer untrusted PR skips auth store write from env", TestReviewerUntrustedPrSkipsAuthStoreWriteFromEnv);
+        failed += Run("Reviewer validate auth rejects expired bundle for non-native transport with refresh guidance",
+            TestReviewerValidateAuthRejectsExpiredBundleForNonNativeTransportWithRefreshGuidance);
         failed += Run("Reviewer GitHub token resolver uses GH_TOKEN fallback", TestReviewerGitHubTokenResolverUsesGhTokenFallback);
         failed += Run("Reviewer GitHub token resolver prefers GITHUB_TOKEN", TestReviewerGitHubTokenResolverPrefersGithubTokenOverGhToken);
         failed += Run("GitHub context cache", TestGitHubContextCache);

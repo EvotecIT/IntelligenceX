@@ -230,11 +230,15 @@ internal static class ReviewDiagnostics {
             }
             sb.AppendLine($"- Last RPC: {lastRpc}");
         }
+        var provider = ReviewProviderContracts.Get(settings.Provider);
         if (classification.Category == ReviewErrorCategory.Auth &&
-            settings.OpenAITransport == OpenAITransportKind.Native) {
+            provider.RequiresOpenAiAuthStore) {
             var remediationCommand = BuildAuthRemediationCommand(remediationRepo);
+            var authLabel = settings.OpenAITransport == OpenAITransportKind.Native
+                ? "OpenAI native auth"
+                : "OpenAI auth";
             sb.AppendLine();
-            sb.AppendLine("> OpenAI native auth is missing, expired, or stale for this reviewer run.");
+            sb.AppendLine($"> {authLabel} is missing, expired, or stale for this reviewer run.");
             sb.AppendLine("> Reauthenticate locally and refresh `INTELLIGENCEX_AUTH_B64` with:");
             sb.AppendLine($"> `{remediationCommand}`");
         }

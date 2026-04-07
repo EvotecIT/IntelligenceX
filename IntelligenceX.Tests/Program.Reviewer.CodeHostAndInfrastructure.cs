@@ -63,7 +63,7 @@ internal static partial class Program {
         }
     }
 
-    private static void TestReviewerValidateAuthRejectsExpiredBundleWithRefreshGuidance() {
+    private static void TestReviewerValidateAuthRejectsExpiredBundleForNonNativeTransportWithRefreshGuidance() {
         var previousAuthPath = Environment.GetEnvironmentVariable("INTELLIGENCEX_AUTH_PATH");
         var previousGitHubRepo = Environment.GetEnvironmentVariable("GITHUB_REPOSITORY");
         var tempDir = Path.Combine(Path.GetTempPath(), "intelligencex-reviewer-auth-expired-" + Guid.NewGuid().ToString("N"));
@@ -80,7 +80,7 @@ internal static partial class Program {
 
             var settings = new ReviewSettings {
                 Provider = ReviewProvider.OpenAI,
-                OpenAITransport = OpenAITransportKind.Native
+                OpenAITransport = OpenAITransportKind.AppServer
             };
 
             var originalOut = Console.Out;

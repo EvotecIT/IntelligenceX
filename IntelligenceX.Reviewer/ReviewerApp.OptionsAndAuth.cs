@@ -348,9 +348,11 @@ public static partial class ReviewerApp {
                 return false;
             }
             SecretsAudit.Record($"OpenAI auth bundle '{bundle.Provider}' from {authPath}");
-            if (bundle.ExpiresAt.HasValue && bundle.IsExpired()) {
+            var expiresAt = bundle.ExpiresAt;
+            var isExpired = expiresAt.HasValue && bundle.IsExpired();
+            if (isExpired && settings.OpenAITransport != IntelligenceX.OpenAI.OpenAITransportKind.Native) {
                 Console.Error.WriteLine(
-                    $"OpenAI auth bundle expired at {bundle.ExpiresAt.Value.ToUniversalTime():O}.");
+                    $"OpenAI auth bundle expired at {expiresAt!.Value.ToUniversalTime():O}.");
                 Console.Error.WriteLine(
                     $"Refresh it with `{ReviewDiagnostics.BuildAuthRemediationCommand()}`.");
                 return false;
