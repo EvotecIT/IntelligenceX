@@ -302,15 +302,26 @@ internal static class ReviewFormatter {
 
     private static bool TryMatchFenceDelimiter(string trimmedLine, out string marker) {
         marker = string.Empty;
-        if (trimmedLine.StartsWith("```", System.StringComparison.Ordinal)) {
-            marker = "```";
-            return true;
+        if (string.IsNullOrEmpty(trimmedLine)) {
+            return false;
         }
-        if (trimmedLine.StartsWith("~~~", System.StringComparison.Ordinal)) {
-            marker = "~~~";
-            return true;
+
+        var fenceChar = trimmedLine[0];
+        if (fenceChar != '`' && fenceChar != '~') {
+            return false;
         }
-        return false;
+
+        var length = 0;
+        while (length < trimmedLine.Length && trimmedLine[length] == fenceChar) {
+            length++;
+        }
+
+        if (length < 3) {
+            return false;
+        }
+
+        marker = trimmedLine.Substring(0, length);
+        return true;
     }
 
     private static bool IsIndentedCodeLine(string rawLine) {

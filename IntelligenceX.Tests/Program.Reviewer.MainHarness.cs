@@ -729,6 +729,8 @@ internal static partial class Program {
             TestReviewSummaryParserMergeBlockerDetectionHeadingInlineSectionLabels);
         failed += Run("Review summary parser merge blocker detection no-space heading prefixes",
             TestReviewSummaryParserMergeBlockerDetectionNoSpaceHeadingPrefixes);
+        failed += Run("Review summary parser ignores checklist inside long fence code blocks",
+            TestReviewSummaryParserIgnoresChecklistInsideLongFenceCodeBlocks);
         failed += Run("Review summary parser merge blocker detection compact defaults",
             TestReviewSummaryParserMergeBlockerDetectionCompactDefaults);
         failed += Run("Review summary parser merge blocker detection compact aliases",
@@ -747,6 +749,8 @@ internal static partial class Program {
             TestReviewFormatterNormalizesNoSeparatorSectionLabels);
         failed += Run("Review formatter preserves section labels inside code blocks",
             TestReviewFormatterDoesNotNormalizeSectionLabelsInsideCodeBlocks);
+        failed += Run("Review formatter preserves section labels inside long fence code blocks",
+            TestReviewFormatterPreservesSectionLabelsInsideLongFenceCodeBlocks);
         failed += Run("Review usage integration display", TestReviewUsageIntegrationDisplay);
         failed += Run("Review usage summary line", TestReviewUsageSummaryLine);
         failed += Run("Review Claude usage summary line", TestReviewClaudeUsageSummaryLine);

@@ -318,6 +318,32 @@ internal static partial class Program {
         AssertContainsText(normalizedComment, "\n    Other Issues 🧯 - Still example text.", "indented code line preserved");
     }
 
+    private static void TestReviewFormatterPreservesSectionLabelsInsideLongFenceCodeBlocks() {
+        var context = new PullRequestContext("owner/repo", "owner", "repo", 42, "Formatter Long Fence Code Blocks", "Body", false,
+            "deadbeefcafebabe", "base", Array.Empty<string>(), "owner/repo", false, null);
+        var settings = new ReviewSettings {
+            Model = "gpt-5-test",
+            Length = ReviewLength.Medium,
+            Mode = "summary"
+        };
+        var reviewBody = string.Join("\n", new[] {
+            "Summary 📝 Actual summary line.",
+            "````md",
+            "```",
+            "Todo List ✅ - [ ] Example only.",
+            "````",
+            "Critical Issues ⚠️ None."
+        });
+
+        var comment = ReviewFormatter.BuildComment(context, reviewBody, settings, inlineSupported: true, inlineSuppressed: false,
+            autoResolveNote: string.Empty, budgetNote: string.Empty, usageLine: string.Empty, findingsBlock: string.Empty);
+        var normalizedComment = comment.Replace("\r\n", "\n").Replace('\r', '\n');
+
+        AssertContainsText(normalizedComment, "````md\n```\nTodo List ✅ - [ ] Example only.\n````",
+            "long fenced code block preserved");
+        AssertContainsText(normalizedComment, "\n## Critical Issues ⚠️\n\nNone.", "post-fence normalization preserved");
+    }
+
     private static void TestReviewSummaryParserMergeBlockerDetectionInlineSectionLabels() {
         var body = string.Join("\n", new[] {
             "Summary 📝 Looks good overall.",
@@ -346,6 +372,23 @@ internal static partial class Program {
         });
 
         AssertEqual(true, ReviewSummaryParser.HasMergeBlockers(body), "merge blockers no-space heading prefixes");
+    }
+
+    private static void TestReviewSummaryParserIgnoresChecklistInsideLongFenceCodeBlocks() {
+        var body = string.Join("\n", new[] {
+            "## Summary 📝",
+            "Looks good overall.",
+            "````md",
+            "```",
+            "Todo List ✅ - [ ] Example only.",
+            "````",
+            "## Todo List ✅",
+            "None.",
+            "## Critical Issues ⚠️",
+            "None."
+        });
+
+        AssertEqual(false, ReviewSummaryParser.HasMergeBlockers(body), "merge blockers ignore long fence checklist");
     }
 
     private static void TestReviewUsageIntegrationDisplay() {
