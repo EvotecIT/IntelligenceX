@@ -444,7 +444,7 @@ public sealed partial class MainWindow : Window {
                 _isConnected = true;
                 ClearDispatchConnectFailure();
                 StopAutoReconnectLoop();
-                await SetStatusAsync(SessionStatus.ForConnectedAuth(IsEffectivelyAuthenticatedForCurrentTransport())).ConfigureAwait(false);
+                await SetStatusAsync(ResolveConnectionStatusForCurrentTransport()).ConfigureAwait(false);
                 return;
             }
 
@@ -467,14 +467,12 @@ public sealed partial class MainWindow : Window {
                 requiresInteractiveSignIn: requiresInteractiveSignIn,
                 preserveInteractiveAuthState: preserveInteractiveAuthState);
             if (!requiresInteractiveSignIn) {
-                _isAuthenticated = false;
-                _authenticatedAccountId = null;
+                SetInteractiveAuthenticationUnknown();
                 _loginInProgress = false;
                 ApplyNonNativeAuthenticationStateIfNeeded();
                 Interlocked.Exchange(ref _startupLoginSuccessMetadataSyncQueued, 0);
             } else if (!preserveInteractiveAuthState) {
-                _isAuthenticated = false;
-                _authenticatedAccountId = null;
+                SetInteractiveAuthenticationUnknown();
                 _loginInProgress = false;
                 Interlocked.Exchange(ref _startupLoginSuccessMetadataSyncQueued, 0);
             } else if (!_isAuthenticated) {
@@ -957,7 +955,7 @@ public sealed partial class MainWindow : Window {
                             ? "inline_metadata_sync_preview_refresh_pending"
                             : "inline_metadata_sync_preview_refresh_retry_limit_reached");
                 } else {
-                    await SetStatusAsync(SessionStatus.ForConnection(_isConnected, IsEffectivelyAuthenticatedForCurrentTransport())).ConfigureAwait(false);
+                    await SetStatusAsync(ResolveConnectionStatusForCurrentTransport()).ConfigureAwait(false);
                     LogStartupConnectPhase("ready", "inline_metadata_sync_done");
                 }
                 await PublishOptionsStateSafeAsync().ConfigureAwait(false);

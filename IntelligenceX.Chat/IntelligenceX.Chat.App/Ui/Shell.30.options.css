@@ -855,6 +855,8 @@ body.options-open .options-panel {
 .options-accordion-summary-right {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 8px;
   margin-left: auto;
   min-width: 0;
@@ -884,6 +886,7 @@ body.options-open .options-panel {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
@@ -1115,6 +1118,7 @@ body.options-open .options-panel {
 .options-tool-routing-reason {
   font-size: 10.5px;
   color: var(--ix-text-muted);
+  line-height: 1.35;
 }
 
 .options-tag {
@@ -1157,6 +1161,15 @@ body.options-open .options-panel {
   flex-direction: column;
   gap: 6px;
   padding: 7px;
+}
+
+.options-tool-details {
+  margin-top: 7px;
+}
+
+.options-pack-action {
+  min-width: 92px;
+  padding: 6px 10px;
 }
 
 .options-tool-param {

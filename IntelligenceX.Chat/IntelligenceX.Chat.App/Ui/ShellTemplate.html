@@ -71,22 +71,6 @@
       <div class="sidebar-resize-handle" id="sidebarResizeHandle" title="Resize sidebar"></div>
 
       <div class="chat-main">
-        <div class="chat-thread-banner" id="activeThreadSchedulerBanner" hidden>
-          <div class="chat-thread-banner-main">
-            <div class="chat-thread-banner-title" id="activeThreadSchedulerTitle"></div>
-            <div class="chat-thread-banner-meta" id="activeThreadSchedulerMeta"></div>
-            <div class="chat-thread-banner-detail" id="activeThreadSchedulerDetail"></div>
-          </div>
-          <div class="chat-thread-banner-actions">
-            <button id="btnActiveThreadSchedulerOpen" class="chat-thread-banner-btn chat-thread-banner-btn-ghost" type="button">Open Scheduler</button>
-            <button id="btnActiveThreadSchedulerToggleMute" class="chat-thread-banner-btn chat-thread-banner-btn-warn" type="button">Mute Thread</button>
-            <button id="btnActiveThreadSchedulerTempMute" class="chat-thread-banner-btn chat-thread-banner-btn-ghost" type="button">Mute 30m</button>
-            <button id="btnActiveThreadSchedulerTempMuteLong" class="chat-thread-banner-btn chat-thread-banner-btn-ghost" type="button">Mute 2h</button>
-            <button id="btnActiveThreadSchedulerMuteUntilMaintenance" class="chat-thread-banner-btn chat-thread-banner-btn-ghost" type="button">Until End</button>
-            <button id="btnActiveThreadSchedulerMuteUntilMaintenanceStart" class="chat-thread-banner-btn chat-thread-banner-btn-ghost" type="button">Until Start</button>
-            <button id="btnActiveThreadSchedulerRefresh" class="chat-thread-banner-btn" type="button">Refresh Thread</button>
-          </div>
-        </div>
         <main class="transcript" id="transcript" tabindex="0"></main>
 
         <div class="activity-indicator" id="activity">
@@ -505,7 +489,7 @@
           <div class="options-note" id="optQueueDispatchState">Queue empty.</div>
         </section>
 
-        <section class="options-group">
+        <section class="options-group" id="optBackgroundSchedulerSection">
           <div class="options-label">Background Scheduler</div>
           <div class="options-note">Service-backed daemon controls for prepared background follow-up work.</div>
           <div class="options-note" id="optRuntimeSchedulerState">No background scheduler diagnostics yet.</div>

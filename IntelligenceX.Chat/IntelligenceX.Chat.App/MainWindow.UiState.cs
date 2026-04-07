@@ -466,6 +466,12 @@ public sealed partial class MainWindow : Window {
         await QueueUiPublishAsync(requestSessionState: false, requestOptionsState: true).ConfigureAwait(false);
     }
 
+    private void InvalidatePublishedOptionsState() {
+        lock (_uiPublishSync) {
+            _lastPublishedOptionsStateJson = null;
+        }
+    }
+
     private async Task PublishOptionsStateCoreAsync() {
         if (!_webViewReady) {
             _lastPublishedOptionsStateJson = null;
@@ -501,12 +507,14 @@ public sealed partial class MainWindow : Window {
             ? BuildPackState(effectivePacks)
             : Array.Empty<object>();
 
+        var toolsCatalogPendingCount = CountToolsHiddenWithoutCatalog();
         var tools = BuildToolState();
         var toolsLoading = ShouldShowToolsLoading(
             isConnected: _isConnected,
             hasSessionPolicy: _sessionPolicy is not null,
             startupFlowState: Volatile.Read(ref _startupFlowState),
-            startupMetadataSyncQueued: Volatile.Read(ref _startupConnectMetadataDeferredQueued) != 0);
+            startupMetadataSyncQueued: Volatile.Read(ref _startupConnectMetadataDeferredQueued) != 0)
+            || (_isConnected && toolsCatalogPendingCount > 0);
         var conversations = BuildConversationState();
         var accountUsageState = BuildAccountUsageState();
         var activeAccountUsageState = BuildActiveAccountUsageState();
@@ -612,6 +620,7 @@ public sealed partial class MainWindow : Window {
             packs,
             tools,
             toolsLoading,
+            toolsCatalogPendingCount,
             latestRoutingPromptExposure = BuildRoutingPromptExposureState(),
             toolCatalogRoutingCatalog = BuildRoutingCatalogState(_toolCatalogRoutingCatalog),
             toolCatalogPlugins = BuildPluginState(effectivePlugins),

@@ -110,11 +110,12 @@ public sealed partial class MainWindow : Window {
                     }
                 case "toggle_debug":
                     _debugMode = !_debugMode;
-                    await SetStatusAsync(_debugMode ? SessionStatus.DebugModeOn() : SessionStatus.ForConnection(_isConnected, IsEffectivelyAuthenticatedForCurrentTransport())).ConfigureAwait(true);
+                    await SetStatusAsync(_debugMode ? SessionStatus.DebugModeOn() : ResolveConnectionStatusForCurrentTransport()).ConfigureAwait(true);
                     break;
                 case "options_refresh":
                     await RefreshLocalRuntimeDetectionAsync(publishOptions: false).ConfigureAwait(true);
                     if (_client is not null) {
+                        await RefreshToolCatalogFromServiceAsync(_client, publishOptions: false, appendWarnings: true).ConfigureAwait(true);
                         await RefreshBackgroundSchedulerStatusAsync(
                             _client,
                             publishOptions: false,

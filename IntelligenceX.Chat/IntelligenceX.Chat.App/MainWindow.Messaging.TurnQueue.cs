@@ -290,7 +290,7 @@ public sealed partial class MainWindow : Window {
             return;
         }
 
-        await SetStatusAsync(SessionStatus.ForConnection(_isConnected, IsEffectivelyAuthenticatedForCurrentTransport())).ConfigureAwait(false);
+        await SetStatusAsync(ResolveConnectionStatusForCurrentTransport()).ConfigureAwait(false);
     }
 
     internal static bool ShouldRestoreConnectionStatusAfterTurn(

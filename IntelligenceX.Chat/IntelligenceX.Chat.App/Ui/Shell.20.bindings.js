@@ -312,6 +312,7 @@
   }
 
   byId("btnSidebarNewChat").addEventListener("click", function() {
+    setPendingConversationSelection("");
     post("new_conversation");
   });
 
@@ -325,9 +326,66 @@
 
   chatSidebar.addEventListener("mouseleave", function() {
     setSidebarHoverOpen(false);
+    releaseSidebarDeleteHoverSuppression();
+  });
+
+  chatSidebar.addEventListener("pointermove", function() {
+    releaseSidebarDeleteHoverSuppression();
   });
 
   var pendingDeleteTimer = 0;
+
+  function renderConversationSelectionState() {
+    renderSidebarConversations();
+    renderOptionsConversations();
+  }
+
+  function setPendingConversationSelection(conversationId) {
+    state.options.activeConversationId = String(conversationId || "").trim();
+    renderConversationSelectionState();
+  }
+
+  function removeConversationFromClientState(conversationId) {
+    var id = String(conversationId || "").trim();
+    if (!id || !state.options || !Array.isArray(state.options.conversations)) {
+      return;
+    }
+
+    var remaining = [];
+    var removedActive = id === String(state.options.activeConversationId || "").trim();
+    for (var i = 0; i < state.options.conversations.length; i++) {
+      var conversation = state.options.conversations[i];
+      if (!conversation || String(conversation.id || "").trim() === id) {
+        continue;
+      }
+      remaining.push(conversation);
+    }
+
+    state.options.conversations = remaining;
+    if (removedActive) {
+      var nextActiveId = "";
+      for (var j = 0; j < remaining.length; j++) {
+        if (remaining[j] && remaining[j].isSystem !== true) {
+          nextActiveId = String(remaining[j].id || "").trim();
+          break;
+        }
+      }
+      if (!nextActiveId && remaining.length > 0) {
+        nextActiveId = String((remaining[0] && remaining[0].id) || "").trim();
+      }
+      state.options.activeConversationId = nextActiveId;
+    }
+
+    renderConversationSelectionState();
+  }
+
+  function releaseSidebarDeleteHoverSuppression() {
+    chatSidebar.classList.remove("suppress-delete-hover");
+  }
+
+  function suppressSidebarDeleteHover() {
+    chatSidebar.classList.add("suppress-delete-hover");
+  }
 
   function clearPendingDelete() {
     if (pendingDeleteTimer) {
@@ -351,6 +409,8 @@
 
       if (deleteBtn.classList.contains("armed")) {
         clearPendingDelete();
+        suppressSidebarDeleteHover();
+        removeConversationFromClientState(delId);
         post("delete_conversation", { id: delId });
         return;
       }
@@ -371,6 +431,7 @@
     if (!id) {
       return;
     }
+    setPendingConversationSelection(id);
     post("switch_conversation", { id: id });
   });
 
@@ -718,112 +779,6 @@
       post("scheduler_clear_maintenance");
     });
   }
-  var activeThreadSchedulerRefreshButton = byId("btnActiveThreadSchedulerRefresh");
-  if (activeThreadSchedulerRefreshButton) {
-    activeThreadSchedulerRefreshButton.addEventListener("click", function() {
-      var threadId = String(activeThreadSchedulerRefreshButton.dataset.threadId || "").trim();
-      if (!threadId) {
-        return;
-      }
-
-      post("scheduler_refresh", { threadId: threadId });
-    });
-  }
-  var activeThreadSchedulerOpenButton = byId("btnActiveThreadSchedulerOpen");
-  if (activeThreadSchedulerOpenButton) {
-    activeThreadSchedulerOpenButton.addEventListener("click", function() {
-      var threadId = String(activeThreadSchedulerOpenButton.dataset.threadId || "").trim();
-      if (!threadId) {
-        return;
-      }
-
-      openOptions();
-      switchOptionsTab("session");
-      var scopeSelect = byId("optSchedulerScopeThread");
-      if (scopeSelect) {
-        scopeSelect.value = threadId;
-        syncCustomSelect(scopeSelect);
-      }
-
-      post("scheduler_refresh", { threadId: threadId });
-    });
-  }
-  var activeThreadSchedulerToggleMuteButton = byId("btnActiveThreadSchedulerToggleMute");
-  if (activeThreadSchedulerToggleMuteButton) {
-    activeThreadSchedulerToggleMuteButton.addEventListener("click", function() {
-      var threadId = String(activeThreadSchedulerToggleMuteButton.dataset.threadId || "").trim();
-      if (!threadId) {
-        return;
-      }
-
-      var blocked = String(activeThreadSchedulerToggleMuteButton.dataset.blocked || "").trim().toLowerCase() === "true";
-      post("scheduler_set_thread_block", {
-        threadId: threadId,
-        blocked: !blocked
-      });
-    });
-  }
-  var activeThreadSchedulerTempMuteButton = byId("btnActiveThreadSchedulerTempMute");
-  if (activeThreadSchedulerTempMuteButton) {
-    activeThreadSchedulerTempMuteButton.addEventListener("click", function() {
-      var threadId = String(activeThreadSchedulerTempMuteButton.dataset.threadId || "").trim();
-      if (!threadId) {
-        return;
-      }
-
-      post("scheduler_set_thread_block", {
-        threadId: threadId,
-        blocked: true,
-        durationMinutes: "30"
-      });
-    });
-  }
-  var activeThreadSchedulerTempMuteLongButton = byId("btnActiveThreadSchedulerTempMuteLong");
-  if (activeThreadSchedulerTempMuteLongButton) {
-    activeThreadSchedulerTempMuteLongButton.addEventListener("click", function() {
-      var threadId = String(activeThreadSchedulerTempMuteLongButton.dataset.threadId || "").trim();
-      if (!threadId) {
-        return;
-      }
-
-      post("scheduler_set_thread_block", {
-        threadId: threadId,
-        blocked: true,
-        durationMinutes: "120"
-      });
-    });
-  }
-  var activeThreadSchedulerMuteUntilMaintenanceButton = byId("btnActiveThreadSchedulerMuteUntilMaintenance");
-  if (activeThreadSchedulerMuteUntilMaintenanceButton) {
-    activeThreadSchedulerMuteUntilMaintenanceButton.addEventListener("click", function() {
-      var threadId = String(activeThreadSchedulerMuteUntilMaintenanceButton.dataset.threadId || "").trim();
-      if (!threadId) {
-        return;
-      }
-
-      post("scheduler_set_thread_block", {
-        threadId: threadId,
-        blocked: true,
-        untilNextMaintenanceWindow: true
-      });
-    });
-  }
-  var activeThreadSchedulerMuteUntilMaintenanceStartButton = byId("btnActiveThreadSchedulerMuteUntilMaintenanceStart");
-  if (activeThreadSchedulerMuteUntilMaintenanceStartButton) {
-    activeThreadSchedulerMuteUntilMaintenanceStartButton.addEventListener("click", function() {
-      var threadId = String(activeThreadSchedulerMuteUntilMaintenanceStartButton.dataset.threadId || "").trim();
-      if (!threadId) {
-        return;
-      }
-
-      post("scheduler_set_thread_block", {
-        threadId: threadId,
-        blocked: true,
-        untilNextMaintenanceWindowStart: true
-      });
-    });
-  }
-
   byId("optMemoryEnabled").addEventListener("change", function(e) {
     post("set_memory_enabled", { enabled: e.target.checked === true });
   });
@@ -1829,6 +1784,7 @@
   var btnNewConversation = byId("btnNewConversation");
   if (btnNewConversation) {
     btnNewConversation.addEventListener("click", function() {
+      setPendingConversationSelection("");
       post("new_conversation");
       closeOptions();
     });
@@ -1849,6 +1805,7 @@
       }
 
       if (action === "switch") {
+        setPendingConversationSelection(id);
         post("switch_conversation", { id: id });
         return;
       }

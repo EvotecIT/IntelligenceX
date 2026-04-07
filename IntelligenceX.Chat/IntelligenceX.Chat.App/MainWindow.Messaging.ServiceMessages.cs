@@ -158,7 +158,7 @@ public sealed partial class MainWindow : Window {
                 case ChatGptLoginCompletedMessage done:
                     _loginInProgress = false;
                     _autoSignInAttempted = true;
-                    _isAuthenticated = done.Ok;
+                    SetInteractiveAuthenticationKnown(isAuthenticated: done.Ok);
                     if (ShouldResetEnsureLoginProbeCacheForAuthContextChange(
                             requiresInteractiveSignIn: RequiresInteractiveSignInForCurrentTransport(),
                             loginCompletedSuccessfully: done.Ok,
@@ -195,8 +195,7 @@ public sealed partial class MainWindow : Window {
                     break;
                 case ErrorMessage err:
                     if (string.Equals(err.Code, "not_authenticated", StringComparison.OrdinalIgnoreCase)) {
-                        _isAuthenticated = false;
-                        _authenticatedAccountId = null;
+                        SetInteractiveAuthenticationKnown(isAuthenticated: false);
                         Interlocked.Exchange(ref _startupLoginSuccessMetadataSyncQueued, 0);
                         _ = SetStatusAsync(SessionStatus.SignInRequired());
                     } else if (!string.IsNullOrWhiteSpace(err.RequestId)) {
@@ -454,7 +453,7 @@ public sealed partial class MainWindow : Window {
                     requiresInteractiveSignIn: true,
                     queuedPromptCount: queuedPromptCount,
                     loginInProgress: _loginInProgress)) {
-                _isAuthenticated = true;
+                SetInteractiveAuthenticationKnown(isAuthenticated: true);
                 await SetStatusAsync(SessionStatus.ForConnectedAuth(isAuthenticated: true)).ConfigureAwait(false);
                 await SetActivityAsync("Sign-in callback succeeded. Retrying queued prompt while account verification catches up.").ConfigureAwait(false);
                 await HandlePostLoginCompletionAsync().ConfigureAwait(false);
@@ -678,8 +677,7 @@ public sealed partial class MainWindow : Window {
                 requiresInteractiveSignIn: requiresInteractiveSignIn,
                 preserveInteractiveAuthState: preserveInteractiveAuthState);
             if (!preserveInteractiveAuthState) {
-                _isAuthenticated = false;
-                _authenticatedAccountId = null;
+                SetInteractiveAuthenticationUnknown();
                 _loginInProgress = false;
                 Interlocked.Exchange(ref _startupLoginSuccessMetadataSyncQueued, 0);
             } else if (!_isAuthenticated) {

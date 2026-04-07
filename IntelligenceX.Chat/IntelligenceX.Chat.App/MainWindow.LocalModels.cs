@@ -76,6 +76,27 @@ public sealed partial class MainWindow : Window {
         return profileApplied;
     }
 
+    private async Task RefreshToolCatalogFromServiceAsync(ChatServiceClient client, bool publishOptions, bool appendWarnings) {
+        try {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(12));
+            var toolList = await client.RequestAsync<ToolListMessage>(
+                new ListToolsRequest { RequestId = NextId() },
+                cts.Token).ConfigureAwait(false);
+            UpdateToolCatalog(toolList.Tools, toolList.RoutingCatalog, toolList.Packs, toolList.Plugins, toolList.CapabilitySnapshot);
+            SeedBackgroundSchedulerSnapshot(toolList.CapabilitySnapshot?.BackgroundScheduler);
+        } catch (Exception ex) {
+            StartupLog.Write("RefreshToolCatalogFromServiceAsync failed: " + ex.GetType().Name + ": " + ex.Message);
+            Debug.WriteLine("RefreshToolCatalogFromServiceAsync failed: " + ex);
+            if (appendWarnings && (VerboseServiceLogs || _debugMode)) {
+                AppendSystem(SystemNotice.ListToolsFailed(ex.Message));
+            }
+        }
+
+        if (publishOptions) {
+            await PublishOptionsStateAsync().ConfigureAwait(false);
+        }
+    }
+
     private async Task RefreshBackgroundSchedulerStatusAsync(
         ChatServiceClient client,
         bool publishOptions,
@@ -304,7 +325,7 @@ public sealed partial class MainWindow : Window {
 
             if (anyAttempted && lastApplySucceeded) {
                 UpdateRuntimeApplyProgress("completed", "Runtime settings applied without restarting the service process.", active: false, current.RequestId);
-                await SetStatusAsync(SessionStatus.ForConnection(_isConnected, IsEffectivelyAuthenticatedForCurrentTransport())).ConfigureAwait(false);
+                await SetStatusAsync(ResolveConnectionStatusForCurrentTransport()).ConfigureAwait(false);
             }
         } finally {
             Interlocked.Exchange(ref _localProviderApplyInFlight, 0);
@@ -365,6 +386,7 @@ public sealed partial class MainWindow : Window {
         var previousTemperature = _localProviderTemperature;
         var previousIsAuthenticated = _isAuthenticated;
         var previousAuthenticatedAccountId = _authenticatedAccountId;
+        var previousInteractiveAuthenticationStateKnown = _interactiveAuthenticationStateKnown;
         var previousLoginInProgress = _loginInProgress;
         var previousActiveNativeSlot = _activeNativeAccountSlot;
         var previousNativeSlots = SnapshotNativeAccountSlots();
@@ -411,8 +433,7 @@ public sealed partial class MainWindow : Window {
         if (!RequiresInteractiveSignInForCurrentTransport()) {
             ApplyNonNativeAuthenticationStateIfNeeded();
         } else if (transportChanged && !string.Equals(previousTransport, TransportNative, StringComparison.OrdinalIgnoreCase)) {
-            _isAuthenticated = false;
-            _authenticatedAccountId = null;
+            SetInteractiveAuthenticationUnknown();
             _loginInProgress = false;
         }
         _appState.LocalProviderOpenAIAuthMode = _localProviderOpenAIAuthMode;
@@ -440,6 +461,7 @@ public sealed partial class MainWindow : Window {
             _localProviderTemperature = previousTemperature;
             _activeNativeAccountSlot = previousActiveNativeSlot;
             RestoreNativeAccountSlotsFromSnapshot(previousNativeSlots);
+            _interactiveAuthenticationStateKnown = previousInteractiveAuthenticationStateKnown;
             _isAuthenticated = previousIsAuthenticated;
             _authenticatedAccountId = previousAuthenticatedAccountId;
             _loginInProgress = previousLoginInProgress;

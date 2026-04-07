@@ -418,7 +418,7 @@ public sealed partial class MainWindow : Window {
 
         var normalized = NormalizeTheme(presetName) ?? "default";
         if (string.Equals(normalized, "default", StringComparison.OrdinalIgnoreCase)) {
-            await RunOnUiThreadAsync(() => _webView.ExecuteScriptAsync("window.ixResetTheme && window.ixResetTheme();").AsTask()).ConfigureAwait(false);
+            await RunOnUiThreadAsync(() => _webView.ExecuteScriptAsync("window.ixResetTheme && window.ixResetTheme('default');").AsTask()).ConfigureAwait(false);
             return;
         }
 
@@ -426,8 +426,11 @@ public sealed partial class MainWindow : Window {
             return;
         }
 
-        var json = JsonSerializer.Serialize(vars);
-        await RunOnUiThreadAsync(() => _webView.ExecuteScriptAsync("window.ixSetTheme(" + json + ");").AsTask()).ConfigureAwait(false);
+        var payloadJson = JsonSerializer.Serialize(new {
+            name = normalized,
+            vars
+        });
+        await RunOnUiThreadAsync(() => _webView.ExecuteScriptAsync("window.ixSetTheme(" + payloadJson + ");").AsTask()).ConfigureAwait(false);
     }
 
     private async Task<RuntimeVisualExportMaterialization?> MaterializeTranscriptVisualsForDocxAsync(string markdown, int docxVisualMaxWidthPx) {

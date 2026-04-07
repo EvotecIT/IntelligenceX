@@ -289,6 +289,7 @@ public sealed partial class MainWindow : Window {
     private readonly object _queuedAfterLoginSync = new();
     private readonly Queue<QueuedTurn> _queuedTurnsAfterLogin = new();
     private bool _isAuthenticated;
+    private bool _interactiveAuthenticationStateKnown;
     private string? _authenticatedAccountId;
     private bool _loginInProgress;
     private bool _debugMode;

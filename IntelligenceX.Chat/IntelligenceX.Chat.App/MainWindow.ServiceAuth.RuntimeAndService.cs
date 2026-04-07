@@ -33,8 +33,7 @@ public sealed partial class MainWindow : Window {
         var client = _client;
         if (client is null) {
             ResetEnsureLoginProbeCache();
-            _isAuthenticated = false;
-            _authenticatedAccountId = null;
+            SetInteractiveAuthenticationUnknown();
             if (updateStatus) {
                 await PublishSessionStateAsync().ConfigureAwait(false);
             }
@@ -45,8 +44,7 @@ public sealed partial class MainWindow : Window {
         var probe = await ProbeEnsureLoginAsync(timeout, requireFreshProbe).ConfigureAwait(false);
         switch (probe.State) {
             case EnsureLoginProbeState.Authenticated:
-                _isAuthenticated = true;
-                _authenticatedAccountId = (probe.AccountId ?? string.Empty).Trim();
+                SetInteractiveAuthenticationKnown(isAuthenticated: true, probe.AccountId);
                 CaptureAuthenticatedAccountIntoActiveSlot();
                 if (probe.LoginStatus is { IsAuthenticated: true } loginStatus) {
                     UpdateAccountUsageFromNativeLoginStatus(loginStatus);
@@ -61,8 +59,7 @@ public sealed partial class MainWindow : Window {
 
                 return true;
             case EnsureLoginProbeState.Unauthenticated:
-                _isAuthenticated = false;
-                _authenticatedAccountId = null;
+                SetInteractiveAuthenticationKnown(isAuthenticated: false);
                 if (updateStatus) {
                     await SetStatusAsync(SessionStatus.ForConnectedAuth(isAuthenticated: false)).ConfigureAwait(false);
                 }
@@ -92,16 +89,14 @@ public sealed partial class MainWindow : Window {
                 requiresInteractiveSignIn: true,
                 isAuthenticated: _isAuthenticated,
                 hasExplicitUnauthenticatedProbeSnapshot: HasExplicitUnauthenticatedEnsureLoginProbeSnapshot())) {
-            _isAuthenticated = false;
-            _authenticatedAccountId = null;
+            SetInteractiveAuthenticationKnown(isAuthenticated: false);
             return DispatchAuthenticationProbeOutcome.Unauthenticated;
         }
 
         var client = _client;
         if (client is null) {
             ResetEnsureLoginProbeCache();
-            _isAuthenticated = false;
-            _authenticatedAccountId = null;
+            SetInteractiveAuthenticationUnknown();
             return DispatchAuthenticationProbeOutcome.Unknown;
         }
 
@@ -109,8 +104,7 @@ public sealed partial class MainWindow : Window {
         var probe = await ProbeEnsureLoginAsync(timeout, requireFreshProbe: false).ConfigureAwait(false);
         switch (probe.State) {
             case EnsureLoginProbeState.Authenticated:
-                _isAuthenticated = true;
-                _authenticatedAccountId = (probe.AccountId ?? string.Empty).Trim();
+                SetInteractiveAuthenticationKnown(isAuthenticated: true, probe.AccountId);
                 CaptureAuthenticatedAccountIntoActiveSlot();
                 if (probe.LoginStatus is { IsAuthenticated: true } loginStatus) {
                     UpdateAccountUsageFromNativeLoginStatus(loginStatus);
@@ -121,8 +115,7 @@ public sealed partial class MainWindow : Window {
 
                 return DispatchAuthenticationProbeOutcome.Authenticated;
             case EnsureLoginProbeState.Unauthenticated:
-                _isAuthenticated = false;
-                _authenticatedAccountId = null;
+                SetInteractiveAuthenticationKnown(isAuthenticated: false);
                 return DispatchAuthenticationProbeOutcome.Unauthenticated;
             default:
                 return DispatchAuthenticationProbeOutcome.Unknown;
@@ -162,7 +155,7 @@ public sealed partial class MainWindow : Window {
             return;
         }
 
-        _isAuthenticated = true;
+        SetInteractiveAuthenticationKnown(isAuthenticated: true);
         _loginInProgress = false;
         ResetEnsureLoginProbeCache();
         QueuePersistAppState();
@@ -235,8 +228,7 @@ public sealed partial class MainWindow : Window {
             _loginInProgress = true;
             ResetEnsureLoginProbeCache();
             _isConnected = true;
-            _isAuthenticated = false;
-            _authenticatedAccountId = null;
+            SetInteractiveAuthenticationKnown(isAuthenticated: false);
             await SetStatusAsync(SessionStatus.OpeningSignIn()).ConfigureAwait(false);
             await client.RequestAsync<ChatGptLoginStartedMessage>(new StartChatGptLoginRequest {
                 RequestId = NextId(),
@@ -248,7 +240,7 @@ public sealed partial class MainWindow : Window {
             _loginInProgress = false;
             _isConnected = _client is not null;
             ResetEnsureLoginProbeCache();
-            _authenticatedAccountId = null;
+            SetInteractiveAuthenticationKnown(isAuthenticated: false);
             await SetStatusAsync(SessionStatus.SignInFailed()).ConfigureAwait(false);
             await AppendSystemBestEffortAsync(SystemNotice.SignInFailed(ex.Message)).ConfigureAwait(false);
             return false;
@@ -267,8 +259,7 @@ public sealed partial class MainWindow : Window {
 
         await ClearNativeAccountPinForSwitchAsync().ConfigureAwait(false);
         ResetEnsureLoginProbeCache();
-        _isAuthenticated = false;
-        _authenticatedAccountId = null;
+        SetInteractiveAuthenticationKnown(isAuthenticated: false);
         _loginInProgress = false;
         await SetStatusAsync("Opening account chooser...").ConfigureAwait(false);
         return await StartLoginFlowIfNeededAsync(forceInteractive: true).ConfigureAwait(false);

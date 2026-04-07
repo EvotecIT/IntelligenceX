@@ -445,10 +445,12 @@ body {
   display: flex;
   align-items: flex-start;
   gap: 4px;
+  position: relative;
+  transition: background 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease, color 0.14s ease;
 }
 
 .chat-sidebar-item:hover {
-  background: var(--ix-sidebar-item-hover);
+  background: rgba(28, 77, 127, 0.38);
   color: var(--ix-text-primary);
 }
 
@@ -456,11 +458,27 @@ body {
   border-color: var(--ix-sidebar-item-active-border);
   background: var(--ix-sidebar-item-active);
   color: var(--ix-text-primary);
+  box-shadow: inset 0 0 0 1px rgba(76, 195, 255, 0.16), 0 0 0 1px rgba(76, 195, 255, 0.08);
+}
+
+.chat-sidebar-item.active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 7px;
+  bottom: 7px;
+  width: 3px;
+  border-radius: 999px;
+  background: #5fd1ff;
+}
+
+.chat-sidebar-item.active:hover {
+  background: var(--ix-sidebar-item-active);
 }
 
 .chat-sidebar-item.system {
-  border-color: rgba(255, 206, 107, 0.52);
-  background: rgba(94, 66, 16, 0.28);
+  border-color: rgba(255, 206, 107, 0.34);
+  background: rgba(94, 66, 16, 0.16);
 }
 
 .chat-sidebar-item.system.active {
@@ -485,6 +503,10 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.chat-sidebar-item.active .chat-sidebar-item-meta {
+  color: rgba(219, 238, 255, 0.88);
 }
 
 .chat-sidebar-item-body {
@@ -550,6 +572,12 @@ body {
 
 .chat-sidebar-item:hover .chat-sidebar-item-delete {
   display: grid;
+}
+
+.chat-sidebar.suppress-delete-hover .chat-sidebar-item-delete,
+.chat-sidebar.suppress-delete-hover .chat-sidebar-item:hover .chat-sidebar-item-delete,
+.chat-sidebar.suppress-delete-hover .chat-sidebar-item-delete.armed {
+  display: none;
 }
 
 .chat-sidebar-item-delete:hover {
@@ -649,112 +677,6 @@ body.sidebar-collapsed.sidebar-hover-mode.sidebar-hover-open .chat-sidebar-list 
   flex: 1;
   display: flex;
   flex-direction: column;
-}
-
-.chat-thread-banner {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 10px 14px 8px;
-  border-bottom: 1px solid var(--ix-border-subtle);
-  background: linear-gradient(180deg, rgba(12, 34, 58, 0.86) 0%, rgba(10, 29, 51, 0.72) 100%);
-}
-
-.chat-thread-banner-main {
-  min-width: 0;
-  flex: 1;
-}
-
-.chat-thread-banner-title {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--ix-text-primary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.chat-thread-banner-meta {
-  margin-top: 2px;
-  font-size: 10.5px;
-  color: var(--ix-text-secondary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.chat-thread-banner-detail {
-  margin-top: 3px;
-  font-size: 10px;
-  color: var(--ix-text-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.chat-thread-banner-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-}
-
-.chat-thread-banner-btn {
-  flex-shrink: 0;
-  min-height: 28px;
-  padding: 5px 10px;
-  border-radius: 999px;
-  border: 1px solid rgba(76, 195, 255, 0.34);
-  background: rgba(76, 195, 255, 0.14);
-  color: var(--ix-text-primary);
-  font-size: 11px;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.chat-thread-banner-btn-ghost {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: var(--ix-border-subtle);
-  color: var(--ix-text-secondary);
-}
-
-.chat-thread-banner-btn-warn {
-  background: rgba(255, 206, 107, 0.14);
-  border-color: rgba(255, 206, 107, 0.34);
-  color: #fff1cd;
-}
-
-.chat-thread-banner-btn-warn.is-active {
-  background: rgba(255, 142, 162, 0.16);
-  border-color: rgba(255, 142, 162, 0.4);
-  color: #ffdce3;
-}
-
-.chat-thread-banner-btn:hover:not(.chat-thread-banner-btn-ghost) {
-  background: rgba(76, 195, 255, 0.2);
-  border-color: rgba(76, 195, 255, 0.46);
-}
-
-.chat-thread-banner-btn-ghost:hover {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(76, 195, 255, 0.28);
-  color: var(--ix-text-primary);
-}
-
-.chat-thread-banner-btn-warn:hover {
-  background: rgba(255, 206, 107, 0.22);
-  border-color: rgba(255, 206, 107, 0.46);
-}
-
-.chat-thread-banner-btn-warn.is-active:hover {
-  background: rgba(255, 142, 162, 0.24);
-  border-color: rgba(255, 142, 162, 0.5);
-}
-
-.chat-thread-banner-btn:disabled {
-  opacity: 0.65;
-  cursor: default;
 }
 
 .transcript {

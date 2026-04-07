@@ -43,9 +43,10 @@ public sealed partial class UiShellAssetsTests {
         Assert.Contains("function formatExecutionScopeLabel(executionScope)", script, StringComparison.Ordinal);
         Assert.Contains("if (tool.isEnvironmentDiscoverTool) {", script, StringComparison.Ordinal);
         Assert.Contains("if (tool.supportsRemoteHostTargeting || String(tool.executionScope || \"\").toLowerCase() === \"local_or_remote\") {", script, StringComparison.Ordinal);
-        Assert.Contains("appendToolContractSummary(item, \"Target arguments\", Array.isArray(tool.targetScopeArguments) ? tool.targetScopeArguments : []);", script, StringComparison.Ordinal);
-        Assert.Contains("appendToolContractSummary(item, \"Handoff packs\", Array.isArray(tool.handoffTargetPackIds) ? tool.handoffTargetPackIds : []);", script, StringComparison.Ordinal);
-        Assert.Contains("appendToolContractSummary(item, \"Recovery tools\", Array.isArray(tool.recoveryToolNames) ? tool.recoveryToolNames : []);", script, StringComparison.Ordinal);
+        Assert.Contains("function appendToolDetailsLine(label, values) {", script, StringComparison.Ordinal);
+        Assert.Contains("appendToolDetailsLine(\"Target arguments\", Array.isArray(tool.targetScopeArguments) ? tool.targetScopeArguments : []);", script, StringComparison.Ordinal);
+        Assert.Contains("appendToolDetailsLine(\"Handoff packs\", Array.isArray(tool.handoffTargetPackIds) ? tool.handoffTargetPackIds : []);", script, StringComparison.Ordinal);
+        Assert.Contains("appendToolDetailsLine(\"Recovery tools\", Array.isArray(tool.recoveryToolNames) ? tool.recoveryToolNames : []);", script, StringComparison.Ordinal);
         Assert.Contains("tool.isEnvironmentDiscoverTool ? \"environment discover preflight bootstrap\" : \"\",", script, StringComparison.Ordinal);
         Assert.Contains("tool.isHandoffAware ? \"handoff pivot continuation\" : \"\",", script, StringComparison.Ordinal);
         Assert.Contains("tool.supportsTransientRetry ? \"transient retry\" : \"\",", script, StringComparison.Ordinal);
@@ -143,6 +144,94 @@ public sealed partial class UiShellAssetsTests {
         Assert.Contains(".status-chip-routing {", baseCss, StringComparison.Ordinal);
         Assert.Contains("width: auto;", baseCss, StringComparison.Ordinal);
         Assert.Contains("--ix-startup-progress", baseCss, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures the sidebar delete affordance is suppressed after a confirmed delete
+    /// so the next row does not inherit the same hover-visible X under the cursor.
+    /// </summary>
+    [Fact]
+    public void Load_IncludesSidebarDeleteHoverSuppression_AfterConfirmedDelete() {
+        var bindingsScriptPath = Path.Combine(UiDirectory, "Shell.20.bindings.js");
+        var bindingsScript = File.ReadAllText(bindingsScriptPath);
+        var baseCssPath = Path.Combine(UiDirectory, "Shell.10.base.css");
+        var baseCss = File.ReadAllText(baseCssPath);
+
+        Assert.Contains("function removeConversationFromClientState(conversationId)", bindingsScript, StringComparison.Ordinal);
+        Assert.Contains("function suppressSidebarDeleteHover()", bindingsScript, StringComparison.Ordinal);
+        Assert.Contains("function releaseSidebarDeleteHoverSuppression()", bindingsScript, StringComparison.Ordinal);
+        Assert.Contains("removeConversationFromClientState(delId);", bindingsScript, StringComparison.Ordinal);
+        Assert.Contains("suppressSidebarDeleteHover();", bindingsScript, StringComparison.Ordinal);
+        Assert.Contains("chatSidebar.addEventListener(\"pointermove\", function() {", bindingsScript, StringComparison.Ordinal);
+        Assert.Contains(".chat-sidebar.suppress-delete-hover .chat-sidebar-item-delete", baseCss, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures the Tools tab enters a syncing state when opened against an empty
+    /// connected snapshot, instead of flashing "No tools registered" before refresh completes.
+    /// </summary>
+    [Fact]
+    public void Load_IncludesToolsTabEmptySnapshotLoadingGate() {
+        var coreScriptPath = Path.Combine(UiDirectory, "Shell.10.core.js");
+        var coreScript = File.ReadAllText(coreScriptPath);
+        var renderingScriptPath = Path.Combine(UiDirectory, RenderingScriptFile);
+        var renderingScript = File.ReadAllText(renderingScriptPath);
+
+        Assert.Contains("if (tabId === \"tools\") {", coreScript, StringComparison.Ordinal);
+        Assert.Contains("state.options.toolLocalityFilter = \"all\";", coreScript, StringComparison.Ordinal);
+        Assert.Contains("if (typeof renderTools === \"function\") {", coreScript, StringComparison.Ordinal);
+        Assert.Contains("state.connected && !hasVisibleToolState", coreScript, StringComparison.Ordinal);
+        Assert.Contains("state.options.toolsLoading = true;", coreScript, StringComparison.Ordinal);
+        Assert.Contains("post(\"options_refresh\");", coreScript, StringComparison.Ordinal);
+        Assert.Contains("function queueActiveToolsTabRender()", renderingScript, StringComparison.Ordinal);
+        Assert.Contains("activeTab.dataset.tab !== \"tools\"", renderingScript, StringComparison.Ordinal);
+        Assert.Contains("var incomingReportsToolLoading = nextOptions.toolsLoading === true || incomingPendingCatalogCount > 0;", renderingScript, StringComparison.Ordinal);
+        Assert.Contains("var keepLoadingForConnectedEmptyState = !incomingHasVisibleToolState", renderingScript, StringComparison.Ordinal);
+        Assert.Contains("&& state.connected", renderingScript, StringComparison.Ordinal);
+        Assert.Contains("&& toolsTabOpen", renderingScript, StringComparison.Ordinal);
+        Assert.Contains("&& incomingReportsToolLoading;", renderingScript, StringComparison.Ordinal);
+        Assert.Contains("queueActiveToolsTabRender();", renderingScript, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures pack-level status/action chrome follows runtime pack activation state
+    /// instead of misreading safe-default per-tool toggles as a partially loaded pack.
+    /// </summary>
+    [Fact]
+    public void Load_IncludesPackActivationStateDrivenToolsRendering() {
+        var helperScriptPath = Path.Combine(UiDirectory, "Shell.12.core.helpers.js");
+        var helperScript = File.ReadAllText(helperScriptPath);
+        var toolsScriptPath = Path.Combine(UiDirectory, "Shell.15.core.tools.js");
+        var toolsScript = File.ReadAllText(toolsScriptPath);
+
+        Assert.Contains("function normalizePackActivationState(value)", helperScript, StringComparison.Ordinal);
+        Assert.Contains("function packActivationState(packId)", helperScript, StringComparison.Ordinal);
+        Assert.Contains("function packCanActivateOnDemand(packId)", helperScript, StringComparison.Ordinal);
+        Assert.Contains("var packEnabledByRuntime = !packMetadata || normalizeBool(packMetadata.enabled);", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("var packActivation = packActivationState(currentPackId);", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("var packDeferred = packActivation === \"deferred\";", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("} else if (!packHasTools && packDeferred && packCanLoadOnDemand) {", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("pill.textContent = \"On-demand\";", toolsScript, StringComparison.Ordinal);
+        Assert.DoesNotContain("pill.textContent = allEnabled ? \"Loaded\" : (someEnabled ? \"Partial\" : \"Disabled\");", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("packToggle.className = \"options-toggle options-toggle-pack\";", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("packToggle.checked = packEnabledByRuntime;", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("setPackEnabled(packIdForToggle, groupToolsForToggle, e.target.checked);", toolsScript, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures shell theme application tracks the active preset name in the DOM
+    /// so live profile theme changes remain inspectable and consistent across UI surfaces.
+    /// </summary>
+    [Fact]
+    public void Load_IncludesActiveThemeDomTracking() {
+        var renderingScriptPath = Path.Combine(UiDirectory, RenderingScriptFile);
+        var renderingScript = File.ReadAllText(renderingScriptPath);
+
+        Assert.Contains("function applyThemeName(themeName)", renderingScript, StringComparison.Ordinal);
+        Assert.Contains("document.documentElement.setAttribute(\"data-ix-theme\", normalizedThemeName);", renderingScript, StringComparison.Ordinal);
+        Assert.Contains("document.body.setAttribute(\"data-ix-theme\", normalizedThemeName);", renderingScript, StringComparison.Ordinal);
+        Assert.Contains("window.ixResetTheme = function(themeName)", renderingScript, StringComparison.Ordinal);
+        Assert.Contains("applyThemeName(themeName || \"default\");", renderingScript, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -297,11 +386,11 @@ public sealed partial class UiShellAssetsTests {
     }
 
     /// <summary>
-    /// Ensures the active conversation surface can expose thread-scoped background scheduler hints
-    /// and trigger a direct scoped refresh without opening the Session tab.
+    /// Ensures the main chat surface no longer exposes background-scheduler operator controls,
+    /// while still updating the active sidebar selection deterministically from incoming options state.
     /// </summary>
     [Fact]
-    public void Load_IncludesActiveThreadSchedulerHintSurface() {
+    public void Load_RemovesMainSurfaceSchedulerControls_AndKeepsActiveConversationStateDeterministic() {
         var html = UiShellAssets.Load();
         var helpersScriptPath = Path.Combine(UiDirectory, "Shell.12.core.helpers.js");
         var helpersScript = File.ReadAllText(helpersScriptPath);
@@ -312,60 +401,23 @@ public sealed partial class UiShellAssetsTests {
         var baseCssPath = Path.Combine(UiDirectory, "Shell.10.base.css");
         var baseCss = File.ReadAllText(baseCssPath);
 
-        Assert.Contains("id=\"activeThreadSchedulerBanner\"", html, StringComparison.Ordinal);
-        Assert.Contains("id=\"activeThreadSchedulerTitle\"", html, StringComparison.Ordinal);
-        Assert.Contains("id=\"activeThreadSchedulerMeta\"", html, StringComparison.Ordinal);
-        Assert.Contains("id=\"activeThreadSchedulerDetail\"", html, StringComparison.Ordinal);
-        Assert.Contains("id=\"btnActiveThreadSchedulerOpen\"", html, StringComparison.Ordinal);
-        Assert.Contains("id=\"btnActiveThreadSchedulerToggleMute\"", html, StringComparison.Ordinal);
-        Assert.Contains("id=\"btnActiveThreadSchedulerTempMute\"", html, StringComparison.Ordinal);
-        Assert.Contains("id=\"btnActiveThreadSchedulerTempMuteLong\"", html, StringComparison.Ordinal);
-        Assert.Contains("id=\"btnActiveThreadSchedulerMuteUntilMaintenance\"", html, StringComparison.Ordinal);
-        Assert.Contains("id=\"btnActiveThreadSchedulerMuteUntilMaintenanceStart\"", html, StringComparison.Ordinal);
-        Assert.Contains("id=\"btnActiveThreadSchedulerRefresh\"", html, StringComparison.Ordinal);
-        Assert.Contains("function findActiveConversation()", helpersScript, StringComparison.Ordinal);
-        Assert.Contains("function renderActiveConversationSchedulerHint()", helpersScript, StringComparison.Ordinal);
-        Assert.Contains("function buildActiveConversationSchedulerActivityText(chat)", helpersScript, StringComparison.Ordinal);
+        Assert.Contains("id=\"optBackgroundSchedulerSection\"", html, StringComparison.Ordinal);
         Assert.Contains("function isConversationSchedulerBlocked(chat)", helpersScript, StringComparison.Ordinal);
         Assert.Contains("function findConversationSchedulerSuppression(chat)", helpersScript, StringComparison.Ordinal);
         Assert.Contains("function formatSchedulerSuppressionExpiry(utcTicks)", helpersScript, StringComparison.Ordinal);
-        Assert.Contains("refreshButton.dataset.threadId = threadId;", helpersScript, StringComparison.Ordinal);
-        Assert.Contains("toggleMuteButton.dataset.threadId = threadId;", helpersScript, StringComparison.Ordinal);
-        Assert.Contains("toggleMuteButton.textContent = blocked ? \"Unmute Thread\" : \"Mute Thread\";", helpersScript, StringComparison.Ordinal);
         Assert.Contains("threadId: threadId,\n          queuedItemCount: 0,\n          readyItemCount: 0,\n          runningItemCount: 1", helpersScript, StringComparison.Ordinal);
         Assert.Contains("threadId: threadId,\n          queuedItemCount: 0,\n          readyItemCount: 1,\n          runningItemCount: 0", helpersScript, StringComparison.Ordinal);
-        Assert.Contains("tempMuteButton.dataset.threadId = threadId;", helpersScript, StringComparison.Ordinal);
-        Assert.Contains("tempMuteLongButton.dataset.threadId = threadId;", helpersScript, StringComparison.Ordinal);
-        Assert.Contains("muteUntilMaintenanceButton.dataset.threadId = threadId;", helpersScript, StringComparison.Ordinal);
-        Assert.Contains("muteUntilMaintenanceStartButton.dataset.threadId = threadId;", helpersScript, StringComparison.Ordinal);
-        Assert.Contains("tempMuteButton.disabled = !normalizeBool(state.connected) || blocked;", helpersScript, StringComparison.Ordinal);
-        Assert.Contains("tempMuteLongButton.disabled = !normalizeBool(state.connected) || blocked;", helpersScript, StringComparison.Ordinal);
-        Assert.Contains("muteUntilMaintenanceButton.disabled = !normalizeBool(state.connected) || blocked;", helpersScript, StringComparison.Ordinal);
-        Assert.Contains("muteUntilMaintenanceStartButton.disabled = !normalizeBool(state.connected) || blocked;", helpersScript, StringComparison.Ordinal);
-        Assert.Contains("titleEl.textContent = suppression && suppression.temporary === true ? \"BG temp\" : \"BG muted\";", helpersScript, StringComparison.Ordinal);
-        Assert.Contains("detailEl.textContent = blocked", helpersScript, StringComparison.Ordinal);
-        Assert.Contains("? (suppression && suppression.temporary === true", helpersScript, StringComparison.Ordinal);
-        Assert.Contains(": \"Daemon scheduling is muted for this thread until you unmute it.\")", helpersScript, StringComparison.Ordinal);
-        Assert.Contains("? (suppression && suppression.temporary === true", helpersScript, StringComparison.Ordinal);
-        Assert.Contains(": buildActiveConversationSchedulerActivityText(activeConversation);", helpersScript, StringComparison.Ordinal);
-        Assert.Contains("renderActiveConversationSchedulerHint();", renderingScript, StringComparison.Ordinal);
-        Assert.Contains("post(\"scheduler_refresh\", { threadId: threadId });", bindingsScript, StringComparison.Ordinal);
-        Assert.Contains("post(\"scheduler_set_thread_block\", {", bindingsScript, StringComparison.Ordinal);
-        Assert.Contains("var activeThreadSchedulerTempMuteButton = byId(\"btnActiveThreadSchedulerTempMute\");", bindingsScript, StringComparison.Ordinal);
-        Assert.Contains("durationMinutes: \"30\"", bindingsScript, StringComparison.Ordinal);
-        Assert.Contains("var activeThreadSchedulerTempMuteLongButton = byId(\"btnActiveThreadSchedulerTempMuteLong\");", bindingsScript, StringComparison.Ordinal);
-        Assert.Contains("durationMinutes: \"120\"", bindingsScript, StringComparison.Ordinal);
-        Assert.Contains("var activeThreadSchedulerMuteUntilMaintenanceButton = byId(\"btnActiveThreadSchedulerMuteUntilMaintenance\");", bindingsScript, StringComparison.Ordinal);
-        Assert.Contains("var activeThreadSchedulerMuteUntilMaintenanceStartButton = byId(\"btnActiveThreadSchedulerMuteUntilMaintenanceStart\");", bindingsScript, StringComparison.Ordinal);
-        Assert.Contains("switchOptionsTab(\"session\");", bindingsScript, StringComparison.Ordinal);
-        Assert.Contains("scopeSelect.value = threadId;", bindingsScript, StringComparison.Ordinal);
-        Assert.Contains(".chat-thread-banner {", baseCss, StringComparison.Ordinal);
-        Assert.Contains(".chat-thread-banner-detail {", baseCss, StringComparison.Ordinal);
-        Assert.Contains(".chat-thread-banner-actions {", baseCss, StringComparison.Ordinal);
-        Assert.Contains(".chat-thread-banner-btn {", baseCss, StringComparison.Ordinal);
-        Assert.Contains(".chat-thread-banner-btn-ghost {", baseCss, StringComparison.Ordinal);
-        Assert.Contains(".chat-thread-banner-btn-warn {", baseCss, StringComparison.Ordinal);
-        Assert.Contains(".chat-thread-banner-btn-warn.is-active {", baseCss, StringComparison.Ordinal);
+        Assert.Contains("if (Object.prototype.hasOwnProperty.call(nextOptions, \"activeConversationId\")) {", renderingScript, StringComparison.Ordinal);
+        Assert.Contains("state.options.activeConversationId = nextOptions.activeConversationId || \"\";", renderingScript, StringComparison.Ordinal);
+        Assert.DoesNotContain("state.options.activeConversationId = nextOptions.activeConversationId || state.options.activeConversationId;", renderingScript, StringComparison.Ordinal);
+        Assert.DoesNotContain("id=\"activeThreadSchedulerBanner\"", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("id=\"btnActiveThreadSchedulerOpen\"", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("function findActiveConversation()", helpersScript, StringComparison.Ordinal);
+        Assert.DoesNotContain("function renderActiveConversationSchedulerHint()", helpersScript, StringComparison.Ordinal);
+        Assert.DoesNotContain("function buildActiveConversationSchedulerActivityText(chat)", helpersScript, StringComparison.Ordinal);
+        Assert.DoesNotContain("post(\"scheduler_refresh\", { threadId: threadId });", bindingsScript, StringComparison.Ordinal);
+        Assert.DoesNotContain("switchOptionsTab(\"session\");", bindingsScript, StringComparison.Ordinal);
+        Assert.DoesNotContain(".chat-thread-banner {", baseCss, StringComparison.Ordinal);
     }
 
     /// <summary>

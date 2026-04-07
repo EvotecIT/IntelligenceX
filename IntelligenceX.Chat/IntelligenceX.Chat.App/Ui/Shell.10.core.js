@@ -163,7 +163,8 @@
       policy: null,
       packs: [],
       tools: [],
-      toolsLoading: true
+      toolsLoading: true,
+      toolsCatalogPendingCount: 0
     }
   };
 
@@ -536,6 +537,7 @@
     if (document.body.classList.contains("data-view-open") && window.ixCloseDataView) {
       window.ixCloseDataView();
     }
+    state.options.toolLocalityFilter = "all";
     document.body.classList.add("options-open");
     optionsPanel.setAttribute("aria-hidden", "false");
     menu.classList.remove("open");
@@ -558,6 +560,32 @@
     }
     for (var j = 0; j < contents.length; j++) {
       contents[j].classList.toggle("active", contents[j].dataset.tab === tabId);
+    }
+    if (tabId === "tools") {
+      state.options.toolLocalityFilter = "all";
+      if (typeof renderTools === "function") {
+        renderTools();
+      }
+      var hasVisibleToolState = state.options
+        && ((Array.isArray(state.options.tools) && state.options.tools.length > 0)
+          || (Array.isArray(state.options.packs) && state.options.packs.length > 0));
+      if (state.connected && !hasVisibleToolState) {
+        state.options.toolsLoading = true;
+        renderTools();
+        setTimeout(function() {
+          var activeTab = optionsPanel.querySelector(".options-tab.active");
+          var stillVisible = state.options
+            && ((Array.isArray(state.options.tools) && state.options.tools.length > 0)
+              || (Array.isArray(state.options.packs) && state.options.packs.length > 0));
+          if (document.body.classList.contains("options-open")
+            && activeTab
+            && activeTab.dataset.tab === "tools"
+            && state.connected
+            && !stillVisible) {
+            post("options_refresh");
+          }
+        }, 350);
+      }
     }
     writeStorage("ixchat.options.tab", tabId);
   }

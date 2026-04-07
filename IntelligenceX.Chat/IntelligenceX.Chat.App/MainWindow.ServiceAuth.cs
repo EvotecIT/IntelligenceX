@@ -174,6 +174,25 @@ public sealed partial class MainWindow : Window {
             probeCachedIsAuthenticated: _ensureLoginProbeCachedIsAuthenticated);
     }
 
+    private bool HasKnownAuthenticationStateForCurrentTransport() {
+        return !RequiresInteractiveSignInForCurrentTransport()
+               || _interactiveAuthenticationStateKnown
+               || _isAuthenticated
+               || HasExplicitUnauthenticatedEnsureLoginProbeSnapshot();
+    }
+
+    private void SetInteractiveAuthenticationUnknown() {
+        _interactiveAuthenticationStateKnown = false;
+        _isAuthenticated = false;
+        _authenticatedAccountId = null;
+    }
+
+    private void SetInteractiveAuthenticationKnown(bool isAuthenticated, string? accountId = null) {
+        _interactiveAuthenticationStateKnown = true;
+        _isAuthenticated = isAuthenticated;
+        _authenticatedAccountId = isAuthenticated ? (accountId ?? string.Empty).Trim() : null;
+    }
+
     private async Task<EnsureLoginProbeSnapshot> ProbeEnsureLoginAsync(TimeSpan timeout, bool requireFreshProbe) {
         if (TryGetEnsureLoginProbeCache(requireFreshProbe, out var cached)) {
             return cached;
@@ -244,14 +263,51 @@ public sealed partial class MainWindow : Window {
         return !RequiresInteractiveSignInForCurrentTransport() || _isAuthenticated;
     }
 
+    internal static SessionStatus ResolveConnectionStatus(
+        bool isConnected,
+        bool requiresInteractiveSignIn,
+        bool isAuthenticated,
+        bool loginInProgress,
+        bool authenticationStateKnown,
+        bool hasExplicitUnauthenticatedProbeSnapshot) {
+        if (!isConnected) {
+            return SessionStatus.Disconnected();
+        }
+
+        if (!requiresInteractiveSignIn) {
+            return SessionStatus.Connected();
+        }
+
+        if (loginInProgress) {
+            return SessionStatus.WaitingForSignIn();
+        }
+
+        if (isAuthenticated) {
+            return SessionStatus.Connected();
+        }
+
+        return authenticationStateKnown || hasExplicitUnauthenticatedProbeSnapshot
+            ? SessionStatus.SignInRequired()
+            : SessionStatus.Connected();
+    }
+
+    private SessionStatus ResolveConnectionStatusForCurrentTransport() {
+        return ResolveConnectionStatus(
+            isConnected: _isConnected,
+            requiresInteractiveSignIn: RequiresInteractiveSignInForCurrentTransport(),
+            isAuthenticated: IsEffectivelyAuthenticatedForCurrentTransport(),
+            loginInProgress: _loginInProgress,
+            authenticationStateKnown: HasKnownAuthenticationStateForCurrentTransport(),
+            hasExplicitUnauthenticatedProbeSnapshot: HasExplicitUnauthenticatedEnsureLoginProbeSnapshot());
+    }
+
     private void ApplyNonNativeAuthenticationStateIfNeeded() {
         if (RequiresInteractiveSignInForCurrentTransport()) {
             return;
         }
 
         ResetEnsureLoginProbeCache();
-        _isAuthenticated = true;
-        _authenticatedAccountId = null;
+        SetInteractiveAuthenticationKnown(isAuthenticated: true);
         _loginInProgress = false;
     }
 

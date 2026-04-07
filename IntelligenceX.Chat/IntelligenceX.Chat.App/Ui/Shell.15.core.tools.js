@@ -262,12 +262,12 @@
     header.appendChild(toggle);
     item.appendChild(header);
 
-    var machine = document.createElement("div");
-    machine.className = "options-item-code";
-    machine.textContent = tool.packName
+    var identity = document.createElement("div");
+    identity.className = "options-item-code";
+    identity.textContent = tool.packName
       ? (tool.name + " · " + tool.packName)
       : tool.name;
-    item.appendChild(machine);
+    item.appendChild(identity);
 
     if (tool.description) {
       var sub = document.createElement("div");
@@ -295,18 +295,6 @@
         ? ("Unavailable: " + packUnavailableReason)
         : "Unavailable in current runtime.";
       item.appendChild(unavailable);
-    }
-
-    if (tool.tags && tool.tags.length > 0) {
-      var tagsRow = document.createElement("div");
-      tagsRow.className = "options-tag-row";
-      for (var t = 0; t < tool.tags.length; t++) {
-        var tag = document.createElement("span");
-        tag.className = "options-tag";
-        tag.textContent = tool.tags[t];
-        tagsRow.appendChild(tag);
-      }
-      item.appendChild(tagsRow);
     }
 
     var contractPills = [];
@@ -344,27 +332,76 @@
       item.appendChild(contractRow);
     }
 
-    var contractDetails = [];
-    contractDetails.push("Execution " + formatExecutionScopeLabel(tool.executionScope));
-    if (tool.supportsTransientRetry && Number(tool.maxRetryAttempts || 0) > 0) {
-      contractDetails.push("Retry " + String(tool.maxRetryAttempts));
-    }
-    if (contractDetails.length > 0) {
-      var contractSummary = document.createElement("div");
-      contractSummary.className = "options-item-sub";
-      contractSummary.textContent = contractDetails.join(" | ");
-      item.appendChild(contractSummary);
+    var toolDetails = null;
+    var toolDetailsBody = null;
+
+    function ensureToolDetailsBody() {
+      if (toolDetailsBody) {
+        return toolDetailsBody;
+      }
+
+      toolDetails = document.createElement("details");
+      toolDetails.className = "options-tool-params options-tool-details";
+
+      var summary = document.createElement("summary");
+      summary.textContent = "Tool details";
+      toolDetails.appendChild(summary);
+
+      toolDetailsBody = document.createElement("div");
+      toolDetailsBody.className = "options-tool-params-body";
+      toolDetails.appendChild(toolDetailsBody);
+      item.appendChild(toolDetails);
+      return toolDetailsBody;
     }
 
-    appendToolContractSummary(item, "Target arguments", Array.isArray(tool.targetScopeArguments) ? tool.targetScopeArguments : []);
-    appendToolContractSummary(item, "Remote arguments", Array.isArray(tool.remoteHostArguments) ? tool.remoteHostArguments : []);
-    appendToolContractSummary(item, "Required arguments", Array.isArray(tool.requiredArguments) ? tool.requiredArguments : []);
-    if (tool.isSetupAware && tool.setupToolName) {
-      appendToolContractSummary(item, "Setup helper", [String(tool.setupToolName)]);
+    function appendToolDetailsLine(label, values) {
+      if (!label) {
+        return;
+      }
+
+      if (Array.isArray(values)) {
+        if (values.length === 0) {
+          return;
+        }
+        values = values.join(", ");
+      }
+
+      var normalized = String(values || "").trim();
+      if (!normalized) {
+        return;
+      }
+
+      var detail = document.createElement("div");
+      detail.className = "options-item-sub";
+      detail.textContent = label + ": " + normalized;
+      ensureToolDetailsBody().appendChild(detail);
     }
-    appendToolContractSummary(item, "Handoff packs", Array.isArray(tool.handoffTargetPackIds) ? tool.handoffTargetPackIds : []);
-    appendToolContractSummary(item, "Handoff tools", Array.isArray(tool.handoffTargetToolNames) ? tool.handoffTargetToolNames : []);
-    appendToolContractSummary(item, "Recovery tools", Array.isArray(tool.recoveryToolNames) ? tool.recoveryToolNames : []);
+
+    if (tool.tags && tool.tags.length > 0) {
+      var tagsRow = document.createElement("div");
+      tagsRow.className = "options-tag-row";
+      for (var t = 0; t < tool.tags.length; t++) {
+        var tag = document.createElement("span");
+        tag.className = "options-tag";
+        tag.textContent = tool.tags[t];
+        tagsRow.appendChild(tag);
+      }
+      ensureToolDetailsBody().appendChild(tagsRow);
+    }
+
+    appendToolDetailsLine("Execution", formatExecutionScopeLabel(tool.executionScope));
+    if (tool.supportsTransientRetry && Number(tool.maxRetryAttempts || 0) > 0) {
+      appendToolDetailsLine("Retry policy", "Retry " + String(tool.maxRetryAttempts));
+    }
+    appendToolDetailsLine("Target arguments", Array.isArray(tool.targetScopeArguments) ? tool.targetScopeArguments : []);
+    appendToolDetailsLine("Remote arguments", Array.isArray(tool.remoteHostArguments) ? tool.remoteHostArguments : []);
+    appendToolDetailsLine("Required arguments", Array.isArray(tool.requiredArguments) ? tool.requiredArguments : []);
+    if (tool.isSetupAware && tool.setupToolName) {
+      appendToolDetailsLine("Setup helper", String(tool.setupToolName));
+    }
+    appendToolDetailsLine("Handoff packs", Array.isArray(tool.handoffTargetPackIds) ? tool.handoffTargetPackIds : []);
+    appendToolDetailsLine("Handoff tools", Array.isArray(tool.handoffTargetToolNames) ? tool.handoffTargetToolNames : []);
+    appendToolDetailsLine("Recovery tools", Array.isArray(tool.recoveryToolNames) ? tool.recoveryToolNames : []);
 
     if (tool.routingConfidence || tool.routingReason || typeof tool.routingScore === "number") {
       var routing = document.createElement("div");
@@ -393,7 +430,7 @@
         routing.appendChild(reason);
       }
 
-      item.appendChild(routing);
+      ensureToolDetailsBody().appendChild(routing);
     }
 
     if (Array.isArray(tool.parameters) && tool.parameters.length > 0) {
@@ -417,8 +454,14 @@
   }
 
   function setPackEnabled(packId, groupTools, enabled) {
+    var packMetadata = packId ? findPackById(packId) : null;
     var runtimeDisabledByConfig = !!packId && packDisabledByRuntimeConfiguration(packId);
-    if (packId && !packIsAvailable(packId) && !runtimeDisabledByConfig) {
+    if (packId && !packMetadata && !packIsAvailable(packId) && !runtimeDisabledByConfig) {
+      return;
+    }
+
+    if (packId && packMetadata) {
+      post("set_pack_enabled", { packId: packId, enabled: enabled });
       return;
     }
 
@@ -577,6 +620,11 @@
     renderToolLocalityQuickFilters();
 
     var allTools = state.options.tools || [];
+    var packTotalCounts = {};
+    for (var at = 0; at < allTools.length; at++) {
+      var allToolPackId = inferPackIdFromTool(allTools[at]);
+      packTotalCounts[allToolPackId] = (packTotalCounts[allToolPackId] || 0) + 1;
+    }
     var tools = allTools.slice();
     var filter = normalizeToolFilter(state.options.toolFilter);
     var localityFilter = normalizeToolLocalityFilter(state.options.toolLocalityFilter);
@@ -688,12 +736,15 @@
       );
       if (startupStillSyncingTools) {
         var waitingForSignIn = startupContext && startupContext.phase === "startup_auth_wait";
+        var pendingCatalogCount = Math.max(0, Math.floor(state.options.toolsCatalogPendingCount || 0));
         var title = waitingForSignIn
           ? "Waiting for sign-in before loading tools..."
           : "Syncing tool packs in background...";
         var detail = waitingForSignIn
           ? "Runtime is connected. Finish sign-in and tool metadata will appear automatically."
-          : "Runtime is usable; tool metadata is still arriving.";
+          : pendingCatalogCount > 0
+            ? ("Runtime is usable; " + String(pendingCatalogCount) + (pendingCatalogCount === 1 ? " tool definition is" : " tool definitions are") + " still arriving.")
+            : "Runtime is usable; tool metadata is still arriving.";
         toolsEl.innerHTML = "<div class='options-item'><div class='options-item-title'>"
           + escapeHtml(title)
           + "</div><div class='options-item-sub'>"
@@ -830,7 +881,12 @@
 
       var meta = document.createElement("span");
       meta.className = "options-accordion-meta";
-      meta.textContent = String(groupTools.length) + (groupTools.length === 1 ? " tool" : " tools");
+      var totalToolsForPack = Math.max(groupTools.length, Number(packTotalCounts[currentPackId] || 0));
+      if (localityFilter !== "all" && totalToolsForPack > groupTools.length) {
+        meta.textContent = String(groupTools.length) + " of " + String(totalToolsForPack) + " tools";
+      } else {
+        meta.textContent = String(groupTools.length) + (groupTools.length === 1 ? " tool" : " tools");
+      }
       if (autonomySummary && Number(autonomySummary.remoteCapableTools || 0) > 0) {
         meta.textContent += " • remote " + String(autonomySummary.remoteCapableTools || 0);
       }
@@ -856,49 +912,82 @@
         }
       }
       var allEnabled = actionableTools.length > 0 && enabledCount === actionableTools.length;
-      var someEnabled = enabledCount > 0;
+      var packMetadata = findPackById(currentPackId);
+      var packEnabledByRuntime = !packMetadata || normalizeBool(packMetadata.enabled);
+      var packActivation = packActivationState(currentPackId);
+      var packDeferred = packActivation === "deferred";
+      var packCanLoadOnDemand = packCanActivateOnDemand(currentPackId);
+      var packHasTools = actionableTools.length > 0;
+      var isPackLoaded = packAvailable && packEnabledByRuntime && packHasTools;
 
       var pill = document.createElement("span");
-      var packHasTools = actionableTools.length > 0;
-      var isPackLoaded = packHasTools && allEnabled;
       pill.className = "options-pill" + (isPackLoaded && packAvailable ? "" : " off");
       if (packUnavailable) {
         pill.textContent = "Unavailable";
-      } else if (!packHasTools && packRuntimeDisabledByConfig) {
+      } else if (!packEnabledByRuntime || packActivation === "disabled" || (!packHasTools && packRuntimeDisabledByConfig)) {
         pill.textContent = "Disabled";
+      } else if (!packHasTools && packDeferred && packCanLoadOnDemand) {
+        pill.textContent = "On-demand";
       } else if (!packHasTools) {
         pill.textContent = "No tools";
       } else {
-        pill.textContent = allEnabled ? "Loaded" : (someEnabled ? "Partial" : "Disabled");
+        pill.textContent = "Loaded";
+      }
+      if (packHasTools && enabledCount < actionableTools.length) {
+        pill.title = String(enabledCount) + " of " + String(actionableTools.length) + " tools are currently enabled in this pack.";
       }
       summaryRight.appendChild(pill);
 
-      var packToggle = document.createElement("input");
-      packToggle.className = "options-toggle options-toggle-pack";
-      packToggle.type = "checkbox";
-      packToggle.checked = packHasTools && allEnabled;
-      packToggle.indeterminate = packHasTools && !allEnabled && someEnabled;
-      packToggle.disabled = packUnavailable || (!packHasTools && !packRuntimeDisabledByConfig);
-      packToggle.setAttribute("aria-label", "Enable pack " + packDisplayName(currentPackId));
-      if (packUnavailable && packUnavailableReason) {
-        packToggle.title = packUnavailableReason;
-      } else if (packRuntimeDisabledByConfig) {
-        packToggle.title = "Disabled by runtime configuration. Toggle to apply this pack setting live.";
-      } else if (!packHasTools) {
-        packToggle.title = "No tools are currently registered for this pack.";
+      if (packMetadata) {
+        var packToggle = document.createElement("input");
+        packToggle.type = "checkbox";
+        packToggle.className = "options-toggle options-toggle-pack";
+        packToggle.checked = packEnabledByRuntime;
+        packToggle.disabled = false;
+        packToggle.setAttribute("aria-label", (packEnabledByRuntime ? "Disable pack " : "Enable pack ") + packDisplayName(currentPackId));
+        if (packUnavailable && packUnavailableReason) {
+          packToggle.title = packUnavailableReason;
+        } else if (!packHasTools && packDeferred && packCanLoadOnDemand && packEnabledByRuntime) {
+          packToggle.title = "Pack is enabled and can load its tool definitions on demand.";
+        } else if (packRuntimeDisabledByConfig) {
+          packToggle.title = "Pack is disabled by runtime configuration. Enable it to load this pack live.";
+        } else {
+          packToggle.title = "Enable or disable this runtime pack.";
+        }
+        (function(packIdForToggle, groupToolsForToggle) {
+          packToggle.addEventListener("change", function(e) {
+            e.stopPropagation();
+            setPackEnabled(packIdForToggle, groupToolsForToggle, e.target.checked);
+            renderTools();
+          });
+        })(currentPackId, groupTools);
+        summaryRight.appendChild(packToggle);
+      } else {
+        var packAction = document.createElement("button");
+        packAction.type = "button";
+        packAction.className = "options-btn options-btn-sm options-btn-ghost options-pack-action";
+        packAction.disabled = packUnavailable || (!packHasTools && !packRuntimeDisabledByConfig);
+        packAction.textContent = allEnabled ? "Disable all" : "Enable all";
+        packAction.setAttribute("aria-label", packAction.textContent + " " + packDisplayName(currentPackId));
+        if (packUnavailable && packUnavailableReason) {
+          packAction.title = packUnavailableReason;
+        } else if (packRuntimeDisabledByConfig) {
+          packAction.title = "Pack is disabled by runtime configuration. Enable it to load this pack live.";
+        } else if (!packHasTools) {
+          packAction.title = "No tools are currently registered for this pack.";
+        } else {
+          packAction.title = "Turn every registered tool in this pack on or off.";
+        }
+        (function(packIdForToggle, groupToolsForToggle, nextEnabled) {
+          packAction.addEventListener("click", function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            setPackEnabled(packIdForToggle, groupToolsForToggle, nextEnabled);
+            renderTools();
+          });
+        })(currentPackId, groupTools, !allEnabled);
+        summaryRight.appendChild(packAction);
       }
-      packToggle.addEventListener("click", function(e) {
-        e.preventDefault();
-        e.stopPropagation();
-      });
-      (function(packIdForToggle, groupToolsForToggle) {
-        packToggle.addEventListener("change", function(e) {
-          var enabled = e.target.checked === true;
-          setPackEnabled(packIdForToggle, groupToolsForToggle, enabled);
-          renderTools();
-        });
-      })(currentPackId, groupTools);
-      summaryRight.appendChild(packToggle);
       summary.appendChild(summaryRight);
 
       details.appendChild(summary);
