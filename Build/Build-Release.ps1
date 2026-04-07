@@ -26,6 +26,9 @@
     [switch] $SkipPortable,
     [switch] $SkipInstaller,
     [switch] $SkipChecksums,
+    [switch] $Publish,
+    [switch] $PublishNuget,
+    [switch] $PublishGitHub,
 
     [switch] $SignInstaller,
     [string] $SignToolPath = 'signtool.exe',
@@ -72,6 +75,7 @@ if ($ClearOut -and (Test-Path -LiteralPath $OutDir)) {
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 
 $buildProjectScript = Join-Path $script:RepoRoot 'Build\Build-Project.ps1'
+$publishReleaseScript = Join-Path $script:RepoRoot 'Build\Internal\Publish-ReleaseOutputs.ps1'
 $frontendNormalized = $Frontend.ToLowerInvariant()
 
 if ($frontendNormalized -ne 'app') {
@@ -192,7 +196,18 @@ Write-Step "Include symbols: $([bool]$IncludeSymbols)"
 Write-Step "Packages: $(-not $SkipPluginPackages)"
 Write-Step "Portable: $(-not $SkipPortable)"
 Write-Step "Installer: $(-not $SkipInstaller)"
+Write-Step "Publish GitHub: $([bool]($Publish -or $PublishGitHub))"
+Write-Step "Publish NuGet: $([bool]($Publish -or $PublishNuget))"
 
 Invoke-ScriptFile -ScriptPath $buildProjectScript -Parameters $parameters -FailureContext 'Unified release build failed.' -FailureHint 'Use Build-Project.ps1 -Plan to inspect the release graph, or rerun Build-Project.ps1 directly for a narrower repro.'
+
+Invoke-ScriptFile -ScriptPath $publishReleaseScript -Parameters @{
+    RepoRoot = $script:RepoRoot
+    ConfigPath = Join-Path $script:RepoRoot 'Build\release.json'
+    StageRoot = $OutDir
+    SyncWinget = $true
+    PublishNuget = ($Publish -or $PublishNuget)
+    PublishGitHub = ($Publish -or $PublishGitHub)
+} -FailureContext 'Release publish automation failed.' -FailureHint 'Check the staged UploadReady folder, GitHub token file, and NuGet API key file if publishing was requested.'
 
 Write-Ok "Release artifacts ready: $OutDir"
