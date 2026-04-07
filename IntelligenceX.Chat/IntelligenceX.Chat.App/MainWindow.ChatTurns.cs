@@ -38,9 +38,6 @@ public sealed partial class MainWindow : Window {
             var authProbeStartedUtc = DateTime.UtcNow;
             dispatchAuthProbeOutcome = await ProbeAuthenticationStateForDispatchAsync(EnsureLoginFastPathProbeTimeout).ConfigureAwait(false);
             authProbeMs = TryComputeElapsedMs(authProbeStartedUtc, DateTime.UtcNow);
-            if (dispatchAuthProbeOutcome == DispatchAuthenticationProbeOutcome.Authenticated) {
-                _isAuthenticated = true;
-            }
         }
 
         var requireSignInBeforeDispatch = !IsEffectivelyAuthenticatedForCurrentTransport()
@@ -430,8 +427,7 @@ public sealed partial class MainWindow : Window {
             return false;
         }
 
-        _isAuthenticated = false;
-        _authenticatedAccountId = null;
+        SetInteractiveAuthenticationKnown(isAuthenticated: false);
         var promptQueued = TryEnqueuePromptAfterLogin(
             turn.UserText,
             turn.ConversationId,

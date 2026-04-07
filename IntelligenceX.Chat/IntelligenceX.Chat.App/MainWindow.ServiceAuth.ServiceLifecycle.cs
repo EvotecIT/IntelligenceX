@@ -149,8 +149,7 @@ public sealed partial class MainWindow {
                         AppendSystem(SystemNotice.ServiceExited());
                     }
                     _isConnected = false;
-                    _isAuthenticated = false;
-                    _authenticatedAccountId = null;
+                    SetInteractiveAuthenticationUnknown();
                     _loginInProgress = false;
                     if (ShouldResetEnsureLoginProbeCacheForAuthContextChange(
                             requiresInteractiveSignIn: RequiresInteractiveSignInForCurrentTransport(),

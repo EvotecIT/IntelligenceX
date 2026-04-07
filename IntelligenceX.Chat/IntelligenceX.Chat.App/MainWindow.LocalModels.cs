@@ -94,6 +94,8 @@ public sealed partial class MainWindow : Window {
             UpdateToolCatalog(toolList.Tools, toolList.RoutingCatalog, toolList.Packs, toolList.Plugins, toolList.CapabilitySnapshot);
             SeedBackgroundSchedulerSnapshot(toolList.CapabilitySnapshot?.BackgroundScheduler);
         } catch (Exception ex) {
+            StartupLog.Write("RefreshToolCatalogFromServiceAsync failed: " + ex.GetType().Name + ": " + ex.Message);
+            Debug.WriteLine("RefreshToolCatalogFromServiceAsync failed: " + ex);
             if (appendWarnings && (VerboseServiceLogs || _debugMode)) {
                 AppendSystem(SystemNotice.ListToolsFailed(ex.Message));
             }
@@ -439,8 +441,7 @@ public sealed partial class MainWindow : Window {
         if (!RequiresInteractiveSignInForCurrentTransport()) {
             ApplyNonNativeAuthenticationStateIfNeeded();
         } else if (transportChanged && !string.Equals(previousTransport, TransportNative, StringComparison.OrdinalIgnoreCase)) {
-            _isAuthenticated = false;
-            _authenticatedAccountId = null;
+            SetInteractiveAuthenticationUnknown();
             _loginInProgress = false;
         }
         _appState.LocalProviderOpenAIAuthMode = _localProviderOpenAIAuthMode;

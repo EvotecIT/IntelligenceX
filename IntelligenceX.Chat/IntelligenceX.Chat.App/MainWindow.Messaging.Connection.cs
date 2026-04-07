@@ -467,14 +467,12 @@ public sealed partial class MainWindow : Window {
                 requiresInteractiveSignIn: requiresInteractiveSignIn,
                 preserveInteractiveAuthState: preserveInteractiveAuthState);
             if (!requiresInteractiveSignIn) {
-                _isAuthenticated = false;
-                _authenticatedAccountId = null;
+                SetInteractiveAuthenticationUnknown();
                 _loginInProgress = false;
                 ApplyNonNativeAuthenticationStateIfNeeded();
                 Interlocked.Exchange(ref _startupLoginSuccessMetadataSyncQueued, 0);
             } else if (!preserveInteractiveAuthState) {
-                _isAuthenticated = false;
-                _authenticatedAccountId = null;
+                SetInteractiveAuthenticationUnknown();
                 _loginInProgress = false;
                 Interlocked.Exchange(ref _startupLoginSuccessMetadataSyncQueued, 0);
             } else if (!_isAuthenticated) {

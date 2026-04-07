@@ -1194,8 +1194,7 @@ public sealed partial class MainWindow : Window {
         if (!RequiresInteractiveSignInForCurrentTransport()) {
             ApplyNonNativeAuthenticationStateIfNeeded();
         } else if (!string.Equals(previousTransport, TransportNative, StringComparison.OrdinalIgnoreCase)) {
-            _isAuthenticated = false;
-            _authenticatedAccountId = null;
+            SetInteractiveAuthenticationUnknown();
             _loginInProgress = false;
         }
         _authenticatedAccountId = null;
