@@ -660,7 +660,7 @@ public static partial class ReviewerApp {
         if (string.IsNullOrWhiteSpace(githubToken)) {
             return false;
         }
-        var failureBody = ReviewDiagnostics.BuildFailureBody(ex, settings, null, null);
+        var failureBody = ReviewDiagnostics.BuildFailureBody(ex, settings, null, null, $"{context.Owner}/{context.Repo}");
         var inlineSuppressed = inlineSupported;
         var commentBody = ReviewFormatter.BuildComment(context, failureBody, settings, inlineSupported, inlineSuppressed,
             string.Empty, string.Empty, string.Empty, string.Empty);

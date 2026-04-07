@@ -348,6 +348,42 @@ public static partial class ReviewerApp {
                 return false;
             }
             SecretsAudit.Record($"OpenAI auth bundle '{bundle.Provider}' from {authPath}");
+            var expiresAt = bundle.ExpiresAt;
+            var isExpired = expiresAt.HasValue && bundle.IsExpired();
+            if (isExpired && settings.OpenAITransport != IntelligenceX.OpenAI.OpenAITransportKind.Native) {
+                Console.Error.WriteLine(
+                    $"OpenAI auth bundle expired at {expiresAt!.Value.ToUniversalTime():O}.");
+                Console.Error.WriteLine(
+                    $"Refresh it with `{ReviewDiagnostics.BuildAuthRemediationCommand()}`.");
+                return false;
+            }
+
+            if (settings.OpenAITransport == IntelligenceX.OpenAI.OpenAITransportKind.Native) {
+                var nativeOptions = new OpenAI.Native.OpenAINativeOptions {
+                    AuthStore = store,
+                    AuthAccountId = accountId
+                };
+                try {
+                    var authManager = new OpenAI.Native.OpenAINativeAuthManager(nativeOptions);
+                    var validBundle = await authManager.TryGetValidBundleAsync(CancellationToken.None).ConfigureAwait(false);
+                    if (validBundle is null) {
+                        Console.Error.WriteLine("OpenAI auth bundle could not be loaded.");
+                        Console.Error.WriteLine(
+                            $"Refresh it with `{ReviewDiagnostics.BuildAuthRemediationCommand()}`.");
+                        return false;
+                    }
+                } catch (Exception ex) {
+                    var classification = ReviewDiagnostics.Classify(ex);
+                    if (classification.Category == ReviewDiagnostics.ReviewErrorCategory.Auth) {
+                        Console.Error.WriteLine(
+                            $"OpenAI auth bundle is stale or no longer usable: {classification.Summary}.");
+                        Console.Error.WriteLine(
+                            $"Refresh it with `{ReviewDiagnostics.BuildAuthRemediationCommand()}`.");
+                        return false;
+                    }
+                    throw;
+                }
+            }
             return true;
         } catch (Exception ex) {
             Console.Error.WriteLine($"Failed to load auth store: {ex.Message}");

@@ -41,6 +41,10 @@ public static partial class ReviewerApp {
         ReviewSettings settings) =>
         TryResolveOpenAiAccountAsync(settings);
 
+    /// <summary>Test-only forwarder for auth validation.</summary>
+    internal static Task<bool> ValidateAuthForTestsAsync(ReviewSettings settings) =>
+        ValidateAuthAsync(settings);
+
     /// <summary>Test-only forwarder for missing-inline auto-resolve gate logic.</summary>
     internal static bool ShouldAutoResolveMissingInlineThreadsForTests(ReviewSettings settings, PullRequestContext context,
         HashSet<string>? inlineKeys, int inlineCommentsCount) =>
