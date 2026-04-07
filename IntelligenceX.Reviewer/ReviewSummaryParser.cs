@@ -45,6 +45,8 @@ internal static class ReviewSummaryParser {
             return true;
         }
 
+        body = ReviewFormatter.NormalizeSectionLayout(body);
+
         var configuredSections = settings?.ResolveMergeBlockerSections()
                                  ?? new[] { "todo list", "critical issues" };
         var mergeBlockerSections = ReviewSettings.NormalizeMergeBlockerSections(configuredSections);

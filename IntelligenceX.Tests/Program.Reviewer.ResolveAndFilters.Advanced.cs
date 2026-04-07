@@ -223,6 +223,41 @@ internal static partial class Program {
         AssertTextBlockEquals(expected, comment, "review formatter golden snapshot");
     }
 
+    private static void TestReviewFormatterNormalizesInlineSectionLabels() {
+        var context = new PullRequestContext("owner/repo", "owner", "repo", 42, "Formatter Inline Sections", "Body", false,
+            "deadbeefcafebabe", "base", Array.Empty<string>(), "owner/repo", false, null);
+        var settings = new ReviewSettings {
+            Model = "gpt-5-test",
+            Length = ReviewLength.Medium,
+            Mode = "summary"
+        };
+        var reviewBody = string.Join("\n", new[] {
+            "Summary 📝 This PR fixes the section layout regression.",
+            "Todo List ✅ None.",
+            "Other Issues 🧯 - Consider a parser-side fallback too.",
+            "Tests / Coverage 🧪 - Snapshot coverage looks sufficient."
+        });
+
+        var comment = ReviewFormatter.BuildComment(context, reviewBody, settings, inlineSupported: true, inlineSuppressed: false,
+            autoResolveNote: string.Empty, budgetNote: string.Empty, usageLine: string.Empty, findingsBlock: string.Empty);
+        var normalizedComment = comment.Replace("\r\n", "\n").Replace('\r', '\n');
+
+        AssertContainsText(normalizedComment, "## Summary 📝", "normalized summary heading");
+        AssertContainsText(normalizedComment, "\n## Todo List ✅\n\nNone.", "normalized todo heading");
+        AssertContainsText(normalizedComment, "\n## Other Issues 🧯\n\n- Consider a parser-side fallback too.", "normalized other issues heading");
+        AssertContainsText(normalizedComment, "\n## Tests / Coverage 🧪\n\n- Snapshot coverage looks sufficient.", "normalized tests heading");
+    }
+
+    private static void TestReviewSummaryParserMergeBlockerDetectionInlineSectionLabels() {
+        var body = string.Join("\n", new[] {
+            "Summary 📝 Looks good overall.",
+            "Todo List ✅ - [ ] Fix the failing portable bundle cleanup.",
+            "Critical Issues ⚠️ None."
+        });
+
+        AssertEqual(true, ReviewSummaryParser.HasMergeBlockers(body), "merge blockers inline section labels");
+    }
+
     private static void TestReviewUsageIntegrationDisplay() {
         const string json = "{"
             + "\"plan_type\":\"pro\","

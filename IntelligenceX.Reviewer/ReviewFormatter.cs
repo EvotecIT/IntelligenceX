@@ -11,6 +11,25 @@ internal static class ReviewFormatter {
     public const string StaticAnalysisInlineMarker = "<!-- intelligencex:analysis-inline -->";
     public const string ReviewedCommitMarker = "Reviewed commit:";
     private const string ProgressTemplateName = "ReviewProgress.md";
+    private static readonly string[] SectionLabels = {
+        "Summary 📝",
+        "Review Summary 📝",
+        "Todo List ✅",
+        "Critical Issues ⚠️ (if any)",
+        "Critical Issues ⚠️",
+        "Other Issues 🧯",
+        "Other Reviews 🧩",
+        "Tests / Coverage 🧪",
+        "Inline Comments 🔍",
+        "Code Quality Assessment ⭐",
+        "Excellent Aspects ✨",
+        "Security & Performance 🔐⚡",
+        "Test Quality 🧪",
+        "Documentation 📚",
+        "Backward Compatibility 🔄",
+        "Recommendations 💡",
+        "Next Steps 🚀"
+    };
 
     public static string BuildComment(PullRequestContext context, string reviewBody, ReviewSettings settings, bool inlineSupported,
         bool inlineSuppressed, string? autoResolveNote, string? budgetNote, string? usageLine, string? findingsBlock) {
@@ -29,7 +48,7 @@ internal static class ReviewFormatter {
 
         var body = string.IsNullOrWhiteSpace(reviewBody)
             ? "_No review content was produced._"
-            : reviewBody.Trim();
+            : NormalizeSectionLayout(reviewBody.Trim());
 
         var template = ResolveSummaryTemplate(settings);
         var reasoningParts = new List<string>();
@@ -68,6 +87,41 @@ internal static class ReviewFormatter {
         };
 
         return TemplateRenderer.Render(template, tokens).TrimEnd();
+    }
+
+    internal static string NormalizeSectionLayout(string reviewBody) {
+        if (string.IsNullOrWhiteSpace(reviewBody)) {
+            return string.Empty;
+        }
+
+        var lines = reviewBody.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+        var sb = new StringBuilder();
+        var previousLineBlank = true;
+
+        foreach (var line in lines) {
+            var rawLine = line.TrimEnd();
+            var trimmedLine = rawLine.TrimStart();
+            if (TryNormalizeSectionLine(trimmedLine, out var heading, out var remainder)) {
+                if (sb.Length > 0 && !previousLineBlank) {
+                    sb.AppendLine();
+                }
+
+                sb.AppendLine(heading);
+                if (!string.IsNullOrWhiteSpace(remainder)) {
+                    sb.AppendLine();
+                    sb.AppendLine(remainder);
+                    previousLineBlank = false;
+                } else {
+                    previousLineBlank = false;
+                }
+                continue;
+            }
+
+            sb.AppendLine(rawLine);
+            previousLineBlank = string.IsNullOrWhiteSpace(rawLine);
+        }
+
+        return sb.ToString().TrimEnd();
     }
 
     public static string BuildProgressComment(PullRequestContext context, ReviewSettings settings, ReviewProgress progress,
@@ -193,5 +247,38 @@ internal static class ReviewFormatter {
             return text;
         }
         return text.Substring(0, maxChars) + "...";
+    }
+
+    private static bool TryNormalizeSectionLine(string trimmedLine, out string heading, out string remainder) {
+        heading = string.Empty;
+        remainder = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(trimmedLine)
+            || trimmedLine.StartsWith("## ", System.StringComparison.Ordinal)
+            || trimmedLine.StartsWith("### ", System.StringComparison.Ordinal)) {
+            return false;
+        }
+
+        foreach (var label in SectionLabels) {
+            if (!trimmedLine.StartsWith(label, System.StringComparison.Ordinal)) {
+                continue;
+            }
+
+            if (trimmedLine.Length > label.Length) {
+                var next = trimmedLine[label.Length];
+                if (!char.IsWhiteSpace(next) && next != ':' && next != '-') {
+                    continue;
+                }
+            }
+
+            heading = $"## {label}";
+            remainder = trimmedLine.Substring(label.Length).TrimStart();
+            if (remainder.StartsWith(":", System.StringComparison.Ordinal)) {
+                remainder = remainder.Substring(1).TrimStart();
+            }
+            return true;
+        }
+
+        return false;
     }
 }
