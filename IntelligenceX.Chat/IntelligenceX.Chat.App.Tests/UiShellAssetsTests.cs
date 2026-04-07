@@ -179,6 +179,7 @@ public sealed partial class UiShellAssetsTests {
 
         Assert.Contains("if (tabId === \"tools\") {", coreScript, StringComparison.Ordinal);
         Assert.Contains("state.options.toolLocalityFilter = \"all\";", coreScript, StringComparison.Ordinal);
+        Assert.Contains("if (typeof renderTools === \"function\") {", coreScript, StringComparison.Ordinal);
         Assert.Contains("state.connected && !hasVisibleToolState", coreScript, StringComparison.Ordinal);
         Assert.Contains("state.options.toolsLoading = true;", coreScript, StringComparison.Ordinal);
         Assert.Contains("post(\"options_refresh\");", coreScript, StringComparison.Ordinal);
@@ -206,6 +207,7 @@ public sealed partial class UiShellAssetsTests {
         Assert.Contains("var packEnabledByRuntime = !packMetadata || normalizeBool(packMetadata.enabled);", toolsScript, StringComparison.Ordinal);
         Assert.Contains("var packActivation = packActivationState(currentPackId);", toolsScript, StringComparison.Ordinal);
         Assert.Contains("var packDeferred = packActivation === \"deferred\";", toolsScript, StringComparison.Ordinal);
+        Assert.Contains("} else if (!packHasTools && packDeferred && packCanLoadOnDemand) {", toolsScript, StringComparison.Ordinal);
         Assert.Contains("pill.textContent = \"On-demand\";", toolsScript, StringComparison.Ordinal);
         Assert.DoesNotContain("pill.textContent = allEnabled ? \"Loaded\" : (someEnabled ? \"Partial\" : \"Disabled\");", toolsScript, StringComparison.Ordinal);
         Assert.Contains("packAction.textContent = packMetadata", toolsScript, StringComparison.Ordinal);

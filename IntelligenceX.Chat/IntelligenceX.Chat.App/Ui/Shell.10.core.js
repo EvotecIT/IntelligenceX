@@ -563,14 +563,15 @@
     }
     if (tabId === "tools") {
       state.options.toolLocalityFilter = "all";
+      if (typeof renderTools === "function") {
+        renderTools();
+      }
       var hasVisibleToolState = state.options
         && ((Array.isArray(state.options.tools) && state.options.tools.length > 0)
           || (Array.isArray(state.options.packs) && state.options.packs.length > 0));
       if (state.connected && !hasVisibleToolState) {
         state.options.toolsLoading = true;
-        if (typeof renderTools === "function") {
-          renderTools();
-        }
+        renderTools();
         setTimeout(function() {
           var activeTab = optionsPanel.querySelector(".options-tab.active");
           var stillVisible = state.options

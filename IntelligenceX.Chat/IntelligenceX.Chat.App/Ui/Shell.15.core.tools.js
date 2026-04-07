@@ -912,7 +912,7 @@
       var packDeferred = packActivation === "deferred";
       var packCanLoadOnDemand = packCanActivateOnDemand(currentPackId);
       var packHasTools = actionableTools.length > 0;
-      var isPackLoaded = packAvailable && packEnabledByRuntime && (packActivation === "active" || (packActivation.length === 0 && packHasTools));
+      var isPackLoaded = packAvailable && packEnabledByRuntime && packHasTools;
 
       var pill = document.createElement("span");
       pill.className = "options-pill" + (isPackLoaded && packAvailable ? "" : " off");
@@ -920,7 +920,7 @@
         pill.textContent = "Unavailable";
       } else if (!packEnabledByRuntime || packActivation === "disabled" || (!packHasTools && packRuntimeDisabledByConfig)) {
         pill.textContent = "Disabled";
-      } else if (packDeferred && packCanLoadOnDemand) {
+      } else if (!packHasTools && packDeferred && packCanLoadOnDemand) {
         pill.textContent = "On-demand";
       } else if (!packHasTools) {
         pill.textContent = "No tools";
@@ -942,7 +942,7 @@
       packAction.setAttribute("aria-label", packAction.textContent + " " + packDisplayName(currentPackId));
       if (packUnavailable && packUnavailableReason) {
         packAction.title = packUnavailableReason;
-      } else if (packDeferred && packCanLoadOnDemand && packEnabledByRuntime) {
+      } else if (!packHasTools && packDeferred && packCanLoadOnDemand && packEnabledByRuntime) {
         packAction.title = "Pack is enabled and can load its tool definitions on demand.";
       } else if (packRuntimeDisabledByConfig) {
         packAction.title = "Pack is disabled by runtime configuration. Enable it to load this pack live.";
