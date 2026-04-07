@@ -392,7 +392,7 @@ internal static class ReviewDiagnostics {
             return value;
         }
 
-        return $"\"{value.Replace("\"", "\\\"")}\"";
+        return $"\"{value.Replace("\"", "\"\"")}\"";
     }
 
     internal static string? ResolveAuthRemediationRepo(string? explicitRepo = null) {

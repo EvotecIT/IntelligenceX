@@ -71,6 +71,7 @@ internal static partial class Program {
         failed += Run("Review failure body redacts errors", TestReviewFailureBodyRedactsErrors);
         failed += Run("Review failure body includes safe auth refresh detail", TestReviewFailureBodyIncludesSafeAuthRefreshDetail);
         failed += Run("Build auth remediation command quotes repo when needed", TestBuildAuthRemediationCommandQuotesRepoWhenNeeded);
+        failed += Run("Build auth remediation command escapes embedded quotes", TestBuildAuthRemediationCommandEscapesEmbeddedQuotes);
         failed += Run("Workflow fail-open log classification uses auth refresh label", TestWorkflowFailOpenLogClassificationUsesAuthRefreshLabel);
         failed += Run("Workflow fail-open summary body uses runtime guidance", TestWorkflowFailOpenSummaryBodyUsesRuntimeGuidance);
         failed += Run("Failure summary comment update", TestFailureSummaryCommentUpdate);
