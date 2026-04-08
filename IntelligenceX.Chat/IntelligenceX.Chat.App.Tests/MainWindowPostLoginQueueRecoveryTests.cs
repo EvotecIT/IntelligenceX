@@ -47,6 +47,34 @@ public sealed class MainWindowPostLoginQueueRecoveryTests {
     }
 
     /// <summary>
+    /// Ensures post-login completion stays in the queued-prompt usage-limit state instead of falling through into a misleading kickoff.
+    /// </summary>
+    [Fact]
+    public void ShouldKeepQueuedPromptUsageLimitStateAfterLogin_ReturnsTrue_WhenQueuedPromptIsStillBlocked() {
+        var shouldKeepBlockedState = MainWindow.ShouldKeepQueuedPromptUsageLimitStateAfterLogin(
+            dispatched: false,
+            queuedPromptCount: 1,
+            queueAutoDispatchEnabled: true,
+            usageLimitStillBlocked: true);
+
+        Assert.True(shouldKeepBlockedState);
+    }
+
+    /// <summary>
+    /// Ensures the usage-limit hold is skipped once there is no queued retry left to protect.
+    /// </summary>
+    [Fact]
+    public void ShouldKeepQueuedPromptUsageLimitStateAfterLogin_ReturnsFalse_WhenNoQueuedPromptRemains() {
+        var shouldKeepBlockedState = MainWindow.ShouldKeepQueuedPromptUsageLimitStateAfterLogin(
+            dispatched: false,
+            queuedPromptCount: 0,
+            queueAutoDispatchEnabled: true,
+            usageLimitStillBlocked: true);
+
+        Assert.False(shouldKeepBlockedState);
+    }
+
+    /// <summary>
     /// Ensures final assistant responses replace interim bubbles by default instead of appending a second final bubble.
     /// </summary>
     [Fact]

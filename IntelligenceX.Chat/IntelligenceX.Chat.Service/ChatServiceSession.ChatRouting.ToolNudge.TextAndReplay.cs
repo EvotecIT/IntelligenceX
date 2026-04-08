@@ -195,6 +195,7 @@ internal sealed partial class ChatServiceSession {
         }
 
         var explicitToolReference = ExtractExplicitRequestedToolNames(normalized).Length > 0;
+        var requestedArtifactIntent = ResolveRequestedArtifactIntent(normalized);
         var followUpShape = explicitToolReference
                             || LooksLikeFollowUpShape(normalized, Math.Max(ContinuationFollowUpQuestionCharLimit, 128))
                             || ContainsQuestionSignal(normalized);
@@ -210,6 +211,15 @@ internal sealed partial class ChatServiceSession {
         var hasPendingActions = HasFreshPendingActionsContext(normalizedThreadId);
         var hasCheckpoint = TryGetWorkingMemoryCheckpoint(normalizedThreadId, out var checkpoint);
         if (!hasFreshEvidence && !hasPendingActions && !hasCheckpoint) {
+            return false;
+        }
+
+        // Compact artifact-only follow-ups like "show it as a topology graph" should
+        // usually reuse already-visible evidence instead of forcing a fresh execution lane.
+        if (!explicitToolReference
+            && requestedArtifactIntent.RequiresArtifact
+            && !ContainsQuestionSignal(normalized)
+            && (hasFreshEvidence || hasCheckpoint)) {
             return false;
         }
 

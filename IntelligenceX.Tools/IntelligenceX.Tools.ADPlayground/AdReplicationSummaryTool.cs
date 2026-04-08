@@ -57,7 +57,27 @@ public sealed class AdReplicationSummaryTool : ActiveDirectoryToolBase, ITool {
                 ("max_domain_controllers", ToolSchema.Integer("Upper bound on DCs enumerated when domain_controller is omitted (safety cap). Default 200.")),
                 ("max_errors", ToolSchema.Integer("Maximum number of per-DC errors to return. Default 25.")))
             .WithTableViewOptions()
-            .NoAdditionalProperties());
+            .NoAdditionalProperties(),
+        category: "active_directory",
+        tags: new[] {
+            "pack:active_directory",
+            "intent:replication",
+            "intent:replication_summary",
+            "intent:replikacja",
+            "intent:replikacji",
+            "scope:forest",
+            "scope:forestu",
+            "format:utc",
+            "repadmin",
+            "replsummary"
+        },
+        aliases: new[] {
+            new ToolAliasDefinition("ad_replication_health_summary", "Summarize AD replication health for the current domain or forest."),
+            new ToolAliasDefinition("ad_forest_replication_summary", "Summarize forest-wide AD replication health."),
+            new ToolAliasDefinition("ad_replikacja_podsumowanie", "Podsumuj stan replikacji Active Directory."),
+            new ToolAliasDefinition("ad_replikacja_forestu", "Podsumuj replikacje forestu Active Directory."),
+            new ToolAliasDefinition("ad_replikacja_utc", "Podsumuj replikacje Active Directory i zwroc wynik w UTC.")
+        });
 
     /// <summary>
     /// Initializes a new instance of the <see cref="AdReplicationSummaryTool"/> class.

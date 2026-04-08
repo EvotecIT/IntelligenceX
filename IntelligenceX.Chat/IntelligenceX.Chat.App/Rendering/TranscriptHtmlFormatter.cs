@@ -65,7 +65,7 @@ internal static class TranscriptHtmlFormatter {
         MarkdownRendererOptions markdownOptions) {
         ArgumentNullException.ThrowIfNull(markdownOptions);
 
-        var normalizedText = TranscriptMarkdownPreparation.PrepareMessageBody(text);
+        var normalizedText = TranscriptMarkdownPreparation.PrepareMessageBody(role, text);
         if (string.IsNullOrWhiteSpace(normalizedText)) {
             return string.Empty;
         }
@@ -114,7 +114,7 @@ internal static class TranscriptHtmlFormatter {
         var messageIndex = 0;
 
         foreach (var message in messages) {
-            var normalizedText = TranscriptMarkdownPreparation.PrepareMessageBody(message.Text);
+            var normalizedText = TranscriptMarkdownPreparation.PrepareMessageBody(message.Role, message.Text);
             if (string.IsNullOrWhiteSpace(normalizedText)) {
                 messageIndex++;
                 continue;
@@ -485,20 +485,29 @@ internal static class TranscriptHtmlFormatter {
         string selectedAction = string.Empty;
         string actionCommand = string.Empty;
         string reasonCode = string.Empty;
-        var trailingNotes = new List<string>();
+        var body = new StringBuilder();
+        var bodyStarted = false;
 
         for (var i = 0; i < lines.Length; i++) {
-            var line = lines[i].Trim();
-            if (line.Length == 0) {
-                continue;
-            }
+            var rawLine = lines[i] ?? string.Empty;
+            var line = rawLine.Trim();
 
             if (line.IndexOf(ExecutionContractMarker, StringComparison.OrdinalIgnoreCase) >= 0) {
                 line = line.Replace(ExecutionContractMarker, string.Empty, StringComparison.OrdinalIgnoreCase)
                     .Trim(' ', ':', '-', '\t');
+                rawLine = line;
+                if (line.Length == 0 && !bodyStarted) {
+                    continue;
+                }
+            }
+
+            if (summary.Length == 0) {
                 if (line.Length == 0) {
                     continue;
                 }
+
+                summary = line;
+                continue;
             }
 
             if (line.StartsWith("Selected action request:", StringComparison.OrdinalIgnoreCase)) {
@@ -528,12 +537,15 @@ internal static class TranscriptHtmlFormatter {
                 continue;
             }
 
-            if (summary.Length == 0) {
-                summary = line;
+            if (line.Length == 0 && !bodyStarted) {
                 continue;
             }
 
-            trailingNotes.Add(line);
+            if (bodyStarted) {
+                body.AppendLine();
+            }
+            body.Append(rawLine);
+            bodyStarted = true;
         }
 
         var detail = new StringBuilder();
@@ -558,17 +570,13 @@ internal static class TranscriptHtmlFormatter {
             }
         }
 
-        if (trailingNotes.Count > 0) {
+        var preservedBody = body.ToString().Trim();
+        if (preservedBody.Length > 0) {
             if (detail.Length > 0) {
-                detail.AppendLine();
+                detail.AppendLine().AppendLine();
             }
 
-            for (var i = 0; i < trailingNotes.Count; i++) {
-                if (i > 0) {
-                    detail.AppendLine().AppendLine();
-                }
-                detail.Append(trailingNotes[i]);
-            }
+            detail.Append(preservedBody);
         }
 
         return TranscriptMarkdownPreparation.PrepareOutcomeDetailBody(detail.ToString());

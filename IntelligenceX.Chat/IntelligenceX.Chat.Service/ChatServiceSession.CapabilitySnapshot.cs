@@ -77,6 +77,11 @@ internal sealed partial class ChatServiceSession {
             return true;
         }
 
+        if (Interlocked.CompareExchange(ref _deferredDescriptorPreviewCapabilitySnapshotBuildInProgress, 1, 0) != 0) {
+            return false;
+        }
+
+        try {
         var descriptorPreview = ToolPackBootstrap.CreateDeferredDescriptorPreview(new ToolPackBootstrapOptions {
             EnableBuiltInPackLoading = _options.EnableBuiltInPackLoading,
             EnableDefaultPluginPaths = _options.EnableDefaultPluginPaths,
@@ -87,6 +92,11 @@ internal sealed partial class ChatServiceSession {
         if (descriptorPreview.PackAvailability.Count == 0 && descriptorPreview.PluginCatalog.Count == 0) {
             return false;
         }
+
+        // Seed descriptor-only tool definitions before building the capability snapshot so
+        // background scheduler summaries can resolve deferred tool names without re-entering
+        // deferred preview construction.
+        _deferredDescriptorPreviewToolDefinitions = descriptorPreview.ToolDefinitions.ToArray();
 
         _deferredDescriptorPreviewCapabilitySnapshot = BuildCapabilitySnapshot(
             _options,
@@ -101,9 +111,11 @@ internal sealed partial class ChatServiceSession {
             backgroundScheduler: BuildBackgroundSchedulerSummary(),
             pluginCatalog: descriptorPreview.PluginCatalog,
             toolingSnapshotSource: DeferredDescriptorPreviewToolingSnapshotSource);
-        _deferredDescriptorPreviewToolDefinitions = descriptorPreview.ToolDefinitions.ToArray();
         snapshot = _deferredDescriptorPreviewCapabilitySnapshot;
         return true;
+        } finally {
+            Volatile.Write(ref _deferredDescriptorPreviewCapabilitySnapshotBuildInProgress, 0);
+        }
     }
 
     internal static SessionCapabilitySnapshotDto BuildCapabilitySnapshot(

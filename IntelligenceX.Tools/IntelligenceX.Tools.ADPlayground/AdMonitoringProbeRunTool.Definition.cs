@@ -184,7 +184,22 @@ public sealed partial class AdMonitoringProbeRunTool {
                 sortByDescription: "Optional sort column for flattened probe rows.",
                 topDescription: "Optional top-N limit for flattened probe rows.")
             .Required("probe_kind")
-            .NoAdditionalProperties());
+            .NoAdditionalProperties(),
+        category: "active_directory",
+        tags: new[] {
+            "pack:active_directory",
+            "intent:monitoring_probe",
+            "intent:replication_probe",
+            "intent:replikacja",
+            "intent:diagnostyka_replikacji",
+            "scope:forest",
+            "scope:domain_controller"
+        },
+        aliases: new[] {
+            new ToolAliasDefinition("ad_replication_probe_run", "Run a replication-focused AD monitoring probe."),
+            new ToolAliasDefinition("ad_replikacja_probe", "Uruchom probe replikacji Active Directory."),
+            new ToolAliasDefinition("ad_replikacja_diagnostyka", "Uruchom diagnostyke replikacji AD dla wskazanego scope.")
+        });
 
     /// <summary>
     /// Initializes a new instance of the <see cref="AdMonitoringProbeRunTool"/> class.

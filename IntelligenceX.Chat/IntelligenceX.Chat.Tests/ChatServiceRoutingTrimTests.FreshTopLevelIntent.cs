@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.Service;
 using Xunit;
 
@@ -135,6 +138,44 @@ public sealed partial class ChatServiceRoutingTrimTests {
         var result = session.LooksLikeLiveRefreshFollowUpForTesting(
             threadId,
             "If no live tools run in a turn, explain capability honestly without claiming you refreshed anything.");
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void LooksLikeLiveRefreshFollowUp_DoesNotTreatArtifactOnlyTopologyFollowUpAsFreshExecution() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        const string threadId = "thread-artifact-only-topology";
+        session.RememberThreadToolEvidenceForTesting(
+            threadId,
+            toolCalls: new[] {
+                new ToolCallDto {
+                    CallId = "call-1",
+                    Name = "ad_replication_summary",
+                    ArgumentsJson = "{}"
+                }
+            },
+            toolOutputs: new[] {
+                new ToolOutputDto {
+                    CallId = "call-1",
+                    Ok = true,
+                    Output = "{\"summary_view\":[{\"server\":\"AD0\"}]}",
+                    SummaryMarkdown = "Replication summary is ready."
+                }
+            },
+            mutatingToolHintsByName: new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase));
+        session.RememberWorkingMemoryCheckpointForTesting(
+            threadId: threadId,
+            intentAnchor: "Continue the same replication review.",
+            domainIntentFamily: "ad_domain",
+            recentToolNames: new[] { "ad_replication_summary" },
+            recentEvidenceSnippets: new[] { "ad_replication_summary: Replication summary is ready." },
+            priorAnswerPlanUserGoal: "Show the topology from the current replication evidence.",
+            priorAnswerPlanPrimaryArtifact: "table");
+
+        var result = session.LooksLikeLiveRefreshFollowUpForTesting(
+            threadId,
+            "Pokaz to na wykresie topologii replikacji.");
 
         Assert.False(result);
     }

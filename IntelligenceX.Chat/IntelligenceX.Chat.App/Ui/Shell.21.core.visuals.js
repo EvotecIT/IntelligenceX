@@ -128,6 +128,118 @@
       .trim();
   }
 
+  function trySplitCompactMermaidDirectiveLine(line) {
+    var text = String(line == null ? "" : line);
+    if (!text.trim()) {
+      return null;
+    }
+
+    var leadingWhitespaceMatch = text.match(/^\s*/);
+    var leadingWhitespace = leadingWhitespaceMatch ? leadingWhitespaceMatch[0] : "";
+    var trimmed = text.slice(leadingWhitespace.length);
+    var match = trimmed.match(/^(flowchart|graph)\s+([A-Za-z]+)\s+(.+)$/i);
+    if (!match) {
+      return null;
+    }
+
+    return {
+      header: leadingWhitespace + match[1] + " " + match[2],
+      content: leadingWhitespace + match[3]
+    };
+  }
+
+  function trySplitCollapsedMermaidEndLine(line) {
+    var text = String(line == null ? "" : line);
+    if (!text.trim()) {
+      return null;
+    }
+
+    var leadingWhitespaceMatch = text.match(/^\s*/);
+    var leadingWhitespace = leadingWhitespaceMatch ? leadingWhitespaceMatch[0] : "";
+    var trimmed = text.slice(leadingWhitespace.length);
+    if (!/^end\s+/i.test(trimmed)) {
+      return null;
+    }
+
+    var remainder = trimmed.slice(3).trimStart();
+    if (!remainder) {
+      return null;
+    }
+
+    return {
+      first: leadingWhitespace + "end",
+      remainder: leadingWhitespace + remainder
+    };
+  }
+
+  function trySplitCollapsedMermaidEdgeStatements(line) {
+    var text = String(line == null ? "" : line);
+    if (!text.trim()) {
+      return null;
+    }
+
+    var leadingWhitespaceMatch = text.match(/^\s*/);
+    var leadingWhitespace = leadingWhitespaceMatch ? leadingWhitespaceMatch[0] : "";
+    var trimmed = text.slice(leadingWhitespace.length);
+    var matches = Array.from(trimmed.matchAll(/(?<!\S)[A-Za-z_][A-Za-z0-9_-]*\s+(?:-->|---|-.->|==>)/g));
+    if (matches.length < 2) {
+      return null;
+    }
+
+    var splitIndex = matches[1].index;
+    if (!isFiniteNumber(splitIndex) || splitIndex <= 0 || splitIndex >= trimmed.length) {
+      return null;
+    }
+
+    var first = trimmed.slice(0, splitIndex).trimEnd();
+    var remainder = trimmed.slice(splitIndex).trimStart();
+    if (!first || !remainder) {
+      return null;
+    }
+
+    return {
+      first: leadingWhitespace + first,
+      remainder: leadingWhitespace + remainder
+    };
+  }
+
+  function normalizeMermaidSourceForRender(source) {
+    var normalized = normalizeText(source || "");
+    if (!normalized) {
+      return "";
+    }
+
+    var repaired = [];
+    var pending = normalized.split("\n");
+    while (pending.length > 0) {
+      var current = pending.shift();
+      var split = trySplitCompactMermaidDirectiveLine(current);
+      if (split) {
+        repaired.push(split.header);
+        pending.unshift(split.content);
+        continue;
+      }
+
+      split = trySplitCollapsedMermaidEndLine(current);
+      if (split) {
+        repaired.push(split.first);
+        pending.unshift(split.remainder);
+        continue;
+      }
+
+      split = trySplitCollapsedMermaidEdgeStatements(current);
+      if (split) {
+        repaired.push(split.first);
+        pending.unshift(split.remainder);
+        continue;
+      }
+
+      repaired.push(current);
+    }
+
+    return repaired.join("\n").trim();
+  }
+
   function decodeBase64Utf8Value(value) {
     var text = String(value || "").trim();
     if (!text) {
@@ -761,7 +873,12 @@
 
     var source = pre.getAttribute("data-ix-mermaid-source");
     if (typeof source !== "string" || source.length === 0) {
-      source = normalizeText(pre.textContent || "");
+      source = normalizeMermaidSourceForRender(pre.textContent || "");
+      if (source.length > 0) {
+        pre.setAttribute("data-ix-mermaid-source", source);
+      }
+    } else {
+      source = normalizeMermaidSourceForRender(source);
       if (source.length > 0) {
         pre.setAttribute("data-ix-mermaid-source", source);
       }
@@ -2774,6 +2891,7 @@
   });
 
   async function renderMermaidInVisualView(source) {
+    source = normalizeMermaidSourceForRender(source || "");
     var pre = document.createElement("pre");
     pre.className = "mermaid";
     pre.textContent = source;
@@ -3960,6 +4078,7 @@
   }
 
   async function renderMermaidForExport(source, imageId, themeMode) {
+    source = normalizeMermaidSourceForRender(source || "");
     var ready = await ensureMermaidReady();
     if (!ready) {
       return null;
@@ -4412,4 +4531,3 @@
       images: images
     };
   };
-

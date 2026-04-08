@@ -70,6 +70,7 @@ internal sealed partial class ChatServiceSession {
     private ToolPackInfoDto[] _persistedPreviewPackSummaries;
     private SessionCapabilitySnapshotDto? _persistedPreviewCapabilitySnapshot;
     private SessionCapabilitySnapshotDto? _deferredDescriptorPreviewCapabilitySnapshot;
+    private int _deferredDescriptorPreviewCapabilitySnapshotBuildInProgress;
     private readonly Dictionary<string, string> _packDisplayNamesById = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, string> _packDescriptionsById = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, ToolPackSourceKind> _packSourceKindsById = new(StringComparer.OrdinalIgnoreCase);

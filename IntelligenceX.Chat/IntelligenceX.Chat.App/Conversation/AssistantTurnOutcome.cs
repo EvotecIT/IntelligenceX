@@ -6,12 +6,13 @@ namespace IntelligenceX.Chat.App.Conversation;
 /// <summary>
 /// Structured assistant turn outcome contract for rendering non-success text.
 /// </summary>
-internal readonly record struct AssistantTurnOutcome(AssistantTurnOutcomeKind Kind, string? Detail = null) {
+internal readonly record struct AssistantTurnOutcome(AssistantTurnOutcomeKind Kind, string? Detail = null, string? ContextLabel = null) {
     public static AssistantTurnOutcome Canceled() => new(AssistantTurnOutcomeKind.Canceled);
 
     public static AssistantTurnOutcome Disconnected() => new(AssistantTurnOutcomeKind.Disconnected);
 
-    public static AssistantTurnOutcome UsageLimit(string? detail) => new(AssistantTurnOutcomeKind.UsageLimit, detail);
+    public static AssistantTurnOutcome UsageLimit(string? detail, string? accountLabel = null) =>
+        new(AssistantTurnOutcomeKind.UsageLimit, detail, accountLabel);
 
     public static AssistantTurnOutcome ToolRoundLimit(string? detail, int? maxRounds = null) =>
         new(AssistantTurnOutcomeKind.ToolRoundLimit, BuildToolRoundLimitDetail(detail, maxRounds));
@@ -56,7 +57,7 @@ internal static class AssistantTurnOutcomeFormatter {
         return outcome.Kind switch {
             AssistantTurnOutcomeKind.Canceled => "[canceled] Turn canceled.",
             AssistantTurnOutcomeKind.Disconnected => "[error] Disconnected.",
-            AssistantTurnOutcomeKind.UsageLimit => "[limit] " + FormatUsageLimitDetail(outcome.Detail),
+            AssistantTurnOutcomeKind.UsageLimit => "[limit] " + FormatUsageLimitDetail(outcome.Detail, outcome.ContextLabel),
             AssistantTurnOutcomeKind.ToolRoundLimit => FormatToolRoundLimit(outcome.Detail),
             AssistantTurnOutcomeKind.Error => "[error] " + FormatErrorDetail(outcome.Detail),
             _ => "[error] Unknown assistant failure."
@@ -68,26 +69,30 @@ internal static class AssistantTurnOutcomeFormatter {
         return normalized.Length == 0 ? "Unknown error." : normalized;
     }
 
-    private static string FormatUsageLimitDetail(string? detail) {
+    private static string FormatUsageLimitDetail(string? detail, string? accountLabel) {
         var normalized = (detail ?? string.Empty).Trim();
+        var normalizedAccountLabel = (accountLabel ?? string.Empty).Trim();
+        var accountText = normalizedAccountLabel.Length == 0
+            ? "this account"
+            : normalizedAccountLabel;
         if (normalized.Length == 0) {
             return
-                "ChatGPT usage limit reached for this account.\n\n"
+                "ChatGPT usage limit reached for " + accountText + ".\n\n"
                 + "To continue now, open the top-right menu and choose **Switch Account**.";
         }
 
         var retryAfterMinutes = TryExtractRetryAfterMinutes(normalized);
         if (retryAfterMinutes.HasValue && retryAfterMinutes.Value > 0) {
             return
-                "ChatGPT usage limit reached for this account.\n\n"
+                "ChatGPT usage limit reached for " + accountText + ".\n\n"
                 + "To continue now, open the top-right menu and choose **Switch Account**.\n"
-                + "If you stay on this account, retry in about "
+                + "If you stay on " + accountText + ", retry in about "
                 + FormatRetryDelay(retryAfterMinutes.Value)
                 + ".";
         }
 
         return
-            "ChatGPT usage limit reached for this account.\n\n"
+            "ChatGPT usage limit reached for " + accountText + ".\n\n"
             + "To continue now, open the top-right menu and choose **Switch Account**.\n"
             + "Details: " + normalized;
     }

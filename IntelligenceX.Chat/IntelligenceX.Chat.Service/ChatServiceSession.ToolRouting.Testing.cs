@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
+using System.Threading;
 using IntelligenceX.Chat.Abstractions.Policy;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.Tooling;
@@ -62,6 +63,10 @@ internal sealed partial class ChatServiceSession {
     internal void SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog catalog) {
         ArgumentNullException.ThrowIfNull(catalog);
         _toolOrchestrationCatalog = catalog;
+    }
+
+    internal void ClearCachedToolDefinitionsForTesting() {
+        Volatile.Write(ref _cachedToolDefinitions, Array.Empty<ToolDefinitionDto>());
     }
 
     internal IReadOnlyList<ToolDefinition> SelectWeightedToolSubsetForTesting(
@@ -515,6 +520,11 @@ internal sealed partial class ChatServiceSession {
         return ResolveThreadBackgroundWorkSnapshot(threadId);
     }
 
+    internal void RememberThreadBackgroundWorkSnapshotForTesting(string threadId, ThreadBackgroundWorkSnapshot snapshot) {
+        ArgumentNullException.ThrowIfNull(threadId);
+        RememberThreadBackgroundWorkSnapshot(threadId, snapshot, DateTime.UtcNow.Ticks);
+    }
+
     internal bool TryBuildBackgroundWorkDependencyRecoveryPromptForTesting(
         string threadId,
         string userRequest,
@@ -835,6 +845,20 @@ internal sealed partial class ChatServiceSession {
 
     internal bool TryGetCurrentDomainIntentFamilyForTesting(string threadId, out string family) {
         return TryGetCurrentDomainIntentFamily(threadId, out family);
+    }
+
+    internal bool TryBuildHostDomainIntentOperationalReplayCallForTesting(
+        string threadId,
+        string userRequest,
+        IReadOnlyList<ToolDefinition> toolDefinitions,
+        out ToolCall call,
+        out string reason) {
+        return TryBuildHostDomainIntentOperationalReplayCall(
+            threadId,
+            userRequest,
+            toolDefinitions,
+            out call,
+            out reason);
     }
 
     internal bool TryApplyDomainIntentAffinityForTesting(

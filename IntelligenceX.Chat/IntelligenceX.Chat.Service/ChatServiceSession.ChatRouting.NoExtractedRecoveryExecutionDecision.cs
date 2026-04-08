@@ -20,7 +20,8 @@ internal sealed partial class ChatServiceSession {
         AutoPendingActionReplay,
         CarryoverStructuredNextActionReplay,
         BackgroundWorkReadyReplay,
-        HostDomainIntentBootstrapReplay
+        HostDomainIntentBootstrapReplay,
+        HostDomainIntentOperationalReplay
     }
 
     private readonly record struct NoExtractedRecoveryExecutionDecision(
@@ -101,9 +102,23 @@ internal sealed partial class ChatServiceSession {
                 BackgroundWorkItemId: string.Empty,
                 ToolCall: toolCall,
                 ExecutePhaseMessage: $"Executing domain-scope bootstrap ({toolCall.Name})...",
-                ReviewPhaseMessage: "Reviewing domain-scope bootstrap results...",
-                ReviewHeartbeatLabel: "Reviewing domain bootstrap",
+                ReviewPhaseMessage: "Continuing domain-scoped task after bootstrap...",
+                ReviewHeartbeatLabel: "Continuing domain task",
                 RememberSuccessfulPreflightCalls: true);
+
+        public static NoExtractedRecoveryExecutionDecision HostDomainIntentOperationalReplay(string reason, ToolCall toolCall) =>
+            new(
+                NoExtractedRecoveryExecutionDecisionKind.HostDomainIntentOperationalReplay,
+                reason,
+                ExpandToFullToolAvailability: true,
+                ReplayPayload: string.Empty,
+                ActionId: string.Empty,
+                BackgroundWorkItemId: string.Empty,
+                ToolCall: toolCall,
+                ExecutePhaseMessage: $"Executing domain-scoped operational follow-up ({toolCall.Name})...",
+                ReviewPhaseMessage: "Reviewing domain-scoped operational results...",
+                ReviewHeartbeatLabel: "Reviewing domain result",
+                RememberSuccessfulPreflightCalls: false);
     }
 
     private NoExtractedRecoveryExecutionDecision ResolveNoExtractedRecoveryPrePromptExecutionDecision(
@@ -213,25 +228,44 @@ internal sealed partial class ChatServiceSession {
 
     private NoExtractedRecoveryExecutionDecision ResolveNoExtractedRecoveryPostPromptExecutionDecision(
         string threadId,
-        string userRequest,
+        string visibleUserRequest,
+        string routedUserRequest,
         IReadOnlyList<ToolDefinition> toolDefinitions,
         bool executionContractApplies,
         bool hostDomainIntentBootstrapReplayUsed,
+        bool bootstrapOnlyToolActivity,
         int priorToolCalls,
         int priorToolOutputs) {
+        var recoveryDecisionUserRequest = string.IsNullOrWhiteSpace(visibleUserRequest)
+            ? routedUserRequest
+            : visibleUserRequest;
         if (!hostDomainIntentBootstrapReplayUsed
             && !executionContractApplies
             && priorToolCalls == 0
             && priorToolOutputs == 0
             && TryBuildHostDomainIntentEnvironmentBootstrapCall(
                 threadId: threadId,
-                userRequest: userRequest,
+                userRequest: recoveryDecisionUserRequest,
                 toolDefinitions: toolDefinitions,
                 out var hostDomainBootstrapCall,
                 out var hostDomainBootstrapReason)) {
             return NoExtractedRecoveryExecutionDecision.HostDomainIntentBootstrapReplay(
                 hostDomainBootstrapReason,
                 hostDomainBootstrapCall);
+        }
+
+        if (hostDomainIntentBootstrapReplayUsed
+            && bootstrapOnlyToolActivity
+            && !executionContractApplies
+            && TryBuildHostDomainIntentOperationalReplayCall(
+                threadId: threadId,
+                userRequest: recoveryDecisionUserRequest,
+                toolDefinitions: toolDefinitions,
+                out var hostDomainOperationalCall,
+                out var hostDomainOperationalReason)) {
+            return NoExtractedRecoveryExecutionDecision.HostDomainIntentOperationalReplay(
+                hostDomainOperationalReason,
+                hostDomainOperationalCall);
         }
 
         return NoExtractedRecoveryExecutionDecision.None("no_post_prompt_execution_selected");
@@ -290,6 +324,7 @@ internal sealed partial class ChatServiceSession {
             case NoExtractedRecoveryExecutionDecisionKind.CarryoverStructuredNextActionReplay:
             case NoExtractedRecoveryExecutionDecisionKind.BackgroundWorkReadyReplay:
             case NoExtractedRecoveryExecutionDecisionKind.HostDomainIntentBootstrapReplay:
+            case NoExtractedRecoveryExecutionDecisionKind.HostDomainIntentOperationalReplay:
                 return await ExecuteSingleRecoveryHostToolReplayAsync(
                         client,
                         writer,
@@ -468,18 +503,36 @@ internal sealed partial class ChatServiceSession {
             }
         }
 
-        var nextInput = BuildHostReplayReviewInput(
-            toolCall,
-            outputs,
-            supportsSyntheticHostReplayItems,
-            out var promptTextForOrdering);
+        ChatInput nextInput;
+        string? promptTextForOrdering;
+        var promptOrderingStrategy = "prompt_review";
+        var nextPhaseStatus = planExecuteReviewLoop ? ChatStatusCodes.PhaseReview : ChatStatusCodes.Thinking;
+        if (decision.Kind == NoExtractedRecoveryExecutionDecisionKind.HostDomainIntentBootstrapReplay) {
+            var continuationPrompt = BuildHostDomainBootstrapContinuationPrompt(routedUserRequest, toolCall, outputs);
+            nextInput = BuildHostReplayContinuationInput(
+                continuationPrompt,
+                routedUserRequest,
+                toolCall,
+                outputs,
+                supportsSyntheticHostReplayItems,
+                out promptTextForOrdering);
+            promptOrderingStrategy = "prompt_recovery";
+            nextPhaseStatus = planExecuteReviewLoop ? ChatStatusCodes.PhasePlan : ChatStatusCodes.Thinking;
+        } else {
+            nextInput = BuildHostReplayReviewInput(
+                toolCall,
+                outputs,
+                supportsSyntheticHostReplayItems,
+                out promptTextForOrdering);
+        }
+
         var reviewOptions = await CopyChatOptionsWithPromptAwareToolOrderingAndEmitStatusAsync(
                 writer,
                 request.RequestId,
                 threadId,
                 options,
                 promptTextForOrdering,
-                strategy: "prompt_review",
+                strategy: promptOrderingStrategy,
                 newThreadOverride: false)
             .ConfigureAwait(false);
         var turn = await RunModelPhaseWithProgressAsync(
@@ -490,7 +543,7 @@ internal sealed partial class ChatServiceSession {
                 nextInput,
                 reviewOptions,
                 turnToken,
-                phaseStatus: planExecuteReviewLoop ? ChatStatusCodes.PhaseReview : ChatStatusCodes.Thinking,
+                phaseStatus: nextPhaseStatus,
                 phaseMessage: decision.ReviewPhaseMessage,
                 heartbeatLabel: decision.ReviewHeartbeatLabel,
                 heartbeatSeconds: modelHeartbeatSeconds)
@@ -504,6 +557,7 @@ internal sealed partial class ChatServiceSession {
             NoExtractedRecoveryExecutionDecisionKind.CarryoverStructuredNextActionReplay => "host-structured-next-action",
             NoExtractedRecoveryExecutionDecisionKind.BackgroundWorkReadyReplay => "background-work-replay",
             NoExtractedRecoveryExecutionDecisionKind.HostDomainIntentBootstrapReplay => "host-domain-bootstrap",
+            NoExtractedRecoveryExecutionDecisionKind.HostDomainIntentOperationalReplay => "host-domain-operational",
             _ => "recovery-execution"
         };
     }
@@ -546,17 +600,21 @@ internal sealed partial class ChatServiceSession {
     internal (string Kind, string Reason, string? ToolName, bool ExpandToFullToolAvailability) ResolveNoExtractedRecoveryPostPromptExecutionDecisionForTesting(
         string threadId,
         string userRequest,
+        string? routedUserRequest,
         IReadOnlyList<ToolDefinition> toolDefinitions,
         bool executionContractApplies,
         bool hostDomainIntentBootstrapReplayUsed,
+        bool bootstrapOnlyToolActivity,
         int priorToolCalls,
         int priorToolOutputs) {
         var decision = ResolveNoExtractedRecoveryPostPromptExecutionDecision(
             threadId: threadId,
-            userRequest: userRequest,
+            visibleUserRequest: userRequest,
+            routedUserRequest: string.IsNullOrWhiteSpace(routedUserRequest) ? userRequest : routedUserRequest,
             toolDefinitions: toolDefinitions,
             executionContractApplies: executionContractApplies,
             hostDomainIntentBootstrapReplayUsed: hostDomainIntentBootstrapReplayUsed,
+            bootstrapOnlyToolActivity: bootstrapOnlyToolActivity,
             priorToolCalls: priorToolCalls,
             priorToolOutputs: priorToolOutputs);
         return (

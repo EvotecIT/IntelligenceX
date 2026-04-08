@@ -821,6 +821,243 @@ Continue that failure-signature collection across all remaining non-AD0 DCs in t
     }
 
     [Fact]
+    public void BuildNoTextReplFallbackTextForTesting_ReplacesEventLogDraftThatStillRequestsMachineName() {
+        var calls = new[] {
+            BuildToolCall("call_1", "eventlog_top_events", """{"machine_name":"AD0.ad.evotec.xyz","log_name":"System","max_events":10}"""),
+            BuildToolCall("call_2", "eventlog_top_events", """{"machine_name":"ADRODC.ad.evotec.pl","log_name":"System","max_events":10}""")
+        };
+        var outputs = new[] {
+            new ToolOutput("call_1", """{"ok":true,"log_name":"System","count":10,"truncated":true,"events":[{"machine_name":"AD0.ad.evotec.xyz"}],"discovery_status":{"scope":"remote","log_name":"System","machine_name":"AD0.ad.evotec.xyz","query_mode":"top_events","rows":10,"truncated":true}}"""),
+            new ToolOutput("call_2", """{"ok":true,"log_name":"System","count":0,"truncated":false,"events":[],"discovery_status":{"scope":"remote","log_name":"System","machine_name":"ADRODC.ad.evotec.pl","query_mode":"top_events","rows":0,"truncated":false}}""")
+        };
+
+        var text = InvokeBuildNoTextReplFallbackTextForTesting(
+            assistantDraft: "Necesito los nombres de al menos dos DCs concretos en `machine_name` para poder recoger evidencia.",
+            toolCalls: calls,
+            toolOutputs: outputs,
+            model: "gpt-test",
+            transport: OpenAITransportKind.Native,
+            baseUrl: null);
+
+        Assert.Contains("Recovered EventLog findings from executed tools", text, StringComparison.Ordinal);
+        Assert.Contains("Coverage: 2 distinct DC target(s)", text, StringComparison.Ordinal);
+        Assert.Contains("AD0.ad.evotec.xyz", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ADRODC.ad.evotec.pl", text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Necesito los nombres", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildNoTextReplFallbackTextForTesting_SummarizesAllStructuredEventLogHostsWithoutGenericTail() {
+        var calls = new[] {
+            BuildToolCall("call_1", "eventlog_top_events", """{"machine_name":"DC1.ad.evotec.pl","log_name":"System","max_events":10}"""),
+            BuildToolCall("call_2", "eventlog_top_events", """{"machine_name":"ADRODC.ad.evotec.pl","log_name":"System","max_events":10}"""),
+            BuildToolCall("call_3", "eventlog_top_events", """{"machine_name":"AD0.ad.evotec.xyz","log_name":"System","max_events":10}"""),
+            BuildToolCall("call_4", "eventlog_top_events", """{"machine_name":"AD1.ad.evotec.xyz","log_name":"System","max_events":10}"""),
+            BuildToolCall("call_5", "eventlog_top_events", """{"machine_name":"ad2.ad.evotec.xyz","log_name":"System","max_events":10}""")
+        };
+        var outputs = new[] {
+            new ToolOutput("call_1", """{"ok":true,"log_name":"System","count":10,"truncated":true,"events":[{"machine_name":"DC1.ad.evotec.pl"}],"discovery_status":{"scope":"remote","log_name":"System","machine_name":"DC1.ad.evotec.pl","query_mode":"top_events","rows":10,"truncated":true}}"""),
+            new ToolOutput("call_2", """{"ok":true,"log_name":"System","count":0,"truncated":false,"events":[],"discovery_status":{"scope":"remote","log_name":"System","machine_name":"ADRODC.ad.evotec.pl","query_mode":"top_events","rows":0,"truncated":false}}"""),
+            new ToolOutput("call_3", """{"ok":true,"log_name":"System","count":10,"truncated":true,"events":[{"machine_name":"AD0.ad.evotec.xyz"}],"discovery_status":{"scope":"remote","log_name":"System","machine_name":"AD0.ad.evotec.xyz","query_mode":"top_events","rows":10,"truncated":true}}"""),
+            new ToolOutput("call_4", """{"ok":true,"log_name":"System","count":10,"truncated":true,"events":[{"machine_name":"AD1.ad.evotec.xyz"}],"discovery_status":{"scope":"remote","log_name":"System","machine_name":"AD1.ad.evotec.xyz","query_mode":"top_events","rows":10,"truncated":true}}"""),
+            new ToolOutput("call_5", """{"ok":true,"log_name":"System","count":10,"truncated":true,"events":[{"machine_name":"ad2.ad.evotec.xyz"}],"discovery_status":{"scope":"remote","log_name":"System","machine_name":"ad2.ad.evotec.xyz","query_mode":"top_events","rows":10,"truncated":true}}""")
+        };
+
+        var text = InvokeBuildNoTextReplFallbackTextForTesting(
+            assistantDraft: string.Empty,
+            toolCalls: calls,
+            toolOutputs: outputs,
+            model: "gpt-test",
+            transport: OpenAITransportKind.Native,
+            baseUrl: null);
+
+        Assert.Contains("Recovered EventLog findings from executed tools", text, StringComparison.Ordinal);
+        Assert.Contains("Coverage: 5 distinct DC target(s) (4 returned rows, 1 returned 0 rows).", text, StringComparison.Ordinal);
+        Assert.Contains("DC1.ad.evotec.pl", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ADRODC.ad.evotec.pl", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("AD0.ad.evotec.xyz", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("AD1.ad.evotec.xyz", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ad2.ad.evotec.xyz", text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("more tool output", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildNoTextReplFallbackTextForTesting_ReplacesMissingInputDraftAfterAdEventPlatformFallbackExecutes() {
+        var calls = new[] {
+            BuildToolCall("call_1", "eventlog_top_events", """{"machine_name":"AD0.ad.evotec.xyz","log_name":"System","max_events":10}"""),
+            BuildToolCall("call_2", "eventlog_top_events", """{"machine_name":"ad1.ad.evotec.xyz","log_name":"System","max_events":10}"""),
+            BuildToolCall("call_3", "system_connectivity_probe", """{"computer_name":"AD0.ad.evotec.xyz","include_time_sync":true}"""),
+            BuildToolCall("call_4", "system_windows_update_telemetry", """{"computer_name":"AD0.ad.evotec.xyz","include_event_telemetry":false}"""),
+            BuildToolCall("call_5", "system_connectivity_probe", """{"computer_name":"ad1.ad.evotec.xyz","include_time_sync":true}"""),
+            BuildToolCall("call_6", "system_windows_update_telemetry", """{"computer_name":"ad1.ad.evotec.xyz","include_event_telemetry":false}""")
+        };
+        var outputs = new[] {
+            new ToolOutput("call_1", """{"ok":false,"error_code":"platform_not_supported","error":"Remote event log query failed for log 'System' on machine 'AD0.ad.evotec.xyz'. Reason: EventLog access is not supported on this platform."}"""),
+            new ToolOutput("call_2", """{"ok":false,"error_code":"platform_not_supported","error":"Remote event log query failed for log 'System' on machine 'ad1.ad.evotec.xyz'. Reason: EventLog access is not supported on this platform."}"""),
+            new ToolOutput("call_3", """{"ok":true,"computer_name":"AD0.ad.evotec.xyz","probe_status":"healthy","time_sync_probe_succeeded":true,"computer_system":{"domain":"ad.evotec.xyz"},"time_sync":{"time_skew_seconds":0.536},"summary_markdown":"### System connectivity probe\r\n\r\n| Field | Value |"}"""),
+            new ToolOutput("call_4", """{"ok":true,"computer_name":"AD0.ad.evotec.xyz","is_pending_reboot":true,"coverage_state":"NoUpdateSignals","detection_missing":true,"wsus_decision":"Unknown","summary_markdown":"### Windows Update telemetry\r\n\r\n| Metric | Value |"}"""),
+            new ToolOutput("call_5", """{"ok":true,"computer_name":"ad1.ad.evotec.xyz","probe_status":"healthy","time_sync_probe_succeeded":true,"computer_system":{"domain":"ad.evotec.xyz"},"time_sync":{"time_skew_seconds":0.544},"summary_markdown":"### System connectivity probe\r\n\r\n| Field | Value |"}"""),
+            new ToolOutput("call_6", """{"ok":true,"computer_name":"ad1.ad.evotec.xyz","is_pending_reboot":false,"coverage_state":"NoUpdateSignals","detection_missing":true,"wsus_decision":"Unknown","summary_markdown":"### Windows Update telemetry\r\n\r\n| Metric | Value |"}""")
+        };
+
+        var text = InvokeBuildNoTextReplFallbackTextForTesting(
+            assistantDraft: "Missing input once: at least two concrete DC machine_name values are required for Event Log collection.",
+            toolCalls: calls,
+            toolOutputs: outputs,
+            model: "gpt-test",
+            transport: OpenAITransportKind.Native,
+            baseUrl: null);
+
+        Assert.Contains("Recovered AD EventLog fallback findings from executed tools", text, StringComparison.Ordinal);
+        Assert.Contains("Coverage: 2 distinct DC target(s); EventLog blocked on this runtime for 2 target(s).", text, StringComparison.Ordinal);
+        Assert.Contains("AD0.ad.evotec.xyz", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ad1.ad.evotec.xyz", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("connectivity healthy; domain ad.evotec.xyz; time sync ok; time skew 0.536s", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("pending reboot yes; coverage NoUpdateSignals; detection missing yes; WSUS Unknown", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("pending reboot no; coverage NoUpdateSignals; detection missing yes; WSUS Unknown", text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("### System connectivity probe", text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("| Field | Value |", text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("### Windows Update telemetry", text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Missing input once", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildNoTextReplFallbackTextForTesting_ReplacesAdMonitoringDraftThatClaimsRowsWereMissing() {
+        var calls = new[] {
+            BuildToolCall("call_1", "ad_monitoring_probe_run", """{"probe_kind":"ldap","targets":["AD0.ad.evotec.xyz","ad1.ad.evotec.xyz"]}"""),
+            BuildToolCall("call_2", "ad_monitoring_probe_run", """{"probe_kind":"adws","targets":["AD0.ad.evotec.xyz","ad1.ad.evotec.xyz"]}""")
+        };
+        var outputs = new[] {
+            new ToolOutput("call_1", """{"ok":true,"probe_kind":"ldap","probe_result":{"status":"Down","completed_utc":"2026-04-08T18:25:55.6542797+00:00","children":[{"target":"AD0.ad.evotec.xyz","status":"Down","error":"System.DirectoryServices.Protocols is not supported on this platform."},{"target":"ad1.ad.evotec.xyz","status":"Down","error":"System.DirectoryServices.Protocols is not supported on this platform."}]}}"""),
+            new ToolOutput("call_2", """{"ok":true,"probe_kind":"adws","probe_result":{"status":"Up","completed_utc":"2026-04-08T18:25:55.5433420+00:00","children":[{"target":"AD0.ad.evotec.xyz","status":"Up"},{"target":"ad1.ad.evotec.xyz","status":"Up"}]}}""")
+        };
+
+        var text = InvokeBuildNoTextReplFallbackTextForTesting(
+            assistantDraft: "The actual row values were not provided, so health state per DC cannot be confirmed.",
+            toolCalls: calls,
+            toolOutputs: outputs,
+            model: "gpt-test",
+            transport: OpenAITransportKind.Native,
+            baseUrl: null);
+
+        Assert.Contains("Recovered AD monitoring findings from executed tools", text, StringComparison.Ordinal);
+        Assert.Contains("Coverage: 2 distinct DC target(s).", text, StringComparison.Ordinal);
+        Assert.Contains("ldap: overall Down; targets 2; completed 2026-04-08T18:25:55.6542797+00:00; AD0.ad.evotec.xyz=Down", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ad1.ad.evotec.xyz=Down", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("adws: overall Up; targets 2; completed 2026-04-08T18:25:55.5433420+00:00; AD0.ad.evotec.xyz=Up, ad1.ad.evotec.xyz=Up", text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("actual row values were not provided", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildNoTextReplFallbackTextForTesting_ReplacesAdMonitoringDraftThatOmitsCoverageTargets() {
+        var calls = new[] {
+            BuildToolCall("call_1", "ad_monitoring_probe_run", """{"probe_kind":"ldap","targets":["AD0.ad.evotec.xyz","ad1.ad.evotec.xyz"]}"""),
+            BuildToolCall("call_2", "ad_monitoring_probe_run", """{"probe_kind":"replication","targets":["AD0.ad.evotec.xyz","ad1.ad.evotec.xyz"]}""")
+        };
+        var outputs = new[] {
+            new ToolOutput("call_1", """{"ok":true,"probe_kind":"ldap","probe_result":{"status":"Up","completed_utc":"2026-04-08T18:40:00+00:00","children":[{"target":"AD0.ad.evotec.xyz","status":"Up"},{"target":"ad1.ad.evotec.xyz","status":"Up"}]}}"""),
+            new ToolOutput("call_2", """{"ok":true,"probe_kind":"replication","probe_result":{"status":"Warning","completed_utc":"2026-04-08T18:41:00+00:00","children":[{"target":"AD0.ad.evotec.xyz","status":"Up"},{"target":"ad1.ad.evotec.xyz","status":"Warning","error":"backlog detected"}]}}""")
+        };
+
+        var text = InvokeBuildNoTextReplFallbackTextForTesting(
+            assistantDraft: "Con la evidencia entregada no se puede confirmar estado final por host. Faltan las filas de resultado.",
+            toolCalls: calls,
+            toolOutputs: outputs,
+            model: "gpt-test",
+            transport: OpenAITransportKind.Native,
+            baseUrl: null);
+
+        Assert.Contains("Recovered AD monitoring findings from executed tools", text, StringComparison.Ordinal);
+        Assert.Contains("Coverage: 2 distinct DC target(s).", text, StringComparison.Ordinal);
+        Assert.Contains("ldap: overall Up; targets 2; completed 2026-04-08T18:40:00+00:00; AD0.ad.evotec.xyz=Up, ad1.ad.evotec.xyz=Up", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("replication: overall Warning; targets 2; completed 2026-04-08T18:41:00+00:00; AD0.ad.evotec.xyz=Up, ad1.ad.evotec.xyz=Warning (backlog detected)", text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("no se puede confirmar estado final por host", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildNoTextReplFallbackTextForTesting_ReplacesAdMonitoringDraftThatMentionsTargetsWithoutRowFacts() {
+        var calls = new[] {
+            BuildToolCall("call_1", "ad_monitoring_probe_run", """{"probe_kind":"ldap","targets":["ad0.ad.evotec.xyz","AD1.ad.evotec.xyz","ad2.ad.evotec.xyz"]}"""),
+            BuildToolCall("call_2", "ad_monitoring_probe_run", """{"probe_kind":"adws","targets":["ad0.ad.evotec.xyz","AD1.ad.evotec.xyz","ad2.ad.evotec.xyz"]}""")
+        };
+        var outputs = new[] {
+            new ToolOutput("call_1", """{"ok":true,"probe_kind":"ldap","probe_result":{"status":"Down","completed_utc":"2026-04-08T18:52:48.1632876+00:00","children":[{"target":"ad0.ad.evotec.xyz","status":"Down","error":"ldap unsupported"},{"target":"AD1.ad.evotec.xyz","status":"Down","error":"ldap unsupported"},{"target":"ad2.ad.evotec.xyz","status":"Down","error":"ldap unsupported"}]}}"""),
+            new ToolOutput("call_2", """{"ok":true,"probe_kind":"adws","probe_result":{"status":"Up","completed_utc":"2026-04-08T18:52:47.9237132+00:00","children":[{"target":"ad0.ad.evotec.xyz","status":"Up"},{"target":"AD1.ad.evotec.xyz","status":"Up"},{"target":"ad2.ad.evotec.xyz","status":"Up"}]}}""")
+        };
+
+        var text = InvokeBuildNoTextReplFallbackTextForTesting(
+            assistantDraft: """
+                Validación ejecutada sobre:
+                - ad0.ad.evotec.xyz
+                - AD1.ad.evotec.xyz
+                - ad2.ad.evotec.xyz
+
+                No se puede concluir estado saludable o degradado por host porque la evidencia recuperada no incluye las filas de resultado.
+                """,
+            toolCalls: calls,
+            toolOutputs: outputs,
+            model: "gpt-test",
+            transport: OpenAITransportKind.Native,
+            baseUrl: null);
+
+        Assert.Contains("Recovered AD monitoring findings from executed tools", text, StringComparison.Ordinal);
+        Assert.Contains("Coverage: 3 distinct DC target(s).", text, StringComparison.Ordinal);
+        Assert.Contains("ldap: overall Down; targets 3; completed 2026-04-08T18:52:48.1632876+00:00", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("adws: overall Up; targets 3; completed 2026-04-08T18:52:47.9237132+00:00", text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("; ad.evotec.xyz=Down", text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(", ad.evotec.xyz=Down", text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("; 3 targets=Up", text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(", 3 targets=Up", text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("No se puede concluir estado saludable o degradado por host", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildNoTextReplFallbackTextForTesting_ReplacesAdMonitoringBoundarySummaryThatClaimsPerDcRowsWereMissing() {
+        var calls = new[] {
+            BuildToolCall("call_1", "ad_monitoring_probe_run", """{"probe_kind":"ldap","targets":["ad0.ad.evotec.xyz","AD1.ad.evotec.xyz","ad2.ad.evotec.xyz"]}"""),
+            BuildToolCall("call_2", "ad_monitoring_probe_run", """{"probe_kind":"adws","targets":["ad0.ad.evotec.xyz","AD1.ad.evotec.xyz","ad2.ad.evotec.xyz"]}"""),
+            BuildToolCall("call_3", "ad_monitoring_probe_run", """{"probe_kind":"replication","targets":["ad0.ad.evotec.xyz","AD1.ad.evotec.xyz","ad2.ad.evotec.xyz"]}""")
+        };
+        var outputs = new[] {
+            new ToolOutput("call_1", """{"ok":true,"probe_kind":"ldap","probe_result":{"status":"Down","completed_utc":"2026-04-08T19:25:09.2874642+00:00","children":[{"target":"ad0.ad.evotec.xyz","status":"Down","error":"ldap unsupported"},{"target":"AD1.ad.evotec.xyz","status":"Down","error":"ldap unsupported"},{"target":"ad2.ad.evotec.xyz","status":"Down","error":"ldap unsupported"}]}}"""),
+            new ToolOutput("call_2", """{"ok":true,"probe_kind":"adws","probe_result":{"status":"Up","completed_utc":"2026-04-08T19:25:09.1888368+00:00","children":[{"target":"ad0.ad.evotec.xyz","status":"Up"},{"target":"AD1.ad.evotec.xyz","status":"Up"},{"target":"ad2.ad.evotec.xyz","status":"Up"}]}}"""),
+            new ToolOutput("call_3", """{"ok":true,"probe_kind":"replication","probe_result":{"status":"Degraded","completed_utc":"2026-04-08T19:25:39.9704542+00:00","children":[{"target":"ad0.ad.evotec.xyz","status":"Up"},{"target":"AD1.ad.evotec.xyz","status":"Degraded","error":"Skipped: previous replication probe still running."},{"target":"ad2.ad.evotec.xyz","status":"Up"}]}}""")
+        };
+
+        var text = InvokeBuildNoTextReplFallbackTextForTesting(
+            assistantDraft: """
+                **AD**
+
+                **Evidence references**
+                - `ad_monitoring_probe_run`
+
+                **Findings**
+                - Later **AD** monitoring covered three DC targets:
+                 - `ad0.ad.evotec.xyz`
+                 - `AD1.ad.evotec.xyz`
+                 - `ad2.ad.evotec.xyz`
+                - LDAP, ADWS, and replication probes were executed across that discovered scope
+
+                **Unresolved blockers**
+                - No per-DC result rows were returned for LDAP, ADWS, or replication
+                - No per-DC statuses, errors, latencies, or detailed results were returned
+                """,
+            toolCalls: calls,
+            toolOutputs: outputs,
+            model: "gpt-test",
+            transport: OpenAITransportKind.Native,
+            baseUrl: null);
+
+        Assert.Contains("Recovered AD monitoring findings from executed tools", text, StringComparison.Ordinal);
+        Assert.Contains("Coverage: 3 distinct DC target(s).", text, StringComparison.Ordinal);
+        Assert.Contains("ldap: overall Down; targets 3; completed 2026-04-08T19:25:09.2874642+00:00", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("adws: overall Up; targets 3; completed 2026-04-08T19:25:09.1888368+00:00", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("replication: overall Degraded; targets 3; completed 2026-04-08T19:25:39.9704542+00:00", text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("No per-DC result rows were returned", text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("No per-DC statuses, errors, latencies, or detailed results were returned", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void BuildNoTextToolOutputRetryPromptForTesting_IncludesCompactCallArgumentsInEvidence() {
         var calls = new[] {
             BuildToolCall("call_1", "eventlog_live_query", """{"machine_name":"AD1.ad.evotec.xyz","log_name":"System","max_events":200,"event_ids":[41,6008]}""")
@@ -838,6 +1075,61 @@ Continue that failure-signature collection across all remaining non-AD0 DCs in t
         Assert.Contains("args: machine_name=AD1.ad.evotec.xyz", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("max_events=200", prompt, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("No reboot markers found", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildNoTextToolOutputRetryPromptForTesting_IncludesDistinctTargetCoverageAndDoesNotTrimLaterHosts() {
+        var calls = new[] {
+            BuildToolCall("call_1", "dnsclientx_ping", """{"target":"contoso-com.mail.protection.outlook.com"}"""),
+            BuildToolCall("call_2", "dnsclientx_ping", """{"target":"ns1-205.azure-dns.com"}"""),
+            BuildToolCall("call_3", "dnsclientx_ping", """{"target":"ns2-205.azure-dns.net"}"""),
+            BuildToolCall("call_4", "dnsclientx_ping", """{"target":"ns3-205.azure-dns.org"}"""),
+            BuildToolCall("call_5", "dnsclientx_ping", """{"target":"ns4-205.azure-dns.info"}"""),
+            BuildToolCall("call_6", "domaindetective_network_probe", """{"host":"ns4-205.azure-dns.info","run_ping":true}""")
+        };
+        var outputs = new[] {
+            new ToolOutput("call_1", """{"ok":true,"summary_markdown":"MX host ping succeeded."}"""),
+            new ToolOutput("call_2", """{"ok":true,"summary_markdown":"NS1 timed out on ICMP."}"""),
+            new ToolOutput("call_3", """{"ok":true,"summary_markdown":"NS2 timed out on ICMP."}"""),
+            new ToolOutput("call_4", """{"ok":true,"summary_markdown":"NS3 timed out on ICMP."}"""),
+            new ToolOutput("call_5", """{"ok":true,"summary_markdown":"NS4 timed out on ICMP."}"""),
+            new ToolOutput("call_6", """{"ok":true,"summary_markdown":"Probe confirmed the same timeout posture for NS4."}""")
+        };
+
+        var prompt = InvokeBuildNoTextToolOutputRetryPromptForTesting(
+            userRequest: "Continue network and resolver checks for all remaining discovered hosts in this turn.",
+            toolCalls: calls,
+            toolOutputs: outputs);
+
+        Assert.Contains("Executed distinct target coverage:", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("contoso-com.mail.protection.outlook.com", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ns1-205.azure-dns.com", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ns2-205.azure-dns.net", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ns3-205.azure-dns.org", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ns4-205.azure-dns.info", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("NS4 timed out on ICMP.", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Probe confirmed the same timeout posture for NS4.", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildNoTextToolOutputRetryPromptForTesting_CondensesMixedEventLogPreviewEvidence() {
+        var calls = new[] {
+            BuildToolCall("call_1", "eventlog_top_events", """{"machine_name":"AD0.ad.evotec.xyz","log_name":"System","max_events":10}"""),
+            BuildToolCall("call_2", "eventlog_top_events", """{"machine_name":"ADRODC.ad.evotec.pl","log_name":"System","max_events":10}""")
+        };
+        var outputs = new[] {
+            new ToolOutput("call_1", """{"ok":true,"log_name":"System","count":10,"truncated":true,"events":[{"machine_name":"AD0.ad.evotec.xyz"}],"discovery_status":{"scope":"remote","log_name":"System","machine_name":"AD0.ad.evotec.xyz","query_mode":"top_events","rows":10,"truncated":true},"summary_markdown":"### Top 10 recent events (preview)\r\n\r\n| Time Created Utc | Id | Record Id |"}"""),
+            new ToolOutput("call_2", """{"ok":true,"log_name":"System","count":0,"truncated":false,"events":[],"discovery_status":{"scope":"remote","log_name":"System","machine_name":"ADRODC.ad.evotec.pl","query_mode":"top_events","rows":0,"truncated":false},"summary_markdown":"### Top 10 recent events (preview)\r\n\r\n| Time Created Utc | Id | Record Id |"}""")
+        };
+
+        var prompt = InvokeBuildNoTextToolOutputRetryPromptForTesting(
+            userRequest: "Continue EventLog evidence across all remaining DCs for this AD scope.",
+            toolCalls: calls,
+            toolOutputs: outputs);
+
+        Assert.Contains("System EventLog top events for `AD0.ad.evotec.xyz` returned 10 row(s); preview truncated.", prompt, StringComparison.Ordinal);
+        Assert.Contains("System EventLog top events for `ADRODC.ad.evotec.pl` returned 0 row(s).", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("| Time Created Utc |", prompt, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

@@ -63,6 +63,11 @@ internal sealed partial class ChatServiceSession {
         var proactiveSkipMutatingCount = state.ProactiveSkipMutatingCount;
         var proactiveSkipReadOnlyCount = state.ProactiveSkipReadOnlyCount;
         var proactiveSkipUnknownCount = state.ProactiveSkipUnknownCount;
+        var visibleUserRequest = string.IsNullOrWhiteSpace(userRequest) ? routedUserRequest : userRequest;
+        var bootstrapOnlyToolActivity = hostDomainIntentBootstrapReplayUsed
+            && HasOnlyHostGeneratedPackPreflightToolActivity(toolCalls, toolOutputs);
+        var priorToolCallsForRecoveryRetry = bootstrapOnlyToolActivity ? 0 : toolCalls.Count;
+        var priorToolOutputsForRecoveryRetry = bootstrapOnlyToolActivity ? 0 : toolOutputs.Count;
 
                 var text = EasyChatResult.FromTurn(turn).Text ?? string.Empty;
                 var controlPayloadDetected = isLocalCompatibleLoopback && LooksLikeRuntimeControlPayloadArtifact(text);
@@ -140,23 +145,23 @@ internal sealed partial class ChatServiceSession {
                     executionContractApplies: executionContractApplies,
                     compactFollowUpTurn: compactFollowUpTurn,
                     toolsAvailable: toolDefs.Count > 0 || fullToolDefs.Length > 0,
-                    priorToolCalls: toolCalls.Count,
-                    priorToolOutputs: toolOutputs.Count,
-                    userRequest: routedUserRequest,
+                    priorToolCalls: priorToolCallsForRecoveryRetry,
+                    priorToolOutputs: priorToolOutputsForRecoveryRetry,
+                    userRequest: visibleUserRequest,
                     assistantDraft: text);
                 if (suppressLocalToolRecoveryRetries) {
                     executionNudgeReason = "local_runtime_recovery_disabled";
                 } else if (!executionNudgeUsed) {
                     if (LooksLikeExecutionAcknowledgeDraft(text)
-                        && AssistantDraftReferencesUserRequest(routedUserRequest, text)) {
+                        && AssistantDraftReferencesUserRequest(visibleUserRequest, text)) {
                         shouldAttemptExecutionNudge = true;
                         executionNudgeReason = "execution_ack_draft_direct_retry";
                     } else {
                         shouldAttemptExecutionNudge = EvaluateToolExecutionNudgeDecision(
-                            userRequest: routedUserRequest,
+                            userRequest: visibleUserRequest,
                             assistantDraft: text,
                             toolsAvailable: toolDefs.Count > 0,
-                            priorToolCalls: toolCalls.Count,
+                            priorToolCalls: priorToolCallsForRecoveryRetry,
                             assistantDraftToolCalls: extracted.Count,
                             usedContinuationSubset: usedContinuationSubset,
                             compactFollowUpHint: compactFollowUpTurn,
@@ -175,16 +180,16 @@ internal sealed partial class ChatServiceSession {
                     }
 
                     TraceToolExecutionNudgeDecision(
-                        userRequest: routedUserRequest,
+                        userRequest: visibleUserRequest,
                         usedContinuationSubset: usedContinuationSubset,
                         toolsAvailable: toolDefs.Count > 0,
-                        priorToolCalls: toolCalls.Count,
+                        priorToolCalls: priorToolCallsForRecoveryRetry,
                         assistantDraftToolCalls: extracted.Count,
                         executionNudgeAlreadyUsed: executionNudgeUsed,
                         shouldAttemptNudge: shouldAttemptExecutionNudge,
                         reason: executionNudgeReason);
                     executionNudgeUsed = true;
-                    var nudgePrompt = BuildToolExecutionNudgePrompt(routedUserRequest, text, toolDefs);
+                    var nudgePrompt = BuildToolExecutionNudgePrompt(visibleUserRequest, text, toolDefs);
                     var nudgeOptions = await CopyChatOptionsWithPromptAwareToolOrderingAndEmitStatusAsync(
                             writer,
                             request.RequestId,
@@ -211,10 +216,10 @@ internal sealed partial class ChatServiceSession {
                 }
 
                 TraceToolExecutionNudgeDecision(
-                    userRequest: routedUserRequest,
+                    userRequest: visibleUserRequest,
                     usedContinuationSubset: usedContinuationSubset,
                     toolsAvailable: toolDefs.Count > 0,
-                    priorToolCalls: toolCalls.Count,
+                    priorToolCalls: priorToolCallsForRecoveryRetry,
                     assistantDraftToolCalls: extracted.Count,
                     executionNudgeAlreadyUsed: executionNudgeUsed,
                     shouldAttemptNudge: false,
@@ -223,11 +228,11 @@ internal sealed partial class ChatServiceSession {
                 var shouldAttemptToolReceiptCorrection = !suppressLocalToolRecoveryRetries
                                                         && !toolReceiptCorrectionUsed
                                                         && ShouldAttemptToolReceiptCorrection(
-                                                            userRequest: routedUserRequest,
+                                                            userRequest: visibleUserRequest,
                                                             assistantDraft: text,
                                                             tools: toolDefs,
-                                                            priorToolCalls: toolCalls.Count,
-                                                            priorToolOutputs: toolOutputs.Count,
+                                                            priorToolCalls: priorToolCallsForRecoveryRetry,
+                                                            priorToolOutputs: priorToolOutputsForRecoveryRetry,
                                                             assistantDraftToolCalls: extracted.Count);
 
                 var shouldAttemptWatchdog = false;
@@ -236,11 +241,11 @@ internal sealed partial class ChatServiceSession {
                     noToolExecutionWatchdogReason = "local_runtime_recovery_disabled";
                 } else {
                     shouldAttemptWatchdog = ShouldAttemptNoToolExecutionWatchdog(
-                        userRequest: routedUserRequest,
+                        userRequest: visibleUserRequest,
                         assistantDraft: text,
                         toolsAvailable: toolDefs.Count > 0,
-                        priorToolCalls: toolCalls.Count,
-                        priorToolOutputs: toolOutputs.Count,
+                        priorToolCalls: priorToolCallsForRecoveryRetry,
+                        priorToolOutputs: priorToolOutputsForRecoveryRetry,
                         assistantDraftToolCalls: extracted.Count,
                         continuationFollowUpTurn: continuationFollowUpTurn,
                         compactFollowUpTurn: compactFollowUpTurn,
@@ -250,11 +255,11 @@ internal sealed partial class ChatServiceSession {
                         out noToolExecutionWatchdogReason);
                 }
                 TraceNoToolExecutionWatchdogDecision(
-                    userRequest: routedUserRequest,
+                    userRequest: visibleUserRequest,
                     executionContractApplies: executionContractApplies,
                     toolsAvailable: toolDefs.Count > 0,
-                    priorToolCalls: toolCalls.Count,
-                    priorToolOutputs: toolOutputs.Count,
+                    priorToolCalls: priorToolCallsForRecoveryRetry,
+                    priorToolOutputs: priorToolOutputsForRecoveryRetry,
                     assistantDraftToolCalls: extracted.Count,
                     continuationFollowUpTurn: continuationFollowUpTurn,
                     compactFollowUpTurn: compactFollowUpTurn,
@@ -324,7 +329,7 @@ internal sealed partial class ChatServiceSession {
                             turnToken,
                             planExecuteReviewLoop,
                             modelHeartbeatSeconds,
-                            routedUserRequest,
+                            visibleUserRequest,
                             text,
                             toolDefs,
                             promptRecoveryDecision)
@@ -334,14 +339,24 @@ internal sealed partial class ChatServiceSession {
 
                 var postPromptExecutionDecision = ResolveNoExtractedRecoveryPostPromptExecutionDecision(
                     threadId: threadId,
-                    userRequest: routedUserRequest,
+                    visibleUserRequest: visibleUserRequest,
+                    routedUserRequest: routedUserRequest,
                     toolDefinitions: fullToolDefs.Length > 0 ? fullToolDefs : toolDefs,
                     executionContractApplies: executionContractApplies,
                     hostDomainIntentBootstrapReplayUsed: hostDomainIntentBootstrapReplayUsed,
+                    bootstrapOnlyToolActivity: bootstrapOnlyToolActivity,
                     priorToolCalls: toolCalls.Count,
                     priorToolOutputs: toolOutputs.Count);
                 if (postPromptExecutionDecision.Kind != NoExtractedRecoveryExecutionDecisionKind.None) {
                     hostDomainIntentBootstrapReplayUsed = true;
+                    if (postPromptExecutionDecision.Kind == NoExtractedRecoveryExecutionDecisionKind.HostDomainIntentBootstrapReplay) {
+                        // Host bootstrap establishes scope but should not consume the pre-bootstrap
+                        // empty-draft recovery budget for the now-scoped operational follow-up round.
+                        executionNudgeUsed = false;
+                        noToolExecutionWatchdogUsed = false;
+                        noToolExecutionWatchdogReason = "not_evaluated";
+                    }
+
                     if (postPromptExecutionDecision.ExpandToFullToolAvailability
                         && fullToolDefs.Length > 0
                         && toolDefs.Count != fullToolDefs.Length) {
@@ -414,5 +429,29 @@ internal sealed partial class ChatServiceSession {
             state.ProactiveSkipReadOnlyCount = proactiveSkipReadOnlyCount;
             state.ProactiveSkipUnknownCount = proactiveSkipUnknownCount;
         }
+    }
+
+    private static bool HasOnlyHostGeneratedPackPreflightToolActivity(
+        IReadOnlyList<ToolCallDto> toolCalls,
+        IReadOnlyList<ToolOutputDto> toolOutputs) {
+        var sawActivity = false;
+
+        for (var i = 0; i < toolCalls.Count; i++) {
+            if (!IsHostGeneratedPackPreflightCallId(toolCalls[i]?.CallId ?? string.Empty)) {
+                return false;
+            }
+
+            sawActivity = true;
+        }
+
+        for (var i = 0; i < toolOutputs.Count; i++) {
+            if (!IsHostGeneratedPackPreflightCallId(toolOutputs[i]?.CallId ?? string.Empty)) {
+                return false;
+            }
+
+            sawActivity = true;
+        }
+
+        return sawActivity;
     }
 }

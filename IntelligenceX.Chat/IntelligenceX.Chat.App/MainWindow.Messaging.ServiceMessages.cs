@@ -453,9 +453,11 @@ public sealed partial class MainWindow : Window {
                     requiresInteractiveSignIn: true,
                     queuedPromptCount: queuedPromptCount,
                     loginInProgress: _loginInProgress)) {
+                _queuedPromptUsageLimitBypassAfterSwitchAccount = true;
+                var activeUsageLabel = ResolveActiveUsageLabelForDisplay();
                 SetInteractiveAuthenticationKnown(isAuthenticated: true);
                 await SetStatusAsync(SessionStatus.ForConnectedAuth(isAuthenticated: true)).ConfigureAwait(false);
-                await SetActivityAsync("Sign-in callback succeeded. Retrying queued prompt while account verification catches up.").ConfigureAwait(false);
+                await SetActivityAsync("Sign-in callback succeeded. Retrying queued prompt on " + activeUsageLabel + " while account verification catches up.").ConfigureAwait(false);
                 await HandlePostLoginCompletionAsync().ConfigureAwait(false);
                 return;
             }
@@ -508,13 +510,40 @@ public sealed partial class MainWindow : Window {
             return;
         }
 
-        var queuedTotal = GetQueuedTurnCount() + GetQueuedPromptAfterLoginCount();
+        var queuedPromptCount = GetQueuedPromptAfterLoginCount();
+        int? retryAfterMinutes = null;
+        var usageLimitStillBlocked = queuedPromptCount > 0
+                                     && _queueAutoDispatchEnabled
+                                     && IsActiveUsageLimitDispatchBlocked(out retryAfterMinutes);
+        if (ShouldKeepQueuedPromptUsageLimitStateAfterLogin(
+                dispatched,
+                queuedPromptCount,
+                _queueAutoDispatchEnabled,
+                usageLimitStillBlocked)) {
+            var activeUsageLabel = ResolveActiveUsageLabelForDisplay();
+            await SetStatusAsync(BuildUsageLimitQueuedPromptStatus(retryAfterMinutes)).ConfigureAwait(false);
+            await SetActivityAsync(BuildUsageLimitQueuedPromptActivity(activeUsageLabel, retryAfterMinutes)).ConfigureAwait(false);
+            return;
+        }
+
+        var queuedTotal = GetQueuedTurnCount() + queuedPromptCount;
         if (queuedTotal > 0 && !_queueAutoDispatchEnabled) {
             await SetStatusAsync($"Queued turns paused ({queuedTotal} waiting).").ConfigureAwait(false);
             return;
         }
 
         await MaybeStartModelKickoffAsync().ConfigureAwait(false);
+    }
+
+    internal static bool ShouldKeepQueuedPromptUsageLimitStateAfterLogin(
+        bool dispatched,
+        int queuedPromptCount,
+        bool queueAutoDispatchEnabled,
+        bool usageLimitStillBlocked) {
+        return !dispatched
+               && queuedPromptCount > 0
+               && queueAutoDispatchEnabled
+               && usageLimitStillBlocked;
     }
 
     private void ApplyTurnMetrics(ChatMetricsMessage metrics) {

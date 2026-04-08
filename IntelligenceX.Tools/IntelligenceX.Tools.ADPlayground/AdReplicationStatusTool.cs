@@ -44,7 +44,22 @@ public sealed class AdReplicationStatusTool : ActiveDirectoryToolBase, ITool {
                 ("health_only", ToolSchema.Boolean("When true, returns only non-healthy replication rows.")),
                 ("max_results", ToolSchema.Integer("Maximum rows to return (capped).")))
             .WithTableViewOptions()
-            .NoAdditionalProperties());
+            .NoAdditionalProperties(),
+        category: "active_directory",
+        tags: new[] {
+            "pack:active_directory",
+            "intent:replication",
+            "intent:replication_status",
+            "intent:replikacja",
+            "intent:status_replikacji",
+            "scope:domain_controller",
+            "scope:forest"
+        },
+        aliases: new[] {
+            new ToolAliasDefinition("ad_replication_health", "Inspect AD replication health rows for selected domain controllers."),
+            new ToolAliasDefinition("ad_replikacja_status", "Pokaz status replikacji dla kontrolerow domeny."),
+            new ToolAliasDefinition("ad_replikacja_kontrolery", "Pokaz status replikacji dla wykrytych kontrolerow domeny.")
+        });
 
     private sealed record AdReplicationStatusResult(
         bool HealthOnly,

@@ -587,9 +587,11 @@ public sealed partial class ChatServiceRoutingTrimTests {
         var result = session.ResolveNoExtractedRecoveryPostPromptExecutionDecisionForTesting(
             threadId: "thread-domain-bootstrap",
             userRequest: "compare domain controller state",
+            routedUserRequest: null,
             toolDefinitions: registry.GetDefinitions(),
             executionContractApplies: false,
             hostDomainIntentBootstrapReplayUsed: false,
+            bootstrapOnlyToolActivity: false,
             priorToolCalls: 0,
             priorToolOutputs: 0);
 
@@ -613,9 +615,11 @@ public sealed partial class ChatServiceRoutingTrimTests {
         var result = session.ResolveNoExtractedRecoveryPostPromptExecutionDecisionForTesting(
             threadId: "thread-domain-bootstrap-contract",
             userRequest: "run it",
+            routedUserRequest: null,
             toolDefinitions: registry.GetDefinitions(),
             executionContractApplies: true,
             hostDomainIntentBootstrapReplayUsed: false,
+            bootstrapOnlyToolActivity: false,
             priorToolCalls: 0,
             priorToolOutputs: 0);
 
@@ -623,6 +627,222 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Equal("no_post_prompt_execution_selected", result.Reason);
         Assert.Null(result.ToolName);
         Assert.False(result.ExpandToFullToolAvailability);
+    }
+
+    [Fact]
+    public void ResolveNoExtractedRecoveryPostPromptExecutionDecisionForTesting_SelectsOperationalReplayAfterBootstrapOnlyActivity() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var registry = new ToolRegistry();
+        registry.Register(new RecoveryExecutionStubTool(
+            "ad_environment_discover",
+            CreateRecoveryRoutingContract("active_directory", ToolRoutingTaxonomy.RoleEnvironmentDiscover),
+            tags: new[] { "domain_family:ad_domain" }));
+        registry.Register(new RecoveryExecutionStubTool(
+            "ad_replication_summary",
+            CreateRecoveryRoutingContract("active_directory", ToolRoutingTaxonomy.RoleOperational),
+            tags: new[] { "domain_family:ad_domain" }));
+        registry.Register(new RecoveryExecutionStubTool(
+            "ad_monitoring_probe_run",
+            CreateRecoveryRoutingContract("active_directory", ToolRoutingTaxonomy.RoleOperational),
+            tags: new[] { "domain_family:ad_domain" }));
+        SetSessionRegistry(session, registry);
+        session.SetPreferredDomainIntentFamilyForTesting("thread-domain-operational", ToolSelectionMetadata.DomainIntentFamilyAd);
+
+        var result = session.ResolveNoExtractedRecoveryPostPromptExecutionDecisionForTesting(
+            threadId: "thread-domain-operational",
+            userRequest: "Check AD replication forest status and summarize in UTC.",
+            routedUserRequest: null,
+            toolDefinitions: registry.GetDefinitions(),
+            executionContractApplies: false,
+            hostDomainIntentBootstrapReplayUsed: true,
+            bootstrapOnlyToolActivity: true,
+            priorToolCalls: 1,
+            priorToolOutputs: 1);
+
+        Assert.Equal("HostDomainIntentOperationalReplay", result.Kind);
+        Assert.Contains("domain_intent_family_ad_domain_operational", result.Reason, System.StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("ad_replication_summary", result.ToolName);
+        Assert.True(result.ExpandToFullToolAvailability);
+    }
+
+    [Fact]
+    public void TryBuildHostDomainIntentOperationalReplayCallForTesting_PrefersLdapMonitoringProbeForHostScopedFollowUp() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var registry = new ToolRegistry();
+        registry.Register(new RecoveryExecutionStubTool(
+            "ad_environment_discover",
+            CreateRecoveryRoutingContract("active_directory", ToolRoutingTaxonomy.RoleEnvironmentDiscover),
+            tags: new[] { "domain_family:ad_domain" }));
+        registry.Register(new RecoveryExecutionStubTool(
+            "ad_connectivity_probe",
+            CreateRecoveryRoutingContract("active_directory", ToolRoutingTaxonomy.RoleOperational),
+            schema: ToolSchema.Object().NoAdditionalProperties(),
+            tags: new[] { "domain_family:ad_domain" }));
+        registry.Register(new RecoveryExecutionStubTool(
+            "ad_scope_discovery",
+            CreateRecoveryRoutingContract("active_directory", ToolRoutingTaxonomy.RoleOperational),
+            schema: ToolSchema.Object(
+                    ("discovery_fallback", ToolSchema.String("fallback")),
+                    ("domain_controller", ToolSchema.String("dc")))
+                .Required("discovery_fallback")
+                .NoAdditionalProperties(),
+            tags: new[] { "domain_family:ad_domain" }));
+        registry.Register(new RecoveryExecutionStubTool(
+            "ad_monitoring_probe_run",
+            CreateRecoveryRoutingContract("active_directory", ToolRoutingTaxonomy.RoleOperational),
+            schema: ToolSchema.Object(
+                    ("probe_kind", ToolSchema.String("probe")),
+                    ("domain_controller", ToolSchema.String("dc")),
+                    ("discovery_fallback", ToolSchema.String("fallback")))
+                .Required("probe_kind")
+                .NoAdditionalProperties(),
+            tags: new[] { "domain_family:ad_domain" }));
+        SetSessionRegistry(session, registry);
+        session.SetPreferredDomainIntentFamilyForTesting("thread-domain-ldap", ToolSelectionMetadata.DomainIntentFamilyAd);
+        session.SeedThreadToolEvidenceEntryForTesting(
+            threadId: "thread-domain-ldap",
+            toolName: "ad_environment_discover",
+            argumentsJson: "{}",
+            output: """{"domain_controllers":["AD0.ad.evotec.xyz","AD2.ad.evotec.xyz","DC1.ad.evotec.pl"]}""",
+            summaryMarkdown: string.Empty,
+            seenUtcTicks: System.DateTime.UtcNow.Ticks);
+
+        var built = session.TryBuildHostDomainIntentOperationalReplayCallForTesting(
+            threadId: "thread-domain-ldap",
+            userRequest: "A mozesz sprawdzic czy AD2 odpowiada LDAP i czy wszystko tam sie ladnie uklada?",
+            toolDefinitions: registry.GetDefinitions(),
+            out var call,
+            out var reason);
+
+        Assert.True(built);
+        Assert.Equal("ad_monitoring_probe_run", call.Name);
+        Assert.Contains("ldap_probe_host_inferred", reason, System.StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"probe_kind\":\"ldap\"", call.Input, System.StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"domain_controller\":\"AD2.ad.evotec.xyz\"", call.Input, System.StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("\"discovery_fallback\":\"current_forest\"", call.Input, System.StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void TryBuildHostDomainIntentOperationalReplayCallForTesting_PrefersReplicationTopologyForArtifactOnlyVisualFollowUp() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var registry = new ToolRegistry();
+        registry.Register(new RecoveryExecutionStubTool(
+            "ad_environment_discover",
+            CreateRecoveryRoutingContract("active_directory", ToolRoutingTaxonomy.RoleEnvironmentDiscover),
+            tags: new[] { "domain_family:ad_domain" }));
+        registry.Register(new RecoveryExecutionStubTool(
+            "ad_replication_summary",
+            CreateRecoveryRoutingContract("active_directory", ToolRoutingTaxonomy.RoleOperational),
+            schema: ToolSchema.Object().NoAdditionalProperties(),
+            tags: new[] { "domain_family:ad_domain" }));
+        registry.Register(new RecoveryExecutionStubTool(
+            "ad_replikacja_wykres",
+            CreateRecoveryRoutingContract("active_directory", ToolRoutingTaxonomy.RoleOperational),
+            schema: ToolSchema.Object().NoAdditionalProperties(),
+            tags: new[] { "domain_family:ad_domain" }));
+        SetSessionRegistry(session, registry);
+        session.SetPreferredDomainIntentFamilyForTesting("thread-visual-topology", ToolSelectionMetadata.DomainIntentFamilyAd);
+        session.RememberWorkingMemoryCheckpointForTesting(
+            threadId: "thread-visual-topology",
+            intentAnchor: "Continue the same replication review.",
+            domainIntentFamily: ToolSelectionMetadata.DomainIntentFamilyAd,
+            recentToolNames: new[] { "ad_replikacja_forestu" },
+            recentEvidenceSnippets: new[] { "ad_replikacja_forestu: forest replication is healthy." },
+            priorAnswerPlanUserGoal: "Show the topology from the current replication evidence.",
+            priorAnswerPlanPrimaryArtifact: "table",
+            priorAnswerPlanPreferredToolNames: new[] { "ad_replikacja_forestu" });
+
+        var built = session.TryBuildHostDomainIntentOperationalReplayCallForTesting(
+            threadId: "thread-visual-topology",
+            userRequest: "Pokaz to na wykresie topologii replikacji.",
+            toolDefinitions: registry.GetDefinitions(),
+            out var call,
+            out var reason);
+
+        Assert.True(built);
+        Assert.Equal("ad_replikacja_wykres", call.Name);
+        Assert.Contains("artifact_visual_replication_topology", reason, System.StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void TryBuildHostDomainIntentOperationalReplayCallForTesting_FallsBackToReplicationSummaryWhenTopologyToolUnavailable() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var registry = new ToolRegistry();
+        registry.Register(new RecoveryExecutionStubTool(
+            "ad_environment_discover",
+            CreateRecoveryRoutingContract("active_directory", ToolRoutingTaxonomy.RoleEnvironmentDiscover),
+            tags: new[] { "domain_family:ad_domain" }));
+        registry.Register(new RecoveryExecutionStubTool(
+            "ad_replication_summary",
+            CreateRecoveryRoutingContract("active_directory", ToolRoutingTaxonomy.RoleOperational),
+            schema: ToolSchema.Object().NoAdditionalProperties(),
+            tags: new[] { "domain_family:ad_domain" }));
+        SetSessionRegistry(session, registry);
+        session.SetPreferredDomainIntentFamilyForTesting("thread-visual-topology-fallback", ToolSelectionMetadata.DomainIntentFamilyAd);
+        session.RememberWorkingMemoryCheckpointForTesting(
+            threadId: "thread-visual-topology-fallback",
+            intentAnchor: "Continue the same replication review.",
+            domainIntentFamily: ToolSelectionMetadata.DomainIntentFamilyAd,
+            recentToolNames: new[] { "ad_replikacja_forestu" },
+            recentEvidenceSnippets: new[] { "ad_replikacja_forestu: forest replication is healthy." },
+            priorAnswerPlanUserGoal: "Show the topology from the current replication evidence.",
+            priorAnswerPlanPrimaryArtifact: "table",
+            priorAnswerPlanPreferredToolNames: new[] { "ad_replikacja_forestu" });
+
+        var built = session.TryBuildHostDomainIntentOperationalReplayCallForTesting(
+            threadId: "thread-visual-topology-fallback",
+            userRequest: "Pokaz to na wykresie topologii replikacji.",
+            toolDefinitions: registry.GetDefinitions(),
+            out var call,
+            out var reason);
+
+        Assert.True(built);
+        Assert.Equal("ad_replication_summary", call.Name);
+        Assert.Contains("artifact_visual_replication_summary", reason, System.StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void ResolveNoExtractedRecoveryPostPromptExecutionDecisionForTesting_PrefersFreshVisibleRequestOverCarryForwardRoutedRequest() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var registry = new ToolRegistry();
+        registry.Register(new RecoveryExecutionStubTool(
+            "ad_environment_discover",
+            CreateRecoveryRoutingContract("active_directory", ToolRoutingTaxonomy.RoleEnvironmentDiscover),
+            tags: new[] { "domain_family:ad_domain" }));
+        registry.Register(new RecoveryExecutionStubTool(
+            "ad_monitoring_probe_run",
+            CreateRecoveryRoutingContract("active_directory", ToolRoutingTaxonomy.RoleOperational),
+            schema: ToolSchema.Object(
+                    ("probe_kind", ToolSchema.String("probe")),
+                    ("domain_controller", ToolSchema.String("dc")),
+                    ("discovery_fallback", ToolSchema.String("fallback")))
+                .Required("probe_kind")
+                .NoAdditionalProperties(),
+            tags: new[] { "domain_family:ad_domain" }));
+        SetSessionRegistry(session, registry);
+        session.SetPreferredDomainIntentFamilyForTesting("thread-fresh-visible", ToolSelectionMetadata.DomainIntentFamilyAd);
+        session.SeedThreadToolEvidenceEntryForTesting(
+            threadId: "thread-fresh-visible",
+            toolName: "ad_environment_discover",
+            argumentsJson: "{}",
+            output: """{"domain_controllers":["AD2.ad.evotec.xyz"]}""",
+            summaryMarkdown: string.Empty,
+            seenUtcTicks: System.DateTime.UtcNow.Ticks);
+
+        var result = session.ResolveNoExtractedRecoveryPostPromptExecutionDecisionForTesting(
+            threadId: "thread-fresh-visible",
+            userRequest: "aale to chyba masz toole do event logow?",
+            routedUserRequest: "A mozesz sprawdzic czy AD2 odpowiada LDAP i czy wszystko tam sie ladnie uklada?",
+            toolDefinitions: registry.GetDefinitions(),
+            executionContractApplies: false,
+            hostDomainIntentBootstrapReplayUsed: true,
+            bootstrapOnlyToolActivity: true,
+            priorToolCalls: 1,
+            priorToolOutputs: 1);
+
+        Assert.Equal("None", result.Kind);
+        Assert.Equal("no_post_prompt_execution_selected", result.Reason);
+        Assert.Null(result.ToolName);
     }
 
     private static IReadOnlyList<ToolDefinition> CreateCarryoverToolDefinitions() {
@@ -643,8 +863,17 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     private sealed class RecoveryExecutionStubTool : ITool {
-        public RecoveryExecutionStubTool(string name, ToolRoutingContract routing, IReadOnlyList<string>? tags = null) {
-            Definition = new ToolDefinition(name, description: "recovery execution stub", routing: routing, tags: tags);
+        public RecoveryExecutionStubTool(
+            string name,
+            ToolRoutingContract routing,
+            JsonObject? schema = null,
+            IReadOnlyList<string>? tags = null) {
+            Definition = new ToolDefinition(
+                name,
+                description: "recovery execution stub",
+                parameters: schema,
+                routing: routing,
+                tags: tags);
         }
 
         public ToolDefinition Definition { get; }

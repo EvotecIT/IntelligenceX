@@ -40,6 +40,29 @@ $ErrorActionPreference = 'Stop'
 
 function Write-Header($text) { Write-Host "`n=== $text ===" -ForegroundColor Cyan }
 function Write-Step($text)   { Write-Host "[+] $text" -ForegroundColor Yellow }
+function Test-HasExplicitBuiltInToolProbeOverride([string[]] $arguments) {
+    foreach ($argument in @($arguments)) {
+        if ([string]::IsNullOrWhiteSpace($argument)) {
+            continue
+        }
+
+        $candidate = $argument.Trim()
+        if ($candidate.Equals('--built-in-tool-probe-path', [System.StringComparison]::OrdinalIgnoreCase)) {
+            return $true
+        }
+        if ($candidate.Equals('--enable-workspace-built-in-tool-output-probing', [System.StringComparison]::OrdinalIgnoreCase)) {
+            return $true
+        }
+        if ($candidate.Equals('--disable-workspace-built-in-tool-output-probing', [System.StringComparison]::OrdinalIgnoreCase)) {
+            return $true
+        }
+        if ($candidate.StartsWith('--built-in-tool-probe-path=', [System.StringComparison]::OrdinalIgnoreCase)) {
+            return $true
+        }
+    }
+
+    return $false
+}
 
 $repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $hostProject = Join-Path $repoRoot 'IntelligenceX.Chat\IntelligenceX.Chat.Host\IntelligenceX.Chat.Host.csproj'
@@ -155,6 +178,9 @@ if (-not [string]::IsNullOrWhiteSpace($ScenarioOutput)) {
 }
 if ($ScenarioContinueOnError) {
     $runArgs += '--scenario-continue-on-error'
+}
+if (-not (Test-HasExplicitBuiltInToolProbeOverride -arguments $ExtraArgs)) {
+    $runArgs += '--enable-workspace-built-in-tool-output-probing'
 }
 if ($ExtraArgs -and $ExtraArgs.Count -gt 0) {
     $runArgs += $ExtraArgs

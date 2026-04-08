@@ -55,4 +55,18 @@ public sealed class AssistantTurnOutcomeFormatterTests {
         Assert.Contains("max rounds: 3", text);
         Assert.Contains("preferred next step", text);
     }
+
+    /// <summary>
+    /// Ensures usage-limit outcomes name the affected account when that context is available.
+    /// </summary>
+    [Fact]
+    public void Format_RendersUsageLimitWithAccountLabel() {
+        var text = AssistantTurnOutcomeFormatter.Format(
+            AssistantTurnOutcome.UsageLimit(
+                "Retry in about 15 minute.",
+                "ChatGPT (przemyslaw.klys+openai@evotec.pl)"));
+
+        Assert.Contains("ChatGPT usage limit reached for ChatGPT (przemyslaw.klys+openai@evotec.pl).", text);
+        Assert.Contains("retry in about 15 minute", text, StringComparison.OrdinalIgnoreCase);
+    }
 }

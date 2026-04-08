@@ -36,6 +36,9 @@ public sealed class SystemNoticeFormatterTests {
         Assert.Equal(
             "Prompt queued for retry. Use **Switch Account** in the top-right menu; after sign-in, the prompt will run automatically.",
             SystemNoticeFormatter.Format(SystemNotice.PromptQueuedAfterUsageLimit()));
+        Assert.Equal(
+            "Prompt queued for retry because ChatGPT (przemyslaw.klys+openai@evotec.pl) hit its usage limit. Use **Switch Account** in the top-right menu; after sign-in, the prompt will run automatically.",
+            SystemNoticeFormatter.Format(SystemNotice.PromptQueuedAfterUsageLimit("ChatGPT (przemyslaw.klys+openai@evotec.pl)")));
     }
 
     /// <summary>

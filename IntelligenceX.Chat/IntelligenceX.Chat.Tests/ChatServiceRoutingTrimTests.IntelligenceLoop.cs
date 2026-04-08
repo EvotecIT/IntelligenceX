@@ -583,6 +583,28 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ResolveReviewedAssistantDraft_StripsAnswerPlanWhenMarkerUsesSpacedProtocolFormatting() {
+        var draft = """
+            [Answer progression plan]
+            ix: answer-plan: v1
+            user_goal: show the topology
+            resolved_so_far: discovery is already complete
+            unresolved_now: none
+            advances_current_ask: true
+            advance_reason: the visible summary is ready
+
+            Here is the cleaned-up topology summary.
+            """;
+
+        var reviewedDraft = ChatServiceSession.ResolveReviewedAssistantDraft(draft);
+
+        Assert.True(reviewedDraft.AnswerPlan.HasPlan);
+        Assert.Equal("show the topology", reviewedDraft.AnswerPlan.UserGoal);
+        Assert.DoesNotContain("answer-plan", reviewedDraft.VisibleText, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("Here is the cleaned-up topology summary.", reviewedDraft.VisibleText);
+    }
+
+    [Fact]
     public void ResolveReviewedAssistantDraft_InfersAllowCachedEvidenceReuseWhenPreferFlagIsPresent() {
         var draft = """
             [Answer progression plan]
@@ -937,6 +959,48 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         Assert.Contains("Recovered findings from executed tools", text, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("... and 2 more tool output(s).", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ResolveAssistantTextFromRequestedArtifactToolOutputsFallback_UsesCompatibleVisualSummaryWhenDraftMissesArtifact() {
+        var text = ChatServiceSession.ResolveAssistantTextFromRequestedArtifactToolOutputsFallback(
+            userRequest: "Pokaz to na wykresie topologii replikacji.",
+            assistantDraft: "Replikacja jest zdrowa, ale bez wykresu.",
+            toolOutputs: new[] {
+                new ToolOutputDto {
+                    CallId = "call-topology",
+                    Ok = true,
+                    Output = """{"ok":true}""",
+                    SummaryMarkdown = """
+                        ### Replication Topology
+
+                        ```mermaid
+                        flowchart LR
+                            ad0 --> ad1
+                        ```
+                        """
+                }
+            });
+
+        Assert.Contains("```mermaid", text, StringComparison.Ordinal);
+        Assert.Contains("flowchart LR", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ResolveAssistantTextFromRequestedArtifactToolOutputsFallback_PreservesDraftWhenSummaryDoesNotSatisfyArtifact() {
+        var text = ChatServiceSession.ResolveAssistantTextFromRequestedArtifactToolOutputsFallback(
+            userRequest: "Pokaz to na wykresie topologii replikacji.",
+            assistantDraft: "Replikacja jest zdrowa, ale bez wykresu.",
+            toolOutputs: new[] {
+                new ToolOutputDto {
+                    CallId = "call-summary",
+                    Ok = true,
+                    Output = """{"ok":true}""",
+                    SummaryMarkdown = "Tabela jest gotowa, ale nie zawiera diagramu."
+                }
+            });
+
+        Assert.Equal("Replikacja jest zdrowa, ale bez wykresu.", text);
     }
 
     [Fact]

@@ -350,11 +350,16 @@ public sealed partial class MainWindow : Window {
 
         var target = FindConversationById(normalized);
         if (target is null) {
-            await SendPromptAsync(text, normalized, queuedAtUtc, skipUserBubble).ConfigureAwait(false);
-            return;
+            target = CreateConversationRuntime(DefaultConversationTitle, normalized);
+            _conversations.Add(target);
+            TrimConversationsToLimit();
+            ActivateConversation(target.Id);
+            _modelKickoffAttempted = _messages.Count > 0;
+            _autoSignInAttempted = _appState.OnboardingCompleted || AnyConversationHasMessages();
+        } else {
+            await SwitchConversationAsync(target.Id).ConfigureAwait(false);
         }
 
-        await SwitchConversationAsync(target.Id).ConfigureAwait(false);
         await SendPromptAsync(text, normalized, queuedAtUtc, skipUserBubble).ConfigureAwait(false);
     }
 
@@ -766,12 +771,16 @@ public sealed partial class MainWindow : Window {
         return SessionStatusFormatter.Format(SessionStatus.UsageLimitReached());
     }
 
-    private static string BuildUsageLimitQueuedPromptActivity(int? retryAfterMinutes) {
+    private static string BuildUsageLimitQueuedPromptActivity(string? accountLabel, int? retryAfterMinutes) {
+        var normalizedAccountLabel = (accountLabel ?? string.Empty).Trim();
+        var accountText = normalizedAccountLabel.Length == 0
+            ? "this account"
+            : normalizedAccountLabel;
         if (retryAfterMinutes.HasValue && retryAfterMinutes.Value > 0) {
-            return "Queued prompt paused by account limit (" + retryAfterMinutes.Value + "m remaining). Use Switch Account to run now.";
+            return "Queued prompt paused because " + accountText + " is usage-limited (" + retryAfterMinutes.Value + "m remaining). Use Switch Account to run now.";
         }
 
-        return "Queued prompt paused by account limit. Use Switch Account to run now.";
+        return "Queued prompt paused because " + accountText + " is usage-limited. Use Switch Account to run now.";
     }
 
     private bool IsTurnDispatchInProgress() {
@@ -853,8 +862,9 @@ public sealed partial class MainWindow : Window {
             if (TryConsumeQueuedPromptUsageLimitBypassAfterSwitchAccount()) {
                 ClearUsageLimitDispatchBlockForActiveAccount();
             } else {
+                var activeUsageLabel = ResolveActiveUsageLabelForDisplay();
                 await SetStatusAsync(BuildUsageLimitQueuedPromptStatus(retryAfterMinutes)).ConfigureAwait(false);
-                await SetActivityAsync(BuildUsageLimitQueuedPromptActivity(retryAfterMinutes)).ConfigureAwait(false);
+                await SetActivityAsync(BuildUsageLimitQueuedPromptActivity(activeUsageLabel, retryAfterMinutes)).ConfigureAwait(false);
                 return false;
             }
         } else {
@@ -933,8 +943,9 @@ public sealed partial class MainWindow : Window {
         }
 
         if (queuedSignIn > 0 && IsActiveUsageLimitDispatchBlocked(out var retryAfterMinutes)) {
+            var activeUsageLabel = ResolveActiveUsageLabelForDisplay();
             await SetStatusAsync(BuildUsageLimitQueuedPromptStatus(retryAfterMinutes)).ConfigureAwait(false);
-            await SetActivityAsync(BuildUsageLimitQueuedPromptActivity(retryAfterMinutes)).ConfigureAwait(false);
+            await SetActivityAsync(BuildUsageLimitQueuedPromptActivity(activeUsageLabel, retryAfterMinutes)).ConfigureAwait(false);
             return;
         }
 

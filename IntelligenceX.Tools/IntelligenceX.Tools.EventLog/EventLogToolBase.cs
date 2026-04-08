@@ -15,6 +15,8 @@ namespace IntelligenceX.Tools.EventLog;
 /// Base class for event log tools with safe-by-default path resolution.
 /// </summary>
 public abstract class EventLogToolBase : ToolBase {
+    private const string PlatformNotSupportedErrorCode = "platform_not_supported";
+
     /// <summary>
     /// Shared default remote session timeout in milliseconds.
     /// </summary>
@@ -88,7 +90,12 @@ public abstract class EventLogToolBase : ToolBase {
         EventCatalogFailure? failure,
         string? machineName,
         string listingKind) {
-        var errorCode = ToolFailureMapper.MapCode(failure?.Kind.ToString(), fallbackErrorCode: "query_failed");
+        var platformNotSupported = IsPlatformNotSupportedFailure(
+            failureKindName: failure?.Kind.ToString(),
+            failureMessage: failure?.Message);
+        var errorCode = platformNotSupported
+            ? PlatformNotSupportedErrorCode
+            : ToolFailureMapper.MapCode(failure?.Kind.ToString(), fallbackErrorCode: "query_failed");
         var normalizedMachine = NormalizeOptionalMachineName(machineName);
         var remote = normalizedMachine is not null;
         var normalizedListingKind = string.IsNullOrWhiteSpace(listingKind) ? "event log catalog" : listingKind.Trim();
@@ -105,6 +112,7 @@ public abstract class EventLogToolBase : ToolBase {
             errorCode: errorCode,
             remote: remote,
             machineName: normalizedMachine,
+            platformNotSupported: platformNotSupported,
             includeChannelCatalogHint: false,
             includeLiveScopeHint: false,
             includeEvtxFallbackHint: true);
@@ -171,7 +179,10 @@ public abstract class EventLogToolBase : ToolBase {
         string? failureMessage,
         string? machineName,
         string? logName) {
-        var errorCode = ToolFailureMapper.MapCode(failureKindName, fallbackErrorCode: "query_failed");
+        var platformNotSupported = IsPlatformNotSupportedFailure(failureKindName, failureMessage);
+        var errorCode = platformNotSupported
+            ? PlatformNotSupportedErrorCode
+            : ToolFailureMapper.MapCode(failureKindName, fallbackErrorCode: "query_failed");
         var normalizedMachine = NormalizeOptionalMachineName(machineName);
         var normalizedLogName = string.IsNullOrWhiteSpace(logName) ? "requested event log channel" : logName.Trim();
         var remote = normalizedMachine is not null;
@@ -188,6 +199,7 @@ public abstract class EventLogToolBase : ToolBase {
             errorCode: errorCode,
             remote: remote,
             machineName: normalizedMachine,
+            platformNotSupported: platformNotSupported,
             includeChannelCatalogHint: true,
             includeLiveScopeHint: true,
             includeEvtxFallbackHint: true);
@@ -210,10 +222,26 @@ public abstract class EventLogToolBase : ToolBase {
         string errorCode,
         bool remote,
         string? machineName,
+        bool platformNotSupported,
         bool includeChannelCatalogHint,
         bool includeLiveScopeHint,
         bool includeEvtxFallbackHint) {
         var hints = new List<string>(6);
+        if (platformNotSupported) {
+            hints.Add("This runtime cannot perform live Windows Event Log reads on the current platform/runtime.");
+            hints.Add(remote
+                ? "Retry from a Windows-native runtime/host that supports Event Log APIs for remote live reads."
+                : "Retry from a Windows-native runtime/host that supports Event Log APIs for local live reads.");
+            if (includeEvtxFallbackHint) {
+                hints.Add("If you only need analysis, export .evtx from the target and analyze locally with eventlog_evtx_query/eventlog_evtx_stats/eventlog_timeline_query.");
+            }
+
+            return hints
+                .Where(static hint => !string.IsNullOrWhiteSpace(hint))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        }
+
         if (remote) {
             if (!string.IsNullOrWhiteSpace(machineName)) {
                 hints.Add($"Verify machine_name '{machineName}' resolves and is reachable from this host.");
@@ -250,6 +278,23 @@ public abstract class EventLogToolBase : ToolBase {
             .Where(static hint => !string.IsNullOrWhiteSpace(hint))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
+    }
+
+    private static bool IsPlatformNotSupportedFailure(string? failureKindName, string? failureMessage) {
+        if (string.Equals(
+                ToolFailureMapper.MapCode(failureKindName, fallbackErrorCode: string.Empty),
+                "unsupported_platform",
+                StringComparison.OrdinalIgnoreCase)) {
+            return true;
+        }
+
+        if (string.IsNullOrWhiteSpace(failureMessage)) {
+            return false;
+        }
+
+        return failureMessage.IndexOf("not supported on this platform", StringComparison.OrdinalIgnoreCase) >= 0
+            || failureMessage.IndexOf("supported only on Windows", StringComparison.OrdinalIgnoreCase) >= 0
+            || failureMessage.IndexOf("platform not supported", StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
     /// <summary>

@@ -147,11 +147,45 @@ internal sealed partial class ChatServiceSession {
         return builder.ToString().TrimEnd();
     }
 
+    internal static string ResolveAssistantTextFromRequestedArtifactToolOutputsFallback(
+        string userRequest,
+        string assistantDraft,
+        IReadOnlyList<ToolOutputDto?> toolOutputs) {
+        var normalizedAssistantDraft = assistantDraft ?? string.Empty;
+        var requestedArtifactIntent = ResolveRequestedArtifactIntent(userRequest);
+        if (!requestedArtifactIntent.RequiresArtifact
+            || IsRequestedArtifactSatisfied(requestedArtifactIntent, normalizedAssistantDraft)
+            || toolOutputs is null
+            || toolOutputs.Count == 0) {
+            return normalizedAssistantDraft;
+        }
+
+        for (var i = toolOutputs.Count - 1; i >= 0; i--) {
+            var output = toolOutputs[i];
+            if (output?.Ok is not true) {
+                continue;
+            }
+
+            var summary = (output.SummaryMarkdown ?? string.Empty).Trim();
+            if (summary.Length == 0 || !IsRequestedArtifactSatisfied(requestedArtifactIntent, summary)) {
+                continue;
+            }
+
+            return summary;
+        }
+
+        return normalizedAssistantDraft;
+    }
+
     internal static string BuildNoTextToolOutputSynthesisPrompt(
         string userRequest,
         IReadOnlyList<ToolCallDto?> toolCalls,
         IReadOnlyList<ToolOutputDto?> toolOutputs) {
         var requestText = TrimForPrompt(userRequest, 520);
+        var requestedArtifactIntent = ResolveRequestedArtifactIntent(userRequest);
+        var requestedArtifactRequirementLine = requestedArtifactIntent.RequiresArtifact
+            ? BuildRequestedArtifactRequirementLine(requestedArtifactIntent)
+            : string.Empty;
         var evidenceBuilder = new StringBuilder();
         var toolMetadataByCallId = new Dictionary<string, (string ToolName, string ArgumentSummary)>(StringComparer.OrdinalIgnoreCase);
         if (toolCalls is { Count: > 0 }) {
@@ -231,6 +265,7 @@ internal sealed partial class ChatServiceSession {
             Requirements:
             - Use only the executed tool evidence above.
             - Keep the response concise and direct.
+            {{requestedArtifactRequirementLine}}
             - Do not call tools again.
             - If evidence is incomplete, state the exact missing evidence briefly.
             - Do not emit internal markers or control payload text.
@@ -582,15 +617,23 @@ internal sealed partial class ChatServiceSession {
             return string.Empty;
         }
 
+        var preferredVisualType = string.IsNullOrWhiteSpace(requestedArtifactIntent.PreferredVisualType)
+            || string.Equals(requestedArtifactIntent.PreferredVisualType, AutoVisualType, StringComparison.OrdinalIgnoreCase)
+            ? string.Empty
+            : requestedArtifactIntent.PreferredVisualType.Trim();
+        var preferredVisualClause = preferredVisualType.Length > 0
+            ? $" Prefer `{preferredVisualType}` when it fits the evidence."
+            : string.Empty;
+
         if (requestedArtifactIntent.WantsTable && requestedArtifactIntent.WantsVisual) {
-            return "- The user explicitly asked for both a compact table and a visual. Produce both when current evidence supports them; otherwise say clearly which artifact is unsupported and why instead of ignoring the request.";
+            return "- The user explicitly asked for both a compact table and a visual. Produce both when current evidence supports them; otherwise say clearly which artifact is unsupported and why instead of ignoring the request." + preferredVisualClause;
         }
 
         if (requestedArtifactIntent.WantsTable) {
             return "- The user explicitly asked for a compact table. Include it when current evidence supports it; if it cannot be produced from current evidence, say that explicitly instead of ignoring the request. Do not add unrelated diagram/chart/network blocks when the user only asked for a table.";
         }
 
-        return "- The user explicitly asked for a visual artifact. Include a supported visual block when current evidence supports it; if it cannot be produced from current evidence, say that explicitly instead of ignoring the request.";
+        return "- The user explicitly asked for a visual artifact. Include a supported visual block when current evidence supports it; if it cannot be produced from current evidence, say that explicitly instead of ignoring the request." + preferredVisualClause;
     }
 
     private static bool TryResolvePreferredVisualTypeFromToolOutputs(

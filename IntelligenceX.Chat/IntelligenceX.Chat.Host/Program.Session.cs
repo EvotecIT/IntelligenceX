@@ -46,8 +46,15 @@ internal static partial class Program {
         private readonly string? _instructions;
         private readonly Action<string>? _status;
         private readonly List<string> _recentHostTargets = new();
+        private readonly List<string> _recentAdHostTargets = new();
+        private readonly List<string> _recentPublicHostTargets = new();
         private readonly ConcurrentDictionary<string, string> _sessionToolOutputCache = new(StringComparer.Ordinal);
         private string? _previousResponseId;
+        private string _preferredDomainIntentFamily = string.Empty;
+        private string[] _pendingDomainIntentClarificationFamilies = Array.Empty<string>();
+        private long _pendingDomainIntentClarificationSeenUtcTicks;
+        private string _rememberedAdDomainTarget = string.Empty;
+        private string _rememberedPublicDomainTarget = string.Empty;
 
         public ReplSession(
             IntelligenceXClient client,
@@ -67,6 +74,13 @@ internal static partial class Program {
         public void ResetThread() {
             _previousResponseId = null;
             _recentHostTargets.Clear();
+            _recentAdHostTargets.Clear();
+            _recentPublicHostTargets.Clear();
+            _preferredDomainIntentFamily = string.Empty;
+            _pendingDomainIntentClarificationFamilies = Array.Empty<string>();
+            _pendingDomainIntentClarificationSeenUtcTicks = 0;
+            _rememberedAdDomainTarget = string.Empty;
+            _rememberedPublicDomainTarget = string.Empty;
         }
 
         internal IReadOnlyList<ToolDefinition> GetToolDefinitionsSnapshot() {
@@ -137,12 +151,14 @@ internal static partial class Program {
             var toolRounds = 0;
             var noToolExecutionRetryCount = 0;
             var noTextToolOutputDirectRetryUsed = false;
+            var adEventLogPlatformFallbackUsed = false;
 
             var toolDefs = _registry.GetDefinitions();
             var runtimeSelfReportAnalysis = RuntimeSelfReportTurnClassifier.Analyze(text);
             var inputText = RuntimeSelfReportSupport.LooksLikeCompactRuntimeSelfReportQuestion(runtimeSelfReportAnalysis)
                 ? RuntimeSelfReportSupport.BuildCompactRuntimeSelfReportInput(runtimeSelfReportAnalysis, _options.OpenAITransport, _options.Model, toolDefs)
                 : text;
+            toolDefs = ApplyDomainIntentTurnContext(inputText, toolDefs, out inputText, out var forcedDomainIntentToolName);
             var input = ChatInput.FromText(inputText);
             var chatOptions = new ChatOptions {
                 Model = _options.Model,
@@ -157,6 +173,9 @@ internal static partial class Program {
                 PreviousResponseId = _previousResponseId,
                 NewThread = string.IsNullOrWhiteSpace(_previousResponseId)
             };
+            if (!string.IsNullOrWhiteSpace(forcedDomainIntentToolName) && toolDefs.Count > 0) {
+                chatOptions.ToolChoice = ToolChoice.Custom(forcedDomainIntentToolName);
+            }
 
             if (_options.LiveProgress) {
                 _status?.Invoke("thinking...");
@@ -166,9 +185,75 @@ internal static partial class Program {
             var maxRounds = Math.Clamp(_options.MaxToolRounds, ChatRequestOptionLimits.MinToolRounds, MaxToolRoundsLimit);
             for (var round = 0; round < maxRounds; round++) {
                 var extracted = ToolCallParser.Extract(turn);
+                if (extracted.Count == 0
+                    && protocolCalls.Count == 0
+                    && protocolOutputs.Count == 0
+                    && toolDefs.Count > 0
+                    && TryBuildSyntheticDomainIntentReplayCalls(text, toolDefs, out var syntheticReplayCalls, out var syntheticReplayReason)) {
+                    extracted = syntheticReplayCalls;
+                    if (_options.LiveProgress) {
+                        _status?.Invoke(
+                            $"host-bootstrap: executing {string.Join(", ", syntheticReplayCalls.Select(static call => GetToolDisplayName(call.Name)))} ({syntheticReplayReason}).");
+                    }
+                }
+
                 if (extracted.Count == 0) {
                     var rawFinalText = EasyChatResult.FromTurn(turn).Text ?? string.Empty;
                     var finalText = rawFinalText;
+
+                    if (!adEventLogPlatformFallbackUsed
+                        && reportedOutputs.Count > 0
+                        && toolDefs.Count > 0
+                        && TryBuildSyntheticAdEventPlatformFallbackReplayCalls(
+                            text,
+                            toolDefs,
+                            _preferredDomainIntentFamily,
+                            reportedCalls,
+                            reportedOutputs,
+                            out var eventLogFallbackCalls,
+                            out var eventLogFallbackReason)) {
+                        adEventLogPlatformFallbackUsed = true;
+                        toolRounds++;
+                        protocolCalls.AddRange(eventLogFallbackCalls);
+                        RememberRecentHostTargets(eventLogFallbackCalls);
+                        if (_options.LiveProgress) {
+                            _status?.Invoke(
+                                $"platform-fallback: executing {string.Join(", ", eventLogFallbackCalls.Select(static call => GetToolDisplayName(call.Name)))} ({eventLogFallbackReason}).");
+                            foreach (var call in eventLogFallbackCalls) {
+                                var args = call.Arguments is null ? "{}" : JsonLite.Serialize(call.Arguments);
+                                var id = _options.ShowToolIds ? $" ({call.Name})" : string.Empty;
+                                _status?.Invoke($"tool: {GetToolDisplayName(call.Name)}{id} args={args}");
+                            }
+                        }
+
+                        var eventLogFallbackOutputs = await ExecuteToolsWithTurnReadOnlyReplayAsync(
+                            eventLogFallbackCalls,
+                            turnReadOnlyOutputBySignature,
+                            turnToken).ConfigureAwait(false);
+                        RememberRecentHostTargetsFromOutputs(eventLogFallbackCalls, eventLogFallbackOutputs);
+                        protocolOutputs.AddRange(eventLogFallbackOutputs);
+                        AppendReportedToolInteractions(
+                            eventLogFallbackCalls,
+                            eventLogFallbackOutputs,
+                            reportedCalls,
+                            reportedOutputs,
+                            reportedReadOnlySignatures);
+
+                        var eventLogFallbackInput = new ChatInput();
+                        foreach (var output in eventLogFallbackOutputs) {
+                            eventLogFallbackInput.AddToolOutput(output.CallId, output.Output);
+                        }
+
+                        chatOptions.NewThread = false;
+                        chatOptions.PreviousResponseId = TryGetResponseId(turn);
+                        chatOptions.ToolChoice = ToolChoice.Auto;
+                        if (_options.LiveProgress) {
+                            _status?.Invoke("thinking...");
+                        }
+
+                        turn = await ChatWithToolSchemaRecoveryAsync(eventLogFallbackInput, chatOptions, turnToken).ConfigureAwait(false);
+                        continue;
+                    }
 
                     var shouldRetryNoToolExecution = noToolExecutionRetryCount < MaxNoToolExecutionRetries
                                                      && protocolCalls.Count == 0
@@ -207,6 +292,50 @@ internal static partial class Program {
                                 toolDefinitions: toolDefs,
                                 knownHostTargets: retryKnownHostTargets,
                                 orchestrationCatalog: GetToolOrchestrationCatalogSnapshot());
+                        if (toolDefs.Count > 0
+                            && TryBuildSyntheticDomainIntentReplayCalls(retryPrompt, toolDefs, out var syntheticRetryCalls, out var syntheticRetryReason)) {
+                            toolRounds++;
+                            protocolCalls.AddRange(syntheticRetryCalls);
+                            RememberRecentHostTargets(syntheticRetryCalls);
+                            if (_options.LiveProgress) {
+                                _status?.Invoke(
+                                    $"scenario-bootstrap: executing {string.Join(", ", syntheticRetryCalls.Select(static call => GetToolDisplayName(call.Name)))} ({syntheticRetryReason}).");
+                                foreach (var call in syntheticRetryCalls) {
+                                    var args = call.Arguments is null ? "{}" : JsonLite.Serialize(call.Arguments);
+                                    var id = _options.ShowToolIds ? $" ({call.Name})" : string.Empty;
+                                    _status?.Invoke($"tool: {GetToolDisplayName(call.Name)}{id} args={args}");
+                                }
+                            }
+
+                            var syntheticOutputs = await ExecuteToolsWithTurnReadOnlyReplayAsync(
+                                syntheticRetryCalls,
+                                turnReadOnlyOutputBySignature,
+                                turnToken).ConfigureAwait(false);
+                            RememberRecentHostTargetsFromOutputs(syntheticRetryCalls, syntheticOutputs);
+                            protocolOutputs.AddRange(syntheticOutputs);
+                            AppendReportedToolInteractions(
+                                syntheticRetryCalls,
+                                syntheticOutputs,
+                                reportedCalls,
+                                reportedOutputs,
+                                reportedReadOnlySignatures);
+
+                            var syntheticNext = new ChatInput();
+                            foreach (var output in syntheticOutputs) {
+                                syntheticNext.AddToolOutput(output.CallId, output.Output);
+                            }
+
+                            chatOptions.NewThread = false;
+                            chatOptions.PreviousResponseId = TryGetResponseId(turn);
+                            chatOptions.ToolChoice = ToolChoice.Auto;
+                            if (_options.LiveProgress) {
+                                _status?.Invoke("thinking...");
+                            }
+
+                            turn = await ChatWithToolSchemaRecoveryAsync(syntheticNext, chatOptions, turnToken).ConfigureAwait(false);
+                            continue;
+                        }
+
                         chatOptions.NewThread = false;
                         chatOptions.PreviousResponseId = TryGetResponseId(turn);
                         chatOptions.ToolChoice = !string.IsNullOrWhiteSpace(forcedToolName)
@@ -224,7 +353,10 @@ internal static partial class Program {
                     }
 
                     if (string.IsNullOrWhiteSpace(finalText)) {
-                        var shouldRetryNoTextToolOutputNarrative = !noTextToolOutputDirectRetryUsed && reportedOutputs.Count > 0;
+                        var shouldPreferDirectToolOutputFallback = ShouldPreferDirectToolOutputFallback(reportedCalls, reportedOutputs);
+                        var shouldRetryNoTextToolOutputNarrative = !shouldPreferDirectToolOutputFallback
+                            && !noTextToolOutputDirectRetryUsed
+                            && reportedOutputs.Count > 0;
                         if (shouldRetryNoTextToolOutputNarrative) {
                             noTextToolOutputDirectRetryUsed = true;
                             var noTextToolOutputRetryPrompt = BuildNoTextToolOutputRetryPrompt(
@@ -247,6 +379,17 @@ internal static partial class Program {
                             continue;
                         }
 
+                        finalText = BuildNoTextReplFallbackText(
+                            assistantDraft: rawFinalText,
+                            toolCalls: reportedCalls,
+                            toolOutputs: reportedOutputs,
+                            model: _options.Model,
+                            transport: _options.OpenAITransport,
+                            baseUrl: _options.OpenAIBaseUrl,
+                            toolDefinitions: toolDefs,
+                            knownHostTargets: GetRecentHostTargetsSnapshot());
+                    }
+                    else if (reportedOutputs.Count > 0) {
                         finalText = BuildNoTextReplFallbackText(
                             assistantDraft: rawFinalText,
                             toolCalls: reportedCalls,
@@ -285,6 +428,7 @@ internal static partial class Program {
                     effectiveExtracted,
                     turnReadOnlyOutputBySignature,
                     turnToken).ConfigureAwait(false);
+                RememberRecentHostTargetsFromOutputs(effectiveExtracted, executed);
                 protocolOutputs.AddRange(executed);
                 AppendReportedToolInteractions(
                     effectiveExtracted,
@@ -300,6 +444,7 @@ internal static partial class Program {
 
                 chatOptions.NewThread = false;
                 chatOptions.PreviousResponseId = TryGetResponseId(turn);
+                chatOptions.ToolChoice = ToolChoice.Auto;
                 if (_options.LiveProgress) {
                     _status?.Invoke("thinking...");
                 }
