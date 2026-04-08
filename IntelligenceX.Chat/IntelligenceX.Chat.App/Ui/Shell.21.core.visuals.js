@@ -128,6 +128,17 @@
       .trim();
   }
 
+  var mermaidEdgeStatementStartRegex = /(?<!\S)[A-Za-z_][A-Za-z0-9_-]*\s+(?:-->|---|-.->|==>)/;
+  var mermaidNodeStatementStartRegex = /^[A-Za-z_][A-Za-z0-9_-]*\s*(?:\[|\(|\{)/;
+  var mermaidContinuationKeywords = [
+    "subgraph",
+    "classDef",
+    "class",
+    "style",
+    "click",
+    "linkStyle"
+  ];
+
   function trySplitCompactMermaidDirectiveLine(line) {
     var text = String(line == null ? "" : line);
     if (!text.trim()) {
@@ -162,7 +173,7 @@
     }
 
     var remainder = trimmed.slice(3).trimStart();
-    if (!remainder) {
+    if (!remainder || !looksLikeMermaidContinuationAfterStandaloneEnd(remainder)) {
       return null;
     }
 
@@ -170,6 +181,31 @@
       first: leadingWhitespace + "end",
       remainder: leadingWhitespace + remainder
     };
+  }
+
+  function looksLikeMermaidContinuationAfterStandaloneEnd(remainder) {
+    var candidate = String(remainder == null ? "" : remainder).trimStart();
+    if (!candidate) {
+      return false;
+    }
+
+    for (var i = 0; i < mermaidContinuationKeywords.length; i += 1) {
+      var keyword = mermaidContinuationKeywords[i];
+      if (!candidate.toLowerCase().startsWith(keyword.toLowerCase())) {
+        continue;
+      }
+
+      if (candidate.length === keyword.length || /\s/.test(candidate.charAt(keyword.length))) {
+        return true;
+      }
+    }
+
+    var edgeMatch = candidate.match(mermaidEdgeStatementStartRegex);
+    if (edgeMatch && edgeMatch.index === 0) {
+      return true;
+    }
+
+    return mermaidNodeStatementStartRegex.test(candidate);
   }
 
   function trySplitCollapsedMermaidEdgeStatements(line) {
