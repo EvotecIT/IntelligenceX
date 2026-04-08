@@ -128,7 +128,7 @@
       .trim();
   }
 
-  var mermaidEdgeStatementStartRegex = /(?<!\S)[A-Za-z_][A-Za-z0-9_-]*\s+(?:-->|---|-.->|==>)/;
+  var mermaidEdgeStatementStartRegex = /[A-Za-z_][A-Za-z0-9_-]*\s+(?:-->|---|-.->|==>)/g;
   var mermaidNodeStatementStartRegex = /^[A-Za-z_][A-Za-z0-9_-]*\s*(?:\[|\(|\{)/;
   var mermaidContinuationKeywords = [
     "subgraph",
@@ -200,12 +200,40 @@
       }
     }
 
-    var edgeMatch = candidate.match(mermaidEdgeStatementStartRegex);
-    if (edgeMatch && edgeMatch.index === 0) {
+    if (findMermaidEdgeStatementStartIndex(candidate, 0) === 0) {
       return true;
     }
 
     return mermaidNodeStatementStartRegex.test(candidate);
+  }
+
+  function findMermaidEdgeStatementStartIndex(text, startIndex) {
+    var source = String(text == null ? "" : text);
+    var minimumIndex = Math.max(0, startIndex || 0);
+    mermaidEdgeStatementStartRegex.lastIndex = minimumIndex;
+    try {
+      while (true) {
+        var match = mermaidEdgeStatementStartRegex.exec(source);
+        if (!match) {
+          return -1;
+        }
+
+        var index = isFiniteNumber(match.index) ? match.index : -1;
+        if (index < 0) {
+          continue;
+        }
+
+        if (index === 0 || /\s/.test(source.charAt(index - 1))) {
+          return index;
+        }
+
+        if (mermaidEdgeStatementStartRegex.lastIndex <= index) {
+          mermaidEdgeStatementStartRegex.lastIndex = index + 1;
+        }
+      }
+    } finally {
+      mermaidEdgeStatementStartRegex.lastIndex = 0;
+    }
   }
 
   function trySplitCollapsedMermaidEdgeStatements(line) {
@@ -217,12 +245,12 @@
     var leadingWhitespaceMatch = text.match(/^\s*/);
     var leadingWhitespace = leadingWhitespaceMatch ? leadingWhitespaceMatch[0] : "";
     var trimmed = text.slice(leadingWhitespace.length);
-    var matches = Array.from(trimmed.matchAll(/(?<!\S)[A-Za-z_][A-Za-z0-9_-]*\s+(?:-->|---|-.->|==>)/g));
-    if (matches.length < 2) {
+    var splitIndex = findMermaidEdgeStatementStartIndex(trimmed, 0);
+    if (splitIndex < 0) {
       return null;
     }
 
-    var splitIndex = matches[1].index;
+    splitIndex = findMermaidEdgeStatementStartIndex(trimmed, splitIndex + 1);
     if (!isFiniteNumber(splitIndex) || splitIndex <= 0 || splitIndex >= trimmed.length) {
       return null;
     }

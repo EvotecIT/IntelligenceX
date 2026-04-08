@@ -743,12 +743,14 @@ public sealed partial class UiShellAssetsTests {
             "function recordVisualRuntimeReady(kind, ready) {",
             "var mermaidContinuationKeywords = [",
             "function looksLikeMermaidContinuationAfterStandaloneEnd(remainder) {",
+            "function findMermaidEdgeStatementStartIndex(text, startIndex) {",
             "function trySplitCollapsedMermaidEndLine(line) {",
             "if (!remainder || !looksLikeMermaidContinuationAfterStandaloneEnd(remainder)) {",
             "function trySplitCollapsedMermaidEdgeStatements(line) {",
             ".bubble .markdown-body pre > code.language-mermaid",
             ".bubble .markdown-body pre.language-mermaid",
             "var blocks = collectMermaidBlocks(root);");
+        Assert.DoesNotContain("(?<!\\S)", script, StringComparison.Ordinal);
     }
 
     /// <summary>
