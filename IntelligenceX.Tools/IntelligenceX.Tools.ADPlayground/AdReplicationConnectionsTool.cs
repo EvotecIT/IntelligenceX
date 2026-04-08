@@ -265,9 +265,6 @@ public sealed class AdReplicationConnectionsTool : ActiveDirectoryToolBase, IToo
                 "Use sort_direction as 'asc' or 'desc'.",
                 "If projection keeps failing, retry without columns/sort_by/sort_direction/top."
             };
-            var errorMeta = new JsonObject()
-                .Add("available_columns", new JsonArray().AddRange(columnKeys))
-                .Add("projection_arguments", new JsonArray().Add("columns").Add("sort_by").Add("sort_direction").Add("top"));
             return ToolResultV2.Error(
                 errorCode: "invalid_argument",
                 error: error,
@@ -386,7 +383,7 @@ public sealed class AdReplicationConnectionsTool : ActiveDirectoryToolBase, IToo
                     enabled: connection.Enabled,
                     generatedByKcc: connection.GeneratedByKcc);
                 edges.Add(new JsonObject(StringComparer.Ordinal)
-                    .Add("id", $"{sourceNodeId}_{destinationNodeId}_{edgeCount}")
+                    .Add("id", BuildTopologyEdgeId(sourceNodeId, destinationNodeId, transport, edgeCount))
                     .Add("source", sourceNodeId)
                     .Add("target", destinationNodeId)
                     .Add("source_server", sourceServer)
@@ -451,6 +448,22 @@ public sealed class AdReplicationConnectionsTool : ActiveDirectoryToolBase, IToo
         }
 
         return $"{serverName} ({siteName})";
+    }
+
+    private static string BuildTopologyEdgeId(string sourceNodeId, string destinationNodeId, string transport, int edgeCount) {
+        var normalizedTransport = transport.Length == 0 ? "connection" : transport;
+        var builder = new StringBuilder(sourceNodeId.Length + destinationNodeId.Length + normalizedTransport.Length + 16);
+        builder.Append(sourceNodeId)
+            .Append('_')
+            .Append(destinationNodeId)
+            .Append('_');
+        for (var i = 0; i < normalizedTransport.Length; i++) {
+            var character = normalizedTransport[i];
+            builder.Append(char.IsLetterOrDigit(character) ? char.ToLowerInvariant(character) : '_');
+        }
+
+        builder.Append('_').Append(edgeCount);
+        return builder.ToString();
     }
 
     private static string BuildEdgeLabel(string transport, int edgeCount, bool enabled, bool generatedByKcc) {

@@ -19,6 +19,17 @@ internal static class TranscriptMarkdownPreparation {
     private static readonly Regex MermaidEdgeStatementStartRegex = new(
         @"(?<!\S)[A-Za-z_][A-Za-z0-9_-]*\s+(?:-->|---|-.->|==>)",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    private static readonly Regex MermaidNodeStatementStartRegex = new(
+        @"^[A-Za-z_][A-Za-z0-9_-]*\s*(?:\[|\(|\{)",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    private static readonly string[] MermaidContinuationKeywords = [
+        "subgraph",
+        "classDef",
+        "class",
+        "style",
+        "click",
+        "linkStyle"
+    ];
     private static readonly string[] AnswerPlanKeys = [
         "user_goal:",
         "resolved_so_far:",
@@ -532,13 +543,38 @@ internal static class TranscriptMarkdownPreparation {
         }
 
         var remainder = trimmed["end".Length..].TrimStart();
-        if (remainder.Length == 0) {
+        if (remainder.Length == 0 || !LooksLikeMermaidContinuationAfterStandaloneEnd(remainder)) {
             return false;
         }
 
         endLine = leadingWhitespace + "end";
         remainderLine = leadingWhitespace + remainder;
         return true;
+    }
+
+    private static bool LooksLikeMermaidContinuationAfterStandaloneEnd(string remainder) {
+        var candidate = (remainder ?? string.Empty).TrimStart();
+        if (candidate.Length == 0) {
+            return false;
+        }
+
+        for (var i = 0; i < MermaidContinuationKeywords.Length; i++) {
+            var keyword = MermaidContinuationKeywords[i];
+            if (!candidate.StartsWith(keyword, StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            if (candidate.Length == keyword.Length || char.IsWhiteSpace(candidate[keyword.Length])) {
+                return true;
+            }
+        }
+
+        var edgeMatch = MermaidEdgeStatementStartRegex.Match(candidate);
+        if (edgeMatch.Success && edgeMatch.Index == 0) {
+            return true;
+        }
+
+        return MermaidNodeStatementStartRegex.IsMatch(candidate);
     }
 
     private static bool TrySplitCollapsedMermaidEdgeStatements(

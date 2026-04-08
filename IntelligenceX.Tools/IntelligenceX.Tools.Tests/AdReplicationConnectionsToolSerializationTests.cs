@@ -139,4 +139,54 @@ public sealed class AdReplicationConnectionsToolSerializationTests {
         Assert.Contains("DC03.ad.evotec.xyz", artifacts.MermaidSource, StringComparison.Ordinal);
         Assert.Contains("-->|Rpc enabled kcc|", artifacts.MermaidSource, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void BuildTopologyArtifacts_UsesUniqueEdgeIdsAcrossTransports() {
+        var schedule = new ActiveDirectorySchedule();
+        schedule.RawSchedule = new bool[7, 24, 4];
+
+        var connections = new[] {
+            new SiteConnectionInfo(
+                Name: "CN=Conn-Rpc",
+                Site: "Default-First-Site-Name",
+                SourceServer: "DC01.ad.evotec.xyz",
+                SourceSite: "Branch-Site-Name",
+                DestinationServer: "DC02.ad.evotec.xyz",
+                Transport: ActiveDirectoryTransportType.Rpc,
+                Enabled: true,
+                GeneratedByKcc: true,
+                ReciprocalReplicationEnabled: false,
+                ChangeNotificationStatus: NotificationStatus.IntraSiteOnly,
+                DataCompressionEnabled: true,
+                ReplicationScheduleOwnedByUser: false,
+                ReplicationSpan: ReplicationSpan.InterSite,
+                ReplicationSchedule: schedule),
+            new SiteConnectionInfo(
+                Name: "CN=Conn-Smtp",
+                Site: "Default-First-Site-Name",
+                SourceServer: "DC01.ad.evotec.xyz",
+                SourceSite: "Branch-Site-Name",
+                DestinationServer: "DC02.ad.evotec.xyz",
+                Transport: ActiveDirectoryTransportType.Smtp,
+                Enabled: true,
+                GeneratedByKcc: false,
+                ReciprocalReplicationEnabled: false,
+                ChangeNotificationStatus: NotificationStatus.IntraSiteOnly,
+                DataCompressionEnabled: true,
+                ReplicationScheduleOwnedByUser: false,
+                ReplicationSpan: ReplicationSpan.InterSite,
+                ReplicationSchedule: schedule)
+        };
+
+        var artifacts = AdReplicationConnectionsTool.BuildTopologyArtifacts(connections);
+        var graph = artifacts.Graph;
+        var edges = graph.GetArray("edges")!;
+
+        Assert.Equal(2, edges.Count);
+        var firstId = edges[0].AsObject()!.GetString("id");
+        var secondId = edges[1].AsObject()!.GetString("id");
+        Assert.NotEqual(firstId, secondId);
+        Assert.Contains("rpc", firstId, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("smtp", secondId, StringComparison.OrdinalIgnoreCase);
+    }
 }

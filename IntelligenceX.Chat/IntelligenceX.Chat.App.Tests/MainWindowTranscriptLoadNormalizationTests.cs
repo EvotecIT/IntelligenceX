@@ -199,4 +199,24 @@ public sealed class MainWindowTranscriptLoadNormalizationTests {
         Assert.Contains("DC2 -->|RPC OK\\nlast success:2025-02-24T08:14:32Z UTC| DC3", prepared, StringComparison.Ordinal);
         Assert.Contains("DC3 -->|FAIL172\\nlast attempt:2025-02-24T08:10:11Z UTC| DC1", prepared, StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// Ensures Mermaid repair does not split valid statements where the identifier itself is named <c>end</c>.
+    /// </summary>
+    [Fact]
+    public void PrepareMessageBody_ForAssistant_DoesNotSplitValidMermaidStatementsThatStartWithEndIdentifier() {
+        const string input = """
+            ```mermaid
+            flowchart LR
+            end --> Gateway
+            Gateway --> finish
+            ```
+            """;
+
+        var prepared = TranscriptMarkdownPreparation.PrepareMessageBody("Assistant", input)
+            .Replace("\r\n", "\n", StringComparison.Ordinal);
+
+        Assert.Contains("end --> Gateway", prepared, StringComparison.Ordinal);
+        Assert.DoesNotContain("\nend\n--> Gateway", prepared, StringComparison.Ordinal);
+    }
 }

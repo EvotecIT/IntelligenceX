@@ -12,8 +12,6 @@ internal sealed partial class ChatServiceSession {
         DescribeTool,
         CompareTools,
         JsonExamples,
-        Blockers,
-        PracticalSequence,
         CompactSummary
     }
 
@@ -33,20 +31,19 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        var intent = ResolveToolCapabilityFollowUpIntent(rawRequest);
-        if (intent == ToolCapabilityFollowUpIntent.None) {
-            return false;
-        }
-
         var requestedToolNames = ExtractExplicitRequestedToolNames(rawRequest);
         if (requestedToolNames.Length == 0) {
             requestedToolNames = ExtractExplicitRequestedToolNames(routedUserRequest);
         }
 
-        var maxToolCount = intent == ToolCapabilityFollowUpIntent.DescribeTool ? 1 : 2;
-        var selectedTools = ResolveRequestedToolDefinitions(requestedToolNames, toolDefinitions, maxToolCount);
+        var selectedTools = ResolveRequestedToolDefinitions(requestedToolNames, toolDefinitions, maxCount: 2);
         if (selectedTools.Count == 0) {
-            selectedTools = ResolveMentionedToolDefinitions(rawRequest, routedUserRequest, lastAssistantDraft, toolDefinitions, maxToolCount);
+            selectedTools = ResolveMentionedToolDefinitions(rawRequest, routedUserRequest, lastAssistantDraft, toolDefinitions, maxCount: 2);
+        }
+
+        var intent = ResolveToolCapabilityFollowUpIntent(rawRequest, selectedTools.Count);
+        if (intent == ToolCapabilityFollowUpIntent.None) {
+            return false;
         }
 
         if (selectedTools.Count == 0) {
@@ -61,8 +58,6 @@ internal sealed partial class ChatServiceSession {
             ToolCapabilityFollowUpIntent.DescribeTool => BuildToolCapabilityDescriptionText(selectedTools[0]),
             ToolCapabilityFollowUpIntent.CompareTools => BuildToolCapabilityComparisonText(selectedTools),
             ToolCapabilityFollowUpIntent.JsonExamples => BuildToolCapabilityJsonExamplesText(selectedTools),
-            ToolCapabilityFollowUpIntent.Blockers => BuildToolCapabilityBlockersText(selectedTools),
-            ToolCapabilityFollowUpIntent.PracticalSequence => BuildToolCapabilitySequenceText(selectedTools),
             ToolCapabilityFollowUpIntent.CompactSummary => BuildToolCapabilitySummaryText(selectedTools),
             _ => string.Empty
         };
@@ -70,7 +65,7 @@ internal sealed partial class ChatServiceSession {
         return !string.IsNullOrWhiteSpace(text);
     }
 
-    private static ToolCapabilityFollowUpIntent ResolveToolCapabilityFollowUpIntent(string userRequest) {
+    private static ToolCapabilityFollowUpIntent ResolveToolCapabilityFollowUpIntent(string userRequest, int selectedToolCount) {
         var rawRequest = (userRequest ?? string.Empty).Trim();
         var normalized = NormalizeCompactText(rawRequest);
         if (normalized.Length == 0) {
@@ -83,40 +78,17 @@ internal sealed partial class ChatServiceSession {
             return ToolCapabilityFollowUpIntent.JsonExamples;
         }
 
-        if (ContainsPhraseWithBoundaries(normalized, "blokery")
-            || ContainsPhraseWithBoundaries(normalized, "blockers")
-            || ContainsPhraseWithBoundaries(normalized, "ograniczenia")
-            || ContainsPhraseWithBoundaries(normalized, "limitations")) {
-            return ToolCapabilityFollowUpIntent.Blockers;
-        }
-
-        if (ContainsPhraseWithBoundaries(normalized, "sekwencji")
-            || ContainsPhraseWithBoundaries(normalized, "sekwencje")
-            || ContainsPhraseWithBoundaries(normalized, "krokow")
-            || ContainsPhraseWithBoundaries(normalized, "steps")
-            || ContainsPhraseWithBoundaries(normalized, "triage")) {
-            return ToolCapabilityFollowUpIntent.PracticalSequence;
-        }
-
-        if (ContainsPhraseWithBoundaries(normalized, "podsumuj")
-            || ContainsPhraseWithBoundaries(normalized, "podsumowanie")
-            || ContainsPhraseWithBoundaries(normalized, "summary")
-            || ContainsPhraseWithBoundaries(normalized, "wskazowki")
-            || ContainsPhraseWithBoundaries(normalized, "utc")) {
-            return ToolCapabilityFollowUpIntent.CompactSummary;
-        }
-
         if (normalized.IndexOf(" vs ", StringComparison.OrdinalIgnoreCase) >= 0
-            || ContainsPhraseWithBoundaries(normalized, "porownaj")
-            || ContainsPhraseWithBoundaries(normalized, "roznice")
-            || ContainsPhraseWithBoundaries(normalized, "roznica")
-            || ContainsPhraseWithBoundaries(normalized, "compare")
-            || ContainsPhraseWithBoundaries(normalized, "contrast")) {
+            || selectedToolCount >= 2 && ContainsQuestionSignal(rawRequest)) {
             return ToolCapabilityFollowUpIntent.CompareTools;
         }
 
-        if (LooksLikeExplicitToolQuestionTurn(rawRequest)) {
+        if (selectedToolCount <= 1 && LooksLikeExplicitToolQuestionTurn(rawRequest)) {
             return ToolCapabilityFollowUpIntent.DescribeTool;
+        }
+
+        if (selectedToolCount >= 2) {
+            return ToolCapabilityFollowUpIntent.CompactSummary;
         }
 
         return ToolCapabilityFollowUpIntent.None;

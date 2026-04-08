@@ -478,6 +478,20 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.DoesNotContain("?", text, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void BuildInformationalToolCapabilityFallbackTextForTesting_BuildsCompactSummaryWithoutLanguageSpecificKeywords() {
+        var text = ChatServiceSession.BuildInformationalToolCapabilityFallbackTextForTesting(
+            userRequest: "请用 6 个要点结束，不要在结尾提问。",
+            routedUserRequest: "Compare `eventlog_evtx_query` vs `eventlog_live_query`.",
+            lastAssistantDraft: string.Empty,
+            toolDefinitions: BuildEventLogCapabilityFallbackToolDefinitions());
+
+        Assert.NotNull(text);
+        Assert.Contains("eventlog_evtx_query", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("eventlog_live_query", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("UTC", text, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static ToolDefinition[] BuildEventLogCapabilityFallbackToolDefinitions() {
         return new[] {
             new ToolDefinition(
