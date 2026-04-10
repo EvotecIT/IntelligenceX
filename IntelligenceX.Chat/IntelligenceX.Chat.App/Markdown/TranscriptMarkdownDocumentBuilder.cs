@@ -11,19 +11,19 @@ internal static class TranscriptMarkdownDocumentBuilder {
     public static string BuildPreparedTranscript(
         IEnumerable<(string Role, string Text, DateTime Time, string? Model)> messages,
         string timestampFormat) {
-        return Build(messages, timestampFormat, static messageText => TranscriptMarkdownPreparation.PrepareMessageBody(messageText));
+        return Build(messages, timestampFormat, static (role, messageText) => TranscriptMarkdownPreparation.PrepareMessageBody(role, messageText));
     }
 
     public static string BuildRawTranscript(
         IEnumerable<(string Role, string Text, DateTime Time, string? Model)> messages,
         string timestampFormat) {
-        return Build(messages, timestampFormat, static messageText => messageText ?? string.Empty);
+        return Build(messages, timestampFormat, static (_, messageText) => messageText ?? string.Empty);
     }
 
     private static string Build(
         IEnumerable<(string Role, string Text, DateTime Time, string? Model)> messages,
         string timestampFormat,
-        Func<string?, string> bodySelector) {
+        Func<string, string?, string> bodySelector) {
         ArgumentNullException.ThrowIfNull(messages);
         ArgumentNullException.ThrowIfNull(bodySelector);
 
@@ -31,7 +31,7 @@ internal static class TranscriptMarkdownDocumentBuilder {
         var markdown = new MarkdownComposer();
 
         foreach (var message in messages) {
-            var body = bodySelector(message.Text);
+            var body = bodySelector(message.Role, message.Text);
             if (string.IsNullOrWhiteSpace(body)) {
                 continue;
             }

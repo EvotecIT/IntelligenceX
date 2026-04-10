@@ -75,6 +75,16 @@ internal sealed partial class ChatServiceSession {
         var proactiveSkipReadOnlyCount = state.ProactiveSkipReadOnlyCount;
         var proactiveSkipUnknownCount = state.ProactiveSkipUnknownCount;
         var interimResultSent = state.InterimResultSent;
+        var primaryUserRequest = ExtractPrimaryUserRequest(request.Text);
+        var visibleUserRequest = string.IsNullOrWhiteSpace(primaryUserRequest)
+            ? routedUserRequest
+            : primaryUserRequest;
+        if (continuationFollowUpTurn || compactFollowUpTurn) {
+            text = ResolveAssistantTextFromRequestedArtifactToolOutputsFallback(
+                userRequest: visibleUserRequest,
+                assistantDraft: text,
+                toolOutputs: toolOutputs);
+        }
 
                 var structuredNextActionToolDefs = fullToolDefs.Length > 0 ? fullToolDefs : toolDefs;
                 var hasStructuredNextAction = TryExtractStructuredNextAction(
@@ -352,6 +362,7 @@ internal sealed partial class ChatServiceSession {
 
                 var hasToolActivity = toolCalls.Count > 0 || toolOutputs.Count > 0;
                 var noResultWatchdogTriggered = false;
+                var suppressForcedExecutionBlockerForLocalDirectRetry = false;
                 var trailingPhaseLoopEvents = CountTrailingPhaseLoopEvents(request.RequestId);
                 if (ShouldTriggerNoResultPhaseLoopWatchdog(
                         trailingPhaseLoopEvents: trailingPhaseLoopEvents,
@@ -371,10 +382,27 @@ internal sealed partial class ChatServiceSession {
                             status: ChatStatusCodes.NoResultWatchdogTriggered,
                             message: $"No-result watchdog triggered after repeated plan/review loops ({trailingPhaseLoopEvents} phase events).")
                         .ConfigureAwait(false);
-                    text = BuildExecutionContractBlockerText(
-                        userRequest: routedUserRequest,
-                        assistantDraft: text,
-                        reason: "no_result_watchdog_" + noResultWatchdogReason);
+                    if (ShouldAttemptLocalDirectRetryAfterNoResultWatchdog(
+                            threadId: threadId,
+                            userRequest: visibleUserRequest,
+                            executionContractApplies: executionContractApplies,
+                            continuationFollowUpTurn: continuationFollowUpTurn,
+                            compactFollowUpTurn: compactFollowUpTurn,
+                            localNoTextDirectRetryUsed: localNoTextDirectRetryUsed,
+                            isLocalCompatibleLoopback: isLocalCompatibleLoopback,
+                            availableToolCount: toolDefs.Count,
+                            hasToolActivity: hasToolActivity)) {
+                        // Give the compatible local runtime one final direct-response retry on short
+                        // follow-up turns before we surface an execution-blocked card. This preserves
+                        // conversational capability/tool-summary turns that do not actually require tools.
+                        suppressForcedExecutionBlockerForLocalDirectRetry = true;
+                        text = string.Empty;
+                    } else {
+                        text = BuildExecutionContractBlockerText(
+                            userRequest: visibleUserRequest,
+                            assistantDraft: text,
+                            reason: "no_result_watchdog_" + noResultWatchdogReason);
+                    }
                 }
 
                 if (executionContractApplies && !hasToolActivity) {
@@ -382,7 +410,7 @@ internal sealed partial class ChatServiceSession {
                         ? "no_tool_calls_after_watchdog_retry"
                         : $"execution_contract_unmet_{noToolExecutionWatchdogReason}";
                     text = BuildExecutionContractBlockerText(
-                        userRequest: routedUserRequest,
+                        userRequest: visibleUserRequest,
                         assistantDraft: text,
                         reason: blockerReason);
                 }
@@ -411,12 +439,12 @@ internal sealed partial class ChatServiceSession {
                     proactiveFollowUpUsed: proactiveFollowUpUsed,
                     continuationFollowUpTurn: continuationFollowUpTurn,
                     compactFollowUpTurn: compactFollowUpTurn,
-                    userRequest: routedUserRequest,
+                    userRequest: visibleUserRequest,
                     assistantDraft: text,
                     answerPlanOverride: state.AnswerPlan);
                 var startupToolingBootstrapTask = Volatile.Read(ref _startupToolingBootstrapTask);
                 var turnExecutionIntent = ResolveTurnExecutionIntent(
-                    userRequest: routedUserRequest,
+                    userRequest: visibleUserRequest,
                     continuationFollowUpTurn: continuationFollowUpTurn,
                     compactFollowUpTurn: compactFollowUpTurn,
                     hasPendingActionContext: false,
@@ -442,7 +470,7 @@ internal sealed partial class ChatServiceSession {
                     maxReviewPasses: maxReviewPasses,
                     reviewPassesUsed: reviewPassesUsed,
                     turnExecutionIntent: turnExecutionIntent,
-                    userRequest: routedUserRequest,
+                    userRequest: visibleUserRequest,
                     assistantDraft: text,
                     answerPlan: state.AnswerPlan,
                     executionContractApplies: executionContractApplies,
@@ -470,17 +498,25 @@ internal sealed partial class ChatServiceSession {
                     return ContinueRound();
                 }
 
-                var primaryUserRequest = ExtractPrimaryUserRequest(request.Text);
-                var explicitToolQuestionTurn = LooksLikeExplicitToolQuestionTurn(routedUserRequest);
-                if (TryPreferCachedEvidenceForResolvedCompactContinuation(
+                var explicitToolQuestionTurn = LooksLikeExplicitToolQuestionTurn(visibleUserRequest);
+                if (!hasToolActivity
+                    && TryBuildInformationalToolCapabilityFallbackText(
+                        userRequest: visibleUserRequest,
+                        routedUserRequest: routedUserRequest,
+                        lastAssistantDraft: lastNonEmptyAssistantDraft,
+                        toolDefinitions: fullToolDefs.Length > 0 ? fullToolDefs : toolDefs,
+                        out var informationalToolCapabilityText)) {
+                    text = informationalToolCapabilityText;
+                } else if (TryPreferCachedEvidenceForResolvedCompactContinuation(
                         threadId: threadId,
                         userRequest: primaryUserRequest,
                         answerPlan: state.AnswerPlan,
                         toolActivityDetected: hasToolActivity,
                         out var resolvedContinuationCachedEvidenceText)) {
                     text = resolvedContinuationCachedEvidenceText;
-                } else if (ShouldForceExecutionContractBlockerAtFinalize(
-                        userRequest: routedUserRequest,
+                } else if (!suppressForcedExecutionBlockerForLocalDirectRetry
+                           && ShouldForceExecutionContractBlockerAtFinalize(
+                        userRequest: visibleUserRequest,
                         executionContractApplies: executionContractApplies,
                         autoPendingActionReplayUsed: autoPendingActionReplayUsed,
                         executionNudgeUsed: executionNudgeUsed,
@@ -504,7 +540,7 @@ internal sealed partial class ChatServiceSession {
                         || TryBuildToolEvidenceFallbackText(threadId, routedUserRequest, out cachedEvidenceFallbackText);
                     if (!builtCachedEvidenceFallback) {
                         text = BuildExecutionContractBlockerText(
-                            userRequest: routedUserRequest,
+                            userRequest: visibleUserRequest,
                             assistantDraft: text,
                             reason: blockerReason);
                     } else {
@@ -564,7 +600,7 @@ internal sealed partial class ChatServiceSession {
                     isLocalCompatibleLoopback: isLocalCompatibleLoopback,
                     availableToolCount: toolDefs.Count,
                     priorToolCalls: toolCalls.Count,
-                    userRequest: routedUserRequest);
+                    userRequest: visibleUserRequest);
                 text = finalizeNoTextOutcome.AssistantDraft;
                 if (string.IsNullOrWhiteSpace(textBeforeToolOutputFallback) && !string.IsNullOrWhiteSpace(text)) {
                     noTextToolOutputRecoveryHitCount++;
@@ -714,5 +750,69 @@ internal sealed partial class ChatServiceSession {
 
     internal static string ResolveFinalizeHostScopeShiftUserRequestForTesting(string userIntent, string routedUserRequest) {
         return ResolveFinalizeHostScopeShiftUserRequest(userIntent, routedUserRequest);
+    }
+
+    private bool ShouldAttemptLocalDirectRetryAfterNoResultWatchdog(
+        string threadId,
+        string userRequest,
+        bool executionContractApplies,
+        bool continuationFollowUpTurn,
+        bool compactFollowUpTurn,
+        bool localNoTextDirectRetryUsed,
+        bool isLocalCompatibleLoopback,
+        int availableToolCount,
+        bool hasToolActivity) {
+        if (executionContractApplies
+            || localNoTextDirectRetryUsed
+            || !isLocalCompatibleLoopback
+            || availableToolCount <= 0
+            || hasToolActivity
+            || (!continuationFollowUpTurn && !compactFollowUpTurn)) {
+            return false;
+        }
+
+        var normalizedRequest = (userRequest ?? string.Empty).Trim();
+        var hasConversationContinuationContext = continuationFollowUpTurn
+                                                || compactFollowUpTurn
+                                                || HasFreshThreadToolEvidence(threadId)
+                                                || TryGetWorkingMemoryCheckpoint(threadId, out _);
+        if (normalizedRequest.Length == 0
+            || !hasConversationContinuationContext
+            || ContainsQuestionSignal(normalizedRequest)
+            || LooksLikeExplicitToolQuestionTurn(normalizedRequest)) {
+            return false;
+        }
+
+        return true;
+    }
+
+    internal static bool ShouldAttemptLocalDirectRetryAfterNoResultWatchdogForTesting(
+        string userRequest,
+        bool hasConversationContinuationContext,
+        bool executionContractApplies,
+        bool continuationFollowUpTurn,
+        bool compactFollowUpTurn,
+        bool localNoTextDirectRetryUsed,
+        bool isLocalCompatibleLoopback,
+        int availableToolCount,
+        bool hasToolActivity) {
+        if (executionContractApplies
+            || localNoTextDirectRetryUsed
+            || !isLocalCompatibleLoopback
+            || availableToolCount <= 0
+            || hasToolActivity
+            || (!continuationFollowUpTurn && !compactFollowUpTurn && !hasConversationContinuationContext)) {
+            return false;
+        }
+
+        var normalizedRequest = (userRequest ?? string.Empty).Trim();
+        if (normalizedRequest.Length == 0
+            || !hasConversationContinuationContext
+            || ContainsQuestionSignal(normalizedRequest)
+            || LooksLikeExplicitToolQuestionTurn(normalizedRequest)) {
+            return false;
+        }
+
+        return true;
     }
 }

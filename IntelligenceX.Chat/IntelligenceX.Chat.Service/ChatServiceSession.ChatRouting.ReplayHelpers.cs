@@ -29,6 +29,8 @@ internal sealed partial class ChatServiceSession {
     private const int MediumContextMaxReplayToolOutputCharsTotal = 11_000;
     private const int LargeContextMaxReplayToolOutputCharsPerCall = 8_000;
     private const int LargeContextMaxReplayToolOutputCharsTotal = 22_000;
+    private const string HostReplayReviewMarker = "ix:host-replay-review:v1";
+    private const string HostDomainBootstrapContinuationMarker = "ix:host-domain-bootstrap-continuation:v1";
     private const string ReplayOutputCompactionMarker = "ix:replay-output-compacted:v1";
     private const string ReplayOutputBudgetStatusMarker = "ix:replay-output-budget:v1";
     private const string ReplayOutputBudgetStatusWhere = "tool_replay_input";
@@ -447,6 +449,38 @@ internal sealed partial class ChatServiceSession {
         return ChatInput.FromText(promptTextForOrdering);
     }
 
+    private static ChatInput BuildHostReplayContinuationInput(
+        string promptText,
+        string? orderingPromptText,
+        ToolCall executedCall,
+        IReadOnlyList<ToolOutputDto> outputs,
+        bool supportsSyntheticReplayItems,
+        out string? promptTextForOrdering) {
+        var normalizedPromptText = string.IsNullOrWhiteSpace(promptText)
+            ? string.Empty
+            : promptText.Trim();
+        promptTextForOrdering = string.IsNullOrWhiteSpace(orderingPromptText)
+            ? null
+            : orderingPromptText.Trim();
+        if (promptTextForOrdering is null && normalizedPromptText.Length > 0) {
+            promptTextForOrdering = normalizedPromptText;
+        }
+
+        if (supportsSyntheticReplayItems
+            && TryBuildSyntheticHostReplayInputWithPrelude(
+                normalizedPromptText.Length > 0 ? normalizedPromptText : promptTextForOrdering,
+                executedCall,
+                outputs,
+                out var syntheticInput)) {
+            return syntheticInput;
+        }
+
+        return ChatInput.FromText(BuildNativeHostReplayContinuationPrompt(
+            normalizedPromptText.Length > 0 ? normalizedPromptText : promptTextForOrdering,
+            executedCall,
+            outputs));
+    }
+
     private static bool TryBuildSyntheticHostReplayInput(
         ToolCall executedCall,
         IReadOnlyList<ToolOutputDto> outputs,
@@ -481,18 +515,114 @@ internal sealed partial class ChatServiceSession {
         return true;
     }
 
-    private static string BuildNativeHostReplayReviewPrompt(ToolCall executedCall, IReadOnlyList<ToolOutputDto> outputs) {
-        const int maxOutputsInPrompt = 3;
-        const int maxOutputCharsPerItem = 3_000;
-        const int maxOutputCharsTotal = 9_000;
-        const int maxInputChars = 2_000;
+    private static bool TryBuildSyntheticHostReplayInputWithPrelude(
+        string? promptText,
+        ToolCall executedCall,
+        IReadOnlyList<ToolOutputDto> outputs,
+        out ChatInput input) {
+        input = null!;
+        var executedCallId = (executedCall.CallId ?? string.Empty).Trim();
+        if (executedCallId.Length == 0 || outputs.Count == 0) {
+            return false;
+        }
 
+        for (var i = 0; i < outputs.Count; i++) {
+            var outputCallId = (outputs[i].CallId ?? string.Empty).Trim();
+            if (outputCallId.Length == 0) {
+                continue;
+            }
+
+            if (!string.Equals(outputCallId, executedCallId, StringComparison.OrdinalIgnoreCase)) {
+                return false;
+            }
+        }
+
+        var nextInput = new ChatInput();
+        if (!string.IsNullOrWhiteSpace(promptText)) {
+            nextInput.AddText(promptText);
+        }
+
+        nextInput.AddToolCall(executedCallId, executedCall.Name, executedCall.Input);
+        for (var i = 0; i < outputs.Count; i++) {
+            var output = outputs[i];
+            var outputCallId = (output.CallId ?? string.Empty).Trim();
+            nextInput.AddToolOutput(outputCallId.Length == 0 ? executedCallId : outputCallId, output.Output);
+        }
+
+        input = nextInput;
+        return true;
+    }
+
+    private static string BuildNativeHostReplayReviewPrompt(ToolCall executedCall, IReadOnlyList<ToolOutputDto> outputs) {
         var sb = new StringBuilder();
-        sb.AppendLine("ix:host-replay-review:v1");
+        sb.AppendLine(HostReplayReviewMarker);
         sb.AppendLine("A read-only follow-up action was already executed by the host runtime.");
         sb.AppendLine("Continue from the evidence below and provide the user-facing answer.");
         sb.AppendLine("Do not ask to rerun this same action and do not require synthetic tool call replay.");
         sb.AppendLine();
+        AppendHostReplayEvidence(sb, executedCall, outputs);
+        if (outputs.Count == 0) {
+            sb.AppendLine("If results are missing, explain the blocker briefly and request only the minimum next input.");
+            return sb.ToString().TrimEnd();
+        }
+
+        sb.AppendLine("Return the concise final answer with evidence.");
+        return sb.ToString().TrimEnd();
+    }
+
+    private static string BuildNativeHostReplayContinuationPrompt(
+        string? promptText,
+        ToolCall executedCall,
+        IReadOnlyList<ToolOutputDto> outputs) {
+        var normalizedPromptText = (promptText ?? string.Empty).Trim();
+        if (normalizedPromptText.Length == 0) {
+            return BuildNativeHostReplayReviewPrompt(executedCall, outputs);
+        }
+
+        var sb = new StringBuilder();
+        sb.AppendLine(normalizedPromptText);
+        sb.AppendLine();
+        AppendHostReplayEvidence(sb, executedCall, outputs);
+        if (outputs.Count == 0) {
+            sb.AppendLine("If results are missing, explain the blocker briefly and request only the minimum next input.");
+            return sb.ToString().TrimEnd();
+        }
+
+        sb.AppendLine("Continue from the original request now.");
+        return sb.ToString().TrimEnd();
+    }
+
+    private static string BuildHostDomainBootstrapContinuationPrompt(
+        string userRequest,
+        ToolCall executedCall,
+        IReadOnlyList<ToolOutputDto> outputs) {
+        const int maxUserRequestChars = 1_200;
+
+        var sb = new StringBuilder();
+        sb.AppendLine(HostDomainBootstrapContinuationMarker);
+        sb.AppendLine("A host bootstrap tool already ran to discover AD scope for the user's request.");
+        sb.AppendLine("Treat the bootstrap evidence as setup context only, then continue the original task.");
+        sb.AppendLine("Do not stop after merely restating the bootstrap output.");
+        sb.AppendLine("Do not rerun this same bootstrap unless the evidence below is unusable.");
+        sb.AppendLine("Prefer read-only operational tools that answer the user's request now that scope is known.");
+        sb.AppendLine();
+        sb.AppendLine("original_user_request:");
+        sb.AppendLine(TruncateForHostReplayPrompt(userRequest, maxUserRequestChars));
+        sb.AppendLine();
+        AppendHostReplayEvidence(sb, executedCall, outputs);
+        sb.AppendLine("If enough scope is available, run the next read-only AD tool now.");
+        sb.AppendLine("If scope is still insufficient, say exactly what is missing.");
+        return sb.ToString().TrimEnd();
+    }
+
+    private static void AppendHostReplayEvidence(
+        StringBuilder sb,
+        ToolCall executedCall,
+        IReadOnlyList<ToolOutputDto> outputs) {
+        const int maxOutputsInPrompt = 3;
+        const int maxOutputCharsPerItem = 3_000;
+        const int maxOutputCharsTotal = 9_000;
+        const int maxInputChars = 2_000;
 
         var toolName = (executedCall.Name ?? string.Empty).Trim();
         var callId = (executedCall.CallId ?? string.Empty).Trim();
@@ -509,8 +639,7 @@ internal sealed partial class ChatServiceSession {
 
         if (outputs.Count == 0) {
             sb.AppendLine("tool_results: none");
-            sb.AppendLine("If results are missing, explain the blocker briefly and request only the minimum next input.");
-            return sb.ToString().TrimEnd();
+            return;
         }
 
         sb.AppendLine("tool_results:");
@@ -556,9 +685,6 @@ internal sealed partial class ChatServiceSession {
         if (outputs.Count > outputCount) {
             sb.AppendLine("additional_results_omitted: " + (outputs.Count - outputCount));
         }
-
-        sb.AppendLine("Return the concise final answer with evidence.");
-        return sb.ToString().TrimEnd();
     }
 
     private static string TruncateForHostReplayPrompt(string? value, int maxChars) {

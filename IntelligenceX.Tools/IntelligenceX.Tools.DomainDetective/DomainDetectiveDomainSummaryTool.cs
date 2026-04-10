@@ -175,16 +175,7 @@ public sealed class DomainDetectiveDomainSummaryTool : DomainDetectiveToolBase, 
             Warnings = warnings
         };
 
-        var summaryMarkdown = ToolMarkdown.SummaryFacts(
-            title: "DomainDetective domain summary",
-            facts: new[] {
-                ("Domain", result.Domain),
-                ("Checks", result.ChecksRequested.Count.ToString(CultureInfo.InvariantCulture)),
-                ("SPF valid", result.Summary.SpfValid ? "yes" : "no"),
-                ("DMARC valid", result.Summary.DmarcValid ? "yes" : "no"),
-                ("DNSSEC valid", result.Summary.DnsSecValid ? "yes" : "no"),
-                ("Expires soon", result.Summary.ExpiresSoon ? "yes" : "no")
-            });
+        var summaryMarkdown = BuildSummaryMarkdown(result);
 
         var meta = ToolOutputHints.Meta(count: 1, truncated: result.ChecksTruncated || hintsTruncated)
             .Add("domain", result.Domain)
@@ -245,6 +236,32 @@ public sealed class DomainDetectiveDomainSummaryTool : DomainDetectiveToolBase, 
         return DomainDetectiveCheckNameCatalog.NormalizeCheckLookupToken(value);
     }
 
+    private static string BuildSummaryMarkdown(DomainDetectiveDomainSummaryResultModel result) {
+        return ToolMarkdown.SummaryFacts(
+            title: "DomainDetective domain summary",
+            facts: new[] {
+                ("Domain", result.Domain),
+                ("Checks", result.ChecksRequested.Count.ToString(CultureInfo.InvariantCulture)),
+                ("SPF valid", result.Summary.SpfValid ? "yes" : "no"),
+                ("DMARC valid", result.Summary.DmarcValid ? "yes" : "no"),
+                ("DKIM status", ResolveDkimStatusSummary(result.Summary)),
+                ("DNSSEC valid", result.Summary.DnsSecValid ? "yes" : "no"),
+                ("Expires soon", result.Summary.ExpiresSoon ? "yes" : "no")
+            });
+    }
+
+    private static string ResolveDkimStatusSummary(DomainDetectiveSummaryModel summary) {
+        return ResolveDkimStatusSummary(summary.HasDkimRecord, summary.DkimValid);
+    }
+
+    private static string ResolveDkimStatusSummary(bool hasDkimRecord, bool dkimValid) {
+        if (hasDkimRecord) {
+            return dkimValid ? "valid" : "invalid";
+        }
+
+        return "no selector evidence";
+    }
+
     private static JsonValue? BuildRenderHints(
         int analysisOverviewCount,
         int checksRequestedCount,
@@ -299,6 +316,7 @@ public sealed class DomainDetectiveDomainSummaryTool : DomainDetectiveToolBase, 
             DmarcValid = summary.DmarcValid,
             HasDkimRecord = summary.HasDkimRecord,
             DkimValid = summary.DkimValid,
+            DkimStatus = ResolveDkimStatusSummary(summary.HasDkimRecord, summary.DkimValid),
             HasMxRecord = summary.HasMxRecord,
             DnsSecValid = summary.DnsSecValid,
             DnsSecKeyExpiresSoon = summary.DnsSecKeyExpiresSoon,
@@ -349,6 +367,7 @@ public sealed class DomainDetectiveDomainSummaryTool : DomainDetectiveToolBase, 
         public bool DmarcValid { get; init; }
         public bool HasDkimRecord { get; init; }
         public bool DkimValid { get; init; }
+        public string DkimStatus { get; init; } = string.Empty;
         public bool HasMxRecord { get; init; }
         public bool DnsSecValid { get; init; }
         public bool DnsSecKeyExpiresSoon { get; init; }

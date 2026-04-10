@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.DirectoryServices.ActiveDirectory;
 using System.Text.Json;
 using ADPlayground.Replication;
+using IntelligenceX.Json;
+using IntelligenceX.Tools.ADPlayground;
 using Xunit;
 
 namespace IntelligenceX.Tools.Tests;
@@ -85,5 +87,106 @@ public sealed class AdReplicationConnectionsToolSerializationTests {
         Assert.Contains("ReplicationSchedule", rowJson, StringComparison.Ordinal);
         Assert.DoesNotContain("RawSchedule", rowJson, StringComparison.Ordinal);
         Assert.Contains("\"Transport\":\"Rpc\"", rowJson, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void BuildTopologyArtifacts_EmitsGraphAndMermaidVisuals() {
+        var schedule = new ActiveDirectorySchedule();
+        schedule.RawSchedule = new bool[7, 24, 4];
+
+        var connections = new[] {
+            new SiteConnectionInfo(
+                Name: "CN=Conn-01",
+                Site: "Default-First-Site-Name",
+                SourceServer: "DC01.ad.evotec.xyz",
+                SourceSite: "Branch-Site-Name",
+                DestinationServer: "DC02.ad.evotec.xyz",
+                Transport: ActiveDirectoryTransportType.Rpc,
+                Enabled: true,
+                GeneratedByKcc: true,
+                ReciprocalReplicationEnabled: false,
+                ChangeNotificationStatus: NotificationStatus.IntraSiteOnly,
+                DataCompressionEnabled: true,
+                ReplicationScheduleOwnedByUser: false,
+                ReplicationSpan: ReplicationSpan.InterSite,
+                ReplicationSchedule: schedule),
+            new SiteConnectionInfo(
+                Name: "CN=Conn-02",
+                Site: "Default-First-Site-Name",
+                SourceServer: "DC02.ad.evotec.xyz",
+                SourceSite: "Default-First-Site-Name",
+                DestinationServer: "DC03.ad.evotec.xyz",
+                Transport: ActiveDirectoryTransportType.Rpc,
+                Enabled: true,
+                GeneratedByKcc: false,
+                ReciprocalReplicationEnabled: false,
+                ChangeNotificationStatus: NotificationStatus.IntraSiteOnly,
+                DataCompressionEnabled: true,
+                ReplicationScheduleOwnedByUser: false,
+                ReplicationSpan: ReplicationSpan.InterSite,
+                ReplicationSchedule: schedule)
+        };
+
+        var artifacts = AdReplicationConnectionsTool.BuildTopologyArtifacts(connections);
+        var graphJson = JsonLite.Serialize(JsonValue.From(artifacts.Graph));
+
+        Assert.Contains("\"nodes\"", graphJson, StringComparison.Ordinal);
+        Assert.Contains("\"edges\"", graphJson, StringComparison.Ordinal);
+        Assert.Contains("DC01.ad.evotec.xyz", graphJson, StringComparison.Ordinal);
+        Assert.Contains("DC03.ad.evotec.xyz", graphJson, StringComparison.Ordinal);
+        Assert.Contains("flowchart LR", artifacts.MermaidSource, StringComparison.Ordinal);
+        Assert.Contains("DC01.ad.evotec.xyz", artifacts.MermaidSource, StringComparison.Ordinal);
+        Assert.Contains("DC03.ad.evotec.xyz", artifacts.MermaidSource, StringComparison.Ordinal);
+        Assert.Contains("-->|Rpc enabled kcc|", artifacts.MermaidSource, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void BuildTopologyArtifacts_UsesUniqueEdgeIdsAcrossTransports() {
+        var schedule = new ActiveDirectorySchedule();
+        schedule.RawSchedule = new bool[7, 24, 4];
+
+        var connections = new[] {
+            new SiteConnectionInfo(
+                Name: "CN=Conn-Rpc",
+                Site: "Default-First-Site-Name",
+                SourceServer: "DC01.ad.evotec.xyz",
+                SourceSite: "Branch-Site-Name",
+                DestinationServer: "DC02.ad.evotec.xyz",
+                Transport: ActiveDirectoryTransportType.Rpc,
+                Enabled: true,
+                GeneratedByKcc: true,
+                ReciprocalReplicationEnabled: false,
+                ChangeNotificationStatus: NotificationStatus.IntraSiteOnly,
+                DataCompressionEnabled: true,
+                ReplicationScheduleOwnedByUser: false,
+                ReplicationSpan: ReplicationSpan.InterSite,
+                ReplicationSchedule: schedule),
+            new SiteConnectionInfo(
+                Name: "CN=Conn-Smtp",
+                Site: "Default-First-Site-Name",
+                SourceServer: "DC01.ad.evotec.xyz",
+                SourceSite: "Branch-Site-Name",
+                DestinationServer: "DC02.ad.evotec.xyz",
+                Transport: ActiveDirectoryTransportType.Smtp,
+                Enabled: true,
+                GeneratedByKcc: false,
+                ReciprocalReplicationEnabled: false,
+                ChangeNotificationStatus: NotificationStatus.IntraSiteOnly,
+                DataCompressionEnabled: true,
+                ReplicationScheduleOwnedByUser: false,
+                ReplicationSpan: ReplicationSpan.InterSite,
+                ReplicationSchedule: schedule)
+        };
+
+        var artifacts = AdReplicationConnectionsTool.BuildTopologyArtifacts(connections);
+        var graph = artifacts.Graph;
+        var edges = graph.GetArray("edges")!;
+
+        Assert.Equal(2, edges.Count);
+        var firstId = edges[0].AsObject()!.GetString("id");
+        var secondId = edges[1].AsObject()!.GetString("id");
+        Assert.NotEqual(firstId, secondId);
+        Assert.Contains("rpc", firstId, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("smtp", secondId, StringComparison.OrdinalIgnoreCase);
     }
 }

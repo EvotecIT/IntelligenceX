@@ -212,8 +212,11 @@ internal sealed partial class ChatServiceSession {
         bool hasToolActivity,
         ProactiveFollowUpReviewDecision proactiveDecision,
         IReadOnlyList<ToolOutputDto> toolOutputs) {
-        if (!noResultWatchdogTriggered
-            && turnExecutionIntent.RequestedArtifact.RequiresArtifact
+        if (string.IsNullOrWhiteSpace(assistantDraft)) {
+            return NoExtractedFinalizeReviewDecision.None("empty_assistant_draft");
+        }
+
+        if (turnExecutionIntent.RequestedArtifact.RequiresArtifact
             && !IsRequestedArtifactRequirementSatisfied(turnExecutionIntent.RequestedArtifact, assistantDraft, answerPlan)) {
             return NoExtractedFinalizeReviewDecision.ProactiveFollowUpReview(
                 "allow_requested_artifact_missing",
@@ -379,7 +382,7 @@ internal sealed partial class ChatServiceSession {
             hasSuccessfulToolOutput: hasSuccessfulToolOutput,
             toolCalls: toolCalls,
             toolOutputs: toolOutputs,
-            assistantDraft: recoveredAssistantDraft,
+            assistantDraft: assistantDraft,
             localNoTextDirectRetryUsed: localNoTextDirectRetryUsed,
             isLocalCompatibleLoopback: isLocalCompatibleLoopback,
             availableToolCount: availableToolCount,

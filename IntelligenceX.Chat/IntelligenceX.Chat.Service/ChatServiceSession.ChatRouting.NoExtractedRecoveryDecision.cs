@@ -95,6 +95,7 @@ internal sealed partial class ChatServiceSession {
         IReadOnlyList<ToolDefinition> toolDefinitions,
         NoExtractedPromptRecoveryDecision decision) {
         var prompt = string.Empty;
+        var promptTextForOrdering = userRequest;
         var phaseStatus = ChatStatusCodes.Thinking;
         var phaseMessage = string.Empty;
         var heartbeatLabel = string.Empty;
@@ -139,7 +140,7 @@ internal sealed partial class ChatServiceSession {
                 request.RequestId,
                 threadId,
                 options,
-                prompt,
+                string.IsNullOrWhiteSpace(promptTextForOrdering) ? prompt : promptTextForOrdering,
                 strategy: "prompt_recovery",
                 newThreadOverride: false)
             .ConfigureAwait(false);

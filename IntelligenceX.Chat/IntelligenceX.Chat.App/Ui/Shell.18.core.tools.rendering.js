@@ -372,7 +372,7 @@
     if (Object.prototype.hasOwnProperty.call(nextOptions, "activeConversationId")) {
       state.options.activeConversationId = nextOptions.activeConversationId || "";
     }
-    state.options.conversations = nextOptions.conversations || [];
+    state.options.conversations = sortConversationsForDisplay(nextOptions.conversations || []);
     state.options.profile = nextOptions.profile || state.options.profile;
     var currentLocalModel = state.options.localModel && typeof state.options.localModel === "object"
       ? state.options.localModel

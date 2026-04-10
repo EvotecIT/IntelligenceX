@@ -32,7 +32,23 @@ public sealed partial class MainWindow {
         var identity = ResolveActiveUsageIdentity();
         lock (_turnDiagnosticsSync) {
             if (!_accountUsageByKey.TryGetValue(identity.Key, out var snapshot)) {
-                return null;
+                if (string.Equals(_localProviderTransport, TransportNative, StringComparison.OrdinalIgnoreCase)) {
+                    var selectedAccountId = NormalizeLocalProviderOpenAIAccountId(_localProviderOpenAIAccountId);
+                    if (selectedAccountId.Length > 0) {
+                        _accountUsageByKey.TryGetValue(BuildNativeUsageKey(selectedAccountId), out snapshot);
+                    }
+
+                    if (snapshot is null) {
+                        var authenticatedAccountId = NormalizeLocalProviderOpenAIAccountId(_authenticatedAccountId);
+                        if (authenticatedAccountId.Length > 0) {
+                            _accountUsageByKey.TryGetValue(BuildNativeUsageKey(authenticatedAccountId), out snapshot);
+                        }
+                    }
+                }
+
+                if (snapshot is null) {
+                    return null;
+                }
             }
 
             return BuildAccountUsageStateEntry(snapshot, DateTime.UtcNow);

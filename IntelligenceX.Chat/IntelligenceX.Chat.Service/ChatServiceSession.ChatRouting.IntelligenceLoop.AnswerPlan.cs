@@ -1,9 +1,14 @@
 using System;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
+    private static readonly Regex AnswerPlanMarkerRegex = new(
+        @"ix\s*:\s*answer-plan\s*:\s*v1(?:\b|(?=[a-z_]))",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
     internal readonly record struct TurnAnswerPlan(
         bool HasPlan,
         string UserGoal,
@@ -134,10 +139,11 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
-        var markerIndex = content.IndexOf(AnswerPlanMarker, StringComparison.OrdinalIgnoreCase);
-        if (markerIndex < 0) {
+        var markerMatch = AnswerPlanMarkerRegex.Match(content);
+        if (!markerMatch.Success) {
             return false;
         }
+        var markerIndex = markerMatch.Index;
 
         blockStart = FindAnswerPlanBlockStart(content, markerIndex);
         var position = blockStart;
@@ -182,7 +188,7 @@ internal sealed partial class ChatServiceSession {
             var trimmed = line.Trim();
 
             if (!sawMarker) {
-                if (trimmed.IndexOf(AnswerPlanMarker.AsSpan(), StringComparison.OrdinalIgnoreCase) >= 0) {
+                if (ContainsAnswerPlanMarker(trimmed)) {
                     sawMarker = true;
                 }
 
@@ -377,6 +383,10 @@ internal sealed partial class ChatServiceSession {
             AdvancesCurrentAsk: !hasAdvancesCurrentAsk || advancesCurrentAsk,
             AdvanceReason: NormalizeStructuredMetadataText(advanceReason));
         return true;
+    }
+
+    private static bool ContainsAnswerPlanMarker(ReadOnlySpan<char> line) {
+        return line.Length > 0 && AnswerPlanMarkerRegex.IsMatch(line.ToString());
     }
 
     private static bool TryParseStructuredBooleanLine(ReadOnlySpan<char> line, string key, out bool value) {

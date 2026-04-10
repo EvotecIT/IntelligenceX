@@ -166,11 +166,12 @@ public sealed partial class MainWindow : Window {
 
                         var promptQueued = false;
                         if (IsUsageLimitError(resolvedRetryEx)) {
+                            var activeUsageLabel = ResolveActiveUsageLabelForDisplay();
                             MarkUsageLimitForActiveAccount(resolvedRetryEx.Message);
                             promptQueued = QueuePromptAfterSignIn(turn.UserText, turn.ConversationId);
                             await SetStatusAsync(SessionStatus.UsageLimitReached()).ConfigureAwait(false);
                             if (promptQueued) {
-                                AppendSystem(turn.Conversation, SystemNotice.PromptQueuedAfterUsageLimit());
+                                AppendSystem(turn.Conversation, SystemNotice.PromptQueuedAfterUsageLimit(activeUsageLabel));
                             }
                         }
                         await ApplyTurnFailureAsync(turn, ResolveTurnOutcome(turn.RequestId, resolvedRetryEx, disconnectedFallback: false, cancellationToken)).ConfigureAwait(false);
@@ -198,11 +199,12 @@ public sealed partial class MainWindow : Window {
 
                 var promptQueued = false;
                 if (IsUsageLimitError(resolvedEx)) {
+                    var activeUsageLabel = ResolveActiveUsageLabelForDisplay();
                     MarkUsageLimitForActiveAccount(resolvedEx.Message);
                     promptQueued = QueuePromptAfterSignIn(turn.UserText, turn.ConversationId);
                     await SetStatusAsync(SessionStatus.UsageLimitReached()).ConfigureAwait(false);
                     if (promptQueued) {
-                        AppendSystem(turn.Conversation, SystemNotice.PromptQueuedAfterUsageLimit());
+                        AppendSystem(turn.Conversation, SystemNotice.PromptQueuedAfterUsageLimit(activeUsageLabel));
                     }
                 }
                 await ApplyTurnFailureAsync(turn, ResolveTurnOutcome(turn.RequestId, resolvedEx, disconnectedFallback: false, cancellationToken)).ConfigureAwait(false);
@@ -478,7 +480,7 @@ public sealed partial class MainWindow : Window {
         }
 
         if (IsUsageLimitError(ex)) {
-            return AssistantTurnOutcome.UsageLimit(ex.Message);
+            return AssistantTurnOutcome.UsageLimit(ex.Message, ResolveActiveUsageLabelForDisplay());
         }
 
         var message = ex.Message ?? string.Empty;

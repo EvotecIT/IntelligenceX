@@ -9,37 +9,91 @@ function Ensure-TestimoXTrailingSlash {
     return ($full + [System.IO.Path]::DirectorySeparatorChar)
 }
 
+function Get-RepoSiblingRootCandidates {
+    param(
+        [Parameter(Mandatory)]
+        [string] $RepoRoot
+    )
+
+    $seen = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($candidate in @(
+        (Join-Path $RepoRoot '..'),
+        (Join-Path $RepoRoot '..\..'),
+        (Join-Path $RepoRoot '..\..\..'),
+        (Join-Path $RepoRoot '..\..\..\..')
+    )) {
+        $full = [System.IO.Path]::GetFullPath($candidate)
+        if ($seen.Add($full)) {
+            $full
+        }
+    }
+}
+
+function Test-RepoMarkers {
+    param(
+        [Parameter(Mandatory)]
+        [string] $Root,
+        [Parameter(Mandatory)]
+        [string[]] $MarkerRelativePaths
+    )
+
+    $full = [System.IO.Path]::GetFullPath($Root)
+    foreach ($relativeMarker in $MarkerRelativePaths) {
+        if (-not (Test-Path (Join-Path $full $relativeMarker))) {
+            return $false
+        }
+    }
+
+    return $true
+}
+
+function Resolve-OptionalSiblingRepoRoot {
+    param(
+        [Parameter(Mandatory)]
+        [string] $RepoRoot,
+        [Parameter(Mandatory)]
+        [string[]] $RepoNames,
+        [Parameter(Mandatory)]
+        [string[]] $MarkerRelativePaths
+    )
+
+    foreach ($baseRoot in (Get-RepoSiblingRootCandidates -RepoRoot $RepoRoot)) {
+        foreach ($repoName in $RepoNames) {
+            $candidate = Join-Path $baseRoot $repoName
+            if (Test-RepoMarkers -Root $candidate -MarkerRelativePaths $MarkerRelativePaths) {
+                return (Ensure-TestimoXTrailingSlash -Path $candidate)
+            }
+        }
+    }
+
+    return $null
+}
+
 function Get-TestimoXRootCandidates {
     param(
         [Parameter(Mandatory)]
         [string] $RepoRoot
     )
 
-    return @(
-        (Join-Path $RepoRoot '..\TestimoX'),
-        (Join-Path $RepoRoot '..\TestimoX-master'),
-        (Join-Path $RepoRoot '..\..\TestimoX'),
-        (Join-Path $RepoRoot '..\..\TestimoX-master')
-    )
+    $seen = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    foreach ($baseRoot in (Get-RepoSiblingRootCandidates -RepoRoot $RepoRoot)) {
+        foreach ($repoName in @('TestimoX', 'TestimoX-master')) {
+            $candidate = [System.IO.Path]::GetFullPath((Join-Path $baseRoot $repoName))
+            if ($seen.Add($candidate)) {
+                $candidate
+            }
+        }
+    }
 }
 
 function Test-TestimoXMarkers {
     param([Parameter(Mandatory)][string] $Root)
 
-    $full = [System.IO.Path]::GetFullPath($Root)
-    $markers = @(
-        (Join-Path $full 'ADPlayground\ADPlayground.csproj'),
-        (Join-Path $full 'ComputerX\Features\FeatureInventoryQuery.cs'),
-        (Join-Path $full 'ComputerX\PowerShellRuntime\PowerShellCommandQuery.cs')
-    )
-
-    foreach ($marker in $markers) {
-        if (-not (Test-Path $marker)) {
-            return $false
-        }
-    }
-
-    return $true
+    return (Test-RepoMarkers -Root $Root -MarkerRelativePaths @(
+        'ADPlayground\ADPlayground.csproj',
+        'ComputerX\Features\FeatureInventoryQuery.cs',
+        'ComputerX\PowerShellRuntime\PowerShellCommandQuery.cs'
+    ))
 }
 
 function Resolve-TestimoXRoot {

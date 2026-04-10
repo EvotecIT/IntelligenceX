@@ -128,6 +128,182 @@
       .trim();
   }
 
+  var mermaidEdgeStatementStartRegex = /[A-Za-z_][A-Za-z0-9_-]*\s+(?:-->|---|-.->|==>)/g;
+  var mermaidNodeStatementStartRegex = /^[A-Za-z_][A-Za-z0-9_-]*\s*(?:\[|\(|\{)/;
+  var mermaidContinuationKeywords = [
+    "subgraph",
+    "classDef",
+    "class",
+    "style",
+    "click",
+    "linkStyle"
+  ];
+
+  function trySplitCompactMermaidDirectiveLine(line) {
+    var text = String(line == null ? "" : line);
+    if (!text.trim()) {
+      return null;
+    }
+
+    var leadingWhitespaceMatch = text.match(/^\s*/);
+    var leadingWhitespace = leadingWhitespaceMatch ? leadingWhitespaceMatch[0] : "";
+    var trimmed = text.slice(leadingWhitespace.length);
+    var match = trimmed.match(/^(flowchart|graph)\s+([A-Za-z]+)\s+(.+)$/i);
+    if (!match) {
+      return null;
+    }
+
+    return {
+      header: leadingWhitespace + match[1] + " " + match[2],
+      content: leadingWhitespace + match[3]
+    };
+  }
+
+  function trySplitCollapsedMermaidEndLine(line) {
+    var text = String(line == null ? "" : line);
+    if (!text.trim()) {
+      return null;
+    }
+
+    var leadingWhitespaceMatch = text.match(/^\s*/);
+    var leadingWhitespace = leadingWhitespaceMatch ? leadingWhitespaceMatch[0] : "";
+    var trimmed = text.slice(leadingWhitespace.length);
+    if (!/^end\s+/i.test(trimmed)) {
+      return null;
+    }
+
+    var remainder = trimmed.slice(3).trimStart();
+    if (!remainder || !looksLikeMermaidContinuationAfterStandaloneEnd(remainder)) {
+      return null;
+    }
+
+    return {
+      first: leadingWhitespace + "end",
+      remainder: leadingWhitespace + remainder
+    };
+  }
+
+  function looksLikeMermaidContinuationAfterStandaloneEnd(remainder) {
+    var candidate = String(remainder == null ? "" : remainder).trimStart();
+    if (!candidate) {
+      return false;
+    }
+
+    for (var i = 0; i < mermaidContinuationKeywords.length; i += 1) {
+      var keyword = mermaidContinuationKeywords[i];
+      if (!candidate.toLowerCase().startsWith(keyword.toLowerCase())) {
+        continue;
+      }
+
+      if (candidate.length === keyword.length || /\s/.test(candidate.charAt(keyword.length))) {
+        return true;
+      }
+    }
+
+    if (findMermaidEdgeStatementStartIndex(candidate, 0) === 0) {
+      return true;
+    }
+
+    return mermaidNodeStatementStartRegex.test(candidate);
+  }
+
+  function findMermaidEdgeStatementStartIndex(text, startIndex) {
+    var source = String(text == null ? "" : text);
+    var minimumIndex = Math.max(0, startIndex || 0);
+    mermaidEdgeStatementStartRegex.lastIndex = minimumIndex;
+    try {
+      while (true) {
+        var match = mermaidEdgeStatementStartRegex.exec(source);
+        if (!match) {
+          return -1;
+        }
+
+        var index = isFiniteNumber(match.index) ? match.index : -1;
+        if (index < 0) {
+          continue;
+        }
+
+        if (index === 0 || /\s/.test(source.charAt(index - 1))) {
+          return index;
+        }
+
+        if (mermaidEdgeStatementStartRegex.lastIndex <= index) {
+          mermaidEdgeStatementStartRegex.lastIndex = index + 1;
+        }
+      }
+    } finally {
+      mermaidEdgeStatementStartRegex.lastIndex = 0;
+    }
+  }
+
+  function trySplitCollapsedMermaidEdgeStatements(line) {
+    var text = String(line == null ? "" : line);
+    if (!text.trim()) {
+      return null;
+    }
+
+    var leadingWhitespaceMatch = text.match(/^\s*/);
+    var leadingWhitespace = leadingWhitespaceMatch ? leadingWhitespaceMatch[0] : "";
+    var trimmed = text.slice(leadingWhitespace.length);
+    var splitIndex = findMermaidEdgeStatementStartIndex(trimmed, 0);
+    if (splitIndex < 0) {
+      return null;
+    }
+
+    splitIndex = findMermaidEdgeStatementStartIndex(trimmed, splitIndex + 1);
+    if (!isFiniteNumber(splitIndex) || splitIndex <= 0 || splitIndex >= trimmed.length) {
+      return null;
+    }
+
+    var first = trimmed.slice(0, splitIndex).trimEnd();
+    var remainder = trimmed.slice(splitIndex).trimStart();
+    if (!first || !remainder) {
+      return null;
+    }
+
+    return {
+      first: leadingWhitespace + first,
+      remainder: leadingWhitespace + remainder
+    };
+  }
+
+  function normalizeMermaidSourceForRender(source) {
+    var normalized = normalizeText(source || "");
+    if (!normalized) {
+      return "";
+    }
+
+    var repaired = [];
+    var pending = normalized.split("\n");
+    while (pending.length > 0) {
+      var current = pending.shift();
+      var split = trySplitCompactMermaidDirectiveLine(current);
+      if (split) {
+        repaired.push(split.header);
+        pending.unshift(split.content);
+        continue;
+      }
+
+      split = trySplitCollapsedMermaidEndLine(current);
+      if (split) {
+        repaired.push(split.first);
+        pending.unshift(split.remainder);
+        continue;
+      }
+
+      split = trySplitCollapsedMermaidEdgeStatements(current);
+      if (split) {
+        repaired.push(split.first);
+        pending.unshift(split.remainder);
+        continue;
+      }
+
+      repaired.push(current);
+    }
+
+    return repaired.join("\n").trim();
+  }
+
   function decodeBase64Utf8Value(value) {
     var text = String(value || "").trim();
     if (!text) {
@@ -761,7 +937,12 @@
 
     var source = pre.getAttribute("data-ix-mermaid-source");
     if (typeof source !== "string" || source.length === 0) {
-      source = normalizeText(pre.textContent || "");
+      source = normalizeMermaidSourceForRender(pre.textContent || "");
+      if (source.length > 0) {
+        pre.setAttribute("data-ix-mermaid-source", source);
+      }
+    } else {
+      source = normalizeMermaidSourceForRender(source);
       if (source.length > 0) {
         pre.setAttribute("data-ix-mermaid-source", source);
       }
@@ -2774,6 +2955,7 @@
   });
 
   async function renderMermaidInVisualView(source) {
+    source = normalizeMermaidSourceForRender(source || "");
     var pre = document.createElement("pre");
     pre.className = "mermaid";
     pre.textContent = source;
@@ -3960,6 +4142,7 @@
   }
 
   async function renderMermaidForExport(source, imageId, themeMode) {
+    source = normalizeMermaidSourceForRender(source || "");
     var ready = await ensureMermaidReady();
     if (!ready) {
       return null;
@@ -4412,4 +4595,3 @@
       images: images
     };
   };
-

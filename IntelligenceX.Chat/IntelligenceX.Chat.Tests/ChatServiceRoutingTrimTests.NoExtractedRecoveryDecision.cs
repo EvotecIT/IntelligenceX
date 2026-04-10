@@ -104,4 +104,29 @@ public sealed partial class ChatServiceRoutingTrimTests {
         Assert.Equal("no_prompt_recovery_selected", result.Reason);
         Assert.False(result.ExpandToFullToolAvailability);
     }
+
+    [Fact]
+    public void ResolveNoExtractedPromptRecoveryDecisionForTesting_DoesNotNudgeArtifactOnlyTopologyFollowUp() {
+        var result = ChatServiceSession.ResolveNoExtractedPromptRecoveryDecisionForTesting(
+            userRequest: "Pokaz to na wykresie topologii replikacji.",
+            assistantDraft: string.Empty,
+            executionContractApplies: false,
+            usedContinuationSubset: false,
+            suppressLocalToolRecoveryRetries: false,
+            executionNudgeUsed: false,
+            toolReceiptCorrectionUsed: false,
+            watchdogAlreadyUsed: false,
+            executionContractEscapeUsed: false,
+            toolsAvailable: true,
+            fullToolsAvailable: true,
+            priorToolCalls: 0,
+            priorToolOutputs: 0,
+            assistantDraftToolCalls: 0,
+            continuationFollowUpTurn: true,
+            compactFollowUpTurn: true);
+
+        Assert.Equal("None", result.Kind);
+        Assert.Equal("no_prompt_recovery_selected", result.Reason);
+        Assert.False(result.ExpandToFullToolAvailability);
+    }
 }

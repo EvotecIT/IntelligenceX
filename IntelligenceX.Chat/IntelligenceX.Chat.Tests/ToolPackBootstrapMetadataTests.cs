@@ -362,6 +362,61 @@ public sealed class ToolPackBootstrapMetadataTests {
     }
 
     [Fact]
+    public void GetTrustedBuiltInCompanionAssemblyPathsForTesting_IncludesProbeRootRuntimeDependency_WhenWorkspaceOutputOmitsLocalCopy() {
+        var repoRoot = FindRepoRoot();
+        var adPlaygroundOutputRoot = Path.Combine(
+            repoRoot,
+            "IntelligenceX.Tools",
+            "IntelligenceX.Tools.ADPlayground",
+            "bin",
+            "Release",
+            "net10.0-windows");
+        var trustedAssemblySourcePath = Path.Combine(adPlaygroundOutputRoot, "IntelligenceX.Tools.ADPlayground.dll");
+        var trustedDepsSourcePath = Path.Combine(adPlaygroundOutputRoot, "IntelligenceX.Tools.ADPlayground.deps.json");
+        var serviceDependencySourcePath = Path.Combine(
+            repoRoot,
+            "IntelligenceX.Chat",
+            "IntelligenceX.Chat.App",
+            "bin",
+            "Release",
+            "net10.0-windows10.0.26100.0",
+            "win-x64",
+            "service",
+            "System.ServiceModel.Primitives.dll");
+
+        Assert.True(File.Exists(trustedAssemblySourcePath), $"Expected trusted assembly '{trustedAssemblySourcePath}' to exist.");
+        Assert.True(File.Exists(trustedDepsSourcePath), $"Expected trusted deps file '{trustedDepsSourcePath}' to exist.");
+        Assert.True(File.Exists(serviceDependencySourcePath), $"Expected probe-root dependency '{serviceDependencySourcePath}' to exist.");
+
+        var tempRoot = Path.Combine(Path.GetTempPath(), "ix-chat-probe-root-companion-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempRoot);
+
+        try {
+            var workspaceRoot = Path.Combine(tempRoot, "workspace");
+            var probeRoot = Path.Combine(tempRoot, "service");
+            Directory.CreateDirectory(workspaceRoot);
+            Directory.CreateDirectory(probeRoot);
+
+            var trustedAssemblyPath = Path.Combine(workspaceRoot, Path.GetFileName(trustedAssemblySourcePath));
+            var trustedDepsPath = Path.Combine(workspaceRoot, Path.GetFileName(trustedDepsSourcePath));
+            var dependencyAssemblyPath = Path.Combine(probeRoot, Path.GetFileName(serviceDependencySourcePath));
+            File.Copy(trustedAssemblySourcePath, trustedAssemblyPath, overwrite: true);
+            File.Copy(trustedDepsSourcePath, trustedDepsPath, overwrite: true);
+            File.Copy(serviceDependencySourcePath, dependencyAssemblyPath, overwrite: true);
+
+            var companionPaths = ToolPackBootstrap.GetTrustedBuiltInCompanionAssemblyPathsForTesting(
+                trustedAssemblyPath,
+                new ToolPackBootstrapOptions {
+                    BuiltInToolProbePaths = new[] { probeRoot }
+                });
+
+            Assert.Contains(Path.GetFullPath(dependencyAssemblyPath), companionPaths, StringComparer.OrdinalIgnoreCase);
+        } finally {
+            Directory.Delete(tempRoot, recursive: true);
+        }
+    }
+
+    [Fact]
     public void BuildDiscoveryFingerprint_Changes_WhenWorkspaceBuiltInOutputProbingChanges() {
         var disabledFingerprint = ToolPackBootstrap.BuildDiscoveryFingerprint(new ToolPackBootstrapOptions {
             EnableBuiltInPackLoading = false,
@@ -580,6 +635,16 @@ public sealed class ToolPackBootstrapMetadataTests {
         try {
             var bootstrapAssemblyPath = Path.Combine(tempRoot, "bootstrap", "IntelligenceX.Chat.Tooling.dll");
             Directory.CreateDirectory(Path.GetDirectoryName(bootstrapAssemblyPath)!);
+            var toolingAssemblyPath = typeof(ToolPackBootstrap).Assembly.Location;
+            File.Copy(toolingAssemblyPath, bootstrapAssemblyPath, overwrite: true);
+            var toolingDepsPath = Path.ChangeExtension(toolingAssemblyPath, ".deps.json");
+            if (File.Exists(toolingDepsPath)) {
+                File.Copy(toolingDepsPath, Path.ChangeExtension(bootstrapAssemblyPath, ".deps.json"), overwrite: true);
+            }
+            var toolingRuntimeConfigPath = Path.ChangeExtension(toolingAssemblyPath, ".runtimeconfig.json");
+            if (File.Exists(toolingRuntimeConfigPath)) {
+                File.Copy(toolingRuntimeConfigPath, Path.ChangeExtension(bootstrapAssemblyPath, ".runtimeconfig.json"), overwrite: true);
+            }
             File.WriteAllText(Path.Combine(tempRoot, "IntelligenceX.sln"), string.Empty);
 
             var workspaceAssemblyPath = Path.Combine(
@@ -621,6 +686,99 @@ public sealed class ToolPackBootstrapMetadataTests {
 
             Assert.False(resolved);
             Assert.Equal(string.Empty, trustedAssemblyPath);
+        } finally {
+            Directory.Delete(tempRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void TryResolveTrustedToolAssemblyPathForTesting_PrefersWorkspaceProjectOutputOverProbeRootCopy() {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "ix-chat-workspace-preferred-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempRoot);
+        try {
+            var bootstrapAssemblyPath = Path.Combine(tempRoot, "bootstrap", "IntelligenceX.Chat.Tooling.dll");
+            Directory.CreateDirectory(Path.GetDirectoryName(bootstrapAssemblyPath)!);
+            File.WriteAllText(Path.Combine(tempRoot, "IntelligenceX.sln"), string.Empty);
+
+            var probeRoot = Path.Combine(tempRoot, "probe-root");
+            Directory.CreateDirectory(probeRoot);
+            var probeRootAssemblyPath = Path.Combine(probeRoot, "IntelligenceX.Tools.System.dll");
+            File.Copy(typeof(SystemToolPack).Assembly.Location, probeRootAssemblyPath, overwrite: true);
+            File.SetLastWriteTimeUtc(probeRootAssemblyPath, DateTime.UtcNow.AddDays(-1));
+
+            var workspaceAssemblyPath = Path.Combine(
+                tempRoot,
+                "IntelligenceX.Tools",
+                "IntelligenceX.Tools.System",
+                "bin",
+                "Release",
+                "net10.0-windows",
+                "IntelligenceX.Tools.System.dll");
+            Directory.CreateDirectory(Path.GetDirectoryName(workspaceAssemblyPath)!);
+            File.Copy(typeof(SystemToolPack).Assembly.Location, workspaceAssemblyPath, overwrite: true);
+
+            var resolved = ToolPackBootstrap.TryResolveTrustedToolAssemblyPathForTesting(
+                new AssemblyName("IntelligenceX.Tools.System"),
+                new ToolPackBootstrapOptions {
+                    BuiltInToolProbePaths = new[] { probeRoot }
+                },
+                includeWorkspaceProjectOutputs: true,
+                bootstrapAssemblyPath,
+                out var trustedAssemblyPath);
+
+            Assert.True(resolved);
+            Assert.Equal(Path.GetFullPath(workspaceAssemblyPath), trustedAssemblyPath, ignoreCase: true);
+        } finally {
+            Directory.Delete(tempRoot, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void TryResolveTrustedToolAssemblyPathFromWorkspaceProjectOutputsForTesting_PrefersMatchingBootstrapConfiguration() {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "ix-chat-workspace-config-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempRoot);
+        try {
+            var bootstrapAssemblyPath = Path.Combine(
+                tempRoot,
+                "IntelligenceX.Chat",
+                "IntelligenceX.Chat.Tooling",
+                "bin",
+                "Debug",
+                "net10.0-windows",
+                "IntelligenceX.Chat.Tooling.dll");
+            Directory.CreateDirectory(Path.GetDirectoryName(bootstrapAssemblyPath)!);
+            File.WriteAllText(bootstrapAssemblyPath, string.Empty);
+            File.WriteAllText(Path.Combine(tempRoot, "IntelligenceX.sln"), string.Empty);
+
+            var releaseAssemblyPath = Path.Combine(
+                tempRoot,
+                "IntelligenceX.Tools",
+                "IntelligenceX.Tools.System",
+                "bin",
+                "Release",
+                "net10.0-windows",
+                "IntelligenceX.Tools.System.dll");
+            Directory.CreateDirectory(Path.GetDirectoryName(releaseAssemblyPath)!);
+            File.Copy(typeof(SystemToolPack).Assembly.Location, releaseAssemblyPath, overwrite: true);
+
+            var debugAssemblyPath = Path.Combine(
+                tempRoot,
+                "IntelligenceX.Tools",
+                "IntelligenceX.Tools.System",
+                "bin",
+                "Debug",
+                "net10.0-windows",
+                "IntelligenceX.Tools.System.dll");
+            Directory.CreateDirectory(Path.GetDirectoryName(debugAssemblyPath)!);
+            File.Copy(typeof(SystemToolPack).Assembly.Location, debugAssemblyPath, overwrite: true);
+
+            var resolved = ToolPackBootstrap.TryResolveTrustedToolAssemblyPathFromWorkspaceProjectOutputsForTesting(
+                new AssemblyName("IntelligenceX.Tools.System"),
+                bootstrapAssemblyPath,
+                out var trustedAssemblyPath);
+
+            Assert.True(resolved);
+            Assert.Equal(Path.GetFullPath(debugAssemblyPath), trustedAssemblyPath, ignoreCase: true);
         } finally {
             Directory.Delete(tempRoot, recursive: true);
         }

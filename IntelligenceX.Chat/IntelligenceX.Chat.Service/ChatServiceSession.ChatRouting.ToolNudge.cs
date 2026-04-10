@@ -237,6 +237,11 @@ internal sealed partial class ChatServiceSession {
             return false;
         }
 
+        if (!executionContractApplies && IsArtifactOnlyFollowUpRequest(userRequest)) {
+            reason = "artifact_only_follow_up_request";
+            return false;
+        }
+
         var draft = (assistantDraft ?? string.Empty).Trim();
         if (draft.Length == 0) {
             reason = "empty_assistant_draft_watchdog_retry";
@@ -394,6 +399,11 @@ internal sealed partial class ChatServiceSession {
         var request = (userRequest ?? string.Empty).Trim();
         if (request.Length == 0) {
             reason = "empty_user_request";
+            return false;
+        }
+
+        if (IsArtifactOnlyFollowUpRequest(request)) {
+            reason = "artifact_only_follow_up_request";
             return false;
         }
 
@@ -578,6 +588,19 @@ internal sealed partial class ChatServiceSession {
 
         reason = "assistant_draft_not_linked_to_follow_up";
         return false;
+    }
+
+    private static bool IsArtifactOnlyFollowUpRequest(string userRequest) {
+        var request = (userRequest ?? string.Empty).Trim();
+        if (request.Length == 0) {
+            return false;
+        }
+
+        if (ExtractExplicitRequestedToolNames(request).Length > 0 || ShouldEnforceExecuteOrExplainContract(request)) {
+            return false;
+        }
+
+        return ResolveRequestedArtifactIntent(request).RequiresArtifact;
     }
 
     private static bool LooksLikeStructuredExecutionDeferredDraft(string assistantDraft) {

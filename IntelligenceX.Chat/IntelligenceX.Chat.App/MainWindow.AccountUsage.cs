@@ -9,6 +9,7 @@ namespace IntelligenceX.Chat.App;
 
 public sealed partial class MainWindow : Window {
     private const int MaxTrackedAccounts = 12;
+    private const string UnknownNativeUsageKey = "native:unknown";
     private static readonly TimeSpan UsageLimitDispatchCooldown = TimeSpan.FromMinutes(2);
     private static readonly Regex UsageRetryAfterMinutesRegex = new(
         @"(?:in\s+about|about)\s+(?<minutes>\d+)\s+minute",
@@ -381,6 +382,39 @@ public sealed partial class MainWindow : Window {
                 current = CreateEmptyUsageSnapshot(identity);
             }
 
+            if (!string.Equals(identity.Key, UnknownNativeUsageKey, StringComparison.OrdinalIgnoreCase)
+                && _accountUsageByKey.TryGetValue(UnknownNativeUsageKey, out var unresolvedSnapshot)) {
+                current = current with {
+                    PromptTokens = checked(current.PromptTokens + unresolvedSnapshot.PromptTokens),
+                    CompletionTokens = checked(current.CompletionTokens + unresolvedSnapshot.CompletionTokens),
+                    TotalTokens = checked(current.TotalTokens + unresolvedSnapshot.TotalTokens),
+                    CachedPromptTokens = checked(current.CachedPromptTokens + unresolvedSnapshot.CachedPromptTokens),
+                    ReasoningTokens = checked(current.ReasoningTokens + unresolvedSnapshot.ReasoningTokens),
+                    Turns = checked(current.Turns + unresolvedSnapshot.Turns),
+                    LastSeenUtc = SelectLater(current.LastSeenUtc, unresolvedSnapshot.LastSeenUtc),
+                    UsageLimitHitUtc = SelectLater(current.UsageLimitHitUtc, unresolvedSnapshot.UsageLimitHitUtc),
+                    UsageLimitRetryAfterUtc = SelectLater(current.UsageLimitRetryAfterUtc, unresolvedSnapshot.UsageLimitRetryAfterUtc),
+                    RateLimitWindowResetUtc = SelectLater(current.RateLimitWindowResetUtc, unresolvedSnapshot.RateLimitWindowResetUtc),
+                    UsageSnapshotRetrievedAtUtc = SelectLater(current.UsageSnapshotRetrievedAtUtc, unresolvedSnapshot.UsageSnapshotRetrievedAtUtc),
+                    UsageSnapshotSource = string.IsNullOrWhiteSpace(current.UsageSnapshotSource)
+                        ? unresolvedSnapshot.UsageSnapshotSource
+                        : current.UsageSnapshotSource,
+                    PlanType = string.IsNullOrWhiteSpace(current.PlanType)
+                        ? unresolvedSnapshot.PlanType
+                        : current.PlanType,
+                    Email = string.IsNullOrWhiteSpace(current.Email)
+                        ? unresolvedSnapshot.Email
+                        : current.Email,
+                    RateLimitAllowed = current.RateLimitAllowed ?? unresolvedSnapshot.RateLimitAllowed,
+                    RateLimitReached = current.RateLimitReached ?? unresolvedSnapshot.RateLimitReached,
+                    RateLimitUsedPercent = current.RateLimitUsedPercent ?? unresolvedSnapshot.RateLimitUsedPercent,
+                    CreditsHasCredits = current.CreditsHasCredits ?? unresolvedSnapshot.CreditsHasCredits,
+                    CreditsUnlimited = current.CreditsUnlimited ?? unresolvedSnapshot.CreditsUnlimited,
+                    CreditsBalance = current.CreditsBalance ?? unresolvedSnapshot.CreditsBalance
+                };
+                _accountUsageByKey.Remove(UnknownNativeUsageKey);
+            }
+
             var usageLimitHitUtc = current.UsageLimitHitUtc;
             var usageLimitRetryAfterUtc = current.UsageLimitRetryAfterUtc;
             if (rateLimitReached == true) {
@@ -414,6 +448,20 @@ public sealed partial class MainWindow : Window {
             TrimAccountUsageCacheLocked();
             SyncAccountUsageToAppStateLocked();
         }
+    }
+
+    private static DateTime? SelectLater(DateTime? firstUtc, DateTime? secondUtc) {
+        var first = firstUtc.HasValue ? EnsureUtc(firstUtc.Value) : (DateTime?)null;
+        var second = secondUtc.HasValue ? EnsureUtc(secondUtc.Value) : (DateTime?)null;
+        if (!first.HasValue) {
+            return second;
+        }
+
+        if (!second.HasValue) {
+            return first;
+        }
+
+        return first.Value >= second.Value ? first : second;
     }
 
     private void MarkUsageLimitForActiveAccount(string? detail) {
@@ -456,6 +504,31 @@ public sealed partial class MainWindow : Window {
                 snapshot.RateLimitReached,
                 out retryAfterMinutes);
         }
+    }
+
+    private string ResolveActiveUsageLabelForDisplay() {
+        var identity = ResolveActiveUsageIdentity();
+        lock (_turnDiagnosticsSync) {
+            if (_accountUsageByKey.TryGetValue(identity.Key, out var snapshot)
+                && !string.IsNullOrWhiteSpace(snapshot.Label)) {
+                return snapshot.Label;
+            }
+
+            if (string.Equals(_localProviderTransport, TransportNative, StringComparison.OrdinalIgnoreCase)) {
+                var selectedAccountId = NormalizeLocalProviderOpenAIAccountId(_localProviderOpenAIAccountId);
+                if (selectedAccountId.Length > 0) {
+                    var selectedKey = BuildNativeUsageKey(selectedAccountId);
+                    if (_accountUsageByKey.TryGetValue(selectedKey, out var selectedSnapshot)
+                        && !string.IsNullOrWhiteSpace(selectedSnapshot.Label)) {
+                        return selectedSnapshot.Label;
+                    }
+
+                    return ResolveNativeUsageIdentity(selectedAccountId).Label;
+                }
+            }
+        }
+
+        return identity.Label;
     }
 
     private void ClearUsageLimitDispatchBlockForActiveAccount() {

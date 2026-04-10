@@ -167,6 +167,46 @@ public sealed partial class UiShellAssetsTests {
     }
 
     /// <summary>
+    /// Ensures new chats get a client-visible sidebar entry immediately and that send payloads
+    /// stay pinned to the selected conversation id before the host round-trip completes.
+    /// </summary>
+    [Fact]
+    public void Load_IncludesOptimisticConversationSidebarCreationAndSendRouting() {
+        var bindingsScriptPath = Path.Combine(UiDirectory, "Shell.20.bindings.js");
+        var bindingsScript = File.ReadAllText(bindingsScriptPath);
+        var helpersScriptPath = Path.Combine(UiDirectory, "Shell.12.core.helpers.js");
+        var helpersScript = File.ReadAllText(helpersScriptPath);
+        var renderingScriptPath = Path.Combine(UiDirectory, RenderingScriptFile);
+        var renderingScript = File.ReadAllText(renderingScriptPath);
+
+        Assert.Contains("function nextClientConversationId()", bindingsScript, StringComparison.Ordinal);
+        Assert.Contains("function ensurePendingConversationInClientState(conversationId)", bindingsScript, StringComparison.Ordinal);
+        Assert.Contains("function updateConversationDraftInClientState(conversationId, text, countMessage)", bindingsScript, StringComparison.Ordinal);
+        Assert.Contains("state.options.conversations = sortConversationsForDisplay(remaining);", bindingsScript, StringComparison.Ordinal);
+        Assert.Contains("post(\"new_conversation\", { id: conversationId });", bindingsScript, StringComparison.Ordinal);
+        Assert.Contains("post(\"send\", { text: text, conversationId: queuedConversationId });", bindingsScript, StringComparison.Ordinal);
+        Assert.Contains("post(\"send\", { text: text, conversationId: conversationId });", bindingsScript, StringComparison.Ordinal);
+        Assert.Contains("function sortConversationsForDisplay(items)", helpersScript, StringComparison.Ordinal);
+        Assert.Contains("var items = sortConversationsForDisplay(state.options.conversations || []);", helpersScript, StringComparison.Ordinal);
+        Assert.Contains("state.options.conversations = sortConversationsForDisplay(nextOptions.conversations || []);", renderingScript, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures the runtime panel exposes an explicit action to clear tracked account usage history.
+    /// </summary>
+    [Fact]
+    public void Load_IncludesTrackedAccountUsageClearAction() {
+        var htmlPath = Path.Combine(UiDirectory, "ShellTemplate.html");
+        var html = File.ReadAllText(htmlPath);
+        var bindingsPath = Path.Combine(UiDirectory, "Shell.20.bindings.js");
+        var bindingsScript = File.ReadAllText(bindingsPath);
+
+        Assert.Contains("btnClearTrackedAccountUsage", html, StringComparison.Ordinal);
+        Assert.Contains("Clear Tracked Accounts", html, StringComparison.Ordinal);
+        Assert.Contains("post(\"clear_account_usage\");", bindingsScript, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Ensures the Tools tab enters a syncing state when opened against an empty
     /// connected snapshot, instead of flashing "No tools registered" before refresh completes.
     /// </summary>
@@ -701,9 +741,16 @@ public sealed partial class UiShellAssetsTests {
             "window.ixGetVisualRuntimeDiagnostics = function() {",
             "function recordVisualRuntimeAssetState(kind, asset, state, url, detail) {",
             "function recordVisualRuntimeReady(kind, ready) {",
+            "var mermaidContinuationKeywords = [",
+            "function looksLikeMermaidContinuationAfterStandaloneEnd(remainder) {",
+            "function findMermaidEdgeStatementStartIndex(text, startIndex) {",
+            "function trySplitCollapsedMermaidEndLine(line) {",
+            "if (!remainder || !looksLikeMermaidContinuationAfterStandaloneEnd(remainder)) {",
+            "function trySplitCollapsedMermaidEdgeStatements(line) {",
             ".bubble .markdown-body pre > code.language-mermaid",
             ".bubble .markdown-body pre.language-mermaid",
             "var blocks = collectMermaidBlocks(root);");
+        Assert.DoesNotContain("(?<!\\S)", script, StringComparison.Ordinal);
     }
 
     /// <summary>

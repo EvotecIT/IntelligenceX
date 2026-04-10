@@ -311,9 +311,147 @@
     });
   }
 
+  function nextClientConversationId() {
+    if (window.crypto && typeof window.crypto.randomUUID === "function") {
+      return "chat-" + window.crypto.randomUUID().replace(/-/g, "");
+    }
+
+    return "chat-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+  }
+
+  function buildClientConversationTitleFromText(text) {
+    var normalized = String(text || "").replace(/\s+/g, " ").trim();
+    if (!normalized) {
+      return "New Chat";
+    }
+    if (normalized.length > 56) {
+      normalized = normalized.slice(0, 56).trimEnd() + "...";
+    }
+    return normalized;
+  }
+
+  function upsertConversationInClientState(conversationId, factory) {
+    var id = String(conversationId || "").trim();
+    if (!id) {
+      return null;
+    }
+
+    var existing = null;
+    var remaining = [];
+    var conversations = Array.isArray(state.options.conversations) ? state.options.conversations : [];
+    for (var i = 0; i < conversations.length; i++) {
+      var conversation = conversations[i];
+      if (conversation && String(conversation.id || "").trim() === id) {
+        existing = conversation;
+        continue;
+      }
+      remaining.push(conversation);
+    }
+
+    var nextConversation = existing || (typeof factory === "function" ? factory(id) : null);
+    if (!nextConversation) {
+      return null;
+    }
+
+    remaining.push(nextConversation);
+    state.options.conversations = sortConversationsForDisplay(remaining);
+    return nextConversation;
+  }
+
+  function ensurePendingConversationInClientState(conversationId) {
+    var id = String(conversationId || "").trim();
+    if (!id) {
+      return "";
+    }
+
+    upsertConversationInClientState(id, function(nextId) {
+      var nowUtc = "";
+      try {
+        nowUtc = new Date().toISOString();
+      } catch (err) {
+        nowUtc = "";
+      }
+
+      return {
+        id: nextId,
+        title: "New Chat",
+        messageCount: 0,
+        preview: "",
+        isSystem: false,
+        threadId: null,
+        runtimeLabel: null,
+        modelLabel: null,
+        modelOverride: null,
+        updatedUtc: nowUtc,
+        updatedLocal: ""
+      };
+    });
+
+    state.options.activeConversationId = id;
+    renderConversationSelectionState();
+    return id;
+  }
+
+  function updateConversationDraftInClientState(conversationId, text, countMessage) {
+    var id = String(conversationId || "").trim();
+    if (!id) {
+      return;
+    }
+
+    var title = buildClientConversationTitleFromText(text);
+    var updatedLocal = "";
+    var updatedUtc = "";
+    try {
+      var now = new Date();
+      updatedUtc = now.toISOString();
+      updatedLocal = now.toLocaleTimeString();
+    } catch (err) {
+      updatedUtc = "";
+      updatedLocal = "";
+    }
+
+    var conversation = upsertConversationInClientState(id, function(nextId) {
+      return {
+        id: nextId,
+        title: title,
+        messageCount: countMessage ? 1 : 0,
+        preview: title,
+        isSystem: false,
+        threadId: null,
+        runtimeLabel: null,
+        modelLabel: null,
+        modelOverride: null,
+        updatedUtc: updatedUtc,
+        updatedLocal: updatedLocal
+      };
+    });
+    if (!conversation) {
+      return;
+    }
+
+    var currentTitle = String(conversation.title || "").trim();
+    if (!currentTitle || currentTitle === "New Chat") {
+      conversation.title = title;
+    }
+    conversation.preview = title;
+    if (countMessage) {
+      var currentCount = typeof conversation.messageCount === "number" ? conversation.messageCount : 0;
+      conversation.messageCount = Math.max(1, currentCount + 1);
+    }
+    if (updatedUtc) {
+      conversation.updatedUtc = updatedUtc;
+    }
+    if (updatedLocal) {
+      conversation.updatedLocal = updatedLocal;
+    }
+
+    state.options.activeConversationId = id;
+    renderConversationSelectionState();
+  }
+
   byId("btnSidebarNewChat").addEventListener("click", function() {
-    setPendingConversationSelection("");
-    post("new_conversation");
+    var conversationId = ensurePendingConversationInClientState(nextClientConversationId());
+    post("new_conversation", { id: conversationId });
   });
 
   byId("btnSidebarToggle").addEventListener("click", function() {
@@ -361,6 +499,7 @@
       remaining.push(conversation);
     }
 
+    remaining = sortConversationsForDisplay(remaining);
     state.options.conversations = remaining;
     if (removedActive) {
       var nextActiveId = "";
@@ -1679,6 +1818,13 @@
     renderLocalModelOptions();
   });
 
+  var btnClearTrackedAccountUsage = byId("btnClearTrackedAccountUsage");
+  if (btnClearTrackedAccountUsage) {
+    btnClearTrackedAccountUsage.addEventListener("click", function() {
+      post("clear_account_usage");
+    });
+  }
+
   byId("btnToggleLocalAdvancedRuntime").addEventListener("click", function() {
     setRuntimeAdvancedOpen(!isRuntimeAdvancedOpen());
   });
@@ -1784,8 +1930,8 @@
   var btnNewConversation = byId("btnNewConversation");
   if (btnNewConversation) {
     btnNewConversation.addEventListener("click", function() {
-      setPendingConversationSelection("");
-      post("new_conversation");
+      var conversationId = ensurePendingConversationInClientState(nextClientConversationId());
+      post("new_conversation", { id: conversationId });
       closeOptions();
     });
   }
@@ -1968,10 +2114,15 @@
     var text = (promptEl.value || "").trim();
     if (normalizeBool(state.cancelable)) {
       if (text) {
+        var queuedConversationId = String(state.options.activeConversationId || "").trim();
+        if (!queuedConversationId) {
+          queuedConversationId = ensurePendingConversationInClientState(nextClientConversationId());
+        }
+        updateConversationDraftInClientState(queuedConversationId, text, false);
         if (window.ixEnableTranscriptFollow) {
           window.ixEnableTranscriptFollow(true);
         }
-        post("send", { text: text });
+        post("send", { text: text, conversationId: queuedConversationId });
         promptEl.value = "";
         autoResizePrompt();
         updateComposerState();
@@ -1986,10 +2137,15 @@
       return;
     }
 
+    var conversationId = String(state.options.activeConversationId || "").trim();
+    if (!conversationId) {
+      conversationId = ensurePendingConversationInClientState(nextClientConversationId());
+    }
+    updateConversationDraftInClientState(conversationId, text, true);
     if (window.ixEnableTranscriptFollow) {
       window.ixEnableTranscriptFollow(true);
     }
-    post("send", { text: text });
+    post("send", { text: text, conversationId: conversationId });
     promptEl.value = "";
     autoResizePrompt();
     updateComposerState();

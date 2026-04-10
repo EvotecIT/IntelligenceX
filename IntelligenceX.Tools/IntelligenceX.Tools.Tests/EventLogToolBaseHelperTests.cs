@@ -223,6 +223,32 @@ public class EventLogToolBaseHelperTests {
     }
 
     [Fact]
+    public void ErrorFromLiveQueryFailure_RemotePlatformUnsupported_ShouldUsePlatformSpecificHints() {
+        var response = HarnessTool.MapLiveQueryFailure(
+            failure: new LiveEventQueryFailure {
+                Kind = LiveEventQueryFailureKind.Exception,
+                Message = "EventLog access is not supported on this platform."
+            },
+            machineName: "dc03.contoso.local",
+            logName: "System");
+
+        using var doc = JsonDocument.Parse(response);
+        var root = doc.RootElement;
+
+        Assert.False(root.GetProperty("ok").GetBoolean());
+        Assert.Equal("platform_not_supported", root.GetProperty("error_code").GetString());
+        Assert.False(root.GetProperty("is_transient").GetBoolean());
+
+        var hints = root.GetProperty("hints");
+        Assert.Contains(hints.EnumerateArray(), static value =>
+            value.GetString()!.Contains("current platform/runtime", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(hints.EnumerateArray(), static value =>
+            value.GetString()!.Contains("Windows-native runtime/host", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(hints.EnumerateArray(), static value =>
+            value.GetString()!.Contains("Remote Event Log Management / RPC", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void ErrorFromCatalogFailure_Remote_ShouldIncludeRemoteCatalogHints() {
         var response = HarnessTool.MapCatalogFailure(
             failure: new EventCatalogFailure {
@@ -244,6 +270,29 @@ public class EventLogToolBaseHelperTests {
             value.GetString()!.Contains("Remote Event Log Management / RPC", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(hints.EnumerateArray(), static value =>
             value.GetString()!.Contains("export .evtx", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void ErrorFromCatalogFailure_RemotePlatformUnsupported_ShouldUsePlatformSpecificHints() {
+        var response = HarnessTool.MapCatalogFailure(
+            failure: new EventCatalogFailure {
+                Kind = EventCatalogFailureKind.Exception,
+                Message = "EventLog access is not supported on this platform."
+            },
+            machineName: "dc04.contoso.local",
+            listingKind: "event log channel listing");
+
+        using var doc = JsonDocument.Parse(response);
+        var root = doc.RootElement;
+
+        Assert.False(root.GetProperty("ok").GetBoolean());
+        Assert.Equal("platform_not_supported", root.GetProperty("error_code").GetString());
+
+        var hints = root.GetProperty("hints");
+        Assert.Contains(hints.EnumerateArray(), static value =>
+            value.GetString()!.Contains("Windows-native runtime/host", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(hints.EnumerateArray(), static value =>
+            value.GetString()!.Contains("machine_name", StringComparison.OrdinalIgnoreCase));
     }
 
     private sealed record AutoRow(int Id, string DisplayName);

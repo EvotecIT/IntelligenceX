@@ -180,9 +180,9 @@ public sealed partial class MainWindow : Window {
         return EnsureSystemConversation().Id;
     }
 
-    private ConversationRuntime CreateConversationRuntime(string? title = null) {
+    private ConversationRuntime CreateConversationRuntime(string? title = null, string? conversationId = null) {
         return new ConversationRuntime {
-            Id = BuildConversationId(),
+            Id = ResolveConversationCreationId(conversationId),
             Title = string.IsNullOrWhiteSpace(title) ? DefaultConversationTitle : title.Trim(),
             ModelOverride = null,
             ThreadId = null,
@@ -192,6 +192,39 @@ public sealed partial class MainWindow : Window {
 
     private static string BuildConversationId() {
         return "chat-" + Guid.NewGuid().ToString("N");
+    }
+
+    internal static bool IsReservedConversationCreationId(string? conversationId) {
+        var normalized = (conversationId ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return true;
+        }
+
+        return string.Equals(normalized, SystemConversationId, StringComparison.OrdinalIgnoreCase)
+               || string.Equals(normalized, "system", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(normalized, "chat-default", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(normalized, "default", StringComparison.OrdinalIgnoreCase);
+    }
+
+    internal static string ResolveConversationCreationId(string? conversationId) {
+        var normalized = (conversationId ?? string.Empty).Trim();
+        if (IsReservedConversationCreationId(normalized)) {
+            return BuildConversationId();
+        }
+
+        return normalized;
+    }
+
+    internal static DateTime ResolveConversationDisplayUpdatedUtc(DateTime updatedUtc, DateTime? lastMessageTimeLocal) {
+        if (lastMessageTimeLocal.HasValue) {
+            return EnsureUtc(lastMessageTimeLocal.Value);
+        }
+
+        if (updatedUtc != default) {
+            return EnsureUtc(updatedUtc);
+        }
+
+        return DateTime.UnixEpoch;
     }
 
     private static bool IsSystemConversationId(string? conversationId) {
@@ -224,7 +257,23 @@ public sealed partial class MainWindow : Window {
             return -1;
         }
 
-        return right.UpdatedUtc.CompareTo(left.UpdatedUtc);
+        var leftUpdatedUtc = ResolveConversationDisplayUpdatedUtc(
+            left.UpdatedUtc,
+            left.Messages.Count > 0 ? left.Messages[^1].Time : (DateTime?)null);
+        var rightUpdatedUtc = ResolveConversationDisplayUpdatedUtc(
+            right.UpdatedUtc,
+            right.Messages.Count > 0 ? right.Messages[^1].Time : (DateTime?)null);
+        var byUpdatedUtc = rightUpdatedUtc.CompareTo(leftUpdatedUtc);
+        if (byUpdatedUtc != 0) {
+            return byUpdatedUtc;
+        }
+
+        var byTitle = string.Compare(left.Title, right.Title, StringComparison.OrdinalIgnoreCase);
+        if (byTitle != 0) {
+            return byTitle;
+        }
+
+        return string.Compare(left.Id, right.Id, StringComparison.OrdinalIgnoreCase);
     }
 
     private ConversationRuntime EnsureSystemConversation() {
@@ -306,15 +355,26 @@ public sealed partial class MainWindow : Window {
         return GetActiveConversation();
     }
 
-    private async Task NewConversationAsync() {
-        var conversation = CreateConversationRuntime(DefaultConversationTitle);
-        _conversations.Add(conversation);
-        TrimConversationsToLimit();
+    private async Task NewConversationAsync(string? requestedConversationId = null) {
+        var normalizedRequestedConversationId = (requestedConversationId ?? string.Empty).Trim();
+        var conversation = FindConversationById(normalizedRequestedConversationId);
+        if (conversation is null) {
+            conversation = CreateConversationRuntime(DefaultConversationTitle, normalizedRequestedConversationId);
+            _conversations.Add(conversation);
+            TrimConversationsToLimit();
+        }
+
+        var activeTurnTargetsConversation = IsTurnDispatchInProgress()
+                                            && string.Equals(_activeRequestConversationId, conversation.Id, StringComparison.OrdinalIgnoreCase);
         ActivateConversation(conversation.Id);
-        _assistantStreamingState.Reset();
-        _activeRequestConversationId = null;
-        _modelKickoffAttempted = false;
-        _modelKickoffInProgress = false;
+        if (!activeTurnTargetsConversation) {
+            _assistantStreamingState.Reset();
+            _activeRequestConversationId = null;
+            _modelKickoffInProgress = false;
+            _pendingLoginPrompt = null;
+        }
+
+        _modelKickoffAttempted = _messages.Count > 0;
         _autoSignInAttempted = _appState.OnboardingCompleted || AnyConversationHasMessages();
         await RenderTranscriptAsync().ConfigureAwait(false);
         await PublishOptionsStateAsync().ConfigureAwait(false);

@@ -48,11 +48,15 @@ public sealed partial class MainWindow : Window {
                 case "switch_account":
                     await SwitchAccountFromMenuAsync().ConfigureAwait(true);
                     break;
+                case "clear_account_usage":
+                    await ClearTrackedAccountUsageAsync().ConfigureAwait(true);
+                    break;
                 case "send":
                     {
                         var text = (TryGetString(root, "text") ?? string.Empty).Trim();
+                        var conversationId = TryGetString(root, "conversationId");
                         if (!string.IsNullOrWhiteSpace(text)) {
-                            await SendPromptAsync(text).ConfigureAwait(true);
+                            await SendPromptToConversationAsync(text, conversationId).ConfigureAwait(true);
                         }
                         break;
                     }
@@ -72,7 +76,7 @@ public sealed partial class MainWindow : Window {
                     ClearConversation();
                     break;
                 case "new_conversation":
-                    await NewConversationAsync().ConfigureAwait(true);
+                    await NewConversationAsync(TryGetString(root, "id")).ConfigureAwait(true);
                     break;
                 case "switch_conversation":
                     {

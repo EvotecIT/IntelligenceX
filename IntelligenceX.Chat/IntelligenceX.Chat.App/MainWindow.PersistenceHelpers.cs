@@ -261,7 +261,7 @@ public sealed partial class MainWindow : Window {
         }
 
         var ordered = new List<ConversationRuntime>(_conversations);
-        ordered.Sort(static (a, b) => b.UpdatedUtc.CompareTo(a.UpdatedUtc));
+        ordered.Sort(CompareConversationsForDisplay);
         if (ordered.Count > MaxConversations) {
             ConversationRuntime? systemConversation = null;
             for (var i = 0; i < ordered.Count; i++) {
@@ -288,7 +288,7 @@ public sealed partial class MainWindow : Window {
                     }
                 }
 
-                trimmed.Sort(static (a, b) => b.UpdatedUtc.CompareTo(a.UpdatedUtc));
+                trimmed.Sort(CompareConversationsForDisplay);
                 ordered = trimmed;
             }
         }
@@ -296,9 +296,9 @@ public sealed partial class MainWindow : Window {
         var conversations = new List<ChatConversationState>(ordered.Count);
         foreach (var conversation in ordered) {
             var title = ComputeConversationTitle(conversation.Title, conversation.Messages);
-            var updatedUtc = conversation.UpdatedUtc == default
-                ? (conversation.Messages.Count > 0 ? conversation.Messages[^1].Time.ToUniversalTime() : DateTime.UtcNow)
-                : EnsureUtc(conversation.UpdatedUtc);
+            var updatedUtc = ResolveConversationDisplayUpdatedUtc(
+                conversation.UpdatedUtc,
+                conversation.Messages.Count > 0 ? conversation.Messages[^1].Time : (DateTime?)null);
             conversations.Add(new ChatConversationState {
                 Id = conversation.Id,
                 Title = title,

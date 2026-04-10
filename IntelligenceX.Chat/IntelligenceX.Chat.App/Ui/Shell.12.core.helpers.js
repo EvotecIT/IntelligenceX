@@ -28,6 +28,59 @@
     return updated ? (base + " · " + updated) : base;
   }
 
+  function conversationUpdatedUtcTicks(item) {
+    var raw = item && item.updatedUtc ? String(item.updatedUtc).trim() : "";
+    if (!raw) {
+      return 0;
+    }
+
+    var parsed = Date.parse(raw);
+    if (!Number.isFinite(parsed)) {
+      return 0;
+    }
+
+    return parsed;
+  }
+
+  function compareConversationDisplayOrder(left, right) {
+    var leftSystem = conversationIsSystem(left);
+    var rightSystem = conversationIsSystem(right);
+    if (leftSystem !== rightSystem) {
+      return leftSystem ? 1 : -1;
+    }
+
+    var byUpdatedUtc = conversationUpdatedUtcTicks(right) - conversationUpdatedUtcTicks(left);
+    if (byUpdatedUtc !== 0) {
+      return byUpdatedUtc;
+    }
+
+    var leftTitle = conversationTitle(left).toLowerCase();
+    var rightTitle = conversationTitle(right).toLowerCase();
+    if (leftTitle < rightTitle) {
+      return -1;
+    }
+    if (leftTitle > rightTitle) {
+      return 1;
+    }
+
+    var leftId = left && left.id ? String(left.id).toLowerCase() : "";
+    var rightId = right && right.id ? String(right.id).toLowerCase() : "";
+    if (leftId < rightId) {
+      return -1;
+    }
+    if (leftId > rightId) {
+      return 1;
+    }
+
+    return 0;
+  }
+
+  function sortConversationsForDisplay(items) {
+    var list = Array.isArray(items) ? items.slice() : [];
+    list.sort(compareConversationDisplayOrder);
+    return list;
+  }
+
   function normalizeConversationModelValue(value) {
     var normalized = String(value || "").trim();
     if (!normalized || normalized === "(auto)") {
@@ -239,7 +292,7 @@
     }
 
     host.innerHTML = "";
-    var items = state.options.conversations || [];
+    var items = sortConversationsForDisplay(state.options.conversations || []);
     if (items.length === 0) {
       var empty = document.createElement("div");
       empty.className = "chat-sidebar-empty";
@@ -336,7 +389,7 @@
     }
 
     host.innerHTML = "";
-    var items = state.options.conversations || [];
+    var items = sortConversationsForDisplay(state.options.conversations || []);
     if (items.length === 0) {
       host.innerHTML = "<div class='options-item'><div class='options-item-title'>No chats yet</div></div>";
       return;

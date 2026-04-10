@@ -42,7 +42,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             OpenAIAllowInsecureHttp = true,
             OpenAIStreaming = false,
             Model = "mock-local-model",
-            MaxToolRounds = 4,
+            MaxToolRounds = 6,
             DisabledPackIds = { "testimox", "officeimo" }
         };
         var session = new ChatServiceSession(serviceOptions, Stream.Null);
@@ -2088,7 +2088,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             OpenAIAllowInsecureHttp = true,
             OpenAIStreaming = false,
             Model = "mock-local-model",
-            MaxToolRounds = 4,
+            MaxToolRounds = 6,
             DisabledPackIds = { "testimox", "officeimo" }
         };
         var session = new ChatServiceSession(serviceOptions, Stream.Null);
@@ -2120,7 +2120,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             Text = "Run one long diagnostic step and summarize the result.",
             Options = new ChatRequestOptions {
                 WeightedToolRouting = false,
-                MaxToolRounds = 4,
+                MaxToolRounds = 6,
                 ParallelTools = false,
                 PlanExecuteReviewLoop = true,
                 MaxReviewPasses = 0,
@@ -2609,7 +2609,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             OpenAIAllowInsecureHttp = true,
             OpenAIStreaming = false,
             Model = "mock-local-model",
-            MaxToolRounds = 4,
+            MaxToolRounds = 6,
             DisabledPackIds = { "testimox", "officeimo" }
         };
         var session = new ChatServiceSession(serviceOptions, Stream.Null);
@@ -2644,7 +2644,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
                    """,
             Options = new ChatRequestOptions {
                 WeightedToolRouting = false,
-                MaxToolRounds = 4,
+                MaxToolRounds = 6,
                 ParallelTools = false,
                 PlanExecuteReviewLoop = true,
                 MaxReviewPasses = 0,
@@ -2761,7 +2761,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             OpenAIAllowInsecureHttp = true,
             OpenAIStreaming = false,
             Model = "mock-local-model",
-            MaxToolRounds = 4,
+            MaxToolRounds = 6,
             DisabledPackIds = { "testimox", "officeimo" }
         };
         var session = new ChatServiceSession(serviceOptions, Stream.Null);
@@ -2797,7 +2797,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             Text = "Discover the environment scope and return baseline evidence.",
             Options = new ChatRequestOptions {
                 WeightedToolRouting = false,
-                MaxToolRounds = 4,
+                MaxToolRounds = 6,
                 ParallelTools = false,
                 PlanExecuteReviewLoop = false,
                 ModelHeartbeatSeconds = 0
@@ -3124,7 +3124,7 @@ public sealed partial class ChatServiceRoutingTrimTests {
             OpenAIAllowInsecureHttp = true,
             OpenAIStreaming = false,
             Model = "mock-local-model",
-            MaxToolRounds = 4,
+            MaxToolRounds = 6,
             DisabledPackIds = { "testimox", "officeimo" }
         };
         var session = new ChatServiceSession(serviceOptions, Stream.Null);
@@ -3186,6 +3186,197 @@ public sealed partial class ChatServiceRoutingTrimTests {
 
         var finalRequestBody = server.GetChatRequestBody(3);
         Assert.True(ContainsToolMessageForCallId(finalRequestBody, resultMessage.Tools.Calls[0].CallId));
+    }
+
+    [Fact]
+    public async Task RunChatOnCurrentThreadAsync_ContinuesOperationalAdFlowAfterHostDomainBootstrapReplay() {
+        using var server = new DeterministicCompatibleHttpServer(responseIndex => responseIndex switch {
+            1 => JsonSerializer.Serialize(new {
+                id = "chatcmpl-domain-bootstrap-continue-1",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            content = """
+                                      Szybki status AD replication forest:
+                                      - brak wykrytej domeny/DC
+                                      - podaj FQDN kontrolera lub nazwę domeny
+                                      """
+                        },
+                        finish_reason = "stop"
+                    }
+                }
+            }),
+            2 => JsonSerializer.Serialize(new {
+                id = "chatcmpl-domain-bootstrap-continue-2",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            content = """
+                                      AD replication forest - nadal bez punktu zaczepienia:
+                                      - brak domeny z autodiscovery
+                                      - potrzebny host/FQDN DC
+                                      """
+                        },
+                        finish_reason = "stop"
+                    }
+                }
+            }),
+            3 => JsonSerializer.Serialize(new {
+                id = "chatcmpl-domain-bootstrap-continue-3",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            content = """
+                                      AD replication forest:
+                                      - discovery nie zwróciło pełnego scope
+                                      - kontynuuję po bootstrapie
+                                      """
+                        },
+                        finish_reason = "stop"
+                    }
+                }
+            }),
+            4 => JsonSerializer.Serialize(new {
+                id = "chatcmpl-domain-bootstrap-continue-4",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            tool_calls = new[] {
+                                new {
+                                    id = "call_ad_replication_summary_1",
+                                    type = "function",
+                                    function = new {
+                                        name = "ad_replication_summary",
+                                        arguments = JsonSerializer.Serialize(new { scope = "current_forest", time_format = "utc" })
+                                    }
+                                }
+                            }
+                        },
+                        finish_reason = "tool_calls"
+                    }
+                }
+            }),
+            5 => JsonSerializer.Serialize(new {
+                id = "chatcmpl-domain-bootstrap-continue-final",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            content = "Forest replication is healthy for contoso.local. UTC summary captured after auto-scope discovery."
+                        },
+                        finish_reason = "stop"
+                    }
+                }
+            }),
+            _ => JsonSerializer.Serialize(new {
+                id = "chatcmpl-domain-bootstrap-continue-extra",
+                @object = "chat.completion",
+                choices = new[] {
+                    new {
+                        index = 0,
+                        message = new {
+                            role = "assistant",
+                            content = "Unexpected extra chat request."
+                        },
+                        finish_reason = "stop"
+                    }
+                }
+            })
+        });
+
+        var serviceOptions = new ServiceOptions {
+            OpenAITransport = OpenAITransportKind.CompatibleHttp,
+            OpenAIBaseUrl = server.BaseUrl,
+            OpenAIAllowInsecureHttp = true,
+            OpenAIStreaming = false,
+            Model = "mock-local-model",
+            MaxToolRounds = 6,
+            DisabledPackIds = { "testimox", "officeimo" }
+        };
+        var session = new ChatServiceSession(serviceOptions, Stream.Null);
+        var registry = new ToolRegistry();
+        registry.Register(new RoundTripStubTool(
+            "ad_environment_discover",
+            static (_, _) => Task.FromResult("""
+                                             {"ok":true,"summary_markdown":"Auto-scope: contoso.local via dc01.contoso.local"}
+                                             """)));
+        registry.Register(new RoundTripStubTool(
+            "ad_replication_summary",
+            static (_, _) => Task.FromResult("""
+                                             {"ok":true,"summary_markdown":"UTC replication summary for contoso.local is healthy"}
+                                             """)));
+        SetSessionRegistry(session, registry);
+
+        var clientOptions = new IntelligenceXClientOptions {
+            TransportKind = OpenAITransportKind.CompatibleHttp,
+            AutoInitialize = false,
+            DefaultModel = "mock-local-model"
+        };
+        clientOptions.CompatibleHttpOptions.BaseUrl = server.BaseUrl;
+        clientOptions.CompatibleHttpOptions.AuthMode = OpenAICompatibleHttpAuthMode.None;
+        clientOptions.CompatibleHttpOptions.Streaming = false;
+        clientOptions.CompatibleHttpOptions.AllowInsecureHttp = true;
+
+        using var client = await IntelligenceXClient.ConnectAsync(clientOptions);
+        var thread = await client.StartNewThreadAsync("mock-local-model");
+
+        var request = new ChatRequest {
+            RequestId = "req-domain-bootstrap-continue-operational",
+            ThreadId = thread.Id,
+            Text = "Check AD replication forest status and continue with UTC summary.",
+            Options = new ChatRequestOptions {
+                WeightedToolRouting = false,
+                MaxToolRounds = 6,
+                ParallelTools = false,
+                PlanExecuteReviewLoop = false,
+                ModelHeartbeatSeconds = 0
+            }
+        };
+
+        using var capture = new SynchronizedCaptureStream();
+        using var writer = new StreamWriter(capture, Encoding.UTF8, 1024, leaveOpen: true) { AutoFlush = true };
+        var runResult = await InvokeRunChatOnCurrentThreadAsync(
+            session,
+            client,
+            writer,
+            request,
+            thread.Id,
+            CancellationToken.None);
+
+        Assert.Equal(5, server.ChatCompletionRequestCount);
+
+        var resultMessage = GetPropertyValue<ChatResultMessage>(runResult, "Result");
+        Assert.Contains("UTC summary", resultMessage.Text, StringComparison.OrdinalIgnoreCase);
+        Assert.NotNull(resultMessage.Tools);
+        Assert.Equal(2, resultMessage.Tools!.Calls.Count);
+        Assert.Equal(2, resultMessage.Tools.Outputs.Count);
+        Assert.Equal("ad_environment_discover", resultMessage.Tools.Calls[0].Name);
+        Assert.Equal("ad_replication_summary", resultMessage.Tools.Calls[1].Name);
+        Assert.StartsWith("host_pack_preflight_environment_discover_", resultMessage.Tools.Calls[0].CallId, StringComparison.Ordinal);
+        Assert.Equal("call_ad_replication_summary_1", resultMessage.Tools.Calls[1].CallId);
+
+        var continuationRequestBody = server.GetChatRequestBody(3);
+        Assert.Contains("ix:host-domain-bootstrap-continuation:v1", continuationRequestBody, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("original_user_request", continuationRequestBody, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Do not stop after merely restating the bootstrap output.", continuationRequestBody, StringComparison.OrdinalIgnoreCase);
+        Assert.True(ContainsToolMessageForCallId(continuationRequestBody, resultMessage.Tools.Calls[0].CallId));
+
+        var finalRequestBody = server.GetChatRequestBody(4);
+        Assert.True(ContainsToolMessageForCallId(finalRequestBody, "call_ad_replication_summary_1"));
     }
 
     [Fact]

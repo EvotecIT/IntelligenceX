@@ -1624,20 +1624,22 @@ public static partial class ToolPackBootstrap {
             return false;
         }
 
-        var dependencyResolver = new AssemblyDependencyResolver(bootstrapAssemblyPath);
-        var resolvedAssemblyPath = dependencyResolver.ResolveAssemblyToPath(assemblyName);
-        if (!string.IsNullOrWhiteSpace(resolvedAssemblyPath)) {
-            var normalizedResolvedPath = Path.GetFullPath(resolvedAssemblyPath);
-            if (File.Exists(normalizedResolvedPath)) {
-                trustedAssemblyPath = normalizedResolvedPath;
-                return true;
-            }
+        AssemblyDependencyResolver? dependencyResolver = null;
+        try {
+            dependencyResolver = new AssemblyDependencyResolver(bootstrapAssemblyPath);
+        } catch (Exception) {
+            dependencyResolver = null;
         }
 
-        var probeRoots = ResolveBuiltInToolAssemblyProbePaths(options, typeof(ToolPackBootstrap).Assembly);
-        if (TryResolveTrustedToolAssemblyPathFromProbeRoots(assemblyName, probeRoots, out var probedAssemblyPath)) {
-            trustedAssemblyPath = probedAssemblyPath;
-            return true;
+        if (dependencyResolver is not null) {
+            var resolvedAssemblyPath = dependencyResolver.ResolveAssemblyToPath(assemblyName);
+            if (!string.IsNullOrWhiteSpace(resolvedAssemblyPath)) {
+                var normalizedResolvedPath = Path.GetFullPath(resolvedAssemblyPath);
+                if (File.Exists(normalizedResolvedPath)) {
+                    trustedAssemblyPath = normalizedResolvedPath;
+                    return true;
+                }
+            }
         }
 
         if (includeWorkspaceProjectOutputs) {
@@ -1648,6 +1650,12 @@ public static partial class ToolPackBootstrap {
                 trustedAssemblyPath = workspaceProjectOutputPath;
                 return true;
             }
+        }
+
+        var probeRoots = ResolveBuiltInToolAssemblyProbePaths(options, typeof(ToolPackBootstrap).Assembly);
+        if (TryResolveTrustedToolAssemblyPathFromProbeRoots(assemblyName, probeRoots, out var probedAssemblyPath)) {
+            trustedAssemblyPath = probedAssemblyPath;
+            return true;
         }
 
         return false;
@@ -1662,7 +1670,7 @@ public static partial class ToolPackBootstrap {
 
         lock (BuiltInToolDependencyResolverGate) {
             RegisterTrustedBuiltInDependencyResolver_NoLock(trustedAssemblyPath);
-            PreloadTrustedBuiltInCompanionAssemblies_NoLock(trustedAssemblyPath);
+            PreloadTrustedBuiltInCompanionAssemblies_NoLock(trustedAssemblyPath, probeRoots);
 
             for (var i = 0; i < probeRoots.Count; i++) {
                 var candidate = probeRoots[i];
@@ -1690,8 +1698,8 @@ public static partial class ToolPackBootstrap {
         }
     }
 
-    private static void PreloadTrustedBuiltInCompanionAssemblies_NoLock(string trustedAssemblyPath) {
-        var candidateAssemblyPaths = GetTrustedBuiltInCompanionAssemblyPathsCore(trustedAssemblyPath);
+    private static void PreloadTrustedBuiltInCompanionAssemblies_NoLock(string trustedAssemblyPath, IReadOnlyList<string> probeRoots) {
+        var candidateAssemblyPaths = GetTrustedBuiltInCompanionAssemblyPathsCore(trustedAssemblyPath, probeRoots);
         for (var i = 0; i < candidateAssemblyPaths.Count; i++) {
             var candidateAssemblyPath = candidateAssemblyPaths[i];
             try {
@@ -1718,11 +1726,21 @@ public static partial class ToolPackBootstrap {
 
     internal static IReadOnlyList<string> GetTrustedBuiltInCompanionAssemblyPathsForTesting(string trustedAssemblyPath) {
         lock (BuiltInToolDependencyResolverGate) {
-            return GetTrustedBuiltInCompanionAssemblyPathsCore(trustedAssemblyPath);
+            return GetTrustedBuiltInCompanionAssemblyPathsCore(trustedAssemblyPath, Array.Empty<string>());
         }
     }
 
-    private static IReadOnlyList<string> GetTrustedBuiltInCompanionAssemblyPathsCore(string trustedAssemblyPath) {
+    internal static IReadOnlyList<string> GetTrustedBuiltInCompanionAssemblyPathsForTesting(string trustedAssemblyPath, ToolPackBootstrapOptions options) {
+        ArgumentNullException.ThrowIfNull(options);
+
+        lock (BuiltInToolDependencyResolverGate) {
+            return GetTrustedBuiltInCompanionAssemblyPathsCore(
+                trustedAssemblyPath,
+                BuildTrustedBuiltInDependencyProbeRoots(trustedAssemblyPath, options));
+        }
+    }
+
+    private static IReadOnlyList<string> GetTrustedBuiltInCompanionAssemblyPathsCore(string trustedAssemblyPath, IReadOnlyList<string> probeRoots) {
         if (string.IsNullOrWhiteSpace(trustedAssemblyPath)) {
             return Array.Empty<string>();
         }
@@ -1742,19 +1760,18 @@ public static partial class ToolPackBootstrap {
             return Array.Empty<string>();
         }
 
-        List<string> candidateAssemblyPaths;
+        var candidateAssemblyPaths = new List<string>();
+        var seenCandidateAssemblyPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         try {
-            candidateAssemblyPaths = Directory.EnumerateFiles(trustedAssemblyDirectory, "*.dll", SearchOption.TopDirectoryOnly)
-                .Select(Path.GetFullPath)
-                .Where(path => !string.Equals(path, normalizedTrustedAssemblyPath, StringComparison.OrdinalIgnoreCase))
-                .OrderByDescending(static path => Path.GetFileName(path).StartsWith("System.", StringComparison.OrdinalIgnoreCase))
-                .ThenByDescending(static path => Path.GetFileName(path).StartsWith("Microsoft.", StringComparison.OrdinalIgnoreCase))
-                .ThenBy(static path => path, StringComparer.OrdinalIgnoreCase)
-                .ToList();
+            AddCandidateAssemblies(trustedAssemblyDirectory);
+            for (var i = 0; i < probeRoots.Count; i++) {
+                AddCandidateAssemblies(probeRoots[i]);
+            }
         } catch (Exception) {
             return Array.Empty<string>();
         }
 
+        var runtimeAssetFileNames = ReadTrustedBuiltInRuntimeAssetFileNames(trustedAssemblyPath);
         var filteredCandidateAssemblyPaths = new List<string>();
         foreach (var candidateAssemblyPath in candidateAssemblyPaths) {
             try {
@@ -1764,13 +1781,20 @@ public static partial class ToolPackBootstrap {
                     continue;
                 }
 
+                var candidateFileName = Path.GetFileName(candidateAssemblyPath);
+                if (runtimeAssetFileNames.Contains(candidateFileName)) {
+                    filteredCandidateAssemblyPaths.Add(candidateAssemblyPath);
+                    continue;
+                }
+
                 var resolvedAssemblyPath = dependencyResolver.ResolveAssemblyToPath(candidateAssemblyName);
                 if (string.IsNullOrWhiteSpace(resolvedAssemblyPath)) {
                     continue;
                 }
 
                 var normalizedResolvedAssemblyPath = Path.GetFullPath(resolvedAssemblyPath);
-                if (!string.Equals(normalizedResolvedAssemblyPath, candidateAssemblyPath, StringComparison.OrdinalIgnoreCase)) {
+                if (!string.Equals(normalizedResolvedAssemblyPath, candidateAssemblyPath, StringComparison.OrdinalIgnoreCase)
+                    && !string.Equals(Path.GetFileName(normalizedResolvedAssemblyPath), candidateFileName, StringComparison.OrdinalIgnoreCase)) {
                     continue;
                 }
 
@@ -1781,6 +1805,78 @@ public static partial class ToolPackBootstrap {
         }
 
         return filteredCandidateAssemblyPaths;
+
+        void AddCandidateAssemblies(string? candidateDirectory) {
+            if (string.IsNullOrWhiteSpace(candidateDirectory) || !Directory.Exists(candidateDirectory)) {
+                return;
+            }
+
+            foreach (var candidateAssemblyPath in Directory.EnumerateFiles(candidateDirectory, "*.dll", SearchOption.TopDirectoryOnly)
+                         .Select(Path.GetFullPath)
+                         .Where(path => !string.Equals(path, normalizedTrustedAssemblyPath, StringComparison.OrdinalIgnoreCase))
+                         .OrderByDescending(static path => Path.GetFileName(path).StartsWith("System.", StringComparison.OrdinalIgnoreCase))
+                         .ThenByDescending(static path => Path.GetFileName(path).StartsWith("Microsoft.", StringComparison.OrdinalIgnoreCase))
+                         .ThenBy(static path => path, StringComparer.OrdinalIgnoreCase)) {
+                if (seenCandidateAssemblyPaths.Add(candidateAssemblyPath)) {
+                    candidateAssemblyPaths.Add(candidateAssemblyPath);
+                }
+            }
+        }
+    }
+
+    private static HashSet<string> ReadTrustedBuiltInRuntimeAssetFileNames(string trustedAssemblyPath) {
+        var runtimeAssetFileNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(trustedAssemblyPath)) {
+            return runtimeAssetFileNames;
+        }
+
+        string depsJsonPath;
+        try {
+            depsJsonPath = Path.ChangeExtension(Path.GetFullPath(trustedAssemblyPath), ".deps.json");
+        } catch (Exception) {
+            return runtimeAssetFileNames;
+        }
+
+        if (!File.Exists(depsJsonPath)) {
+            return runtimeAssetFileNames;
+        }
+
+        try {
+            using var stream = File.OpenRead(depsJsonPath);
+            using var document = JsonDocument.Parse(stream);
+            if (!document.RootElement.TryGetProperty("targets", out var targetsElement)
+                || targetsElement.ValueKind != JsonValueKind.Object) {
+                return runtimeAssetFileNames;
+            }
+
+            foreach (var targetProperty in targetsElement.EnumerateObject()) {
+                if (targetProperty.Value.ValueKind != JsonValueKind.Object) {
+                    continue;
+                }
+
+                foreach (var libraryProperty in targetProperty.Value.EnumerateObject()) {
+                    if (!libraryProperty.Value.TryGetProperty("runtime", out var runtimeElement)
+                        || runtimeElement.ValueKind != JsonValueKind.Object) {
+                        continue;
+                    }
+
+                    foreach (var runtimeAssetProperty in runtimeElement.EnumerateObject()) {
+                        var fileName = Path.GetFileName(runtimeAssetProperty.Name);
+                        if (string.IsNullOrWhiteSpace(fileName)
+                            || !fileName.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)
+                            || fileName.EndsWith(".resources.dll", StringComparison.OrdinalIgnoreCase)) {
+                            continue;
+                        }
+
+                        runtimeAssetFileNames.Add(fileName);
+                    }
+                }
+            }
+        } catch (Exception) {
+            return runtimeAssetFileNames;
+        }
+
+        return runtimeAssetFileNames;
     }
 
     private static IReadOnlyList<string> BuildTrustedBuiltInDependencyProbeRoots(string trustedAssemblyPath, ToolPackBootstrapOptions options) {
@@ -2122,6 +2218,7 @@ public static partial class ToolPackBootstrap {
         }
 
         var fileName = assemblyNameValue + ".dll";
+        var preferredBuildConfiguration = TryResolveBuildConfigurationSegment(bootstrapAssemblyPath);
         IEnumerable<string> candidatePaths;
         try {
             candidatePaths = Directory.EnumerateFiles(projectDirectory, fileName, SearchOption.AllDirectories)
@@ -2131,8 +2228,11 @@ public static partial class ToolPackBootstrap {
                                       && path.IndexOf($"{Path.AltDirectorySeparatorChar}obj{Path.AltDirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase) < 0)
                 .Select(Path.GetFullPath)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
-                .OrderByDescending(static path => path.IndexOf($"{Path.DirectorySeparatorChar}Release{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase) >= 0
+                .OrderByDescending(path => MatchesBuildConfigurationSegment(path, preferredBuildConfiguration))
+                .ThenByDescending(static path => path.IndexOf($"{Path.DirectorySeparatorChar}Release{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase) >= 0
                                                 || path.IndexOf($"{Path.AltDirectorySeparatorChar}Release{Path.AltDirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase) >= 0)
+                .ThenByDescending(static path => path.IndexOf($"{Path.DirectorySeparatorChar}Debug{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase) >= 0
+                                                || path.IndexOf($"{Path.AltDirectorySeparatorChar}Debug{Path.AltDirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase) >= 0)
                 .ThenByDescending(static path => path.IndexOf("net10.0", StringComparison.OrdinalIgnoreCase) >= 0)
                 .ThenByDescending(static path => path.IndexOf("net9.0", StringComparison.OrdinalIgnoreCase) >= 0)
                 .ThenByDescending(static path => path.IndexOf("net8.0", StringComparison.OrdinalIgnoreCase) >= 0);
@@ -2155,6 +2255,44 @@ public static partial class ToolPackBootstrap {
         }
 
         return false;
+    }
+
+    private static string TryResolveBuildConfigurationSegment(string path) {
+        if (string.IsNullOrWhiteSpace(path)) {
+            return string.Empty;
+        }
+
+        if (ContainsPathSegment(path, "Debug")) {
+            return "Debug";
+        }
+
+        if (ContainsPathSegment(path, "Release")) {
+            return "Release";
+        }
+
+        return string.Empty;
+    }
+
+    private static bool MatchesBuildConfigurationSegment(string path, string buildConfiguration) {
+        if (string.IsNullOrWhiteSpace(buildConfiguration) || string.IsNullOrWhiteSpace(path)) {
+            return false;
+        }
+
+        return ContainsPathSegment(path, buildConfiguration);
+    }
+
+    private static bool ContainsPathSegment(string path, string segment) {
+        if (string.IsNullOrWhiteSpace(path) || string.IsNullOrWhiteSpace(segment)) {
+            return false;
+        }
+
+        var normalizedSegment = Path.DirectorySeparatorChar + segment + Path.DirectorySeparatorChar;
+        if (path.IndexOf(normalizedSegment, StringComparison.OrdinalIgnoreCase) >= 0) {
+            return true;
+        }
+
+        var alternateNormalizedSegment = Path.AltDirectorySeparatorChar + segment + Path.AltDirectorySeparatorChar;
+        return path.IndexOf(alternateNormalizedSegment, StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
     private static string TryFindWorkspaceRepoRoot(string? bootstrapAssemblyPath) {

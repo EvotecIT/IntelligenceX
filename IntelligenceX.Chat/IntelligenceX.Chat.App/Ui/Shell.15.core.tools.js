@@ -2746,8 +2746,13 @@
 
     var usageTitle = byId("optAccountUsageTitle");
     var usageList = byId("optAccountUsageList");
+    var clearTrackedAccountUsageButton = byId("btnClearTrackedAccountUsage");
     if (usageTitle) {
       usageTitle.hidden = accountUsage.length === 0;
+    }
+    if (clearTrackedAccountUsageButton) {
+      clearTrackedAccountUsageButton.hidden = accountUsage.length === 0;
+      clearTrackedAccountUsageButton.disabled = accountUsage.length === 0;
     }
     if (usageList) {
       usageList.innerHTML = "";

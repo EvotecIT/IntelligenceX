@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using IntelligenceX.Chat.Abstractions.Protocol;
 using IntelligenceX.Chat.Service;
+using IntelligenceX.Json;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.Common;
 using Xunit;
@@ -173,6 +174,54 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void ResolveNoExtractedFinalizeReviewDecisionForTesting_PreservesRequestedArtifactRecoveryAfterWatchdog() {
+        var assistantDraft = """
+            [Execution blocked]
+            ix:execution-contract:v1
+            I do not have confirmed tool output for this selected action yet.
+            """;
+
+        var result = ChatServiceSession.ResolveNoExtractedFinalizeReviewDecisionForTesting(
+            noResultWatchdogTriggered: true,
+            planExecuteReviewLoop: true,
+            maxReviewPasses: 1,
+            reviewPassesUsed: 0,
+            userRequest: "Pokaz to na wykresie topologii replikacji.",
+            assistantDraft: assistantDraft,
+            executionContractApplies: true,
+            hasToolActivity: false,
+            proactiveModeEnabled: true,
+            proactiveFollowUpUsed: false,
+            continuationFollowUpTurn: true,
+            compactFollowUpTurn: true);
+
+        Assert.Equal("ProactiveFollowUpReview", result.Kind);
+        Assert.Equal("allow_requested_artifact_missing", result.Reason);
+        Assert.Equal(0, result.ReviewPassNumber);
+    }
+
+    [Fact]
+    public void ResolveNoExtractedFinalizeReviewDecisionForTesting_DefersRequestedArtifactRecoveryWhenDraftIsEmpty() {
+        var result = ChatServiceSession.ResolveNoExtractedFinalizeReviewDecisionForTesting(
+            noResultWatchdogTriggered: false,
+            planExecuteReviewLoop: true,
+            maxReviewPasses: 1,
+            reviewPassesUsed: 0,
+            userRequest: "Pokaz to na wykresie topologii replikacji.",
+            assistantDraft: string.Empty,
+            executionContractApplies: false,
+            hasToolActivity: true,
+            proactiveModeEnabled: true,
+            proactiveFollowUpUsed: false,
+            continuationFollowUpTurn: true,
+            compactFollowUpTurn: true);
+
+        Assert.Equal("None", result.Kind);
+        Assert.Equal("empty_assistant_draft", result.Reason);
+        Assert.Equal(0, result.ReviewPassNumber);
+    }
+
+    [Fact]
     public void ResolveNoExtractedFinalizeReviewDecisionForTesting_AllowsArtifactAlreadyVisibleAboveWhenPlanJustifiesOmission() {
         var assistantDraft = """
             [Answer progression plan]
@@ -285,7 +334,55 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
-    public void ResolveNoExtractedFinalizeNoTextOutcomeForTesting_PrefersLocalToolOutputFallbackBeforeRetryDecision() {
+    public void ShouldAttemptLocalDirectRetryAfterNoResultWatchdogForTesting_AllowsPassiveFollowUpRetry() {
+        var shouldRetry = ChatServiceSession.ShouldAttemptLocalDirectRetryAfterNoResultWatchdogForTesting(
+            userRequest: "Podaj glownie ograniczenia/blokery dla kazdego narzedzia w jednej krotkiej liscie.",
+            hasConversationContinuationContext: true,
+            executionContractApplies: false,
+            continuationFollowUpTurn: true,
+            compactFollowUpTurn: true,
+            localNoTextDirectRetryUsed: false,
+            isLocalCompatibleLoopback: true,
+            availableToolCount: 28,
+            hasToolActivity: false);
+
+        Assert.True(shouldRetry);
+    }
+
+    [Fact]
+    public void ShouldAttemptLocalDirectRetryAfterNoResultWatchdogForTesting_SkipsExplicitToolCapabilityQuestions() {
+        var shouldRetry = ChatServiceSession.ShouldAttemptLocalDirectRetryAfterNoResultWatchdogForTesting(
+            userRequest: "dobra a co to `eventlog_evtx_query · Event Log (EventViewerX)`",
+            hasConversationContinuationContext: true,
+            executionContractApplies: false,
+            continuationFollowUpTurn: true,
+            compactFollowUpTurn: true,
+            localNoTextDirectRetryUsed: false,
+            isLocalCompatibleLoopback: true,
+            availableToolCount: 28,
+            hasToolActivity: false);
+
+        Assert.False(shouldRetry);
+    }
+
+    [Fact]
+    public void ShouldAttemptLocalDirectRetryAfterNoResultWatchdogForTesting_AllowsRetryFromRememberedConversationContext() {
+        var shouldRetry = ChatServiceSession.ShouldAttemptLocalDirectRetryAfterNoResultWatchdogForTesting(
+            userRequest: "Podaj glownie ograniczenia/blokery dla kazdego narzedzia w jednej krotkiej liscie.",
+            hasConversationContinuationContext: true,
+            executionContractApplies: false,
+            continuationFollowUpTurn: false,
+            compactFollowUpTurn: false,
+            localNoTextDirectRetryUsed: false,
+            isLocalCompatibleLoopback: true,
+            availableToolCount: 28,
+            hasToolActivity: false);
+
+        Assert.True(shouldRetry);
+    }
+
+    [Fact]
+    public void ResolveNoExtractedFinalizeNoTextOutcomeForTesting_PreservesFallbackTextButStillSelectsSynthesisRetry() {
         var result = ChatServiceSession.ResolveNoExtractedFinalizeNoTextOutcomeForTesting(
             noTextToolOutputDirectRetryUsed: false,
             planExecuteReviewLoop: true,
@@ -299,7 +396,143 @@ public sealed partial class ChatServiceRoutingTrimTests {
             userRequest: "Summarize the tool result.");
 
         Assert.Contains("Recovered findings from executed tools", result.AssistantDraft, StringComparison.Ordinal);
-        Assert.Equal("None", result.Kind);
-        Assert.Equal("no_no_text_recovery_selected", result.Reason);
+        Assert.Equal("ToolOutputSynthesisRetry", result.Kind);
+        Assert.Equal("tool_output_synthesis_retry", result.Reason);
+    }
+
+    [Fact]
+    public void BuildNoTextToolOutputSynthesisPrompt_CarriesRequestedArtifactGuidanceIntoRetryPrompt() {
+        var prompt = ChatServiceSession.BuildNoTextToolOutputSynthesisPrompt(
+            userRequest: "Pokaz to na wykresie topologii replikacji.",
+            toolCalls: new List<ToolCallDto?> {
+                new() {
+                    CallId = "call-1",
+                    Name = "ad_replication_summary"
+                }
+            },
+            toolOutputs: new List<ToolOutputDto?> {
+                new() {
+                    CallId = "call-1",
+                    Ok = true,
+                    Output = "{\"ok\":true}",
+                    SummaryMarkdown = "### Active Directory: Replication Summary"
+                }
+            });
+
+        Assert.Contains("mermaid", prompt, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("visual artifact", prompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildInformationalToolCapabilityFallbackTextForTesting_DescribesExplicitToolDescriptorQuestion() {
+        var text = ChatServiceSession.BuildInformationalToolCapabilityFallbackTextForTesting(
+            userRequest: "dobra a co to `eventlog_evtx_query · Event Log (EventViewerX)`",
+            routedUserRequest: "dobra a co to `eventlog_evtx_query · Event Log (EventViewerX)`",
+            lastAssistantDraft: string.Empty,
+            toolDefinitions: BuildEventLogCapabilityFallbackToolDefinitions());
+
+        Assert.NotNull(text);
+        Assert.Contains("eventlog_evtx_query", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("path", text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Execution blocked", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildInformationalToolCapabilityFallbackTextForTesting_BuildsJsonExamplesForToolPair() {
+        var text = ChatServiceSession.BuildInformationalToolCapabilityFallbackTextForTesting(
+            userRequest: "Daj po 1 krotkim przykladzie JSON dla obu narzedzi.",
+            routedUserRequest: "Porownaj krotko `eventlog_evtx_query` vs `eventlog_live_query` i podaj 1 praktyczna roznice.",
+            lastAssistantDraft: string.Empty,
+            toolDefinitions: BuildEventLogCapabilityFallbackToolDefinitions());
+
+        Assert.NotNull(text);
+        Assert.Contains("eventlog_evtx_query", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("eventlog_live_query", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("log_name", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("{", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void BuildInformationalToolCapabilityFallbackTextForTesting_UsesRoutedContextForBlockersFollowUp() {
+        var text = ChatServiceSession.BuildInformationalToolCapabilityFallbackTextForTesting(
+            userRequest: "Podaj glownie ograniczenia/blokery dla kazdego narzedzia w jednej krotkiej liscie.",
+            routedUserRequest: "Porownaj krotko `eventlog_evtx_query` vs `eventlog_live_query` i potem podaj blokery dla kazdego narzedzia.",
+            lastAssistantDraft: string.Empty,
+            toolDefinitions: BuildEventLogCapabilityFallbackToolDefinitions());
+
+        Assert.NotNull(text);
+        Assert.Contains("evtx", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("live", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void BuildInformationalToolCapabilityFallbackTextForTesting_BuildsCompactUtcSummary() {
+        var text = ChatServiceSession.BuildInformationalToolCapabilityFallbackTextForTesting(
+            userRequest: "Podsumuj finalne wskazowki w 6 punktach z wzmianka UTC i bez pytania na koniec.",
+            routedUserRequest: "Porownaj `eventlog_evtx_query` vs `eventlog_live_query` i zamknij to krotkim summary.",
+            lastAssistantDraft: string.Empty,
+            toolDefinitions: BuildEventLogCapabilityFallbackToolDefinitions());
+
+        Assert.NotNull(text);
+        Assert.Contains("UTC", text, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("?", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void BuildInformationalToolCapabilityFallbackTextForTesting_BuildsCompactSummaryWithoutLanguageSpecificKeywords() {
+        var text = ChatServiceSession.BuildInformationalToolCapabilityFallbackTextForTesting(
+            userRequest: "请用 6 个要点结束，不要在结尾提问。",
+            routedUserRequest: "Compare `eventlog_evtx_query` vs `eventlog_live_query`.",
+            lastAssistantDraft: string.Empty,
+            toolDefinitions: BuildEventLogCapabilityFallbackToolDefinitions());
+
+        Assert.NotNull(text);
+        Assert.Contains("eventlog_evtx_query", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("eventlog_live_query", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("UTC", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static ToolDefinition[] BuildEventLogCapabilityFallbackToolDefinitions() {
+        return new[] {
+            new ToolDefinition(
+                "eventlog_evtx_query",
+                "Read events from a local .evtx file with basic filters (restricted to allowed roots).",
+                new JsonObject(StringComparer.Ordinal)
+                    .Add("type", "object")
+                    .Add("properties", new JsonObject(StringComparer.Ordinal)
+                        .Add("path", new JsonObject(StringComparer.Ordinal).Add("type", "string"))
+                        .Add("max_events", new JsonObject(StringComparer.Ordinal).Add("type", "integer")))
+                    .Add("required", new JsonArray().Add("path"))),
+            new ToolDefinition(
+                "eventlog_live_query",
+                "Read events from a Windows Event Log (local or remote machine) using log name + optional XPath filter.",
+                new JsonObject(StringComparer.Ordinal)
+                    .Add("type", "object")
+                    .Add("properties", new JsonObject(StringComparer.Ordinal)
+                        .Add("log_name", new JsonObject(StringComparer.Ordinal).Add("type", "string"))
+                        .Add("machine_name", new JsonObject(StringComparer.Ordinal).Add("type", "string"))
+                        .Add("max_events", new JsonObject(StringComparer.Ordinal).Add("type", "integer")))
+                    .Add("required", new JsonArray().Add("log_name")))
+        };
+    }
+
+    [Fact]
+    public void BuildInformationalToolCapabilityFallbackTextForTesting_UsesPreviousAssistantWhenRoutedRequestLosesToolNames() {
+        var text = ChatServiceSession.BuildInformationalToolCapabilityFallbackTextForTesting(
+            userRequest: "Podaj glownie ograniczenia/blokery dla kazdego narzedzia w jednej krotkiej liscie.",
+            routedUserRequest: "Podaj glownie ograniczenia/blokery dla kazdego narzedzia w jednej krotkiej liscie.",
+            lastAssistantDraft: """
+                               ```json
+                               {"tool":"eventlog_evtx_query","parameters":{"path":"C:\\Logs\\Directory Service.evtx"}}
+                               ```
+                               ```json
+                               {"tool":"eventlog_live_query","parameters":{"machine_name":"AD2.ad.evotec.xyz","log_name":"Directory Service"}}
+                               ```
+                               """,
+            toolDefinitions: BuildEventLogCapabilityFallbackToolDefinitions());
+
+        Assert.NotNull(text);
+        Assert.Contains("evtx", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("live", text, StringComparison.OrdinalIgnoreCase);
     }
 }

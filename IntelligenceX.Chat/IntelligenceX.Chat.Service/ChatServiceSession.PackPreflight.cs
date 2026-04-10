@@ -12,6 +12,30 @@ namespace IntelligenceX.Chat.Service;
 internal sealed partial class ChatServiceSession {
     private const string HostPackPreflightCallIdPrefix = "host_pack_preflight_";
     private const int MaxRememberedPackPreflightToolNames = 16;
+    private static readonly string[] ArtifactVisualReplicationReplayRecentToolNames = {
+        "ad_replikacja_forestu",
+        "ad_replication_summary",
+        "ad_replikacja_podsumowanie",
+        "ad_replikacja_utc",
+        "ad_forest_replication_summary",
+        "ad_replication_health_summary",
+        "ad_replication_topology",
+        "ad_replikacja_topologia",
+        "ad_replikacja_wykres",
+        "ad_replication_connections"
+    };
+    private static readonly string[] ArtifactVisualReplicationTopologyReplayToolNames = {
+        "ad_replication_topology",
+        "ad_replikacja_topologia",
+        "ad_replikacja_wykres",
+        "ad_replication_connections"
+    };
+    private static readonly string[] ArtifactVisualReplicationSummaryReplayToolNames = {
+        "ad_replication_summary",
+        "ad_replikacja_podsumowanie",
+        "ad_forest_replication_summary",
+        "ad_replication_health_summary"
+    };
 
     private readonly record struct PackPreflightCatalog(
         Dictionary<string, ToolDefinition> PackInfoByPackId,
@@ -298,6 +322,404 @@ internal sealed partial class ChatServiceSession {
         return true;
     }
 
+    private bool TryBuildHostDomainIntentOperationalReplayCall(
+        string threadId,
+        string userRequest,
+        IReadOnlyList<ToolDefinition> toolDefinitions,
+        out ToolCall call,
+        out string reason) {
+        call = default!;
+        reason = string.Empty;
+
+        var normalizedThreadId = (threadId ?? string.Empty).Trim();
+        if (normalizedThreadId.Length == 0 || toolDefinitions.Count == 0) {
+            return false;
+        }
+
+        if (!TryGetCurrentDomainIntentFamily(normalizedThreadId, out var family)
+            && !TryResolveDomainIntentFamilyFromUserSignals(userRequest, toolDefinitions, out family)) {
+            return false;
+        }
+
+        if (!TryNormalizeDomainIntentFamily(family, out var normalizedFamily)) {
+            return false;
+        }
+
+        if (TryBuildPreferredHostDomainIntentOperationalReplayCall(
+                normalizedThreadId,
+                normalizedFamily,
+                userRequest,
+                toolDefinitions,
+                out call,
+                out reason)) {
+            return true;
+        }
+
+        var rankedDefinitions = SelectWeightedToolSubset(
+            toolDefinitions,
+            userRequest,
+            maxCandidateTools: null,
+            out _);
+        if (rankedDefinitions.Count == 0) {
+            rankedDefinitions = toolDefinitions;
+        }
+
+        for (var pass = 0; pass < 2; pass++) {
+            var allowProbeLikeCandidates = pass > 0;
+            for (var i = 0; i < rankedDefinitions.Count; i++) {
+                var definition = rankedDefinitions[i];
+                if (definition is null) {
+                    continue;
+                }
+
+                var toolName = (definition.Name ?? string.Empty).Trim();
+                if (toolName.Length == 0
+                    || definition.WriteGovernance?.IsWriteCapable == true
+                    || !_toolOrchestrationCatalog.TryGetEntry(toolName, out var entry)
+                    || entry.PackId.Length == 0
+                    || entry.IsEnvironmentDiscoverTool
+                    || entry.IsPackInfoTool) {
+                    continue;
+                }
+
+                var candidateFamily = string.Empty;
+                if (TryNormalizeDomainIntentFamily(entry.DomainIntentFamily, out var catalogFamily)) {
+                    candidateFamily = catalogFamily;
+                } else {
+                    candidateFamily = ResolveDomainIntentFamily(definition);
+                }
+
+                if (!string.Equals(candidateFamily, normalizedFamily, StringComparison.Ordinal)) {
+                    continue;
+                }
+
+                var probeLikeCandidate =
+                    ToolIsPackPreferredProbeTool(definition, _toolOrchestrationCatalog)
+                    || string.Equals(entry.Role, ToolRoutingTaxonomy.RoleDiagnostic, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(entry.Role, ToolRoutingTaxonomy.RoleResolver, StringComparison.OrdinalIgnoreCase)
+                    || toolName.IndexOf("_probe", StringComparison.OrdinalIgnoreCase) >= 0;
+                if (!allowProbeLikeCandidates && probeLikeCandidate) {
+                    continue;
+                }
+
+                if (ToolDefinitionHasRequiredArguments(definition)) {
+                    if (TryBuildHostOperationalReplayCallWithRequiredArguments(
+                            normalizedThreadId,
+                            normalizedFamily,
+                            userRequest,
+                            definition,
+                            out call,
+                            out var specializedReasonSuffix)) {
+                        reason = $"domain_intent_family_{normalizedFamily}_operational_{NormalizeToolNameForAnswerPlan(toolName)}_{specializedReasonSuffix}";
+                        return true;
+                    }
+
+                    continue;
+                }
+
+                call = BuildHostOperationalReplayCall(toolName);
+                reason = $"domain_intent_family_{normalizedFamily}_operational_{NormalizeToolNameForAnswerPlan(toolName)}";
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool TryBuildPreferredHostDomainIntentOperationalReplayCall(
+        string threadId,
+        string normalizedFamily,
+        string userRequest,
+        IReadOnlyList<ToolDefinition> toolDefinitions,
+        out ToolCall call,
+        out string reason) {
+        call = default!;
+        reason = string.Empty;
+
+        if (TryBuildArtifactVisualReplicationSummaryReplayCall(
+                threadId,
+                normalizedFamily,
+                userRequest,
+                toolDefinitions,
+                out call,
+                out reason)) {
+            return true;
+        }
+
+        if (!RequestContainsStructuredToken(userRequest, "ldap")
+            || !TryFindHostOperationalReplayDefinition(toolDefinitions, normalizedFamily, "ad_monitoring_probe_run", out var definition)
+            || !TryBuildHostOperationalReplayCallWithRequiredArguments(
+                threadId,
+                normalizedFamily,
+                userRequest,
+                definition,
+                out call,
+                out var reasonSuffix)) {
+            return false;
+        }
+
+        reason = $"domain_intent_family_{normalizedFamily}_operational_{NormalizeToolNameForAnswerPlan(definition.Name)}_{reasonSuffix}";
+        return true;
+    }
+
+    private bool TryBuildArtifactVisualReplicationSummaryReplayCall(
+        string threadId,
+        string normalizedFamily,
+        string userRequest,
+        IReadOnlyList<ToolDefinition> toolDefinitions,
+        out ToolCall call,
+        out string reason) {
+        call = default!;
+        reason = string.Empty;
+
+        if (!string.Equals(normalizedFamily, DomainIntentFamilyAd, StringComparison.Ordinal)
+            || !TryGetWorkingMemoryCheckpoint(threadId, out var checkpoint)
+            || checkpoint.PriorAnswerPlanRequiresLiveExecution
+            || checkpoint.PriorAnswerPlanMissingLiveEvidence.Length > 0) {
+            return false;
+        }
+
+        var requestedArtifactIntent = ResolveRequestedArtifactIntent(userRequest);
+        if (!requestedArtifactIntent.RequiresArtifact
+            || !requestedArtifactIntent.WantsVisual
+            || ContainsQuestionSignal(userRequest)
+            || ExtractExplicitRequestedToolNames(userRequest).Length > 0
+            || CollectHostHintsFromUserRequest(userRequest).Length > 0) {
+            return false;
+        }
+
+        var recentReplicationSummaryToolNames = NormalizeDistinctStrings(
+            checkpoint.PriorAnswerPlanPreferredToolNames
+                .Concat(checkpoint.RecentToolNames),
+            maxItems: MaxWorkingMemoryToolNames);
+        if (!ContainsAnyString(
+                recentReplicationSummaryToolNames,
+                ArtifactVisualReplicationReplayRecentToolNames)) {
+            return false;
+        }
+
+        var candidateReplayToolNames = NormalizeDistinctStrings(
+            ArtifactVisualReplicationTopologyReplayToolNames
+                .Concat(ArtifactVisualReplicationSummaryReplayToolNames),
+            maxItems: ArtifactVisualReplicationTopologyReplayToolNames.Length + ArtifactVisualReplicationSummaryReplayToolNames.Length);
+        var candidateToolNames = NormalizeDistinctStrings(
+            candidateReplayToolNames
+                .Concat(recentReplicationSummaryToolNames),
+            maxItems: candidateReplayToolNames.Length + MaxWorkingMemoryToolNames);
+        for (var i = 0; i < candidateToolNames.Length; i++) {
+            var candidateToolName = candidateToolNames[i];
+            if (!ContainsAnyString(
+                    candidateReplayToolNames,
+                    new[] { candidateToolName })
+                || !TryFindHostOperationalReplayDefinition(toolDefinitions, normalizedFamily, candidateToolName, out var definition)
+                || ToolDefinitionHasRequiredArguments(definition)) {
+                continue;
+            }
+
+            call = BuildHostOperationalReplayCall(definition.Name);
+            var reasonSuffix = ContainsAnyString(
+                ArtifactVisualReplicationTopologyReplayToolNames,
+                new[] { definition.Name })
+                ? "artifact_visual_replication_topology"
+                : "artifact_visual_replication_summary";
+            reason = $"domain_intent_family_{normalizedFamily}_operational_{NormalizeToolNameForAnswerPlan(definition.Name)}_{reasonSuffix}";
+            return true;
+        }
+
+        return false;
+    }
+
+    private bool TryBuildHostOperationalReplayCallWithRequiredArguments(
+        string threadId,
+        string normalizedFamily,
+        string userRequest,
+        ToolDefinition definition,
+        out ToolCall call,
+        out string reasonSuffix) {
+        call = default!;
+        reasonSuffix = string.Empty;
+
+        var toolName = (definition.Name ?? string.Empty).Trim();
+        if (toolName.Length == 0) {
+            return false;
+        }
+
+        var preferredHost = ResolvePreferredHostDomainIntentReplayTarget(
+            threadId,
+            normalizedFamily,
+            userRequest);
+        if (string.Equals(toolName, "ad_monitoring_probe_run", StringComparison.OrdinalIgnoreCase)) {
+            if (!RequestContainsStructuredToken(userRequest, "ldap")) {
+                return false;
+            }
+
+            var arguments = new JsonObject(StringComparer.Ordinal)
+                .Add("probe_kind", "ldap")
+                .Add("discovery_fallback", "current_forest");
+            if (preferredHost.Length > 0) {
+                arguments.Add("domain_controller", preferredHost);
+            }
+
+            call = BuildHostOperationalReplayCall(toolName, arguments);
+            reasonSuffix = preferredHost.Length > 0 ? "ldap_probe_host_inferred" : "ldap_probe";
+            return true;
+        }
+
+        if (string.Equals(toolName, "ad_scope_discovery", StringComparison.OrdinalIgnoreCase)) {
+            var arguments = new JsonObject(StringComparer.Ordinal)
+                .Add("discovery_fallback", "current_forest");
+            if (preferredHost.Length > 0) {
+                arguments.Add("domain_controller", preferredHost);
+            }
+
+            call = BuildHostOperationalReplayCall(toolName, arguments);
+            reasonSuffix = preferredHost.Length > 0 ? "scope_host_inferred" : "scope";
+            return true;
+        }
+
+        return false;
+    }
+
+    private bool TryFindHostOperationalReplayDefinition(
+        IReadOnlyList<ToolDefinition> toolDefinitions,
+        string normalizedFamily,
+        string toolName,
+        out ToolDefinition definition) {
+        definition = null!;
+
+        var normalizedToolName = (toolName ?? string.Empty).Trim();
+        if (normalizedToolName.Length == 0) {
+            return false;
+        }
+
+        for (var i = 0; i < toolDefinitions.Count; i++) {
+            var candidate = toolDefinitions[i];
+            if (candidate is null) {
+                continue;
+            }
+
+            var candidateToolName = (candidate.Name ?? string.Empty).Trim();
+            if (!string.Equals(candidateToolName, normalizedToolName, StringComparison.OrdinalIgnoreCase)
+                || candidate.WriteGovernance?.IsWriteCapable == true
+                || !_toolOrchestrationCatalog.TryGetEntry(candidateToolName, out var entry)
+                || entry.PackId.Length == 0
+                || entry.IsEnvironmentDiscoverTool
+                || entry.IsPackInfoTool) {
+                continue;
+            }
+
+            var candidateFamily = string.Empty;
+            if (TryNormalizeDomainIntentFamily(entry.DomainIntentFamily, out var catalogFamily)) {
+                candidateFamily = catalogFamily;
+            } else {
+                candidateFamily = ResolveDomainIntentFamily(candidate);
+            }
+
+            if (!string.Equals(candidateFamily, normalizedFamily, StringComparison.Ordinal)) {
+                continue;
+            }
+
+            definition = candidate;
+            return true;
+        }
+
+        return false;
+    }
+
+    private string ResolvePreferredHostDomainIntentReplayTarget(string threadId, string normalizedFamily, string userRequest) {
+        var userHostHints = CollectHostHintsFromUserRequest(userRequest);
+        var knownHosts = CollectThreadHostCandidatesByDomainIntentFamily(threadId, normalizedFamily);
+        if (knownHosts.Length > 0 && userHostHints.Length > 0) {
+            var bestCandidate = string.Empty;
+            var bestScore = 0;
+            for (var i = 0; i < knownHosts.Length; i++) {
+                var knownHost = (knownHosts[i] ?? string.Empty).Trim();
+                if (knownHost.Length == 0) {
+                    continue;
+                }
+
+                for (var hintIndex = 0; hintIndex < userHostHints.Length; hintIndex++) {
+                    var score = ScoreHostHintMatch(userHostHints[hintIndex], knownHost);
+                    if (score <= bestScore) {
+                        continue;
+                    }
+
+                    bestScore = score;
+                    bestCandidate = knownHost;
+                }
+            }
+
+            if (bestScore > 0) {
+                return bestCandidate;
+            }
+        }
+
+        if (userHostHints.Length > 0) {
+            return userHostHints[0];
+        }
+
+        return knownHosts.Length == 1 ? knownHosts[0] : string.Empty;
+    }
+
+    private static bool RequestContainsStructuredToken(string userRequest, string token) {
+        var normalizedRequest = NormalizeRoutingUserText((userRequest ?? string.Empty).Trim());
+        var normalizedToken = NormalizeRoutingUserText((token ?? string.Empty).Trim());
+        if (normalizedRequest.Length == 0 || normalizedToken.Length == 0) {
+            return false;
+        }
+
+        var tokenStart = -1;
+        for (var i = 0; i <= normalizedRequest.Length; i++) {
+            var ch = i < normalizedRequest.Length ? normalizedRequest[i] : '\0';
+            var tokenChar = i < normalizedRequest.Length
+                            && (char.IsLetterOrDigit(ch) || ch == '.' || ch == '-' || ch == '_');
+            if (tokenChar) {
+                if (tokenStart < 0) {
+                    tokenStart = i;
+                }
+                continue;
+            }
+
+            if (tokenStart < 0) {
+                continue;
+            }
+
+            var candidate = normalizedRequest.Substring(tokenStart, i - tokenStart);
+            tokenStart = -1;
+            if (string.Equals(candidate, normalizedToken, StringComparison.OrdinalIgnoreCase)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool ContainsAnyString(IReadOnlyList<string> values, IReadOnlyList<string> candidates) {
+        if (values is null || candidates is null || values.Count == 0 || candidates.Count == 0) {
+            return false;
+        }
+
+        for (var valueIndex = 0; valueIndex < values.Count; valueIndex++) {
+            var value = (values[valueIndex] ?? string.Empty).Trim();
+            if (value.Length == 0) {
+                continue;
+            }
+
+            for (var candidateIndex = 0; candidateIndex < candidates.Count; candidateIndex++) {
+                var candidate = (candidates[candidateIndex] ?? string.Empty).Trim();
+                if (candidate.Length == 0) {
+                    continue;
+                }
+
+                if (string.Equals(value, candidate, StringComparison.OrdinalIgnoreCase)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
     private void RememberSuccessfulPackPreflightCalls(
         string threadId,
         IReadOnlyList<ToolCall> executedCalls,
@@ -557,6 +979,31 @@ internal sealed partial class ChatServiceSession {
 
     private static ToolCall BuildHostPackPreflightCall(string toolName, string role) {
         var callId = BuildHostGeneratedToolCallId(HostPackPreflightCallIdPrefix.TrimEnd('_'), role);
+        return BuildHostGeneratedEmptyArgumentsToolCall(callId, toolName);
+    }
+
+    private static ToolCall BuildHostOperationalReplayCall(string toolName) {
+        return BuildHostOperationalReplayCall(toolName, new JsonObject(StringComparer.Ordinal));
+    }
+
+    private static ToolCall BuildHostOperationalReplayCall(string toolName, JsonObject arguments) {
+        var callId = BuildHostGeneratedToolCallId("host_domain_operational", toolName);
+        var serializedArguments = JsonLite.Serialize(arguments);
+        var raw = new JsonObject(StringComparer.Ordinal)
+            .Add("type", "tool_call")
+            .Add("call_id", callId)
+            .Add("name", toolName)
+            .Add("arguments", serializedArguments);
+
+        return new ToolCall(
+            callId: callId,
+            name: toolName,
+            input: serializedArguments,
+            arguments: arguments,
+            raw: raw);
+    }
+
+    private static ToolCall BuildHostGeneratedEmptyArgumentsToolCall(string callId, string toolName) {
         var arguments = new JsonObject(StringComparer.Ordinal);
         var serializedArguments = JsonLite.Serialize(arguments);
         var raw = new JsonObject(StringComparer.Ordinal)

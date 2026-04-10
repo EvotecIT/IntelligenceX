@@ -196,10 +196,13 @@ function Resolve-ChatPrivateToolPackState {
 }
 $repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $appProject = Join-Path $repoRoot 'IntelligenceX.Chat\IntelligenceX.Chat.App\IntelligenceX.Chat.App.csproj'
-$officeImoRoot = Join-Path (Split-Path $repoRoot -Parent) 'OfficeIMO'
 $resolvedOfficeImoRoot = $null
 . (Join-Path $repoRoot 'Build\Internal\Publish-ChatBundledToolProjects.ps1')
 . (Join-Path $repoRoot 'Build\Internal\Resolve-TestimoXRoot.ps1')
+$resolvedOfficeImoRoot = Resolve-OptionalSiblingRepoRoot `
+    -RepoRoot $repoRoot `
+    -RepoNames @('OfficeIMO') `
+    -MarkerRelativePaths @('OfficeIMO.MarkdownRenderer\OfficeIMO.MarkdownRenderer.csproj')
 
 if (-not (Test-Path $appProject)) {
     throw "Project not found: $appProject"
@@ -225,11 +228,7 @@ if ($NoBuild) {
     $dotnetRunArgs += '--no-build'
 }
 
-if (Test-Path (Join-Path $officeImoRoot 'OfficeIMO.MarkdownRenderer\OfficeIMO.MarkdownRenderer.csproj')) {
-    $resolvedOfficeImoRoot = [System.IO.Path]::GetFullPath($officeImoRoot)
-    if (-not $resolvedOfficeImoRoot.EndsWith([System.IO.Path]::DirectorySeparatorChar)) {
-        $resolvedOfficeImoRoot += [System.IO.Path]::DirectorySeparatorChar
-    }
+if ($resolvedOfficeImoRoot) {
     $dotnetRunArgs += "/p:UseLocalOfficeImoCheckout=true"
     $dotnetRunArgs += "/p:OfficeImoRepoRoot=$resolvedOfficeImoRoot"
 }

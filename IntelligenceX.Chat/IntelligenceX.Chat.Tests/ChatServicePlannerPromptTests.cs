@@ -14,6 +14,7 @@ using IntelligenceX.OpenAI;
 using IntelligenceX.OpenAI.AppServer.Models;
 using IntelligenceX.OpenAI.Chat;
 using IntelligenceX.Tools;
+using IntelligenceX.Tools.ADPlayground;
 using IntelligenceX.Tools.Common;
 using Xunit;
 
@@ -4549,6 +4550,90 @@ public sealed class ChatServicePlannerPromptTests {
             insights,
             insight => (insight.GetType().GetProperty("Reason", BindingFlags.Public | BindingFlags.Instance)?.GetValue(insight)?.ToString() ?? string.Empty)
                 .IndexOf("setup-aware preflight support", StringComparison.OrdinalIgnoreCase) >= 0);
+    }
+
+    [Fact]
+    public void BuildToolRoutingSearchText_IndexesPolishReplicationMetadataForLiveAdTools() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var definition = new AdReplicationSummaryTool(new ActiveDirectoryToolOptions()).Definition;
+
+        var text = session.BuildToolRoutingSearchTextForTesting(definition);
+
+        Assert.Contains("replikacja", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("forestu", text, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("utc", text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void SelectWeightedToolSubset_PrefersReplicationToolsForPolishForestReplicationAsk() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var definitions = new List<ToolDefinition>();
+        for (var i = 0; i < 24; i++) {
+            definitions.Add(new ToolDefinition(
+                $"generic_probe_{i:D2}",
+                "Collect generic operational diagnostics for the current environment.",
+                ToolSchema.Object(("path", ToolSchema.String("Path."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "generic",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                }));
+        }
+
+        definitions.Add(new AdReplicationSummaryTool(new ActiveDirectoryToolOptions()).Definition);
+        definitions.Add(new AdReplicationStatusTool(new ActiveDirectoryToolOptions()).Definition);
+        definitions.Add(new AdReplicationConnectionsTool(new ActiveDirectoryToolOptions()).Definition);
+        definitions.Add(new AdMonitoringProbeRunTool(new ActiveDirectoryToolOptions()).Definition);
+
+        session.SetToolOrchestrationCatalogForTesting(ToolOrchestrationCatalog.Build(definitions));
+        var selected = session.SelectWeightedToolSubsetForTesting(
+            definitions,
+            "Co tam slychac w AD replikacji forestu? Podsumuj w UTC.",
+            8,
+            out _);
+
+        Assert.Contains(selected, tool => string.Equals(tool.Name, "ad_replication_summary", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(selected, tool =>
+            string.Equals(tool.Name, "ad_replication_status", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(tool.Name, "ad_monitoring_probe_run", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void BuildModelPlannerCandidates_PreservesReplicationToolsForPolishForestReplicationAsk() {
+        var session = ChatServiceTestSessionFactory.CreateIsolatedSession();
+        var definitions = new List<ToolDefinition>();
+        for (var i = 0; i < 84; i++) {
+            definitions.Add(new ToolDefinition(
+                $"generic_probe_{i:D2}",
+                "Collect generic operational diagnostics for the current environment.",
+                ToolSchema.Object(("path", ToolSchema.String("Path."))).NoAdditionalProperties(),
+                routing: new ToolRoutingContract {
+                    IsRoutingAware = true,
+                    RoutingSource = ToolRoutingTaxonomy.SourceExplicit,
+                    PackId = "generic",
+                    Role = ToolRoutingTaxonomy.RoleOperational
+                }));
+        }
+
+        definitions.Add(new AdReplicationSummaryTool(new ActiveDirectoryToolOptions()).Definition);
+        definitions.Add(new AdReplicationStatusTool(new ActiveDirectoryToolOptions()).Definition);
+        definitions.Add(new AdReplicationConnectionsTool(new ActiveDirectoryToolOptions()).Definition);
+        definitions.Add(new AdMonitoringProbeRunTool(new ActiveDirectoryToolOptions()).Definition);
+
+        var catalog = ToolOrchestrationCatalog.Build(definitions);
+        session.SetToolOrchestrationCatalogForTesting(catalog);
+
+        var candidates = session.BuildModelPlannerCandidatesForTesting(
+            definitions,
+            "Co tam slychac w AD replikacji forestu? Podsumuj w UTC.",
+            8,
+            catalog);
+
+        Assert.Contains(candidates, tool => string.Equals(tool.Name, "ad_replication_summary", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(candidates, tool =>
+            string.Equals(tool.Name, "ad_replication_status", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(tool.Name, "ad_monitoring_probe_run", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]

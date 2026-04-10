@@ -116,7 +116,7 @@ internal static class TranscriptForensicsExporter {
         for (var i = 0; i < sourceMessages.Count; i++) {
             var message = sourceMessages[i];
             var rawText = message.RawText ?? string.Empty;
-            var normalizedText = TranscriptMarkdownPreparation.PrepareMessageBody(rawText);
+            var normalizedText = TranscriptMarkdownPreparation.PrepareMessageBody(message.Role, rawText);
             if (string.IsNullOrWhiteSpace(normalizedText)) {
                 continue;
             }
@@ -142,7 +142,7 @@ internal static class TranscriptForensicsExporter {
         }
 
         var rawTranscriptMarkdown = TranscriptMarkdownDocumentBuilder.BuildRawTranscript(transcriptMessages, timestampFormat);
-        var normalizedTranscriptMarkdown = TranscriptMarkdownPreparation.PrepareTranscriptMarkdownForExport(rawTranscriptMarkdown);
+        var normalizedTranscriptMarkdown = TranscriptMarkdownDocumentBuilder.BuildPreparedTranscript(transcriptMessages, timestampFormat);
         var renderedTranscriptHtml = TranscriptHtmlFormatter.Format(transcriptMessages, timestampFormat, markdownOptions);
 
         return new TranscriptForensicsConversationSnapshot {

@@ -1121,6 +1121,169 @@ public sealed partial class ChatServiceRoutingTrimTests {
     }
 
     [Fact]
+    public void RuntimeCapabilityHandshake_DeferredDescriptorPreviewBackgroundSchedulerSummaryDoesNotReenterPreviewConstruction() {
+        var tempRoot = TempPathTestHelper.CreateTempDirectoryPath("ix-chat-runtime-preview-background-scheduler");
+        var pluginRoot = Path.Combine(tempRoot, "plugins");
+        var pluginFolder = Path.Combine(pluginRoot, "ops-bundle");
+        Directory.CreateDirectory(pluginFolder);
+
+        try {
+            var options = ChatServiceTestSessionFactory.CreateIsolatedOptions();
+            options.EnableBuiltInPackLoading = false;
+            options.EnableDefaultPluginPaths = false;
+            options.RuntimePluginPaths.Add(pluginRoot);
+
+            File.WriteAllText(Path.Combine(pluginFolder, "ix-plugin.json"), """
+            {
+              "schemaVersion": 1,
+              "pluginId": "ops-bundle",
+              "displayName": "Ops Bundle",
+              "version": "1.2.3",
+              "packIds": ["ops_inventory"],
+              "defaultEnabled": true,
+              "sourceKind": "closed_source",
+              "entryAssembly": "Ops.Bundle.dll",
+              "entryType": "Ops.Bundle.PluginPack",
+              "tools": [
+                {
+                  "name": "ops_inventory_collect",
+                  "description": "Collect host inventory.",
+                  "category": "system",
+                  "supportsLocalExecution": false,
+                  "supportsRemoteExecution": true,
+                  "supportsRemoteHostTargeting": true
+                }
+              ]
+            }
+            """);
+
+            var session = new ChatServiceSession(options, Stream.Null);
+            const string threadId = "thread-deferred-preview-background-scheduler";
+            var nowTicks = DateTime.UtcNow.Ticks;
+            session.RememberThreadBackgroundWorkSnapshotForTesting(
+                threadId,
+                new ChatServiceSession.ThreadBackgroundWorkSnapshot(
+                    QueuedCount: 0,
+                    ReadyCount: 1,
+                    RunningCount: 0,
+                    CompletedCount: 0,
+                    PendingReadOnlyCount: 1,
+                    PendingUnknownCount: 0,
+                    RecentEvidenceTools: new[] { "ops_inventory_collect" },
+                    Items: new[] {
+                        new ChatServiceSession.ThreadBackgroundWorkItem(
+                            Id: "item-preview-background-scheduler",
+                            Title: "Collect deferred inventory",
+                            Request: "Collect deferred inventory for srv-preview.contoso.com",
+                            State: "ready",
+                            DependencyItemIds: Array.Empty<string>(),
+                            EvidenceToolNames: new[] { "ops_inventory_collect" },
+                            Kind: "tool_handoff",
+                            Mutability: "read_only",
+                            SourceToolName: "seed_plugin_probe_followup",
+                            SourceCallId: "call-preview-background-scheduler",
+                            TargetPackId: "ops_inventory",
+                            TargetToolName: "ops_inventory_collect",
+                            FollowUpKind: "tool_handoff",
+                            FollowUpPriority: 100,
+                            PreparedArgumentsJson: """{"target":"srv-preview.contoso.com"}""",
+                            ResultReference: string.Empty,
+                            ExecutionAttemptCount: 0,
+                            LastExecutionCallId: string.Empty,
+                            LastExecutionStartedUtcTicks: 0,
+                            LastExecutionFinishedUtcTicks: 0,
+                            LeaseExpiresUtcTicks: 0,
+                            CreatedUtcTicks: nowTicks,
+                            UpdatedUtcTicks: nowTicks)
+                    }));
+            session.ClearCachedToolDefinitionsForTesting();
+            var persistedSnapshot = session.ResolveThreadBackgroundWorkSnapshotForTesting(threadId);
+
+            var snapshot = session.BuildRuntimeCapabilitySnapshotForTesting();
+            var warnings = session.BuildHelloStartupWarningsForTesting(Task.CompletedTask);
+            var handshake = Assert.Single(
+                warnings,
+                static warning => warning.StartsWith("[startup] capability_handshake", StringComparison.OrdinalIgnoreCase));
+
+            Assert.NotNull(snapshot.ToolingSnapshot);
+            Assert.Equal("deferred_descriptor_preview", snapshot.ToolingSnapshot!.Source);
+            Assert.Contains(
+                snapshot.ToolingSnapshot.Plugins,
+                static plugin => string.Equals(plugin.Id, "ops_bundle", StringComparison.OrdinalIgnoreCase)
+                                 && string.Equals(plugin.ActivationState, ToolActivationStates.Deferred, StringComparison.OrdinalIgnoreCase));
+            Assert.NotNull(snapshot.BackgroundScheduler);
+            Assert.NotEmpty(persistedSnapshot.Items);
+            Assert.Contains("background_scheduler_tracked_threads='", handshake, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("background_scheduler_ready_items='", handshake, StringComparison.OrdinalIgnoreCase);
+        } finally {
+            if (Directory.Exists(tempRoot)) {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void RuntimeCapabilityHandshake_BuiltInDeferredPreviewBackgroundSchedulerSummaryDoesNotReenterPreviewConstruction() {
+        var options = ChatServiceTestSessionFactory.CreateIsolatedOptions();
+        options.EnableDefaultPluginPaths = false;
+
+        var session = new ChatServiceSession(options, Stream.Null);
+        const string threadId = "thread-built-in-deferred-preview-background-scheduler";
+        var nowTicks = DateTime.UtcNow.Ticks;
+        session.RememberThreadBackgroundWorkSnapshotForTesting(
+            threadId,
+            new ChatServiceSession.ThreadBackgroundWorkSnapshot(
+                QueuedCount: 0,
+                ReadyCount: 1,
+                RunningCount: 0,
+                CompletedCount: 0,
+                PendingReadOnlyCount: 1,
+                PendingUnknownCount: 0,
+                RecentEvidenceTools: new[] { "ad_environment_discover" },
+                Items: new[] {
+                    new ChatServiceSession.ThreadBackgroundWorkItem(
+                        Id: "item-built-in-preview-background-scheduler",
+                        Title: "Discover AD environment",
+                        Request: "Show AD environment discovery for the current forest",
+                        State: "ready",
+                        DependencyItemIds: Array.Empty<string>(),
+                        EvidenceToolNames: new[] { "ad_environment_discover" },
+                        Kind: "tool_handoff",
+                        Mutability: "read_only",
+                        SourceToolName: "seed_builtin_probe_followup",
+                        SourceCallId: "call-built-in-preview-background-scheduler",
+                        TargetPackId: "active_directory",
+                        TargetToolName: "ad_environment_discover",
+                        FollowUpKind: "tool_handoff",
+                        FollowUpPriority: 100,
+                        PreparedArgumentsJson: """{"discovery_fallback":"current_forest"}""",
+                        ResultReference: string.Empty,
+                        ExecutionAttemptCount: 0,
+                        LastExecutionCallId: string.Empty,
+                        LastExecutionStartedUtcTicks: 0,
+                        LastExecutionFinishedUtcTicks: 0,
+                        LeaseExpiresUtcTicks: 0,
+                        CreatedUtcTicks: nowTicks,
+                        UpdatedUtcTicks: nowTicks)
+                }));
+        session.ClearCachedToolDefinitionsForTesting();
+        var persistedSnapshot = session.ResolveThreadBackgroundWorkSnapshotForTesting(threadId);
+
+        var snapshot = session.BuildRuntimeCapabilitySnapshotForTesting();
+        var warnings = session.BuildHelloStartupWarningsForTesting(Task.CompletedTask);
+        var handshake = Assert.Single(
+            warnings,
+            static warning => warning.StartsWith("[startup] capability_handshake", StringComparison.OrdinalIgnoreCase));
+
+        Assert.NotNull(snapshot.ToolingSnapshot);
+        Assert.Equal("deferred_descriptor_preview", snapshot.ToolingSnapshot!.Source);
+        Assert.NotNull(snapshot.BackgroundScheduler);
+        Assert.NotEmpty(persistedSnapshot.Items);
+        Assert.Contains("background_scheduler_tracked_threads='", handshake, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("background_scheduler_ready_items='", handshake, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void RuntimeCapabilityHandshake_DeferredDescriptorPreviewInstructionsExposeDescriptorToolCandidates() {
         var tempRoot = TempPathTestHelper.CreateTempDirectoryPath("ix-chat-runtime-plugin-preview-tools");
         var pluginRoot = Path.Combine(tempRoot, "plugins");

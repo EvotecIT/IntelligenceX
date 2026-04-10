@@ -589,4 +589,41 @@ public sealed partial class TranscriptHtmlFormatterTests {
         Assert.DoesNotContain("\u0002", html, StringComparison.Ordinal);
         Assert.DoesNotContain("\u0007", html, StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// Ensures execution-blocked callouts preserve structured markdown blocks after metadata extraction.
+    /// </summary>
+    [Fact]
+    public void Format_RendersExecutionBlockedStructuredMarkdownBody() {
+        var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
+        var now = new DateTime(2026, 4, 7, 12, 17, 42, DateTimeKind.Local);
+        var html = TranscriptHtmlFormatter.Format(new[] {
+            ("Assistant", """
+                          [Execution blocked]
+                          ix:execution-contract:v1 I do not have confirmed tool output for this selected action yet.
+
+                          Reason code: no_tool_calls_after_watchdog_retry
+
+                          [Working memory checkpoint]
+
+                          ## Active Directory: Environment Discovery
+
+                          | Field | Value |
+                          | --- | --- |
+                          | Domain controller | dc1.ad.evotec.xyz |
+                          | Search base DN | DC=ad,DC=evotec,DC=xyz |
+
+                          Please retry this action in this context, or use the action command below.
+
+                          Tool receipt: no tools were run in this turn.
+                          """, now)
+        }, "HH:mm:ss", options);
+
+        Assert.Contains("outcome-kind-execution-blocked", html, StringComparison.Ordinal);
+        Assert.Contains("Working memory checkpoint", html, StringComparison.Ordinal);
+        Assert.Contains("Active Directory: Environment Discovery", html, StringComparison.Ordinal);
+        Assert.Contains("<table", html, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Domain controller", html, StringComparison.Ordinal);
+        Assert.Contains("Tool receipt: no tools were run in this turn.", html, StringComparison.Ordinal);
+    }
 }

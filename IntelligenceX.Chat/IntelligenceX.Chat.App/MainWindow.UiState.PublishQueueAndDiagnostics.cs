@@ -418,7 +418,9 @@ public sealed partial class MainWindow : Window {
         var list = new List<object>(ordered.Count);
         foreach (var conversation in ordered) {
             var isSystem = IsSystemConversation(conversation);
-            var updatedUtc = conversation.UpdatedUtc == default ? DateTime.UtcNow : conversation.UpdatedUtc;
+            var updatedUtc = ResolveConversationDisplayUpdatedUtc(
+                conversation.UpdatedUtc,
+                conversation.Messages.Count > 0 ? conversation.Messages[^1].Time : (DateTime?)null);
             var updatedLocal = EnsureUtc(updatedUtc).ToLocalTime();
             var preview = string.Empty;
             for (var i = conversation.Messages.Count - 1; i >= 0; i--) {
@@ -446,6 +448,7 @@ public sealed partial class MainWindow : Window {
                 runtimeLabel = string.IsNullOrWhiteSpace(conversation.RuntimeLabel) ? null : conversation.RuntimeLabel.Trim(),
                 modelLabel = string.IsNullOrWhiteSpace(conversation.ModelLabel) ? null : conversation.ModelLabel.Trim(),
                 modelOverride = string.IsNullOrWhiteSpace(conversation.ModelOverride) ? null : conversation.ModelOverride.Trim(),
+                updatedUtc = updatedUtc.ToString("O", CultureInfo.InvariantCulture),
                 updatedLocal = updatedLocal.ToString(_timestampFormat, CultureInfo.InvariantCulture)
             });
         }
