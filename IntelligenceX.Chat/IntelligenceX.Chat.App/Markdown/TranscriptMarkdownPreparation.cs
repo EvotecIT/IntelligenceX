@@ -163,6 +163,10 @@ internal static class TranscriptMarkdownPreparation {
             return string.Empty;
         }
 
+        if (ShouldStripRuntimeOnlyArtifacts(role)) {
+            value = SanitizeRuntimeOnlyArtifacts(value);
+        }
+
         if (RequiresAssistantTransportArtifactSanitization(role, value)) {
             value = SanitizeAssistantTransportArtifacts(value);
         }
@@ -280,7 +284,6 @@ internal static class TranscriptMarkdownPreparation {
             return false;
         }
 
-        normalized = NormalizeCollapsedMarkdownTableRows(normalized);
         if (normalized.IndexOf('\n') >= 0) {
             table = normalized;
             return true;
@@ -309,36 +312,98 @@ internal static class TranscriptMarkdownPreparation {
         }
 
         var separatorStart = -1;
+        var columnCount = 0;
         for (var i = 1; i < cells.Count; i++) {
-            if (MarkdownTableSeparatorCellRegex.IsMatch(cells[i])) {
-                separatorStart = i;
-                break;
+            if (!MarkdownTableSeparatorCellRegex.IsMatch(cells[i])) {
+                continue;
             }
+
+            var runLength = 0;
+            while (i + runLength < cells.Count && MarkdownTableSeparatorCellRegex.IsMatch(cells[i + runLength])) {
+                runLength++;
+            }
+
+            var headerEndExclusive = i;
+            if (i > 0 && cells[i - 1].Length == 0) {
+                headerEndExclusive = i - 1;
+            }
+
+            if (runLength <= 0 || headerEndExclusive < runLength) {
+                continue;
+            }
+
+            separatorStart = i;
+            columnCount = runLength;
+            break;
         }
 
-        if (separatorStart < 2) {
+        if (separatorStart < 2 || columnCount <= 0) {
             return false;
         }
 
-        var columnCount = separatorStart;
-        if (cells.Count < columnCount * 2) {
+        var headerStart = separatorStart;
+        if (cells[separatorStart - 1].Length == 0) {
+            headerStart--;
+        }
+        headerStart -= columnCount;
+        if (headerStart < 0) {
             return false;
         }
 
-        for (var i = separatorStart; i < separatorStart + columnCount; i++) {
-            if (i >= cells.Count || !MarkdownTableSeparatorCellRegex.IsMatch(cells[i])) {
+        var headerCells = new List<string>(columnCount);
+        for (var i = 0; i < columnCount; i++) {
+            headerCells.Add(cells[headerStart + i]);
+        }
+
+        var separatorCells = new List<string>(columnCount);
+        for (var i = 0; i < columnCount; i++) {
+            if (separatorStart + i >= cells.Count || !MarkdownTableSeparatorCellRegex.IsMatch(cells[separatorStart + i])) {
                 return false;
             }
+
+            separatorCells.Add(cells[separatorStart + i]);
+        }
+
+        var rows = new List<List<string>>();
+        var currentRow = new List<string>(columnCount);
+        for (var i = separatorStart + columnCount; i < cells.Count; i++) {
+            var cell = cells[i];
+            if (currentRow.Count == 0 && cell.Length == 0) {
+                continue;
+            }
+
+            if (currentRow.Count == columnCount) {
+                if (cell.Length == 0) {
+                    continue;
+                }
+
+                rows.Add(currentRow);
+                currentRow = new List<string>(columnCount);
+            }
+
+            currentRow.Add(cell);
+        }
+
+        if (currentRow.Count > 0) {
+            while (currentRow.Count < columnCount) {
+                currentRow.Add(string.Empty);
+            }
+
+            rows.Add(currentRow);
+        }
+
+        if (rows.Count == 0) {
+            return false;
         }
 
         var builder = new StringBuilder();
-        AppendMarkdownTableRow(builder, cells, 0, columnCount, useSeparatorCells: false);
+        AppendMarkdownTableRow(builder, headerCells, 0, columnCount, useSeparatorCells: false);
         builder.Append('\n');
-        AppendMarkdownTableRow(builder, cells, separatorStart, columnCount, useSeparatorCells: true);
+        AppendMarkdownTableRow(builder, separatorCells, 0, columnCount, useSeparatorCells: true);
 
-        for (var i = separatorStart + columnCount; i < cells.Count; i += columnCount) {
+        for (var i = 0; i < rows.Count; i++) {
             builder.Append('\n');
-            AppendMarkdownTableRow(builder, cells, i, columnCount, useSeparatorCells: false);
+            AppendMarkdownTableRow(builder, rows[i], 0, columnCount, useSeparatorCells: false);
         }
 
         table = builder.ToString();

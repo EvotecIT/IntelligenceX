@@ -276,4 +276,23 @@ public sealed class MainWindowTranscriptLoadNormalizationTests {
         Assert.DoesNotContain("ix:execution-contract:v1", markdown, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("I do not have confirmed tool output for this selected action yet.", markdown, StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// Ensures collapsed recovered-findings tables keep empty middle cells inside rows
+    /// instead of treating them as row separators during rehydration.
+    /// </summary>
+    [Fact]
+    public void BuildPreparedTranscript_RehydratesFlattenedRecoveredFindingsTableWithEmptyMiddleCell() {
+        var markdown = TranscriptMarkdownFormatter.Format(new (string Role, string Text, DateTime Time, string? Model)[] {
+            ("Assistant", """
+                          Recovered findings from executed tools (model returned no text):
+
+                          ### Sample Summary | Col A | Col B | Col C | | --- | --- | --- | | Value 1 |  | Value 3 | | Value 4 | Value 5 | Value 6 |
+                          """, new DateTime(2026, 4, 7, 20, 52, 34, DateTimeKind.Local), "gpt-5.4")
+        }, "HH:mm:ss").Replace("\r\n", "\n", StringComparison.Ordinal);
+
+        Assert.Contains("| Col A | Col B | Col C |", markdown, StringComparison.Ordinal);
+        Assert.Contains("| Value 1 |  | Value 3 |", markdown, StringComparison.Ordinal);
+        Assert.Contains("| Value 4 | Value 5 | Value 6 |", markdown, StringComparison.Ordinal);
+    }
 }
