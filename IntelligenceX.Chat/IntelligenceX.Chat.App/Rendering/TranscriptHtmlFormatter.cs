@@ -65,7 +65,7 @@ internal static class TranscriptHtmlFormatter {
         MarkdownRendererOptions markdownOptions) {
         ArgumentNullException.ThrowIfNull(markdownOptions);
 
-        var normalizedText = TranscriptMarkdownPreparation.PrepareMessageBody(role, text);
+        var normalizedText = TranscriptMarkdownPreparation.PrepareMessageBodyForDisplay(role, text);
         if (string.IsNullOrWhiteSpace(normalizedText)) {
             return string.Empty;
         }
@@ -114,7 +114,7 @@ internal static class TranscriptHtmlFormatter {
         var messageIndex = 0;
 
         foreach (var message in messages) {
-            var normalizedText = TranscriptMarkdownPreparation.PrepareMessageBody(message.Role, message.Text);
+            var normalizedText = TranscriptMarkdownPreparation.PrepareMessageBodyForDisplay(message.Role, message.Text);
             if (string.IsNullOrWhiteSpace(normalizedText)) {
                 messageIndex++;
                 continue;
@@ -485,68 +485,54 @@ internal static class TranscriptHtmlFormatter {
         string selectedAction = string.Empty;
         string actionCommand = string.Empty;
         string reasonCode = string.Empty;
-        var body = new StringBuilder();
-        var bodyStarted = false;
+        var consumedLines = new bool[lines.Length];
 
         for (var i = 0; i < lines.Length; i++) {
-            var rawLine = lines[i] ?? string.Empty;
-            var line = rawLine.Trim();
-
-            if (line.IndexOf(ExecutionContractMarker, StringComparison.OrdinalIgnoreCase) >= 0) {
-                line = line.Replace(ExecutionContractMarker, string.Empty, StringComparison.OrdinalIgnoreCase)
-                    .Trim(' ', ':', '-', '\t');
-                rawLine = line;
-                if (line.Length == 0 && !bodyStarted) {
-                    continue;
-                }
+            var line = SanitizeExecutionBlockedDetailLine(lines[i]).Trim();
+            if (line.Length == 0) {
+                continue;
             }
 
             if (summary.Length == 0) {
-                if (line.Length == 0) {
-                    continue;
-                }
-
                 summary = line;
+                consumedLines[i] = true;
                 continue;
             }
 
             if (line.StartsWith("Selected action request:", StringComparison.OrdinalIgnoreCase)) {
                 selectedAction = line["Selected action request:".Length..].Trim();
+                consumedLines[i] = true;
                 continue;
             }
 
             if (line.StartsWith("Action:", StringComparison.OrdinalIgnoreCase)) {
                 actionCommand = line["Action:".Length..].Trim();
+                consumedLines[i] = true;
                 continue;
             }
 
             if (line.StartsWith("Reason code:", StringComparison.OrdinalIgnoreCase)) {
+                consumedLines[i] = true;
                 reasonCode = line["Reason code:".Length..].Trim();
                 if (reasonCode.Length == 0) {
                     for (var j = i + 1; j < lines.Length; j++) {
-                        var next = lines[j].Trim();
+                        var next = SanitizeExecutionBlockedDetailLine(lines[j]).Trim();
                         if (next.Length == 0) {
+                            consumedLines[j] = true;
                             continue;
                         }
 
                         reasonCode = next;
+                        consumedLines[j] = true;
                         i = j;
                         break;
                     }
                 }
                 continue;
             }
-
-            if (line.Length == 0 && !bodyStarted) {
-                continue;
-            }
-
-            if (bodyStarted) {
-                body.AppendLine();
-            }
-            body.Append(rawLine);
-            bodyStarted = true;
         }
+
+        var trailingNotes = BuildExecutionBlockedTrailingNotes(lines, consumedLines);
 
         var detail = new StringBuilder();
         if (summary.Length > 0) {
@@ -570,16 +556,51 @@ internal static class TranscriptHtmlFormatter {
             }
         }
 
-        var preservedBody = body.ToString().Trim();
-        if (preservedBody.Length > 0) {
+        if (trailingNotes.Length > 0) {
             if (detail.Length > 0) {
                 detail.AppendLine().AppendLine();
             }
 
-            detail.Append(preservedBody);
+            detail.Append(trailingNotes);
         }
 
         return TranscriptMarkdownPreparation.PrepareOutcomeDetailBody(detail.ToString());
+    }
+
+    private static string BuildExecutionBlockedTrailingNotes(IReadOnlyList<string> lines, IReadOnlyList<bool> consumedLines) {
+        var trailingLines = new List<string>(lines.Count);
+        for (var i = 0; i < lines.Count; i++) {
+            if (consumedLines[i]) {
+                continue;
+            }
+
+            trailingLines.Add(SanitizeExecutionBlockedDetailLine(lines[i]));
+        }
+
+        var start = 0;
+        while (start < trailingLines.Count && string.IsNullOrWhiteSpace(trailingLines[start])) {
+            start++;
+        }
+
+        var end = trailingLines.Count - 1;
+        while (end >= start && string.IsNullOrWhiteSpace(trailingLines[end])) {
+            end--;
+        }
+
+        if (end < start) {
+            return string.Empty;
+        }
+
+        return string.Join('\n', trailingLines.GetRange(start, end - start + 1));
+    }
+
+    private static string SanitizeExecutionBlockedDetailLine(string? line) {
+        var value = line ?? string.Empty;
+        if (value.IndexOf(ExecutionContractMarker, StringComparison.OrdinalIgnoreCase) < 0) {
+            return value;
+        }
+
+        return value.Replace(ExecutionContractMarker, string.Empty, StringComparison.OrdinalIgnoreCase);
     }
 
     private static void AppendExecutionBlockedMetadataLine(StringBuilder detail, string label, string value) {

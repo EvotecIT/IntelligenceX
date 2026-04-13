@@ -56,6 +56,39 @@ internal static class TranscriptMarkdownPreparation {
         "advances_current_ask:",
         "advance_reason:"
     ];
+    private static readonly Regex SpacedExecutionContractMarkerRegex = new(
+        @"ix:\s*execution-contract:\s*v1",
+        RegexOptions.CultureInvariant | RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex SpacedWorkingMemoryMarkerRegex = new(
+        @"ix:\s*working-memory:\s*v1",
+        RegexOptions.CultureInvariant | RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex InlineExecutionBlockedHeaderRegex = new(
+        @"(?im)^(\s*\[Execution blocked\])\s+(?=\S)",
+        RegexOptions.CultureInvariant | RegexOptions.Compiled);
+    private static readonly Regex WorkingMemoryCheckpointBlockRegex = new(
+        @"(?is)(?:\bSelected action request:\s*)?\[Working memory checkpoint\].*?(?=(?:\r?\n\s*(?:Reason code:|Please retry|Tool receipt:|Action:))|$)",
+        RegexOptions.CultureInvariant | RegexOptions.Compiled);
+    private static readonly Regex WorkingMemoryMarkerBlockRegex = new(
+        @"(?is)ix:working-memory:v1.*?(?=(?:\r?\n\s*(?:Reason code:|Please retry|Tool receipt:|Action:))|$)",
+        RegexOptions.CultureInvariant | RegexOptions.Compiled);
+    private static readonly Regex EmptySelectedActionRequestLineRegex = new(
+        @"(?im)^\s*Selected action request:\s*$\r?\n?",
+        RegexOptions.CultureInvariant | RegexOptions.Compiled);
+    private static readonly Regex ExecutionContractMarkerLineRegex = new(
+        @"(?im)^\s*ix:execution-contract:v1\s*$\r?\n?",
+        RegexOptions.CultureInvariant | RegexOptions.Compiled);
+    private static readonly Regex InlineExecutionContractMarkerRegex = new(
+        @"(?i)\bix:execution-contract:v1\b\s*",
+        RegexOptions.CultureInvariant | RegexOptions.Compiled);
+    private static readonly Regex ExcessBlankLinesRegex = new(
+        @"(?:\r?\n){3,}",
+        RegexOptions.CultureInvariant | RegexOptions.Compiled);
+    private static readonly Regex RecoveredFindingsHeadingPipeRegex = new(
+        @"(?m)^(#{1,6} [^|\r\n]+?)\s+\|",
+        RegexOptions.CultureInvariant | RegexOptions.Compiled);
+    private static readonly Regex MarkdownTableSeparatorCellRegex = new(
+        @"^:?-{3,}:?$",
+        RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     public static string NormalizePersistedTranscriptText(string? role, string text, out bool repaired) {
         ArgumentNullException.ThrowIfNull(text);
@@ -87,6 +120,19 @@ internal static class TranscriptMarkdownPreparation {
 
     public static string PrepareMessageBody(string? text) =>
         TranscriptMarkdownContract.PrepareMessageBody(NormalizeMessageBodyCore(text));
+
+    public static string PrepareMessageBodyForDisplay(string? role, string? text) {
+        var value = NormalizeMessageBodyCore(role, text);
+        if (value.Length == 0) {
+            return string.Empty;
+        }
+
+        if (RequiresAssistantTransportArtifactSanitization(role, value)) {
+            value = TranscriptMarkdownNormalizer.NormalizeForRendering(SanitizeAssistantTransportArtifacts(value));
+        }
+
+        return TranscriptMarkdownContract.PrepareMessageBody(value);
+    }
 
     public static string PrepareOutcomeDetailBody(string? text) =>
         TranscriptMarkdownContract.PrepareTranscriptMarkdownForExport(NormalizeMessageBodyCore(text)).Trim();
@@ -128,6 +174,21 @@ internal static class TranscriptMarkdownPreparation {
                || normalizedRole.Equals("Tools", StringComparison.OrdinalIgnoreCase);
     }
 
+    private static bool RequiresAssistantTransportArtifactSanitization(string? role, string text) {
+        if (!string.Equals(role, "Assistant", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(role, "System", StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        return text.IndexOf("[Execution blocked]", StringComparison.OrdinalIgnoreCase) >= 0
+               || text.IndexOf("Recovered findings from executed tools", StringComparison.OrdinalIgnoreCase) >= 0
+               || text.IndexOf("ix: execution-contract: v1", StringComparison.OrdinalIgnoreCase) >= 0
+               || text.IndexOf("ix:execution-contract:v1", StringComparison.OrdinalIgnoreCase) >= 0
+               || text.IndexOf("ix: working-memory: v1", StringComparison.OrdinalIgnoreCase) >= 0
+               || text.IndexOf("ix:working-memory:v1", StringComparison.OrdinalIgnoreCase) >= 0
+               || text.IndexOf("[Working memory checkpoint]", StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
     private static string SanitizeRuntimeOnlyArtifacts(string text) {
         if (text.Length == 0) {
             return string.Empty;
@@ -137,6 +198,265 @@ internal static class TranscriptMarkdownPreparation {
         sanitized = StripAnswerPlanBlocks(sanitized);
         sanitized = RepairMermaidBlocks(sanitized);
         return sanitized.Trim();
+    }
+
+    private static string SanitizeAssistantTransportArtifacts(string text) {
+        var original = text ?? string.Empty;
+        if (original.Length == 0) {
+            return string.Empty;
+        }
+
+        var newline = original.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+        var normalized = original.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
+        normalized = SpacedExecutionContractMarkerRegex.Replace(normalized, "ix:execution-contract:v1");
+        normalized = SpacedWorkingMemoryMarkerRegex.Replace(normalized, "ix:working-memory:v1");
+        normalized = InlineExecutionBlockedHeaderRegex.Replace(normalized, "$1\n");
+
+        if (normalized.IndexOf("[Execution blocked]", StringComparison.OrdinalIgnoreCase) >= 0) {
+            normalized = InlineExecutionContractMarkerRegex.Replace(normalized, string.Empty);
+            normalized = WorkingMemoryCheckpointBlockRegex.Replace(normalized, string.Empty);
+            normalized = WorkingMemoryMarkerBlockRegex.Replace(normalized, string.Empty);
+            normalized = ExecutionContractMarkerLineRegex.Replace(normalized, string.Empty);
+            normalized = EmptySelectedActionRequestLineRegex.Replace(normalized, string.Empty);
+        }
+
+        if (normalized.IndexOf("Recovered findings from executed tools", StringComparison.OrdinalIgnoreCase) >= 0) {
+            normalized = RecoveredFindingsHeadingPipeRegex.Replace(normalized, "$1\n\n|");
+            normalized = RehydrateCollapsedRecoveredFindingsTables(normalized);
+        }
+
+        normalized = ExcessBlankLinesRegex.Replace(normalized, "\n\n").Trim();
+        return newline == "\r\n"
+            ? normalized.Replace("\n", "\r\n", StringComparison.Ordinal)
+            : normalized;
+    }
+
+    private static string RehydrateCollapsedRecoveredFindingsTables(string text) {
+        var lines = text.Split('\n');
+        for (var i = 0; i < lines.Length; i++) {
+            var line = lines[i] ?? string.Empty;
+            var trimmed = line.TrimStart();
+            var indentLength = line.Length - trimmed.Length;
+            var indent = indentLength > 0 ? line[..indentLength] : string.Empty;
+
+            if (TrySplitMarkdownHeadingPipe(trimmed, out var heading, out var tableText)) {
+                if (!TryRehydrateCollapsedMarkdownTable(tableText, out var expandedTable)) {
+                    continue;
+                }
+
+                lines[i] = indent + heading + "\n\n" + indent + expandedTable.Replace("\n", "\n" + indent, StringComparison.Ordinal);
+                continue;
+            }
+
+            if (!trimmed.StartsWith("|", StringComparison.Ordinal) || i <= 0) {
+                continue;
+            }
+
+            var previousIndex = i - 1;
+            while (previousIndex >= 0 && string.IsNullOrWhiteSpace(lines[previousIndex])) {
+                previousIndex--;
+            }
+
+            if (previousIndex < 0) {
+                continue;
+            }
+
+            var previousTrimmed = (lines[previousIndex] ?? string.Empty).TrimStart();
+            if (!IsMarkdownHeadingLine(previousTrimmed)) {
+                continue;
+            }
+
+            if (!TryRehydrateCollapsedMarkdownTable(trimmed, out var expandedTableOnNextLine)) {
+                continue;
+            }
+
+            lines[i] = indent + expandedTableOnNextLine.Replace("\n", "\n" + indent, StringComparison.Ordinal);
+        }
+
+        return string.Join("\n", lines);
+    }
+
+    private static bool TrySplitMarkdownHeadingPipe(string text, out string heading, out string tableText) {
+        heading = string.Empty;
+        tableText = string.Empty;
+
+        var trimmed = (text ?? string.Empty).Trim();
+        if (!IsMarkdownHeadingLine(trimmed)) {
+            return false;
+        }
+
+        var pipeIndex = trimmed.IndexOf('|');
+        if (pipeIndex <= 0) {
+            return false;
+        }
+
+        heading = trimmed[..pipeIndex].TrimEnd();
+        tableText = trimmed[pipeIndex..].Trim();
+        return heading.Length > 0 && tableText.Length > 0;
+    }
+
+    private static bool IsMarkdownHeadingLine(string text) {
+        var trimmed = (text ?? string.Empty).TrimStart();
+        if (trimmed.Length < 3 || trimmed[0] != '#') {
+            return false;
+        }
+
+        var markerLength = 0;
+        while (markerLength < trimmed.Length && trimmed[markerLength] == '#') {
+            markerLength++;
+        }
+
+        return markerLength is >= 1 and <= 6
+               && markerLength < trimmed.Length
+               && trimmed[markerLength] == ' ';
+    }
+
+    private static bool TryRehydrateCollapsedMarkdownTable(string text, out string table) {
+        table = string.Empty;
+        var normalized = (text ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return false;
+        }
+
+        if (normalized.IndexOf('\n') >= 0) {
+            table = normalized;
+            return true;
+        }
+
+        if (!normalized.StartsWith("|", StringComparison.Ordinal)) {
+            normalized = "| " + normalized;
+        }
+
+        var rawCells = normalized.Split('|');
+        var cells = new List<string>(rawCells.Length);
+        for (var i = 0; i < rawCells.Length; i++) {
+            cells.Add((rawCells[i] ?? string.Empty).Trim());
+        }
+
+        if (cells.Count > 0 && cells[0].Length == 0) {
+            cells.RemoveAt(0);
+        }
+
+        if (cells.Count > 0 && cells[^1].Length == 0) {
+            cells.RemoveAt(cells.Count - 1);
+        }
+
+        if (cells.Count < 4) {
+            return false;
+        }
+
+        var separatorStart = -1;
+        var columnCount = 0;
+        for (var i = 1; i < cells.Count; i++) {
+            if (!MarkdownTableSeparatorCellRegex.IsMatch(cells[i])) {
+                continue;
+            }
+
+            var runLength = 0;
+            while (i + runLength < cells.Count && MarkdownTableSeparatorCellRegex.IsMatch(cells[i + runLength])) {
+                runLength++;
+            }
+
+            var headerEndExclusive = i;
+            if (i > 0 && cells[i - 1].Length == 0) {
+                headerEndExclusive = i - 1;
+            }
+
+            if (runLength <= 0 || headerEndExclusive < runLength) {
+                continue;
+            }
+
+            separatorStart = i;
+            columnCount = runLength;
+            break;
+        }
+
+        if (separatorStart < 2 || columnCount <= 0) {
+            return false;
+        }
+
+        var headerStart = separatorStart;
+        if (cells[separatorStart - 1].Length == 0) {
+            headerStart--;
+        }
+        headerStart -= columnCount;
+        if (headerStart < 0) {
+            return false;
+        }
+
+        var headerCells = new List<string>(columnCount);
+        for (var i = 0; i < columnCount; i++) {
+            headerCells.Add(cells[headerStart + i]);
+        }
+
+        var separatorCells = new List<string>(columnCount);
+        for (var i = 0; i < columnCount; i++) {
+            if (separatorStart + i >= cells.Count || !MarkdownTableSeparatorCellRegex.IsMatch(cells[separatorStart + i])) {
+                return false;
+            }
+
+            separatorCells.Add(cells[separatorStart + i]);
+        }
+
+        var rows = new List<List<string>>();
+        var rowCursor = separatorStart + columnCount;
+        while (rowCursor < cells.Count) {
+            if (cells[rowCursor].Length == 0) {
+                rowCursor++;
+                if (rowCursor >= cells.Count) {
+                    break;
+                }
+            }
+
+            var row = new List<string>(columnCount);
+            for (var i = 0; i < columnCount; i++) {
+                row.Add(rowCursor < cells.Count ? cells[rowCursor] : string.Empty);
+                rowCursor++;
+            }
+
+            rows.Add(row);
+        }
+
+        if (rows.Count == 0) {
+            return false;
+        }
+
+        var builder = new StringBuilder();
+        AppendMarkdownTableRow(builder, headerCells, 0, columnCount, useSeparatorCells: false);
+        builder.Append('\n');
+        AppendMarkdownTableRow(builder, separatorCells, 0, columnCount, useSeparatorCells: true);
+
+        for (var i = 0; i < rows.Count; i++) {
+            builder.Append('\n');
+            AppendMarkdownTableRow(builder, rows[i], 0, columnCount, useSeparatorCells: false);
+        }
+
+        table = builder.ToString();
+        return true;
+    }
+
+    private static void AppendMarkdownTableRow(
+        StringBuilder builder,
+        IReadOnlyList<string> cells,
+        int startIndex,
+        int columnCount,
+        bool useSeparatorCells) {
+        builder.Append("| ");
+        for (var i = 0; i < columnCount; i++) {
+            if (i > 0) {
+                builder.Append(" | ");
+            }
+
+            var index = startIndex + i;
+            var cell = index < cells.Count ? cells[index] : string.Empty;
+            if (useSeparatorCells) {
+                cell = MarkdownTableSeparatorCellRegex.IsMatch(cell) ? cell : "---";
+            }
+
+            builder.Append(cell);
+        }
+
+        builder.Append(" |");
     }
 
     private static string StripAnswerPlanBlocks(string text) {

@@ -116,7 +116,7 @@ internal static class TranscriptForensicsExporter {
         for (var i = 0; i < sourceMessages.Count; i++) {
             var message = sourceMessages[i];
             var rawText = message.RawText ?? string.Empty;
-            var normalizedText = TranscriptMarkdownPreparation.PrepareMessageBody(message.Role, rawText);
+            var normalizedText = TranscriptMarkdownPreparation.PrepareMessageBodyForDisplay(message.Role, rawText);
             if (string.IsNullOrWhiteSpace(normalizedText)) {
                 continue;
             }

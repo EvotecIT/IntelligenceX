@@ -11,7 +11,7 @@ internal static class TranscriptMarkdownDocumentBuilder {
     public static string BuildPreparedTranscript(
         IEnumerable<(string Role, string Text, DateTime Time, string? Model)> messages,
         string timestampFormat) {
-        return Build(messages, timestampFormat, static (role, messageText) => TranscriptMarkdownPreparation.PrepareMessageBody(role, messageText));
+        return Build(messages, timestampFormat, static (role, messageText) => TranscriptMarkdownPreparation.PrepareMessageBodyForDisplay(role, messageText));
     }
 
     public static string BuildRawTranscript(

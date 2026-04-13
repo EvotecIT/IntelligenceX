@@ -591,39 +591,71 @@ public sealed partial class TranscriptHtmlFormatterTests {
     }
 
     /// <summary>
-    /// Ensures execution-blocked callouts preserve structured markdown blocks after metadata extraction.
+    /// Ensures execution-blocked outcome cards strip leaked working-memory checkpoint payloads from transcript HTML.
     /// </summary>
     [Fact]
-    public void Format_RendersExecutionBlockedStructuredMarkdownBody() {
+    public void Format_StripsWorkingMemoryCheckpointArtifactsFromExecutionBlockedOutcome() {
         var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
-        var now = new DateTime(2026, 4, 7, 12, 17, 42, DateTimeKind.Local);
+        var now = new DateTime(2026, 4, 7, 20, 47, 32, DateTimeKind.Local);
         var html = TranscriptHtmlFormatter.Format(new[] {
             ("Assistant", """
-                          [Execution blocked]
-                          ix:execution-contract:v1 I do not have confirmed tool output for this selected action yet.
+                          [Execution blocked] ix: execution-contract: v1 I do not have confirmed tool output for this selected action yet.
 
-                          Reason code: no_tool_calls_after_watchdog_retry
-
-                          [Working memory checkpoint]
+                          Selected action request: [Working memory checkpoint] ix: working-memory: v1 domain_scope_family: ad_domain recent_tools: ad_environment_discover
+                          recent_evidence_1: ad_environment_discover: #
 
                           ## Active Directory: Environment Discovery
 
                           | Field | Value |
                           | --- | --- |
-                          | Domain controller | dc1.ad.evotec.xyz |
-                          | Search base DN | DC=ad,DC=evotec,DC=xyz |
+                          | Domain controller |  |
+
+                          Reason code: no_tool_calls_after_watchdog_retry
 
                           Please retry this action in this context, or use the action command below.
-
                           Tool receipt: no tools were run in this turn.
                           """, now)
         }, "HH:mm:ss", options);
 
-        Assert.Contains("outcome-kind-execution-blocked", html, StringComparison.Ordinal);
-        Assert.Contains("Working memory checkpoint", html, StringComparison.Ordinal);
-        Assert.Contains("Active Directory: Environment Discovery", html, StringComparison.Ordinal);
-        Assert.Contains("<table", html, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("Domain controller", html, StringComparison.Ordinal);
+        Assert.Contains("Execution blocked", html, StringComparison.Ordinal);
+        Assert.Contains("no_tool_calls_after_watchdog_retry", html, StringComparison.Ordinal);
         Assert.Contains("Tool receipt: no tools were run in this turn.", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("Working memory checkpoint", html, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("ix:working-memory:v1", html, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("domain_scope_family", html, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("recent_tools", html, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("Active Directory: Environment Discovery", html, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures execution-blocked trailing notes keep multi-line markdown structure
+    /// instead of flattening tables into unrelated paragraphs.
+    /// </summary>
+    [Fact]
+    public void Format_PreservesExecutionBlockedTrailingMarkdownStructure() {
+        var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
+        var now = new DateTime(2026, 4, 13, 18, 15, 0, DateTimeKind.Local);
+        var html = TranscriptHtmlFormatter.Format(new[] {
+            ("Assistant", """
+                          [Execution blocked]
+                          ix:execution-contract:v1 Waiting for confirmed tool output.
+
+                          Reason code: no_tool_calls_after_watchdog_retry
+
+                          Diagnostic summary:
+
+                          | Field | Value |
+                          | --- | --- |
+                          | Scope | ad.evotec.xyz |
+                          | Retry | required |
+                          """, now)
+        }, "HH:mm:ss", options);
+
+        Assert.Contains("no_tool_calls_after_watchdog_retry", html, StringComparison.Ordinal);
+        Assert.Contains("Diagnostic summary:", html, StringComparison.Ordinal);
+        Assert.Contains("<table", html, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ad.evotec.xyz", html, StringComparison.Ordinal);
+        Assert.Contains("required", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("<p>| Field | Value |</p>", html, StringComparison.OrdinalIgnoreCase);
     }
 }
