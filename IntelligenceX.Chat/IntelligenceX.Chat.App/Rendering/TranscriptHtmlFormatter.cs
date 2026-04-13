@@ -65,7 +65,7 @@ internal static class TranscriptHtmlFormatter {
         MarkdownRendererOptions markdownOptions) {
         ArgumentNullException.ThrowIfNull(markdownOptions);
 
-        var normalizedText = TranscriptMarkdownPreparation.PrepareMessageBody(role, text);
+        var normalizedText = TranscriptMarkdownPreparation.PrepareMessageBodyForDisplay(role, text);
         if (string.IsNullOrWhiteSpace(normalizedText)) {
             return string.Empty;
         }
@@ -114,7 +114,7 @@ internal static class TranscriptHtmlFormatter {
         var messageIndex = 0;
 
         foreach (var message in messages) {
-            var normalizedText = TranscriptMarkdownPreparation.PrepareMessageBody(message.Role, message.Text);
+            var normalizedText = TranscriptMarkdownPreparation.PrepareMessageBodyForDisplay(message.Role, message.Text);
             if (string.IsNullOrWhiteSpace(normalizedText)) {
                 messageIndex++;
                 continue;
@@ -485,27 +485,20 @@ internal static class TranscriptHtmlFormatter {
         string selectedAction = string.Empty;
         string actionCommand = string.Empty;
         string reasonCode = string.Empty;
-        var body = new StringBuilder();
-        var bodyStarted = false;
+        var trailingNotes = new List<string>();
 
         for (var i = 0; i < lines.Length; i++) {
-            var rawLine = lines[i] ?? string.Empty;
-            var line = rawLine.Trim();
+            var line = lines[i].Trim();
+            if (line.Length == 0) {
+                continue;
+            }
 
             if (line.IndexOf(ExecutionContractMarker, StringComparison.OrdinalIgnoreCase) >= 0) {
                 line = line.Replace(ExecutionContractMarker, string.Empty, StringComparison.OrdinalIgnoreCase)
                     .Trim(' ', ':', '-', '\t');
-                rawLine = line;
-                if (line.Length == 0 && !bodyStarted) {
-                    continue;
-                }
             }
 
             if (summary.Length == 0) {
-                if (line.Length == 0) {
-                    continue;
-                }
-
                 summary = line;
                 continue;
             }
@@ -537,15 +530,7 @@ internal static class TranscriptHtmlFormatter {
                 continue;
             }
 
-            if (line.Length == 0 && !bodyStarted) {
-                continue;
-            }
-
-            if (bodyStarted) {
-                body.AppendLine();
-            }
-            body.Append(rawLine);
-            bodyStarted = true;
+            trailingNotes.Add(line);
         }
 
         var detail = new StringBuilder();
@@ -570,13 +555,18 @@ internal static class TranscriptHtmlFormatter {
             }
         }
 
-        var preservedBody = body.ToString().Trim();
-        if (preservedBody.Length > 0) {
+        if (trailingNotes.Count > 0) {
             if (detail.Length > 0) {
-                detail.AppendLine().AppendLine();
+                detail.AppendLine();
             }
 
-            detail.Append(preservedBody);
+            for (var i = 0; i < trailingNotes.Count; i++) {
+                if (i > 0) {
+                    detail.AppendLine().AppendLine();
+                }
+
+                detail.Append(trailingNotes[i]);
+            }
         }
 
         return TranscriptMarkdownPreparation.PrepareOutcomeDetailBody(detail.ToString());
