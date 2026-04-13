@@ -40,7 +40,7 @@
     <!-- Public package fallbacks for CI/consumers when local engine sources are unavailable. -->
     <MailozaurrNuGetVersion Condition="'$(MailozaurrNuGetVersion)'==''">2.0.7</MailozaurrNuGetVersion>
     <EventViewerXNuGetVersion Condition="'$(EventViewerXNuGetVersion)'==''">3.3.3</EventViewerXNuGetVersion>
-    <OfficeImoReaderNuGetVersion Condition="'$(OfficeImoReaderNuGetVersion)'==''">0.1.16</OfficeImoReaderNuGetVersion>
+    <OfficeImoReaderNuGetVersion Condition="'$(OfficeImoReaderNuGetVersion)'==''">0.1.18</OfficeImoReaderNuGetVersion>
     <DnsClientXNuGetVersion Condition="'$(DnsClientXNuGetVersion)'==''">1.0.7</DnsClientXNuGetVersion>
     <OfficeImoRepoRootInput>$(OfficeImoRepoRoot)</OfficeImoRepoRootInput>
     <OfficeImoRepoRootInputNormalized Condition="'$(OfficeImoRepoRootInput)' != ''">$([MSBuild]::EnsureTrailingSlash($([System.IO.Path]::GetFullPath('$(OfficeImoRepoRootInput)\\'))))</OfficeImoRepoRootInputNormalized>
