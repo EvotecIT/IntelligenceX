@@ -201,6 +201,34 @@ public sealed class MainWindowTranscriptLoadNormalizationTests {
     }
 
     /// <summary>
+    /// Ensures display-time preparation keeps the older runtime-only sanitization contract
+    /// before applying display-specific transport cleanup.
+    /// </summary>
+    [Fact]
+    public void PrepareMessageBodyForDisplay_ForAssistant_StripsRuntimeMetadataAndRepairsMermaidFence() {
+        const string input = """
+            ```ix_memory{"upserts":[{"fact":"User likes visuals"}]}
+            ```[Answer progression plan]
+            ix: answer-plan: v1user_goal: show the topologyadvance_reason: provide a usable diagramJasne — tu masz diagram.
+
+            ~~~mermaidflowchart LR F["Forest<br/>ad.evotec.xyz"]
+            D1["Domain<br/>ad.evotec.xyz"]
+            F --> D1```
+            Interpretacja: to jest diagram struktury.
+            """;
+
+        var prepared = TranscriptMarkdownPreparation.PrepareMessageBodyForDisplay("Assistant", input)
+            .Replace("\r\n", "\n", StringComparison.Ordinal);
+
+        Assert.DoesNotContain("ix_memory", prepared, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("answer-plan", prepared, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Jasne — tu masz diagram.", prepared, StringComparison.Ordinal);
+        Assert.Contains("```mermaid\nflowchart LR", prepared, StringComparison.Ordinal);
+        Assert.Contains("F --> D1\n```", prepared, StringComparison.Ordinal);
+        Assert.Contains("Interpretacja: to jest diagram struktury.", prepared, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Ensures Mermaid repair does not split valid statements where the identifier itself is named <c>end</c>.
     /// </summary>
     [Fact]
@@ -293,6 +321,25 @@ public sealed class MainWindowTranscriptLoadNormalizationTests {
 
         Assert.Contains("| Col A | Col B | Col C |", markdown, StringComparison.Ordinal);
         Assert.Contains("| Value 1 |  | Value 3 |", markdown, StringComparison.Ordinal);
+        Assert.Contains("| Value 4 | Value 5 | Value 6 |", markdown, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures collapsed recovered-findings tables preserve an intentionally blank first column
+    /// instead of shifting later cells left during rehydration.
+    /// </summary>
+    [Fact]
+    public void BuildPreparedTranscript_RehydratesFlattenedRecoveredFindingsTableWithLeadingEmptyCell() {
+        var markdown = TranscriptMarkdownFormatter.Format(new (string Role, string Text, DateTime Time, string? Model)[] {
+            ("Assistant", """
+                          Recovered findings from executed tools (model returned no text):
+
+                          ### Sample Summary | Col A | Col B | Col C | | --- | --- | --- | |  | Value 2 | Value 3 | | Value 4 | Value 5 | Value 6 |
+                          """, new DateTime(2026, 4, 7, 20, 54, 34, DateTimeKind.Local), "gpt-5.4")
+        }, "HH:mm:ss").Replace("\r\n", "\n", StringComparison.Ordinal);
+
+        Assert.Contains("| Col A | Col B | Col C |", markdown, StringComparison.Ordinal);
+        Assert.Contains("|  | Value 2 | Value 3 |", markdown, StringComparison.Ordinal);
         Assert.Contains("| Value 4 | Value 5 | Value 6 |", markdown, StringComparison.Ordinal);
     }
 }

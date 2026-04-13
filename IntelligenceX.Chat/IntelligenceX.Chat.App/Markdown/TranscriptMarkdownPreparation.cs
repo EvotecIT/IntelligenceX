@@ -84,7 +84,7 @@ internal static class TranscriptMarkdownPreparation {
         @"(?:\r?\n){3,}",
         RegexOptions.CultureInvariant | RegexOptions.Compiled);
     private static readonly Regex RecoveredFindingsHeadingPipeRegex = new(
-        @"(?m)^(### [^|\r\n]+?)\s+\|",
+        @"(?m)^(#{1,6} [^|\r\n]+?)\s+\|",
         RegexOptions.CultureInvariant | RegexOptions.Compiled);
     private static readonly Regex MarkdownTableSeparatorCellRegex = new(
         @"^:?-{3,}:?$",
@@ -121,8 +121,18 @@ internal static class TranscriptMarkdownPreparation {
     public static string PrepareMessageBody(string? text) =>
         TranscriptMarkdownContract.PrepareMessageBody(NormalizeMessageBodyCore(text));
 
-    public static string PrepareMessageBodyForDisplay(string? role, string? text) =>
-        TranscriptMarkdownContract.PrepareMessageBody(NormalizeDisplayMessageBodyCore(role, text));
+    public static string PrepareMessageBodyForDisplay(string? role, string? text) {
+        var value = NormalizeMessageBodyCore(role, text);
+        if (value.Length == 0) {
+            return string.Empty;
+        }
+
+        if (RequiresAssistantTransportArtifactSanitization(role, value)) {
+            value = TranscriptMarkdownNormalizer.NormalizeForRendering(SanitizeAssistantTransportArtifacts(value));
+        }
+
+        return TranscriptMarkdownContract.PrepareMessageBody(value);
+    }
 
     public static string PrepareOutcomeDetailBody(string? text) =>
         TranscriptMarkdownContract.PrepareTranscriptMarkdownForExport(NormalizeMessageBodyCore(text)).Trim();
@@ -154,23 +164,6 @@ internal static class TranscriptMarkdownPreparation {
 
     private static string NormalizeMessageBodyCore(string? text) {
         var value = text ?? string.Empty;
-        return TranscriptMarkdownNormalizer.NormalizeForRendering(value);
-    }
-
-    private static string NormalizeDisplayMessageBodyCore(string? role, string? text) {
-        var value = text ?? string.Empty;
-        if (value.Length == 0) {
-            return string.Empty;
-        }
-
-        if (ShouldStripRuntimeOnlyArtifacts(role)) {
-            value = SanitizeRuntimeOnlyArtifacts(value);
-        }
-
-        if (RequiresAssistantTransportArtifactSanitization(role, value)) {
-            value = SanitizeAssistantTransportArtifacts(value);
-        }
-
         return TranscriptMarkdownNormalizer.NormalizeForRendering(value);
     }
 
@@ -246,10 +239,7 @@ internal static class TranscriptMarkdownPreparation {
             var indentLength = line.Length - trimmed.Length;
             var indent = indentLength > 0 ? line[..indentLength] : string.Empty;
 
-            if (trimmed.StartsWith("### ", StringComparison.Ordinal) && trimmed.IndexOf('|') > 0) {
-                var headingPipeIndex = trimmed.IndexOf('|');
-                var heading = trimmed[..headingPipeIndex].TrimEnd();
-                var tableText = trimmed[headingPipeIndex..].Trim();
+            if (TrySplitMarkdownHeadingPipe(trimmed, out var heading, out var tableText)) {
                 if (!TryRehydrateCollapsedMarkdownTable(tableText, out var expandedTable)) {
                     continue;
                 }
@@ -262,8 +252,17 @@ internal static class TranscriptMarkdownPreparation {
                 continue;
             }
 
-            var previousTrimmed = (lines[i - 1] ?? string.Empty).TrimStart();
-            if (!previousTrimmed.StartsWith("### ", StringComparison.Ordinal)) {
+            var previousIndex = i - 1;
+            while (previousIndex >= 0 && string.IsNullOrWhiteSpace(lines[previousIndex])) {
+                previousIndex--;
+            }
+
+            if (previousIndex < 0) {
+                continue;
+            }
+
+            var previousTrimmed = (lines[previousIndex] ?? string.Empty).TrimStart();
+            if (!IsMarkdownHeadingLine(previousTrimmed)) {
                 continue;
             }
 
@@ -275,6 +274,41 @@ internal static class TranscriptMarkdownPreparation {
         }
 
         return string.Join("\n", lines);
+    }
+
+    private static bool TrySplitMarkdownHeadingPipe(string text, out string heading, out string tableText) {
+        heading = string.Empty;
+        tableText = string.Empty;
+
+        var trimmed = (text ?? string.Empty).Trim();
+        if (!IsMarkdownHeadingLine(trimmed)) {
+            return false;
+        }
+
+        var pipeIndex = trimmed.IndexOf('|');
+        if (pipeIndex <= 0) {
+            return false;
+        }
+
+        heading = trimmed[..pipeIndex].TrimEnd();
+        tableText = trimmed[pipeIndex..].Trim();
+        return heading.Length > 0 && tableText.Length > 0;
+    }
+
+    private static bool IsMarkdownHeadingLine(string text) {
+        var trimmed = (text ?? string.Empty).TrimStart();
+        if (trimmed.Length < 3 || trimmed[0] != '#') {
+            return false;
+        }
+
+        var markerLength = 0;
+        while (markerLength < trimmed.Length && trimmed[markerLength] == '#') {
+            markerLength++;
+        }
+
+        return markerLength is >= 1 and <= 6
+               && markerLength < trimmed.Length
+               && trimmed[markerLength] == ' ';
     }
 
     private static bool TryRehydrateCollapsedMarkdownTable(string text, out string table) {
@@ -299,11 +333,11 @@ internal static class TranscriptMarkdownPreparation {
             cells.Add((rawCells[i] ?? string.Empty).Trim());
         }
 
-        while (cells.Count > 0 && cells[0].Length == 0) {
+        if (cells.Count > 0 && cells[0].Length == 0) {
             cells.RemoveAt(0);
         }
 
-        while (cells.Count > 0 && cells[^1].Length == 0) {
+        if (cells.Count > 0 && cells[^1].Length == 0) {
             cells.RemoveAt(cells.Count - 1);
         }
 
@@ -365,31 +399,22 @@ internal static class TranscriptMarkdownPreparation {
         }
 
         var rows = new List<List<string>>();
-        var currentRow = new List<string>(columnCount);
-        for (var i = separatorStart + columnCount; i < cells.Count; i++) {
-            var cell = cells[i];
-            if (currentRow.Count == 0 && cell.Length == 0) {
-                continue;
-            }
-
-            if (currentRow.Count == columnCount) {
-                if (cell.Length == 0) {
-                    continue;
+        var rowCursor = separatorStart + columnCount;
+        while (rowCursor < cells.Count) {
+            if (cells[rowCursor].Length == 0) {
+                rowCursor++;
+                if (rowCursor >= cells.Count) {
+                    break;
                 }
-
-                rows.Add(currentRow);
-                currentRow = new List<string>(columnCount);
             }
 
-            currentRow.Add(cell);
-        }
-
-        if (currentRow.Count > 0) {
-            while (currentRow.Count < columnCount) {
-                currentRow.Add(string.Empty);
+            var row = new List<string>(columnCount);
+            for (var i = 0; i < columnCount; i++) {
+                row.Add(rowCursor < cells.Count ? cells[rowCursor] : string.Empty);
+                rowCursor++;
             }
 
-            rows.Add(currentRow);
+            rows.Add(row);
         }
 
         if (rows.Count == 0) {
@@ -408,46 +433,6 @@ internal static class TranscriptMarkdownPreparation {
 
         table = builder.ToString();
         return true;
-    }
-
-    private static string NormalizeCollapsedMarkdownTableRows(string text) {
-        var normalized = (text ?? string.Empty).Trim();
-        if (normalized.Length == 0) {
-            return string.Empty;
-        }
-
-        var builder = new StringBuilder(normalized.Length + 16);
-        for (var i = 0; i < normalized.Length; i++) {
-            if (normalized[i] != '|') {
-                builder.Append(normalized[i]);
-                continue;
-            }
-
-            var whitespaceStart = i + 1;
-            var cursor = whitespaceStart;
-            while (cursor < normalized.Length && char.IsWhiteSpace(normalized[cursor]) && normalized[cursor] is not ('\r' or '\n')) {
-                cursor++;
-            }
-
-            if (cursor < normalized.Length && normalized[cursor] == '|') {
-                var nextContent = cursor + 1;
-                while (nextContent < normalized.Length && char.IsWhiteSpace(normalized[nextContent]) && normalized[nextContent] is not ('\r' or '\n')) {
-                    nextContent++;
-                }
-
-                if (nextContent < normalized.Length) {
-                    builder.Append('|')
-                        .Append('\n')
-                        .Append('|');
-                    i = cursor;
-                    continue;
-                }
-            }
-
-            builder.Append('|');
-        }
-
-        return builder.ToString();
     }
 
     private static void AppendMarkdownTableRow(
