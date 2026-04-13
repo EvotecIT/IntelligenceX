@@ -626,4 +626,36 @@ public sealed partial class TranscriptHtmlFormatterTests {
         Assert.DoesNotContain("recent_tools", html, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("Active Directory: Environment Discovery", html, StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// Ensures execution-blocked trailing notes keep multi-line markdown structure
+    /// instead of flattening tables into unrelated paragraphs.
+    /// </summary>
+    [Fact]
+    public void Format_PreservesExecutionBlockedTrailingMarkdownStructure() {
+        var options = OfficeImoMarkdownRuntimeContract.CreateTranscriptRendererOptions();
+        var now = new DateTime(2026, 4, 13, 18, 15, 0, DateTimeKind.Local);
+        var html = TranscriptHtmlFormatter.Format(new[] {
+            ("Assistant", """
+                          [Execution blocked]
+                          ix:execution-contract:v1 Waiting for confirmed tool output.
+
+                          Reason code: no_tool_calls_after_watchdog_retry
+
+                          Diagnostic summary:
+
+                          | Field | Value |
+                          | --- | --- |
+                          | Scope | ad.evotec.xyz |
+                          | Retry | required |
+                          """, now)
+        }, "HH:mm:ss", options);
+
+        Assert.Contains("no_tool_calls_after_watchdog_retry", html, StringComparison.Ordinal);
+        Assert.Contains("Diagnostic summary:", html, StringComparison.Ordinal);
+        Assert.Contains("<table", html, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("ad.evotec.xyz", html, StringComparison.Ordinal);
+        Assert.Contains("required", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("<p>| Field | Value |</p>", html, StringComparison.OrdinalIgnoreCase);
+    }
 }
