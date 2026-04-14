@@ -1,77 +1,11 @@
 {
-  "home": {
-    "chat_downloads": {
-      "product": "intelligencex.chat",
-      "channel": "stable",
-      "groupBy": "platform",
-      "limit": 12,
-      "class": "pf-release-buttons--matrix"
-    }
-  },
   "changelog": {
-    "chat_stable": {
-      "product": "intelligencex.chat",
-      "channel": "stable",
-      "platform": "windows",
-      "arch": "x64",
-      "kind": "zip",
-      "label": "Download IX Chat (Stable)",
-      "class": "btn btn-primary"
-    },
-    "chat_preview": {
-      "product": "intelligencex.chat",
-      "channel": "preview",
-      "platform": "windows",
-      "arch": "x64",
-      "kind": "zip",
-      "label": "Download IX Chat (Preview)",
-      "class": "btn btn-secondary"
-    },
-    "chat_downloads": {
-      "product": "intelligencex.chat",
-      "channel": "stable",
-      "groupBy": "platform",
-      "limit": 12,
-      "class": "pf-release-buttons--matrix"
-    },
     "timeline": {
       "limit": 300,
       "includePreview": true
     }
   },
   "downloads": {
-    "chat_stable": {
-      "product": "intelligencex.chat",
-      "channel": "stable",
-      "platform": "windows",
-      "arch": "x64",
-      "kind": "zip",
-      "label": "Download IX Chat (Stable)",
-      "class": "btn btn-primary"
-    },
-    "chat_preview": {
-      "product": "intelligencex.chat",
-      "channel": "preview",
-      "platform": "windows",
-      "arch": "x64",
-      "kind": "zip",
-      "label": "Download IX Chat (Preview)",
-      "class": "btn btn-secondary"
-    },
-    "chat_platforms": {
-      "product": "intelligencex.chat",
-      "channel": "stable",
-      "groupBy": "platform",
-      "limit": 20,
-      "class": "pf-release-buttons--matrix"
-    },
-    "chat_releases": {
-      "product": "intelligencex.chat",
-      "channel": "stable",
-      "groupBy": "release",
-      "limit": 40,
-      "class": "pf-release-buttons--matrix"
-    },
     "all_products": {
       "product": "*",
       "channel": "stable",
@@ -80,7 +14,6 @@
       "class": "pf-release-buttons--matrix"
     },
     "timeline": {
-      "product": "intelligencex.chat",
       "limit": 300,
       "includePreview": true
     }

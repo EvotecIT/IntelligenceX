@@ -1,6 +1,6 @@
 ---
 title: Changelog
-description: Browse IntelligenceX release history, version notes, and download links generated from GitHub Releases.
+description: Browse IntelligenceX release history and version notes generated from GitHub Releases.
 slug: changelog
 collection: pages
 layout: page
@@ -12,18 +12,7 @@ The sections below are generated from release metadata so this page stays curren
 
 You can also jump straight to [Downloads](/downloads/), [Getting Started](/docs/getting-started/), or the full [Documentation](/docs/) hub if you want install and usage guidance alongside the release history.
 
-<div class="ix-release-cta">
-
-{{< release-button placement="changelog.chat_stable" product="intelligencex.chat" >}}
-{{< release-button placement="changelog.chat_preview" product="intelligencex.chat" >}}
-
-</div>
-
-<section class="pf-release-downloads-panel">
-  <h2>Download Matrix</h2>
-  <p>Stable binaries grouped by platform for quick access.</p>
-{{< release-buttons placement="changelog.chat_downloads" >}}
-</section>
+Public IX Chat desktop packages have not been published yet, so this page focuses on changelog history instead of showing empty download buttons.
 
 {{< release-changelog placement="changelog.timeline" >}}
 

@@ -76,6 +76,7 @@
       "task": "verify",
       "id": "verify-site",
       "dependsOn": "build-site",
+      "skipModes": ["ci"],
       "config": "./site.json"
     },
     {
@@ -96,7 +97,6 @@
       "css": "/css/main.css,/css/api.css",
       "sourceRoot": "../IntelligenceX",
       "sourceUrl": "https://github.com/EvotecIT/IntelligenceX/blob/master/IntelligenceX/{root}/{pathNoRoot}#L{line}",
-      "quickStartTypes": "CopilotClient,ChatInput,ToolRunner,ToolRegistry,AnalysisPack,JsonArray",
       "injectCriticalCss": true
     },
     {
@@ -117,7 +117,6 @@
       "nav": "./site.json",
       "navContextPath": "/",
       "css": "/css/main.css,/css/api.css",
-      "quickStartTypes": "Connect-IntelligenceX,Invoke-IntelligenceXChat,Invoke-IntelligenceXCommand,Start-IntelligenceXReview,Get-IntelligenceXThread,Get-IntelligenceXConfig",
       "injectCriticalCss": true
     },
     {

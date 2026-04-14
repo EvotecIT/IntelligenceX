@@ -18,12 +18,6 @@
     "tag": "Desktop App",
     "badge": "New",
     "featured": false,
-    "releaseProduct": "intelligencex.chat",
-    "releaseChannel": "stable",
-    "releasePlatform": "windows",
-    "releaseArch": "x64",
-    "releaseKind": "zip",
-    "downloadLabel": "Download IX Chat",
     "install": "pwsh .\\Build\\Run-ChatApp.ps1 -Configuration Release",
     "screenshot": "/assets/screenshots/product-chat.svg"
   },

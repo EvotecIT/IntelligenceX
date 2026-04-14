@@ -1,6 +1,6 @@
 ---
 title: Downloads
-description: Download IntelligenceX release artifacts, browse IX Chat packages by platform or release, and jump into docs, changelog, and setup guides.
+description: Download published IntelligenceX release artifacts and jump into docs, changelog, and setup guides.
 slug: downloads
 collection: pages
 layout: page
@@ -9,7 +9,7 @@ meta.raw_html: true
 
 <p>Download IntelligenceX release assets directly from this page. Source of truth remains <a href="https://github.com/EvotecIT/IntelligenceX/releases">GitHub Releases</a>.</p>
 
-<p>If the cards below show <code>No releases found</code>, no desktop artifacts have been published yet. In the meantime, start with <a href="/docs/getting-started/">Getting Started</a>, browse <a href="/docs/">Documentation</a>, or review common setup questions in the <a href="/faq/">common questions page</a>.</p>
+<p>Public IX Chat desktop packages have not been published yet. In the meantime, start with <a href="/docs/getting-started/">Getting Started</a>, browse <a href="/docs/">Documentation</a>, or review common setup questions in the <a href="/faq/">common questions page</a>.</p>
 
 <div class="ix-release-links" aria-label="Release resources">
   <a href="/changelog/">Changelog</a>
@@ -18,21 +18,9 @@ meta.raw_html: true
   <a href="/faq/">Questions</a>
 </div>
 
-<div class="ix-release-cta">
-{{< release-button placement="downloads.chat_stable" >}}
-{{< release-button placement="downloads.chat_preview" >}}
-</div>
-
 <section class="pf-release-downloads-panel">
-  <h2>Stable Downloads By Platform</h2>
-  <p>Choose the stable IX Chat build for your platform.</p>
-{{< release-buttons placement="downloads.chat_platforms" >}}
-</section>
-
-<section class="pf-release-downloads-panel">
-  <h2>Stable Downloads By Release</h2>
-  <p>Browse stable packages grouped by release tag.</p>
-{{< release-buttons placement="downloads.chat_releases" >}}
+  <h2>Desktop Packages</h2>
+  <p>IX Chat downloads will appear here after the first public desktop release is published.</p>
 </section>
 
 <section class="pf-release-downloads-panel">
