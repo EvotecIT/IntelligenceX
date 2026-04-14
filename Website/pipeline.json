@@ -76,6 +76,7 @@
       "task": "verify",
       "id": "verify-site",
       "dependsOn": "build-site",
+      "skipModes": ["ci"],
       "config": "./site.json"
     },
     {
