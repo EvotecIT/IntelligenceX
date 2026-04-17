@@ -224,9 +224,19 @@
       "cacheHeadersOut": "_headers"
     },
     {
+      "task": "agent-ready",
+      "id": "agent-ready",
+      "dependsOn": "optimize-site",
+      "skipModes": ["dev"],
+      "operation": "prepare",
+      "config": "./site.json",
+      "siteRoot": "./_site",
+      "failOnFailures": true
+    },
+    {
       "task": "doctor",
       "id": "doctor-site",
-      "dependsOn": "optimize-site",
+      "dependsOn": "agent-ready",
       "skipModes": ["dev"],
       "config": "./site.json",
       "siteRoot": "./_site",
