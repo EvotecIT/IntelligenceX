@@ -231,6 +231,7 @@
       "operation": "prepare",
       "config": "./site.json",
       "siteRoot": "./_site",
+      "output": "./_reports/agent-ready.json",
       "failOnFailures": true
     },
     {
