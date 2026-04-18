@@ -210,6 +210,8 @@ jobs:
         var wrapperContent = NormalizeWorkflowText(File.ReadAllText(wrapperWorkflowPath));
 
         AssertContainsText(wrapperContent, "workflow_dispatch:", "wrapper workflow defines workflow_dispatch");
+        AssertEqual(true, CountWorkflowDispatchInputs(wrapperContent) <= 25,
+            "wrapper workflow stays within GitHub workflow_dispatch input limit");
         AssertContainsText(wrapperContent, "reviewer_source: source",
             "wrapper workflow keeps PR reviews on repo source to avoid release drift");
         AssertContainsText(wrapperContent, "copilot_launcher: ${{ inputs.copilot_launcher }}",
@@ -328,6 +330,28 @@ jobs:
 
     private static string NormalizeWorkflowText(string content) {
         return content.Replace("\r\n", "\n");
+    }
+
+    private static int CountWorkflowDispatchInputs(string content) {
+        var normalized = NormalizeWorkflowText(content);
+        const string marker = "  workflow_dispatch:\n    inputs:\n";
+        var start = normalized.IndexOf(marker, StringComparison.Ordinal);
+        AssertEqual(true, start >= 0, "workflow_dispatch inputs block exists");
+        start += marker.Length;
+        var end = normalized.IndexOf("\njobs:", start, StringComparison.Ordinal);
+        if (end < 0) {
+            end = normalized.Length;
+        }
+
+        var count = 0;
+        foreach (var line in normalized[start..end].Split('\n')) {
+            if (line.StartsWith("      ", StringComparison.Ordinal) &&
+                !line.StartsWith("        ", StringComparison.Ordinal) &&
+                line.TrimEnd().EndsWith(":", StringComparison.Ordinal)) {
+                count++;
+            }
+        }
+        return count;
     }
 
     private static string ExtractWorkflowStepBlock(string content, string stepName) {
