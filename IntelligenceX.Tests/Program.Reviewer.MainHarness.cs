@@ -623,6 +623,8 @@ internal static partial class Program {
         failed += Run("Build extras ci context failure is supplemental", TestBuildExtrasCiContextFailureIsSupplemental);
         failed += Run("Build extras loads issue comments for external history",
             TestBuildExtrasLoadsIssueCommentsForExternalHistory);
+        failed += Run("Build extras keeps issue comment prompt cap with history",
+            TestBuildExtrasKeepsIssueCommentPromptCapWithHistory);
         failed += Run("Build extras ci failure evidence failure is supplemental",
             TestBuildExtrasCiFailureEvidenceFailureIsSupplemental);
         failed += Run("Triage thread hydration uses fallback client when provided",

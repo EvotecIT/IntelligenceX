@@ -146,7 +146,9 @@ public static partial class ReviewerApp {
                     .ConfigureAwait(false);
                 extras.IssueComments = comments;
                 if (settings.IncludeIssueComments) {
-                    extras.IssueCommentsSection = BuildIssueCommentsSection(comments, settings);
+                    extras.IssueCommentsSection = BuildIssueCommentsSection(
+                        comments.Take(Math.Max(0, settings.MaxComments)).ToArray(),
+                        settings);
                 }
             } catch (Exception ex) {
                 // Issue comments are supplemental context; avoid failing the whole review on GitHub rate limits.

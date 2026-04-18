@@ -653,6 +653,53 @@ internal static partial class Program {
         AssertEqual(1, extras.IssueComments.Count, "external history issue comments available");
     }
 
+    private static void TestBuildExtrasKeepsIssueCommentPromptCapWithHistory() {
+        using var server = new LocalHttpServer(request => {
+            if (request.Path == "/repos/owner/repo/issues/1/comments?per_page=100&page=1&sort=created&direction=desc") {
+                return new HttpResponse("""
+[
+  {
+    "id": 10,
+    "body": "First prompt comment.",
+    "user": { "login": "alice" },
+    "html_url": "https://example.local/comment/10"
+  },
+  {
+    "id": 11,
+    "body": "Second history-only comment.",
+    "user": { "login": "bob" },
+    "html_url": "https://example.local/comment/11"
+  }
+]
+""");
+            }
+            return null;
+        });
+
+        using var github = new GitHubClient("token", server.BaseUri.ToString().TrimEnd('/'));
+        var settings = new ReviewSettings {
+            IncludeIssueComments = true,
+            IncludeReviewComments = false,
+            IncludeReviewThreads = false,
+            MaxComments = 1,
+            CommentSearchLimit = 2,
+            ReviewThreadsAutoResolveAI = false,
+            ReviewThreadsAutoResolveStale = false
+        };
+        settings.History.Enabled = true;
+        settings.History.IncludeIxSummaryHistory = true;
+
+        var context = new PullRequestContext("owner/repo", "owner", "repo", 1, "Title", null, false, "head", "base",
+            Array.Empty<string>(), "owner/repo", false, null);
+
+        var extras = CallBuildExtrasAsync(github, context, settings, false);
+
+        AssertEqual(2, extras.IssueComments.Count, "history can retain deeper issue comments");
+        AssertContainsText(extras.IssueCommentsSection, "First prompt comment.", "issue comments prompt keeps first capped item");
+        AssertEqual(false, extras.IssueCommentsSection.Contains("Second history-only comment.", StringComparison.Ordinal),
+            "issue comments prompt keeps maxComments cap");
+    }
+
     private static void TestBuildExtrasCiFailureEvidenceFailureIsSupplemental() {
         using var server = new LocalHttpServer(request => {
             if (request.Path == "/repos/owner/repo/commits/head/check-runs?per_page=100&page=1") {
