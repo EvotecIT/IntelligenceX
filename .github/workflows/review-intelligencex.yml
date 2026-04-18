@@ -25,6 +25,14 @@ on:
         description: 'Optional OpenAI model override for manual runs'
         required: false
         default: ''
+      copilot_model:
+        description: 'Optional Copilot model override for manual runs'
+        required: false
+        default: ''
+      copilot_launcher:
+        description: 'Copilot launcher override for manual runs (binary, gh, auto)'
+        required: false
+        default: ''
       openai_account_id:
         description: 'Override OpenAI account id for this run'
         required: false
@@ -53,6 +61,70 @@ on:
         description: 'Override weekly-limit budget allowance (true|false) for this run'
         required: false
         default: ''
+      history_enabled:
+        description: 'Override reviewer history awareness (true|false)'
+        required: false
+        default: ''
+      history_include_ix_summary_history:
+        description: 'Include prior IntelligenceX summary rounds in history context (true|false)'
+        required: false
+        default: ''
+      history_include_review_threads:
+        description: 'Include review threads in history context (true|false)'
+        required: false
+        default: ''
+      history_include_external_bot_summaries:
+        description: 'Include configured external bot summaries as supporting context (true|false)'
+        required: false
+        default: ''
+      history_external_bot_logins:
+        description: 'External bot logins included as supporting history context (CSV)'
+        required: false
+        default: ''
+      history_artifacts:
+        description: 'Write reviewer history artifacts (true|false)'
+        required: false
+        default: ''
+      history_max_rounds:
+        description: 'Max prior review rounds included in history context'
+        required: false
+        default: ''
+      history_max_items:
+        description: 'Max findings/comments included per history section'
+        required: false
+        default: ''
+      swarm_enabled:
+        description: 'Override reviewer swarm mode (true|false)'
+        required: false
+        default: ''
+      swarm_shadow_mode:
+        description: 'Override reviewer swarm shadow mode (true|false)'
+        required: false
+        default: ''
+      swarm_reviewers:
+        description: 'Override reviewer swarm roles (CSV or JSON)'
+        required: false
+        default: ''
+      swarm_max_parallel:
+        description: 'Override reviewer swarm max parallel reviewers'
+        required: false
+        default: ''
+      swarm_publish_subreviews:
+        description: 'Override sub-review publishing (true|false); recommended false'
+        required: false
+        default: ''
+      swarm_aggregator_model:
+        description: 'Override reviewer swarm aggregator model'
+        required: false
+        default: ''
+      swarm_fail_open_on_partial:
+        description: 'Override swarm partial-failure fail-open behavior (true|false)'
+        required: false
+        default: ''
+      swarm_metrics:
+        description: 'Override swarm metrics/artifact capture (true|false)'
+        required: false
+        default: ''
 
 jobs:
   # INTELLIGENCEX:BEGIN
@@ -77,6 +149,8 @@ jobs:
       provider: ${{ inputs.provider || vars.IX_REVIEW_PROVIDER || 'openai' }}
       model: ${{ inputs.model || vars.IX_REVIEW_MODEL || 'gpt-5.4' }}
       openai_model: ${{ inputs.openai_model }}
+      copilot_model: ${{ inputs.copilot_model }}
+      copilot_launcher: ${{ inputs.copilot_launcher }}
       openai_transport: native
       openai_account_id: ${{ inputs.openai_account_id }}
       openai_account_ids: ${{ inputs.openai_account_ids }}
@@ -85,6 +159,22 @@ jobs:
       usage_budget_guard: ${{ inputs.usage_budget_guard }}
       usage_budget_allow_credits: ${{ inputs.usage_budget_allow_credits }}
       usage_budget_allow_weekly_limit: ${{ inputs.usage_budget_allow_weekly_limit }}
+      history_enabled: ${{ inputs.history_enabled }}
+      history_include_ix_summary_history: ${{ inputs.history_include_ix_summary_history }}
+      history_include_review_threads: ${{ inputs.history_include_review_threads }}
+      history_include_external_bot_summaries: ${{ inputs.history_include_external_bot_summaries }}
+      history_external_bot_logins: ${{ inputs.history_external_bot_logins }}
+      history_artifacts: ${{ inputs.history_artifacts }}
+      history_max_rounds: ${{ inputs.history_max_rounds }}
+      history_max_items: ${{ inputs.history_max_items }}
+      swarm_enabled: ${{ inputs.swarm_enabled }}
+      swarm_shadow_mode: ${{ inputs.swarm_shadow_mode }}
+      swarm_reviewers: ${{ inputs.swarm_reviewers }}
+      swarm_max_parallel: ${{ inputs.swarm_max_parallel }}
+      swarm_publish_subreviews: ${{ inputs.swarm_publish_subreviews }}
+      swarm_aggregator_model: ${{ inputs.swarm_aggregator_model }}
+      swarm_fail_open_on_partial: ${{ inputs.swarm_fail_open_on_partial }}
+      swarm_metrics: ${{ inputs.swarm_metrics }}
       review_config_path: .intelligencex/reviewer.json
       mode: hybrid
       length: medium

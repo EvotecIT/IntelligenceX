@@ -22,6 +22,8 @@ review:
     provider: {{Provider}}
     model: {{Model}}
     openai_model: ${{ inputs.openai_model }}
+    copilot_model: ${{ inputs.copilot_model }}
+    copilot_launcher: ${{ inputs.copilot_launcher }}
     openai_transport: {{OpenAITransport}}
     openai_account_id: ${{ inputs.openai_account_id }}
     openai_account_ids: ${{ inputs.openai_account_ids }}
@@ -30,6 +32,22 @@ review:
     usage_budget_guard: ${{ inputs.usage_budget_guard }}
     usage_budget_allow_credits: ${{ inputs.usage_budget_allow_credits }}
     usage_budget_allow_weekly_limit: ${{ inputs.usage_budget_allow_weekly_limit }}
+    history_enabled: ${{ inputs.history_enabled }}
+    history_include_ix_summary_history: ${{ inputs.history_include_ix_summary_history }}
+    history_include_review_threads: ${{ inputs.history_include_review_threads }}
+    history_include_external_bot_summaries: ${{ inputs.history_include_external_bot_summaries }}
+    history_external_bot_logins: ${{ inputs.history_external_bot_logins }}
+    history_artifacts: ${{ inputs.history_artifacts }}
+    history_max_rounds: ${{ inputs.history_max_rounds }}
+    history_max_items: ${{ inputs.history_max_items }}
+    swarm_enabled: ${{ inputs.swarm_enabled }}
+    swarm_shadow_mode: ${{ inputs.swarm_shadow_mode }}
+    swarm_reviewers: ${{ inputs.swarm_reviewers }}
+    swarm_max_parallel: ${{ inputs.swarm_max_parallel }}
+    swarm_publish_subreviews: ${{ inputs.swarm_publish_subreviews }}
+    swarm_aggregator_model: ${{ inputs.swarm_aggregator_model }}
+    swarm_fail_open_on_partial: ${{ inputs.swarm_fail_open_on_partial }}
+    swarm_metrics: ${{ inputs.swarm_metrics }}
     include_issue_comments: {{IncludeIssueComments}}
     include_review_comments: {{IncludeReviewComments}}
     include_related_prs: {{IncludeRelatedPullRequests}}

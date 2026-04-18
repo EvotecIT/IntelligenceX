@@ -52,6 +52,7 @@ internal static class PromptBuilder {
             ["Title"] = context.Title ?? string.Empty,
             ["Body"] = string.IsNullOrWhiteSpace(context.Body) ? "<no description>" : context.Body,
             ["Files"] = BuildFilesBlock(files),
+            ["ReviewHistorySection"] = extras?.ReviewHistorySection ?? string.Empty,
             ["CiContextSection"] = extras?.CiContextSection ?? string.Empty,
             ["IssueCommentsSection"] = extras?.IssueCommentsSection ?? string.Empty,
             ["ReviewCommentsSection"] = extras?.ReviewCommentsSection ?? string.Empty,

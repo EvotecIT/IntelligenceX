@@ -133,17 +133,28 @@ public static partial class ReviewerApp {
                 Console.Error.WriteLine($"Failed to load CI/check context: {ex.Message}");
             }
         }
-        if (settings.IncludeIssueComments) {
+        var loadIssueComments = settings.IncludeIssueComments ||
+                                (settings.History.Enabled && settings.History.IncludeIxSummaryHistory);
+        if (loadIssueComments) {
             try {
-                var comments = await codeHostReader.ListIssueCommentsAsync(context, settings.MaxComments, cancellationToken)
+                var commentLimit = settings.IncludeIssueComments && !(settings.History.Enabled && settings.History.IncludeIxSummaryHistory)
+                    ? settings.MaxComments
+                    : Math.Max(settings.MaxComments, settings.CommentSearchLimit);
+                var comments = await codeHostReader.ListIssueCommentsAsync(context, commentLimit, cancellationToken)
                     .ConfigureAwait(false);
-                extras.IssueCommentsSection = BuildIssueCommentsSection(comments, settings);
+                extras.IssueComments = comments;
+                if (settings.IncludeIssueComments) {
+                    extras.IssueCommentsSection = BuildIssueCommentsSection(comments, settings);
+                }
             } catch (Exception ex) {
                 // Issue comments are supplemental context; avoid failing the whole review on GitHub rate limits.
                 Console.Error.WriteLine($"Failed to load issue comments: {ex.Message}");
             }
         }
-        var loadThreads = forceReviewThreads || settings.IncludeReviewThreads || settings.ReviewThreadsAutoResolveAI;
+        var loadThreads = forceReviewThreads ||
+                          settings.IncludeReviewThreads ||
+                          settings.ReviewThreadsAutoResolveAI ||
+                          (settings.History.Enabled && settings.History.IncludeReviewThreads);
         if (loadThreads) {
             try {
                 var threadCommentFetchLimit = ResolveThreadCommentFetchLimit(settings);

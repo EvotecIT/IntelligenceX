@@ -225,6 +225,54 @@ internal sealed partial class ReviewSettings {
         return list.Count == 0 ? fallback ?? Array.Empty<string>() : list;
     }
 
+    internal static IReadOnlyList<ReviewSwarmReviewerSettings> NormalizeSwarmReviewerSettings(
+        IEnumerable<ReviewSwarmReviewerSettings>? values, IReadOnlyList<ReviewSwarmReviewerSettings>? fallback = null) {
+        if (values is null) {
+            return fallback ?? Array.Empty<ReviewSwarmReviewerSettings>();
+        }
+
+        var list = new List<ReviewSwarmReviewerSettings>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var value in values) {
+            var normalizedId = value.Id?.Trim().ToLowerInvariant();
+            if (string.IsNullOrWhiteSpace(normalizedId)) {
+                continue;
+            }
+            if (!seen.Add(normalizedId)) {
+                continue;
+            }
+
+            list.Add(new ReviewSwarmReviewerSettings {
+                Id = normalizedId,
+                Provider = value.Provider,
+                Model = string.IsNullOrWhiteSpace(value.Model) ? null : value.Model.Trim(),
+                ReasoningEffort = value.ReasoningEffort
+            });
+        }
+
+        return list.Count == 0 ? fallback ?? Array.Empty<ReviewSwarmReviewerSettings>() : list;
+    }
+
+    internal static IReadOnlyList<ReviewSwarmReviewerSettings> BuildSwarmReviewerSettings(
+        IEnumerable<string>? values, IReadOnlyList<ReviewSwarmReviewerSettings>? fallback = null) {
+        if (values is null) {
+            return fallback ?? Array.Empty<ReviewSwarmReviewerSettings>();
+        }
+
+        var normalizedIds = NormalizeSwarmReviewers(values);
+        if (normalizedIds.Count == 0) {
+            return fallback ?? Array.Empty<ReviewSwarmReviewerSettings>();
+        }
+
+        var list = new List<ReviewSwarmReviewerSettings>(normalizedIds.Count);
+        foreach (var id in normalizedIds) {
+            list.Add(new ReviewSwarmReviewerSettings {
+                Id = id
+            });
+        }
+        return list;
+    }
+
     private static CopilotTransportKind ParseCopilotTransport(string? value, CopilotTransportKind fallback) {
         if (string.IsNullOrWhiteSpace(value)) {
             return fallback;
@@ -233,6 +281,19 @@ internal sealed partial class ReviewSettings {
         return normalized switch {
             "direct" or "api" or "http" => CopilotTransportKind.Direct,
             "cli" => CopilotTransportKind.Cli,
+            _ => fallback
+        };
+    }
+
+    internal static string NormalizeCopilotLauncher(string? value, string fallback) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            return fallback;
+        }
+        var normalized = value.Trim().ToLowerInvariant();
+        return normalized switch {
+            "binary" or "cli" or "copilot" => "binary",
+            "gh" or "github" or "github-cli" or "github_cli" => "gh",
+            "auto" => "auto",
             _ => fallback
         };
     }

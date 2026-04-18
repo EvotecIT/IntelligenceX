@@ -291,10 +291,13 @@ public static partial class ReviewerApp {
 
             IssueComment? existingSummary = null;
             string? previousSummary = null;
-            if (settings.SummaryStability && !string.IsNullOrWhiteSpace(context.HeadSha)) {
+            if (settings.SummaryStability || settings.History.Enabled) {
                 existingSummary = await FindExistingSummaryAsync(codeHostReader, context, settings, cancellationToken)
                     .ConfigureAwait(false);
-                if (existingSummary is not null && !IsSummaryOutdated(existingSummary, context.HeadSha)) {
+                if (settings.SummaryStability &&
+                    existingSummary is not null &&
+                    !string.IsNullOrWhiteSpace(context.HeadSha) &&
+                    !IsSummaryOutdated(existingSummary, context.HeadSha)) {
                     previousSummary = ExtractSummaryBody(existingSummary.Body, settings.MaxCommentChars);
                 }
             }
@@ -328,6 +331,27 @@ public static partial class ReviewerApp {
             var extras = await BuildExtrasAsync(codeHostReader, github, fallbackGithub, context, settings, cancellationToken,
                     settings.TriageOnly)
                 .ConfigureAwait(false);
+            extras.ReviewHistory = extras.IssueComments.Count > 0
+                ? ReviewHistoryBuilder.BuildSnapshot(extras.IssueComments, context.HeadSha, extras.ReviewThreads, settings)
+                : ReviewHistoryBuilder.BuildSnapshot(existingSummary, context.HeadSha, extras.ReviewThreads, settings);
+            extras.ReviewHistorySection = ReviewHistoryBuilder.Render(extras.ReviewHistory);
+            if (settings.History.Artifacts) {
+                try {
+                    await ReviewHistoryArtifacts.WriteAsync(context, settings, extras.ReviewHistory,
+                            extras.ReviewHistorySection, cancellationToken)
+                        .ConfigureAwait(false);
+                    if (settings.Diagnostics && extras.ReviewHistory.HasContent) {
+                        Console.Error.WriteLine("Review history artifacts written under artifacts/reviewer/history.");
+                    }
+                } catch (OperationCanceledException) {
+                    throw;
+                } catch (Exception ex) {
+                    if (settings.Diagnostics) {
+                        Console.Error.WriteLine(
+                            $"Review history artifact write failed open: {ex.GetType().Name}: {ex.Message}");
+                    }
+                }
+            }
             if (settings.TriageOnly) {
                 if (!allowWrites) {
                     Console.WriteLine("Skipping thread triage for untrusted pull request.");
@@ -361,6 +385,16 @@ public static partial class ReviewerApp {
             if (settings.RedactPii) {
                 prompt = Redaction.Apply(prompt, settings.RedactionPatterns, settings.RedactionReplacement);
             }
+            ReviewSwarmShadowPlan? swarmShadowPlan = null;
+            if (settings.Swarm.Enabled && settings.Swarm.ShadowMode) {
+                swarmShadowPlan = ReviewSwarmShadowPlanner.Build(settings);
+                if (settings.Diagnostics) {
+                    var renderedSwarmShadowPlan = ReviewSwarmShadowPlanner.Render(swarmShadowPlan);
+                    if (!string.IsNullOrWhiteSpace(renderedSwarmShadowPlan)) {
+                        Console.Error.WriteLine(renderedSwarmShadowPlan);
+                    }
+                }
+            }
 
             if (allowWrites && settings.ProgressUpdates) {
                 var progressBody = ReviewFormatter.BuildProgressComment(context, settings, progress, null, inlineSupported);
@@ -393,6 +427,45 @@ public static partial class ReviewerApp {
             }
 
             var reviewFailed = ReviewDiagnostics.IsFailureBody(reviewBody);
+            if (swarmShadowPlan is not null && !reviewFailed) {
+                try {
+                    var swarmShadowResult = await ReviewSwarmShadowRunner.RunAsync(settings, swarmShadowPlan, prompt,
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                    if (settings.Diagnostics) {
+                        var renderedSwarmShadowResults = ReviewSwarmShadowRunner.RenderResultSummary(swarmShadowResult);
+                        if (!string.IsNullOrWhiteSpace(renderedSwarmShadowResults)) {
+                            Console.Error.WriteLine(renderedSwarmShadowResults);
+                        }
+                    }
+                    if (settings.Swarm.Metrics) {
+                        try {
+                            await ReviewSwarmShadowArtifacts.WriteAsync(context, settings, swarmShadowPlan, swarmShadowResult,
+                                    cancellationToken)
+                                .ConfigureAwait(false);
+                            if (settings.Diagnostics) {
+                                Console.Error.WriteLine("Swarm shadow artifacts written under artifacts/reviewer/swarm-shadow.");
+                            }
+                        } catch (OperationCanceledException) {
+                            throw;
+                        } catch (Exception ex) {
+                            if (settings.Diagnostics) {
+                                Console.Error.WriteLine(
+                                    $"Swarm shadow artifact write failed open: {ex.GetType().Name}: {ex.Message}");
+                            }
+                        }
+                    }
+                } catch (OperationCanceledException) {
+                    throw;
+                } catch (Exception ex) when (settings.Swarm.FailOpenOnPartial) {
+                    if (settings.Diagnostics) {
+                        Console.Error.WriteLine($"Swarm shadow execution failed open: {ex.GetType().Name}: {ex.Message}");
+                    }
+                }
+            } else if (swarmShadowPlan is not null && settings.Diagnostics) {
+                Console.Error.WriteLine("Swarm shadow execution skipped because the primary review returned a failure body.");
+            }
+
             var inlineAllowed = inlineSupported && !reviewFailed && allowWrites;
             var inlineComments = Array.Empty<InlineReviewComment>();
             var summaryBody = reviewBody;
@@ -485,8 +558,9 @@ public static partial class ReviewerApp {
             }
             var usageLine = await TryBuildUsageLineAsync(settings, effectiveProvider).ConfigureAwait(false);
             var findingsBlock = settings.StructuredFindings ? ReviewFindingsBuilder.Build(inlineComments) : string.Empty;
+            var historyBlock = ReviewHistoryBuilder.BuildCommentBlock(extras.ReviewHistory);
             var commentBody = ReviewFormatter.BuildComment(context, summaryBody, settings, inlineSupported, inlineSuppressed,
-                autoResolveSummary, budgetNote, usageLine, findingsBlock);
+                autoResolveSummary, budgetNote, usageLine, findingsBlock, historyBlock);
             progress.Review = ReviewProgressState.Complete;
             progress.Finalize = ReviewProgressState.InProgress;
             progress.StatusLine = "Finalizing summary.";

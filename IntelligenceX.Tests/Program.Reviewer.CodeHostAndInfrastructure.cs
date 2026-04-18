@@ -853,6 +853,7 @@ internal static partial class Program {
         try {
             File.WriteAllText(path,
                 "{ \"copilot\": { \"envAllowlist\": [\"GH_TOKEN\"], \"inheritEnvironment\": false, " +
+                "\"launcher\": \"gh\", " +
                 "\"env\": { \"COPILOT_DEBUG\": \"1\" }, " +
                 "\"transport\": \"direct\", \"directUrl\": \"https://example.local/api\", " +
                 "\"directTokenEnv\": \"COPILOT_DIRECT_TOKEN\", \"directTimeoutSeconds\": 12, " +
@@ -863,6 +864,7 @@ internal static partial class Program {
 
             AssertSequenceEqual(new[] { "GH_TOKEN" }, settings.CopilotEnvAllowlist, "copilot env allowlist");
             AssertEqual(false, settings.CopilotInheritEnvironment, "copilot inherit environment");
+            AssertEqual("gh", settings.CopilotLauncher, "copilot launcher");
             AssertEqual("1", settings.CopilotEnv["COPILOT_DEBUG"], "copilot env map");
             AssertEqual(CopilotTransportKind.Direct, settings.CopilotTransport, "copilot transport");
             AssertEqual("https://example.local/api", settings.CopilotDirectUrl, "copilot direct url");
@@ -875,6 +877,62 @@ internal static partial class Program {
                 File.Delete(path);
             }
         }
+    }
+
+    private static void TestCopilotLauncherEnv() {
+        var previousInput = Environment.GetEnvironmentVariable("INPUT_COPILOT_LAUNCHER");
+        var previousEnv = Environment.GetEnvironmentVariable("COPILOT_LAUNCHER");
+        try {
+            Environment.SetEnvironmentVariable("INPUT_COPILOT_LAUNCHER", null);
+            Environment.SetEnvironmentVariable("COPILOT_LAUNCHER", "github-cli");
+            var settings = ReviewSettings.FromEnvironment();
+            AssertEqual("gh", settings.CopilotLauncher, "copilot launcher env");
+        } finally {
+            Environment.SetEnvironmentVariable("INPUT_COPILOT_LAUNCHER", previousInput);
+            Environment.SetEnvironmentVariable("COPILOT_LAUNCHER", previousEnv);
+        }
+    }
+
+    private static void TestCopilotGhLauncherBuildsWrapperCommand() {
+        var settings = new ReviewSettings {
+            CopilotLauncher = "gh"
+        };
+        var options = new ReviewRunner(settings).BuildCopilotClientOptionsForTests();
+
+        AssertEqual("gh", options.CliPath ?? string.Empty, "copilot gh launcher path");
+        AssertSequenceEqual(new[] { "copilot", "--" }, options.CliArgs.ToArray(), "copilot gh launcher args");
+    }
+
+    private static void TestCopilotLauncherDiagnosticsDescribeResolvedCommand() {
+        var originalError = Console.Error;
+        using var errorWriter = new StringWriter();
+        try {
+            Console.SetError(errorWriter);
+            var settings = new ReviewSettings {
+                CopilotLauncher = "gh",
+                Diagnostics = true
+            };
+
+            _ = new ReviewRunner(settings).BuildCopilotClientOptionsForTests();
+        } finally {
+            Console.SetError(originalError);
+        }
+
+        var output = errorWriter.ToString();
+        AssertContainsText(output, "Copilot launcher resolved: gh", "copilot launcher diagnostic mode");
+        AssertContainsText(output, "cliPath=gh", "copilot launcher diagnostic path");
+        AssertContainsText(output, "prefixArgs=copilot --", "copilot launcher diagnostic wrapper args");
+    }
+
+    private static void TestCopilotBinaryLauncherKeepsDirectCliPath() {
+        var settings = new ReviewSettings {
+            CopilotLauncher = "binary",
+            CopilotCliPath = "custom-copilot"
+        };
+        var options = new ReviewRunner(settings).BuildCopilotClientOptionsForTests();
+
+        AssertEqual("custom-copilot", options.CliPath ?? string.Empty, "copilot binary launcher path");
+        AssertEqual(0, options.CliArgs.Count, "copilot binary launcher args");
     }
 
     private static void TestCopilotInheritEnvironmentDefault() {

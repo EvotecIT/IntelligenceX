@@ -6,6 +6,15 @@ Draft.
 
 Proposed as an opt-in extension to IntelligenceX Reviewer, not a default behavior change.
 
+Current implementation reality as of 2026-04-17:
+- `review.swarm.*` config/schema/workflow plumbing exists, including managed wrapper/template pass-through for manual rollout overrides.
+- reviewer runtime still uses the single primary provider path for the public comment, but opt-in shadow mode can now execute selected read-only sub-reviewer lanes with bounded `maxParallel` concurrency and a diagnostic aggregator after the primary review succeeds.
+- shadow rollout artifacts now include bounded JSON/Markdown comparison output and append-only JSONL metrics under `artifacts/reviewer/swarm-shadow/` when `review.swarm.metrics` is enabled.
+- CI/check-aware reviewer context has landed in the current reviewer runtime and should be treated as baseline capability, not a future-only swarm dependency.
+- structured review history now builds a bounded cross-round ledger from IX-owned sticky summaries and review-thread state, with optional bounded artifacts under `artifacts/reviewer/history/`; external bot summaries can be included as opt-in supporting excerpts but are not treated as trusted IX blocker state.
+
+Follow-up detail for phased implementation lives in `InternalDocs/rfcs/ix-review-history-copilot-orchestration.md`.
+
 ## Problem
 
 The current IntelligenceX reviewer is a strong single-pipeline reviewer:
@@ -86,7 +95,7 @@ IntelligenceX already has pieces that make this a natural extension rather than 
 The missing piece is not "more review infrastructure." The missing piece is a multi-reviewer orchestration layer plus a deterministic aggregator contract.
 
 There is also a second missing piece:
-- CI/check awareness inside the reviewer itself, so the reviewer can understand when tests or required checks are already failing and use that as evidence instead of reviewing the diff in isolation.
+- structured cross-round review history inside the reviewer itself, so the reviewer can reason over previously reported blockers and verified resolutions instead of only reusing prior prose.
 
 ## Current Reviewer Baseline
 
@@ -122,6 +131,8 @@ Why:
 
 ### 1.1) CI / Test Awareness as Shared Context
 
+This capability is now largely present in the single-review path and should be preserved as shared infrastructure for future swarm execution, not reimplemented separately.
+
 Reviewer context should optionally include bounded GitHub Actions and PR-check information.
 
 Recommended levels:
@@ -151,7 +162,7 @@ It should be implemented once and shared.
 
 ### 1.2) Reuse Existing IX Check/Run Plumbing
 
-This should reuse the logic already present in PR-watch flows rather than building a second drifting GitHub checks implementation.
+This should continue reusing the logic already present in PR-watch flows rather than building a second drifting GitHub checks implementation.
 
 Existing IX CLI logic already collects:
 - PR check summaries via `gh pr checks`

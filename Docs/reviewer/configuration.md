@@ -239,6 +239,9 @@ GitHub Actions input/env aliases:
 ## Swarm review shadow mode (optional)
 
 Use this to opt into multi-reviewer orchestration without changing the public reviewer comment yet.
+In shadow mode, the normal single-review path still produces the public PR comment; selected swarm reviewers and a
+diagnostic aggregator run after the primary review succeeds, and diagnostics can log the shadow results for rollout
+comparison.
 
 All swarm settings are optional and default to off unless you explicitly enable them.
 
@@ -248,10 +251,18 @@ All swarm settings are optional and default to off unless you explicitly enable 
     "swarm": {
       "enabled": true,
       "shadowMode": true,
-      "reviewers": ["correctness", "security", "reliability", "tests"],
+      "reviewers": [
+        "correctness",
+        { "id": "tests", "provider": "copilot", "model": "gpt-5.2" }
+      ],
       "maxParallel": 4,
       "publishSubreviews": false,
       "aggregatorModel": "gpt-5.4",
+      "aggregator": {
+        "provider": "openai",
+        "model": "gpt-5.4",
+        "reasoningEffort": "high"
+      },
       "failOpenOnPartial": true,
       "metrics": true
     }
@@ -262,6 +273,9 @@ All swarm settings are optional and default to off unless you explicitly enable 
 Recommended rollout:
 - enable `shadowMode` first
 - keep `publishSubreviews: false`
+- keep `diagnostics: true` during rollout if you want the resolved plan and shadow result summary in logs
+- keep `metrics: true` if you want diagnostic JSON/Markdown artifacts plus append-only metrics JSONL under `artifacts/reviewer/swarm-shadow/`
+- tune `maxParallel` to control how many independent reviewer lanes execute at once
 - compare cost, latency, and finding quality before enabling public swarm output
 
 GitHub Actions input/env aliases:
@@ -517,6 +531,42 @@ Setup review-policy option constraints:
 }
 ```
 
+## Review history snapshot (repeat-review context)
+
+Use this to feed a compact normalized history block into the review prompt instead of relying only on raw prior-summary prose.
+
+```json
+{
+  "review": {
+    "history": {
+      "enabled": true,
+      "includeIxSummaryHistory": true,
+      "includeReviewThreads": true,
+      "includeExternalBotSummaries": false,
+      "externalBotLogins": ["claude", "copilot-pull-request-reviewer"],
+      "artifacts": true,
+      "maxRounds": 6,
+      "maxItems": 8
+    }
+  }
+}
+```
+
+Recommended first use:
+- enable this when you want repeat reviewer runs to understand prior IX sticky-summary blockers and current thread state
+- leave `includeExternalBotSummaries` off unless you explicitly want bounded Claude/Copilot bot summary excerpts as supporting context
+- keep `summaryStability: true` enabled as well if you want same-SHA wording to stay stable across reruns
+
+GitHub Actions input/env aliases:
+- `history_enabled` / `REVIEW_HISTORY_ENABLED`
+- `history_include_ix_summary_history` / `REVIEW_HISTORY_INCLUDE_IX_SUMMARY_HISTORY`
+- `history_include_review_threads` / `REVIEW_HISTORY_INCLUDE_REVIEW_THREADS`
+- `history_include_external_bot_summaries` / `REVIEW_HISTORY_INCLUDE_EXTERNAL_BOT_SUMMARIES`
+- `history_external_bot_logins` / `REVIEW_HISTORY_EXTERNAL_BOT_LOGINS`
+- `history_artifacts` / `REVIEW_HISTORY_ARTIFACTS`
+- `history_max_rounds` / `REVIEW_HISTORY_MAX_ROUNDS`
+- `history_max_items` / `REVIEW_HISTORY_MAX_ITEMS`
+
 ## Redaction (secrets)
 
 When `redactPii` is enabled, the reviewer applies default redaction patterns for common secrets
@@ -611,6 +661,9 @@ GitHub Actions input/env aliases:
 Use this to forward selected environment variables into the Copilot CLI process without committing secrets.
 By default the CLI process **does** inherit the runner environment. Set `inheritEnvironment` to `false` and use
 `envAllowlist`/`env` to pass only what the CLI needs when you want a strict environment.
+Set `launcher` to `gh` to run Copilot through `gh copilot --`, which can use the GitHub CLI wrapper/downloader path
+when the standalone `copilot` binary is not already present. Set `launcher` to `auto` to use the standalone binary
+when it is on `PATH`, otherwise fall back to `gh copilot --`.
 
 ```json
 {
@@ -618,6 +671,7 @@ By default the CLI process **does** inherit the runner environment. Set `inherit
     "provider": "copilot"
   },
   "copilot": {
+    "launcher": "gh",
     "inheritEnvironment": false,
     "envAllowlist": ["GH_TOKEN", "GITHUB_TOKEN"]
   }
@@ -694,13 +748,22 @@ Prefer `directTokenEnv` over `directToken` to avoid committing secrets to source
 - `failOpenTransientOnly`: when true, fail-open only on transient errors
   The bundled GitHub workflow exports `REVIEW_FAIL_OPEN=true` and `REVIEW_FAIL_OPEN_TRANSIENT_ONLY=false` so provider auth/runtime failures leave a summary comment instead of blocking CI.
 - `summaryStability`: reuse the previous summary (same commit) as prompt context to avoid noisy rewrites
+- `history.enabled`: include a compact repeat-review history snapshot in the prompt
+- `history.includeIxSummaryHistory`: include the prior IX sticky summary as normalized state
+- `history.includeReviewThreads`: include review thread state/counts in the history snapshot
+- `history.includeExternalBotSummaries`: include bounded external bot summary excerpts as supporting context only
+- `history.externalBotLogins`: external bot authors allowed when `includeExternalBotSummaries` is enabled
+- `history.artifacts`: emit bounded JSON/Markdown history artifacts under `artifacts/reviewer/history/`
+- `history.maxRounds`: cap how many prior owned IX summary rounds are folded into history
+- `history.maxItems`: cap normalized history items and thread excerpts
 - `structuredFindings`: emit a structured findings JSON block for automation
 - `swarm.enabled`: opt into swarm review orchestration (default off)
 - `swarm.shadowMode`: run swarm internally without replacing the public review output
-- `swarm.reviewers`: selected swarm reviewer roles
+- `swarm.reviewers`: selected swarm reviewer roles, either as ids or reviewer objects with provider/model overrides
 - `swarm.maxParallel`: swarm concurrency cap
 - `swarm.publishSubreviews`: whether sub-review outputs can be published directly (recommended false)
-- `swarm.aggregatorModel`: optional model override for the swarm aggregator pass
+- `swarm.aggregatorModel`: optional compatibility alias for the swarm aggregator model
+- `swarm.aggregator`: optional structured aggregator definition with provider/model/reasoningEffort
 - `swarm.failOpenOnPartial`: allow swarm aggregation to proceed when one sub-reviewer fails
 - `swarm.metrics`: emit swarm metrics/artifacts for comparison and rollout evaluation
 - `skipPaths`: if **all** changed files in a PR match these globs, skip reviewing the entire PR
@@ -724,6 +787,7 @@ Prefer `directTokenEnv` over `directToken` to avoid committing secrets to source
 - `azureTokenEnv`: env var name that contains the ADO token (default `SYSTEM_ACCESSTOKEN` if set)
 - `azureAuthScheme`: `bearer` (System.AccessToken/JWT) or `basic`/`pat`
 - `copilot.transport`: `cli` or `direct` (aliases: `api`, `http`)
+- `copilot.launcher`: `binary`, `gh`, or `auto`; `gh` executes `gh copilot --` before the reviewer server flags
 - `copilot.inheritEnvironment`: inherit full runner environment for Copilot CLI (`true` by default)
 
 **Path filter order of operations**

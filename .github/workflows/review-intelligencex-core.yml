@@ -62,6 +62,11 @@ on:
         required: false
         default: ''
         type: string
+      copilot_launcher:
+        description: 'Copilot launcher: binary, gh, or auto'
+        required: false
+        default: ''
+        type: string
       openai_transport:
         description: 'OpenAI transport: native or appserver'
         required: false
@@ -184,6 +189,46 @@ on:
         type: string
       ci_context_classify_infra_failures:
         description: 'Override infra-failure classification for reviewer CI context (true|false)'
+        required: false
+        default: ''
+        type: string
+      history_enabled:
+        description: 'Override reviewer history awareness (true|false) for this run'
+        required: false
+        default: ''
+        type: string
+      history_include_ix_summary_history:
+        description: 'Override inclusion of prior IntelligenceX summary rounds (true|false)'
+        required: false
+        default: ''
+        type: string
+      history_include_review_threads:
+        description: 'Override inclusion of review thread history (true|false)'
+        required: false
+        default: ''
+        type: string
+      history_include_external_bot_summaries:
+        description: 'Override supporting context from configured external bot summaries (true|false)'
+        required: false
+        default: ''
+        type: string
+      history_external_bot_logins:
+        description: 'Override external bot logins included as supporting history context (CSV)'
+        required: false
+        default: ''
+        type: string
+      history_artifacts:
+        description: 'Override reviewer history artifact capture (true|false)'
+        required: false
+        default: ''
+        type: string
+      history_max_rounds:
+        description: 'Override max prior review rounds included in history context'
+        required: false
+        default: ''
+        type: string
+      history_max_items:
+        description: 'Override max findings/comments included per history section'
         required: false
         default: ''
         type: string
@@ -483,6 +528,7 @@ jobs:
       INPUT_MODEL: ${{ inputs.model }}
       INPUT_OPENAI_MODEL: ${{ inputs.openai_model }}
       INPUT_COPILOT_MODEL: ${{ inputs.copilot_model }}
+      INPUT_COPILOT_LAUNCHER: ${{ inputs.copilot_launcher }}
       INPUT_OPENAI_TRANSPORT: ${{ inputs.openai_transport }}
       INPUT_OPENAI_ACCOUNT_ID: ${{ inputs.openai_account_id }}
       INPUT_OPENAI_ACCOUNT_IDS: ${{ inputs.openai_account_ids }}
@@ -510,6 +556,14 @@ jobs:
       INPUT_CI_CONTEXT_MAX_FAILED_RUNS: ${{ inputs.ci_context_max_failed_runs }}
       INPUT_CI_CONTEXT_MAX_SNIPPET_CHARS_PER_RUN: ${{ inputs.ci_context_max_snippet_chars_per_run }}
       INPUT_CI_CONTEXT_CLASSIFY_INFRA_FAILURES: ${{ inputs.ci_context_classify_infra_failures }}
+      INPUT_HISTORY_ENABLED: ${{ inputs.history_enabled }}
+      INPUT_HISTORY_INCLUDE_IX_SUMMARY_HISTORY: ${{ inputs.history_include_ix_summary_history }}
+      INPUT_HISTORY_INCLUDE_REVIEW_THREADS: ${{ inputs.history_include_review_threads }}
+      INPUT_HISTORY_INCLUDE_EXTERNAL_BOT_SUMMARIES: ${{ inputs.history_include_external_bot_summaries }}
+      INPUT_HISTORY_EXTERNAL_BOT_LOGINS: ${{ inputs.history_external_bot_logins }}
+      INPUT_HISTORY_ARTIFACTS: ${{ inputs.history_artifacts }}
+      INPUT_HISTORY_MAX_ROUNDS: ${{ inputs.history_max_rounds }}
+      INPUT_HISTORY_MAX_ITEMS: ${{ inputs.history_max_items }}
       INPUT_SWARM_ENABLED: ${{ inputs.swarm_enabled }}
       INPUT_SWARM_SHADOW_MODE: ${{ inputs.swarm_shadow_mode }}
       INPUT_SWARM_REVIEWERS: ${{ inputs.swarm_reviewers }}

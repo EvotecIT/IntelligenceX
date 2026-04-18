@@ -5,6 +5,7 @@ internal sealed partial class ReviewSettings {
         ApplyEnvironmentCoreReviewSettings(settings);
         ApplyEnvironmentUsageAndSummarySettings(settings);
         ApplyEnvironmentScopeAndPromptSettings(settings);
+        ApplyEnvironmentHistorySettings(settings);
         ApplyEnvironmentCiContextSettings(settings);
         ApplyEnvironmentSwarmSettings(settings);
         ApplyEnvironmentRetryAndDiagnosticsSettings(settings);

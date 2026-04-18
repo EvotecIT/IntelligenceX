@@ -187,6 +187,12 @@ internal static partial class Program {
         var previousConfigPath = Environment.GetEnvironmentVariable("REVIEW_CONFIG_PATH");
         var previousCiContextEnabled = Environment.GetEnvironmentVariable("REVIEW_CI_CONTEXT_ENABLED");
         var previousCiContextMaxFailedRuns = Environment.GetEnvironmentVariable("REVIEW_CI_CONTEXT_MAX_FAILED_RUNS");
+        var previousHistoryEnabled = Environment.GetEnvironmentVariable("REVIEW_HISTORY_ENABLED");
+        var previousHistoryArtifacts = Environment.GetEnvironmentVariable("REVIEW_HISTORY_ARTIFACTS");
+        var previousHistoryIncludeExternal = Environment.GetEnvironmentVariable("REVIEW_HISTORY_INCLUDE_EXTERNAL_BOT_SUMMARIES");
+        var previousHistoryExternalLogins = Environment.GetEnvironmentVariable("REVIEW_HISTORY_EXTERNAL_BOT_LOGINS");
+        var previousHistoryMaxRounds = Environment.GetEnvironmentVariable("REVIEW_HISTORY_MAX_ROUNDS");
+        var previousHistoryMaxItems = Environment.GetEnvironmentVariable("REVIEW_HISTORY_MAX_ITEMS");
         var previousSwarmEnabled = Environment.GetEnvironmentVariable("REVIEW_SWARM_ENABLED");
         var previousSwarmMaxParallel = Environment.GetEnvironmentVariable("REVIEW_SWARM_MAX_PARALLEL");
         var configPath = Path.Combine(Path.GetTempPath(), $"intelligencex-review-ci-swarm-{Guid.NewGuid():N}.json");
@@ -198,16 +204,26 @@ internal static partial class Program {
       "enabled": true,
       "includeCheckSummary": false,
       "includeFailedRuns": false,
-      "includeFailureSnippets": "always",
-      "maxFailedRuns": 7,
-      "maxSnippetCharsPerRun": 900,
-      "classifyInfraFailures": false
-    },
-    "swarm": {
-      "enabled": true,
-      "shadowMode": true,
-      "reviewers": ["security", "tests", "security"],
-      "maxParallel": 0,
+        "includeFailureSnippets": "always",
+        "maxFailedRuns": 7,
+        "maxSnippetCharsPerRun": 900,
+        "classifyInfraFailures": false
+      },
+      "history": {
+        "enabled": true,
+        "includeIxSummaryHistory": false,
+        "includeReviewThreads": false,
+        "includeExternalBotSummaries": false,
+        "externalBotLogins": ["claude"],
+        "artifacts": false,
+        "maxRounds": 9,
+        "maxItems": 9
+      },
+      "swarm": {
+        "enabled": true,
+        "shadowMode": true,
+        "reviewers": ["security", "tests", "security"],
+        "maxParallel": 0,
       "publishSubreviews": true,
       "aggregatorModel": "gpt-test",
       "failOpenOnPartial": false,
@@ -220,6 +236,12 @@ internal static partial class Program {
             Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", configPath);
             Environment.SetEnvironmentVariable("REVIEW_CI_CONTEXT_ENABLED", "false");
             Environment.SetEnvironmentVariable("REVIEW_CI_CONTEXT_MAX_FAILED_RUNS", "2");
+            Environment.SetEnvironmentVariable("REVIEW_HISTORY_ENABLED", "false");
+            Environment.SetEnvironmentVariable("REVIEW_HISTORY_ARTIFACTS", "true");
+            Environment.SetEnvironmentVariable("REVIEW_HISTORY_INCLUDE_EXTERNAL_BOT_SUMMARIES", "true");
+            Environment.SetEnvironmentVariable("REVIEW_HISTORY_EXTERNAL_BOT_LOGINS", "claude,copilot-pull-request-reviewer");
+            Environment.SetEnvironmentVariable("REVIEW_HISTORY_MAX_ROUNDS", "4");
+            Environment.SetEnvironmentVariable("REVIEW_HISTORY_MAX_ITEMS", "4");
             Environment.SetEnvironmentVariable("REVIEW_SWARM_ENABLED", "false");
             Environment.SetEnvironmentVariable("REVIEW_SWARM_MAX_PARALLEL", "3");
 
@@ -235,22 +257,110 @@ internal static partial class Program {
             AssertEqual(false, settings.CiContext.ClassifyInfraFailures,
                 "review settings ciContext config classifyInfraFailures");
 
+            AssertEqual(false, settings.History.Enabled, "review settings env history enabled precedence");
+            AssertEqual(false, settings.History.IncludeIxSummaryHistory,
+                "review settings history config includeIxSummaryHistory");
+            AssertEqual(false, settings.History.IncludeReviewThreads,
+                "review settings history config includeReviewThreads");
+            AssertEqual(true, settings.History.IncludeExternalBotSummaries,
+                "review settings env history include external summaries precedence");
+            AssertSequenceEqual(new[] { "claude", "copilot-pull-request-reviewer" },
+                settings.History.ExternalBotLogins.ToArray(), "review settings env history external bot logins");
+            AssertEqual(true, settings.History.Artifacts, "review settings env history artifacts precedence");
+            AssertEqual(4, settings.History.MaxRounds, "review settings env history maxRounds precedence");
+            AssertEqual(4, settings.History.MaxItems, "review settings env history maxItems precedence");
+
             AssertEqual(false, settings.Swarm.Enabled, "review settings env swarm enabled precedence");
             AssertEqual(true, settings.Swarm.ShadowMode, "review settings swarm config shadowMode");
             AssertSequenceEqual(new[] { "security", "tests" }, settings.Swarm.Reviewers.ToArray(),
                 "review settings swarm reviewers normalization");
+            AssertEqual(2, settings.Swarm.ReviewerSettings.Count, "review settings swarm reviewer settings count");
+            AssertEqual("security", settings.Swarm.ReviewerSettings[0].Id, "review settings swarm reviewer settings first id");
             AssertEqual(3, settings.Swarm.MaxParallel, "review settings env swarm maxParallel precedence");
             AssertEqual(true, settings.Swarm.PublishSubreviews, "review settings swarm config publishSubreviews");
             AssertEqual("gpt-test", settings.Swarm.AggregatorModel ?? string.Empty,
                 "review settings swarm config aggregatorModel");
+            AssertEqual("gpt-test", settings.Swarm.Aggregator.Model ?? string.Empty,
+                "review settings swarm aggregator model sync");
             AssertEqual(false, settings.Swarm.FailOpenOnPartial, "review settings swarm config failOpenOnPartial");
             AssertEqual(false, settings.Swarm.Metrics, "review settings swarm config metrics");
         } finally {
             Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", previousConfigPath);
             Environment.SetEnvironmentVariable("REVIEW_CI_CONTEXT_ENABLED", previousCiContextEnabled);
             Environment.SetEnvironmentVariable("REVIEW_CI_CONTEXT_MAX_FAILED_RUNS", previousCiContextMaxFailedRuns);
+            Environment.SetEnvironmentVariable("REVIEW_HISTORY_ENABLED", previousHistoryEnabled);
+            Environment.SetEnvironmentVariable("REVIEW_HISTORY_ARTIFACTS", previousHistoryArtifacts);
+            Environment.SetEnvironmentVariable("REVIEW_HISTORY_INCLUDE_EXTERNAL_BOT_SUMMARIES", previousHistoryIncludeExternal);
+            Environment.SetEnvironmentVariable("REVIEW_HISTORY_EXTERNAL_BOT_LOGINS", previousHistoryExternalLogins);
+            Environment.SetEnvironmentVariable("REVIEW_HISTORY_MAX_ROUNDS", previousHistoryMaxRounds);
+            Environment.SetEnvironmentVariable("REVIEW_HISTORY_MAX_ITEMS", previousHistoryMaxItems);
             Environment.SetEnvironmentVariable("REVIEW_SWARM_ENABLED", previousSwarmEnabled);
             Environment.SetEnvironmentVariable("REVIEW_SWARM_MAX_PARALLEL", previousSwarmMaxParallel);
+            if (File.Exists(configPath)) {
+                File.Delete(configPath);
+            }
+        }
+    }
+
+    private static void TestReviewSettingsLoadSwarmReviewerObjects() {
+        var previousConfigPath = Environment.GetEnvironmentVariable("REVIEW_CONFIG_PATH");
+        var configPath = Path.Combine(Path.GetTempPath(), $"intelligencex-review-swarm-objects-{Guid.NewGuid():N}.json");
+        try {
+            File.WriteAllText(configPath, """
+{
+  "review": {
+    "swarm": {
+      "enabled": true,
+      "reviewers": [
+        {
+          "id": "correctness",
+          "provider": "openai",
+          "model": "gpt-5.4",
+          "reasoningEffort": "high"
+        },
+        {
+          "id": "tests",
+          "provider": "copilot",
+          "model": "gpt-5.2"
+        }
+      ],
+      "aggregator": {
+        "provider": "openai",
+        "model": "gpt-5.4",
+        "reasoningEffort": "medium"
+      }
+    }
+  }
+}
+""");
+
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", configPath);
+
+            var settings = ReviewSettings.Load();
+
+            AssertSequenceEqual(new[] { "correctness", "tests" }, settings.Swarm.Reviewers.ToArray(),
+                "review settings swarm object reviewers ids");
+            AssertEqual(2, settings.Swarm.ReviewerSettings.Count, "review settings swarm object reviewer settings count");
+            AssertEqual(ReviewProvider.OpenAI, settings.Swarm.ReviewerSettings[0].Provider ?? ReviewProvider.Copilot,
+                "review settings swarm object first provider");
+            AssertEqual("gpt-5.4", settings.Swarm.ReviewerSettings[0].Model ?? string.Empty,
+                "review settings swarm object first model");
+            AssertEqual(ReasoningEffort.High, settings.Swarm.ReviewerSettings[0].ReasoningEffort ?? ReasoningEffort.Low,
+                "review settings swarm object first reasoning effort");
+            AssertEqual(ReviewProvider.Copilot, settings.Swarm.ReviewerSettings[1].Provider ?? ReviewProvider.OpenAI,
+                "review settings swarm object second provider");
+            AssertEqual("gpt-5.2", settings.Swarm.ReviewerSettings[1].Model ?? string.Empty,
+                "review settings swarm object second model");
+            AssertEqual(ReviewProvider.OpenAI, settings.Swarm.Aggregator.Provider ?? ReviewProvider.Copilot,
+                "review settings swarm object aggregator provider");
+            AssertEqual("gpt-5.4", settings.Swarm.Aggregator.Model ?? string.Empty,
+                "review settings swarm object aggregator model");
+            AssertEqual("gpt-5.4", settings.Swarm.AggregatorModel ?? string.Empty,
+                "review settings swarm object aggregatorModel sync");
+            AssertEqual(ReasoningEffort.Medium, settings.Swarm.Aggregator.ReasoningEffort ?? ReasoningEffort.Low,
+                "review settings swarm object aggregator reasoning effort");
+        } finally {
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", previousConfigPath);
             if (File.Exists(configPath)) {
                 File.Delete(configPath);
             }

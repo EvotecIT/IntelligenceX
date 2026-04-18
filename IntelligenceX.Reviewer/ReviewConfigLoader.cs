@@ -65,6 +65,7 @@ internal static class ReviewConfigLoader {
         ApplyCommentMode(reviewObj, settings);
         ApplyLength(reviewObj, settings);
         ApplyContext(reviewObj, settings);
+        ApplyHistory(reviewObj, settings);
         ApplyCiContext(reviewObj, settings);
         ApplySwarm(reviewObj, settings);
         ApplyCodex(root, settings);
@@ -365,6 +366,28 @@ internal static class ReviewConfigLoader {
             ReadBool(ciContext, "classifyInfraFailures", settings.CiContext.ClassifyInfraFailures);
     }
 
+    private static void ApplyHistory(JsonObject reviewObj, ReviewSettings settings) {
+        var history = reviewObj.GetObject("history");
+        if (history is null) {
+            return;
+        }
+
+        settings.History.Enabled = ReadBool(history, "enabled", settings.History.Enabled);
+        settings.History.IncludeIxSummaryHistory =
+            ReadBool(history, "includeIxSummaryHistory", settings.History.IncludeIxSummaryHistory);
+        settings.History.IncludeReviewThreads =
+            ReadBool(history, "includeReviewThreads", settings.History.IncludeReviewThreads);
+        settings.History.IncludeExternalBotSummaries =
+            ReadBool(history, "includeExternalBotSummaries", settings.History.IncludeExternalBotSummaries);
+        var externalBotLogins = ReadStringList(history, "externalBotLogins");
+        if (externalBotLogins is not null) {
+            settings.History.ExternalBotLogins = externalBotLogins;
+        }
+        settings.History.Artifacts = ReadBool(history, "artifacts", settings.History.Artifacts);
+        settings.History.MaxRounds = Math.Max(0, ReadNonNegativeInt(history, "maxRounds", settings.History.MaxRounds));
+        settings.History.MaxItems = Math.Max(0, ReadNonNegativeInt(history, "maxItems", settings.History.MaxItems));
+    }
+
     private static void ApplySwarm(JsonObject reviewObj, ReviewSettings settings) {
         var swarm = reviewObj.GetObject("swarm");
         if (swarm is null) {
@@ -373,17 +396,104 @@ internal static class ReviewConfigLoader {
 
         settings.Swarm.Enabled = ReadBool(swarm, "enabled", settings.Swarm.Enabled);
         settings.Swarm.ShadowMode = ReadBool(swarm, "shadowMode", settings.Swarm.ShadowMode);
-        var reviewers = ReadStringList(swarm, "reviewers");
-        if (reviewers is not null) {
-            settings.Swarm.Reviewers = ReviewSettings.NormalizeSwarmReviewers(reviewers, settings.Swarm.Reviewers);
-        }
+        ApplySwarmReviewers(swarm, settings);
         settings.Swarm.MaxParallel = Math.Max(1, ReadInt(swarm, "maxParallel", settings.Swarm.MaxParallel));
         settings.Swarm.PublishSubreviews =
             ReadBool(swarm, "publishSubreviews", settings.Swarm.PublishSubreviews);
         settings.Swarm.AggregatorModel = swarm.GetString("aggregatorModel") ?? settings.Swarm.AggregatorModel;
+        if (!string.IsNullOrWhiteSpace(settings.Swarm.AggregatorModel)) {
+            settings.Swarm.Aggregator.Model = settings.Swarm.AggregatorModel;
+        }
+        ApplySwarmAggregator(swarm, settings);
         settings.Swarm.FailOpenOnPartial =
             ReadBool(swarm, "failOpenOnPartial", settings.Swarm.FailOpenOnPartial);
         settings.Swarm.Metrics = ReadBool(swarm, "metrics", settings.Swarm.Metrics);
+    }
+
+    private static void ApplySwarmReviewers(JsonObject swarm, ReviewSettings settings) {
+        if (!swarm.TryGetValue("reviewers", out var reviewersValue) || reviewersValue is null) {
+            return;
+        }
+
+        var reviewersArray = reviewersValue.AsArray();
+        if (reviewersArray is null) {
+            return;
+        }
+
+        var reviewerIds = new List<string>();
+        var reviewerSettings = new List<ReviewSwarmReviewerSettings>();
+        foreach (var item in reviewersArray) {
+            var stringValue = item.AsString();
+            if (!string.IsNullOrWhiteSpace(stringValue)) {
+                reviewerIds.Add(stringValue!);
+                reviewerSettings.Add(new ReviewSwarmReviewerSettings {
+                    Id = stringValue!.Trim()
+                });
+                continue;
+            }
+
+            var obj = item.AsObject();
+            if (obj is null) {
+                continue;
+            }
+
+            var reviewer = ParseSwarmReviewerObject(obj);
+            if (reviewer is null) {
+                continue;
+            }
+
+            reviewerIds.Add(reviewer.Id);
+            reviewerSettings.Add(reviewer);
+        }
+
+        settings.Swarm.Reviewers = ReviewSettings.NormalizeSwarmReviewers(reviewerIds, settings.Swarm.Reviewers);
+        settings.Swarm.ReviewerSettings =
+            ReviewSettings.NormalizeSwarmReviewerSettings(reviewerSettings, settings.Swarm.ReviewerSettings);
+    }
+
+    private static ReviewSwarmReviewerSettings? ParseSwarmReviewerObject(JsonObject obj) {
+        var id = obj.GetString("id");
+        if (string.IsNullOrWhiteSpace(id)) {
+            return null;
+        }
+
+        return new ReviewSwarmReviewerSettings {
+            Id = id!,
+            Provider = ParseOptionalSwarmProvider(obj.GetString("provider")),
+            Model = obj.GetString("model"),
+            ReasoningEffort = ParseOptionalReasoningEffort(obj.GetString("reasoningEffort"))
+        };
+    }
+
+    private static void ApplySwarmAggregator(JsonObject swarm, ReviewSettings settings) {
+        var aggregator = swarm.GetObject("aggregator");
+        if (aggregator is null) {
+            return;
+        }
+
+        settings.Swarm.Aggregator.Provider =
+            ParseOptionalSwarmProvider(aggregator.GetString("provider")) ?? settings.Swarm.Aggregator.Provider;
+        settings.Swarm.Aggregator.Model = aggregator.GetString("model") ?? settings.Swarm.Aggregator.Model;
+        settings.Swarm.Aggregator.ReasoningEffort =
+            ParseOptionalReasoningEffort(aggregator.GetString("reasoningEffort")) ?? settings.Swarm.Aggregator.ReasoningEffort;
+        if (!string.IsNullOrWhiteSpace(settings.Swarm.Aggregator.Model)) {
+            settings.Swarm.AggregatorModel = settings.Swarm.Aggregator.Model;
+        }
+    }
+
+    private static ReviewProvider? ParseOptionalSwarmProvider(string? value) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            return null;
+        }
+        return ReviewProviderContracts.ParseProviderOrThrow(value, "review.swarm.provider");
+    }
+
+    private static IntelligenceX.OpenAI.Chat.ReasoningEffort? ParseOptionalReasoningEffort(string? value) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            return null;
+        }
+
+        return IntelligenceX.OpenAI.Chat.ChatEnumParser.ParseReasoningEffort(value);
     }
 
     private static void ApplyCodex(JsonObject root, ReviewSettings settings) {
@@ -432,6 +542,8 @@ internal static class ReviewConfigLoader {
         settings.CopilotCliPath = copilot.GetString("cliPath") ?? settings.CopilotCliPath;
         settings.CopilotCliUrl = copilot.GetString("cliUrl") ?? settings.CopilotCliUrl;
         settings.CopilotWorkingDirectory = copilot.GetString("workingDirectory") ?? settings.CopilotWorkingDirectory;
+        settings.CopilotLauncher = ReviewSettings.NormalizeCopilotLauncher(copilot.GetString("launcher"),
+            settings.CopilotLauncher);
         settings.CopilotAutoInstall = ReadBool(copilot, "autoInstall", settings.CopilotAutoInstall);
         settings.CopilotAutoInstallMethod = copilot.GetString("autoInstallMethod") ?? settings.CopilotAutoInstallMethod;
         settings.CopilotAutoInstallPrerelease = ReadBool(copilot, "autoInstallPrerelease", settings.CopilotAutoInstallPrerelease);

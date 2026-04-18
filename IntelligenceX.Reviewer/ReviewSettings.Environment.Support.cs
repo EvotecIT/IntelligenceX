@@ -376,6 +376,57 @@ internal sealed partial class ReviewSettings {
         }
     }
 
+    private static void ApplyEnvironmentHistorySettings(ReviewSettings settings) {
+        var enabled = GetInput("history_enabled", "REVIEW_HISTORY_ENABLED");
+        if (!string.IsNullOrWhiteSpace(enabled)) {
+            settings.History.Enabled = ParseBoolean(enabled, settings.History.Enabled);
+        }
+
+        var includeIxSummaryHistory = GetInput(
+            "history_include_ix_summary_history",
+            "REVIEW_HISTORY_INCLUDE_IX_SUMMARY_HISTORY");
+        if (!string.IsNullOrWhiteSpace(includeIxSummaryHistory)) {
+            settings.History.IncludeIxSummaryHistory =
+                ParseBoolean(includeIxSummaryHistory, settings.History.IncludeIxSummaryHistory);
+        }
+
+        var includeReviewThreads = GetInput(
+            "history_include_review_threads",
+            "REVIEW_HISTORY_INCLUDE_REVIEW_THREADS");
+        if (!string.IsNullOrWhiteSpace(includeReviewThreads)) {
+            settings.History.IncludeReviewThreads =
+                ParseBoolean(includeReviewThreads, settings.History.IncludeReviewThreads);
+        }
+
+        var includeExternalBotSummaries = GetInput(
+            "history_include_external_bot_summaries",
+            "REVIEW_HISTORY_INCLUDE_EXTERNAL_BOT_SUMMARIES");
+        if (!string.IsNullOrWhiteSpace(includeExternalBotSummaries)) {
+            settings.History.IncludeExternalBotSummaries =
+                ParseBoolean(includeExternalBotSummaries, settings.History.IncludeExternalBotSummaries);
+        }
+
+        var externalBotLogins = GetInput("history_external_bot_logins", "REVIEW_HISTORY_EXTERNAL_BOT_LOGINS");
+        if (!string.IsNullOrWhiteSpace(externalBotLogins)) {
+            settings.History.ExternalBotLogins = ParseList(externalBotLogins, settings.History.ExternalBotLogins);
+        }
+
+        var artifacts = GetInput("history_artifacts", "REVIEW_HISTORY_ARTIFACTS");
+        if (!string.IsNullOrWhiteSpace(artifacts)) {
+            settings.History.Artifacts = ParseBoolean(artifacts, settings.History.Artifacts);
+        }
+
+        var maxRounds = GetInput("history_max_rounds", "REVIEW_HISTORY_MAX_ROUNDS");
+        if (!string.IsNullOrWhiteSpace(maxRounds)) {
+            settings.History.MaxRounds = ParseNonNegativeInt(maxRounds, settings.History.MaxRounds);
+        }
+
+        var maxItems = GetInput("history_max_items", "REVIEW_HISTORY_MAX_ITEMS");
+        if (!string.IsNullOrWhiteSpace(maxItems)) {
+            settings.History.MaxItems = ParseNonNegativeInt(maxItems, settings.History.MaxItems);
+        }
+    }
+
     private static void ApplyEnvironmentSwarmSettings(ReviewSettings settings) {
         var enabled = GetInput("swarm_enabled", "REVIEW_SWARM_ENABLED");
         if (!string.IsNullOrWhiteSpace(enabled)) {
@@ -390,6 +441,8 @@ internal sealed partial class ReviewSettings {
         var reviewers = GetInput("swarm_reviewers", "REVIEW_SWARM_REVIEWERS");
         if (!string.IsNullOrWhiteSpace(reviewers)) {
             settings.Swarm.Reviewers = NormalizeSwarmReviewers(ParseList(reviewers), settings.Swarm.Reviewers);
+            settings.Swarm.ReviewerSettings =
+                BuildSwarmReviewerSettings(settings.Swarm.Reviewers, settings.Swarm.ReviewerSettings);
         }
 
         var maxParallel = GetInput("swarm_max_parallel", "REVIEW_SWARM_MAX_PARALLEL");
@@ -406,6 +459,7 @@ internal sealed partial class ReviewSettings {
         var aggregatorModel = GetInput("swarm_aggregator_model", "REVIEW_SWARM_AGGREGATOR_MODEL");
         if (!string.IsNullOrWhiteSpace(aggregatorModel)) {
             settings.Swarm.AggregatorModel = aggregatorModel;
+            settings.Swarm.Aggregator.Model = aggregatorModel.Trim();
         }
 
         var failOpenOnPartial = GetInput("swarm_fail_open_on_partial", "REVIEW_SWARM_FAIL_OPEN_ON_PARTIAL");

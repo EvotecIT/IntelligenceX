@@ -4,6 +4,9 @@ using System.IO;
 
 namespace IntelligenceX.Reviewer;
 
+internal readonly record struct ReviewSummaryItem(string Section, string Text);
+internal readonly record struct ReviewSummaryFinding(string Fingerprint, string Section, string Text, string Status);
+
 internal static class ReviewSummaryParser {
     public static bool TryGetReviewedCommit(string? body, out string? commit) {
         commit = null;
@@ -94,6 +97,90 @@ internal static class ReviewSummaryParser {
         return false;
     }
 
+    internal static IReadOnlyList<ReviewSummaryItem> ExtractMergeBlockerItems(string? body, ReviewSettings? settings = null,
+        int maxItems = 10) {
+        var items = new List<ReviewSummaryItem>();
+        if (string.IsNullOrWhiteSpace(body) || maxItems <= 0) {
+            return items;
+        }
+
+        body = ReviewFormatter.NormalizeSectionLayout(body);
+        var configuredSections = settings?.ResolveMergeBlockerSections()
+                                 ?? new[] { "todo list", "critical issues" };
+        var mergeBlockerSections = ReviewSettings.NormalizeMergeBlockerSections(configuredSections);
+        if (mergeBlockerSections.Count == 0) {
+            mergeBlockerSections = new[] { "todo list", "critical issues" };
+        }
+
+        var currentSection = string.Empty;
+        using var reader = new StringReader(body);
+        string? line;
+        while ((line = reader.ReadLine()) is not null) {
+            var trimmed = line.Trim();
+            if (trimmed.StartsWith("## ", StringComparison.Ordinal)) {
+                currentSection = MatchConfiguredSection(trimmed, mergeBlockerSections);
+                continue;
+            }
+
+            if (currentSection.Length == 0) {
+                continue;
+            }
+
+            if (!TryNormalizeItem(trimmed, out var normalizedItem)) {
+                continue;
+            }
+
+            items.Add(new ReviewSummaryItem(currentSection, normalizedItem));
+            if (items.Count >= maxItems) {
+                break;
+            }
+        }
+
+        return items;
+    }
+
+    internal static IReadOnlyList<ReviewSummaryFinding> ExtractMergeBlockerFindings(string? body, ReviewSettings? settings = null,
+        int maxItems = 10) {
+        var findings = new List<ReviewSummaryFinding>();
+        if (string.IsNullOrWhiteSpace(body) || maxItems <= 0) {
+            return findings;
+        }
+
+        body = ReviewFormatter.NormalizeSectionLayout(body);
+        var configuredSections = settings?.ResolveMergeBlockerSections()
+                                 ?? new[] { "todo list", "critical issues" };
+        var mergeBlockerSections = ReviewSettings.NormalizeMergeBlockerSections(configuredSections);
+        if (mergeBlockerSections.Count == 0) {
+            mergeBlockerSections = new[] { "todo list", "critical issues" };
+        }
+
+        var currentSection = string.Empty;
+        using var reader = new StringReader(body);
+        string? line;
+        while ((line = reader.ReadLine()) is not null) {
+            var trimmed = line.Trim();
+            if (trimmed.StartsWith("## ", StringComparison.Ordinal)) {
+                currentSection = MatchConfiguredSection(trimmed, mergeBlockerSections);
+                continue;
+            }
+
+            if (currentSection.Length == 0) {
+                continue;
+            }
+
+            if (!TryNormalizeFinding(trimmed, currentSection, out var finding)) {
+                continue;
+            }
+
+            findings.Add(finding);
+            if (findings.Count >= maxItems) {
+                break;
+            }
+        }
+
+        return findings;
+    }
+
     private static string NormalizeHeader(string header) {
         return header.Trim().ToLowerInvariant();
     }
@@ -147,6 +234,119 @@ internal static class ReviewSummaryParser {
         }
 
         return false;
+    }
+
+    private static bool TryNormalizeItem(string line, out string normalizedItem) {
+        normalizedItem = string.Empty;
+        if (string.IsNullOrWhiteSpace(line)) {
+            return false;
+        }
+
+        return TryNormalizeFinding(line, "finding", out _, out normalizedItem, out _);
+    }
+
+    private static bool TryNormalizeFinding(string line, string section, out ReviewSummaryFinding finding) {
+        if (TryNormalizeFinding(line, section, out finding, out _, out _)) {
+            return true;
+        }
+
+        finding = default;
+        return false;
+    }
+
+    private static bool TryNormalizeFinding(string line, string section, out ReviewSummaryFinding finding,
+        out string normalizedItem, out string status) {
+        finding = default;
+        normalizedItem = string.Empty;
+        status = string.Empty;
+        if (string.IsNullOrWhiteSpace(line)) {
+            return false;
+        }
+
+        var trimmed = line.Trim();
+        if (trimmed.StartsWith("<!--", StringComparison.Ordinal)) {
+            return false;
+        }
+        if (IsNoneLine(trimmed) || IsPlaceholderLine(trimmed)) {
+            return false;
+        }
+        if (trimmed.StartsWith("*Rationale:", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.StartsWith("*Why", StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        if (trimmed.StartsWith("- [ ]", StringComparison.Ordinal)) {
+            normalizedItem = trimmed.Substring(5).Trim();
+            status = "open";
+        } else if (trimmed.StartsWith("- [x]", StringComparison.OrdinalIgnoreCase)) {
+            normalizedItem = trimmed.Substring(5).Trim();
+            status = "resolved";
+        } else if (trimmed.StartsWith("-", StringComparison.Ordinal)) {
+            normalizedItem = trimmed.Substring(1).Trim();
+            status = "open";
+        } else {
+            return false;
+        }
+
+        if (normalizedItem.Length == 0 || IsNoneLine(normalizedItem) || IsPlaceholderLine(normalizedItem)) {
+            return false;
+        }
+
+        finding = new ReviewSummaryFinding(CreateFindingFingerprint(section, normalizedItem), section, normalizedItem, status);
+        return true;
+    }
+
+    private static string CreateFindingFingerprint(string section, string text) {
+        var sectionSlug = Slugify(section, 18);
+        var textSlug = Slugify(text, 36);
+        var hash = ComputeFnv1a32($"{NormalizeHeader(section)}\n{text.Trim()}");
+        return $"{sectionSlug}-{textSlug}-{hash:x8}";
+    }
+
+    private static string Slugify(string value, int maxChars) {
+        if (string.IsNullOrWhiteSpace(value) || maxChars <= 0) {
+            return "item";
+        }
+
+        var chars = new char[maxChars];
+        var length = 0;
+        var lastWasDash = false;
+        foreach (var ch in value.Trim().ToLowerInvariant()) {
+            if (char.IsLetterOrDigit(ch)) {
+                if (length >= maxChars) {
+                    break;
+                }
+                chars[length++] = ch;
+                lastWasDash = false;
+                continue;
+            }
+
+            if (length == 0 || lastWasDash) {
+                continue;
+            }
+            if (length >= maxChars) {
+                break;
+            }
+            chars[length++] = '-';
+            lastWasDash = true;
+        }
+
+        while (length > 0 && chars[length - 1] == '-') {
+            length--;
+        }
+
+        return length == 0 ? "item" : new string(chars, 0, length);
+    }
+
+    private static uint ComputeFnv1a32(string value) {
+        const uint offset = 2166136261;
+        const uint prime = 16777619;
+        var hash = offset;
+        foreach (var ch in value) {
+            hash ^= ch;
+            hash *= prime;
+        }
+        return hash;
     }
 
     private static bool IsNoneLine(string line) {

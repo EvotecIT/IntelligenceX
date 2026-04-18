@@ -346,9 +346,7 @@ internal sealed partial class ReviewRunner {
 
     private CopilotClientOptions BuildCopilotClientOptions() {
         var options = new CopilotClientOptions();
-        if (!string.IsNullOrWhiteSpace(_settings.CopilotCliPath)) {
-            options.CliPath = _settings.CopilotCliPath;
-        }
+        var launcher = ApplyCopilotLauncher(options);
         if (!string.IsNullOrWhiteSpace(_settings.CopilotCliUrl)) {
             options.CliUrl = _settings.CopilotCliUrl;
         }
@@ -364,7 +362,47 @@ internal sealed partial class ReviewRunner {
         }
         options.AutoInstallPrerelease = _settings.CopilotAutoInstallPrerelease;
         ApplyCopilotEnvironment(options);
+        if (_settings.Diagnostics) {
+            Console.Error.WriteLine(BuildCopilotLauncherDiagnostic(launcher, options));
+        }
         return options;
+    }
+
+    private string ApplyCopilotLauncher(CopilotClientOptions options) {
+        var launcher = ReviewSettings.NormalizeCopilotLauncher(_settings.CopilotLauncher, "binary");
+        if (string.Equals(launcher, "auto", StringComparison.OrdinalIgnoreCase)) {
+            launcher = ShouldUseGhCopilotLauncher(_settings) ? "gh" : "binary";
+        }
+
+        if (string.Equals(launcher, "gh", StringComparison.OrdinalIgnoreCase)) {
+            options.CliPath = string.IsNullOrWhiteSpace(_settings.CopilotCliPath) ? "gh" : _settings.CopilotCliPath;
+            options.CliArgs.Add("copilot");
+            options.CliArgs.Add("--");
+            return "gh";
+        }
+
+        if (!string.IsNullOrWhiteSpace(_settings.CopilotCliPath)) {
+            options.CliPath = _settings.CopilotCliPath;
+        }
+        return "binary";
+    }
+
+    private string BuildCopilotLauncherDiagnostic(string launcher, CopilotClientOptions options) {
+        var cliPath = string.IsNullOrWhiteSpace(options.CliPath) ? "copilot" : options.CliPath;
+        var prefixArgs = options.CliArgs.Count == 0 ? "(none)" : string.Join(" ", options.CliArgs);
+        var cliUrl = string.IsNullOrWhiteSpace(options.CliUrl) ? "not configured" : "configured";
+        return string.Concat(
+            "Copilot launcher resolved: ",
+            launcher,
+            "; transport=",
+            _settings.CopilotTransport.ToString().ToLowerInvariant(),
+            "; cliPath=",
+            cliPath,
+            "; prefixArgs=",
+            prefixArgs,
+            "; cliUrl=",
+            cliUrl,
+            ".");
     }
 
 
@@ -636,5 +674,41 @@ internal sealed partial class ReviewRunner {
             options.Environment[entry.Key] = entry.Value;
             SecretsAudit.Record($"Copilot CLI env set: {entry.Key}");
         }
+    }
+
+    private static bool ShouldUseGhCopilotLauncher(ReviewSettings settings) {
+        if (!string.IsNullOrWhiteSpace(settings.CopilotCliPath)) {
+            return false;
+        }
+        return !CommandExists("copilot") && CommandExists("gh");
+    }
+
+    private static bool CommandExists(string command) {
+        var path = Environment.GetEnvironmentVariable("PATH");
+        if (string.IsNullOrWhiteSpace(path)) {
+            return false;
+        }
+
+        var extensions = new List<string> { string.Empty };
+        if (OperatingSystem.IsWindows()) {
+            var pathExt = Environment.GetEnvironmentVariable("PATHEXT");
+            extensions = string.IsNullOrWhiteSpace(pathExt)
+                ? new List<string> { ".exe", ".cmd", ".bat" }
+                : new List<string>(pathExt.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+        }
+
+        foreach (var directory in path.Split(Path.PathSeparator)) {
+            if (string.IsNullOrWhiteSpace(directory)) {
+                continue;
+            }
+            foreach (var extension in extensions) {
+                var candidate = Path.Combine(directory.Trim(), command + extension);
+                if (File.Exists(candidate)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 }

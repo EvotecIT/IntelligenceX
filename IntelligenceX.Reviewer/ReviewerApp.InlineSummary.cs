@@ -206,7 +206,7 @@ public static partial class ReviewerApp {
                string.Equals(normalizedAuthor, "app/intelligencex-review", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static bool IsOwnedSummaryComment(IssueComment comment) {
+    internal static bool IsOwnedSummaryComment(IssueComment comment) {
         return comment.Body.Contains(ReviewFormatter.SummaryMarker, StringComparison.OrdinalIgnoreCase) &&
                IsTrustedSummaryAuthor(comment.Author);
     }

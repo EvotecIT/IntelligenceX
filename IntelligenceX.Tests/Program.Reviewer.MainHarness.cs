@@ -652,6 +652,7 @@ internal static partial class Program {
         failed += Run("Review settings load config then env precedence", TestReviewSettingsLoadConfigThenEnvPrecedence);
         failed += Run("Review settings load config then env precedence for ciContext and swarm",
             TestReviewSettingsLoadConfigThenEnvPrecedenceForCiContextAndSwarm);
+        failed += Run("Review settings load swarm reviewer objects", TestReviewSettingsLoadSwarmReviewerObjects);
         failed += Run("Review settings load config allows zero for non-negative limits",
             TestReviewSettingsLoadConfigAllowsZeroForNonNegativeLimits);
         failed += Run("Review settings env allows zero for non-negative limits",
@@ -662,6 +663,11 @@ internal static partial class Program {
         failed += Run("Azure code host reader smoke", TestAzureDevOpsCodeHostReaderSmoke);
         failed += Run("Review threads diff range normalize", TestReviewThreadsDiffRangeNormalize);
         failed += Run("Copilot env allowlist config", TestCopilotEnvAllowlistConfig);
+        failed += Run("Copilot launcher env", TestCopilotLauncherEnv);
+        failed += Run("Copilot gh launcher builds wrapper command", TestCopilotGhLauncherBuildsWrapperCommand);
+        failed += Run("Copilot launcher diagnostics describe resolved command",
+            TestCopilotLauncherDiagnosticsDescribeResolvedCommand);
+        failed += Run("Copilot binary launcher keeps direct cli path", TestCopilotBinaryLauncherKeepsDirectCliPath);
         failed += Run("Copilot inherit env default", TestCopilotInheritEnvironmentDefault);
         failed += Run("Copilot direct timeout validation", TestCopilotDirectTimeoutValidation);
         failed += Run("Copilot chat timeout validation", TestCopilotChatTimeoutValidation);
@@ -702,11 +708,18 @@ internal static partial class Program {
         failed += Run("Prompt narrative mode freedom", TestPromptBuilderNarrativeModeFreedom);
         failed += Run("Prompt merge blocker sections default", TestPromptBuilderMergeBlockerSectionsDefault);
         failed += Run("Prompt merge blocker sections compact default", TestPromptBuilderMergeBlockerSectionsCompactDefault);
+        failed += Run("Prompt includes review history section", TestPromptBuilderIncludesReviewHistorySection);
         failed += Run("Prompt includes ci context section", TestPromptBuilderIncludesCiContextSection);
+        failed += Run("Review history builder includes sticky summary and thread snapshot",
+            TestReviewHistoryBuilderIncludesStickySummaryAndThreadSnapshot);
+        failed += Run("Review history builder builds comment block", TestReviewHistoryBuilderBuildsCommentBlock);
+        failed += Run("Review history artifacts render json and markdown",
+            TestReviewHistoryArtifactsRenderJsonAndMarkdown);
         failed += Run("Redaction defaults", TestRedactionDefaults);
         failed += Run("Review budget note", TestReviewBudgetNote);
         failed += Run("Review budget note empty", TestReviewBudgetNoteEmpty);
         failed += Run("Review budget note comment", TestReviewBudgetNoteComment);
+        failed += Run("Review comment includes history block", TestReviewCommentIncludesHistoryBlock);
         failed += Run("Combine notes", TestCombineNotes);
         failed += Run("Review retry backoff multiplier config", TestReviewRetryBackoffMultiplierConfig);
         failed += Run("Review retry backoff multiplier env", TestReviewRetryBackoffMultiplierEnv);
@@ -722,6 +735,7 @@ internal static partial class Program {
         failed += Run("Context deny invalid regex", TestContextDenyInvalidRegex);
         failed += Run("Context deny timeout", TestContextDenyTimeout);
         failed += Run("Review summary parser", TestReviewSummaryParser);
+        failed += Run("Review summary parser finding extraction", TestReviewSummaryParserFindingExtraction);
         failed += Run("Review summary parser merge blocker detection", TestReviewSummaryParserMergeBlockerDetection);
         failed += Run("Review summary parser merge blocker detection inline section labels",
             TestReviewSummaryParserMergeBlockerDetectionInlineSectionLabels);
@@ -739,6 +753,21 @@ internal static partial class Program {
             TestReviewSummaryParserMergeBlockerDetectionCompactAliases);
         failed += Run("Review summary parser merge blocker detection custom sections",
             TestReviewSummaryParserMergeBlockerDetectionCustomSections);
+        failed += Run("Review swarm shadow plan uses reviewer overrides", TestReviewSwarmShadowPlanUsesReviewerOverrides);
+        failed += Run("Review swarm shadow plan falls back to primary provider and model",
+            TestReviewSwarmShadowPlanFallsBackToPrimaryProviderAndModel);
+        failed += Run("Review swarm shadow reviewer prompt shapes focus", TestReviewSwarmShadowReviewerPromptShapesFocus);
+        failed += Run("Review swarm shadow runner captures failures", TestReviewSwarmShadowRunnerCapturesFailures);
+        failed += Run("Review swarm shadow runner fails closed when configured",
+            TestReviewSwarmShadowRunnerFailsClosedWhenConfigured);
+        failed += Run("Review swarm shadow runner honors max parallel",
+            TestReviewSwarmShadowRunnerHonorsMaxParallel);
+        failed += Run("Review swarm shadow aggregator prompt includes subreviews",
+            TestReviewSwarmShadowAggregatorPromptIncludesSubreviews);
+        failed += Run("Review swarm shadow artifacts render json and markdown",
+            TestReviewSwarmShadowArtifactsRenderJsonAndMarkdown);
+        failed += Run("Review swarm shadow artifacts render metrics json line",
+            TestReviewSwarmShadowArtifactsRenderMetricsJsonLine);
         failed += Run("Review summary parser merge blocker detection allow missing section match",
             TestReviewSummaryParserMergeBlockerDetectionAllowNoSectionMatch);
         failed += Run("Review formatter model usage section", TestReviewFormatterModelUsageSection);
