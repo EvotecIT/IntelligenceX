@@ -621,6 +621,8 @@ internal static partial class Program {
         failed += Run("Build extras ci context auto skips operational-only snippets",
             TestBuildExtrasCiContextAutoSkipsOperationalOnlySnippets);
         failed += Run("Build extras ci context failure is supplemental", TestBuildExtrasCiContextFailureIsSupplemental);
+        failed += Run("Build extras loads issue comments for external history",
+            TestBuildExtrasLoadsIssueCommentsForExternalHistory);
         failed += Run("Build extras ci failure evidence failure is supplemental",
             TestBuildExtrasCiFailureEvidenceFailureIsSupplemental);
         failed += Run("Triage thread hydration uses fallback client when provided",
@@ -653,6 +655,7 @@ internal static partial class Program {
         failed += Run("Review settings load config then env precedence for ciContext and swarm",
             TestReviewSettingsLoadConfigThenEnvPrecedenceForCiContextAndSwarm);
         failed += Run("Review settings load swarm reviewer objects", TestReviewSettingsLoadSwarmReviewerObjects);
+        failed += Run("Review settings env swarm reviewers JSON", TestReviewSettingsEnvSwarmReviewersJson);
         failed += Run("Review settings load config allows zero for non-negative limits",
             TestReviewSettingsLoadConfigAllowsZeroForNonNegativeLimits);
         failed += Run("Review settings env allows zero for non-negative limits",
@@ -768,6 +771,8 @@ internal static partial class Program {
             TestReviewSwarmShadowRunnerHonorsMaxParallel);
         failed += Run("Review swarm shadow aggregator prompt includes subreviews",
             TestReviewSwarmShadowAggregatorPromptIncludesSubreviews);
+        failed += Run("Review swarm shadow aggregator prompt closes truncated fence",
+            TestReviewSwarmShadowAggregatorPromptClosesTruncatedFence);
         failed += Run("Review swarm shadow artifacts render json and markdown",
             TestReviewSwarmShadowArtifactsRenderJsonAndMarkdown);
         failed += Run("Review swarm shadow artifacts render metrics json line",

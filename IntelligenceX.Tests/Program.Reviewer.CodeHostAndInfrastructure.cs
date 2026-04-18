@@ -612,6 +612,47 @@ internal static partial class Program {
         AssertEqual(string.Empty, extras.CiContextSection, "build extras ci context failure remains supplemental");
     }
 
+    private static void TestBuildExtrasLoadsIssueCommentsForExternalHistory() {
+        var issueCommentHits = 0;
+        using var server = new LocalHttpServer(request => {
+            if (request.Path == "/repos/owner/repo/issues/1/comments?per_page=100&page=1&sort=created&direction=desc") {
+                issueCommentHits++;
+                return new HttpResponse("""
+[
+  {
+    "id": 10,
+    "body": "Claude summary: prior finding appears resolved.",
+    "user": { "login": "claude" },
+    "html_url": "https://example.local/comment/10"
+  }
+]
+""");
+            }
+            return null;
+        });
+
+        using var github = new GitHubClient("token", server.BaseUri.ToString().TrimEnd('/'));
+        var settings = new ReviewSettings {
+            IncludeIssueComments = false,
+            IncludeReviewComments = false,
+            IncludeReviewThreads = false,
+            ReviewThreadsAutoResolveAI = false,
+            ReviewThreadsAutoResolveStale = false
+        };
+        settings.History.Enabled = true;
+        settings.History.IncludeIxSummaryHistory = false;
+        settings.History.IncludeExternalBotSummaries = true;
+        settings.History.ExternalBotLogins = new[] { "claude" };
+
+        var context = new PullRequestContext("owner/repo", "owner", "repo", 1, "Title", null, false, "head", "base",
+            Array.Empty<string>(), "owner/repo", false, null);
+
+        var extras = CallBuildExtrasAsync(github, context, settings, false);
+
+        AssertEqual(1, issueCommentHits, "external history forces issue comment load");
+        AssertEqual(1, extras.IssueComments.Count, "external history issue comments available");
+    }
+
     private static void TestBuildExtrasCiFailureEvidenceFailureIsSupplemental() {
         using var server = new LocalHttpServer(request => {
             if (request.Path == "/repos/owner/repo/commits/head/check-runs?per_page=100&page=1") {
@@ -895,7 +936,8 @@ internal static partial class Program {
 
     private static void TestCopilotGhLauncherBuildsWrapperCommand() {
         var settings = new ReviewSettings {
-            CopilotLauncher = "gh"
+            CopilotLauncher = "gh",
+            CopilotCliPath = "custom-copilot"
         };
         var options = new ReviewRunner(settings).BuildCopilotClientOptionsForTests();
 

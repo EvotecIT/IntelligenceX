@@ -291,7 +291,8 @@ public static partial class ReviewerApp {
 
             IssueComment? existingSummary = null;
             string? previousSummary = null;
-            if (settings.SummaryStability || settings.History.Enabled) {
+            if (settings.SummaryStability ||
+                (settings.History.Enabled && settings.History.IncludeIxSummaryHistory)) {
                 existingSummary = await FindExistingSummaryAsync(codeHostReader, context, settings, cancellationToken)
                     .ConfigureAwait(false);
                 if (settings.SummaryStability &&

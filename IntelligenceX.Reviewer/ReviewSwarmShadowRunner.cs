@@ -337,6 +337,46 @@ internal static class ReviewSwarmShadowRunner {
             return text;
         }
         const string suffix = "\n\n[truncated for swarm shadow aggregation]";
-        return text.Substring(0, Math.Max(0, MaxAggregatorContextChars - suffix.Length)) + suffix;
+        var trimmed = text.Substring(0, Math.Max(0, MaxAggregatorContextChars - suffix.Length - 8));
+        var closingFence = ResolveOpenMarkdownFence(trimmed);
+        if (!string.IsNullOrEmpty(closingFence)) {
+            trimmed = string.Concat(trimmed.TrimEnd(), "\n", closingFence);
+        }
+        return trimmed + suffix;
+    }
+
+    private static string ResolveOpenMarkdownFence(string markdown) {
+        var openFenceChar = '\0';
+        var openFenceLength = 0;
+        var lines = markdown.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
+        foreach (var line in lines) {
+            var trimmed = line.TrimStart();
+            if (line.Length - trimmed.Length > 3 || trimmed.Length < 3) {
+                continue;
+            }
+            var fenceChar = trimmed[0];
+            if (fenceChar != '`' && fenceChar != '~') {
+                continue;
+            }
+            var fenceLength = 0;
+            while (fenceLength < trimmed.Length && trimmed[fenceLength] == fenceChar) {
+                fenceLength++;
+            }
+            if (fenceLength < 3) {
+                continue;
+            }
+
+            if (openFenceChar == '\0') {
+                openFenceChar = fenceChar;
+                openFenceLength = fenceLength;
+                continue;
+            }
+            if (fenceChar == openFenceChar && fenceLength >= openFenceLength) {
+                openFenceChar = '\0';
+                openFenceLength = 0;
+            }
+        }
+
+        return openFenceChar == '\0' ? string.Empty : new string(openFenceChar, openFenceLength);
     }
 }

@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using System.Linq;
 using IntelligenceX.Analysis;
 using IntelligenceX.Copilot;
 using IntelligenceX.OpenAI;
@@ -440,9 +441,11 @@ internal sealed partial class ReviewSettings {
 
         var reviewers = GetInput("swarm_reviewers", "REVIEW_SWARM_REVIEWERS");
         if (!string.IsNullOrWhiteSpace(reviewers)) {
-            settings.Swarm.Reviewers = NormalizeSwarmReviewers(ParseList(reviewers), settings.Swarm.Reviewers);
             settings.Swarm.ReviewerSettings =
-                BuildSwarmReviewerSettings(settings.Swarm.Reviewers, settings.Swarm.ReviewerSettings);
+                ParseSwarmReviewerSettingsInput(reviewers, settings.Swarm.ReviewerSettings);
+            settings.Swarm.Reviewers = NormalizeSwarmReviewers(
+                settings.Swarm.ReviewerSettings.Select(static reviewer => reviewer.Id),
+                settings.Swarm.Reviewers);
         }
 
         var maxParallel = GetInput("swarm_max_parallel", "REVIEW_SWARM_MAX_PARALLEL");

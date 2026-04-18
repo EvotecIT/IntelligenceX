@@ -133,11 +133,13 @@ public static partial class ReviewerApp {
                 Console.Error.WriteLine($"Failed to load CI/check context: {ex.Message}");
             }
         }
-        var loadIssueComments = settings.IncludeIssueComments ||
-                                (settings.History.Enabled && settings.History.IncludeIxSummaryHistory);
+        var historyNeedsIssueComments = settings.History.Enabled &&
+                                        (settings.History.IncludeIxSummaryHistory ||
+                                         settings.History.IncludeExternalBotSummaries);
+        var loadIssueComments = settings.IncludeIssueComments || historyNeedsIssueComments;
         if (loadIssueComments) {
             try {
-                var commentLimit = settings.IncludeIssueComments && !(settings.History.Enabled && settings.History.IncludeIxSummaryHistory)
+                var commentLimit = settings.IncludeIssueComments && !historyNeedsIssueComments
                     ? settings.MaxComments
                     : Math.Max(settings.MaxComments, settings.CommentSearchLimit);
                 var comments = await codeHostReader.ListIssueCommentsAsync(context, commentLimit, cancellationToken)

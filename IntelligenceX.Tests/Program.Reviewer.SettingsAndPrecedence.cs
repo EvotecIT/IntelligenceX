@@ -367,6 +367,48 @@ internal static partial class Program {
         }
     }
 
+    private static void TestReviewSettingsEnvSwarmReviewersJson() {
+        var previousReviewers = Environment.GetEnvironmentVariable("REVIEW_SWARM_REVIEWERS");
+        var previousInputReviewers = Environment.GetEnvironmentVariable("INPUT_SWARM_REVIEWERS");
+        try {
+            Environment.SetEnvironmentVariable("REVIEW_SWARM_REVIEWERS", """
+[
+  {
+    "id": "correctness",
+    "provider": "openai",
+    "model": "gpt-5.4",
+    "reasoningEffort": "high"
+  },
+  {
+    "id": "tests",
+    "provider": "copilot",
+    "model": "gpt-5.2"
+  }
+]
+""");
+            Environment.SetEnvironmentVariable("INPUT_SWARM_REVIEWERS", null);
+
+            var settings = ReviewSettings.FromEnvironment();
+
+            AssertSequenceEqual(new[] { "correctness", "tests" }, settings.Swarm.Reviewers.ToArray(),
+                "review settings env swarm json reviewers ids");
+            AssertEqual(2, settings.Swarm.ReviewerSettings.Count, "review settings env swarm json reviewer count");
+            AssertEqual(ReviewProvider.OpenAI, settings.Swarm.ReviewerSettings[0].Provider ?? ReviewProvider.Copilot,
+                "review settings env swarm json first provider");
+            AssertEqual("gpt-5.4", settings.Swarm.ReviewerSettings[0].Model ?? string.Empty,
+                "review settings env swarm json first model");
+            AssertEqual(ReasoningEffort.High, settings.Swarm.ReviewerSettings[0].ReasoningEffort ?? ReasoningEffort.Low,
+                "review settings env swarm json first reasoning effort");
+            AssertEqual(ReviewProvider.Copilot, settings.Swarm.ReviewerSettings[1].Provider ?? ReviewProvider.OpenAI,
+                "review settings env swarm json second provider");
+            AssertEqual("gpt-5.2", settings.Swarm.ReviewerSettings[1].Model ?? string.Empty,
+                "review settings env swarm json second model");
+        } finally {
+            Environment.SetEnvironmentVariable("REVIEW_SWARM_REVIEWERS", previousReviewers);
+            Environment.SetEnvironmentVariable("INPUT_SWARM_REVIEWERS", previousInputReviewers);
+        }
+    }
+
     private static void TestSetupGeneratedReviewerConfigValidatesAndLoadsWithCanonicalRelatedPrs() {
         var previousConfigPath = Environment.GetEnvironmentVariable("REVIEW_CONFIG_PATH");
         var configPath = Path.Combine(Path.GetTempPath(), $"intelligencex-setup-reviewer-config-{Guid.NewGuid():N}.json");

@@ -373,7 +373,7 @@ internal sealed partial class ReviewRunner {
         var launcher = ResolveCopilotLauncher(_settings, CommandExists, GhCopilotWrapperCanLaunchCli);
 
         if (string.Equals(launcher, "gh", StringComparison.OrdinalIgnoreCase)) {
-            options.CliPath = string.IsNullOrWhiteSpace(_settings.CopilotCliPath) ? "gh" : _settings.CopilotCliPath;
+            options.CliPath = "gh";
             options.CliArgs.Add("copilot");
             options.CliArgs.Add("--");
             return "gh";

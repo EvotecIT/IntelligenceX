@@ -307,6 +307,38 @@ internal static partial class Program {
         AssertContainsText(prompt, "Merge overlapping findings", "swarm shadow aggregator prompt contract");
     }
 
+    private static void TestReviewSwarmShadowAggregatorPromptClosesTruncatedFence() {
+        var plan = new ReviewSwarmShadowPlan {
+            Enabled = true,
+            ShadowMode = true,
+            Aggregator = new ReviewSwarmShadowAggregatorPlan {
+                Provider = ReviewProvider.OpenAI,
+                Model = "gpt-5.4"
+            },
+            Reviewers = new[] {
+                new ReviewSwarmShadowReviewerPlan {
+                    Id = "correctness",
+                    Provider = ReviewProvider.OpenAI,
+                    Model = "gpt-5.4"
+                }
+            }
+        };
+        var results = new[] {
+            new ReviewSwarmShadowReviewerResult {
+                Reviewer = plan.Reviewers[0],
+                Succeeded = true,
+                Output = new string('x', 30000)
+            }
+        };
+
+        var prompt = ReviewRunner.BuildSwarmShadowAggregatorPromptForTests("Base prompt", plan, results);
+
+        AssertContainsText(prompt, "[truncated for swarm shadow aggregation]",
+            "swarm shadow aggregator prompt truncation marker");
+        AssertContainsText(prompt, "\n```\n\n[truncated for swarm shadow aggregation]",
+            "swarm shadow aggregator prompt closes markdown fence before truncation marker");
+    }
+
     private static void TestReviewSwarmShadowArtifactsRenderJsonAndMarkdown() {
         var context = new PullRequestContext("owner/repo", "owner", "repo", 12, "Test title", "Body", false,
             "abc1234", "base", Array.Empty<string>(), "owner/repo", false, null);
