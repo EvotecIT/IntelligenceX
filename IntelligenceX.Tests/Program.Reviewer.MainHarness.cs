@@ -775,6 +775,8 @@ internal static partial class Program {
             TestReviewSwarmShadowAggregatorPromptIncludesSubreviews);
         failed += Run("Review swarm shadow aggregator prompt closes truncated fence",
             TestReviewSwarmShadowAggregatorPromptClosesTruncatedFence);
+        failed += Run("Review swarm shadow aggregator prompt keeps context with large base",
+            TestReviewSwarmShadowAggregatorPromptKeepsContextWithLargeBase);
         failed += Run("Review swarm shadow artifacts render json and markdown",
             TestReviewSwarmShadowArtifactsRenderJsonAndMarkdown);
         failed += Run("Review swarm shadow artifacts render metrics json line",

@@ -339,6 +339,41 @@ internal static partial class Program {
             "swarm shadow aggregator prompt closes markdown fence before truncation marker");
     }
 
+    private static void TestReviewSwarmShadowAggregatorPromptKeepsContextWithLargeBase() {
+        var plan = new ReviewSwarmShadowPlan {
+            Enabled = true,
+            ShadowMode = true,
+            Aggregator = new ReviewSwarmShadowAggregatorPlan {
+                Provider = ReviewProvider.OpenAI,
+                Model = "gpt-5.4"
+            },
+            Reviewers = new[] {
+                new ReviewSwarmShadowReviewerPlan {
+                    Id = "correctness",
+                    Provider = ReviewProvider.OpenAI,
+                    Model = "gpt-5.4"
+                }
+            }
+        };
+        var results = new[] {
+            new ReviewSwarmShadowReviewerResult {
+                Reviewer = plan.Reviewers[0],
+                Succeeded = true,
+                Output = "Reviewer evidence that must survive base prompt truncation."
+            }
+        };
+
+        var prompt = ReviewRunner.BuildSwarmShadowAggregatorPromptForTests(
+            "Base prompt\n" + new string('b', 30000), plan, results);
+
+        AssertEqual(true, prompt.Length <= 24000, "swarm shadow aggregator prompt stays bounded");
+        AssertContainsText(prompt, "Swarm Shadow Aggregator", "swarm shadow aggregator instructions survive large base");
+        AssertContainsText(prompt, "Reviewer evidence that must survive base prompt truncation.",
+            "swarm shadow aggregator subreview survives large base");
+        AssertContainsText(prompt, "[truncated for swarm shadow aggregation]",
+            "swarm shadow aggregator marks truncated base prompt");
+    }
+
     private static void TestReviewSwarmShadowArtifactsRenderJsonAndMarkdown() {
         var context = new PullRequestContext("owner/repo", "owner", "repo", 12, "Test title", "Body", false,
             "abc1234", "base", Array.Empty<string>(), "owner/repo", false, null);

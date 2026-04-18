@@ -133,10 +133,25 @@ internal static class ReviewSwarmShadowRunner {
 
     internal static string BuildAggregatorPrompt(string basePrompt, ReviewSwarmShadowPlan plan,
         IReadOnlyList<ReviewSwarmShadowReviewerResult> results) {
+        var aggregatorContext = TrimForAggregator(BuildAggregatorContext(plan, results));
+        var normalizedBasePrompt = basePrompt.TrimEnd();
+        if (normalizedBasePrompt.Length == 0) {
+            return aggregatorContext;
+        }
+
+        const string separator = "\n\n";
+        var basePromptBudget = MaxAggregatorContextChars - aggregatorContext.Length - separator.Length;
+        if (basePromptBudget <= 0) {
+            return aggregatorContext;
+        }
+
+        return string.Concat(TrimForAggregator(normalizedBasePrompt, basePromptBudget).TrimEnd(),
+            separator, aggregatorContext);
+    }
+
+    private static string BuildAggregatorContext(ReviewSwarmShadowPlan plan,
+        IReadOnlyList<ReviewSwarmShadowReviewerResult> results) {
         var sb = new StringBuilder();
-        sb.Append(basePrompt.TrimEnd());
-        sb.AppendLine();
-        sb.AppendLine();
         sb.AppendLine("## Swarm Shadow Aggregator");
         sb.AppendLine("You are aggregating diagnostic-only sub-review outputs. This result will not be posted publicly yet.");
         sb.AppendLine("- Merge overlapping findings into one item.");
@@ -332,17 +347,27 @@ internal static class ReviewSwarmShadowRunner {
         return "correctness, reliability, merge blockers, and user-visible regressions.";
     }
 
-    private static string TrimForAggregator(string text) {
-        if (text.Length <= MaxAggregatorContextChars) {
+    private static string TrimForAggregator(string text) => TrimForAggregator(text, MaxAggregatorContextChars);
+
+    private static string TrimForAggregator(string text, int maxChars) {
+        if (maxChars <= 0) {
+            return string.Empty;
+        }
+        if (text.Length <= maxChars) {
             return text;
         }
         const string suffix = "\n\n[truncated for swarm shadow aggregation]";
-        var trimmed = text.Substring(0, Math.Max(0, MaxAggregatorContextChars - suffix.Length - 8));
+        if (maxChars <= suffix.Length + 8) {
+            return text.Substring(0, maxChars);
+        }
+
+        var trimmed = text.Substring(0, Math.Max(0, maxChars - suffix.Length - 8));
         var closingFence = ResolveOpenMarkdownFence(trimmed);
         if (!string.IsNullOrEmpty(closingFence)) {
             trimmed = string.Concat(trimmed.TrimEnd(), "\n", closingFence);
         }
-        return trimmed + suffix;
+        var result = trimmed + suffix;
+        return result.Length <= maxChars ? result : result.Substring(0, maxChars);
     }
 
     private static string ResolveOpenMarkdownFence(string markdown) {
