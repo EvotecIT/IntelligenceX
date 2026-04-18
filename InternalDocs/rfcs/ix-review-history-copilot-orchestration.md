@@ -18,7 +18,7 @@ The existing swarm RFC correctly identifies the missing orchestration layer, but
 
 There is also a transport risk:
 - the current Copilot integration launches the CLI as an embedded server process,
-- while the current Copilot CLI help surface emphasizes `--acp` and the current GitHub CLI (`gh copilot`) is now a wrapper/downloader entrypoint.
+- while the current Copilot CLI help surface emphasizes `--acp` and the current GitHub CLI (`gh copilot`) is a wrapper entrypoint whose installer/bootstrap behavior is not guaranteed on every runner.
 
 That means the next work should not jump straight to "publish swarm comments." The next work should establish stable building blocks first.
 
@@ -180,7 +180,7 @@ Compatibility rules:
 ## Problem 3: Copilot launch path needs explicit validation
 
 The current reviewer transport launches Copilot as a local CLI process. That remains useful, but the surrounding ecosystem changed:
-- `gh copilot` can now launch or download Copilot CLI,
+- `gh copilot` can launch Copilot CLI when the wrapper can already find or provision it,
 - Copilot CLI model selection is explicit in the public CLI surface,
 - and the CLI help surface now centers `--acp`.
 
@@ -213,7 +213,7 @@ Suggested shape:
 Suggested semantics:
 - `binary`: execute `copilot` directly
 - `gh`: execute `gh copilot --`
-- `auto`: prefer validated `gh copilot` when available, otherwise fall back to direct binary
+- `auto`: use the direct binary when present, otherwise choose `gh copilot --` only after a wrapper capability probe succeeds
 
 Validation requirements before enabling `gh` by default:
 - confirm server/protocol compatibility for reviewer transport mode
@@ -279,6 +279,7 @@ Current status:
 - bounded review-history JSON/Markdown artifacts are written under `artifacts/reviewer/history/` when `review.history.artifacts` is enabled
 - bounded JSON/Markdown comparison artifacts plus append-only JSONL metrics are written under `artifacts/reviewer/swarm-shadow/` when `review.swarm.metrics` is enabled
 - managed workflow wrappers/templates pass through history, Copilot model/launcher, and swarm-shadow overrides to the reusable workflow
+- `copilot.launcher=auto` now probes whether `gh copilot -- --version` can actually launch the CLI before selecting the wrapper path
 - public output still comes from the single-review path
 - deeper longitudinal history analysis across uploaded workflow artifacts remains pending
 

@@ -661,9 +661,9 @@ GitHub Actions input/env aliases:
 Use this to forward selected environment variables into the Copilot CLI process without committing secrets.
 By default the CLI process **does** inherit the runner environment. Set `inheritEnvironment` to `false` and use
 `envAllowlist`/`env` to pass only what the CLI needs when you want a strict environment.
-Set `launcher` to `gh` to run Copilot through `gh copilot --`, which can use the GitHub CLI wrapper/downloader path
-when the standalone `copilot` binary is not already present. Set `launcher` to `auto` to use the standalone binary
-when it is on `PATH`, otherwise fall back to `gh copilot --`.
+Set `launcher` to `gh` to run Copilot through `gh copilot --` when that wrapper can already launch the Copilot CLI.
+Set `launcher` to `auto` to use the standalone binary when it is on `PATH` and only fall back to `gh copilot --`
+after a wrapper capability probe succeeds. This avoids assuming GitHub CLI can bootstrap Copilot on every runner.
 
 ```json
 {

@@ -665,6 +665,10 @@ internal static partial class Program {
         failed += Run("Copilot env allowlist config", TestCopilotEnvAllowlistConfig);
         failed += Run("Copilot launcher env", TestCopilotLauncherEnv);
         failed += Run("Copilot gh launcher builds wrapper command", TestCopilotGhLauncherBuildsWrapperCommand);
+        failed += Run("Copilot auto launcher requires usable gh wrapper",
+            TestCopilotAutoLauncherRequiresUsableGhWrapper);
+        failed += Run("Copilot auto launcher uses gh when wrapper can launch CLI",
+            TestCopilotAutoLauncherUsesGhWhenWrapperCanLaunchCli);
         failed += Run("Copilot launcher diagnostics describe resolved command",
             TestCopilotLauncherDiagnosticsDescribeResolvedCommand);
         failed += Run("Copilot binary launcher keeps direct cli path", TestCopilotBinaryLauncherKeepsDirectCliPath);

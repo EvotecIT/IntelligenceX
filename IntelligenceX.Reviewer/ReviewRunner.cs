@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -369,10 +370,7 @@ internal sealed partial class ReviewRunner {
     }
 
     private string ApplyCopilotLauncher(CopilotClientOptions options) {
-        var launcher = ReviewSettings.NormalizeCopilotLauncher(_settings.CopilotLauncher, "binary");
-        if (string.Equals(launcher, "auto", StringComparison.OrdinalIgnoreCase)) {
-            launcher = ShouldUseGhCopilotLauncher(_settings) ? "gh" : "binary";
-        }
+        var launcher = ResolveCopilotLauncher(_settings, CommandExists, GhCopilotWrapperCanLaunchCli);
 
         if (string.Equals(launcher, "gh", StringComparison.OrdinalIgnoreCase)) {
             options.CliPath = string.IsNullOrWhiteSpace(_settings.CopilotCliPath) ? "gh" : _settings.CopilotCliPath;
@@ -385,6 +383,28 @@ internal sealed partial class ReviewRunner {
             options.CliPath = _settings.CopilotCliPath;
         }
         return "binary";
+    }
+
+    internal static string ResolveCopilotLauncherForTests(ReviewSettings settings, bool copilotExists, bool ghExists,
+        bool ghCopilotWrapperCanLaunchCli) =>
+        ResolveCopilotLauncher(settings,
+            command => string.Equals(command, "copilot", StringComparison.OrdinalIgnoreCase)
+                ? copilotExists
+                : ghExists,
+            () => ghCopilotWrapperCanLaunchCli);
+
+    private static string ResolveCopilotLauncher(ReviewSettings settings, Func<string, bool> commandExists,
+        Func<bool> ghCopilotWrapperCanLaunchCli) {
+        var launcher = ReviewSettings.NormalizeCopilotLauncher(settings.CopilotLauncher, "binary");
+        if (!string.Equals(launcher, "auto", StringComparison.OrdinalIgnoreCase)) {
+            return launcher;
+        }
+
+        if (!string.IsNullOrWhiteSpace(settings.CopilotCliPath) || commandExists("copilot") || !commandExists("gh")) {
+            return "binary";
+        }
+
+        return ghCopilotWrapperCanLaunchCli() ? "gh" : "binary";
     }
 
     private string BuildCopilotLauncherDiagnostic(string launcher, CopilotClientOptions options) {
@@ -676,13 +696,6 @@ internal sealed partial class ReviewRunner {
         }
     }
 
-    private static bool ShouldUseGhCopilotLauncher(ReviewSettings settings) {
-        if (!string.IsNullOrWhiteSpace(settings.CopilotCliPath)) {
-            return false;
-        }
-        return !CommandExists("copilot") && CommandExists("gh");
-    }
-
     private static bool CommandExists(string command) {
         var path = Environment.GetEnvironmentVariable("PATH");
         if (string.IsNullOrWhiteSpace(path)) {
@@ -710,5 +723,44 @@ internal sealed partial class ReviewRunner {
         }
 
         return false;
+    }
+
+    private static bool GhCopilotWrapperCanLaunchCli() {
+        try {
+            using var process = new Process();
+            process.StartInfo = new ProcessStartInfo {
+                FileName = "gh",
+                RedirectStandardError = true,
+                RedirectStandardOutput = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            process.StartInfo.ArgumentList.Add("copilot");
+            process.StartInfo.ArgumentList.Add("--");
+            process.StartInfo.ArgumentList.Add("--version");
+            if (!process.Start()) {
+                return false;
+            }
+
+            if (!process.WaitForExit(5000)) {
+                try {
+                    process.Kill(entireProcessTree: true);
+                } catch {
+                    // Best-effort cleanup for a capability probe.
+                }
+                return false;
+            }
+
+            var output = process.StandardOutput.ReadToEnd();
+            var error = process.StandardError.ReadToEnd();
+            var combined = string.Concat(output, "\n", error);
+            if (combined.Contains("not installed", StringComparison.OrdinalIgnoreCase)) {
+                return false;
+            }
+            return process.ExitCode == 0 &&
+                combined.Contains("copilot", StringComparison.OrdinalIgnoreCase);
+        } catch {
+            return false;
+        }
     }
 }

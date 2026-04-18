@@ -903,6 +903,28 @@ internal static partial class Program {
         AssertSequenceEqual(new[] { "copilot", "--" }, options.CliArgs.ToArray(), "copilot gh launcher args");
     }
 
+    private static void TestCopilotAutoLauncherRequiresUsableGhWrapper() {
+        var settings = new ReviewSettings {
+            CopilotLauncher = "auto"
+        };
+
+        var resolved = ReviewRunner.ResolveCopilotLauncherForTests(settings,
+            copilotExists: false, ghExists: true, ghCopilotWrapperCanLaunchCli: false);
+
+        AssertEqual("binary", resolved, "copilot auto launcher does not assume gh can bootstrap copilot");
+    }
+
+    private static void TestCopilotAutoLauncherUsesGhWhenWrapperCanLaunchCli() {
+        var settings = new ReviewSettings {
+            CopilotLauncher = "auto"
+        };
+
+        var resolved = ReviewRunner.ResolveCopilotLauncherForTests(settings,
+            copilotExists: false, ghExists: true, ghCopilotWrapperCanLaunchCli: true);
+
+        AssertEqual("gh", resolved, "copilot auto launcher uses gh only after wrapper probe succeeds");
+    }
+
     private static void TestCopilotLauncherDiagnosticsDescribeResolvedCommand() {
         var originalError = Console.Error;
         using var errorWriter = new StringWriter();
