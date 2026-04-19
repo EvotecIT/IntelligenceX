@@ -139,6 +139,7 @@ jobs:
         AssertContainsText(content, "usage_budget_allow_credits:", "workflow template usage budget credits input");
         AssertContainsText(content, "usage_budget_allow_weekly_limit:",
             "workflow template usage budget weekly input");
+        AssertContainsText(content, "agent_profile:", "workflow template agent profile input");
         AssertContainsText(content, "copilot_model:", "workflow template copilot model input");
         AssertContainsText(content, "copilot_launcher:", "workflow template copilot launcher input");
         AssertContainsText(content, "history_enabled:", "workflow template history enabled input");
@@ -161,6 +162,8 @@ jobs:
             "workflow template usage budget credits pass-through");
         AssertContainsText(content, "usage_budget_allow_weekly_limit: ${{ inputs.usage_budget_allow_weekly_limit }}",
             "workflow template usage budget weekly pass-through");
+        AssertContainsText(content, "agent_profile: ${{ inputs.agent_profile || vars.IX_REVIEW_AGENT_PROFILE }}",
+            "workflow template agent profile input overrides repo variable");
         AssertContainsText(content, "copilot_model: ${{ inputs.copilot_model }}",
             "workflow template copilot model pass-through");
         AssertContainsText(content, "copilot_launcher: ${{ inputs.copilot_launcher }}",
@@ -214,6 +217,10 @@ jobs:
             "wrapper workflow stays within GitHub workflow_dispatch input limit");
         AssertContainsText(wrapperContent, "reviewer_source: source",
             "wrapper workflow keeps PR reviews on repo source to avoid release drift");
+        AssertContainsText(wrapperContent, "agent_profile:",
+            "wrapper workflow exposes agent profile manual override");
+        AssertContainsText(wrapperContent, "agent_profile: ${{ inputs.agent_profile || vars.IX_REVIEW_AGENT_PROFILE }}",
+            "wrapper workflow lets explicit agent profile input override repo variable");
         AssertContainsText(wrapperContent, "copilot_launcher: ${{ inputs.copilot_launcher }}",
             "wrapper workflow passes copilot launcher through to reusable workflow");
         AssertContainsText(wrapperContent, "history_enabled: ${{ inputs.history_enabled }}",

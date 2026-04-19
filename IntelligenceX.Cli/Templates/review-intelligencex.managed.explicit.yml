@@ -20,7 +20,7 @@ review:
     repo: ${{ github.event.pull_request.number && github.repository || inputs.repo }}
     pr_number: ${{ github.event.pull_request.number || inputs.pr_number }}
     provider: {{Provider}}
-    agent_profile: ${{ vars.IX_REVIEW_AGENT_PROFILE }}
+    agent_profile: ${{ inputs.agent_profile || vars.IX_REVIEW_AGENT_PROFILE }}
     model: {{Model}}
     openai_model: ${{ inputs.openai_model }}
     copilot_model: ${{ inputs.copilot_model }}
