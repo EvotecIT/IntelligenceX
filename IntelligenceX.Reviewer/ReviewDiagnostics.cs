@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Text;
+using IntelligenceX.Copilot;
 using IntelligenceX.OpenAI;
 using IntelligenceX.OpenAI.Auth;
 using IntelligenceX.Telemetry;
@@ -162,7 +163,11 @@ internal static class ReviewDiagnostics {
         if (IsResponseEnded(root)) {
             return new ReviewErrorInfo(ReviewErrorCategory.ResponseEnded, true, "Response ended prematurely");
         }
+        var message = root.Message ?? string.Empty;
         if (root is UnauthorizedAccessException) {
+            if (IsCopilotAuthMessage(message)) {
+                return new ReviewErrorInfo(ReviewErrorCategory.Auth, false, "Copilot authentication failed");
+            }
             return new ReviewErrorInfo(ReviewErrorCategory.Auth, false, "Unauthorized");
         }
         if (root is HttpRequestException httpRequest) {
@@ -175,7 +180,6 @@ internal static class ReviewDiagnostics {
         if (root is IOException) {
             return new ReviewErrorInfo(ReviewErrorCategory.Network, true, "I/O error");
         }
-        var message = root.Message ?? string.Empty;
         if (message.Contains("auth bundle", StringComparison.OrdinalIgnoreCase) ||
             message.Contains("INTELLIGENCEX_AUTH", StringComparison.OrdinalIgnoreCase)) {
             return new ReviewErrorInfo(ReviewErrorCategory.Auth, false, AuthBundleSummary);
@@ -190,9 +194,7 @@ internal static class ReviewDiagnostics {
             message.Contains("token refresh", StringComparison.OrdinalIgnoreCase)) {
             return new ReviewErrorInfo(ReviewErrorCategory.Auth, false, AuthRefreshFailedSummary);
         }
-        if (message.Contains("not authenticated", StringComparison.OrdinalIgnoreCase) ||
-            message.Contains("Copilot", StringComparison.OrdinalIgnoreCase) &&
-            message.Contains("sign in", StringComparison.OrdinalIgnoreCase)) {
+        if (IsCopilotAuthMessage(message)) {
             return new ReviewErrorInfo(ReviewErrorCategory.Auth, false, "Copilot authentication failed");
         }
         if (message.Contains("configuration", StringComparison.OrdinalIgnoreCase) ||
@@ -328,9 +330,21 @@ internal static class ReviewDiagnostics {
 
     private static string DescribeModel(ReviewSettings settings) {
         if (settings.Provider == ReviewProvider.Copilot) {
-            return ReviewRunner.ResolveCopilotModel(settings) ?? "Copilot CLI default";
+            var model = ReviewRunner.ResolveCopilotModel(settings);
+            if (!string.IsNullOrWhiteSpace(model)) {
+                return model!;
+            }
+            return settings.CopilotTransport == CopilotTransportKind.Direct
+                ? "Copilot direct model required"
+                : "Copilot CLI default";
         }
         return settings.Model;
+    }
+
+    private static bool IsCopilotAuthMessage(string message) {
+        return message.Contains("Copilot", StringComparison.OrdinalIgnoreCase) &&
+               (message.Contains("not authenticated", StringComparison.OrdinalIgnoreCase) ||
+                message.Contains("sign in", StringComparison.OrdinalIgnoreCase));
     }
 
     internal static WorkflowFailureInfo ClassifyWorkflowFailureLog(string? logText) {

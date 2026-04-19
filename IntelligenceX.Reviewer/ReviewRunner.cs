@@ -547,7 +547,7 @@ internal sealed partial class ReviewRunner {
         sb.Append(" If this run uses the GitHub CLI wrapper, try copilot.launcher=binary with copilot.autoInstall=true; ");
         sb.Append("the wrapper can launch the CLI but still hang in reviewer server mode on some runners.");
 
-        AppendCopilotStderr(sb, stderrLines, stderrLock);
+        AppendCopilotStderr(sb, stderrLines, stderrLock, include: _settings.Diagnostics);
         return sb.ToString().TrimEnd();
     }
 
@@ -558,7 +558,7 @@ internal sealed partial class ReviewRunner {
         sb.Append(" seconds while starting the CLI and checking auth/status. ");
         sb.Append(launcherDiagnostic);
         sb.Append(" This usually means the CLI server mode is waiting on interactive auth or is not responding in GitHub Actions.");
-        AppendCopilotStderr(sb, stderrLines, stderrLock);
+        AppendCopilotStderr(sb, stderrLines, stderrLock, include: _settings.Diagnostics);
         return sb.ToString().TrimEnd();
     }
 
@@ -572,7 +572,7 @@ internal sealed partial class ReviewRunner {
             sb.Append('.');
         }
         sb.Append(" Sign in on the runner before using provider=copilot, use a self-hosted runner with a persisted Copilot CLI session, or configure copilot.transport=direct with an explicit token-backed endpoint.");
-        AppendCopilotStderr(sb, stderrLines, stderrLock);
+        AppendCopilotStderr(sb, stderrLines, stderrLock, include: _settings.Diagnostics);
         return sb.ToString().TrimEnd();
     }
 
@@ -608,7 +608,10 @@ internal sealed partial class ReviewRunner {
                 : $"Copilot model '{model}' is not available to this account. Available models: {available}.");
     }
 
-    private static void AppendCopilotStderr(StringBuilder sb, Queue<string> stderrLines, object stderrLock) {
+    private static void AppendCopilotStderr(StringBuilder sb, Queue<string> stderrLines, object stderrLock, bool include) {
+        if (!include) {
+            return;
+        }
         List<string> lines;
         lock (stderrLock) {
             lines = new List<string>(stderrLines);
