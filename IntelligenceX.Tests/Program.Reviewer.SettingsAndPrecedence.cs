@@ -464,6 +464,27 @@ internal static partial class Program {
             AssertEqual(false, string.Equals("https://compat.example/v1", settings.AnthropicBaseUrl,
                     StringComparison.OrdinalIgnoreCase),
                 "review settings compatible agent profile does not bleed base url into anthropic config");
+
+            Environment.SetEnvironmentVariable("REVIEW_AGENT_PROFILE", "missing-profile");
+            AssertThrows<InvalidOperationException>(() => ReviewSettings.Load(),
+                "review settings unknown env agent profile");
+
+            Environment.SetEnvironmentVariable("REVIEW_AGENT_PROFILE", null);
+            File.WriteAllText(configPath, """
+{
+  "review": {
+    "agentProfile": "missing-profile",
+    "agentProfiles": {
+      "known-profile": {
+        "provider": "openai",
+        "model": "gpt-5.4"
+      }
+    }
+  }
+}
+""");
+            AssertThrows<InvalidOperationException>(() => ReviewSettings.Load(),
+                "review settings unknown config agent profile");
         } finally {
             Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", previousConfigPath);
             Environment.SetEnvironmentVariable("REVIEW_AGENT_PROFILE", previousAgentProfile);

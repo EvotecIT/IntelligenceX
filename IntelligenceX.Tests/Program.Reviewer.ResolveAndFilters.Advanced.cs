@@ -165,6 +165,26 @@ internal static partial class Program {
             "swarm shadow execution clone preserves profile auto install");
         AssertSequenceEqual(new[] { "COPILOT_GITHUB_TOKEN" }, laneSettings.CopilotEnvAllowlist.ToArray(),
             "swarm shadow execution clone preserves profile env allowlist");
+
+        settings.Swarm.ReviewerSettings = new[] {
+            new ReviewSwarmReviewerSettings {
+                Id = "missing",
+                AgentProfile = "missing-profile"
+            }
+        };
+        settings.Swarm.Aggregator.AgentProfile = null;
+        AssertThrows<InvalidOperationException>(() => ReviewRunner.BuildSwarmShadowPlanForTests(settings),
+            "swarm shadow missing reviewer agent profile");
+
+        settings.Swarm.ReviewerSettings = new[] {
+            new ReviewSwarmReviewerSettings {
+                Id = "correctness",
+                AgentProfile = "copilot-gpt54"
+            }
+        };
+        settings.Swarm.Aggregator.AgentProfile = "missing-profile";
+        AssertThrows<InvalidOperationException>(() => ReviewRunner.BuildSwarmShadowPlanForTests(settings),
+            "swarm shadow missing aggregator agent profile");
     }
 
     private static void TestReviewSwarmShadowPlanFallsBackToPrimaryProviderAndModel() {

@@ -13,10 +13,11 @@ internal sealed partial class ReviewSettings {
     }
 
     internal void ApplyAgentProfile(string? id) {
-        if (!TryGetAgentProfile(id, out var profile)) {
+        if (string.IsNullOrWhiteSpace(id)) {
             return;
         }
 
+        var profile = RequireAgentProfile(id, "review.agentProfile");
         ApplyAgentProfile(profile);
     }
 
@@ -24,6 +25,19 @@ internal sealed partial class ReviewSettings {
         if (!string.IsNullOrWhiteSpace(AgentProfile)) {
             ApplyAgentProfile(AgentProfile);
         }
+    }
+
+    internal ReviewAgentProfileSettings RequireAgentProfile(string? id, string source) {
+        if (string.IsNullOrWhiteSpace(id)) {
+            throw new InvalidOperationException($"{source} did not provide an agent profile id.");
+        }
+
+        if (TryGetAgentProfile(id, out var profile)) {
+            return profile;
+        }
+
+        throw new InvalidOperationException(
+            $"Unknown review agent profile '{id.Trim()}' from {source}. Define it under review.agentProfiles or remove the profile override.");
     }
 
     internal void ApplyAgentProfile(ReviewAgentProfileSettings profile) {
