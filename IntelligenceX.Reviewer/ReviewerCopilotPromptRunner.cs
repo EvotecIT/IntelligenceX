@@ -28,6 +28,7 @@ internal sealed class ReviewerCopilotPromptRunner {
         }
 
         _options.Validate();
+        ValidateGitHubActionsAuth(_options);
         var cliPath = await ResolveCliPathOrInstallAsync(_options, cancellationToken).ConfigureAwait(false);
         var logDirectory = TryPrepareLogDirectory(_options);
         var disableBuiltinMcps = true;
@@ -292,6 +293,79 @@ internal sealed class ReviewerCopilotPromptRunner {
         var args = new string[startInfo.ArgumentList.Count];
         startInfo.ArgumentList.CopyTo(args, 0);
         return args;
+    }
+
+    internal static string? ValidateGitHubActionsAuthForTests(CopilotClientOptions options,
+        IReadOnlyDictionary<string, string?> environment) {
+        return ValidateGitHubActionsAuth(options, environment);
+    }
+
+    private static void ValidateGitHubActionsAuth(CopilotClientOptions options) {
+        var message = ValidateGitHubActionsAuth(options, null);
+        if (!string.IsNullOrWhiteSpace(message)) {
+            throw new InvalidOperationException(message);
+        }
+    }
+
+    private static string? ValidateGitHubActionsAuth(CopilotClientOptions options,
+        IReadOnlyDictionary<string, string?>? environment) {
+        if (!IsTruthy(GetEnvironment(options, environment, "GITHUB_ACTIONS"))) {
+            return null;
+        }
+        if (HasCopilotProviderOverride(options, environment)) {
+            return null;
+        }
+
+        var copilotToken = GetEnvironment(options, environment, "COPILOT_GITHUB_TOKEN");
+        if (!string.IsNullOrWhiteSpace(copilotToken) && IsSupportedCopilotToken(copilotToken)) {
+            return null;
+        }
+
+        var ghToken = GetEnvironment(options, environment, "GH_TOKEN");
+        if (!string.IsNullOrWhiteSpace(ghToken) && IsSupportedCopilotToken(ghToken)) {
+            return null;
+        }
+
+        var githubToken = GetEnvironment(options, environment, "GITHUB_TOKEN");
+        if (!string.IsNullOrWhiteSpace(githubToken) && IsSupportedCopilotToken(githubToken)) {
+            return null;
+        }
+
+        if (!string.IsNullOrWhiteSpace(copilotToken)) {
+            return "Copilot CLI in GitHub Actions needs COPILOT_GITHUB_TOKEN to be an OAuth, fine-grained PAT with Copilot Requests, or GitHub App user-to-server token. GitHub App installation tokens and the built-in Actions GITHUB_TOKEN are not supported by Copilot CLI model requests.";
+        }
+
+        return "Copilot CLI in GitHub Actions needs COPILOT_GITHUB_TOKEN set to a fine-grained GitHub token with the Copilot Requests permission. GitHub App installation tokens and the built-in Actions GITHUB_TOKEN are not supported by Copilot CLI model requests.";
+    }
+
+    private static bool HasCopilotProviderOverride(CopilotClientOptions options,
+        IReadOnlyDictionary<string, string?>? environment) {
+        return !string.IsNullOrWhiteSpace(GetEnvironment(options, environment, "COPILOT_PROVIDER_BASE_URL")) ||
+               !string.IsNullOrWhiteSpace(GetEnvironment(options, environment, "COPILOT_PROVIDER_API_KEY"));
+    }
+
+    private static string? GetEnvironment(CopilotClientOptions options, IReadOnlyDictionary<string, string?>? environment,
+        string name) {
+        if (options.Environment.TryGetValue(name, out var configured)) {
+            return configured;
+        }
+        if (environment is not null && environment.TryGetValue(name, out var supplied)) {
+            return supplied;
+        }
+        return Environment.GetEnvironmentVariable(name);
+    }
+
+    private static bool IsSupportedCopilotToken(string token) {
+        var trimmed = token.Trim();
+        return trimmed.StartsWith("github_pat_", StringComparison.Ordinal) ||
+               trimmed.StartsWith("gho_", StringComparison.Ordinal) ||
+               trimmed.StartsWith("ghu_", StringComparison.Ordinal);
+    }
+
+    private static bool IsTruthy(string? value) {
+        return string.Equals(value, "true", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(value, "1", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(value, "yes", StringComparison.OrdinalIgnoreCase);
     }
 
     internal static bool IsUnsupportedDisableBuiltinMcpsFlagForTests(string stdout, string stderr) =>

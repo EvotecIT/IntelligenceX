@@ -515,6 +515,7 @@ on:
     secrets:
       INTELLIGENCEX_AUTH_B64: { required: false }
       ANTHROPIC_API_KEY: { required: false }
+      COPILOT_GITHUB_TOKEN: { required: false }
       INTELLIGENCEX_GITHUB_APP_ID: { required: false }
       INTELLIGENCEX_GITHUB_APP_PRIVATE_KEY: { required: false }
 jobs:
@@ -523,6 +524,7 @@ jobs:
     env:
       INTELLIGENCEX_APP_ID: ${{ secrets.INTELLIGENCEX_GITHUB_APP_ID }}
       INTELLIGENCEX_APP_KEY: ${{ secrets.INTELLIGENCEX_GITHUB_APP_PRIVATE_KEY }}
+      COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       INPUT_PROVIDER: ${{ inputs.provider }}
       INPUT_MODEL: ${{ inputs.model }}

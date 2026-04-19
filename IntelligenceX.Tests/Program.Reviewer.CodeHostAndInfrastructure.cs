@@ -1108,6 +1108,30 @@ internal static partial class Program {
             "copilot prompt keeps supported available-tools warning non-fatal");
     }
 
+    private static void TestCopilotPromptRunnerRequiresActionsCopilotToken() {
+        var options = new IntelligenceX.Copilot.CopilotClientOptions();
+        var actionsEnvironment = new Dictionary<string, string?> {
+            ["GITHUB_ACTIONS"] = "true",
+            ["GITHUB_TOKEN"] = "ghs_installation_token"
+        };
+
+        var missing = ReviewerCopilotPromptRunner.ValidateGitHubActionsAuthForTests(options, actionsEnvironment);
+
+        AssertContainsText(missing ?? string.Empty, "COPILOT_GITHUB_TOKEN",
+            "copilot prompt requires a Copilot-specific token in Actions");
+
+        actionsEnvironment["COPILOT_GITHUB_TOKEN"] = "github_pat_supported";
+        var supported = ReviewerCopilotPromptRunner.ValidateGitHubActionsAuthForTests(options, actionsEnvironment);
+
+        AssertEqual(null, supported, "copilot prompt accepts fine-grained PAT token in Actions");
+
+        actionsEnvironment["COPILOT_GITHUB_TOKEN"] = null;
+        actionsEnvironment["COPILOT_PROVIDER_BASE_URL"] = "https://models.example.test";
+        var byok = ReviewerCopilotPromptRunner.ValidateGitHubActionsAuthForTests(options, actionsEnvironment);
+
+        AssertEqual(null, byok, "copilot prompt allows BYOK provider override without GitHub Copilot token");
+    }
+
     private static void TestCopilotGhLauncherBuildsWrapperCommand() {
         var settings = new ReviewSettings {
             CopilotLauncher = "gh",

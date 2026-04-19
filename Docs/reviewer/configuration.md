@@ -671,6 +671,10 @@ Use `autoInstall` with the standalone path when the runner does not already have
 Set `model` only when you want to force a Copilot CLI model id. When `provider` is `copilot` and only the generic
 `review.model` is the default OpenAI value, the reviewer leaves Copilot model selection to the CLI default.
 
+For GitHub Actions runs, set a repository or organization Actions secret named `COPILOT_GITHUB_TOKEN` to a
+fine-grained GitHub token with the `Copilot Requests` permission. The built-in Actions `GITHUB_TOKEN` and GitHub App
+installation tokens are not sufficient for Copilot CLI model requests.
+
 ```json
 {
   "review": {
