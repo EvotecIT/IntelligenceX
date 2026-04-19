@@ -123,6 +123,10 @@ internal static class ReviewHistoryBuilder {
     private static void AppendSummaryRounds(List<ReviewHistoryRound> rounds, List<ReviewHistoryFinding> openFindings,
         List<ReviewHistoryFinding> resolvedSinceLastRound, IReadOnlyList<IssueComment> issueComments, string currentHeadSha,
         ReviewSettings settings) {
+        if (settings.History.MaxRounds <= 0) {
+            return;
+        }
+
         var ownedSummaries = new List<IssueComment>();
         foreach (var comment in issueComments) {
             if (!ReviewerApp.IsOwnedSummaryComment(comment) || string.IsNullOrWhiteSpace(comment.Body)) {
@@ -130,7 +134,7 @@ internal static class ReviewHistoryBuilder {
             }
 
             ownedSummaries.Add(comment);
-            if (settings.History.MaxRounds > 0 && ownedSummaries.Count >= settings.History.MaxRounds) {
+            if (ownedSummaries.Count >= settings.History.MaxRounds) {
                 break;
             }
         }

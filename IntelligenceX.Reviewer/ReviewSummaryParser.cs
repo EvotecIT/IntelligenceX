@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text;
 
 namespace IntelligenceX.Reviewer;
 
@@ -182,13 +183,34 @@ internal static class ReviewSummaryParser {
     }
 
     private static string NormalizeHeader(string header) {
-        return header.Trim().ToLowerInvariant();
+        var trimmed = header.Trim();
+        while (trimmed.StartsWith("#", StringComparison.Ordinal)) {
+            trimmed = trimmed.Substring(1).TrimStart();
+        }
+
+        var sb = new StringBuilder(trimmed.Length);
+        var pendingSpace = false;
+        foreach (var ch in trimmed.ToLowerInvariant()) {
+            if (char.IsLetterOrDigit(ch)) {
+                if (pendingSpace && sb.Length > 0) {
+                    sb.Append(' ');
+                }
+                sb.Append(ch);
+                pendingSpace = false;
+            } else {
+                pendingSpace = true;
+            }
+        }
+
+        return sb.ToString().Trim();
     }
 
     private static string MatchConfiguredSection(string header, IReadOnlyList<string> configuredSections) {
         var normalizedHeader = NormalizeHeader(header);
         foreach (var section in configuredSections) {
-            if (normalizedHeader.Contains(section, StringComparison.OrdinalIgnoreCase)) {
+            var normalizedSection = NormalizeHeader(section);
+            if (normalizedHeader.Equals(normalizedSection, StringComparison.OrdinalIgnoreCase) ||
+                normalizedHeader.StartsWith(normalizedSection + " ", StringComparison.OrdinalIgnoreCase)) {
                 return section;
             }
         }

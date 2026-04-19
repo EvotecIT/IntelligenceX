@@ -722,6 +722,8 @@ internal static partial class Program {
         failed += Run("Review history builder includes sticky summary and thread snapshot",
             TestReviewHistoryBuilderIncludesStickySummaryAndThreadSnapshot);
         failed += Run("Review history builder builds comment block", TestReviewHistoryBuilderBuildsCommentBlock);
+        failed += Run("Review summary stability drops history progress block",
+            TestReviewSummaryStabilityDropsHistoryProgressBlock);
         failed += Run("Review history artifacts render json and markdown",
             TestReviewHistoryArtifactsRenderJsonAndMarkdown);
         failed += Run("Redaction defaults", TestRedactionDefaults);
@@ -773,6 +775,8 @@ internal static partial class Program {
             TestReviewSwarmShadowRunnerHonorsMaxParallel);
         failed += Run("Review swarm shadow aggregator prompt includes subreviews",
             TestReviewSwarmShadowAggregatorPromptIncludesSubreviews);
+        failed += Run("Review swarm shadow aggregator prompt uses safe subreview fence",
+            TestReviewSwarmShadowAggregatorPromptUsesSafeSubreviewFence);
         failed += Run("Review swarm shadow aggregator prompt closes truncated fence",
             TestReviewSwarmShadowAggregatorPromptClosesTruncatedFence);
         failed += Run("Review swarm shadow aggregator prompt keeps context with large base",

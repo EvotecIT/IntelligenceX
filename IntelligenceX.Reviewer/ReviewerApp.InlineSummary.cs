@@ -743,6 +743,7 @@ public static partial class ReviewerApp {
         }
 
         var block = string.Join("\n", lines, startIndex, endIndex - startIndex).Trim();
+        block = RemoveSection(block, "History Progress 🔁").Trim();
         if (string.IsNullOrWhiteSpace(block)) {
             return null;
         }
@@ -750,6 +751,44 @@ public static partial class ReviewerApp {
             return block.Substring(0, maxChars) + "...";
         }
         return block;
+    }
+
+    private static string RemoveSection(string body, string headingLabel) {
+        if (string.IsNullOrWhiteSpace(body) || string.IsNullOrWhiteSpace(headingLabel)) {
+            return body;
+        }
+
+        var lines = body.Replace("\r", "").Split('\n');
+        var start = -1;
+        for (var i = 0; i < lines.Length; i++) {
+            var trimmed = lines[i].Trim();
+            if (trimmed.StartsWith("## ", StringComparison.Ordinal) &&
+                trimmed.Substring(3).Trim().StartsWith(headingLabel, StringComparison.OrdinalIgnoreCase)) {
+                start = i;
+                break;
+            }
+        }
+        if (start < 0) {
+            return body;
+        }
+
+        var end = lines.Length;
+        for (var i = start + 1; i < lines.Length; i++) {
+            var trimmed = lines[i].Trim();
+            if (trimmed.StartsWith("## ", StringComparison.Ordinal)) {
+                end = i;
+                break;
+            }
+        }
+
+        var kept = new List<string>(lines.Length - (end - start));
+        for (var i = 0; i < lines.Length; i++) {
+            if (i >= start && i < end) {
+                continue;
+            }
+            kept.Add(lines[i]);
+        }
+        return string.Join("\n", kept);
     }
 
     private static async Task<long?> CreateOrUpdateProgressCommentAsync(IReviewCodeHostReader codeHostReader, GitHubClient github,

@@ -261,6 +261,12 @@ internal static partial class Program {
         }
     }
 
+    private static void AssertDoesNotContainText(string value, string unexpected, string name) {
+        if (!string.IsNullOrEmpty(value) && value.IndexOf(unexpected, StringComparison.Ordinal) >= 0) {
+            throw new InvalidOperationException($"Expected {name} not to contain '{unexpected}'.");
+        }
+    }
+
     private static void AssertNotNull(object? value, string name) {
         if (value is null) {
             throw new InvalidOperationException($"Expected {name} to be non-null.");

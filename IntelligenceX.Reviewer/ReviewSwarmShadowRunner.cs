@@ -173,9 +173,12 @@ internal static class ReviewSwarmShadowRunner {
                 sb.AppendLine(result.Error);
             }
             if (!string.IsNullOrWhiteSpace(result.Output)) {
-                sb.AppendLine("```markdown");
-                sb.AppendLine(TrimForAggregator(result.Output));
-                sb.AppendLine("```");
+                var output = TrimForAggregator(result.Output);
+                var fence = BuildMarkdownFence(output, '~', 4);
+                sb.Append(fence);
+                sb.AppendLine("markdown");
+                sb.AppendLine(output);
+                sb.AppendLine(fence);
             }
             sb.AppendLine();
         }
@@ -348,6 +351,22 @@ internal static class ReviewSwarmShadowRunner {
     }
 
     private static string TrimForAggregator(string text) => TrimForAggregator(text, MaxAggregatorContextChars);
+
+    private static string BuildMarkdownFence(string markdown, char fenceChar, int minimumLength) {
+        var longestRun = 0;
+        var currentRun = 0;
+        foreach (var ch in markdown) {
+            if (ch == fenceChar) {
+                currentRun++;
+                if (currentRun > longestRun) {
+                    longestRun = currentRun;
+                }
+            } else {
+                currentRun = 0;
+            }
+        }
+        return new string(fenceChar, Math.Max(minimumLength, longestRun + 1));
+    }
 
     private static string TrimForAggregator(string text, int maxChars) {
         if (maxChars <= 0) {

@@ -567,6 +567,12 @@ internal static partial class Program {
         AssertContainsText(section, "Review threads snapshot: active 1, resolved 1, stale 0.", "review history thread counts");
         AssertContainsText(section, "reviewer-user (src/app.cs:42): Please add regression coverage.", "review history active thread excerpt");
 
+        settings.History.MaxRounds = 0;
+        snapshot = ReviewHistoryBuilder.BuildSnapshot(issueComments, "def5678", threads, settings);
+        AssertEqual(0, snapshot.Rounds.Count, "review history max rounds zero disables sticky summary rounds");
+        AssertEqual(0, snapshot.OpenFindings.Count, "review history max rounds zero disables open sticky findings");
+        settings.History.MaxRounds = 4;
+
         settings.History.IncludeExternalBotSummaries = true;
         snapshot = ReviewHistoryBuilder.BuildSnapshot(issueComments, "def5678", threads, settings);
         section = ReviewHistoryBuilder.Render(snapshot);
@@ -611,6 +617,38 @@ internal static partial class Program {
         AssertContainsText(block, "[todo] Add null guard in parser.", "review history comment block open item");
         AssertContainsText(block, "Resolved since last round:", "review history comment block resolved label");
         AssertContainsText(block, "[critical] Cover the stale thread path.", "review history comment block resolved item");
+    }
+
+    private static void TestReviewSummaryStabilityDropsHistoryProgressBlock() {
+        var context = BuildContext();
+        var settings = new ReviewSettings {
+            Model = "gpt-5-test",
+            Length = ReviewLength.Medium,
+            Mode = "summary"
+        };
+        var reviewBody = string.Join("\n", new[] {
+            "## Summary 📝",
+            "Looks good overall.",
+            "",
+            "## Todo List ✅",
+            "None."
+        });
+        var historyBlock = string.Join("\n", new[] {
+            "## History Progress 🔁",
+            "",
+            "Open now:",
+            "- [todo] Previous issue."
+        });
+
+        var comment = ReviewFormatter.BuildComment(context, reviewBody, settings, inlineSupported: true,
+            inlineSuppressed: false, autoResolveNote: string.Empty, budgetNote: string.Empty, usageLine: string.Empty,
+            findingsBlock: string.Empty, historyBlock: historyBlock);
+        var extracted = ReviewerApp.ExtractSummaryBodyForTests(comment, 10000) ?? string.Empty;
+
+        AssertDoesNotContainText(extracted, "History Progress 🔁", "summary stability strips history progress heading");
+        AssertDoesNotContainText(extracted, "Previous issue", "summary stability strips history progress body");
+        AssertContainsText(extracted, "## Summary 📝", "summary stability keeps review summary heading");
+        AssertContainsText(extracted, "Looks good overall.", "summary stability keeps review summary body");
     }
 
     private static void TestReviewHistoryArtifactsRenderJsonAndMarkdown() {

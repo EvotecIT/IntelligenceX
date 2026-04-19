@@ -307,6 +307,37 @@ internal static partial class Program {
         AssertContainsText(prompt, "Merge overlapping findings", "swarm shadow aggregator prompt contract");
     }
 
+    private static void TestReviewSwarmShadowAggregatorPromptUsesSafeSubreviewFence() {
+        var plan = new ReviewSwarmShadowPlan {
+            Enabled = true,
+            ShadowMode = true,
+            Aggregator = new ReviewSwarmShadowAggregatorPlan {
+                Provider = ReviewProvider.OpenAI,
+                Model = "gpt-5.4"
+            },
+            Reviewers = new[] {
+                new ReviewSwarmShadowReviewerPlan {
+                    Id = "correctness",
+                    Provider = ReviewProvider.OpenAI,
+                    Model = "gpt-5.4"
+                }
+            }
+        };
+        var results = new[] {
+            new ReviewSwarmShadowReviewerResult {
+                Reviewer = plan.Reviewers[0],
+                Succeeded = true,
+                Output = "Before\n```suggestion\nreturn true;\n```\nAfter"
+            }
+        };
+
+        var prompt = ReviewRunner.BuildSwarmShadowAggregatorPromptForTests("Base prompt", plan, results);
+
+        AssertContainsText(prompt, "~~~~markdown", "swarm shadow aggregator uses tilde fence wrapper");
+        AssertContainsText(prompt, "```suggestion", "swarm shadow aggregator preserves nested suggestion fence");
+        AssertContainsText(prompt, "After", "swarm shadow aggregator keeps content after nested fence");
+    }
+
     private static void TestReviewSwarmShadowAggregatorPromptClosesTruncatedFence() {
         var plan = new ReviewSwarmShadowPlan {
             Enabled = true,
@@ -335,7 +366,7 @@ internal static partial class Program {
 
         AssertContainsText(prompt, "[truncated for swarm shadow aggregation]",
             "swarm shadow aggregator prompt truncation marker");
-        AssertContainsText(prompt, "\n```\n\n[truncated for swarm shadow aggregation]",
+        AssertContainsText(prompt, "\n~~~~\n\n[truncated for swarm shadow aggregation]",
             "swarm shadow aggregator prompt closes markdown fence before truncation marker");
     }
 
@@ -519,6 +550,22 @@ internal static partial class Program {
             "None."
         });
         AssertEqual(false, ReviewSummaryParser.HasMergeBlockers(checkedOnly), "merge blockers checked checklist is non-blocking");
+
+        var nonCritical = string.Join("\n", new[] {
+            "## Summary 📝",
+            "Looks good.",
+            "",
+            "## Todo List ✅",
+            "None.",
+            "",
+            "## Non-Critical Issues",
+            "- [ ] This should not be treated as a critical merge blocker.",
+            "",
+            "## Critical Issues ⚠️",
+            "None."
+        });
+        AssertEqual(false, ReviewSummaryParser.HasMergeBlockers(nonCritical),
+            "merge blockers do not match non-critical heading as critical section");
     }
 
     private static void TestReviewSummaryParserMergeBlockerDetectionCompactDefaults() {
