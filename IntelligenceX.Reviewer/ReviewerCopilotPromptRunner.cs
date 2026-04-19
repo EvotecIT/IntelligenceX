@@ -28,16 +28,44 @@ internal sealed class ReviewerCopilotPromptRunner {
         }
 
         _options.Validate();
+        ValidateGitHubActionsAuth(_options);
         var cliPath = await ResolveCliPathOrInstallAsync(_options, cancellationToken).ConfigureAwait(false);
-        var startInfo = BuildStartInfo(_options, cliPath, prompt, model, disableBuiltinMcps: true);
-        var result = await RunProcessAsync(startInfo, timeout, cancellationToken).ConfigureAwait(false);
-        if (result.ExitCode != 0 && IsUnsupportedDisableBuiltinMcpsFlag(result.Stdout, result.Stderr)) {
-            startInfo = BuildStartInfo(_options, cliPath, prompt, model, disableBuiltinMcps: false);
+        var logDirectory = TryPrepareLogDirectory(_options);
+        var disableBuiltinMcps = true;
+        var disableToolSurface = true;
+        var captureLogs = !string.IsNullOrWhiteSpace(logDirectory);
+        CopilotPromptProcessResult result;
+        while (true) {
+            var effectiveLogDirectory = captureLogs ? logDirectory : null;
+            var startInfo = BuildStartInfo(_options, cliPath, prompt, model, disableBuiltinMcps,
+                disableToolSurface, effectiveLogDirectory);
             result = await RunProcessAsync(startInfo, timeout, cancellationToken).ConfigureAwait(false);
+            if (result.ExitCode == 0) {
+                break;
+            }
+
+            var retry = false;
+            if (disableToolSurface && IsUnsupportedAvailableToolsFlag(result.Stdout, result.Stderr)) {
+                disableToolSurface = false;
+                retry = true;
+            }
+            if (disableBuiltinMcps && IsUnsupportedDisableBuiltinMcpsFlag(result.Stdout, result.Stderr)) {
+                disableBuiltinMcps = false;
+                retry = true;
+            }
+            if (captureLogs && IsUnsupportedLogCaptureFlag(result.Stdout, result.Stderr)) {
+                captureLogs = false;
+                retry = true;
+            }
+            if (!retry) {
+                break;
+            }
         }
 
         if (result.ExitCode != 0) {
-            throw new InvalidOperationException(BuildExitMessage(result.ExitCode, result.Stdout, result.Stderr));
+            WriteRecentLogTail(logDirectory);
+            throw new InvalidOperationException(BuildExitMessage(result.ExitCode, result.Stdout, result.Stderr,
+                logDirectory: logDirectory));
         }
 
         var parsed = ParseJsonLines(result.Stdout);
@@ -46,8 +74,9 @@ internal sealed class ReviewerCopilotPromptRunner {
             response = result.Stdout.Trim();
         }
         if (string.IsNullOrWhiteSpace(response)) {
+            WriteRecentLogTail(logDirectory);
             throw new InvalidOperationException(BuildExitMessage(result.ExitCode, result.Stdout, result.Stderr,
-                "Copilot CLI produced no review content."));
+                "Copilot CLI produced no review content.", logDirectory));
         }
 
         return new ReviewerCopilotPromptResult(response.Trim(), parsed.UsageSummary);
@@ -83,7 +112,7 @@ internal sealed class ReviewerCopilotPromptRunner {
     }
 
     private static ProcessStartInfo BuildStartInfo(CopilotClientOptions options, string cliPath, string prompt,
-        string? model, bool disableBuiltinMcps) {
+        string? model, bool disableBuiltinMcps, bool disableToolSurface, string? logDirectory) {
         var args = new List<string>();
         if (options.CliArgs.Count > 0) {
             args.AddRange(options.CliArgs);
@@ -94,6 +123,15 @@ internal sealed class ReviewerCopilotPromptRunner {
         args.Add("--no-ask-user");
         args.Add("--no-custom-instructions");
         args.Add("--no-auto-update");
+        if (!string.IsNullOrWhiteSpace(logDirectory)) {
+            args.Add("--log-dir");
+            args.Add(logDirectory!);
+            args.Add("--log-level");
+            args.Add(string.IsNullOrWhiteSpace(options.LogLevel) ? "info" : options.LogLevel);
+        }
+        if (disableToolSurface) {
+            args.Add("--available-tools=none");
+        }
         if (disableBuiltinMcps) {
             args.Add("--disable-builtin-mcps");
         }
@@ -255,19 +293,129 @@ internal sealed class ReviewerCopilotPromptRunner {
     }
 
     internal static string[] BuildArgumentsForTests(CopilotClientOptions options, string cliPath, string prompt,
-        string? model = null, bool disableBuiltinMcps = true) {
-        var startInfo = BuildStartInfo(options, cliPath, prompt, model, disableBuiltinMcps);
+        string? model = null, bool disableBuiltinMcps = true, bool disableToolSurface = true,
+        bool captureLogs = true) {
+        var startInfo = BuildStartInfo(options, cliPath, prompt, model, disableBuiltinMcps, disableToolSurface,
+            captureLogs ? TryPrepareLogDirectory(options) : null);
         var args = new string[startInfo.ArgumentList.Count];
         startInfo.ArgumentList.CopyTo(args, 0);
         return args;
     }
 
+    internal static string? ValidateGitHubActionsAuthForTests(CopilotClientOptions options,
+        IReadOnlyDictionary<string, string?> environment) {
+        return ValidateGitHubActionsAuth(options, environment);
+    }
+
+    private static void ValidateGitHubActionsAuth(CopilotClientOptions options) {
+        var message = ValidateGitHubActionsAuth(options, null);
+        if (!string.IsNullOrWhiteSpace(message)) {
+            throw new InvalidOperationException(message);
+        }
+    }
+
+    private static string? ValidateGitHubActionsAuth(CopilotClientOptions options,
+        IReadOnlyDictionary<string, string?>? environment) {
+        if (!IsTruthy(GetHostEnvironment(options, environment, "GITHUB_ACTIONS"))) {
+            return null;
+        }
+        if (HasCopilotProviderOverride(options, environment)) {
+            return null;
+        }
+
+        var copilotToken = GetChildEnvironment(options, environment, "COPILOT_GITHUB_TOKEN");
+        if (!string.IsNullOrWhiteSpace(copilotToken) && IsSupportedCopilotToken(copilotToken)) {
+            return null;
+        }
+
+        var ghToken = GetChildEnvironment(options, environment, "GH_TOKEN");
+        if (!string.IsNullOrWhiteSpace(ghToken) && IsSupportedCopilotToken(ghToken)) {
+            return null;
+        }
+
+        var githubToken = GetChildEnvironment(options, environment, "GITHUB_TOKEN");
+        if (!string.IsNullOrWhiteSpace(githubToken) && IsSupportedCopilotToken(githubToken)) {
+            return null;
+        }
+
+        if (!string.IsNullOrWhiteSpace(copilotToken)) {
+            return "Copilot CLI in GitHub Actions needs COPILOT_GITHUB_TOKEN to be an OAuth, fine-grained PAT with Copilot Requests, or GitHub App user-to-server token. GitHub App installation tokens and the built-in Actions GITHUB_TOKEN are not supported by Copilot CLI model requests.";
+        }
+
+        return "Copilot CLI in GitHub Actions needs COPILOT_GITHUB_TOKEN set to a fine-grained GitHub token with the Copilot Requests permission. GitHub App installation tokens and the built-in Actions GITHUB_TOKEN are not supported by Copilot CLI model requests.";
+    }
+
+    private static bool HasCopilotProviderOverride(CopilotClientOptions options,
+        IReadOnlyDictionary<string, string?>? environment) {
+        return !string.IsNullOrWhiteSpace(GetChildEnvironment(options, environment, "COPILOT_PROVIDER_BASE_URL")) ||
+               !string.IsNullOrWhiteSpace(GetChildEnvironment(options, environment, "COPILOT_PROVIDER_API_KEY"));
+    }
+
+    private static string? GetChildEnvironment(CopilotClientOptions options,
+        IReadOnlyDictionary<string, string?>? environment, string name) {
+        if (options.Environment.TryGetValue(name, out var configured)) {
+            return configured;
+        }
+        if (!options.InheritEnvironment) {
+            return null;
+        }
+        return GetHostEnvironment(options, environment, name);
+    }
+
+    private static string? GetHostEnvironment(CopilotClientOptions options,
+        IReadOnlyDictionary<string, string?>? environment, string name) {
+        if (options.Environment.TryGetValue(name, out var configured)) {
+            return configured;
+        }
+        if (environment is not null && environment.TryGetValue(name, out var supplied)) {
+            return supplied;
+        }
+        return Environment.GetEnvironmentVariable(name);
+    }
+
+    private static bool IsSupportedCopilotToken(string token) {
+        var trimmed = token.Trim();
+        return trimmed.StartsWith("github_pat_", StringComparison.Ordinal) ||
+               trimmed.StartsWith("gho_", StringComparison.Ordinal) ||
+               trimmed.StartsWith("ghu_", StringComparison.Ordinal);
+    }
+
+    private static bool IsTruthy(string? value) {
+        return string.Equals(value, "true", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(value, "1", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(value, "yes", StringComparison.OrdinalIgnoreCase);
+    }
+
     internal static bool IsUnsupportedDisableBuiltinMcpsFlagForTests(string stdout, string stderr) =>
         IsUnsupportedDisableBuiltinMcpsFlag(stdout, stderr);
 
+    internal static bool IsUnsupportedAvailableToolsFlagForTests(string stdout, string stderr) =>
+        IsUnsupportedAvailableToolsFlag(stdout, stderr);
+
+    internal static bool IsUnsupportedLogCaptureFlagForTests(string stdout, string stderr) =>
+        IsUnsupportedLogCaptureFlag(stdout, stderr);
+
     private static bool IsUnsupportedDisableBuiltinMcpsFlag(string stdout, string stderr) {
+        return IsUnsupportedFlag(stdout, stderr, "--disable-builtin-mcps");
+    }
+
+    private static bool IsUnsupportedAvailableToolsFlag(string stdout, string stderr) {
         var combined = string.Concat(stdout, "\n", stderr);
-        return combined.Contains("--disable-builtin-mcps", StringComparison.OrdinalIgnoreCase) &&
+        if (combined.Contains("Unknown tool name in the tool allowlist", StringComparison.OrdinalIgnoreCase) &&
+            combined.Contains("\"none\"", StringComparison.OrdinalIgnoreCase)) {
+            return true;
+        }
+        return IsUnsupportedFlag(stdout, stderr, "--available-tools");
+    }
+
+    private static bool IsUnsupportedLogCaptureFlag(string stdout, string stderr) {
+        return IsUnsupportedFlag(stdout, stderr, "--log-dir") ||
+               IsUnsupportedFlag(stdout, stderr, "--log-level");
+    }
+
+    private static bool IsUnsupportedFlag(string stdout, string stderr, string flag) {
+        var combined = string.Concat(stdout, "\n", stderr);
+        return combined.Contains(flag, StringComparison.OrdinalIgnoreCase) &&
                (combined.Contains("unknown", StringComparison.OrdinalIgnoreCase) ||
                 combined.Contains("unrecognized", StringComparison.OrdinalIgnoreCase) ||
                 combined.Contains("invalid option", StringComparison.OrdinalIgnoreCase) ||
@@ -303,7 +451,8 @@ internal sealed class ReviewerCopilotPromptRunner {
         return sb.ToString().TrimEnd();
     }
 
-    private static string BuildExitMessage(int exitCode, string stdout, string stderr, string? prefix = null) {
+    private static string BuildExitMessage(int exitCode, string stdout, string stderr, string? prefix = null,
+        string? logDirectory = null) {
         var sb = new StringBuilder();
         if (!string.IsNullOrWhiteSpace(prefix)) {
             sb.Append(prefix);
@@ -318,7 +467,47 @@ internal sealed class ReviewerCopilotPromptRunner {
             sb.AppendLine("Recent Copilot CLI stdout:");
             AppendRecentLines(sb, stdout, maxLines: 6);
         }
+        if (!string.IsNullOrWhiteSpace(logDirectory)) {
+            sb.AppendLine();
+            sb.Append("Copilot CLI logs were written under ");
+            sb.Append(logDirectory);
+            sb.Append('.');
+        }
         return sb.ToString().TrimEnd();
+    }
+
+    private static string? TryPrepareLogDirectory(CopilotClientOptions options) {
+        try {
+            var workingDirectory = options.WorkingDirectory ?? Environment.CurrentDirectory;
+            var logDirectory = Path.Combine(Path.GetFullPath(workingDirectory), "artifacts", "copilot-logs");
+            Directory.CreateDirectory(logDirectory);
+            return logDirectory;
+        } catch {
+            return null;
+        }
+    }
+
+    private static void WriteRecentLogTail(string? logDirectory) {
+        if (string.IsNullOrWhiteSpace(logDirectory) || !Directory.Exists(logDirectory)) {
+            return;
+        }
+        try {
+            var files = Directory.GetFiles(logDirectory, "*.log", SearchOption.TopDirectoryOnly);
+            if (files.Length == 0) {
+                return;
+            }
+            Array.Sort(files, static (left, right) =>
+                File.GetLastWriteTimeUtc(right).CompareTo(File.GetLastWriteTimeUtc(left)));
+            var newest = files[0];
+            Console.Error.WriteLine("Recent Copilot CLI log tail:");
+            Console.Error.WriteLine(newest);
+            var text = File.ReadAllText(newest);
+            var sb = new StringBuilder();
+            AppendRecentLines(sb, text, maxLines: 20);
+            Console.Error.Write(sb.ToString());
+        } catch (Exception ex) {
+            Console.Error.WriteLine($"Failed to read Copilot CLI logs: {ex.Message}");
+        }
     }
 
     private static void AppendRecentStderr(StringBuilder sb, string stderr) {

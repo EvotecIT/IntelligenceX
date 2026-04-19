@@ -24,6 +24,9 @@ review:
     openai_model: ${{ inputs.openai_model }}
     copilot_model: ${{ inputs.copilot_model }}
     copilot_launcher: ${{ inputs.copilot_launcher }}
+    copilot_auto_install: ${{ inputs.copilot_launcher == 'auto' || vars.IX_REVIEW_COPILOT_AUTO_INSTALL == 'true' }}
+    copilot_auto_install_method: ${{ vars.IX_REVIEW_COPILOT_AUTO_INSTALL_METHOD || 'Auto' }}
+    copilot_auto_install_prerelease: ${{ vars.IX_REVIEW_COPILOT_AUTO_INSTALL_PRERELEASE == 'true' }}
     openai_transport: {{OpenAITransport}}
     openai_account_id: ${{ inputs.openai_account_id }}
     openai_account_ids: ${{ inputs.openai_account_ids }}

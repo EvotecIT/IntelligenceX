@@ -701,6 +701,7 @@ internal static partial class Program {
         failed += Run("Copilot CLI path requires env", TestCopilotCliPathRequiresEnvironment);
         failed += Run("Copilot CLI path optional with url", TestCopilotCliPathOptionalWithUrl);
         failed += Run("Copilot CLI url validation", TestCopilotCliUrlValidation);
+        failed += Run("Copilot prompt requires Actions token", TestCopilotPromptRunnerRequiresActionsCopilotToken);
         failed += Run("Resolve-threads option parsing", TestResolveThreadsOptionParsing);
         failed += Run("Resolve-threads default bot logins include managed bots", TestResolveThreadsDefaultBotLoginsIncludeManagedBots);
         failed += Run("Resolve-threads GHES endpoint", TestResolveThreadsEndpointResolution);

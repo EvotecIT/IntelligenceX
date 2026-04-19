@@ -1046,11 +1046,26 @@ internal static partial class Program {
 
         AssertContainsText(string.Join("\n", binaryArgs), "--disable-builtin-mcps",
             "copilot binary prompt disables built-in MCPs");
+        AssertContainsText(string.Join("\n", binaryArgs), "--available-tools=none",
+            "copilot binary prompt disables tool surface");
+        AssertContainsText(string.Join("\n", binaryArgs), "--log-dir",
+            "copilot binary prompt captures CLI logs");
 
         var fallbackArgs = ReviewerCopilotPromptRunner.BuildArgumentsForTests(binaryOptions, cliPath, "review prompt",
             disableBuiltinMcps: false);
         AssertEqual(false, fallbackArgs.Contains("--disable-builtin-mcps"),
             "copilot prompt fallback omits built-in MCP flag");
+
+        var legacyFallbackArgs = ReviewerCopilotPromptRunner.BuildArgumentsForTests(binaryOptions, cliPath, "review prompt",
+            disableBuiltinMcps: false, disableToolSurface: false);
+        AssertEqual(false, legacyFallbackArgs.Contains("--disable-builtin-mcps"),
+            "copilot prompt legacy fallback omits built-in MCP flag");
+        AssertEqual(false, legacyFallbackArgs.Contains("--available-tools=none"),
+            "copilot prompt legacy fallback omits available-tools flag");
+        var noLogArgs = ReviewerCopilotPromptRunner.BuildArgumentsForTests(binaryOptions, cliPath, "review prompt",
+            captureLogs: false);
+        AssertEqual(false, noLogArgs.Contains("--log-dir"), "copilot prompt log fallback omits log dir flag");
+        AssertEqual(false, noLogArgs.Contains("--log-level"), "copilot prompt log fallback omits log level flag");
 
         var ghOptions = new IntelligenceX.Copilot.CopilotClientOptions();
         ghOptions.CliArgs.Add("copilot");
@@ -1066,6 +1081,11 @@ internal static partial class Program {
             "--no-ask-user",
             "--no-custom-instructions",
             "--no-auto-update",
+            "--log-dir",
+            Path.Combine(Environment.CurrentDirectory, "artifacts", "copilot-logs"),
+            "--log-level",
+            "info",
+            "--available-tools=none",
             "--disable-builtin-mcps",
             "--stream",
             "off",
@@ -1081,6 +1101,71 @@ internal static partial class Program {
         AssertEqual(false, ReviewerCopilotPromptRunner.IsUnsupportedDisableBuiltinMcpsFlagForTests(
             string.Empty, "error: unknown option '--other-flag'"),
             "copilot prompt ignores unrelated unknown flag");
+        AssertEqual(true, ReviewerCopilotPromptRunner.IsUnsupportedAvailableToolsFlagForTests(
+            string.Empty, "error: unknown option '--available-tools'"),
+            "copilot prompt detects unknown available-tools flag");
+        AssertEqual(true, ReviewerCopilotPromptRunner.IsUnsupportedAvailableToolsFlagForTests(
+            string.Empty, "error: unrecognized option '--available-tools=none'"),
+            "copilot prompt detects unknown available-tools value flag");
+        AssertEqual(true, ReviewerCopilotPromptRunner.IsUnsupportedAvailableToolsFlagForTests(
+            string.Empty, "Unknown tool name in the tool allowlist: \"none\""),
+            "copilot prompt treats unknown none tool name as unsupported available-tools");
+        AssertEqual(true, ReviewerCopilotPromptRunner.IsUnsupportedLogCaptureFlagForTests(
+            string.Empty, "error: unknown option '--log-dir'"),
+            "copilot prompt detects unknown log dir flag");
+        AssertEqual(true, ReviewerCopilotPromptRunner.IsUnsupportedLogCaptureFlagForTests(
+            string.Empty, "error: unrecognized option '--log-level'"),
+            "copilot prompt detects unknown log level flag");
+        AssertEqual(false, ReviewerCopilotPromptRunner.IsUnsupportedLogCaptureFlagForTests(
+            string.Empty, "error: unknown option '--available-tools'"),
+            "copilot prompt ignores unrelated unknown flag for log capture");
+    }
+
+    private static void TestCopilotPromptRunnerRequiresActionsCopilotToken() {
+        var options = new IntelligenceX.Copilot.CopilotClientOptions();
+        var actionsEnvironment = new Dictionary<string, string?> {
+            ["GITHUB_ACTIONS"] = "true",
+            ["COPILOT_GITHUB_TOKEN"] = null,
+            ["GH_TOKEN"] = null,
+            ["COPILOT_PROVIDER_BASE_URL"] = null,
+            ["COPILOT_PROVIDER_API_KEY"] = null,
+            ["GITHUB_TOKEN"] = "ghs_installation_token"
+        };
+
+        var missing = ReviewerCopilotPromptRunner.ValidateGitHubActionsAuthForTests(options, actionsEnvironment);
+
+        AssertContainsText(missing ?? string.Empty, "COPILOT_GITHUB_TOKEN",
+            "copilot prompt requires a Copilot-specific token in Actions");
+
+        actionsEnvironment["COPILOT_GITHUB_TOKEN"] = "github_pat_supported";
+        var supported = ReviewerCopilotPromptRunner.ValidateGitHubActionsAuthForTests(options, actionsEnvironment);
+
+        AssertEqual(null, supported, "copilot prompt accepts fine-grained PAT token in Actions");
+
+        actionsEnvironment["COPILOT_GITHUB_TOKEN"] = null;
+        actionsEnvironment["COPILOT_PROVIDER_BASE_URL"] = "https://models.example.test";
+        var byok = ReviewerCopilotPromptRunner.ValidateGitHubActionsAuthForTests(options, actionsEnvironment);
+
+        AssertEqual(null, byok, "copilot prompt allows BYOK provider override without GitHub Copilot token");
+
+        var isolatedOptions = new IntelligenceX.Copilot.CopilotClientOptions {
+            InheritEnvironment = false
+        };
+        var isolatedMissing = ReviewerCopilotPromptRunner.ValidateGitHubActionsAuthForTests(isolatedOptions,
+            new Dictionary<string, string?> {
+                ["GITHUB_ACTIONS"] = "true",
+                ["COPILOT_GITHUB_TOKEN"] = "github_pat_not_forwarded"
+            });
+
+        AssertContainsText(isolatedMissing ?? string.Empty, "COPILOT_GITHUB_TOKEN",
+            "copilot prompt ignores host token when child env inheritance is disabled");
+
+        isolatedOptions.Environment["COPILOT_GITHUB_TOKEN"] = "github_pat_forwarded";
+        isolatedOptions.Environment["GITHUB_ACTIONS"] = "true";
+        var isolatedForwarded = ReviewerCopilotPromptRunner.ValidateGitHubActionsAuthForTests(isolatedOptions,
+            actionsEnvironment);
+
+        AssertEqual(null, isolatedForwarded, "copilot prompt accepts explicitly forwarded token when env is isolated");
     }
 
     private static void TestCopilotGhLauncherBuildsWrapperCommand() {

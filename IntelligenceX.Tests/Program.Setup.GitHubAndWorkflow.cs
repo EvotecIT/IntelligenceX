@@ -260,6 +260,8 @@ jobs:
             "reusable workflow does not expose auth bundle at job scope");
         AssertEqual(false, jobEnvContent.Contains("ANTHROPIC_API_KEY:", StringComparison.Ordinal),
             "reusable workflow does not expose provider api key at job scope");
+        AssertContainsText(jobEnvContent, "COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}",
+            "reusable workflow exposes Copilot CLI token at job scope for child prompt process auth");
         AssertContainsText(sourceStep, "INTELLIGENCEX_AUTH_B64: ${{ secrets.INTELLIGENCEX_AUTH_B64 }}",
             "source reviewer step receives auth bundle");
         AssertContainsText(sourceStep, "ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}",
@@ -389,7 +391,16 @@ jobs:
         AssertContainsText(content, "diagnostics:", "workflow explicit-secrets diagnostics input");
         AssertContainsText(content, "preflight:", "workflow explicit-secrets preflight input");
         AssertContainsText(content, "preflight_timeout_seconds:", "workflow explicit-secrets preflight timeout input");
+        AssertContainsText(content, "copilot_auto_install:", "workflow explicit-secrets Copilot auto-install input");
+        AssertContainsText(content, "inputs.copilot_launcher == 'auto'",
+            "workflow explicit-secrets maps Copilot launcher auto to auto-install");
+        AssertContainsText(content, "copilot_auto_install_method:",
+            "workflow explicit-secrets Copilot auto-install method input");
+        AssertContainsText(content, "copilot_auto_install_prerelease:",
+            "workflow explicit-secrets Copilot prerelease input");
         AssertContainsText(content, "INTELLIGENCEX_AUTH_B64:", "workflow explicit-secrets includes auth bundle mapping");
+        AssertContainsText(content, "COPILOT_GITHUB_TOKEN:",
+            "workflow explicit-secrets includes Copilot CLI token mapping");
         AssertEqual(false, content.Contains("INTELLIGENCEX_AUTH_KEY:", StringComparison.Ordinal),
             "workflow explicit-secrets does not pass undeclared auth key");
     }
