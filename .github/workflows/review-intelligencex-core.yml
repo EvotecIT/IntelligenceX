@@ -335,7 +335,7 @@ on:
       wait_seconds:
         description: 'Max wait for completion'
         required: false
-        default: 60
+        default: 180
         type: number
       idle_seconds:
         description: 'Idle timeout for streaming'

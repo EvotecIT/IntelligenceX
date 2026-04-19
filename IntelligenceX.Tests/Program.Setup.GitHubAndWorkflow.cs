@@ -260,6 +260,8 @@ jobs:
             "reusable workflow defines external bot history once for workflow_call");
         AssertEqual(1, CountOccurrences(content, "swarm_max_parallel:"),
             "reusable workflow defines swarm max parallel once for workflow_call");
+        AssertContainsText(content, "default: 180",
+            "reusable workflow gives PR-sized reviewer prompts a longer default wait window");
         AssertContainsText(content, "dotnet-version: '8.0.x'",
             "reusable workflow provisions the .NET 8 SDK for source reviewer runs");
         AssertContainsText(content, "dotnet build IntelligenceX.Reviewer/IntelligenceX.Reviewer.csproj -c Release -f net8.0",

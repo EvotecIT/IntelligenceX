@@ -370,7 +370,7 @@ internal sealed partial class ReviewSettings {
     public string RedactionReplacement { get; set; } = "[REDACTED]";
     public bool UntrustedPrAllowSecrets { get; set; }
     public bool UntrustedPrAllowWrites { get; set; }
-    public int WaitSeconds { get; set; } = 60;
+    public int WaitSeconds { get; set; } = 180;
     public int IdleSeconds { get; set; } = 5;
     public bool ProgressUpdates { get; set; } = true;
     public int ProgressUpdateSeconds { get; set; } = 30;
