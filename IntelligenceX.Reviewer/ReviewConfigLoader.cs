@@ -776,7 +776,7 @@ internal static class ReviewConfigLoader {
             return null;
         }
         var mapObj = value?.AsObject();
-        if (mapObj is null || mapObj.Count == 0) {
+        if (mapObj is null) {
             return null;
         }
         var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);

@@ -131,6 +131,14 @@ internal static partial class Program {
                         ["X-New"] = "new-header",
                         ["X-Shared"] = "new-shared"
                     }
+                },
+                ["copilot-clear"] = new ReviewAgentProfileSettings {
+                    Id = "copilot-clear",
+                    Provider = ReviewProvider.Copilot,
+                    Model = "gpt-5.4",
+                    CopilotEnvAllowlist = Array.Empty<string>(),
+                    CopilotEnv = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
+                    CopilotDirectHeaders = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
                 }
             }
         };
@@ -198,6 +206,15 @@ internal static partial class Program {
             "swarm shadow execution clone applies new profile header map");
         AssertEqual("new-shared", switchedLaneSettings.CopilotDirectHeaders["X-Shared"],
             "swarm shadow execution clone replaces overlapping profile header key");
+
+        var clearedLaneSettings = settings.CloneWithProviderOverride(ReviewProvider.Copilot,
+            "gpt-5.4", null, "copilot-clear", settings.RequireAgentProfile("copilot-clear", "tests"));
+        AssertEqual(0, clearedLaneSettings.CopilotEnvAllowlist.Count,
+            "swarm shadow execution clone clears allowlist when profile uses empty list");
+        AssertEqual(0, clearedLaneSettings.CopilotEnv.Count,
+            "swarm shadow execution clone clears env map when profile uses empty object");
+        AssertEqual(0, clearedLaneSettings.CopilotDirectHeaders.Count,
+            "swarm shadow execution clone clears header map when profile uses empty object");
 
         settings.Swarm.ReviewerSettings = new[] {
             new ReviewSwarmReviewerSettings {

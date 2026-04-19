@@ -673,6 +673,8 @@ internal static partial class Program {
         failed += Run("Azure code host reader smoke", TestAzureDevOpsCodeHostReaderSmoke);
         failed += Run("Review threads diff range normalize", TestReviewThreadsDiffRangeNormalize);
         failed += Run("Copilot env allowlist config", TestCopilotEnvAllowlistConfig);
+        failed += Run("Copilot agent profile config preserves explicit empty maps",
+            TestCopilotAgentProfileConfigPreservesExplicitEmptyMaps);
         failed += Run("Copilot launcher env", TestCopilotLauncherEnv);
         failed += Run("Copilot model env overrides generic model", TestCopilotModelEnvOverridesGenericModel);
         failed += Run("Copilot default OpenAI model uses CLI default", TestCopilotDefaultOpenAiModelUsesCliDefault);

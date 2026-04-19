@@ -978,6 +978,35 @@ internal static partial class Program {
         }
     }
 
+    private static void TestCopilotAgentProfileConfigPreservesExplicitEmptyMaps() {
+        var previous = Environment.GetEnvironmentVariable("REVIEW_CONFIG_PATH");
+        var path = Path.Combine(Path.GetTempPath(), $"intelligencex-review-profile-clear-{Guid.NewGuid():N}.json");
+        try {
+            File.WriteAllText(path,
+                "{ \"review\": { \"agentProfiles\": { \"clearer\": { " +
+                "\"provider\": \"copilot\", \"model\": \"gpt-5.4\", " +
+                "\"envAllowlist\": [], \"copilotEnv\": {}, \"directHeaders\": {} } } } }");
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", path);
+            var settings = new ReviewSettings();
+            ReviewConfigLoader.Apply(settings);
+
+            AssertEqual(true, settings.AgentProfiles.TryGetValue("clearer", out var profile),
+                "copilot agent profile clear profile exists");
+            AssertNotNull(profile, "copilot agent profile clear profile value");
+            AssertNotNull(profile!.CopilotEnvAllowlist, "copilot agent profile clear allowlist preserved");
+            AssertEqual(0, profile.CopilotEnvAllowlist!.Count, "copilot agent profile clear allowlist count");
+            AssertNotNull(profile.CopilotEnv, "copilot agent profile clear env map preserved");
+            AssertEqual(0, profile.CopilotEnv!.Count, "copilot agent profile clear env map count");
+            AssertNotNull(profile.CopilotDirectHeaders, "copilot agent profile clear header map preserved");
+            AssertEqual(0, profile.CopilotDirectHeaders!.Count, "copilot agent profile clear header map count");
+        } finally {
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", previous);
+            if (File.Exists(path)) {
+                File.Delete(path);
+            }
+        }
+    }
+
     private static void TestCopilotLauncherEnv() {
         var previousInput = Environment.GetEnvironmentVariable("INPUT_COPILOT_LAUNCHER");
         var previousEnv = Environment.GetEnvironmentVariable("COPILOT_LAUNCHER");

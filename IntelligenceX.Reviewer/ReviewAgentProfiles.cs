@@ -82,7 +82,7 @@ internal sealed partial class ReviewSettings {
         if (profile.CopilotInheritEnvironment.HasValue) {
             CopilotInheritEnvironment = profile.CopilotInheritEnvironment.Value;
         }
-        if (profile.CopilotEnvAllowlist is { Count: > 0 }) {
+        if (profile.CopilotEnvAllowlist is not null) {
             CopilotEnvAllowlist = profile.CopilotEnvAllowlist;
         }
         if (profile.CopilotEnv is not null) {
