@@ -679,6 +679,8 @@ internal static partial class Program {
             TestCopilotAutoLauncherUsesBinaryForAutoInstall);
         failed += Run("Copilot CLI auto-install defaults prefer Linux script",
             TestCopilotCliAutoInstallDefaultsPreferLinuxScript);
+        failed += Run("Copilot CLI auto-install defaults honor Linux prerelease",
+            TestCopilotCliAutoInstallDefaultsHonorLinuxPrerelease);
         failed += Run("Copilot CLI auto-install defaults keep macOS Homebrew",
             TestCopilotCliAutoInstallDefaultsKeepMacHomebrew);
         failed += Run("Copilot launcher diagnostics describe resolved command",

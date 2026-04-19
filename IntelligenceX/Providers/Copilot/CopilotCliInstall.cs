@@ -91,8 +91,12 @@ public static class CopilotCliInstall {
             list.Add(Npm(prerelease));
             list.Add(Script());
         } else if (IsLinux()) {
-            list.Add(Script());
-            list.Add(Npm(prerelease));
+            if (prerelease) {
+                list.Add(Npm(prerelease));
+            } else {
+                list.Add(Script());
+                list.Add(Npm(prerelease));
+            }
             list.Add(new CopilotCliInstallCommand(
                 CopilotCliInstallMethod.Homebrew,
                 "brew",
@@ -129,7 +133,7 @@ public static class CopilotCliInstall {
                 "Homebrew");
         }
         if (isLinux) {
-            return Script();
+            return prerelease ? Npm(prerelease) : Script();
         }
         return Npm(prerelease);
     }

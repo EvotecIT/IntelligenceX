@@ -1043,6 +1043,19 @@ internal static partial class Program {
         AssertEqual("bash", command.FileName, "copilot linux auto install file");
     }
 
+    private static void TestCopilotCliAutoInstallDefaultsHonorLinuxPrerelease() {
+        var command = IntelligenceX.Copilot.CopilotCliInstall.GetDefaultCommandForPlatform(
+            isWindows: false,
+            isMac: false,
+            isLinux: true,
+            prerelease: true);
+
+        AssertEqual(IntelligenceX.Copilot.CopilotCliInstallMethod.Npm, command.Method,
+            "copilot linux prerelease auto install default");
+        AssertContainsText(command.Arguments, "@github/copilot@prerelease",
+            "copilot linux prerelease auto install package");
+    }
+
     private static void TestCopilotCliAutoInstallDefaultsKeepMacHomebrew() {
         var command = IntelligenceX.Copilot.CopilotCliInstall.GetDefaultCommandForPlatform(
             isWindows: false,
