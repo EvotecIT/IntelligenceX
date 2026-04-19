@@ -147,6 +147,8 @@ jobs:
         AssertContainsText(content, "history_external_bot_logins:", "workflow template external bot login input");
         AssertContainsText(content, "swarm_enabled:", "workflow template swarm enabled input");
         AssertContainsText(content, "swarm_max_parallel:", "workflow template swarm max parallel input");
+        AssertEqual(1, CountWorkflowOnEvent(content, "workflow_call"),
+            "workflow template defines workflow_call exactly once");
         AssertContainsText(content, "openai_account_id: ${{ inputs.openai_account_id }}",
             "workflow template openai account id pass-through");
         AssertContainsText(content, "openai_account_ids: ${{ inputs.openai_account_ids }}",
@@ -218,6 +220,8 @@ jobs:
             "wrapper workflow keeps PR reviews on repo source to avoid release drift");
         AssertContainsText(wrapperContent, "workflow_call:",
             "wrapper workflow exposes reusable call overrides outside the dispatch input budget");
+        AssertEqual(1, CountWorkflowOnEvent(wrapperContent, "workflow_call"),
+            "wrapper workflow defines workflow_call exactly once");
         AssertContainsText(wrapperContent, "agent_profile:",
             "wrapper workflow exposes agent profile reusable-call override");
         AssertContainsText(wrapperContent, "agent_profile: ${{ inputs.agent_profile || vars.IX_REVIEW_AGENT_PROFILE }}",
@@ -366,6 +370,28 @@ jobs:
                 count++;
             }
         }
+        return count;
+    }
+
+    private static int CountWorkflowOnEvent(string content, string eventName) {
+        var normalized = NormalizeWorkflowText(content);
+        var startsAtTop = normalized.StartsWith("on:\n", StringComparison.Ordinal);
+        var onIndex = normalized.IndexOf("\non:\n", StringComparison.Ordinal);
+        AssertEqual(true, startsAtTop || onIndex >= 0, "workflow on block exists");
+        var start = startsAtTop ? "on:\n".Length : onIndex + "\non:\n".Length;
+        var end = normalized.IndexOf("\njobs:", start, StringComparison.Ordinal);
+        if (end < 0) {
+            end = normalized.Length;
+        }
+
+        var count = 0;
+        var expected = $"  {eventName}:";
+        foreach (var line in normalized[start..end].Split('\n')) {
+            if (string.Equals(line.TrimEnd(), expected, StringComparison.Ordinal)) {
+                count++;
+            }
+        }
+
         return count;
     }
 
