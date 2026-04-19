@@ -665,7 +665,8 @@ Set `launcher` to `gh` to explicitly run Copilot through `gh copilot --`.
 Set `launcher` to `auto` to use the standalone `copilot` binary path. This is the safer default for reviewer CI runs:
 the reviewer validates status/auth through the CLI server protocol, then generates the review through the documented
 non-interactive prompt mode with built-in Model Context Protocol (MCP) servers disabled via
-`--disable-builtin-mcps` to avoid long-running server-session hangs and tool startup failures on hosted runners.
+`--disable-builtin-mcps` and with the Copilot tool surface disabled via `--available-tools=none` to avoid
+long-running server-session hangs, tool startup failures, and prompt-injection risk on hosted runners.
 Use `autoInstall` with the standalone path when the runner does not already have `copilot` installed.
 Set `model` only when you want to force a Copilot CLI model id. When `provider` is `copilot` and only the generic
 `review.model` is the default OpenAI value, the reviewer leaves Copilot model selection to the CLI default.
