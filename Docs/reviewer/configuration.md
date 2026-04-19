@@ -739,6 +739,16 @@ For GitHub Actions runs, set a repository or organization Actions secret named `
 fine-grained GitHub token with the `Copilot Requests` permission. The built-in Actions `GITHUB_TOKEN` and GitHub App
 installation tokens are not sufficient for Copilot CLI model requests.
 
+GitHub Actions repo/org variable aliases:
+- `IX_REVIEW_PROVIDER`
+- `IX_REVIEW_MODEL`
+- `IX_REVIEW_COPILOT_MODEL`
+- `IX_REVIEW_AGENT_PROFILE`
+- `IX_REVIEW_COPILOT_LAUNCHER`
+- `IX_REVIEW_COPILOT_AUTO_INSTALL`
+- `IX_REVIEW_COPILOT_AUTO_INSTALL_METHOD`
+- `IX_REVIEW_COPILOT_AUTO_INSTALL_PRERELEASE`
+
 ```json
 {
   "review": {

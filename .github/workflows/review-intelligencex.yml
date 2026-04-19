@@ -136,9 +136,9 @@ jobs:
       agent_profile: ${{ inputs.agent_profile || vars.IX_REVIEW_AGENT_PROFILE }}
       model: ${{ inputs.model || vars.IX_REVIEW_MODEL || 'gpt-5.4' }}
       openai_model: ${{ inputs.openai_model }}
-      copilot_model: ${{ inputs.copilot_model }}
-      copilot_launcher: ${{ inputs.copilot_launcher }}
-      copilot_auto_install: ${{ inputs.copilot_launcher == 'auto' || vars.IX_REVIEW_COPILOT_AUTO_INSTALL == 'true' }}
+      copilot_model: ${{ inputs.copilot_model || vars.IX_REVIEW_COPILOT_MODEL }}
+      copilot_launcher: ${{ inputs.copilot_launcher || vars.IX_REVIEW_COPILOT_LAUNCHER }}
+      copilot_auto_install: ${{ (inputs.copilot_launcher || vars.IX_REVIEW_COPILOT_LAUNCHER) == 'auto' || vars.IX_REVIEW_COPILOT_AUTO_INSTALL == 'true' }}
       copilot_auto_install_method: ${{ vars.IX_REVIEW_COPILOT_AUTO_INSTALL_METHOD || 'Auto' }}
       copilot_auto_install_prerelease: ${{ vars.IX_REVIEW_COPILOT_AUTO_INSTALL_PRERELEASE == 'true' }}
       openai_transport: native

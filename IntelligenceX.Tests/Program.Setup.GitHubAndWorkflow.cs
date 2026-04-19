@@ -165,10 +165,13 @@ jobs:
             "workflow template usage budget weekly pass-through");
         AssertContainsText(content, "agent_profile: ${{ inputs.agent_profile || vars.IX_REVIEW_AGENT_PROFILE }}",
             "workflow template agent profile input overrides repo variable");
-        AssertContainsText(content, "copilot_model: ${{ inputs.copilot_model }}",
-            "workflow template copilot model pass-through");
-        AssertContainsText(content, "copilot_launcher: ${{ inputs.copilot_launcher }}",
+        AssertContainsText(content, "copilot_model: ${{ inputs.copilot_model || vars.IX_REVIEW_COPILOT_MODEL }}",
+            "workflow template copilot model input overrides repo variable");
+        AssertContainsText(content, "copilot_launcher: ${{ inputs.copilot_launcher || vars.IX_REVIEW_COPILOT_LAUNCHER }}",
             "workflow template copilot launcher pass-through");
+        AssertContainsText(content,
+            "(inputs.copilot_launcher || vars.IX_REVIEW_COPILOT_LAUNCHER) == 'auto' || vars.IX_REVIEW_COPILOT_AUTO_INSTALL == 'true'",
+            "workflow template copilot auto-install respects launcher repo variable");
         AssertContainsText(content, "history_enabled: ${{ inputs.history_enabled }}",
             "workflow template history enabled pass-through");
         AssertContainsText(content,
@@ -228,8 +231,13 @@ jobs:
             "wrapper workflow lets reusable agent profile input override repo variable");
         AssertContainsText(wrapperContent, "swarm_metrics:",
             "wrapper workflow preserves swarm metrics manual override");
-        AssertContainsText(wrapperContent, "copilot_launcher: ${{ inputs.copilot_launcher }}",
+        AssertContainsText(wrapperContent, "copilot_model: ${{ inputs.copilot_model || vars.IX_REVIEW_COPILOT_MODEL }}",
+            "wrapper workflow lets reusable copilot model input override repo variable");
+        AssertContainsText(wrapperContent, "copilot_launcher: ${{ inputs.copilot_launcher || vars.IX_REVIEW_COPILOT_LAUNCHER }}",
             "wrapper workflow passes copilot launcher through to reusable workflow");
+        AssertContainsText(wrapperContent,
+            "(inputs.copilot_launcher || vars.IX_REVIEW_COPILOT_LAUNCHER) == 'auto' || vars.IX_REVIEW_COPILOT_AUTO_INSTALL == 'true'",
+            "wrapper workflow copilot auto-install respects launcher repo variable");
         AssertContainsText(wrapperContent, "history_enabled: ${{ inputs.history_enabled }}",
             "wrapper workflow passes history awareness through to reusable workflow");
         AssertContainsText(wrapperContent,
@@ -433,7 +441,7 @@ jobs:
         AssertContainsText(content, "preflight:", "workflow explicit-secrets preflight input");
         AssertContainsText(content, "preflight_timeout_seconds:", "workflow explicit-secrets preflight timeout input");
         AssertContainsText(content, "copilot_auto_install:", "workflow explicit-secrets Copilot auto-install input");
-        AssertContainsText(content, "inputs.copilot_launcher == 'auto'",
+        AssertContainsText(content, "(inputs.copilot_launcher || vars.IX_REVIEW_COPILOT_LAUNCHER) == 'auto'",
             "workflow explicit-secrets maps Copilot launcher auto to auto-install");
         AssertContainsText(content, "copilot_auto_install_method:",
             "workflow explicit-secrets Copilot auto-install method input");
