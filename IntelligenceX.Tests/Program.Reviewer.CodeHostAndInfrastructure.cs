@@ -1143,6 +1143,25 @@ internal static partial class Program {
         var byok = ReviewerCopilotPromptRunner.ValidateGitHubActionsAuthForTests(options, actionsEnvironment);
 
         AssertEqual(null, byok, "copilot prompt allows BYOK provider override without GitHub Copilot token");
+
+        var isolatedOptions = new IntelligenceX.Copilot.CopilotClientOptions {
+            InheritEnvironment = false
+        };
+        var isolatedMissing = ReviewerCopilotPromptRunner.ValidateGitHubActionsAuthForTests(isolatedOptions,
+            new Dictionary<string, string?> {
+                ["GITHUB_ACTIONS"] = "true",
+                ["COPILOT_GITHUB_TOKEN"] = "github_pat_not_forwarded"
+            });
+
+        AssertContainsText(isolatedMissing ?? string.Empty, "COPILOT_GITHUB_TOKEN",
+            "copilot prompt ignores host token when child env inheritance is disabled");
+
+        isolatedOptions.Environment["COPILOT_GITHUB_TOKEN"] = "github_pat_forwarded";
+        isolatedOptions.Environment["GITHUB_ACTIONS"] = "true";
+        var isolatedForwarded = ReviewerCopilotPromptRunner.ValidateGitHubActionsAuthForTests(isolatedOptions,
+            actionsEnvironment);
+
+        AssertEqual(null, isolatedForwarded, "copilot prompt accepts explicitly forwarded token when env is isolated");
     }
 
     private static void TestCopilotGhLauncherBuildsWrapperCommand() {

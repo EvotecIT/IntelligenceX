@@ -316,24 +316,24 @@ internal sealed class ReviewerCopilotPromptRunner {
 
     private static string? ValidateGitHubActionsAuth(CopilotClientOptions options,
         IReadOnlyDictionary<string, string?>? environment) {
-        if (!IsTruthy(GetEnvironment(options, environment, "GITHUB_ACTIONS"))) {
+        if (!IsTruthy(GetHostEnvironment(options, environment, "GITHUB_ACTIONS"))) {
             return null;
         }
         if (HasCopilotProviderOverride(options, environment)) {
             return null;
         }
 
-        var copilotToken = GetEnvironment(options, environment, "COPILOT_GITHUB_TOKEN");
+        var copilotToken = GetChildEnvironment(options, environment, "COPILOT_GITHUB_TOKEN");
         if (!string.IsNullOrWhiteSpace(copilotToken) && IsSupportedCopilotToken(copilotToken)) {
             return null;
         }
 
-        var ghToken = GetEnvironment(options, environment, "GH_TOKEN");
+        var ghToken = GetChildEnvironment(options, environment, "GH_TOKEN");
         if (!string.IsNullOrWhiteSpace(ghToken) && IsSupportedCopilotToken(ghToken)) {
             return null;
         }
 
-        var githubToken = GetEnvironment(options, environment, "GITHUB_TOKEN");
+        var githubToken = GetChildEnvironment(options, environment, "GITHUB_TOKEN");
         if (!string.IsNullOrWhiteSpace(githubToken) && IsSupportedCopilotToken(githubToken)) {
             return null;
         }
@@ -347,12 +347,23 @@ internal sealed class ReviewerCopilotPromptRunner {
 
     private static bool HasCopilotProviderOverride(CopilotClientOptions options,
         IReadOnlyDictionary<string, string?>? environment) {
-        return !string.IsNullOrWhiteSpace(GetEnvironment(options, environment, "COPILOT_PROVIDER_BASE_URL")) ||
-               !string.IsNullOrWhiteSpace(GetEnvironment(options, environment, "COPILOT_PROVIDER_API_KEY"));
+        return !string.IsNullOrWhiteSpace(GetChildEnvironment(options, environment, "COPILOT_PROVIDER_BASE_URL")) ||
+               !string.IsNullOrWhiteSpace(GetChildEnvironment(options, environment, "COPILOT_PROVIDER_API_KEY"));
     }
 
-    private static string? GetEnvironment(CopilotClientOptions options, IReadOnlyDictionary<string, string?>? environment,
-        string name) {
+    private static string? GetChildEnvironment(CopilotClientOptions options,
+        IReadOnlyDictionary<string, string?>? environment, string name) {
+        if (options.Environment.TryGetValue(name, out var configured)) {
+            return configured;
+        }
+        if (!options.InheritEnvironment) {
+            return null;
+        }
+        return GetHostEnvironment(options, environment, name);
+    }
+
+    private static string? GetHostEnvironment(CopilotClientOptions options,
+        IReadOnlyDictionary<string, string?>? environment, string name) {
         if (options.Environment.TryGetValue(name, out var configured)) {
             return configured;
         }
