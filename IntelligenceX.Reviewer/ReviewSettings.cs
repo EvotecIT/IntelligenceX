@@ -442,6 +442,10 @@ internal sealed partial class ReviewSettings {
     public string? CopilotCliPath { get; set; }
     public string? CopilotCliUrl { get; set; }
     public string? CopilotWorkingDirectory { get; set; }
+    /// <summary>
+    /// Optional Copilot-specific model override. When unset, the CLI default model is used.
+    /// </summary>
+    public string? CopilotModel { get; set; }
     public string CopilotLauncher { get; set; } = "binary";
     public bool CopilotAutoInstall { get; set; }
     public string? CopilotAutoInstallMethod { get; set; }

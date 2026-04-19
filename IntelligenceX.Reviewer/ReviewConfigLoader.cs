@@ -542,6 +542,7 @@ internal static class ReviewConfigLoader {
         settings.CopilotCliPath = copilot.GetString("cliPath") ?? settings.CopilotCliPath;
         settings.CopilotCliUrl = copilot.GetString("cliUrl") ?? settings.CopilotCliUrl;
         settings.CopilotWorkingDirectory = copilot.GetString("workingDirectory") ?? settings.CopilotWorkingDirectory;
+        settings.CopilotModel = copilot.GetString("model") ?? settings.CopilotModel;
         settings.CopilotLauncher = ReviewSettings.NormalizeCopilotLauncher(copilot.GetString("launcher"),
             settings.CopilotLauncher);
         settings.CopilotAutoInstall = ReadBool(copilot, "autoInstall", settings.CopilotAutoInstall);

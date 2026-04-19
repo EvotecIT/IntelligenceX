@@ -165,6 +165,7 @@ internal static partial class Program {
         var body = ReviewDiagnostics.BuildFailureBody(new TimeoutException("timed out"), settings, null, null);
         AssertContainsText(body, "- Provider: copilot", "copilot failure body provider");
         AssertContainsText(body, "- Transport: Direct", "copilot failure body transport");
+        AssertContainsText(body, "- Model: Copilot CLI default", "copilot failure body model");
     }
 
     private static void TestReviewFailureBodyIncludesSafeAuthRefreshDetail() {

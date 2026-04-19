@@ -670,6 +670,8 @@ internal static partial class Program {
         failed += Run("Review threads diff range normalize", TestReviewThreadsDiffRangeNormalize);
         failed += Run("Copilot env allowlist config", TestCopilotEnvAllowlistConfig);
         failed += Run("Copilot launcher env", TestCopilotLauncherEnv);
+        failed += Run("Copilot model env overrides generic model", TestCopilotModelEnvOverridesGenericModel);
+        failed += Run("Copilot default OpenAI model uses CLI default", TestCopilotDefaultOpenAiModelUsesCliDefault);
         failed += Run("Copilot gh launcher builds wrapper command", TestCopilotGhLauncherBuildsWrapperCommand);
         failed += Run("Copilot auto launcher uses binary",
             TestCopilotAutoLauncherUsesBinary);

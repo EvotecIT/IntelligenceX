@@ -265,6 +265,14 @@ internal static partial class Program {
         AssertNotNull(anthropicProps.GetObject("apiKeyEnv"), "reviewer schema anthropic apiKeyEnv property");
         AssertNotNull(anthropicProps.GetObject("timeoutSeconds"), "reviewer schema anthropic timeoutSeconds property");
         AssertNotNull(anthropicProps.GetObject("maxTokens"), "reviewer schema anthropic maxTokens property");
+
+        var copilot = root.GetObject("properties")?.GetObject("copilot");
+        AssertNotNull(copilot, "reviewer schema copilot node");
+        var copilotProps = copilot!.GetObject("properties");
+        AssertNotNull(copilotProps, "reviewer schema copilot.properties");
+        var copilotModel = copilotProps!.GetObject("model");
+        AssertNotNull(copilotModel, "reviewer schema copilot.model property");
+        AssertEqual("string", copilotModel!.GetString("type") ?? string.Empty, "reviewer schema copilot.model type");
     }
 }
 #endif
