@@ -54,8 +54,4 @@ internal sealed class ReviewAgentProfileSettings {
             _ => null
         };
     }
-
-    public ReviewAgentProfileSettings Clone() {
-        return (ReviewAgentProfileSettings)MemberwiseClone();
-    }
 }

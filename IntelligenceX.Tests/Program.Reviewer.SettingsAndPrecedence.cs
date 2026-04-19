@@ -374,6 +374,9 @@ internal static partial class Program {
         try {
             File.WriteAllText(configPath, """
 {
+  "copilot": {
+    "autoInstall": true
+  },
   "review": {
     "provider": "openai",
     "model": "gpt-5.4",
@@ -382,9 +385,10 @@ internal static partial class Program {
       "copilot-claude": {
         "authenticator": "copilot-cli",
         "model": "claude-sonnet-4-5",
+        "autoInstall": "false",
         "copilot": {
           "launcher": "auto",
-          "autoInstall": true,
+          "autoInstallPrerelease": "false",
           "envAllowlist": ["COPILOT_GITHUB_TOKEN"]
         }
       },
@@ -411,7 +415,10 @@ internal static partial class Program {
             AssertEqual("claude-sonnet-4-5", settings.CopilotModel ?? string.Empty,
                 "review settings agent profile copilot explicit model");
             AssertEqual("auto", settings.CopilotLauncher, "review settings agent profile copilot launcher");
-            AssertEqual(true, settings.CopilotAutoInstall, "review settings agent profile copilot auto install");
+            AssertEqual(true, settings.CopilotAutoInstall,
+                "review settings agent profile malformed nullable bool preserves existing auto install");
+            AssertEqual(false, settings.CopilotAutoInstallPrerelease,
+                "review settings agent profile malformed prerelease bool is ignored");
             AssertSequenceEqual(new[] { "COPILOT_GITHUB_TOKEN" }, settings.CopilotEnvAllowlist.ToArray(),
                 "review settings agent profile copilot env allowlist");
 

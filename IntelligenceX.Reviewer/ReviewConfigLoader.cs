@@ -823,7 +823,9 @@ internal static class ReviewConfigLoader {
 
     private static bool? ReadNullableBool(JsonObject obj, string key) {
         if (obj.TryGetValue(key, out var value)) {
-            return value?.AsBoolean(false);
+            if (value?.Kind == JsonValueKind.Boolean) {
+                return value.AsBoolean();
+            }
         }
         return null;
     }
