@@ -480,6 +480,8 @@ internal static partial class Program {
 
         AssertContainsText(prompt, "Review history snapshot:", "prompt review history header");
         AssertContainsText(prompt, "IX sticky summary reviewed `abc1234`", "prompt review history body");
+        AssertContainsText(prompt, "Treat review history as candidate context only.",
+            "prompt review history safety contract");
     }
 
     private static void TestReviewHistoryBuilderIncludesStickySummaryAndThreadSnapshot() {
@@ -557,7 +559,7 @@ internal static partial class Program {
         var section = ReviewHistoryBuilder.Render(snapshot);
 
         AssertEqual(2, snapshot.Rounds.Count, "review history snapshot rounds");
-        AssertEqual(1, snapshot.OpenFindings.Count, "review history snapshot open findings");
+        AssertEqual(0, snapshot.OpenFindings.Count, "review history snapshot prior-head findings are not current");
         AssertEqual(1, snapshot.ResolvedSinceLastRound.Count, "review history snapshot resolved since last round");
         AssertEqual("9999999", snapshot.Rounds[0].ReviewedSha, "review history snapshot oldest round first");
         AssertEqual("abc1234", snapshot.Rounds[1].ReviewedSha, "review history snapshot newest round second");
@@ -570,7 +572,10 @@ internal static partial class Program {
         AssertNotNull(snapshot.ThreadSnapshot, "review history snapshot threads");
         AssertEqual(1, snapshot.ThreadSnapshot!.ActiveCount, "review history snapshot active thread count");
         AssertContainsText(section, "Review history snapshot:", "review history header");
-        AssertContainsText(section, "Open findings carried into the current state:", "review history open findings summary");
+        AssertContainsText(section, "Open findings confirmed on the current head: none.",
+            "review history open findings summary");
+        AssertContainsText(section, "Prior-round findings below are candidates only",
+            "review history prior findings safety label");
         AssertContainsText(section, "Resolved since the latest prior round:", "review history resolved summary");
         AssertContainsText(section, "Round 1: IX sticky summary reviewed `9999999`", "review history older round");
         AssertContainsText(section, "Round 2: IX sticky summary reviewed `abc1234`", "review history newer round");
@@ -580,6 +585,10 @@ internal static partial class Program {
         AssertDoesNotContainText(section, "Review Checklist", "review history ignores progress checklist summaries");
         AssertContainsText(section, "Review threads snapshot: active 1, resolved 1, stale 0.", "review history thread counts");
         AssertContainsText(section, "reviewer-user (src/app.cs:42): Please add regression coverage.", "review history active thread excerpt");
+
+        var sameHeadSnapshot = ReviewHistoryBuilder.BuildSnapshot(issueComments, "abc1234", threads, settings);
+        AssertEqual(1, sameHeadSnapshot.OpenFindings.Count,
+            "review history carries open findings only when summary reviewed current head");
 
         settings.History.MaxRounds = 0;
         snapshot = ReviewHistoryBuilder.BuildSnapshot(issueComments, "def5678", threads, settings);
@@ -627,7 +636,7 @@ internal static partial class Program {
         var block = ReviewHistoryBuilder.BuildCommentBlock(snapshot);
 
         AssertContainsText(block, "## History Progress 🔁", "review history comment block heading");
-        AssertContainsText(block, "Open now:", "review history comment block open label");
+        AssertContainsText(block, "Open on current head:", "review history comment block open label");
         AssertContainsText(block, "[todo] Add null guard in parser.", "review history comment block open item");
         AssertContainsText(block, "Resolved since last round:", "review history comment block resolved label");
         AssertContainsText(block, "[critical] Cover the stale thread path.", "review history comment block resolved item");
@@ -650,7 +659,7 @@ internal static partial class Program {
         var historyBlock = string.Join("\n", new[] {
             "## History Progress 🔁",
             "",
-            "Open now:",
+            "Open on current head:",
             "- [todo] Previous issue."
         });
 
@@ -722,9 +731,9 @@ internal static partial class Program {
         };
 
         var json = ReviewRunner.BuildReviewHistoryArtifactJsonForTests(context, snapshot,
-            "Review history snapshot:\n- Open findings carried into the current state.");
+            "Review history snapshot:\n- Open findings confirmed on the current head.");
         var markdown = ReviewRunner.BuildReviewHistoryArtifactMarkdownForTests(context, snapshot,
-            "Review history snapshot:\n- Open findings carried into the current state.");
+            "Review history snapshot:\n- Open findings confirmed on the current head.");
 
         AssertContainsText(json, "\"schema\": \"intelligencex.review.history.v1\"",
             "review history artifact json schema");
@@ -786,12 +795,12 @@ internal static partial class Program {
             usageLine: string.Empty, findingsBlock: string.Empty, historyBlock: string.Join("\n", new[] {
                 "## History Progress 🔁",
                 "",
-                "Open now:",
+                "Open on current head:",
                 "- [todo] Add null guard in parser."
             }));
 
         AssertContainsText(comment, "## History Progress 🔁", "review comment history heading");
-        AssertContainsText(comment, "Open now:", "review comment history body");
+        AssertContainsText(comment, "Open on current head:", "review comment history body");
         AssertContainsText(comment, "## Summary 📝", "review comment still includes summary");
     }
 

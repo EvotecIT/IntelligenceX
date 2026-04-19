@@ -44,6 +44,7 @@ If there are no inline comments, write "None." under Inline Comments.
 {{NarrativeContractBlock}}
 If no reviewer thread context is provided, omit the Other Reviews section.
 If reviewer thread context is provided, label each item as stale, resolved, actionable, or noise.
+Treat review history as candidate context only. Never put a prior finding in Todo List unless the current diff, active thread state, or CI evidence independently confirms it still applies.
 Keep each section to a maximum of 8 bullet points.
 
 PR Context:
