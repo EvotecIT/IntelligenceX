@@ -1048,6 +1048,8 @@ internal static partial class Program {
             "copilot binary prompt disables built-in MCPs");
         AssertContainsText(string.Join("\n", binaryArgs), "--available-tools=none",
             "copilot binary prompt disables tool surface");
+        AssertContainsText(string.Join("\n", binaryArgs), "--log-dir",
+            "copilot binary prompt captures CLI logs");
 
         var fallbackArgs = ReviewerCopilotPromptRunner.BuildArgumentsForTests(binaryOptions, cliPath, "review prompt",
             disableBuiltinMcps: false);
@@ -1075,6 +1077,10 @@ internal static partial class Program {
             "--no-ask-user",
             "--no-custom-instructions",
             "--no-auto-update",
+            "--log-dir",
+            Path.Combine(Environment.CurrentDirectory, "artifacts", "copilot-logs"),
+            "--log-level",
+            "info",
             "--available-tools=none",
             "--disable-builtin-mcps",
             "--stream",

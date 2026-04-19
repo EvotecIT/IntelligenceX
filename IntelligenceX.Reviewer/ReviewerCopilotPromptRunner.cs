@@ -29,12 +29,13 @@ internal sealed class ReviewerCopilotPromptRunner {
 
         _options.Validate();
         var cliPath = await ResolveCliPathOrInstallAsync(_options, cancellationToken).ConfigureAwait(false);
+        var logDirectory = TryPrepareLogDirectory(_options);
         var disableBuiltinMcps = true;
         var disableToolSurface = true;
         CopilotPromptProcessResult result;
         while (true) {
             var startInfo = BuildStartInfo(_options, cliPath, prompt, model, disableBuiltinMcps,
-                disableToolSurface);
+                disableToolSurface, logDirectory);
             result = await RunProcessAsync(startInfo, timeout, cancellationToken).ConfigureAwait(false);
             if (result.ExitCode == 0) {
                 break;
@@ -55,7 +56,9 @@ internal sealed class ReviewerCopilotPromptRunner {
         }
 
         if (result.ExitCode != 0) {
-            throw new InvalidOperationException(BuildExitMessage(result.ExitCode, result.Stdout, result.Stderr));
+            WriteRecentLogTail(logDirectory);
+            throw new InvalidOperationException(BuildExitMessage(result.ExitCode, result.Stdout, result.Stderr,
+                logDirectory: logDirectory));
         }
 
         var parsed = ParseJsonLines(result.Stdout);
@@ -64,8 +67,9 @@ internal sealed class ReviewerCopilotPromptRunner {
             response = result.Stdout.Trim();
         }
         if (string.IsNullOrWhiteSpace(response)) {
+            WriteRecentLogTail(logDirectory);
             throw new InvalidOperationException(BuildExitMessage(result.ExitCode, result.Stdout, result.Stderr,
-                "Copilot CLI produced no review content."));
+                "Copilot CLI produced no review content.", logDirectory));
         }
 
         return new ReviewerCopilotPromptResult(response.Trim(), parsed.UsageSummary);
@@ -101,7 +105,7 @@ internal sealed class ReviewerCopilotPromptRunner {
     }
 
     private static ProcessStartInfo BuildStartInfo(CopilotClientOptions options, string cliPath, string prompt,
-        string? model, bool disableBuiltinMcps, bool disableToolSurface) {
+        string? model, bool disableBuiltinMcps, bool disableToolSurface, string? logDirectory) {
         var args = new List<string>();
         if (options.CliArgs.Count > 0) {
             args.AddRange(options.CliArgs);
@@ -112,6 +116,12 @@ internal sealed class ReviewerCopilotPromptRunner {
         args.Add("--no-ask-user");
         args.Add("--no-custom-instructions");
         args.Add("--no-auto-update");
+        if (!string.IsNullOrWhiteSpace(logDirectory)) {
+            args.Add("--log-dir");
+            args.Add(logDirectory!);
+            args.Add("--log-level");
+            args.Add(string.IsNullOrWhiteSpace(options.LogLevel) ? "info" : options.LogLevel);
+        }
         if (disableToolSurface) {
             args.Add("--available-tools=none");
         }
@@ -277,7 +287,8 @@ internal sealed class ReviewerCopilotPromptRunner {
 
     internal static string[] BuildArgumentsForTests(CopilotClientOptions options, string cliPath, string prompt,
         string? model = null, bool disableBuiltinMcps = true, bool disableToolSurface = true) {
-        var startInfo = BuildStartInfo(options, cliPath, prompt, model, disableBuiltinMcps, disableToolSurface);
+        var startInfo = BuildStartInfo(options, cliPath, prompt, model, disableBuiltinMcps, disableToolSurface,
+            TryPrepareLogDirectory(options));
         var args = new string[startInfo.ArgumentList.Count];
         startInfo.ArgumentList.CopyTo(args, 0);
         return args;
@@ -335,7 +346,8 @@ internal sealed class ReviewerCopilotPromptRunner {
         return sb.ToString().TrimEnd();
     }
 
-    private static string BuildExitMessage(int exitCode, string stdout, string stderr, string? prefix = null) {
+    private static string BuildExitMessage(int exitCode, string stdout, string stderr, string? prefix = null,
+        string? logDirectory = null) {
         var sb = new StringBuilder();
         if (!string.IsNullOrWhiteSpace(prefix)) {
             sb.Append(prefix);
@@ -350,7 +362,47 @@ internal sealed class ReviewerCopilotPromptRunner {
             sb.AppendLine("Recent Copilot CLI stdout:");
             AppendRecentLines(sb, stdout, maxLines: 6);
         }
+        if (!string.IsNullOrWhiteSpace(logDirectory)) {
+            sb.AppendLine();
+            sb.Append("Copilot CLI logs were written under ");
+            sb.Append(logDirectory);
+            sb.Append('.');
+        }
         return sb.ToString().TrimEnd();
+    }
+
+    private static string? TryPrepareLogDirectory(CopilotClientOptions options) {
+        try {
+            var workingDirectory = options.WorkingDirectory ?? Environment.CurrentDirectory;
+            var logDirectory = Path.Combine(Path.GetFullPath(workingDirectory), "artifacts", "copilot-logs");
+            Directory.CreateDirectory(logDirectory);
+            return logDirectory;
+        } catch {
+            return null;
+        }
+    }
+
+    private static void WriteRecentLogTail(string? logDirectory) {
+        if (string.IsNullOrWhiteSpace(logDirectory) || !Directory.Exists(logDirectory)) {
+            return;
+        }
+        try {
+            var files = Directory.GetFiles(logDirectory, "*.log", SearchOption.TopDirectoryOnly);
+            if (files.Length == 0) {
+                return;
+            }
+            Array.Sort(files, static (left, right) =>
+                File.GetLastWriteTimeUtc(right).CompareTo(File.GetLastWriteTimeUtc(left)));
+            var newest = files[0];
+            Console.Error.WriteLine("Recent Copilot CLI log tail:");
+            Console.Error.WriteLine(newest);
+            var text = File.ReadAllText(newest);
+            var sb = new StringBuilder();
+            AppendRecentLines(sb, text, maxLines: 20);
+            Console.Error.Write(sb.ToString());
+        } catch (Exception ex) {
+            Console.Error.WriteLine($"Failed to read Copilot CLI logs: {ex.Message}");
+        }
     }
 
     private static void AppendRecentStderr(StringBuilder sb, string stderr) {
