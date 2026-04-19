@@ -465,6 +465,11 @@ internal static partial class Program {
             Provider = ReviewProvider.Copilot,
             Model = "gpt-5.2"
         };
+        var securityReviewer = new ReviewSwarmShadowReviewerPlan {
+            Id = "security",
+            Provider = ReviewProvider.OpenAI,
+            Model = "gpt-5.4"
+        };
         var result = new ReviewSwarmShadowRunResult {
             Results = new[] {
                 new ReviewSwarmShadowReviewerResult {
@@ -472,13 +477,20 @@ internal static partial class Program {
                     Succeeded = false,
                     Error = "Provider timeout",
                     DurationMs = 250
+                },
+                new ReviewSwarmShadowReviewerResult {
+                    Reviewer = securityReviewer,
+                    Succeeded = true,
+                    Output = "No security blockers.",
+                    DurationMs = 400
                 }
             },
             Aggregator = new ReviewSwarmShadowAggregatorResult {
                 Succeeded = true,
                 Output = "Aggregated.",
                 DurationMs = 75
-            }
+            },
+            TotalDurationMs = 475
         };
 
         var metrics = ReviewRunner.BuildSwarmShadowMetricsJsonLineForTests(context, result);
@@ -486,10 +498,11 @@ internal static partial class Program {
         AssertContainsText(metrics, "\"schema\":\"intelligencex.review.swarmShadowMetrics.v1\"",
             "swarm shadow metrics schema");
         AssertContainsText(metrics, "\"repository\":\"owner/repo\"", "swarm shadow metrics repository");
-        AssertContainsText(metrics, "\"reviewerCount\":1", "swarm shadow metrics reviewer count");
+        AssertContainsText(metrics, "\"reviewerCount\":2", "swarm shadow metrics reviewer count");
         AssertContainsText(metrics, "\"reviewerFailed\":1", "swarm shadow metrics reviewer failed count");
         AssertContainsText(metrics, "\"aggregatorSucceeded\":true", "swarm shadow metrics aggregator succeeded");
-        AssertContainsText(metrics, "\"totalDurationMs\":325", "swarm shadow metrics total duration");
+        AssertContainsText(metrics, "\"reviewerDurationMs\":650", "swarm shadow metrics keeps reviewer duration sum");
+        AssertContainsText(metrics, "\"totalDurationMs\":475", "swarm shadow metrics total duration uses wall time");
     }
 
     private static void TestReviewSummaryParserMergeBlockerDetection() {

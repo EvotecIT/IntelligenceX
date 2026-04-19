@@ -19,6 +19,7 @@ internal sealed class ReviewSwarmShadowRunResult {
     public IReadOnlyList<ReviewSwarmShadowReviewerResult> Results { get; init; } =
         Array.Empty<ReviewSwarmShadowReviewerResult>();
     public ReviewSwarmShadowAggregatorResult? Aggregator { get; init; }
+    public long TotalDurationMs { get; init; }
 
     public bool HasFailures {
         get {
@@ -58,6 +59,7 @@ internal static class ReviewSwarmShadowRunner {
             return new ReviewSwarmShadowRunResult();
         }
 
+        var stopwatch = Stopwatch.StartNew();
         var results = await RunReviewerLanesAsync(settings, plan, basePrompt, executeReviewerAsync,
                 cancellationToken)
             .ConfigureAwait(false);
@@ -65,9 +67,11 @@ internal static class ReviewSwarmShadowRunner {
         var aggregatorResult = await RunAggregatorAsync(settings, plan, basePrompt, results, executeAggregatorAsync,
                 cancellationToken)
             .ConfigureAwait(false);
+        stopwatch.Stop();
         return new ReviewSwarmShadowRunResult {
             Results = results,
-            Aggregator = aggregatorResult
+            Aggregator = aggregatorResult,
+            TotalDurationMs = stopwatch.ElapsedMilliseconds
         };
     }
 

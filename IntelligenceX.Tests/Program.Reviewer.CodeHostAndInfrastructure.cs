@@ -659,6 +659,12 @@ internal static partial class Program {
                 return new HttpResponse("""
 [
   {
+    "id": 9,
+    "body": "<!-- intelligencex:summary -->\n## IntelligenceX Review\nPrevious sticky summary.",
+    "user": { "login": "intelligencex-review" },
+    "html_url": "https://example.local/comment/9"
+  },
+  {
     "id": 10,
     "body": "First prompt comment.",
     "user": { "login": "alice" },
@@ -695,7 +701,10 @@ internal static partial class Program {
         var extras = CallBuildExtrasAsync(github, context, settings, false);
 
         AssertEqual(2, extras.IssueComments.Count, "history can retain deeper issue comments");
-        AssertContainsText(extras.IssueCommentsSection, "First prompt comment.", "issue comments prompt keeps first capped item");
+        AssertContainsText(extras.IssueCommentsSection, "First prompt comment.",
+            "issue comments prompt caps after filtering sticky summary comments");
+        AssertEqual(false, extras.IssueCommentsSection.Contains("Previous sticky summary.", StringComparison.Ordinal),
+            "issue comments prompt excludes sticky summary before cap");
         AssertEqual(false, extras.IssueCommentsSection.Contains("Second history-only comment.", StringComparison.Ordinal),
             "issue comments prompt keeps maxComments cap");
     }

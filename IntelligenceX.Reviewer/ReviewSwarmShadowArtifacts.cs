@@ -172,7 +172,7 @@ internal static class ReviewSwarmShadowArtifacts {
             hasFailures = result.HasFailures,
             reviewerDurationMs,
             aggregatorDurationMs,
-            totalDurationMs = reviewerDurationMs + aggregatorDurationMs,
+            totalDurationMs = CalculateTotalDurationMs(result),
             reviewerOutputChars,
             aggregatorOutputChars
         };
@@ -224,6 +224,10 @@ internal static class ReviewSwarmShadowArtifacts {
     }
 
     private static long CalculateTotalDurationMs(ReviewSwarmShadowRunResult result) {
+        if (result.TotalDurationMs > 0) {
+            return result.TotalDurationMs;
+        }
+
         var total = 0L;
         foreach (var item in result.Results) {
             total += Math.Max(0, item.DurationMs);

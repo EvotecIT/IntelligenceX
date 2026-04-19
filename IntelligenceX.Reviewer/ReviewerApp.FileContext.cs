@@ -146,9 +146,7 @@ public static partial class ReviewerApp {
                     .ConfigureAwait(false);
                 extras.IssueComments = comments;
                 if (settings.IncludeIssueComments) {
-                    extras.IssueCommentsSection = BuildIssueCommentsSection(
-                        comments.Take(Math.Max(0, settings.MaxComments)).ToArray(),
-                        settings);
+                    extras.IssueCommentsSection = BuildIssueCommentsSection(comments, settings);
                 }
             } catch (Exception ex) {
                 // Issue comments are supplemental context; avoid failing the whole review on GitHub rate limits.
@@ -346,6 +344,11 @@ public static partial class ReviewerApp {
     }
 
     private static string BuildIssueCommentsSection(IReadOnlyList<IssueComment> comments, ReviewSettings settings) {
+        var maxComments = Math.Max(0, settings.MaxComments);
+        if (maxComments <= 0) {
+            return string.Empty;
+        }
+
         var filtered = new List<IssueComment>();
         foreach (var comment in comments) {
             if (string.IsNullOrWhiteSpace(comment.Body)) {
@@ -359,6 +362,9 @@ public static partial class ReviewerApp {
                 continue;
             }
             filtered.Add(comment);
+            if (filtered.Count >= maxComments) {
+                break;
+            }
         }
         if (filtered.Count == 0) {
             return string.Empty;
