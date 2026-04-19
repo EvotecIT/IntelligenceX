@@ -29,11 +29,29 @@ internal sealed class ReviewerCopilotPromptRunner {
 
         _options.Validate();
         var cliPath = await ResolveCliPathOrInstallAsync(_options, cancellationToken).ConfigureAwait(false);
-        var startInfo = BuildStartInfo(_options, cliPath, prompt, model, disableBuiltinMcps: true);
-        var result = await RunProcessAsync(startInfo, timeout, cancellationToken).ConfigureAwait(false);
-        if (result.ExitCode != 0 && IsUnsupportedDisableBuiltinMcpsFlag(result.Stdout, result.Stderr)) {
-            startInfo = BuildStartInfo(_options, cliPath, prompt, model, disableBuiltinMcps: false);
+        var disableBuiltinMcps = true;
+        var disableToolSurface = true;
+        CopilotPromptProcessResult result;
+        while (true) {
+            var startInfo = BuildStartInfo(_options, cliPath, prompt, model, disableBuiltinMcps,
+                disableToolSurface);
             result = await RunProcessAsync(startInfo, timeout, cancellationToken).ConfigureAwait(false);
+            if (result.ExitCode == 0) {
+                break;
+            }
+
+            var retry = false;
+            if (disableToolSurface && IsUnsupportedAvailableToolsFlag(result.Stdout, result.Stderr)) {
+                disableToolSurface = false;
+                retry = true;
+            }
+            if (disableBuiltinMcps && IsUnsupportedDisableBuiltinMcpsFlag(result.Stdout, result.Stderr)) {
+                disableBuiltinMcps = false;
+                retry = true;
+            }
+            if (!retry) {
+                break;
+            }
         }
 
         if (result.ExitCode != 0) {
@@ -83,7 +101,7 @@ internal sealed class ReviewerCopilotPromptRunner {
     }
 
     private static ProcessStartInfo BuildStartInfo(CopilotClientOptions options, string cliPath, string prompt,
-        string? model, bool disableBuiltinMcps) {
+        string? model, bool disableBuiltinMcps, bool disableToolSurface) {
         var args = new List<string>();
         if (options.CliArgs.Count > 0) {
             args.AddRange(options.CliArgs);
@@ -94,7 +112,9 @@ internal sealed class ReviewerCopilotPromptRunner {
         args.Add("--no-ask-user");
         args.Add("--no-custom-instructions");
         args.Add("--no-auto-update");
-        args.Add("--available-tools=none");
+        if (disableToolSurface) {
+            args.Add("--available-tools=none");
+        }
         if (disableBuiltinMcps) {
             args.Add("--disable-builtin-mcps");
         }
@@ -256,8 +276,8 @@ internal sealed class ReviewerCopilotPromptRunner {
     }
 
     internal static string[] BuildArgumentsForTests(CopilotClientOptions options, string cliPath, string prompt,
-        string? model = null, bool disableBuiltinMcps = true) {
-        var startInfo = BuildStartInfo(options, cliPath, prompt, model, disableBuiltinMcps);
+        string? model = null, bool disableBuiltinMcps = true, bool disableToolSurface = true) {
+        var startInfo = BuildStartInfo(options, cliPath, prompt, model, disableBuiltinMcps, disableToolSurface);
         var args = new string[startInfo.ArgumentList.Count];
         startInfo.ArgumentList.CopyTo(args, 0);
         return args;
@@ -266,9 +286,20 @@ internal sealed class ReviewerCopilotPromptRunner {
     internal static bool IsUnsupportedDisableBuiltinMcpsFlagForTests(string stdout, string stderr) =>
         IsUnsupportedDisableBuiltinMcpsFlag(stdout, stderr);
 
+    internal static bool IsUnsupportedAvailableToolsFlagForTests(string stdout, string stderr) =>
+        IsUnsupportedAvailableToolsFlag(stdout, stderr);
+
     private static bool IsUnsupportedDisableBuiltinMcpsFlag(string stdout, string stderr) {
+        return IsUnsupportedFlag(stdout, stderr, "--disable-builtin-mcps");
+    }
+
+    private static bool IsUnsupportedAvailableToolsFlag(string stdout, string stderr) {
+        return IsUnsupportedFlag(stdout, stderr, "--available-tools");
+    }
+
+    private static bool IsUnsupportedFlag(string stdout, string stderr, string flag) {
         var combined = string.Concat(stdout, "\n", stderr);
-        return combined.Contains("--disable-builtin-mcps", StringComparison.OrdinalIgnoreCase) &&
+        return combined.Contains(flag, StringComparison.OrdinalIgnoreCase) &&
                (combined.Contains("unknown", StringComparison.OrdinalIgnoreCase) ||
                 combined.Contains("unrecognized", StringComparison.OrdinalIgnoreCase) ||
                 combined.Contains("invalid option", StringComparison.OrdinalIgnoreCase) ||

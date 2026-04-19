@@ -1054,6 +1054,13 @@ internal static partial class Program {
         AssertEqual(false, fallbackArgs.Contains("--disable-builtin-mcps"),
             "copilot prompt fallback omits built-in MCP flag");
 
+        var legacyFallbackArgs = ReviewerCopilotPromptRunner.BuildArgumentsForTests(binaryOptions, cliPath, "review prompt",
+            disableBuiltinMcps: false, disableToolSurface: false);
+        AssertEqual(false, legacyFallbackArgs.Contains("--disable-builtin-mcps"),
+            "copilot prompt legacy fallback omits built-in MCP flag");
+        AssertEqual(false, legacyFallbackArgs.Contains("--available-tools=none"),
+            "copilot prompt legacy fallback omits available-tools flag");
+
         var ghOptions = new IntelligenceX.Copilot.CopilotClientOptions();
         ghOptions.CliArgs.Add("copilot");
         ghOptions.CliArgs.Add("--");
@@ -1084,6 +1091,15 @@ internal static partial class Program {
         AssertEqual(false, ReviewerCopilotPromptRunner.IsUnsupportedDisableBuiltinMcpsFlagForTests(
             string.Empty, "error: unknown option '--other-flag'"),
             "copilot prompt ignores unrelated unknown flag");
+        AssertEqual(true, ReviewerCopilotPromptRunner.IsUnsupportedAvailableToolsFlagForTests(
+            string.Empty, "error: unknown option '--available-tools'"),
+            "copilot prompt detects unknown available-tools flag");
+        AssertEqual(true, ReviewerCopilotPromptRunner.IsUnsupportedAvailableToolsFlagForTests(
+            string.Empty, "error: unrecognized option '--available-tools=none'"),
+            "copilot prompt detects unknown available-tools value flag");
+        AssertEqual(false, ReviewerCopilotPromptRunner.IsUnsupportedAvailableToolsFlagForTests(
+            string.Empty, "Unknown tool name in the tool allowlist: \"none\""),
+            "copilot prompt keeps supported available-tools warning non-fatal");
     }
 
     private static void TestCopilotGhLauncherBuildsWrapperCommand() {
