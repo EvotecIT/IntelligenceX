@@ -213,7 +213,7 @@ Suggested shape:
 Suggested semantics:
 - `binary`: execute `copilot` directly
 - `gh`: execute `gh copilot --`
-- `auto`: use the direct binary when present, otherwise choose `gh copilot --` only after a wrapper capability probe succeeds
+- `auto`: use the standalone binary path and let `autoInstall` provision it when enabled
 
 Validation requirements before enabling `gh` by default:
 - confirm server/protocol compatibility for reviewer transport mode
@@ -279,7 +279,7 @@ Current status:
 - bounded review-history JSON/Markdown artifacts are written under `artifacts/reviewer/history/` when `review.history.artifacts` is enabled
 - bounded JSON/Markdown comparison artifacts plus append-only JSONL metrics are written under `artifacts/reviewer/swarm-shadow/` when `review.swarm.metrics` is enabled
 - managed workflow wrappers/templates pass through history, Copilot model/launcher, and swarm-shadow overrides to the reusable workflow
-- `copilot.launcher=auto` now probes whether `gh copilot -- --version` can actually launch the CLI before selecting the wrapper path
+- `copilot.launcher=auto` keeps the GitHub CLI wrapper as an explicit opt-in because live workflow proof showed `gh copilot --` can launch but still time out in reviewer server mode
 - public output still comes from the single-review path
 - deeper longitudinal history analysis across uploaded workflow artifacts remains pending
 

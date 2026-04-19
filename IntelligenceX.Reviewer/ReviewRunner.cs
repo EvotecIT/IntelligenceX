@@ -1,7 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
-using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
@@ -346,6 +344,10 @@ internal sealed partial class ReviewRunner {
     }
 
     private CopilotClientOptions BuildCopilotClientOptions() {
+        return BuildCopilotClientOptions(out _);
+    }
+
+    private CopilotClientOptions BuildCopilotClientOptions(out string launcherDiagnostic) {
         var options = new CopilotClientOptions();
         var launcher = ApplyCopilotLauncher(options);
         if (!string.IsNullOrWhiteSpace(_settings.CopilotCliUrl)) {
@@ -363,14 +365,15 @@ internal sealed partial class ReviewRunner {
         }
         options.AutoInstallPrerelease = _settings.CopilotAutoInstallPrerelease;
         ApplyCopilotEnvironment(options);
+        launcherDiagnostic = BuildCopilotLauncherDiagnostic(launcher, options);
         if (_settings.Diagnostics) {
-            Console.Error.WriteLine(BuildCopilotLauncherDiagnostic(launcher, options));
+            Console.Error.WriteLine(launcherDiagnostic);
         }
         return options;
     }
 
     private string ApplyCopilotLauncher(CopilotClientOptions options) {
-        var launcher = ResolveCopilotLauncher(_settings, CommandExists, GhCopilotWrapperCanLaunchCli);
+        var launcher = ResolveCopilotLauncher(_settings);
 
         if (string.Equals(launcher, "gh", StringComparison.OrdinalIgnoreCase)) {
             options.CliPath = "gh";
@@ -385,26 +388,16 @@ internal sealed partial class ReviewRunner {
         return "binary";
     }
 
-    internal static string ResolveCopilotLauncherForTests(ReviewSettings settings, bool copilotExists, bool ghExists,
-        bool ghCopilotWrapperCanLaunchCli) =>
-        ResolveCopilotLauncher(settings,
-            command => string.Equals(command, "copilot", StringComparison.OrdinalIgnoreCase)
-                ? copilotExists
-                : ghExists,
-            () => ghCopilotWrapperCanLaunchCli);
+    internal static string ResolveCopilotLauncherForTests(ReviewSettings settings) =>
+        ResolveCopilotLauncher(settings);
 
-    private static string ResolveCopilotLauncher(ReviewSettings settings, Func<string, bool> commandExists,
-        Func<bool> ghCopilotWrapperCanLaunchCli) {
+    private static string ResolveCopilotLauncher(ReviewSettings settings) {
         var launcher = ReviewSettings.NormalizeCopilotLauncher(settings.CopilotLauncher, "binary");
         if (!string.Equals(launcher, "auto", StringComparison.OrdinalIgnoreCase)) {
             return launcher;
         }
 
-        if (!string.IsNullOrWhiteSpace(settings.CopilotCliPath) || commandExists("copilot") || !commandExists("gh")) {
-            return "binary";
-        }
-
-        return ghCopilotWrapperCanLaunchCli() ? "gh" : "binary";
+        return "binary";
     }
 
     private string BuildCopilotLauncherDiagnostic(string launcher, CopilotClientOptions options) {
@@ -431,9 +424,12 @@ internal sealed partial class ReviewRunner {
         if (_settings.CopilotTransport == CopilotTransportKind.Direct) {
             return await RunCopilotDirectAsync(prompt, cancellationToken).ConfigureAwait(false);
         }
-        var options = BuildCopilotClientOptions();
+        var options = BuildCopilotClientOptions(out var launcherDiagnostic);
 
         await using var client = await CopilotClient.StartAsync(options, cancellationToken).ConfigureAwait(false);
+        var stderrLines = new Queue<string>();
+        var stderrLock = new object();
+        client.StandardErrorReceived += (_, line) => CaptureCopilotStderr(stderrLines, stderrLock, line);
         var session = await client.CreateSessionAsync(new CopilotSessionOptions {
             Model = _settings.Model,
             Streaming = true
@@ -479,7 +475,7 @@ internal sealed partial class ReviewRunner {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(TimeSpan.FromSeconds(_settings.WaitSeconds));
         using var registration = timeout.Token.Register(() =>
-            tcs.TrySetException(new TimeoutException($"Copilot review timed out after {_settings.WaitSeconds} seconds.")));
+            tcs.TrySetException(new TimeoutException(BuildCopilotTimeoutMessage(launcherDiagnostic, stderrLines, stderrLock))));
 
         var result = await tcs.Task.ConfigureAwait(false);
 
@@ -494,6 +490,42 @@ internal sealed partial class ReviewRunner {
         }
 
         return result ?? string.Empty;
+    }
+
+    private string BuildCopilotTimeoutMessage(string launcherDiagnostic, Queue<string> stderrLines, object stderrLock) {
+        var sb = new StringBuilder();
+        sb.Append("Copilot review timed out after ");
+        sb.Append(_settings.WaitSeconds);
+        sb.Append(" seconds. ");
+        sb.Append(launcherDiagnostic);
+        sb.Append(" If this run uses the GitHub CLI wrapper, try copilot.launcher=binary with copilot.autoInstall=true; ");
+        sb.Append("the wrapper can launch the CLI but still hang in reviewer server mode on some runners.");
+
+        List<string> lines;
+        lock (stderrLock) {
+            lines = new List<string>(stderrLines);
+        }
+        if (lines.Count > 0) {
+            sb.AppendLine();
+            sb.AppendLine("Recent Copilot CLI stderr:");
+            for (var i = Math.Max(0, lines.Count - 6); i < lines.Count; i++) {
+                sb.Append("  ");
+                sb.AppendLine(lines[i]);
+            }
+        }
+        return sb.ToString().TrimEnd();
+    }
+
+    private static void CaptureCopilotStderr(Queue<string> stderrLines, object stderrLock, string? line) {
+        if (string.IsNullOrWhiteSpace(line)) {
+            return;
+        }
+        lock (stderrLock) {
+            stderrLines.Enqueue(line.Trim());
+            while (stderrLines.Count > 8) {
+                stderrLines.Dequeue();
+            }
+        }
     }
 
     private async Task<string> RunCopilotDirectAsync(string prompt, CancellationToken cancellationToken) {
@@ -696,71 +728,4 @@ internal sealed partial class ReviewRunner {
         }
     }
 
-    private static bool CommandExists(string command) {
-        var path = Environment.GetEnvironmentVariable("PATH");
-        if (string.IsNullOrWhiteSpace(path)) {
-            return false;
-        }
-
-        var extensions = new List<string> { string.Empty };
-        if (OperatingSystem.IsWindows()) {
-            var pathExt = Environment.GetEnvironmentVariable("PATHEXT");
-            extensions = string.IsNullOrWhiteSpace(pathExt)
-                ? new List<string> { ".exe", ".cmd", ".bat" }
-                : new List<string>(pathExt.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
-        }
-
-        foreach (var directory in path.Split(Path.PathSeparator)) {
-            if (string.IsNullOrWhiteSpace(directory)) {
-                continue;
-            }
-            foreach (var extension in extensions) {
-                var candidate = Path.Combine(directory.Trim(), command + extension);
-                if (File.Exists(candidate)) {
-                    return true;
-                }
-            }
-        }
-
-        return false;
-    }
-
-    private static bool GhCopilotWrapperCanLaunchCli() {
-        try {
-            using var process = new Process();
-            process.StartInfo = new ProcessStartInfo {
-                FileName = "gh",
-                RedirectStandardError = true,
-                RedirectStandardOutput = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-            process.StartInfo.ArgumentList.Add("copilot");
-            process.StartInfo.ArgumentList.Add("--");
-            process.StartInfo.ArgumentList.Add("--version");
-            if (!process.Start()) {
-                return false;
-            }
-
-            if (!process.WaitForExit(5000)) {
-                try {
-                    process.Kill(entireProcessTree: true);
-                } catch {
-                    // Best-effort cleanup for a capability probe.
-                }
-                return false;
-            }
-
-            var output = process.StandardOutput.ReadToEnd();
-            var error = process.StandardError.ReadToEnd();
-            var combined = string.Concat(output, "\n", error);
-            if (combined.Contains("not installed", StringComparison.OrdinalIgnoreCase)) {
-                return false;
-            }
-            return process.ExitCode == 0 &&
-                combined.Contains("copilot", StringComparison.OrdinalIgnoreCase);
-        } catch {
-            return false;
-        }
-    }
 }

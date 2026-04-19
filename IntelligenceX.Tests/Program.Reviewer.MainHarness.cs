@@ -69,6 +69,7 @@ internal static partial class Program {
         failed += Run("Review retry extra attempt", TestReviewRetryExtraAttempt);
         failed += Run("Review failure marker", TestReviewFailureMarker);
         failed += Run("Review failure body redacts errors", TestReviewFailureBodyRedactsErrors);
+        failed += Run("Review failure body uses Copilot transport", TestReviewFailureBodyUsesCopilotTransport);
         failed += Run("Review failure body includes safe auth refresh detail", TestReviewFailureBodyIncludesSafeAuthRefreshDetail);
         failed += Run("Build auth remediation command quotes repo when needed", TestBuildAuthRemediationCommandQuotesRepoWhenNeeded);
         failed += Run("Build auth remediation command escapes embedded quotes", TestBuildAuthRemediationCommandEscapesEmbeddedQuotes);
@@ -670,10 +671,16 @@ internal static partial class Program {
         failed += Run("Copilot env allowlist config", TestCopilotEnvAllowlistConfig);
         failed += Run("Copilot launcher env", TestCopilotLauncherEnv);
         failed += Run("Copilot gh launcher builds wrapper command", TestCopilotGhLauncherBuildsWrapperCommand);
-        failed += Run("Copilot auto launcher requires usable gh wrapper",
-            TestCopilotAutoLauncherRequiresUsableGhWrapper);
-        failed += Run("Copilot auto launcher uses gh when wrapper can launch CLI",
-            TestCopilotAutoLauncherUsesGhWhenWrapperCanLaunchCli);
+        failed += Run("Copilot auto launcher uses binary",
+            TestCopilotAutoLauncherUsesBinary);
+        failed += Run("Copilot auto launcher keeps gh wrapper explicit",
+            TestCopilotAutoLauncherKeepsGhWrapperExplicit);
+        failed += Run("Copilot auto launcher uses binary for auto-install",
+            TestCopilotAutoLauncherUsesBinaryForAutoInstall);
+        failed += Run("Copilot CLI auto-install defaults prefer Linux script",
+            TestCopilotCliAutoInstallDefaultsPreferLinuxScript);
+        failed += Run("Copilot CLI auto-install defaults keep macOS Homebrew",
+            TestCopilotCliAutoInstallDefaultsKeepMacHomebrew);
         failed += Run("Copilot launcher diagnostics describe resolved command",
             TestCopilotLauncherDiagnosticsDescribeResolvedCommand);
         failed += Run("Copilot binary launcher keeps direct cli path", TestCopilotBinaryLauncherKeepsDirectCliPath);

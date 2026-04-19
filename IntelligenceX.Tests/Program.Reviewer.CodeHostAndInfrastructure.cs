@@ -1001,26 +1001,56 @@ internal static partial class Program {
         AssertSequenceEqual(new[] { "copilot", "--" }, options.CliArgs.ToArray(), "copilot gh launcher args");
     }
 
-    private static void TestCopilotAutoLauncherRequiresUsableGhWrapper() {
+    private static void TestCopilotAutoLauncherUsesBinary() {
         var settings = new ReviewSettings {
             CopilotLauncher = "auto"
         };
 
-        var resolved = ReviewRunner.ResolveCopilotLauncherForTests(settings,
-            copilotExists: false, ghExists: true, ghCopilotWrapperCanLaunchCli: false);
+        var resolved = ReviewRunner.ResolveCopilotLauncherForTests(settings);
 
-        AssertEqual("binary", resolved, "copilot auto launcher does not assume gh can bootstrap copilot");
+        AssertEqual("binary", resolved, "copilot auto launcher uses standalone binary path");
     }
 
-    private static void TestCopilotAutoLauncherUsesGhWhenWrapperCanLaunchCli() {
+    private static void TestCopilotAutoLauncherKeepsGhWrapperExplicit() {
         var settings = new ReviewSettings {
             CopilotLauncher = "auto"
         };
 
-        var resolved = ReviewRunner.ResolveCopilotLauncherForTests(settings,
-            copilotExists: false, ghExists: true, ghCopilotWrapperCanLaunchCli: true);
+        var resolved = ReviewRunner.ResolveCopilotLauncherForTests(settings);
 
-        AssertEqual("gh", resolved, "copilot auto launcher uses gh only after wrapper probe succeeds");
+        AssertEqual("binary", resolved, "copilot auto launcher keeps gh wrapper as explicit opt-in");
+    }
+
+    private static void TestCopilotAutoLauncherUsesBinaryForAutoInstall() {
+        var settings = new ReviewSettings {
+            CopilotLauncher = "auto",
+            CopilotAutoInstall = true
+        };
+
+        var resolved = ReviewRunner.ResolveCopilotLauncherForTests(settings);
+
+        AssertEqual("binary", resolved, "copilot auto launcher lets missing binary be resolved by auto-install");
+    }
+
+    private static void TestCopilotCliAutoInstallDefaultsPreferLinuxScript() {
+        var command = IntelligenceX.Copilot.CopilotCliInstall.GetDefaultCommandForPlatform(
+            isWindows: false,
+            isMac: false,
+            isLinux: true);
+
+        AssertEqual(IntelligenceX.Copilot.CopilotCliInstallMethod.Script, command.Method,
+            "copilot linux auto install default");
+        AssertEqual("bash", command.FileName, "copilot linux auto install file");
+    }
+
+    private static void TestCopilotCliAutoInstallDefaultsKeepMacHomebrew() {
+        var command = IntelligenceX.Copilot.CopilotCliInstall.GetDefaultCommandForPlatform(
+            isWindows: false,
+            isMac: true,
+            isLinux: false);
+
+        AssertEqual(IntelligenceX.Copilot.CopilotCliInstallMethod.Homebrew, command.Method,
+            "copilot mac auto install default");
     }
 
     private static void TestCopilotLauncherDiagnosticsDescribeResolvedCommand() {
