@@ -1125,6 +1125,10 @@ internal static partial class Program {
         var options = new IntelligenceX.Copilot.CopilotClientOptions();
         var actionsEnvironment = new Dictionary<string, string?> {
             ["GITHUB_ACTIONS"] = "true",
+            ["COPILOT_GITHUB_TOKEN"] = null,
+            ["GH_TOKEN"] = null,
+            ["COPILOT_PROVIDER_BASE_URL"] = null,
+            ["COPILOT_PROVIDER_API_KEY"] = null,
             ["GITHUB_TOKEN"] = "ghs_installation_token"
         };
 
