@@ -133,6 +133,10 @@ internal static class ReviewHistoryBuilder {
                 continue;
             }
 
+            if (IsProgressSummaryComment(comment.Body)) {
+                continue;
+            }
+
             ownedSummaries.Add(comment);
             if (ownedSummaries.Count >= settings.History.MaxRounds) {
                 break;
@@ -164,6 +168,11 @@ internal static class ReviewHistoryBuilder {
         }
 
         AppendResolvedSinceLastRound(resolvedSinceLastRound, rounds);
+    }
+
+    private static bool IsProgressSummaryComment(string body) {
+        return body.Contains("## IntelligenceX Review (in progress)", StringComparison.OrdinalIgnoreCase) ||
+               body.Contains("### Review Checklist", StringComparison.OrdinalIgnoreCase);
     }
 
     private static void AppendExternalSummaries(List<ReviewHistoryExternalSummary> externalSummaries,

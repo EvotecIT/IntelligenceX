@@ -516,10 +516,22 @@ internal static partial class Program {
             "## Critical Issues ⚠️",
             "- [ ] Cover the stale thread path."
         });
+        var progressSummaryBody = string.Join("\n", new[] {
+            "<!-- intelligencex:summary -->",
+            "## IntelligenceX Review (in progress)",
+            "Reviewing PR #42: **Parser update**",
+            "",
+            "- [x] Gather context",
+            "- [ ] Post findings",
+            "",
+            "### Review Checklist",
+            "- [ ] Review changes"
+        });
         var issueComments = new[] {
             new IssueComment(1, summaryBody, "intelligencex-review"),
             new IssueComment(2, "human follow-up note", "reviewer-user"),
             new IssueComment(4, "Claude summary: prior low-priority notes now look resolved.", "claude"),
+            new IssueComment(5, progressSummaryBody, "intelligencex-review"),
             new IssueComment(3, olderSummaryBody, "github-actions")
         };
         var threads = new[] {
@@ -564,6 +576,8 @@ internal static partial class Program {
         AssertContainsText(section, "Round 2: IX sticky summary reviewed `abc1234`", "review history newer round");
         AssertContainsText(section, "[todo] Add null guard in parser.", "review history normalized todo item");
         AssertContainsText(section, "[critical] Cover the stale thread path.", "review history normalized resolved item");
+        AssertDoesNotContainText(section, "in progress", "review history ignores progress summaries");
+        AssertDoesNotContainText(section, "Review Checklist", "review history ignores progress checklist summaries");
         AssertContainsText(section, "Review threads snapshot: active 1, resolved 1, stale 0.", "review history thread counts");
         AssertContainsText(section, "reviewer-user (src/app.cs:42): Please add regression coverage.", "review history active thread excerpt");
 
