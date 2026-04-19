@@ -4,9 +4,12 @@ namespace IntelligenceX.Reviewer;
 
 internal sealed partial class ReviewSettings {
     internal ReviewSettings CloneWithProviderOverride(ReviewProvider provider, string model,
-        ReasoningEffort? reasoningEffort, string? agentProfile = null) {
+        ReasoningEffort? reasoningEffort, string? agentProfile = null,
+        ReviewAgentProfileSettings? resolvedAgentProfile = null) {
         var clone = (ReviewSettings)MemberwiseClone();
-        if (!string.IsNullOrWhiteSpace(agentProfile)) {
+        if (resolvedAgentProfile is not null) {
+            clone.ApplyAgentProfile(resolvedAgentProfile);
+        } else if (!string.IsNullOrWhiteSpace(agentProfile)) {
             clone.ApplyAgentProfile(agentProfile);
         }
         clone.Provider = provider;

@@ -17,6 +17,10 @@ internal sealed partial class ReviewSettings {
             return;
         }
 
+        ApplyAgentProfile(profile);
+    }
+
+    internal void ApplyAgentProfile(ReviewAgentProfileSettings profile) {
         AgentProfile = profile.Id;
         var provider = profile.ResolveProvider();
         if (provider.HasValue) {
@@ -38,7 +42,7 @@ internal sealed partial class ReviewSettings {
         }
         CopilotModel = UseIfSet(profile.CopilotModel, CopilotModel);
         if (string.IsNullOrWhiteSpace(profile.CopilotModel) &&
-            profile.ResolveProvider() == ReviewProvider.Copilot &&
+            provider == ReviewProvider.Copilot &&
             !string.IsNullOrWhiteSpace(profile.Model)) {
             CopilotModel = profile.Model.Trim();
         }

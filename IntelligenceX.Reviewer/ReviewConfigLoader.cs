@@ -652,9 +652,16 @@ internal static class ReviewConfigLoader {
             profile.OpenAITransport = ParseOpenAiTransport(openAiTransport, OpenAITransportKind.AppServer);
         }
 
+        var resolvedProvider = profile.ResolveProvider();
         ApplyAgentProfileCopilot(obj.GetObject("copilot") ?? obj, profile);
-        ApplyAgentProfileOpenAiCompatible(obj.GetObject("openaiCompatible") ?? obj.GetObject("openAiCompatible") ?? obj, profile);
-        ApplyAgentProfileAnthropic(obj.GetObject("anthropic") ?? obj.GetObject("claude") ?? obj, profile);
+        var openAiCompatible = obj.GetObject("openaiCompatible") ?? obj.GetObject("openAiCompatible");
+        if (openAiCompatible is not null || resolvedProvider == ReviewProvider.OpenAICompatible) {
+            ApplyAgentProfileOpenAiCompatible(openAiCompatible ?? obj, profile);
+        }
+        var anthropic = obj.GetObject("anthropic") ?? obj.GetObject("claude");
+        if (anthropic is not null || resolvedProvider == ReviewProvider.Claude) {
+            ApplyAgentProfileAnthropic(anthropic ?? obj, profile);
+        }
         return profile;
     }
 

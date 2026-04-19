@@ -397,6 +397,13 @@ internal static partial class Program {
         "model": "gpt-5.4",
         "openaiTransport": "native",
         "openaiAccountId": "acct-review"
+      },
+      "local-openai": {
+        "provider": "openai-compatible",
+        "model": "local-reviewer",
+        "baseUrl": "https://compat.example/v1",
+        "apiKeyEnv": "COMPAT_TOKEN",
+        "timeoutSeconds": 45
       }
     }
   }
@@ -433,6 +440,22 @@ internal static partial class Program {
                 "review settings env agent profile transport");
             AssertEqual("acct-review", settings.OpenAiAccountId ?? string.Empty,
                 "review settings env agent profile account");
+
+            Environment.SetEnvironmentVariable("REVIEW_AGENT_PROFILE", "local-openai");
+            settings = ReviewSettings.Load();
+
+            AssertEqual(ReviewProvider.OpenAICompatible, settings.Provider,
+                "review settings compatible agent profile provider");
+            AssertEqual("local-reviewer", settings.Model, "review settings compatible agent profile model");
+            AssertEqual("https://compat.example/v1", settings.OpenAICompatibleBaseUrl,
+                "review settings compatible agent profile base url");
+            AssertEqual("COMPAT_TOKEN", settings.OpenAICompatibleApiKeyEnv,
+                "review settings compatible agent profile api key env");
+            AssertEqual(45, settings.OpenAICompatibleTimeoutSeconds,
+                "review settings compatible agent profile timeout");
+            AssertEqual(false, string.Equals("https://compat.example/v1", settings.AnthropicBaseUrl,
+                    StringComparison.OrdinalIgnoreCase),
+                "review settings compatible agent profile does not bleed base url into anthropic config");
         } finally {
             Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", previousConfigPath);
             Environment.SetEnvironmentVariable("REVIEW_AGENT_PROFILE", previousAgentProfile);

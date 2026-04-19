@@ -8,6 +8,7 @@ namespace IntelligenceX.Reviewer;
 internal sealed class ReviewSwarmShadowReviewerPlan {
     public string Id { get; init; } = string.Empty;
     public string? AgentProfile { get; init; }
+    public ReviewAgentProfileSettings? ResolvedAgentProfile { get; init; }
     public ReviewProvider Provider { get; init; }
     public string Model { get; init; } = string.Empty;
     public ReasoningEffort? ReasoningEffort { get; init; }
@@ -15,6 +16,7 @@ internal sealed class ReviewSwarmShadowReviewerPlan {
 
 internal sealed class ReviewSwarmShadowAggregatorPlan {
     public string? AgentProfile { get; init; }
+    public ReviewAgentProfileSettings? ResolvedAgentProfile { get; init; }
     public ReviewProvider Provider { get; init; }
     public string Model { get; init; } = string.Empty;
     public ReasoningEffort? ReasoningEffort { get; init; }
@@ -53,6 +55,7 @@ internal static class ReviewSwarmShadowPlanner {
             reviewers.Add(new ReviewSwarmShadowReviewerPlan {
                 Id = reviewer.Id.Trim().ToLowerInvariant(),
                 AgentProfile = profile?.Id,
+                ResolvedAgentProfile = profile,
                 Provider = reviewerProvider,
                 Model = reviewerModel,
                 ReasoningEffort = reviewer.ReasoningEffort ?? profile?.ReasoningEffort ?? settings.ReasoningEffort
@@ -77,6 +80,7 @@ internal static class ReviewSwarmShadowPlanner {
             Reviewers = reviewers,
             Aggregator = new ReviewSwarmShadowAggregatorPlan {
                 AgentProfile = aggregatorProfile?.Id,
+                ResolvedAgentProfile = aggregatorProfile,
                 Provider = settings.Swarm.Aggregator.Provider ?? aggregatorProfile?.ResolveProvider() ?? settings.Provider,
                 Model = aggregatorModel,
                 ReasoningEffort = settings.Swarm.Aggregator.ReasoningEffort ?? aggregatorProfile?.ReasoningEffort ?? settings.ReasoningEffort

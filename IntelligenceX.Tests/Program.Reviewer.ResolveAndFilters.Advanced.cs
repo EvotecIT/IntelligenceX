@@ -137,6 +137,11 @@ internal static partial class Program {
 
         AssertEqual("copilot-gpt54", plan.Reviewers[0].AgentProfile ?? string.Empty,
             "swarm shadow plan reviewer agent profile");
+        AssertEqual(true, plan.Reviewers[0].ResolvedAgentProfile?.CopilotAutoInstall ?? false,
+            "swarm shadow plan reviewer materializes full agent profile");
+        AssertSequenceEqual(new[] { "COPILOT_GITHUB_TOKEN" },
+            (plan.Reviewers[0].ResolvedAgentProfile?.CopilotEnvAllowlist ?? Array.Empty<string>()).ToArray(),
+            "swarm shadow plan reviewer materialized env allowlist");
         AssertEqual(ReviewProvider.Copilot, plan.Reviewers[0].Provider,
             "swarm shadow plan reviewer profile provider");
         AssertEqual("gpt-5.4", plan.Reviewers[0].Model, "swarm shadow plan reviewer profile model");
@@ -146,10 +151,20 @@ internal static partial class Program {
             "swarm shadow plan second reviewer profile model");
         AssertEqual("copilot-gpt54", plan.Aggregator.AgentProfile ?? string.Empty,
             "swarm shadow plan aggregator agent profile");
+        AssertEqual(true, plan.Aggregator.ResolvedAgentProfile?.CopilotAutoInstall ?? false,
+            "swarm shadow plan aggregator materializes full agent profile");
         AssertContainsText(rendered, "correctness -> copilot-gpt54 -> copilot / gpt-5.4",
             "swarm shadow plan render reviewer profile");
         AssertContainsText(rendered, "aggregator -> copilot-gpt54 -> copilot / gpt-5.4",
             "swarm shadow plan render aggregator profile");
+
+        var laneSettings = settings.CloneWithProviderOverride(plan.Reviewers[0].Provider,
+            plan.Reviewers[0].Model, plan.Reviewers[0].ReasoningEffort,
+            plan.Reviewers[0].AgentProfile, plan.Reviewers[0].ResolvedAgentProfile);
+        AssertEqual(true, laneSettings.CopilotAutoInstall,
+            "swarm shadow execution clone preserves profile auto install");
+        AssertSequenceEqual(new[] { "COPILOT_GITHUB_TOKEN" }, laneSettings.CopilotEnvAllowlist.ToArray(),
+            "swarm shadow execution clone preserves profile env allowlist");
     }
 
     private static void TestReviewSwarmShadowPlanFallsBackToPrimaryProviderAndModel() {
