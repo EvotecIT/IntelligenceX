@@ -33,10 +33,12 @@ internal sealed class ReviewerCopilotPromptRunner {
         var logDirectory = TryPrepareLogDirectory(_options);
         var disableBuiltinMcps = true;
         var disableToolSurface = true;
+        var captureLogs = !string.IsNullOrWhiteSpace(logDirectory);
         CopilotPromptProcessResult result;
         while (true) {
+            var effectiveLogDirectory = captureLogs ? logDirectory : null;
             var startInfo = BuildStartInfo(_options, cliPath, prompt, model, disableBuiltinMcps,
-                disableToolSurface, logDirectory);
+                disableToolSurface, effectiveLogDirectory);
             result = await RunProcessAsync(startInfo, timeout, cancellationToken).ConfigureAwait(false);
             if (result.ExitCode == 0) {
                 break;
@@ -49,6 +51,10 @@ internal sealed class ReviewerCopilotPromptRunner {
             }
             if (disableBuiltinMcps && IsUnsupportedDisableBuiltinMcpsFlag(result.Stdout, result.Stderr)) {
                 disableBuiltinMcps = false;
+                retry = true;
+            }
+            if (captureLogs && IsUnsupportedLogCaptureFlag(result.Stdout, result.Stderr)) {
+                captureLogs = false;
                 retry = true;
             }
             if (!retry) {
@@ -287,9 +293,10 @@ internal sealed class ReviewerCopilotPromptRunner {
     }
 
     internal static string[] BuildArgumentsForTests(CopilotClientOptions options, string cliPath, string prompt,
-        string? model = null, bool disableBuiltinMcps = true, bool disableToolSurface = true) {
+        string? model = null, bool disableBuiltinMcps = true, bool disableToolSurface = true,
+        bool captureLogs = true) {
         var startInfo = BuildStartInfo(options, cliPath, prompt, model, disableBuiltinMcps, disableToolSurface,
-            TryPrepareLogDirectory(options));
+            captureLogs ? TryPrepareLogDirectory(options) : null);
         var args = new string[startInfo.ArgumentList.Count];
         startInfo.ArgumentList.CopyTo(args, 0);
         return args;
@@ -374,12 +381,25 @@ internal sealed class ReviewerCopilotPromptRunner {
     internal static bool IsUnsupportedAvailableToolsFlagForTests(string stdout, string stderr) =>
         IsUnsupportedAvailableToolsFlag(stdout, stderr);
 
+    internal static bool IsUnsupportedLogCaptureFlagForTests(string stdout, string stderr) =>
+        IsUnsupportedLogCaptureFlag(stdout, stderr);
+
     private static bool IsUnsupportedDisableBuiltinMcpsFlag(string stdout, string stderr) {
         return IsUnsupportedFlag(stdout, stderr, "--disable-builtin-mcps");
     }
 
     private static bool IsUnsupportedAvailableToolsFlag(string stdout, string stderr) {
+        var combined = string.Concat(stdout, "\n", stderr);
+        if (combined.Contains("Unknown tool name in the tool allowlist", StringComparison.OrdinalIgnoreCase) &&
+            combined.Contains("\"none\"", StringComparison.OrdinalIgnoreCase)) {
+            return true;
+        }
         return IsUnsupportedFlag(stdout, stderr, "--available-tools");
+    }
+
+    private static bool IsUnsupportedLogCaptureFlag(string stdout, string stderr) {
+        return IsUnsupportedFlag(stdout, stderr, "--log-dir") ||
+               IsUnsupportedFlag(stdout, stderr, "--log-level");
     }
 
     private static bool IsUnsupportedFlag(string stdout, string stderr, string flag) {

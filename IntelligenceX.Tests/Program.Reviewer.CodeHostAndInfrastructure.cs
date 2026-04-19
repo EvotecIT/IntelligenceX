@@ -1062,6 +1062,10 @@ internal static partial class Program {
             "copilot prompt legacy fallback omits built-in MCP flag");
         AssertEqual(false, legacyFallbackArgs.Contains("--available-tools=none"),
             "copilot prompt legacy fallback omits available-tools flag");
+        var noLogArgs = ReviewerCopilotPromptRunner.BuildArgumentsForTests(binaryOptions, cliPath, "review prompt",
+            captureLogs: false);
+        AssertEqual(false, noLogArgs.Contains("--log-dir"), "copilot prompt log fallback omits log dir flag");
+        AssertEqual(false, noLogArgs.Contains("--log-level"), "copilot prompt log fallback omits log level flag");
 
         var ghOptions = new IntelligenceX.Copilot.CopilotClientOptions();
         ghOptions.CliArgs.Add("copilot");
@@ -1103,9 +1107,18 @@ internal static partial class Program {
         AssertEqual(true, ReviewerCopilotPromptRunner.IsUnsupportedAvailableToolsFlagForTests(
             string.Empty, "error: unrecognized option '--available-tools=none'"),
             "copilot prompt detects unknown available-tools value flag");
-        AssertEqual(false, ReviewerCopilotPromptRunner.IsUnsupportedAvailableToolsFlagForTests(
+        AssertEqual(true, ReviewerCopilotPromptRunner.IsUnsupportedAvailableToolsFlagForTests(
             string.Empty, "Unknown tool name in the tool allowlist: \"none\""),
-            "copilot prompt keeps supported available-tools warning non-fatal");
+            "copilot prompt treats unknown none tool name as unsupported available-tools");
+        AssertEqual(true, ReviewerCopilotPromptRunner.IsUnsupportedLogCaptureFlagForTests(
+            string.Empty, "error: unknown option '--log-dir'"),
+            "copilot prompt detects unknown log dir flag");
+        AssertEqual(true, ReviewerCopilotPromptRunner.IsUnsupportedLogCaptureFlagForTests(
+            string.Empty, "error: unrecognized option '--log-level'"),
+            "copilot prompt detects unknown log level flag");
+        AssertEqual(false, ReviewerCopilotPromptRunner.IsUnsupportedLogCaptureFlagForTests(
+            string.Empty, "error: unknown option '--available-tools'"),
+            "copilot prompt ignores unrelated unknown flag for log capture");
     }
 
     private static void TestCopilotPromptRunnerRequiresActionsCopilotToken() {
