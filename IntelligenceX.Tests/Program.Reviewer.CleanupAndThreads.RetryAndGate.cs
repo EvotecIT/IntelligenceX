@@ -217,6 +217,16 @@ internal static partial class Program {
         AssertEqual(true, failure.RequiresAuthRemediation, "workflow failure remediation flag");
     }
 
+    private static void TestWorkflowFailOpenLogClassificationPrefersUsageBudgetGuard() {
+        var failure = ReviewDiagnostics.ClassifyWorkflowFailureLog(
+            "Usage budget guard blocked review run: credits exhausted (balance 0); weekly limit exhausted.\n"
+            + "Secrets audit:\n- Auth store loaded from INTELLIGENCEX_AUTH_B64");
+        AssertEqual("usage-budget-guard", failure.Kind, "workflow budget failure kind");
+        AssertEqual("Usage budget guard blocked the review", failure.Label, "workflow budget failure label");
+        AssertContainsText(failure.Detail, "credits exhausted", "workflow budget failure detail");
+        AssertEqual(false, failure.RequiresAuthRemediation, "workflow budget failure omits auth remediation");
+    }
+
     private static void TestWorkflowFailOpenSummaryBodyUsesRuntimeGuidance() {
         var context = new PullRequestContext("owner/repo", "owner", "repo", 1, "Workflow hardening", null, false, "head", "base",
             Array.Empty<string>(), "owner/repo", false, null);

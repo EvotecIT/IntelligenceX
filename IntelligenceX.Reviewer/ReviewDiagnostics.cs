@@ -105,6 +105,7 @@ internal static class ReviewDiagnostics {
     private const string AuthBundleSummary = "Auth bundle missing or invalid";
     private const string AuthRefreshFailedSummary = "OpenAI auth refresh failed; sign in again";
     private const string AuthRefreshTokenReusedSummary = "OpenAI auth refresh token was already used; sign in again";
+    private const string UsageBudgetGuardPrefix = "Usage budget guard blocked review run:";
 
     internal readonly record struct WorkflowFailureInfo(string Kind, string Label, string Detail, bool RequiresAuthRemediation);
 
@@ -179,6 +180,9 @@ internal static class ReviewDiagnostics {
         }
         if (root is IOException) {
             return new ReviewErrorInfo(ReviewErrorCategory.Network, true, "I/O error");
+        }
+        if (message.Contains(UsageBudgetGuardPrefix, StringComparison.OrdinalIgnoreCase)) {
+            return new ReviewErrorInfo(ReviewErrorCategory.Config, false, ExtractUsageBudgetGuardDetail(message));
         }
         if (message.Contains("auth bundle", StringComparison.OrdinalIgnoreCase) ||
             message.Contains("INTELLIGENCEX_AUTH", StringComparison.OrdinalIgnoreCase)) {
@@ -349,6 +353,14 @@ internal static class ReviewDiagnostics {
 
     internal static WorkflowFailureInfo ClassifyWorkflowFailureLog(string? logText) {
         var text = logText ?? string.Empty;
+        if (text.IndexOf(UsageBudgetGuardPrefix, StringComparison.OrdinalIgnoreCase) >= 0) {
+            return new WorkflowFailureInfo(
+                "usage-budget-guard",
+                "Usage budget guard blocked the review",
+                ExtractUsageBudgetGuardDetail(text),
+                false);
+        }
+
         if (text.IndexOf("refresh_token_reused", StringComparison.OrdinalIgnoreCase) >= 0 ||
             text.IndexOf("refresh token has already been used", StringComparison.OrdinalIgnoreCase) >= 0) {
             return new WorkflowFailureInfo(
@@ -375,6 +387,21 @@ internal static class ReviewDiagnostics {
             "Reviewer runtime failed",
             "Reviewer execution failed after the workflow created the progress summary.",
             false);
+    }
+
+    private static string ExtractUsageBudgetGuardDetail(string text) {
+        var index = text.IndexOf(UsageBudgetGuardPrefix, StringComparison.OrdinalIgnoreCase);
+        if (index < 0) {
+            return "Usage budget guard blocked this review run.";
+        }
+
+        var start = index + UsageBudgetGuardPrefix.Length;
+        var end = text.IndexOfAny(['\r', '\n'], start);
+        var detail = end < 0 ? text[start..] : text[start..end];
+        detail = detail.Trim();
+        return detail.Length == 0
+            ? "Usage budget guard blocked this review run."
+            : detail;
     }
 
     internal static string BuildWorkflowFailOpenSummaryBody(PullRequestContext context, string reviewerSource,
