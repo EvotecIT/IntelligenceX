@@ -103,11 +103,13 @@ internal static partial class Program {
             Provider = ReviewProvider.OpenAI,
             Model = "gpt-5.4",
             ReasoningEffort = ReasoningEffort.Medium,
+            CopilotCliPath = "base-copilot",
             AgentProfiles = new Dictionary<string, ReviewAgentProfileSettings>(StringComparer.OrdinalIgnoreCase) {
                 ["copilot-gpt54"] = new ReviewAgentProfileSettings {
                     Id = "copilot-gpt54",
                     Authenticator = "copilot-cli",
                     Model = "gpt-5.4",
+                    CopilotCliPath = "profile-a-copilot",
                     CopilotAutoInstall = true,
                     CopilotEnvAllowlist = new[] { "COPILOT_GITHUB_TOKEN" },
                     CopilotEnv = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
@@ -206,6 +208,8 @@ internal static partial class Program {
             "swarm shadow execution clone applies new profile header map");
         AssertEqual("new-shared", switchedLaneSettings.CopilotDirectHeaders["X-Shared"],
             "swarm shadow execution clone replaces overlapping profile header key");
+        AssertEqual("base-copilot", switchedLaneSettings.CopilotCliPath ?? string.Empty,
+            "swarm shadow execution clone restores base scalar settings instead of retaining prior profile state");
 
         var clearedLaneSettings = settings.CloneWithProviderOverride(ReviewProvider.Copilot,
             "gpt-5.4", null, "copilot-clear", settings.RequireAgentProfile("copilot-clear", "tests"));

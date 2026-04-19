@@ -18,7 +18,7 @@ internal sealed partial class ReviewSettings {
         }
 
         var profile = RequireAgentProfile(id, "review.agentProfile");
-        ApplyAgentProfile(profile);
+        ApplyAgentProfile(profile, captureBaseline: true);
     }
 
     internal void ApplySelectedAgentProfile() {
@@ -40,7 +40,13 @@ internal sealed partial class ReviewSettings {
             $"Unknown review agent profile '{id.Trim()}' from {source}. Define it under review.agentProfiles or remove the profile override.");
     }
 
-    internal void ApplyAgentProfile(ReviewAgentProfileSettings profile) {
+    internal void ApplyAgentProfile(ReviewAgentProfileSettings profile) =>
+        ApplyAgentProfile(profile, captureBaseline: true);
+
+    private void ApplyAgentProfile(ReviewAgentProfileSettings profile, bool captureBaseline) {
+        if (captureBaseline) {
+            CaptureAgentProfileBaseline();
+        }
         AgentProfile = profile.Id;
         var provider = profile.ResolveProvider();
         if (provider.HasValue) {
@@ -108,6 +114,20 @@ internal sealed partial class ReviewSettings {
         if (profile.AnthropicTimeoutSeconds.HasValue && profile.AnthropicTimeoutSeconds.Value > 0) {
             AnthropicTimeoutSeconds = profile.AnthropicTimeoutSeconds.Value;
         }
+    }
+
+    private void CaptureAgentProfileBaseline() {
+        if (AgentProfileBaseline is not null) {
+            return;
+        }
+
+        AgentProfileBaseline = CloneWithoutAgentProfileBaseline();
+    }
+
+    private ReviewSettings CloneWithoutAgentProfileBaseline() {
+        var clone = (ReviewSettings)MemberwiseClone();
+        clone.AgentProfileBaseline = null;
+        return clone;
     }
 
     private static string? UseIfSet(string? value, string? fallback) =>

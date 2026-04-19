@@ -153,6 +153,7 @@ internal sealed partial class ReviewSettings {
     public string? AgentProfile { get; set; }
     public IReadOnlyDictionary<string, ReviewAgentProfileSettings> AgentProfiles { get; set; } =
         new Dictionary<string, ReviewAgentProfileSettings>(StringComparer.OrdinalIgnoreCase);
+    internal ReviewSettings? AgentProfileBaseline { get; set; }
     /// <summary>
     /// Optional high-level review intent preset (e.g., security, performance, maintainability).
     /// </summary>
