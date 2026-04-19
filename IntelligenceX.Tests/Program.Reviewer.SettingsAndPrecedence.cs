@@ -370,6 +370,9 @@ internal static partial class Program {
     private static void TestReviewSettingsAgentProfileSelectsAuthenticatorAndModel() {
         var previousConfigPath = Environment.GetEnvironmentVariable("REVIEW_CONFIG_PATH");
         var previousAgentProfile = Environment.GetEnvironmentVariable("REVIEW_AGENT_PROFILE");
+        var previousInputProvider = Environment.GetEnvironmentVariable("INPUT_PROVIDER");
+        var previousInputModel = Environment.GetEnvironmentVariable("INPUT_MODEL");
+        var previousInputOpenAiTransport = Environment.GetEnvironmentVariable("INPUT_OPENAI_TRANSPORT");
         var configPath = Path.Combine(Path.GetTempPath(), $"intelligencex-review-agent-profile-{Guid.NewGuid():N}.json");
         try {
             File.WriteAllText(configPath, """
@@ -430,6 +433,9 @@ internal static partial class Program {
                 "review settings agent profile copilot env allowlist");
 
             Environment.SetEnvironmentVariable("REVIEW_AGENT_PROFILE", "chatgpt-codex");
+            Environment.SetEnvironmentVariable("INPUT_PROVIDER", "copilot");
+            Environment.SetEnvironmentVariable("INPUT_MODEL", "should-not-win");
+            Environment.SetEnvironmentVariable("INPUT_OPENAI_TRANSPORT", "appserver");
             settings = ReviewSettings.Load();
 
             AssertEqual("chatgpt-codex", settings.AgentProfile ?? string.Empty,
@@ -437,7 +443,7 @@ internal static partial class Program {
             AssertEqual(ReviewProvider.OpenAI, settings.Provider, "review settings env agent profile provider");
             AssertEqual("gpt-5.4", settings.Model, "review settings env agent profile model");
             AssertEqual(IntelligenceX.OpenAI.OpenAITransportKind.Native, settings.OpenAITransport,
-                "review settings env agent profile transport");
+                "review settings env agent profile transport overrides env");
             AssertEqual("acct-review", settings.OpenAiAccountId ?? string.Empty,
                 "review settings env agent profile account");
 
@@ -459,6 +465,9 @@ internal static partial class Program {
         } finally {
             Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", previousConfigPath);
             Environment.SetEnvironmentVariable("REVIEW_AGENT_PROFILE", previousAgentProfile);
+            Environment.SetEnvironmentVariable("INPUT_PROVIDER", previousInputProvider);
+            Environment.SetEnvironmentVariable("INPUT_MODEL", previousInputModel);
+            Environment.SetEnvironmentVariable("INPUT_OPENAI_TRANSPORT", previousInputOpenAiTransport);
             if (File.Exists(configPath)) {
                 File.Delete(configPath);
             }

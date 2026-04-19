@@ -73,9 +73,9 @@ internal static class ReviewConfigLoader {
         ApplyAnthropic(reviewObj, settings);
         ApplyCopilot(root, settings);
         ApplyAzureDevOps(reviewObj, settings);
-        ApplyAgentProfiles(reviewObj, settings);
         ApplyCleanup(root, settings);
         AnalysisConfigReader.Apply(root, reviewObj, settings.Analysis);
+        ApplyAgentProfiles(reviewObj, settings);
     }
 
     internal static string? ResolveConfigPath() {
