@@ -741,6 +741,8 @@ internal static partial class Program {
         failed += Run("Prompt merge blocker sections default", TestPromptBuilderMergeBlockerSectionsDefault);
         failed += Run("Prompt merge blocker sections compact default", TestPromptBuilderMergeBlockerSectionsCompactDefault);
         failed += Run("Prompt includes review history section", TestPromptBuilderIncludesReviewHistorySection);
+        failed += Run("Prompt compact history guard includes critical issues",
+            TestPromptBuilderCompactHistoryGuardIncludesCriticalIssues);
         failed += Run("Prompt includes ci context section", TestPromptBuilderIncludesCiContextSection);
         failed += Run("Review history builder includes sticky summary and thread snapshot",
             TestReviewHistoryBuilderIncludesStickySummaryAndThreadSnapshot);

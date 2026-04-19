@@ -484,6 +484,28 @@ internal static partial class Program {
             "prompt review history safety contract");
     }
 
+    private static void TestPromptBuilderCompactHistoryGuardIncludesCriticalIssues() {
+        var context = BuildContext();
+        var files = BuildFiles("src/app.cs");
+        var settings = new ReviewSettings {
+            OutputStyle = "compact"
+        };
+        var extras = new ReviewContextExtras {
+            ReviewHistorySection = string.Join("\n", new[] {
+                "",
+                "Review history snapshot:",
+                "- IX sticky summary reviewed `abc1234` (same SHA as current head (`abc1234`)).",
+                ""
+            })
+        };
+
+        var prompt = PromptBuilder.Build(context, files, settings, null, extras, inlineSupported: false);
+
+        AssertContainsText(prompt,
+            "Never put a prior finding in Todo List or Critical Issues unless the current diff, active thread state, or CI evidence independently confirms it still applies.",
+            "compact prompt review history safety contract covers critical issues");
+    }
+
     private static void TestReviewHistoryBuilderIncludesStickySummaryAndThreadSnapshot() {
         var settings = new ReviewSettings {
             MaxCommentChars = 120
