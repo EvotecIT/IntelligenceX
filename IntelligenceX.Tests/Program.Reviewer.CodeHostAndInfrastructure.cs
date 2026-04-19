@@ -951,6 +951,7 @@ internal static partial class Program {
             File.WriteAllText(path,
                 "{ \"copilot\": { \"envAllowlist\": [\"GH_TOKEN\"], \"inheritEnvironment\": false, " +
                 "\"launcher\": \"gh\", " +
+                "\"model\": \"claude-sonnet-4.6\", " +
                 "\"env\": { \"COPILOT_DEBUG\": \"1\" }, " +
                 "\"transport\": \"direct\", \"directUrl\": \"https://example.local/api\", " +
                 "\"directTokenEnv\": \"COPILOT_DIRECT_TOKEN\", \"directTimeoutSeconds\": 12, " +
@@ -962,6 +963,7 @@ internal static partial class Program {
             AssertSequenceEqual(new[] { "GH_TOKEN" }, settings.CopilotEnvAllowlist, "copilot env allowlist");
             AssertEqual(false, settings.CopilotInheritEnvironment, "copilot inherit environment");
             AssertEqual("gh", settings.CopilotLauncher, "copilot launcher");
+            AssertEqual("claude-sonnet-4.6", settings.CopilotModel ?? string.Empty, "copilot model");
             AssertEqual("1", settings.CopilotEnv["COPILOT_DEBUG"], "copilot env map");
             AssertEqual(CopilotTransportKind.Direct, settings.CopilotTransport, "copilot transport");
             AssertEqual("https://example.local/api", settings.CopilotDirectUrl, "copilot direct url");
@@ -988,6 +990,37 @@ internal static partial class Program {
             Environment.SetEnvironmentVariable("INPUT_COPILOT_LAUNCHER", previousInput);
             Environment.SetEnvironmentVariable("COPILOT_LAUNCHER", previousEnv);
         }
+    }
+
+    private static void TestCopilotModelEnvOverridesGenericModel() {
+        var previousProvider = Environment.GetEnvironmentVariable("INPUT_PROVIDER");
+        var previousModel = Environment.GetEnvironmentVariable("INPUT_MODEL");
+        var previousCopilotModel = Environment.GetEnvironmentVariable("INPUT_COPILOT_MODEL");
+        try {
+            Environment.SetEnvironmentVariable("INPUT_PROVIDER", "copilot");
+            Environment.SetEnvironmentVariable("INPUT_MODEL", "gpt-5.4");
+            Environment.SetEnvironmentVariable("INPUT_COPILOT_MODEL", "claude-sonnet-4.6");
+            var settings = ReviewSettings.FromEnvironment();
+
+            AssertEqual(ReviewProvider.Copilot, settings.Provider, "copilot provider env");
+            AssertEqual("gpt-5.4", settings.Model, "generic model env remains recorded");
+            AssertEqual("claude-sonnet-4.6", settings.CopilotModel ?? string.Empty, "copilot model env");
+            AssertEqual("claude-sonnet-4.6", ReviewRunner.ResolveCopilotModel(settings) ?? string.Empty,
+                "copilot resolved model prefers copilot_model");
+        } finally {
+            Environment.SetEnvironmentVariable("INPUT_PROVIDER", previousProvider);
+            Environment.SetEnvironmentVariable("INPUT_MODEL", previousModel);
+            Environment.SetEnvironmentVariable("INPUT_COPILOT_MODEL", previousCopilotModel);
+        }
+    }
+
+    private static void TestCopilotDefaultOpenAiModelUsesCliDefault() {
+        var settings = new ReviewSettings {
+            Provider = ReviewProvider.Copilot,
+            Model = OpenAIModelCatalog.DefaultModel
+        };
+
+        AssertEqual(null, ReviewRunner.ResolveCopilotModel(settings), "copilot default model");
     }
 
     private static void TestCopilotGhLauncherBuildsWrapperCommand() {

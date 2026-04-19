@@ -323,11 +323,11 @@ internal sealed partial class ReviewRunner {
                 throw new InvalidOperationException($"Copilot directUrl is invalid: '{_settings.CopilotDirectUrl}'.");
             }
 
-            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeoutCts.CancelAfter(timeout);
+            using var directTimeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            directTimeoutCts.CancelAfter(timeout);
             using var request = new HttpRequestMessage(HttpMethod.Get, uri);
             try {
-                using var _ = await PreflightHttp.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeoutCts.Token)
+                using var _ = await PreflightHttp.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, directTimeoutCts.Token)
                     .ConfigureAwait(false);
                 return;
             } catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested) {
@@ -339,8 +339,43 @@ internal sealed partial class ReviewRunner {
             }
         }
 
-        var options = BuildCopilotClientOptions();
+        var options = BuildCopilotClientOptions(out var launcherDiagnostic);
         options.Validate();
+        var effectiveTimeout = options.AutoInstallCli && timeout < TimeSpan.FromSeconds(30)
+            ? TimeSpan.FromSeconds(30)
+            : timeout;
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(effectiveTimeout);
+
+        var stderrLines = new Queue<string>();
+        var stderrLock = new object();
+        try {
+            await using var client = await CopilotClient.StartAsync(options, timeoutCts.Token).ConfigureAwait(false);
+            client.StandardErrorReceived += (_, line) => CaptureCopilotStderr(stderrLines, stderrLock, line);
+
+            var status = await client.GetStatusAsync(timeoutCts.Token).ConfigureAwait(false);
+            if (_settings.Diagnostics) {
+                var version = string.IsNullOrWhiteSpace(status.Version) ? "unknown" : status.Version;
+                Console.Error.WriteLine($"Copilot preflight status OK: version={version}; protocol={status.ProtocolVersion}.");
+            }
+
+            var auth = await client.GetAuthStatusAsync(timeoutCts.Token).ConfigureAwait(false);
+            if (!auth.IsAuthenticated) {
+                throw new UnauthorizedAccessException(BuildCopilotAuthFailureMessage(auth, launcherDiagnostic, stderrLines, stderrLock));
+            }
+            if (_settings.Diagnostics) {
+                var login = string.IsNullOrWhiteSpace(auth.Login) ? "unknown" : auth.Login;
+                var authType = string.IsNullOrWhiteSpace(auth.AuthType) ? "unknown" : auth.AuthType;
+                Console.Error.WriteLine($"Copilot preflight auth OK: login={login}; authType={authType}.");
+            }
+
+            var model = ResolveCopilotModel(_settings);
+            if (!string.IsNullOrWhiteSpace(model)) {
+                await ValidateCopilotModelAsync(client, model!, timeoutCts.Token).ConfigureAwait(false);
+            }
+        } catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested) {
+            throw new TimeoutException(BuildCopilotHealthTimeoutMessage(effectiveTimeout, launcherDiagnostic, stderrLines, stderrLock), ex);
+        }
     }
 
     private CopilotClientOptions BuildCopilotClientOptions() {
@@ -400,6 +435,17 @@ internal sealed partial class ReviewRunner {
         return "binary";
     }
 
+    internal static string? ResolveCopilotModel(ReviewSettings settings) {
+        if (!string.IsNullOrWhiteSpace(settings.CopilotModel)) {
+            return settings.CopilotModel!.Trim();
+        }
+        if (string.IsNullOrWhiteSpace(settings.Model) ||
+            string.Equals(settings.Model, OpenAIModelCatalog.DefaultModel, StringComparison.OrdinalIgnoreCase)) {
+            return null;
+        }
+        return settings.Model.Trim();
+    }
+
     private string BuildCopilotLauncherDiagnostic(string launcher, CopilotClientOptions options) {
         var cliPath = string.IsNullOrWhiteSpace(options.CliPath) ? "copilot" : options.CliPath;
         var prefixArgs = options.CliArgs.Count == 0 ? "(none)" : string.Join(" ", options.CliArgs);
@@ -431,7 +477,7 @@ internal sealed partial class ReviewRunner {
         var stderrLock = new object();
         client.StandardErrorReceived += (_, line) => CaptureCopilotStderr(stderrLines, stderrLock, line);
         var session = await client.CreateSessionAsync(new CopilotSessionOptions {
-            Model = _settings.Model,
+            Model = ResolveCopilotModel(_settings),
             Streaming = true
         }, cancellationToken).ConfigureAwait(false);
 
@@ -501,19 +547,85 @@ internal sealed partial class ReviewRunner {
         sb.Append(" If this run uses the GitHub CLI wrapper, try copilot.launcher=binary with copilot.autoInstall=true; ");
         sb.Append("the wrapper can launch the CLI but still hang in reviewer server mode on some runners.");
 
+        AppendCopilotStderr(sb, stderrLines, stderrLock, include: _settings.Diagnostics);
+        return sb.ToString().TrimEnd();
+    }
+
+    private string BuildCopilotHealthTimeoutMessage(TimeSpan timeout, string launcherDiagnostic, Queue<string> stderrLines, object stderrLock) {
+        var sb = new StringBuilder();
+        sb.Append("Copilot health check timed out after ");
+        sb.Append(timeout.TotalSeconds.ToString("0"));
+        sb.Append(" seconds while starting the CLI and checking auth/status. ");
+        sb.Append(launcherDiagnostic);
+        sb.Append(" This usually means the CLI server mode is waiting on interactive auth or is not responding in GitHub Actions.");
+        AppendCopilotStderr(sb, stderrLines, stderrLock, include: _settings.Diagnostics);
+        return sb.ToString().TrimEnd();
+    }
+
+    private string BuildCopilotAuthFailureMessage(CopilotAuthStatus auth, string launcherDiagnostic, Queue<string> stderrLines, object stderrLock) {
+        var sb = new StringBuilder();
+        sb.Append("Copilot CLI is not authenticated for this non-interactive reviewer run. ");
+        sb.Append(launcherDiagnostic);
+        if (!string.IsNullOrWhiteSpace(auth.StatusMessage)) {
+            sb.Append(" Status: ");
+            sb.Append(auth.StatusMessage);
+            sb.Append('.');
+        }
+        sb.Append(" Sign in on the runner before using provider=copilot, use a self-hosted runner with a persisted Copilot CLI session, or configure copilot.transport=direct with an explicit token-backed endpoint.");
+        AppendCopilotStderr(sb, stderrLines, stderrLock, include: _settings.Diagnostics);
+        return sb.ToString().TrimEnd();
+    }
+
+    private async Task ValidateCopilotModelAsync(CopilotClient client, string model, CancellationToken cancellationToken) {
+        var models = await client.ListModelsAsync(cancellationToken).ConfigureAwait(false);
+        if (models.Count == 0) {
+            if (_settings.Diagnostics) {
+                Console.Error.WriteLine("Copilot preflight model list returned no entries; skipping model availability validation.");
+            }
+            return;
+        }
+
+        foreach (var candidate in models) {
+            if (string.Equals(candidate.Id, model, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(candidate.Name, model, StringComparison.OrdinalIgnoreCase)) {
+                if (_settings.Diagnostics) {
+                    Console.Error.WriteLine($"Copilot preflight model OK: {model}.");
+                }
+                return;
+            }
+        }
+
+        var available = string.Join(", ", models
+            .Select(candidate => string.IsNullOrWhiteSpace(candidate.Name) ||
+                                 string.Equals(candidate.Id, candidate.Name, StringComparison.OrdinalIgnoreCase)
+                ? candidate.Id
+                : $"{candidate.Id} ({candidate.Name})")
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Take(12));
+        throw new InvalidOperationException(
+            string.IsNullOrWhiteSpace(available)
+                ? $"Copilot model '{model}' is not available to this account."
+                : $"Copilot model '{model}' is not available to this account. Available models: {available}.");
+    }
+
+    private static void AppendCopilotStderr(StringBuilder sb, Queue<string> stderrLines, object stderrLock, bool include) {
+        if (!include) {
+            return;
+        }
         List<string> lines;
         lock (stderrLock) {
             lines = new List<string>(stderrLines);
         }
-        if (lines.Count > 0) {
-            sb.AppendLine();
-            sb.AppendLine("Recent Copilot CLI stderr:");
-            for (var i = Math.Max(0, lines.Count - 6); i < lines.Count; i++) {
-                sb.Append("  ");
-                sb.AppendLine(lines[i]);
-            }
+        if (lines.Count == 0) {
+            return;
         }
-        return sb.ToString().TrimEnd();
+
+        sb.AppendLine();
+        sb.AppendLine("Recent Copilot CLI stderr:");
+        for (var i = Math.Max(0, lines.Count - 6); i < lines.Count; i++) {
+            sb.Append("  ");
+            sb.AppendLine(lines[i]);
+        }
     }
 
     private static void CaptureCopilotStderr(Queue<string> stderrLines, object stderrLock, string? line) {
@@ -532,8 +644,9 @@ internal sealed partial class ReviewRunner {
         if (string.IsNullOrWhiteSpace(_settings.CopilotDirectUrl)) {
             throw new InvalidOperationException("Copilot direct transport requires copilot.directUrl.");
         }
-        if (string.IsNullOrWhiteSpace(_settings.Model)) {
-            throw new InvalidOperationException("Copilot direct transport requires review.model to be set.");
+        var model = ResolveCopilotModel(_settings);
+        if (string.IsNullOrWhiteSpace(model)) {
+            throw new InvalidOperationException("Copilot direct transport requires copilot.model or review.model to be set.");
         }
         var token = ResolveCopilotDirectToken();
         if (string.IsNullOrWhiteSpace(token) && !HasAuthorizationHeader(_settings.CopilotDirectHeaders)) {
@@ -556,7 +669,7 @@ internal sealed partial class ReviewRunner {
         options.Validate();
 
         using var client = new IntelligenceX.Copilot.Direct.CopilotDirectClient(options);
-        return await client.ChatAsync(prompt, _settings.Model, cancellationToken).ConfigureAwait(false);
+        return await client.ChatAsync(prompt, model!, cancellationToken).ConfigureAwait(false);
     }
 
     private string? ResolveCopilotDirectToken() {

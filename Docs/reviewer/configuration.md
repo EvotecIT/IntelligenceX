@@ -665,6 +665,8 @@ Set `launcher` to `gh` to explicitly run Copilot through `gh copilot --`.
 Set `launcher` to `auto` to use the standalone `copilot` binary path. This is the safer default for reviewer server mode:
 the GitHub CLI wrapper can sometimes launch the CLI for simple commands while still hanging in long-running server mode.
 Use `autoInstall` with the standalone path when the runner does not already have `copilot` installed.
+Set `model` only when you want to force a Copilot CLI model id. When `provider` is `copilot` and only the generic
+`review.model` is the default OpenAI value, the reviewer leaves Copilot model selection to the CLI default.
 
 ```json
 {
@@ -673,6 +675,7 @@ Use `autoInstall` with the standalone path when the runner does not already have
   },
   "copilot": {
     "launcher": "gh",
+    "model": "claude-sonnet-4.6",
     "inheritEnvironment": false,
     "envAllowlist": ["GH_TOKEN", "GITHUB_TOKEN"]
   }
@@ -788,6 +791,7 @@ Prefer `directTokenEnv` over `directToken` to avoid committing secrets to source
 - `azureTokenEnv`: env var name that contains the ADO token (default `SYSTEM_ACCESSTOKEN` if set)
 - `azureAuthScheme`: `bearer` (System.AccessToken/JWT) or `basic`/`pat`
 - `copilot.transport`: `cli` or `direct` (aliases: `api`, `http`)
+- `copilot.model`: optional Copilot-specific model override; when omitted, the CLI default is used unless `review.model` was set to a non-default value
 - `copilot.launcher`: `binary`, `gh`, or `auto`; `auto` uses the standalone binary path, while `gh` explicitly executes `gh copilot --` before the reviewer server flags
 - `copilot.inheritEnvironment`: inherit full runner environment for Copilot CLI (`true` by default)
 

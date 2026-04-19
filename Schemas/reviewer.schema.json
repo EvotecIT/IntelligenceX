@@ -391,6 +391,7 @@
         "cliPath": { "type": "string" },
         "cliUrl": { "type": "string" },
         "workingDirectory": { "type": "string" },
+        "model": { "type": "string" },
         "launcher": { "type": "string", "enum": ["binary", "cli", "copilot", "gh", "github", "github-cli", "github_cli", "auto"] },
         "autoInstall": { "type": "boolean" },
         "autoInstallMethod": { "type": "string" },
