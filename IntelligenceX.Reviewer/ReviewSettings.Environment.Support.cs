@@ -189,6 +189,16 @@ internal sealed partial class ReviewSettings {
         }
     }
 
+    private static void ApplyEnvironmentAgentProfileSettings(ReviewSettings settings) {
+        var agentProfile = GetInput("agent_profile", "REVIEW_AGENT_PROFILE", "REVIEW_MODEL_PROFILE");
+        if (!string.IsNullOrWhiteSpace(agentProfile)) {
+            settings.AgentProfile = agentProfile;
+        }
+        if (!string.IsNullOrWhiteSpace(settings.AgentProfile)) {
+            settings.ApplyAgentProfile(settings.AgentProfile);
+        }
+    }
+
     private static void ApplyEnvironmentScopeAndPromptSettings(ReviewSettings settings) {
         var skipDraft = GetInput("skip_draft", "SKIP_DRAFT");
         if (!string.IsNullOrWhiteSpace(skipDraft)) {

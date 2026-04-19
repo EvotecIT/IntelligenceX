@@ -249,6 +249,7 @@ internal sealed partial class ReviewSettings {
 
             list.Add(new ReviewSwarmReviewerSettings {
                 Id = normalizedId,
+                AgentProfile = string.IsNullOrWhiteSpace(value.AgentProfile) ? null : value.AgentProfile.Trim(),
                 Provider = value.Provider,
                 Model = string.IsNullOrWhiteSpace(value.Model) ? null : value.Model.Trim(),
                 ReasoningEffort = value.ReasoningEffort
@@ -338,6 +339,7 @@ internal sealed partial class ReviewSettings {
 
         return new ReviewSwarmReviewerSettings {
             Id = id!,
+            AgentProfile = GetJsonString(obj, "agentProfile") ?? GetJsonString(obj, "modelProfile"),
             Provider = ParseOptionalSwarmProviderInput(GetJsonString(obj, "provider")),
             Model = GetJsonString(obj, "model"),
             ReasoningEffort = ParseOptionalReasoningEffortInput(GetJsonString(obj, "reasoningEffort"))

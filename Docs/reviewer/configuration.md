@@ -236,6 +236,70 @@ GitHub Actions input/env aliases:
 - `ci_context_max_snippet_chars_per_run` / `REVIEW_CI_CONTEXT_MAX_SNIPPET_CHARS_PER_RUN`
 - `ci_context_classify_infra_failures` / `REVIEW_CI_CONTEXT_CLASSIFY_INFRA_FAILURES`
 
+## Agent profiles (provider + authenticator + model)
+
+Use `agentProfiles` when you want named review backends that bundle provider, model, and auth/runtime settings.
+This keeps the IX prompt and output contract unchanged while letting you switch the backend that answers it.
+
+```json
+{
+  "review": {
+    "agentProfile": "copilot-claude",
+    "agentProfiles": {
+      "chatgpt-gpt54": {
+        "provider": "openai",
+        "authenticator": "chatgpt",
+        "openaiTransport": "native",
+        "model": "gpt-5.4",
+        "openaiAccountId": "acct-review"
+      },
+      "copilot-gpt54": {
+        "provider": "copilot",
+        "authenticator": "copilot-cli",
+        "model": "gpt-5.4",
+        "copilot": {
+          "launcher": "auto",
+          "autoInstall": true,
+          "envAllowlist": ["COPILOT_GITHUB_TOKEN"]
+        }
+      },
+      "copilot-claude": {
+        "provider": "copilot",
+        "authenticator": "copilot-cli",
+        "model": "claude-sonnet-4-5",
+        "copilot": {
+          "envAllowlist": ["COPILOT_GITHUB_TOKEN"]
+        }
+      }
+    }
+  }
+}
+```
+
+For swarm shadow runs, reviewer lanes and the aggregator can reference those same profiles:
+
+```json
+{
+  "review": {
+    "swarm": {
+      "enabled": true,
+      "shadowMode": true,
+      "reviewers": [
+        { "id": "correctness", "agentProfile": "chatgpt-gpt54" },
+        { "id": "compat", "agentProfile": "copilot-gpt54" },
+        { "id": "tests", "agentProfile": "copilot-claude" }
+      ],
+      "aggregator": {
+        "agentProfile": "chatgpt-gpt54"
+      }
+    }
+  }
+}
+```
+
+Runtime override:
+- `agent_profile` / `REVIEW_AGENT_PROFILE` / `REVIEW_MODEL_PROFILE`
+
 ## Swarm review shadow mode (optional)
 
 Use this to opt into multi-reviewer orchestration without changing the public reviewer comment yet.

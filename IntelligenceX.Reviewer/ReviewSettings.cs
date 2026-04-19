@@ -70,12 +70,14 @@ internal sealed class ReviewHistorySettings {
 
 internal sealed class ReviewSwarmReviewerSettings {
     public string Id { get; set; } = string.Empty;
+    public string? AgentProfile { get; set; }
     public ReviewProvider? Provider { get; set; }
     public string? Model { get; set; }
     public ReasoningEffort? ReasoningEffort { get; set; }
 }
 
 internal sealed class ReviewSwarmAggregatorSettings {
+    public string? AgentProfile { get; set; }
     public ReviewProvider? Provider { get; set; }
     public string? Model { get; set; }
     public ReasoningEffort? ReasoningEffort { get; set; }
@@ -148,6 +150,9 @@ internal sealed partial class ReviewSettings {
     public ReviewProvider? ProviderFallback { get; set; }
     public ReviewCodeHost CodeHost { get; set; } = ReviewCodeHost.GitHub;
     public string? Profile { get; set; }
+    public string? AgentProfile { get; set; }
+    public IReadOnlyDictionary<string, ReviewAgentProfileSettings> AgentProfiles { get; set; } =
+        new Dictionary<string, ReviewAgentProfileSettings>(StringComparer.OrdinalIgnoreCase);
     /// <summary>
     /// Optional high-level review intent preset (e.g., security, performance, maintainability).
     /// </summary>

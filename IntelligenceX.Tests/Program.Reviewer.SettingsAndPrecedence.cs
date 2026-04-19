@@ -367,6 +367,74 @@ internal static partial class Program {
         }
     }
 
+    private static void TestReviewSettingsAgentProfileSelectsAuthenticatorAndModel() {
+        var previousConfigPath = Environment.GetEnvironmentVariable("REVIEW_CONFIG_PATH");
+        var previousAgentProfile = Environment.GetEnvironmentVariable("REVIEW_AGENT_PROFILE");
+        var configPath = Path.Combine(Path.GetTempPath(), $"intelligencex-review-agent-profile-{Guid.NewGuid():N}.json");
+        try {
+            File.WriteAllText(configPath, """
+{
+  "review": {
+    "provider": "openai",
+    "model": "gpt-5.4",
+    "agentProfile": "copilot-claude",
+    "agentProfiles": {
+      "copilot-claude": {
+        "authenticator": "copilot-cli",
+        "model": "claude-sonnet-4-5",
+        "copilot": {
+          "launcher": "auto",
+          "autoInstall": true,
+          "envAllowlist": ["COPILOT_GITHUB_TOKEN"]
+        }
+      },
+      "chatgpt-codex": {
+        "provider": "openai",
+        "model": "gpt-5.4",
+        "openaiTransport": "native",
+        "openaiAccountId": "acct-review"
+      }
+    }
+  }
+}
+""");
+
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", configPath);
+            Environment.SetEnvironmentVariable("REVIEW_AGENT_PROFILE", null);
+
+            var settings = ReviewSettings.Load();
+
+            AssertEqual("copilot-claude", settings.AgentProfile ?? string.Empty,
+                "review settings agent profile selected");
+            AssertEqual(ReviewProvider.Copilot, settings.Provider, "review settings agent profile provider");
+            AssertEqual("claude-sonnet-4-5", settings.Model, "review settings agent profile model");
+            AssertEqual("claude-sonnet-4-5", settings.CopilotModel ?? string.Empty,
+                "review settings agent profile copilot explicit model");
+            AssertEqual("auto", settings.CopilotLauncher, "review settings agent profile copilot launcher");
+            AssertEqual(true, settings.CopilotAutoInstall, "review settings agent profile copilot auto install");
+            AssertSequenceEqual(new[] { "COPILOT_GITHUB_TOKEN" }, settings.CopilotEnvAllowlist.ToArray(),
+                "review settings agent profile copilot env allowlist");
+
+            Environment.SetEnvironmentVariable("REVIEW_AGENT_PROFILE", "chatgpt-codex");
+            settings = ReviewSettings.Load();
+
+            AssertEqual("chatgpt-codex", settings.AgentProfile ?? string.Empty,
+                "review settings env agent profile selected");
+            AssertEqual(ReviewProvider.OpenAI, settings.Provider, "review settings env agent profile provider");
+            AssertEqual("gpt-5.4", settings.Model, "review settings env agent profile model");
+            AssertEqual(IntelligenceX.OpenAI.OpenAITransportKind.Native, settings.OpenAITransport,
+                "review settings env agent profile transport");
+            AssertEqual("acct-review", settings.OpenAiAccountId ?? string.Empty,
+                "review settings env agent profile account");
+        } finally {
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", previousConfigPath);
+            Environment.SetEnvironmentVariable("REVIEW_AGENT_PROFILE", previousAgentProfile);
+            if (File.Exists(configPath)) {
+                File.Delete(configPath);
+            }
+        }
+    }
+
     private static void TestReviewSettingsEnvSwarmReviewersJson() {
         var previousReviewers = Environment.GetEnvironmentVariable("REVIEW_SWARM_REVIEWERS");
         var previousInputReviewers = Environment.GetEnvironmentVariable("INPUT_SWARM_REVIEWERS");

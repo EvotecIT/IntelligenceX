@@ -267,7 +267,7 @@ internal static class ReviewSwarmShadowRunner {
     private static async Task<string> ExecuteReviewerAsync(ReviewSettings settings,
         ReviewSwarmShadowReviewerPlan reviewer, string prompt, CancellationToken cancellationToken) {
         var reviewerSettings = settings.CloneWithProviderOverride(reviewer.Provider, reviewer.Model,
-            reviewer.ReasoningEffort);
+            reviewer.ReasoningEffort, reviewer.AgentProfile);
         var runner = new ReviewRunner(reviewerSettings);
         return await runner.RunAsync(prompt, null, null, cancellationToken).ConfigureAwait(false);
     }
@@ -275,7 +275,7 @@ internal static class ReviewSwarmShadowRunner {
     private static async Task<string> ExecuteAggregatorAsync(ReviewSettings settings,
         ReviewSwarmShadowAggregatorPlan aggregator, string prompt, CancellationToken cancellationToken) {
         var aggregatorSettings = settings.CloneWithProviderOverride(aggregator.Provider, aggregator.Model,
-            aggregator.ReasoningEffort);
+            aggregator.ReasoningEffort, aggregator.AgentProfile);
         var runner = new ReviewRunner(aggregatorSettings);
         return await runner.RunAsync(prompt, null, null, cancellationToken).ConfigureAwait(false);
     }

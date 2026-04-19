@@ -98,6 +98,60 @@ internal static partial class Program {
         AssertEqual("claude-opus-4-1", plan.Aggregator.Model, "swarm shadow plan aggregator model");
     }
 
+    private static void TestReviewSwarmShadowPlanUsesAgentProfiles() {
+        var settings = new ReviewSettings {
+            Provider = ReviewProvider.OpenAI,
+            Model = "gpt-5.4",
+            ReasoningEffort = ReasoningEffort.Medium,
+            AgentProfiles = new Dictionary<string, ReviewAgentProfileSettings>(StringComparer.OrdinalIgnoreCase) {
+                ["copilot-gpt54"] = new ReviewAgentProfileSettings {
+                    Id = "copilot-gpt54",
+                    Authenticator = "copilot-cli",
+                    Model = "gpt-5.4",
+                    CopilotAutoInstall = true,
+                    CopilotEnvAllowlist = new[] { "COPILOT_GITHUB_TOKEN" }
+                },
+                ["copilot-claude"] = new ReviewAgentProfileSettings {
+                    Id = "copilot-claude",
+                    Provider = ReviewProvider.Copilot,
+                    Model = "claude-sonnet-4-5"
+                }
+            }
+        };
+        settings.Swarm.Enabled = true;
+        settings.Swarm.ShadowMode = true;
+        settings.Swarm.ReviewerSettings = new[] {
+            new ReviewSwarmReviewerSettings {
+                Id = "correctness",
+                AgentProfile = "copilot-gpt54"
+            },
+            new ReviewSwarmReviewerSettings {
+                Id = "tests",
+                AgentProfile = "copilot-claude"
+            }
+        };
+        settings.Swarm.Aggregator.AgentProfile = "copilot-gpt54";
+
+        var plan = ReviewRunner.BuildSwarmShadowPlanForTests(settings);
+        var rendered = ReviewRunner.RenderSwarmShadowPlanForTests(plan);
+
+        AssertEqual("copilot-gpt54", plan.Reviewers[0].AgentProfile ?? string.Empty,
+            "swarm shadow plan reviewer agent profile");
+        AssertEqual(ReviewProvider.Copilot, plan.Reviewers[0].Provider,
+            "swarm shadow plan reviewer profile provider");
+        AssertEqual("gpt-5.4", plan.Reviewers[0].Model, "swarm shadow plan reviewer profile model");
+        AssertEqual("copilot-claude", plan.Reviewers[1].AgentProfile ?? string.Empty,
+            "swarm shadow plan second reviewer agent profile");
+        AssertEqual("claude-sonnet-4-5", plan.Reviewers[1].Model,
+            "swarm shadow plan second reviewer profile model");
+        AssertEqual("copilot-gpt54", plan.Aggregator.AgentProfile ?? string.Empty,
+            "swarm shadow plan aggregator agent profile");
+        AssertContainsText(rendered, "correctness -> copilot-gpt54 -> copilot / gpt-5.4",
+            "swarm shadow plan render reviewer profile");
+        AssertContainsText(rendered, "aggregator -> copilot-gpt54 -> copilot / gpt-5.4",
+            "swarm shadow plan render aggregator profile");
+    }
+
     private static void TestReviewSwarmShadowPlanFallsBackToPrimaryProviderAndModel() {
         var settings = new ReviewSettings {
             Provider = ReviewProvider.OpenAICompatible,

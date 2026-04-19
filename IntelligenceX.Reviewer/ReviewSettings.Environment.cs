@@ -3,6 +3,7 @@ namespace IntelligenceX.Reviewer;
 internal sealed partial class ReviewSettings {
     internal static void ApplyEnvironment(ReviewSettings settings) {
         ApplyEnvironmentCoreReviewSettings(settings);
+        ApplyEnvironmentAgentProfileSettings(settings);
         ApplyEnvironmentUsageAndSummarySettings(settings);
         ApplyEnvironmentScopeAndPromptSettings(settings);
         ApplyEnvironmentHistorySettings(settings);

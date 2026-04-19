@@ -659,6 +659,8 @@ internal static partial class Program {
         failed += Run("Review settings load config then env precedence for ciContext and swarm",
             TestReviewSettingsLoadConfigThenEnvPrecedenceForCiContextAndSwarm);
         failed += Run("Review settings load swarm reviewer objects", TestReviewSettingsLoadSwarmReviewerObjects);
+        failed += Run("Review settings agent profile selects authenticator and model",
+            TestReviewSettingsAgentProfileSelectsAuthenticatorAndModel);
         failed += Run("Review settings env swarm reviewers JSON", TestReviewSettingsEnvSwarmReviewersJson);
         failed += Run("Review settings load config allows zero for non-negative limits",
             TestReviewSettingsLoadConfigAllowsZeroForNonNegativeLimits);
@@ -783,6 +785,7 @@ internal static partial class Program {
         failed += Run("Review summary parser merge blocker detection custom sections",
             TestReviewSummaryParserMergeBlockerDetectionCustomSections);
         failed += Run("Review swarm shadow plan uses reviewer overrides", TestReviewSwarmShadowPlanUsesReviewerOverrides);
+        failed += Run("Review swarm shadow plan uses agent profiles", TestReviewSwarmShadowPlanUsesAgentProfiles);
         failed += Run("Review swarm shadow plan falls back to primary provider and model",
             TestReviewSwarmShadowPlanFallsBackToPrimaryProviderAndModel);
         failed += Run("Review swarm shadow reviewer prompt shapes focus", TestReviewSwarmShadowReviewerPromptShapesFocus);
