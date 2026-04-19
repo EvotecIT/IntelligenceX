@@ -81,7 +81,7 @@ internal static class ReviewFormatter {
             ["AutoResolveNote"] = autoResolveLine,
             ["BudgetNote"] = budgetLine,
             ["ReviewBody"] = body,
-            ["Model"] = settings.Model,
+            ["Model"] = ReviewDiagnostics.DescribeModel(settings),
             ["Length"] = settings.Length.ToString().ToLowerInvariant(),
             ["Mode"] = settings.Mode,
             ["ReasoningLine"] = reasoningLine,
@@ -179,7 +179,7 @@ internal static class ReviewFormatter {
             ["ProgressLine"] = statusLine,
             ["Checklist"] = checklist,
             ["PreliminaryBlock"] = preliminaryBlock,
-            ["Model"] = settings.Model,
+            ["Model"] = ReviewDiagnostics.DescribeModel(settings),
             ["Length"] = settings.Length.ToString().ToLowerInvariant(),
             ["Mode"] = settings.Mode
         };

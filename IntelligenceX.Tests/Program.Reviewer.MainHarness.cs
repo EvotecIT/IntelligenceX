@@ -673,6 +673,7 @@ internal static partial class Program {
         failed += Run("Copilot launcher env", TestCopilotLauncherEnv);
         failed += Run("Copilot model env overrides generic model", TestCopilotModelEnvOverridesGenericModel);
         failed += Run("Copilot default OpenAI model uses CLI default", TestCopilotDefaultOpenAiModelUsesCliDefault);
+        failed += Run("Copilot prompt runner parses JSON output", TestCopilotPromptRunnerParsesJsonOutput);
         failed += Run("Copilot gh launcher builds wrapper command", TestCopilotGhLauncherBuildsWrapperCommand);
         failed += Run("Copilot auto launcher uses binary",
             TestCopilotAutoLauncherUsesBinary);
@@ -801,6 +802,7 @@ internal static partial class Program {
             TestReviewSummaryParserMergeBlockerDetectionAllowNoSectionMatch);
         failed += Run("Review formatter model usage section", TestReviewFormatterModelUsageSection);
         failed += Run("Review formatter model usage unavailable", TestReviewFormatterModelUsageUnavailable);
+        failed += Run("Review formatter copilot model usage provider display", TestReviewFormatterCopilotModelUsageUsesProviderDisplay);
         failed += Run("Review formatter golden snapshot", TestReviewFormatterGoldenSnapshot);
         failed += Run("Review formatter normalizes inline section labels", TestReviewFormatterNormalizesInlineSectionLabels);
         failed += Run("Review formatter normalizes malformed heading inline section labels",

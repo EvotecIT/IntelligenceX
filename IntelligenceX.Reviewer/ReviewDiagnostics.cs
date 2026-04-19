@@ -328,7 +328,7 @@ internal static class ReviewDiagnostics {
             : settings.OpenAITransport.ToString();
     }
 
-    private static string DescribeModel(ReviewSettings settings) {
+    internal static string DescribeModel(ReviewSettings settings) {
         if (settings.Provider == ReviewProvider.Copilot) {
             var model = ReviewRunner.ResolveCopilotModel(settings);
             if (!string.IsNullOrWhiteSpace(model)) {
