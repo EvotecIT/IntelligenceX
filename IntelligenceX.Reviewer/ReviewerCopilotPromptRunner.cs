@@ -29,7 +29,32 @@ internal sealed class ReviewerCopilotPromptRunner {
 
         _options.Validate();
         var cliPath = await ResolveCliPathOrInstallAsync(_options, cancellationToken).ConfigureAwait(false);
-        var startInfo = BuildStartInfo(_options, cliPath, prompt, model);
+        var startInfo = BuildStartInfo(_options, cliPath, prompt, model, disableBuiltinMcps: true);
+        var result = await RunProcessAsync(startInfo, timeout, cancellationToken).ConfigureAwait(false);
+        if (result.ExitCode != 0 && IsUnsupportedDisableBuiltinMcpsFlag(result.Stdout, result.Stderr)) {
+            startInfo = BuildStartInfo(_options, cliPath, prompt, model, disableBuiltinMcps: false);
+            result = await RunProcessAsync(startInfo, timeout, cancellationToken).ConfigureAwait(false);
+        }
+
+        if (result.ExitCode != 0) {
+            throw new InvalidOperationException(BuildExitMessage(result.ExitCode, result.Stdout, result.Stderr));
+        }
+
+        var parsed = ParseJsonLines(result.Stdout);
+        var response = parsed.Response;
+        if (string.IsNullOrWhiteSpace(response)) {
+            response = result.Stdout.Trim();
+        }
+        if (string.IsNullOrWhiteSpace(response)) {
+            throw new InvalidOperationException(BuildExitMessage(result.ExitCode, result.Stdout, result.Stderr,
+                "Copilot CLI produced no review content."));
+        }
+
+        return new ReviewerCopilotPromptResult(response.Trim(), parsed.UsageSummary);
+    }
+
+    private static async Task<CopilotPromptProcessResult> RunProcessAsync(ProcessStartInfo startInfo,
+        TimeSpan timeout, CancellationToken cancellationToken) {
         using var process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
         try {
             if (!process.Start()) {
@@ -54,25 +79,11 @@ internal sealed class ReviewerCopilotPromptRunner {
 
         var stdout = await stdoutTask.ConfigureAwait(false);
         var stderrText = await stderrTask.ConfigureAwait(false);
-        if (process.ExitCode != 0) {
-            throw new InvalidOperationException(BuildExitMessage(process.ExitCode, stdout, stderrText));
-        }
-
-        var parsed = ParseJsonLines(stdout);
-        var response = parsed.Response;
-        if (string.IsNullOrWhiteSpace(response)) {
-            response = stdout.Trim();
-        }
-        if (string.IsNullOrWhiteSpace(response)) {
-            throw new InvalidOperationException(BuildExitMessage(process.ExitCode, stdout, stderrText,
-                "Copilot CLI produced no review content."));
-        }
-
-        return new ReviewerCopilotPromptResult(response.Trim(), parsed.UsageSummary);
+        return new CopilotPromptProcessResult(process.ExitCode, stdout, stderrText);
     }
 
     private static ProcessStartInfo BuildStartInfo(CopilotClientOptions options, string cliPath, string prompt,
-        string? model) {
+        string? model, bool disableBuiltinMcps) {
         var args = new List<string>();
         if (options.CliArgs.Count > 0) {
             args.AddRange(options.CliArgs);
@@ -83,7 +94,9 @@ internal sealed class ReviewerCopilotPromptRunner {
         args.Add("--no-ask-user");
         args.Add("--no-custom-instructions");
         args.Add("--no-auto-update");
-        args.Add("--disable-builtin-mcps");
+        if (disableBuiltinMcps) {
+            args.Add("--disable-builtin-mcps");
+        }
         args.Add("--stream");
         args.Add("off");
         args.Add("--output-format");
@@ -241,6 +254,26 @@ internal sealed class ReviewerCopilotPromptRunner {
         return new ReviewerCopilotPromptResult(parsed.Response, parsed.UsageSummary);
     }
 
+    internal static string[] BuildArgumentsForTests(CopilotClientOptions options, string cliPath, string prompt,
+        string? model = null, bool disableBuiltinMcps = true) {
+        var startInfo = BuildStartInfo(options, cliPath, prompt, model, disableBuiltinMcps);
+        var args = new string[startInfo.ArgumentList.Count];
+        startInfo.ArgumentList.CopyTo(args, 0);
+        return args;
+    }
+
+    internal static bool IsUnsupportedDisableBuiltinMcpsFlagForTests(string stdout, string stderr) =>
+        IsUnsupportedDisableBuiltinMcpsFlag(stdout, stderr);
+
+    private static bool IsUnsupportedDisableBuiltinMcpsFlag(string stdout, string stderr) {
+        var combined = string.Concat(stdout, "\n", stderr);
+        return combined.Contains("--disable-builtin-mcps", StringComparison.OrdinalIgnoreCase) &&
+               (combined.Contains("unknown", StringComparison.OrdinalIgnoreCase) ||
+                combined.Contains("unrecognized", StringComparison.OrdinalIgnoreCase) ||
+                combined.Contains("invalid option", StringComparison.OrdinalIgnoreCase) ||
+                combined.Contains("unexpected argument", StringComparison.OrdinalIgnoreCase));
+    }
+
     private static string? BuildUsageSummary(JsonObject? usage) {
         if (usage is null) {
             return null;
@@ -329,3 +362,5 @@ internal sealed class ReviewerCopilotPromptRunner {
 }
 
 internal sealed record ReviewerCopilotPromptResult(string Response, string? UsageSummary);
+
+internal sealed record CopilotPromptProcessResult(int ExitCode, string Stdout, string Stderr);
