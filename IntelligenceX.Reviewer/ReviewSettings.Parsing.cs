@@ -1,10 +1,15 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Text.Json;
 using IntelligenceX.Analysis;
 using IntelligenceX.Copilot;
 using IntelligenceX.OpenAI;
 using IntelligenceX.OpenAI.Chat;
+using JsonArrayNode = System.Text.Json.Nodes.JsonArray;
+using JsonNodeBase = System.Text.Json.Nodes.JsonNode;
+using JsonNodeObject = System.Text.Json.Nodes.JsonObject;
+using JsonValueNode = System.Text.Json.Nodes.JsonValue;
 
 
 namespace IntelligenceX.Reviewer;
@@ -225,6 +230,139 @@ internal sealed partial class ReviewSettings {
         return list.Count == 0 ? fallback ?? Array.Empty<string>() : list;
     }
 
+    internal static IReadOnlyList<ReviewSwarmReviewerSettings> NormalizeSwarmReviewerSettings(
+        IEnumerable<ReviewSwarmReviewerSettings>? values, IReadOnlyList<ReviewSwarmReviewerSettings>? fallback = null) {
+        if (values is null) {
+            return fallback ?? Array.Empty<ReviewSwarmReviewerSettings>();
+        }
+
+        var list = new List<ReviewSwarmReviewerSettings>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var value in values) {
+            var normalizedId = value.Id?.Trim().ToLowerInvariant();
+            if (string.IsNullOrWhiteSpace(normalizedId)) {
+                continue;
+            }
+            if (!seen.Add(normalizedId)) {
+                continue;
+            }
+
+            list.Add(new ReviewSwarmReviewerSettings {
+                Id = normalizedId,
+                Provider = value.Provider,
+                Model = string.IsNullOrWhiteSpace(value.Model) ? null : value.Model.Trim(),
+                ReasoningEffort = value.ReasoningEffort
+            });
+        }
+
+        return list.Count == 0 ? fallback ?? Array.Empty<ReviewSwarmReviewerSettings>() : list;
+    }
+
+    internal static IReadOnlyList<ReviewSwarmReviewerSettings> BuildSwarmReviewerSettings(
+        IEnumerable<string>? values, IReadOnlyList<ReviewSwarmReviewerSettings>? fallback = null) {
+        if (values is null) {
+            return fallback ?? Array.Empty<ReviewSwarmReviewerSettings>();
+        }
+
+        var normalizedIds = NormalizeSwarmReviewers(values);
+        if (normalizedIds.Count == 0) {
+            return fallback ?? Array.Empty<ReviewSwarmReviewerSettings>();
+        }
+
+        var list = new List<ReviewSwarmReviewerSettings>(normalizedIds.Count);
+        foreach (var id in normalizedIds) {
+            list.Add(new ReviewSwarmReviewerSettings {
+                Id = id
+            });
+        }
+        return list;
+    }
+
+    internal static IReadOnlyList<ReviewSwarmReviewerSettings> ParseSwarmReviewerSettingsInput(
+        string? value, IReadOnlyList<ReviewSwarmReviewerSettings>? fallback = null) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            return fallback ?? Array.Empty<ReviewSwarmReviewerSettings>();
+        }
+
+        var trimmed = value.Trim();
+        if (trimmed.StartsWith("[", StringComparison.Ordinal) ||
+            trimmed.StartsWith("{", StringComparison.Ordinal)) {
+            try {
+                var node = JsonNodeBase.Parse(trimmed);
+                var parsed = ParseSwarmReviewerSettingsNode(node);
+                return NormalizeSwarmReviewerSettings(parsed, fallback);
+            } catch (JsonException ex) {
+                throw new InvalidOperationException(
+                    "Invalid swarm_reviewers JSON. Use a CSV list or a JSON reviewer object/array.", ex);
+            }
+        }
+
+        var reviewerIds = NormalizeSwarmReviewers(ParseList(trimmed));
+        return BuildSwarmReviewerSettings(reviewerIds, fallback);
+    }
+
+    private static IReadOnlyList<ReviewSwarmReviewerSettings> ParseSwarmReviewerSettingsNode(JsonNodeBase? node) {
+        var list = new List<ReviewSwarmReviewerSettings>();
+        if (node is JsonArrayNode array) {
+            foreach (var item in array) {
+                var reviewer = ParseSwarmReviewerSettingNode(item);
+                if (reviewer is not null) {
+                    list.Add(reviewer);
+                }
+            }
+            return list;
+        }
+
+        var single = ParseSwarmReviewerSettingNode(node);
+        if (single is not null) {
+            list.Add(single);
+        }
+        return list;
+    }
+
+    private static ReviewSwarmReviewerSettings? ParseSwarmReviewerSettingNode(JsonNodeBase? node) {
+        if (node is JsonValueNode valueNode && valueNode.TryGetValue<string>(out var idFromValue)) {
+            return string.IsNullOrWhiteSpace(idFromValue)
+                ? null
+                : new ReviewSwarmReviewerSettings { Id = idFromValue };
+        }
+
+        if (node is not JsonNodeObject obj) {
+            return null;
+        }
+
+        var id = GetJsonString(obj, "id");
+        if (string.IsNullOrWhiteSpace(id)) {
+            return null;
+        }
+
+        return new ReviewSwarmReviewerSettings {
+            Id = id!,
+            Provider = ParseOptionalSwarmProviderInput(GetJsonString(obj, "provider")),
+            Model = GetJsonString(obj, "model"),
+            ReasoningEffort = ParseOptionalReasoningEffortInput(GetJsonString(obj, "reasoningEffort"))
+        };
+    }
+
+    private static string? GetJsonString(JsonNodeObject obj, string propertyName) {
+        var node = obj[propertyName];
+        return node is null ? null : node.GetValue<string>();
+    }
+
+    private static ReviewProvider? ParseOptionalSwarmProviderInput(string? value) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            return null;
+        }
+        return ReviewProviderContracts.ParseProviderOrThrow(value, "swarm_reviewers.provider");
+    }
+
+    private static ReasoningEffort? ParseOptionalReasoningEffortInput(string? value) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            return null;
+        }
+        return ChatEnumParser.ParseReasoningEffort(value);
+    }
+
     private static CopilotTransportKind ParseCopilotTransport(string? value, CopilotTransportKind fallback) {
         if (string.IsNullOrWhiteSpace(value)) {
             return fallback;
@@ -233,6 +371,19 @@ internal sealed partial class ReviewSettings {
         return normalized switch {
             "direct" or "api" or "http" => CopilotTransportKind.Direct,
             "cli" => CopilotTransportKind.Cli,
+            _ => fallback
+        };
+    }
+
+    internal static string NormalizeCopilotLauncher(string? value, string fallback) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            return fallback;
+        }
+        var normalized = value.Trim().ToLowerInvariant();
+        return normalized switch {
+            "binary" or "cli" or "copilot" => "binary",
+            "gh" or "github" or "github-cli" or "github_cli" => "gh",
+            "auto" => "auto",
             _ => fallback
         };
     }

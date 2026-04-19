@@ -42,6 +42,467 @@ internal static partial class Program {
         ok = ReviewSummaryParser.TryGetReviewedCommit(malformedThenValid, out commit);
         AssertEqual(true, ok, "malformed then valid");
         AssertEqual("deadbeef", commit, "malformed then valid commit");
+
+    }
+
+    private static void TestReviewSummaryParserFindingExtraction() {
+        var findingsBody = string.Join("\n", new[] {
+            "## Todo List ✅",
+            "- [ ] Fix cancellation race.",
+            "## Critical Issues ⚠️",
+            "- [x] Restore regression coverage."
+        });
+        var findings = ReviewSummaryParser.ExtractMergeBlockerFindings(findingsBody);
+        AssertEqual(2, findings.Count, "findings count");
+        AssertEqual("open", findings[0].Status, "first finding status");
+        AssertEqual("resolved", findings[1].Status, "second finding status");
+        AssertEqual(true, findings[0].Fingerprint.Length > 0, "first finding fingerprint");
+        AssertEqual(false, string.Equals(findings[0].Fingerprint, findings[1].Fingerprint, StringComparison.Ordinal),
+            "finding fingerprints unique");
+    }
+
+    private static void TestReviewSwarmShadowPlanUsesReviewerOverrides() {
+        var settings = new ReviewSettings {
+            Provider = ReviewProvider.OpenAI,
+            Model = "gpt-5.4",
+            ReasoningEffort = ReasoningEffort.Medium
+        };
+        settings.Swarm.Enabled = true;
+        settings.Swarm.ShadowMode = true;
+        settings.Swarm.MaxParallel = 3;
+        settings.Swarm.ReviewerSettings = new[] {
+            new ReviewSwarmReviewerSettings {
+                Id = "correctness",
+                Provider = ReviewProvider.OpenAI,
+                Model = "gpt-5.4",
+                ReasoningEffort = ReasoningEffort.High
+            },
+            new ReviewSwarmReviewerSettings {
+                Id = "tests",
+                Provider = ReviewProvider.Copilot,
+                Model = "gpt-5.2"
+            }
+        };
+        settings.Swarm.Aggregator.Provider = ReviewProvider.Claude;
+        settings.Swarm.Aggregator.Model = "claude-opus-4-1";
+        settings.Swarm.Aggregator.ReasoningEffort = ReasoningEffort.High;
+
+        var plan = ReviewRunner.BuildSwarmShadowPlanForTests(settings);
+
+        AssertEqual(true, plan.Enabled, "swarm shadow plan enabled");
+        AssertEqual(true, plan.ShadowMode, "swarm shadow plan shadow mode");
+        AssertEqual(2, plan.Reviewers.Count, "swarm shadow plan reviewer count");
+        AssertEqual(ReviewProvider.Copilot, plan.Reviewers[1].Provider, "swarm shadow plan reviewer provider override");
+        AssertEqual("gpt-5.2", plan.Reviewers[1].Model, "swarm shadow plan reviewer model override");
+        AssertEqual(ReviewProvider.Claude, plan.Aggregator.Provider, "swarm shadow plan aggregator provider");
+        AssertEqual("claude-opus-4-1", plan.Aggregator.Model, "swarm shadow plan aggregator model");
+    }
+
+    private static void TestReviewSwarmShadowPlanFallsBackToPrimaryProviderAndModel() {
+        var settings = new ReviewSettings {
+            Provider = ReviewProvider.OpenAICompatible,
+            Model = "local-model",
+            ReasoningEffort = ReasoningEffort.Low
+        };
+        settings.Swarm.Enabled = true;
+        settings.Swarm.ShadowMode = true;
+        settings.Swarm.Reviewers = new[] { "correctness", "tests" };
+        settings.Swarm.ReviewerSettings = ReviewSettings.BuildSwarmReviewerSettings(settings.Swarm.Reviewers);
+        settings.Swarm.AggregatorModel = "judge-model";
+
+        var plan = ReviewRunner.BuildSwarmShadowPlanForTests(settings);
+        var rendered = ReviewRunner.RenderSwarmShadowPlanForTests(plan);
+
+        AssertEqual(2, plan.Reviewers.Count, "swarm shadow plan fallback reviewer count");
+        AssertEqual(ReviewProvider.OpenAICompatible, plan.Reviewers[0].Provider, "swarm shadow plan fallback reviewer provider");
+        AssertEqual("local-model", plan.Reviewers[0].Model, "swarm shadow plan fallback reviewer model");
+        AssertEqual("judge-model", plan.Aggregator.Model, "swarm shadow plan fallback aggregator model");
+        AssertContainsText(rendered, "Swarm shadow plan (public comment remains single-review path):",
+            "swarm shadow plan render header");
+        AssertContainsText(rendered, "correctness -> openaicompatible / local-model / reasoning low",
+            "swarm shadow plan render reviewer");
+        AssertContainsText(rendered, "aggregator -> openaicompatible / judge-model / reasoning low",
+            "swarm shadow plan render aggregator");
+    }
+
+    private static void TestReviewSwarmShadowReviewerPromptShapesFocus() {
+        var reviewer = new ReviewSwarmShadowReviewerPlan {
+            Id = "security",
+            Provider = ReviewProvider.OpenAI,
+            Model = "gpt-5.4",
+            ReasoningEffort = ReasoningEffort.High
+        };
+
+        var prompt = ReviewRunner.BuildSwarmShadowReviewerPromptForTests("Base prompt", reviewer);
+
+        AssertContainsText(prompt, "Base prompt", "swarm shadow prompt includes base prompt");
+        AssertContainsText(prompt, "Reviewer id: `security`", "swarm shadow prompt includes reviewer id");
+        AssertContainsText(prompt, "security, auth boundaries", "swarm shadow prompt includes security focus");
+        AssertContainsText(prompt, "existing review markdown contract", "swarm shadow prompt keeps output contract");
+    }
+
+    private static void TestReviewSwarmShadowRunnerCapturesFailures() {
+        var settings = new ReviewSettings();
+        settings.Swarm.Enabled = true;
+        settings.Swarm.ShadowMode = true;
+        settings.Swarm.FailOpenOnPartial = true;
+        var plan = new ReviewSwarmShadowPlan {
+            Enabled = true,
+            ShadowMode = true,
+            Reviewers = new[] {
+                new ReviewSwarmShadowReviewerPlan {
+                    Id = "correctness",
+                    Provider = ReviewProvider.OpenAI,
+                    Model = "gpt-5.4"
+                },
+                new ReviewSwarmShadowReviewerPlan {
+                    Id = "tests",
+                    Provider = ReviewProvider.Copilot,
+                    Model = "gpt-5.2"
+                }
+            }
+        };
+        var seenPrompts = new Dictionary<string, string>(StringComparer.Ordinal);
+        var seenPromptsLock = new object();
+
+        var result = ReviewRunner.RunSwarmShadowForTestsAsync(settings, plan, "Base prompt",
+                (reviewer, prompt, _) => {
+                    lock (seenPromptsLock) {
+                        seenPrompts[reviewer.Id] = prompt;
+                    }
+                    if (reviewer.Id == "tests") {
+                        throw new InvalidOperationException("boom");
+                    }
+                    return Task.FromResult("## Summary 📝\nLooks good.\n## Todo List ✅\nNone.\n## Critical Issues ⚠️\nNone.");
+                })
+            .GetAwaiter()
+            .GetResult();
+        var rendered = ReviewRunner.RenderSwarmShadowResultsForTests(result);
+
+        AssertEqual(2, result.Results.Count, "swarm shadow result count");
+        AssertEqual(false, result.Results[0].Succeeded == result.Results[1].Succeeded,
+            "swarm shadow mixed success and failure");
+        AssertEqual(true, result.HasFailures, "swarm shadow has failures");
+        AssertNotNull(result.Aggregator, "swarm shadow aggregator result");
+        AssertEqual(true, result.Aggregator!.Succeeded, "swarm shadow aggregator succeeds with fake executor");
+        AssertEqual(2, seenPrompts.Count, "swarm shadow executor prompt count");
+        AssertEqual(true, seenPrompts.TryGetValue("tests", out var testsPrompt),
+            "swarm shadow tests prompt captured");
+        AssertContainsText(testsPrompt ?? string.Empty, "missing regression coverage", "swarm shadow tests focus prompt");
+        AssertContainsText(rendered, "correctness: completed", "swarm shadow render completed");
+        AssertContainsText(rendered, "tests: failed - InvalidOperationException: boom", "swarm shadow render failed");
+        AssertContainsText(rendered, "aggregator: completed", "swarm shadow render aggregator");
+    }
+
+    private static void TestReviewSwarmShadowRunnerFailsClosedWhenConfigured() {
+        var settings = new ReviewSettings();
+        settings.Swarm.Enabled = true;
+        settings.Swarm.ShadowMode = true;
+        settings.Swarm.FailOpenOnPartial = false;
+        var plan = new ReviewSwarmShadowPlan {
+            Enabled = true,
+            ShadowMode = true,
+            Reviewers = new[] {
+                new ReviewSwarmShadowReviewerPlan {
+                    Id = "correctness",
+                    Provider = ReviewProvider.OpenAI,
+                    Model = "gpt-5.4"
+                }
+            }
+        };
+
+        AssertThrows<InvalidOperationException>(() =>
+            ReviewRunner.RunSwarmShadowForTestsAsync(settings, plan, "Base prompt",
+                    (_, _, _) => throw new InvalidOperationException("boom"))
+                .GetAwaiter()
+                .GetResult(), "swarm shadow fail closed");
+    }
+
+    private static void TestReviewSwarmShadowRunnerHonorsMaxParallel() {
+        var settings = new ReviewSettings();
+        settings.Swarm.Enabled = true;
+        settings.Swarm.ShadowMode = true;
+        settings.Swarm.FailOpenOnPartial = true;
+        var plan = new ReviewSwarmShadowPlan {
+            Enabled = true,
+            ShadowMode = true,
+            MaxParallel = 2,
+            Reviewers = new[] {
+                new ReviewSwarmShadowReviewerPlan {
+                    Id = "correctness",
+                    Provider = ReviewProvider.OpenAI,
+                    Model = "gpt-5.4"
+                },
+                new ReviewSwarmShadowReviewerPlan {
+                    Id = "tests",
+                    Provider = ReviewProvider.OpenAI,
+                    Model = "gpt-5.4"
+                },
+                new ReviewSwarmShadowReviewerPlan {
+                    Id = "security",
+                    Provider = ReviewProvider.OpenAI,
+                    Model = "gpt-5.4"
+                }
+            }
+        };
+        var active = 0;
+        var maxActive = 0;
+
+        var result = ReviewRunner.RunSwarmShadowForTestsAsync(settings, plan, "Base prompt",
+                async (reviewer, _, _) => {
+                    var current = Interlocked.Increment(ref active);
+                    int snapshot;
+                    do {
+                        snapshot = maxActive;
+                        if (current <= snapshot) {
+                            break;
+                        }
+                    } while (Interlocked.CompareExchange(ref maxActive, current, snapshot) != snapshot);
+
+                    await Task.Delay(50).ConfigureAwait(false);
+                    Interlocked.Decrement(ref active);
+                    return $"## Summary 📝\n{reviewer.Id}\n## Todo List ✅\nNone.\n## Critical Issues ⚠️\nNone.";
+                })
+            .GetAwaiter()
+            .GetResult();
+
+        AssertEqual(3, result.Results.Count, "swarm shadow parallel result count");
+        AssertEqual(2, maxActive, "swarm shadow max parallel honored");
+        AssertEqual("correctness", result.Results[0].Reviewer.Id, "swarm shadow preserves result order first");
+        AssertEqual("tests", result.Results[1].Reviewer.Id, "swarm shadow preserves result order second");
+        AssertEqual("security", result.Results[2].Reviewer.Id, "swarm shadow preserves result order third");
+    }
+
+    private static void TestReviewSwarmShadowAggregatorPromptIncludesSubreviews() {
+        var plan = new ReviewSwarmShadowPlan {
+            Enabled = true,
+            ShadowMode = true,
+            Aggregator = new ReviewSwarmShadowAggregatorPlan {
+                Provider = ReviewProvider.OpenAI,
+                Model = "gpt-5.4",
+                ReasoningEffort = ReasoningEffort.High
+            },
+            Reviewers = new[] {
+                new ReviewSwarmShadowReviewerPlan {
+                    Id = "correctness",
+                    Provider = ReviewProvider.OpenAI,
+                    Model = "gpt-5.4"
+                }
+            }
+        };
+        var results = new[] {
+            new ReviewSwarmShadowReviewerResult {
+                Reviewer = plan.Reviewers[0],
+                Succeeded = true,
+                Output = "## Todo List ✅\n- [ ] Fix the parser null guard."
+            }
+        };
+
+        var prompt = ReviewRunner.BuildSwarmShadowAggregatorPromptForTests("Base prompt", plan, results);
+
+        AssertContainsText(prompt, "Swarm Shadow Aggregator", "swarm shadow aggregator prompt header");
+        AssertContainsText(prompt, "Base prompt", "swarm shadow aggregator prompt base");
+        AssertContainsText(prompt, "correctness (succeeded)", "swarm shadow aggregator prompt reviewer");
+        AssertContainsText(prompt, "Fix the parser null guard", "swarm shadow aggregator prompt output");
+        AssertContainsText(prompt, "Merge overlapping findings", "swarm shadow aggregator prompt contract");
+    }
+
+    private static void TestReviewSwarmShadowAggregatorPromptUsesSafeSubreviewFence() {
+        var plan = new ReviewSwarmShadowPlan {
+            Enabled = true,
+            ShadowMode = true,
+            Aggregator = new ReviewSwarmShadowAggregatorPlan {
+                Provider = ReviewProvider.OpenAI,
+                Model = "gpt-5.4"
+            },
+            Reviewers = new[] {
+                new ReviewSwarmShadowReviewerPlan {
+                    Id = "correctness",
+                    Provider = ReviewProvider.OpenAI,
+                    Model = "gpt-5.4"
+                }
+            }
+        };
+        var results = new[] {
+            new ReviewSwarmShadowReviewerResult {
+                Reviewer = plan.Reviewers[0],
+                Succeeded = true,
+                Output = "Before\n```suggestion\nreturn true;\n```\nAfter"
+            }
+        };
+
+        var prompt = ReviewRunner.BuildSwarmShadowAggregatorPromptForTests("Base prompt", plan, results);
+
+        AssertContainsText(prompt, "~~~~markdown", "swarm shadow aggregator uses tilde fence wrapper");
+        AssertContainsText(prompt, "```suggestion", "swarm shadow aggregator preserves nested suggestion fence");
+        AssertContainsText(prompt, "After", "swarm shadow aggregator keeps content after nested fence");
+    }
+
+    private static void TestReviewSwarmShadowAggregatorPromptClosesTruncatedFence() {
+        var plan = new ReviewSwarmShadowPlan {
+            Enabled = true,
+            ShadowMode = true,
+            Aggregator = new ReviewSwarmShadowAggregatorPlan {
+                Provider = ReviewProvider.OpenAI,
+                Model = "gpt-5.4"
+            },
+            Reviewers = new[] {
+                new ReviewSwarmShadowReviewerPlan {
+                    Id = "correctness",
+                    Provider = ReviewProvider.OpenAI,
+                    Model = "gpt-5.4"
+                }
+            }
+        };
+        var results = new[] {
+            new ReviewSwarmShadowReviewerResult {
+                Reviewer = plan.Reviewers[0],
+                Succeeded = true,
+                Output = new string('x', 30000)
+            }
+        };
+
+        var prompt = ReviewRunner.BuildSwarmShadowAggregatorPromptForTests("Base prompt", plan, results);
+
+        AssertContainsText(prompt, "[truncated for swarm shadow aggregation]",
+            "swarm shadow aggregator prompt truncation marker");
+        AssertContainsText(prompt, "\n~~~~\n\n[truncated for swarm shadow aggregation]",
+            "swarm shadow aggregator prompt closes markdown fence before truncation marker");
+    }
+
+    private static void TestReviewSwarmShadowAggregatorPromptKeepsContextWithLargeBase() {
+        var plan = new ReviewSwarmShadowPlan {
+            Enabled = true,
+            ShadowMode = true,
+            Aggregator = new ReviewSwarmShadowAggregatorPlan {
+                Provider = ReviewProvider.OpenAI,
+                Model = "gpt-5.4"
+            },
+            Reviewers = new[] {
+                new ReviewSwarmShadowReviewerPlan {
+                    Id = "correctness",
+                    Provider = ReviewProvider.OpenAI,
+                    Model = "gpt-5.4"
+                }
+            }
+        };
+        var results = new[] {
+            new ReviewSwarmShadowReviewerResult {
+                Reviewer = plan.Reviewers[0],
+                Succeeded = true,
+                Output = "Reviewer evidence that must survive base prompt truncation."
+            }
+        };
+
+        var prompt = ReviewRunner.BuildSwarmShadowAggregatorPromptForTests(
+            "Base prompt\n" + new string('b', 30000), plan, results);
+
+        AssertEqual(true, prompt.Length <= 24000, "swarm shadow aggregator prompt stays bounded");
+        AssertContainsText(prompt, "Swarm Shadow Aggregator", "swarm shadow aggregator instructions survive large base");
+        AssertContainsText(prompt, "Reviewer evidence that must survive base prompt truncation.",
+            "swarm shadow aggregator subreview survives large base");
+        AssertContainsText(prompt, "[truncated for swarm shadow aggregation]",
+            "swarm shadow aggregator marks truncated base prompt");
+    }
+
+    private static void TestReviewSwarmShadowArtifactsRenderJsonAndMarkdown() {
+        var context = new PullRequestContext("owner/repo", "owner", "repo", 12, "Test title", "Body", false,
+            "abc1234", "base", Array.Empty<string>(), "owner/repo", false, null);
+        var plan = new ReviewSwarmShadowPlan {
+            Enabled = true,
+            ShadowMode = true,
+            MaxParallel = 2,
+            Reviewers = new[] {
+                new ReviewSwarmShadowReviewerPlan {
+                    Id = "correctness",
+                    Provider = ReviewProvider.OpenAI,
+                    Model = "gpt-5.4"
+                }
+            },
+            Aggregator = new ReviewSwarmShadowAggregatorPlan {
+                Provider = ReviewProvider.Claude,
+                Model = "claude-opus-4-1",
+                ReasoningEffort = ReasoningEffort.High
+            }
+        };
+        var result = new ReviewSwarmShadowRunResult {
+            Results = new[] {
+                new ReviewSwarmShadowReviewerResult {
+                    Reviewer = plan.Reviewers[0],
+                    Succeeded = true,
+                    Output = "## Todo List ✅\nNone.",
+                    DurationMs = 123
+                }
+            },
+            Aggregator = new ReviewSwarmShadowAggregatorResult {
+                Succeeded = true,
+                Output = "## Summary 📝\nAggregated.",
+                DurationMs = 45
+            }
+        };
+
+        var json = ReviewRunner.BuildSwarmShadowArtifactJsonForTests(context, plan, result);
+        var markdown = ReviewRunner.BuildSwarmShadowArtifactMarkdownForTests(context, plan, result);
+
+        AssertContainsText(json, "\"schema\": \"intelligencex.review.swarmShadow.v1\"",
+            "swarm shadow artifact json schema");
+        AssertContainsText(json, "\"repository\": \"owner/repo\"", "swarm shadow artifact json repository");
+        AssertContainsText(json, "\"id\": \"correctness\"", "swarm shadow artifact json reviewer");
+        AssertContainsText(json, "\"provider\": \"claude\"", "swarm shadow artifact json aggregator provider");
+        AssertContainsText(json, "\"durationMs\": 123", "swarm shadow artifact json reviewer duration");
+        AssertContainsText(markdown, "# IntelligenceX Swarm Shadow Artifact", "swarm shadow artifact markdown title");
+        AssertContainsText(markdown, "- Repository: `owner/repo`", "swarm shadow artifact markdown repository");
+        AssertContainsText(markdown, "- Total shadow duration: `168 ms`",
+            "swarm shadow artifact markdown total duration");
+        AssertContainsText(markdown, "### Aggregator", "swarm shadow artifact markdown aggregator");
+    }
+
+    private static void TestReviewSwarmShadowArtifactsRenderMetricsJsonLine() {
+        var context = new PullRequestContext("owner/repo", "owner", "repo", 12, "Test title", "Body", false,
+            "abc1234", "base", Array.Empty<string>(), "owner/repo", false, null);
+        var reviewer = new ReviewSwarmShadowReviewerPlan {
+            Id = "tests",
+            Provider = ReviewProvider.Copilot,
+            Model = "gpt-5.2"
+        };
+        var securityReviewer = new ReviewSwarmShadowReviewerPlan {
+            Id = "security",
+            Provider = ReviewProvider.OpenAI,
+            Model = "gpt-5.4"
+        };
+        var result = new ReviewSwarmShadowRunResult {
+            Results = new[] {
+                new ReviewSwarmShadowReviewerResult {
+                    Reviewer = reviewer,
+                    Succeeded = false,
+                    Error = "Provider timeout",
+                    DurationMs = 250
+                },
+                new ReviewSwarmShadowReviewerResult {
+                    Reviewer = securityReviewer,
+                    Succeeded = true,
+                    Output = "No security blockers.",
+                    DurationMs = 400
+                }
+            },
+            Aggregator = new ReviewSwarmShadowAggregatorResult {
+                Succeeded = true,
+                Output = "Aggregated.",
+                DurationMs = 75
+            },
+            TotalDurationMs = 475
+        };
+
+        var metrics = ReviewRunner.BuildSwarmShadowMetricsJsonLineForTests(context, result);
+
+        AssertContainsText(metrics, "\"schema\":\"intelligencex.review.swarmShadowMetrics.v1\"",
+            "swarm shadow metrics schema");
+        AssertContainsText(metrics, "\"repository\":\"owner/repo\"", "swarm shadow metrics repository");
+        AssertContainsText(metrics, "\"reviewerCount\":2", "swarm shadow metrics reviewer count");
+        AssertContainsText(metrics, "\"reviewerFailed\":1", "swarm shadow metrics reviewer failed count");
+        AssertContainsText(metrics, "\"aggregatorSucceeded\":true", "swarm shadow metrics aggregator succeeded");
+        AssertContainsText(metrics, "\"reviewerDurationMs\":650", "swarm shadow metrics keeps reviewer duration sum");
+        AssertContainsText(metrics, "\"totalDurationMs\":475", "swarm shadow metrics total duration uses wall time");
     }
 
     private static void TestReviewSummaryParserMergeBlockerDetection() {
@@ -102,6 +563,22 @@ internal static partial class Program {
             "None."
         });
         AssertEqual(false, ReviewSummaryParser.HasMergeBlockers(checkedOnly), "merge blockers checked checklist is non-blocking");
+
+        var nonCritical = string.Join("\n", new[] {
+            "## Summary 📝",
+            "Looks good.",
+            "",
+            "## Todo List ✅",
+            "None.",
+            "",
+            "## Non-Critical Issues",
+            "- [ ] This should not be treated as a critical merge blocker.",
+            "",
+            "## Critical Issues ⚠️",
+            "None."
+        });
+        AssertEqual(false, ReviewSummaryParser.HasMergeBlockers(nonCritical),
+            "merge blockers do not match non-critical heading as critical section");
     }
 
     private static void TestReviewSummaryParserMergeBlockerDetectionCompactDefaults() {

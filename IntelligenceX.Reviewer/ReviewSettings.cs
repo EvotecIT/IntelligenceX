@@ -51,12 +51,49 @@ internal sealed class ReviewCiContextSettings {
     public bool ClassifyInfraFailures { get; set; } = true;
 }
 
+internal sealed class ReviewHistorySettings {
+    private static readonly IReadOnlyList<string> DefaultExternalBotLogins = new[] {
+        "claude",
+        "claude[bot]",
+        "copilot-pull-request-reviewer"
+    };
+
+    public bool Enabled { get; set; }
+    public bool IncludeIxSummaryHistory { get; set; } = true;
+    public bool IncludeReviewThreads { get; set; } = true;
+    public bool IncludeExternalBotSummaries { get; set; }
+    public IReadOnlyList<string> ExternalBotLogins { get; set; } = DefaultExternalBotLogins;
+    public bool Artifacts { get; set; }
+    public int MaxRounds { get; set; } = 6;
+    public int MaxItems { get; set; } = 8;
+}
+
+internal sealed class ReviewSwarmReviewerSettings {
+    public string Id { get; set; } = string.Empty;
+    public ReviewProvider? Provider { get; set; }
+    public string? Model { get; set; }
+    public ReasoningEffort? ReasoningEffort { get; set; }
+}
+
+internal sealed class ReviewSwarmAggregatorSettings {
+    public ReviewProvider? Provider { get; set; }
+    public string? Model { get; set; }
+    public ReasoningEffort? ReasoningEffort { get; set; }
+}
+
 internal sealed class ReviewSwarmSettings {
     public bool Enabled { get; set; }
     public bool ShadowMode { get; set; }
     public IReadOnlyList<string> Reviewers { get; set; } = new[] { "correctness", "security", "reliability", "tests" };
+    public IReadOnlyList<ReviewSwarmReviewerSettings> ReviewerSettings { get; set; } = new[] {
+        new ReviewSwarmReviewerSettings { Id = "correctness" },
+        new ReviewSwarmReviewerSettings { Id = "security" },
+        new ReviewSwarmReviewerSettings { Id = "reliability" },
+        new ReviewSwarmReviewerSettings { Id = "tests" }
+    };
     public int MaxParallel { get; set; } = 4;
     public bool PublishSubreviews { get; set; }
+    public ReviewSwarmAggregatorSettings Aggregator { get; } = new();
     public string? AggregatorModel { get; set; }
     public bool FailOpenOnPartial { get; set; } = true;
     public bool Metrics { get; set; } = true;
@@ -393,6 +430,7 @@ internal sealed partial class ReviewSettings {
     public bool IncludeRelatedPrs { get; set; }
     public string? RelatedPrsQuery { get; set; }
     public int MaxRelatedPrs { get; set; } = 5;
+    public ReviewHistorySettings History { get; } = new();
     public ReviewCiContextSettings CiContext { get; } = new();
     public ReviewSwarmSettings Swarm { get; } = new();
     public AnalysisSettings Analysis { get; } = new AnalysisSettings();
@@ -404,6 +442,7 @@ internal sealed partial class ReviewSettings {
     public string? CopilotCliPath { get; set; }
     public string? CopilotCliUrl { get; set; }
     public string? CopilotWorkingDirectory { get; set; }
+    public string CopilotLauncher { get; set; } = "binary";
     public bool CopilotAutoInstall { get; set; }
     public string? CopilotAutoInstallMethod { get; set; }
     public bool CopilotAutoInstallPrerelease { get; set; }

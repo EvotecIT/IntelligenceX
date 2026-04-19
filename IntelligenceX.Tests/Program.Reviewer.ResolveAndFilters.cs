@@ -448,19 +448,303 @@ internal static partial class Program {
         var files = BuildFiles("src/app.cs");
         var settings = new ReviewSettings();
         var extras = new ReviewContextExtras {
-            CiContextSection = """
-
-CI / checks context:
-- Head SHA abc1234 check-runs: passed 3, failed 1, pending 0.
-- Failing check-runs: unit-tests (failure).
-
-"""
+            CiContextSection = string.Join("\n", new[] {
+                "",
+                "CI / checks context:",
+                "- Head SHA abc1234 check-runs: passed 3, failed 1, pending 0.",
+                "- Failing check-runs: unit-tests (failure).",
+                ""
+            })
         };
 
         var prompt = PromptBuilder.Build(context, files, settings, null, extras, inlineSupported: false);
 
         AssertContainsText(prompt, "CI / checks context:", "prompt ci context header");
         AssertContainsText(prompt, "unit-tests (failure)", "prompt ci context failing check");
+    }
+
+    private static void TestPromptBuilderIncludesReviewHistorySection() {
+        var context = BuildContext();
+        var files = BuildFiles("src/app.cs");
+        var settings = new ReviewSettings();
+        var extras = new ReviewContextExtras {
+            ReviewHistorySection = string.Join("\n", new[] {
+                "",
+                "Review history snapshot:",
+                "- IX sticky summary reviewed `abc1234` (same SHA as current head (`abc1234`)).",
+                ""
+            })
+        };
+
+        var prompt = PromptBuilder.Build(context, files, settings, null, extras, inlineSupported: false);
+
+        AssertContainsText(prompt, "Review history snapshot:", "prompt review history header");
+        AssertContainsText(prompt, "IX sticky summary reviewed `abc1234`", "prompt review history body");
+    }
+
+    private static void TestReviewHistoryBuilderIncludesStickySummaryAndThreadSnapshot() {
+        var settings = new ReviewSettings {
+            MaxCommentChars = 120
+        };
+        settings.History.Enabled = true;
+        settings.History.MaxRounds = 4;
+        var summaryBody = string.Join("\n", new[] {
+            "<!-- intelligencex:summary -->",
+            "## IntelligenceX Review",
+            "Reviewed commit: `abc1234`",
+            "",
+            "## Summary 📝",
+            "Looks good overall.",
+            "",
+            "## Todo List ✅",
+            "- [ ] Add null guard in parser.",
+            "",
+            "## Critical Issues ⚠️",
+            "- [x] Cover the stale thread path.",
+            "",
+            "## Other Issues 🧯",
+            "None."
+        });
+        var olderSummaryBody = string.Join("\n", new[] {
+            "<!-- intelligencex:summary -->",
+            "## IntelligenceX Review",
+            "Reviewed commit: `9999999`",
+            "",
+            "## Todo List ✅",
+            "- [ ] Add null guard in parser.",
+            "",
+            "## Critical Issues ⚠️",
+            "- [ ] Cover the stale thread path."
+        });
+        var progressSummaryBody = string.Join("\n", new[] {
+            "<!-- intelligencex:summary -->",
+            "## IntelligenceX Review (in progress)",
+            "Reviewing PR #42: **Parser update**",
+            "",
+            "- [x] Gather context",
+            "- [ ] Post findings",
+            "",
+            "### Review Checklist",
+            "- [ ] Review changes"
+        });
+        var issueComments = new[] {
+            new IssueComment(1, summaryBody, "intelligencex-review"),
+            new IssueComment(2, "human follow-up note", "reviewer-user"),
+            new IssueComment(4, "Claude summary: prior low-priority notes now look resolved.", "claude"),
+            new IssueComment(5, progressSummaryBody, "intelligencex-review"),
+            new IssueComment(3, olderSummaryBody, "github-actions")
+        };
+        var threads = new[] {
+            new PullRequestReviewThread(
+                "thread-1",
+                isResolved: false,
+                isOutdated: false,
+                totalComments: 1,
+                comments: new[] {
+                    new PullRequestReviewThreadComment(11, DateTimeOffset.UtcNow, "Please add regression coverage.", "reviewer-user", "src/app.cs", 42)
+                }),
+            new PullRequestReviewThread(
+                "thread-2",
+                isResolved: true,
+                isOutdated: false,
+                totalComments: 1,
+                comments: new[] {
+                    new PullRequestReviewThreadComment(12, DateTimeOffset.UtcNow, "Resolved already.", "reviewer-user", "src/app.cs", 10)
+                })
+        };
+
+        var snapshot = ReviewHistoryBuilder.BuildSnapshot(issueComments, "def5678", threads, settings);
+        var section = ReviewHistoryBuilder.Render(snapshot);
+
+        AssertEqual(2, snapshot.Rounds.Count, "review history snapshot rounds");
+        AssertEqual(1, snapshot.OpenFindings.Count, "review history snapshot open findings");
+        AssertEqual(1, snapshot.ResolvedSinceLastRound.Count, "review history snapshot resolved since last round");
+        AssertEqual("9999999", snapshot.Rounds[0].ReviewedSha, "review history snapshot oldest round first");
+        AssertEqual("abc1234", snapshot.Rounds[1].ReviewedSha, "review history snapshot newest round second");
+        AssertEqual(2, snapshot.Rounds[1].Findings.Count, "review history snapshot findings");
+        AssertEqual("open", snapshot.Rounds[1].Findings[0].Status, "review history snapshot first finding status");
+        AssertEqual("resolved", snapshot.Rounds[1].Findings[1].Status, "review history snapshot second finding status");
+        AssertEqual(true, snapshot.Rounds[1].Findings[0].Fingerprint.Length > 0, "review history snapshot fingerprint");
+        AssertEqual("Cover the stale thread path.", snapshot.ResolvedSinceLastRound[0].Text,
+            "review history snapshot resolved finding text");
+        AssertNotNull(snapshot.ThreadSnapshot, "review history snapshot threads");
+        AssertEqual(1, snapshot.ThreadSnapshot!.ActiveCount, "review history snapshot active thread count");
+        AssertContainsText(section, "Review history snapshot:", "review history header");
+        AssertContainsText(section, "Open findings carried into the current state:", "review history open findings summary");
+        AssertContainsText(section, "Resolved since the latest prior round:", "review history resolved summary");
+        AssertContainsText(section, "Round 1: IX sticky summary reviewed `9999999`", "review history older round");
+        AssertContainsText(section, "Round 2: IX sticky summary reviewed `abc1234`", "review history newer round");
+        AssertContainsText(section, "[todo] Add null guard in parser.", "review history normalized todo item");
+        AssertContainsText(section, "[critical] Cover the stale thread path.", "review history normalized resolved item");
+        AssertDoesNotContainText(section, "in progress", "review history ignores progress summaries");
+        AssertDoesNotContainText(section, "Review Checklist", "review history ignores progress checklist summaries");
+        AssertContainsText(section, "Review threads snapshot: active 1, resolved 1, stale 0.", "review history thread counts");
+        AssertContainsText(section, "reviewer-user (src/app.cs:42): Please add regression coverage.", "review history active thread excerpt");
+
+        settings.History.MaxRounds = 0;
+        snapshot = ReviewHistoryBuilder.BuildSnapshot(issueComments, "def5678", threads, settings);
+        AssertEqual(0, snapshot.Rounds.Count, "review history max rounds zero disables sticky summary rounds");
+        AssertEqual(0, snapshot.OpenFindings.Count, "review history max rounds zero disables open sticky findings");
+        settings.History.MaxRounds = 4;
+
+        settings.History.IncludeExternalBotSummaries = true;
+        snapshot = ReviewHistoryBuilder.BuildSnapshot(issueComments, "def5678", threads, settings);
+        section = ReviewHistoryBuilder.Render(snapshot);
+        AssertEqual(1, snapshot.ExternalSummaries.Count, "review history external summary count");
+        AssertEqual("claude", snapshot.ExternalSummaries[0].Author, "review history external summary author");
+        AssertContainsText(section, "External bot summaries included as supporting context only:",
+            "review history external summary safety label");
+        AssertContainsText(section, "[claude] Claude summary: prior low-priority notes now look resolved.",
+            "review history external summary excerpt");
+    }
+
+    private static void TestReviewHistoryBuilderBuildsCommentBlock() {
+        var snapshot = new ReviewHistorySnapshot {
+            Rounds = new[] {
+                new ReviewHistoryRound {
+                    Sequence = 1,
+                    ReviewedSha = "abc1234"
+                }
+            },
+            OpenFindings = new[] {
+                new ReviewHistoryFinding {
+                    Fingerprint = "open-1",
+                    Section = "todo list",
+                    Text = "Add null guard in parser.",
+                    Status = "open"
+                }
+            },
+            ResolvedSinceLastRound = new[] {
+                new ReviewHistoryFinding {
+                    Fingerprint = "resolved-1",
+                    Section = "critical issues",
+                    Text = "Cover the stale thread path.",
+                    Status = "resolved"
+                }
+            }
+        };
+
+        var block = ReviewHistoryBuilder.BuildCommentBlock(snapshot);
+
+        AssertContainsText(block, "## History Progress 🔁", "review history comment block heading");
+        AssertContainsText(block, "Open now:", "review history comment block open label");
+        AssertContainsText(block, "[todo] Add null guard in parser.", "review history comment block open item");
+        AssertContainsText(block, "Resolved since last round:", "review history comment block resolved label");
+        AssertContainsText(block, "[critical] Cover the stale thread path.", "review history comment block resolved item");
+    }
+
+    private static void TestReviewSummaryStabilityDropsHistoryProgressBlock() {
+        var context = BuildContext();
+        var settings = new ReviewSettings {
+            Model = "gpt-5-test",
+            Length = ReviewLength.Medium,
+            Mode = "summary"
+        };
+        var reviewBody = string.Join("\n", new[] {
+            "## Summary 📝",
+            "Looks good overall.",
+            "",
+            "## Todo List ✅",
+            "None."
+        });
+        var historyBlock = string.Join("\n", new[] {
+            "## History Progress 🔁",
+            "",
+            "Open now:",
+            "- [todo] Previous issue."
+        });
+
+        var comment = ReviewFormatter.BuildComment(context, reviewBody, settings, inlineSupported: true,
+            inlineSuppressed: false, autoResolveNote: string.Empty, budgetNote: string.Empty, usageLine: string.Empty,
+            findingsBlock: string.Empty, historyBlock: historyBlock);
+        var extracted = ReviewerApp.ExtractSummaryBodyForTests(comment, 10000) ?? string.Empty;
+
+        AssertDoesNotContainText(extracted, "History Progress 🔁", "summary stability strips history progress heading");
+        AssertDoesNotContainText(extracted, "Previous issue", "summary stability strips history progress body");
+        AssertContainsText(extracted, "## Summary 📝", "summary stability keeps review summary heading");
+        AssertContainsText(extracted, "Looks good overall.", "summary stability keeps review summary body");
+    }
+
+    private static void TestReviewHistoryArtifactsRenderJsonAndMarkdown() {
+        var context = new PullRequestContext("owner/repo", "owner", "repo", 12, "Test title", "Body", false,
+            "abc1234", "base", Array.Empty<string>(), "owner/repo", false, null);
+        var snapshot = new ReviewHistorySnapshot {
+            CurrentHeadSha = "abc1234",
+            Rounds = new[] {
+                new ReviewHistoryRound {
+                    Sequence = 1,
+                    Source = "intelligencex",
+                    SummaryCommentId = 123,
+                    ReviewedSha = "9999999",
+                    HasMergeBlockers = true,
+                    MergeBlockerStatus = "1 normalized item(s).",
+                    Findings = new[] {
+                        new ReviewHistoryFinding {
+                            Fingerprint = "todo-add-null-guard",
+                            Section = "Todo List",
+                            Text = "Add null guard in parser.",
+                            Status = "open"
+                        }
+                    }
+                }
+            },
+            OpenFindings = new[] {
+                new ReviewHistoryFinding {
+                    Fingerprint = "todo-add-null-guard",
+                    Section = "Todo List",
+                    Text = "Add null guard in parser.",
+                    Status = "open"
+                }
+            },
+            ExternalSummaries = new[] {
+                new ReviewHistoryExternalSummary {
+                    CommentId = 456,
+                    Author = "claude",
+                    Source = "external-bot",
+                    Excerpt = "Claude summary: no additional blockers."
+                }
+            },
+            ThreadSnapshot = new ReviewHistoryThreadSnapshot {
+                ActiveCount = 1,
+                ResolvedCount = 2,
+                StaleCount = 1,
+                Excerpts = new[] {
+                    new ReviewHistoryThreadExcerpt {
+                        ThreadId = "thread-1",
+                        Status = "active",
+                        Author = "reviewer",
+                        Body = "Please add regression coverage.",
+                        Path = "src/app.cs",
+                        Line = 42
+                    }
+                }
+            }
+        };
+
+        var json = ReviewRunner.BuildReviewHistoryArtifactJsonForTests(context, snapshot,
+            "Review history snapshot:\n- Open findings carried into the current state.");
+        var markdown = ReviewRunner.BuildReviewHistoryArtifactMarkdownForTests(context, snapshot,
+            "Review history snapshot:\n- Open findings carried into the current state.");
+
+        AssertContainsText(json, "\"schema\": \"intelligencex.review.history.v1\"",
+            "review history artifact json schema");
+        AssertContainsText(json, "\"repository\": \"owner/repo\"", "review history artifact json repository");
+        AssertContainsText(json, "\"openFindings\": 1", "review history artifact json open count");
+        AssertContainsText(json, "\"fingerprint\": \"todo-add-null-guard\"",
+            "review history artifact json finding fingerprint");
+        AssertContainsText(json, "\"externalSummaries\": 1",
+            "review history artifact json external summary count");
+        AssertContainsText(json, "\"author\": \"claude\"", "review history artifact json external author");
+        AssertContainsText(markdown, "# IntelligenceX Review History Artifact",
+            "review history artifact markdown title");
+        AssertContainsText(markdown, "- Open findings: `1`", "review history artifact markdown open count");
+        AssertContainsText(markdown, "- External bot summaries: `1`",
+            "review history artifact markdown external count");
+        AssertContainsText(markdown, "Supporting context only; these summaries are not treated as IX-owned blocker state.",
+            "review history artifact markdown external safety label");
+        AssertContainsText(markdown, "reviewer (src/app.cs:42): Please add regression coverage.",
+            "review history artifact markdown thread excerpt");
+        AssertContainsText(markdown, "## Prompt Section", "review history artifact markdown prompt section");
     }
 
     private static void TestRedactionDefaults() {
@@ -491,6 +775,24 @@ CI / checks context:
             autoResolveNote: string.Empty, budgetNote: "Review context truncated: showing first 1 of 2 files.",
             usageLine: string.Empty, findingsBlock: string.Empty);
         AssertContainsText(comment, "Review context truncated", "budget note comment");
+    }
+
+    private static void TestReviewCommentIncludesHistoryBlock() {
+        var context = new PullRequestContext("owner/repo", "owner", "repo", 1, "Test title", "Test body", false, "abc1234",
+            "base", Array.Empty<string>(), "owner/repo", false, null);
+        var settings = new ReviewSettings();
+        var comment = ReviewFormatter.BuildComment(context, "## Summary 📝\nLooks good overall.", settings,
+            inlineSupported: true, inlineSuppressed: false, autoResolveNote: string.Empty, budgetNote: string.Empty,
+            usageLine: string.Empty, findingsBlock: string.Empty, historyBlock: string.Join("\n", new[] {
+                "## History Progress 🔁",
+                "",
+                "Open now:",
+                "- [todo] Add null guard in parser."
+            }));
+
+        AssertContainsText(comment, "## History Progress 🔁", "review comment history heading");
+        AssertContainsText(comment, "Open now:", "review comment history body");
+        AssertContainsText(comment, "## Summary 📝", "review comment still includes summary");
     }
 
     private static void TestCombineNotes() {

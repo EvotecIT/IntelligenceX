@@ -612,6 +612,103 @@ internal static partial class Program {
         AssertEqual(string.Empty, extras.CiContextSection, "build extras ci context failure remains supplemental");
     }
 
+    private static void TestBuildExtrasLoadsIssueCommentsForExternalHistory() {
+        var issueCommentHits = 0;
+        using var server = new LocalHttpServer(request => {
+            if (request.Path == "/repos/owner/repo/issues/1/comments?per_page=100&page=1&sort=created&direction=desc") {
+                issueCommentHits++;
+                return new HttpResponse("""
+[
+  {
+    "id": 10,
+    "body": "Claude summary: prior finding appears resolved.",
+    "user": { "login": "claude" },
+    "html_url": "https://example.local/comment/10"
+  }
+]
+""");
+            }
+            return null;
+        });
+
+        using var github = new GitHubClient("token", server.BaseUri.ToString().TrimEnd('/'));
+        var settings = new ReviewSettings {
+            IncludeIssueComments = false,
+            IncludeReviewComments = false,
+            IncludeReviewThreads = false,
+            ReviewThreadsAutoResolveAI = false,
+            ReviewThreadsAutoResolveStale = false
+        };
+        settings.History.Enabled = true;
+        settings.History.IncludeIxSummaryHistory = false;
+        settings.History.IncludeExternalBotSummaries = true;
+        settings.History.ExternalBotLogins = new[] { "claude" };
+
+        var context = new PullRequestContext("owner/repo", "owner", "repo", 1, "Title", null, false, "head", "base",
+            Array.Empty<string>(), "owner/repo", false, null);
+
+        var extras = CallBuildExtrasAsync(github, context, settings, false);
+
+        AssertEqual(1, issueCommentHits, "external history forces issue comment load");
+        AssertEqual(1, extras.IssueComments.Count, "external history issue comments available");
+    }
+
+    private static void TestBuildExtrasKeepsIssueCommentPromptCapWithHistory() {
+        using var server = new LocalHttpServer(request => {
+            if (request.Path == "/repos/owner/repo/issues/1/comments?per_page=100&page=1&sort=created&direction=desc") {
+                return new HttpResponse("""
+[
+  {
+    "id": 9,
+    "body": "<!-- intelligencex:summary -->\n## IntelligenceX Review\nPrevious sticky summary.",
+    "user": { "login": "intelligencex-review" },
+    "html_url": "https://example.local/comment/9"
+  },
+  {
+    "id": 10,
+    "body": "First prompt comment.",
+    "user": { "login": "alice" },
+    "html_url": "https://example.local/comment/10"
+  },
+  {
+    "id": 11,
+    "body": "Second history-only comment.",
+    "user": { "login": "bob" },
+    "html_url": "https://example.local/comment/11"
+  }
+]
+""");
+            }
+            return null;
+        });
+
+        using var github = new GitHubClient("token", server.BaseUri.ToString().TrimEnd('/'));
+        var settings = new ReviewSettings {
+            IncludeIssueComments = true,
+            IncludeReviewComments = false,
+            IncludeReviewThreads = false,
+            MaxComments = 1,
+            CommentSearchLimit = 2,
+            ReviewThreadsAutoResolveAI = false,
+            ReviewThreadsAutoResolveStale = false
+        };
+        settings.History.Enabled = true;
+        settings.History.IncludeIxSummaryHistory = true;
+
+        var context = new PullRequestContext("owner/repo", "owner", "repo", 1, "Title", null, false, "head", "base",
+            Array.Empty<string>(), "owner/repo", false, null);
+
+        var extras = CallBuildExtrasAsync(github, context, settings, false);
+
+        AssertEqual(2, extras.IssueComments.Count, "history can retain deeper issue comments");
+        AssertContainsText(extras.IssueCommentsSection, "First prompt comment.",
+            "issue comments prompt caps after filtering sticky summary comments");
+        AssertEqual(false, extras.IssueCommentsSection.Contains("Previous sticky summary.", StringComparison.Ordinal),
+            "issue comments prompt excludes sticky summary before cap");
+        AssertEqual(false, extras.IssueCommentsSection.Contains("Second history-only comment.", StringComparison.Ordinal),
+            "issue comments prompt keeps maxComments cap");
+    }
+
     private static void TestBuildExtrasCiFailureEvidenceFailureIsSupplemental() {
         using var server = new LocalHttpServer(request => {
             if (request.Path == "/repos/owner/repo/commits/head/check-runs?per_page=100&page=1") {
@@ -853,6 +950,7 @@ internal static partial class Program {
         try {
             File.WriteAllText(path,
                 "{ \"copilot\": { \"envAllowlist\": [\"GH_TOKEN\"], \"inheritEnvironment\": false, " +
+                "\"launcher\": \"gh\", " +
                 "\"env\": { \"COPILOT_DEBUG\": \"1\" }, " +
                 "\"transport\": \"direct\", \"directUrl\": \"https://example.local/api\", " +
                 "\"directTokenEnv\": \"COPILOT_DIRECT_TOKEN\", \"directTimeoutSeconds\": 12, " +
@@ -863,6 +961,7 @@ internal static partial class Program {
 
             AssertSequenceEqual(new[] { "GH_TOKEN" }, settings.CopilotEnvAllowlist, "copilot env allowlist");
             AssertEqual(false, settings.CopilotInheritEnvironment, "copilot inherit environment");
+            AssertEqual("gh", settings.CopilotLauncher, "copilot launcher");
             AssertEqual("1", settings.CopilotEnv["COPILOT_DEBUG"], "copilot env map");
             AssertEqual(CopilotTransportKind.Direct, settings.CopilotTransport, "copilot transport");
             AssertEqual("https://example.local/api", settings.CopilotDirectUrl, "copilot direct url");
@@ -875,6 +974,85 @@ internal static partial class Program {
                 File.Delete(path);
             }
         }
+    }
+
+    private static void TestCopilotLauncherEnv() {
+        var previousInput = Environment.GetEnvironmentVariable("INPUT_COPILOT_LAUNCHER");
+        var previousEnv = Environment.GetEnvironmentVariable("COPILOT_LAUNCHER");
+        try {
+            Environment.SetEnvironmentVariable("INPUT_COPILOT_LAUNCHER", null);
+            Environment.SetEnvironmentVariable("COPILOT_LAUNCHER", "github-cli");
+            var settings = ReviewSettings.FromEnvironment();
+            AssertEqual("gh", settings.CopilotLauncher, "copilot launcher env");
+        } finally {
+            Environment.SetEnvironmentVariable("INPUT_COPILOT_LAUNCHER", previousInput);
+            Environment.SetEnvironmentVariable("COPILOT_LAUNCHER", previousEnv);
+        }
+    }
+
+    private static void TestCopilotGhLauncherBuildsWrapperCommand() {
+        var settings = new ReviewSettings {
+            CopilotLauncher = "gh",
+            CopilotCliPath = "custom-copilot"
+        };
+        var options = new ReviewRunner(settings).BuildCopilotClientOptionsForTests();
+
+        AssertEqual("gh", options.CliPath ?? string.Empty, "copilot gh launcher path");
+        AssertSequenceEqual(new[] { "copilot", "--" }, options.CliArgs.ToArray(), "copilot gh launcher args");
+    }
+
+    private static void TestCopilotAutoLauncherRequiresUsableGhWrapper() {
+        var settings = new ReviewSettings {
+            CopilotLauncher = "auto"
+        };
+
+        var resolved = ReviewRunner.ResolveCopilotLauncherForTests(settings,
+            copilotExists: false, ghExists: true, ghCopilotWrapperCanLaunchCli: false);
+
+        AssertEqual("binary", resolved, "copilot auto launcher does not assume gh can bootstrap copilot");
+    }
+
+    private static void TestCopilotAutoLauncherUsesGhWhenWrapperCanLaunchCli() {
+        var settings = new ReviewSettings {
+            CopilotLauncher = "auto"
+        };
+
+        var resolved = ReviewRunner.ResolveCopilotLauncherForTests(settings,
+            copilotExists: false, ghExists: true, ghCopilotWrapperCanLaunchCli: true);
+
+        AssertEqual("gh", resolved, "copilot auto launcher uses gh only after wrapper probe succeeds");
+    }
+
+    private static void TestCopilotLauncherDiagnosticsDescribeResolvedCommand() {
+        var originalError = Console.Error;
+        using var errorWriter = new StringWriter();
+        try {
+            Console.SetError(errorWriter);
+            var settings = new ReviewSettings {
+                CopilotLauncher = "gh",
+                Diagnostics = true
+            };
+
+            _ = new ReviewRunner(settings).BuildCopilotClientOptionsForTests();
+        } finally {
+            Console.SetError(originalError);
+        }
+
+        var output = errorWriter.ToString();
+        AssertContainsText(output, "Copilot launcher resolved: gh", "copilot launcher diagnostic mode");
+        AssertContainsText(output, "cliPath=gh", "copilot launcher diagnostic path");
+        AssertContainsText(output, "prefixArgs=copilot --", "copilot launcher diagnostic wrapper args");
+    }
+
+    private static void TestCopilotBinaryLauncherKeepsDirectCliPath() {
+        var settings = new ReviewSettings {
+            CopilotLauncher = "binary",
+            CopilotCliPath = "custom-copilot"
+        };
+        var options = new ReviewRunner(settings).BuildCopilotClientOptionsForTests();
+
+        AssertEqual("custom-copilot", options.CliPath ?? string.Empty, "copilot binary launcher path");
+        AssertEqual(0, options.CliArgs.Count, "copilot binary launcher args");
     }
 
     private static void TestCopilotInheritEnvironmentDefault() {

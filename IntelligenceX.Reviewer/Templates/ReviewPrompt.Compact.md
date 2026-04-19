@@ -53,4 +53,4 @@ Description:
 
 Changed files:
 {{Files}}
-{{CiContextSection}}{{ReviewThreadsSection}}
+{{ReviewHistorySection}}{{CiContextSection}}{{ReviewThreadsSection}}

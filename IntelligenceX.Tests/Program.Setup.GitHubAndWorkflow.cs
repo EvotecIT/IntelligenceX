@@ -139,6 +139,14 @@ jobs:
         AssertContainsText(content, "usage_budget_allow_credits:", "workflow template usage budget credits input");
         AssertContainsText(content, "usage_budget_allow_weekly_limit:",
             "workflow template usage budget weekly input");
+        AssertContainsText(content, "copilot_model:", "workflow template copilot model input");
+        AssertContainsText(content, "copilot_launcher:", "workflow template copilot launcher input");
+        AssertContainsText(content, "history_enabled:", "workflow template history enabled input");
+        AssertContainsText(content, "history_include_external_bot_summaries:",
+            "workflow template external bot history input");
+        AssertContainsText(content, "history_external_bot_logins:", "workflow template external bot login input");
+        AssertContainsText(content, "swarm_enabled:", "workflow template swarm enabled input");
+        AssertContainsText(content, "swarm_max_parallel:", "workflow template swarm max parallel input");
         AssertContainsText(content, "openai_account_id: ${{ inputs.openai_account_id }}",
             "workflow template openai account id pass-through");
         AssertContainsText(content, "openai_account_ids: ${{ inputs.openai_account_ids }}",
@@ -153,6 +161,21 @@ jobs:
             "workflow template usage budget credits pass-through");
         AssertContainsText(content, "usage_budget_allow_weekly_limit: ${{ inputs.usage_budget_allow_weekly_limit }}",
             "workflow template usage budget weekly pass-through");
+        AssertContainsText(content, "copilot_model: ${{ inputs.copilot_model }}",
+            "workflow template copilot model pass-through");
+        AssertContainsText(content, "copilot_launcher: ${{ inputs.copilot_launcher }}",
+            "workflow template copilot launcher pass-through");
+        AssertContainsText(content, "history_enabled: ${{ inputs.history_enabled }}",
+            "workflow template history enabled pass-through");
+        AssertContainsText(content,
+            "history_include_external_bot_summaries: ${{ inputs.history_include_external_bot_summaries }}",
+            "workflow template external bot history pass-through");
+        AssertContainsText(content, "history_external_bot_logins: ${{ inputs.history_external_bot_logins }}",
+            "workflow template external bot login pass-through");
+        AssertContainsText(content, "swarm_enabled: ${{ inputs.swarm_enabled }}",
+            "workflow template swarm enabled pass-through");
+        AssertContainsText(content, "swarm_max_parallel: ${{ inputs.swarm_max_parallel }}",
+            "workflow template swarm max parallel pass-through");
     }
 
     private static void TestSetupWorkflowTemplateIncludesOpenAiModelPassThrough() {
@@ -187,8 +210,21 @@ jobs:
         var wrapperContent = NormalizeWorkflowText(File.ReadAllText(wrapperWorkflowPath));
 
         AssertContainsText(wrapperContent, "workflow_dispatch:", "wrapper workflow defines workflow_dispatch");
+        AssertEqual(true, CountWorkflowDispatchInputs(wrapperContent) <= 25,
+            "wrapper workflow stays within GitHub workflow_dispatch input limit");
         AssertContainsText(wrapperContent, "reviewer_source: source",
             "wrapper workflow keeps PR reviews on repo source to avoid release drift");
+        AssertContainsText(wrapperContent, "copilot_launcher: ${{ inputs.copilot_launcher }}",
+            "wrapper workflow passes copilot launcher through to reusable workflow");
+        AssertContainsText(wrapperContent, "history_enabled: ${{ inputs.history_enabled }}",
+            "wrapper workflow passes history awareness through to reusable workflow");
+        AssertContainsText(wrapperContent,
+            "history_include_external_bot_summaries: ${{ inputs.history_include_external_bot_summaries }}",
+            "wrapper workflow passes external bot history through to reusable workflow");
+        AssertContainsText(wrapperContent, "swarm_enabled: ${{ inputs.swarm_enabled }}",
+            "wrapper workflow passes swarm mode through to reusable workflow");
+        AssertContainsText(wrapperContent, "swarm_max_parallel: ${{ inputs.swarm_max_parallel }}",
+            "wrapper workflow passes swarm max parallel through to reusable workflow");
         AssertEqual(false, content.Contains("workflow_dispatch:", StringComparison.Ordinal),
             "reusable workflow should keep manual dispatch on the wrapper workflow");
         var jobEnvIndex = content.IndexOf("    env:\n", StringComparison.Ordinal);
@@ -202,6 +238,14 @@ jobs:
         AssertContainsText(content, "workflow_call:", "reusable workflow defines workflow_call");
         AssertEqual(1, CountOccurrences(content, "openai_model:"),
             "reusable workflow defines openai_model once for workflow_call");
+        AssertEqual(1, CountOccurrences(content, "copilot_launcher:"),
+            "reusable workflow defines copilot_launcher once for workflow_call");
+        AssertEqual(1, CountOccurrences(content, "history_enabled:"),
+            "reusable workflow defines history_enabled once for workflow_call");
+        AssertEqual(1, CountOccurrences(content, "history_include_external_bot_summaries:"),
+            "reusable workflow defines external bot history once for workflow_call");
+        AssertEqual(1, CountOccurrences(content, "swarm_max_parallel:"),
+            "reusable workflow defines swarm max parallel once for workflow_call");
         AssertContainsText(content, "dotnet-version: '8.0.x'",
             "reusable workflow provisions the .NET 8 SDK for source reviewer runs");
         AssertContainsText(content, "dotnet build IntelligenceX.Reviewer/IntelligenceX.Reviewer.csproj -c Release -f net8.0",
@@ -230,6 +274,13 @@ jobs:
             "release windows reviewer step receives provider api key");
         AssertEqual(1, CountOccurrences(content, "INPUT_PROVIDER: ${{ inputs.provider }}"),
             "reusable workflow defines shared reviewer env once instead of repeating it per step");
+        AssertEqual(1, CountOccurrences(content, "INPUT_COPILOT_LAUNCHER: ${{ inputs.copilot_launcher }}"),
+            "reusable workflow exports copilot launcher env once");
+        AssertEqual(1, CountOccurrences(content, "INPUT_HISTORY_ENABLED: ${{ inputs.history_enabled }}"),
+            "reusable workflow exports history enabled env once");
+        AssertEqual(1, CountOccurrences(content,
+                "INPUT_HISTORY_INCLUDE_EXTERNAL_BOT_SUMMARIES: ${{ inputs.history_include_external_bot_summaries }}"),
+            "reusable workflow exports external bot history env once");
         AssertContainsText(content, "inputs.reviewer_source == 'source' && steps.reviewer_build.outcome == 'success'",
             "reusable workflow gates source reviewer execution on a successful source build");
         AssertContainsText(content, "git diff --name-only HEAD^1 HEAD^2 > artifacts/changed-files.txt",
@@ -279,6 +330,28 @@ jobs:
 
     private static string NormalizeWorkflowText(string content) {
         return content.Replace("\r\n", "\n");
+    }
+
+    private static int CountWorkflowDispatchInputs(string content) {
+        var normalized = NormalizeWorkflowText(content);
+        const string marker = "  workflow_dispatch:\n    inputs:\n";
+        var start = normalized.IndexOf(marker, StringComparison.Ordinal);
+        AssertEqual(true, start >= 0, "workflow_dispatch inputs block exists");
+        start += marker.Length;
+        var end = normalized.IndexOf("\njobs:", start, StringComparison.Ordinal);
+        if (end < 0) {
+            end = normalized.Length;
+        }
+
+        var count = 0;
+        foreach (var line in normalized[start..end].Split('\n')) {
+            if (line.StartsWith("      ", StringComparison.Ordinal) &&
+                !line.StartsWith("        ", StringComparison.Ordinal) &&
+                line.TrimEnd().EndsWith(":", StringComparison.Ordinal)) {
+                count++;
+            }
+        }
+        return count;
     }
 
     private static string ExtractWorkflowStepBlock(string content, string stepName) {

@@ -25,6 +25,14 @@ on:
         description: 'Optional OpenAI model override for manual runs'
         required: false
         default: ''
+      copilot_model:
+        description: 'Optional Copilot model override for manual runs'
+        required: false
+        default: ''
+      copilot_launcher:
+        description: 'Copilot launcher override for manual runs (binary, gh, auto)'
+        required: false
+        default: ''
       openai_account_id:
         description: 'Override OpenAI account id for this run'
         required: false
@@ -51,6 +59,50 @@ on:
         default: ''
       usage_budget_allow_weekly_limit:
         description: 'Override weekly-limit budget allowance (true|false) for this run'
+        required: false
+        default: ''
+      history_enabled:
+        description: 'Override reviewer history awareness (true|false)'
+        required: false
+        default: ''
+      history_include_external_bot_summaries:
+        description: 'Include configured external bot summaries as supporting context (true|false)'
+        required: false
+        default: ''
+      history_external_bot_logins:
+        description: 'External bot logins included as supporting history context (CSV)'
+        required: false
+        default: ''
+      history_artifacts:
+        description: 'Write reviewer history artifacts (true|false)'
+        required: false
+        default: ''
+      swarm_enabled:
+        description: 'Override reviewer swarm mode (true|false)'
+        required: false
+        default: ''
+      swarm_shadow_mode:
+        description: 'Override reviewer swarm shadow mode (true|false)'
+        required: false
+        default: ''
+      swarm_reviewers:
+        description: 'Override reviewer swarm roles (CSV or JSON)'
+        required: false
+        default: ''
+      swarm_max_parallel:
+        description: 'Override reviewer swarm max parallel reviewers'
+        required: false
+        default: ''
+      swarm_aggregator_model:
+        description: 'Override reviewer swarm aggregator model'
+        required: false
+        default: ''
+      swarm_fail_open_on_partial:
+        description: 'Override swarm partial-failure fail-open behavior (true|false)'
+        required: false
+        default: ''
+      swarm_metrics:
+        description: 'Override swarm metrics/artifact capture (true|false)'
         required: false
         default: ''
 

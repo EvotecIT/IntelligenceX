@@ -83,16 +83,61 @@
             "classifyInfraFailures": { "type": "boolean" }
           }
         },
+        "history": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "includeIxSummaryHistory": { "type": "boolean" },
+            "includeReviewThreads": { "type": "boolean" },
+            "includeExternalBotSummaries": { "type": "boolean" },
+            "externalBotLogins": {
+              "oneOf": [
+                { "type": "array", "items": { "type": "string" } },
+                { "type": "string" }
+              ]
+            },
+            "artifacts": { "type": "boolean" },
+            "maxRounds": { "type": "integer", "minimum": 0 },
+            "maxItems": { "type": "integer", "minimum": 0 }
+          }
+        },
         "swarm": {
           "type": "object",
           "additionalProperties": true,
           "properties": {
             "enabled": { "type": "boolean" },
             "shadowMode": { "type": "boolean" },
-            "reviewers": { "type": "array", "items": { "type": "string" } },
+            "reviewers": {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  { "type": "string" },
+                  {
+                    "type": "object",
+                    "additionalProperties": true,
+                    "properties": {
+                      "id": { "type": "string" },
+                      "provider": { "type": "string" },
+                      "model": { "type": "string" },
+                      "reasoningEffort": { "type": "string" }
+                    }
+                  }
+                ]
+              }
+            },
             "maxParallel": { "type": "integer", "minimum": 1 },
             "publishSubreviews": { "type": "boolean" },
             "aggregatorModel": { "type": "string" },
+            "aggregator": {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "provider": { "type": "string" },
+                "model": { "type": "string" },
+                "reasoningEffort": { "type": "string" }
+              }
+            },
             "failOpenOnPartial": { "type": "boolean" },
             "metrics": { "type": "boolean" }
           }
@@ -346,6 +391,7 @@
         "cliPath": { "type": "string" },
         "cliUrl": { "type": "string" },
         "workingDirectory": { "type": "string" },
+        "launcher": { "type": "string", "enum": ["binary", "cli", "copilot", "gh", "github", "github-cli", "github_cli", "auto"] },
         "autoInstall": { "type": "boolean" },
         "autoInstallMethod": { "type": "string" },
         "autoInstallPrerelease": { "type": "boolean" },

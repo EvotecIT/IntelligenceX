@@ -24,7 +24,7 @@ if ($content -notmatch "(?m)^\s*# INTELLIGENCEX:END\s*$") {
 if ($content -notmatch "(?m)^\s*review:\s*$") {
     Fail "ERROR: missing review job in workflow"
 }
-if ($content -notmatch "(?m)^\s*uses:\s+(?:\./\.github/workflows/review-intelligencex-reusable\.yml|.+/\.github/workflows/review-intelligencex-reusable\.yml@.+)\s*$") {
+if ($content -notmatch "(?m)^\s*uses:\s+(?:\./\.github/workflows/review-intelligencex-(?:core|reusable)\.yml|.+/\.github/workflows/review-intelligencex-(?:core|reusable)\.yml@.+)\s*$") {
     Fail "ERROR: missing reusable review workflow reference"
 }
 if ($content -notmatch "(?m)^\s*if:\s+\$\{\{.+needs-ai-review.+\}\}\s*$") {

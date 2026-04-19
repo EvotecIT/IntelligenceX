@@ -133,17 +133,30 @@ public static partial class ReviewerApp {
                 Console.Error.WriteLine($"Failed to load CI/check context: {ex.Message}");
             }
         }
-        if (settings.IncludeIssueComments) {
+        var historyNeedsIssueComments = settings.History.Enabled &&
+                                        (settings.History.IncludeIxSummaryHistory ||
+                                         settings.History.IncludeExternalBotSummaries);
+        var loadIssueComments = settings.IncludeIssueComments || historyNeedsIssueComments;
+        if (loadIssueComments) {
             try {
-                var comments = await codeHostReader.ListIssueCommentsAsync(context, settings.MaxComments, cancellationToken)
+                var commentLimit = settings.IncludeIssueComments && !historyNeedsIssueComments
+                    ? settings.MaxComments
+                    : Math.Max(settings.MaxComments, settings.CommentSearchLimit);
+                var comments = await codeHostReader.ListIssueCommentsAsync(context, commentLimit, cancellationToken)
                     .ConfigureAwait(false);
-                extras.IssueCommentsSection = BuildIssueCommentsSection(comments, settings);
+                extras.IssueComments = comments;
+                if (settings.IncludeIssueComments) {
+                    extras.IssueCommentsSection = BuildIssueCommentsSection(comments, settings);
+                }
             } catch (Exception ex) {
                 // Issue comments are supplemental context; avoid failing the whole review on GitHub rate limits.
                 Console.Error.WriteLine($"Failed to load issue comments: {ex.Message}");
             }
         }
-        var loadThreads = forceReviewThreads || settings.IncludeReviewThreads || settings.ReviewThreadsAutoResolveAI;
+        var loadThreads = forceReviewThreads ||
+                          settings.IncludeReviewThreads ||
+                          settings.ReviewThreadsAutoResolveAI ||
+                          (settings.History.Enabled && settings.History.IncludeReviewThreads);
         if (loadThreads) {
             try {
                 var threadCommentFetchLimit = ResolveThreadCommentFetchLimit(settings);
@@ -331,6 +344,11 @@ public static partial class ReviewerApp {
     }
 
     private static string BuildIssueCommentsSection(IReadOnlyList<IssueComment> comments, ReviewSettings settings) {
+        var maxComments = Math.Max(0, settings.MaxComments);
+        if (maxComments <= 0) {
+            return string.Empty;
+        }
+
         var filtered = new List<IssueComment>();
         foreach (var comment in comments) {
             if (string.IsNullOrWhiteSpace(comment.Body)) {
@@ -344,6 +362,9 @@ public static partial class ReviewerApp {
                 continue;
             }
             filtered.Add(comment);
+            if (filtered.Count >= maxComments) {
+                break;
+            }
         }
         if (filtered.Count == 0) {
             return string.Empty;

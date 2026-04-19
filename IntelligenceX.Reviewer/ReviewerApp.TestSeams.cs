@@ -76,6 +76,9 @@ public static partial class ReviewerApp {
     /// <summary>Test-only forwarder for summary ownership detection.</summary>
     internal static bool IsOwnedSummaryCommentForTests(IssueComment comment) => IsOwnedSummaryComment(comment);
 
+    /// <summary>Test-only forwarder for summary-stability carryover body extraction.</summary>
+    internal static string? ExtractSummaryBodyForTests(string? body, int maxChars) => ExtractSummaryBody(body, maxChars);
+
     /// <summary>Test-only forwarder for stale-thread auto-resolution.</summary>
     internal static Task AutoResolveStaleThreadsForTestsAsync(GitHubClient github, IReadOnlyList<PullRequestReviewThread> threads,
         ReviewSettings settings, CancellationToken cancellationToken = default) =>

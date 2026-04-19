@@ -178,7 +178,7 @@ if [[ "$MODE" != "update-secret" ]]; then
     echo "ERROR: generated workflow missing INTELLIGENCEX:END marker." >&2
     exit 1
   fi
-  if ! rg -q '^\s*uses:\s+(?:\./\.github/workflows/review-intelligencex-reusable\.yml|.+/\.github/workflows/review-intelligencex-reusable\.yml@.+)\s*$' "$WORKFLOW_YAML"; then
+  if ! rg -q '^\s*uses:\s+(?:\./\.github/workflows/review-intelligencex-(?:core|reusable)\.yml|.+/\.github/workflows/review-intelligencex-(?:core|reusable)\.yml@.+)\s*$' "$WORKFLOW_YAML"; then
     echo "ERROR: generated workflow missing reusable review workflow reference." >&2
     exit 1
   fi

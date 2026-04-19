@@ -14,6 +14,7 @@ internal static class ReviewFormatter {
     private static readonly string[] SectionLabels = {
         "Summary 📝",
         "Review Summary 📝",
+        "History Progress 🔁",
         "Todo List ✅",
         "Critical Issues ⚠️ (if any)",
         "Critical Issues ⚠️",
@@ -32,7 +33,8 @@ internal static class ReviewFormatter {
     };
 
     public static string BuildComment(PullRequestContext context, string reviewBody, ReviewSettings settings, bool inlineSupported,
-        bool inlineSuppressed, string? autoResolveNote, string? budgetNote, string? usageLine, string? findingsBlock) {
+        bool inlineSuppressed, string? autoResolveNote, string? budgetNote, string? usageLine, string? findingsBlock,
+        string? historyBlock = null) {
         var inlineNote = string.Empty;
         if (!inlineSupported && settings.Mode != "summary") {
             inlineNote = "> Inline comments are not enabled yet; posting summary only.\n";
@@ -49,6 +51,9 @@ internal static class ReviewFormatter {
         var body = string.IsNullOrWhiteSpace(reviewBody)
             ? "_No review content was produced._"
             : NormalizeSectionLayout(reviewBody.TrimEnd());
+        if (!string.IsNullOrWhiteSpace(historyBlock)) {
+            body = NormalizeSectionLayout($"{historyBlock.Trim()}\n\n{body}");
+        }
 
         var template = ResolveSummaryTemplate(settings);
         var reasoningParts = new List<string>();

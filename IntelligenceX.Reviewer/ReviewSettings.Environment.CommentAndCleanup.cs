@@ -20,6 +20,11 @@ internal sealed partial class ReviewSettings {
             settings.CopilotWorkingDirectory = copilotWorkingDirectory;
         }
 
+        var copilotLauncher = GetInput("copilot_launcher", "COPILOT_LAUNCHER");
+        if (!string.IsNullOrWhiteSpace(copilotLauncher)) {
+            settings.CopilotLauncher = NormalizeCopilotLauncher(copilotLauncher, settings.CopilotLauncher);
+        }
+
         var copilotAutoInstall = Environment.GetEnvironmentVariable("COPILOT_AUTO_INSTALL");
         if (!string.IsNullOrWhiteSpace(copilotAutoInstall)) {
             settings.CopilotAutoInstall = ParseBoolean(copilotAutoInstall, settings.CopilotAutoInstall);
