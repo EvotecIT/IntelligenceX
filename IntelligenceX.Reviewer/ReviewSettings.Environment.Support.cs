@@ -194,9 +194,6 @@ internal sealed partial class ReviewSettings {
         if (!string.IsNullOrWhiteSpace(agentProfile)) {
             settings.AgentProfile = agentProfile;
         }
-        if (!string.IsNullOrWhiteSpace(settings.AgentProfile)) {
-            settings.ApplyAgentProfile(settings.AgentProfile);
-        }
     }
 
     private static void ApplyEnvironmentScopeAndPromptSettings(ReviewSettings settings) {

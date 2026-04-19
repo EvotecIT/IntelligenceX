@@ -12,5 +12,6 @@ internal sealed partial class ReviewSettings {
         ApplyEnvironmentCopilotAndAzureSettings(settings);
         ApplyEnvironmentCommentsAndCleanupSettings(settings);
         ApplyEnvironmentAgentProfileSettings(settings);
+        settings.ApplySelectedAgentProfile();
     }
 }

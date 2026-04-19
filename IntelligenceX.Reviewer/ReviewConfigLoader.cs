@@ -621,9 +621,6 @@ internal static class ReviewConfigLoader {
             settings.AgentProfiles = map;
         }
 
-        if (!string.IsNullOrWhiteSpace(settings.AgentProfile)) {
-            settings.ApplyAgentProfile(settings.AgentProfile);
-        }
     }
 
     private static ReviewAgentProfileSettings ReadAgentProfile(string id, JsonObject obj) {

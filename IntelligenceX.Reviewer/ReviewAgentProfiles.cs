@@ -20,6 +20,12 @@ internal sealed partial class ReviewSettings {
         ApplyAgentProfile(profile);
     }
 
+    internal void ApplySelectedAgentProfile() {
+        if (!string.IsNullOrWhiteSpace(AgentProfile)) {
+            ApplyAgentProfile(AgentProfile);
+        }
+    }
+
     internal void ApplyAgentProfile(ReviewAgentProfileSettings profile) {
         AgentProfile = profile.Id;
         var provider = profile.ResolveProvider();

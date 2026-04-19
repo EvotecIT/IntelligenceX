@@ -415,13 +415,18 @@ internal static partial class Program {
 
             Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", configPath);
             Environment.SetEnvironmentVariable("REVIEW_AGENT_PROFILE", null);
+            Environment.SetEnvironmentVariable("INPUT_PROVIDER", "openai");
+            Environment.SetEnvironmentVariable("INPUT_MODEL", "should-not-win");
+            Environment.SetEnvironmentVariable("INPUT_OPENAI_TRANSPORT", "appserver");
 
             var settings = ReviewSettings.Load();
 
             AssertEqual("copilot-claude", settings.AgentProfile ?? string.Empty,
                 "review settings agent profile selected");
-            AssertEqual(ReviewProvider.Copilot, settings.Provider, "review settings agent profile provider");
-            AssertEqual("claude-sonnet-4-5", settings.Model, "review settings agent profile model");
+            AssertEqual(ReviewProvider.Copilot, settings.Provider,
+                "review settings config agent profile provider overrides env");
+            AssertEqual("claude-sonnet-4-5", settings.Model,
+                "review settings config agent profile model overrides env");
             AssertEqual("claude-sonnet-4-5", settings.CopilotModel ?? string.Empty,
                 "review settings agent profile copilot explicit model");
             AssertEqual("auto", settings.CopilotLauncher, "review settings agent profile copilot launcher");
@@ -433,9 +438,6 @@ internal static partial class Program {
                 "review settings agent profile copilot env allowlist");
 
             Environment.SetEnvironmentVariable("REVIEW_AGENT_PROFILE", "chatgpt-codex");
-            Environment.SetEnvironmentVariable("INPUT_PROVIDER", "copilot");
-            Environment.SetEnvironmentVariable("INPUT_MODEL", "should-not-win");
-            Environment.SetEnvironmentVariable("INPUT_OPENAI_TRANSPORT", "appserver");
             settings = ReviewSettings.Load();
 
             AssertEqual("chatgpt-codex", settings.AgentProfile ?? string.Empty,
