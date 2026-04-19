@@ -109,12 +109,28 @@ internal static partial class Program {
                     Authenticator = "copilot-cli",
                     Model = "gpt-5.4",
                     CopilotAutoInstall = true,
-                    CopilotEnvAllowlist = new[] { "COPILOT_GITHUB_TOKEN" }
+                    CopilotEnvAllowlist = new[] { "COPILOT_GITHUB_TOKEN" },
+                    CopilotEnv = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
+                        ["OLD_TOKEN"] = "old-token",
+                        ["SHARED"] = "old-shared"
+                    },
+                    CopilotDirectHeaders = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
+                        ["X-Old"] = "old-header",
+                        ["X-Shared"] = "old-shared"
+                    }
                 },
                 ["copilot-claude"] = new ReviewAgentProfileSettings {
                     Id = "copilot-claude",
                     Provider = ReviewProvider.Copilot,
-                    Model = "claude-sonnet-4-5"
+                    Model = "claude-sonnet-4-5",
+                    CopilotEnv = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
+                        ["NEW_TOKEN"] = "new-token",
+                        ["SHARED"] = "new-shared"
+                    },
+                    CopilotDirectHeaders = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
+                        ["X-New"] = "new-header",
+                        ["X-Shared"] = "new-shared"
+                    }
                 }
             }
         };
@@ -165,6 +181,23 @@ internal static partial class Program {
             "swarm shadow execution clone preserves profile auto install");
         AssertSequenceEqual(new[] { "COPILOT_GITHUB_TOKEN" }, laneSettings.CopilotEnvAllowlist.ToArray(),
             "swarm shadow execution clone preserves profile env allowlist");
+
+        settings.ApplyAgentProfile("copilot-gpt54");
+        var switchedLaneSettings = settings.CloneWithProviderOverride(plan.Reviewers[1].Provider,
+            plan.Reviewers[1].Model, plan.Reviewers[1].ReasoningEffort,
+            plan.Reviewers[1].AgentProfile, plan.Reviewers[1].ResolvedAgentProfile);
+        AssertEqual(false, switchedLaneSettings.CopilotEnv.ContainsKey("OLD_TOKEN"),
+            "swarm shadow execution clone replaces old profile env map");
+        AssertEqual("new-token", switchedLaneSettings.CopilotEnv["NEW_TOKEN"],
+            "swarm shadow execution clone applies new profile env map");
+        AssertEqual("new-shared", switchedLaneSettings.CopilotEnv["SHARED"],
+            "swarm shadow execution clone replaces overlapping profile env key");
+        AssertEqual(false, switchedLaneSettings.CopilotDirectHeaders.ContainsKey("X-Old"),
+            "swarm shadow execution clone replaces old profile header map");
+        AssertEqual("new-header", switchedLaneSettings.CopilotDirectHeaders["X-New"],
+            "swarm shadow execution clone applies new profile header map");
+        AssertEqual("new-shared", switchedLaneSettings.CopilotDirectHeaders["X-Shared"],
+            "swarm shadow execution clone replaces overlapping profile header key");
 
         settings.Swarm.ReviewerSettings = new[] {
             new ReviewSwarmReviewerSettings {

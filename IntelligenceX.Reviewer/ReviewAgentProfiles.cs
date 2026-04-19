@@ -85,16 +85,16 @@ internal sealed partial class ReviewSettings {
         if (profile.CopilotEnvAllowlist is { Count: > 0 }) {
             CopilotEnvAllowlist = profile.CopilotEnvAllowlist;
         }
-        if (profile.CopilotEnv is { Count: > 0 }) {
-            CopilotEnv = MergeStringMap(CopilotEnv, profile.CopilotEnv);
+        if (profile.CopilotEnv is not null) {
+            CopilotEnv = NormalizeStringMap(profile.CopilotEnv);
         }
         CopilotDirectUrl = UseIfSet(profile.CopilotDirectUrl, CopilotDirectUrl);
         CopilotDirectTokenEnv = UseIfSet(profile.CopilotDirectTokenEnv, CopilotDirectTokenEnv);
         if (profile.CopilotDirectTimeoutSeconds.HasValue && profile.CopilotDirectTimeoutSeconds.Value > 0) {
             CopilotDirectTimeoutSeconds = profile.CopilotDirectTimeoutSeconds.Value;
         }
-        if (profile.CopilotDirectHeaders is { Count: > 0 }) {
-            CopilotDirectHeaders = MergeStringMap(CopilotDirectHeaders, profile.CopilotDirectHeaders);
+        if (profile.CopilotDirectHeaders is not null) {
+            CopilotDirectHeaders = NormalizeStringMap(profile.CopilotDirectHeaders);
         }
 
         OpenAICompatibleBaseUrl = UseIfSet(profile.OpenAICompatibleBaseUrl, OpenAICompatibleBaseUrl);
@@ -113,11 +113,10 @@ internal sealed partial class ReviewSettings {
     private static string? UseIfSet(string? value, string? fallback) =>
         string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
 
-    private static IReadOnlyDictionary<string, string> MergeStringMap(
-        IReadOnlyDictionary<string, string> first,
-        IReadOnlyDictionary<string, string> second) {
-        var result = new Dictionary<string, string>(first, StringComparer.OrdinalIgnoreCase);
-        foreach (var entry in second) {
+    private static IReadOnlyDictionary<string, string> NormalizeStringMap(
+        IReadOnlyDictionary<string, string> values) {
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in values) {
             if (string.IsNullOrWhiteSpace(entry.Key) || entry.Value is null) {
                 continue;
             }
