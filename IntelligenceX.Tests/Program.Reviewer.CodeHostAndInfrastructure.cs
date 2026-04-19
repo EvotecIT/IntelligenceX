@@ -1038,6 +1038,51 @@ internal static partial class Program {
         AssertContainsText(result.UsageSummary ?? string.Empty, "API: 2500 ms", "copilot prompt usage api");
     }
 
+    private static void TestCopilotPromptRunnerBuildsMcpDisabledArgs() {
+        var cliPath = Path.Combine(Path.GetPathRoot(Environment.CurrentDirectory) ?? Directory.GetCurrentDirectory(),
+            "copilot");
+        var binaryOptions = new IntelligenceX.Copilot.CopilotClientOptions();
+        var binaryArgs = ReviewerCopilotPromptRunner.BuildArgumentsForTests(binaryOptions, cliPath, "review prompt");
+
+        AssertContainsText(string.Join("\n", binaryArgs), "--disable-builtin-mcps",
+            "copilot binary prompt disables built-in MCPs");
+
+        var fallbackArgs = ReviewerCopilotPromptRunner.BuildArgumentsForTests(binaryOptions, cliPath, "review prompt",
+            disableBuiltinMcps: false);
+        AssertEqual(false, fallbackArgs.Contains("--disable-builtin-mcps"),
+            "copilot prompt fallback omits built-in MCP flag");
+
+        var ghOptions = new IntelligenceX.Copilot.CopilotClientOptions();
+        ghOptions.CliArgs.Add("copilot");
+        ghOptions.CliArgs.Add("--");
+        var ghArgs = ReviewerCopilotPromptRunner.BuildArgumentsForTests(ghOptions, cliPath, "review prompt");
+
+        AssertSequenceEqual(new[] {
+            "copilot",
+            "--",
+            "-p",
+            "review prompt",
+            "--silent",
+            "--no-ask-user",
+            "--no-custom-instructions",
+            "--no-auto-update",
+            "--disable-builtin-mcps",
+            "--stream",
+            "off",
+            "--output-format",
+            "json"
+        }, ghArgs, "copilot gh prompt args");
+    }
+
+    private static void TestCopilotPromptRunnerDetectsUnsupportedMcpFlag() {
+        AssertEqual(true, ReviewerCopilotPromptRunner.IsUnsupportedDisableBuiltinMcpsFlagForTests(
+            string.Empty, "error: unknown option '--disable-builtin-mcps'"),
+            "copilot prompt detects unknown MCP flag");
+        AssertEqual(false, ReviewerCopilotPromptRunner.IsUnsupportedDisableBuiltinMcpsFlagForTests(
+            string.Empty, "error: unknown option '--other-flag'"),
+            "copilot prompt ignores unrelated unknown flag");
+    }
+
     private static void TestCopilotGhLauncherBuildsWrapperCommand() {
         var settings = new ReviewSettings {
             CopilotLauncher = "gh",
