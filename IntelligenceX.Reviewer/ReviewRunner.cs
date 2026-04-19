@@ -470,6 +470,9 @@ internal sealed partial class ReviewRunner {
         if (_settings.CopilotTransport == CopilotTransportKind.Direct) {
             return await RunCopilotDirectAsync(prompt, cancellationToken).ConfigureAwait(false);
         }
+        if (ShouldUseCopilotPromptMode(_settings)) {
+            return await RunCopilotPromptAsync(prompt, onPartial, cancellationToken).ConfigureAwait(false);
+        }
         var options = BuildCopilotClientOptions(out var launcherDiagnostic);
 
         await using var client = await CopilotClient.StartAsync(options, cancellationToken).ConfigureAwait(false);
@@ -536,6 +539,43 @@ internal sealed partial class ReviewRunner {
         }
 
         return result ?? string.Empty;
+    }
+
+    private async Task<string> RunCopilotPromptAsync(string prompt, Func<string, Task>? onPartial,
+        CancellationToken cancellationToken) {
+        var options = BuildCopilotClientOptions(out var launcherDiagnostic);
+        var client = new ReviewerCopilotPromptRunner(options);
+        if (_settings.Diagnostics) {
+            Console.Error.WriteLine("Copilot review execution mode: prompt.");
+        }
+        try {
+            var result = await client.RunAsync(
+                prompt,
+                ResolveCopilotModel(_settings),
+                TimeSpan.FromSeconds(Math.Max(1, _settings.WaitSeconds)),
+                cancellationToken).ConfigureAwait(false);
+            if (onPartial is not null) {
+                await onPartial(result.Response).ConfigureAwait(false);
+            }
+            if (_settings.Diagnostics && !string.IsNullOrWhiteSpace(result.UsageSummary)) {
+                Console.Error.WriteLine($"Copilot prompt usage: {result.UsageSummary}");
+            }
+            return result.Response;
+        } catch (TimeoutException ex) {
+            throw new TimeoutException(BuildCopilotPromptTimeoutMessage(launcherDiagnostic, ex.Message), ex);
+        }
+    }
+
+    private static bool ShouldUseCopilotPromptMode(ReviewSettings settings) =>
+        string.IsNullOrWhiteSpace(settings.CopilotCliUrl);
+
+    private string BuildCopilotPromptTimeoutMessage(string launcherDiagnostic, string detail) {
+        var sb = new StringBuilder();
+        sb.Append(detail);
+        sb.Append(' ');
+        sb.Append(launcherDiagnostic);
+        sb.Append(" The reviewer used Copilot CLI prompt mode; if this persists, check runner Copilot availability and prompt size.");
+        return sb.ToString().TrimEnd();
     }
 
     private string BuildCopilotTimeoutMessage(string launcherDiagnostic, Queue<string> stderrLines, object stderrLock) {

@@ -1023,6 +1023,21 @@ internal static partial class Program {
         AssertEqual(null, ReviewRunner.ResolveCopilotModel(settings), "copilot default model");
     }
 
+    private static void TestCopilotPromptRunnerParsesJsonOutput() {
+        var output = string.Join("\n", new[] {
+            """{"type":"assistant.message_delta","data":{"deltaContent":"Hel"}}""",
+            """{"type":"assistant.message_delta","data":{"deltaContent":"lo"}}""",
+            """{"type":"assistant.message","data":{"content":"Final review"}}""",
+            """{"type":"result","usage":{"premiumRequests":1,"totalApiDurationMs":2500,"sessionDurationMs":3000}}"""
+        });
+
+        var result = ReviewerCopilotPromptRunner.ParseJsonLinesForTests(output);
+
+        AssertEqual("Final review", result.Response, "copilot prompt final message");
+        AssertContainsText(result.UsageSummary ?? string.Empty, "premium requests: 1", "copilot prompt usage premium");
+        AssertContainsText(result.UsageSummary ?? string.Empty, "API: 2500 ms", "copilot prompt usage api");
+    }
+
     private static void TestCopilotGhLauncherBuildsWrapperCommand() {
         var settings = new ReviewSettings {
             CopilotLauncher = "gh",

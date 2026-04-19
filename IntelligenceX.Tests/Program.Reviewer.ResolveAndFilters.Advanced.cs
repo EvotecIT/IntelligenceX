@@ -685,6 +685,21 @@ internal static partial class Program {
         AssertContainsText(comment, "- Usage: unavailable", "model usage unavailable line");
     }
 
+    private static void TestReviewFormatterCopilotModelUsageUsesProviderDisplay() {
+        var context = new PullRequestContext("owner/repo", "owner", "repo", 1, "Test title", "Test body", false, "head",
+            "base", Array.Empty<string>(), "owner/repo", false, null);
+        var settings = new ReviewSettings {
+            Provider = ReviewProvider.Copilot,
+            Model = OpenAIModelCatalog.DefaultModel
+        };
+
+        var comment = ReviewFormatter.BuildComment(context, "Body", settings, inlineSupported: true, inlineSuppressed: false,
+            autoResolveNote: string.Empty, budgetNote: string.Empty, usageLine: string.Empty, findingsBlock: string.Empty);
+
+        AssertContainsText(comment, "- Model: `Copilot CLI default`", "copilot model usage default label");
+        AssertDoesNotContainText(comment, "- Model: `gpt-5.4`", "copilot model usage hides generic OpenAI default");
+    }
+
     private static void TestReviewFormatterGoldenSnapshot() {
         var context = new PullRequestContext("owner/repo", "owner", "repo", 42, "Formatter Golden Snapshot", "Body", false,
             "deadbeefcafebabe", "base", Array.Empty<string>(), "owner/repo", false, null);
