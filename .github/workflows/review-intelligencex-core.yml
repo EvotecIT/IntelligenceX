@@ -741,6 +741,10 @@ jobs:
             echo "Static analysis pre-run skipped: config '$IX_REVIEW_CONFIG_PATH' not found."
             exit 0
           fi
+          if [ ! -f IntelligenceX.Cli/IntelligenceX.Cli.csproj ]; then
+            echo "Static analysis pre-run skipped: IntelligenceX.Cli source project is not available in this checkout."
+            exit 0
+          fi
           dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -c Release -f net8.0 -p:EnableWindowsTargeting=true -- analyze run --workspace . --config "$IX_REVIEW_CONFIG_PATH"
       - name: Evaluate IntelligenceX analysis gate (pre-review, enforcing)
         shell: bash
@@ -748,6 +752,10 @@ jobs:
           set -euo pipefail
           if [ ! -f "$IX_REVIEW_CONFIG_PATH" ]; then
             echo "Static analysis gate skipped: config '$IX_REVIEW_CONFIG_PATH' not found."
+            exit 0
+          fi
+          if [ ! -f IntelligenceX.Cli/IntelligenceX.Cli.csproj ]; then
+            echo "Static analysis gate skipped: IntelligenceX.Cli source project is not available in this checkout."
             exit 0
           fi
           if [ -s artifacts/changed-files.txt ]; then
@@ -833,6 +841,10 @@ jobs:
           INTELLIGENCEX_GITHUB_TOKEN: ${{ steps.app_token.outputs.token || secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
+          if [ ! -f IntelligenceX.Cli/IntelligenceX.Cli.csproj ]; then
+            echo "Fail-open reviewer summary skipped: IntelligenceX.Cli source project is not available in this checkout."
+            exit 0
+          fi
           dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -c Release -f net8.0 -- ci review-fail-open-summary \
             --reviewer-source "${{ inputs.reviewer_source }}" \
             --repo "${{ inputs.repo }}" \
