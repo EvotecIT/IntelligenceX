@@ -139,7 +139,6 @@ jobs:
         AssertContainsText(content, "usage_budget_allow_credits:", "workflow template usage budget credits input");
         AssertContainsText(content, "usage_budget_allow_weekly_limit:",
             "workflow template usage budget weekly input");
-        AssertContainsText(content, "agent_profile:", "workflow template agent profile input");
         AssertContainsText(content, "copilot_model:", "workflow template copilot model input");
         AssertContainsText(content, "copilot_launcher:", "workflow template copilot launcher input");
         AssertContainsText(content, "history_enabled:", "workflow template history enabled input");
@@ -217,10 +216,14 @@ jobs:
             "wrapper workflow stays within GitHub workflow_dispatch input limit");
         AssertContainsText(wrapperContent, "reviewer_source: source",
             "wrapper workflow keeps PR reviews on repo source to avoid release drift");
+        AssertContainsText(wrapperContent, "workflow_call:",
+            "wrapper workflow exposes reusable call overrides outside the dispatch input budget");
         AssertContainsText(wrapperContent, "agent_profile:",
-            "wrapper workflow exposes agent profile manual override");
+            "wrapper workflow exposes agent profile reusable-call override");
         AssertContainsText(wrapperContent, "agent_profile: ${{ inputs.agent_profile || vars.IX_REVIEW_AGENT_PROFILE }}",
-            "wrapper workflow lets explicit agent profile input override repo variable");
+            "wrapper workflow lets reusable agent profile input override repo variable");
+        AssertContainsText(wrapperContent, "swarm_metrics:",
+            "wrapper workflow preserves swarm metrics manual override");
         AssertContainsText(wrapperContent, "copilot_launcher: ${{ inputs.copilot_launcher }}",
             "wrapper workflow passes copilot launcher through to reusable workflow");
         AssertContainsText(wrapperContent, "history_enabled: ${{ inputs.history_enabled }}",
@@ -347,7 +350,10 @@ jobs:
         var start = normalized.IndexOf(marker, StringComparison.Ordinal);
         AssertEqual(true, start >= 0, "workflow_dispatch inputs block exists");
         start += marker.Length;
-        var end = normalized.IndexOf("\njobs:", start, StringComparison.Ordinal);
+        var end = normalized.IndexOf("\n  workflow_call:", start, StringComparison.Ordinal);
+        if (end < 0) {
+            end = normalized.IndexOf("\njobs:", start, StringComparison.Ordinal);
+        }
         if (end < 0) {
             end = normalized.Length;
         }

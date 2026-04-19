@@ -17,10 +17,6 @@ on:
         description: 'Review provider override for manual runs (openai, claude, copilot)'
         required: false
         default: ''
-      agent_profile:
-        description: 'Named agent profile override for manual runs'
-        required: false
-        default: ''
       model:
         description: 'Optional model override for manual runs'
         required: false
@@ -105,6 +101,16 @@ on:
         description: 'Override swarm partial-failure fail-open behavior (true|false)'
         required: false
         default: ''
+      swarm_metrics:
+        description: 'Override swarm metrics/artifact capture (true|false)'
+        required: false
+        default: ''
+  workflow_call:
+    inputs:
+      agent_profile:
+        description: 'Named agent profile override for reusable callers'
+        required: false
+        type: string
 
 jobs:
   # INTELLIGENCEX:BEGIN
