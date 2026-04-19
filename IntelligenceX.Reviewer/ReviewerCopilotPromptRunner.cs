@@ -83,6 +83,7 @@ internal sealed class ReviewerCopilotPromptRunner {
         args.Add("--no-ask-user");
         args.Add("--no-custom-instructions");
         args.Add("--no-auto-update");
+        args.Add("--disable-builtin-mcps");
         args.Add("--stream");
         args.Add("off");
         args.Add("--output-format");
