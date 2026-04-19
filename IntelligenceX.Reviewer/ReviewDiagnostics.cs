@@ -211,7 +211,7 @@ internal static class ReviewDiagnostics {
         sb.AppendLine("WARNING: Review failed to complete due to a provider request error.");
         sb.AppendLine();
         sb.AppendLine($"- Provider: {settings.Provider.ToString().ToLowerInvariant()}");
-        sb.AppendLine($"- Transport: {settings.OpenAITransport}");
+        sb.AppendLine($"- Transport: {DescribeTransport(settings)}");
         sb.AppendLine($"- Model: {settings.Model}");
         sb.AppendLine($"- Category: {classification.Category} ({(classification.IsTransient ? "transient" : "non-transient")})");
         if (!string.IsNullOrWhiteSpace(classification.Summary)) {
@@ -251,7 +251,7 @@ internal static class ReviewDiagnostics {
         ReviewRetryState? retryState) {
         var classification = Classify(ex);
         Console.Error.WriteLine("Provider request failed.");
-        Console.Error.WriteLine($"Provider: {settings.Provider.ToString().ToLowerInvariant()} | Transport: {settings.OpenAITransport} | Model: {settings.Model}");
+        Console.Error.WriteLine($"Provider: {settings.Provider.ToString().ToLowerInvariant()} | Transport: {DescribeTransport(settings)} | Model: {settings.Model}");
         Console.Error.WriteLine($"Category: {classification.Category} ({(classification.IsTransient ? "transient" : "non-transient")})");
         if (retryState is not null && retryState.LastAttempt > 0) {
             Console.Error.WriteLine($"Retry: {retryState.LastAttempt}/{retryState.MaxAttempts}");
@@ -303,11 +303,17 @@ internal static class ReviewDiagnostics {
             Console.Error.WriteLine($"RPC error: {FormatExceptionSummary(snapshot.LastRpcError, true)}");
         }
         if (snapshot.StandardError.Count > 0) {
-            Console.Error.WriteLine("App-server stderr (most recent first):");
+            Console.Error.WriteLine("Provider stderr (most recent first):");
             for (var i = snapshot.StandardError.Count - 1; i >= 0; i--) {
                 Console.Error.WriteLine($"  {snapshot.StandardError[i]}");
             }
         }
+    }
+
+    private static string DescribeTransport(ReviewSettings settings) {
+        return settings.Provider == ReviewProvider.Copilot
+            ? settings.CopilotTransport.ToString()
+            : settings.OpenAITransport.ToString();
     }
 
     internal static WorkflowFailureInfo ClassifyWorkflowFailureLog(string? logText) {

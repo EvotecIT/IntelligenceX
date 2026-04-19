@@ -661,9 +661,10 @@ GitHub Actions input/env aliases:
 Use this to forward selected environment variables into the Copilot CLI process without committing secrets.
 By default the CLI process **does** inherit the runner environment. Set `inheritEnvironment` to `false` and use
 `envAllowlist`/`env` to pass only what the CLI needs when you want a strict environment.
-Set `launcher` to `gh` to run Copilot through `gh copilot --` when that wrapper can already launch the Copilot CLI.
-Set `launcher` to `auto` to use the standalone binary when it is on `PATH` and only fall back to `gh copilot --`
-after a wrapper capability probe succeeds. This avoids assuming GitHub CLI can bootstrap Copilot on every runner.
+Set `launcher` to `gh` to explicitly run Copilot through `gh copilot --`.
+Set `launcher` to `auto` to use the standalone `copilot` binary path. This is the safer default for reviewer server mode:
+the GitHub CLI wrapper can sometimes launch the CLI for simple commands while still hanging in long-running server mode.
+Use `autoInstall` with the standalone path when the runner does not already have `copilot` installed.
 
 ```json
 {
@@ -787,7 +788,7 @@ Prefer `directTokenEnv` over `directToken` to avoid committing secrets to source
 - `azureTokenEnv`: env var name that contains the ADO token (default `SYSTEM_ACCESSTOKEN` if set)
 - `azureAuthScheme`: `bearer` (System.AccessToken/JWT) or `basic`/`pat`
 - `copilot.transport`: `cli` or `direct` (aliases: `api`, `http`)
-- `copilot.launcher`: `binary`, `gh`, or `auto`; `gh` executes `gh copilot --` before the reviewer server flags
+- `copilot.launcher`: `binary`, `gh`, or `auto`; `auto` uses the standalone binary path, while `gh` explicitly executes `gh copilot --` before the reviewer server flags
 - `copilot.inheritEnvironment`: inherit full runner environment for Copilot CLI (`true` by default)
 
 **Path filter order of operations**

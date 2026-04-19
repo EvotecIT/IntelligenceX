@@ -82,18 +82,26 @@ public static class CopilotCliInstall {
                 prerelease ? "install GitHub.Copilot.Prerelease" : "install GitHub.Copilot",
                 "WinGet"));
             list.Add(Npm(prerelease));
-        } else if (IsMac() || IsLinux()) {
+        } else if (IsMac()) {
             list.Add(new CopilotCliInstallCommand(
                 CopilotCliInstallMethod.Homebrew,
                 "brew",
                 prerelease ? "install copilot-cli@prerelease" : "install copilot-cli",
                 "Homebrew"));
             list.Add(Npm(prerelease));
+            list.Add(Script());
+        } else if (IsLinux()) {
+            if (prerelease) {
+                list.Add(Npm(prerelease));
+            } else {
+                list.Add(Script());
+                list.Add(Npm(prerelease));
+            }
             list.Add(new CopilotCliInstallCommand(
-                CopilotCliInstallMethod.Script,
-                "bash",
-                "-c \"curl -fsSL https://gh.io/copilot-install | bash\"",
-                "Install script (macOS/Linux)"));
+                CopilotCliInstallMethod.Homebrew,
+                "brew",
+                prerelease ? "install copilot-cli@prerelease" : "install copilot-cli",
+                "Homebrew"));
         } else {
             list.Add(Npm(prerelease));
         }
@@ -105,19 +113,27 @@ public static class CopilotCliInstall {
     /// </summary>
     /// <param name="prerelease">Whether to use prerelease versions.</param>
     public static CopilotCliInstallCommand GetDefaultCommand(bool prerelease = false) {
-        if (IsWindows()) {
+        return GetDefaultCommandForPlatform(IsWindows(), IsMac(), IsLinux(), prerelease);
+    }
+
+    internal static CopilotCliInstallCommand GetDefaultCommandForPlatform(bool isWindows, bool isMac, bool isLinux,
+        bool prerelease = false) {
+        if (isWindows) {
             return new CopilotCliInstallCommand(
                 CopilotCliInstallMethod.Winget,
                 "winget",
                 prerelease ? "install GitHub.Copilot.Prerelease" : "install GitHub.Copilot",
                 "WinGet");
         }
-        if (IsMac() || IsLinux()) {
+        if (isMac) {
             return new CopilotCliInstallCommand(
                 CopilotCliInstallMethod.Homebrew,
                 "brew",
                 prerelease ? "install copilot-cli@prerelease" : "install copilot-cli",
                 "Homebrew");
+        }
+        if (isLinux) {
+            return prerelease ? Npm(prerelease) : Script();
         }
         return Npm(prerelease);
     }
@@ -143,11 +159,7 @@ public static class CopilotCliInstall {
                 prerelease ? "install copilot-cli@prerelease" : "install copilot-cli",
                 "Homebrew"),
             CopilotCliInstallMethod.Npm => Npm(prerelease),
-            CopilotCliInstallMethod.Script => new CopilotCliInstallCommand(
-                CopilotCliInstallMethod.Script,
-                "bash",
-                "-c \"curl -fsSL https://gh.io/copilot-install | bash\"",
-                "Install script (macOS/Linux)"),
+            CopilotCliInstallMethod.Script => Script(),
             _ => GetDefaultCommand(prerelease)
         };
     }
@@ -198,6 +210,14 @@ public static class CopilotCliInstall {
             "npm",
             prerelease ? "install -g @github/copilot@prerelease" : "install -g @github/copilot",
             "npm (Node.js 22+)");
+    }
+
+    private static CopilotCliInstallCommand Script() {
+        return new CopilotCliInstallCommand(
+            CopilotCliInstallMethod.Script,
+            "bash",
+            "-c \"curl -fsSL https://gh.io/copilot-install | bash\"",
+            "Install script (macOS/Linux)");
     }
 
     private static bool IsWindows() => RuntimeInformation.IsOSPlatform(OSPlatform.Windows);

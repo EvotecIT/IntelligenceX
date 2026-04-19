@@ -157,6 +157,16 @@ internal static partial class Program {
         }
     }
 
+    private static void TestReviewFailureBodyUsesCopilotTransport() {
+        var settings = new ReviewSettings {
+            Provider = ReviewProvider.Copilot,
+            CopilotTransport = CopilotTransportKind.Direct
+        };
+        var body = ReviewDiagnostics.BuildFailureBody(new TimeoutException("timed out"), settings, null, null);
+        AssertContainsText(body, "- Provider: copilot", "copilot failure body provider");
+        AssertContainsText(body, "- Transport: Direct", "copilot failure body transport");
+    }
+
     private static void TestReviewFailureBodyIncludesSafeAuthRefreshDetail() {
         var settings = new ReviewSettings { Diagnostics = true };
         var ex = new InvalidOperationException("OAuth token request failed (401): refresh_token_reused. Your refresh token has already been used to generate a new access token. Please try signing in again.");
