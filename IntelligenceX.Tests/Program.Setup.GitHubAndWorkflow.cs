@@ -189,9 +189,9 @@ jobs:
             "workflow template review style pass-through");
         AssertContainsText(content, "review_config_path: ${{ inputs.review_config_path || '.intelligencex/reviewer.json' }}",
             "workflow template review config path pass-through");
-        AssertContainsText(content, "max_files: ${{ inputs.max_files || '30' }}",
+        AssertContainsText(content, "max_files: ${{ fromJSON(inputs.max_files || '30') }}",
             "workflow template max files pass-through");
-        AssertContainsText(content, "diagnostics: ${{ inputs.diagnostics || 'false' }}",
+        AssertContainsText(content, "diagnostics: ${{ fromJSON(inputs.diagnostics || 'false') }}",
             "workflow template diagnostics pass-through");
         AssertContainsText(content,
             "(inputs.copilot_launcher || vars.IX_REVIEW_COPILOT_LAUNCHER) == 'auto' || vars.IX_REVIEW_COPILOT_AUTO_INSTALL == 'true'",
@@ -295,9 +295,9 @@ jobs:
             "wrapper workflow passes review style through with default");
         AssertContainsText(wrapperContent, "review_config_path: ${{ inputs.review_config_path || '.intelligencex/reviewer.json' }}",
             "wrapper workflow passes review config path through with default");
-        AssertContainsText(wrapperContent, "max_files: ${{ inputs.max_files || '30' }}",
+        AssertContainsText(wrapperContent, "max_files: ${{ fromJSON(inputs.max_files || '30') }}",
             "wrapper workflow passes max files through with default");
-        AssertContainsText(wrapperContent, "diagnostics: ${{ inputs.diagnostics || 'false' }}",
+        AssertContainsText(wrapperContent, "diagnostics: ${{ fromJSON(inputs.diagnostics || 'false') }}",
             "wrapper workflow passes diagnostics through with default");
         AssertEqual(false, content.Contains("workflow_dispatch:", StringComparison.Ordinal),
             "reusable workflow should keep manual dispatch on the wrapper workflow");

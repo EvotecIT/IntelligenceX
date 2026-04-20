@@ -411,15 +411,15 @@ jobs:
       swarm_fail_open_on_partial: ${{ inputs.swarm_fail_open_on_partial }}
       swarm_metrics: ${{ inputs.swarm_metrics }}
       review_config_path: ${{ inputs.review_config_path || '.intelligencex/reviewer.json' }}
-      max_files: ${{ inputs.max_files || '30' }}
-      max_patch_chars: ${{ inputs.max_patch_chars || '20000' }}
-      include_issue_comments: ${{ inputs.include_issue_comments || 'true' }}
-      include_review_comments: ${{ inputs.include_review_comments || 'true' }}
-      include_related_prs: ${{ inputs.include_related_prs || 'true' }}
-      progress_updates: ${{ inputs.progress_updates || 'true' }}
-      diagnostics: ${{ inputs.diagnostics || 'false' }}
-      preflight: ${{ inputs.preflight || 'false' }}
-      preflight_timeout_seconds: ${{ inputs.preflight_timeout_seconds || '15' }}
+      max_files: ${{ fromJSON(inputs.max_files || '30') }}
+      max_patch_chars: ${{ fromJSON(inputs.max_patch_chars || '20000') }}
+      include_issue_comments: ${{ fromJSON(inputs.include_issue_comments || 'true') }}
+      include_review_comments: ${{ fromJSON(inputs.include_review_comments || 'true') }}
+      include_related_prs: ${{ fromJSON(inputs.include_related_prs || 'true') }}
+      progress_updates: ${{ fromJSON(inputs.progress_updates || 'true') }}
+      diagnostics: ${{ fromJSON(inputs.diagnostics || 'false') }}
+      preflight: ${{ fromJSON(inputs.preflight || 'false') }}
+      preflight_timeout_seconds: ${{ fromJSON(inputs.preflight_timeout_seconds || '15') }}
       cleanup_enabled: false
       cleanup_mode: comment
       cleanup_scope: pr
