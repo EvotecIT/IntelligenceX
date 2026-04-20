@@ -202,6 +202,16 @@ internal static partial class Program {
         AssertContainsText(body, "Copilot CLI authentication is missing", "copilot auth failure guidance");
     }
 
+    private static void TestReviewFailureBodyPrefersTimeoutOverInnerCancellation() {
+        var ex = new TimeoutException("outer timeout",
+            new TimeoutException("inner timeout", new OperationCanceledException("cancelled")));
+        var classification = ReviewDiagnostics.Classify(ex);
+
+        AssertEqual(ReviewDiagnostics.ReviewErrorCategory.Timeout, classification.Category,
+            "timeout classification should beat inner cancellation");
+        AssertEqual("Timeout", classification.Summary, "timeout summary should remain stable");
+    }
+
     private static void TestReviewFailureBodyIncludesSafeAuthRefreshDetail() {
         var settings = new ReviewSettings { Diagnostics = true };
         var ex = new InvalidOperationException("OAuth token request failed (401): refresh_token_reused. Your refresh token has already been used to generate a new access token. Please try signing in again.");

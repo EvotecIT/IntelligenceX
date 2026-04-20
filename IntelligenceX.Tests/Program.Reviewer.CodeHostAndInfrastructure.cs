@@ -1098,6 +1098,28 @@ internal static partial class Program {
         AssertEqual(null, ReviewRunner.ResolveCopilotModel(settings), "copilot default model");
     }
 
+    private static void TestCopilotPromptTimeoutUsesRunnerSafeMinimum() {
+        var settings = new ReviewSettings {
+            Provider = ReviewProvider.Copilot,
+            CopilotTransport = CopilotTransportKind.Cli,
+            WaitSeconds = 180
+        };
+
+        AssertEqual(TimeSpan.FromSeconds(420), ReviewRunner.ResolveCopilotPromptTimeout(settings),
+            "copilot prompt timeout should use runner-safe minimum");
+    }
+
+    private static void TestCopilotPromptTimeoutHonorsHigherExplicitWait() {
+        var settings = new ReviewSettings {
+            Provider = ReviewProvider.Copilot,
+            CopilotTransport = CopilotTransportKind.Cli,
+            WaitSeconds = 600
+        };
+
+        AssertEqual(TimeSpan.FromSeconds(600), ReviewRunner.ResolveCopilotPromptTimeout(settings),
+            "copilot prompt timeout should preserve larger explicit wait");
+    }
+
     private static void TestCopilotPromptRunnerParsesJsonOutput() {
         var output = string.Join("\n", new[] {
             """{"type":"assistant.message_delta","data":{"deltaContent":"Hel"}}""",

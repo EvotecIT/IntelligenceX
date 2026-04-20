@@ -155,11 +155,11 @@ internal static class ReviewDiagnostics {
 
     public static ReviewErrorInfo Classify(Exception ex) {
         var root = Unwrap(ex);
+        if (ContainsException<TimeoutException>(ex)) {
+            return new ReviewErrorInfo(ReviewErrorCategory.Timeout, true, "Timeout");
+        }
         if (root is OperationCanceledException) {
             return new ReviewErrorInfo(ReviewErrorCategory.Cancelled, false, "Cancelled");
-        }
-        if (root is TimeoutException) {
-            return new ReviewErrorInfo(ReviewErrorCategory.Timeout, true, "Timeout");
         }
         if (IsResponseEnded(root)) {
             return new ReviewErrorInfo(ReviewErrorCategory.ResponseEnded, true, "Response ended prematurely");
@@ -533,6 +533,26 @@ internal static class ReviewDiagnostics {
             return Unwrap(aggregate.InnerExceptions[0]);
         }
         return ex.InnerException is not null ? Unwrap(ex.InnerException) : ex;
+    }
+
+    private static bool ContainsException<TException>(Exception ex) where TException : Exception {
+        if (ex is AggregateException aggregate) {
+            foreach (var inner in aggregate.InnerExceptions) {
+                if (ContainsException<TException>(inner)) {
+                    return true;
+                }
+            }
+        }
+
+        var current = ex;
+        while (current is not null) {
+            if (current is TException) {
+                return true;
+            }
+            current = current.InnerException;
+        }
+
+        return false;
     }
 
     private static ReviewErrorInfo ClassifyStatusCode(int code) {

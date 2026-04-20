@@ -19,6 +19,7 @@ using IntelligenceX.OpenAI.Native;
 namespace IntelligenceX.Reviewer;
 
 internal sealed partial class ReviewRunner {
+    private const int MinimumCopilotPromptWaitSeconds = 420;
     private readonly ReviewSettings _settings;
     public ReviewProvider EffectiveProvider { get; private set; }
     public bool FallbackActivated { get; private set; }
@@ -446,6 +447,11 @@ internal sealed partial class ReviewRunner {
         return settings.Model.Trim();
     }
 
+    internal static TimeSpan ResolveCopilotPromptTimeout(ReviewSettings settings) {
+        var configuredSeconds = Math.Max(1, settings.WaitSeconds);
+        return TimeSpan.FromSeconds(Math.Max(configuredSeconds, MinimumCopilotPromptWaitSeconds));
+    }
+
     private string BuildCopilotLauncherDiagnostic(string launcher, CopilotClientOptions options) {
         var cliPath = string.IsNullOrWhiteSpace(options.CliPath) ? "copilot" : options.CliPath;
         var prefixArgs = options.CliArgs.Count == 0 ? "(none)" : string.Join(" ", options.CliArgs);
@@ -545,14 +551,19 @@ internal sealed partial class ReviewRunner {
         CancellationToken cancellationToken) {
         var options = BuildCopilotClientOptions(out var launcherDiagnostic);
         var client = new ReviewerCopilotPromptRunner(options);
+        var timeout = ResolveCopilotPromptTimeout(_settings);
         if (_settings.Diagnostics) {
             Console.Error.WriteLine("Copilot review execution mode: prompt.");
+            if (timeout.TotalSeconds > Math.Max(1, _settings.WaitSeconds)) {
+                Console.Error.WriteLine(
+                    $"Copilot prompt timeout raised from {_settings.WaitSeconds}s to {timeout.TotalSeconds:0}s to cover prompt-mode startup and streaming latency.");
+            }
         }
         try {
             var result = await client.RunAsync(
                 prompt,
                 ResolveCopilotModel(_settings),
-                TimeSpan.FromSeconds(Math.Max(1, _settings.WaitSeconds)),
+                timeout,
                 cancellationToken).ConfigureAwait(false);
             if (onPartial is not null) {
                 await onPartial(result.Response).ConfigureAwait(false);

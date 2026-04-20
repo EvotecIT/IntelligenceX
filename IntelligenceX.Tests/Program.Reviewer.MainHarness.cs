@@ -73,6 +73,8 @@ internal static partial class Program {
         failed += Run("Review failure body uses provider-specific transport labels",
             TestReviewFailureBodyUsesProviderSpecificTransportLabels);
         failed += Run("Review failure body classifies Copilot unauthorized", TestReviewFailureBodyClassifiesCopilotUnauthorized);
+        failed += Run("Review failure body prefers timeout over inner cancellation",
+            TestReviewFailureBodyPrefersTimeoutOverInnerCancellation);
         failed += Run("Review failure body includes safe auth refresh detail", TestReviewFailureBodyIncludesSafeAuthRefreshDetail);
         failed += Run("Build auth remediation command quotes repo when needed", TestBuildAuthRemediationCommandQuotesRepoWhenNeeded);
         failed += Run("Build auth remediation command escapes embedded quotes", TestBuildAuthRemediationCommandEscapesEmbeddedQuotes);
@@ -710,6 +712,8 @@ internal static partial class Program {
         failed += Run("Copilot inherit env default", TestCopilotInheritEnvironmentDefault);
         failed += Run("Copilot direct timeout validation", TestCopilotDirectTimeoutValidation);
         failed += Run("Copilot chat timeout validation", TestCopilotChatTimeoutValidation);
+        failed += Run("Copilot prompt timeout uses runner-safe minimum", TestCopilotPromptTimeoutUsesRunnerSafeMinimum);
+        failed += Run("Copilot prompt timeout honors higher explicit wait", TestCopilotPromptTimeoutHonorsHigherExplicitWait);
         failed += Run("Copilot direct auth conflict", TestCopilotDirectAuthorizationConflict);
         failed += Run("Copilot CLI path requires env", TestCopilotCliPathRequiresEnvironment);
         failed += Run("Copilot CLI path optional with url", TestCopilotCliPathOptionalWithUrl);
