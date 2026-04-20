@@ -1120,6 +1120,28 @@ internal static partial class Program {
             "copilot prompt timeout should preserve larger explicit wait");
     }
 
+    private static void TestCopilotCliSessionTimeoutUsesRunnerSafeMinimum() {
+        var settings = new ReviewSettings {
+            Provider = ReviewProvider.Copilot,
+            CopilotTransport = CopilotTransportKind.Cli,
+            WaitSeconds = 180
+        };
+
+        AssertEqual(TimeSpan.FromSeconds(600), ReviewRunner.ResolveCopilotCliReviewTimeout(settings),
+            "copilot cli session timeout should use runner-safe minimum");
+    }
+
+    private static void TestCopilotCliSessionTimeoutHonorsHigherExplicitWait() {
+        var settings = new ReviewSettings {
+            Provider = ReviewProvider.Copilot,
+            CopilotTransport = CopilotTransportKind.Cli,
+            WaitSeconds = 900
+        };
+
+        AssertEqual(TimeSpan.FromSeconds(900), ReviewRunner.ResolveCopilotCliReviewTimeout(settings),
+            "copilot cli session timeout should preserve larger explicit wait");
+    }
+
     private static void TestCopilotPromptFailureFallsBackForTimeoutAndPromptErrors() {
         AssertEqual(true,
             ReviewRunner.ShouldFallbackFromCopilotPromptFailure(

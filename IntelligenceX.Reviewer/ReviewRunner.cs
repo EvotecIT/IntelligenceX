@@ -19,7 +19,7 @@ using IntelligenceX.OpenAI.Native;
 namespace IntelligenceX.Reviewer;
 
 internal sealed partial class ReviewRunner {
-    private const int MinimumCopilotPromptWaitSeconds = 600;
+    private const int MinimumCopilotCliReviewWaitSeconds = 600;
     private readonly ReviewSettings _settings;
     public ReviewProvider EffectiveProvider { get; private set; }
     public bool FallbackActivated { get; private set; }
@@ -449,7 +449,12 @@ internal sealed partial class ReviewRunner {
 
     internal static TimeSpan ResolveCopilotPromptTimeout(ReviewSettings settings) {
         var configuredSeconds = Math.Max(1, settings.WaitSeconds);
-        return TimeSpan.FromSeconds(Math.Max(configuredSeconds, MinimumCopilotPromptWaitSeconds));
+        return TimeSpan.FromSeconds(Math.Max(configuredSeconds, MinimumCopilotCliReviewWaitSeconds));
+    }
+
+    internal static TimeSpan ResolveCopilotCliReviewTimeout(ReviewSettings settings) {
+        var configuredSeconds = Math.Max(1, settings.WaitSeconds);
+        return TimeSpan.FromSeconds(Math.Max(configuredSeconds, MinimumCopilotCliReviewWaitSeconds));
     }
 
     private string BuildCopilotLauncherDiagnostic(string launcher, CopilotClientOptions options) {
@@ -481,10 +486,8 @@ internal sealed partial class ReviewRunner {
                 return await RunCopilotPromptAsync(prompt, onPartial, cancellationToken).ConfigureAwait(false);
             } catch (Exception ex) when (!cancellationToken.IsCancellationRequested &&
                                          ShouldFallbackFromCopilotPromptFailure(ex)) {
-                if (_settings.Diagnostics) {
-                    Console.Error.WriteLine(
-                        $"Copilot prompt mode failed ({ex.GetType().Name}); falling back to CLI server-session mode.");
-                }
+                Console.Error.WriteLine(
+                    $"Copilot prompt mode failed ({ex.GetType().Name}); falling back to CLI server-session mode.");
             }
         }
         return await RunCopilotCliSessionAsync(prompt, onPartial, updateInterval, cancellationToken).ConfigureAwait(false);
@@ -549,10 +552,15 @@ internal sealed partial class ReviewRunner {
 
         await session.SendAsync(new CopilotMessageOptions { Prompt = prompt }, cancellationToken).ConfigureAwait(false);
 
+        var timeoutWindow = ResolveCopilotCliReviewTimeout(_settings);
+        if (_settings.Diagnostics && timeoutWindow.TotalSeconds > Math.Max(1, _settings.WaitSeconds)) {
+            Console.Error.WriteLine(
+                $"Copilot CLI session timeout raised from {_settings.WaitSeconds}s to {timeoutWindow.TotalSeconds:0}s to cover reviewer-scale runs.");
+        }
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(TimeSpan.FromSeconds(_settings.WaitSeconds));
+        timeout.CancelAfter(timeoutWindow);
         using var registration = timeout.Token.Register(() =>
-            tcs.TrySetException(new TimeoutException(BuildCopilotTimeoutMessage(launcherDiagnostic, stderrLines, stderrLock))));
+            tcs.TrySetException(new TimeoutException(BuildCopilotTimeoutMessage(timeoutWindow, launcherDiagnostic, stderrLines, stderrLock))));
 
         var result = await tcs.Task.ConfigureAwait(false);
 
@@ -611,10 +619,11 @@ internal sealed partial class ReviewRunner {
         return sb.ToString().TrimEnd();
     }
 
-    private string BuildCopilotTimeoutMessage(string launcherDiagnostic, Queue<string> stderrLines, object stderrLock) {
+    private string BuildCopilotTimeoutMessage(TimeSpan timeout, string launcherDiagnostic, Queue<string> stderrLines,
+        object stderrLock) {
         var sb = new StringBuilder();
         sb.Append("Copilot review timed out after ");
-        sb.Append(_settings.WaitSeconds);
+        sb.Append(timeout.TotalSeconds.ToString("0"));
         sb.Append(" seconds. ");
         sb.Append(launcherDiagnostic);
         sb.Append(" If this run uses the GitHub CLI wrapper, try copilot.launcher=binary with copilot.autoInstall=true; ");
