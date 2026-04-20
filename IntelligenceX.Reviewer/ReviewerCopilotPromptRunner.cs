@@ -40,24 +40,8 @@ internal sealed class ReviewerCopilotPromptRunner {
             var startInfo = BuildStartInfo(_options, cliPath, prompt, model, disableBuiltinMcps,
                 disableToolSurface, effectiveLogDirectory);
             result = await RunProcessAsync(startInfo, timeout, cancellationToken).ConfigureAwait(false);
-            if (result.ExitCode == 0) {
-                break;
-            }
-
-            var retry = false;
-            if (disableToolSurface && IsUnsupportedAvailableToolsFlag(result.Stdout, result.Stderr)) {
-                disableToolSurface = false;
-                retry = true;
-            }
-            if (disableBuiltinMcps && IsUnsupportedDisableBuiltinMcpsFlag(result.Stdout, result.Stderr)) {
-                disableBuiltinMcps = false;
-                retry = true;
-            }
-            if (captureLogs && IsUnsupportedLogCaptureFlag(result.Stdout, result.Stderr)) {
-                captureLogs = false;
-                retry = true;
-            }
-            if (!retry) {
+            if (!TryApplyCompatibilityFallbacks(result, ref disableBuiltinMcps, ref disableToolSurface,
+                    ref captureLogs)) {
                 break;
             }
         }
@@ -68,15 +52,18 @@ internal sealed class ReviewerCopilotPromptRunner {
                 logDirectory: logDirectory));
         }
 
-        var parsed = ParseJsonLines(result.Stdout);
+        var parsed = ParseJsonOutput(result.Stdout);
         var response = parsed.Response;
-        if (string.IsNullOrWhiteSpace(response)) {
+        if (string.IsNullOrWhiteSpace(response) && parsed.JsonObjectCount == 0) {
             response = result.Stdout.Trim();
         }
         if (string.IsNullOrWhiteSpace(response)) {
             WriteRecentLogTail(logDirectory);
+            var prefix = parsed.ParseErrorCount > 0
+                ? "Copilot CLI produced malformed JSON output and no review content."
+                : "Copilot CLI produced no review content.";
             throw new InvalidOperationException(BuildExitMessage(result.ExitCode, result.Stdout, result.Stderr,
-                "Copilot CLI produced no review content.", logDirectory));
+                prefix, logDirectory));
         }
 
         return new ReviewerCopilotPromptResult(response.Trim(), parsed.UsageSummary);
@@ -243,25 +230,33 @@ internal sealed class ReviewerCopilotPromptRunner {
 
     private static bool IsWindows() => RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
 
-    private static (string Response, string? UsageSummary) ParseJsonLines(string stdout) {
+    private static bool TryApplyCompatibilityFallbacks(CopilotPromptProcessResult result, ref bool disableBuiltinMcps,
+        ref bool disableToolSurface, ref bool captureLogs) {
+        var retry = false;
+        if (disableToolSurface && IsUnsupportedAvailableToolsFlag(result.Stdout, result.Stderr)) {
+            disableToolSurface = false;
+            retry = true;
+        }
+        if (disableBuiltinMcps && IsUnsupportedDisableBuiltinMcpsFlag(result.Stdout, result.Stderr)) {
+            disableBuiltinMcps = false;
+            retry = true;
+        }
+        if (captureLogs && IsUnsupportedLogCaptureFlag(result.Stdout, result.Stderr)) {
+            captureLogs = false;
+            retry = true;
+        }
+        return retry;
+    }
+
+    private static ParsedCopilotPromptOutput ParseJsonOutput(string stdout) {
         var response = new StringBuilder();
         string? finalMessage = null;
         string? usage = null;
-        using var reader = new StringReader(stdout);
-        string? line;
-        while ((line = reader.ReadLine()) is not null) {
-            if (string.IsNullOrWhiteSpace(line)) {
-                continue;
-            }
-            JsonObject? obj;
-            try {
-                obj = JsonLite.Parse(line).AsObject();
-            } catch {
-                continue;
-            }
-            if (obj is null) {
-                continue;
-            }
+        var jsonObjectCount = 0;
+        var parseErrorCount = 0;
+
+        foreach (var obj in ParseJsonObjects(stdout, out parseErrorCount)) {
+            jsonObjectCount++;
 
             var type = obj.GetString("type");
             var data = obj.GetObject("data");
@@ -284,12 +279,20 @@ internal sealed class ReviewerCopilotPromptRunner {
             }
         }
 
-        return (finalMessage ?? response.ToString(), usage);
+        return new ParsedCopilotPromptOutput(finalMessage ?? response.ToString(), usage, jsonObjectCount, parseErrorCount);
     }
 
     internal static ReviewerCopilotPromptResult ParseJsonLinesForTests(string stdout) {
-        var parsed = ParseJsonLines(stdout);
+        var parsed = ParseJsonOutput(stdout);
         return new ReviewerCopilotPromptResult(parsed.Response, parsed.UsageSummary);
+    }
+
+    internal static (bool Retry, bool DisableBuiltinMcps, bool DisableToolSurface, bool CaptureLogs)
+        ApplyCompatibilityFallbacksForTests(int exitCode, string stdout, string stderr, bool disableBuiltinMcps,
+            bool disableToolSurface, bool captureLogs) {
+        var retry = TryApplyCompatibilityFallbacks(new CopilotPromptProcessResult(exitCode, stdout, stderr),
+            ref disableBuiltinMcps, ref disableToolSurface, ref captureLogs);
+        return (retry, disableBuiltinMcps, disableToolSurface, captureLogs);
     }
 
     internal static string[] BuildArgumentsForTests(CopilotClientOptions options, string cliPath, string prompt,
@@ -402,7 +405,7 @@ internal sealed class ReviewerCopilotPromptRunner {
     private static bool IsUnsupportedAvailableToolsFlag(string stdout, string stderr) {
         var combined = string.Concat(stdout, "\n", stderr);
         if (combined.Contains("Unknown tool name in the tool allowlist", StringComparison.OrdinalIgnoreCase) &&
-            combined.Contains("\"none\"", StringComparison.OrdinalIgnoreCase)) {
+            combined.Contains("none", StringComparison.OrdinalIgnoreCase)) {
             return true;
         }
         return IsUnsupportedFlag(stdout, stderr, "--available-tools");
@@ -548,8 +551,91 @@ internal sealed class ReviewerCopilotPromptRunner {
             // Best-effort cleanup only.
         }
     }
+
+    private static IReadOnlyList<JsonObject> ParseJsonObjects(string text, out int parseErrorCount) {
+        parseErrorCount = 0;
+        var results = new List<JsonObject>();
+        if (string.IsNullOrWhiteSpace(text)) {
+            return results;
+        }
+
+        var span = text.AsSpan();
+        var index = 0;
+        while (index < span.Length) {
+            while (index < span.Length && span[index] != '{') {
+                index++;
+            }
+            if (index >= span.Length) {
+                break;
+            }
+
+            var start = index;
+            var depth = 0;
+            var inString = false;
+            var escaped = false;
+            var end = -1;
+
+            for (var i = index; i < span.Length; i++) {
+                var ch = span[i];
+                if (inString) {
+                    if (escaped) {
+                        escaped = false;
+                        continue;
+                    }
+                    if (ch == '\\') {
+                        escaped = true;
+                        continue;
+                    }
+                    if (ch == '"') {
+                        inString = false;
+                    }
+                    continue;
+                }
+
+                if (ch == '"') {
+                    inString = true;
+                    continue;
+                }
+                if (ch == '{') {
+                    depth++;
+                    continue;
+                }
+                if (ch != '}') {
+                    continue;
+                }
+
+                depth--;
+                if (depth == 0) {
+                    end = i;
+                    break;
+                }
+            }
+
+            if (end < 0) {
+                break;
+            }
+
+            var candidate = text.Substring(start, end - start + 1);
+            JsonObject? obj = null;
+            try {
+                obj = JsonLite.Parse(candidate).AsObject();
+            } catch {
+                parseErrorCount++;
+            }
+
+            if (obj is not null) {
+                results.Add(obj);
+            }
+
+            index = end + 1;
+        }
+
+        return results;
+    }
 }
 
 internal sealed record ReviewerCopilotPromptResult(string Response, string? UsageSummary);
 
 internal sealed record CopilotPromptProcessResult(int ExitCode, string Stdout, string Stderr);
+internal sealed record ParsedCopilotPromptOutput(string Response, string? UsageSummary, int JsonObjectCount,
+    int ParseErrorCount);

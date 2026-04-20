@@ -1067,6 +1067,17 @@ internal static partial class Program {
         AssertContainsText(result.UsageSummary ?? string.Empty, "API: 2500 ms", "copilot prompt usage api");
     }
 
+    private static void TestCopilotPromptRunnerParsesConcatenatedJsonOutput() {
+        var output =
+            """prefix noise {"type":"assistant.message_delta","data":{"deltaContent":"Hel"}}{"type":"assistant.message","data":{"content":"## Summary\n\nFinal review"}}{"type":"result","usage":{"premiumRequests":1}} trailing noise""";
+
+        var result = ReviewerCopilotPromptRunner.ParseJsonLinesForTests(output);
+
+        AssertEqual("## Summary\n\nFinal review", result.Response, "copilot prompt concatenated final message");
+        AssertContainsText(result.UsageSummary ?? string.Empty, "premium requests: 1",
+            "copilot prompt concatenated usage");
+    }
+
     private static void TestCopilotPromptRunnerBuildsMcpDisabledArgs() {
         var cliPath = Path.Combine(Path.GetPathRoot(Environment.CurrentDirectory) ?? Directory.GetCurrentDirectory(),
             "copilot");
@@ -1148,6 +1159,24 @@ internal static partial class Program {
         AssertEqual(false, ReviewerCopilotPromptRunner.IsUnsupportedLogCaptureFlagForTests(
             string.Empty, "error: unknown option '--available-tools'"),
             "copilot prompt ignores unrelated unknown flag for log capture");
+    }
+
+    private static void TestCopilotPromptRunnerRetriesCompatibilityFallbacksOnSuccessfulWarnings() {
+        var stdout =
+            """{"type":"session.info","data":{"infoType":"configuration","message":"Unknown tool name in the tool allowlist: \"none\""}}""";
+
+        var fallback = ReviewerCopilotPromptRunner.ApplyCompatibilityFallbacksForTests(
+            0,
+            stdout,
+            string.Empty,
+            disableBuiltinMcps: true,
+            disableToolSurface: true,
+            captureLogs: true);
+
+        AssertEqual(true, fallback.Retry, "copilot prompt retries on success warning");
+        AssertEqual(true, fallback.DisableBuiltinMcps, "copilot prompt keeps MCP flag when unrelated");
+        AssertEqual(false, fallback.DisableToolSurface, "copilot prompt drops unsupported tool surface flag");
+        AssertEqual(true, fallback.CaptureLogs, "copilot prompt keeps log capture when unrelated");
     }
 
     private static void TestCopilotPromptRunnerRequiresActionsCopilotToken() {

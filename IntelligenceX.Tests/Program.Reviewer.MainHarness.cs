@@ -679,10 +679,14 @@ internal static partial class Program {
         failed += Run("Copilot model env overrides generic model", TestCopilotModelEnvOverridesGenericModel);
         failed += Run("Copilot default OpenAI model uses CLI default", TestCopilotDefaultOpenAiModelUsesCliDefault);
         failed += Run("Copilot prompt runner parses JSON output", TestCopilotPromptRunnerParsesJsonOutput);
+        failed += Run("Copilot prompt runner parses concatenated JSON output",
+            TestCopilotPromptRunnerParsesConcatenatedJsonOutput);
         failed += Run("Copilot prompt runner builds MCP-disabled args",
             TestCopilotPromptRunnerBuildsMcpDisabledArgs);
         failed += Run("Copilot prompt runner detects unsupported MCP flag",
             TestCopilotPromptRunnerDetectsUnsupportedMcpFlag);
+        failed += Run("Copilot prompt runner retries compatibility fallbacks on successful warnings",
+            TestCopilotPromptRunnerRetriesCompatibilityFallbacksOnSuccessfulWarnings);
         failed += Run("Copilot gh launcher builds wrapper command", TestCopilotGhLauncherBuildsWrapperCommand);
         failed += Run("Copilot auto launcher uses binary",
             TestCopilotAutoLauncherUsesBinary);
