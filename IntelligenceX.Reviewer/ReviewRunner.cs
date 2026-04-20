@@ -20,6 +20,7 @@ namespace IntelligenceX.Reviewer;
 
 internal sealed partial class ReviewRunner {
     private const int MinimumCopilotCliReviewWaitSeconds = 600;
+    private const int MaximumCopilotPromptModeChars = 24_000;
     private readonly ReviewSettings _settings;
     public ReviewProvider EffectiveProvider { get; private set; }
     public bool FallbackActivated { get; private set; }
@@ -481,7 +482,7 @@ internal sealed partial class ReviewRunner {
         if (_settings.CopilotTransport == CopilotTransportKind.Direct) {
             return await RunCopilotDirectAsync(prompt, cancellationToken).ConfigureAwait(false);
         }
-        if (ShouldUseCopilotPromptMode(_settings)) {
+        if (ShouldUseCopilotPromptMode(_settings, prompt)) {
             try {
                 return await RunCopilotPromptAsync(prompt, onPartial, cancellationToken).ConfigureAwait(false);
             } catch (Exception ex) when (!cancellationToken.IsCancellationRequested &&
@@ -489,6 +490,10 @@ internal sealed partial class ReviewRunner {
                 Console.Error.WriteLine(
                     $"Copilot prompt mode failed ({ex.GetType().Name}: {SummarizePromptFailure(ex.Message)}); falling back to CLI server-session mode.");
             }
+        } else if (_settings.Diagnostics && string.IsNullOrWhiteSpace(_settings.CopilotCliUrl) &&
+                   prompt.Length > MaximumCopilotPromptModeChars) {
+            Console.Error.WriteLine(
+                $"Skipping Copilot prompt mode because the rendered review prompt is {prompt.Length} chars, above the safe argv budget of {MaximumCopilotPromptModeChars} chars. Using CLI server-session mode instead.");
         }
         return await RunCopilotCliSessionAsync(prompt, onPartial, updateInterval, cancellationToken).ConfigureAwait(false);
     }
@@ -526,10 +531,12 @@ internal sealed partial class ReviewRunner {
 
         var deltas = new StringBuilder();
         string? finalMessage = null;
+        var lastActivityUtc = DateTimeOffset.UtcNow;
 
         var tcs = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         using var subscription = session.OnEvent(evt => {
+            lastActivityUtc = DateTimeOffset.UtcNow;
             if (!string.IsNullOrWhiteSpace(evt.Content)) {
                 finalMessage = evt.Content;
             }
@@ -545,6 +552,21 @@ internal sealed partial class ReviewRunner {
                 tcs.TrySetResult(finalMessage ?? GetDeltas(deltas));
             }
         });
+
+        var inactivityWindow = ResolveCopilotCliSessionCompletionInactivity(_settings);
+        using var completionCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var completionWatchdog = Task.Run(async () => {
+            while (!completionCts.IsCancellationRequested) {
+                await Task.Delay(500, completionCts.Token).ConfigureAwait(false);
+                if (!ShouldCompleteCopilotSessionWithoutIdle(finalMessage, GetDeltas(deltas),
+                        DateTimeOffset.UtcNow - lastActivityUtc, inactivityWindow)) {
+                    continue;
+                }
+
+                tcs.TrySetResult(finalMessage ?? GetDeltas(deltas));
+                return;
+            }
+        }, completionCts.Token);
 
         CancellationTokenSource? progressCts = null;
         Task? progressTask = null;
@@ -571,19 +593,26 @@ internal sealed partial class ReviewRunner {
         using var registration = timeout.Token.Register(() =>
             tcs.TrySetException(new TimeoutException(BuildCopilotTimeoutMessage(timeoutWindow, launcherDiagnostic, stderrLines, stderrLock))));
 
-        var result = await tcs.Task.ConfigureAwait(false);
-
-        if (progressTask is not null && progressCts is not null) {
-            progressCts.Cancel();
+        try {
+            var result = await tcs.Task.ConfigureAwait(false);
+            return result ?? string.Empty;
+        } finally {
+            completionCts.Cancel();
             try {
-                await progressTask.ConfigureAwait(false);
+                await completionWatchdog.ConfigureAwait(false);
             } catch (OperationCanceledException) {
-                // Expected on cancellation.
+                // Expected when the review completes before the inactivity fallback fires.
             }
-            progressCts.Dispose();
+            if (progressTask is not null && progressCts is not null) {
+                progressCts.Cancel();
+                try {
+                    await progressTask.ConfigureAwait(false);
+                } catch (OperationCanceledException) {
+                    // Expected on cancellation.
+                }
+                progressCts.Dispose();
+            }
         }
-
-        return result ?? string.Empty;
     }
 
     private async Task<string> RunCopilotPromptAsync(string prompt, Func<string, Task>? onPartial,
@@ -617,7 +646,35 @@ internal sealed partial class ReviewRunner {
     }
 
     private static bool ShouldUseCopilotPromptMode(ReviewSettings settings) =>
-        string.IsNullOrWhiteSpace(settings.CopilotCliUrl);
+        ShouldUseCopilotPromptMode(settings, prompt: null);
+
+    private static bool ShouldUseCopilotPromptMode(ReviewSettings settings, string? prompt) {
+        if (!string.IsNullOrWhiteSpace(settings.CopilotCliUrl)) {
+            return false;
+        }
+
+        if (!string.IsNullOrWhiteSpace(prompt) && prompt.Length > MaximumCopilotPromptModeChars) {
+            return false;
+        }
+
+        return true;
+    }
+
+    internal static bool ShouldUseCopilotPromptModeForTests(ReviewSettings settings, string? prompt) =>
+        ShouldUseCopilotPromptMode(settings, prompt);
+
+    internal static TimeSpan ResolveCopilotCliSessionCompletionInactivity(ReviewSettings settings) {
+        return TimeSpan.FromSeconds(Math.Max(5, settings.IdleSeconds));
+    }
+
+    internal static bool ShouldCompleteCopilotSessionWithoutIdle(string? finalMessage, string? deltaSnapshot,
+        TimeSpan inactivity, TimeSpan inactivityWindow) {
+        if (inactivity < inactivityWindow) {
+            return false;
+        }
+
+        return !string.IsNullOrWhiteSpace(finalMessage) || !string.IsNullOrWhiteSpace(deltaSnapshot);
+    }
 
     private string BuildCopilotPromptTimeoutMessage(string launcherDiagnostic, string detail) {
         var sb = new StringBuilder();

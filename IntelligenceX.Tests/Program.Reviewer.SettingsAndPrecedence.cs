@@ -534,6 +534,23 @@ internal static partial class Program {
 """);
             AssertThrows<InvalidOperationException>(() => ReviewSettings.Load(),
                 "review settings invalid agent profile openai transport");
+
+            File.WriteAllText(configPath, """
+{
+  "review": {
+    "agentProfile": "broken-copilot-transport",
+    "agentProfiles": {
+      "broken-copilot-transport": {
+        "provider": "copilot",
+        "model": "gpt-5.4",
+        "copilotTransport": "driect"
+      }
+    }
+  }
+}
+""");
+            AssertThrows<InvalidOperationException>(() => ReviewSettings.Load(),
+                "review settings invalid agent profile copilot transport");
         } finally {
             Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", previousConfigPath);
             if (File.Exists(configPath)) {

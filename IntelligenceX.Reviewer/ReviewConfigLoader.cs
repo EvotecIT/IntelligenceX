@@ -677,7 +677,8 @@ internal static class ReviewConfigLoader {
     private static void ApplyAgentProfileCopilot(JsonObject obj, ReviewAgentProfileSettings profile) {
         var transport = obj.GetString("copilotTransport") ?? obj.GetString("transport");
         if (!string.IsNullOrWhiteSpace(transport)) {
-            profile.CopilotTransport = ParseCopilotTransport(transport, CopilotTransportKind.Cli);
+            profile.CopilotTransport = ParseCopilotTransportOrThrow(transport,
+                $"review.agentProfiles.{profile.Id}.copilotTransport");
         }
         profile.CopilotModel = obj.GetString("copilotModel") ?? profile.CopilotModel;
         profile.CopilotLauncher = obj.GetString("copilotLauncher") ?? obj.GetString("launcher") ?? profile.CopilotLauncher;
@@ -759,6 +760,20 @@ internal static class ReviewConfigLoader {
             "direct" or "api" or "http" => CopilotTransportKind.Direct,
             "cli" => CopilotTransportKind.Cli,
             _ => fallback
+        };
+    }
+
+    private static CopilotTransportKind ParseCopilotTransportOrThrow(string value, string source) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            throw new InvalidOperationException($"Missing Copilot transport from {source}.");
+        }
+
+        var normalized = value.Trim().ToLowerInvariant();
+        return normalized switch {
+            "direct" or "api" or "http" => CopilotTransportKind.Direct,
+            "cli" => CopilotTransportKind.Cli,
+            _ => throw new InvalidOperationException(
+                $"Unknown Copilot transport '{value.Trim()}' from {source}.")
         };
     }
 

@@ -1164,6 +1164,59 @@ internal static partial class Program {
             "copilot prompt exit failures should not trigger session fallback");
     }
 
+    private static void TestCopilotPromptModeSkipsOversizedPrompts() {
+        var settings = new ReviewSettings();
+        var safePrompt = new string('a', 1024);
+        var oversizedPrompt = new string('b', 24_001);
+
+        AssertEqual(true, ReviewRunner.ShouldUseCopilotPromptModeForTests(settings, safePrompt),
+            "copilot prompt mode should allow normal prompt sizes");
+        AssertEqual(false, ReviewRunner.ShouldUseCopilotPromptModeForTests(settings, oversizedPrompt),
+            "copilot prompt mode should skip oversized prompts");
+
+        settings.CopilotCliUrl = "http://localhost:4141";
+        AssertEqual(false, ReviewRunner.ShouldUseCopilotPromptModeForTests(settings, safePrompt),
+            "copilot prompt mode should be disabled when cliUrl is configured");
+    }
+
+    private static void TestCopilotCliSessionCompletesAfterContentSilence() {
+        var inactivityWindow = ReviewRunner.ResolveCopilotCliSessionCompletionInactivity(new ReviewSettings {
+            IdleSeconds = 15
+        });
+
+        AssertEqual(true,
+            ReviewRunner.ShouldCompleteCopilotSessionWithoutIdle(
+                "## Summary",
+                string.Empty,
+                inactivityWindow,
+                inactivityWindow),
+            "copilot cli session should complete after silence once final content exists");
+
+        AssertEqual(true,
+            ReviewRunner.ShouldCompleteCopilotSessionWithoutIdle(
+                null,
+                "partial delta",
+                inactivityWindow,
+                inactivityWindow),
+            "copilot cli session should complete after silence once deltas exist");
+
+        AssertEqual(false,
+            ReviewRunner.ShouldCompleteCopilotSessionWithoutIdle(
+                null,
+                string.Empty,
+                inactivityWindow,
+                inactivityWindow),
+            "copilot cli session should not complete from silence without any content");
+
+        AssertEqual(false,
+            ReviewRunner.ShouldCompleteCopilotSessionWithoutIdle(
+                "## Summary",
+                string.Empty,
+                TimeSpan.FromSeconds(2),
+                inactivityWindow),
+            "copilot cli session should wait for the inactivity window");
+    }
+
     private static void TestCopilotInstallResolverFindsPlatformInstall() {
         var previousHome = Environment.GetEnvironmentVariable("HOME");
         var previousUserProfile = Environment.GetEnvironmentVariable("USERPROFILE");
@@ -1462,6 +1515,16 @@ Please keep the review text as plain stdout.
             actionsEnvironment);
 
         AssertEqual(null, isolatedForwarded, "copilot prompt accepts explicitly forwarded token when env is isolated");
+    }
+
+    private static void TestCopilotPromptStartFailureKeepsCauseDetails() {
+        var exception = new InvalidOperationException(
+            "Copilot CLI not found or failed to start in prompt mode. File: /home/runner/.local/bin/copilot. Working directory: /repo. Cause: Argument list too long.");
+
+        AssertEqual(true, ReviewRunner.ShouldFallbackFromCopilotPromptFailure(exception),
+            "copilot prompt start failure with extra cause detail should still trigger fallback");
+        AssertContainsText(exception.Message, "Argument list too long",
+            "copilot prompt start failure should preserve the underlying cause");
     }
 
     private static void TestCopilotGhLauncherBuildsWrapperCommand() {

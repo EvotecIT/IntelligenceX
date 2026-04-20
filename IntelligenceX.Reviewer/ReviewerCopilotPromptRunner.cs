@@ -112,7 +112,7 @@ internal sealed class ReviewerCopilotPromptRunner {
                 throw new InvalidOperationException("Failed to start Copilot CLI prompt process.");
             }
         } catch (Exception ex) {
-            throw new InvalidOperationException("Copilot CLI not found or failed to start in prompt mode.", ex);
+            throw new InvalidOperationException(BuildStartFailureMessage(startInfo, ex), ex);
         }
 
         var stdout = new StringBuilder();
@@ -519,6 +519,26 @@ internal sealed class ReviewerCopilotPromptRunner {
         sb.Append(timeout.TotalSeconds.ToString("0"));
         sb.Append(" seconds without completing.");
         AppendRecentStderr(sb, stderr);
+        return sb.ToString().TrimEnd();
+    }
+
+    private static string BuildStartFailureMessage(ProcessStartInfo startInfo, Exception ex) {
+        var sb = new StringBuilder();
+        sb.Append("Copilot CLI not found or failed to start in prompt mode.");
+        if (!string.IsNullOrWhiteSpace(startInfo.FileName)) {
+            sb.Append(" File: ");
+            sb.Append(startInfo.FileName);
+            sb.Append('.');
+        }
+        if (!string.IsNullOrWhiteSpace(startInfo.WorkingDirectory)) {
+            sb.Append(" Working directory: ");
+            sb.Append(startInfo.WorkingDirectory);
+            sb.Append('.');
+        }
+        if (!string.IsNullOrWhiteSpace(ex.Message)) {
+            sb.Append(" Cause: ");
+            sb.Append(ex.Message.Trim());
+        }
         return sb.ToString().TrimEnd();
     }
 
