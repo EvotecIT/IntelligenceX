@@ -96,7 +96,12 @@ internal sealed class ReviewerCopilotPromptRunner {
             return parsed.Response;
         }
 
-        return parsed.ParseErrorCount == 0 ? stdout.Trim() : string.Empty;
+        var trimmed = stdout.Trim();
+        if (string.IsNullOrWhiteSpace(trimmed)) {
+            return string.Empty;
+        }
+
+        return HasNonJsonTextOutsideObjects(stdout) ? trimmed : string.Empty;
     }
 
     private static async Task<CopilotPromptProcessResult> RunProcessAsync(ProcessStartInfo startInfo,
@@ -657,48 +662,7 @@ internal sealed class ReviewerCopilotPromptRunner {
             }
 
             var start = index;
-            var depth = 0;
-            var inString = false;
-            var escaped = false;
-            var end = -1;
-
-            for (var i = index; i < span.Length; i++) {
-                var ch = span[i];
-                if (inString) {
-                    if (escaped) {
-                        escaped = false;
-                        continue;
-                    }
-                    if (ch == '\\') {
-                        escaped = true;
-                        continue;
-                    }
-                    if (ch == '"') {
-                        inString = false;
-                    }
-                    continue;
-                }
-
-                if (ch == '"') {
-                    inString = true;
-                    continue;
-                }
-                if (ch == '{') {
-                    depth++;
-                    continue;
-                }
-                if (ch != '}') {
-                    continue;
-                }
-
-                depth--;
-                if (depth == 0) {
-                    end = i;
-                    break;
-                }
-            }
-
-            if (end < 0) {
+            if (!TryFindJsonObjectEnd(span, start, out var end)) {
                 parseErrorCount++;
                 break;
             }
@@ -719,6 +683,79 @@ internal sealed class ReviewerCopilotPromptRunner {
         }
 
         return results;
+    }
+
+    private static bool HasNonJsonTextOutsideObjects(string text) {
+        if (string.IsNullOrWhiteSpace(text)) {
+            return false;
+        }
+
+        var span = text.AsSpan();
+        var index = 0;
+        while (index < span.Length) {
+            while (index < span.Length && char.IsWhiteSpace(span[index])) {
+                index++;
+            }
+            if (index >= span.Length) {
+                break;
+            }
+
+            if (span[index] != '{') {
+                return true;
+            }
+
+            if (!TryFindJsonObjectEnd(span, index, out var end)) {
+                return false;
+            }
+
+            index = end + 1;
+        }
+
+        return false;
+    }
+
+    private static bool TryFindJsonObjectEnd(ReadOnlySpan<char> span, int start, out int end) {
+        var depth = 0;
+        var inString = false;
+        var escaped = false;
+        for (var i = start; i < span.Length; i++) {
+            var ch = span[i];
+            if (inString) {
+                if (escaped) {
+                    escaped = false;
+                    continue;
+                }
+                if (ch == '\\') {
+                    escaped = true;
+                    continue;
+                }
+                if (ch == '"') {
+                    inString = false;
+                }
+                continue;
+            }
+
+            if (ch == '"') {
+                inString = true;
+                continue;
+            }
+            if (ch == '{') {
+                depth++;
+                continue;
+            }
+            if (ch != '}') {
+                continue;
+            }
+
+            depth--;
+            if (depth == 0) {
+                end = i;
+                return true;
+            }
+        }
+
+        end = -1;
+        return false;
     }
 }
 

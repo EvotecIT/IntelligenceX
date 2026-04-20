@@ -487,7 +487,7 @@ internal sealed partial class ReviewRunner {
             } catch (Exception ex) when (!cancellationToken.IsCancellationRequested &&
                                          ShouldFallbackFromCopilotPromptFailure(ex)) {
                 Console.Error.WriteLine(
-                    $"Copilot prompt mode failed ({ex.GetType().Name}); falling back to CLI server-session mode.");
+                    $"Copilot prompt mode failed ({ex.GetType().Name}: {SummarizePromptFailure(ex.Message)}); falling back to CLI server-session mode.");
             }
         }
         return await RunCopilotCliSessionAsync(prompt, onPartial, updateInterval, cancellationToken).ConfigureAwait(false);
@@ -500,6 +500,15 @@ internal sealed partial class ReviewRunner {
             return true;
         }
         return ex.InnerException is not null && ShouldFallbackFromCopilotPromptFailure(ex.InnerException);
+    }
+
+    private static string SummarizePromptFailure(string? message) {
+        if (string.IsNullOrWhiteSpace(message)) {
+            return "no detail";
+        }
+
+        var singleLine = message.Replace("\r", " ").Replace("\n", " ").Trim();
+        return singleLine.Length <= 180 ? singleLine : singleLine[..180] + "...";
     }
 
     private async Task<string> RunCopilotCliSessionAsync(string prompt, Func<string, Task>? onPartial,

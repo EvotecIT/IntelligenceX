@@ -1251,6 +1251,39 @@ No structured assistant event was emitted.
         AssertEqual(null, result, "copilot prompt malformed stdout fallback result");
     }
 
+    private static void TestCopilotPromptRunnerFallsBackToStdoutWhenBraceNoisePreventsJsonParsing() {
+        var output = """
+Review completed successfully.
+Compatibility note: {not actually json
+Please keep the review text as plain stdout.
+""";
+
+        var accepted = ReviewerCopilotPromptRunner.TryBuildSuccessfulResultForTests(
+            0,
+            output,
+            string.Empty,
+            out var result);
+
+        AssertEqual(true, accepted, "copilot prompt accepts stdout with brace-heavy noise");
+        AssertContainsText(result?.Response ?? string.Empty, "Review completed successfully.",
+            "copilot prompt keeps prose when brace noise appears");
+        AssertContainsText(result?.Response ?? string.Empty, "Compatibility note:",
+            "copilot prompt preserves malformed brace snippet in stdout fallback");
+    }
+
+    private static void TestCopilotPromptRunnerDoesNotTreatJsonWarningsAsReviewContent() {
+        var output = """{"type":"session.info","data":{"infoType":"configuration","message":"Unknown tool name in the tool allowlist: \"none\""}}""";
+
+        var accepted = ReviewerCopilotPromptRunner.TryBuildSuccessfulResultForTests(
+            0,
+            output,
+            string.Empty,
+            out var result);
+
+        AssertEqual(false, accepted, "copilot prompt should not treat warning-only JSON as review content");
+        AssertEqual(null, result, "copilot prompt warning-only JSON result");
+    }
+
     private static void TestCopilotPromptRunnerBuildsMcpDisabledArgs() {
         var cliPath = Path.Combine(Path.GetPathRoot(Environment.CurrentDirectory) ?? Directory.GetCurrentDirectory(),
             "copilot");

@@ -693,6 +693,10 @@ internal static partial class Program {
             TestCopilotPromptRunnerFallsBackToStdoutWhenJsonIsValidButNoAssistantMessageWasParsed);
         failed += Run("Copilot prompt runner rejects malformed JSON without assistant message",
             TestCopilotPromptRunnerRejectsMalformedJsonWithoutAssistantMessage);
+        failed += Run("Copilot prompt runner falls back to stdout when brace noise prevents JSON parsing",
+            TestCopilotPromptRunnerFallsBackToStdoutWhenBraceNoisePreventsJsonParsing);
+        failed += Run("Copilot prompt runner does not treat JSON warnings as review content",
+            TestCopilotPromptRunnerDoesNotTreatJsonWarningsAsReviewContent);
         failed += Run("Copilot prompt runner builds MCP-disabled args",
             TestCopilotPromptRunnerBuildsMcpDisabledArgs);
         failed += Run("Copilot prompt runner wraps rooted Windows cmd paths",
