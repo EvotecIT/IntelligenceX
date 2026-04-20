@@ -1247,8 +1247,14 @@ internal static partial class Program {
 
         AssertEqual(true,
             ReviewRunner.ShouldFallbackFromCopilotPromptFailure(
+                new InvalidOperationException(
+                    "Copilot CLI prompt mode exited with code 1.\nRecent Copilot CLI stderr:\n  error: unknown option '--available-tools=none'")),
+            "copilot prompt compatibility exit failures should trigger session fallback");
+
+        AssertEqual(false,
+            ReviewRunner.ShouldFallbackFromCopilotPromptFailure(
                 new InvalidOperationException("Copilot CLI prompt mode exited with code 1.")),
-            "copilot prompt exit failures should trigger session fallback");
+            "copilot prompt generic exit failures should not trigger session fallback");
 
         AssertEqual(true,
             ReviewRunner.ShouldFallbackFromCopilotPromptFailure(
@@ -1674,6 +1680,50 @@ Please keep the review text as plain stdout.
             actionsEnvironment);
 
         AssertEqual(null, isolatedForwarded, "copilot prompt accepts explicitly forwarded token when env is isolated");
+    }
+
+    private static void TestCopilotPromptRunnerWriteHonorsTimeout() {
+        ProcessStartInfo startInfo;
+        if (OperatingSystem.IsWindows()) {
+            startInfo = new ProcessStartInfo {
+                FileName = "powershell",
+                UseShellExecute = false,
+                RedirectStandardInput = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true
+            };
+            startInfo.ArgumentList.Add("-NoProfile");
+            startInfo.ArgumentList.Add("-Command");
+            startInfo.ArgumentList.Add("Start-Sleep -Seconds 60");
+        } else {
+            startInfo = new ProcessStartInfo {
+                FileName = "bash",
+                UseShellExecute = false,
+                RedirectStandardInput = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true
+            };
+            startInfo.ArgumentList.Add("-lc");
+            startInfo.ArgumentList.Add("sleep 60");
+        }
+
+        var prompt = new string('x', 1_000_000);
+        TimeoutException? timeout = null;
+        try {
+            ReviewerCopilotPromptRunner.RunProcessForTests(startInfo, prompt, TimeSpan.FromMilliseconds(250))
+                .GetAwaiter()
+                .GetResult();
+        } catch (TimeoutException ex) {
+            timeout = ex;
+        }
+
+        if (timeout is null) {
+            throw new InvalidOperationException("Expected copilot prompt write timeout to throw TimeoutException.");
+        }
+
+        AssertContainsText(timeout.Message, "timed out", "copilot prompt write timeout should mention timeout");
     }
 
     private static void TestCopilotPromptStartFailureKeepsCauseDetails() {

@@ -746,6 +746,7 @@ internal static partial class Program {
         failed += Run("Copilot install resolver finds platform install", TestCopilotInstallResolverFindsPlatformInstall);
         failed += Run("Copilot prompt runner rejects missing configured cli path",
             TestCopilotPromptRunnerRejectsMissingConfiguredCliPath);
+        failed += Run("Copilot prompt runner write honors timeout", TestCopilotPromptRunnerWriteHonorsTimeout);
         failed += Run("Copilot direct auth conflict", TestCopilotDirectAuthorizationConflict);
         failed += Run("Copilot CLI path requires env", TestCopilotCliPathRequiresEnvironment);
         failed += Run("Copilot CLI path optional with url", TestCopilotCliPathOptionalWithUrl);

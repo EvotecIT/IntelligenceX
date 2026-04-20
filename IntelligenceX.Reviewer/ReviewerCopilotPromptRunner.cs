@@ -123,7 +123,17 @@ internal sealed class ReviewerCopilotPromptRunner {
         var stdoutTask = PumpReaderAsync(process.StandardOutput, stdout, outputLock);
         var stderrTask = PumpReaderAsync(process.StandardError, stderr, outputLock);
         try {
-            await WritePromptAsync(process, prompt, cancellationToken).ConfigureAwait(false);
+            await WritePromptAsync(process, prompt, timeout, cancellationToken).ConfigureAwait(false);
+        } catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested) {
+            var recovered = await TryRecoverExitedProcessResultAsync(process, stdoutTask, stderrTask, stdout, stderr,
+                outputLock).ConfigureAwait(false);
+            if (recovered is not null) {
+                return recovered;
+            }
+
+            TryKill(process);
+            await Task.WhenAll(stdoutTask, stderrTask).ConfigureAwait(false);
+            throw new TimeoutException(BuildTimeoutMessage(timeout, SnapshotText(stderr, outputLock)), ex);
         } catch (Exception ex) when (ex is IOException or InvalidOperationException or ObjectDisposedException) {
             var recovered = await TryRecoverExitedProcessResultAsync(process, stdoutTask, stderrTask, stdout, stderr,
                 outputLock).ConfigureAwait(false);
@@ -207,9 +217,12 @@ internal sealed class ReviewerCopilotPromptRunner {
         return startInfo;
     }
 
-    private static async Task WritePromptAsync(Process process, string prompt, CancellationToken cancellationToken) {
-        await process.StandardInput.WriteAsync(prompt.AsMemory(), cancellationToken).ConfigureAwait(false);
-        await process.StandardInput.FlushAsync().ConfigureAwait(false);
+    private static async Task WritePromptAsync(Process process, string prompt, TimeSpan timeout,
+        CancellationToken cancellationToken) {
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(timeout);
+        await process.StandardInput.WriteAsync(prompt.AsMemory(), timeoutCts.Token).ConfigureAwait(false);
+        await process.StandardInput.FlushAsync(timeoutCts.Token).ConfigureAwait(false);
         process.StandardInput.Close();
     }
 
@@ -423,6 +436,12 @@ internal sealed class ReviewerCopilotPromptRunner {
 
         result = (processResult.ExitCode, processResult.Stdout, processResult.Stderr);
         return true;
+    }
+
+    internal static async Task<(int ExitCode, string Stdout, string Stderr)> RunProcessForTests(
+        ProcessStartInfo startInfo, string prompt, TimeSpan timeout, CancellationToken cancellationToken = default) {
+        var result = await RunProcessAsync(startInfo, prompt, timeout, cancellationToken).ConfigureAwait(false);
+        return (result.ExitCode, result.Stdout, result.Stderr);
     }
 
     internal static string[] BuildArgumentsForTests(CopilotClientOptions options, string cliPath, string prompt,

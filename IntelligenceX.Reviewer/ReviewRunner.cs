@@ -551,11 +551,26 @@ internal sealed partial class ReviewRunner {
             return false;
         }
 
+        if (message.Contains("Copilot CLI prompt mode exited with code", StringComparison.OrdinalIgnoreCase)) {
+            return ContainsRecoverablePromptCompatibilityDetail(message);
+        }
+
         return message.StartsWith("Copilot CLI not found or failed to start in prompt mode",
                    StringComparison.OrdinalIgnoreCase) ||
                message.StartsWith("Copilot CLI prompt mode failed while writing prompt input.",
-                   StringComparison.OrdinalIgnoreCase) ||
-               message.Contains("Copilot CLI prompt mode exited with code", StringComparison.OrdinalIgnoreCase);
+                   StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool ContainsRecoverablePromptCompatibilityDetail(string message) {
+        return message.Contains("--disable-builtin-mcps", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("--available-tools", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("--log-dir", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("--log-level", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("Unknown tool name in the tool allowlist", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("unknown option", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("unrecognized", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("invalid option", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("unexpected argument", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string SummarizePromptFailure(string? message) {
