@@ -1123,13 +1123,13 @@ internal static partial class Program {
     private static void TestCopilotPromptFailureFallsBackForTimeoutAndPromptErrors() {
         AssertEqual(true,
             ReviewRunner.ShouldFallbackFromCopilotPromptFailure(
-                new TimeoutException("Copilot CLI prompt mode timed out after 420 seconds.")),
-            "copilot prompt timeout should trigger session fallback");
-
-        AssertEqual(true,
-            ReviewRunner.ShouldFallbackFromCopilotPromptFailure(
                 new InvalidOperationException("Copilot CLI not found or failed to start in prompt mode.")),
             "copilot prompt start failure should trigger session fallback");
+
+        AssertEqual(false,
+            ReviewRunner.ShouldFallbackFromCopilotPromptFailure(
+                new TimeoutException("Copilot CLI prompt mode timed out after 420 seconds.")),
+            "copilot prompt timeout should not trigger session fallback");
 
         AssertEqual(false,
             ReviewRunner.ShouldFallbackFromCopilotPromptFailure(
@@ -1238,10 +1238,29 @@ internal static partial class Program {
             "--available-tools=none",
             "--disable-builtin-mcps",
             "--stream",
-            "off",
+            "on",
             "--output-format",
             "json"
         }, ghArgs, "copilot gh prompt args");
+    }
+
+    private static void TestCopilotPromptRunnerWrapsRootedWindowsCmdPaths() {
+        var cliPath = OperatingSystem.IsWindows()
+            ? @"C:\Tools\copilot.cmd"
+            : "/tmp/copilot";
+
+        var resolved = ReviewerCopilotPromptRunner.ResolveCliCommandForTests(cliPath, "-p", "review prompt");
+
+        if (OperatingSystem.IsWindows()) {
+            AssertEqual("cmd", resolved.FileName, "copilot prompt rooted cmd wrapper filename");
+            AssertSequenceEqual(new[] { "/c", cliPath, "-p", "review prompt" }, resolved.Args,
+                "copilot prompt rooted cmd wrapper args");
+            return;
+        }
+
+        AssertEqual(cliPath, resolved.FileName, "copilot prompt rooted unix path filename");
+        AssertSequenceEqual(new[] { "-p", "review prompt" }, resolved.Args,
+            "copilot prompt rooted unix path args");
     }
 
     private static void TestCopilotPromptRunnerDetectsUnsupportedMcpFlag() {
@@ -1442,6 +1461,25 @@ internal static partial class Program {
 
         AssertEqual("custom-copilot", options.CliPath ?? string.Empty, "copilot binary launcher path");
         AssertEqual(0, options.CliArgs.Count, "copilot binary launcher args");
+    }
+
+    private static void TestCopilotClientWrapsRootedWindowsCmdPaths() {
+        var cliPath = OperatingSystem.IsWindows()
+            ? @"C:\Tools\copilot.cmd"
+            : "/tmp/copilot";
+
+        var resolved = CopilotClient.ResolveCliCommandForTests(cliPath, "--server", "--log-level", "info");
+
+        if (OperatingSystem.IsWindows()) {
+            AssertEqual("cmd", resolved.FileName, "copilot client rooted cmd wrapper filename");
+            AssertSequenceEqual(new[] { "/c", cliPath, "--server", "--log-level", "info" }, resolved.Args,
+                "copilot client rooted cmd wrapper args");
+            return;
+        }
+
+        AssertEqual(cliPath, resolved.FileName, "copilot client rooted unix path filename");
+        AssertSequenceEqual(new[] { "--server", "--log-level", "info" }, resolved.Args,
+            "copilot client rooted unix path args");
     }
 
     private static void TestCopilotInheritEnvironmentDefault() {

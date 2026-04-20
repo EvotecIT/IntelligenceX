@@ -689,6 +689,8 @@ internal static partial class Program {
             TestCopilotPromptRunnerParsesConcatenatedJsonOutput);
         failed += Run("Copilot prompt runner builds MCP-disabled args",
             TestCopilotPromptRunnerBuildsMcpDisabledArgs);
+        failed += Run("Copilot prompt runner wraps rooted Windows cmd paths",
+            TestCopilotPromptRunnerWrapsRootedWindowsCmdPaths);
         failed += Run("Copilot prompt runner detects unsupported MCP flag",
             TestCopilotPromptRunnerDetectsUnsupportedMcpFlag);
         failed += Run("Copilot prompt runner retries compatibility fallbacks on successful warnings",
@@ -709,6 +711,7 @@ internal static partial class Program {
         failed += Run("Copilot launcher diagnostics describe resolved command",
             TestCopilotLauncherDiagnosticsDescribeResolvedCommand);
         failed += Run("Copilot binary launcher keeps direct cli path", TestCopilotBinaryLauncherKeepsDirectCliPath);
+        failed += Run("Copilot client wraps rooted Windows cmd paths", TestCopilotClientWrapsRootedWindowsCmdPaths);
         failed += Run("Copilot inherit env default", TestCopilotInheritEnvironmentDefault);
         failed += Run("Copilot direct timeout validation", TestCopilotDirectTimeoutValidation);
         failed += Run("Copilot chat timeout validation", TestCopilotChatTimeoutValidation);

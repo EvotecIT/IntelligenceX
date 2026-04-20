@@ -491,9 +491,6 @@ internal sealed partial class ReviewRunner {
     }
 
     internal static bool ShouldFallbackFromCopilotPromptFailure(Exception ex) {
-        if (ex is TimeoutException) {
-            return true;
-        }
         if (ex is InvalidOperationException invalid &&
             invalid.Message.Contains("prompt mode", StringComparison.OrdinalIgnoreCase)) {
             return true;

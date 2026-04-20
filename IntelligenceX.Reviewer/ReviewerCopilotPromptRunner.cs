@@ -80,22 +80,33 @@ internal sealed class ReviewerCopilotPromptRunner {
             throw new InvalidOperationException("Copilot CLI not found or failed to start in prompt mode.", ex);
         }
 
-        var stdoutTask = process.StandardOutput.ReadToEndAsync();
-        var stderrTask = process.StandardError.ReadToEndAsync();
-        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeoutCts.CancelAfter(timeout);
+        var stdout = new StringBuilder();
+        var stderr = new StringBuilder();
+        var outputLock = new object();
+        var lastActivityUtcTicks = DateTime.UtcNow.Ticks;
 
-        try {
-            await process.WaitForExitAsync(timeoutCts.Token).ConfigureAwait(false);
-        } catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested) {
-            TryKill(process);
-            var stderr = await ReadCompletedOrEmptyAsync(stderrTask).ConfigureAwait(false);
-            throw new TimeoutException(BuildTimeoutMessage(timeout, stderr), ex);
+        var stdoutTask = PumpReaderAsync(process.StandardOutput, stdout, outputLock,
+            () => Interlocked.Exchange(ref lastActivityUtcTicks, DateTime.UtcNow.Ticks));
+        var stderrTask = PumpReaderAsync(process.StandardError, stderr, outputLock,
+            () => Interlocked.Exchange(ref lastActivityUtcTicks, DateTime.UtcNow.Ticks));
+
+        while (!process.HasExited) {
+            if (cancellationToken.IsCancellationRequested) {
+                TryKill(process);
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+            var idle = DateTime.UtcNow - new DateTime(Interlocked.Read(ref lastActivityUtcTicks), DateTimeKind.Utc);
+            if (idle >= timeout) {
+                TryKill(process);
+                await Task.WhenAll(stdoutTask, stderrTask).ConfigureAwait(false);
+                throw new TimeoutException(BuildTimeoutMessage(timeout, SnapshotText(stderr, outputLock)));
+            }
+            await Task.Delay(250).ConfigureAwait(false);
         }
 
-        var stdout = await stdoutTask.ConfigureAwait(false);
-        var stderrText = await stderrTask.ConfigureAwait(false);
-        return new CopilotPromptProcessResult(process.ExitCode, stdout, stderrText);
+        await Task.WhenAll(stdoutTask, stderrTask).ConfigureAwait(false);
+        return new CopilotPromptProcessResult(process.ExitCode, SnapshotText(stdout, outputLock),
+            SnapshotText(stderr, outputLock));
     }
 
     private static ProcessStartInfo BuildStartInfo(CopilotClientOptions options, string cliPath, string prompt,
@@ -123,7 +134,7 @@ internal sealed class ReviewerCopilotPromptRunner {
             args.Add("--disable-builtin-mcps");
         }
         args.Add("--stream");
-        args.Add("off");
+        args.Add("on");
         args.Add("--output-format");
         args.Add("json");
         if (!string.IsNullOrWhiteSpace(model)) {
@@ -220,10 +231,15 @@ internal sealed class ReviewerCopilotPromptRunner {
         if (cliPath.EndsWith(".js", StringComparison.OrdinalIgnoreCase)) {
             return ("node", Prepend(cliPath, args));
         }
-        if (IsWindows() && !Path.IsPathRooted(cliPath)) {
+        if (RequiresCmdWrapper(cliPath)) {
             return ("cmd", Prepend("/c", Prepend(cliPath, args)));
         }
         return (cliPath, args);
+    }
+
+    internal static (string FileName, string[] Args) ResolveCliCommandForTests(string cliPath, params string[] args) {
+        var (fileName, resolvedArgs) = ResolveCliCommand(cliPath, args);
+        return (fileName, new List<string>(resolvedArgs).ToArray());
     }
 
     private static IEnumerable<string> Prepend(string value, IEnumerable<string> args) {
@@ -234,6 +250,17 @@ internal sealed class ReviewerCopilotPromptRunner {
     }
 
     private static bool IsWindows() => RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+
+    private static bool RequiresCmdWrapper(string cliPath) {
+        if (!IsWindows()) {
+            return false;
+        }
+        if (!Path.IsPathRooted(cliPath)) {
+            return true;
+        }
+        return cliPath.EndsWith(".cmd", StringComparison.OrdinalIgnoreCase) ||
+               cliPath.EndsWith(".bat", StringComparison.OrdinalIgnoreCase);
+    }
 
     private static bool TryApplyCompatibilityFallbacks(CopilotPromptProcessResult result, ref bool disableBuiltinMcps,
         ref bool disableToolSurface, ref bool captureLogs) {
@@ -454,7 +481,7 @@ internal sealed class ReviewerCopilotPromptRunner {
         var sb = new StringBuilder();
         sb.Append("Copilot CLI prompt mode timed out after ");
         sb.Append(timeout.TotalSeconds.ToString("0"));
-        sb.Append(" seconds.");
+        sb.Append(" seconds without output activity.");
         AppendRecentStderr(sb, stderr);
         return sb.ToString().TrimEnd();
     }
@@ -554,6 +581,32 @@ internal sealed class ReviewerCopilotPromptRunner {
             }
         } catch {
             // Best-effort cleanup only.
+        }
+    }
+
+    private static async Task PumpReaderAsync(StreamReader reader, StringBuilder builder, object sync,
+        Action markActivity) {
+        var buffer = new char[2048];
+        while (true) {
+            int read;
+            try {
+                read = await reader.ReadAsync(buffer, 0, buffer.Length).ConfigureAwait(false);
+            } catch {
+                break;
+            }
+            if (read <= 0) {
+                break;
+            }
+            lock (sync) {
+                builder.Append(buffer, 0, read);
+            }
+            markActivity();
+        }
+    }
+
+    private static string SnapshotText(StringBuilder builder, object sync) {
+        lock (sync) {
+            return builder.ToString();
         }
     }
 
