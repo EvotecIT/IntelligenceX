@@ -568,12 +568,10 @@ internal sealed partial class ReviewRunner {
 
         var deltas = new StringBuilder();
         string? finalMessage = null;
-        var lastActivityUtc = DateTimeOffset.UtcNow;
 
         var tcs = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         using var subscription = session.OnEvent(evt => {
-            lastActivityUtc = DateTimeOffset.UtcNow;
             if (!string.IsNullOrWhiteSpace(evt.Content)) {
                 finalMessage = evt.Content;
             }
@@ -589,21 +587,6 @@ internal sealed partial class ReviewRunner {
                 tcs.TrySetResult(finalMessage ?? GetDeltas(deltas));
             }
         });
-
-        var inactivityWindow = ResolveCopilotCliSessionCompletionInactivity(_settings);
-        using var completionCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        var completionWatchdog = Task.Run(async () => {
-            while (!completionCts.IsCancellationRequested) {
-                await Task.Delay(500, completionCts.Token).ConfigureAwait(false);
-                if (!ShouldCompleteCopilotSessionWithoutIdle(finalMessage, GetDeltas(deltas),
-                        DateTimeOffset.UtcNow - lastActivityUtc, inactivityWindow)) {
-                    continue;
-                }
-
-                tcs.TrySetResult(finalMessage ?? GetDeltas(deltas));
-                return;
-            }
-        }, completionCts.Token);
 
         CancellationTokenSource? progressCts = null;
         Task? progressTask = null;
@@ -634,12 +617,6 @@ internal sealed partial class ReviewRunner {
             var result = await tcs.Task.ConfigureAwait(false);
             return result ?? string.Empty;
         } finally {
-            completionCts.Cancel();
-            try {
-                await completionWatchdog.ConfigureAwait(false);
-            } catch (OperationCanceledException) {
-                // Expected when the review completes before the inactivity fallback fires.
-            }
             if (progressTask is not null && progressCts is not null) {
                 progressCts.Cancel();
                 try {
@@ -701,11 +678,7 @@ internal sealed partial class ReviewRunner {
 
     internal static bool ShouldCompleteCopilotSessionWithoutIdle(string? finalMessage, string? deltaSnapshot,
         TimeSpan inactivity, TimeSpan inactivityWindow) {
-        if (inactivity < inactivityWindow) {
-            return false;
-        }
-
-        return !string.IsNullOrWhiteSpace(finalMessage);
+        return false;
     }
 
     private string BuildCopilotPromptTimeoutMessage(string launcherDiagnostic, string detail) {

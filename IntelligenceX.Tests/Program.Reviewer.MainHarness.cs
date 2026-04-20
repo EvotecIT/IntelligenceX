@@ -739,11 +739,13 @@ internal static partial class Program {
             TestCopilotPromptFailureFallsBackForTimeoutAndPromptErrors);
         failed += Run("Copilot prompt mode allows oversized prompts via stdin",
             TestCopilotPromptModeAllowsOversizedPromptsViaStdin);
-        failed += Run("Copilot CLI session completes after content silence",
-            TestCopilotCliSessionCompletesAfterContentSilence);
+        failed += Run("Copilot CLI session requires idle signal for completion",
+            TestCopilotCliSessionRequiresIdleSignalForCompletion);
         failed += Run("Copilot prompt start failure keeps cause details",
             TestCopilotPromptStartFailureKeepsCauseDetails);
         failed += Run("Copilot install resolver finds platform install", TestCopilotInstallResolverFindsPlatformInstall);
+        failed += Run("Copilot prompt runner rejects missing configured cli path",
+            TestCopilotPromptRunnerRejectsMissingConfiguredCliPath);
         failed += Run("Copilot direct auth conflict", TestCopilotDirectAuthorizationConflict);
         failed += Run("Copilot CLI path requires env", TestCopilotCliPathRequiresEnvironment);
         failed += Run("Copilot CLI path optional with url", TestCopilotCliPathOptionalWithUrl);

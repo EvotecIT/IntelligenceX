@@ -1266,18 +1266,18 @@ internal static partial class Program {
             "copilot prompt mode should be disabled when cliUrl is configured");
     }
 
-    private static void TestCopilotCliSessionCompletesAfterContentSilence() {
+    private static void TestCopilotCliSessionRequiresIdleSignalForCompletion() {
         var inactivityWindow = ReviewRunner.ResolveCopilotCliSessionCompletionInactivity(new ReviewSettings {
             IdleSeconds = 15
         });
 
-        AssertEqual(true,
+        AssertEqual(false,
             ReviewRunner.ShouldCompleteCopilotSessionWithoutIdle(
                 "## Summary",
                 string.Empty,
                 inactivityWindow,
                 inactivityWindow),
-            "copilot cli session should complete after silence once final content exists");
+            "copilot cli session should not complete after silence without idle");
 
         AssertEqual(false,
             ReviewRunner.ShouldCompleteCopilotSessionWithoutIdle(
@@ -1322,6 +1322,38 @@ internal static partial class Program {
 
             AssertEqual(cliPath, CopilotCliInstall.TryResolveInstalledCliPath("copilot") ?? string.Empty,
                 "copilot install resolver should find platform install");
+        } finally {
+            Environment.SetEnvironmentVariable("HOME", previousHome);
+            Environment.SetEnvironmentVariable("USERPROFILE", previousUserProfile);
+            DeleteDirectoryIfExistsWithRetries(tempDir);
+        }
+    }
+
+    private static void TestCopilotPromptRunnerRejectsMissingConfiguredCliPath() {
+        var previousHome = Environment.GetEnvironmentVariable("HOME");
+        var previousUserProfile = Environment.GetEnvironmentVariable("USERPROFILE");
+        var tempDir = Path.Combine(Path.GetTempPath(), "ix-copilot-missing-path-" + Guid.NewGuid().ToString("N"));
+        var isWindows = OperatingSystem.IsWindows();
+        var installDir = isWindows
+            ? Path.Combine(tempDir, "AppData", "Local", "Programs", "GitHub Copilot")
+            : Path.Combine(tempDir, ".local", "bin");
+        Directory.CreateDirectory(installDir);
+        var installedCliPath = Path.Combine(installDir, isWindows ? "copilot.exe" : "copilot");
+        var missingCliPath = Path.Combine(tempDir, "missing", isWindows ? "copilot.exe" : "copilot");
+
+        try {
+            File.WriteAllText(installedCliPath, "#!/bin/sh\nexit 0\n");
+            Environment.SetEnvironmentVariable("HOME", tempDir);
+            Environment.SetEnvironmentVariable("USERPROFILE", tempDir);
+
+            var ex = AssertThrows<InvalidOperationException>(
+                () => ReviewerCopilotPromptRunner.ResolveCliPathForTests(missingCliPath),
+                "copilot prompt missing configured cli path");
+
+            AssertContainsText(ex.Message, missingCliPath,
+                "copilot prompt missing configured cli path should mention configured value");
+            AssertEqual(false, ex.Message.Contains(installedCliPath, StringComparison.OrdinalIgnoreCase),
+                "copilot prompt missing configured cli path should not fall back to installed binary");
         } finally {
             Environment.SetEnvironmentVariable("HOME", previousHome);
             Environment.SetEnvironmentVariable("USERPROFILE", previousUserProfile);

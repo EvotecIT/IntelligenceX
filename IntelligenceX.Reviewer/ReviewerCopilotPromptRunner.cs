@@ -265,6 +265,9 @@ internal sealed class ReviewerCopilotPromptRunner {
         }
         if (Path.IsPathRooted(cliPath) || cliPath.Contains(Path.DirectorySeparatorChar) ||
             cliPath.Contains(Path.AltDirectorySeparatorChar)) {
+            if (!File.Exists(cliPath)) {
+                throw new InvalidOperationException($"Copilot CLI not found at configured path '{cliPath}'.");
+            }
             return cliPath;
         }
 
@@ -318,6 +321,8 @@ internal sealed class ReviewerCopilotPromptRunner {
         var (fileName, resolvedArgs) = ResolveCliCommand(cliPath, args);
         return (fileName, new List<string>(resolvedArgs).ToArray());
     }
+
+    internal static string ResolveCliPathForTests(string cliPath) => ResolveCliPath(cliPath);
 
     private static IEnumerable<string> Prepend(string value, IEnumerable<string> args) {
         yield return value;
