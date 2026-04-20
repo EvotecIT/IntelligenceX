@@ -155,6 +155,16 @@ internal static class ReviewConfigLoader {
         };
     }
 
+    private static OpenAITransportKind ParseOpenAiTransportOrThrow(string value, string source) {
+        var normalized = value.Trim().ToLowerInvariant();
+        return normalized switch {
+            "native" => OpenAITransportKind.Native,
+            "appserver" or "app-server" or "codex" => OpenAITransportKind.AppServer,
+            _ => throw new InvalidOperationException(
+                $"Unknown OpenAI transport '{value.Trim()}' from {source}.")
+        };
+    }
+
     private static void ApplyLists(JsonObject obj, ReviewSettings settings) {
         var focus = ReadStringList(obj, "focus");
         if (focus is not null) {
@@ -647,10 +657,11 @@ internal static class ReviewConfigLoader {
 
         var openAiTransport = obj.GetString("openaiTransport") ?? obj.GetString("openAiTransport");
         if (!string.IsNullOrWhiteSpace(openAiTransport)) {
-            profile.OpenAITransport = ParseOpenAiTransport(openAiTransport, OpenAITransportKind.AppServer);
+            profile.OpenAITransport = ParseOpenAiTransportOrThrow(openAiTransport,
+                $"review.agentProfiles.{id}.openaiTransport");
         }
 
-        var resolvedProvider = profile.ResolveProvider();
+        var resolvedProvider = profile.ResolveProvider($"review.agentProfiles.{id}.authenticator");
         ApplyAgentProfileCopilot(obj.GetObject("copilot") ?? obj, profile);
         var openAiCompatible = obj.GetObject("openaiCompatible") ?? obj.GetObject("openAiCompatible");
         if (openAiCompatible is not null || resolvedProvider == ReviewProvider.OpenAICompatible) {

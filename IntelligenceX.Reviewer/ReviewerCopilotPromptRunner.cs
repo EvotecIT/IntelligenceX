@@ -61,10 +61,7 @@ internal sealed class ReviewerCopilotPromptRunner {
         }
 
         var parsed = ParseJsonOutput(result.Stdout);
-        var response = parsed.Response;
-        if (string.IsNullOrWhiteSpace(response) && parsed.JsonObjectCount == 0) {
-            response = result.Stdout.Trim();
-        }
+        var response = ResolveSuccessfulResponse(parsed, result.Stdout);
         if (string.IsNullOrWhiteSpace(response)) {
             WriteRecentLogTail(logDirectory);
             var prefix = parsed.ParseErrorCount > 0
@@ -85,16 +82,21 @@ internal sealed class ReviewerCopilotPromptRunner {
         }
 
         var parsed = ParseJsonOutput(result.Stdout);
-        var response = parsed.Response;
-        if (string.IsNullOrWhiteSpace(response) && parsed.JsonObjectCount == 0) {
-            response = result.Stdout.Trim();
-        }
+        var response = ResolveSuccessfulResponse(parsed, result.Stdout);
         if (string.IsNullOrWhiteSpace(response)) {
             return false;
         }
 
         successfulResult = new ReviewerCopilotPromptResult(response.Trim(), parsed.UsageSummary);
         return true;
+    }
+
+    private static string ResolveSuccessfulResponse(ParsedCopilotPromptOutput parsed, string stdout) {
+        if (!string.IsNullOrWhiteSpace(parsed.Response)) {
+            return parsed.Response;
+        }
+
+        return parsed.ParseErrorCount == 0 ? stdout.Trim() : string.Empty;
     }
 
     private static async Task<CopilotPromptProcessResult> RunProcessAsync(ProcessStartInfo startInfo,
@@ -697,6 +699,7 @@ internal sealed class ReviewerCopilotPromptRunner {
             }
 
             if (end < 0) {
+                parseErrorCount++;
                 break;
             }
 

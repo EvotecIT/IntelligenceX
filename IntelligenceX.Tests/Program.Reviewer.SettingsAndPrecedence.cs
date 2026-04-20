@@ -497,6 +497,51 @@ internal static partial class Program {
         }
     }
 
+    private static void TestReviewSettingsAgentProfileRejectsUnknownAuthenticatorAndTransport() {
+        var previousConfigPath = Environment.GetEnvironmentVariable("REVIEW_CONFIG_PATH");
+        var configPath = Path.Combine(Path.GetTempPath(), $"intelligencex-review-agent-profile-invalid-{Guid.NewGuid():N}.json");
+        try {
+            File.WriteAllText(configPath, """
+{
+  "review": {
+    "agentProfile": "broken-auth",
+    "agentProfiles": {
+      "broken-auth": {
+        "authenticator": "copilot-typo",
+        "model": "gpt-5.4"
+      }
+    }
+  }
+}
+""");
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", configPath);
+            AssertThrows<InvalidOperationException>(() => ReviewSettings.Load(),
+                "review settings unknown agent profile authenticator");
+
+            File.WriteAllText(configPath, """
+{
+  "review": {
+    "agentProfile": "broken-transport",
+    "agentProfiles": {
+      "broken-transport": {
+        "provider": "openai",
+        "model": "gpt-5.4",
+        "openaiTransport": "nativ"
+      }
+    }
+  }
+}
+""");
+            AssertThrows<InvalidOperationException>(() => ReviewSettings.Load(),
+                "review settings invalid agent profile openai transport");
+        } finally {
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", previousConfigPath);
+            if (File.Exists(configPath)) {
+                File.Delete(configPath);
+            }
+        }
+    }
+
     private static void TestReviewSettingsEnvSwarmReviewersJson() {
         var previousReviewers = Environment.GetEnvironmentVariable("REVIEW_SWARM_REVIEWERS");
         var previousInputReviewers = Environment.GetEnvironmentVariable("INPUT_SWARM_REVIEWERS");

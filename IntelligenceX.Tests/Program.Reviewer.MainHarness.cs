@@ -666,6 +666,8 @@ internal static partial class Program {
         failed += Run("Review settings load swarm reviewer objects", TestReviewSettingsLoadSwarmReviewerObjects);
         failed += Run("Review settings agent profile selects authenticator and model",
             TestReviewSettingsAgentProfileSelectsAuthenticatorAndModel);
+        failed += Run("Review settings agent profile rejects unknown authenticator and transport",
+            TestReviewSettingsAgentProfileRejectsUnknownAuthenticatorAndTransport);
         failed += Run("Review settings env swarm reviewers JSON", TestReviewSettingsEnvSwarmReviewersJson);
         failed += Run("Review settings load config allows zero for non-negative limits",
             TestReviewSettingsLoadConfigAllowsZeroForNonNegativeLimits);
@@ -687,6 +689,10 @@ internal static partial class Program {
         failed += Run("Copilot prompt runner parses JSON output", TestCopilotPromptRunnerParsesJsonOutput);
         failed += Run("Copilot prompt runner parses concatenated JSON output",
             TestCopilotPromptRunnerParsesConcatenatedJsonOutput);
+        failed += Run("Copilot prompt runner falls back to stdout when JSON is valid but no assistant message was parsed",
+            TestCopilotPromptRunnerFallsBackToStdoutWhenJsonIsValidButNoAssistantMessageWasParsed);
+        failed += Run("Copilot prompt runner rejects malformed JSON without assistant message",
+            TestCopilotPromptRunnerRejectsMalformedJsonWithoutAssistantMessage);
         failed += Run("Copilot prompt runner builds MCP-disabled args",
             TestCopilotPromptRunnerBuildsMcpDisabledArgs);
         failed += Run("Copilot prompt runner wraps rooted Windows cmd paths",

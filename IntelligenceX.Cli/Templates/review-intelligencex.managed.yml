@@ -36,6 +36,23 @@ review:
     usage_budget_guard: ${{ inputs.usage_budget_guard }}
     usage_budget_allow_credits: ${{ inputs.usage_budget_allow_credits }}
     usage_budget_allow_weekly_limit: ${{ inputs.usage_budget_allow_weekly_limit }}
+    profile: ${{ inputs.profile || 'balanced' }}
+    style: ${{ inputs.style || 'direct' }}
+    output_style: ${{ inputs.output_style }}
+    strictness: ${{ inputs.strictness }}
+    tone: ${{ inputs.tone }}
+    focus: ${{ inputs.focus }}
+    length: ${{ inputs.length || 'medium' }}
+    mode: ${{ inputs.mode || 'hybrid' }}
+    persona: ${{ inputs.persona }}
+    notes: ${{ inputs.notes }}
+    ci_context_enabled: ${{ inputs.ci_context_enabled }}
+    ci_context_include_check_summary: ${{ inputs.ci_context_include_check_summary }}
+    ci_context_include_failed_runs: ${{ inputs.ci_context_include_failed_runs }}
+    ci_context_include_failure_snippets: ${{ inputs.ci_context_include_failure_snippets }}
+    ci_context_max_failed_runs: ${{ inputs.ci_context_max_failed_runs }}
+    ci_context_max_snippet_chars_per_run: ${{ inputs.ci_context_max_snippet_chars_per_run }}
+    ci_context_classify_infra_failures: ${{ inputs.ci_context_classify_infra_failures }}
     history_enabled: ${{ inputs.history_enabled }}
     history_include_ix_summary_history: ${{ inputs.history_include_ix_summary_history }}
     history_include_review_threads: ${{ inputs.history_include_review_threads }}
@@ -52,13 +69,16 @@ review:
     swarm_aggregator_model: ${{ inputs.swarm_aggregator_model }}
     swarm_fail_open_on_partial: ${{ inputs.swarm_fail_open_on_partial }}
     swarm_metrics: ${{ inputs.swarm_metrics }}
-    include_issue_comments: {{IncludeIssueComments}}
-    include_review_comments: {{IncludeReviewComments}}
-    include_related_prs: {{IncludeRelatedPullRequests}}
-    progress_updates: {{ProgressUpdates}}
-    diagnostics: {{Diagnostics}}
-    preflight: {{Preflight}}
-    preflight_timeout_seconds: {{PreflightTimeoutSeconds}}
+    review_config_path: ${{ inputs.review_config_path || '.intelligencex/reviewer.json' }}
+    max_files: ${{ inputs.max_files || '30' }}
+    max_patch_chars: ${{ inputs.max_patch_chars || '20000' }}
+    include_issue_comments: ${{ inputs.include_issue_comments || '{{IncludeIssueComments}}' }}
+    include_review_comments: ${{ inputs.include_review_comments || '{{IncludeReviewComments}}' }}
+    include_related_prs: ${{ inputs.include_related_prs || '{{IncludeRelatedPullRequests}}' }}
+    progress_updates: ${{ inputs.progress_updates || '{{ProgressUpdates}}' }}
+    diagnostics: ${{ inputs.diagnostics || '{{Diagnostics}}' }}
+    preflight: ${{ inputs.preflight || '{{Preflight}}' }}
+    preflight_timeout_seconds: ${{ inputs.preflight_timeout_seconds || '{{PreflightTimeoutSeconds}}' }}
     cleanup_enabled: {{CleanupEnabled}}
     cleanup_mode: {{CleanupMode}}
     cleanup_scope: {{CleanupScope}}

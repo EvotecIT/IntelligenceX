@@ -37,7 +37,7 @@ internal sealed class ReviewAgentProfileSettings {
     public string? AnthropicBaseUrl { get; set; }
     public int? AnthropicTimeoutSeconds { get; set; }
 
-    public ReviewProvider? ResolveProvider() {
+    public ReviewProvider? ResolveProvider(string? source = null) {
         if (Provider.HasValue) {
             return Provider.Value;
         }
@@ -51,7 +51,9 @@ internal sealed class ReviewAgentProfileSettings {
             "chatgpt" or "openai" or "codex" or "openai-codex" => ReviewProvider.OpenAI,
             "claude" or "anthropic" => ReviewProvider.Claude,
             "openai-compatible" or "openai-api" or "ollama" or "openrouter" => ReviewProvider.OpenAICompatible,
-            _ => null
+            _ => throw new InvalidOperationException(
+                $"Unknown review agent profile authenticator '{Authenticator.Trim()}'" +
+                (string.IsNullOrWhiteSpace(source) ? "." : $" from {source}."))
         };
     }
 }

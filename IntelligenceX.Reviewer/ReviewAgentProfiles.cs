@@ -48,7 +48,7 @@ internal sealed partial class ReviewSettings {
             CaptureOrRebaseAgentProfileBaseline();
         }
         AgentProfile = profile.Id;
-        var provider = profile.ResolveProvider();
+        var provider = profile.ResolveProvider($"review.agentProfiles.{profile.Id}.authenticator");
         if (provider.HasValue) {
             Provider = provider.Value;
         }

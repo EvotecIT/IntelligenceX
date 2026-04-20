@@ -46,7 +46,10 @@ internal static class ReviewSwarmShadowPlanner {
                 ? null
                 : settings.RequireAgentProfile(reviewer.AgentProfile,
                     $"review.swarm.reviewers[{reviewer.Id.Trim()}].agentProfile");
-            var reviewerProvider = reviewer.Provider ?? profile?.ResolveProvider() ?? settings.Provider;
+            var reviewerProvider = reviewer.Provider
+                                   ?? profile?.ResolveProvider(
+                                       $"review.swarm.reviewers[{reviewer.Id.Trim()}].agentProfile")
+                                   ?? settings.Provider;
             var reviewerModel = !string.IsNullOrWhiteSpace(reviewer.Model)
                 ? reviewer.Model!.Trim()
                 : !string.IsNullOrWhiteSpace(profile?.Model)
@@ -83,7 +86,9 @@ internal static class ReviewSwarmShadowPlanner {
             Aggregator = new ReviewSwarmShadowAggregatorPlan {
                 AgentProfile = aggregatorProfile?.Id,
                 ResolvedAgentProfile = aggregatorProfile,
-                Provider = settings.Swarm.Aggregator.Provider ?? aggregatorProfile?.ResolveProvider() ?? settings.Provider,
+                Provider = settings.Swarm.Aggregator.Provider
+                           ?? aggregatorProfile?.ResolveProvider("review.swarm.aggregator.agentProfile")
+                           ?? settings.Provider,
                 Model = aggregatorModel,
                 ReasoningEffort = settings.Swarm.Aggregator.ReasoningEffort ?? aggregatorProfile?.ReasoningEffort ?? settings.ReasoningEffort
             }

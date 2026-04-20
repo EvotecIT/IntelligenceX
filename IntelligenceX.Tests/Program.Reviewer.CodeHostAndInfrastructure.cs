@@ -1193,6 +1193,42 @@ internal static partial class Program {
             "copilot prompt concatenated usage");
     }
 
+    private static void TestCopilotPromptRunnerFallsBackToStdoutWhenJsonIsValidButNoAssistantMessageWasParsed() {
+        var output = """
+Review completed successfully.
+Embedded JSON for reference:
+{"config":{"provider":"copilot","model":"gpt-5.4"}}
+No structured assistant event was emitted.
+""";
+
+        var accepted = ReviewerCopilotPromptRunner.TryBuildSuccessfulResultForTests(
+            0,
+            output,
+            string.Empty,
+            out var result);
+
+        AssertEqual(true, accepted, "copilot prompt accepts plain-text stdout when JSON is valid");
+        AssertContainsText(result?.Response ?? string.Empty, "Review completed successfully.",
+            "copilot prompt preserves plain-text stdout");
+        AssertContainsText(result?.Response ?? string.Empty, "\"model\":\"gpt-5.4\"",
+            "copilot prompt keeps embedded JSON snippet in stdout fallback");
+    }
+
+    private static void TestCopilotPromptRunnerRejectsMalformedJsonWithoutAssistantMessage() {
+        var output = """
+{"type":"assistant.message_delta","data":{"deltaContent":"partial"
+""";
+
+        var accepted = ReviewerCopilotPromptRunner.TryBuildSuccessfulResultForTests(
+            0,
+            output,
+            string.Empty,
+            out var result);
+
+        AssertEqual(false, accepted, "copilot prompt rejects malformed stdout fallback");
+        AssertEqual(null, result, "copilot prompt malformed stdout fallback result");
+    }
+
     private static void TestCopilotPromptRunnerBuildsMcpDisabledArgs() {
         var cliPath = Path.Combine(Path.GetPathRoot(Environment.CurrentDirectory) ?? Directory.GetCurrentDirectory(),
             "copilot");
