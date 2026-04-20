@@ -1279,13 +1279,13 @@ internal static partial class Program {
                 inactivityWindow),
             "copilot cli session should complete after silence once final content exists");
 
-        AssertEqual(true,
+        AssertEqual(false,
             ReviewRunner.ShouldCompleteCopilotSessionWithoutIdle(
                 null,
                 "partial delta",
                 inactivityWindow,
                 inactivityWindow),
-            "copilot cli session should complete after silence once deltas exist");
+            "copilot cli session should not complete from silence with delta-only content");
 
         AssertEqual(false,
             ReviewRunner.ShouldCompleteCopilotSessionWithoutIdle(

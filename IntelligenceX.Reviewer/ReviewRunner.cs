@@ -715,7 +715,7 @@ internal sealed partial class ReviewRunner {
             return false;
         }
 
-        return !string.IsNullOrWhiteSpace(finalMessage) || !string.IsNullOrWhiteSpace(deltaSnapshot);
+        return !string.IsNullOrWhiteSpace(finalMessage);
     }
 
     private string BuildCopilotPromptTimeoutMessage(string launcherDiagnostic, string detail) {
