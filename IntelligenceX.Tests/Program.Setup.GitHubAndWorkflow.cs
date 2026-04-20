@@ -141,6 +141,8 @@ jobs:
             "workflow template usage budget weekly input");
         AssertContainsText(content, "copilot_model:", "workflow template copilot model input");
         AssertContainsText(content, "copilot_launcher:", "workflow template copilot launcher input");
+        AssertContainsText(content, "profile:", "workflow template prompt profile input");
+        AssertContainsText(content, "ci_context_enabled:", "workflow template CI context input");
         AssertContainsText(content, "history_enabled:", "workflow template history enabled input");
         AssertContainsText(content, "history_include_external_bot_summaries:",
             "workflow template external bot history input");
@@ -155,6 +157,8 @@ jobs:
             "workflow template reusable-call IX summary history input");
         AssertContainsText(content, "swarm_publish_subreviews:",
             "workflow template reusable-call swarm subreview publishing input");
+        AssertContainsText(content, "review_config_path:",
+            "workflow template reusable-call review config path input");
         AssertContainsText(content, "openai_account_id: ${{ inputs.openai_account_id }}",
             "workflow template openai account id pass-through");
         AssertContainsText(content, "openai_account_ids: ${{ inputs.openai_account_ids }}",
@@ -175,6 +179,20 @@ jobs:
             "workflow template copilot model input overrides repo variable");
         AssertContainsText(content, "copilot_launcher: ${{ inputs.copilot_launcher || vars.IX_REVIEW_COPILOT_LAUNCHER }}",
             "workflow template copilot launcher pass-through");
+        AssertContainsText(content, "profile: ${{ inputs.profile || 'balanced' }}",
+            "workflow template prompt profile pass-through");
+        AssertContainsText(content, "mode: ${{ inputs.mode || 'hybrid' }}",
+            "workflow template review mode pass-through");
+        AssertContainsText(content, "length: ${{ inputs.length || 'medium' }}",
+            "workflow template review length pass-through");
+        AssertContainsText(content, "style: ${{ inputs.style || 'direct' }}",
+            "workflow template review style pass-through");
+        AssertContainsText(content, "review_config_path: ${{ inputs.review_config_path || '.intelligencex/reviewer.json' }}",
+            "workflow template review config path pass-through");
+        AssertContainsText(content, "max_files: ${{ inputs.max_files || '30' }}",
+            "workflow template max files pass-through");
+        AssertContainsText(content, "diagnostics: ${{ inputs.diagnostics || 'false' }}",
+            "workflow template diagnostics pass-through");
         AssertContainsText(content,
             "(inputs.copilot_launcher || vars.IX_REVIEW_COPILOT_LAUNCHER) == 'auto' || vars.IX_REVIEW_COPILOT_AUTO_INSTALL == 'true'",
             "workflow template copilot auto-install respects launcher repo variable");
@@ -237,10 +255,16 @@ jobs:
             "wrapper workflow exposes agent profile reusable-call override");
         AssertContainsText(wrapperContent, "copilot_model:",
             "wrapper workflow exposes copilot model reusable-call override");
+        AssertContainsText(wrapperContent, "profile:",
+            "wrapper workflow exposes prompt profile reusable-call override");
+        AssertContainsText(wrapperContent, "ci_context_enabled:",
+            "wrapper workflow exposes CI context reusable-call override");
         AssertContainsText(wrapperContent, "history_include_ix_summary_history:",
             "wrapper workflow exposes IX summary history reusable-call override");
         AssertContainsText(wrapperContent, "swarm_publish_subreviews:",
             "wrapper workflow exposes swarm subreview publishing reusable-call override");
+        AssertContainsText(wrapperContent, "review_config_path:",
+            "wrapper workflow exposes review config path reusable-call override");
         AssertContainsText(wrapperContent, "agent_profile: ${{ inputs.agent_profile || vars.IX_REVIEW_AGENT_PROFILE }}",
             "wrapper workflow lets reusable agent profile input override repo variable");
         AssertContainsText(wrapperContent, "swarm_metrics:",
@@ -261,6 +285,20 @@ jobs:
             "wrapper workflow passes swarm mode through to reusable workflow");
         AssertContainsText(wrapperContent, "swarm_max_parallel: ${{ inputs.swarm_max_parallel }}",
             "wrapper workflow passes swarm max parallel through to reusable workflow");
+        AssertContainsText(wrapperContent, "profile: ${{ inputs.profile || 'balanced' }}",
+            "wrapper workflow passes prompt profile through with default");
+        AssertContainsText(wrapperContent, "mode: ${{ inputs.mode || 'hybrid' }}",
+            "wrapper workflow passes review mode through with default");
+        AssertContainsText(wrapperContent, "length: ${{ inputs.length || 'medium' }}",
+            "wrapper workflow passes review length through with default");
+        AssertContainsText(wrapperContent, "style: ${{ inputs.style || 'direct' }}",
+            "wrapper workflow passes review style through with default");
+        AssertContainsText(wrapperContent, "review_config_path: ${{ inputs.review_config_path || '.intelligencex/reviewer.json' }}",
+            "wrapper workflow passes review config path through with default");
+        AssertContainsText(wrapperContent, "max_files: ${{ inputs.max_files || '30' }}",
+            "wrapper workflow passes max files through with default");
+        AssertContainsText(wrapperContent, "diagnostics: ${{ inputs.diagnostics || 'false' }}",
+            "wrapper workflow passes diagnostics through with default");
         AssertEqual(false, content.Contains("workflow_dispatch:", StringComparison.Ordinal),
             "reusable workflow should keep manual dispatch on the wrapper workflow");
         var jobEnvIndex = content.IndexOf("    env:\n", StringComparison.Ordinal);

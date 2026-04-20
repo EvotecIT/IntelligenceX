@@ -167,6 +167,74 @@ on:
         description: 'Weekly-limit budget allowance override for reusable callers'
         required: false
         type: string
+      profile:
+        description: 'Prompt profile override for reusable callers'
+        required: false
+        type: string
+      style:
+        description: 'Review style override for reusable callers'
+        required: false
+        type: string
+      output_style:
+        description: 'Output style override for reusable callers'
+        required: false
+        type: string
+      strictness:
+        description: 'Strictness override for reusable callers'
+        required: false
+        type: string
+      tone:
+        description: 'Tone override for reusable callers'
+        required: false
+        type: string
+      focus:
+        description: 'Focus override for reusable callers'
+        required: false
+        type: string
+      length:
+        description: 'Review length override for reusable callers'
+        required: false
+        type: string
+      mode:
+        description: 'Review mode override for reusable callers'
+        required: false
+        type: string
+      persona:
+        description: 'Persona override for reusable callers'
+        required: false
+        type: string
+      notes:
+        description: 'Additional prompt notes override for reusable callers'
+        required: false
+        type: string
+      ci_context_enabled:
+        description: 'CI context enablement override for reusable callers'
+        required: false
+        type: string
+      ci_context_include_check_summary:
+        description: 'CI check summary override for reusable callers'
+        required: false
+        type: string
+      ci_context_include_failed_runs:
+        description: 'CI failed-run metadata override for reusable callers'
+        required: false
+        type: string
+      ci_context_include_failure_snippets:
+        description: 'CI failure snippet mode override for reusable callers'
+        required: false
+        type: string
+      ci_context_max_failed_runs:
+        description: 'CI max failed runs override for reusable callers'
+        required: false
+        type: string
+      ci_context_max_snippet_chars_per_run:
+        description: 'CI failure snippet char budget override for reusable callers'
+        required: false
+        type: string
+      ci_context_classify_infra_failures:
+        description: 'CI infra-failure classification override for reusable callers'
+        required: false
+        type: string
       history_enabled:
         description: 'Reviewer history-awareness override for reusable callers'
         required: false
@@ -231,6 +299,46 @@ on:
         description: 'Reviewer swarm metrics override for reusable callers'
         required: false
         type: string
+      review_config_path:
+        description: 'Reviewer config path override for reusable callers'
+        required: false
+        type: string
+      max_files:
+        description: 'Max files override for reusable callers'
+        required: false
+        type: string
+      max_patch_chars:
+        description: 'Max patch chars override for reusable callers'
+        required: false
+        type: string
+      include_issue_comments:
+        description: 'Issue comment inclusion override for reusable callers'
+        required: false
+        type: string
+      include_review_comments:
+        description: 'Review comment inclusion override for reusable callers'
+        required: false
+        type: string
+      include_related_prs:
+        description: 'Related PR inclusion override for reusable callers'
+        required: false
+        type: string
+      progress_updates:
+        description: 'Progress update override for reusable callers'
+        required: false
+        type: string
+      diagnostics:
+        description: 'Diagnostics override for reusable callers'
+        required: false
+        type: string
+      preflight:
+        description: 'Preflight override for reusable callers'
+        required: false
+        type: string
+      preflight_timeout_seconds:
+        description: 'Preflight timeout override for reusable callers'
+        required: false
+        type: string
 
 jobs:
   # INTELLIGENCEX:BEGIN
@@ -269,6 +377,23 @@ jobs:
       usage_budget_guard: ${{ inputs.usage_budget_guard }}
       usage_budget_allow_credits: ${{ inputs.usage_budget_allow_credits }}
       usage_budget_allow_weekly_limit: ${{ inputs.usage_budget_allow_weekly_limit }}
+      profile: ${{ inputs.profile || 'balanced' }}
+      style: ${{ inputs.style || 'direct' }}
+      output_style: ${{ inputs.output_style }}
+      strictness: ${{ inputs.strictness }}
+      tone: ${{ inputs.tone }}
+      focus: ${{ inputs.focus }}
+      length: ${{ inputs.length || 'medium' }}
+      mode: ${{ inputs.mode || 'hybrid' }}
+      persona: ${{ inputs.persona }}
+      notes: ${{ inputs.notes }}
+      ci_context_enabled: ${{ inputs.ci_context_enabled }}
+      ci_context_include_check_summary: ${{ inputs.ci_context_include_check_summary }}
+      ci_context_include_failed_runs: ${{ inputs.ci_context_include_failed_runs }}
+      ci_context_include_failure_snippets: ${{ inputs.ci_context_include_failure_snippets }}
+      ci_context_max_failed_runs: ${{ inputs.ci_context_max_failed_runs }}
+      ci_context_max_snippet_chars_per_run: ${{ inputs.ci_context_max_snippet_chars_per_run }}
+      ci_context_classify_infra_failures: ${{ inputs.ci_context_classify_infra_failures }}
       history_enabled: ${{ inputs.history_enabled }}
       history_include_ix_summary_history: ${{ inputs.history_include_ix_summary_history }}
       history_include_review_threads: ${{ inputs.history_include_review_threads }}
@@ -285,19 +410,16 @@ jobs:
       swarm_aggregator_model: ${{ inputs.swarm_aggregator_model }}
       swarm_fail_open_on_partial: ${{ inputs.swarm_fail_open_on_partial }}
       swarm_metrics: ${{ inputs.swarm_metrics }}
-      review_config_path: .intelligencex/reviewer.json
-      mode: hybrid
-      length: medium
-      style: direct
-      max_files: 30
-      max_patch_chars: 20000
-      include_issue_comments: true
-      include_review_comments: true
-      include_related_prs: true
-      progress_updates: true
-      diagnostics: false
-      preflight: false
-      preflight_timeout_seconds: 15
+      review_config_path: ${{ inputs.review_config_path || '.intelligencex/reviewer.json' }}
+      max_files: ${{ inputs.max_files || '30' }}
+      max_patch_chars: ${{ inputs.max_patch_chars || '20000' }}
+      include_issue_comments: ${{ inputs.include_issue_comments || 'true' }}
+      include_review_comments: ${{ inputs.include_review_comments || 'true' }}
+      include_related_prs: ${{ inputs.include_related_prs || 'true' }}
+      progress_updates: ${{ inputs.progress_updates || 'true' }}
+      diagnostics: ${{ inputs.diagnostics || 'false' }}
+      preflight: ${{ inputs.preflight || 'false' }}
+      preflight_timeout_seconds: ${{ inputs.preflight_timeout_seconds || '15' }}
       cleanup_enabled: false
       cleanup_mode: comment
       cleanup_scope: pr
