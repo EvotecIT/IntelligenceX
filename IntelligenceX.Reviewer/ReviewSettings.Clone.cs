@@ -17,6 +17,9 @@ internal sealed partial class ReviewSettings {
         }
         clone.Provider = provider;
         clone.Model = model;
+        if (provider == ReviewProvider.Copilot) {
+            clone.CopilotModel = model;
+        }
         clone.ReasoningEffort = reasoningEffort;
         return clone;
     }

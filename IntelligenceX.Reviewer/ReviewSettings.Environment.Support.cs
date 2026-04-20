@@ -190,8 +190,12 @@ internal sealed partial class ReviewSettings {
     }
 
     private static void ApplyEnvironmentAgentProfileSettings(ReviewSettings settings) {
-        var agentProfile = GetInput("agent_profile", "REVIEW_AGENT_PROFILE", "REVIEW_MODEL_PROFILE");
+        if (!TryGetInputRaw("agent_profile", out var agentProfile, "REVIEW_AGENT_PROFILE", "REVIEW_MODEL_PROFILE")) {
+            return;
+        }
+
         if (string.IsNullOrWhiteSpace(agentProfile)) {
+            settings.AgentProfile = null;
             return;
         }
 

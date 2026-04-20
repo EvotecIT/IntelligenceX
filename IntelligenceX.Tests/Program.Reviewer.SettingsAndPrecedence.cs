@@ -462,6 +462,19 @@ internal static partial class Program {
             AssertEqual("claude-sonnet-4-5", settings.Model,
                 "review settings explicit none preserves direct model override");
 
+            Environment.SetEnvironmentVariable("REVIEW_AGENT_PROFILE", null);
+            Environment.SetEnvironmentVariable("INPUT_AGENT_PROFILE", string.Empty);
+            Environment.SetEnvironmentVariable("INPUT_PROVIDER", "anthropic");
+            Environment.SetEnvironmentVariable("INPUT_MODEL", "claude-sonnet-4-5");
+            settings = ReviewSettings.Load();
+
+            AssertEqual(null, settings.AgentProfile,
+                "review settings explicit empty input clears config-selected agent profile");
+            AssertEqual(ReviewProvider.Claude, settings.Provider,
+                "review settings explicit empty input preserves direct provider override");
+            AssertEqual("claude-sonnet-4-5", settings.Model,
+                "review settings explicit empty input preserves direct model override");
+
             Environment.SetEnvironmentVariable("INPUT_AGENT_PROFILE", null);
             Environment.SetEnvironmentVariable("REVIEW_AGENT_PROFILE", "local-openai");
             settings = ReviewSettings.Load();

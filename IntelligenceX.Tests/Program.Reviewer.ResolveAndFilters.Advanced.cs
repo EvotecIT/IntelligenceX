@@ -191,6 +191,13 @@ internal static partial class Program {
             "swarm shadow execution clone preserves profile auto install");
         AssertSequenceEqual(new[] { "COPILOT_GITHUB_TOKEN" }, laneSettings.CopilotEnvAllowlist.ToArray(),
             "swarm shadow execution clone preserves profile env allowlist");
+        var overrideLaneSettings = settings.CloneWithProviderOverride(ReviewProvider.Copilot,
+            "claude-opus-4-1", plan.Reviewers[0].ReasoningEffort,
+            plan.Reviewers[0].AgentProfile, plan.Reviewers[0].ResolvedAgentProfile);
+        AssertEqual("claude-opus-4-1", overrideLaneSettings.Model,
+            "swarm shadow execution clone preserves explicit override model");
+        AssertEqual("claude-opus-4-1", overrideLaneSettings.CopilotModel ?? string.Empty,
+            "swarm shadow execution clone keeps copilot model in sync with explicit override");
 
         settings.ApplyAgentProfile("copilot-gpt54");
         var switchedLaneSettings = settings.CloneWithProviderOverride(plan.Reviewers[1].Provider,
