@@ -424,6 +424,11 @@ public sealed class CopilotClient : IDisposable
             }
         }
 
+        var installed = CopilotCliInstall.TryResolveInstalledCliPath(cliPath);
+        if (!string.IsNullOrWhiteSpace(installed)) {
+            return installed!;
+        }
+
         throw new InvalidOperationException("Copilot CLI not found on PATH.\n" + CopilotCliInstall.GetInstallInstructions());
     }
 

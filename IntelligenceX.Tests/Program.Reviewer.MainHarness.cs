@@ -714,6 +714,9 @@ internal static partial class Program {
         failed += Run("Copilot chat timeout validation", TestCopilotChatTimeoutValidation);
         failed += Run("Copilot prompt timeout uses runner-safe minimum", TestCopilotPromptTimeoutUsesRunnerSafeMinimum);
         failed += Run("Copilot prompt timeout honors higher explicit wait", TestCopilotPromptTimeoutHonorsHigherExplicitWait);
+        failed += Run("Copilot prompt failure falls back for timeout and prompt errors",
+            TestCopilotPromptFailureFallsBackForTimeoutAndPromptErrors);
+        failed += Run("Copilot install resolver finds platform install", TestCopilotInstallResolverFindsPlatformInstall);
         failed += Run("Copilot direct auth conflict", TestCopilotDirectAuthorizationConflict);
         failed += Run("Copilot CLI path requires env", TestCopilotCliPathRequiresEnvironment);
         failed += Run("Copilot CLI path optional with url", TestCopilotCliPathOptionalWithUrl);

@@ -477,8 +477,32 @@ internal sealed partial class ReviewRunner {
             return await RunCopilotDirectAsync(prompt, cancellationToken).ConfigureAwait(false);
         }
         if (ShouldUseCopilotPromptMode(_settings)) {
-            return await RunCopilotPromptAsync(prompt, onPartial, cancellationToken).ConfigureAwait(false);
+            try {
+                return await RunCopilotPromptAsync(prompt, onPartial, cancellationToken).ConfigureAwait(false);
+            } catch (Exception ex) when (!cancellationToken.IsCancellationRequested &&
+                                         ShouldFallbackFromCopilotPromptFailure(ex)) {
+                if (_settings.Diagnostics) {
+                    Console.Error.WriteLine(
+                        $"Copilot prompt mode failed ({ex.GetType().Name}); falling back to CLI server-session mode.");
+                }
+            }
         }
+        return await RunCopilotCliSessionAsync(prompt, onPartial, updateInterval, cancellationToken).ConfigureAwait(false);
+    }
+
+    internal static bool ShouldFallbackFromCopilotPromptFailure(Exception ex) {
+        if (ex is TimeoutException) {
+            return true;
+        }
+        if (ex is InvalidOperationException invalid &&
+            invalid.Message.Contains("prompt mode", StringComparison.OrdinalIgnoreCase)) {
+            return true;
+        }
+        return ex.InnerException is not null && ShouldFallbackFromCopilotPromptFailure(ex.InnerException);
+    }
+
+    private async Task<string> RunCopilotCliSessionAsync(string prompt, Func<string, Task>? onPartial,
+        TimeSpan? updateInterval, CancellationToken cancellationToken) {
         var options = BuildCopilotClientOptions(out var launcherDiagnostic);
 
         await using var client = await CopilotClient.StartAsync(options, cancellationToken).ConfigureAwait(false);

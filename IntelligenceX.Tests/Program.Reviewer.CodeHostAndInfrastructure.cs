@@ -1120,6 +1120,48 @@ internal static partial class Program {
             "copilot prompt timeout should preserve larger explicit wait");
     }
 
+    private static void TestCopilotPromptFailureFallsBackForTimeoutAndPromptErrors() {
+        AssertEqual(true,
+            ReviewRunner.ShouldFallbackFromCopilotPromptFailure(
+                new TimeoutException("Copilot CLI prompt mode timed out after 420 seconds.")),
+            "copilot prompt timeout should trigger session fallback");
+
+        AssertEqual(true,
+            ReviewRunner.ShouldFallbackFromCopilotPromptFailure(
+                new InvalidOperationException("Copilot CLI not found or failed to start in prompt mode.")),
+            "copilot prompt start failure should trigger session fallback");
+
+        AssertEqual(false,
+            ReviewRunner.ShouldFallbackFromCopilotPromptFailure(
+                new InvalidOperationException("Copilot authentication failed.")),
+            "copilot auth failure should not trigger prompt fallback");
+    }
+
+    private static void TestCopilotInstallResolverFindsPlatformInstall() {
+        var previousHome = Environment.GetEnvironmentVariable("HOME");
+        var previousUserProfile = Environment.GetEnvironmentVariable("USERPROFILE");
+        var tempDir = Path.Combine(Path.GetTempPath(), "ix-copilot-install-" + Guid.NewGuid().ToString("N"));
+        var isWindows = OperatingSystem.IsWindows();
+        var installDir = isWindows
+            ? Path.Combine(tempDir, "AppData", "Local", "Programs", "GitHub Copilot")
+            : Path.Combine(tempDir, ".local", "bin");
+        Directory.CreateDirectory(installDir);
+        var cliPath = Path.Combine(installDir, isWindows ? "copilot.exe" : "copilot");
+
+        try {
+            File.WriteAllText(cliPath, "#!/bin/sh\nexit 0\n");
+            Environment.SetEnvironmentVariable("HOME", tempDir);
+            Environment.SetEnvironmentVariable("USERPROFILE", tempDir);
+
+            AssertEqual(cliPath, CopilotCliInstall.TryResolveInstalledCliPath("copilot") ?? string.Empty,
+                "copilot install resolver should find platform install");
+        } finally {
+            Environment.SetEnvironmentVariable("HOME", previousHome);
+            Environment.SetEnvironmentVariable("USERPROFILE", previousUserProfile);
+            DeleteDirectoryIfExistsWithRetries(tempDir);
+        }
+    }
+
     private static void TestCopilotPromptRunnerParsesJsonOutput() {
         var output = string.Join("\n", new[] {
             """{"type":"assistant.message_delta","data":{"deltaContent":"Hel"}}""",
