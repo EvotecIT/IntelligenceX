@@ -799,6 +799,10 @@ internal static partial class Program {
             TestReviewSummaryParserMergeBlockerDetectionCustomSections);
         failed += Run("Review swarm shadow plan uses reviewer overrides", TestReviewSwarmShadowPlanUsesReviewerOverrides);
         failed += Run("Review swarm shadow plan uses agent profiles", TestReviewSwarmShadowPlanUsesAgentProfiles);
+        failed += Run("Review agent profile switch rebases to baseline",
+            TestReviewAgentProfileSwitchRebasesToBaseline);
+        failed += Run("Review swarm shadow clone uses refreshed runtime baseline",
+            TestReviewSwarmShadowCloneUsesRefreshedRuntimeBaseline);
         failed += Run("Review swarm shadow plan falls back to primary provider and model",
             TestReviewSwarmShadowPlanFallsBackToPrimaryProviderAndModel);
         failed += Run("Review swarm shadow reviewer prompt shapes focus", TestReviewSwarmShadowReviewerPromptShapesFocus);

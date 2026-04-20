@@ -241,6 +241,92 @@ internal static partial class Program {
             "swarm shadow missing aggregator agent profile");
     }
 
+    private static void TestReviewAgentProfileSwitchRebasesToBaseline() {
+        var settings = new ReviewSettings {
+            Provider = ReviewProvider.OpenAI,
+            Model = "gpt-5.4",
+            CopilotCliPath = "base-copilot",
+            AgentProfiles = new Dictionary<string, ReviewAgentProfileSettings>(StringComparer.OrdinalIgnoreCase) {
+                ["copilot-gpt54"] = new ReviewAgentProfileSettings {
+                    Id = "copilot-gpt54",
+                    Provider = ReviewProvider.Copilot,
+                    Model = "gpt-5.4",
+                    CopilotCliPath = "profile-a-copilot",
+                    CopilotEnv = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
+                        ["OLD_TOKEN"] = "old-token"
+                    },
+                    CopilotDirectHeaders = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
+                        ["X-Old"] = "old-header"
+                    }
+                },
+                ["copilot-claude"] = new ReviewAgentProfileSettings {
+                    Id = "copilot-claude",
+                    Provider = ReviewProvider.Copilot,
+                    Model = "claude-sonnet-4-5",
+                    CopilotEnv = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
+                        ["NEW_TOKEN"] = "new-token"
+                    },
+                    CopilotDirectHeaders = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
+                        ["X-New"] = "new-header"
+                    }
+                }
+            }
+        };
+
+        settings.ApplyAgentProfile("copilot-gpt54");
+        settings.ApplyAgentProfile("copilot-claude");
+
+        AssertEqual("base-copilot", settings.CopilotCliPath ?? string.Empty,
+            "agent profile switch restores baseline scalar settings");
+        AssertEqual(false, settings.CopilotEnv.ContainsKey("OLD_TOKEN"),
+            "agent profile switch removes stale env values");
+        AssertEqual("new-token", settings.CopilotEnv["NEW_TOKEN"],
+            "agent profile switch applies new env values");
+        AssertEqual(false, settings.CopilotDirectHeaders.ContainsKey("X-Old"),
+            "agent profile switch removes stale direct headers");
+        AssertEqual("new-header", settings.CopilotDirectHeaders["X-New"],
+            "agent profile switch applies new direct headers");
+    }
+
+    private static void TestReviewSwarmShadowCloneUsesRefreshedRuntimeBaseline() {
+        var settings = new ReviewSettings {
+            Provider = ReviewProvider.OpenAI,
+            Model = "gpt-5.4",
+            CopilotCliPath = "base-copilot",
+            AgentProfiles = new Dictionary<string, ReviewAgentProfileSettings>(StringComparer.OrdinalIgnoreCase) {
+                ["copilot-gpt54"] = new ReviewAgentProfileSettings {
+                    Id = "copilot-gpt54",
+                    Provider = ReviewProvider.Copilot,
+                    Model = "gpt-5.4",
+                    CopilotCliPath = "profile-a-copilot"
+                },
+                ["copilot-claude"] = new ReviewAgentProfileSettings {
+                    Id = "copilot-claude",
+                    Provider = ReviewProvider.Copilot,
+                    Model = "claude-sonnet-4-5"
+                }
+            }
+        };
+
+        settings.AgentProfile = "copilot-gpt54";
+        settings.ApplySelectedAgentProfile();
+
+        settings.RebaseToAgentProfileBaseline();
+        settings.CopilotCliPath = "env-copilot";
+        settings.RefreshAgentProfileBaseline();
+        settings.ApplySelectedAgentProfile();
+
+        var switchedLaneSettings = settings.CloneWithProviderOverride(
+            ReviewProvider.Copilot,
+            "claude-sonnet-4-5",
+            null,
+            "copilot-claude",
+            settings.RequireAgentProfile("copilot-claude", "tests"));
+
+        AssertEqual("env-copilot", switchedLaneSettings.CopilotCliPath ?? string.Empty,
+            "swarm shadow clone preserves refreshed runtime baseline overrides");
+    }
+
     private static void TestReviewSwarmShadowPlanFallsBackToPrimaryProviderAndModel() {
         var settings = new ReviewSettings {
             Provider = ReviewProvider.OpenAICompatible,

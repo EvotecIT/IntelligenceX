@@ -45,7 +45,7 @@ internal sealed partial class ReviewSettings {
 
     private void ApplyAgentProfile(ReviewAgentProfileSettings profile, bool captureBaseline) {
         if (captureBaseline) {
-            CaptureAgentProfileBaseline();
+            CaptureOrRebaseAgentProfileBaseline();
         }
         AgentProfile = profile.Id;
         var provider = profile.ResolveProvider();
@@ -116,18 +116,74 @@ internal sealed partial class ReviewSettings {
         }
     }
 
+    internal void RebaseToAgentProfileBaseline() {
+        if (AgentProfileBaseline is null) {
+            return;
+        }
+
+        RestoreProfileOwnedState(AgentProfileBaseline);
+    }
+
+    internal void RefreshAgentProfileBaseline() {
+        var selectedProfile = AgentProfile;
+        var clone = CloneWithoutAgentProfileBaseline();
+        clone.AgentProfile = null;
+        clone.AgentProfileBaseline = null;
+        AgentProfileBaseline = clone;
+        AgentProfile = selectedProfile;
+    }
+
+    private void CaptureOrRebaseAgentProfileBaseline() {
+        if (AgentProfileBaseline is null) {
+            CaptureAgentProfileBaseline();
+            return;
+        }
+
+        RestoreProfileOwnedState(AgentProfileBaseline);
+    }
+
     private void CaptureAgentProfileBaseline() {
         if (AgentProfileBaseline is not null) {
             return;
         }
 
-        AgentProfileBaseline = CloneWithoutAgentProfileBaseline();
+        RefreshAgentProfileBaseline();
     }
 
     private ReviewSettings CloneWithoutAgentProfileBaseline() {
         var clone = (ReviewSettings)MemberwiseClone();
         clone.AgentProfileBaseline = null;
         return clone;
+    }
+
+    private void RestoreProfileOwnedState(ReviewSettings source) {
+        Provider = source.Provider;
+        Model = source.Model;
+        ReasoningEffort = source.ReasoningEffort;
+        OpenAITransport = source.OpenAITransport;
+        OpenAiAccountId = source.OpenAiAccountId;
+        CopilotTransport = source.CopilotTransport;
+        CopilotModel = source.CopilotModel;
+        CopilotLauncher = source.CopilotLauncher;
+        CopilotCliPath = source.CopilotCliPath;
+        CopilotCliUrl = source.CopilotCliUrl;
+        CopilotWorkingDirectory = source.CopilotWorkingDirectory;
+        CopilotAutoInstall = source.CopilotAutoInstall;
+        CopilotAutoInstallMethod = source.CopilotAutoInstallMethod;
+        CopilotAutoInstallPrerelease = source.CopilotAutoInstallPrerelease;
+        CopilotInheritEnvironment = source.CopilotInheritEnvironment;
+        CopilotEnvAllowlist = source.CopilotEnvAllowlist;
+        CopilotEnv = source.CopilotEnv;
+        CopilotDirectUrl = source.CopilotDirectUrl;
+        CopilotDirectTokenEnv = source.CopilotDirectTokenEnv;
+        CopilotDirectTimeoutSeconds = source.CopilotDirectTimeoutSeconds;
+        CopilotDirectHeaders = source.CopilotDirectHeaders;
+        OpenAICompatibleBaseUrl = source.OpenAICompatibleBaseUrl;
+        OpenAICompatibleApiKeyEnv = source.OpenAICompatibleApiKeyEnv;
+        OpenAICompatibleTimeoutSeconds = source.OpenAICompatibleTimeoutSeconds;
+        AnthropicApiKeyEnv = source.AnthropicApiKeyEnv;
+        AnthropicBaseUrl = source.AnthropicBaseUrl;
+        AnthropicTimeoutSeconds = source.AnthropicTimeoutSeconds;
     }
 
     private static string? UseIfSet(string? value, string? fallback) =>
