@@ -76,6 +76,7 @@ internal static class ReviewConfigLoader {
         ApplyCleanup(root, settings);
         AnalysisConfigReader.Apply(root, reviewObj, settings.Analysis);
         ApplyAgentProfiles(reviewObj, settings);
+        settings.ApplySelectedAgentProfile();
     }
 
     internal static string? ResolveConfigPath() {

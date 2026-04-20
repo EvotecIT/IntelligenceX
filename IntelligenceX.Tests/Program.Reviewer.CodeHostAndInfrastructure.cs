@@ -1007,6 +1007,52 @@ internal static partial class Program {
         }
     }
 
+    private static void TestReviewConfigLoaderApplyMaterializesSelectedAgentProfile() {
+        var previous = Environment.GetEnvironmentVariable("REVIEW_CONFIG_PATH");
+        var path = Path.Combine(Path.GetTempPath(), $"intelligencex-review-profile-apply-{Guid.NewGuid():N}.json");
+        try {
+            File.WriteAllText(path, """
+{
+  "review": {
+    "provider": "openai",
+    "model": "gpt-5.4-mini",
+    "agentProfile": "copilot-claude",
+    "agentProfiles": {
+      "copilot-claude": {
+        "provider": "copilot",
+        "model": "claude-sonnet-4.5",
+        "copilot": {
+          "launcher": "auto",
+          "autoInstall": true
+        }
+      }
+    }
+  }
+}
+""");
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", path);
+            var settings = new ReviewSettings();
+
+            ReviewConfigLoader.Apply(settings);
+
+            AssertEqual("copilot-claude", settings.AgentProfile ?? string.Empty,
+                "review config apply selected agent profile id");
+            AssertEqual(ReviewProvider.Copilot, settings.Provider,
+                "review config apply selected agent profile provider");
+            AssertEqual("claude-sonnet-4.5", settings.Model,
+                "review config apply selected agent profile model");
+            AssertEqual("auto", settings.CopilotLauncher,
+                "review config apply selected agent profile launcher");
+            AssertEqual(true, settings.CopilotAutoInstall,
+                "review config apply selected agent profile auto install");
+        } finally {
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", previous);
+            if (File.Exists(path)) {
+                File.Delete(path);
+            }
+        }
+    }
+
     private static void TestCopilotLauncherEnv() {
         var previousInput = Environment.GetEnvironmentVariable("INPUT_COPILOT_LAUNCHER");
         var previousEnv = Environment.GetEnvironmentVariable("COPILOT_LAUNCHER");

@@ -675,6 +675,8 @@ internal static partial class Program {
         failed += Run("Copilot env allowlist config", TestCopilotEnvAllowlistConfig);
         failed += Run("Copilot agent profile config preserves explicit empty maps",
             TestCopilotAgentProfileConfigPreservesExplicitEmptyMaps);
+        failed += Run("Review config loader apply materializes selected agent profile",
+            TestReviewConfigLoaderApplyMaterializesSelectedAgentProfile);
         failed += Run("Copilot launcher env", TestCopilotLauncherEnv);
         failed += Run("Copilot model env overrides generic model", TestCopilotModelEnvOverridesGenericModel);
         failed += Run("Copilot default OpenAI model uses CLI default", TestCopilotDefaultOpenAiModelUsesCliDefault);
