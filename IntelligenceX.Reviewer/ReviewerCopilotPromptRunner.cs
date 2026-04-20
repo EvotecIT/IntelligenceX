@@ -35,15 +35,23 @@ internal sealed class ReviewerCopilotPromptRunner {
         var disableToolSurface = true;
         var captureLogs = !string.IsNullOrWhiteSpace(logDirectory);
         CopilotPromptProcessResult result;
+        ReviewerCopilotPromptResult? successfulResult = null;
         while (true) {
             var effectiveLogDirectory = captureLogs ? logDirectory : null;
             var startInfo = BuildStartInfo(_options, cliPath, prompt, model, disableBuiltinMcps,
                 disableToolSurface, effectiveLogDirectory);
             result = await RunProcessAsync(startInfo, timeout, cancellationToken).ConfigureAwait(false);
+            if (TryBuildSuccessfulResult(result, out successfulResult)) {
+                break;
+            }
             if (!TryApplyCompatibilityFallbacks(result, ref disableBuiltinMcps, ref disableToolSurface,
                     ref captureLogs)) {
                 break;
             }
+        }
+
+        if (successfulResult is not null) {
+            return successfulResult;
         }
 
         if (result.ExitCode != 0) {
@@ -67,6 +75,26 @@ internal sealed class ReviewerCopilotPromptRunner {
         }
 
         return new ReviewerCopilotPromptResult(response.Trim(), parsed.UsageSummary);
+    }
+
+    private static bool TryBuildSuccessfulResult(CopilotPromptProcessResult result,
+        out ReviewerCopilotPromptResult? successfulResult) {
+        successfulResult = null;
+        if (result.ExitCode != 0) {
+            return false;
+        }
+
+        var parsed = ParseJsonOutput(result.Stdout);
+        var response = parsed.Response;
+        if (string.IsNullOrWhiteSpace(response) && parsed.JsonObjectCount == 0) {
+            response = result.Stdout.Trim();
+        }
+        if (string.IsNullOrWhiteSpace(response)) {
+            return false;
+        }
+
+        successfulResult = new ReviewerCopilotPromptResult(response.Trim(), parsed.UsageSummary);
+        return true;
     }
 
     private static async Task<CopilotPromptProcessResult> RunProcessAsync(ProcessStartInfo startInfo,
@@ -323,6 +351,10 @@ internal sealed class ReviewerCopilotPromptRunner {
             ref disableBuiltinMcps, ref disableToolSurface, ref captureLogs);
         return (retry, disableBuiltinMcps, disableToolSurface, captureLogs);
     }
+
+    internal static bool TryBuildSuccessfulResultForTests(int exitCode, string stdout, string stderr,
+        out ReviewerCopilotPromptResult? successfulResult) =>
+        TryBuildSuccessfulResult(new CopilotPromptProcessResult(exitCode, stdout, stderr), out successfulResult);
 
     internal static string[] BuildArgumentsForTests(CopilotClientOptions options, string cliPath, string prompt,
         string? model = null, bool disableBuiltinMcps = true, bool disableToolSurface = true,

@@ -693,8 +693,8 @@ internal static partial class Program {
             TestCopilotPromptRunnerWrapsRootedWindowsCmdPaths);
         failed += Run("Copilot prompt runner detects unsupported MCP flag",
             TestCopilotPromptRunnerDetectsUnsupportedMcpFlag);
-        failed += Run("Copilot prompt runner retries compatibility fallbacks on successful warnings",
-            TestCopilotPromptRunnerRetriesCompatibilityFallbacksOnSuccessfulWarnings);
+        failed += Run("Copilot prompt runner accepts successful warnings without retry",
+            TestCopilotPromptRunnerAcceptsSuccessfulWarningsWithoutRetry);
         failed += Run("Copilot gh launcher builds wrapper command", TestCopilotGhLauncherBuildsWrapperCommand);
         failed += Run("Copilot auto launcher uses binary",
             TestCopilotAutoLauncherUsesBinary);

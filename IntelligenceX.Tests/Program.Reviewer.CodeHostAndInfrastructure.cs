@@ -1295,19 +1295,32 @@ internal static partial class Program {
             "copilot prompt ignores unrelated unknown flag for log capture");
     }
 
-    private static void TestCopilotPromptRunnerRetriesCompatibilityFallbacksOnSuccessfulWarnings() {
-        var stdout =
-            """{"type":"session.info","data":{"infoType":"configuration","message":"Unknown tool name in the tool allowlist: \"none\""}}""";
+    private static void TestCopilotPromptRunnerAcceptsSuccessfulWarningsWithoutRetry() {
+        var stdout = string.Join("\n", new[] {
+            """{"type":"session.info","data":{"infoType":"configuration","message":"Unknown tool name in the tool allowlist: \"none\""}}""",
+            """{"type":"assistant.message","data":{"content":"## Summary\n\nReview completed"}}""",
+            """{"type":"result","usage":{"premiumRequests":1}}"""
+        });
+
+        var accepted = ReviewerCopilotPromptRunner.TryBuildSuccessfulResultForTests(
+            0,
+            stdout,
+            string.Empty,
+            out var result);
+
+        AssertEqual(true, accepted, "copilot prompt accepts successful response even with compatibility warning");
+        AssertEqual("## Summary\n\nReview completed", result?.Response ?? string.Empty,
+            "copilot prompt preserves successful response when warning is present");
 
         var fallback = ReviewerCopilotPromptRunner.ApplyCompatibilityFallbacksForTests(
-            0,
+            1,
             stdout,
             string.Empty,
             disableBuiltinMcps: true,
             disableToolSurface: true,
             captureLogs: true);
 
-        AssertEqual(true, fallback.Retry, "copilot prompt retries on success warning");
+        AssertEqual(true, fallback.Retry, "copilot prompt retries only when warning appears on unsuccessful run");
         AssertEqual(true, fallback.DisableBuiltinMcps, "copilot prompt keeps MCP flag when unrelated");
         AssertEqual(false, fallback.DisableToolSurface, "copilot prompt drops unsupported tool surface flag");
         AssertEqual(true, fallback.CaptureLogs, "copilot prompt keeps log capture when unrelated");
