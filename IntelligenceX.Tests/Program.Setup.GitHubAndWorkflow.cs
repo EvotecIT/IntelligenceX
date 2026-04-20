@@ -174,8 +174,8 @@ jobs:
         AssertContainsText(content, "usage_budget_allow_weekly_limit: ${{ inputs.usage_budget_allow_weekly_limit }}",
             "workflow template usage budget weekly pass-through");
         AssertContainsText(content,
-            "agent_profile: ${{ inputs.agent_profile != '' && inputs.agent_profile || ((inputs.provider != '' || inputs.model != '' || inputs.openai_model != '' || inputs.copilot_model != '') && '' || vars.IX_REVIEW_AGENT_PROFILE) }}",
-            "workflow template agent profile input can override or suppress repo variable");
+            "agent_profile: ${{ inputs.agent_profile != '' && inputs.agent_profile || ((inputs.provider != '' || inputs.model != '' || inputs.openai_model != '' || inputs.copilot_model != '') && 'none' || vars.IX_REVIEW_AGENT_PROFILE) }}",
+            "workflow template agent profile input can override or deliberately suppress repo variable");
         AssertContainsText(content, "copilot_model: ${{ inputs.copilot_model || vars.IX_REVIEW_COPILOT_MODEL }}",
             "workflow template copilot model input overrides repo variable");
         AssertContainsText(content, "copilot_launcher: ${{ inputs.copilot_launcher || vars.IX_REVIEW_COPILOT_LAUNCHER }}",
@@ -267,8 +267,8 @@ jobs:
         AssertContainsText(wrapperContent, "review_config_path:",
             "wrapper workflow exposes review config path reusable-call override");
         AssertContainsText(wrapperContent,
-            "agent_profile: ${{ inputs.agent_profile != '' && inputs.agent_profile || ((inputs.provider != '' || inputs.model != '' || inputs.openai_model != '' || inputs.copilot_model != '') && '' || vars.IX_REVIEW_AGENT_PROFILE) }}",
-            "wrapper workflow lets reusable callers override or suppress repo variable agent profiles");
+            "agent_profile: ${{ inputs.agent_profile != '' && inputs.agent_profile || ((inputs.provider != '' || inputs.model != '' || inputs.openai_model != '' || inputs.copilot_model != '') && 'none' || vars.IX_REVIEW_AGENT_PROFILE) }}",
+            "wrapper workflow lets reusable callers override or deliberately suppress repo variable agent profiles");
         AssertContainsText(wrapperContent, "swarm_metrics:",
             "wrapper workflow preserves swarm metrics manual override");
         AssertContainsText(wrapperContent, "copilot_model: ${{ inputs.copilot_model || vars.IX_REVIEW_COPILOT_MODEL }}",
