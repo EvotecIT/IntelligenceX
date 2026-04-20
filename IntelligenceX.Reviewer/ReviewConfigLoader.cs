@@ -662,7 +662,10 @@ internal static class ReviewConfigLoader {
         }
 
         var resolvedProvider = profile.ResolveProvider($"review.agentProfiles.{id}.authenticator");
-        ApplyAgentProfileCopilot(obj.GetObject("copilot") ?? obj, profile);
+        var copilot = obj.GetObject("copilot");
+        if (copilot is not null || resolvedProvider == ReviewProvider.Copilot) {
+            ApplyAgentProfileCopilot(copilot ?? obj, profile);
+        }
         var openAiCompatible = obj.GetObject("openaiCompatible") ?? obj.GetObject("openAiCompatible");
         if (openAiCompatible is not null || resolvedProvider == ReviewProvider.OpenAICompatible) {
             ApplyAgentProfileOpenAiCompatible(openAiCompatible ?? obj, profile);

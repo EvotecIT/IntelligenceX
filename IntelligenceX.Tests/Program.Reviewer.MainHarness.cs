@@ -681,6 +681,10 @@ internal static partial class Program {
         failed += Run("Copilot env allowlist config", TestCopilotEnvAllowlistConfig);
         failed += Run("Copilot agent profile config preserves explicit empty maps",
             TestCopilotAgentProfileConfigPreservesExplicitEmptyMaps);
+        failed += Run("Non-copilot agent profile ignores root Copilot aliases",
+            TestNonCopilotAgentProfileIgnoresRootCopilotAliases);
+        failed += Run("Copilot agent profile allows root Copilot aliases",
+            TestCopilotAgentProfileAllowsRootCopilotAliases);
         failed += Run("Review config loader apply materializes selected agent profile",
             TestReviewConfigLoaderApplyMaterializesSelectedAgentProfile);
         failed += Run("Copilot launcher env", TestCopilotLauncherEnv);

@@ -1007,6 +1007,93 @@ internal static partial class Program {
         }
     }
 
+    private static void TestNonCopilotAgentProfileIgnoresRootCopilotAliases() {
+        var previous = Environment.GetEnvironmentVariable("REVIEW_CONFIG_PATH");
+        var path = Path.Combine(Path.GetTempPath(), $"intelligencex-review-profile-noncopilot-{Guid.NewGuid():N}.json");
+        try {
+            File.WriteAllText(path, """
+{
+  "review": {
+    "provider": "copilot",
+    "copilot": {
+      "transport": "cli"
+    },
+    "agentProfile": "openai-main",
+    "agentProfiles": {
+      "openai-main": {
+        "provider": "openai",
+        "model": "gpt-5.4",
+        "transport": "direct",
+        "launcher": "gh"
+      }
+    }
+  }
+}
+""");
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", path);
+            var settings = new ReviewSettings();
+
+            ReviewConfigLoader.Apply(settings);
+
+            AssertEqual(true, settings.AgentProfiles.TryGetValue("openai-main", out var profile),
+                "non-copilot root alias profile exists");
+            AssertNotNull(profile, "non-copilot root alias profile value");
+            AssertEqual(ReviewProvider.OpenAI, profile!.Provider, "non-copilot root alias provider");
+            AssertEqual(null, profile.CopilotTransport, "non-copilot root alias should not set copilot transport");
+            AssertEqual(null, profile.CopilotLauncher, "non-copilot root alias should not set copilot launcher");
+            AssertEqual(CopilotTransportKind.Cli, settings.CopilotTransport,
+                "non-copilot root alias should preserve ambient copilot transport");
+        } finally {
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", previous);
+            if (File.Exists(path)) {
+                File.Delete(path);
+            }
+        }
+    }
+
+    private static void TestCopilotAgentProfileAllowsRootCopilotAliases() {
+        var previous = Environment.GetEnvironmentVariable("REVIEW_CONFIG_PATH");
+        var path = Path.Combine(Path.GetTempPath(), $"intelligencex-review-profile-copilot-root-{Guid.NewGuid():N}.json");
+        try {
+            File.WriteAllText(path, """
+{
+  "review": {
+    "agentProfiles": {
+      "copilot-root": {
+        "provider": "copilot",
+        "model": "claude-sonnet-4.6",
+        "transport": "direct",
+        "launcher": "gh",
+        "directUrl": "https://example.local/copilot",
+        "directTokenEnv": "COPILOT_DIRECT_TOKEN"
+      }
+    }
+  }
+}
+""");
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", path);
+            var settings = new ReviewSettings();
+
+            ReviewConfigLoader.Apply(settings);
+
+            AssertEqual(true, settings.AgentProfiles.TryGetValue("copilot-root", out var profile),
+                "copilot root alias profile exists");
+            AssertNotNull(profile, "copilot root alias profile value");
+            AssertEqual(ReviewProvider.Copilot, profile!.Provider, "copilot root alias provider");
+            AssertEqual(CopilotTransportKind.Direct, profile.CopilotTransport, "copilot root alias transport");
+            AssertEqual("gh", profile.CopilotLauncher, "copilot root alias launcher");
+            AssertEqual("https://example.local/copilot", profile.CopilotDirectUrl ?? string.Empty,
+                "copilot root alias direct url");
+            AssertEqual("COPILOT_DIRECT_TOKEN", profile.CopilotDirectTokenEnv ?? string.Empty,
+                "copilot root alias direct token env");
+        } finally {
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", previous);
+            if (File.Exists(path)) {
+                File.Delete(path);
+            }
+        }
+    }
+
     private static void TestReviewConfigLoaderApplyMaterializesSelectedAgentProfile() {
         var previous = Environment.GetEnvironmentVariable("REVIEW_CONFIG_PATH");
         var path = Path.Combine(Path.GetTempPath(), $"intelligencex-review-profile-apply-{Guid.NewGuid():N}.json");

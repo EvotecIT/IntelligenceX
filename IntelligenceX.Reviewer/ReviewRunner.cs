@@ -146,7 +146,7 @@ internal sealed partial class ReviewRunner {
         _settings.Provider = provider;
         try {
             return provider switch {
-                ReviewProvider.Copilot => await RunCopilotAsync(prompt, onPartial, updateInterval, cancellationToken).ConfigureAwait(false),
+                ReviewProvider.Copilot => await RunCopilotWithRetryAsync(prompt, onPartial, updateInterval, cancellationToken).ConfigureAwait(false),
                 ReviewProvider.OpenAI => await RunOpenAiWithRetryAsync(prompt, onPartial, updateInterval, cancellationToken).ConfigureAwait(false),
                 ReviewProvider.OpenAICompatible => await RunOpenAiCompatibleWithRetryAsync(prompt, cancellationToken).ConfigureAwait(false),
                 ReviewProvider.Claude => await RunClaudeWithRetryAsync(prompt, cancellationToken).ConfigureAwait(false),
@@ -377,6 +377,48 @@ internal sealed partial class ReviewRunner {
             }
         } catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested) {
             throw new TimeoutException(BuildCopilotHealthTimeoutMessage(effectiveTimeout, launcherDiagnostic, stderrLines, stderrLock), ex);
+        }
+    }
+
+    private async Task<string> RunCopilotWithRetryAsync(string prompt, Func<string, Task>? onPartial,
+        TimeSpan? updateInterval, CancellationToken cancellationToken) {
+        ReviewRetryState? retryState = null;
+        try {
+            if (_settings.Preflight && !_settings.ProviderHealthChecks) {
+                var timeout = _settings.PreflightTimeoutSeconds > 0
+                    ? TimeSpan.FromSeconds(_settings.PreflightTimeoutSeconds)
+                    : TimeSpan.FromSeconds(15);
+                await RunCopilotHealthCheckAsync(timeout, cancellationToken).ConfigureAwait(false);
+            }
+
+            retryState = new ReviewRetryState();
+            return await ReviewRetryPolicy.RunAsync(async () => {
+                    var output = await RunCopilotAsync(prompt, onPartial, updateInterval, cancellationToken)
+                        .ConfigureAwait(false);
+                    if (string.IsNullOrWhiteSpace(output)) {
+                        throw new InvalidOperationException("Copilot response was empty.");
+                    }
+                    return output;
+                },
+                IsTransient,
+                _settings.RetryCount,
+                _settings.RetryDelaySeconds,
+                _settings.RetryMaxDelaySeconds,
+                Math.Max(1.0, _settings.RetryBackoffMultiplier),
+                Math.Max(0, _settings.RetryJitterMinMs),
+                Math.Max(0, _settings.RetryJitterMaxMs),
+                cancellationToken,
+                ex => ReviewDiagnostics.FormatExceptionSummary(ex, _settings.Diagnostics),
+                _settings.RetryExtraOnResponseEnded ? 1 : 0,
+                ReviewDiagnostics.IsResponseEnded,
+                retryState,
+                operationName: "Copilot").ConfigureAwait(false);
+        } catch (Exception ex) {
+            ReviewDiagnostics.LogFailure(ex, _settings, snapshot: null, retryState);
+            if (ShouldFailOpen(_settings, ex)) {
+                return ReviewDiagnostics.BuildFailureBody(ex, _settings, snapshot: null, retryState);
+            }
+            throw;
         }
     }
 
