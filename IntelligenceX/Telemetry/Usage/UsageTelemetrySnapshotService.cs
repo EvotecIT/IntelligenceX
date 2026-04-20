@@ -58,6 +58,7 @@ public sealed class UsageTelemetrySnapshotService {
             return null;
         }
 
+        var rawEvents = UsageTelemetryQuickReportScanner.RestoreRawFromCachedArtifacts(artifacts);
         var events = UsageTelemetryQuickReportScanner.RestoreFromCachedArtifacts(artifacts);
         if (events.Count == 0) {
             return null;
@@ -82,7 +83,8 @@ public sealed class UsageTelemetrySnapshotService {
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray(),
             sourceRoots: enabledRoots,
-            health: BuildCachedSnapshotHealth(allRoots, enabledRoots, artifacts, events));
+            health: BuildCachedSnapshotHealth(allRoots, enabledRoots, artifacts, events),
+            rawEvents: rawEvents);
     }
 
     /// <summary>
@@ -178,7 +180,11 @@ public sealed class UsageTelemetrySnapshotService {
                 allEvents,
                 providerResults,
                 errors,
-                rootsByProvider.Select(static group => group.Key).ToArray()));
+                rootsByProvider.Select(static group => group.Key).ToArray()),
+            rawEvents: providerResults
+                .SelectMany(static result => result.RawEvents)
+                .OrderBy(static usageEvent => usageEvent.TimestampUtc)
+                .ToArray());
     }
 
     private IReadOnlyList<SourceRootRecord> DiscoverAllRoots() {
@@ -268,10 +274,11 @@ public sealed class UsageTelemetrySnapshotService {
             var result = await scanner
                 .ScanAsync(providerRoots.ToArray(), options, cancellationToken)
                 .ConfigureAwait(false);
-            return new ProviderScanResult(providerRoots.Key, result.Events.ToList(), result, null);
+            return new ProviderScanResult(providerRoots.Key, result.Events.ToList(), result.RawEvents.ToList(), result, null);
         } catch (Exception ex) {
             return new ProviderScanResult(
                 providerRoots.Key,
+                Array.Empty<UsageEventRecord>(),
                 Array.Empty<UsageEventRecord>(),
                 new UsageTelemetryQuickReportResult(),
                 ex.Message);
@@ -281,6 +288,7 @@ public sealed class UsageTelemetrySnapshotService {
     private sealed record ProviderScanResult(
         string ProviderId,
         IReadOnlyList<UsageEventRecord> Events,
+        IReadOnlyList<UsageEventRecord> RawEvents,
         UsageTelemetryQuickReportResult ScannerResult,
         string? ErrorMessage);
 
@@ -646,8 +654,10 @@ public sealed class UsageTelemetrySnapshot {
         IReadOnlyList<string> errors,
         IReadOnlyList<string>? discoveredProviderIds = null,
         IReadOnlyList<SourceRootRecord>? sourceRoots = null,
-        UsageTelemetrySnapshotHealth? health = null) {
+        UsageTelemetrySnapshotHealth? health = null,
+        IReadOnlyList<UsageEventRecord>? rawEvents = null) {
         Events = events ?? Array.Empty<UsageEventRecord>();
+        RawEvents = rawEvents ?? Events;
         ScannedAtUtc = scannedAtUtc;
         RootsFound = Math.Max(0, rootsFound);
         ScanDurationMs = Math.Max(0L, scanDurationMs);
@@ -661,6 +671,11 @@ public sealed class UsageTelemetrySnapshot {
     /// Gets the discovered usage events.
     /// </summary>
     public IReadOnlyList<UsageEventRecord> Events { get; }
+
+    /// <summary>
+    /// Gets deduplicated per-turn usage events before display rollup merging.
+    /// </summary>
+    public IReadOnlyList<UsageEventRecord> RawEvents { get; }
 
     /// <summary>
     /// Gets the snapshot capture time.

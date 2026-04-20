@@ -20,6 +20,9 @@ internal static class UsageTelemetryEventMerge {
             MachineId = record.MachineId,
             SessionId = record.SessionId,
             ThreadId = record.ThreadId,
+            ConversationTitle = record.ConversationTitle,
+            WorkspacePath = record.WorkspacePath,
+            RepositoryName = record.RepositoryName,
             TurnId = record.TurnId,
             ResponseId = record.ResponseId,
             Model = record.Model,
@@ -29,6 +32,7 @@ internal static class UsageTelemetryEventMerge {
             OutputTokens = record.OutputTokens,
             ReasoningTokens = record.ReasoningTokens,
             TotalTokens = record.TotalTokens,
+            CompactCount = record.CompactCount,
             DurationMs = record.DurationMs,
             CostUsd = record.CostUsd,
             TruthLevel = record.TruthLevel,
@@ -51,6 +55,9 @@ internal static class UsageTelemetryEventMerge {
         updated |= MergeString(existing.MachineId, incoming.MachineId, value => existing.MachineId = value);
         updated |= MergeString(existing.SessionId, incoming.SessionId, value => existing.SessionId = value);
         updated |= MergeString(existing.ThreadId, incoming.ThreadId, value => existing.ThreadId = value);
+        updated |= MergeString(existing.ConversationTitle, incoming.ConversationTitle, value => existing.ConversationTitle = value);
+        updated |= MergeString(existing.WorkspacePath, incoming.WorkspacePath, value => existing.WorkspacePath = value);
+        updated |= MergeString(existing.RepositoryName, incoming.RepositoryName, value => existing.RepositoryName = value);
         updated |= MergeString(existing.TurnId, incoming.TurnId, value => existing.TurnId = value);
         updated |= MergeString(existing.ResponseId, incoming.ResponseId, value => existing.ResponseId = value);
         updated |= MergeString(existing.Model, incoming.Model, value => existing.Model = value);
@@ -60,6 +67,7 @@ internal static class UsageTelemetryEventMerge {
         updated |= MergeNullableInt64(existing.OutputTokens, incoming.OutputTokens, value => existing.OutputTokens = value);
         updated |= MergeNullableInt64(existing.ReasoningTokens, incoming.ReasoningTokens, value => existing.ReasoningTokens = value);
         updated |= MergeNullableInt64(existing.TotalTokens, incoming.TotalTokens, value => existing.TotalTokens = value);
+        updated |= MergeNullableInt32(existing.CompactCount, incoming.CompactCount, value => existing.CompactCount = value);
         updated |= MergeNullableInt64(existing.DurationMs, incoming.DurationMs, value => existing.DurationMs = value);
         updated |= MergeNullableDecimal(existing.CostUsd, incoming.CostUsd, value => existing.CostUsd = value);
         updated |= MergeTruthLevel(existing.TruthLevel, incoming.TruthLevel, value => existing.TruthLevel = value);
@@ -89,6 +97,15 @@ internal static class UsageTelemetryEventMerge {
     }
 
     private static bool MergeNullableInt64(long? target, long? incoming, Action<long?> apply) {
+        if (target.HasValue || !incoming.HasValue) {
+            return false;
+        }
+
+        apply(incoming);
+        return true;
+    }
+
+    private static bool MergeNullableInt32(int? target, int? incoming, Action<int?> apply) {
         if (target.HasValue || !incoming.HasValue) {
             return false;
         }

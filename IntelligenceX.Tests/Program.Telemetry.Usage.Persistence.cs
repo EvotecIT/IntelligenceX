@@ -122,6 +122,11 @@ internal static partial class Program {
                     .Add("payload", new JsonObject()
                         .Add("model", "gpt-5.4-codex"))),
                 SerializeJsonLine(new JsonObject()
+                    .Add("timestamp", "2026-03-11T12:00:01.500Z")
+                    .Add("type", "event_msg")
+                    .Add("payload", new JsonObject()
+                        .Add("type", "context_compacted"))),
+                SerializeJsonLine(new JsonObject()
                     .Add("timestamp", "2026-03-11T12:00:02Z")
                     .Add("type", "event_msg")
                     .Add("payload", new JsonObject()
@@ -152,6 +157,7 @@ internal static partial class Program {
             AssertEqual(40L, records[0].OutputTokens, "codex output tokens");
             AssertEqual(5L, records[0].ReasoningTokens, "codex reasoning tokens");
             AssertEqual(140L, records[0].TotalTokens, "codex total tokens");
+            AssertEqual(1, records[0].CompactCount, "codex compact count");
             AssertEqual(UsageTruthLevel.Exact, records[0].TruthLevel, "codex truth level");
         } finally {
             TryDeleteUsageTelemetryTempDirectory(tempDir);

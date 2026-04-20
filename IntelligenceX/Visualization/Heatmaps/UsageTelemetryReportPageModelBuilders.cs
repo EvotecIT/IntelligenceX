@@ -31,6 +31,7 @@ internal static class UsageTelemetryReportPageModelBuilders {
         var gitHubLocalAlignment = BuildGitHubWatchedLocalAlignmentInsight(gitHubLocalAlignmentSummary);
         var gitHubRepoClusterSummary = GitHubRepositoryClusterSummaryBuilder.Build(gitHubObservabilitySummary, gitHubLocalAlignmentSummary);
         var gitHubRepoClusters = BuildGitHubWatchedRepoClusterInsight(gitHubRepoClusterSummary);
+        var conversationPulse = BuildConversationPulseSection(overview.Metadata);
 
         var sectionSwitches = new List<UsageTelemetrySectionSwitchModel>();
         if (overview.ProviderSections.Count > 1) {
@@ -72,6 +73,7 @@ internal static class UsageTelemetryReportPageModelBuilders {
             ChurnUsageCorrelation: churnUsageCorrelation,
             GitHubLocalAlignment: BuildGitHubLocalAlignmentSection(gitHubLocalAlignmentSummary, gitHubLocalAlignment),
             GitHubRepoClusters: BuildGitHubRepoClusterSection(gitHubRepoClusterSummary, gitHubRepoClusters),
+            ConversationPulse: conversationPulse,
             SectionSwitches: sectionSwitches,
             Sections: sections,
             SupportingBreakdowns: supportingBreakdowns,
@@ -205,6 +207,197 @@ internal static class UsageTelemetryReportPageModelBuilders {
             TopRepositoriesByHealth: topRepositoriesByHealth,
             TopLanguages: topLanguages,
             OwnerSections: ownerSections);
+    }
+
+    private static UsageTelemetryConversationPulsePageModel? BuildConversationPulseSection(JsonObject? metadata) {
+        var conversations = metadata?.GetObject("conversations");
+        var items = conversations?.GetArray("items");
+        if (items is null || items.Count == 0) {
+            return null;
+        }
+
+        var itemObjects = items
+            .Select(static value => value.AsObject())
+            .Where(static value => value is not null)
+            .Cast<JsonObject>()
+            .ToArray();
+        if (itemObjects.Length == 0) {
+            return null;
+        }
+
+        var totalCount = conversations?.GetInt64("totalCount") ?? itemObjects.Length;
+        var shownCount = conversations?.GetInt64("shownCount") ?? itemObjects.Length;
+        var tokenTotal = conversations?.GetInt64("tokenTotal") ?? itemObjects.Sum(static item => item.GetInt64("totalTokens") ?? 0L);
+        var turnCount = conversations?.GetInt64("turnCount") ?? itemObjects.Sum(static item => item.GetInt64("turnCount") ?? 0L);
+        var compactCount = conversations?.GetInt64("compactCount") ?? itemObjects.Sum(static item => item.GetInt64("compactCount") ?? 0L);
+        var maxTokens = Math.Max(1L, itemObjects.Max(static item => item.GetInt64("totalTokens") ?? 0L));
+        var displayItems = itemObjects.Take(12).ToArray();
+        var rowModels = displayItems
+            .Select((item, index) => BuildConversationPulseRowModel(item, index + 1, maxTokens, Math.Max(1L, tokenTotal)))
+            .ToArray();
+        var rows = rowModels
+            .Select(static row => new UsageTelemetryOverviewInsightRow(
+                row.SessionCode,
+                row.TokenText + " tokens",
+                BuildConversationRowSubtitle(row),
+                row.RatioPercent / 100d))
+            .ToArray();
+        var displayCount = Math.Min(displayItems.Length, shownCount);
+        var displayTokenTotal = displayItems.Sum(static item => item.GetInt64("totalTokens") ?? 0L);
+        var note = displayCount < totalCount
+            ? "Showing the top " + displayCount.ToString(CultureInfo.InvariantCulture) + " conversations here; JSON and CSV exports keep every conversation."
+            : "Built from raw session rows before provider rollups are aggregated.";
+        var topShare = tokenTotal <= 0
+            ? "0%"
+            : FormatPercent(displayTokenTotal / (double)Math.Max(1L, tokenTotal));
+
+        return new UsageTelemetryConversationPulsePageModel(
+            Title: "Conversation usage",
+            Subtitle: "Raw sessions behind this tray report",
+            Headline: "Top " + displayCount.ToString(CultureInfo.InvariantCulture) + " cover " + topShare + " of conversation tokens",
+            Note: note,
+            Stats: new[] {
+                new UsageTelemetryHeroStatModel("Conversations", totalCount.ToString(CultureInfo.InvariantCulture)),
+                new UsageTelemetryHeroStatModel("Tokens", FormatCompact((double)tokenTotal)),
+                new UsageTelemetryHeroStatModel("Turns", turnCount.ToString(CultureInfo.InvariantCulture)),
+                new UsageTelemetryHeroStatModel("Compacts", compactCount.ToString(CultureInfo.InvariantCulture))
+            },
+            Conversations: new UsageTelemetryOverviewInsightSection(
+                key: "conversation-usage",
+                title: "Top conversations",
+                headline: "Largest session: " + FormatCompact((double)maxTokens) + " tokens",
+                note: "Ranked by token volume. Duration is wall time; active time appears only when captured.",
+                rows: rows),
+            Rows: rowModels);
+    }
+
+    private static UsageTelemetryConversationPulseRowPageModel BuildConversationPulseRowModel(
+        JsonObject item,
+        int rank,
+        long maxTokens,
+        long tokenTotal) {
+        var totalTokens = item.GetInt64("totalTokens") ?? 0L;
+        var label = NormalizeOptional(item.GetString("label"))
+                    ?? NormalizeOptional(item.GetString("sessionId"))
+                    ?? "Conversation";
+        var title = NormalizeOptional(item.GetString("title"));
+        var repository = NormalizeOptional(item.GetString("repository"));
+        var workspace = NormalizeOptional(item.GetString("workspace"));
+        var context = repository ?? workspace;
+        var duration = NormalizeOptional(item.GetString("duration"));
+        var durationMs = item.GetInt64("durationMs") ?? 0L;
+        var activeDurationMs = item.GetInt64("activeDurationMs");
+        var activeDuration = NormalizeOptional(item.GetString("activeDuration"));
+        var turnCount = item.GetInt64("turnCount") ?? 0L;
+        var compactCount = item.GetInt64("compactCount") ?? 0L;
+        var cost = item.GetDouble("apiEquivalentCostUsd") ?? 0d;
+        string? costText = null;
+        if (cost > 0d) {
+            var approximate = item.GetBoolean("costApproximate");
+            costText = (approximate ? "~$" : "$") + cost.ToString(cost >= 100d ? "0" : "0.##", CultureInfo.InvariantCulture);
+        }
+
+        var provider = NormalizeOptional(item.GetString("provider")) ?? NormalizeOptional(item.GetString("providerId")) ?? "Provider";
+        var account = NormalizeConversationAccount(item.GetString("account"), provider);
+        var models = BuildConversationList(item.GetArray("models")) ?? "model n/a";
+        var surfaces = BuildConversationList(item.GetArray("surfaces")) ?? "surface n/a";
+        return new UsageTelemetryConversationPulseRowPageModel(
+            Rank: rank,
+            SessionLabel: "Session " + rank.ToString(CultureInfo.InvariantCulture),
+            SessionCode: label,
+            TitleText: title ?? "Session " + rank.ToString(CultureInfo.InvariantCulture),
+            ContextText: context,
+            RepositoryText: repository,
+            WorkspaceText: workspace,
+            TotalTokensRaw: totalTokens,
+            DurationMs: Math.Max(0L, durationMs),
+            TurnCountRaw: (int)Math.Max(0L, turnCount),
+            CompactCountRaw: (int)Math.Max(0L, compactCount),
+            CostUsdRaw: Math.Max(0d, cost),
+            TokenText: FormatCompact((double)totalTokens),
+            ShareText: FormatPercent(totalTokens / (double)Math.Max(1L, tokenTotal)) + " of shown total",
+            StartedText: NormalizeOptional(item.GetString("startedLocal")) ?? "time n/a",
+            SpanText: string.IsNullOrWhiteSpace(duration) ? "span n/a" : "span " + duration,
+            ActiveText: (activeDurationMs is null || activeDurationMs > 0) && !string.IsNullOrWhiteSpace(activeDuration)
+                ? "active " + activeDuration
+                : null,
+            TurnText: turnCount > 0
+                ? turnCount.ToString(CultureInfo.InvariantCulture) + " turns"
+                : "turns n/a",
+            CompactText: compactCount > 0
+                ? compactCount.ToString(CultureInfo.InvariantCulture) + " compacts"
+                : null,
+            AccountText: account,
+            ModelText: models,
+            SurfaceText: surfaces,
+            CostText: costText,
+            RatioPercent: totalTokens <= 0 ? 0d : Math.Min(100d, totalTokens / (double)Math.Max(1L, maxTokens) * 100d));
+    }
+
+    private static string BuildConversationRowSubtitle(UsageTelemetryConversationPulseRowPageModel row) {
+        var parts = new List<string> {
+            row.StartedText,
+            row.SpanText,
+            row.TurnText,
+            row.AccountText,
+            row.ModelText,
+            row.SurfaceText
+        };
+        if (!string.IsNullOrWhiteSpace(row.ContextText)) {
+            parts.Insert(1, row.ContextText!);
+        }
+        if (!string.IsNullOrWhiteSpace(row.ActiveText)) {
+            parts.Insert(2, row.ActiveText!);
+        }
+        if (!string.IsNullOrWhiteSpace(row.CompactText)) {
+            parts.Insert(3, row.CompactText!);
+        }
+        if (!string.IsNullOrWhiteSpace(row.CostText)) {
+            parts.Add(row.CostText!);
+        }
+
+        return string.Join(" • ", parts);
+    }
+
+    private static string? BuildConversationList(JsonArray? values) {
+        if (values is null || values.Count == 0) {
+            return null;
+        }
+
+        var labels = values
+            .Select(static value => NormalizeOptional(value.AsString()))
+            .Where(static value => !string.IsNullOrWhiteSpace(value))
+            .Cast<string>()
+            .Take(3)
+            .ToArray();
+        return labels.Length == 0 ? null : string.Join(", ", labels);
+    }
+
+    private static string NormalizeConversationAccount(string? value, string provider) {
+        var normalized = NormalizeOptional(value);
+        if (string.IsNullOrWhiteSpace(normalized) ||
+            string.Equals(normalized, "unknown-account", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(normalized, "Unknown account", StringComparison.OrdinalIgnoreCase)) {
+            return provider + " account";
+        }
+
+        var account = normalized!;
+        if (Guid.TryParse(account, out _)) {
+            return provider + " account " + account.Substring(0, Math.Min(8, account.Length));
+        }
+
+        if (account.Length > 36 && account.Count(static ch => ch == '-') >= 4) {
+            return provider + " account " + account.Substring(0, Math.Min(8, account.Length));
+        }
+
+        return account;
+    }
+
+    private static string FormatPercent(double ratio) {
+        var percent = Math.Max(0d, Math.Min(100d, ratio * 100d));
+        return percent >= 10d
+            ? percent.ToString("0", CultureInfo.InvariantCulture) + "%"
+            : percent.ToString("0.#", CultureInfo.InvariantCulture) + "%";
     }
 
     private static IReadOnlyList<UsageTelemetryOverviewInsightSection> BuildProviderHealthInsights(
@@ -1282,6 +1475,10 @@ internal static class UsageTelemetryReportPageModelBuilders {
         }
 
         return startDayUtc.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) + " to " + endDayUtc.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+    }
+
+    private static string? NormalizeOptional(string? value) {
+        return HeatmapText.NormalizeOptionalText(value);
     }
 
     private static string FormatCompact(decimal value) {

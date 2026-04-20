@@ -105,6 +105,9 @@ public sealed class ProviderViewModel : ViewModelBase {
     private string _weeklyLabel = "7 days";
     private string _monthlyLabel = "30 days";
     private readonly List<UsageEventRecord> _usageEvents = [];
+    private readonly List<UsageEventRecord> _conversationEvents = [];
+    private readonly List<UsageConversationSummary> _conversationSummaryData = [];
+    private readonly List<ConversationUsageViewModel> _conversationSummaries = [];
     private ProviderTimeRange _selectedRange = ProviderTimeRange.Today;
     private string _actionStatusMessage = string.Empty;
     private string _selectedAccountFilter = ProviderFilterDefaults.AllAccounts;
@@ -150,6 +153,10 @@ public sealed class ProviderViewModel : ViewModelBase {
         SurfaceBreakdown.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasSurfaceBreakdown));
         ModelDaySummaries.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasModelDaySummaries));
         RecentActivity.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasRecentActivity));
+        Conversations.CollectionChanged += (_, _) => {
+            OnPropertyChanged(nameof(HasConversationStats));
+            OnPropertyChanged(nameof(ConversationStatsSummaryText));
+        };
         ProviderComparison.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasProviderComparison));
         CombinedOverviewCards.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasCombinedOverviewCards));
         CodeChurnBars.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasCodeChurnBars));
@@ -263,7 +270,7 @@ public sealed class ProviderViewModel : ViewModelBase {
                 return "No new activity since the previous refresh.";
             }
 
-            var summary = "+" + NewEventsSinceRefresh.ToString("N0", CultureInfo.CurrentCulture) + " new events";
+            var summary = "+" + NewEventsSinceRefresh.ToString("N0", CultureInfo.CurrentCulture) + " new rollups";
             if (NewTokensSinceRefresh > 0) {
                 summary += " • +" + FormatTokens(NewTokensSinceRefresh) + " tokens";
             }
@@ -490,8 +497,13 @@ public sealed class ProviderViewModel : ViewModelBase {
 
     public int TodayEventCount {
         get => _todayEventCount;
-        set => SetProperty(ref _todayEventCount, value);
+        set {
+            if (SetProperty(ref _todayEventCount, value)) {
+                OnPropertyChanged(nameof(TodayRollupCountText));
+            }
+        }
     }
+    public string TodayRollupCountText => FormatCountLabel(TodayEventCount, "rollup", "rollups");
 
     // -- 7-day --
     public long WeeklyTotalTokens {
@@ -761,6 +773,7 @@ public sealed class ProviderViewModel : ViewModelBase {
     public bool HasSurfaceBreakdown => SurfaceBreakdown.Count > 0;
     public bool HasModelDaySummaries => ModelDaySummaries.Count > 0;
     public bool HasRecentActivity => RecentActivity.Count > 0;
+    public bool HasConversationStats => _conversationSummaryData.Count > 0;
     public bool IsCombinedProvider => string.Equals(ProviderId, "__all__", StringComparison.Ordinal);
     public bool HasProviderComparison => IsCombinedProvider && ProviderComparison.Count > 0;
     public bool HasCombinedOverviewCards => IsCombinedProvider && CombinedOverviewCards.Count > 0;
@@ -795,6 +808,8 @@ public sealed class ProviderViewModel : ViewModelBase {
     public ObservableCollection<ProviderComparisonEntryViewModel> ProviderComparison { get; } = [];
     public ObservableCollection<ProviderOverviewCardViewModel> CombinedOverviewCards { get; } = [];
     public ObservableCollection<RecentUsageItemViewModel> RecentActivity { get; } = [];
+    public ObservableCollection<ConversationUsageViewModel> Conversations { get; } = [];
+    public string ConversationStatsSummaryText => BuildConversationStatsSummaryText();
     public string CodeChurnRepositoryText => NormalizeOptional(_codeChurnSummary.RepositoryName) ?? "Local repository";
     public string CodeChurnAddedText => "+" + FormatTokens(_codeChurnSummary.RecentAddedLines);
     public string CodeChurnDeletedText => "-" + FormatTokens(_codeChurnSummary.RecentDeletedLines);
@@ -840,7 +855,7 @@ public sealed class ProviderViewModel : ViewModelBase {
         }
     }
 
-    public string FilteredEventCountLabel => FilteredEventCount.ToString("N0", CultureInfo.CurrentCulture) + " matching events";
+    public string FilteredEventCountLabel => FormatCountLabel(FilteredEventCount, "matching rollup", "matching rollups");
 
     public RecentUsageItemViewModel? SelectedEvent {
         get => _selectedEvent;
@@ -910,8 +925,17 @@ public sealed class ProviderViewModel : ViewModelBase {
     public void ApplyUsageEvents(IEnumerable<UsageEventRecord> events) {
         _usageEvents.Clear();
         _usageEvents.AddRange(events ?? Array.Empty<UsageEventRecord>());
+        if (_conversationEvents.Count == 0) {
+            _conversationEvents.AddRange(_usageEvents);
+        }
         RebuildFilterOptions();
         RebuildStaticWindows();
+        RebuildSelectedRangeViews();
+    }
+
+    public void ApplyConversationEvents(IEnumerable<UsageEventRecord> events) {
+        _conversationEvents.Clear();
+        _conversationEvents.AddRange(events ?? Array.Empty<UsageEventRecord>());
         RebuildSelectedRangeViews();
     }
 
@@ -1368,6 +1392,7 @@ public sealed class ProviderViewModel : ViewModelBase {
             InputColor);
         PopulateProviderComparison(rangeEvents);
         PopulateCombinedOverview(rangeEvents);
+        PopulateConversationStats(ApplyFilters(GetConversationRangeEvents(SelectedRange)));
         PopulateRecentActivity(rangeEvents);
 
         ActionStatusMessage = string.Empty;
@@ -1539,8 +1564,29 @@ public sealed class ProviderViewModel : ViewModelBase {
         };
     }
 
+    private List<UsageEventRecord> GetConversationRangeEvents(ProviderTimeRange range) {
+        var today = DateTime.Now.Date;
+        return range switch {
+            ProviderTimeRange.Today => FilterConversationByWindow(today, today),
+            ProviderTimeRange.Last7Days => FilterConversationByWindow(today.AddDays(-6), today),
+            ProviderTimeRange.Last30Days => FilterConversationByWindow(today.AddDays(-29), today),
+            ProviderTimeRange.AllTime => _conversationEvents.OrderByDescending(static e => e.TimestampUtc).ToList(),
+            _ => _conversationEvents.OrderByDescending(static e => e.TimestampUtc).ToList()
+        };
+    }
+
     private List<UsageEventRecord> FilterByWindow(DateTime startDay, DateTime endDay) {
         return _usageEvents
+            .Where(e => {
+                var localDay = e.TimestampUtc.ToLocalTime().Date;
+                return localDay >= startDay && localDay <= endDay;
+            })
+            .OrderByDescending(static e => e.TimestampUtc)
+            .ToList();
+    }
+
+    private List<UsageEventRecord> FilterConversationByWindow(DateTime startDay, DateTime endDay) {
+        return _conversationEvents
             .Where(e => {
                 var localDay = e.TimestampUtc.ToLocalTime().Date;
                 return localDay >= startDay && localDay <= endDay;
@@ -1701,6 +1747,25 @@ public sealed class ProviderViewModel : ViewModelBase {
             : RecentActivity.FirstOrDefault();
     }
 
+    private void PopulateConversationStats(IReadOnlyList<UsageEventRecord> events) {
+        Conversations.Clear();
+        _conversationSummaryData.Clear();
+        _conversationSummaries.Clear();
+        var summaries = UsageConversationSummaryBuilder.Build(events).ToList();
+        var viewModels = summaries
+            .Select(static summary => BuildConversationViewModel(summary))
+            .ToList();
+
+        _conversationSummaryData.AddRange(summaries);
+        _conversationSummaries.AddRange(viewModels);
+        foreach (var item in viewModels.Take(10)) {
+            Conversations.Add(item);
+        }
+
+        OnPropertyChanged(nameof(HasConversationStats));
+        OnPropertyChanged(nameof(ConversationStatsSummaryText));
+    }
+
     private void PopulateProviderComparison(IReadOnlyList<UsageEventRecord> events) {
         ProviderComparison.Clear();
         if (!IsCombinedProvider) {
@@ -1750,7 +1815,7 @@ public sealed class ProviderViewModel : ViewModelBase {
                 ShortName = group.Info.ShortName,
                 TokensText = FormatTokens(group.Tokens),
                 CostText = FormatCostDisplay(group.CostRollup.TotalCostUsd, group.CostRollup.UsesEstimatedFallback),
-                EventCountText = group.Events.ToString("N0", CultureInfo.CurrentCulture) + " events",
+                EventCountText = FormatCountLabel(group.Events, "rollup", "rollups"),
                 HealthText = healthInfo?.SummaryText ?? "Usage snapshot only",
                 HealthBrush = healthInfo?.SummaryBrush ?? FrozenBrush(Color.FromRgb(144, 144, 184)),
                 DeltaText = deltaInfo?.SummaryText ?? "No previous refresh baseline",
@@ -1793,7 +1858,7 @@ public sealed class ProviderViewModel : ViewModelBase {
                 : "Top: "
                   + leadingProvider.Info.DisplayName
                   + " • " + FormatTokens(leadingProvider.Tokens)
-                  + " • " + leadingProvider.Events.ToString("N0", CultureInfo.CurrentCulture) + " events",
+                  + " • " + FormatCountLabel(leadingProvider.Events, "rollup", "rollups"),
             AccentBrush = FrozenBrush(leadingProvider is null ? TotalColor : leadingProvider.Info.TotalColor)
         });
 
@@ -2130,7 +2195,7 @@ public sealed class ProviderViewModel : ViewModelBase {
 
     private Task ApplySelectedEventFilterAsync(FilterDimension dimension) {
         if (SelectedEvent is null) {
-            ActionStatusMessage = "Select an event first.";
+            ActionStatusMessage = "Select a rollup first.";
             return Task.CompletedTask;
         }
 
@@ -2153,7 +2218,7 @@ public sealed class ProviderViewModel : ViewModelBase {
         };
 
         if (string.IsNullOrWhiteSpace(value) || value.StartsWith("Unknown ", StringComparison.OrdinalIgnoreCase)) {
-            ActionStatusMessage = "The selected event does not include a usable " + dimensionLabel + ".";
+            ActionStatusMessage = "The selected rollup does not include a usable " + dimensionLabel + ".";
             return Task.CompletedTask;
         }
 
@@ -2176,13 +2241,13 @@ public sealed class ProviderViewModel : ViewModelBase {
                 $"{DisplayName} usage summary",
                 $"Range: {TodayLabel}",
                 $"Filters: {BuildFilterSummary()}",
-                $"Events: {TodayEventCount}",
+                $"Rollups: {TodayEventCount}",
                 $"Tokens: {TodayTotalTokensFormatted}",
                 $"Input: {TodayInputTokensFormatted}",
                 $"Output: {TodayOutputTokensFormatted}",
                 $"Cached: {TodayCachedTokensFormatted}",
                 $"Reasoning: {TodayReasoningTokensFormatted}",
-                $"Cost: {TodayCostFormatted}"
+                $"API equivalent: {TodayCostFormatted}"
             };
 
             if (HasSurfaceBreakdown) {
@@ -2203,6 +2268,41 @@ public sealed class ProviderViewModel : ViewModelBase {
             if (HasModelDaySummaries) {
                 lines.Add("Local models by day:");
                 lines.AddRange(ModelDaySummaries.Select(entry => $"  {entry.DayLabel}: {entry.TotalTokensText} • {entry.ModelsText}"));
+            }
+
+            if (_conversationSummaryData.Count > 0) {
+                var compactCount = _conversationSummaryData.Sum(static conversation => conversation.CompactCount);
+                lines.Add("Conversations:");
+                lines.Add("  " + FormatCountLabel(_conversationSummaryData.Count, "conversation", "conversations"));
+                lines.Add("  " + FormatCountLabel(_conversationSummaryData.Sum(static conversation => conversation.TurnCount), "turn", "turns"));
+                if (compactCount > 0) {
+                    lines.Add("  " + FormatCountLabel(compactCount, "compact", "compacts"));
+                }
+
+                lines.Add("Top conversations:");
+                lines.AddRange(_conversationSummaryData
+                    .Take(5)
+                    .Select(static conversation => {
+                        var parts = new List<string> {
+                            FormatTokens(conversation.TotalTokens),
+                            "span " + HeatmapDisplayText.FormatDuration(conversation.Duration),
+                            "active " + HeatmapDisplayText.FormatDuration(conversation.ActiveDuration),
+                            FormatCountLabel(conversation.TurnCount, "turn", "turns")
+                        };
+                        if (conversation.CompactCount > 0) {
+                            parts.Add(FormatCountLabel(conversation.CompactCount, "compact", "compacts"));
+                        }
+                        if (conversation.Models.Count > 0) {
+                            parts.Add(string.Join(", ", conversation.Models));
+                        }
+                        var contextLabel = conversation.RepositoryName ?? conversation.WorkspaceName;
+                        if (!string.IsNullOrWhiteSpace(contextLabel)) {
+                            parts.Add(contextLabel);
+                        }
+
+                        var title = conversation.ConversationTitle ?? FormatSessionSnippet(conversation.SessionId);
+                        return "  " + title + ": " + string.Join(" • ", parts);
+                    }));
             }
 
             if (HasDataScopeSection) {
@@ -2248,13 +2348,13 @@ public sealed class ProviderViewModel : ViewModelBase {
 
     private Task CopySelectedEventAsync() {
         if (SelectedEvent is null) {
-            ActionStatusMessage = "Select an event first.";
+            ActionStatusMessage = "Select a rollup first.";
             return Task.CompletedTask;
         }
 
         try {
             var lines = new List<string> {
-                $"{DisplayName} event details",
+                $"{DisplayName} rollup details",
                 $"Model: {SelectedEvent.ModelText}",
                 $"Surface: {SelectedEvent.SurfaceText}",
                 $"Account: {SelectedEvent.AccountText}",
@@ -2265,11 +2365,11 @@ public sealed class ProviderViewModel : ViewModelBase {
                 $"Output: {SelectedEvent.OutputText}",
                 $"Cached: {SelectedEvent.CachedText}",
                 $"Reasoning: {SelectedEvent.ReasoningText}",
-                $"Cost: {SelectedEvent.CostText}"
+                $"API equivalent: {SelectedEvent.CostText}"
             };
 
             Clipboard.SetText(string.Join(Environment.NewLine, lines));
-            ActionStatusMessage = "Copied selected event details to clipboard.";
+            ActionStatusMessage = "Copied selected rollup details to clipboard.";
         } catch (Exception ex) {
             ActionStatusMessage = "Copy failed: " + ex.Message;
         }
@@ -2279,7 +2379,7 @@ public sealed class ProviderViewModel : ViewModelBase {
 
     private Task CopySelectedEventJsonAsync() {
         if (SelectedEvent is null) {
-            ActionStatusMessage = "Select an event first.";
+            ActionStatusMessage = "Select a rollup first.";
             return Task.CompletedTask;
         }
 
@@ -2296,13 +2396,13 @@ public sealed class ProviderViewModel : ViewModelBase {
                 outputTokens = SelectedEvent.OutputText,
                 cachedTokens = SelectedEvent.CachedText,
                 reasoningTokens = SelectedEvent.ReasoningText,
-                cost = SelectedEvent.CostText
+                apiEquivalentCost = SelectedEvent.CostText
             };
 
             Clipboard.SetText(JsonSerializer.Serialize(payload, new JsonSerializerOptions {
                 WriteIndented = true
             }));
-            ActionStatusMessage = "Copied selected event JSON to clipboard.";
+            ActionStatusMessage = "Copied selected rollup JSON to clipboard.";
         } catch (Exception ex) {
             ActionStatusMessage = "JSON copy failed: " + ex.Message;
         }
@@ -2331,13 +2431,13 @@ public sealed class ProviderViewModel : ViewModelBase {
                     surface = SelectedSurfaceFilter
                 },
                 summary = new {
-                    events = TodayEventCount,
+                    rollups = TodayEventCount,
                     totalTokens = TodayTotalTokens,
                     inputTokens = TodayInputTokens,
                     outputTokens = TodayOutputTokens,
                     cachedTokens = TodayCachedTokens,
                     reasoningTokens = TodayReasoningTokens,
-                    costUsd = TodayCostUsd,
+                    apiEquivalentCostUsd = TodayCostUsd,
                     costApproximate = TodayCostUsesEstimate
                 },
                 dataScope = HasDataScopeSection
@@ -2380,7 +2480,38 @@ public sealed class ProviderViewModel : ViewModelBase {
                     totalTokens = entry.TotalTokensText,
                     models = entry.ModelsText
                 }),
-                events = events.Select(e => {
+                conversations = _conversationSummaryData.Select(conversation => new {
+                    conversationKey = conversation.ConversationKey,
+                    providerId = conversation.ProviderId,
+                    provider = UsageTelemetryProviderCatalog.ResolveDisplayTitle(conversation.ProviderId),
+                    providerAccountId = conversation.ProviderAccountId,
+                    account = conversation.AccountLabel,
+                    sessionId = conversation.SessionId,
+                    title = conversation.ConversationTitle,
+                    workspacePath = conversation.WorkspacePath,
+                    workspace = conversation.WorkspaceName,
+                    repository = conversation.RepositoryName,
+                    startedLocal = conversation.StartedUtc.ToLocalTime().ToString("O", CultureInfo.InvariantCulture),
+                    startedUtc = conversation.StartedUtc.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture),
+                    lastSeenLocal = conversation.LastSeenUtc.ToLocalTime().ToString("O", CultureInfo.InvariantCulture),
+                    lastSeenUtc = conversation.LastSeenUtc.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture),
+                    durationMs = (long)conversation.Duration.TotalMilliseconds,
+                    duration = HeatmapDisplayText.FormatDuration(conversation.Duration),
+                    activeDurationMs = (long)conversation.ActiveDuration.TotalMilliseconds,
+                    activeDuration = HeatmapDisplayText.FormatDuration(conversation.ActiveDuration),
+                    turnCount = conversation.TurnCount,
+                    compactCount = conversation.CompactCount,
+                    models = conversation.Models,
+                    surfaces = conversation.Surfaces,
+                    inputTokens = conversation.InputTokens,
+                    outputTokens = conversation.OutputTokens,
+                    cachedTokens = conversation.CachedInputTokens,
+                    reasoningTokens = conversation.ReasoningTokens,
+                    totalTokens = conversation.TotalTokens,
+                    apiEquivalentCostUsd = conversation.CostUsd,
+                    costApproximate = conversation.CostUsesEstimatedFallback
+                }),
+                rollups = events.Select(e => {
                     var displayCost = UsageTelemetryApiPricing.BuildDisplayCost(e);
                     return new {
                         timestampLocal = e.TimestampUtc.ToLocalTime().ToString("O", CultureInfo.InvariantCulture),
@@ -2393,7 +2524,7 @@ public sealed class ProviderViewModel : ViewModelBase {
                         cachedTokens = e.CachedInputTokens,
                         reasoningTokens = e.ReasoningTokens,
                         totalTokens = e.TotalTokens,
-                        costUsd = displayCost.TotalCostUsd,
+                        apiEquivalentCostUsd = displayCost.TotalCostUsd,
                         costApproximate = displayCost.UsesEstimatedFallback
                     };
                 })
@@ -2420,7 +2551,7 @@ public sealed class ProviderViewModel : ViewModelBase {
             }
 
             var builder = new StringBuilder();
-            builder.AppendLine("timestamp_local,timestamp_utc,account,model,surface,input_tokens,output_tokens,cached_tokens,reasoning_tokens,total_tokens,cost_usd");
+            builder.AppendLine("timestamp_local,timestamp_utc,account,model,surface,input_tokens,output_tokens,cached_tokens,reasoning_tokens,total_tokens,api_equivalent_cost_usd");
             foreach (var usageEvent in ApplyFilters(GetRangeEvents(SelectedRange))) {
                 builder.AppendLine(string.Join(",",
                     EscapeCsv(usageEvent.TimestampUtc.ToLocalTime().ToString("O", CultureInfo.InvariantCulture)),
@@ -2436,6 +2567,41 @@ public sealed class ProviderViewModel : ViewModelBase {
                     EscapeCsv(FormatExportCost(usageEvent))));
             }
 
+            if (_conversationSummaryData.Count > 0) {
+                builder.AppendLine();
+                builder.AppendLine("conversation_key,provider,provider_id,account,provider_account_id,session_id,title,workspace_path,workspace,repository,started_local,started_utc,last_seen_local,last_seen_utc,duration_ms,active_duration_ms,turn_count,compact_count,models,surfaces,input_tokens,output_tokens,cached_tokens,reasoning_tokens,total_tokens,api_equivalent_cost_usd,cost_approximate");
+                foreach (var conversation in _conversationSummaryData) {
+                    builder.AppendLine(string.Join(",",
+                        EscapeCsv(conversation.ConversationKey),
+                        EscapeCsv(UsageTelemetryProviderCatalog.ResolveDisplayTitle(conversation.ProviderId)),
+                        EscapeCsv(conversation.ProviderId),
+                        EscapeCsv(conversation.AccountLabel),
+                        EscapeCsv(conversation.ProviderAccountId),
+                        EscapeCsv(conversation.SessionId),
+                        EscapeCsv(conversation.ConversationTitle),
+                        EscapeCsv(conversation.WorkspacePath),
+                        EscapeCsv(conversation.WorkspaceName),
+                        EscapeCsv(conversation.RepositoryName),
+                        EscapeCsv(conversation.StartedUtc.ToLocalTime().ToString("O", CultureInfo.InvariantCulture)),
+                        EscapeCsv(conversation.StartedUtc.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture)),
+                        EscapeCsv(conversation.LastSeenUtc.ToLocalTime().ToString("O", CultureInfo.InvariantCulture)),
+                        EscapeCsv(conversation.LastSeenUtc.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture)),
+                        EscapeCsv((long)conversation.Duration.TotalMilliseconds),
+                        EscapeCsv((long)conversation.ActiveDuration.TotalMilliseconds),
+                        EscapeCsv(conversation.TurnCount),
+                        EscapeCsv(conversation.CompactCount),
+                        EscapeCsv(string.Join(" | ", conversation.Models)),
+                        EscapeCsv(string.Join(" | ", conversation.Surfaces)),
+                        EscapeCsv(conversation.InputTokens),
+                        EscapeCsv(conversation.OutputTokens),
+                        EscapeCsv(conversation.CachedInputTokens),
+                        EscapeCsv(conversation.ReasoningTokens),
+                        EscapeCsv(conversation.TotalTokens),
+                        EscapeCsv(FormatExportCost(conversation.CostUsd, conversation.CostUsesEstimatedFallback)),
+                        EscapeCsv(conversation.CostUsesEstimatedFallback)));
+                }
+            }
+
             await File.WriteAllTextAsync(dialog.FileName, builder.ToString()).ConfigureAwait(true);
             ActionStatusMessage = "Exported CSV to " + dialog.FileName;
         } catch (Exception ex) {
@@ -2447,7 +2613,7 @@ public sealed class ProviderViewModel : ViewModelBase {
         try {
             var events = ApplyFilters(GetRangeEvents(SelectedRange));
             if (events.Count == 0) {
-                ActionStatusMessage = "No events are available for the current range and filters.";
+                ActionStatusMessage = "No rollups are available for the current range and filters.";
                 return;
             }
 
@@ -2493,7 +2659,7 @@ public sealed class ProviderViewModel : ViewModelBase {
             parts.Add(FormatCostDisplay(displayCost.TotalCostUsd, displayCost.UsesEstimatedFallback));
         }
 
-        return parts.Count == 0 ? "No token or cost data" : string.Join(" • ", parts);
+        return parts.Count == 0 ? "No token or API-equivalent cost data" : string.Join(" • ", parts);
     }
 
     private static string BuildEventKey(UsageEventRecord usageEvent) {
@@ -2506,16 +2672,84 @@ public sealed class ProviderViewModel : ViewModelBase {
             FormatExportCost(usageEvent));
     }
 
+    private static string FormatSessionSnippet(string value) {
+        var normalized = NormalizeOptional(value) ?? "unknown-session";
+        if (normalized.Length <= 18) {
+            return normalized;
+        }
+
+        return normalized[..8] + "..." + normalized[^6..];
+    }
+
+    private static ConversationUsageViewModel BuildConversationViewModel(UsageConversationSummary summary) {
+        var models = summary.Models.Count == 0 ? "Unknown model" : string.Join(", ", summary.Models);
+        var surfaces = summary.Surfaces.Count == 0 ? "Unknown surface" : string.Join(", ", summary.Surfaces);
+
+        return new ConversationUsageViewModel {
+            ConversationKey = summary.ConversationKey,
+            ProviderText = UsageTelemetryProviderCatalog.ResolveDisplayTitle(summary.ProviderId),
+            SessionText = FormatSessionSnippet(summary.SessionId),
+            TitleText = summary.ConversationTitle ?? "Untitled session",
+            WorkspaceText = summary.WorkspaceName ?? "Unknown workspace",
+            RepositoryText = summary.RepositoryName ?? summary.WorkspaceName ?? "Unknown repo",
+            AccountText = summary.AccountLabel ?? summary.ProviderAccountId ?? "Unknown account",
+            StartedText = summary.StartedUtc.ToLocalTime().ToString("MMM d HH:mm", CultureInfo.CurrentCulture),
+            LastSeenText = summary.LastSeenUtc.ToLocalTime().ToString("MMM d HH:mm", CultureInfo.CurrentCulture),
+            DurationText = HeatmapDisplayText.FormatDuration(summary.Duration),
+            ActiveDurationText = HeatmapDisplayText.FormatDuration(summary.ActiveDuration),
+            TurnsText = FormatCountLabel(summary.TurnCount, "turn", "turns"),
+            TokensText = FormatTokens(summary.TotalTokens),
+            InputText = FormatTokens(summary.InputTokens),
+            OutputText = FormatTokens(summary.OutputTokens),
+            CachedText = FormatTokens(summary.CachedInputTokens),
+            ReasoningText = FormatTokens(summary.ReasoningTokens),
+            CostText = FormatCostDisplay(summary.CostUsd, summary.CostUsesEstimatedFallback),
+            ModelsText = models,
+            SurfaceText = surfaces,
+            CompactCountText = summary.CompactCount > 0
+                ? summary.CompactCount.ToString("N0", CultureInfo.CurrentCulture)
+                : "0"
+        };
+    }
+
+    private string BuildConversationStatsSummaryText() {
+        if (_conversationSummaryData.Count == 0) {
+            return "No per-conversation rows are available for this range.";
+        }
+
+        var turnCount = _conversationSummaryData.Sum(static conversation => conversation.TurnCount);
+        var compactCount = _conversationSummaryData.Sum(static conversation => conversation.CompactCount);
+        var tokenCount = _conversationSummaryData.Sum(static conversation => conversation.TotalTokens);
+        var summaryParts = new List<string> {
+            FormatTokens(tokenCount),
+            FormatCountLabel(turnCount, "turn", "turns")
+        };
+        if (compactCount > 0) {
+            summaryParts.Add(FormatCountLabel(compactCount, "compact", "compacts"));
+        }
+
+        var summarySuffix = " • " + string.Join(" • ", summaryParts);
+        if (_conversationSummaryData.Count == Conversations.Count) {
+            return FormatCountLabel(Conversations.Count, "conversation", "conversations")
+                   + summarySuffix;
+        }
+
+        return Conversations.Count.ToString("N0", CultureInfo.CurrentCulture)
+               + " of "
+               + FormatCountLabel(_conversationSummaryData.Count, "conversation", "conversations")
+               + summarySuffix
+               + "; exports include all.";
+    }
+
     private static string? NormalizeOptional(string? value) {
         var trimmed = value?.Trim();
         return string.IsNullOrWhiteSpace(trimmed) ? null : trimmed;
     }
 
     private JsonObject? BuildReportMetadata() {
-        if (!HasUsageHealthSection) {
-            if (!HasDataScopeSection) {
-                return null;
-            }
+        var hasConversationSummary = _conversationSummaryData.Count > 0;
+        if (!HasUsageHealthSection && !HasDataScopeSection && !hasConversationSummary) {
+            return null;
         }
 
         var metadata = new JsonObject();
@@ -2549,7 +2783,69 @@ public sealed class ProviderViewModel : ViewModelBase {
             metadata.Add("dataScope", dataScope);
         }
 
+        if (hasConversationSummary) {
+            metadata.Add("conversations", BuildReportConversationMetadata());
+        }
+
         return metadata;
+    }
+
+    private JsonObject BuildReportConversationMetadata() {
+        var conversations = _conversationSummaryData;
+        var items = new JsonArray();
+        foreach (var conversation in conversations.Take(25)) {
+            var models = new JsonArray();
+            foreach (var model in conversation.Models) {
+                models.Add(model);
+            }
+
+            var surfaces = new JsonArray();
+            foreach (var surface in conversation.Surfaces) {
+                surfaces.Add(surface);
+            }
+
+            var account = conversation.AccountLabel ?? conversation.ProviderAccountId ?? "Unknown account";
+            var label = FormatSessionSnippet(conversation.SessionId);
+            items.Add(new JsonObject()
+                .Add("conversationKey", conversation.ConversationKey)
+                .Add("providerId", conversation.ProviderId)
+                .Add("provider", UsageTelemetryProviderCatalog.ResolveDisplayTitle(conversation.ProviderId))
+                .Add("providerAccountId", conversation.ProviderAccountId)
+                .Add("account", account)
+                .Add("sessionId", conversation.SessionId)
+                .Add("title", conversation.ConversationTitle)
+                .Add("workspacePath", conversation.WorkspacePath)
+                .Add("workspace", conversation.WorkspaceName)
+                .Add("repository", conversation.RepositoryName)
+                .Add("label", label)
+                .Add("startedLocal", conversation.StartedUtc.ToLocalTime().ToString("MMM d HH:mm", CultureInfo.CurrentCulture))
+                .Add("startedUtc", conversation.StartedUtc.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture))
+                .Add("lastSeenLocal", conversation.LastSeenUtc.ToLocalTime().ToString("MMM d HH:mm", CultureInfo.CurrentCulture))
+                .Add("lastSeenUtc", conversation.LastSeenUtc.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture))
+                .Add("durationMs", (long)conversation.Duration.TotalMilliseconds)
+                .Add("duration", HeatmapDisplayText.FormatDuration(conversation.Duration))
+                .Add("activeDurationMs", (long)conversation.ActiveDuration.TotalMilliseconds)
+                .Add("activeDuration", HeatmapDisplayText.FormatDuration(conversation.ActiveDuration))
+                .Add("turnCount", conversation.TurnCount)
+                .Add("compactCount", conversation.CompactCount)
+                .Add("inputTokens", conversation.InputTokens)
+                .Add("outputTokens", conversation.OutputTokens)
+                .Add("cachedTokens", conversation.CachedInputTokens)
+                .Add("reasoningTokens", conversation.ReasoningTokens)
+                .Add("totalTokens", conversation.TotalTokens)
+                .Add("apiEquivalentCostUsd", (double)conversation.CostUsd)
+                .Add("costApproximate", conversation.CostUsesEstimatedFallback)
+                .Add("models", models)
+                .Add("surfaces", surfaces));
+        }
+
+        return new JsonObject()
+            .Add("totalCount", conversations.Count)
+            .Add("shownCount", items.Count)
+            .Add("tokenTotal", conversations.Sum(static conversation => conversation.TotalTokens))
+            .Add("turnCount", conversations.Sum(static conversation => (long)conversation.TurnCount))
+            .Add("compactCount", conversations.Sum(static conversation => (long)conversation.CompactCount))
+            .Add("items", items);
     }
 
     private static string? NormalizeAccountLabel(string? value, string? providerAccountId = null) {
@@ -2595,6 +2891,12 @@ public sealed class ProviderViewModel : ViewModelBase {
         return decimal.Truncate(value) == value
             ? value.ToString("N0", CultureInfo.InvariantCulture)
             : value.ToString("0.##", CultureInfo.InvariantCulture);
+    }
+
+    private static string FormatCountLabel(int count, string singular, string plural) {
+        return count.ToString("N0", CultureInfo.CurrentCulture)
+               + " "
+               + (count == 1 ? singular : plural);
     }
 
     private static void ResetFilterOptions(ObservableCollection<string> target, string allLabel, IReadOnlyList<string> values) {
@@ -2690,8 +2992,16 @@ public sealed class ProviderViewModel : ViewModelBase {
             return string.Empty;
         }
 
-        return (displayCost.UsesEstimatedFallback ? "~" : string.Empty)
-               + displayCost.TotalCostUsd.ToString("0.####", CultureInfo.InvariantCulture);
+        return FormatExportCost(displayCost.TotalCostUsd, displayCost.UsesEstimatedFallback);
+    }
+
+    private static string FormatExportCost(decimal costUsd, bool approximate) {
+        if (costUsd <= 0m) {
+            return string.Empty;
+        }
+
+        return (approximate ? "~" : string.Empty)
+               + costUsd.ToString("0.####", CultureInfo.InvariantCulture);
     }
 
     private static string FormatCostDisplay(decimal costUsd, bool approximate) {

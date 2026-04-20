@@ -11,6 +11,7 @@ internal sealed record UsageTelemetryOverviewPageModel(
     UsageTelemetryChurnUsageSignalPageModel? ChurnUsageCorrelation,
     UsageTelemetryGitHubLocalPulsePageModel? GitHubLocalAlignment,
     UsageTelemetryGitHubRepoClusterPageModel? GitHubRepoClusters,
+    UsageTelemetryConversationPulsePageModel? ConversationPulse,
     IReadOnlyList<UsageTelemetrySectionSwitchModel> SectionSwitches,
     IReadOnlyList<UsageTelemetryOverviewSectionPageModel> Sections,
     IReadOnlyList<UsageTelemetrySupportingBreakdownModel> SupportingBreakdowns,
@@ -51,6 +52,41 @@ internal sealed record UsageTelemetryGitHubRepoClusterPageModel(
     string? Note,
     IReadOnlyList<UsageTelemetryHeroStatModel> Stats,
     UsageTelemetryOverviewInsightSection Clusters);
+
+internal sealed record UsageTelemetryConversationPulsePageModel(
+    string Title,
+    string Subtitle,
+    string Headline,
+    string? Note,
+    IReadOnlyList<UsageTelemetryHeroStatModel> Stats,
+    UsageTelemetryOverviewInsightSection Conversations,
+    IReadOnlyList<UsageTelemetryConversationPulseRowPageModel> Rows);
+
+internal sealed record UsageTelemetryConversationPulseRowPageModel(
+    int Rank,
+    string SessionLabel,
+    string SessionCode,
+    string TitleText,
+    string? ContextText,
+    string? RepositoryText,
+    string? WorkspaceText,
+    long TotalTokensRaw,
+    long DurationMs,
+    int TurnCountRaw,
+    int CompactCountRaw,
+    double CostUsdRaw,
+    string TokenText,
+    string ShareText,
+    string StartedText,
+    string SpanText,
+    string? ActiveText,
+    string TurnText,
+    string? CompactText,
+    string AccountText,
+    string ModelText,
+    string SurfaceText,
+    string? CostText,
+    double RatioPercent);
 
 internal sealed record UsageTelemetrySectionSwitchModel(string Key, string Label);
 

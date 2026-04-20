@@ -683,6 +683,83 @@ internal static partial class Program {
         AssertContainsText(html, "Quick-scan dedupe", "overview provider diagnostics dedupe insight");
     }
 
+    private static void TestUsageTelemetryOverviewHtmlRendererBuildsConversationPulse() {
+        var items = new JsonArray()
+            .Add(new JsonObject()
+                .Add("label", "session-a")
+                .Add("title", "Audit usage context")
+                .Add("repository", "EvotecIT/IntelligenceX")
+                .Add("workspace", "IntelligenceX")
+                .Add("account", "work@evotec.pl")
+                .Add("startedLocal", "Mar 18 14:00")
+                .Add("duration", "1h 05m")
+                .Add("activeDuration", "4m 12s")
+                .Add("turnCount", 7)
+                .Add("compactCount", 2)
+                .Add("totalTokens", 12_345_678)
+                .Add("apiEquivalentCostUsd", 12.34d)
+                .Add("costApproximate", true)
+                .Add("models", new JsonArray().Add("gpt-5.4"))
+                .Add("surfaces", new JsonArray().Add("cli")));
+        var metadata = new JsonObject()
+            .Add("conversations", new JsonObject()
+                .Add("totalCount", 1)
+                .Add("shownCount", 1)
+                .Add("tokenTotal", 12_345_678)
+                .Add("turnCount", 7)
+                .Add("compactCount", 2)
+                .Add("items", items));
+        var overview = new UsageTelemetryOverviewDocument(
+            title: "Usage Overview",
+            subtitle: "Tray explorer",
+            metric: UsageSummaryMetric.TotalTokens,
+            units: "tokens",
+            summary: new UsageSummarySnapshot {
+                Metric = UsageSummaryMetric.TotalTokens,
+                StartDayUtc = new DateTime(2026, 03, 18),
+                EndDayUtc = new DateTime(2026, 03, 18),
+                TotalValue = 12_345_678m,
+                TotalDays = 1,
+                ActiveDays = 1,
+                PeakDayUtc = new DateTime(2026, 03, 18),
+                PeakValue = 12_345_678m
+            },
+            cards: Array.Empty<UsageTelemetryOverviewCard>(),
+            heatmaps: Array.Empty<UsageTelemetryOverviewHeatmap>(),
+            providerSections: Array.Empty<UsageTelemetryOverviewProviderSection>(),
+            metadata: metadata);
+
+        var html = UsageTelemetryOverviewHtmlRenderer.Render(overview);
+        AssertContainsText(html, "Conversation usage", "overview conversation pulse title");
+        AssertContainsText(html, "Raw sessions", "overview conversation pulse feature kicker");
+        AssertContainsText(html, "Audit usage context", "overview conversation pulse session title");
+        AssertContainsText(html, "EvotecIT/IntelligenceX", "overview conversation pulse repository");
+        AssertContainsText(html, "session-a", "overview conversation pulse session label");
+        AssertContainsText(html, "12.3M tokens", "overview conversation pulse token value");
+        AssertContainsText(html, "span 1h 05m", "overview conversation pulse wall duration");
+        AssertContainsText(html, "active 4m 12s", "overview conversation pulse active duration");
+        AssertContainsText(html, "7 turns", "overview conversation pulse turn count");
+        AssertContainsText(html, "2 compacts", "overview conversation pulse compact count");
+        AssertContainsText(html, "work@evotec.pl", "overview conversation pulse account");
+        AssertContainsText(html, "gpt-5.4", "overview conversation pulse model");
+        AssertContainsText(html, "~$12.34", "overview conversation pulse estimated cost");
+        AssertContainsText(html, "Selected conversation", "overview conversation pulse detail card");
+        AssertContainsText(html, "data-conversation-button", "overview conversation pulse selectable row");
+        AssertContainsText(html, "data-conversation-sort=\"tokens\"", "overview conversation pulse sort tabs");
+        AssertContainsText(html, "data-conversation-search", "overview conversation pulse search input");
+        AssertContainsText(html, "data-conversation-filter-group=\"named\"", "overview conversation pulse quick filters");
+        AssertContainsText(html, "data-conversation-filter-group=\"profile\"", "overview conversation pulse signal filters");
+        AssertContainsText(html, "data-conversation-reset", "overview conversation pulse reset control");
+        AssertContainsText(html, "data-conversation-active-chips", "overview conversation pulse active filters");
+        AssertContainsText(html, "name=\"conversation-search\"", "overview conversation pulse search name");
+        AssertContainsText(html, "data-conversation-snapshot-count", "overview conversation pulse snapshot count");
+        AssertContainsText(html, "data-conversation-snapshot-cost", "overview conversation pulse snapshot cost");
+        AssertContainsText(html, "data-conversation-snapshot-context", "overview conversation pulse snapshot context");
+        AssertContainsText(html, "data-conversation-context-list", "overview conversation pulse context breakdown");
+        AssertContainsText(html, "data-conversation-context-lens=\"cost\"", "overview conversation pulse context cost lens");
+        AssertContainsText(html, "Context Breakdown", "overview conversation pulse context breakdown title");
+    }
+
     private static void TestUsageTelemetryBreakdownHtmlRendererUsesSharedAssets() {
         var heatmap = new HeatmapDocument(
             title: "By telemetry source",
