@@ -83,20 +83,17 @@ internal sealed class ReviewerCopilotPromptRunner {
         var stdout = new StringBuilder();
         var stderr = new StringBuilder();
         var outputLock = new object();
-        var lastActivityUtcTicks = DateTime.UtcNow.Ticks;
+        var startedUtc = DateTime.UtcNow;
 
-        var stdoutTask = PumpReaderAsync(process.StandardOutput, stdout, outputLock,
-            () => Interlocked.Exchange(ref lastActivityUtcTicks, DateTime.UtcNow.Ticks));
-        var stderrTask = PumpReaderAsync(process.StandardError, stderr, outputLock,
-            () => Interlocked.Exchange(ref lastActivityUtcTicks, DateTime.UtcNow.Ticks));
+        var stdoutTask = PumpReaderAsync(process.StandardOutput, stdout, outputLock);
+        var stderrTask = PumpReaderAsync(process.StandardError, stderr, outputLock);
 
         while (!process.HasExited) {
             if (cancellationToken.IsCancellationRequested) {
                 TryKill(process);
                 cancellationToken.ThrowIfCancellationRequested();
             }
-            var idle = DateTime.UtcNow - new DateTime(Interlocked.Read(ref lastActivityUtcTicks), DateTimeKind.Utc);
-            if (idle >= timeout) {
+            if (DateTime.UtcNow - startedUtc >= timeout) {
                 TryKill(process);
                 await Task.WhenAll(stdoutTask, stderrTask).ConfigureAwait(false);
                 throw new TimeoutException(BuildTimeoutMessage(timeout, SnapshotText(stderr, outputLock)));
@@ -481,7 +478,7 @@ internal sealed class ReviewerCopilotPromptRunner {
         var sb = new StringBuilder();
         sb.Append("Copilot CLI prompt mode timed out after ");
         sb.Append(timeout.TotalSeconds.ToString("0"));
-        sb.Append(" seconds without output activity.");
+        sb.Append(" seconds without completing.");
         AppendRecentStderr(sb, stderr);
         return sb.ToString().TrimEnd();
     }
@@ -584,8 +581,7 @@ internal sealed class ReviewerCopilotPromptRunner {
         }
     }
 
-    private static async Task PumpReaderAsync(StreamReader reader, StringBuilder builder, object sync,
-        Action markActivity) {
+    private static async Task PumpReaderAsync(StreamReader reader, StringBuilder builder, object sync) {
         var buffer = new char[2048];
         while (true) {
             int read;
@@ -600,7 +596,6 @@ internal sealed class ReviewerCopilotPromptRunner {
             lock (sync) {
                 builder.Append(buffer, 0, read);
             }
-            markActivity();
         }
     }
 

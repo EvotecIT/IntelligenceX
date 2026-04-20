@@ -19,7 +19,7 @@ using IntelligenceX.OpenAI.Native;
 namespace IntelligenceX.Reviewer;
 
 internal sealed partial class ReviewRunner {
-    private const int MinimumCopilotPromptWaitSeconds = 420;
+    private const int MinimumCopilotPromptWaitSeconds = 600;
     private readonly ReviewSettings _settings;
     public ReviewProvider EffectiveProvider { get; private set; }
     public bool FallbackActivated { get; private set; }
@@ -492,7 +492,8 @@ internal sealed partial class ReviewRunner {
 
     internal static bool ShouldFallbackFromCopilotPromptFailure(Exception ex) {
         if (ex is InvalidOperationException invalid &&
-            invalid.Message.Contains("prompt mode", StringComparison.OrdinalIgnoreCase)) {
+            invalid.Message.StartsWith("Copilot CLI not found or failed to start in prompt mode",
+                StringComparison.OrdinalIgnoreCase)) {
             return true;
         }
         return ex.InnerException is not null && ShouldFallbackFromCopilotPromptFailure(ex.InnerException);

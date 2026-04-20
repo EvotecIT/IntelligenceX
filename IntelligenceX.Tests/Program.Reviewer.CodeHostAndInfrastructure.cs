@@ -1105,7 +1105,7 @@ internal static partial class Program {
             WaitSeconds = 180
         };
 
-        AssertEqual(TimeSpan.FromSeconds(420), ReviewRunner.ResolveCopilotPromptTimeout(settings),
+        AssertEqual(TimeSpan.FromSeconds(600), ReviewRunner.ResolveCopilotPromptTimeout(settings),
             "copilot prompt timeout should use runner-safe minimum");
     }
 
@@ -1135,6 +1135,11 @@ internal static partial class Program {
             ReviewRunner.ShouldFallbackFromCopilotPromptFailure(
                 new InvalidOperationException("Copilot authentication failed.")),
             "copilot auth failure should not trigger prompt fallback");
+
+        AssertEqual(false,
+            ReviewRunner.ShouldFallbackFromCopilotPromptFailure(
+                new InvalidOperationException("Copilot CLI prompt mode exited with code 1.")),
+            "copilot prompt exit failures should not trigger session fallback");
     }
 
     private static void TestCopilotInstallResolverFindsPlatformInstall() {
