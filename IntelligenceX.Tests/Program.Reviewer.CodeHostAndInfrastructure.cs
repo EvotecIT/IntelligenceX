@@ -1557,6 +1557,34 @@ Please keep the review text as plain stdout.
         AssertEqual(true, fallback.CaptureLogs, "copilot prompt keeps log capture when unrelated");
     }
 
+    private static void TestCopilotPromptRunnerRecoversExitedProcessResultAfterPromptWriteFailure() {
+        var recovered = ReviewerCopilotPromptRunner.TryCreateExitedProcessResultForTests(
+            hasExited: true,
+            exitCode: 1,
+            stdout: string.Empty,
+            stderr: "error: unknown option '--available-tools=none'",
+            out var result);
+        var recoveredResult = result ?? default;
+
+        AssertEqual(true, recovered, "copilot prompt should recover exited process result after write failure");
+        AssertEqual(1, recoveredResult.ExitCode, "copilot prompt recovered exit code");
+        AssertContainsText(recoveredResult.Stderr, "--available-tools=none",
+            "copilot prompt recovered stderr preserves compatibility detail");
+
+        var fallback = ReviewerCopilotPromptRunner.ApplyCompatibilityFallbacksForTests(
+            recoveredResult.ExitCode,
+            recoveredResult.Stdout,
+            recoveredResult.Stderr,
+            disableBuiltinMcps: true,
+            disableToolSurface: true,
+            captureLogs: true);
+
+        AssertEqual(true, fallback.Retry,
+            "copilot prompt recovered result should still trigger compatibility retry");
+        AssertEqual(false, fallback.DisableToolSurface,
+            "copilot prompt recovered result should drop unsupported tool surface flag");
+    }
+
     private static void TestCopilotPromptRunnerRequiresActionsCopilotToken() {
         var options = new IntelligenceX.Copilot.CopilotClientOptions();
         var actionsEnvironment = new Dictionary<string, string?> {
