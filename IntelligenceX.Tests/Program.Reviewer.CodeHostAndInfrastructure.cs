@@ -1245,10 +1245,15 @@ internal static partial class Program {
                 new InvalidOperationException("Copilot authentication failed.")),
             "copilot auth failure should not trigger prompt fallback");
 
-        AssertEqual(false,
+        AssertEqual(true,
             ReviewRunner.ShouldFallbackFromCopilotPromptFailure(
                 new InvalidOperationException("Copilot CLI prompt mode exited with code 1.")),
-            "copilot prompt exit failures should not trigger session fallback");
+            "copilot prompt exit failures should trigger session fallback");
+
+        AssertEqual(true,
+            ReviewRunner.ShouldFallbackFromCopilotPromptFailure(
+                new InvalidOperationException("Copilot CLI prompt mode failed while writing prompt input.")),
+            "copilot prompt write failures should trigger session fallback");
     }
 
     private static void TestCopilotPromptModeAllowsOversizedPromptsViaStdin() {
@@ -1346,9 +1351,16 @@ internal static partial class Program {
             Environment.SetEnvironmentVariable("HOME", tempDir);
             Environment.SetEnvironmentVariable("USERPROFILE", tempDir);
 
-            var ex = AssertThrows<InvalidOperationException>(
-                () => ReviewerCopilotPromptRunner.ResolveCliPathForTests(missingCliPath),
-                "copilot prompt missing configured cli path");
+            InvalidOperationException? ex = null;
+            try {
+                ReviewerCopilotPromptRunner.ResolveCliPathForTests(missingCliPath);
+            } catch (InvalidOperationException caught) {
+                ex = caught;
+            }
+            if (ex is null) {
+                throw new InvalidOperationException(
+                    "Expected copilot prompt missing configured cli path to throw InvalidOperationException.");
+            }
 
             AssertContainsText(ex.Message, missingCliPath,
                 "copilot prompt missing configured cli path should mention configured value");

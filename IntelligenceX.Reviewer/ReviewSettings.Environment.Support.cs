@@ -191,9 +191,18 @@ internal sealed partial class ReviewSettings {
 
     private static void ApplyEnvironmentAgentProfileSettings(ReviewSettings settings) {
         var agentProfile = GetInput("agent_profile", "REVIEW_AGENT_PROFILE", "REVIEW_MODEL_PROFILE");
-        if (!string.IsNullOrWhiteSpace(agentProfile)) {
-            settings.AgentProfile = agentProfile;
+        if (string.IsNullOrWhiteSpace(agentProfile)) {
+            return;
         }
+
+        if (string.Equals(agentProfile, "none", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(agentProfile, "off", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(agentProfile, "disabled", StringComparison.OrdinalIgnoreCase)) {
+            settings.AgentProfile = null;
+            return;
+        }
+
+        settings.AgentProfile = agentProfile;
     }
 
     private static void ApplyEnvironmentScopeAndPromptSettings(ReviewSettings settings) {

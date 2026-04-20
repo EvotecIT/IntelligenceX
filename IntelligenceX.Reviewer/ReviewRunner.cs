@@ -536,12 +536,26 @@ internal sealed partial class ReviewRunner {
     }
 
     internal static bool ShouldFallbackFromCopilotPromptFailure(Exception ex) {
+        if (ex is TimeoutException or UnauthorizedAccessException) {
+            return false;
+        }
         if (ex is InvalidOperationException invalid &&
-            invalid.Message.StartsWith("Copilot CLI not found or failed to start in prompt mode",
-                StringComparison.OrdinalIgnoreCase)) {
+            IsRecoverableCopilotPromptFailure(invalid.Message)) {
             return true;
         }
         return ex.InnerException is not null && ShouldFallbackFromCopilotPromptFailure(ex.InnerException);
+    }
+
+    private static bool IsRecoverableCopilotPromptFailure(string? message) {
+        if (string.IsNullOrWhiteSpace(message)) {
+            return false;
+        }
+
+        return message.StartsWith("Copilot CLI not found or failed to start in prompt mode",
+                   StringComparison.OrdinalIgnoreCase) ||
+               message.StartsWith("Copilot CLI prompt mode failed while writing prompt input.",
+                   StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("Copilot CLI prompt mode exited with code", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string SummarizePromptFailure(string? message) {

@@ -370,6 +370,7 @@ internal static partial class Program {
     private static void TestReviewSettingsAgentProfileSelectsAuthenticatorAndModel() {
         var previousConfigPath = Environment.GetEnvironmentVariable("REVIEW_CONFIG_PATH");
         var previousAgentProfile = Environment.GetEnvironmentVariable("REVIEW_AGENT_PROFILE");
+        var previousInputAgentProfile = Environment.GetEnvironmentVariable("INPUT_AGENT_PROFILE");
         var previousInputProvider = Environment.GetEnvironmentVariable("INPUT_PROVIDER");
         var previousInputModel = Environment.GetEnvironmentVariable("INPUT_MODEL");
         var previousInputOpenAiTransport = Environment.GetEnvironmentVariable("INPUT_OPENAI_TRANSPORT");
@@ -449,6 +450,19 @@ internal static partial class Program {
             AssertEqual("acct-review", settings.OpenAiAccountId ?? string.Empty,
                 "review settings env agent profile account");
 
+            Environment.SetEnvironmentVariable("REVIEW_AGENT_PROFILE", "chatgpt-codex");
+            Environment.SetEnvironmentVariable("INPUT_AGENT_PROFILE", "none");
+            Environment.SetEnvironmentVariable("INPUT_PROVIDER", "anthropic");
+            Environment.SetEnvironmentVariable("INPUT_MODEL", "claude-sonnet-4-5");
+            settings = ReviewSettings.Load();
+
+            AssertEqual(null, settings.AgentProfile, "review settings explicit none clears inherited agent profile");
+            AssertEqual(ReviewProvider.Claude, settings.Provider,
+                "review settings explicit none preserves direct provider override");
+            AssertEqual("claude-sonnet-4-5", settings.Model,
+                "review settings explicit none preserves direct model override");
+
+            Environment.SetEnvironmentVariable("INPUT_AGENT_PROFILE", null);
             Environment.SetEnvironmentVariable("REVIEW_AGENT_PROFILE", "local-openai");
             settings = ReviewSettings.Load();
 
@@ -488,6 +502,7 @@ internal static partial class Program {
         } finally {
             Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", previousConfigPath);
             Environment.SetEnvironmentVariable("REVIEW_AGENT_PROFILE", previousAgentProfile);
+            Environment.SetEnvironmentVariable("INPUT_AGENT_PROFILE", previousInputAgentProfile);
             Environment.SetEnvironmentVariable("INPUT_PROVIDER", previousInputProvider);
             Environment.SetEnvironmentVariable("INPUT_MODEL", previousInputModel);
             Environment.SetEnvironmentVariable("INPUT_OPENAI_TRANSPORT", previousInputOpenAiTransport);
