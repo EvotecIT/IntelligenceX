@@ -813,6 +813,8 @@ internal static partial class Program {
             usageLine: "Usage: 5h limit: 90% remaining | credits: 4.52", findingsBlock: string.Empty);
 
         AssertContainsText(comment, "### Model & Usage 🤖", "model usage section header");
+        AssertContainsText(comment, "- Provider: `openai`", "model usage provider");
+        AssertContainsText(comment, "- Transport: `appserver`", "model usage transport");
         AssertContainsText(comment, "- Model: `gpt-5-test`", "model usage model");
         AssertContainsText(comment, "- Usage: 5h limit: 90% remaining | credits: 4.52", "model usage line");
     }
@@ -825,6 +827,8 @@ internal static partial class Program {
         var comment = ReviewFormatter.BuildComment(context, "Body", settings, inlineSupported: true, inlineSuppressed: false,
             autoResolveNote: string.Empty, budgetNote: string.Empty, usageLine: string.Empty, findingsBlock: string.Empty);
 
+        AssertContainsText(comment, "- Provider: `openai`", "model usage unavailable provider");
+        AssertContainsText(comment, "- Transport: `appserver`", "model usage unavailable transport");
         AssertContainsText(comment, "- Usage: unavailable", "model usage unavailable line");
     }
 
@@ -839,6 +843,8 @@ internal static partial class Program {
         var comment = ReviewFormatter.BuildComment(context, "Body", settings, inlineSupported: true, inlineSuppressed: false,
             autoResolveNote: string.Empty, budgetNote: string.Empty, usageLine: string.Empty, findingsBlock: string.Empty);
 
+        AssertContainsText(comment, "- Provider: `copilot`", "copilot model usage provider");
+        AssertContainsText(comment, "- Transport: `cli`", "copilot model usage transport");
         AssertContainsText(comment, "- Model: `Copilot CLI default`", "copilot model usage default label");
         AssertDoesNotContainText(comment, "- Model: `gpt-5.4`", "copilot model usage hides generic OpenAI default");
     }

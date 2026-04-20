@@ -70,6 +70,8 @@ internal static partial class Program {
         failed += Run("Review failure marker", TestReviewFailureMarker);
         failed += Run("Review failure body redacts errors", TestReviewFailureBodyRedactsErrors);
         failed += Run("Review failure body uses Copilot transport", TestReviewFailureBodyUsesCopilotTransport);
+        failed += Run("Review failure body uses provider-specific transport labels",
+            TestReviewFailureBodyUsesProviderSpecificTransportLabels);
         failed += Run("Review failure body classifies Copilot unauthorized", TestReviewFailureBodyClassifiesCopilotUnauthorized);
         failed += Run("Review failure body includes safe auth refresh detail", TestReviewFailureBodyIncludesSafeAuthRefreshDetail);
         failed += Run("Build auth remediation command quotes repo when needed", TestBuildAuthRemediationCommandQuotesRepoWhenNeeded);

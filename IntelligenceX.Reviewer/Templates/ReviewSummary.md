@@ -12,6 +12,8 @@ Merge blockers: items in **Todo List ✅** and **Critical Issues ⚠️** sectio
 {{ReviewBody}}
 
 ### Model & Usage 🤖
+- Provider: `{{Provider}}`
+- Transport: `{{Transport}}`
 - Model: `{{Model}}`
 - Length: `{{Length}}`
 - Mode: `{{Mode}}`

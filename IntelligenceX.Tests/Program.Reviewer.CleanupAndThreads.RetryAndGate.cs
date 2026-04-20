@@ -164,8 +164,27 @@ internal static partial class Program {
         };
         var body = ReviewDiagnostics.BuildFailureBody(new TimeoutException("timed out"), settings, null, null);
         AssertContainsText(body, "- Provider: copilot", "copilot failure body provider");
-        AssertContainsText(body, "- Transport: Direct", "copilot failure body transport");
+        AssertContainsText(body, "- Transport: direct", "copilot failure body transport");
         AssertContainsText(body, "- Model: Copilot direct model required", "copilot failure body model");
+    }
+
+    private static void TestReviewFailureBodyUsesProviderSpecificTransportLabels() {
+        var compatibleSettings = new ReviewSettings {
+            Provider = ReviewProvider.OpenAICompatible,
+            Model = "local-reviewer"
+        };
+        var compatibleBody = ReviewDiagnostics.BuildFailureBody(new TimeoutException("timed out"), compatibleSettings, null, null);
+        AssertContainsText(compatibleBody, "- Provider: openai-compatible", "compatible failure body provider");
+        AssertContainsText(compatibleBody, "- Transport: http", "compatible failure body transport");
+
+        var claudeSettings = new ReviewSettings {
+            Provider = ReviewProvider.Claude,
+            Model = "claude-sonnet-4-5"
+        };
+        var claudeBody = ReviewDiagnostics.BuildFailureBody(new TimeoutException("timed out"), claudeSettings, null, null);
+        AssertContainsText(claudeBody, "- Provider: claude", "claude failure body provider");
+        AssertContainsText(claudeBody, "- Transport: messages-api", "claude failure body transport");
+        AssertContainsText(claudeBody, "- Model: claude-sonnet-4-5", "claude failure body model");
     }
 
     private static void TestReviewFailureBodyClassifiesCopilotUnauthorized() {

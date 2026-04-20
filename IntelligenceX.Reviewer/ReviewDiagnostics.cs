@@ -221,7 +221,7 @@ internal static class ReviewDiagnostics {
         sb.AppendLine(FailureMarker);
         sb.AppendLine("WARNING: Review failed to complete due to a provider request error.");
         sb.AppendLine();
-        sb.AppendLine($"- Provider: {settings.Provider.ToString().ToLowerInvariant()}");
+        sb.AppendLine($"- Provider: {DescribeProvider(settings)}");
         sb.AppendLine($"- Transport: {DescribeTransport(settings)}");
         sb.AppendLine($"- Model: {DescribeModel(settings)}");
         sb.AppendLine($"- Category: {classification.Category} ({(classification.IsTransient ? "transient" : "non-transient")})");
@@ -267,7 +267,7 @@ internal static class ReviewDiagnostics {
         ReviewRetryState? retryState) {
         var classification = Classify(ex);
         Console.Error.WriteLine("Provider request failed.");
-        Console.Error.WriteLine($"Provider: {settings.Provider.ToString().ToLowerInvariant()} | Transport: {DescribeTransport(settings)} | Model: {DescribeModel(settings)}");
+        Console.Error.WriteLine($"Provider: {DescribeProvider(settings)} | Transport: {DescribeTransport(settings)} | Model: {DescribeModel(settings)}");
         Console.Error.WriteLine($"Category: {classification.Category} ({(classification.IsTransient ? "transient" : "non-transient")})");
         if (retryState is not null && retryState.LastAttempt > 0) {
             Console.Error.WriteLine($"Retry: {retryState.LastAttempt}/{retryState.MaxAttempts}");
@@ -326,10 +326,24 @@ internal static class ReviewDiagnostics {
         }
     }
 
-    private static string DescribeTransport(ReviewSettings settings) {
-        return settings.Provider == ReviewProvider.Copilot
-            ? settings.CopilotTransport.ToString()
-            : settings.OpenAITransport.ToString();
+    internal static string DescribeProvider(ReviewSettings settings) {
+        return ReviewProviderContracts.Get(settings.Provider).Id;
+    }
+
+    internal static string DescribeTransport(ReviewSettings settings) {
+        return settings.Provider switch {
+            ReviewProvider.Copilot => settings.CopilotTransport switch {
+                CopilotTransportKind.Direct => "direct",
+                _ => "cli"
+            },
+            ReviewProvider.OpenAI => settings.OpenAITransport switch {
+                OpenAITransportKind.Native => "native",
+                _ => "appserver"
+            },
+            ReviewProvider.OpenAICompatible => "http",
+            ReviewProvider.Claude => "messages-api",
+            _ => string.Empty
+        };
     }
 
     internal static string DescribeModel(ReviewSettings settings) {
