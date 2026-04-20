@@ -40,7 +40,7 @@ internal sealed class ReviewerCopilotPromptRunner {
             var effectiveLogDirectory = captureLogs ? logDirectory : null;
             var startInfo = BuildStartInfo(_options, cliPath, prompt, model, disableBuiltinMcps,
                 disableToolSurface, effectiveLogDirectory);
-            result = await RunProcessAsync(startInfo, timeout, cancellationToken).ConfigureAwait(false);
+            result = await RunProcessAsync(startInfo, prompt, timeout, cancellationToken).ConfigureAwait(false);
             if (TryBuildSuccessfulResult(result, out successfulResult)) {
                 break;
             }
@@ -105,7 +105,7 @@ internal sealed class ReviewerCopilotPromptRunner {
     }
 
     private static async Task<CopilotPromptProcessResult> RunProcessAsync(ProcessStartInfo startInfo,
-        TimeSpan timeout, CancellationToken cancellationToken) {
+        string prompt, TimeSpan timeout, CancellationToken cancellationToken) {
         using var process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
         try {
             if (!process.Start()) {
@@ -122,6 +122,7 @@ internal sealed class ReviewerCopilotPromptRunner {
 
         var stdoutTask = PumpReaderAsync(process.StandardOutput, stdout, outputLock);
         var stderrTask = PumpReaderAsync(process.StandardError, stderr, outputLock);
+        await WritePromptAsync(process, prompt, cancellationToken).ConfigureAwait(false);
 
         while (!process.HasExited) {
             if (cancellationToken.IsCancellationRequested) {
@@ -147,8 +148,6 @@ internal sealed class ReviewerCopilotPromptRunner {
         if (options.CliArgs.Count > 0) {
             args.AddRange(options.CliArgs);
         }
-        args.Add("-p");
-        args.Add(prompt);
         args.Add("--silent");
         args.Add("--no-ask-user");
         args.Add("--no-custom-instructions");
@@ -178,6 +177,7 @@ internal sealed class ReviewerCopilotPromptRunner {
         var startInfo = new ProcessStartInfo {
             FileName = fileName,
             UseShellExecute = false,
+            RedirectStandardInput = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             WorkingDirectory = options.WorkingDirectory ?? Environment.CurrentDirectory,
@@ -195,6 +195,16 @@ internal sealed class ReviewerCopilotPromptRunner {
         }
         startInfo.Environment.Remove("NODE_DEBUG");
         return startInfo;
+    }
+
+    private static async Task WritePromptAsync(Process process, string prompt, CancellationToken cancellationToken) {
+        try {
+            await process.StandardInput.WriteAsync(prompt.AsMemory(), cancellationToken).ConfigureAwait(false);
+            await process.StandardInput.FlushAsync().ConfigureAwait(false);
+            process.StandardInput.Close();
+        } catch (Exception ex) when (ex is IOException or InvalidOperationException or ObjectDisposedException) {
+            throw new InvalidOperationException("Copilot CLI prompt mode failed while writing prompt input.", ex);
+        }
     }
 
     private static async Task<string> ResolveCliPathOrInstallAsync(CopilotClientOptions options,

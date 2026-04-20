@@ -1251,15 +1251,15 @@ internal static partial class Program {
             "copilot prompt exit failures should not trigger session fallback");
     }
 
-    private static void TestCopilotPromptModeSkipsOversizedPrompts() {
+    private static void TestCopilotPromptModeAllowsOversizedPromptsViaStdin() {
         var settings = new ReviewSettings();
         var safePrompt = new string('a', 1024);
         var oversizedPrompt = new string('b', 24_001);
 
         AssertEqual(true, ReviewRunner.ShouldUseCopilotPromptModeForTests(settings, safePrompt),
             "copilot prompt mode should allow normal prompt sizes");
-        AssertEqual(false, ReviewRunner.ShouldUseCopilotPromptModeForTests(settings, oversizedPrompt),
-            "copilot prompt mode should skip oversized prompts");
+        AssertEqual(true, ReviewRunner.ShouldUseCopilotPromptModeForTests(settings, oversizedPrompt),
+            "copilot prompt mode should allow oversized prompts via stdin");
 
         settings.CopilotCliUrl = "http://localhost:4141";
         AssertEqual(false, ReviewRunner.ShouldUseCopilotPromptModeForTests(settings, safePrompt),
@@ -1461,8 +1461,6 @@ Please keep the review text as plain stdout.
         AssertSequenceEqual(new[] {
             "copilot",
             "--",
-            "-p",
-            "review prompt",
             "--silent",
             "--no-ask-user",
             "--no-custom-instructions",
@@ -1478,6 +1476,8 @@ Please keep the review text as plain stdout.
             "--output-format",
             "json"
         }, ghArgs, "copilot gh prompt args");
+        AssertEqual(false, ghArgs.Contains("review prompt"),
+            "copilot prompt args should not inline prompt content");
     }
 
     private static void TestCopilotPromptRunnerWrapsRootedWindowsCmdPaths() {

@@ -20,7 +20,6 @@ namespace IntelligenceX.Reviewer;
 
 internal sealed partial class ReviewRunner {
     private const int MinimumCopilotCliReviewWaitSeconds = 600;
-    private const int MaximumCopilotPromptModeChars = 24_000;
     private readonly ReviewSettings _settings;
     public ReviewProvider EffectiveProvider { get; private set; }
     public bool FallbackActivated { get; private set; }
@@ -532,10 +531,6 @@ internal sealed partial class ReviewRunner {
                 Console.Error.WriteLine(
                     $"Copilot prompt mode failed ({ex.GetType().Name}: {SummarizePromptFailure(ex.Message)}); falling back to CLI server-session mode.");
             }
-        } else if (_settings.Diagnostics && string.IsNullOrWhiteSpace(_settings.CopilotCliUrl) &&
-                   prompt.Length > MaximumCopilotPromptModeChars) {
-            Console.Error.WriteLine(
-                $"Skipping Copilot prompt mode because the rendered review prompt is {prompt.Length} chars, above the safe argv budget of {MaximumCopilotPromptModeChars} chars. Using CLI server-session mode instead.");
         }
         return await RunCopilotCliSessionAsync(prompt, onPartial, updateInterval, cancellationToken).ConfigureAwait(false);
     }
@@ -694,11 +689,6 @@ internal sealed partial class ReviewRunner {
         if (!string.IsNullOrWhiteSpace(settings.CopilotCliUrl)) {
             return false;
         }
-
-        if (!string.IsNullOrWhiteSpace(prompt) && prompt.Length > MaximumCopilotPromptModeChars) {
-            return false;
-        }
-
         return true;
     }
 
