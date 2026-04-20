@@ -149,6 +149,12 @@ jobs:
         AssertContainsText(content, "swarm_max_parallel:", "workflow template swarm max parallel input");
         AssertEqual(1, CountWorkflowOnEvent(content, "workflow_call"),
             "workflow template defines workflow_call exactly once");
+        AssertContainsText(content, "provider:",
+            "workflow template reusable-call provider input");
+        AssertContainsText(content, "history_include_ix_summary_history:",
+            "workflow template reusable-call IX summary history input");
+        AssertContainsText(content, "swarm_publish_subreviews:",
+            "workflow template reusable-call swarm subreview publishing input");
         AssertContainsText(content, "openai_account_id: ${{ inputs.openai_account_id }}",
             "workflow template openai account id pass-through");
         AssertContainsText(content, "openai_account_ids: ${{ inputs.openai_account_ids }}",
@@ -225,8 +231,16 @@ jobs:
             "wrapper workflow exposes reusable call overrides outside the dispatch input budget");
         AssertEqual(1, CountWorkflowOnEvent(wrapperContent, "workflow_call"),
             "wrapper workflow defines workflow_call exactly once");
+        AssertContainsText(wrapperContent, "provider:",
+            "wrapper workflow exposes provider reusable-call override");
         AssertContainsText(wrapperContent, "agent_profile:",
             "wrapper workflow exposes agent profile reusable-call override");
+        AssertContainsText(wrapperContent, "copilot_model:",
+            "wrapper workflow exposes copilot model reusable-call override");
+        AssertContainsText(wrapperContent, "history_include_ix_summary_history:",
+            "wrapper workflow exposes IX summary history reusable-call override");
+        AssertContainsText(wrapperContent, "swarm_publish_subreviews:",
+            "wrapper workflow exposes swarm subreview publishing reusable-call override");
         AssertContainsText(wrapperContent, "agent_profile: ${{ inputs.agent_profile || vars.IX_REVIEW_AGENT_PROFILE }}",
             "wrapper workflow lets reusable agent profile input override repo variable");
         AssertContainsText(wrapperContent, "swarm_metrics:",
