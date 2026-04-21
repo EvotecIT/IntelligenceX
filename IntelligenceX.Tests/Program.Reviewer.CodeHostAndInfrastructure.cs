@@ -1620,13 +1620,18 @@ Review completed successfully.
 """,
                 string.Empty),
             "copilot prompt should not retry transports when the first run already succeeded");
-        AssertEqual(false, ReviewerCopilotPromptRunner.ShouldRetryWithAlternatePromptTransportForTests(
+        AssertEqual(true, ReviewerCopilotPromptRunner.ShouldRetryWithAlternatePromptTransportForTests(
                 0,
                 """
 {"type":"assistant.message_delta","data":{"deltaContent":"partial"
 """,
                 string.Empty),
-            "copilot prompt should not hide malformed JSON behind transport retry");
+            "copilot prompt should retry the alternate transport when malformed JSON yields no usable review");
+        AssertEqual(true, ReviewerCopilotPromptRunner.ShouldRetryWithAlternatePromptTransportForTests(
+                0,
+                """{"type":"session.info","data":{"infoType":"configuration","message":"Unknown tool name in the tool allowlist: \"none\""}}""",
+                string.Empty),
+            "copilot prompt should retry the alternate transport when exit-zero JSON warnings produce no review");
     }
 
     private static void TestCopilotPromptRunnerPrefersTransportRetryBeforeCompatibilityFallback() {
@@ -1636,6 +1641,14 @@ Review completed successfully.
                 "warning: unknown option '--available-tools'",
                 promptTransportRetried: false),
             "copilot prompt should try the alternate transport before compatibility fallback when the first transport produces no review");
+        AssertEqual(true, ReviewerCopilotPromptRunner.ShouldRetryTransportBeforeCompatibilityForTests(
+                0,
+                """
+{"type":"assistant.message_delta","data":{"deltaContent":"partial"
+""",
+                string.Empty,
+                promptTransportRetried: false),
+            "copilot prompt should try the alternate transport before failing malformed exit-zero output");
         AssertEqual(false, ReviewerCopilotPromptRunner.ShouldRetryTransportBeforeCompatibilityForTests(
                 0,
                 string.Empty,

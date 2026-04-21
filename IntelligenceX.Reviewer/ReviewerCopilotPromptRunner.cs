@@ -509,13 +509,7 @@ internal sealed class ReviewerCopilotPromptRunner {
         }
 
         var parsed = ParseJsonOutput(result.Stdout);
-        if (!string.IsNullOrWhiteSpace(ResolveSuccessfulResponse(parsed, result.Stdout))) {
-            return false;
-        }
-
-        return string.IsNullOrWhiteSpace(result.Stdout) ||
-               parsed.ParseErrorCount == 0 ||
-               parsed.HasNonJsonText;
+        return string.IsNullOrWhiteSpace(ResolveSuccessfulResponse(parsed, result.Stdout));
     }
 
     private static bool ShouldRetryTransportBeforeCompatibility(CopilotPromptProcessResult result,
