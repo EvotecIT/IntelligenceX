@@ -817,6 +817,25 @@ internal static partial class Program {
             "merge blockers do not match non-critical heading as critical section");
     }
 
+    private static void TestReviewSummaryParserIgnoresStarredProseForParseIncomplete() {
+        var body = string.Join("\n", new[] {
+            "## Todo List ✅",
+            "*Impact:* no follow-up work remains here.",
+            "None.",
+            "",
+            "## Critical Issues ⚠️",
+            "None."
+        });
+
+        var findings = ReviewSummaryParser.ExtractMergeBlockerFindings(body, settings: null, maxItems: 10, hitLimit: out var hitLimit,
+            parseIncomplete: out var parseIncomplete);
+
+        AssertEqual(false, ReviewSummaryParser.HasMergeBlockers(body), "merge blockers starred prose is non-blocking");
+        AssertEqual(0, findings.Count, "findings starred prose count");
+        AssertEqual(false, hitLimit, "findings starred prose does not hit limit");
+        AssertEqual(false, parseIncomplete, "findings starred prose does not mark parse incomplete");
+    }
+
     private static void TestReviewSummaryParserMergeBlockerDetectionCompactDefaults() {
         var settings = new ReviewSettings {
             OutputStyle = "compact"

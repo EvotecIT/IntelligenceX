@@ -352,7 +352,8 @@ internal static class ReviewSummaryParser {
             return false;
         }
         if (trimmed.StartsWith("-", StringComparison.Ordinal) ||
-            trimmed.StartsWith("*", StringComparison.Ordinal) ||
+            trimmed.StartsWith("* [ ]", StringComparison.Ordinal) ||
+            trimmed.StartsWith("* [x]", StringComparison.OrdinalIgnoreCase) ||
             trimmed.StartsWith("[ ]", StringComparison.Ordinal) ||
             trimmed.StartsWith("[x]", StringComparison.OrdinalIgnoreCase)) {
             return true;
