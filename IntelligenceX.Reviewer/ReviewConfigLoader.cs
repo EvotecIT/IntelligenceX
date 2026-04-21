@@ -75,6 +75,8 @@ internal static class ReviewConfigLoader {
         ApplyAzureDevOps(reviewObj, settings);
         ApplyCleanup(root, settings);
         AnalysisConfigReader.Apply(root, reviewObj, settings.Analysis);
+        ApplyAgentProfiles(reviewObj, settings);
+        settings.ApplySelectedAgentProfile();
     }
 
     internal static string? ResolveConfigPath() {
@@ -141,6 +143,7 @@ internal static class ReviewConfigLoader {
         settings.OutputStyle = obj.GetString("outputStyle") ?? settings.OutputStyle;
         settings.SummaryTemplate = obj.GetString("summaryTemplate") ?? settings.SummaryTemplate;
         settings.SummaryTemplatePath = obj.GetString("summaryTemplatePath") ?? settings.SummaryTemplatePath;
+        settings.AgentProfile = obj.GetString("agentProfile") ?? obj.GetString("modelProfile") ?? settings.AgentProfile;
     }
 
     private static OpenAITransportKind ParseOpenAiTransport(string value, OpenAITransportKind fallback) {
@@ -149,6 +152,16 @@ internal static class ReviewConfigLoader {
             "native" => OpenAITransportKind.Native,
             "appserver" or "app-server" or "codex" => OpenAITransportKind.AppServer,
             _ => fallback
+        };
+    }
+
+    private static OpenAITransportKind ParseOpenAiTransportOrThrow(string value, string source) {
+        var normalized = value.Trim().ToLowerInvariant();
+        return normalized switch {
+            "native" => OpenAITransportKind.Native,
+            "appserver" or "app-server" or "codex" => OpenAITransportKind.AppServer,
+            _ => throw new InvalidOperationException(
+                $"Unknown OpenAI transport '{value.Trim()}' from {source}.")
         };
     }
 
@@ -459,6 +472,7 @@ internal static class ReviewConfigLoader {
 
         return new ReviewSwarmReviewerSettings {
             Id = id!,
+            AgentProfile = obj.GetString("agentProfile") ?? obj.GetString("modelProfile"),
             Provider = ParseOptionalSwarmProvider(obj.GetString("provider")),
             Model = obj.GetString("model"),
             ReasoningEffort = ParseOptionalReasoningEffort(obj.GetString("reasoningEffort"))
@@ -473,6 +487,8 @@ internal static class ReviewConfigLoader {
 
         settings.Swarm.Aggregator.Provider =
             ParseOptionalSwarmProvider(aggregator.GetString("provider")) ?? settings.Swarm.Aggregator.Provider;
+        settings.Swarm.Aggregator.AgentProfile =
+            aggregator.GetString("agentProfile") ?? aggregator.GetString("modelProfile") ?? settings.Swarm.Aggregator.AgentProfile;
         settings.Swarm.Aggregator.Model = aggregator.GetString("model") ?? settings.Swarm.Aggregator.Model;
         settings.Swarm.Aggregator.ReasoningEffort =
             ParseOptionalReasoningEffort(aggregator.GetString("reasoningEffort")) ?? settings.Swarm.Aggregator.ReasoningEffort;
@@ -542,6 +558,7 @@ internal static class ReviewConfigLoader {
         settings.CopilotCliPath = copilot.GetString("cliPath") ?? settings.CopilotCliPath;
         settings.CopilotCliUrl = copilot.GetString("cliUrl") ?? settings.CopilotCliUrl;
         settings.CopilotWorkingDirectory = copilot.GetString("workingDirectory") ?? settings.CopilotWorkingDirectory;
+        settings.CopilotModel = copilot.GetString("model") ?? settings.CopilotModel;
         settings.CopilotLauncher = ReviewSettings.NormalizeCopilotLauncher(copilot.GetString("launcher"),
             settings.CopilotLauncher);
         settings.CopilotAutoInstall = ReadBool(copilot, "autoInstall", settings.CopilotAutoInstall);
@@ -598,6 +615,116 @@ internal static class ReviewConfigLoader {
         }
     }
 
+    private static void ApplyAgentProfiles(JsonObject reviewObj, ReviewSettings settings) {
+        var profiles = reviewObj.GetObject("agentProfiles")
+            ?? reviewObj.GetObject("modelProfiles")
+            ?? reviewObj.GetObject("authProfiles");
+        if (profiles is not null) {
+            var map = new Dictionary<string, ReviewAgentProfileSettings>(StringComparer.OrdinalIgnoreCase);
+            foreach (var entry in profiles) {
+                var obj = entry.Value.AsObject();
+                if (obj is null || string.IsNullOrWhiteSpace(entry.Key)) {
+                    continue;
+                }
+                var profile = ReadAgentProfile(entry.Key, obj);
+                map[profile.Id] = profile;
+            }
+            settings.AgentProfiles = map;
+        }
+
+    }
+
+    private static ReviewAgentProfileSettings ReadAgentProfile(string id, JsonObject obj) {
+        var profile = new ReviewAgentProfileSettings {
+            Id = id.Trim(),
+            Model = obj.GetString("model"),
+            Authenticator = obj.GetString("authenticator") ?? obj.GetString("auth"),
+            OpenAiAccountId =
+                obj.GetString("openaiAccountId")
+                ?? obj.GetString("openAiAccountId")
+                ?? obj.GetString("authAccountId")
+        };
+
+        var provider = obj.GetString("provider");
+        if (!string.IsNullOrWhiteSpace(provider)) {
+            profile.Provider = ReviewProviderContracts.ParseProviderOrThrow(provider, $"review.agentProfiles.{id}.provider");
+        }
+
+        var reasoningEffort = obj.GetString("reasoningEffort");
+        if (!string.IsNullOrWhiteSpace(reasoningEffort)) {
+            profile.ReasoningEffort = IntelligenceX.OpenAI.Chat.ChatEnumParser.ParseReasoningEffort(reasoningEffort);
+        }
+
+        var openAiTransport = obj.GetString("openaiTransport") ?? obj.GetString("openAiTransport");
+        if (!string.IsNullOrWhiteSpace(openAiTransport)) {
+            profile.OpenAITransport = ParseOpenAiTransportOrThrow(openAiTransport,
+                $"review.agentProfiles.{id}.openaiTransport");
+        }
+
+        var resolvedProvider = profile.ResolveProvider($"review.agentProfiles.{id}.authenticator");
+        var copilot = obj.GetObject("copilot");
+        if (copilot is not null || resolvedProvider == ReviewProvider.Copilot) {
+            ApplyAgentProfileCopilot(copilot ?? obj, profile);
+        }
+        var openAiCompatible = obj.GetObject("openaiCompatible") ?? obj.GetObject("openAiCompatible");
+        if (openAiCompatible is not null || resolvedProvider == ReviewProvider.OpenAICompatible) {
+            ApplyAgentProfileOpenAiCompatible(openAiCompatible ?? obj, profile);
+        }
+        var anthropic = obj.GetObject("anthropic") ?? obj.GetObject("claude");
+        if (anthropic is not null || resolvedProvider == ReviewProvider.Claude) {
+            ApplyAgentProfileAnthropic(anthropic ?? obj, profile);
+        }
+        return profile;
+    }
+
+    private static void ApplyAgentProfileCopilot(JsonObject obj, ReviewAgentProfileSettings profile) {
+        var transport = obj.GetString("copilotTransport") ?? obj.GetString("transport");
+        if (!string.IsNullOrWhiteSpace(transport)) {
+            profile.CopilotTransport = ParseCopilotTransportOrThrow(transport,
+                $"review.agentProfiles.{profile.Id}.copilotTransport");
+        }
+        profile.CopilotModel = obj.GetString("copilotModel") ?? profile.CopilotModel;
+        profile.CopilotLauncher = obj.GetString("copilotLauncher") ?? obj.GetString("launcher") ?? profile.CopilotLauncher;
+        profile.CopilotCliPath = obj.GetString("copilotCliPath") ?? obj.GetString("cliPath") ?? profile.CopilotCliPath;
+        profile.CopilotCliUrl = obj.GetString("copilotCliUrl") ?? obj.GetString("cliUrl") ?? profile.CopilotCliUrl;
+        profile.CopilotWorkingDirectory =
+            obj.GetString("copilotWorkingDirectory") ?? obj.GetString("workingDirectory") ?? profile.CopilotWorkingDirectory;
+        profile.CopilotAutoInstall = ReadNullableBool(obj, "copilotAutoInstall") ?? ReadNullableBool(obj, "autoInstall");
+        profile.CopilotAutoInstallMethod =
+            obj.GetString("copilotAutoInstallMethod") ?? obj.GetString("autoInstallMethod") ?? profile.CopilotAutoInstallMethod;
+        profile.CopilotAutoInstallPrerelease =
+            ReadNullableBool(obj, "copilotAutoInstallPrerelease") ?? ReadNullableBool(obj, "autoInstallPrerelease");
+        profile.CopilotInheritEnvironment =
+            ReadNullableBool(obj, "copilotInheritEnvironment") ?? ReadNullableBool(obj, "inheritEnvironment");
+        profile.CopilotEnvAllowlist =
+            ReadStringList(obj, "copilotEnvAllowlist") ?? ReadStringList(obj, "envAllowlist") ?? profile.CopilotEnvAllowlist;
+        profile.CopilotEnv = ReadStringMap(obj, "copilotEnv") ?? ReadStringMap(obj, "env") ?? profile.CopilotEnv;
+        profile.CopilotDirectUrl = obj.GetString("copilotDirectUrl") ?? obj.GetString("directUrl") ?? profile.CopilotDirectUrl;
+        profile.CopilotDirectTokenEnv =
+            obj.GetString("copilotDirectTokenEnv") ?? obj.GetString("directTokenEnv") ?? profile.CopilotDirectTokenEnv;
+        profile.CopilotDirectTimeoutSeconds =
+            ReadNullablePositiveInt(obj, "copilotDirectTimeoutSeconds") ?? ReadNullablePositiveInt(obj, "directTimeoutSeconds");
+        profile.CopilotDirectHeaders =
+            ReadStringMap(obj, "copilotDirectHeaders") ?? ReadStringMap(obj, "directHeaders") ?? profile.CopilotDirectHeaders;
+    }
+
+    private static void ApplyAgentProfileOpenAiCompatible(JsonObject obj, ReviewAgentProfileSettings profile) {
+        profile.OpenAICompatibleBaseUrl =
+            obj.GetString("openaiCompatibleBaseUrl") ?? obj.GetString("baseUrl") ?? profile.OpenAICompatibleBaseUrl;
+        profile.OpenAICompatibleApiKeyEnv =
+            obj.GetString("openaiCompatibleApiKeyEnv") ?? obj.GetString("apiKeyEnv") ?? profile.OpenAICompatibleApiKeyEnv;
+        profile.OpenAICompatibleTimeoutSeconds =
+            ReadNullablePositiveInt(obj, "openaiCompatibleTimeoutSeconds") ?? ReadNullablePositiveInt(obj, "timeoutSeconds");
+    }
+
+    private static void ApplyAgentProfileAnthropic(JsonObject obj, ReviewAgentProfileSettings profile) {
+        profile.AnthropicApiKeyEnv =
+            obj.GetString("anthropicApiKeyEnv") ?? obj.GetString("apiKeyEnv") ?? profile.AnthropicApiKeyEnv;
+        profile.AnthropicBaseUrl = obj.GetString("anthropicBaseUrl") ?? obj.GetString("baseUrl") ?? profile.AnthropicBaseUrl;
+        profile.AnthropicTimeoutSeconds =
+            ReadNullablePositiveInt(obj, "anthropicTimeoutSeconds") ?? ReadNullablePositiveInt(obj, "timeoutSeconds");
+    }
+
     private static void ApplyCleanup(JsonObject root, ReviewSettings settings) {
         var cleanup = root.GetObject("cleanup");
         if (cleanup is null) {
@@ -639,6 +766,20 @@ internal static class ReviewConfigLoader {
         };
     }
 
+    private static CopilotTransportKind ParseCopilotTransportOrThrow(string value, string source) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            throw new InvalidOperationException($"Missing Copilot transport from {source}.");
+        }
+
+        var normalized = value.Trim().ToLowerInvariant();
+        return normalized switch {
+            "direct" or "api" or "http" => CopilotTransportKind.Direct,
+            "cli" => CopilotTransportKind.Cli,
+            _ => throw new InvalidOperationException(
+                $"Unknown Copilot transport '{value.Trim()}' from {source}.")
+        };
+    }
+
     private static IReadOnlyList<string>? ReadStringList(JsonObject obj, string key) {
         if (obj.TryGetValue(key, out var value)) {
             var array = value?.AsArray();
@@ -665,7 +806,7 @@ internal static class ReviewConfigLoader {
             return null;
         }
         var mapObj = value?.AsObject();
-        if (mapObj is null || mapObj.Count == 0) {
+        if (mapObj is null) {
             return null;
         }
         var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -712,5 +853,22 @@ internal static class ReviewConfigLoader {
             return value?.AsBoolean(fallback) ?? fallback;
         }
         return fallback;
+    }
+
+    private static bool? ReadNullableBool(JsonObject obj, string key) {
+        if (obj.TryGetValue(key, out var value)) {
+            if (value?.Kind == JsonValueKind.Boolean) {
+                return value.AsBoolean();
+            }
+        }
+        return null;
+    }
+
+    private static int? ReadNullablePositiveInt(JsonObject obj, string key) {
+        var value = obj.GetInt64(key);
+        if (value.HasValue && value.Value > 0) {
+            return (int)value.Value;
+        }
+        return null;
     }
 }

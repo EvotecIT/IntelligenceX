@@ -424,6 +424,11 @@ public sealed class CopilotClient : IDisposable
             }
         }
 
+        var installed = CopilotCliInstall.TryResolveInstalledCliPath(cliPath);
+        if (!string.IsNullOrWhiteSpace(installed)) {
+            return installed!;
+        }
+
         throw new InvalidOperationException("Copilot CLI not found on PATH.\n" + CopilotCliInstall.GetInstallInstructions());
     }
 
@@ -431,10 +436,15 @@ public sealed class CopilotClient : IDisposable
         if (cliPath.EndsWith(".js", StringComparison.OrdinalIgnoreCase)) {
             return ("node", Prepend(cliPath, args));
         }
-        if (IsWindows() && !Path.IsPathRooted(cliPath)) {
+        if (RequiresCmdWrapper(cliPath)) {
             return ("cmd", Prepend("/c", Prepend(cliPath, args)));
         }
         return (cliPath, args);
+    }
+
+    internal static (string FileName, string[] Args) ResolveCliCommandForTests(string cliPath, params string[] args) {
+        var (fileName, resolvedArgs) = ResolveCliCommand(cliPath, args);
+        return (fileName, new List<string>(resolvedArgs).ToArray());
     }
 
     private static IEnumerable<string> Prepend(string value, IEnumerable<string> args) {
@@ -452,6 +462,17 @@ public sealed class CopilotClient : IDisposable
 
     private static bool IsWindows() {
         return RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+    }
+
+    private static bool RequiresCmdWrapper(string cliPath) {
+        if (!IsWindows()) {
+            return false;
+        }
+        if (!Path.IsPathRooted(cliPath)) {
+            return true;
+        }
+        return cliPath.EndsWith(".cmd", StringComparison.OrdinalIgnoreCase) ||
+               cliPath.EndsWith(".bat", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string EscapeArg(string arg) {

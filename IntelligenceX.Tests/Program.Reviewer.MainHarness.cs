@@ -69,10 +69,17 @@ internal static partial class Program {
         failed += Run("Review retry extra attempt", TestReviewRetryExtraAttempt);
         failed += Run("Review failure marker", TestReviewFailureMarker);
         failed += Run("Review failure body redacts errors", TestReviewFailureBodyRedactsErrors);
+        failed += Run("Review failure body uses Copilot transport", TestReviewFailureBodyUsesCopilotTransport);
+        failed += Run("Review failure body uses provider-specific transport labels",
+            TestReviewFailureBodyUsesProviderSpecificTransportLabels);
+        failed += Run("Review failure body classifies Copilot unauthorized", TestReviewFailureBodyClassifiesCopilotUnauthorized);
+        failed += Run("Review failure body prefers timeout over inner cancellation",
+            TestReviewFailureBodyPrefersTimeoutOverInnerCancellation);
         failed += Run("Review failure body includes safe auth refresh detail", TestReviewFailureBodyIncludesSafeAuthRefreshDetail);
         failed += Run("Build auth remediation command quotes repo when needed", TestBuildAuthRemediationCommandQuotesRepoWhenNeeded);
         failed += Run("Build auth remediation command escapes embedded quotes", TestBuildAuthRemediationCommandEscapesEmbeddedQuotes);
         failed += Run("Workflow fail-open log classification uses auth refresh label", TestWorkflowFailOpenLogClassificationUsesAuthRefreshLabel);
+        failed += Run("Workflow fail-open log classification prefers usage budget guard", TestWorkflowFailOpenLogClassificationPrefersUsageBudgetGuard);
         failed += Run("Workflow fail-open summary body uses runtime guidance", TestWorkflowFailOpenSummaryBodyUsesRuntimeGuidance);
         failed += Run("Failure summary comment update", TestFailureSummaryCommentUpdate);
         failed += Run("Review fail-open only transient", TestReviewFailOpenTransientOnly);
@@ -656,7 +663,15 @@ internal static partial class Program {
         failed += Run("Review settings load config then env precedence", TestReviewSettingsLoadConfigThenEnvPrecedence);
         failed += Run("Review settings load config then env precedence for ciContext and swarm",
             TestReviewSettingsLoadConfigThenEnvPrecedenceForCiContextAndSwarm);
+        failed += Run("Review settings empty input falls back to env override",
+            TestReviewSettingsEmptyInputFallsBackToEnvOverride);
         failed += Run("Review settings load swarm reviewer objects", TestReviewSettingsLoadSwarmReviewerObjects);
+        failed += Run("Review settings agent profile selects authenticator and model",
+            TestReviewSettingsAgentProfileSelectsAuthenticatorAndModel);
+        failed += Run("Review settings agent profile rejects unknown authenticator and transport",
+            TestReviewSettingsAgentProfileRejectsUnknownAuthenticatorAndTransport);
+        failed += Run("Review settings model-only agent profile updates copilot model",
+            TestReviewSettingsModelOnlyAgentProfileUpdatesCopilotModel);
         failed += Run("Review settings env swarm reviewers JSON", TestReviewSettingsEnvSwarmReviewersJson);
         failed += Run("Review settings load config allows zero for non-negative limits",
             TestReviewSettingsLoadConfigAllowsZeroForNonNegativeLimits);
@@ -668,22 +683,91 @@ internal static partial class Program {
         failed += Run("Azure code host reader smoke", TestAzureDevOpsCodeHostReaderSmoke);
         failed += Run("Review threads diff range normalize", TestReviewThreadsDiffRangeNormalize);
         failed += Run("Copilot env allowlist config", TestCopilotEnvAllowlistConfig);
+        failed += Run("Copilot agent profile config preserves explicit empty maps",
+            TestCopilotAgentProfileConfigPreservesExplicitEmptyMaps);
+        failed += Run("Non-copilot agent profile ignores root Copilot aliases",
+            TestNonCopilotAgentProfileIgnoresRootCopilotAliases);
+        failed += Run("Copilot agent profile allows root Copilot aliases",
+            TestCopilotAgentProfileAllowsRootCopilotAliases);
+        failed += Run("Review config loader apply materializes selected agent profile",
+            TestReviewConfigLoaderApplyMaterializesSelectedAgentProfile);
         failed += Run("Copilot launcher env", TestCopilotLauncherEnv);
+        failed += Run("Copilot model env overrides generic model", TestCopilotModelEnvOverridesGenericModel);
+        failed += Run("Copilot default OpenAI model uses CLI default", TestCopilotDefaultOpenAiModelUsesCliDefault);
+        failed += Run("Copilot prompt runner parses JSON output", TestCopilotPromptRunnerParsesJsonOutput);
+        failed += Run("Copilot prompt runner parses concatenated JSON output",
+            TestCopilotPromptRunnerParsesConcatenatedJsonOutput);
+        failed += Run("Copilot prompt runner falls back to stdout when JSON shares a line with noise",
+            TestCopilotPromptRunnerFallsBackToStdoutWhenJsonSharesLineWithNoise);
+        failed += Run("Copilot prompt runner falls back to stdout when JSON has trailing noise",
+            TestCopilotPromptRunnerFallsBackToStdoutWhenJsonHasTrailingNoise);
+        failed += Run("Copilot prompt runner falls back to stdout when JSON is valid but no assistant message was parsed",
+            TestCopilotPromptRunnerFallsBackToStdoutWhenJsonIsValidButNoAssistantMessageWasParsed);
+        failed += Run("Copilot prompt runner rejects malformed JSON without assistant message",
+            TestCopilotPromptRunnerRejectsMalformedJsonWithoutAssistantMessage);
+        failed += Run("Copilot prompt runner falls back to stdout when brace noise prevents JSON parsing",
+            TestCopilotPromptRunnerFallsBackToStdoutWhenBraceNoisePreventsJsonParsing);
+        failed += Run("Copilot prompt runner ignores brace noise before a valid JSON line",
+            TestCopilotPromptRunnerIgnoresBraceNoiseBeforeValidJsonLine);
+        failed += Run("Copilot prompt runner falls back to stdout when a brace line starts with non-JSON text",
+            TestCopilotPromptRunnerFallsBackToStdoutWhenBraceLineStartsWithNonJsonToken);
+        failed += Run("Copilot prompt runner does not treat JSON warnings as review content",
+            TestCopilotPromptRunnerDoesNotTreatJsonWarningsAsReviewContent);
+        failed += Run("Copilot prompt runner builds MCP-disabled args",
+            TestCopilotPromptRunnerBuildsMcpDisabledArgs);
+        failed += Run("Copilot prompt runner retries prompt argument when stdin produces no review",
+            TestCopilotPromptRunnerRetriesPromptArgumentWhenStdinProducesNoReview);
+        failed += Run("Copilot prompt runner prefers transport retry before compatibility fallback",
+            TestCopilotPromptRunnerPrefersTransportRetryBeforeCompatibilityFallback);
+        failed += Run("Copilot prompt runner wraps rooted Windows cmd paths",
+            TestCopilotPromptRunnerWrapsRootedWindowsCmdPaths);
+        failed += Run("Copilot prompt runner detects unsupported MCP flag",
+            TestCopilotPromptRunnerDetectsUnsupportedMcpFlag);
+        failed += Run("Copilot prompt runner accepts successful warnings without retry",
+            TestCopilotPromptRunnerAcceptsSuccessfulWarningsWithoutRetry);
         failed += Run("Copilot gh launcher builds wrapper command", TestCopilotGhLauncherBuildsWrapperCommand);
-        failed += Run("Copilot auto launcher requires usable gh wrapper",
-            TestCopilotAutoLauncherRequiresUsableGhWrapper);
-        failed += Run("Copilot auto launcher uses gh when wrapper can launch CLI",
-            TestCopilotAutoLauncherUsesGhWhenWrapperCanLaunchCli);
+        failed += Run("Copilot auto launcher uses binary",
+            TestCopilotAutoLauncherUsesBinary);
+        failed += Run("Copilot auto launcher keeps gh wrapper explicit",
+            TestCopilotAutoLauncherKeepsGhWrapperExplicit);
+        failed += Run("Copilot auto launcher uses binary for auto-install",
+            TestCopilotAutoLauncherUsesBinaryForAutoInstall);
+        failed += Run("Copilot CLI auto-install defaults prefer Linux script",
+            TestCopilotCliAutoInstallDefaultsPreferLinuxScript);
+        failed += Run("Copilot CLI auto-install defaults honor Linux prerelease",
+            TestCopilotCliAutoInstallDefaultsHonorLinuxPrerelease);
+        failed += Run("Copilot CLI auto-install defaults keep macOS Homebrew",
+            TestCopilotCliAutoInstallDefaultsKeepMacHomebrew);
         failed += Run("Copilot launcher diagnostics describe resolved command",
             TestCopilotLauncherDiagnosticsDescribeResolvedCommand);
         failed += Run("Copilot binary launcher keeps direct cli path", TestCopilotBinaryLauncherKeepsDirectCliPath);
+        failed += Run("Copilot client wraps rooted Windows cmd paths", TestCopilotClientWrapsRootedWindowsCmdPaths);
         failed += Run("Copilot inherit env default", TestCopilotInheritEnvironmentDefault);
         failed += Run("Copilot direct timeout validation", TestCopilotDirectTimeoutValidation);
         failed += Run("Copilot chat timeout validation", TestCopilotChatTimeoutValidation);
+        failed += Run("Copilot prompt timeout honors configured wait", TestCopilotPromptTimeoutUsesRunnerSafeMinimum);
+        failed += Run("Copilot prompt timeout honors higher explicit wait", TestCopilotPromptTimeoutHonorsHigherExplicitWait);
+        failed += Run("Copilot CLI session timeout honors configured wait",
+            TestCopilotCliSessionTimeoutUsesRunnerSafeMinimum);
+        failed += Run("Copilot CLI session timeout honors higher explicit wait",
+            TestCopilotCliSessionTimeoutHonorsHigherExplicitWait);
+        failed += Run("Copilot prompt failure falls back for timeout and prompt errors",
+            TestCopilotPromptFailureFallsBackForTimeoutAndPromptErrors);
+        failed += Run("Copilot prompt mode selection uses cliUrl only",
+            TestCopilotPromptModeSelectionUsesCliUrlOnly);
+        failed += Run("Copilot CLI session requires idle signal for completion",
+            TestCopilotCliSessionRequiresIdleSignalForCompletion);
+        failed += Run("Copilot prompt start failure keeps cause details",
+            TestCopilotPromptStartFailureKeepsCauseDetails);
+        failed += Run("Copilot install resolver finds platform install", TestCopilotInstallResolverFindsPlatformInstall);
+        failed += Run("Copilot prompt runner rejects missing configured cli path",
+            TestCopilotPromptRunnerRejectsMissingConfiguredCliPath);
+        failed += Run("Copilot prompt runner write honors timeout", TestCopilotPromptRunnerWriteHonorsTimeout);
         failed += Run("Copilot direct auth conflict", TestCopilotDirectAuthorizationConflict);
         failed += Run("Copilot CLI path requires env", TestCopilotCliPathRequiresEnvironment);
         failed += Run("Copilot CLI path optional with url", TestCopilotCliPathOptionalWithUrl);
         failed += Run("Copilot CLI url validation", TestCopilotCliUrlValidation);
+        failed += Run("Copilot prompt requires Actions token", TestCopilotPromptRunnerRequiresActionsCopilotToken);
         failed += Run("Resolve-threads option parsing", TestResolveThreadsOptionParsing);
         failed += Run("Resolve-threads default bot logins include managed bots", TestResolveThreadsDefaultBotLoginsIncludeManagedBots);
         failed += Run("Resolve-threads GHES endpoint", TestResolveThreadsEndpointResolution);
@@ -718,6 +802,8 @@ internal static partial class Program {
         failed += Run("Prompt merge blocker sections default", TestPromptBuilderMergeBlockerSectionsDefault);
         failed += Run("Prompt merge blocker sections compact default", TestPromptBuilderMergeBlockerSectionsCompactDefault);
         failed += Run("Prompt includes review history section", TestPromptBuilderIncludesReviewHistorySection);
+        failed += Run("Prompt compact history guard includes critical issues",
+            TestPromptBuilderCompactHistoryGuardIncludesCriticalIssues);
         failed += Run("Prompt includes ci context section", TestPromptBuilderIncludesCiContextSection);
         failed += Run("Review history builder includes sticky summary and thread snapshot",
             TestReviewHistoryBuilderIncludesStickySummaryAndThreadSnapshot);
@@ -765,6 +851,11 @@ internal static partial class Program {
         failed += Run("Review summary parser merge blocker detection custom sections",
             TestReviewSummaryParserMergeBlockerDetectionCustomSections);
         failed += Run("Review swarm shadow plan uses reviewer overrides", TestReviewSwarmShadowPlanUsesReviewerOverrides);
+        failed += Run("Review swarm shadow plan uses agent profiles", TestReviewSwarmShadowPlanUsesAgentProfiles);
+        failed += Run("Review agent profile switch rebases to baseline",
+            TestReviewAgentProfileSwitchRebasesToBaseline);
+        failed += Run("Review swarm shadow clone uses refreshed runtime baseline",
+            TestReviewSwarmShadowCloneUsesRefreshedRuntimeBaseline);
         failed += Run("Review swarm shadow plan falls back to primary provider and model",
             TestReviewSwarmShadowPlanFallsBackToPrimaryProviderAndModel);
         failed += Run("Review swarm shadow reviewer prompt shapes focus", TestReviewSwarmShadowReviewerPromptShapesFocus);
@@ -789,6 +880,7 @@ internal static partial class Program {
             TestReviewSummaryParserMergeBlockerDetectionAllowNoSectionMatch);
         failed += Run("Review formatter model usage section", TestReviewFormatterModelUsageSection);
         failed += Run("Review formatter model usage unavailable", TestReviewFormatterModelUsageUnavailable);
+        failed += Run("Review formatter copilot model usage provider display", TestReviewFormatterCopilotModelUsageUsesProviderDisplay);
         failed += Run("Review formatter golden snapshot", TestReviewFormatterGoldenSnapshot);
         failed += Run("Review formatter normalizes inline section labels", TestReviewFormatterNormalizesInlineSectionLabels);
         failed += Run("Review formatter normalizes malformed heading inline section labels",

@@ -13,6 +13,8 @@ Merge blockers: items in **Todo List ✅** and **Critical Issues ⚠️** sectio
 Summary line.
 
 ### Model & Usage 🤖
+- Provider: `openai`
+- Transport: `appserver`
 - Model: `gpt-5-test`
 - Length: `medium`
 - Mode: `summary`

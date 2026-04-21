@@ -48,6 +48,7 @@ internal static class ReviewSwarmShadowArtifacts {
                 maxParallel = plan.MaxParallel,
                 reviewers = BuildReviewerPlanItems(plan),
                 aggregator = new {
+                    agentProfile = plan.Aggregator.AgentProfile,
                     provider = FormatProvider(plan.Aggregator.Provider),
                     model = plan.Aggregator.Model,
                     reasoningEffort = plan.Aggregator.ReasoningEffort?.ToString().ToLowerInvariant()
@@ -86,6 +87,11 @@ internal static class ReviewSwarmShadowArtifacts {
             sb.Append("- `");
             sb.Append(reviewer.Id);
             sb.Append("`: ");
+            if (!string.IsNullOrWhiteSpace(reviewer.AgentProfile)) {
+                sb.Append('`');
+                sb.Append(reviewer.AgentProfile);
+                sb.Append("` -> ");
+            }
             sb.Append(FormatProvider(reviewer.Provider));
             sb.Append(" / `");
             sb.Append(reviewer.Model);
@@ -98,6 +104,11 @@ internal static class ReviewSwarmShadowArtifacts {
             sb.AppendLine();
         }
         sb.Append("- aggregator: ");
+        if (!string.IsNullOrWhiteSpace(plan.Aggregator.AgentProfile)) {
+            sb.Append('`');
+            sb.Append(plan.Aggregator.AgentProfile);
+            sb.Append("` -> ");
+        }
         sb.Append(FormatProvider(plan.Aggregator.Provider));
         sb.Append(" / `");
         sb.Append(plan.Aggregator.Model);
@@ -185,6 +196,7 @@ internal static class ReviewSwarmShadowArtifacts {
         foreach (var reviewer in plan.Reviewers) {
             items.Add(new {
                 id = reviewer.Id,
+                agentProfile = reviewer.AgentProfile,
                 provider = FormatProvider(reviewer.Provider),
                 model = reviewer.Model,
                 reasoningEffort = reviewer.ReasoningEffort?.ToString().ToLowerInvariant()
@@ -198,6 +210,7 @@ internal static class ReviewSwarmShadowArtifacts {
         foreach (var reviewerResult in result.Results) {
             items.Add(new {
                 id = reviewerResult.Reviewer.Id,
+                agentProfile = reviewerResult.Reviewer.AgentProfile,
                 provider = FormatProvider(reviewerResult.Reviewer.Provider),
                 model = reviewerResult.Reviewer.Model,
                 succeeded = reviewerResult.Succeeded,

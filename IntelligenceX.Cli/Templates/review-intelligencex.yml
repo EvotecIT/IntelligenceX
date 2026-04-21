@@ -105,6 +105,240 @@ on:
         description: 'Override swarm metrics/artifact capture (true|false)'
         required: false
         default: ''
+  workflow_call:
+    inputs:
+      repo:
+        description: 'Repository (owner/name) override for reusable callers'
+        required: false
+        type: string
+      pr_number:
+        description: 'Pull request number override for reusable callers'
+        required: false
+        type: string
+      provider:
+        description: 'Review provider override for reusable callers'
+        required: false
+        type: string
+      agent_profile:
+        description: 'Named agent profile override for reusable callers'
+        required: false
+        type: string
+      model:
+        description: 'Model override for reusable callers'
+        required: false
+        type: string
+      openai_model:
+        description: 'OpenAI model override for reusable callers'
+        required: false
+        type: string
+      copilot_model:
+        description: 'Copilot model override for reusable callers'
+        required: false
+        type: string
+      copilot_launcher:
+        description: 'Copilot launcher override for reusable callers'
+        required: false
+        type: string
+      openai_account_id:
+        description: 'OpenAI account id override for reusable callers'
+        required: false
+        type: string
+      openai_account_ids:
+        description: 'Ordered OpenAI account ids override for reusable callers'
+        required: false
+        type: string
+      openai_account_rotation:
+        description: 'OpenAI account rotation override for reusable callers'
+        required: false
+        type: string
+      openai_account_failover:
+        description: 'OpenAI account failover override for reusable callers'
+        required: false
+        type: string
+      usage_budget_guard:
+        description: 'Usage budget guard override for reusable callers'
+        required: false
+        type: string
+      usage_budget_allow_credits:
+        description: 'Credits budget allowance override for reusable callers'
+        required: false
+        type: string
+      usage_budget_allow_weekly_limit:
+        description: 'Weekly-limit budget allowance override for reusable callers'
+        required: false
+        type: string
+      profile:
+        description: 'Prompt profile override for reusable callers'
+        required: false
+        type: string
+      style:
+        description: 'Review style override for reusable callers'
+        required: false
+        type: string
+      output_style:
+        description: 'Output style override for reusable callers'
+        required: false
+        type: string
+      strictness:
+        description: 'Strictness override for reusable callers'
+        required: false
+        type: string
+      tone:
+        description: 'Tone override for reusable callers'
+        required: false
+        type: string
+      focus:
+        description: 'Focus override for reusable callers'
+        required: false
+        type: string
+      length:
+        description: 'Review length override for reusable callers'
+        required: false
+        type: string
+      mode:
+        description: 'Review mode override for reusable callers'
+        required: false
+        type: string
+      persona:
+        description: 'Persona override for reusable callers'
+        required: false
+        type: string
+      notes:
+        description: 'Additional prompt notes override for reusable callers'
+        required: false
+        type: string
+      ci_context_enabled:
+        description: 'CI context enablement override for reusable callers'
+        required: false
+        type: string
+      ci_context_include_check_summary:
+        description: 'CI check summary override for reusable callers'
+        required: false
+        type: string
+      ci_context_include_failed_runs:
+        description: 'CI failed-run metadata override for reusable callers'
+        required: false
+        type: string
+      ci_context_include_failure_snippets:
+        description: 'CI failure snippet mode override for reusable callers'
+        required: false
+        type: string
+      ci_context_max_failed_runs:
+        description: 'CI max failed runs override for reusable callers'
+        required: false
+        type: string
+      ci_context_max_snippet_chars_per_run:
+        description: 'CI failure snippet char budget override for reusable callers'
+        required: false
+        type: string
+      ci_context_classify_infra_failures:
+        description: 'CI infra-failure classification override for reusable callers'
+        required: false
+        type: string
+      history_enabled:
+        description: 'Reviewer history-awareness override for reusable callers'
+        required: false
+        type: string
+      history_include_ix_summary_history:
+        description: 'Include prior IX sticky summaries for reusable callers'
+        required: false
+        type: string
+      history_include_review_threads:
+        description: 'Include review threads in history context for reusable callers'
+        required: false
+        type: string
+      history_include_external_bot_summaries:
+        description: 'Include external bot summaries in history context for reusable callers'
+        required: false
+        type: string
+      history_external_bot_logins:
+        description: 'External bot login list override for reusable callers'
+        required: false
+        type: string
+      history_artifacts:
+        description: 'History artifact capture override for reusable callers'
+        required: false
+        type: string
+      history_max_rounds:
+        description: 'Max prior history rounds override for reusable callers'
+        required: false
+        type: string
+      history_max_items:
+        description: 'Max prior history items override for reusable callers'
+        required: false
+        type: string
+      swarm_enabled:
+        description: 'Reviewer swarm enablement override for reusable callers'
+        required: false
+        type: string
+      swarm_shadow_mode:
+        description: 'Reviewer swarm shadow mode override for reusable callers'
+        required: false
+        type: string
+      swarm_reviewers:
+        description: 'Reviewer swarm reviewers override for reusable callers'
+        required: false
+        type: string
+      swarm_max_parallel:
+        description: 'Reviewer swarm max parallel override for reusable callers'
+        required: false
+        type: string
+      swarm_publish_subreviews:
+        description: 'Reviewer swarm sub-review publishing override for reusable callers'
+        required: false
+        type: string
+      swarm_aggregator_model:
+        description: 'Reviewer swarm aggregator model override for reusable callers'
+        required: false
+        type: string
+      swarm_fail_open_on_partial:
+        description: 'Reviewer swarm partial fail-open override for reusable callers'
+        required: false
+        type: string
+      swarm_metrics:
+        description: 'Reviewer swarm metrics override for reusable callers'
+        required: false
+        type: string
+      review_config_path:
+        description: 'Reviewer config path override for reusable callers'
+        required: false
+        type: string
+      max_files:
+        description: 'Max files override for reusable callers'
+        required: false
+        type: string
+      max_patch_chars:
+        description: 'Max patch chars override for reusable callers'
+        required: false
+        type: string
+      include_issue_comments:
+        description: 'Issue comment inclusion override for reusable callers'
+        required: false
+        type: string
+      include_review_comments:
+        description: 'Review comment inclusion override for reusable callers'
+        required: false
+        type: string
+      include_related_prs:
+        description: 'Related PR inclusion override for reusable callers'
+        required: false
+        type: string
+      progress_updates:
+        description: 'Progress update override for reusable callers'
+        required: false
+        type: string
+      diagnostics:
+        description: 'Diagnostics override for reusable callers'
+        required: false
+        type: string
+      preflight:
+        description: 'Preflight override for reusable callers'
+        required: false
+        type: string
+      preflight_timeout_seconds:
+        description: 'Preflight timeout override for reusable callers'
+        required: false
+        type: string
 
 jobs:
 {{ManagedBlock}}

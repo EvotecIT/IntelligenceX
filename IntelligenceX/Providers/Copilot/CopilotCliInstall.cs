@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -82,18 +83,26 @@ public static class CopilotCliInstall {
                 prerelease ? "install GitHub.Copilot.Prerelease" : "install GitHub.Copilot",
                 "WinGet"));
             list.Add(Npm(prerelease));
-        } else if (IsMac() || IsLinux()) {
+        } else if (IsMac()) {
             list.Add(new CopilotCliInstallCommand(
                 CopilotCliInstallMethod.Homebrew,
                 "brew",
                 prerelease ? "install copilot-cli@prerelease" : "install copilot-cli",
                 "Homebrew"));
             list.Add(Npm(prerelease));
+            list.Add(Script());
+        } else if (IsLinux()) {
+            if (prerelease) {
+                list.Add(Npm(prerelease));
+            } else {
+                list.Add(Script());
+                list.Add(Npm(prerelease));
+            }
             list.Add(new CopilotCliInstallCommand(
-                CopilotCliInstallMethod.Script,
-                "bash",
-                "-c \"curl -fsSL https://gh.io/copilot-install | bash\"",
-                "Install script (macOS/Linux)"));
+                CopilotCliInstallMethod.Homebrew,
+                "brew",
+                prerelease ? "install copilot-cli@prerelease" : "install copilot-cli",
+                "Homebrew"));
         } else {
             list.Add(Npm(prerelease));
         }
@@ -105,19 +114,27 @@ public static class CopilotCliInstall {
     /// </summary>
     /// <param name="prerelease">Whether to use prerelease versions.</param>
     public static CopilotCliInstallCommand GetDefaultCommand(bool prerelease = false) {
-        if (IsWindows()) {
+        return GetDefaultCommandForPlatform(IsWindows(), IsMac(), IsLinux(), prerelease);
+    }
+
+    internal static CopilotCliInstallCommand GetDefaultCommandForPlatform(bool isWindows, bool isMac, bool isLinux,
+        bool prerelease = false) {
+        if (isWindows) {
             return new CopilotCliInstallCommand(
                 CopilotCliInstallMethod.Winget,
                 "winget",
                 prerelease ? "install GitHub.Copilot.Prerelease" : "install GitHub.Copilot",
                 "WinGet");
         }
-        if (IsMac() || IsLinux()) {
+        if (isMac) {
             return new CopilotCliInstallCommand(
                 CopilotCliInstallMethod.Homebrew,
                 "brew",
                 prerelease ? "install copilot-cli@prerelease" : "install copilot-cli",
                 "Homebrew");
+        }
+        if (isLinux) {
+            return prerelease ? Npm(prerelease) : Script();
         }
         return Npm(prerelease);
     }
@@ -143,11 +160,7 @@ public static class CopilotCliInstall {
                 prerelease ? "install copilot-cli@prerelease" : "install copilot-cli",
                 "Homebrew"),
             CopilotCliInstallMethod.Npm => Npm(prerelease),
-            CopilotCliInstallMethod.Script => new CopilotCliInstallCommand(
-                CopilotCliInstallMethod.Script,
-                "bash",
-                "-c \"curl -fsSL https://gh.io/copilot-install | bash\"",
-                "Install script (macOS/Linux)"),
+            CopilotCliInstallMethod.Script => Script(),
             _ => GetDefaultCommand(prerelease)
         };
     }
@@ -192,12 +205,102 @@ public static class CopilotCliInstall {
         return string.Join(Environment.NewLine, lines);
     }
 
+    /// <summary>
+    /// Attempts to resolve a Copilot CLI binary from common install locations even when PATH is stale.
+    /// </summary>
+    /// <param name="cliPath">CLI executable name or path.</param>
+    /// <returns>The resolved absolute path when found; otherwise <c>null</c>.</returns>
+    public static string? TryResolveInstalledCliPath(string cliPath) {
+        if (string.IsNullOrWhiteSpace(cliPath)) {
+            return null;
+        }
+
+        if (Path.IsPathRooted(cliPath) ||
+            cliPath.Contains(Path.DirectorySeparatorChar) ||
+            cliPath.Contains(Path.AltDirectorySeparatorChar)) {
+            return File.Exists(cliPath) ? cliPath : null;
+        }
+
+        var home = GetPreferredHomeDirectory();
+        foreach (var directory in GetKnownInstallDirectories(home)) {
+            if (string.IsNullOrWhiteSpace(directory)) {
+                continue;
+            }
+
+            foreach (var candidate in ExpandCandidates(directory, cliPath)) {
+                if (File.Exists(candidate)) {
+                    return candidate;
+                }
+            }
+        }
+
+        return null;
+    }
+
     private static CopilotCliInstallCommand Npm(bool prerelease) {
         return new CopilotCliInstallCommand(
             CopilotCliInstallMethod.Npm,
             "npm",
             prerelease ? "install -g @github/copilot@prerelease" : "install -g @github/copilot",
             "npm (Node.js 22+)");
+    }
+
+    private static CopilotCliInstallCommand Script() {
+        return new CopilotCliInstallCommand(
+            CopilotCliInstallMethod.Script,
+            "bash",
+            "-c \"curl -fsSL https://gh.io/copilot-install | bash\"",
+            "Install script (macOS/Linux)");
+    }
+
+    private static string? GetPreferredHomeDirectory() {
+        var envHome = Environment.GetEnvironmentVariable(IsWindows() ? "USERPROFILE" : "HOME");
+        if (!string.IsNullOrWhiteSpace(envHome)) {
+            return envHome;
+        }
+
+        var alternateEnvHome = Environment.GetEnvironmentVariable(IsWindows() ? "HOME" : "USERPROFILE");
+        if (!string.IsNullOrWhiteSpace(alternateEnvHome)) {
+            return alternateEnvHome;
+        }
+
+        return Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+    }
+
+    private static IEnumerable<string> GetKnownInstallDirectories(string? home) {
+        if (!string.IsNullOrWhiteSpace(home)) {
+            if (IsLinux() || IsMac()) {
+                yield return Path.Combine(home!, ".local", "bin");
+                yield return Path.Combine(home!, ".npm-global", "bin");
+                yield return Path.Combine(home!, ".yarn", "bin");
+                yield return Path.Combine(home!, ".config", "yarn", "global", "node_modules", ".bin");
+            }
+
+            if (IsWindows()) {
+                yield return Path.Combine(home!, "AppData", "Local", "Programs", "GitHub Copilot");
+            }
+        }
+
+        if (IsMac()) {
+            yield return "/opt/homebrew/bin";
+        }
+
+        if (IsLinux()) {
+            yield return "/home/linuxbrew/.linuxbrew/bin";
+        }
+
+        yield return "/usr/local/bin";
+        yield return "/usr/bin";
+    }
+
+    private static IEnumerable<string> ExpandCandidates(string directory, string cliPath) {
+        yield return Path.Combine(directory, cliPath);
+
+        if (IsWindows()) {
+            yield return Path.Combine(directory, cliPath + ".exe");
+            yield return Path.Combine(directory, cliPath + ".cmd");
+            yield return Path.Combine(directory, cliPath + ".bat");
+        }
     }
 
     private static bool IsWindows() => RuntimeInformation.IsOSPlatform(OSPlatform.Windows);

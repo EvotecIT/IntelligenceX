@@ -1,0 +1,204 @@
+using System;
+using System.Collections.Generic;
+
+namespace IntelligenceX.Reviewer;
+
+internal sealed partial class ReviewSettings {
+    internal bool TryGetAgentProfile(string? id, out ReviewAgentProfileSettings profile) {
+        profile = new ReviewAgentProfileSettings();
+        if (string.IsNullOrWhiteSpace(id) || AgentProfiles.Count == 0) {
+            return false;
+        }
+        return AgentProfiles.TryGetValue(id.Trim(), out profile!);
+    }
+
+    internal void ApplyAgentProfile(string? id) {
+        if (string.IsNullOrWhiteSpace(id)) {
+            return;
+        }
+
+        var profile = RequireAgentProfile(id, "review.agentProfile");
+        ApplyAgentProfile(profile, captureBaseline: true);
+    }
+
+    internal void ApplySelectedAgentProfile() {
+        if (!string.IsNullOrWhiteSpace(AgentProfile)) {
+            ApplyAgentProfile(AgentProfile);
+        }
+    }
+
+    internal ReviewAgentProfileSettings RequireAgentProfile(string? id, string source) {
+        if (string.IsNullOrWhiteSpace(id)) {
+            throw new InvalidOperationException($"{source} did not provide an agent profile id.");
+        }
+
+        if (TryGetAgentProfile(id, out var profile)) {
+            return profile;
+        }
+
+        throw new InvalidOperationException(
+            $"Unknown review agent profile '{id.Trim()}' from {source}. Define it under review.agentProfiles or remove the profile override.");
+    }
+
+    internal void ApplyAgentProfile(ReviewAgentProfileSettings profile) =>
+        ApplyAgentProfile(profile, captureBaseline: true);
+
+    private void ApplyAgentProfile(ReviewAgentProfileSettings profile, bool captureBaseline) {
+        if (captureBaseline) {
+            CaptureOrRebaseAgentProfileBaseline();
+        }
+        AgentProfile = profile.Id;
+        var provider = profile.ResolveProvider($"review.agentProfiles.{profile.Id}.authenticator");
+        if (provider.HasValue) {
+            Provider = provider.Value;
+        }
+        var effectiveProvider = provider ?? Provider;
+        if (!string.IsNullOrWhiteSpace(profile.Model)) {
+            Model = profile.Model.Trim();
+        }
+        if (profile.ReasoningEffort.HasValue) {
+            ReasoningEffort = profile.ReasoningEffort;
+        }
+        if (profile.OpenAITransport.HasValue) {
+            OpenAITransport = profile.OpenAITransport.Value;
+        }
+        OpenAiAccountId = UseIfSet(profile.OpenAiAccountId, OpenAiAccountId);
+
+        if (profile.CopilotTransport.HasValue) {
+            CopilotTransport = profile.CopilotTransport.Value;
+        }
+        CopilotModel = UseIfSet(profile.CopilotModel, CopilotModel);
+        if (string.IsNullOrWhiteSpace(profile.CopilotModel) &&
+            effectiveProvider == ReviewProvider.Copilot &&
+            !string.IsNullOrWhiteSpace(profile.Model)) {
+            CopilotModel = profile.Model.Trim();
+        }
+        if (!string.IsNullOrWhiteSpace(profile.CopilotLauncher)) {
+            CopilotLauncher = NormalizeCopilotLauncher(profile.CopilotLauncher, CopilotLauncher);
+        }
+        CopilotCliPath = UseIfSet(profile.CopilotCliPath, CopilotCliPath);
+        CopilotCliUrl = UseIfSet(profile.CopilotCliUrl, CopilotCliUrl);
+        CopilotWorkingDirectory = UseIfSet(profile.CopilotWorkingDirectory, CopilotWorkingDirectory);
+        if (profile.CopilotAutoInstall.HasValue) {
+            CopilotAutoInstall = profile.CopilotAutoInstall.Value;
+        }
+        CopilotAutoInstallMethod = UseIfSet(profile.CopilotAutoInstallMethod, CopilotAutoInstallMethod);
+        if (profile.CopilotAutoInstallPrerelease.HasValue) {
+            CopilotAutoInstallPrerelease = profile.CopilotAutoInstallPrerelease.Value;
+        }
+        if (profile.CopilotInheritEnvironment.HasValue) {
+            CopilotInheritEnvironment = profile.CopilotInheritEnvironment.Value;
+        }
+        if (profile.CopilotEnvAllowlist is not null) {
+            CopilotEnvAllowlist = profile.CopilotEnvAllowlist;
+        }
+        if (profile.CopilotEnv is not null) {
+            CopilotEnv = NormalizeStringMap(profile.CopilotEnv);
+        }
+        CopilotDirectUrl = UseIfSet(profile.CopilotDirectUrl, CopilotDirectUrl);
+        CopilotDirectTokenEnv = UseIfSet(profile.CopilotDirectTokenEnv, CopilotDirectTokenEnv);
+        if (profile.CopilotDirectTimeoutSeconds.HasValue && profile.CopilotDirectTimeoutSeconds.Value > 0) {
+            CopilotDirectTimeoutSeconds = profile.CopilotDirectTimeoutSeconds.Value;
+        }
+        if (profile.CopilotDirectHeaders is not null) {
+            CopilotDirectHeaders = NormalizeStringMap(profile.CopilotDirectHeaders);
+        }
+
+        OpenAICompatibleBaseUrl = UseIfSet(profile.OpenAICompatibleBaseUrl, OpenAICompatibleBaseUrl);
+        OpenAICompatibleApiKeyEnv = UseIfSet(profile.OpenAICompatibleApiKeyEnv, OpenAICompatibleApiKeyEnv);
+        if (profile.OpenAICompatibleTimeoutSeconds.HasValue && profile.OpenAICompatibleTimeoutSeconds.Value > 0) {
+            OpenAICompatibleTimeoutSeconds = profile.OpenAICompatibleTimeoutSeconds.Value;
+        }
+
+        AnthropicApiKeyEnv = UseIfSet(profile.AnthropicApiKeyEnv, AnthropicApiKeyEnv);
+        AnthropicBaseUrl = UseIfSet(profile.AnthropicBaseUrl, AnthropicBaseUrl)!;
+        if (profile.AnthropicTimeoutSeconds.HasValue && profile.AnthropicTimeoutSeconds.Value > 0) {
+            AnthropicTimeoutSeconds = profile.AnthropicTimeoutSeconds.Value;
+        }
+    }
+
+    internal void RebaseToAgentProfileBaseline() {
+        if (AgentProfileBaseline is null) {
+            return;
+        }
+
+        RestoreProfileOwnedState(AgentProfileBaseline);
+    }
+
+    internal void RefreshAgentProfileBaseline() {
+        var selectedProfile = AgentProfile;
+        var clone = CloneWithoutAgentProfileBaseline();
+        clone.AgentProfile = null;
+        clone.AgentProfileBaseline = null;
+        AgentProfileBaseline = clone;
+        AgentProfile = selectedProfile;
+    }
+
+    private void CaptureOrRebaseAgentProfileBaseline() {
+        if (AgentProfileBaseline is null) {
+            CaptureAgentProfileBaseline();
+            return;
+        }
+
+        RestoreProfileOwnedState(AgentProfileBaseline);
+    }
+
+    private void CaptureAgentProfileBaseline() {
+        if (AgentProfileBaseline is not null) {
+            return;
+        }
+
+        RefreshAgentProfileBaseline();
+    }
+
+    private ReviewSettings CloneWithoutAgentProfileBaseline() {
+        var clone = (ReviewSettings)MemberwiseClone();
+        clone.AgentProfileBaseline = null;
+        return clone;
+    }
+
+    private void RestoreProfileOwnedState(ReviewSettings source) {
+        Provider = source.Provider;
+        Model = source.Model;
+        ReasoningEffort = source.ReasoningEffort;
+        OpenAITransport = source.OpenAITransport;
+        OpenAiAccountId = source.OpenAiAccountId;
+        CopilotTransport = source.CopilotTransport;
+        CopilotModel = source.CopilotModel;
+        CopilotLauncher = source.CopilotLauncher;
+        CopilotCliPath = source.CopilotCliPath;
+        CopilotCliUrl = source.CopilotCliUrl;
+        CopilotWorkingDirectory = source.CopilotWorkingDirectory;
+        CopilotAutoInstall = source.CopilotAutoInstall;
+        CopilotAutoInstallMethod = source.CopilotAutoInstallMethod;
+        CopilotAutoInstallPrerelease = source.CopilotAutoInstallPrerelease;
+        CopilotInheritEnvironment = source.CopilotInheritEnvironment;
+        CopilotEnvAllowlist = source.CopilotEnvAllowlist;
+        CopilotEnv = source.CopilotEnv;
+        CopilotDirectUrl = source.CopilotDirectUrl;
+        CopilotDirectTokenEnv = source.CopilotDirectTokenEnv;
+        CopilotDirectTimeoutSeconds = source.CopilotDirectTimeoutSeconds;
+        CopilotDirectHeaders = source.CopilotDirectHeaders;
+        OpenAICompatibleBaseUrl = source.OpenAICompatibleBaseUrl;
+        OpenAICompatibleApiKeyEnv = source.OpenAICompatibleApiKeyEnv;
+        OpenAICompatibleTimeoutSeconds = source.OpenAICompatibleTimeoutSeconds;
+        AnthropicApiKeyEnv = source.AnthropicApiKeyEnv;
+        AnthropicBaseUrl = source.AnthropicBaseUrl;
+        AnthropicTimeoutSeconds = source.AnthropicTimeoutSeconds;
+    }
+
+    private static string? UseIfSet(string? value, string? fallback) =>
+        string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
+
+    private static IReadOnlyDictionary<string, string> NormalizeStringMap(
+        IReadOnlyDictionary<string, string> values) {
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in values) {
+            if (string.IsNullOrWhiteSpace(entry.Key) || entry.Value is null) {
+                continue;
+            }
+            result[entry.Key] = entry.Value;
+        }
+        return result;
+    }
+}

@@ -70,12 +70,14 @@ internal sealed class ReviewHistorySettings {
 
 internal sealed class ReviewSwarmReviewerSettings {
     public string Id { get; set; } = string.Empty;
+    public string? AgentProfile { get; set; }
     public ReviewProvider? Provider { get; set; }
     public string? Model { get; set; }
     public ReasoningEffort? ReasoningEffort { get; set; }
 }
 
 internal sealed class ReviewSwarmAggregatorSettings {
+    public string? AgentProfile { get; set; }
     public ReviewProvider? Provider { get; set; }
     public string? Model { get; set; }
     public ReasoningEffort? ReasoningEffort { get; set; }
@@ -148,6 +150,10 @@ internal sealed partial class ReviewSettings {
     public ReviewProvider? ProviderFallback { get; set; }
     public ReviewCodeHost CodeHost { get; set; } = ReviewCodeHost.GitHub;
     public string? Profile { get; set; }
+    public string? AgentProfile { get; set; }
+    public IReadOnlyDictionary<string, ReviewAgentProfileSettings> AgentProfiles { get; set; } =
+        new Dictionary<string, ReviewAgentProfileSettings>(StringComparer.OrdinalIgnoreCase);
+    internal ReviewSettings? AgentProfileBaseline { get; set; }
     /// <summary>
     /// Optional high-level review intent preset (e.g., security, performance, maintainability).
     /// </summary>
@@ -365,7 +371,7 @@ internal sealed partial class ReviewSettings {
     public string RedactionReplacement { get; set; } = "[REDACTED]";
     public bool UntrustedPrAllowSecrets { get; set; }
     public bool UntrustedPrAllowWrites { get; set; }
-    public int WaitSeconds { get; set; } = 60;
+    public int WaitSeconds { get; set; } = 180;
     public int IdleSeconds { get; set; } = 5;
     public bool ProgressUpdates { get; set; } = true;
     public int ProgressUpdateSeconds { get; set; } = 30;
@@ -442,6 +448,10 @@ internal sealed partial class ReviewSettings {
     public string? CopilotCliPath { get; set; }
     public string? CopilotCliUrl { get; set; }
     public string? CopilotWorkingDirectory { get; set; }
+    /// <summary>
+    /// Optional Copilot-specific model override. When unset, the CLI default model is used.
+    /// </summary>
+    public string? CopilotModel { get; set; }
     public string CopilotLauncher { get; set; } = "binary";
     public bool CopilotAutoInstall { get; set; }
     public string? CopilotAutoInstallMethod { get; set; }

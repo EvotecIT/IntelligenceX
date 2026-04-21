@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Text;
+using IntelligenceX.Copilot;
 using IntelligenceX.OpenAI;
 using IntelligenceX.OpenAI.Auth;
 using IntelligenceX.Telemetry;
@@ -104,6 +105,7 @@ internal static class ReviewDiagnostics {
     private const string AuthBundleSummary = "Auth bundle missing or invalid";
     private const string AuthRefreshFailedSummary = "OpenAI auth refresh failed; sign in again";
     private const string AuthRefreshTokenReusedSummary = "OpenAI auth refresh token was already used; sign in again";
+    private const string UsageBudgetGuardPrefix = "Usage budget guard blocked review run:";
 
     internal readonly record struct WorkflowFailureInfo(string Kind, string Label, string Detail, bool RequiresAuthRemediation);
 
@@ -153,16 +155,20 @@ internal static class ReviewDiagnostics {
 
     public static ReviewErrorInfo Classify(Exception ex) {
         var root = Unwrap(ex);
+        if (ContainsException<TimeoutException>(ex)) {
+            return new ReviewErrorInfo(ReviewErrorCategory.Timeout, true, "Timeout");
+        }
         if (root is OperationCanceledException) {
             return new ReviewErrorInfo(ReviewErrorCategory.Cancelled, false, "Cancelled");
-        }
-        if (root is TimeoutException) {
-            return new ReviewErrorInfo(ReviewErrorCategory.Timeout, true, "Timeout");
         }
         if (IsResponseEnded(root)) {
             return new ReviewErrorInfo(ReviewErrorCategory.ResponseEnded, true, "Response ended prematurely");
         }
+        var message = root.Message ?? string.Empty;
         if (root is UnauthorizedAccessException) {
+            if (IsCopilotAuthMessage(message)) {
+                return new ReviewErrorInfo(ReviewErrorCategory.Auth, false, "Copilot authentication failed");
+            }
             return new ReviewErrorInfo(ReviewErrorCategory.Auth, false, "Unauthorized");
         }
         if (root is HttpRequestException httpRequest) {
@@ -175,7 +181,9 @@ internal static class ReviewDiagnostics {
         if (root is IOException) {
             return new ReviewErrorInfo(ReviewErrorCategory.Network, true, "I/O error");
         }
-        var message = root.Message ?? string.Empty;
+        if (message.Contains(UsageBudgetGuardPrefix, StringComparison.OrdinalIgnoreCase)) {
+            return new ReviewErrorInfo(ReviewErrorCategory.Config, false, ExtractUsageBudgetGuardDetail(message));
+        }
         if (message.Contains("auth bundle", StringComparison.OrdinalIgnoreCase) ||
             message.Contains("INTELLIGENCEX_AUTH", StringComparison.OrdinalIgnoreCase)) {
             return new ReviewErrorInfo(ReviewErrorCategory.Auth, false, AuthBundleSummary);
@@ -189,6 +197,9 @@ internal static class ReviewDiagnostics {
             message.Contains("invalid_grant", StringComparison.OrdinalIgnoreCase) ||
             message.Contains("token refresh", StringComparison.OrdinalIgnoreCase)) {
             return new ReviewErrorInfo(ReviewErrorCategory.Auth, false, AuthRefreshFailedSummary);
+        }
+        if (IsCopilotAuthMessage(message)) {
+            return new ReviewErrorInfo(ReviewErrorCategory.Auth, false, "Copilot authentication failed");
         }
         if (message.Contains("configuration", StringComparison.OrdinalIgnoreCase) ||
             message.Contains("invalid", StringComparison.OrdinalIgnoreCase)) {
@@ -210,9 +221,9 @@ internal static class ReviewDiagnostics {
         sb.AppendLine(FailureMarker);
         sb.AppendLine("WARNING: Review failed to complete due to a provider request error.");
         sb.AppendLine();
-        sb.AppendLine($"- Provider: {settings.Provider.ToString().ToLowerInvariant()}");
-        sb.AppendLine($"- Transport: {settings.OpenAITransport}");
-        sb.AppendLine($"- Model: {settings.Model}");
+        sb.AppendLine($"- Provider: {DescribeProvider(settings)}");
+        sb.AppendLine($"- Transport: {DescribeTransport(settings)}");
+        sb.AppendLine($"- Model: {DescribeModel(settings)}");
         sb.AppendLine($"- Category: {classification.Category} ({(classification.IsTransient ? "transient" : "non-transient")})");
         if (!string.IsNullOrWhiteSpace(classification.Summary)) {
             sb.AppendLine($"- Detail: {classification.Summary}");
@@ -241,6 +252,11 @@ internal static class ReviewDiagnostics {
             sb.AppendLine($"> {authLabel} is missing, expired, or stale for this reviewer run.");
             sb.AppendLine("> Reauthenticate locally and refresh `INTELLIGENCEX_AUTH_B64` with:");
             sb.AppendLine($"> `{remediationCommand}`");
+        } else if (classification.Category == ReviewErrorCategory.Auth &&
+                   settings.Provider == ReviewProvider.Copilot) {
+            sb.AppendLine();
+            sb.AppendLine("> Copilot CLI authentication is missing or not usable in this non-interactive runner.");
+            sb.AppendLine("> Sign in on the runner, use a self-hosted runner with a persisted Copilot CLI session, or configure Copilot direct transport.");
         }
         sb.AppendLine();
         sb.AppendLine("_Re-run the workflow once connectivity is restored. Set `REVIEW_FAIL_OPEN=false` to keep failures blocking._");
@@ -251,7 +267,7 @@ internal static class ReviewDiagnostics {
         ReviewRetryState? retryState) {
         var classification = Classify(ex);
         Console.Error.WriteLine("Provider request failed.");
-        Console.Error.WriteLine($"Provider: {settings.Provider.ToString().ToLowerInvariant()} | Transport: {settings.OpenAITransport} | Model: {settings.Model}");
+        Console.Error.WriteLine($"Provider: {DescribeProvider(settings)} | Transport: {DescribeTransport(settings)} | Model: {DescribeModel(settings)}");
         Console.Error.WriteLine($"Category: {classification.Category} ({(classification.IsTransient ? "transient" : "non-transient")})");
         if (retryState is not null && retryState.LastAttempt > 0) {
             Console.Error.WriteLine($"Retry: {retryState.LastAttempt}/{retryState.MaxAttempts}");
@@ -303,15 +319,62 @@ internal static class ReviewDiagnostics {
             Console.Error.WriteLine($"RPC error: {FormatExceptionSummary(snapshot.LastRpcError, true)}");
         }
         if (snapshot.StandardError.Count > 0) {
-            Console.Error.WriteLine("App-server stderr (most recent first):");
+            Console.Error.WriteLine("Provider stderr (most recent first):");
             for (var i = snapshot.StandardError.Count - 1; i >= 0; i--) {
                 Console.Error.WriteLine($"  {snapshot.StandardError[i]}");
             }
         }
     }
 
+    internal static string DescribeProvider(ReviewSettings settings) {
+        return ReviewProviderContracts.Get(settings.Provider).Id;
+    }
+
+    internal static string DescribeTransport(ReviewSettings settings) {
+        return settings.Provider switch {
+            ReviewProvider.Copilot => settings.CopilotTransport switch {
+                CopilotTransportKind.Direct => "direct",
+                _ => "cli"
+            },
+            ReviewProvider.OpenAI => settings.OpenAITransport switch {
+                OpenAITransportKind.Native => "native",
+                _ => "appserver"
+            },
+            ReviewProvider.OpenAICompatible => "http",
+            ReviewProvider.Claude => "messages-api",
+            _ => string.Empty
+        };
+    }
+
+    internal static string DescribeModel(ReviewSettings settings) {
+        if (settings.Provider == ReviewProvider.Copilot) {
+            var model = ReviewRunner.ResolveCopilotModel(settings);
+            if (!string.IsNullOrWhiteSpace(model)) {
+                return model!;
+            }
+            return settings.CopilotTransport == CopilotTransportKind.Direct
+                ? "Copilot direct model required"
+                : "Copilot CLI default";
+        }
+        return settings.Model;
+    }
+
+    private static bool IsCopilotAuthMessage(string message) {
+        return message.Contains("Copilot", StringComparison.OrdinalIgnoreCase) &&
+               (message.Contains("not authenticated", StringComparison.OrdinalIgnoreCase) ||
+                message.Contains("sign in", StringComparison.OrdinalIgnoreCase));
+    }
+
     internal static WorkflowFailureInfo ClassifyWorkflowFailureLog(string? logText) {
         var text = logText ?? string.Empty;
+        if (text.IndexOf(UsageBudgetGuardPrefix, StringComparison.OrdinalIgnoreCase) >= 0) {
+            return new WorkflowFailureInfo(
+                "usage-budget-guard",
+                "Usage budget guard blocked the review",
+                ExtractUsageBudgetGuardDetail(text),
+                false);
+        }
+
         if (text.IndexOf("refresh_token_reused", StringComparison.OrdinalIgnoreCase) >= 0 ||
             text.IndexOf("refresh token has already been used", StringComparison.OrdinalIgnoreCase) >= 0) {
             return new WorkflowFailureInfo(
@@ -338,6 +401,21 @@ internal static class ReviewDiagnostics {
             "Reviewer runtime failed",
             "Reviewer execution failed after the workflow created the progress summary.",
             false);
+    }
+
+    private static string ExtractUsageBudgetGuardDetail(string text) {
+        var index = text.IndexOf(UsageBudgetGuardPrefix, StringComparison.OrdinalIgnoreCase);
+        if (index < 0) {
+            return "Usage budget guard blocked this review run.";
+        }
+
+        var start = index + UsageBudgetGuardPrefix.Length;
+        var end = text.IndexOfAny(['\r', '\n'], start);
+        var detail = end < 0 ? text[start..] : text[start..end];
+        detail = detail.Trim();
+        return detail.Length == 0
+            ? "Usage budget guard blocked this review run."
+            : detail;
     }
 
     internal static string BuildWorkflowFailOpenSummaryBody(PullRequestContext context, string reviewerSource,
@@ -455,6 +533,26 @@ internal static class ReviewDiagnostics {
             return Unwrap(aggregate.InnerExceptions[0]);
         }
         return ex.InnerException is not null ? Unwrap(ex.InnerException) : ex;
+    }
+
+    private static bool ContainsException<TException>(Exception ex) where TException : Exception {
+        if (ex is AggregateException aggregate) {
+            foreach (var inner in aggregate.InnerExceptions) {
+                if (ContainsException<TException>(inner)) {
+                    return true;
+                }
+            }
+        }
+
+        var current = ex;
+        while (current is not null) {
+            if (current is TException) {
+                return true;
+            }
+            current = current.InnerException;
+        }
+
+        return false;
     }
 
     private static ReviewErrorInfo ClassifyStatusCode(int code) {

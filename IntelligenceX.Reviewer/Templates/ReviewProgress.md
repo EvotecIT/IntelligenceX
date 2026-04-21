@@ -9,4 +9,4 @@ Reviewing PR #{{Number}}: **{{Title}}**
 
 {{InlineNote}}
 
-_Model: {{Model}} · Length: {{Length}} · Mode: {{Mode}}_
+_Provider: {{Provider}} · Transport: {{Transport}} · Model: {{Model}} · Length: {{Length}} · Mode: {{Mode}}_

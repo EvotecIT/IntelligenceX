@@ -236,6 +236,73 @@ GitHub Actions input/env aliases:
 - `ci_context_max_snippet_chars_per_run` / `REVIEW_CI_CONTEXT_MAX_SNIPPET_CHARS_PER_RUN`
 - `ci_context_classify_infra_failures` / `REVIEW_CI_CONTEXT_CLASSIFY_INFRA_FAILURES`
 
+## Agent profiles (provider + authenticator + model)
+
+Use `agentProfiles` when you want named review backends that bundle provider, model, and auth/runtime settings.
+This keeps the IX prompt and output contract unchanged while letting you switch the backend that answers it.
+
+For backward compatibility, the loader also accepts `modelProfiles` and `authProfiles` as legacy aliases for
+`agentProfiles`, but new configs should prefer `agentProfiles`.
+
+```json
+{
+  "review": {
+    "agentProfile": "copilot-claude",
+    "agentProfiles": {
+      "chatgpt-gpt54": {
+        "provider": "openai",
+        "authenticator": "chatgpt",
+        "openaiTransport": "native",
+        "model": "gpt-5.4",
+        "openaiAccountId": "acct-review"
+      },
+      "copilot-gpt54": {
+        "provider": "copilot",
+        "authenticator": "copilot-cli",
+        "model": "gpt-5.4",
+        "copilot": {
+          "launcher": "auto",
+          "autoInstall": true,
+          "envAllowlist": ["COPILOT_GITHUB_TOKEN"]
+        }
+      },
+      "copilot-claude": {
+        "provider": "copilot",
+        "authenticator": "copilot-cli",
+        "model": "claude-sonnet-4-5",
+        "copilot": {
+          "envAllowlist": ["COPILOT_GITHUB_TOKEN"]
+        }
+      }
+    }
+  }
+}
+```
+
+For swarm shadow runs, reviewer lanes and the aggregator can reference those same profiles:
+
+```json
+{
+  "review": {
+    "swarm": {
+      "enabled": true,
+      "shadowMode": true,
+      "reviewers": [
+        { "id": "correctness", "agentProfile": "chatgpt-gpt54" },
+        { "id": "compat", "agentProfile": "copilot-gpt54" },
+        { "id": "tests", "agentProfile": "copilot-claude" }
+      ],
+      "aggregator": {
+        "agentProfile": "chatgpt-gpt54"
+      }
+    }
+  }
+}
+```
+
+Runtime override:
+- `agent_profile` / `REVIEW_AGENT_PROFILE` / `REVIEW_MODEL_PROFILE`
+
 ## Swarm review shadow mode (optional)
 
 Use this to opt into multi-reviewer orchestration without changing the public reviewer comment yet.
@@ -661,9 +728,29 @@ GitHub Actions input/env aliases:
 Use this to forward selected environment variables into the Copilot CLI process without committing secrets.
 By default the CLI process **does** inherit the runner environment. Set `inheritEnvironment` to `false` and use
 `envAllowlist`/`env` to pass only what the CLI needs when you want a strict environment.
-Set `launcher` to `gh` to run Copilot through `gh copilot --` when that wrapper can already launch the Copilot CLI.
-Set `launcher` to `auto` to use the standalone binary when it is on `PATH` and only fall back to `gh copilot --`
-after a wrapper capability probe succeeds. This avoids assuming GitHub CLI can bootstrap Copilot on every runner.
+Set `launcher` to `gh` to explicitly run Copilot through `gh copilot --`.
+Set `launcher` to `auto` to use the standalone `copilot` binary path. This is the safer default for reviewer CI runs:
+the reviewer validates status/auth through the CLI server protocol, then generates the review through the documented
+non-interactive prompt mode with built-in Model Context Protocol (MCP) servers disabled via
+`--disable-builtin-mcps` and with the Copilot tool surface disabled via `--available-tools=none` to avoid
+long-running server-session hangs, tool startup failures, and prompt-injection risk on hosted runners.
+Use `autoInstall` with the standalone path when the runner does not already have `copilot` installed.
+Set `model` only when you want to force a Copilot CLI model id. When `provider` is `copilot` and only the generic
+`review.model` is the default OpenAI value, the reviewer leaves Copilot model selection to the CLI default.
+
+For GitHub Actions runs, set a repository or organization Actions secret named `COPILOT_GITHUB_TOKEN` to a
+fine-grained GitHub token with the `Copilot Requests` permission. The built-in Actions `GITHUB_TOKEN` and GitHub App
+installation tokens are not sufficient for Copilot CLI model requests.
+
+GitHub Actions repo/org variable aliases:
+- `IX_REVIEW_PROVIDER`
+- `IX_REVIEW_MODEL`
+- `IX_REVIEW_COPILOT_MODEL`
+- `IX_REVIEW_AGENT_PROFILE`
+- `IX_REVIEW_COPILOT_LAUNCHER`
+- `IX_REVIEW_COPILOT_AUTO_INSTALL`
+- `IX_REVIEW_COPILOT_AUTO_INSTALL_METHOD`
+- `IX_REVIEW_COPILOT_AUTO_INSTALL_PRERELEASE`
 
 ```json
 {
@@ -672,6 +759,7 @@ after a wrapper capability probe succeeds. This avoids assuming GitHub CLI can b
   },
   "copilot": {
     "launcher": "gh",
+    "model": "claude-sonnet-4.6",
     "inheritEnvironment": false,
     "envAllowlist": ["GH_TOKEN", "GITHUB_TOKEN"]
   }
@@ -787,7 +875,8 @@ Prefer `directTokenEnv` over `directToken` to avoid committing secrets to source
 - `azureTokenEnv`: env var name that contains the ADO token (default `SYSTEM_ACCESSTOKEN` if set)
 - `azureAuthScheme`: `bearer` (System.AccessToken/JWT) or `basic`/`pat`
 - `copilot.transport`: `cli` or `direct` (aliases: `api`, `http`)
-- `copilot.launcher`: `binary`, `gh`, or `auto`; `gh` executes `gh copilot --` before the reviewer server flags
+- `copilot.model`: optional Copilot-specific model override; when omitted, the CLI default is used unless `review.model` was set to a non-default value
+- `copilot.launcher`: `binary`, `gh`, or `auto`; `auto` uses the standalone binary path, while `gh` explicitly executes `gh copilot --` before the reviewer server flags
 - `copilot.inheritEnvironment`: inherit full runner environment for Copilot CLI (`true` by default)
 
 **Path filter order of operations**
