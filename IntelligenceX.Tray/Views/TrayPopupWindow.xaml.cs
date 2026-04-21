@@ -257,18 +257,8 @@ public partial class TrayPopupWindow : Window {
         }
 
         var dpi = VisualTreeHelper.GetDpi(element);
-        var exportScale = 1d;
-        exportScale = Math.Min(exportScale, MaxExportPixelWidth / Math.Max(1d, width * dpi.DpiScaleX));
-        exportScale = Math.Min(exportScale, MaxExportPixelHeight / Math.Max(1d, height * dpi.DpiScaleY));
-
-        var nativePixelCount = width * dpi.DpiScaleX * height * dpi.DpiScaleY;
-        if (nativePixelCount > MaxExportPixelCount) {
-            exportScale = Math.Min(exportScale, Math.Sqrt(MaxExportPixelCount / nativePixelCount));
-        }
-
-        if (exportScale < MinExportScale) {
-            throw new InvalidOperationException("The selected content is too large to export safely as a single PNG.");
-        }
+        // Clamp oversized exports before allocating the bitmap so tall provider panels cannot exhaust UI-thread memory.
+        var exportScale = CalculateSafePngExportScale(width, height, dpi);
 
         var pixelWidth = Math.Max(1, (int)Math.Ceiling(width * dpi.DpiScaleX * exportScale));
         var pixelHeight = Math.Max(1, (int)Math.Ceiling(height * dpi.DpiScaleY * exportScale));
@@ -299,6 +289,23 @@ public partial class TrayPopupWindow : Window {
         encoder.Frames.Add(BitmapFrame.Create(bitmap));
         using var stream = File.Create(fileName);
         encoder.Save(stream);
+    }
+
+    private static double CalculateSafePngExportScale(double width, double height, DpiScale dpi) {
+        var exportScale = 1d;
+        exportScale = Math.Min(exportScale, MaxExportPixelWidth / Math.Max(1d, width * dpi.DpiScaleX));
+        exportScale = Math.Min(exportScale, MaxExportPixelHeight / Math.Max(1d, height * dpi.DpiScaleY));
+
+        var nativePixelCount = width * dpi.DpiScaleX * height * dpi.DpiScaleY;
+        if (nativePixelCount > MaxExportPixelCount) {
+            exportScale = Math.Min(exportScale, Math.Sqrt(MaxExportPixelCount / nativePixelCount));
+        }
+
+        if (exportScale < MinExportScale) {
+            throw new InvalidOperationException("The selected content is too large to export safely as a single PNG.");
+        }
+
+        return exportScale;
     }
 
     private static string BuildPngFileName(ProviderViewModel provider) {
