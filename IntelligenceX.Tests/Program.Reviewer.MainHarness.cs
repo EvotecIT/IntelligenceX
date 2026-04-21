@@ -711,6 +711,8 @@ internal static partial class Program {
             TestCopilotPromptRunnerDoesNotTreatJsonWarningsAsReviewContent);
         failed += Run("Copilot prompt runner builds MCP-disabled args",
             TestCopilotPromptRunnerBuildsMcpDisabledArgs);
+        failed += Run("Copilot prompt runner retries prompt argument when stdin produces no review",
+            TestCopilotPromptRunnerRetriesPromptArgumentWhenStdinProducesNoReview);
         failed += Run("Copilot prompt runner wraps rooted Windows cmd paths",
             TestCopilotPromptRunnerWrapsRootedWindowsCmdPaths);
         failed += Run("Copilot prompt runner detects unsupported MCP flag",

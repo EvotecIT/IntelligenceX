@@ -1568,6 +1568,12 @@ Review completed successfully.
             captureLogs: false);
         AssertEqual(false, noLogArgs.Contains("--log-dir"), "copilot prompt log fallback omits log dir flag");
         AssertEqual(false, noLogArgs.Contains("--log-level"), "copilot prompt log fallback omits log level flag");
+        var promptArgArgs = ReviewerCopilotPromptRunner.BuildArgumentsForTests(binaryOptions, cliPath, "review prompt",
+            usePromptArgument: true);
+        AssertContainsText(string.Join("\n", promptArgArgs), "-p",
+            "copilot prompt argument fallback uses -p");
+        AssertContainsText(string.Join("\n", promptArgArgs), "review prompt",
+            "copilot prompt argument fallback includes prompt text");
 
         var ghOptions = new IntelligenceX.Copilot.CopilotClientOptions();
         ghOptions.CliArgs.Add("copilot");
@@ -1594,6 +1600,33 @@ Review completed successfully.
         }, ghArgs, "copilot gh prompt args");
         AssertEqual(false, ghArgs.Contains("review prompt"),
             "copilot prompt args should not inline prompt content");
+    }
+
+    private static void TestCopilotPromptRunnerRetriesPromptArgumentWhenStdinProducesNoReview() {
+        AssertEqual(true, ReviewerCopilotPromptRunner.ShouldRetryWithPromptArgumentForTests(
+                0,
+                string.Empty,
+                string.Empty),
+            "copilot prompt should retry with -p when stdin run produces no output");
+        AssertEqual(false, ReviewerCopilotPromptRunner.ShouldRetryWithPromptArgumentForTests(
+                0,
+                "Compatibility note: review completed with no structured output.",
+                string.Empty),
+            "copilot prompt should keep successful prose fallback instead of retrying with -p");
+        AssertEqual(false, ReviewerCopilotPromptRunner.ShouldRetryWithPromptArgumentForTests(
+                0,
+                """
+{"type":"assistant.message","data":{"content":"Final review"}}
+""",
+                string.Empty),
+            "copilot prompt should not retry with -p when stdin run already succeeded");
+        AssertEqual(false, ReviewerCopilotPromptRunner.ShouldRetryWithPromptArgumentForTests(
+                0,
+                """
+{"type":"assistant.message_delta","data":{"deltaContent":"partial"
+""",
+                string.Empty),
+            "copilot prompt should not hide malformed JSON behind -p retry");
     }
 
     private static void TestCopilotPromptRunnerWrapsRootedWindowsCmdPaths() {

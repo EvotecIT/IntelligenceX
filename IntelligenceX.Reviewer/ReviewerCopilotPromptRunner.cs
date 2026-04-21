@@ -34,18 +34,29 @@ internal sealed class ReviewerCopilotPromptRunner {
         var disableBuiltinMcps = true;
         var disableToolSurface = true;
         var captureLogs = !string.IsNullOrWhiteSpace(logDirectory);
+        var usePromptArgument = false;
         CopilotPromptProcessResult result;
         ReviewerCopilotPromptResult? successfulResult = null;
         while (true) {
             var effectiveLogDirectory = captureLogs ? logDirectory : null;
             var startInfo = BuildStartInfo(_options, cliPath, prompt, model, disableBuiltinMcps,
-                disableToolSurface, effectiveLogDirectory);
-            result = await RunProcessAsync(startInfo, prompt, timeout, cancellationToken).ConfigureAwait(false);
+                disableToolSurface, effectiveLogDirectory, usePromptArgument);
+            try {
+                result = await RunProcessAsync(startInfo, usePromptArgument ? null : prompt, timeout, cancellationToken)
+                    .ConfigureAwait(false);
+            } catch (TimeoutException) when (!usePromptArgument) {
+                usePromptArgument = true;
+                continue;
+            }
             if (TryBuildSuccessfulResult(result, out successfulResult)) {
                 break;
             }
             if (!TryApplyCompatibilityFallbacks(result, ref disableBuiltinMcps, ref disableToolSurface,
                     ref captureLogs)) {
+                if (!usePromptArgument && ShouldRetryWithPromptArgument(result)) {
+                    usePromptArgument = true;
+                    continue;
+                }
                 break;
             }
         }
@@ -105,7 +116,7 @@ internal sealed class ReviewerCopilotPromptRunner {
     }
 
     private static async Task<CopilotPromptProcessResult> RunProcessAsync(ProcessStartInfo startInfo,
-        string prompt, TimeSpan timeout, CancellationToken cancellationToken) {
+        string? prompt, TimeSpan timeout, CancellationToken cancellationToken) {
         using var process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
         try {
             if (!process.Start()) {
@@ -122,26 +133,30 @@ internal sealed class ReviewerCopilotPromptRunner {
 
         var stdoutTask = PumpReaderAsync(process.StandardOutput, stdout, outputLock);
         var stderrTask = PumpReaderAsync(process.StandardError, stderr, outputLock);
-        try {
-            await WritePromptAsync(process, prompt, timeout, cancellationToken).ConfigureAwait(false);
-        } catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested) {
-            var recovered = await TryRecoverExitedProcessResultAsync(process, stdoutTask, stderrTask, stdout, stderr,
-                outputLock).ConfigureAwait(false);
-            if (recovered is not null) {
-                return recovered;
-            }
+        if (prompt is not null) {
+            try {
+                await WritePromptAsync(process, prompt, timeout, cancellationToken).ConfigureAwait(false);
+            } catch (OperationCanceledException ex) when (!cancellationToken.IsCancellationRequested) {
+                var recovered = await TryRecoverExitedProcessResultAsync(process, stdoutTask, stderrTask, stdout, stderr,
+                    outputLock).ConfigureAwait(false);
+                if (recovered is not null) {
+                    return recovered;
+                }
 
-            TryKill(process);
-            await Task.WhenAll(stdoutTask, stderrTask).ConfigureAwait(false);
-            throw new TimeoutException(BuildTimeoutMessage(timeout, SnapshotText(stderr, outputLock)), ex);
-        } catch (Exception ex) when (ex is IOException or InvalidOperationException or ObjectDisposedException) {
-            var recovered = await TryRecoverExitedProcessResultAsync(process, stdoutTask, stderrTask, stdout, stderr,
-                outputLock).ConfigureAwait(false);
-            if (recovered is not null) {
-                return recovered;
-            }
+                TryKill(process);
+                await Task.WhenAll(stdoutTask, stderrTask).ConfigureAwait(false);
+                throw new TimeoutException(BuildTimeoutMessage(timeout, SnapshotText(stderr, outputLock)), ex);
+            } catch (Exception ex) when (ex is IOException or InvalidOperationException or ObjectDisposedException) {
+                var recovered = await TryRecoverExitedProcessResultAsync(process, stdoutTask, stderrTask, stdout, stderr,
+                    outputLock).ConfigureAwait(false);
+                if (recovered is not null) {
+                    return recovered;
+                }
 
-            throw new InvalidOperationException("Copilot CLI prompt mode failed while writing prompt input.", ex);
+                throw new InvalidOperationException("Copilot CLI prompt mode failed while writing prompt input.", ex);
+            }
+        } else {
+            process.StandardInput.Close();
         }
 
         while (!process.HasExited) {
@@ -163,7 +178,8 @@ internal sealed class ReviewerCopilotPromptRunner {
     }
 
     private static ProcessStartInfo BuildStartInfo(CopilotClientOptions options, string cliPath, string prompt,
-        string? model, bool disableBuiltinMcps, bool disableToolSurface, string? logDirectory) {
+        string? model, bool disableBuiltinMcps, bool disableToolSurface, string? logDirectory,
+        bool usePromptArgument) {
         var args = new List<string>();
         if (options.CliArgs.Count > 0) {
             args.AddRange(options.CliArgs);
@@ -188,6 +204,10 @@ internal sealed class ReviewerCopilotPromptRunner {
         args.Add("on");
         args.Add("--output-format");
         args.Add("json");
+        if (usePromptArgument) {
+            args.Add("-p");
+            args.Add(prompt);
+        }
         if (!string.IsNullOrWhiteSpace(model)) {
             args.Add("--model");
             args.Add(model!);
@@ -439,6 +459,9 @@ internal sealed class ReviewerCopilotPromptRunner {
         out ReviewerCopilotPromptResult? successfulResult) =>
         TryBuildSuccessfulResult(new CopilotPromptProcessResult(exitCode, stdout, stderr), out successfulResult);
 
+    internal static bool ShouldRetryWithPromptArgumentForTests(int exitCode, string stdout, string stderr) =>
+        ShouldRetryWithPromptArgument(new CopilotPromptProcessResult(exitCode, stdout, stderr));
+
     internal static bool TryCreateExitedProcessResultForTests(bool hasExited, int exitCode, string stdout, string stderr,
         out (int ExitCode, string Stdout, string Stderr)? result) {
         if (!TryCreateExitedProcessResult(hasExited, exitCode, stdout, stderr, out var processResult) ||
@@ -452,19 +475,34 @@ internal sealed class ReviewerCopilotPromptRunner {
     }
 
     internal static async Task<(int ExitCode, string Stdout, string Stderr)> RunProcessForTests(
-        ProcessStartInfo startInfo, string prompt, TimeSpan timeout, CancellationToken cancellationToken = default) {
+        ProcessStartInfo startInfo, string? prompt, TimeSpan timeout, CancellationToken cancellationToken = default) {
         var result = await RunProcessAsync(startInfo, prompt, timeout, cancellationToken).ConfigureAwait(false);
         return (result.ExitCode, result.Stdout, result.Stderr);
     }
 
     internal static string[] BuildArgumentsForTests(CopilotClientOptions options, string cliPath, string prompt,
         string? model = null, bool disableBuiltinMcps = true, bool disableToolSurface = true,
-        bool captureLogs = true) {
+        bool captureLogs = true, bool usePromptArgument = false) {
         var startInfo = BuildStartInfo(options, cliPath, prompt, model, disableBuiltinMcps, disableToolSurface,
-            captureLogs ? TryPrepareLogDirectory(options) : null);
+            captureLogs ? TryPrepareLogDirectory(options) : null, usePromptArgument);
         var args = new string[startInfo.ArgumentList.Count];
         startInfo.ArgumentList.CopyTo(args, 0);
         return args;
+    }
+
+    private static bool ShouldRetryWithPromptArgument(CopilotPromptProcessResult result) {
+        if (result.ExitCode != 0) {
+            return false;
+        }
+
+        var parsed = ParseJsonOutput(result.Stdout);
+        if (!string.IsNullOrWhiteSpace(ResolveSuccessfulResponse(parsed, result.Stdout))) {
+            return false;
+        }
+
+        return string.IsNullOrWhiteSpace(result.Stdout) ||
+               parsed.ParseErrorCount == 0 ||
+               parsed.HasNonJsonText;
     }
 
     internal static string? ValidateGitHubActionsAuthForTests(CopilotClientOptions options,
