@@ -823,8 +823,10 @@ internal static partial class Program {
         AssertEqual(1, snapshot.OpenFindings.Count, "review history capped same-head snapshot keeps extracted open finding");
         AssertEqual(0, snapshot.ResolvedSinceLastRound.Count,
             "review history capped same-head snapshot does not infer missing finding resolved");
-        AssertContainsText(block, "Resolved since last round: none newly resolved.",
-            "review history capped same-head block avoids false resolved line");
+        AssertContainsText(block, "[todo] Add a new blocker ahead of the older one.",
+            "review history capped same-head block keeps current extracted open finding");
+        AssertDoesNotContainText(block, "Resolved since last round:",
+            "review history capped same-head block omits resolved section when nothing was resolved");
         AssertDoesNotContainText(block, "[todo] Retry the alternate transport.",
             "review history capped same-head block does not falsely report hidden finding resolved");
     }
