@@ -90,11 +90,14 @@ internal static class ReviewHistoryBuilder {
         }
 
         var lines = new List<string>();
+        var latestSameHeadRound = FindLatestSameHeadRound(snapshot.Rounds);
         if (snapshot.OpenFindings.Count > 0) {
             lines.Add("Open on current head:");
             foreach (var finding in snapshot.OpenFindings) {
                 lines.Add($"- [{NormalizeSectionLabel(finding.Section)}] {finding.Text}");
             }
+        } else if (latestSameHeadRound is not null && latestSameHeadRound.FindingsParseIncomplete) {
+            lines.Add("Open on current head: unknown; merge-blocker lines could not be fully normalized.");
         } else {
             lines.Add("Open on current head: none.");
         }
@@ -318,7 +321,9 @@ internal static class ReviewHistoryBuilder {
             out var findingsHitLimit, out var findingsParseIncomplete);
         var hasMergeBlockers = ReviewSummaryParser.HasMergeBlockers(existingSummary.Body, settings);
         var mergeBlockerStatus = findings.Count == 0
-            ? hasMergeBlockers
+            ? findingsParseIncomplete
+                ? "unknown; merge-blocker lines were present but could not be normalized."
+                : hasMergeBlockers
                 ? "present, but markdown items could not be normalized."
                 : "none."
             : findingsParseIncomplete

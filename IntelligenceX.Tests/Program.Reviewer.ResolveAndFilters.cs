@@ -1075,13 +1075,19 @@ internal static partial class Program {
         };
         var snapshot = ReviewHistoryBuilder.BuildSnapshot(issueComments, "abc1234", Array.Empty<PullRequestReviewThread>(), settings);
         var block = ReviewHistoryBuilder.BuildCommentBlock(snapshot);
+        var rendered = ReviewHistoryBuilder.Render(snapshot);
 
         AssertEqual(0, snapshot.ResolvedSinceLastRound.Count,
             "review history parse-incomplete same-head snapshot does not infer missing finding resolved");
-        AssertContainsText(block, "Resolved since last round: none newly resolved.",
-            "review history parse-incomplete same-head block does not claim a resolution");
+        AssertEqual("unknown; merge-blocker lines were present but could not be normalized.",
+            snapshot.Rounds[1].MergeBlockerStatus,
+            "review history parse-incomplete same-head round surfaces unknown merge-blocker state");
+        AssertContainsText(block, "Open on current head: unknown; merge-blocker lines could not be fully normalized.",
+            "review history parse-incomplete same-head block surfaces unknown current-head status");
         AssertDoesNotContainText(block, "[todo] Retry the alternate transport.",
             "review history parse-incomplete same-head block does not surface malformed missing finding as resolved");
+        AssertContainsText(rendered, "- IX merge blockers in sticky summary: unknown; merge-blocker lines were present but could not be normalized.",
+            "review history parse-incomplete same-head render preserves unknown merge-blocker status");
     }
 
     private static void TestReviewHistoryBuilderDoesNotInferResolutionFromPreviouslyResolvedDuplicate() {
