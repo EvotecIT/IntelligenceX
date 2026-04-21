@@ -222,7 +222,7 @@ internal static class ReviewHistoryBuilder {
         var latestRound = rounds[rounds.Count - 1];
         var previousRound = rounds[rounds.Count - 2];
         var latestFindings = ToFindingMap(latestRound.Findings);
-        foreach (var finding in previousRound.Findings) {
+        foreach (var finding in ToFindingMap(previousRound.Findings).Values) {
             if (!string.Equals(finding.Status, "open", StringComparison.OrdinalIgnoreCase)) {
                 continue;
             }
@@ -260,8 +260,8 @@ internal static class ReviewHistoryBuilder {
     }
 
     private static bool LatestRoundHasUnparseableMergeBlockers(ReviewHistoryRound latestRound) {
-        return latestRound.HasMergeBlockers &&
-               (latestRound.Findings.Count == 0 || latestRound.FindingsParseIncomplete);
+        return latestRound.FindingsParseIncomplete ||
+               (latestRound.HasMergeBlockers && latestRound.Findings.Count == 0);
     }
 
     private static bool RoundsShareReviewedHead(ReviewHistoryRound previousRound, ReviewHistoryRound latestRound) {

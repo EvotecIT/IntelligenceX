@@ -1035,6 +1035,98 @@ internal static partial class Program {
             "review history partial-parse same-head block does not falsely report malformed missing finding resolved");
     }
 
+    private static void TestReviewHistoryBuilderDoesNotResolveWhenLatestSameHeadParseIncompleteWithoutDetectedBlockers() {
+        var settings = new ReviewSettings();
+        settings.History.Enabled = true;
+
+        var olderBody = string.Join("\n", new[] {
+            ReviewFormatter.SummaryMarker,
+            "## IntelligenceX Review",
+            "Reviewed commit: `abc1234`",
+            "",
+            "## Todo List ✅",
+            "- [ ] Retry the alternate transport.",
+            "",
+            "## Critical Issues ⚠️",
+            "None."
+        });
+        var newerBody = string.Join("\n", new[] {
+            ReviewFormatter.SummaryMarker,
+            "## IntelligenceX Review",
+            "Reviewed commit: `abc1234`",
+            "",
+            "## Todo List ✅",
+            "* [ ] Retry the alternate transport.",
+            "",
+            "## Critical Issues ⚠️",
+            "None."
+        });
+        _ = ReviewSummaryParser.ExtractMergeBlockerFindings(newerBody, settings, settings.History.MaxItems,
+            out _, out var parseIncomplete);
+
+        AssertEqual(false, ReviewSummaryParser.HasMergeBlockers(newerBody, settings),
+            "review history parse-incomplete latest summary can evade merge-blocker detection");
+        AssertEqual(true, parseIncomplete,
+            "review history parse-incomplete latest summary still records incomplete parsing");
+
+        var issueComments = new[] {
+            new IssueComment(20, newerBody, "intelligencex-review"),
+            new IssueComment(10, olderBody, "intelligencex-review")
+        };
+        var snapshot = ReviewHistoryBuilder.BuildSnapshot(issueComments, "abc1234", Array.Empty<PullRequestReviewThread>(), settings);
+        var block = ReviewHistoryBuilder.BuildCommentBlock(snapshot);
+
+        AssertEqual(0, snapshot.ResolvedSinceLastRound.Count,
+            "review history parse-incomplete same-head snapshot does not infer missing finding resolved");
+        AssertContainsText(block, "Resolved since last round: none newly resolved.",
+            "review history parse-incomplete same-head block does not claim a resolution");
+        AssertDoesNotContainText(block, "[todo] Retry the alternate transport.",
+            "review history parse-incomplete same-head block does not surface malformed missing finding as resolved");
+    }
+
+    private static void TestReviewHistoryBuilderDoesNotInferResolutionFromPreviouslyResolvedDuplicate() {
+        var settings = new ReviewSettings();
+        settings.History.Enabled = true;
+
+        var olderBody = string.Join("\n", new[] {
+            ReviewFormatter.SummaryMarker,
+            "## IntelligenceX Review",
+            "Reviewed commit: `abc1234`",
+            "",
+            "## Todo List ✅",
+            "- [ ] Retry the alternate transport.",
+            "- [x] Retry the alternate transport.",
+            "",
+            "## Critical Issues ⚠️",
+            "None."
+        });
+        var newerBody = string.Join("\n", new[] {
+            ReviewFormatter.SummaryMarker,
+            "## IntelligenceX Review",
+            "Reviewed commit: `abc1234`",
+            "",
+            "## Todo List ✅",
+            "None.",
+            "",
+            "## Critical Issues ⚠️",
+            "None."
+        });
+        var issueComments = new[] {
+            new IssueComment(20, newerBody, "intelligencex-review"),
+            new IssueComment(10, olderBody, "intelligencex-review")
+        };
+
+        var snapshot = ReviewHistoryBuilder.BuildSnapshot(issueComments, "abc1234", Array.Empty<PullRequestReviewThread>(), settings);
+        var block = ReviewHistoryBuilder.BuildCommentBlock(snapshot);
+
+        AssertEqual(0, snapshot.ResolvedSinceLastRound.Count,
+            "review history duplicate previous statuses do not emit a fresh resolved finding");
+        AssertContainsText(block, "Resolved since last round: none newly resolved.",
+            "review history duplicate previous statuses block does not claim a new resolution");
+        AssertDoesNotContainText(block, "[todo] Retry the alternate transport.",
+            "review history duplicate previous statuses block does not surface already-resolved duplicate as newly resolved");
+    }
+
     private static void TestReviewSummaryStabilityDropsHistoryProgressBlock() {
         var context = BuildContext();
         var settings = new ReviewSettings {
