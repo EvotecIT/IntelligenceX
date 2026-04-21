@@ -820,6 +820,8 @@ internal static partial class Program {
             TestReviewHistoryBuilderLatestSameHeadUsesResolvedStatusPrecedence);
         failed += Run("Review history builder resolves exact cap when latest round is complete",
             TestReviewHistoryBuilderResolvesExactCapWhenLatestRoundIsComplete);
+        failed += Run("Review history builder does not resolve when latest same-head blockers are unparseable",
+            TestReviewHistoryBuilderDoesNotResolveWhenLatestSameHeadBlockersAreUnparseable);
         failed += Run("Review summary stability drops history progress block",
             TestReviewSummaryStabilityDropsHistoryProgressBlock);
         failed += Run("Review history artifacts render json and markdown",

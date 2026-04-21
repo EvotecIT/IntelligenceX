@@ -229,7 +229,8 @@ internal static class ReviewHistoryBuilder {
 
             if (!latestFindings.TryGetValue(finding.Fingerprint, out var latestFinding)) {
                 if (RoundsShareReviewedHead(previousRound, latestRound) &&
-                    !latestRound.FindingsHitLimit) {
+                    !latestRound.FindingsHitLimit &&
+                    !LatestRoundHasUnparseableMergeBlockers(latestRound)) {
                     resolvedSinceLastRound.Add(new ReviewHistoryFinding {
                         Fingerprint = finding.Fingerprint,
                         Section = finding.Section,
@@ -256,6 +257,10 @@ internal static class ReviewHistoryBuilder {
         }
 
         return null;
+    }
+
+    private static bool LatestRoundHasUnparseableMergeBlockers(ReviewHistoryRound latestRound) {
+        return latestRound.HasMergeBlockers && latestRound.Findings.Count == 0;
     }
 
     private static bool RoundsShareReviewedHead(ReviewHistoryRound previousRound, ReviewHistoryRound latestRound) {

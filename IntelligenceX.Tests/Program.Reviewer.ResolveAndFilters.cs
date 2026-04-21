@@ -921,6 +921,52 @@ internal static partial class Program {
             "review history exact-cap complete block includes resolved finding text");
     }
 
+    private static void TestReviewHistoryBuilderDoesNotResolveWhenLatestSameHeadBlockersAreUnparseable() {
+        var settings = new ReviewSettings();
+        settings.History.Enabled = true;
+
+        var olderBody = string.Join("\n", new[] {
+            ReviewFormatter.SummaryMarker,
+            "## IntelligenceX Review",
+            "Reviewed commit: `abc1234`",
+            "",
+            "## Todo List ✅",
+            "- [ ] Retry the alternate transport.",
+            "",
+            "## Critical Issues ⚠️",
+            "None."
+        });
+        var newerBody = string.Join("\n", new[] {
+            ReviewFormatter.SummaryMarker,
+            "## IntelligenceX Review",
+            "Reviewed commit: `abc1234`",
+            "",
+            "## Todo List ✅",
+            "Blockers remain but the checklist formatting is malformed.",
+            "",
+            "## Critical Issues ⚠️",
+            "None."
+        });
+        var issueComments = new[] {
+            new IssueComment(20, newerBody, "intelligencex-review"),
+            new IssueComment(10, olderBody, "intelligencex-review")
+        };
+
+        var snapshot = ReviewHistoryBuilder.BuildSnapshot(issueComments, "abc1234", Array.Empty<PullRequestReviewThread>(), settings);
+        var block = ReviewHistoryBuilder.BuildCommentBlock(snapshot);
+
+        AssertEqual(0, snapshot.OpenFindings.Count,
+            "review history unparseable same-head snapshot has no normalized open findings");
+        AssertEqual(0, snapshot.ResolvedSinceLastRound.Count,
+            "review history unparseable same-head snapshot does not infer missing finding resolved");
+        AssertContainsText(block, "Open on current head: none.",
+            "review history unparseable same-head block reports no normalized open findings");
+        AssertContainsText(block, "Resolved since last round: none newly resolved.",
+            "review history unparseable same-head block does not claim the missing finding resolved");
+        AssertDoesNotContainText(block, "[todo] Retry the alternate transport.",
+            "review history unparseable same-head block does not surface prior finding as resolved");
+    }
+
     private static void TestReviewSummaryStabilityDropsHistoryProgressBlock() {
         var context = BuildContext();
         var settings = new ReviewSettings {
