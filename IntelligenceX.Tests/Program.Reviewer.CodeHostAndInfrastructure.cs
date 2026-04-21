@@ -1629,6 +1629,21 @@ Review completed successfully.
             "copilot prompt should not hide malformed JSON behind transport retry");
     }
 
+    private static void TestCopilotPromptRunnerPrefersTransportRetryBeforeCompatibilityFallback() {
+        AssertEqual(true, ReviewerCopilotPromptRunner.ShouldRetryTransportBeforeCompatibilityForTests(
+                0,
+                string.Empty,
+                "warning: unknown option '--available-tools'",
+                promptTransportRetried: false),
+            "copilot prompt should try the alternate transport before compatibility fallback when the first transport produces no review");
+        AssertEqual(false, ReviewerCopilotPromptRunner.ShouldRetryTransportBeforeCompatibilityForTests(
+                0,
+                string.Empty,
+                "warning: unknown option '--available-tools'",
+                promptTransportRetried: true),
+            "copilot prompt should not loop transports after the alternate transport was already tried");
+    }
+
     private static void TestCopilotPromptRunnerWrapsRootedWindowsCmdPaths() {
         var cliPath = OperatingSystem.IsWindows()
             ? @"C:\Tools\copilot.cmd"

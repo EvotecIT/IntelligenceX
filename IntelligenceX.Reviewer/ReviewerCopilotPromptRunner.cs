@@ -57,15 +57,16 @@ internal sealed class ReviewerCopilotPromptRunner {
             if (TryBuildSuccessfulResult(result, out successfulResult)) {
                 break;
             }
-            if (!TryApplyCompatibilityFallbacks(result, ref disableBuiltinMcps, ref disableToolSurface,
-                    ref captureLogs)) {
-                if (!promptTransportRetried && ShouldRetryWithAlternatePromptTransport(result)) {
-                    usePromptArgument = !usePromptArgument;
-                    promptTransportRetried = true;
-                    continue;
-                }
-                break;
+            if (ShouldRetryTransportBeforeCompatibility(result, promptTransportRetried)) {
+                usePromptArgument = !usePromptArgument;
+                promptTransportRetried = true;
+                continue;
             }
+            if (TryApplyCompatibilityFallbacks(result, ref disableBuiltinMcps, ref disableToolSurface,
+                    ref captureLogs)) {
+                continue;
+            }
+            break;
         }
 
         if (successfulResult is not null) {
@@ -469,6 +470,11 @@ internal sealed class ReviewerCopilotPromptRunner {
     internal static bool ShouldRetryWithAlternatePromptTransportForTests(int exitCode, string stdout, string stderr) =>
         ShouldRetryWithAlternatePromptTransport(new CopilotPromptProcessResult(exitCode, stdout, stderr));
 
+    internal static bool ShouldRetryTransportBeforeCompatibilityForTests(int exitCode, string stdout, string stderr,
+        bool promptTransportRetried) =>
+        ShouldRetryTransportBeforeCompatibility(new CopilotPromptProcessResult(exitCode, stdout, stderr),
+            promptTransportRetried);
+
     internal static bool TryCreateExitedProcessResultForTests(bool hasExited, int exitCode, string stdout, string stderr,
         out (int ExitCode, string Stdout, string Stderr)? result) {
         if (!TryCreateExitedProcessResult(hasExited, exitCode, stdout, stderr, out var processResult) ||
@@ -510,6 +516,11 @@ internal sealed class ReviewerCopilotPromptRunner {
         return string.IsNullOrWhiteSpace(result.Stdout) ||
                parsed.ParseErrorCount == 0 ||
                parsed.HasNonJsonText;
+    }
+
+    private static bool ShouldRetryTransportBeforeCompatibility(CopilotPromptProcessResult result,
+        bool promptTransportRetried) {
+        return !promptTransportRetried && ShouldRetryWithAlternatePromptTransport(result);
     }
 
     internal static string? ValidateGitHubActionsAuthForTests(CopilotClientOptions options,

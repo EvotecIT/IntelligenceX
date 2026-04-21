@@ -717,6 +717,8 @@ internal static partial class Program {
             TestCopilotPromptRunnerBuildsMcpDisabledArgs);
         failed += Run("Copilot prompt runner retries prompt argument when stdin produces no review",
             TestCopilotPromptRunnerRetriesPromptArgumentWhenStdinProducesNoReview);
+        failed += Run("Copilot prompt runner prefers transport retry before compatibility fallback",
+            TestCopilotPromptRunnerPrefersTransportRetryBeforeCompatibilityFallback);
         failed += Run("Copilot prompt runner wraps rooted Windows cmd paths",
             TestCopilotPromptRunnerWrapsRootedWindowsCmdPaths);
         failed += Run("Copilot prompt runner detects unsupported MCP flag",
