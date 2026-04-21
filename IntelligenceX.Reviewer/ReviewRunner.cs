@@ -19,7 +19,6 @@ using IntelligenceX.OpenAI.Native;
 namespace IntelligenceX.Reviewer;
 
 internal sealed partial class ReviewRunner {
-    private const int MinimumCopilotCliReviewWaitSeconds = 600;
     private readonly ReviewSettings _settings;
     public ReviewProvider EffectiveProvider { get; private set; }
     public bool FallbackActivated { get; private set; }
@@ -490,8 +489,7 @@ internal sealed partial class ReviewRunner {
     }
 
     internal static TimeSpan ResolveCopilotReviewTimeout(ReviewSettings settings) {
-        var configuredSeconds = Math.Max(1, settings.WaitSeconds);
-        return TimeSpan.FromSeconds(Math.Max(configuredSeconds, MinimumCopilotCliReviewWaitSeconds));
+        return TimeSpan.FromSeconds(Math.Max(1, settings.WaitSeconds));
     }
 
     private string BuildCopilotLauncherDiagnostic(string launcher, CopilotClientOptions options) {

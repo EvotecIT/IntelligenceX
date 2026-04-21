@@ -34,7 +34,8 @@ internal sealed class ReviewerCopilotPromptRunner {
         var disableBuiltinMcps = true;
         var disableToolSurface = true;
         var captureLogs = !string.IsNullOrWhiteSpace(logDirectory);
-        var usePromptArgument = false;
+        var usePromptArgument = true;
+        var promptTransportRetried = false;
         CopilotPromptProcessResult result;
         ReviewerCopilotPromptResult? successfulResult = null;
         while (true) {
@@ -44,8 +45,13 @@ internal sealed class ReviewerCopilotPromptRunner {
             try {
                 result = await RunProcessAsync(startInfo, usePromptArgument ? null : prompt, timeout, cancellationToken)
                     .ConfigureAwait(false);
-            } catch (TimeoutException) when (!usePromptArgument) {
-                usePromptArgument = true;
+            } catch (TimeoutException) when (!promptTransportRetried) {
+                usePromptArgument = !usePromptArgument;
+                promptTransportRetried = true;
+                continue;
+            } catch (InvalidOperationException) when (usePromptArgument && !promptTransportRetried) {
+                usePromptArgument = false;
+                promptTransportRetried = true;
                 continue;
             }
             if (TryBuildSuccessfulResult(result, out successfulResult)) {
@@ -53,8 +59,9 @@ internal sealed class ReviewerCopilotPromptRunner {
             }
             if (!TryApplyCompatibilityFallbacks(result, ref disableBuiltinMcps, ref disableToolSurface,
                     ref captureLogs)) {
-                if (!usePromptArgument && ShouldRetryWithPromptArgument(result)) {
-                    usePromptArgument = true;
+                if (!promptTransportRetried && ShouldRetryWithAlternatePromptTransport(result)) {
+                    usePromptArgument = !usePromptArgument;
+                    promptTransportRetried = true;
                     continue;
                 }
                 break;
@@ -459,8 +466,8 @@ internal sealed class ReviewerCopilotPromptRunner {
         out ReviewerCopilotPromptResult? successfulResult) =>
         TryBuildSuccessfulResult(new CopilotPromptProcessResult(exitCode, stdout, stderr), out successfulResult);
 
-    internal static bool ShouldRetryWithPromptArgumentForTests(int exitCode, string stdout, string stderr) =>
-        ShouldRetryWithPromptArgument(new CopilotPromptProcessResult(exitCode, stdout, stderr));
+    internal static bool ShouldRetryWithAlternatePromptTransportForTests(int exitCode, string stdout, string stderr) =>
+        ShouldRetryWithAlternatePromptTransport(new CopilotPromptProcessResult(exitCode, stdout, stderr));
 
     internal static bool TryCreateExitedProcessResultForTests(bool hasExited, int exitCode, string stdout, string stderr,
         out (int ExitCode, string Stdout, string Stderr)? result) {
@@ -490,7 +497,7 @@ internal sealed class ReviewerCopilotPromptRunner {
         return args;
     }
 
-    private static bool ShouldRetryWithPromptArgument(CopilotPromptProcessResult result) {
+    private static bool ShouldRetryWithAlternatePromptTransport(CopilotPromptProcessResult result) {
         if (result.ExitCode != 0) {
             return false;
         }

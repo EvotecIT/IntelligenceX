@@ -1192,8 +1192,8 @@ internal static partial class Program {
             WaitSeconds = 180
         };
 
-        AssertEqual(TimeSpan.FromSeconds(600), ReviewRunner.ResolveCopilotReviewTimeout(settings),
-            "copilot prompt timeout should use runner-safe minimum");
+        AssertEqual(TimeSpan.FromSeconds(180), ReviewRunner.ResolveCopilotReviewTimeout(settings),
+            "copilot prompt timeout should honor configured wait");
     }
 
     private static void TestCopilotPromptTimeoutHonorsHigherExplicitWait() {
@@ -1214,8 +1214,8 @@ internal static partial class Program {
             WaitSeconds = 180
         };
 
-        AssertEqual(TimeSpan.FromSeconds(600), ReviewRunner.ResolveCopilotReviewTimeout(settings),
-            "copilot cli session timeout should use runner-safe minimum");
+        AssertEqual(TimeSpan.FromSeconds(180), ReviewRunner.ResolveCopilotReviewTimeout(settings),
+            "copilot cli session timeout should honor configured wait");
     }
 
     private static void TestCopilotCliSessionTimeoutHonorsHigherExplicitWait() {
@@ -1603,30 +1603,30 @@ Review completed successfully.
     }
 
     private static void TestCopilotPromptRunnerRetriesPromptArgumentWhenStdinProducesNoReview() {
-        AssertEqual(true, ReviewerCopilotPromptRunner.ShouldRetryWithPromptArgumentForTests(
+        AssertEqual(true, ReviewerCopilotPromptRunner.ShouldRetryWithAlternatePromptTransportForTests(
                 0,
                 string.Empty,
                 string.Empty),
-            "copilot prompt should retry with -p when stdin run produces no output");
-        AssertEqual(false, ReviewerCopilotPromptRunner.ShouldRetryWithPromptArgumentForTests(
+            "copilot prompt should retry alternate transport when the first run produces no output");
+        AssertEqual(false, ReviewerCopilotPromptRunner.ShouldRetryWithAlternatePromptTransportForTests(
                 0,
                 "Compatibility note: review completed with no structured output.",
                 string.Empty),
-            "copilot prompt should keep successful prose fallback instead of retrying with -p");
-        AssertEqual(false, ReviewerCopilotPromptRunner.ShouldRetryWithPromptArgumentForTests(
+            "copilot prompt should keep successful prose fallback instead of retrying transports");
+        AssertEqual(false, ReviewerCopilotPromptRunner.ShouldRetryWithAlternatePromptTransportForTests(
                 0,
                 """
 {"type":"assistant.message","data":{"content":"Final review"}}
 """,
                 string.Empty),
-            "copilot prompt should not retry with -p when stdin run already succeeded");
-        AssertEqual(false, ReviewerCopilotPromptRunner.ShouldRetryWithPromptArgumentForTests(
+            "copilot prompt should not retry transports when the first run already succeeded");
+        AssertEqual(false, ReviewerCopilotPromptRunner.ShouldRetryWithAlternatePromptTransportForTests(
                 0,
                 """
 {"type":"assistant.message_delta","data":{"deltaContent":"partial"
 """,
                 string.Empty),
-            "copilot prompt should not hide malformed JSON behind -p retry");
+            "copilot prompt should not hide malformed JSON behind transport retry");
     }
 
     private static void TestCopilotPromptRunnerWrapsRootedWindowsCmdPaths() {

@@ -739,9 +739,9 @@ internal static partial class Program {
         failed += Run("Copilot inherit env default", TestCopilotInheritEnvironmentDefault);
         failed += Run("Copilot direct timeout validation", TestCopilotDirectTimeoutValidation);
         failed += Run("Copilot chat timeout validation", TestCopilotChatTimeoutValidation);
-        failed += Run("Copilot prompt timeout uses runner-safe minimum", TestCopilotPromptTimeoutUsesRunnerSafeMinimum);
+        failed += Run("Copilot prompt timeout honors configured wait", TestCopilotPromptTimeoutUsesRunnerSafeMinimum);
         failed += Run("Copilot prompt timeout honors higher explicit wait", TestCopilotPromptTimeoutHonorsHigherExplicitWait);
-        failed += Run("Copilot CLI session timeout uses runner-safe minimum",
+        failed += Run("Copilot CLI session timeout honors configured wait",
             TestCopilotCliSessionTimeoutUsesRunnerSafeMinimum);
         failed += Run("Copilot CLI session timeout honors higher explicit wait",
             TestCopilotCliSessionTimeoutHonorsHigherExplicitWait);
