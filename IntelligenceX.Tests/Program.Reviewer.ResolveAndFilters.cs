@@ -972,6 +972,69 @@ internal static partial class Program {
             "review history unparseable same-head block does not surface prior finding as resolved");
     }
 
+    private static void TestReviewHistoryBuilderDoesNotResolveWhenLatestSameHeadBlockersArePartiallyUnparseable() {
+        var settings = new ReviewSettings();
+        settings.History.Enabled = true;
+
+        var olderBody = string.Join("\n", new[] {
+            ReviewFormatter.SummaryMarker,
+            "## IntelligenceX Review",
+            "Reviewed commit: `abc1234`",
+            "",
+            "## Todo List ✅",
+            "- [ ] Retry the alternate transport.",
+            "",
+            "## Critical Issues ⚠️",
+            "None."
+        });
+        var newerBody = string.Join("\n", new[] {
+            ReviewFormatter.SummaryMarker,
+            "## IntelligenceX Review",
+            "Reviewed commit: `abc1234`",
+            "",
+            "## Todo List ✅",
+            "- [ ] Add a new blocker ahead of the older one.",
+            "* [ ] Retry the alternate transport.",
+            "",
+            "## Critical Issues ⚠️",
+            "None."
+        });
+        var issueComments = new[] {
+            new IssueComment(20, newerBody, "intelligencex-review"),
+            new IssueComment(10, olderBody, "intelligencex-review")
+        };
+        var extracted = ReviewSummaryParser.ExtractMergeBlockerFindings(newerBody, settings, settings.History.MaxItems,
+            out var hitLimit, out var parseIncomplete);
+
+        AssertEqual(false, hitLimit, "review history partial-parse latest summary does not hit findings limit");
+        AssertEqual(true, parseIncomplete,
+            "review history partial-parse latest summary reports incomplete merge-blocker parsing");
+        AssertEqual(1, extracted.Count,
+            "review history partial-parse latest summary still keeps normalized findings");
+
+        var snapshot = ReviewHistoryBuilder.BuildSnapshot(issueComments, "abc1234", Array.Empty<PullRequestReviewThread>(), settings);
+        var block = ReviewHistoryBuilder.BuildCommentBlock(snapshot);
+        var rendered = ReviewHistoryBuilder.Render(snapshot);
+
+        AssertEqual(1, snapshot.OpenFindings.Count,
+            "review history partial-parse same-head snapshot keeps normalized current finding");
+        AssertEqual("Add a new blocker ahead of the older one.", snapshot.OpenFindings[0].Text,
+            "review history partial-parse same-head snapshot keeps normalized open finding text");
+        AssertEqual(0, snapshot.ResolvedSinceLastRound.Count,
+            "review history partial-parse same-head snapshot does not infer malformed missing finding resolved");
+        AssertEqual(true, snapshot.Rounds[1].FindingsParseIncomplete,
+            "review history partial-parse same-head round records incomplete parsing");
+        AssertContainsText(block, "[todo] Add a new blocker ahead of the older one.",
+            "review history partial-parse same-head block includes normalized current finding");
+        AssertContainsText(rendered,
+            "Additional merge-blocker lines were present but could not be normalized",
+            "review history partial-parse same-head snapshot warns about incomplete normalization");
+        AssertDoesNotContainText(block, "Resolved since last round:",
+            "review history partial-parse same-head block omits resolved section when nothing was resolved");
+        AssertDoesNotContainText(block, "[todo] Retry the alternate transport.",
+            "review history partial-parse same-head block does not falsely report malformed missing finding resolved");
+    }
+
     private static void TestReviewSummaryStabilityDropsHistoryProgressBlock() {
         var context = BuildContext();
         var settings = new ReviewSettings {

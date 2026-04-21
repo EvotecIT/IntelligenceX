@@ -260,7 +260,8 @@ internal static class ReviewHistoryBuilder {
     }
 
     private static bool LatestRoundHasUnparseableMergeBlockers(ReviewHistoryRound latestRound) {
-        return latestRound.HasMergeBlockers && latestRound.Findings.Count == 0;
+        return latestRound.HasMergeBlockers &&
+               (latestRound.Findings.Count == 0 || latestRound.FindingsParseIncomplete);
     }
 
     private static bool RoundsShareReviewedHead(ReviewHistoryRound previousRound, ReviewHistoryRound latestRound) {
@@ -306,12 +307,14 @@ internal static class ReviewHistoryBuilder {
         ReviewSettings settings, int sequence = 1) {
         ReviewSummaryParser.TryGetReviewedCommit(existingSummary.Body, out var reviewedCommit);
         var findings = ReviewSummaryParser.ExtractMergeBlockerFindings(existingSummary.Body, settings, settings.History.MaxItems,
-            out var findingsHitLimit);
+            out var findingsHitLimit, out var findingsParseIncomplete);
         var hasMergeBlockers = ReviewSummaryParser.HasMergeBlockers(existingSummary.Body, settings);
         var mergeBlockerStatus = findings.Count == 0
             ? hasMergeBlockers
                 ? "present, but markdown items could not be normalized."
                 : "none."
+            : findingsParseIncomplete
+                ? $"{findings.Count} normalized item(s), but additional merge-blocker lines could not be normalized."
             : $"{findings.Count} normalized item(s).";
         return new ReviewHistoryRound {
             Sequence = sequence,
@@ -324,6 +327,7 @@ internal static class ReviewHistoryBuilder {
             HasMergeBlockers = hasMergeBlockers,
             MergeBlockerStatus = mergeBlockerStatus,
             FindingsHitLimit = findingsHitLimit,
+            FindingsParseIncomplete = findingsParseIncomplete,
             Findings = ConvertFindings(findings)
         };
     }
@@ -366,6 +370,9 @@ internal static class ReviewHistoryBuilder {
             : "- Prior-head IX merge blockers from sticky summary (candidates only; revalidate against current diff or active threads before treating as blockers):");
         foreach (var item in round.Findings) {
             lines.Add($"  - [{NormalizeSectionLabel(item.Section)}] {item.Text}");
+        }
+        if (round.FindingsParseIncomplete) {
+            lines.Add("  - Additional merge-blocker lines were present but could not be normalized; do not infer missing same-head findings as resolved from this round alone.");
         }
     }
 

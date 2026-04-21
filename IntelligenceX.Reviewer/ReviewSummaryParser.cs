@@ -147,8 +147,14 @@ internal static class ReviewSummaryParser {
 
     internal static IReadOnlyList<ReviewSummaryFinding> ExtractMergeBlockerFindings(string? body, ReviewSettings? settings,
         int maxItems, out bool hitLimit) {
+        return ExtractMergeBlockerFindings(body, settings, maxItems, out hitLimit, out _);
+    }
+
+    internal static IReadOnlyList<ReviewSummaryFinding> ExtractMergeBlockerFindings(string? body, ReviewSettings? settings,
+        int maxItems, out bool hitLimit, out bool parseIncomplete) {
         var findings = new List<ReviewSummaryFinding>();
         hitLimit = false;
+        parseIncomplete = false;
         if (string.IsNullOrWhiteSpace(body) || maxItems <= 0) {
             return findings;
         }
@@ -176,6 +182,9 @@ internal static class ReviewSummaryParser {
             }
 
             if (!TryNormalizeFinding(trimmed, currentSection, out var finding)) {
+                if (LooksLikeMergeBlockerEntry(trimmed)) {
+                    parseIncomplete = true;
+                }
                 continue;
             }
 
@@ -324,6 +333,37 @@ internal static class ReviewSummaryParser {
 
         finding = new ReviewSummaryFinding(CreateFindingFingerprint(section, normalizedItem), section, normalizedItem, status);
         return true;
+    }
+
+    private static bool LooksLikeMergeBlockerEntry(string line) {
+        if (string.IsNullOrWhiteSpace(line)) {
+            return false;
+        }
+
+        var trimmed = line.Trim();
+        if (trimmed.StartsWith("<!--", StringComparison.Ordinal)) {
+            return false;
+        }
+        if (IsNoneLine(trimmed) || IsPlaceholderLine(trimmed)) {
+            return false;
+        }
+        if (trimmed.StartsWith("*Rationale:", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.StartsWith("*Why", StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+        if (trimmed.StartsWith("-", StringComparison.Ordinal) ||
+            trimmed.StartsWith("*", StringComparison.Ordinal) ||
+            trimmed.StartsWith("[ ]", StringComparison.Ordinal) ||
+            trimmed.StartsWith("[x]", StringComparison.OrdinalIgnoreCase)) {
+            return true;
+        }
+
+        if (!char.IsDigit(trimmed[0])) {
+            return false;
+        }
+
+        var markerIndex = trimmed.IndexOf(". ", StringComparison.Ordinal);
+        return markerIndex > 0 && markerIndex <= 2;
     }
 
     private static string CreateFindingFingerprint(string section, string text) {
