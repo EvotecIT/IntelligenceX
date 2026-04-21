@@ -783,7 +783,7 @@ internal sealed class ReviewerCopilotPromptRunner {
         if (trimmed.Length == 0) {
             return true;
         }
-        if (trimmed[0] != '{') {
+        if (!LooksLikeJsonObjectLine(trimmed.AsSpan())) {
             return false;
         }
 
@@ -823,13 +823,29 @@ internal sealed class ReviewerCopilotPromptRunner {
                 index++;
             }
             if (index < span.Length && span[index] != '{') {
-                malformedJson = true;
                 return false;
             }
         }
 
         objects = results;
         return true;
+    }
+
+    private static bool LooksLikeJsonObjectLine(ReadOnlySpan<char> span) {
+        var index = 0;
+        while (index < span.Length && char.IsWhiteSpace(span[index])) {
+            index++;
+        }
+        if (index >= span.Length || span[index] != '{') {
+            return false;
+        }
+
+        index++;
+        while (index < span.Length && char.IsWhiteSpace(span[index])) {
+            index++;
+        }
+
+        return index < span.Length && (span[index] == '"' || span[index] == '}');
     }
 
     private static bool TryFindJsonObjectEnd(ReadOnlySpan<char> span, int start, out int end) {

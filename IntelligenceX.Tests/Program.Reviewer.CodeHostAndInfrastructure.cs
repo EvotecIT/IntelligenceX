@@ -1417,6 +1417,21 @@ internal static partial class Program {
             "copilot prompt should preserve mixed stdout instead of extracting embedded JSON");
     }
 
+    private static void TestCopilotPromptRunnerFallsBackToStdoutWhenJsonHasTrailingNoise() {
+        var output =
+            """{"type":"assistant.message","data":{"content":"Should stay embedded"}} trailing noise""";
+
+        var accepted = ReviewerCopilotPromptRunner.TryBuildSuccessfulResultForTests(
+            0,
+            output,
+            string.Empty,
+            out var result);
+
+        AssertEqual(true, accepted, "copilot prompt accepts JSON with trailing noise as plain text");
+        AssertEqual(output, result?.Response ?? string.Empty,
+            "copilot prompt should preserve JSON-plus-noise stdout instead of extracting embedded JSON");
+    }
+
     private static void TestCopilotPromptRunnerFallsBackToStdoutWhenJsonIsValidButNoAssistantMessageWasParsed() {
         var output = """
 Review completed successfully.
@@ -1491,6 +1506,25 @@ Compatibility note: {not actually json
             "copilot prompt should prefer assistant message from valid JSON line");
         AssertContainsText(result?.UsageSummary ?? string.Empty, "premium requests: 1",
             "copilot prompt keeps usage from valid JSON line");
+    }
+
+    private static void TestCopilotPromptRunnerFallsBackToStdoutWhenBraceLineStartsWithNonJsonToken() {
+        var output = """
+{warning} cached tool output follows
+Review completed successfully.
+""";
+
+        var accepted = ReviewerCopilotPromptRunner.TryBuildSuccessfulResultForTests(
+            0,
+            output,
+            string.Empty,
+            out var result);
+
+        AssertEqual(true, accepted, "copilot prompt accepts brace-prefixed prose as plain stdout");
+        AssertContainsText(result?.Response ?? string.Empty, "{warning}",
+            "copilot prompt should preserve brace-prefixed prose");
+        AssertContainsText(result?.Response ?? string.Empty, "Review completed successfully.",
+            "copilot prompt keeps plain stdout fallback");
     }
 
     private static void TestCopilotPromptRunnerDoesNotTreatJsonWarningsAsReviewContent() {
