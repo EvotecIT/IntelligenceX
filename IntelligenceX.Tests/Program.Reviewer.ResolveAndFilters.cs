@@ -664,6 +664,52 @@ internal static partial class Program {
         AssertContainsText(block, "[critical] Cover the stale thread path.", "review history comment block resolved item");
     }
 
+    private static void TestReviewHistoryBuilderUsesLatestSameHeadRound() {
+        var settings = new ReviewSettings();
+        settings.History.Enabled = true;
+
+        var firstSameHeadBody = string.Join("\n", new[] {
+            ReviewFormatter.SummaryMarker,
+            "## IntelligenceX Review",
+            $"Reviewed commit: `abc1234`",
+            "",
+            "## Todo List ✅",
+            "- [ ] Retry the alternate transport.",
+            "",
+            "## Critical Issues ⚠️",
+            "None."
+        });
+        var latestSameHeadBody = string.Join("\n", new[] {
+            ReviewFormatter.SummaryMarker,
+            "## IntelligenceX Review",
+            $"Reviewed commit: `abc1234`",
+            "",
+            "## Todo List ✅",
+            "None.",
+            "",
+            "## Critical Issues ⚠️",
+            "None."
+        });
+        var issueComments = new[] {
+            new IssueComment(20, latestSameHeadBody, "intelligencex-review"),
+            new IssueComment(10, firstSameHeadBody, "intelligencex-review")
+        };
+
+        var snapshot = ReviewHistoryBuilder.BuildSnapshot(issueComments, "abc1234", Array.Empty<PullRequestReviewThread>(), settings);
+        var block = ReviewHistoryBuilder.BuildCommentBlock(snapshot);
+
+        AssertEqual(2, snapshot.Rounds.Count, "review history latest same-head round count");
+        AssertEqual(0, snapshot.OpenFindings.Count, "review history latest same-head round supersedes prior stale finding");
+        AssertEqual(1, snapshot.ResolvedSinceLastRound.Count,
+            "review history latest same-head round marks disappeared stale finding resolved");
+        AssertEqual("Retry the alternate transport.", snapshot.ResolvedSinceLastRound[0].Text,
+            "review history resolved stale same-head finding text");
+        AssertContainsText(block, "Open on current head: none.", "review history latest same-head block no open findings");
+        AssertContainsText(block, "Resolved since last round:", "review history latest same-head block resolved label");
+        AssertContainsText(block, "[todo] Retry the alternate transport.",
+            "review history latest same-head block resolved stale finding");
+    }
+
     private static void TestReviewSummaryStabilityDropsHistoryProgressBlock() {
         var context = BuildContext();
         var settings = new ReviewSettings {
