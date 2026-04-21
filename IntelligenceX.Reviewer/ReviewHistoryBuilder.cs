@@ -283,12 +283,22 @@ internal static class ReviewHistoryBuilder {
             return Array.Empty<ReviewHistoryFinding>();
         }
 
+        var latestIndices = new Dictionary<string, int>(StringComparer.Ordinal);
+        for (var index = 0; index < findings.Count; index++) {
+            var finding = findings[index];
+            if (string.IsNullOrWhiteSpace(finding.Fingerprint)) {
+                continue;
+            }
+
+            latestIndices[finding.Fingerprint] = index;
+        }
+
         var open = new List<ReviewHistoryFinding>(findings.Count);
-        var seenFingerprints = new HashSet<string>(StringComparer.Ordinal);
-        for (var index = findings.Count - 1; index >= 0; index--) {
+        for (var index = 0; index < findings.Count; index++) {
             var finding = findings[index];
             if (!string.IsNullOrWhiteSpace(finding.Fingerprint) &&
-                !seenFingerprints.Add(finding.Fingerprint)) {
+                latestIndices.TryGetValue(finding.Fingerprint, out var latestIndex) &&
+                latestIndex != index) {
                 continue;
             }
 
@@ -298,8 +308,6 @@ internal static class ReviewHistoryBuilder {
 
             open.Add(finding);
         }
-
-        open.Reverse();
         return open;
     }
 
