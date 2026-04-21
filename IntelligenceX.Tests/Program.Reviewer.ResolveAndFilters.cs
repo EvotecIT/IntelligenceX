@@ -876,6 +876,51 @@ internal static partial class Program {
             "review history latest same-head block reports the resolved finding once");
     }
 
+    private static void TestReviewHistoryBuilderResolvesExactCapWhenLatestRoundIsComplete() {
+        var settings = new ReviewSettings();
+        settings.History.Enabled = true;
+        settings.History.MaxItems = 1;
+
+        var olderBody = string.Join("\n", new[] {
+            ReviewFormatter.SummaryMarker,
+            "## IntelligenceX Review",
+            "Reviewed commit: `abc1234`",
+            "",
+            "## Todo List ✅",
+            "- [ ] Retry the alternate transport.",
+            "",
+            "## Critical Issues ⚠️",
+            "None."
+        });
+        var newerBody = string.Join("\n", new[] {
+            ReviewFormatter.SummaryMarker,
+            "## IntelligenceX Review",
+            "Reviewed commit: `abc1234`",
+            "",
+            "## Todo List ✅",
+            "- [x] Retry the alternate transport.",
+            "",
+            "## Critical Issues ⚠️",
+            "None."
+        });
+        var issueComments = new[] {
+            new IssueComment(20, newerBody, "intelligencex-review"),
+            new IssueComment(10, olderBody, "intelligencex-review")
+        };
+
+        var snapshot = ReviewHistoryBuilder.BuildSnapshot(issueComments, "abc1234", Array.Empty<PullRequestReviewThread>(), settings);
+        var block = ReviewHistoryBuilder.BuildCommentBlock(snapshot);
+
+        AssertEqual(0, snapshot.OpenFindings.Count,
+            "review history exact-cap complete snapshot has no current open findings");
+        AssertEqual(1, snapshot.ResolvedSinceLastRound.Count,
+            "review history exact-cap complete snapshot still reports legitimate same-head resolution");
+        AssertContainsText(block, "Resolved since last round:",
+            "review history exact-cap complete block includes resolved section");
+        AssertContainsText(block, "[todo] Retry the alternate transport.",
+            "review history exact-cap complete block includes resolved finding text");
+    }
+
     private static void TestReviewSummaryStabilityDropsHistoryProgressBlock() {
         var context = BuildContext();
         var settings = new ReviewSettings {

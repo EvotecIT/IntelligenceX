@@ -142,7 +142,13 @@ internal static class ReviewSummaryParser {
 
     internal static IReadOnlyList<ReviewSummaryFinding> ExtractMergeBlockerFindings(string? body, ReviewSettings? settings = null,
         int maxItems = 10) {
+        return ExtractMergeBlockerFindings(body, settings, maxItems, out _);
+    }
+
+    internal static IReadOnlyList<ReviewSummaryFinding> ExtractMergeBlockerFindings(string? body, ReviewSettings? settings,
+        int maxItems, out bool hitLimit) {
         var findings = new List<ReviewSummaryFinding>();
+        hitLimit = false;
         if (string.IsNullOrWhiteSpace(body) || maxItems <= 0) {
             return findings;
         }
@@ -173,10 +179,12 @@ internal static class ReviewSummaryParser {
                 continue;
             }
 
-            findings.Add(finding);
             if (findings.Count >= maxItems) {
+                hitLimit = true;
                 break;
             }
+
+            findings.Add(finding);
         }
 
         return findings;

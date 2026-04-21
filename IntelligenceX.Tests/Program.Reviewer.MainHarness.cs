@@ -818,6 +818,8 @@ internal static partial class Program {
             TestReviewHistoryBuilderDoesNotResolveMissingFindingWhenLatestSameHeadHitsLimit);
         failed += Run("Review history builder latest same-head uses resolved status precedence",
             TestReviewHistoryBuilderLatestSameHeadUsesResolvedStatusPrecedence);
+        failed += Run("Review history builder resolves exact cap when latest round is complete",
+            TestReviewHistoryBuilderResolvesExactCapWhenLatestRoundIsComplete);
         failed += Run("Review summary stability drops history progress block",
             TestReviewSummaryStabilityDropsHistoryProgressBlock);
         failed += Run("Review history artifacts render json and markdown",

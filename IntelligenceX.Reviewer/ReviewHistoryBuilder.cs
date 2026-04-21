@@ -300,7 +300,8 @@ internal static class ReviewHistoryBuilder {
     private static ReviewHistoryRound? BuildStickySummaryRound(IssueComment existingSummary, string? currentHeadSha,
         ReviewSettings settings, int sequence = 1) {
         ReviewSummaryParser.TryGetReviewedCommit(existingSummary.Body, out var reviewedCommit);
-        var findings = ReviewSummaryParser.ExtractMergeBlockerFindings(existingSummary.Body, settings, settings.History.MaxItems);
+        var findings = ReviewSummaryParser.ExtractMergeBlockerFindings(existingSummary.Body, settings, settings.History.MaxItems,
+            out var findingsHitLimit);
         var hasMergeBlockers = ReviewSummaryParser.HasMergeBlockers(existingSummary.Body, settings);
         var mergeBlockerStatus = findings.Count == 0
             ? hasMergeBlockers
@@ -317,7 +318,7 @@ internal static class ReviewHistoryBuilder {
                                 currentHeadSha.StartsWith(reviewedCommit!, StringComparison.OrdinalIgnoreCase),
             HasMergeBlockers = hasMergeBlockers,
             MergeBlockerStatus = mergeBlockerStatus,
-            FindingsHitLimit = findings.Count >= settings.History.MaxItems,
+            FindingsHitLimit = findingsHitLimit,
             Findings = ConvertFindings(findings)
         };
     }
