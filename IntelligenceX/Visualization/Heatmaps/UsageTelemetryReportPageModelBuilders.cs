@@ -232,8 +232,9 @@ internal static class UsageTelemetryReportPageModelBuilders {
         var compactCount = conversations?.GetInt64("compactCount") ?? itemObjects.Sum(static item => item.GetInt64("compactCount") ?? 0L);
         var maxTokens = Math.Max(1L, itemObjects.Max(static item => item.GetInt64("totalTokens") ?? 0L));
         var displayItems = itemObjects.Take(12).ToArray();
+        var displayTokenTotal = displayItems.Sum(static item => item.GetInt64("totalTokens") ?? 0L);
         var rowModels = displayItems
-            .Select((item, index) => BuildConversationPulseRowModel(item, index + 1, maxTokens, Math.Max(1L, tokenTotal)))
+            .Select((item, index) => BuildConversationPulseRowModel(item, index + 1, maxTokens, Math.Max(1L, displayTokenTotal)))
             .ToArray();
         var rows = rowModels
             .Select(static row => new UsageTelemetryOverviewInsightRow(
@@ -243,7 +244,6 @@ internal static class UsageTelemetryReportPageModelBuilders {
                 row.RatioPercent / 100d))
             .ToArray();
         var displayCount = Math.Min(displayItems.Length, shownCount);
-        var displayTokenTotal = displayItems.Sum(static item => item.GetInt64("totalTokens") ?? 0L);
         var note = displayCount < totalCount
             ? "Showing the top " + displayCount.ToString(CultureInfo.InvariantCulture) + " conversations here; JSON and CSV exports keep every conversation."
             : "Built from raw session rows before provider rollups are aggregated.";

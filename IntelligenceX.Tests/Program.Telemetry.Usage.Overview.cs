@@ -776,6 +776,86 @@ internal static partial class Program {
         AssertContainsText(html, "data-detail-cost", "overview conversation pulse detail cost metric shell");
     }
 
+    private static void TestUsageTelemetryOverviewHtmlRendererUsesShownConversationShare() {
+        var items = new JsonArray()
+            .Add(new JsonObject()
+                .Add("label", "session-01")
+                .Add("title", "Largest visible session")
+                .Add("repository", "EvotecIT/IntelligenceX")
+                .Add("workspace", "IntelligenceX")
+                .Add("account", "work@evotec.pl")
+                .Add("startedLocal", "Mar 20 09:00")
+                .Add("duration", "45m")
+                .Add("turnCount", 9)
+                .Add("totalTokens", 60));
+
+        for (var i = 2; i <= 11; i++) {
+            items.Add(new JsonObject()
+                .Add("label", "session-" + i.ToString("00"))
+                .Add("title", "Visible session " + i)
+                .Add("repository", "EvotecIT/IntelligenceX")
+                .Add("workspace", "IntelligenceX")
+                .Add("account", "work@evotec.pl")
+                .Add("startedLocal", "Mar 20 10:00")
+                .Add("duration", "12m")
+                .Add("turnCount", 2)
+                .Add("totalTokens", 5));
+        }
+
+        items.Add(new JsonObject()
+            .Add("label", "session-12")
+            .Add("title", "Visible session 12")
+            .Add("repository", "EvotecIT/IntelligenceX")
+            .Add("workspace", "IntelligenceX")
+            .Add("account", "work@evotec.pl")
+            .Add("startedLocal", "Mar 20 10:30")
+            .Add("duration", "14m")
+            .Add("turnCount", 3)
+            .Add("totalTokens", 10));
+        items.Add(new JsonObject()
+            .Add("label", "session-13")
+            .Add("title", "Hidden tail session")
+            .Add("repository", "EvotecIT/IntelligenceX")
+            .Add("workspace", "IntelligenceX")
+            .Add("account", "work@evotec.pl")
+            .Add("startedLocal", "Mar 20 11:00")
+            .Add("duration", "20m")
+            .Add("turnCount", 4)
+            .Add("totalTokens", 80));
+
+        var metadata = new JsonObject()
+            .Add("conversations", new JsonObject()
+                .Add("totalCount", 13)
+                .Add("shownCount", 13)
+                .Add("tokenTotal", 200)
+                .Add("turnCount", 36)
+                .Add("compactCount", 0)
+                .Add("items", items));
+        var overview = new UsageTelemetryOverviewDocument(
+            title: "Usage Overview",
+            subtitle: "Tray explorer",
+            metric: UsageSummaryMetric.TotalTokens,
+            units: "tokens",
+            summary: new UsageSummarySnapshot {
+                Metric = UsageSummaryMetric.TotalTokens,
+                StartDayUtc = new DateTime(2026, 03, 20),
+                EndDayUtc = new DateTime(2026, 03, 20),
+                TotalValue = 200m,
+                TotalDays = 1,
+                ActiveDays = 1,
+                PeakDayUtc = new DateTime(2026, 03, 20),
+                PeakValue = 200m
+            },
+            cards: Array.Empty<UsageTelemetryOverviewCard>(),
+            heatmaps: Array.Empty<UsageTelemetryOverviewHeatmap>(),
+            providerSections: Array.Empty<UsageTelemetryOverviewProviderSection>(),
+            metadata: metadata);
+
+        var html = UsageTelemetryOverviewHtmlRenderer.Render(overview);
+        AssertContainsText(html, "Top 12 cover 60% of conversation tokens", "overview conversation pulse visible coverage headline");
+        AssertContainsText(html, "50% of shown total", "overview conversation pulse row share uses displayed subset total");
+    }
+
     private static void TestUsageTelemetryBreakdownHtmlRendererUsesSharedAssets() {
         var heatmap = new HeatmapDocument(
             title: "By telemetry source",
