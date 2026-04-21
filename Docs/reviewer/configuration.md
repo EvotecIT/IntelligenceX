@@ -241,6 +241,9 @@ GitHub Actions input/env aliases:
 Use `agentProfiles` when you want named review backends that bundle provider, model, and auth/runtime settings.
 This keeps the IX prompt and output contract unchanged while letting you switch the backend that answers it.
 
+For backward compatibility, the loader also accepts `modelProfiles` and `authProfiles` as legacy aliases for
+`agentProfiles`, but new configs should prefer `agentProfiles`.
+
 ```json
 {
   "review": {

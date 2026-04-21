@@ -65,6 +65,15 @@
     "progressUpdates": true,
     "diagnostics": false,
     "preflight": false,
-    "preflightTimeoutSeconds": 15
+    "preflightTimeoutSeconds": 15,
+    "history": {
+      "enabled": true,
+      "includeIxSummaryHistory": true,
+      "includeReviewThreads": true,
+      "includeExternalBotSummaries": false,
+      "artifacts": true,
+      "maxRounds": 6,
+      "maxItems": 8
+    }
   }
 }

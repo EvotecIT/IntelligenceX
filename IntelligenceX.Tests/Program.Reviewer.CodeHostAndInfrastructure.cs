@@ -1192,7 +1192,7 @@ internal static partial class Program {
             WaitSeconds = 180
         };
 
-        AssertEqual(TimeSpan.FromSeconds(600), ReviewRunner.ResolveCopilotPromptTimeout(settings),
+        AssertEqual(TimeSpan.FromSeconds(600), ReviewRunner.ResolveCopilotReviewTimeout(settings),
             "copilot prompt timeout should use runner-safe minimum");
     }
 
@@ -1203,7 +1203,7 @@ internal static partial class Program {
             WaitSeconds = 600
         };
 
-        AssertEqual(TimeSpan.FromSeconds(600), ReviewRunner.ResolveCopilotPromptTimeout(settings),
+        AssertEqual(TimeSpan.FromSeconds(600), ReviewRunner.ResolveCopilotReviewTimeout(settings),
             "copilot prompt timeout should preserve larger explicit wait");
     }
 
@@ -1214,7 +1214,7 @@ internal static partial class Program {
             WaitSeconds = 180
         };
 
-        AssertEqual(TimeSpan.FromSeconds(600), ReviewRunner.ResolveCopilotCliReviewTimeout(settings),
+        AssertEqual(TimeSpan.FromSeconds(600), ReviewRunner.ResolveCopilotReviewTimeout(settings),
             "copilot cli session timeout should use runner-safe minimum");
     }
 
@@ -1225,7 +1225,7 @@ internal static partial class Program {
             WaitSeconds = 900
         };
 
-        AssertEqual(TimeSpan.FromSeconds(900), ReviewRunner.ResolveCopilotCliReviewTimeout(settings),
+        AssertEqual(TimeSpan.FromSeconds(900), ReviewRunner.ResolveCopilotReviewTimeout(settings),
             "copilot cli session timeout should preserve larger explicit wait");
     }
 
@@ -1262,18 +1262,15 @@ internal static partial class Program {
             "copilot prompt write failures should trigger session fallback");
     }
 
-    private static void TestCopilotPromptModeAllowsOversizedPromptsViaStdin() {
+    private static void TestCopilotPromptModeSelectionUsesCliUrlOnly() {
         var settings = new ReviewSettings();
-        var safePrompt = new string('a', 1024);
-        var oversizedPrompt = new string('b', 24_001);
-
-        AssertEqual(true, ReviewRunner.ShouldUseCopilotPromptModeForTests(settings, safePrompt),
-            "copilot prompt mode should allow normal prompt sizes");
-        AssertEqual(true, ReviewRunner.ShouldUseCopilotPromptModeForTests(settings, oversizedPrompt),
-            "copilot prompt mode should allow oversized prompts via stdin");
+        AssertEqual(true, ReviewRunner.ShouldUseCopilotPromptModeForTests(settings),
+            "copilot prompt mode should stay enabled when cliUrl is absent");
+        AssertEqual(true, ReviewRunner.ShouldUseCopilotPromptModeForTests(settings),
+            "copilot prompt mode should not inspect prompt size");
 
         settings.CopilotCliUrl = "http://localhost:4141";
-        AssertEqual(false, ReviewRunner.ShouldUseCopilotPromptModeForTests(settings, safePrompt),
+        AssertEqual(false, ReviewRunner.ShouldUseCopilotPromptModeForTests(settings),
             "copilot prompt mode should be disabled when cliUrl is configured");
     }
 

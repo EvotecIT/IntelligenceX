@@ -737,8 +737,8 @@ internal static partial class Program {
             TestCopilotCliSessionTimeoutHonorsHigherExplicitWait);
         failed += Run("Copilot prompt failure falls back for timeout and prompt errors",
             TestCopilotPromptFailureFallsBackForTimeoutAndPromptErrors);
-        failed += Run("Copilot prompt mode allows oversized prompts via stdin",
-            TestCopilotPromptModeAllowsOversizedPromptsViaStdin);
+        failed += Run("Copilot prompt mode selection uses cliUrl only",
+            TestCopilotPromptModeSelectionUsesCliUrlOnly);
         failed += Run("Copilot CLI session requires idle signal for completion",
             TestCopilotCliSessionRequiresIdleSignalForCompletion);
         failed += Run("Copilot prompt start failure keeps cause details",

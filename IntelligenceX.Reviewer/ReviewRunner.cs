@@ -489,12 +489,7 @@ internal sealed partial class ReviewRunner {
         return settings.Model.Trim();
     }
 
-    internal static TimeSpan ResolveCopilotPromptTimeout(ReviewSettings settings) {
-        var configuredSeconds = Math.Max(1, settings.WaitSeconds);
-        return TimeSpan.FromSeconds(Math.Max(configuredSeconds, MinimumCopilotCliReviewWaitSeconds));
-    }
-
-    internal static TimeSpan ResolveCopilotCliReviewTimeout(ReviewSettings settings) {
+    internal static TimeSpan ResolveCopilotReviewTimeout(ReviewSettings settings) {
         var configuredSeconds = Math.Max(1, settings.WaitSeconds);
         return TimeSpan.FromSeconds(Math.Max(configuredSeconds, MinimumCopilotCliReviewWaitSeconds));
     }
@@ -523,7 +518,7 @@ internal sealed partial class ReviewRunner {
         if (_settings.CopilotTransport == CopilotTransportKind.Direct) {
             return await RunCopilotDirectAsync(prompt, cancellationToken).ConfigureAwait(false);
         }
-        if (ShouldUseCopilotPromptMode(_settings, prompt)) {
+        if (ShouldUseCopilotPromptMode(_settings)) {
             try {
                 return await RunCopilotPromptAsync(prompt, onPartial, cancellationToken).ConfigureAwait(false);
             } catch (Exception ex) when (!cancellationToken.IsCancellationRequested &&
@@ -632,7 +627,7 @@ internal sealed partial class ReviewRunner {
 
         await session.SendAsync(new CopilotMessageOptions { Prompt = prompt }, cancellationToken).ConfigureAwait(false);
 
-        var timeoutWindow = ResolveCopilotCliReviewTimeout(_settings);
+        var timeoutWindow = ResolveCopilotReviewTimeout(_settings);
         if (_settings.Diagnostics && timeoutWindow.TotalSeconds > Math.Max(1, _settings.WaitSeconds)) {
             Console.Error.WriteLine(
                 $"Copilot CLI session timeout raised from {_settings.WaitSeconds}s to {timeoutWindow.TotalSeconds:0}s to cover reviewer-scale runs.");
@@ -662,7 +657,7 @@ internal sealed partial class ReviewRunner {
         CancellationToken cancellationToken) {
         var options = BuildCopilotClientOptions(out var launcherDiagnostic);
         var client = new ReviewerCopilotPromptRunner(options);
-        var timeout = ResolveCopilotPromptTimeout(_settings);
+        var timeout = ResolveCopilotReviewTimeout(_settings);
         if (_settings.Diagnostics) {
             Console.Error.WriteLine("Copilot review execution mode: prompt.");
             if (timeout.TotalSeconds > Math.Max(1, _settings.WaitSeconds)) {
@@ -688,18 +683,15 @@ internal sealed partial class ReviewRunner {
         }
     }
 
-    private static bool ShouldUseCopilotPromptMode(ReviewSettings settings) =>
-        ShouldUseCopilotPromptMode(settings, prompt: null);
-
-    private static bool ShouldUseCopilotPromptMode(ReviewSettings settings, string? prompt) {
+    private static bool ShouldUseCopilotPromptMode(ReviewSettings settings) {
         if (!string.IsNullOrWhiteSpace(settings.CopilotCliUrl)) {
             return false;
         }
         return true;
     }
 
-    internal static bool ShouldUseCopilotPromptModeForTests(ReviewSettings settings, string? prompt) =>
-        ShouldUseCopilotPromptMode(settings, prompt);
+    internal static bool ShouldUseCopilotPromptModeForTests(ReviewSettings settings) =>
+        ShouldUseCopilotPromptMode(settings);
 
     internal static TimeSpan ResolveCopilotCliSessionCompletionInactivity(ReviewSettings settings) {
         return TimeSpan.FromSeconds(Math.Max(5, settings.IdleSeconds));
