@@ -710,6 +710,50 @@ internal static partial class Program {
             "review history latest same-head block resolved stale finding");
     }
 
+    private static void TestReviewHistoryBuilderDoesNotResolveAcrossDifferentHeads() {
+        var settings = new ReviewSettings();
+        settings.History.Enabled = true;
+
+        var olderHeadBody = string.Join("\n", new[] {
+            ReviewFormatter.SummaryMarker,
+            "## IntelligenceX Review",
+            $"Reviewed commit: `abc1234`",
+            "",
+            "## Todo List ✅",
+            "- [ ] Retry the alternate transport.",
+            "",
+            "## Critical Issues ⚠️",
+            "None."
+        });
+        var newerHeadBody = string.Join("\n", new[] {
+            ReviewFormatter.SummaryMarker,
+            "## IntelligenceX Review",
+            $"Reviewed commit: `def5678`",
+            "",
+            "## Todo List ✅",
+            "None.",
+            "",
+            "## Critical Issues ⚠️",
+            "None."
+        });
+        var issueComments = new[] {
+            new IssueComment(20, newerHeadBody, "intelligencex-review"),
+            new IssueComment(10, olderHeadBody, "intelligencex-review")
+        };
+
+        var snapshot = ReviewHistoryBuilder.BuildSnapshot(issueComments, "def5678", Array.Empty<PullRequestReviewThread>(), settings);
+        var block = ReviewHistoryBuilder.BuildCommentBlock(snapshot);
+
+        AssertEqual(0, snapshot.OpenFindings.Count, "review history cross-head snapshot has no current same-head open findings");
+        AssertEqual(0, snapshot.ResolvedSinceLastRound.Count,
+            "review history cross-head snapshot does not mark disappeared finding resolved");
+        AssertContainsText(block, "Open on current head: none.", "review history cross-head block no open findings");
+        AssertContainsText(block, "Resolved since last round: none newly resolved.",
+            "review history cross-head block no resolved findings");
+        AssertDoesNotContainText(block, "Retry the alternate transport.",
+            "review history cross-head block does not surface prior-head finding as resolved");
+    }
+
     private static void TestReviewSummaryStabilityDropsHistoryProgressBlock() {
         var context = BuildContext();
         var settings = new ReviewSettings {

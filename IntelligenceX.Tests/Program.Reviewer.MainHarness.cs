@@ -810,6 +810,8 @@ internal static partial class Program {
         failed += Run("Review history builder builds comment block", TestReviewHistoryBuilderBuildsCommentBlock);
         failed += Run("Review history builder uses latest same-head round",
             TestReviewHistoryBuilderUsesLatestSameHeadRound);
+        failed += Run("Review history builder does not resolve across different heads",
+            TestReviewHistoryBuilderDoesNotResolveAcrossDifferentHeads);
         failed += Run("Review summary stability drops history progress block",
             TestReviewSummaryStabilityDropsHistoryProgressBlock);
         failed += Run("Review history artifacts render json and markdown",
