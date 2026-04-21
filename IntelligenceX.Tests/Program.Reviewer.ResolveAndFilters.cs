@@ -924,6 +924,8 @@ internal static partial class Program {
     private static void TestReviewHistoryBuilderDoesNotResolveWhenLatestSameHeadBlockersAreUnparseable() {
         var settings = new ReviewSettings();
         settings.History.Enabled = true;
+        settings.MergeBlockerRequireSectionMatch = true;
+        settings.MergeBlockerRequireAllSections = true;
 
         var olderBody = string.Join("\n", new[] {
             ReviewFormatter.SummaryMarker,
@@ -941,16 +943,19 @@ internal static partial class Program {
             "## IntelligenceX Review",
             "Reviewed commit: `abc1234`",
             "",
-            "## Todo List ✅",
-            "Blockers remain but the checklist formatting is malformed.",
-            "",
-            "## Critical Issues ⚠️",
-            "None."
+            "## Todo-ish Notes",
+            "- [ ] Blockers remain but the expected merge-blocker section header is malformed."
         });
         var issueComments = new[] {
             new IssueComment(20, newerBody, "intelligencex-review"),
             new IssueComment(10, olderBody, "intelligencex-review")
         };
+        var extracted = ReviewSummaryParser.ExtractMergeBlockerFindings(newerBody, settings, settings.History.MaxItems);
+
+        AssertTrue(ReviewSummaryParser.HasMergeBlockers(newerBody, settings),
+            "review history unparseable same-head latest summary still reports merge blockers");
+        AssertEqual(0, extracted.Count,
+            "review history unparseable same-head latest summary yields no normalized findings");
 
         var snapshot = ReviewHistoryBuilder.BuildSnapshot(issueComments, "abc1234", Array.Empty<PullRequestReviewThread>(), settings);
         var block = ReviewHistoryBuilder.BuildCommentBlock(snapshot);
