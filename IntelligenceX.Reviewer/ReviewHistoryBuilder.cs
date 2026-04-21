@@ -159,10 +159,18 @@ internal static class ReviewHistoryBuilder {
 
         var latestSameHeadRound = FindLatestSameHeadRound(rounds);
         if (latestSameHeadRound is not null) {
+            var seenFingerprints = new HashSet<string>(StringComparer.Ordinal);
             foreach (var state in latestSameHeadRound.Findings) {
-                if (string.Equals(state.Status, "open", StringComparison.OrdinalIgnoreCase)) {
-                    openFindings.Add(state);
+                if (!string.Equals(state.Status, "open", StringComparison.OrdinalIgnoreCase)) {
+                    continue;
                 }
+
+                if (!string.IsNullOrWhiteSpace(state.Fingerprint) &&
+                    !seenFingerprints.Add(state.Fingerprint)) {
+                    continue;
+                }
+
+                openFindings.Add(state);
             }
         }
 
@@ -232,7 +240,8 @@ internal static class ReviewHistoryBuilder {
             }
 
             if (!latestFindings.TryGetValue(finding.Fingerprint, out var latestFinding)) {
-                if (RoundsShareReviewedHead(previousRound, latestRound)) {
+                if (RoundsShareReviewedHead(previousRound, latestRound) &&
+                    !latestRound.FindingsHitLimit) {
                     resolvedSinceLastRound.Add(new ReviewHistoryFinding {
                         Fingerprint = finding.Fingerprint,
                         Section = finding.Section,
@@ -295,6 +304,7 @@ internal static class ReviewHistoryBuilder {
                                 currentHeadSha.StartsWith(reviewedCommit!, StringComparison.OrdinalIgnoreCase),
             HasMergeBlockers = hasMergeBlockers,
             MergeBlockerStatus = mergeBlockerStatus,
+            FindingsHitLimit = findings.Count >= settings.History.MaxItems,
             Findings = ConvertFindings(findings)
         };
     }
