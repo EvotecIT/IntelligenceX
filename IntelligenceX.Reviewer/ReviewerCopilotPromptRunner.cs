@@ -101,7 +101,7 @@ internal sealed class ReviewerCopilotPromptRunner {
             return string.Empty;
         }
 
-        return HasNonJsonTextOutsideObjects(stdout) ? trimmed : string.Empty;
+        return parsed.HasNonJsonText ? trimmed : string.Empty;
     }
 
     private static async Task<CopilotPromptProcessResult> RunProcessAsync(ProcessStartInfo startInfo,
@@ -381,32 +381,45 @@ internal sealed class ReviewerCopilotPromptRunner {
         string? usage = null;
         var jsonObjectCount = 0;
         var parseErrorCount = 0;
+        var hasNonJsonText = false;
 
-        foreach (var obj in ParseJsonObjects(stdout, out parseErrorCount)) {
-            jsonObjectCount++;
-
-            var type = obj.GetString("type");
-            var data = obj.GetObject("data");
-            if (string.Equals(type, "assistant.message", StringComparison.Ordinal) && data is not null) {
-                var content = data.GetString("content");
-                if (!string.IsNullOrWhiteSpace(content)) {
-                    finalMessage = content;
+        foreach (var line in EnumerateOutputLines(stdout)) {
+            if (!TryParseJsonObjectStreamLine(line, out var objects, out var malformedJson)) {
+                if (malformedJson) {
+                    parseErrorCount++;
+                } else {
+                    hasNonJsonText = true;
                 }
                 continue;
             }
-            if (string.Equals(type, "assistant.message_delta", StringComparison.Ordinal) && data is not null) {
-                var delta = data.GetString("deltaContent") ?? data.GetString("content");
-                if (!string.IsNullOrWhiteSpace(delta)) {
-                    response.Append(delta);
+
+            foreach (var obj in objects) {
+                jsonObjectCount++;
+
+                var type = obj.GetString("type");
+                var data = obj.GetObject("data");
+                if (string.Equals(type, "assistant.message", StringComparison.Ordinal) && data is not null) {
+                    var content = data.GetString("content");
+                    if (!string.IsNullOrWhiteSpace(content)) {
+                        finalMessage = content;
+                    }
+                    continue;
                 }
-                continue;
-            }
-            if (string.Equals(type, "result", StringComparison.Ordinal)) {
-                usage = BuildUsageSummary(obj.GetObject("usage"));
+                if (string.Equals(type, "assistant.message_delta", StringComparison.Ordinal) && data is not null) {
+                    var delta = data.GetString("deltaContent") ?? data.GetString("content");
+                    if (!string.IsNullOrWhiteSpace(delta)) {
+                        response.Append(delta);
+                    }
+                    continue;
+                }
+                if (string.Equals(type, "result", StringComparison.Ordinal)) {
+                    usage = BuildUsageSummary(obj.GetObject("usage"));
+                }
             }
         }
 
-        return new ParsedCopilotPromptOutput(finalMessage ?? response.ToString(), usage, jsonObjectCount, parseErrorCount);
+        return new ParsedCopilotPromptOutput(finalMessage ?? response.ToString(), usage, jsonObjectCount,
+            parseErrorCount, hasNonJsonText);
     }
 
     internal static ReviewerCopilotPromptResult ParseJsonLinesForTests(string stdout) {
@@ -745,53 +758,37 @@ internal sealed class ReviewerCopilotPromptRunner {
         }
     }
 
-    private static IReadOnlyList<JsonObject> ParseJsonObjects(string text, out int parseErrorCount) {
-        parseErrorCount = 0;
-        var results = new List<JsonObject>();
+    private static IEnumerable<string> EnumerateOutputLines(string text) {
         if (string.IsNullOrWhiteSpace(text)) {
-            return results;
+            yield break;
         }
 
-        var span = text.AsSpan();
-        var index = 0;
-        while (index < span.Length) {
-            while (index < span.Length && span[index] != '{') {
-                index++;
+        foreach (var rawLine in text.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n')) {
+            var line = rawLine.Trim();
+            if (!string.IsNullOrWhiteSpace(line)) {
+                yield return line;
             }
-            if (index >= span.Length) {
-                break;
-            }
-
-            var start = index;
-            if (!TryFindJsonObjectEnd(span, start, out var end)) {
-                parseErrorCount++;
-                break;
-            }
-
-            var candidate = text.Substring(start, end - start + 1);
-            JsonObject? obj = null;
-            try {
-                obj = JsonLite.Parse(candidate).AsObject();
-            } catch {
-                parseErrorCount++;
-            }
-
-            if (obj is not null) {
-                results.Add(obj);
-            }
-
-            index = end + 1;
         }
-
-        return results;
     }
 
-    private static bool HasNonJsonTextOutsideObjects(string text) {
-        if (string.IsNullOrWhiteSpace(text)) {
+    private static bool TryParseJsonObjectStreamLine(string line, out IReadOnlyList<JsonObject> objects,
+        out bool malformedJson) {
+        malformedJson = false;
+        objects = Array.Empty<JsonObject>();
+        if (string.IsNullOrWhiteSpace(line)) {
+            return true;
+        }
+
+        var trimmed = line.Trim();
+        if (trimmed.Length == 0) {
+            return true;
+        }
+        if (trimmed[0] != '{') {
             return false;
         }
 
-        var span = text.AsSpan();
+        var results = new List<JsonObject>();
+        var span = trimmed.AsSpan();
         var index = 0;
         while (index < span.Length) {
             while (index < span.Length && char.IsWhiteSpace(span[index])) {
@@ -800,19 +797,39 @@ internal sealed class ReviewerCopilotPromptRunner {
             if (index >= span.Length) {
                 break;
             }
-
-            if (span[index] != '{') {
-                return true;
-            }
-
-            if (!TryFindJsonObjectEnd(span, index, out var end)) {
+            if (span[index] != '{' || !TryFindJsonObjectEnd(span, index, out var end)) {
+                malformedJson = true;
                 return false;
             }
 
+            var candidate = trimmed.Substring(index, end - index + 1);
+            JsonObject? obj;
+            try {
+                obj = JsonLite.Parse(candidate).AsObject();
+            } catch {
+                malformedJson = true;
+                return false;
+            }
+
+            if (obj is null) {
+                malformedJson = true;
+                return false;
+            }
+
+            results.Add(obj);
             index = end + 1;
+
+            while (index < span.Length && char.IsWhiteSpace(span[index])) {
+                index++;
+            }
+            if (index < span.Length && span[index] != '{') {
+                malformedJson = true;
+                return false;
+            }
         }
 
-        return false;
+        objects = results;
+        return true;
     }
 
     private static bool TryFindJsonObjectEnd(ReadOnlySpan<char> span, int start, out int end) {
@@ -864,4 +881,4 @@ internal sealed record ReviewerCopilotPromptResult(string Response, string? Usag
 
 internal sealed record CopilotPromptProcessResult(int ExitCode, string Stdout, string Stderr);
 internal sealed record ParsedCopilotPromptOutput(string Response, string? UsageSummary, int JsonObjectCount,
-    int ParseErrorCount);
+    int ParseErrorCount, bool HasNonJsonText);

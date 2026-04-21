@@ -693,12 +693,16 @@ internal static partial class Program {
         failed += Run("Copilot prompt runner parses JSON output", TestCopilotPromptRunnerParsesJsonOutput);
         failed += Run("Copilot prompt runner parses concatenated JSON output",
             TestCopilotPromptRunnerParsesConcatenatedJsonOutput);
+        failed += Run("Copilot prompt runner falls back to stdout when JSON shares a line with noise",
+            TestCopilotPromptRunnerFallsBackToStdoutWhenJsonSharesLineWithNoise);
         failed += Run("Copilot prompt runner falls back to stdout when JSON is valid but no assistant message was parsed",
             TestCopilotPromptRunnerFallsBackToStdoutWhenJsonIsValidButNoAssistantMessageWasParsed);
         failed += Run("Copilot prompt runner rejects malformed JSON without assistant message",
             TestCopilotPromptRunnerRejectsMalformedJsonWithoutAssistantMessage);
         failed += Run("Copilot prompt runner falls back to stdout when brace noise prevents JSON parsing",
             TestCopilotPromptRunnerFallsBackToStdoutWhenBraceNoisePreventsJsonParsing);
+        failed += Run("Copilot prompt runner ignores brace noise before a valid JSON line",
+            TestCopilotPromptRunnerIgnoresBraceNoiseBeforeValidJsonLine);
         failed += Run("Copilot prompt runner does not treat JSON warnings as review content",
             TestCopilotPromptRunnerDoesNotTreatJsonWarningsAsReviewContent);
         failed += Run("Copilot prompt runner builds MCP-disabled args",

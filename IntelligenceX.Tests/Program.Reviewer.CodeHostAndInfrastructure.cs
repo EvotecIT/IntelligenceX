@@ -1393,13 +1393,28 @@ internal static partial class Program {
 
     private static void TestCopilotPromptRunnerParsesConcatenatedJsonOutput() {
         var output =
-            """prefix noise {"type":"assistant.message_delta","data":{"deltaContent":"Hel"}}{"type":"assistant.message","data":{"content":"## Summary\n\nFinal review"}}{"type":"result","usage":{"premiumRequests":1}} trailing noise""";
+            """{"type":"assistant.message_delta","data":{"deltaContent":"Hel"}}{"type":"assistant.message","data":{"content":"## Summary\n\nFinal review"}}{"type":"result","usage":{"premiumRequests":1}}""";
 
         var result = ReviewerCopilotPromptRunner.ParseJsonLinesForTests(output);
 
         AssertEqual("## Summary\n\nFinal review", result.Response, "copilot prompt concatenated final message");
         AssertContainsText(result.UsageSummary ?? string.Empty, "premium requests: 1",
             "copilot prompt concatenated usage");
+    }
+
+    private static void TestCopilotPromptRunnerFallsBackToStdoutWhenJsonSharesLineWithNoise() {
+        var output =
+            """prefix noise {"type":"assistant.message","data":{"content":"Should stay embedded"}} trailing noise""";
+
+        var accepted = ReviewerCopilotPromptRunner.TryBuildSuccessfulResultForTests(
+            0,
+            output,
+            string.Empty,
+            out var result);
+
+        AssertEqual(true, accepted, "copilot prompt accepts mixed stdout line as plain text");
+        AssertEqual(output, result?.Response ?? string.Empty,
+            "copilot prompt should preserve mixed stdout instead of extracting embedded JSON");
     }
 
     private static void TestCopilotPromptRunnerFallsBackToStdoutWhenJsonIsValidButNoAssistantMessageWasParsed() {
@@ -1456,6 +1471,26 @@ Please keep the review text as plain stdout.
             "copilot prompt keeps prose when brace noise appears");
         AssertContainsText(result?.Response ?? string.Empty, "Compatibility note:",
             "copilot prompt preserves malformed brace snippet in stdout fallback");
+    }
+
+    private static void TestCopilotPromptRunnerIgnoresBraceNoiseBeforeValidJsonLine() {
+        var output = """
+Compatibility note: {not actually json
+{"type":"assistant.message","data":{"content":"Final review"}}
+{"type":"result","usage":{"premiumRequests":1}}
+""";
+
+        var accepted = ReviewerCopilotPromptRunner.TryBuildSuccessfulResultForTests(
+            0,
+            output,
+            string.Empty,
+            out var result);
+
+        AssertEqual(true, accepted, "copilot prompt accepts valid JSON after prose noise");
+        AssertEqual("Final review", result?.Response ?? string.Empty,
+            "copilot prompt should prefer assistant message from valid JSON line");
+        AssertContainsText(result?.UsageSummary ?? string.Empty, "premium requests: 1",
+            "copilot prompt keeps usage from valid JSON line");
     }
 
     private static void TestCopilotPromptRunnerDoesNotTreatJsonWarningsAsReviewContent() {
