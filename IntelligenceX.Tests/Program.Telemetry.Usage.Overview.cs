@@ -695,18 +695,31 @@ internal static partial class Program {
                 .Add("duration", "1h 05m")
                 .Add("activeDuration", "4m 12s")
                 .Add("turnCount", 7)
-                .Add("compactCount", 2)
                 .Add("totalTokens", 12_345_678)
+                .Add("models", new JsonArray().Add("gpt-5.4"))
+                .Add("surfaces", new JsonArray().Add("cli")))
+            .Add(new JsonObject()
+                .Add("label", "session-b")
+                .Add("title", "Compact-heavy follow-up")
+                .Add("repository", "EvotecIT/IntelligenceX")
+                .Add("workspace", "IntelligenceX")
+                .Add("account", "work@evotec.pl")
+                .Add("startedLocal", "Mar 18 16:00")
+                .Add("duration", "18m")
+                .Add("activeDuration", "5m")
+                .Add("turnCount", 4)
+                .Add("compactCount", 2)
+                .Add("totalTokens", 2_500_000)
                 .Add("apiEquivalentCostUsd", 12.34d)
                 .Add("costApproximate", true)
                 .Add("models", new JsonArray().Add("gpt-5.4"))
                 .Add("surfaces", new JsonArray().Add("cli")));
         var metadata = new JsonObject()
             .Add("conversations", new JsonObject()
-                .Add("totalCount", 1)
-                .Add("shownCount", 1)
-                .Add("tokenTotal", 12_345_678)
-                .Add("turnCount", 7)
+                .Add("totalCount", 2)
+                .Add("shownCount", 2)
+                .Add("tokenTotal", 14_845_678)
+                .Add("turnCount", 11)
                 .Add("compactCount", 2)
                 .Add("items", items));
         var overview = new UsageTelemetryOverviewDocument(
@@ -758,6 +771,9 @@ internal static partial class Program {
         AssertContainsText(html, "data-conversation-context-list", "overview conversation pulse context breakdown");
         AssertContainsText(html, "data-conversation-context-lens=\"cost\"", "overview conversation pulse context cost lens");
         AssertContainsText(html, "Context Breakdown", "overview conversation pulse context breakdown title");
+        AssertContainsText(html, "data-detail-active", "overview conversation pulse detail active metric shell");
+        AssertContainsText(html, "data-detail-compacts", "overview conversation pulse detail compact metric shell");
+        AssertContainsText(html, "data-detail-cost", "overview conversation pulse detail cost metric shell");
     }
 
     private static void TestUsageTelemetryBreakdownHtmlRendererUsesSharedAssets() {

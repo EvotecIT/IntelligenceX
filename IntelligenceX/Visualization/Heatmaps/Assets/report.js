@@ -318,9 +318,7 @@
       }
     }
     if (ixConversationState.context) {
-      const context = ((button.getAttribute('data-detail-repository') || '')
-        || (button.getAttribute('data-detail-workspace') || '')
-        || (button.getAttribute('data-detail-context') || '')).trim().toLowerCase();
+      const context = ixConversationContextLabel(button).trim().toLowerCase();
       if (context !== ixConversationState.context.toLowerCase()) {
         return false;
       }

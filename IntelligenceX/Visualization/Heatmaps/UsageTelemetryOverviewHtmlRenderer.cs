@@ -280,16 +280,16 @@ internal static class UsageTelemetryOverviewHtmlRenderer {
         sb.AppendLine("              <div class=\"conversation-filter-group\">");
         sb.AppendLine("                <div class=\"conversation-filter-label\">Quick filters</div>");
         sb.AppendLine("                <div class=\"conversation-filter-chips\">");
-        AppendConversationFilterChip(sb, "named", "Named only", "named", true);
-        AppendConversationFilterChip(sb, "named", "Unnamed only", "unnamed", false);
+        AppendConversationFilterChip(sb, "named", "Named only", "named");
+        AppendConversationFilterChip(sb, "named", "Unnamed only", "unnamed");
         sb.AppendLine("                </div>");
         sb.AppendLine("              </div>");
         sb.AppendLine("              <div class=\"conversation-filter-group\">");
         sb.AppendLine("                <div class=\"conversation-filter-label\">Session signals</div>");
         sb.AppendLine("                <div class=\"conversation-filter-chips\">");
-        AppendConversationFilterChip(sb, "profile", "Bursty", "bursty", false);
-        AppendConversationFilterChip(sb, "profile", "Marathon", "marathon", false);
-        AppendConversationFilterChip(sb, "profile", "Compact-heavy", "compact-heavy", false);
+        AppendConversationFilterChip(sb, "profile", "Bursty", "bursty");
+        AppendConversationFilterChip(sb, "profile", "Marathon", "marathon");
+        AppendConversationFilterChip(sb, "profile", "Compact-heavy", "compact-heavy");
         sb.AppendLine("                </div>");
         sb.AppendLine("              </div>");
         if (topAccounts.Length > 0) {
@@ -297,7 +297,7 @@ internal static class UsageTelemetryOverviewHtmlRenderer {
             sb.AppendLine("                <div class=\"conversation-filter-label\">Accounts</div>");
             sb.AppendLine("                <div class=\"conversation-filter-chips\">");
             foreach (var account in topAccounts) {
-                AppendConversationFilterChip(sb, "account", account, account, false);
+                AppendConversationFilterChip(sb, "account", account, account);
             }
             sb.AppendLine("                </div>");
             sb.AppendLine("              </div>");
@@ -307,7 +307,7 @@ internal static class UsageTelemetryOverviewHtmlRenderer {
             sb.AppendLine("                <div class=\"conversation-filter-label\">Repos and workspaces</div>");
             sb.AppendLine("                <div class=\"conversation-filter-chips\">");
             foreach (var context in topContexts) {
-                AppendConversationFilterChip(sb, "context", context, context, false);
+                AppendConversationFilterChip(sb, "context", context, context);
             }
             sb.AppendLine("                </div>");
             sb.AppendLine("              </div>");
@@ -315,16 +315,12 @@ internal static class UsageTelemetryOverviewHtmlRenderer {
         sb.AppendLine("            </div>");
     }
 
-    private static void AppendConversationFilterChip(StringBuilder sb, string group, string label, string value, bool isNegated) {
+    private static void AppendConversationFilterChip(StringBuilder sb, string group, string label, string value) {
         sb.Append("                  <button type=\"button\" class=\"conversation-filter-chip\" data-conversation-filter-group=\"")
             .Append(Html(group))
             .Append("\" data-conversation-filter-value=\"")
             .Append(Html(value))
-            .Append("\"");
-        if (isNegated) {
-            sb.Append(" data-conversation-filter-negated=\"true\"");
-        }
-        sb.Append(">")
+            .Append("\">")
             .Append(Html(label))
             .AppendLine("</button>");
     }
@@ -433,14 +429,10 @@ internal static class UsageTelemetryOverviewHtmlRenderer {
     }
 
     private static void AppendConversationDetailMetric(StringBuilder sb, string label, string? value, string valueAttribute) {
-        if (string.IsNullOrWhiteSpace(value)) {
-            return;
-        }
-
         sb.AppendLine("                  <div class=\"conversation-detail-metric\">");
         sb.Append("                    <div class=\"conversation-detail-label\">").Append(Html(label)).AppendLine("</div>");
         sb.Append("                    <div class=\"conversation-detail-value\" ").Append(valueAttribute).Append(">")
-            .Append(Html(value!))
+            .Append(Html(value ?? "n/a"))
             .AppendLine("</div>");
         sb.AppendLine("                  </div>");
     }

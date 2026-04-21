@@ -18,6 +18,10 @@ public partial class TrayPopupWindow : Window {
     private const double MaximumPopupWidth = 560;
     private const double MinimumPopupHeight = 640;
     private const double MaximumPopupHeight = 840;
+    private const int MaxExportPixelWidth = 8192;
+    private const int MaxExportPixelHeight = 32768;
+    private const long MaxExportPixelCount = 40_000_000;
+    private const double MinExportScale = 0.2d;
 
     private bool _isPrimed;
     private DateTimeOffset _suppressDeactivateUntilUtc;
@@ -253,13 +257,26 @@ public partial class TrayPopupWindow : Window {
         }
 
         var dpi = VisualTreeHelper.GetDpi(element);
-        var pixelWidth = Math.Max(1, (int)Math.Ceiling(width * dpi.DpiScaleX));
-        var pixelHeight = Math.Max(1, (int)Math.Ceiling(height * dpi.DpiScaleY));
+        var exportScale = 1d;
+        exportScale = Math.Min(exportScale, MaxExportPixelWidth / Math.Max(1d, width * dpi.DpiScaleX));
+        exportScale = Math.Min(exportScale, MaxExportPixelHeight / Math.Max(1d, height * dpi.DpiScaleY));
+
+        var nativePixelCount = width * dpi.DpiScaleX * height * dpi.DpiScaleY;
+        if (nativePixelCount > MaxExportPixelCount) {
+            exportScale = Math.Min(exportScale, Math.Sqrt(MaxExportPixelCount / nativePixelCount));
+        }
+
+        if (exportScale < MinExportScale) {
+            throw new InvalidOperationException("The selected content is too large to export safely as a single PNG.");
+        }
+
+        var pixelWidth = Math.Max(1, (int)Math.Ceiling(width * dpi.DpiScaleX * exportScale));
+        var pixelHeight = Math.Max(1, (int)Math.Ceiling(height * dpi.DpiScaleY * exportScale));
         var bitmap = new RenderTargetBitmap(
             pixelWidth,
             pixelHeight,
-            96d * dpi.DpiScaleX,
-            96d * dpi.DpiScaleY,
+            96d * dpi.DpiScaleX * exportScale,
+            96d * dpi.DpiScaleY * exportScale,
             PixelFormats.Pbgra32);
 
         var visual = new DrawingVisual();

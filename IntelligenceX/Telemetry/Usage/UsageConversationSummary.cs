@@ -50,8 +50,19 @@ internal static class UsageConversationSummaryBuilder {
     }
 
     private static UsageConversationSummary BuildSummary(string key, IReadOnlyList<UsageEventRecord> records) {
-        var first = records.OrderBy(static item => item.TimestampUtc).First();
-        var last = records.OrderByDescending(static item => item.TimestampUtc).First();
+        var first = records[0];
+        var last = records[0];
+        for (var i = 1; i < records.Count; i++) {
+            var record = records[i];
+            if (record.TimestampUtc < first.TimestampUtc) {
+                first = record;
+            }
+
+            if (record.TimestampUtc > last.TimestampUtc) {
+                last = record;
+            }
+        }
+
         var totalDurationMs = records.Sum(static item => item.DurationMs ?? 0L);
         var activeDuration = TimeSpan.FromMilliseconds(Math.Max(0L, totalDurationMs));
         var wallDuration = last.TimestampUtc - first.TimestampUtc;
@@ -166,7 +177,10 @@ internal static class UsageConversationSummaryBuilder {
             return null;
         }
 
-        var name = Path.GetFileName(trimmed);
+        var separatorIndex = trimmed.LastIndexOfAny(new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar, '/', '\\' });
+        var name = separatorIndex >= 0 && separatorIndex + 1 < trimmed.Length
+            ? trimmed.Substring(separatorIndex + 1)
+            : trimmed;
         return NormalizeOptional(name) ?? trimmed;
     }
 }
