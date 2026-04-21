@@ -302,6 +302,23 @@ internal static partial class Program {
         }
     }
 
+    private static void TestReviewSettingsEmptyInputFallsBackToEnvOverride() {
+        var previousInputHistoryEnabled = Environment.GetEnvironmentVariable("INPUT_HISTORY_ENABLED");
+        var previousHistoryEnabled = Environment.GetEnvironmentVariable("REVIEW_HISTORY_ENABLED");
+        try {
+            Environment.SetEnvironmentVariable("INPUT_HISTORY_ENABLED", string.Empty);
+            Environment.SetEnvironmentVariable("REVIEW_HISTORY_ENABLED", "false");
+
+            var settings = ReviewSettings.FromEnvironment();
+
+            AssertEqual(false, settings.History.Enabled,
+                "review settings empty input falls back to env override");
+        } finally {
+            Environment.SetEnvironmentVariable("INPUT_HISTORY_ENABLED", previousInputHistoryEnabled);
+            Environment.SetEnvironmentVariable("REVIEW_HISTORY_ENABLED", previousHistoryEnabled);
+        }
+    }
+
     private static void TestReviewSettingsLoadSwarmReviewerObjects() {
         var previousConfigPath = Environment.GetEnvironmentVariable("REVIEW_CONFIG_PATH");
         var configPath = Path.Combine(Path.GetTempPath(), $"intelligencex-review-swarm-objects-{Guid.NewGuid():N}.json");
@@ -359,6 +376,265 @@ internal static partial class Program {
                 "review settings swarm object aggregatorModel sync");
             AssertEqual(ReasoningEffort.Medium, settings.Swarm.Aggregator.ReasoningEffort ?? ReasoningEffort.Low,
                 "review settings swarm object aggregator reasoning effort");
+        } finally {
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", previousConfigPath);
+            if (File.Exists(configPath)) {
+                File.Delete(configPath);
+            }
+        }
+    }
+
+    private static void TestReviewSettingsAgentProfileSelectsAuthenticatorAndModel() {
+        var previousConfigPath = Environment.GetEnvironmentVariable("REVIEW_CONFIG_PATH");
+        var previousAgentProfile = Environment.GetEnvironmentVariable("REVIEW_AGENT_PROFILE");
+        var previousInputAgentProfile = Environment.GetEnvironmentVariable("INPUT_AGENT_PROFILE");
+        var previousInputProvider = Environment.GetEnvironmentVariable("INPUT_PROVIDER");
+        var previousInputModel = Environment.GetEnvironmentVariable("INPUT_MODEL");
+        var previousInputOpenAiTransport = Environment.GetEnvironmentVariable("INPUT_OPENAI_TRANSPORT");
+        var configPath = Path.Combine(Path.GetTempPath(), $"intelligencex-review-agent-profile-{Guid.NewGuid():N}.json");
+        try {
+            File.WriteAllText(configPath, """
+{
+  "copilot": {
+    "autoInstall": true
+  },
+  "review": {
+    "provider": "openai",
+    "model": "gpt-5.4",
+    "agentProfile": "copilot-claude",
+    "agentProfiles": {
+      "copilot-claude": {
+        "authenticator": "copilot-cli",
+        "model": "claude-sonnet-4-5",
+        "autoInstall": "false",
+        "copilot": {
+          "launcher": "auto",
+          "autoInstallPrerelease": "false",
+          "envAllowlist": ["COPILOT_GITHUB_TOKEN"]
+        }
+      },
+      "chatgpt-codex": {
+        "provider": "openai",
+        "model": "gpt-5.4",
+        "openaiTransport": "native",
+        "openaiAccountId": "acct-review"
+      },
+      "local-openai": {
+        "provider": "openai-compatible",
+        "model": "local-reviewer",
+        "baseUrl": "https://compat.example/v1",
+        "apiKeyEnv": "COMPAT_TOKEN",
+        "timeoutSeconds": 45
+      }
+    }
+  }
+}
+""");
+
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", configPath);
+            Environment.SetEnvironmentVariable("REVIEW_AGENT_PROFILE", null);
+            Environment.SetEnvironmentVariable("INPUT_PROVIDER", "openai");
+            Environment.SetEnvironmentVariable("INPUT_MODEL", "should-not-win");
+            Environment.SetEnvironmentVariable("INPUT_OPENAI_TRANSPORT", "appserver");
+
+            var settings = ReviewSettings.Load();
+
+            AssertEqual("copilot-claude", settings.AgentProfile ?? string.Empty,
+                "review settings agent profile selected");
+            AssertEqual(ReviewProvider.Copilot, settings.Provider,
+                "review settings config agent profile provider overrides env");
+            AssertEqual("claude-sonnet-4-5", settings.Model,
+                "review settings config agent profile model overrides env");
+            AssertEqual("claude-sonnet-4-5", settings.CopilotModel ?? string.Empty,
+                "review settings agent profile copilot explicit model");
+            AssertEqual("auto", settings.CopilotLauncher, "review settings agent profile copilot launcher");
+            AssertEqual(true, settings.CopilotAutoInstall,
+                "review settings agent profile malformed nullable bool preserves existing auto install");
+            AssertEqual(false, settings.CopilotAutoInstallPrerelease,
+                "review settings agent profile malformed prerelease bool is ignored");
+            AssertSequenceEqual(new[] { "COPILOT_GITHUB_TOKEN" }, settings.CopilotEnvAllowlist.ToArray(),
+                "review settings agent profile copilot env allowlist");
+
+            Environment.SetEnvironmentVariable("REVIEW_AGENT_PROFILE", "chatgpt-codex");
+            settings = ReviewSettings.Load();
+
+            AssertEqual("chatgpt-codex", settings.AgentProfile ?? string.Empty,
+                "review settings env agent profile selected");
+            AssertEqual(ReviewProvider.OpenAI, settings.Provider, "review settings env agent profile provider");
+            AssertEqual("gpt-5.4", settings.Model, "review settings env agent profile model");
+            AssertEqual(IntelligenceX.OpenAI.OpenAITransportKind.Native, settings.OpenAITransport,
+                "review settings env agent profile transport overrides env");
+            AssertEqual("acct-review", settings.OpenAiAccountId ?? string.Empty,
+                "review settings env agent profile account");
+
+            Environment.SetEnvironmentVariable("REVIEW_AGENT_PROFILE", "chatgpt-codex");
+            Environment.SetEnvironmentVariable("INPUT_AGENT_PROFILE", "none");
+            Environment.SetEnvironmentVariable("INPUT_PROVIDER", "anthropic");
+            Environment.SetEnvironmentVariable("INPUT_MODEL", "claude-sonnet-4-5");
+            settings = ReviewSettings.Load();
+
+            AssertEqual(null, settings.AgentProfile, "review settings explicit none clears inherited agent profile");
+            AssertEqual(ReviewProvider.Claude, settings.Provider,
+                "review settings explicit none preserves direct provider override");
+            AssertEqual("claude-sonnet-4-5", settings.Model,
+                "review settings explicit none preserves direct model override");
+
+            Environment.SetEnvironmentVariable("REVIEW_AGENT_PROFILE", null);
+            Environment.SetEnvironmentVariable("INPUT_AGENT_PROFILE", string.Empty);
+            Environment.SetEnvironmentVariable("INPUT_PROVIDER", "anthropic");
+            Environment.SetEnvironmentVariable("INPUT_MODEL", "claude-sonnet-4-5");
+            settings = ReviewSettings.Load();
+
+            AssertEqual("copilot-claude", settings.AgentProfile ?? string.Empty,
+                "review settings empty input does not clear config-selected agent profile");
+            AssertEqual(ReviewProvider.Copilot, settings.Provider,
+                "review settings empty input preserves config-selected provider");
+            AssertEqual("claude-sonnet-4-5", settings.Model,
+                "review settings empty input preserves config-selected model");
+
+            Environment.SetEnvironmentVariable("INPUT_AGENT_PROFILE", null);
+            Environment.SetEnvironmentVariable("REVIEW_AGENT_PROFILE", "local-openai");
+            settings = ReviewSettings.Load();
+
+            AssertEqual(ReviewProvider.OpenAICompatible, settings.Provider,
+                "review settings compatible agent profile provider");
+            AssertEqual("local-reviewer", settings.Model, "review settings compatible agent profile model");
+            AssertEqual("https://compat.example/v1", settings.OpenAICompatibleBaseUrl,
+                "review settings compatible agent profile base url");
+            AssertEqual("COMPAT_TOKEN", settings.OpenAICompatibleApiKeyEnv,
+                "review settings compatible agent profile api key env");
+            AssertEqual(45, settings.OpenAICompatibleTimeoutSeconds,
+                "review settings compatible agent profile timeout");
+            AssertEqual(false, string.Equals("https://compat.example/v1", settings.AnthropicBaseUrl,
+                    StringComparison.OrdinalIgnoreCase),
+                "review settings compatible agent profile does not bleed base url into anthropic config");
+
+            Environment.SetEnvironmentVariable("REVIEW_AGENT_PROFILE", "missing-profile");
+            AssertThrows<InvalidOperationException>(() => ReviewSettings.Load(),
+                "review settings unknown env agent profile");
+
+            Environment.SetEnvironmentVariable("REVIEW_AGENT_PROFILE", null);
+            File.WriteAllText(configPath, """
+{
+  "review": {
+    "agentProfile": "missing-profile",
+    "agentProfiles": {
+      "known-profile": {
+        "provider": "openai",
+        "model": "gpt-5.4"
+      }
+    }
+  }
+}
+""");
+            AssertThrows<InvalidOperationException>(() => ReviewSettings.Load(),
+                "review settings unknown config agent profile");
+        } finally {
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", previousConfigPath);
+            Environment.SetEnvironmentVariable("REVIEW_AGENT_PROFILE", previousAgentProfile);
+            Environment.SetEnvironmentVariable("INPUT_AGENT_PROFILE", previousInputAgentProfile);
+            Environment.SetEnvironmentVariable("INPUT_PROVIDER", previousInputProvider);
+            Environment.SetEnvironmentVariable("INPUT_MODEL", previousInputModel);
+            Environment.SetEnvironmentVariable("INPUT_OPENAI_TRANSPORT", previousInputOpenAiTransport);
+            if (File.Exists(configPath)) {
+                File.Delete(configPath);
+            }
+        }
+    }
+
+    private static void TestReviewSettingsAgentProfileRejectsUnknownAuthenticatorAndTransport() {
+        var previousConfigPath = Environment.GetEnvironmentVariable("REVIEW_CONFIG_PATH");
+        var configPath = Path.Combine(Path.GetTempPath(), $"intelligencex-review-agent-profile-invalid-{Guid.NewGuid():N}.json");
+        try {
+            File.WriteAllText(configPath, """
+{
+  "review": {
+    "agentProfile": "broken-auth",
+    "agentProfiles": {
+      "broken-auth": {
+        "authenticator": "copilot-typo",
+        "model": "gpt-5.4"
+      }
+    }
+  }
+}
+""");
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", configPath);
+            AssertThrows<InvalidOperationException>(() => ReviewSettings.Load(),
+                "review settings unknown agent profile authenticator");
+
+            File.WriteAllText(configPath, """
+{
+  "review": {
+    "agentProfile": "broken-transport",
+    "agentProfiles": {
+      "broken-transport": {
+        "provider": "openai",
+        "model": "gpt-5.4",
+        "openaiTransport": "nativ"
+      }
+    }
+  }
+}
+""");
+            AssertThrows<InvalidOperationException>(() => ReviewSettings.Load(),
+                "review settings invalid agent profile openai transport");
+
+            File.WriteAllText(configPath, """
+{
+  "review": {
+    "agentProfile": "broken-copilot-transport",
+    "agentProfiles": {
+      "broken-copilot-transport": {
+        "provider": "copilot",
+        "model": "gpt-5.4",
+        "copilotTransport": "driect"
+      }
+    }
+  }
+}
+""");
+            AssertThrows<InvalidOperationException>(() => ReviewSettings.Load(),
+                "review settings invalid agent profile copilot transport");
+        } finally {
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", previousConfigPath);
+            if (File.Exists(configPath)) {
+                File.Delete(configPath);
+            }
+        }
+    }
+
+    private static void TestReviewSettingsModelOnlyAgentProfileUpdatesCopilotModel() {
+        var previousConfigPath = Environment.GetEnvironmentVariable("REVIEW_CONFIG_PATH");
+        var configPath = Path.Combine(Path.GetTempPath(), $"intelligencex-review-agent-profile-model-only-{Guid.NewGuid():N}.json");
+        try {
+            File.WriteAllText(configPath, """
+{
+  "review": {
+    "provider": "copilot",
+    "copilotModel": "stale-model",
+    "agentProfile": "copilot-fast",
+    "agentProfiles": {
+      "copilot-fast": {
+        "model": "gpt-5.4"
+      }
+    }
+  }
+}
+""");
+
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", configPath);
+
+            var settings = ReviewSettings.Load();
+
+            AssertEqual(ReviewProvider.Copilot, settings.Provider,
+                "review settings model-only agent profile keeps copilot provider");
+            AssertEqual("gpt-5.4", settings.Model,
+                "review settings model-only agent profile updates generic model");
+            AssertEqual("gpt-5.4", settings.CopilotModel ?? string.Empty,
+                "review settings model-only agent profile updates copilot model");
+            AssertEqual("gpt-5.4", ReviewRunner.ResolveCopilotModel(settings) ?? string.Empty,
+                "review settings model-only agent profile resolves copilot model");
         } finally {
             Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", previousConfigPath);
             if (File.Exists(configPath)) {

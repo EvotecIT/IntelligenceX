@@ -164,8 +164,27 @@ internal static partial class Program {
         };
         var body = ReviewDiagnostics.BuildFailureBody(new TimeoutException("timed out"), settings, null, null);
         AssertContainsText(body, "- Provider: copilot", "copilot failure body provider");
-        AssertContainsText(body, "- Transport: Direct", "copilot failure body transport");
+        AssertContainsText(body, "- Transport: direct", "copilot failure body transport");
         AssertContainsText(body, "- Model: Copilot direct model required", "copilot failure body model");
+    }
+
+    private static void TestReviewFailureBodyUsesProviderSpecificTransportLabels() {
+        var compatibleSettings = new ReviewSettings {
+            Provider = ReviewProvider.OpenAICompatible,
+            Model = "local-reviewer"
+        };
+        var compatibleBody = ReviewDiagnostics.BuildFailureBody(new TimeoutException("timed out"), compatibleSettings, null, null);
+        AssertContainsText(compatibleBody, "- Provider: openai-compatible", "compatible failure body provider");
+        AssertContainsText(compatibleBody, "- Transport: http", "compatible failure body transport");
+
+        var claudeSettings = new ReviewSettings {
+            Provider = ReviewProvider.Claude,
+            Model = "claude-sonnet-4-5"
+        };
+        var claudeBody = ReviewDiagnostics.BuildFailureBody(new TimeoutException("timed out"), claudeSettings, null, null);
+        AssertContainsText(claudeBody, "- Provider: claude", "claude failure body provider");
+        AssertContainsText(claudeBody, "- Transport: messages-api", "claude failure body transport");
+        AssertContainsText(claudeBody, "- Model: claude-sonnet-4-5", "claude failure body model");
     }
 
     private static void TestReviewFailureBodyClassifiesCopilotUnauthorized() {
@@ -181,6 +200,16 @@ internal static partial class Program {
         var body = ReviewDiagnostics.BuildFailureBody(ex, settings, null, null);
         AssertContainsText(body, "- Detail: Copilot authentication failed", "copilot auth failure detail");
         AssertContainsText(body, "Copilot CLI authentication is missing", "copilot auth failure guidance");
+    }
+
+    private static void TestReviewFailureBodyPrefersTimeoutOverInnerCancellation() {
+        var ex = new TimeoutException("outer timeout",
+            new TimeoutException("inner timeout", new OperationCanceledException("cancelled")));
+        var classification = ReviewDiagnostics.Classify(ex);
+
+        AssertEqual(ReviewDiagnostics.ReviewErrorCategory.Timeout, classification.Category,
+            "timeout classification should beat inner cancellation");
+        AssertEqual("Timeout", classification.Summary, "timeout summary should remain stable");
     }
 
     private static void TestReviewFailureBodyIncludesSafeAuthRefreshDetail() {
@@ -215,6 +244,16 @@ internal static partial class Program {
         AssertEqual("openai-auth-refresh-reused", failure.Kind, "workflow failure kind");
         AssertEqual("OpenAI auth refresh token was already used", failure.Label, "workflow failure label");
         AssertEqual(true, failure.RequiresAuthRemediation, "workflow failure remediation flag");
+    }
+
+    private static void TestWorkflowFailOpenLogClassificationPrefersUsageBudgetGuard() {
+        var failure = ReviewDiagnostics.ClassifyWorkflowFailureLog(
+            "Usage budget guard blocked review run: credits exhausted (balance 0); weekly limit exhausted.\n"
+            + "Secrets audit:\n- Auth store loaded from INTELLIGENCEX_AUTH_B64");
+        AssertEqual("usage-budget-guard", failure.Kind, "workflow budget failure kind");
+        AssertEqual("Usage budget guard blocked the review", failure.Label, "workflow budget failure label");
+        AssertContainsText(failure.Detail, "credits exhausted", "workflow budget failure detail");
+        AssertEqual(false, failure.RequiresAuthRemediation, "workflow budget failure omits auth remediation");
     }
 
     private static void TestWorkflowFailOpenSummaryBodyUsesRuntimeGuidance() {

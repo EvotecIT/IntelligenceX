@@ -47,6 +47,11 @@ on:
         required: false
         default: 'openai'
         type: string
+      agent_profile:
+        description: 'Named review agent profile from reviewer.json'
+        required: false
+        default: ''
+        type: string
       model:
         description: 'Model id (provider-specific)'
         required: false
@@ -330,7 +335,7 @@ on:
       wait_seconds:
         description: 'Max wait for completion'
         required: false
-        default: 60
+        default: 180
         type: number
       idle_seconds:
         description: 'Idle timeout for streaming'
@@ -527,6 +532,7 @@ jobs:
       COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       INPUT_PROVIDER: ${{ inputs.provider }}
+      INPUT_AGENT_PROFILE: ${{ inputs.agent_profile }}
       INPUT_MODEL: ${{ inputs.model }}
       INPUT_OPENAI_MODEL: ${{ inputs.openai_model }}
       INPUT_COPILOT_MODEL: ${{ inputs.copilot_model }}

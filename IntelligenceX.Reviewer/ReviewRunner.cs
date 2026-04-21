@@ -144,7 +144,7 @@ internal sealed partial class ReviewRunner {
         _settings.Provider = provider;
         try {
             return provider switch {
-                ReviewProvider.Copilot => await RunCopilotAsync(prompt, onPartial, updateInterval, cancellationToken).ConfigureAwait(false),
+                ReviewProvider.Copilot => await RunCopilotWithRetryAsync(prompt, onPartial, updateInterval, cancellationToken).ConfigureAwait(false),
                 ReviewProvider.OpenAI => await RunOpenAiWithRetryAsync(prompt, onPartial, updateInterval, cancellationToken).ConfigureAwait(false),
                 ReviewProvider.OpenAICompatible => await RunOpenAiCompatibleWithRetryAsync(prompt, cancellationToken).ConfigureAwait(false),
                 ReviewProvider.Claude => await RunClaudeWithRetryAsync(prompt, cancellationToken).ConfigureAwait(false),
@@ -378,6 +378,48 @@ internal sealed partial class ReviewRunner {
         }
     }
 
+    private async Task<string> RunCopilotWithRetryAsync(string prompt, Func<string, Task>? onPartial,
+        TimeSpan? updateInterval, CancellationToken cancellationToken) {
+        ReviewRetryState? retryState = null;
+        try {
+            if (_settings.Preflight && !_settings.ProviderHealthChecks) {
+                var timeout = _settings.PreflightTimeoutSeconds > 0
+                    ? TimeSpan.FromSeconds(_settings.PreflightTimeoutSeconds)
+                    : TimeSpan.FromSeconds(15);
+                await RunCopilotHealthCheckAsync(timeout, cancellationToken).ConfigureAwait(false);
+            }
+
+            retryState = new ReviewRetryState();
+            return await ReviewRetryPolicy.RunAsync(async () => {
+                    var output = await RunCopilotAsync(prompt, onPartial, updateInterval, cancellationToken)
+                        .ConfigureAwait(false);
+                    if (string.IsNullOrWhiteSpace(output)) {
+                        throw new InvalidOperationException("Copilot response was empty.");
+                    }
+                    return output;
+                },
+                IsTransient,
+                _settings.RetryCount,
+                _settings.RetryDelaySeconds,
+                _settings.RetryMaxDelaySeconds,
+                Math.Max(1.0, _settings.RetryBackoffMultiplier),
+                Math.Max(0, _settings.RetryJitterMinMs),
+                Math.Max(0, _settings.RetryJitterMaxMs),
+                cancellationToken,
+                ex => ReviewDiagnostics.FormatExceptionSummary(ex, _settings.Diagnostics),
+                _settings.RetryExtraOnResponseEnded ? 1 : 0,
+                ReviewDiagnostics.IsResponseEnded,
+                retryState,
+                operationName: "Copilot").ConfigureAwait(false);
+        } catch (Exception ex) {
+            ReviewDiagnostics.LogFailure(ex, _settings, snapshot: null, retryState);
+            if (ShouldFailOpen(_settings, ex)) {
+                return ReviewDiagnostics.BuildFailureBody(ex, _settings, snapshot: null, retryState);
+            }
+            throw;
+        }
+    }
+
     private CopilotClientOptions BuildCopilotClientOptions() {
         return BuildCopilotClientOptions(out _);
     }
@@ -446,6 +488,10 @@ internal sealed partial class ReviewRunner {
         return settings.Model.Trim();
     }
 
+    internal static TimeSpan ResolveCopilotReviewTimeout(ReviewSettings settings) {
+        return TimeSpan.FromSeconds(Math.Max(1, settings.WaitSeconds));
+    }
+
     private string BuildCopilotLauncherDiagnostic(string launcher, CopilotClientOptions options) {
         var cliPath = string.IsNullOrWhiteSpace(options.CliPath) ? "copilot" : options.CliPath;
         var prefixArgs = options.CliArgs.Count == 0 ? "(none)" : string.Join(" ", options.CliArgs);
@@ -471,8 +517,66 @@ internal sealed partial class ReviewRunner {
             return await RunCopilotDirectAsync(prompt, cancellationToken).ConfigureAwait(false);
         }
         if (ShouldUseCopilotPromptMode(_settings)) {
-            return await RunCopilotPromptAsync(prompt, onPartial, cancellationToken).ConfigureAwait(false);
+            try {
+                return await RunCopilotPromptAsync(prompt, onPartial, cancellationToken).ConfigureAwait(false);
+            } catch (Exception ex) when (!cancellationToken.IsCancellationRequested &&
+                                         ShouldFallbackFromCopilotPromptFailure(ex)) {
+                Console.Error.WriteLine(
+                    $"Copilot prompt mode failed ({ex.GetType().Name}: {SummarizePromptFailure(ex.Message)}); falling back to CLI server-session mode.");
+            }
         }
+        return await RunCopilotCliSessionAsync(prompt, onPartial, updateInterval, cancellationToken).ConfigureAwait(false);
+    }
+
+    internal static bool ShouldFallbackFromCopilotPromptFailure(Exception ex) {
+        if (ex is TimeoutException or UnauthorizedAccessException) {
+            return false;
+        }
+        if (ex is InvalidOperationException invalid &&
+            IsRecoverableCopilotPromptFailure(invalid.Message)) {
+            return true;
+        }
+        return ex.InnerException is not null && ShouldFallbackFromCopilotPromptFailure(ex.InnerException);
+    }
+
+    private static bool IsRecoverableCopilotPromptFailure(string? message) {
+        if (string.IsNullOrWhiteSpace(message)) {
+            return false;
+        }
+
+        if (message.Contains("Copilot CLI prompt mode exited with code", StringComparison.OrdinalIgnoreCase)) {
+            return ContainsRecoverablePromptCompatibilityDetail(message);
+        }
+
+        return message.StartsWith("Copilot CLI not found or failed to start in prompt mode",
+                   StringComparison.OrdinalIgnoreCase) ||
+               message.StartsWith("Copilot CLI prompt mode failed while writing prompt input.",
+                   StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool ContainsRecoverablePromptCompatibilityDetail(string message) {
+        return message.Contains("--disable-builtin-mcps", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("--available-tools", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("--log-dir", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("--log-level", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("Unknown tool name in the tool allowlist", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("unknown option", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("unrecognized", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("invalid option", StringComparison.OrdinalIgnoreCase) ||
+               message.Contains("unexpected argument", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string SummarizePromptFailure(string? message) {
+        if (string.IsNullOrWhiteSpace(message)) {
+            return "no detail";
+        }
+
+        var singleLine = message.Replace("\r", " ").Replace("\n", " ").Trim();
+        return singleLine.Length <= 180 ? singleLine : singleLine[..180] + "...";
+    }
+
+    private async Task<string> RunCopilotCliSessionAsync(string prompt, Func<string, Task>? onPartial,
+        TimeSpan? updateInterval, CancellationToken cancellationToken) {
         var options = BuildCopilotClientOptions(out var launcherDiagnostic);
 
         await using var client = await CopilotClient.StartAsync(options, cancellationToken).ConfigureAwait(false);
@@ -521,30 +625,33 @@ internal sealed partial class ReviewRunner {
 
         await session.SendAsync(new CopilotMessageOptions { Prompt = prompt }, cancellationToken).ConfigureAwait(false);
 
+        var timeoutWindow = ResolveCopilotReviewTimeout(_settings);
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(TimeSpan.FromSeconds(_settings.WaitSeconds));
+        timeout.CancelAfter(timeoutWindow);
         using var registration = timeout.Token.Register(() =>
-            tcs.TrySetException(new TimeoutException(BuildCopilotTimeoutMessage(launcherDiagnostic, stderrLines, stderrLock))));
+            tcs.TrySetException(new TimeoutException(BuildCopilotTimeoutMessage(timeoutWindow, launcherDiagnostic, stderrLines, stderrLock))));
 
-        var result = await tcs.Task.ConfigureAwait(false);
-
-        if (progressTask is not null && progressCts is not null) {
-            progressCts.Cancel();
-            try {
-                await progressTask.ConfigureAwait(false);
-            } catch (OperationCanceledException) {
-                // Expected on cancellation.
+        try {
+            var result = await tcs.Task.ConfigureAwait(false);
+            return result ?? string.Empty;
+        } finally {
+            if (progressTask is not null && progressCts is not null) {
+                progressCts.Cancel();
+                try {
+                    await progressTask.ConfigureAwait(false);
+                } catch (OperationCanceledException) {
+                    // Expected on cancellation.
+                }
+                progressCts.Dispose();
             }
-            progressCts.Dispose();
         }
-
-        return result ?? string.Empty;
     }
 
     private async Task<string> RunCopilotPromptAsync(string prompt, Func<string, Task>? onPartial,
         CancellationToken cancellationToken) {
         var options = BuildCopilotClientOptions(out var launcherDiagnostic);
         var client = new ReviewerCopilotPromptRunner(options);
+        var timeout = ResolveCopilotReviewTimeout(_settings);
         if (_settings.Diagnostics) {
             Console.Error.WriteLine("Copilot review execution mode: prompt.");
         }
@@ -552,7 +659,7 @@ internal sealed partial class ReviewRunner {
             var result = await client.RunAsync(
                 prompt,
                 ResolveCopilotModel(_settings),
-                TimeSpan.FromSeconds(Math.Max(1, _settings.WaitSeconds)),
+                timeout,
                 cancellationToken).ConfigureAwait(false);
             if (onPartial is not null) {
                 await onPartial(result.Response).ConfigureAwait(false);
@@ -566,8 +673,24 @@ internal sealed partial class ReviewRunner {
         }
     }
 
-    private static bool ShouldUseCopilotPromptMode(ReviewSettings settings) =>
-        string.IsNullOrWhiteSpace(settings.CopilotCliUrl);
+    private static bool ShouldUseCopilotPromptMode(ReviewSettings settings) {
+        if (!string.IsNullOrWhiteSpace(settings.CopilotCliUrl)) {
+            return false;
+        }
+        return true;
+    }
+
+    internal static bool ShouldUseCopilotPromptModeForTests(ReviewSettings settings) =>
+        ShouldUseCopilotPromptMode(settings);
+
+    internal static TimeSpan ResolveCopilotCliSessionCompletionInactivity(ReviewSettings settings) {
+        return TimeSpan.FromSeconds(Math.Max(5, settings.IdleSeconds));
+    }
+
+    internal static bool ShouldCompleteCopilotSessionWithoutIdle(string? finalMessage, string? deltaSnapshot,
+        TimeSpan inactivity, TimeSpan inactivityWindow) {
+        return false;
+    }
 
     private string BuildCopilotPromptTimeoutMessage(string launcherDiagnostic, string detail) {
         var sb = new StringBuilder();
@@ -578,10 +701,11 @@ internal sealed partial class ReviewRunner {
         return sb.ToString().TrimEnd();
     }
 
-    private string BuildCopilotTimeoutMessage(string launcherDiagnostic, Queue<string> stderrLines, object stderrLock) {
+    private string BuildCopilotTimeoutMessage(TimeSpan timeout, string launcherDiagnostic, Queue<string> stderrLines,
+        object stderrLock) {
         var sb = new StringBuilder();
         sb.Append("Copilot review timed out after ");
-        sb.Append(_settings.WaitSeconds);
+        sb.Append(timeout.TotalSeconds.ToString("0"));
         sb.Append(" seconds. ");
         sb.Append(launcherDiagnostic);
         sb.Append(" If this run uses the GitHub CLI wrapper, try copilot.launcher=binary with copilot.autoInstall=true; ");

@@ -978,6 +978,168 @@ internal static partial class Program {
         }
     }
 
+    private static void TestCopilotAgentProfileConfigPreservesExplicitEmptyMaps() {
+        var previous = Environment.GetEnvironmentVariable("REVIEW_CONFIG_PATH");
+        var path = Path.Combine(Path.GetTempPath(), $"intelligencex-review-profile-clear-{Guid.NewGuid():N}.json");
+        try {
+            File.WriteAllText(path,
+                "{ \"review\": { \"agentProfiles\": { \"clearer\": { " +
+                "\"provider\": \"copilot\", \"model\": \"gpt-5.4\", " +
+                "\"envAllowlist\": [], \"copilotEnv\": {}, \"directHeaders\": {} } } } }");
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", path);
+            var settings = new ReviewSettings();
+            ReviewConfigLoader.Apply(settings);
+
+            AssertEqual(true, settings.AgentProfiles.TryGetValue("clearer", out var profile),
+                "copilot agent profile clear profile exists");
+            AssertNotNull(profile, "copilot agent profile clear profile value");
+            AssertNotNull(profile!.CopilotEnvAllowlist, "copilot agent profile clear allowlist preserved");
+            AssertEqual(0, profile.CopilotEnvAllowlist!.Count, "copilot agent profile clear allowlist count");
+            AssertNotNull(profile.CopilotEnv, "copilot agent profile clear env map preserved");
+            AssertEqual(0, profile.CopilotEnv!.Count, "copilot agent profile clear env map count");
+            AssertNotNull(profile.CopilotDirectHeaders, "copilot agent profile clear header map preserved");
+            AssertEqual(0, profile.CopilotDirectHeaders!.Count, "copilot agent profile clear header map count");
+        } finally {
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", previous);
+            if (File.Exists(path)) {
+                File.Delete(path);
+            }
+        }
+    }
+
+    private static void TestNonCopilotAgentProfileIgnoresRootCopilotAliases() {
+        var previous = Environment.GetEnvironmentVariable("REVIEW_CONFIG_PATH");
+        var path = Path.Combine(Path.GetTempPath(), $"intelligencex-review-profile-noncopilot-{Guid.NewGuid():N}.json");
+        try {
+            File.WriteAllText(path, """
+{
+  "review": {
+    "provider": "copilot",
+    "copilot": {
+      "transport": "cli"
+    },
+    "agentProfile": "openai-main",
+    "agentProfiles": {
+      "openai-main": {
+        "provider": "openai",
+        "model": "gpt-5.4",
+        "transport": "direct",
+        "launcher": "gh"
+      }
+    }
+  }
+}
+""");
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", path);
+            var settings = new ReviewSettings();
+
+            ReviewConfigLoader.Apply(settings);
+
+            AssertEqual(true, settings.AgentProfiles.TryGetValue("openai-main", out var profile),
+                "non-copilot root alias profile exists");
+            AssertNotNull(profile, "non-copilot root alias profile value");
+            AssertEqual(ReviewProvider.OpenAI, profile!.Provider, "non-copilot root alias provider");
+            AssertEqual(null, profile.CopilotTransport, "non-copilot root alias should not set copilot transport");
+            AssertEqual(null, profile.CopilotLauncher, "non-copilot root alias should not set copilot launcher");
+            AssertEqual(CopilotTransportKind.Cli, settings.CopilotTransport,
+                "non-copilot root alias should preserve ambient copilot transport");
+        } finally {
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", previous);
+            if (File.Exists(path)) {
+                File.Delete(path);
+            }
+        }
+    }
+
+    private static void TestCopilotAgentProfileAllowsRootCopilotAliases() {
+        var previous = Environment.GetEnvironmentVariable("REVIEW_CONFIG_PATH");
+        var path = Path.Combine(Path.GetTempPath(), $"intelligencex-review-profile-copilot-root-{Guid.NewGuid():N}.json");
+        try {
+            File.WriteAllText(path, """
+{
+  "review": {
+    "agentProfiles": {
+      "copilot-root": {
+        "provider": "copilot",
+        "model": "claude-sonnet-4.6",
+        "transport": "direct",
+        "launcher": "gh",
+        "directUrl": "https://example.local/copilot",
+        "directTokenEnv": "COPILOT_DIRECT_TOKEN"
+      }
+    }
+  }
+}
+""");
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", path);
+            var settings = new ReviewSettings();
+
+            ReviewConfigLoader.Apply(settings);
+
+            AssertEqual(true, settings.AgentProfiles.TryGetValue("copilot-root", out var profile),
+                "copilot root alias profile exists");
+            AssertNotNull(profile, "copilot root alias profile value");
+            AssertEqual(ReviewProvider.Copilot, profile!.Provider, "copilot root alias provider");
+            AssertEqual(CopilotTransportKind.Direct, profile.CopilotTransport, "copilot root alias transport");
+            AssertEqual("gh", profile.CopilotLauncher, "copilot root alias launcher");
+            AssertEqual("https://example.local/copilot", profile.CopilotDirectUrl ?? string.Empty,
+                "copilot root alias direct url");
+            AssertEqual("COPILOT_DIRECT_TOKEN", profile.CopilotDirectTokenEnv ?? string.Empty,
+                "copilot root alias direct token env");
+        } finally {
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", previous);
+            if (File.Exists(path)) {
+                File.Delete(path);
+            }
+        }
+    }
+
+    private static void TestReviewConfigLoaderApplyMaterializesSelectedAgentProfile() {
+        var previous = Environment.GetEnvironmentVariable("REVIEW_CONFIG_PATH");
+        var path = Path.Combine(Path.GetTempPath(), $"intelligencex-review-profile-apply-{Guid.NewGuid():N}.json");
+        try {
+            File.WriteAllText(path, """
+{
+  "review": {
+    "provider": "openai",
+    "model": "gpt-5.4-mini",
+    "agentProfile": "copilot-claude",
+    "agentProfiles": {
+      "copilot-claude": {
+        "provider": "copilot",
+        "model": "claude-sonnet-4.5",
+        "copilot": {
+          "launcher": "auto",
+          "autoInstall": true
+        }
+      }
+    }
+  }
+}
+""");
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", path);
+            var settings = new ReviewSettings();
+
+            ReviewConfigLoader.Apply(settings);
+
+            AssertEqual("copilot-claude", settings.AgentProfile ?? string.Empty,
+                "review config apply selected agent profile id");
+            AssertEqual(ReviewProvider.Copilot, settings.Provider,
+                "review config apply selected agent profile provider");
+            AssertEqual("claude-sonnet-4.5", settings.Model,
+                "review config apply selected agent profile model");
+            AssertEqual("auto", settings.CopilotLauncher,
+                "review config apply selected agent profile launcher");
+            AssertEqual(true, settings.CopilotAutoInstall,
+                "review config apply selected agent profile auto install");
+        } finally {
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", previous);
+            if (File.Exists(path)) {
+                File.Delete(path);
+            }
+        }
+    }
+
     private static void TestCopilotLauncherEnv() {
         var previousInput = Environment.GetEnvironmentVariable("INPUT_COPILOT_LAUNCHER");
         var previousEnv = Environment.GetEnvironmentVariable("COPILOT_LAUNCHER");
@@ -1023,6 +1185,197 @@ internal static partial class Program {
         AssertEqual(null, ReviewRunner.ResolveCopilotModel(settings), "copilot default model");
     }
 
+    private static void TestCopilotPromptTimeoutUsesRunnerSafeMinimum() {
+        var settings = new ReviewSettings {
+            Provider = ReviewProvider.Copilot,
+            CopilotTransport = CopilotTransportKind.Cli,
+            WaitSeconds = 17
+        };
+
+        AssertEqual(TimeSpan.FromSeconds(17), ReviewRunner.ResolveCopilotReviewTimeout(settings),
+            "copilot prompt timeout should honor configured wait");
+    }
+
+    private static void TestCopilotPromptTimeoutHonorsHigherExplicitWait() {
+        var settings = new ReviewSettings {
+            Provider = ReviewProvider.Copilot,
+            CopilotTransport = CopilotTransportKind.Cli,
+            WaitSeconds = 600
+        };
+
+        AssertEqual(TimeSpan.FromSeconds(600), ReviewRunner.ResolveCopilotReviewTimeout(settings),
+            "copilot prompt timeout should preserve larger explicit wait");
+    }
+
+    private static void TestCopilotCliSessionTimeoutUsesRunnerSafeMinimum() {
+        var settings = new ReviewSettings {
+            Provider = ReviewProvider.Copilot,
+            CopilotTransport = CopilotTransportKind.Cli,
+            WaitSeconds = 23
+        };
+
+        AssertEqual(TimeSpan.FromSeconds(23), ReviewRunner.ResolveCopilotReviewTimeout(settings),
+            "copilot cli session timeout should honor configured wait");
+    }
+
+    private static void TestCopilotCliSessionTimeoutHonorsHigherExplicitWait() {
+        var settings = new ReviewSettings {
+            Provider = ReviewProvider.Copilot,
+            CopilotTransport = CopilotTransportKind.Cli,
+            WaitSeconds = 900
+        };
+
+        AssertEqual(TimeSpan.FromSeconds(900), ReviewRunner.ResolveCopilotReviewTimeout(settings),
+            "copilot cli session timeout should preserve larger explicit wait");
+    }
+
+    private static void TestCopilotPromptFailureFallsBackForTimeoutAndPromptErrors() {
+        AssertEqual(true,
+            ReviewRunner.ShouldFallbackFromCopilotPromptFailure(
+                new InvalidOperationException("Copilot CLI not found or failed to start in prompt mode.")),
+            "copilot prompt start failure should trigger session fallback");
+
+        AssertEqual(false,
+            ReviewRunner.ShouldFallbackFromCopilotPromptFailure(
+                new TimeoutException("Copilot CLI prompt mode timed out after 420 seconds.")),
+            "copilot prompt timeout should not trigger session fallback");
+
+        AssertEqual(false,
+            ReviewRunner.ShouldFallbackFromCopilotPromptFailure(
+                new InvalidOperationException("Copilot authentication failed.")),
+            "copilot auth failure should not trigger prompt fallback");
+
+        AssertEqual(true,
+            ReviewRunner.ShouldFallbackFromCopilotPromptFailure(
+                new InvalidOperationException(
+                    "Copilot CLI prompt mode exited with code 1.\nRecent Copilot CLI stderr:\n  error: unknown option '--available-tools=none'")),
+            "copilot prompt compatibility exit failures should trigger session fallback");
+
+        AssertEqual(false,
+            ReviewRunner.ShouldFallbackFromCopilotPromptFailure(
+                new InvalidOperationException("Copilot CLI prompt mode exited with code 1.")),
+            "copilot prompt generic exit failures should not trigger session fallback");
+
+        AssertEqual(true,
+            ReviewRunner.ShouldFallbackFromCopilotPromptFailure(
+                new InvalidOperationException("Copilot CLI prompt mode failed while writing prompt input.")),
+            "copilot prompt write failures should trigger session fallback");
+    }
+
+    private static void TestCopilotPromptModeSelectionUsesCliUrlOnly() {
+        var settings = new ReviewSettings();
+        AssertEqual(true, ReviewRunner.ShouldUseCopilotPromptModeForTests(settings),
+            "copilot prompt mode should stay enabled when cliUrl is absent");
+        AssertEqual(true, ReviewRunner.ShouldUseCopilotPromptModeForTests(settings),
+            "copilot prompt mode should not inspect prompt size");
+
+        settings.CopilotCliUrl = "http://localhost:4141";
+        AssertEqual(false, ReviewRunner.ShouldUseCopilotPromptModeForTests(settings),
+            "copilot prompt mode should be disabled when cliUrl is configured");
+    }
+
+    private static void TestCopilotCliSessionRequiresIdleSignalForCompletion() {
+        var inactivityWindow = ReviewRunner.ResolveCopilotCliSessionCompletionInactivity(new ReviewSettings {
+            IdleSeconds = 15
+        });
+
+        AssertEqual(false,
+            ReviewRunner.ShouldCompleteCopilotSessionWithoutIdle(
+                "## Summary",
+                string.Empty,
+                inactivityWindow,
+                inactivityWindow),
+            "copilot cli session should not complete after silence without idle");
+
+        AssertEqual(false,
+            ReviewRunner.ShouldCompleteCopilotSessionWithoutIdle(
+                null,
+                "partial delta",
+                inactivityWindow,
+                inactivityWindow),
+            "copilot cli session should not complete from silence with delta-only content");
+
+        AssertEqual(false,
+            ReviewRunner.ShouldCompleteCopilotSessionWithoutIdle(
+                null,
+                string.Empty,
+                inactivityWindow,
+                inactivityWindow),
+            "copilot cli session should not complete from silence without any content");
+
+        AssertEqual(false,
+            ReviewRunner.ShouldCompleteCopilotSessionWithoutIdle(
+                "## Summary",
+                string.Empty,
+                TimeSpan.FromSeconds(2),
+                inactivityWindow),
+            "copilot cli session should wait for the inactivity window");
+    }
+
+    private static void TestCopilotInstallResolverFindsPlatformInstall() {
+        var previousHome = Environment.GetEnvironmentVariable("HOME");
+        var previousUserProfile = Environment.GetEnvironmentVariable("USERPROFILE");
+        var tempDir = Path.Combine(Path.GetTempPath(), "ix-copilot-install-" + Guid.NewGuid().ToString("N"));
+        var isWindows = OperatingSystem.IsWindows();
+        var installDir = isWindows
+            ? Path.Combine(tempDir, "AppData", "Local", "Programs", "GitHub Copilot")
+            : Path.Combine(tempDir, ".local", "bin");
+        Directory.CreateDirectory(installDir);
+        var cliPath = Path.Combine(installDir, isWindows ? "copilot.exe" : "copilot");
+
+        try {
+            File.WriteAllText(cliPath, "#!/bin/sh\nexit 0\n");
+            Environment.SetEnvironmentVariable("HOME", tempDir);
+            Environment.SetEnvironmentVariable("USERPROFILE", tempDir);
+
+            AssertEqual(cliPath, CopilotCliInstall.TryResolveInstalledCliPath("copilot") ?? string.Empty,
+                "copilot install resolver should find platform install");
+        } finally {
+            Environment.SetEnvironmentVariable("HOME", previousHome);
+            Environment.SetEnvironmentVariable("USERPROFILE", previousUserProfile);
+            DeleteDirectoryIfExistsWithRetries(tempDir);
+        }
+    }
+
+    private static void TestCopilotPromptRunnerRejectsMissingConfiguredCliPath() {
+        var previousHome = Environment.GetEnvironmentVariable("HOME");
+        var previousUserProfile = Environment.GetEnvironmentVariable("USERPROFILE");
+        var tempDir = Path.Combine(Path.GetTempPath(), "ix-copilot-missing-path-" + Guid.NewGuid().ToString("N"));
+        var isWindows = OperatingSystem.IsWindows();
+        var installDir = isWindows
+            ? Path.Combine(tempDir, "AppData", "Local", "Programs", "GitHub Copilot")
+            : Path.Combine(tempDir, ".local", "bin");
+        Directory.CreateDirectory(installDir);
+        var installedCliPath = Path.Combine(installDir, isWindows ? "copilot.exe" : "copilot");
+        var missingCliPath = Path.Combine(tempDir, "missing", isWindows ? "copilot.exe" : "copilot");
+
+        try {
+            File.WriteAllText(installedCliPath, "#!/bin/sh\nexit 0\n");
+            Environment.SetEnvironmentVariable("HOME", tempDir);
+            Environment.SetEnvironmentVariable("USERPROFILE", tempDir);
+
+            InvalidOperationException? ex = null;
+            try {
+                ReviewerCopilotPromptRunner.ResolveCliPathForTests(missingCliPath);
+            } catch (InvalidOperationException caught) {
+                ex = caught;
+            }
+            if (ex is null) {
+                throw new InvalidOperationException(
+                    "Expected copilot prompt missing configured cli path to throw InvalidOperationException.");
+            }
+
+            AssertContainsText(ex.Message, missingCliPath,
+                "copilot prompt missing configured cli path should mention configured value");
+            AssertEqual(false, ex.Message.Contains(installedCliPath, StringComparison.OrdinalIgnoreCase),
+                "copilot prompt missing configured cli path should not fall back to installed binary");
+        } finally {
+            Environment.SetEnvironmentVariable("HOME", previousHome);
+            Environment.SetEnvironmentVariable("USERPROFILE", previousUserProfile);
+            DeleteDirectoryIfExistsWithRetries(tempDir);
+        }
+    }
+
     private static void TestCopilotPromptRunnerParsesJsonOutput() {
         var output = string.Join("\n", new[] {
             """{"type":"assistant.message_delta","data":{"deltaContent":"Hel"}}""",
@@ -1036,6 +1389,155 @@ internal static partial class Program {
         AssertEqual("Final review", result.Response, "copilot prompt final message");
         AssertContainsText(result.UsageSummary ?? string.Empty, "premium requests: 1", "copilot prompt usage premium");
         AssertContainsText(result.UsageSummary ?? string.Empty, "API: 2500 ms", "copilot prompt usage api");
+    }
+
+    private static void TestCopilotPromptRunnerParsesConcatenatedJsonOutput() {
+        var output =
+            """{"type":"assistant.message_delta","data":{"deltaContent":"Hel"}}{"type":"assistant.message","data":{"content":"## Summary\n\nFinal review"}}{"type":"result","usage":{"premiumRequests":1}}""";
+
+        var result = ReviewerCopilotPromptRunner.ParseJsonLinesForTests(output);
+
+        AssertEqual("## Summary\n\nFinal review", result.Response, "copilot prompt concatenated final message");
+        AssertContainsText(result.UsageSummary ?? string.Empty, "premium requests: 1",
+            "copilot prompt concatenated usage");
+    }
+
+    private static void TestCopilotPromptRunnerFallsBackToStdoutWhenJsonSharesLineWithNoise() {
+        var output =
+            """prefix noise {"type":"assistant.message","data":{"content":"Should stay embedded"}} trailing noise""";
+
+        var accepted = ReviewerCopilotPromptRunner.TryBuildSuccessfulResultForTests(
+            0,
+            output,
+            string.Empty,
+            out var result);
+
+        AssertEqual(true, accepted, "copilot prompt accepts mixed stdout line as plain text");
+        AssertEqual(output, result?.Response ?? string.Empty,
+            "copilot prompt should preserve mixed stdout instead of extracting embedded JSON");
+    }
+
+    private static void TestCopilotPromptRunnerFallsBackToStdoutWhenJsonHasTrailingNoise() {
+        var output =
+            """{"type":"assistant.message","data":{"content":"Should stay embedded"}} trailing noise""";
+
+        var accepted = ReviewerCopilotPromptRunner.TryBuildSuccessfulResultForTests(
+            0,
+            output,
+            string.Empty,
+            out var result);
+
+        AssertEqual(true, accepted, "copilot prompt accepts JSON with trailing noise as plain text");
+        AssertEqual(output, result?.Response ?? string.Empty,
+            "copilot prompt should preserve JSON-plus-noise stdout instead of extracting embedded JSON");
+    }
+
+    private static void TestCopilotPromptRunnerFallsBackToStdoutWhenJsonIsValidButNoAssistantMessageWasParsed() {
+        var output = """
+Review completed successfully.
+Embedded JSON for reference:
+{"config":{"provider":"copilot","model":"gpt-5.4"}}
+No structured assistant event was emitted.
+""";
+
+        var accepted = ReviewerCopilotPromptRunner.TryBuildSuccessfulResultForTests(
+            0,
+            output,
+            string.Empty,
+            out var result);
+
+        AssertEqual(true, accepted, "copilot prompt accepts plain-text stdout when JSON is valid");
+        AssertContainsText(result?.Response ?? string.Empty, "Review completed successfully.",
+            "copilot prompt preserves plain-text stdout");
+        AssertContainsText(result?.Response ?? string.Empty, "\"model\":\"gpt-5.4\"",
+            "copilot prompt keeps embedded JSON snippet in stdout fallback");
+    }
+
+    private static void TestCopilotPromptRunnerRejectsMalformedJsonWithoutAssistantMessage() {
+        var output = """
+{"type":"assistant.message_delta","data":{"deltaContent":"partial"
+""";
+
+        var accepted = ReviewerCopilotPromptRunner.TryBuildSuccessfulResultForTests(
+            0,
+            output,
+            string.Empty,
+            out var result);
+
+        AssertEqual(false, accepted, "copilot prompt rejects malformed stdout fallback");
+        AssertEqual(null, result, "copilot prompt malformed stdout fallback result");
+    }
+
+    private static void TestCopilotPromptRunnerFallsBackToStdoutWhenBraceNoisePreventsJsonParsing() {
+        var output = """
+Review completed successfully.
+Compatibility note: {not actually json
+Please keep the review text as plain stdout.
+""";
+
+        var accepted = ReviewerCopilotPromptRunner.TryBuildSuccessfulResultForTests(
+            0,
+            output,
+            string.Empty,
+            out var result);
+
+        AssertEqual(true, accepted, "copilot prompt accepts stdout with brace-heavy noise");
+        AssertContainsText(result?.Response ?? string.Empty, "Review completed successfully.",
+            "copilot prompt keeps prose when brace noise appears");
+        AssertContainsText(result?.Response ?? string.Empty, "Compatibility note:",
+            "copilot prompt preserves malformed brace snippet in stdout fallback");
+    }
+
+    private static void TestCopilotPromptRunnerIgnoresBraceNoiseBeforeValidJsonLine() {
+        var output = """
+Compatibility note: {not actually json
+{"type":"assistant.message","data":{"content":"Final review"}}
+{"type":"result","usage":{"premiumRequests":1}}
+""";
+
+        var accepted = ReviewerCopilotPromptRunner.TryBuildSuccessfulResultForTests(
+            0,
+            output,
+            string.Empty,
+            out var result);
+
+        AssertEqual(true, accepted, "copilot prompt accepts valid JSON after prose noise");
+        AssertEqual("Final review", result?.Response ?? string.Empty,
+            "copilot prompt should prefer assistant message from valid JSON line");
+        AssertContainsText(result?.UsageSummary ?? string.Empty, "premium requests: 1",
+            "copilot prompt keeps usage from valid JSON line");
+    }
+
+    private static void TestCopilotPromptRunnerFallsBackToStdoutWhenBraceLineStartsWithNonJsonToken() {
+        var output = """
+{warning} cached tool output follows
+Review completed successfully.
+""";
+
+        var accepted = ReviewerCopilotPromptRunner.TryBuildSuccessfulResultForTests(
+            0,
+            output,
+            string.Empty,
+            out var result);
+
+        AssertEqual(true, accepted, "copilot prompt accepts brace-prefixed prose as plain stdout");
+        AssertContainsText(result?.Response ?? string.Empty, "{warning}",
+            "copilot prompt should preserve brace-prefixed prose");
+        AssertContainsText(result?.Response ?? string.Empty, "Review completed successfully.",
+            "copilot prompt keeps plain stdout fallback");
+    }
+
+    private static void TestCopilotPromptRunnerDoesNotTreatJsonWarningsAsReviewContent() {
+        var output = """{"type":"session.info","data":{"infoType":"configuration","message":"Unknown tool name in the tool allowlist: \"none\""}}""";
+
+        var accepted = ReviewerCopilotPromptRunner.TryBuildSuccessfulResultForTests(
+            0,
+            output,
+            string.Empty,
+            out var result);
+
+        AssertEqual(false, accepted, "copilot prompt should not treat warning-only JSON as review content");
+        AssertEqual(null, result, "copilot prompt warning-only JSON result");
     }
 
     private static void TestCopilotPromptRunnerBuildsMcpDisabledArgs() {
@@ -1066,6 +1568,12 @@ internal static partial class Program {
             captureLogs: false);
         AssertEqual(false, noLogArgs.Contains("--log-dir"), "copilot prompt log fallback omits log dir flag");
         AssertEqual(false, noLogArgs.Contains("--log-level"), "copilot prompt log fallback omits log level flag");
+        var promptArgArgs = ReviewerCopilotPromptRunner.BuildArgumentsForTests(binaryOptions, cliPath, "review prompt",
+            usePromptArgument: true);
+        AssertContainsText(string.Join("\n", promptArgArgs), "-p",
+            "copilot prompt argument fallback uses -p");
+        AssertContainsText(string.Join("\n", promptArgArgs), "review prompt",
+            "copilot prompt argument fallback includes prompt text");
 
         var ghOptions = new IntelligenceX.Copilot.CopilotClientOptions();
         ghOptions.CliArgs.Add("copilot");
@@ -1075,8 +1583,6 @@ internal static partial class Program {
         AssertSequenceEqual(new[] {
             "copilot",
             "--",
-            "-p",
-            "review prompt",
             "--silent",
             "--no-ask-user",
             "--no-custom-instructions",
@@ -1088,10 +1594,86 @@ internal static partial class Program {
             "--available-tools=none",
             "--disable-builtin-mcps",
             "--stream",
-            "off",
+            "on",
             "--output-format",
             "json"
         }, ghArgs, "copilot gh prompt args");
+        AssertEqual(false, ghArgs.Contains("review prompt"),
+            "copilot prompt args should not inline prompt content");
+    }
+
+    private static void TestCopilotPromptRunnerRetriesPromptArgumentWhenStdinProducesNoReview() {
+        AssertEqual(true, ReviewerCopilotPromptRunner.ShouldRetryWithAlternatePromptTransportForTests(
+                0,
+                string.Empty,
+                string.Empty),
+            "copilot prompt should retry alternate transport when the first run produces no output");
+        AssertEqual(false, ReviewerCopilotPromptRunner.ShouldRetryWithAlternatePromptTransportForTests(
+                0,
+                "Compatibility note: review completed with no structured output.",
+                string.Empty),
+            "copilot prompt should keep successful prose fallback instead of retrying transports");
+        AssertEqual(false, ReviewerCopilotPromptRunner.ShouldRetryWithAlternatePromptTransportForTests(
+                0,
+                """
+{"type":"assistant.message","data":{"content":"Final review"}}
+""",
+                string.Empty),
+            "copilot prompt should not retry transports when the first run already succeeded");
+        AssertEqual(true, ReviewerCopilotPromptRunner.ShouldRetryWithAlternatePromptTransportForTests(
+                0,
+                """
+{"type":"assistant.message_delta","data":{"deltaContent":"partial"
+""",
+                string.Empty),
+            "copilot prompt should retry the alternate transport when malformed JSON yields no usable review");
+        AssertEqual(true, ReviewerCopilotPromptRunner.ShouldRetryWithAlternatePromptTransportForTests(
+                0,
+                """{"type":"session.info","data":{"infoType":"configuration","message":"Unknown tool name in the tool allowlist: \"none\""}}""",
+                string.Empty),
+            "copilot prompt should retry the alternate transport when exit-zero JSON warnings produce no review");
+    }
+
+    private static void TestCopilotPromptRunnerPrefersTransportRetryBeforeCompatibilityFallback() {
+        AssertEqual(true, ReviewerCopilotPromptRunner.ShouldRetryTransportBeforeCompatibilityForTests(
+                0,
+                string.Empty,
+                "warning: unknown option '--available-tools'",
+                promptTransportRetried: false),
+            "copilot prompt should try the alternate transport before compatibility fallback when the first transport produces no review");
+        AssertEqual(true, ReviewerCopilotPromptRunner.ShouldRetryTransportBeforeCompatibilityForTests(
+                0,
+                """
+{"type":"assistant.message_delta","data":{"deltaContent":"partial"
+""",
+                string.Empty,
+                promptTransportRetried: false),
+            "copilot prompt should try the alternate transport before failing malformed exit-zero output");
+        AssertEqual(false, ReviewerCopilotPromptRunner.ShouldRetryTransportBeforeCompatibilityForTests(
+                0,
+                string.Empty,
+                "warning: unknown option '--available-tools'",
+                promptTransportRetried: true),
+            "copilot prompt should not loop transports after the alternate transport was already tried");
+    }
+
+    private static void TestCopilotPromptRunnerWrapsRootedWindowsCmdPaths() {
+        var cliPath = OperatingSystem.IsWindows()
+            ? @"C:\Tools\copilot.cmd"
+            : "/tmp/copilot";
+
+        var resolved = ReviewerCopilotPromptRunner.ResolveCliCommandForTests(cliPath, "-p", "review prompt");
+
+        if (OperatingSystem.IsWindows()) {
+            AssertEqual("cmd", resolved.FileName, "copilot prompt rooted cmd wrapper filename");
+            AssertSequenceEqual(new[] { "/c", cliPath, "-p", "review prompt" }, resolved.Args,
+                "copilot prompt rooted cmd wrapper args");
+            return;
+        }
+
+        AssertEqual(cliPath, resolved.FileName, "copilot prompt rooted unix path filename");
+        AssertSequenceEqual(new[] { "-p", "review prompt" }, resolved.Args,
+            "copilot prompt rooted unix path args");
     }
 
     private static void TestCopilotPromptRunnerDetectsUnsupportedMcpFlag() {
@@ -1119,6 +1701,65 @@ internal static partial class Program {
         AssertEqual(false, ReviewerCopilotPromptRunner.IsUnsupportedLogCaptureFlagForTests(
             string.Empty, "error: unknown option '--available-tools'"),
             "copilot prompt ignores unrelated unknown flag for log capture");
+    }
+
+    private static void TestCopilotPromptRunnerAcceptsSuccessfulWarningsWithoutRetry() {
+        var stdout = string.Join("\n", new[] {
+            """{"type":"session.info","data":{"infoType":"configuration","message":"Unknown tool name in the tool allowlist: \"none\""}}""",
+            """{"type":"assistant.message","data":{"content":"## Summary\n\nReview completed"}}""",
+            """{"type":"result","usage":{"premiumRequests":1}}"""
+        });
+
+        var accepted = ReviewerCopilotPromptRunner.TryBuildSuccessfulResultForTests(
+            0,
+            stdout,
+            string.Empty,
+            out var result);
+
+        AssertEqual(true, accepted, "copilot prompt accepts successful response even with compatibility warning");
+        AssertEqual("## Summary\n\nReview completed", result?.Response ?? string.Empty,
+            "copilot prompt preserves successful response when warning is present");
+
+        var fallback = ReviewerCopilotPromptRunner.ApplyCompatibilityFallbacksForTests(
+            1,
+            stdout,
+            string.Empty,
+            disableBuiltinMcps: true,
+            disableToolSurface: true,
+            captureLogs: true);
+
+        AssertEqual(true, fallback.Retry, "copilot prompt retries only when warning appears on unsuccessful run");
+        AssertEqual(true, fallback.DisableBuiltinMcps, "copilot prompt keeps MCP flag when unrelated");
+        AssertEqual(false, fallback.DisableToolSurface, "copilot prompt drops unsupported tool surface flag");
+        AssertEqual(true, fallback.CaptureLogs, "copilot prompt keeps log capture when unrelated");
+    }
+
+    private static void TestCopilotPromptRunnerRecoversExitedProcessResultAfterPromptWriteFailure() {
+        var recovered = ReviewerCopilotPromptRunner.TryCreateExitedProcessResultForTests(
+            hasExited: true,
+            exitCode: 1,
+            stdout: string.Empty,
+            stderr: "error: unknown option '--available-tools=none'",
+            out var result);
+        var recoveredResult = result ?? default;
+
+        AssertEqual(true, recovered, "copilot prompt should recover exited process result after write failure");
+        AssertEqual(1, recoveredResult.ExitCode, "copilot prompt recovered exit code");
+        AssertContainsText(recoveredResult.Stderr, "--available-tools=none",
+            "copilot prompt recovered stderr preserves compatibility detail");
+
+        var fallback = ReviewerCopilotPromptRunner.ApplyCompatibilityFallbacksForTests(
+            recoveredResult.ExitCode,
+            recoveredResult.Stdout,
+            recoveredResult.Stderr,
+            disableBuiltinMcps: true,
+            disableToolSurface: true,
+            captureLogs: true);
+
+        AssertEqual(true, fallback.Retry,
+            "copilot prompt recovered result should still trigger compatibility retry");
+        AssertEqual(false, fallback.DisableToolSurface,
+            "copilot prompt recovered result should drop unsupported tool surface flag");
     }
 
     private static void TestCopilotPromptRunnerRequiresActionsCopilotToken() {
@@ -1166,6 +1807,60 @@ internal static partial class Program {
             actionsEnvironment);
 
         AssertEqual(null, isolatedForwarded, "copilot prompt accepts explicitly forwarded token when env is isolated");
+    }
+
+    private static void TestCopilotPromptRunnerWriteHonorsTimeout() {
+        ProcessStartInfo startInfo;
+        if (OperatingSystem.IsWindows()) {
+            startInfo = new ProcessStartInfo {
+                FileName = "powershell",
+                UseShellExecute = false,
+                RedirectStandardInput = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true
+            };
+            startInfo.ArgumentList.Add("-NoProfile");
+            startInfo.ArgumentList.Add("-Command");
+            startInfo.ArgumentList.Add("Start-Sleep -Seconds 60");
+        } else {
+            startInfo = new ProcessStartInfo {
+                FileName = "bash",
+                UseShellExecute = false,
+                RedirectStandardInput = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true
+            };
+            startInfo.ArgumentList.Add("-lc");
+            startInfo.ArgumentList.Add("sleep 60");
+        }
+
+        var prompt = new string('x', 1_000_000);
+        TimeoutException? timeout = null;
+        try {
+            ReviewerCopilotPromptRunner.RunProcessForTests(startInfo, prompt, TimeSpan.FromMilliseconds(250))
+                .GetAwaiter()
+                .GetResult();
+        } catch (TimeoutException ex) {
+            timeout = ex;
+        }
+
+        if (timeout is null) {
+            throw new InvalidOperationException("Expected copilot prompt write timeout to throw TimeoutException.");
+        }
+
+        AssertContainsText(timeout.Message, "timed out", "copilot prompt write timeout should mention timeout");
+    }
+
+    private static void TestCopilotPromptStartFailureKeepsCauseDetails() {
+        var exception = new InvalidOperationException(
+            "Copilot CLI not found or failed to start in prompt mode. File: /home/runner/.local/bin/copilot. Working directory: /repo. Cause: Argument list too long.");
+
+        AssertEqual(true, ReviewRunner.ShouldFallbackFromCopilotPromptFailure(exception),
+            "copilot prompt start failure with extra cause detail should still trigger fallback");
+        AssertContainsText(exception.Message, "Argument list too long",
+            "copilot prompt start failure should preserve the underlying cause");
     }
 
     private static void TestCopilotGhLauncherBuildsWrapperCommand() {
@@ -1274,6 +1969,25 @@ internal static partial class Program {
 
         AssertEqual("custom-copilot", options.CliPath ?? string.Empty, "copilot binary launcher path");
         AssertEqual(0, options.CliArgs.Count, "copilot binary launcher args");
+    }
+
+    private static void TestCopilotClientWrapsRootedWindowsCmdPaths() {
+        var cliPath = OperatingSystem.IsWindows()
+            ? @"C:\Tools\copilot.cmd"
+            : "/tmp/copilot";
+
+        var resolved = CopilotClient.ResolveCliCommandForTests(cliPath, "--server", "--log-level", "info");
+
+        if (OperatingSystem.IsWindows()) {
+            AssertEqual("cmd", resolved.FileName, "copilot client rooted cmd wrapper filename");
+            AssertSequenceEqual(new[] { "/c", cliPath, "--server", "--log-level", "info" }, resolved.Args,
+                "copilot client rooted cmd wrapper args");
+            return;
+        }
+
+        AssertEqual(cliPath, resolved.FileName, "copilot client rooted unix path filename");
+        AssertSequenceEqual(new[] { "--server", "--log-level", "info" }, resolved.Args,
+            "copilot client rooted unix path args");
     }
 
     private static void TestCopilotInheritEnvironmentDefault() {

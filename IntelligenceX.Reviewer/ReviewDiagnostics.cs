@@ -105,6 +105,7 @@ internal static class ReviewDiagnostics {
     private const string AuthBundleSummary = "Auth bundle missing or invalid";
     private const string AuthRefreshFailedSummary = "OpenAI auth refresh failed; sign in again";
     private const string AuthRefreshTokenReusedSummary = "OpenAI auth refresh token was already used; sign in again";
+    private const string UsageBudgetGuardPrefix = "Usage budget guard blocked review run:";
 
     internal readonly record struct WorkflowFailureInfo(string Kind, string Label, string Detail, bool RequiresAuthRemediation);
 
@@ -154,11 +155,11 @@ internal static class ReviewDiagnostics {
 
     public static ReviewErrorInfo Classify(Exception ex) {
         var root = Unwrap(ex);
+        if (ContainsException<TimeoutException>(ex)) {
+            return new ReviewErrorInfo(ReviewErrorCategory.Timeout, true, "Timeout");
+        }
         if (root is OperationCanceledException) {
             return new ReviewErrorInfo(ReviewErrorCategory.Cancelled, false, "Cancelled");
-        }
-        if (root is TimeoutException) {
-            return new ReviewErrorInfo(ReviewErrorCategory.Timeout, true, "Timeout");
         }
         if (IsResponseEnded(root)) {
             return new ReviewErrorInfo(ReviewErrorCategory.ResponseEnded, true, "Response ended prematurely");
@@ -179,6 +180,9 @@ internal static class ReviewDiagnostics {
         }
         if (root is IOException) {
             return new ReviewErrorInfo(ReviewErrorCategory.Network, true, "I/O error");
+        }
+        if (message.Contains(UsageBudgetGuardPrefix, StringComparison.OrdinalIgnoreCase)) {
+            return new ReviewErrorInfo(ReviewErrorCategory.Config, false, ExtractUsageBudgetGuardDetail(message));
         }
         if (message.Contains("auth bundle", StringComparison.OrdinalIgnoreCase) ||
             message.Contains("INTELLIGENCEX_AUTH", StringComparison.OrdinalIgnoreCase)) {
@@ -217,7 +221,7 @@ internal static class ReviewDiagnostics {
         sb.AppendLine(FailureMarker);
         sb.AppendLine("WARNING: Review failed to complete due to a provider request error.");
         sb.AppendLine();
-        sb.AppendLine($"- Provider: {settings.Provider.ToString().ToLowerInvariant()}");
+        sb.AppendLine($"- Provider: {DescribeProvider(settings)}");
         sb.AppendLine($"- Transport: {DescribeTransport(settings)}");
         sb.AppendLine($"- Model: {DescribeModel(settings)}");
         sb.AppendLine($"- Category: {classification.Category} ({(classification.IsTransient ? "transient" : "non-transient")})");
@@ -263,7 +267,7 @@ internal static class ReviewDiagnostics {
         ReviewRetryState? retryState) {
         var classification = Classify(ex);
         Console.Error.WriteLine("Provider request failed.");
-        Console.Error.WriteLine($"Provider: {settings.Provider.ToString().ToLowerInvariant()} | Transport: {DescribeTransport(settings)} | Model: {DescribeModel(settings)}");
+        Console.Error.WriteLine($"Provider: {DescribeProvider(settings)} | Transport: {DescribeTransport(settings)} | Model: {DescribeModel(settings)}");
         Console.Error.WriteLine($"Category: {classification.Category} ({(classification.IsTransient ? "transient" : "non-transient")})");
         if (retryState is not null && retryState.LastAttempt > 0) {
             Console.Error.WriteLine($"Retry: {retryState.LastAttempt}/{retryState.MaxAttempts}");
@@ -322,10 +326,24 @@ internal static class ReviewDiagnostics {
         }
     }
 
-    private static string DescribeTransport(ReviewSettings settings) {
-        return settings.Provider == ReviewProvider.Copilot
-            ? settings.CopilotTransport.ToString()
-            : settings.OpenAITransport.ToString();
+    internal static string DescribeProvider(ReviewSettings settings) {
+        return ReviewProviderContracts.Get(settings.Provider).Id;
+    }
+
+    internal static string DescribeTransport(ReviewSettings settings) {
+        return settings.Provider switch {
+            ReviewProvider.Copilot => settings.CopilotTransport switch {
+                CopilotTransportKind.Direct => "direct",
+                _ => "cli"
+            },
+            ReviewProvider.OpenAI => settings.OpenAITransport switch {
+                OpenAITransportKind.Native => "native",
+                _ => "appserver"
+            },
+            ReviewProvider.OpenAICompatible => "http",
+            ReviewProvider.Claude => "messages-api",
+            _ => string.Empty
+        };
     }
 
     internal static string DescribeModel(ReviewSettings settings) {
@@ -349,6 +367,14 @@ internal static class ReviewDiagnostics {
 
     internal static WorkflowFailureInfo ClassifyWorkflowFailureLog(string? logText) {
         var text = logText ?? string.Empty;
+        if (text.IndexOf(UsageBudgetGuardPrefix, StringComparison.OrdinalIgnoreCase) >= 0) {
+            return new WorkflowFailureInfo(
+                "usage-budget-guard",
+                "Usage budget guard blocked the review",
+                ExtractUsageBudgetGuardDetail(text),
+                false);
+        }
+
         if (text.IndexOf("refresh_token_reused", StringComparison.OrdinalIgnoreCase) >= 0 ||
             text.IndexOf("refresh token has already been used", StringComparison.OrdinalIgnoreCase) >= 0) {
             return new WorkflowFailureInfo(
@@ -375,6 +401,21 @@ internal static class ReviewDiagnostics {
             "Reviewer runtime failed",
             "Reviewer execution failed after the workflow created the progress summary.",
             false);
+    }
+
+    private static string ExtractUsageBudgetGuardDetail(string text) {
+        var index = text.IndexOf(UsageBudgetGuardPrefix, StringComparison.OrdinalIgnoreCase);
+        if (index < 0) {
+            return "Usage budget guard blocked this review run.";
+        }
+
+        var start = index + UsageBudgetGuardPrefix.Length;
+        var end = text.IndexOfAny(['\r', '\n'], start);
+        var detail = end < 0 ? text[start..] : text[start..end];
+        detail = detail.Trim();
+        return detail.Length == 0
+            ? "Usage budget guard blocked this review run."
+            : detail;
     }
 
     internal static string BuildWorkflowFailOpenSummaryBody(PullRequestContext context, string reviewerSource,
@@ -492,6 +533,26 @@ internal static class ReviewDiagnostics {
             return Unwrap(aggregate.InnerExceptions[0]);
         }
         return ex.InnerException is not null ? Unwrap(ex.InnerException) : ex;
+    }
+
+    private static bool ContainsException<TException>(Exception ex) where TException : Exception {
+        if (ex is AggregateException aggregate) {
+            foreach (var inner in aggregate.InnerExceptions) {
+                if (ContainsException<TException>(inner)) {
+                    return true;
+                }
+            }
+        }
+
+        var current = ex;
+        while (current is not null) {
+            if (current is TException) {
+                return true;
+            }
+            current = current.InnerException;
+        }
+
+        return false;
     }
 
     private static ReviewErrorInfo ClassifyStatusCode(int code) {

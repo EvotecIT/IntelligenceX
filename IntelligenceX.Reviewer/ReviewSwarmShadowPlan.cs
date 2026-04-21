@@ -7,12 +7,16 @@ namespace IntelligenceX.Reviewer;
 
 internal sealed class ReviewSwarmShadowReviewerPlan {
     public string Id { get; init; } = string.Empty;
+    public string? AgentProfile { get; init; }
+    public ReviewAgentProfileSettings? ResolvedAgentProfile { get; init; }
     public ReviewProvider Provider { get; init; }
     public string Model { get; init; } = string.Empty;
     public ReasoningEffort? ReasoningEffort { get; init; }
 }
 
 internal sealed class ReviewSwarmShadowAggregatorPlan {
+    public string? AgentProfile { get; init; }
+    public ReviewAgentProfileSettings? ResolvedAgentProfile { get; init; }
     public ReviewProvider Provider { get; init; }
     public string Model { get; init; } = string.Empty;
     public ReasoningEffort? ReasoningEffort { get; init; }
@@ -38,16 +42,38 @@ internal static class ReviewSwarmShadowPlanner {
                 continue;
             }
 
+            var profile = string.IsNullOrWhiteSpace(reviewer.AgentProfile)
+                ? null
+                : settings.RequireAgentProfile(reviewer.AgentProfile,
+                    $"review.swarm.reviewers[{reviewer.Id.Trim()}].agentProfile");
+            var reviewerProvider = reviewer.Provider
+                                   ?? profile?.ResolveProvider(
+                                       $"review.swarm.reviewers[{reviewer.Id.Trim()}].agentProfile")
+                                   ?? settings.Provider;
+            var reviewerModel = !string.IsNullOrWhiteSpace(reviewer.Model)
+                ? reviewer.Model!.Trim()
+                : !string.IsNullOrWhiteSpace(profile?.Model)
+                    ? profile!.Model!.Trim()
+                    : settings.Model;
+
             reviewers.Add(new ReviewSwarmShadowReviewerPlan {
                 Id = reviewer.Id.Trim().ToLowerInvariant(),
-                Provider = reviewer.Provider ?? settings.Provider,
-                Model = string.IsNullOrWhiteSpace(reviewer.Model) ? settings.Model : reviewer.Model.Trim(),
-                ReasoningEffort = reviewer.ReasoningEffort ?? settings.ReasoningEffort
+                AgentProfile = profile?.Id,
+                ResolvedAgentProfile = profile,
+                Provider = reviewerProvider,
+                Model = reviewerModel,
+                ReasoningEffort = reviewer.ReasoningEffort ?? profile?.ReasoningEffort ?? settings.ReasoningEffort
             });
         }
 
+        var aggregatorProfile = string.IsNullOrWhiteSpace(settings.Swarm.Aggregator.AgentProfile)
+            ? null
+            : settings.RequireAgentProfile(settings.Swarm.Aggregator.AgentProfile,
+                "review.swarm.aggregator.agentProfile");
         var aggregatorModel = !string.IsNullOrWhiteSpace(settings.Swarm.Aggregator.Model)
             ? settings.Swarm.Aggregator.Model!.Trim()
+            : !string.IsNullOrWhiteSpace(aggregatorProfile?.Model)
+                ? aggregatorProfile!.Model!.Trim()
             : !string.IsNullOrWhiteSpace(settings.Swarm.AggregatorModel)
                 ? settings.Swarm.AggregatorModel!.Trim()
                 : settings.Model;
@@ -58,9 +84,13 @@ internal static class ReviewSwarmShadowPlanner {
             MaxParallel = Math.Max(1, settings.Swarm.MaxParallel),
             Reviewers = reviewers,
             Aggregator = new ReviewSwarmShadowAggregatorPlan {
-                Provider = settings.Swarm.Aggregator.Provider ?? settings.Provider,
+                AgentProfile = aggregatorProfile?.Id,
+                ResolvedAgentProfile = aggregatorProfile,
+                Provider = settings.Swarm.Aggregator.Provider
+                           ?? aggregatorProfile?.ResolveProvider("review.swarm.aggregator.agentProfile")
+                           ?? settings.Provider,
                 Model = aggregatorModel,
-                ReasoningEffort = settings.Swarm.Aggregator.ReasoningEffort ?? settings.ReasoningEffort
+                ReasoningEffort = settings.Swarm.Aggregator.ReasoningEffort ?? aggregatorProfile?.ReasoningEffort ?? settings.ReasoningEffort
             }
         };
     }
@@ -77,6 +107,10 @@ internal static class ReviewSwarmShadowPlanner {
             sb.Append("- ");
             sb.Append(reviewer.Id);
             sb.Append(" -> ");
+            if (!string.IsNullOrWhiteSpace(reviewer.AgentProfile)) {
+                sb.Append(reviewer.AgentProfile);
+                sb.Append(" -> ");
+            }
             sb.Append(reviewer.Provider.ToString().ToLowerInvariant());
             sb.Append(" / ");
             sb.Append(reviewer.Model);
@@ -88,6 +122,10 @@ internal static class ReviewSwarmShadowPlanner {
         }
 
         sb.Append("- aggregator -> ");
+        if (!string.IsNullOrWhiteSpace(plan.Aggregator.AgentProfile)) {
+            sb.Append(plan.Aggregator.AgentProfile);
+            sb.Append(" -> ");
+        }
         sb.Append(plan.Aggregator.Provider.ToString().ToLowerInvariant());
         sb.Append(" / ");
         sb.Append(plan.Aggregator.Model);

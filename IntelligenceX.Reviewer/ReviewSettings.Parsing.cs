@@ -50,24 +50,38 @@ internal sealed partial class ReviewSettings {
         };
     }
 
-    private static string? GetInput(string inputName, string? envName = null, string? altEnvName = null) {
-        var value = Environment.GetEnvironmentVariable($"INPUT_{inputName.ToUpperInvariant()}");
-        if (!string.IsNullOrWhiteSpace(value)) {
-            return value.Trim();
+    private static bool TryGetInputRaw(string inputName, out string? value, string? envName = null,
+        string? altEnvName = null) {
+        value = Environment.GetEnvironmentVariable($"INPUT_{inputName.ToUpperInvariant()}");
+        if (value is not null) {
+            value = value.Trim();
+            if (!string.IsNullOrWhiteSpace(value)) {
+                return true;
+            }
         }
         if (!string.IsNullOrWhiteSpace(envName)) {
             value = Environment.GetEnvironmentVariable(envName);
-            if (!string.IsNullOrWhiteSpace(value)) {
-                return value.Trim();
+            if (value is not null) {
+                value = value.Trim();
+                return true;
             }
         }
         if (!string.IsNullOrWhiteSpace(altEnvName)) {
             value = Environment.GetEnvironmentVariable(altEnvName);
-            if (!string.IsNullOrWhiteSpace(value)) {
-                return value.Trim();
+            if (value is not null) {
+                value = value.Trim();
+                return true;
             }
         }
-        return null;
+        value = null;
+        return false;
+    }
+
+    private static string? GetInput(string inputName, string? envName = null, string? altEnvName = null) {
+        return TryGetInputRaw(inputName, out var value, envName, altEnvName) &&
+               !string.IsNullOrWhiteSpace(value)
+            ? value
+            : null;
     }
 
     private static IReadOnlyList<string> ParseList(string? value, IReadOnlyList<string>? fallback = null) {
@@ -249,6 +263,7 @@ internal sealed partial class ReviewSettings {
 
             list.Add(new ReviewSwarmReviewerSettings {
                 Id = normalizedId,
+                AgentProfile = string.IsNullOrWhiteSpace(value.AgentProfile) ? null : value.AgentProfile.Trim(),
                 Provider = value.Provider,
                 Model = string.IsNullOrWhiteSpace(value.Model) ? null : value.Model.Trim(),
                 ReasoningEffort = value.ReasoningEffort
@@ -338,6 +353,7 @@ internal sealed partial class ReviewSettings {
 
         return new ReviewSwarmReviewerSettings {
             Id = id!,
+            AgentProfile = GetJsonString(obj, "agentProfile") ?? GetJsonString(obj, "modelProfile"),
             Provider = ParseOptionalSwarmProviderInput(GetJsonString(obj, "provider")),
             Model = GetJsonString(obj, "model"),
             ReasoningEffort = ParseOptionalReasoningEffortInput(GetJsonString(obj, "reasoningEffort"))

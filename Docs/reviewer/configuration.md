@@ -236,6 +236,73 @@ GitHub Actions input/env aliases:
 - `ci_context_max_snippet_chars_per_run` / `REVIEW_CI_CONTEXT_MAX_SNIPPET_CHARS_PER_RUN`
 - `ci_context_classify_infra_failures` / `REVIEW_CI_CONTEXT_CLASSIFY_INFRA_FAILURES`
 
+## Agent profiles (provider + authenticator + model)
+
+Use `agentProfiles` when you want named review backends that bundle provider, model, and auth/runtime settings.
+This keeps the IX prompt and output contract unchanged while letting you switch the backend that answers it.
+
+For backward compatibility, the loader also accepts `modelProfiles` and `authProfiles` as legacy aliases for
+`agentProfiles`, but new configs should prefer `agentProfiles`.
+
+```json
+{
+  "review": {
+    "agentProfile": "copilot-claude",
+    "agentProfiles": {
+      "chatgpt-gpt54": {
+        "provider": "openai",
+        "authenticator": "chatgpt",
+        "openaiTransport": "native",
+        "model": "gpt-5.4",
+        "openaiAccountId": "acct-review"
+      },
+      "copilot-gpt54": {
+        "provider": "copilot",
+        "authenticator": "copilot-cli",
+        "model": "gpt-5.4",
+        "copilot": {
+          "launcher": "auto",
+          "autoInstall": true,
+          "envAllowlist": ["COPILOT_GITHUB_TOKEN"]
+        }
+      },
+      "copilot-claude": {
+        "provider": "copilot",
+        "authenticator": "copilot-cli",
+        "model": "claude-sonnet-4-5",
+        "copilot": {
+          "envAllowlist": ["COPILOT_GITHUB_TOKEN"]
+        }
+      }
+    }
+  }
+}
+```
+
+For swarm shadow runs, reviewer lanes and the aggregator can reference those same profiles:
+
+```json
+{
+  "review": {
+    "swarm": {
+      "enabled": true,
+      "shadowMode": true,
+      "reviewers": [
+        { "id": "correctness", "agentProfile": "chatgpt-gpt54" },
+        { "id": "compat", "agentProfile": "copilot-gpt54" },
+        { "id": "tests", "agentProfile": "copilot-claude" }
+      ],
+      "aggregator": {
+        "agentProfile": "chatgpt-gpt54"
+      }
+    }
+  }
+}
+```
+
+Runtime override:
+- `agent_profile` / `REVIEW_AGENT_PROFILE` / `REVIEW_MODEL_PROFILE`
+
 ## Swarm review shadow mode (optional)
 
 Use this to opt into multi-reviewer orchestration without changing the public reviewer comment yet.
@@ -674,6 +741,16 @@ Set `model` only when you want to force a Copilot CLI model id. When `provider` 
 For GitHub Actions runs, set a repository or organization Actions secret named `COPILOT_GITHUB_TOKEN` to a
 fine-grained GitHub token with the `Copilot Requests` permission. The built-in Actions `GITHUB_TOKEN` and GitHub App
 installation tokens are not sufficient for Copilot CLI model requests.
+
+GitHub Actions repo/org variable aliases:
+- `IX_REVIEW_PROVIDER`
+- `IX_REVIEW_MODEL`
+- `IX_REVIEW_COPILOT_MODEL`
+- `IX_REVIEW_AGENT_PROFILE`
+- `IX_REVIEW_COPILOT_LAUNCHER`
+- `IX_REVIEW_COPILOT_AUTO_INSTALL`
+- `IX_REVIEW_COPILOT_AUTO_INSTALL_METHOD`
+- `IX_REVIEW_COPILOT_AUTO_INSTALL_PRERELEASE`
 
 ```json
 {

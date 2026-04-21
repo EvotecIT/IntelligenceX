@@ -42,6 +42,32 @@
         },
         "codeHost": { "type": "string", "enum": ["github", "azure", "azuredevops", "azure-devops", "ado"] },
         "profile": { "type": "string" },
+        "agentProfile": { "type": "string" },
+        "modelProfile": { "type": "string" },
+        "agentProfiles": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "provider": { "type": "string" },
+              "authenticator": { "type": "string" },
+              "auth": { "type": "string" },
+              "model": { "type": "string" },
+              "reasoningEffort": { "type": "string" },
+              "openaiTransport": { "type": "string" },
+              "openaiAccountId": { "type": "string" },
+              "copilot": { "type": "object", "additionalProperties": true },
+              "openaiCompatible": { "type": "object", "additionalProperties": true },
+              "anthropic": { "type": "object", "additionalProperties": true },
+              "claude": { "type": "object", "additionalProperties": true }
+            }
+          }
+        },
+        "modelProfiles": {
+          "type": "object",
+          "additionalProperties": true
+        },
         "intent": { "type": "string", "enum": ["security", "performance", "perf", "maintainability"] },
         "length": { "type": "string", "enum": ["short", "medium", "long"] },
         "mode": { "type": "string" },
@@ -118,6 +144,8 @@
                     "additionalProperties": true,
                     "properties": {
                       "id": { "type": "string" },
+                      "agentProfile": { "type": "string" },
+                      "modelProfile": { "type": "string" },
                       "provider": { "type": "string" },
                       "model": { "type": "string" },
                       "reasoningEffort": { "type": "string" }
@@ -133,6 +161,8 @@
               "type": "object",
               "additionalProperties": true,
               "properties": {
+                "agentProfile": { "type": "string" },
+                "modelProfile": { "type": "string" },
                 "provider": { "type": "string" },
                 "model": { "type": "string" },
                 "reasoningEffort": { "type": "string" }

@@ -91,12 +91,12 @@ internal static class ReviewHistoryBuilder {
 
         var lines = new List<string>();
         if (snapshot.OpenFindings.Count > 0) {
-            lines.Add("Open now:");
+            lines.Add("Open on current head:");
             foreach (var finding in snapshot.OpenFindings) {
                 lines.Add($"- [{NormalizeSectionLabel(finding.Section)}] {finding.Text}");
             }
         } else {
-            lines.Add("Open now: none.");
+            lines.Add("Open on current head: none.");
         }
 
         if (snapshot.ResolvedSinceLastRound.Count > 0) {
@@ -107,7 +107,7 @@ internal static class ReviewHistoryBuilder {
         }
 
         if (lines.Count == 1 &&
-            string.Equals(lines[0], "Open now: none.", StringComparison.Ordinal)) {
+            string.Equals(lines[0], "Open on current head: none.", StringComparison.Ordinal)) {
             lines.Add("Resolved since last round: none newly resolved.");
         }
 
@@ -148,7 +148,7 @@ internal static class ReviewHistoryBuilder {
         }
 
         ownedSummaries.Reverse();
-        var roundFindingsByFingerprint = new Dictionary<string, ReviewHistoryFinding>(StringComparer.Ordinal);
+        var currentHeadFindingsByFingerprint = new Dictionary<string, ReviewHistoryFinding>(StringComparer.Ordinal);
         for (var index = 0; index < ownedSummaries.Count; index++) {
             var round = BuildStickySummaryRound(ownedSummaries[index], currentHeadSha, settings, index + 1);
             if (round is null) {
@@ -156,12 +156,15 @@ internal static class ReviewHistoryBuilder {
             }
 
             rounds.Add(round);
+            if (!round.SameHeadAsCurrent) {
+                continue;
+            }
             foreach (var finding in round.Findings) {
-                roundFindingsByFingerprint[finding.Fingerprint] = finding;
+                currentHeadFindingsByFingerprint[finding.Fingerprint] = finding;
             }
         }
 
-        foreach (var state in roundFindingsByFingerprint.Values) {
+        foreach (var state in currentHeadFindingsByFingerprint.Values) {
             if (string.Equals(state.Status, "open", StringComparison.OrdinalIgnoreCase)) {
                 openFindings.Add(state);
             }
@@ -200,12 +203,12 @@ internal static class ReviewHistoryBuilder {
 
     private static void AppendDerivedStateLines(List<string> lines, ReviewHistorySnapshot snapshot) {
         if (snapshot.OpenFindings.Count > 0) {
-            lines.Add("- Open findings carried into the current state:");
+            lines.Add("- Open findings confirmed on the current head:");
             foreach (var finding in snapshot.OpenFindings) {
                 lines.Add($"  - [{NormalizeSectionLabel(finding.Section)}] {finding.Text}");
             }
         } else if (snapshot.Rounds.Count > 0) {
-            lines.Add("- Open findings carried into the current state: none.");
+            lines.Add("- Open findings confirmed on the current head: none. Prior-round findings below are candidates only; do not treat them as current blockers unless current diff or active thread evidence reconfirms them.");
         }
 
         if (snapshot.ResolvedSinceLastRound.Count == 0) {
@@ -309,7 +312,9 @@ internal static class ReviewHistoryBuilder {
             return;
         }
 
-        lines.Add("- IX merge blockers from sticky summary:");
+        lines.Add(round.SameHeadAsCurrent
+            ? "- Current-head IX merge blockers from sticky summary:"
+            : "- Prior-head IX merge blockers from sticky summary (candidates only; revalidate against current diff or active threads before treating as blockers):");
         foreach (var item in round.Findings) {
             lines.Add($"  - [{NormalizeSectionLabel(item.Section)}] {item.Text}");
         }

@@ -141,12 +141,24 @@ jobs:
             "workflow template usage budget weekly input");
         AssertContainsText(content, "copilot_model:", "workflow template copilot model input");
         AssertContainsText(content, "copilot_launcher:", "workflow template copilot launcher input");
+        AssertContainsText(content, "profile:", "workflow template prompt profile input");
+        AssertContainsText(content, "ci_context_enabled:", "workflow template CI context input");
         AssertContainsText(content, "history_enabled:", "workflow template history enabled input");
         AssertContainsText(content, "history_include_external_bot_summaries:",
             "workflow template external bot history input");
         AssertContainsText(content, "history_external_bot_logins:", "workflow template external bot login input");
         AssertContainsText(content, "swarm_enabled:", "workflow template swarm enabled input");
         AssertContainsText(content, "swarm_max_parallel:", "workflow template swarm max parallel input");
+        AssertEqual(1, CountWorkflowOnEvent(content, "workflow_call"),
+            "workflow template defines workflow_call exactly once");
+        AssertContainsText(content, "provider:",
+            "workflow template reusable-call provider input");
+        AssertContainsText(content, "history_include_ix_summary_history:",
+            "workflow template reusable-call IX summary history input");
+        AssertContainsText(content, "swarm_publish_subreviews:",
+            "workflow template reusable-call swarm subreview publishing input");
+        AssertContainsText(content, "review_config_path:",
+            "workflow template reusable-call review config path input");
         AssertContainsText(content, "openai_account_id: ${{ inputs.openai_account_id }}",
             "workflow template openai account id pass-through");
         AssertContainsText(content, "openai_account_ids: ${{ inputs.openai_account_ids }}",
@@ -161,10 +173,30 @@ jobs:
             "workflow template usage budget credits pass-through");
         AssertContainsText(content, "usage_budget_allow_weekly_limit: ${{ inputs.usage_budget_allow_weekly_limit }}",
             "workflow template usage budget weekly pass-through");
-        AssertContainsText(content, "copilot_model: ${{ inputs.copilot_model }}",
-            "workflow template copilot model pass-through");
-        AssertContainsText(content, "copilot_launcher: ${{ inputs.copilot_launcher }}",
+        AssertContainsText(content,
+            "agent_profile: ${{ inputs.agent_profile != '' && inputs.agent_profile || ((inputs.provider != '' || inputs.model != '' || inputs.openai_model != '' || inputs.copilot_model != '') && 'none' || vars.IX_REVIEW_AGENT_PROFILE) }}",
+            "workflow template agent profile input can override or deliberately suppress repo variable");
+        AssertContainsText(content, "copilot_model: ${{ inputs.copilot_model || vars.IX_REVIEW_COPILOT_MODEL }}",
+            "workflow template copilot model input overrides repo variable");
+        AssertContainsText(content, "copilot_launcher: ${{ inputs.copilot_launcher || vars.IX_REVIEW_COPILOT_LAUNCHER }}",
             "workflow template copilot launcher pass-through");
+        AssertContainsText(content, "profile: ${{ inputs.profile || 'balanced' }}",
+            "workflow template prompt profile pass-through");
+        AssertContainsText(content, "mode: ${{ inputs.mode || 'hybrid' }}",
+            "workflow template review mode pass-through");
+        AssertContainsText(content, "length: ${{ inputs.length || 'medium' }}",
+            "workflow template review length pass-through");
+        AssertContainsText(content, "style: ${{ inputs.style || 'direct' }}",
+            "workflow template review style pass-through");
+        AssertContainsText(content, "review_config_path: ${{ inputs.review_config_path || '.intelligencex/reviewer.json' }}",
+            "workflow template review config path pass-through");
+        AssertContainsText(content, "max_files: ${{ fromJSON(inputs.max_files || '30') }}",
+            "workflow template max files pass-through");
+        AssertContainsText(content, "diagnostics: ${{ fromJSON(inputs.diagnostics || 'false') }}",
+            "workflow template diagnostics pass-through");
+        AssertContainsText(content,
+            "(inputs.copilot_launcher || vars.IX_REVIEW_COPILOT_LAUNCHER) == 'auto' || vars.IX_REVIEW_COPILOT_AUTO_INSTALL == 'true'",
+            "workflow template copilot auto-install respects launcher repo variable");
         AssertContainsText(content, "history_enabled: ${{ inputs.history_enabled }}",
             "workflow template history enabled pass-through");
         AssertContainsText(content,
@@ -214,8 +246,38 @@ jobs:
             "wrapper workflow stays within GitHub workflow_dispatch input limit");
         AssertContainsText(wrapperContent, "reviewer_source: source",
             "wrapper workflow keeps PR reviews on repo source to avoid release drift");
-        AssertContainsText(wrapperContent, "copilot_launcher: ${{ inputs.copilot_launcher }}",
+        AssertContainsText(wrapperContent, "workflow_call:",
+            "wrapper workflow exposes reusable call overrides outside the dispatch input budget");
+        AssertEqual(1, CountWorkflowOnEvent(wrapperContent, "workflow_call"),
+            "wrapper workflow defines workflow_call exactly once");
+        AssertContainsText(wrapperContent, "provider:",
+            "wrapper workflow exposes provider reusable-call override");
+        AssertContainsText(wrapperContent, "agent_profile:",
+            "wrapper workflow exposes agent profile reusable-call override");
+        AssertContainsText(wrapperContent, "copilot_model:",
+            "wrapper workflow exposes copilot model reusable-call override");
+        AssertContainsText(wrapperContent, "profile:",
+            "wrapper workflow exposes prompt profile reusable-call override");
+        AssertContainsText(wrapperContent, "ci_context_enabled:",
+            "wrapper workflow exposes CI context reusable-call override");
+        AssertContainsText(wrapperContent, "history_include_ix_summary_history:",
+            "wrapper workflow exposes IX summary history reusable-call override");
+        AssertContainsText(wrapperContent, "swarm_publish_subreviews:",
+            "wrapper workflow exposes swarm subreview publishing reusable-call override");
+        AssertContainsText(wrapperContent, "review_config_path:",
+            "wrapper workflow exposes review config path reusable-call override");
+        AssertContainsText(wrapperContent,
+            "agent_profile: ${{ inputs.agent_profile != '' && inputs.agent_profile || ((inputs.provider != '' || inputs.model != '' || inputs.openai_model != '' || inputs.copilot_model != '') && 'none' || vars.IX_REVIEW_AGENT_PROFILE) }}",
+            "wrapper workflow lets reusable callers override or deliberately suppress repo variable agent profiles");
+        AssertContainsText(wrapperContent, "swarm_metrics:",
+            "wrapper workflow preserves swarm metrics manual override");
+        AssertContainsText(wrapperContent, "copilot_model: ${{ inputs.copilot_model || vars.IX_REVIEW_COPILOT_MODEL }}",
+            "wrapper workflow lets reusable copilot model input override repo variable");
+        AssertContainsText(wrapperContent, "copilot_launcher: ${{ inputs.copilot_launcher || vars.IX_REVIEW_COPILOT_LAUNCHER }}",
             "wrapper workflow passes copilot launcher through to reusable workflow");
+        AssertContainsText(wrapperContent,
+            "(inputs.copilot_launcher || vars.IX_REVIEW_COPILOT_LAUNCHER) == 'auto' || vars.IX_REVIEW_COPILOT_AUTO_INSTALL == 'true'",
+            "wrapper workflow copilot auto-install respects launcher repo variable");
         AssertContainsText(wrapperContent, "history_enabled: ${{ inputs.history_enabled }}",
             "wrapper workflow passes history awareness through to reusable workflow");
         AssertContainsText(wrapperContent,
@@ -225,6 +287,20 @@ jobs:
             "wrapper workflow passes swarm mode through to reusable workflow");
         AssertContainsText(wrapperContent, "swarm_max_parallel: ${{ inputs.swarm_max_parallel }}",
             "wrapper workflow passes swarm max parallel through to reusable workflow");
+        AssertContainsText(wrapperContent, "profile: ${{ inputs.profile || 'balanced' }}",
+            "wrapper workflow passes prompt profile through with default");
+        AssertContainsText(wrapperContent, "mode: ${{ inputs.mode || 'hybrid' }}",
+            "wrapper workflow passes review mode through with default");
+        AssertContainsText(wrapperContent, "length: ${{ inputs.length || 'medium' }}",
+            "wrapper workflow passes review length through with default");
+        AssertContainsText(wrapperContent, "style: ${{ inputs.style || 'direct' }}",
+            "wrapper workflow passes review style through with default");
+        AssertContainsText(wrapperContent, "review_config_path: ${{ inputs.review_config_path || '.intelligencex/reviewer.json' }}",
+            "wrapper workflow passes review config path through with default");
+        AssertContainsText(wrapperContent, "max_files: ${{ fromJSON(inputs.max_files || '30') }}",
+            "wrapper workflow passes max files through with default");
+        AssertContainsText(wrapperContent, "diagnostics: ${{ fromJSON(inputs.diagnostics || 'false') }}",
+            "wrapper workflow passes diagnostics through with default");
         AssertEqual(false, content.Contains("workflow_dispatch:", StringComparison.Ordinal),
             "reusable workflow should keep manual dispatch on the wrapper workflow");
         var jobEnvIndex = content.IndexOf("    env:\n", StringComparison.Ordinal);
@@ -246,6 +322,8 @@ jobs:
             "reusable workflow defines external bot history once for workflow_call");
         AssertEqual(1, CountOccurrences(content, "swarm_max_parallel:"),
             "reusable workflow defines swarm max parallel once for workflow_call");
+        AssertContainsText(content, "default: 180",
+            "reusable workflow gives PR-sized reviewer prompts a longer default wait window");
         AssertContainsText(content, "dotnet-version: '8.0.x'",
             "reusable workflow provisions the .NET 8 SDK for source reviewer runs");
         AssertContainsText(content, "dotnet build IntelligenceX.Reviewer/IntelligenceX.Reviewer.csproj -c Release -f net8.0",
@@ -340,7 +418,10 @@ jobs:
         var start = normalized.IndexOf(marker, StringComparison.Ordinal);
         AssertEqual(true, start >= 0, "workflow_dispatch inputs block exists");
         start += marker.Length;
-        var end = normalized.IndexOf("\njobs:", start, StringComparison.Ordinal);
+        var end = normalized.IndexOf("\n  workflow_call:", start, StringComparison.Ordinal);
+        if (end < 0) {
+            end = normalized.IndexOf("\njobs:", start, StringComparison.Ordinal);
+        }
         if (end < 0) {
             end = normalized.Length;
         }
@@ -353,6 +434,28 @@ jobs:
                 count++;
             }
         }
+        return count;
+    }
+
+    private static int CountWorkflowOnEvent(string content, string eventName) {
+        var normalized = NormalizeWorkflowText(content);
+        var startsAtTop = normalized.StartsWith("on:\n", StringComparison.Ordinal);
+        var onIndex = normalized.IndexOf("\non:\n", StringComparison.Ordinal);
+        AssertEqual(true, startsAtTop || onIndex >= 0, "workflow on block exists");
+        var start = startsAtTop ? "on:\n".Length : onIndex + "\non:\n".Length;
+        var end = normalized.IndexOf("\njobs:", start, StringComparison.Ordinal);
+        if (end < 0) {
+            end = normalized.Length;
+        }
+
+        var count = 0;
+        var expected = $"  {eventName}:";
+        foreach (var line in normalized[start..end].Split('\n')) {
+            if (string.Equals(line.TrimEnd(), expected, StringComparison.Ordinal)) {
+                count++;
+            }
+        }
+
         return count;
     }
 
@@ -392,7 +495,7 @@ jobs:
         AssertContainsText(content, "preflight:", "workflow explicit-secrets preflight input");
         AssertContainsText(content, "preflight_timeout_seconds:", "workflow explicit-secrets preflight timeout input");
         AssertContainsText(content, "copilot_auto_install:", "workflow explicit-secrets Copilot auto-install input");
-        AssertContainsText(content, "inputs.copilot_launcher == 'auto'",
+        AssertContainsText(content, "(inputs.copilot_launcher || vars.IX_REVIEW_COPILOT_LAUNCHER) == 'auto'",
             "workflow explicit-secrets maps Copilot launcher auto to auto-install");
         AssertContainsText(content, "copilot_auto_install_method:",
             "workflow explicit-secrets Copilot auto-install method input");

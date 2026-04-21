@@ -98,6 +98,242 @@ internal static partial class Program {
         AssertEqual("claude-opus-4-1", plan.Aggregator.Model, "swarm shadow plan aggregator model");
     }
 
+    private static void TestReviewSwarmShadowPlanUsesAgentProfiles() {
+        var settings = new ReviewSettings {
+            Provider = ReviewProvider.OpenAI,
+            Model = "gpt-5.4",
+            ReasoningEffort = ReasoningEffort.Medium,
+            CopilotCliPath = "base-copilot",
+            AgentProfiles = new Dictionary<string, ReviewAgentProfileSettings>(StringComparer.OrdinalIgnoreCase) {
+                ["copilot-gpt54"] = new ReviewAgentProfileSettings {
+                    Id = "copilot-gpt54",
+                    Authenticator = "copilot-cli",
+                    Model = "gpt-5.4",
+                    CopilotCliPath = "profile-a-copilot",
+                    CopilotAutoInstall = true,
+                    CopilotEnvAllowlist = new[] { "COPILOT_GITHUB_TOKEN" },
+                    CopilotEnv = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
+                        ["OLD_TOKEN"] = "old-token",
+                        ["SHARED"] = "old-shared"
+                    },
+                    CopilotDirectHeaders = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
+                        ["X-Old"] = "old-header",
+                        ["X-Shared"] = "old-shared"
+                    }
+                },
+                ["copilot-claude"] = new ReviewAgentProfileSettings {
+                    Id = "copilot-claude",
+                    Provider = ReviewProvider.Copilot,
+                    Model = "claude-sonnet-4-5",
+                    CopilotEnv = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
+                        ["NEW_TOKEN"] = "new-token",
+                        ["SHARED"] = "new-shared"
+                    },
+                    CopilotDirectHeaders = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
+                        ["X-New"] = "new-header",
+                        ["X-Shared"] = "new-shared"
+                    }
+                },
+                ["copilot-clear"] = new ReviewAgentProfileSettings {
+                    Id = "copilot-clear",
+                    Provider = ReviewProvider.Copilot,
+                    Model = "gpt-5.4",
+                    CopilotEnvAllowlist = Array.Empty<string>(),
+                    CopilotEnv = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
+                    CopilotDirectHeaders = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                }
+            }
+        };
+        settings.Swarm.Enabled = true;
+        settings.Swarm.ShadowMode = true;
+        settings.Swarm.ReviewerSettings = new[] {
+            new ReviewSwarmReviewerSettings {
+                Id = "correctness",
+                AgentProfile = "copilot-gpt54"
+            },
+            new ReviewSwarmReviewerSettings {
+                Id = "tests",
+                AgentProfile = "copilot-claude"
+            }
+        };
+        settings.Swarm.Aggregator.AgentProfile = "copilot-gpt54";
+
+        var plan = ReviewRunner.BuildSwarmShadowPlanForTests(settings);
+        var rendered = ReviewRunner.RenderSwarmShadowPlanForTests(plan);
+
+        AssertEqual("copilot-gpt54", plan.Reviewers[0].AgentProfile ?? string.Empty,
+            "swarm shadow plan reviewer agent profile");
+        AssertEqual(true, plan.Reviewers[0].ResolvedAgentProfile?.CopilotAutoInstall ?? false,
+            "swarm shadow plan reviewer materializes full agent profile");
+        AssertSequenceEqual(new[] { "COPILOT_GITHUB_TOKEN" },
+            (plan.Reviewers[0].ResolvedAgentProfile?.CopilotEnvAllowlist ?? Array.Empty<string>()).ToArray(),
+            "swarm shadow plan reviewer materialized env allowlist");
+        AssertEqual(ReviewProvider.Copilot, plan.Reviewers[0].Provider,
+            "swarm shadow plan reviewer profile provider");
+        AssertEqual("gpt-5.4", plan.Reviewers[0].Model, "swarm shadow plan reviewer profile model");
+        AssertEqual("copilot-claude", plan.Reviewers[1].AgentProfile ?? string.Empty,
+            "swarm shadow plan second reviewer agent profile");
+        AssertEqual("claude-sonnet-4-5", plan.Reviewers[1].Model,
+            "swarm shadow plan second reviewer profile model");
+        AssertEqual("copilot-gpt54", plan.Aggregator.AgentProfile ?? string.Empty,
+            "swarm shadow plan aggregator agent profile");
+        AssertEqual(true, plan.Aggregator.ResolvedAgentProfile?.CopilotAutoInstall ?? false,
+            "swarm shadow plan aggregator materializes full agent profile");
+        AssertContainsText(rendered, "correctness -> copilot-gpt54 -> copilot / gpt-5.4",
+            "swarm shadow plan render reviewer profile");
+        AssertContainsText(rendered, "aggregator -> copilot-gpt54 -> copilot / gpt-5.4",
+            "swarm shadow plan render aggregator profile");
+
+        var laneSettings = settings.CloneWithProviderOverride(plan.Reviewers[0].Provider,
+            plan.Reviewers[0].Model, plan.Reviewers[0].ReasoningEffort,
+            plan.Reviewers[0].AgentProfile, plan.Reviewers[0].ResolvedAgentProfile);
+        AssertEqual(true, laneSettings.CopilotAutoInstall,
+            "swarm shadow execution clone preserves profile auto install");
+        AssertSequenceEqual(new[] { "COPILOT_GITHUB_TOKEN" }, laneSettings.CopilotEnvAllowlist.ToArray(),
+            "swarm shadow execution clone preserves profile env allowlist");
+        var overrideLaneSettings = settings.CloneWithProviderOverride(ReviewProvider.Copilot,
+            "claude-opus-4-1", plan.Reviewers[0].ReasoningEffort,
+            plan.Reviewers[0].AgentProfile, plan.Reviewers[0].ResolvedAgentProfile);
+        AssertEqual("claude-opus-4-1", overrideLaneSettings.Model,
+            "swarm shadow execution clone preserves explicit override model");
+        AssertEqual("claude-opus-4-1", overrideLaneSettings.CopilotModel ?? string.Empty,
+            "swarm shadow execution clone keeps copilot model in sync with explicit override");
+
+        settings.ApplyAgentProfile("copilot-gpt54");
+        var switchedLaneSettings = settings.CloneWithProviderOverride(plan.Reviewers[1].Provider,
+            plan.Reviewers[1].Model, plan.Reviewers[1].ReasoningEffort,
+            plan.Reviewers[1].AgentProfile, plan.Reviewers[1].ResolvedAgentProfile);
+        AssertEqual(false, switchedLaneSettings.CopilotEnv.ContainsKey("OLD_TOKEN"),
+            "swarm shadow execution clone replaces old profile env map");
+        AssertEqual("new-token", switchedLaneSettings.CopilotEnv["NEW_TOKEN"],
+            "swarm shadow execution clone applies new profile env map");
+        AssertEqual("new-shared", switchedLaneSettings.CopilotEnv["SHARED"],
+            "swarm shadow execution clone replaces overlapping profile env key");
+        AssertEqual(false, switchedLaneSettings.CopilotDirectHeaders.ContainsKey("X-Old"),
+            "swarm shadow execution clone replaces old profile header map");
+        AssertEqual("new-header", switchedLaneSettings.CopilotDirectHeaders["X-New"],
+            "swarm shadow execution clone applies new profile header map");
+        AssertEqual("new-shared", switchedLaneSettings.CopilotDirectHeaders["X-Shared"],
+            "swarm shadow execution clone replaces overlapping profile header key");
+        AssertEqual("base-copilot", switchedLaneSettings.CopilotCliPath ?? string.Empty,
+            "swarm shadow execution clone restores base scalar settings instead of retaining prior profile state");
+
+        var clearedLaneSettings = settings.CloneWithProviderOverride(ReviewProvider.Copilot,
+            "gpt-5.4", null, "copilot-clear", settings.RequireAgentProfile("copilot-clear", "tests"));
+        AssertEqual(0, clearedLaneSettings.CopilotEnvAllowlist.Count,
+            "swarm shadow execution clone clears allowlist when profile uses empty list");
+        AssertEqual(0, clearedLaneSettings.CopilotEnv.Count,
+            "swarm shadow execution clone clears env map when profile uses empty object");
+        AssertEqual(0, clearedLaneSettings.CopilotDirectHeaders.Count,
+            "swarm shadow execution clone clears header map when profile uses empty object");
+
+        settings.Swarm.ReviewerSettings = new[] {
+            new ReviewSwarmReviewerSettings {
+                Id = "missing",
+                AgentProfile = "missing-profile"
+            }
+        };
+        settings.Swarm.Aggregator.AgentProfile = null;
+        AssertThrows<InvalidOperationException>(() => ReviewRunner.BuildSwarmShadowPlanForTests(settings),
+            "swarm shadow missing reviewer agent profile");
+
+        settings.Swarm.ReviewerSettings = new[] {
+            new ReviewSwarmReviewerSettings {
+                Id = "correctness",
+                AgentProfile = "copilot-gpt54"
+            }
+        };
+        settings.Swarm.Aggregator.AgentProfile = "missing-profile";
+        AssertThrows<InvalidOperationException>(() => ReviewRunner.BuildSwarmShadowPlanForTests(settings),
+            "swarm shadow missing aggregator agent profile");
+    }
+
+    private static void TestReviewAgentProfileSwitchRebasesToBaseline() {
+        var settings = new ReviewSettings {
+            Provider = ReviewProvider.OpenAI,
+            Model = "gpt-5.4",
+            CopilotCliPath = "base-copilot",
+            AgentProfiles = new Dictionary<string, ReviewAgentProfileSettings>(StringComparer.OrdinalIgnoreCase) {
+                ["copilot-gpt54"] = new ReviewAgentProfileSettings {
+                    Id = "copilot-gpt54",
+                    Provider = ReviewProvider.Copilot,
+                    Model = "gpt-5.4",
+                    CopilotCliPath = "profile-a-copilot",
+                    CopilotEnv = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
+                        ["OLD_TOKEN"] = "old-token"
+                    },
+                    CopilotDirectHeaders = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
+                        ["X-Old"] = "old-header"
+                    }
+                },
+                ["copilot-claude"] = new ReviewAgentProfileSettings {
+                    Id = "copilot-claude",
+                    Provider = ReviewProvider.Copilot,
+                    Model = "claude-sonnet-4-5",
+                    CopilotEnv = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
+                        ["NEW_TOKEN"] = "new-token"
+                    },
+                    CopilotDirectHeaders = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) {
+                        ["X-New"] = "new-header"
+                    }
+                }
+            }
+        };
+
+        settings.ApplyAgentProfile("copilot-gpt54");
+        settings.ApplyAgentProfile("copilot-claude");
+
+        AssertEqual("base-copilot", settings.CopilotCliPath ?? string.Empty,
+            "agent profile switch restores baseline scalar settings");
+        AssertEqual(false, settings.CopilotEnv.ContainsKey("OLD_TOKEN"),
+            "agent profile switch removes stale env values");
+        AssertEqual("new-token", settings.CopilotEnv["NEW_TOKEN"],
+            "agent profile switch applies new env values");
+        AssertEqual(false, settings.CopilotDirectHeaders.ContainsKey("X-Old"),
+            "agent profile switch removes stale direct headers");
+        AssertEqual("new-header", settings.CopilotDirectHeaders["X-New"],
+            "agent profile switch applies new direct headers");
+    }
+
+    private static void TestReviewSwarmShadowCloneUsesRefreshedRuntimeBaseline() {
+        var settings = new ReviewSettings {
+            Provider = ReviewProvider.OpenAI,
+            Model = "gpt-5.4",
+            CopilotCliPath = "base-copilot",
+            AgentProfiles = new Dictionary<string, ReviewAgentProfileSettings>(StringComparer.OrdinalIgnoreCase) {
+                ["copilot-gpt54"] = new ReviewAgentProfileSettings {
+                    Id = "copilot-gpt54",
+                    Provider = ReviewProvider.Copilot,
+                    Model = "gpt-5.4",
+                    CopilotCliPath = "profile-a-copilot"
+                },
+                ["copilot-claude"] = new ReviewAgentProfileSettings {
+                    Id = "copilot-claude",
+                    Provider = ReviewProvider.Copilot,
+                    Model = "claude-sonnet-4-5"
+                }
+            }
+        };
+
+        settings.AgentProfile = "copilot-gpt54";
+        settings.ApplySelectedAgentProfile();
+
+        settings.RebaseToAgentProfileBaseline();
+        settings.CopilotCliPath = "env-copilot";
+        settings.RefreshAgentProfileBaseline();
+        settings.ApplySelectedAgentProfile();
+
+        var switchedLaneSettings = settings.CloneWithProviderOverride(
+            ReviewProvider.Copilot,
+            "claude-sonnet-4-5",
+            null,
+            "copilot-claude",
+            settings.RequireAgentProfile("copilot-claude", "tests"));
+
+        AssertEqual("env-copilot", switchedLaneSettings.CopilotCliPath ?? string.Empty,
+            "swarm shadow clone preserves refreshed runtime baseline overrides");
+    }
+
     private static void TestReviewSwarmShadowPlanFallsBackToPrimaryProviderAndModel() {
         var settings = new ReviewSettings {
             Provider = ReviewProvider.OpenAICompatible,
@@ -670,6 +906,8 @@ internal static partial class Program {
             usageLine: "Usage: 5h limit: 90% remaining | credits: 4.52", findingsBlock: string.Empty);
 
         AssertContainsText(comment, "### Model & Usage 🤖", "model usage section header");
+        AssertContainsText(comment, "- Provider: `openai`", "model usage provider");
+        AssertContainsText(comment, "- Transport: `appserver`", "model usage transport");
         AssertContainsText(comment, "- Model: `gpt-5-test`", "model usage model");
         AssertContainsText(comment, "- Usage: 5h limit: 90% remaining | credits: 4.52", "model usage line");
     }
@@ -682,6 +920,8 @@ internal static partial class Program {
         var comment = ReviewFormatter.BuildComment(context, "Body", settings, inlineSupported: true, inlineSuppressed: false,
             autoResolveNote: string.Empty, budgetNote: string.Empty, usageLine: string.Empty, findingsBlock: string.Empty);
 
+        AssertContainsText(comment, "- Provider: `openai`", "model usage unavailable provider");
+        AssertContainsText(comment, "- Transport: `appserver`", "model usage unavailable transport");
         AssertContainsText(comment, "- Usage: unavailable", "model usage unavailable line");
     }
 
@@ -696,6 +936,8 @@ internal static partial class Program {
         var comment = ReviewFormatter.BuildComment(context, "Body", settings, inlineSupported: true, inlineSuppressed: false,
             autoResolveNote: string.Empty, budgetNote: string.Empty, usageLine: string.Empty, findingsBlock: string.Empty);
 
+        AssertContainsText(comment, "- Provider: `copilot`", "copilot model usage provider");
+        AssertContainsText(comment, "- Transport: `cli`", "copilot model usage transport");
         AssertContainsText(comment, "- Model: `Copilot CLI default`", "copilot model usage default label");
         AssertDoesNotContainText(comment, "- Model: `gpt-5.4`", "copilot model usage hides generic OpenAI default");
     }
