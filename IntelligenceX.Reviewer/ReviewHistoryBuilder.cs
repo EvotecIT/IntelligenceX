@@ -90,11 +90,14 @@ internal static class ReviewHistoryBuilder {
         }
 
         var lines = new List<string>();
+        var latestSameHeadRound = FindLatestSameHeadRound(snapshot.Rounds);
         if (snapshot.OpenFindings.Count > 0) {
             lines.Add("Open on current head:");
             foreach (var finding in snapshot.OpenFindings) {
                 lines.Add($"- [{NormalizeSectionLabel(finding.Section)}] {finding.Text}");
             }
+        } else if (latestSameHeadRound is not null && latestSameHeadRound.FindingsParseIncomplete) {
+            lines.Add("Open on current head: unknown; merge-blocker lines could not be fully normalized.");
         } else {
             lines.Add("Open on current head: none.");
         }
@@ -148,7 +151,6 @@ internal static class ReviewHistoryBuilder {
         }
 
         ownedSummaries.Reverse();
-        var currentHeadFindingsByFingerprint = new Dictionary<string, ReviewHistoryFinding>(StringComparer.Ordinal);
         for (var index = 0; index < ownedSummaries.Count; index++) {
             var round = BuildStickySummaryRound(ownedSummaries[index], currentHeadSha, settings, index + 1);
             if (round is null) {
@@ -156,18 +158,11 @@ internal static class ReviewHistoryBuilder {
             }
 
             rounds.Add(round);
-            if (!round.SameHeadAsCurrent) {
-                continue;
-            }
-            foreach (var finding in round.Findings) {
-                currentHeadFindingsByFingerprint[finding.Fingerprint] = finding;
-            }
         }
 
-        foreach (var state in currentHeadFindingsByFingerprint.Values) {
-            if (string.Equals(state.Status, "open", StringComparison.OrdinalIgnoreCase)) {
-                openFindings.Add(state);
-            }
+        var latestSameHeadRound = FindLatestSameHeadRound(rounds);
+        if (latestSameHeadRound is not null) {
+            openFindings.AddRange(CollectLatestRoundOpenFindings(latestSameHeadRound.Findings));
         }
 
         AppendResolvedSinceLastRound(resolvedSinceLastRound, rounds);
@@ -230,12 +225,22 @@ internal static class ReviewHistoryBuilder {
         var latestRound = rounds[rounds.Count - 1];
         var previousRound = rounds[rounds.Count - 2];
         var latestFindings = ToFindingMap(latestRound.Findings);
-        foreach (var finding in previousRound.Findings) {
+        foreach (var finding in ToFindingMap(previousRound.Findings).Values) {
             if (!string.Equals(finding.Status, "open", StringComparison.OrdinalIgnoreCase)) {
                 continue;
             }
 
             if (!latestFindings.TryGetValue(finding.Fingerprint, out var latestFinding)) {
+                if (RoundsShareReviewedHead(previousRound, latestRound) &&
+                    !latestRound.FindingsHitLimit &&
+                    !LatestRoundHasUnparseableMergeBlockers(latestRound)) {
+                    resolvedSinceLastRound.Add(new ReviewHistoryFinding {
+                        Fingerprint = finding.Fingerprint,
+                        Section = finding.Section,
+                        Text = finding.Text,
+                        Status = "resolved"
+                    });
+                }
                 continue;
             }
 
@@ -247,6 +252,27 @@ internal static class ReviewHistoryBuilder {
         }
     }
 
+    private static ReviewHistoryRound? FindLatestSameHeadRound(IReadOnlyList<ReviewHistoryRound> rounds) {
+        for (var index = rounds.Count - 1; index >= 0; index--) {
+            if (rounds[index].SameHeadAsCurrent) {
+                return rounds[index];
+            }
+        }
+
+        return null;
+    }
+
+    private static bool LatestRoundHasUnparseableMergeBlockers(ReviewHistoryRound latestRound) {
+        return latestRound.FindingsParseIncomplete ||
+               (latestRound.HasMergeBlockers && latestRound.Findings.Count == 0);
+    }
+
+    private static bool RoundsShareReviewedHead(ReviewHistoryRound previousRound, ReviewHistoryRound latestRound) {
+        return !string.IsNullOrWhiteSpace(previousRound.ReviewedSha) &&
+               !string.IsNullOrWhiteSpace(latestRound.ReviewedSha) &&
+               string.Equals(previousRound.ReviewedSha, latestRound.ReviewedSha, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static Dictionary<string, ReviewHistoryFinding> ToFindingMap(IReadOnlyList<ReviewHistoryFinding> findings) {
         var map = new Dictionary<string, ReviewHistoryFinding>(StringComparer.Ordinal);
         foreach (var finding in findings) {
@@ -255,15 +281,53 @@ internal static class ReviewHistoryBuilder {
         return map;
     }
 
+    private static IReadOnlyList<ReviewHistoryFinding> CollectLatestRoundOpenFindings(IReadOnlyList<ReviewHistoryFinding> findings) {
+        if (findings.Count == 0) {
+            return Array.Empty<ReviewHistoryFinding>();
+        }
+
+        var latestIndices = new Dictionary<string, int>(StringComparer.Ordinal);
+        for (var index = 0; index < findings.Count; index++) {
+            var finding = findings[index];
+            if (string.IsNullOrWhiteSpace(finding.Fingerprint)) {
+                continue;
+            }
+
+            latestIndices[finding.Fingerprint] = index;
+        }
+
+        var open = new List<ReviewHistoryFinding>(findings.Count);
+        for (var index = 0; index < findings.Count; index++) {
+            var finding = findings[index];
+            if (!string.IsNullOrWhiteSpace(finding.Fingerprint) &&
+                latestIndices.TryGetValue(finding.Fingerprint, out var latestIndex) &&
+                latestIndex != index) {
+                continue;
+            }
+
+            if (!string.Equals(finding.Status, "open", StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            open.Add(finding);
+        }
+        return open;
+    }
+
     private static ReviewHistoryRound? BuildStickySummaryRound(IssueComment existingSummary, string? currentHeadSha,
         ReviewSettings settings, int sequence = 1) {
         ReviewSummaryParser.TryGetReviewedCommit(existingSummary.Body, out var reviewedCommit);
-        var findings = ReviewSummaryParser.ExtractMergeBlockerFindings(existingSummary.Body, settings, settings.History.MaxItems);
+        var findings = ReviewSummaryParser.ExtractMergeBlockerFindings(existingSummary.Body, settings, settings.History.MaxItems,
+            out var findingsHitLimit, out var findingsParseIncomplete);
         var hasMergeBlockers = ReviewSummaryParser.HasMergeBlockers(existingSummary.Body, settings);
         var mergeBlockerStatus = findings.Count == 0
-            ? hasMergeBlockers
+            ? findingsParseIncomplete
+                ? "unknown; merge-blocker lines were present but could not be normalized."
+                : hasMergeBlockers
                 ? "present, but markdown items could not be normalized."
                 : "none."
+            : findingsParseIncomplete
+                ? $"{findings.Count} normalized item(s), but additional merge-blocker lines could not be normalized."
             : $"{findings.Count} normalized item(s).";
         return new ReviewHistoryRound {
             Sequence = sequence,
@@ -275,6 +339,8 @@ internal static class ReviewHistoryBuilder {
                                 currentHeadSha.StartsWith(reviewedCommit!, StringComparison.OrdinalIgnoreCase),
             HasMergeBlockers = hasMergeBlockers,
             MergeBlockerStatus = mergeBlockerStatus,
+            FindingsHitLimit = findingsHitLimit,
+            FindingsParseIncomplete = findingsParseIncomplete,
             Findings = ConvertFindings(findings)
         };
     }
@@ -317,6 +383,9 @@ internal static class ReviewHistoryBuilder {
             : "- Prior-head IX merge blockers from sticky summary (candidates only; revalidate against current diff or active threads before treating as blockers):");
         foreach (var item in round.Findings) {
             lines.Add($"  - [{NormalizeSectionLabel(item.Section)}] {item.Text}");
+        }
+        if (round.FindingsParseIncomplete) {
+            lines.Add("  - Additional merge-blocker lines were present but could not be normalized; do not infer missing same-head findings as resolved from this round alone.");
         }
     }
 

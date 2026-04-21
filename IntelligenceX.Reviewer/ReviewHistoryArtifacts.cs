@@ -108,6 +108,8 @@ internal static class ReviewHistoryArtifacts {
                 sameHeadAsCurrent = round.SameHeadAsCurrent,
                 hasMergeBlockers = round.HasMergeBlockers,
                 mergeBlockerStatus = round.MergeBlockerStatus,
+                findingsHitLimit = round.FindingsHitLimit,
+                findingsParseIncomplete = round.FindingsParseIncomplete,
                 findings = BuildFindingItems(round.Findings)
             });
         }
@@ -204,7 +206,14 @@ internal static class ReviewHistoryArtifacts {
             sb.Append(EscapeInline(round.Source));
             sb.Append("`, blockers `");
             sb.Append(EscapeInline(round.HasMergeBlockers ? "yes" : "no"));
-            sb.AppendLine("`");
+            sb.Append("`");
+            if (round.FindingsHitLimit) {
+                sb.Append(", findings hit history cap");
+            }
+            if (round.FindingsParseIncomplete) {
+                sb.Append(", findings parse incomplete");
+            }
+            sb.AppendLine();
         }
     }
 

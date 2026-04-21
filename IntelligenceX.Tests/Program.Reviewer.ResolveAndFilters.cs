@@ -664,6 +664,475 @@ internal static partial class Program {
         AssertContainsText(block, "[critical] Cover the stale thread path.", "review history comment block resolved item");
     }
 
+    private static void TestReviewHistoryBuilderUsesLatestSameHeadRound() {
+        var settings = new ReviewSettings();
+        settings.History.Enabled = true;
+
+        var firstSameHeadBody = string.Join("\n", new[] {
+            ReviewFormatter.SummaryMarker,
+            "## IntelligenceX Review",
+            $"Reviewed commit: `abc1234`",
+            "",
+            "## Todo List ✅",
+            "- [ ] Retry the alternate transport.",
+            "",
+            "## Critical Issues ⚠️",
+            "None."
+        });
+        var latestSameHeadBody = string.Join("\n", new[] {
+            ReviewFormatter.SummaryMarker,
+            "## IntelligenceX Review",
+            $"Reviewed commit: `abc1234`",
+            "",
+            "## Todo List ✅",
+            "None.",
+            "",
+            "## Critical Issues ⚠️",
+            "None."
+        });
+        var issueComments = new[] {
+            new IssueComment(20, latestSameHeadBody, "intelligencex-review"),
+            new IssueComment(10, firstSameHeadBody, "intelligencex-review")
+        };
+
+        var snapshot = ReviewHistoryBuilder.BuildSnapshot(issueComments, "abc1234", Array.Empty<PullRequestReviewThread>(), settings);
+        var block = ReviewHistoryBuilder.BuildCommentBlock(snapshot);
+
+        AssertEqual(2, snapshot.Rounds.Count, "review history latest same-head round count");
+        AssertEqual(0, snapshot.OpenFindings.Count, "review history latest same-head round supersedes prior stale finding");
+        AssertEqual(1, snapshot.ResolvedSinceLastRound.Count,
+            "review history latest same-head round marks disappeared stale finding resolved");
+        AssertEqual("Retry the alternate transport.", snapshot.ResolvedSinceLastRound[0].Text,
+            "review history resolved stale same-head finding text");
+        AssertContainsText(block, "Open on current head: none.", "review history latest same-head block no open findings");
+        AssertContainsText(block, "Resolved since last round:", "review history latest same-head block resolved label");
+        AssertContainsText(block, "[todo] Retry the alternate transport.",
+            "review history latest same-head block resolved stale finding");
+    }
+
+    private static void TestReviewHistoryBuilderDoesNotResolveAcrossDifferentHeads() {
+        var settings = new ReviewSettings();
+        settings.History.Enabled = true;
+
+        var olderHeadBody = string.Join("\n", new[] {
+            ReviewFormatter.SummaryMarker,
+            "## IntelligenceX Review",
+            $"Reviewed commit: `abc1234`",
+            "",
+            "## Todo List ✅",
+            "- [ ] Retry the alternate transport.",
+            "",
+            "## Critical Issues ⚠️",
+            "None."
+        });
+        var newerHeadBody = string.Join("\n", new[] {
+            ReviewFormatter.SummaryMarker,
+            "## IntelligenceX Review",
+            $"Reviewed commit: `def5678`",
+            "",
+            "## Todo List ✅",
+            "None.",
+            "",
+            "## Critical Issues ⚠️",
+            "None."
+        });
+        var issueComments = new[] {
+            new IssueComment(20, newerHeadBody, "intelligencex-review"),
+            new IssueComment(10, olderHeadBody, "intelligencex-review")
+        };
+
+        var snapshot = ReviewHistoryBuilder.BuildSnapshot(issueComments, "def5678", Array.Empty<PullRequestReviewThread>(), settings);
+        var block = ReviewHistoryBuilder.BuildCommentBlock(snapshot);
+
+        AssertEqual(0, snapshot.OpenFindings.Count, "review history cross-head snapshot has no current same-head open findings");
+        AssertEqual(0, snapshot.ResolvedSinceLastRound.Count,
+            "review history cross-head snapshot does not mark disappeared finding resolved");
+        AssertContainsText(block, "Open on current head: none.", "review history cross-head block no open findings");
+        AssertContainsText(block, "Resolved since last round: none newly resolved.",
+            "review history cross-head block no resolved findings");
+        AssertDoesNotContainText(block, "Retry the alternate transport.",
+            "review history cross-head block does not surface prior-head finding as resolved");
+    }
+
+    private static void TestReviewHistoryBuilderDedupesLatestSameHeadOpenFindings() {
+        var settings = new ReviewSettings();
+        settings.History.Enabled = true;
+
+        var body = string.Join("\n", new[] {
+            ReviewFormatter.SummaryMarker,
+            "## IntelligenceX Review",
+            $"Reviewed commit: `abc1234`",
+            "",
+            "## Todo List ✅",
+            "- [ ] Retry the alternate transport.",
+            "- [ ] Retry the alternate transport.",
+            "",
+            "## Critical Issues ⚠️",
+            "None."
+        });
+        var issueComments = new[] {
+            new IssueComment(10, body, "intelligencex-review")
+        };
+
+        var snapshot = ReviewHistoryBuilder.BuildSnapshot(issueComments, "abc1234", Array.Empty<PullRequestReviewThread>(), settings);
+        var block = ReviewHistoryBuilder.BuildCommentBlock(snapshot);
+
+        AssertEqual(1, snapshot.OpenFindings.Count, "review history dedupes same-head open findings");
+        AssertEqual("Retry the alternate transport.", snapshot.OpenFindings[0].Text,
+            "review history deduped same-head finding text");
+        AssertEqual(1, CountOccurrences(block, "Retry the alternate transport."),
+            "review history deduped same-head finding appears once in comment block");
+    }
+
+    private static void TestReviewHistoryBuilderDoesNotResolveMissingFindingWhenLatestSameHeadHitsLimit() {
+        var settings = new ReviewSettings();
+        settings.History.Enabled = true;
+        settings.History.MaxItems = 1;
+
+        var olderBody = string.Join("\n", new[] {
+            ReviewFormatter.SummaryMarker,
+            "## IntelligenceX Review",
+            $"Reviewed commit: `abc1234`",
+            "",
+            "## Todo List ✅",
+            "- [ ] Retry the alternate transport.",
+            "",
+            "## Critical Issues ⚠️",
+            "None."
+        });
+        var newerBody = string.Join("\n", new[] {
+            ReviewFormatter.SummaryMarker,
+            "## IntelligenceX Review",
+            $"Reviewed commit: `abc1234`",
+            "",
+            "## Todo List ✅",
+            "- [ ] Add a new blocker ahead of the older one.",
+            "- [ ] Retry the alternate transport.",
+            "",
+            "## Critical Issues ⚠️",
+            "None."
+        });
+        var issueComments = new[] {
+            new IssueComment(20, newerBody, "intelligencex-review"),
+            new IssueComment(10, olderBody, "intelligencex-review")
+        };
+
+        var snapshot = ReviewHistoryBuilder.BuildSnapshot(issueComments, "abc1234", Array.Empty<PullRequestReviewThread>(), settings);
+        var block = ReviewHistoryBuilder.BuildCommentBlock(snapshot);
+
+        AssertEqual(1, snapshot.OpenFindings.Count, "review history capped same-head snapshot keeps extracted open finding");
+        AssertEqual(0, snapshot.ResolvedSinceLastRound.Count,
+            "review history capped same-head snapshot does not infer missing finding resolved");
+        AssertContainsText(block, "[todo] Add a new blocker ahead of the older one.",
+            "review history capped same-head block keeps current extracted open finding");
+        AssertDoesNotContainText(block, "Resolved since last round:",
+            "review history capped same-head block omits resolved section when nothing was resolved");
+        AssertDoesNotContainText(block, "[todo] Retry the alternate transport.",
+            "review history capped same-head block does not falsely report hidden finding resolved");
+    }
+
+    private static void TestReviewHistoryBuilderLatestSameHeadUsesResolvedStatusPrecedence() {
+        var settings = new ReviewSettings();
+        settings.History.Enabled = true;
+
+        var olderBody = string.Join("\n", new[] {
+            ReviewFormatter.SummaryMarker,
+            "## IntelligenceX Review",
+            "Reviewed commit: `abc1234`",
+            "",
+            "## Todo List ✅",
+            "- [ ] Retry the alternate transport.",
+            "",
+            "## Critical Issues ⚠️",
+            "None."
+        });
+        var newerBody = string.Join("\n", new[] {
+            ReviewFormatter.SummaryMarker,
+            "## IntelligenceX Review",
+            "Reviewed commit: `abc1234`",
+            "",
+            "## Todo List ✅",
+            "- [ ] Retry the alternate transport.",
+            "- [x] Retry the alternate transport.",
+            "",
+            "## Critical Issues ⚠️",
+            "None."
+        });
+        var issueComments = new[] {
+            new IssueComment(20, newerBody, "intelligencex-review"),
+            new IssueComment(10, olderBody, "intelligencex-review")
+        };
+
+        var snapshot = ReviewHistoryBuilder.BuildSnapshot(issueComments, "abc1234", Array.Empty<PullRequestReviewThread>(), settings);
+        var block = ReviewHistoryBuilder.BuildCommentBlock(snapshot);
+
+        AssertEqual(0, snapshot.OpenFindings.Count,
+            "review history latest same-head snapshot suppresses finding resolved later in same round");
+        AssertEqual(1, snapshot.ResolvedSinceLastRound.Count,
+            "review history latest same-head snapshot keeps resolved finding when latest round checks it off");
+        AssertContainsText(block, "Open on current head: none.",
+            "review history latest same-head block has no current open finding after later resolution");
+        AssertContainsText(block, "[todo] Retry the alternate transport.",
+            "review history latest same-head block reports the resolved finding once");
+    }
+
+    private static void TestReviewHistoryBuilderResolvesExactCapWhenLatestRoundIsComplete() {
+        var settings = new ReviewSettings();
+        settings.History.Enabled = true;
+        settings.History.MaxItems = 1;
+
+        var olderBody = string.Join("\n", new[] {
+            ReviewFormatter.SummaryMarker,
+            "## IntelligenceX Review",
+            "Reviewed commit: `abc1234`",
+            "",
+            "## Todo List ✅",
+            "- [ ] Retry the alternate transport.",
+            "",
+            "## Critical Issues ⚠️",
+            "None."
+        });
+        var newerBody = string.Join("\n", new[] {
+            ReviewFormatter.SummaryMarker,
+            "## IntelligenceX Review",
+            "Reviewed commit: `abc1234`",
+            "",
+            "## Todo List ✅",
+            "- [x] Retry the alternate transport.",
+            "",
+            "## Critical Issues ⚠️",
+            "None."
+        });
+        var issueComments = new[] {
+            new IssueComment(20, newerBody, "intelligencex-review"),
+            new IssueComment(10, olderBody, "intelligencex-review")
+        };
+
+        var snapshot = ReviewHistoryBuilder.BuildSnapshot(issueComments, "abc1234", Array.Empty<PullRequestReviewThread>(), settings);
+        var block = ReviewHistoryBuilder.BuildCommentBlock(snapshot);
+
+        AssertEqual(0, snapshot.OpenFindings.Count,
+            "review history exact-cap complete snapshot has no current open findings");
+        AssertEqual(1, snapshot.ResolvedSinceLastRound.Count,
+            "review history exact-cap complete snapshot still reports legitimate same-head resolution");
+        AssertContainsText(block, "Resolved since last round:",
+            "review history exact-cap complete block includes resolved section");
+        AssertContainsText(block, "[todo] Retry the alternate transport.",
+            "review history exact-cap complete block includes resolved finding text");
+    }
+
+    private static void TestReviewHistoryBuilderDoesNotResolveWhenLatestSameHeadBlockersAreUnparseable() {
+        var settings = new ReviewSettings();
+        settings.History.Enabled = true;
+        settings.MergeBlockerRequireSectionMatch = true;
+        settings.MergeBlockerRequireAllSections = true;
+
+        var olderBody = string.Join("\n", new[] {
+            ReviewFormatter.SummaryMarker,
+            "## IntelligenceX Review",
+            "Reviewed commit: `abc1234`",
+            "",
+            "## Todo List ✅",
+            "- [ ] Retry the alternate transport.",
+            "",
+            "## Critical Issues ⚠️",
+            "None."
+        });
+        var newerBody = string.Join("\n", new[] {
+            ReviewFormatter.SummaryMarker,
+            "## IntelligenceX Review",
+            "Reviewed commit: `abc1234`",
+            "",
+            "## Todo-ish Notes",
+            "- [ ] Blockers remain but the expected merge-blocker section header is malformed."
+        });
+        var issueComments = new[] {
+            new IssueComment(20, newerBody, "intelligencex-review"),
+            new IssueComment(10, olderBody, "intelligencex-review")
+        };
+        var extracted = ReviewSummaryParser.ExtractMergeBlockerFindings(newerBody, settings, settings.History.MaxItems);
+
+        AssertEqual(true, ReviewSummaryParser.HasMergeBlockers(newerBody, settings),
+            "review history unparseable same-head latest summary still reports merge blockers");
+        AssertEqual(0, extracted.Count,
+            "review history unparseable same-head latest summary yields no normalized findings");
+
+        var snapshot = ReviewHistoryBuilder.BuildSnapshot(issueComments, "abc1234", Array.Empty<PullRequestReviewThread>(), settings);
+        var block = ReviewHistoryBuilder.BuildCommentBlock(snapshot);
+
+        AssertEqual(0, snapshot.OpenFindings.Count,
+            "review history unparseable same-head snapshot has no normalized open findings");
+        AssertEqual(0, snapshot.ResolvedSinceLastRound.Count,
+            "review history unparseable same-head snapshot does not infer missing finding resolved");
+        AssertContainsText(block, "Open on current head: none.",
+            "review history unparseable same-head block reports no normalized open findings");
+        AssertContainsText(block, "Resolved since last round: none newly resolved.",
+            "review history unparseable same-head block does not claim the missing finding resolved");
+        AssertDoesNotContainText(block, "[todo] Retry the alternate transport.",
+            "review history unparseable same-head block does not surface prior finding as resolved");
+    }
+
+    private static void TestReviewHistoryBuilderDoesNotResolveWhenLatestSameHeadBlockersArePartiallyUnparseable() {
+        var settings = new ReviewSettings();
+        settings.History.Enabled = true;
+
+        var olderBody = string.Join("\n", new[] {
+            ReviewFormatter.SummaryMarker,
+            "## IntelligenceX Review",
+            "Reviewed commit: `abc1234`",
+            "",
+            "## Todo List ✅",
+            "- [ ] Retry the alternate transport.",
+            "",
+            "## Critical Issues ⚠️",
+            "None."
+        });
+        var newerBody = string.Join("\n", new[] {
+            ReviewFormatter.SummaryMarker,
+            "## IntelligenceX Review",
+            "Reviewed commit: `abc1234`",
+            "",
+            "## Todo List ✅",
+            "- [ ] Add a new blocker ahead of the older one.",
+            "* [ ] Retry the alternate transport.",
+            "",
+            "## Critical Issues ⚠️",
+            "None."
+        });
+        var issueComments = new[] {
+            new IssueComment(20, newerBody, "intelligencex-review"),
+            new IssueComment(10, olderBody, "intelligencex-review")
+        };
+        var extracted = ReviewSummaryParser.ExtractMergeBlockerFindings(newerBody, settings, settings.History.MaxItems,
+            out var hitLimit, out var parseIncomplete);
+
+        AssertEqual(false, hitLimit, "review history partial-parse latest summary does not hit findings limit");
+        AssertEqual(true, parseIncomplete,
+            "review history partial-parse latest summary reports incomplete merge-blocker parsing");
+        AssertEqual(1, extracted.Count,
+            "review history partial-parse latest summary still keeps normalized findings");
+
+        var snapshot = ReviewHistoryBuilder.BuildSnapshot(issueComments, "abc1234", Array.Empty<PullRequestReviewThread>(), settings);
+        var block = ReviewHistoryBuilder.BuildCommentBlock(snapshot);
+        var rendered = ReviewHistoryBuilder.Render(snapshot);
+
+        AssertEqual(1, snapshot.OpenFindings.Count,
+            "review history partial-parse same-head snapshot keeps normalized current finding");
+        AssertEqual("Add a new blocker ahead of the older one.", snapshot.OpenFindings[0].Text,
+            "review history partial-parse same-head snapshot keeps normalized open finding text");
+        AssertEqual(0, snapshot.ResolvedSinceLastRound.Count,
+            "review history partial-parse same-head snapshot does not infer malformed missing finding resolved");
+        AssertEqual(true, snapshot.Rounds[1].FindingsParseIncomplete,
+            "review history partial-parse same-head round records incomplete parsing");
+        AssertContainsText(block, "[todo] Add a new blocker ahead of the older one.",
+            "review history partial-parse same-head block includes normalized current finding");
+        AssertContainsText(rendered,
+            "Additional merge-blocker lines were present but could not be normalized",
+            "review history partial-parse same-head snapshot warns about incomplete normalization");
+        AssertDoesNotContainText(block, "Resolved since last round:",
+            "review history partial-parse same-head block omits resolved section when nothing was resolved");
+        AssertDoesNotContainText(block, "[todo] Retry the alternate transport.",
+            "review history partial-parse same-head block does not falsely report malformed missing finding resolved");
+    }
+
+    private static void TestReviewHistoryBuilderDoesNotResolveWhenLatestSameHeadParseIncompleteWithoutDetectedBlockers() {
+        var settings = new ReviewSettings();
+        settings.History.Enabled = true;
+
+        var olderBody = string.Join("\n", new[] {
+            ReviewFormatter.SummaryMarker,
+            "## IntelligenceX Review",
+            "Reviewed commit: `abc1234`",
+            "",
+            "## Todo List ✅",
+            "- [ ] Retry the alternate transport.",
+            "",
+            "## Critical Issues ⚠️",
+            "None."
+        });
+        var newerBody = string.Join("\n", new[] {
+            ReviewFormatter.SummaryMarker,
+            "## IntelligenceX Review",
+            "Reviewed commit: `abc1234`",
+            "",
+            "## Todo List ✅",
+            "* [ ] Retry the alternate transport.",
+            "",
+            "## Critical Issues ⚠️",
+            "None."
+        });
+        _ = ReviewSummaryParser.ExtractMergeBlockerFindings(newerBody, settings, settings.History.MaxItems,
+            out _, out var parseIncomplete);
+
+        AssertEqual(false, ReviewSummaryParser.HasMergeBlockers(newerBody, settings),
+            "review history parse-incomplete latest summary can evade merge-blocker detection");
+        AssertEqual(true, parseIncomplete,
+            "review history parse-incomplete latest summary still records incomplete parsing");
+
+        var issueComments = new[] {
+            new IssueComment(20, newerBody, "intelligencex-review"),
+            new IssueComment(10, olderBody, "intelligencex-review")
+        };
+        var snapshot = ReviewHistoryBuilder.BuildSnapshot(issueComments, "abc1234", Array.Empty<PullRequestReviewThread>(), settings);
+        var block = ReviewHistoryBuilder.BuildCommentBlock(snapshot);
+        var rendered = ReviewHistoryBuilder.Render(snapshot);
+
+        AssertEqual(0, snapshot.ResolvedSinceLastRound.Count,
+            "review history parse-incomplete same-head snapshot does not infer missing finding resolved");
+        AssertEqual("unknown; merge-blocker lines were present but could not be normalized.",
+            snapshot.Rounds[1].MergeBlockerStatus,
+            "review history parse-incomplete same-head round surfaces unknown merge-blocker state");
+        AssertContainsText(block, "Open on current head: unknown; merge-blocker lines could not be fully normalized.",
+            "review history parse-incomplete same-head block surfaces unknown current-head status");
+        AssertDoesNotContainText(block, "[todo] Retry the alternate transport.",
+            "review history parse-incomplete same-head block does not surface malformed missing finding as resolved");
+        AssertContainsText(rendered, "- IX merge blockers in sticky summary: unknown; merge-blocker lines were present but could not be normalized.",
+            "review history parse-incomplete same-head render preserves unknown merge-blocker status");
+    }
+
+    private static void TestReviewHistoryBuilderDoesNotInferResolutionFromPreviouslyResolvedDuplicate() {
+        var settings = new ReviewSettings();
+        settings.History.Enabled = true;
+
+        var olderBody = string.Join("\n", new[] {
+            ReviewFormatter.SummaryMarker,
+            "## IntelligenceX Review",
+            "Reviewed commit: `abc1234`",
+            "",
+            "## Todo List ✅",
+            "- [ ] Retry the alternate transport.",
+            "- [x] Retry the alternate transport.",
+            "",
+            "## Critical Issues ⚠️",
+            "None."
+        });
+        var newerBody = string.Join("\n", new[] {
+            ReviewFormatter.SummaryMarker,
+            "## IntelligenceX Review",
+            "Reviewed commit: `abc1234`",
+            "",
+            "## Todo List ✅",
+            "None.",
+            "",
+            "## Critical Issues ⚠️",
+            "None."
+        });
+        var issueComments = new[] {
+            new IssueComment(20, newerBody, "intelligencex-review"),
+            new IssueComment(10, olderBody, "intelligencex-review")
+        };
+
+        var snapshot = ReviewHistoryBuilder.BuildSnapshot(issueComments, "abc1234", Array.Empty<PullRequestReviewThread>(), settings);
+        var block = ReviewHistoryBuilder.BuildCommentBlock(snapshot);
+
+        AssertEqual(0, snapshot.ResolvedSinceLastRound.Count,
+            "review history duplicate previous statuses do not emit a fresh resolved finding");
+        AssertContainsText(block, "Resolved since last round: none newly resolved.",
+            "review history duplicate previous statuses block does not claim a new resolution");
+        AssertDoesNotContainText(block, "[todo] Retry the alternate transport.",
+            "review history duplicate previous statuses block does not surface already-resolved duplicate as newly resolved");
+    }
+
     private static void TestReviewSummaryStabilityDropsHistoryProgressBlock() {
         var context = BuildContext();
         var settings = new ReviewSettings {

@@ -808,6 +808,26 @@ internal static partial class Program {
         failed += Run("Review history builder includes sticky summary and thread snapshot",
             TestReviewHistoryBuilderIncludesStickySummaryAndThreadSnapshot);
         failed += Run("Review history builder builds comment block", TestReviewHistoryBuilderBuildsCommentBlock);
+        failed += Run("Review history builder uses latest same-head round",
+            TestReviewHistoryBuilderUsesLatestSameHeadRound);
+        failed += Run("Review history builder does not resolve across different heads",
+            TestReviewHistoryBuilderDoesNotResolveAcrossDifferentHeads);
+        failed += Run("Review history builder dedupes latest same-head open findings",
+            TestReviewHistoryBuilderDedupesLatestSameHeadOpenFindings);
+        failed += Run("Review history builder does not resolve missing finding when latest same-head hits limit",
+            TestReviewHistoryBuilderDoesNotResolveMissingFindingWhenLatestSameHeadHitsLimit);
+        failed += Run("Review history builder latest same-head uses resolved status precedence",
+            TestReviewHistoryBuilderLatestSameHeadUsesResolvedStatusPrecedence);
+        failed += Run("Review history builder resolves exact cap when latest round is complete",
+            TestReviewHistoryBuilderResolvesExactCapWhenLatestRoundIsComplete);
+        failed += Run("Review history builder does not resolve when latest same-head blockers are unparseable",
+            TestReviewHistoryBuilderDoesNotResolveWhenLatestSameHeadBlockersAreUnparseable);
+        failed += Run("Review history builder does not resolve when latest same-head blockers are partially unparseable",
+            TestReviewHistoryBuilderDoesNotResolveWhenLatestSameHeadBlockersArePartiallyUnparseable);
+        failed += Run("Review history builder does not resolve when parse-incomplete latest round evades blocker detection",
+            TestReviewHistoryBuilderDoesNotResolveWhenLatestSameHeadParseIncompleteWithoutDetectedBlockers);
+        failed += Run("Review history builder does not infer resolution from previously resolved duplicate",
+            TestReviewHistoryBuilderDoesNotInferResolutionFromPreviouslyResolvedDuplicate);
         failed += Run("Review summary stability drops history progress block",
             TestReviewSummaryStabilityDropsHistoryProgressBlock);
         failed += Run("Review history artifacts render json and markdown",
