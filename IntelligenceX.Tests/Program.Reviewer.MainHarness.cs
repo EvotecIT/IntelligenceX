@@ -663,11 +663,15 @@ internal static partial class Program {
         failed += Run("Review settings load config then env precedence", TestReviewSettingsLoadConfigThenEnvPrecedence);
         failed += Run("Review settings load config then env precedence for ciContext and swarm",
             TestReviewSettingsLoadConfigThenEnvPrecedenceForCiContextAndSwarm);
+        failed += Run("Review settings empty input falls back to env override",
+            TestReviewSettingsEmptyInputFallsBackToEnvOverride);
         failed += Run("Review settings load swarm reviewer objects", TestReviewSettingsLoadSwarmReviewerObjects);
         failed += Run("Review settings agent profile selects authenticator and model",
             TestReviewSettingsAgentProfileSelectsAuthenticatorAndModel);
         failed += Run("Review settings agent profile rejects unknown authenticator and transport",
             TestReviewSettingsAgentProfileRejectsUnknownAuthenticatorAndTransport);
+        failed += Run("Review settings model-only agent profile updates copilot model",
+            TestReviewSettingsModelOnlyAgentProfileUpdatesCopilotModel);
         failed += Run("Review settings env swarm reviewers JSON", TestReviewSettingsEnvSwarmReviewersJson);
         failed += Run("Review settings load config allows zero for non-negative limits",
             TestReviewSettingsLoadConfigAllowsZeroForNonNegativeLimits);

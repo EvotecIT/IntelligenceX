@@ -52,6 +52,7 @@ internal sealed partial class ReviewSettings {
         if (provider.HasValue) {
             Provider = provider.Value;
         }
+        var effectiveProvider = provider ?? Provider;
         if (!string.IsNullOrWhiteSpace(profile.Model)) {
             Model = profile.Model.Trim();
         }
@@ -68,7 +69,7 @@ internal sealed partial class ReviewSettings {
         }
         CopilotModel = UseIfSet(profile.CopilotModel, CopilotModel);
         if (string.IsNullOrWhiteSpace(profile.CopilotModel) &&
-            provider == ReviewProvider.Copilot &&
+            effectiveProvider == ReviewProvider.Copilot &&
             !string.IsNullOrWhiteSpace(profile.Model)) {
             CopilotModel = profile.Model.Trim();
         }

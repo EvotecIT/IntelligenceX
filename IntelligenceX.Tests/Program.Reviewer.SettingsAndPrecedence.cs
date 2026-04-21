@@ -302,6 +302,23 @@ internal static partial class Program {
         }
     }
 
+    private static void TestReviewSettingsEmptyInputFallsBackToEnvOverride() {
+        var previousInputHistoryEnabled = Environment.GetEnvironmentVariable("INPUT_HISTORY_ENABLED");
+        var previousHistoryEnabled = Environment.GetEnvironmentVariable("REVIEW_HISTORY_ENABLED");
+        try {
+            Environment.SetEnvironmentVariable("INPUT_HISTORY_ENABLED", string.Empty);
+            Environment.SetEnvironmentVariable("REVIEW_HISTORY_ENABLED", "false");
+
+            var settings = ReviewSettings.FromEnvironment();
+
+            AssertEqual(false, settings.History.Enabled,
+                "review settings empty input falls back to env override");
+        } finally {
+            Environment.SetEnvironmentVariable("INPUT_HISTORY_ENABLED", previousInputHistoryEnabled);
+            Environment.SetEnvironmentVariable("REVIEW_HISTORY_ENABLED", previousHistoryEnabled);
+        }
+    }
+
     private static void TestReviewSettingsLoadSwarmReviewerObjects() {
         var previousConfigPath = Environment.GetEnvironmentVariable("REVIEW_CONFIG_PATH");
         var configPath = Path.Combine(Path.GetTempPath(), $"intelligencex-review-swarm-objects-{Guid.NewGuid():N}.json");
@@ -579,6 +596,45 @@ internal static partial class Program {
 """);
             AssertThrows<InvalidOperationException>(() => ReviewSettings.Load(),
                 "review settings invalid agent profile copilot transport");
+        } finally {
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", previousConfigPath);
+            if (File.Exists(configPath)) {
+                File.Delete(configPath);
+            }
+        }
+    }
+
+    private static void TestReviewSettingsModelOnlyAgentProfileUpdatesCopilotModel() {
+        var previousConfigPath = Environment.GetEnvironmentVariable("REVIEW_CONFIG_PATH");
+        var configPath = Path.Combine(Path.GetTempPath(), $"intelligencex-review-agent-profile-model-only-{Guid.NewGuid():N}.json");
+        try {
+            File.WriteAllText(configPath, """
+{
+  "review": {
+    "provider": "copilot",
+    "copilotModel": "stale-model",
+    "agentProfile": "copilot-fast",
+    "agentProfiles": {
+      "copilot-fast": {
+        "model": "gpt-5.4"
+      }
+    }
+  }
+}
+""");
+
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", configPath);
+
+            var settings = ReviewSettings.Load();
+
+            AssertEqual(ReviewProvider.Copilot, settings.Provider,
+                "review settings model-only agent profile keeps copilot provider");
+            AssertEqual("gpt-5.4", settings.Model,
+                "review settings model-only agent profile updates generic model");
+            AssertEqual("gpt-5.4", settings.CopilotModel ?? string.Empty,
+                "review settings model-only agent profile updates copilot model");
+            AssertEqual("gpt-5.4", ReviewRunner.ResolveCopilotModel(settings) ?? string.Empty,
+                "review settings model-only agent profile resolves copilot model");
         } finally {
             Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", previousConfigPath);
             if (File.Exists(configPath)) {

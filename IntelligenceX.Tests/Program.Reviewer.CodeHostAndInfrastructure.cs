@@ -1189,10 +1189,10 @@ internal static partial class Program {
         var settings = new ReviewSettings {
             Provider = ReviewProvider.Copilot,
             CopilotTransport = CopilotTransportKind.Cli,
-            WaitSeconds = 180
+            WaitSeconds = 17
         };
 
-        AssertEqual(TimeSpan.FromSeconds(180), ReviewRunner.ResolveCopilotReviewTimeout(settings),
+        AssertEqual(TimeSpan.FromSeconds(17), ReviewRunner.ResolveCopilotReviewTimeout(settings),
             "copilot prompt timeout should honor configured wait");
     }
 
@@ -1211,10 +1211,10 @@ internal static partial class Program {
         var settings = new ReviewSettings {
             Provider = ReviewProvider.Copilot,
             CopilotTransport = CopilotTransportKind.Cli,
-            WaitSeconds = 180
+            WaitSeconds = 23
         };
 
-        AssertEqual(TimeSpan.FromSeconds(180), ReviewRunner.ResolveCopilotReviewTimeout(settings),
+        AssertEqual(TimeSpan.FromSeconds(23), ReviewRunner.ResolveCopilotReviewTimeout(settings),
             "copilot cli session timeout should honor configured wait");
     }
 

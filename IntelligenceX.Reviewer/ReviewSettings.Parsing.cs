@@ -55,7 +55,9 @@ internal sealed partial class ReviewSettings {
         value = Environment.GetEnvironmentVariable($"INPUT_{inputName.ToUpperInvariant()}");
         if (value is not null) {
             value = value.Trim();
-            return true;
+            if (!string.IsNullOrWhiteSpace(value)) {
+                return true;
+            }
         }
         if (!string.IsNullOrWhiteSpace(envName)) {
             value = Environment.GetEnvironmentVariable(envName);

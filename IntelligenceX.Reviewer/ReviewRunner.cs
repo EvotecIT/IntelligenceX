@@ -626,10 +626,6 @@ internal sealed partial class ReviewRunner {
         await session.SendAsync(new CopilotMessageOptions { Prompt = prompt }, cancellationToken).ConfigureAwait(false);
 
         var timeoutWindow = ResolveCopilotReviewTimeout(_settings);
-        if (_settings.Diagnostics && timeoutWindow.TotalSeconds > Math.Max(1, _settings.WaitSeconds)) {
-            Console.Error.WriteLine(
-                $"Copilot CLI session timeout raised from {_settings.WaitSeconds}s to {timeoutWindow.TotalSeconds:0}s to cover reviewer-scale runs.");
-        }
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(timeoutWindow);
         using var registration = timeout.Token.Register(() =>
@@ -658,10 +654,6 @@ internal sealed partial class ReviewRunner {
         var timeout = ResolveCopilotReviewTimeout(_settings);
         if (_settings.Diagnostics) {
             Console.Error.WriteLine("Copilot review execution mode: prompt.");
-            if (timeout.TotalSeconds > Math.Max(1, _settings.WaitSeconds)) {
-                Console.Error.WriteLine(
-                    $"Copilot prompt timeout raised from {_settings.WaitSeconds}s to {timeout.TotalSeconds:0}s to cover prompt-mode startup and streaming latency.");
-            }
         }
         try {
             var result = await client.RunAsync(
