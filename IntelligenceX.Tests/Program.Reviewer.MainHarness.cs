@@ -816,6 +816,8 @@ internal static partial class Program {
             TestReviewHistoryBuilderDedupesLatestSameHeadOpenFindings);
         failed += Run("Review history builder does not resolve missing finding when latest same-head hits limit",
             TestReviewHistoryBuilderDoesNotResolveMissingFindingWhenLatestSameHeadHitsLimit);
+        failed += Run("Review history builder latest same-head uses resolved status precedence",
+            TestReviewHistoryBuilderLatestSameHeadUsesResolvedStatusPrecedence);
         failed += Run("Review summary stability drops history progress block",
             TestReviewSummaryStabilityDropsHistoryProgressBlock);
         failed += Run("Review history artifacts render json and markdown",

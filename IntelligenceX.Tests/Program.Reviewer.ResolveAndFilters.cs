@@ -831,6 +831,51 @@ internal static partial class Program {
             "review history capped same-head block does not falsely report hidden finding resolved");
     }
 
+    private static void TestReviewHistoryBuilderLatestSameHeadUsesResolvedStatusPrecedence() {
+        var settings = new ReviewSettings();
+        settings.History.Enabled = true;
+
+        var olderBody = string.Join("\n", new[] {
+            ReviewFormatter.SummaryMarker,
+            "## IntelligenceX Review",
+            "Reviewed commit: `abc1234`",
+            "",
+            "## Todo List ✅",
+            "- [ ] Retry the alternate transport.",
+            "",
+            "## Critical Issues ⚠️",
+            "None."
+        });
+        var newerBody = string.Join("\n", new[] {
+            ReviewFormatter.SummaryMarker,
+            "## IntelligenceX Review",
+            "Reviewed commit: `abc1234`",
+            "",
+            "## Todo List ✅",
+            "- [ ] Retry the alternate transport.",
+            "- [x] Retry the alternate transport.",
+            "",
+            "## Critical Issues ⚠️",
+            "None."
+        });
+        var issueComments = new[] {
+            new IssueComment(20, newerBody, "intelligencex-review"),
+            new IssueComment(10, olderBody, "intelligencex-review")
+        };
+
+        var snapshot = ReviewHistoryBuilder.BuildSnapshot(issueComments, "abc1234", Array.Empty<PullRequestReviewThread>(), settings);
+        var block = ReviewHistoryBuilder.BuildCommentBlock(snapshot);
+
+        AssertEqual(0, snapshot.OpenFindings.Count,
+            "review history latest same-head snapshot suppresses finding resolved later in same round");
+        AssertEqual(1, snapshot.ResolvedSinceLastRound.Count,
+            "review history latest same-head snapshot keeps resolved finding when latest round checks it off");
+        AssertContainsText(block, "Open on current head: none.",
+            "review history latest same-head block has no current open finding after later resolution");
+        AssertContainsText(block, "[todo] Retry the alternate transport.",
+            "review history latest same-head block reports the resolved finding once");
+    }
+
     private static void TestReviewSummaryStabilityDropsHistoryProgressBlock() {
         var context = BuildContext();
         var settings = new ReviewSettings {

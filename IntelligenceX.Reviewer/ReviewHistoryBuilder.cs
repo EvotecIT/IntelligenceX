@@ -159,19 +159,7 @@ internal static class ReviewHistoryBuilder {
 
         var latestSameHeadRound = FindLatestSameHeadRound(rounds);
         if (latestSameHeadRound is not null) {
-            var seenFingerprints = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var state in latestSameHeadRound.Findings) {
-                if (!string.Equals(state.Status, "open", StringComparison.OrdinalIgnoreCase)) {
-                    continue;
-                }
-
-                if (!string.IsNullOrWhiteSpace(state.Fingerprint) &&
-                    !seenFingerprints.Add(state.Fingerprint)) {
-                    continue;
-                }
-
-                openFindings.Add(state);
-            }
+            openFindings.AddRange(CollectLatestRoundOpenFindings(latestSameHeadRound.Findings));
         }
 
         AppendResolvedSinceLastRound(resolvedSinceLastRound, rounds);
@@ -282,6 +270,31 @@ internal static class ReviewHistoryBuilder {
             map[finding.Fingerprint] = finding;
         }
         return map;
+    }
+
+    private static IReadOnlyList<ReviewHistoryFinding> CollectLatestRoundOpenFindings(IReadOnlyList<ReviewHistoryFinding> findings) {
+        if (findings.Count == 0) {
+            return Array.Empty<ReviewHistoryFinding>();
+        }
+
+        var open = new List<ReviewHistoryFinding>(findings.Count);
+        var seenFingerprints = new HashSet<string>(StringComparer.Ordinal);
+        for (var index = findings.Count - 1; index >= 0; index--) {
+            var finding = findings[index];
+            if (!string.IsNullOrWhiteSpace(finding.Fingerprint) &&
+                !seenFingerprints.Add(finding.Fingerprint)) {
+                continue;
+            }
+
+            if (!string.Equals(finding.Status, "open", StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            open.Add(finding);
+        }
+
+        open.Reverse();
+        return open;
     }
 
     private static ReviewHistoryRound? BuildStickySummaryRound(IssueComment existingSummary, string? currentHeadSha,
