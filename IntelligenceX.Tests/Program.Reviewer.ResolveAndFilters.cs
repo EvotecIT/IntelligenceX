@@ -952,7 +952,7 @@ internal static partial class Program {
         };
         var extracted = ReviewSummaryParser.ExtractMergeBlockerFindings(newerBody, settings, settings.History.MaxItems);
 
-        AssertTrue(ReviewSummaryParser.HasMergeBlockers(newerBody, settings),
+        AssertEqual(true, ReviewSummaryParser.HasMergeBlockers(newerBody, settings),
             "review history unparseable same-head latest summary still reports merge blockers");
         AssertEqual(0, extracted.Count,
             "review history unparseable same-head latest summary yields no normalized findings");
