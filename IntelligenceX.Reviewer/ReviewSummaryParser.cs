@@ -352,7 +352,7 @@ internal static class ReviewSummaryParser {
             return false;
         }
         if (trimmed.StartsWith("-", StringComparison.Ordinal) ||
-            IsStarredBulletEntry(trimmed) ||
+            IsWhitespaceSeparatedStarredBulletEntry(trimmed) ||
             trimmed.StartsWith("[ ]", StringComparison.Ordinal) ||
             trimmed.StartsWith("[x]", StringComparison.OrdinalIgnoreCase)) {
             return true;
@@ -366,7 +366,7 @@ internal static class ReviewSummaryParser {
         return markerIndex > 0 && markerIndex <= 2;
     }
 
-    private static bool IsStarredBulletEntry(string line) {
+    private static bool IsWhitespaceSeparatedStarredBulletEntry(string line) {
         if (!line.StartsWith("*", StringComparison.Ordinal) || line.Length < 2 || !char.IsWhiteSpace(line[1])) {
             return false;
         }
@@ -376,6 +376,7 @@ internal static class ReviewSummaryParser {
             index++;
         }
 
+        // Markdown list bullets require whitespace after '*'; emphasis prose like '*Impact:*' does not.
         return index < line.Length;
     }
 
