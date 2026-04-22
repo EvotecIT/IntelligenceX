@@ -353,6 +353,7 @@ internal static class ReviewSummaryParser {
         }
         if (trimmed.StartsWith("-", StringComparison.Ordinal) ||
             IsWhitespaceSeparatedStarredBulletEntry(trimmed) ||
+            IsStarredChecklistEntry(trimmed) ||
             trimmed.StartsWith("[ ]", StringComparison.Ordinal) ||
             trimmed.StartsWith("[x]", StringComparison.OrdinalIgnoreCase)) {
             return true;
@@ -377,7 +378,29 @@ internal static class ReviewSummaryParser {
         }
 
         // Markdown list bullets require whitespace after '*'; emphasis prose like '*Impact:*' does not.
-        return index < line.Length;
+        return index < line.Length && !IsChecklistMarkerAt(line, index);
+    }
+
+    private static bool IsStarredChecklistEntry(string line) {
+        if (!line.StartsWith("*", StringComparison.Ordinal) || line.Length < 2) {
+            return false;
+        }
+
+        var index = 1;
+        while (index < line.Length && char.IsWhiteSpace(line[index])) {
+            index++;
+        }
+
+        return IsChecklistMarkerAt(line, index);
+    }
+
+    private static bool IsChecklistMarkerAt(string line, int index) {
+        if (index + 2 >= line.Length || line[index] != '[') {
+            return false;
+        }
+
+        var marker = line[index + 1];
+        return (marker == ' ' || marker == 'x' || marker == 'X') && line[index + 2] == ']';
     }
 
     private static string CreateFindingFingerprint(string section, string text) {

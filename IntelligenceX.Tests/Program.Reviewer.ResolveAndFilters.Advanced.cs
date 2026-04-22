@@ -872,6 +872,24 @@ internal static partial class Program {
         AssertEqual(true, parseIncomplete, "findings plain starred bullet keeps parse incomplete safety");
     }
 
+    private static void TestReviewSummaryParserKeepsCompactStarredChecklistAsParseIncomplete() {
+        var body = string.Join("\n", new[] {
+            "## Todo List ✅",
+            "*[ ] retry transport",
+            "",
+            "## Critical Issues ⚠️",
+            "None."
+        });
+
+        var findings = ReviewSummaryParser.ExtractMergeBlockerFindings(body, settings: null, maxItems: 10, hitLimit: out var hitLimit,
+            parseIncomplete: out var parseIncomplete);
+
+        AssertEqual(false, ReviewSummaryParser.HasMergeBlockers(body), "merge blockers compact starred checklist still bypasses normalization");
+        AssertEqual(0, findings.Count, "findings compact starred checklist count");
+        AssertEqual(false, hitLimit, "findings compact starred checklist does not hit limit");
+        AssertEqual(true, parseIncomplete, "findings compact starred checklist keeps parse incomplete safety");
+    }
+
     private static void TestReviewSummaryParserMergeBlockerDetectionCompactDefaults() {
         var settings = new ReviewSettings {
             OutputStyle = "compact"
