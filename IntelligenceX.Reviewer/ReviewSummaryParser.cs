@@ -352,8 +352,7 @@ internal static class ReviewSummaryParser {
             return false;
         }
         if (trimmed.StartsWith("-", StringComparison.Ordinal) ||
-            trimmed.StartsWith("* [ ]", StringComparison.Ordinal) ||
-            trimmed.StartsWith("* [x]", StringComparison.OrdinalIgnoreCase) ||
+            IsStarredChecklistEntry(trimmed) ||
             trimmed.StartsWith("[ ]", StringComparison.Ordinal) ||
             trimmed.StartsWith("[x]", StringComparison.OrdinalIgnoreCase)) {
             return true;
@@ -365,6 +364,25 @@ internal static class ReviewSummaryParser {
 
         var markerIndex = trimmed.IndexOf(". ", StringComparison.Ordinal);
         return markerIndex > 0 && markerIndex <= 2;
+    }
+
+    private static bool IsStarredChecklistEntry(string line) {
+        if (!line.StartsWith("*", StringComparison.Ordinal) || line.Length < 2 || !char.IsWhiteSpace(line[1])) {
+            return false;
+        }
+
+        var index = 1;
+        while (index < line.Length && char.IsWhiteSpace(line[index])) {
+            index++;
+        }
+
+        if (index + 2 >= line.Length) {
+            return false;
+        }
+
+        return line[index] == '[' &&
+               (line[index + 1] == ' ' || line[index + 1] == 'x' || line[index + 1] == 'X') &&
+               line[index + 2] == ']';
     }
 
     private static string CreateFindingFingerprint(string section, string text) {

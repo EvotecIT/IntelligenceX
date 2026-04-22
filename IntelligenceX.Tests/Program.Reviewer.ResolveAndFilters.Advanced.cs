@@ -836,6 +836,24 @@ internal static partial class Program {
         AssertEqual(false, parseIncomplete, "findings starred prose does not mark parse incomplete");
     }
 
+    private static void TestReviewSummaryParserKeepsFlexibleStarredChecklistAsParseIncomplete() {
+        var body = string.Join("\n", new[] {
+            "## Todo List ✅",
+            "*    [ ] retry transport",
+            "",
+            "## Critical Issues ⚠️",
+            "None."
+        });
+
+        var findings = ReviewSummaryParser.ExtractMergeBlockerFindings(body, settings: null, maxItems: 10, hitLimit: out var hitLimit,
+            parseIncomplete: out var parseIncomplete);
+
+        AssertEqual(false, ReviewSummaryParser.HasMergeBlockers(body), "merge blockers flexible starred checklist still bypasses normalization");
+        AssertEqual(0, findings.Count, "findings flexible starred checklist count");
+        AssertEqual(false, hitLimit, "findings flexible starred checklist does not hit limit");
+        AssertEqual(true, parseIncomplete, "findings flexible starred checklist keeps parse incomplete safety");
+    }
+
     private static void TestReviewSummaryParserMergeBlockerDetectionCompactDefaults() {
         var settings = new ReviewSettings {
             OutputStyle = "compact"

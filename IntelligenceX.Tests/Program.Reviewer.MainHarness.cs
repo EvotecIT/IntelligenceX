@@ -856,6 +856,8 @@ internal static partial class Program {
         failed += Run("Review summary parser merge blocker detection", TestReviewSummaryParserMergeBlockerDetection);
         failed += Run("Review summary parser ignores starred prose for parse incomplete",
             TestReviewSummaryParserIgnoresStarredProseForParseIncomplete);
+        failed += Run("Review summary parser keeps flexible starred checklist parse incomplete",
+            TestReviewSummaryParserKeepsFlexibleStarredChecklistAsParseIncomplete);
         failed += Run("Review summary parser merge blocker detection inline section labels",
             TestReviewSummaryParserMergeBlockerDetectionInlineSectionLabels);
         failed += Run("Review summary parser merge blocker detection heading inline section labels",
