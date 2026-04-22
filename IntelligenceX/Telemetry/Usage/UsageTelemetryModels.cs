@@ -356,6 +356,21 @@ public sealed class UsageEventRecord {
     public string? ThreadId { get; set; }
 
     /// <summary>
+    /// Gets or sets the provider conversation title when available.
+    /// </summary>
+    public string? ConversationTitle { get; set; }
+
+    /// <summary>
+    /// Gets or sets the workspace path associated with the conversation when available.
+    /// </summary>
+    public string? WorkspacePath { get; set; }
+
+    /// <summary>
+    /// Gets or sets the repository name associated with the conversation when available.
+    /// </summary>
+    public string? RepositoryName { get; set; }
+
+    /// <summary>
     /// Gets or sets the provider turn identifier when available.
     /// </summary>
     public string? TurnId { get; set; }
@@ -404,6 +419,11 @@ public sealed class UsageEventRecord {
     /// Gets or sets the total token count.
     /// </summary>
     public long? TotalTokens { get; set; }
+
+    /// <summary>
+    /// Gets or sets the number of context compactions associated with this event.
+    /// </summary>
+    public int? CompactCount { get; set; }
 
     /// <summary>
     /// Gets or sets the elapsed duration in milliseconds.

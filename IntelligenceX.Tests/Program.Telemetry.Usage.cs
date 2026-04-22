@@ -35,6 +35,89 @@ internal static partial class Program {
         AssertEqual("raw|codex|raw_ignore", keys[2], "tertiary dedupe key");
     }
 
+    private static void TestUsageConversationSummaryBuilderGroupsRawConversationRows() {
+        var started = new DateTimeOffset(2026, 4, 19, 9, 0, 0, TimeSpan.Zero);
+        var records = new[] {
+            new UsageEventRecord("ev_a1", "codex", "codex.session-log", "src_1", started) {
+                ProviderAccountId = "acct_a",
+                AccountLabel = "Primary",
+                SessionId = "session-a",
+                ThreadId = "session-a",
+                ConversationTitle = "Analyze token usage",
+                WorkspacePath = @"C:\Support\GitHub\IntelligenceX",
+                RepositoryName = "EvotecIT/IntelligenceX",
+                TurnId = "turn-1",
+                Model = "gpt-5.4",
+                Surface = "cli",
+                InputTokens = 100,
+                OutputTokens = 10,
+                TotalTokens = 110,
+                DurationMs = 12_000,
+                CompactCount = 1
+            },
+            new UsageEventRecord("ev_a2", "codex", "codex.session-log", "src_1", started.AddMinutes(10)) {
+                ProviderAccountId = "acct_a",
+                AccountLabel = "Primary",
+                SessionId = "session-a",
+                ThreadId = "session-a",
+                TurnId = "turn-2",
+                Model = "gpt-5.4",
+                Surface = "cli",
+                InputTokens = 50,
+                CachedInputTokens = 25,
+                OutputTokens = 25,
+                ReasoningTokens = 5,
+                TotalTokens = 75,
+                DurationMs = 8_000,
+                CompactCount = 2
+            },
+            new UsageEventRecord("ev_b1", "codex", "codex.session-log", "src_1", started.AddHours(1)) {
+                ProviderAccountId = "acct_a",
+                AccountLabel = "Primary",
+                SessionId = "session-b",
+                ThreadId = "session-b",
+                TurnId = "turn-1",
+                Model = "gpt-5.2-codex",
+                Surface = "cli",
+                TotalTokens = 500,
+                DurationMs = 42000
+            },
+            new UsageEventRecord("ev_ignored", "codex", "codex.session-log", "src_1", started.AddHours(2)) {
+                ProviderAccountId = "acct_a",
+                AccountLabel = "Primary",
+                Model = "gpt-5.4",
+                Surface = "cli",
+                TotalTokens = 999
+            }
+        };
+
+        var summaries = UsageConversationSummaryBuilder.Build(records);
+
+        AssertEqual(2, summaries.Count, "conversation summary count");
+        AssertEqual("session-b", summaries[0].SessionId, "conversation summaries sort by token weight");
+        AssertEqual(500L, summaries[0].TotalTokens, "conversation summary top total");
+        AssertEqual(TimeSpan.FromSeconds(42), summaries[0].Duration, "conversation summary single-row duration fallback");
+        AssertEqual(TimeSpan.FromSeconds(42), summaries[0].ActiveDuration, "conversation summary single-row active duration");
+
+        var sessionA = summaries.Single(summary => summary.SessionId == "session-a");
+        AssertEqual(185L, sessionA.TotalTokens, "conversation summary total tokens");
+        AssertEqual(150L, sessionA.InputTokens, "conversation summary input tokens");
+        AssertEqual(25L, sessionA.CachedInputTokens, "conversation summary cached tokens");
+        AssertEqual(35L, sessionA.OutputTokens, "conversation summary output tokens");
+        AssertEqual(5L, sessionA.ReasoningTokens, "conversation summary reasoning tokens");
+        AssertEqual(3, sessionA.CompactCount, "conversation summary compact count");
+        AssertEqual(2, sessionA.TurnCount, "conversation summary turn count");
+        AssertEqual(TimeSpan.FromMinutes(10), sessionA.Duration, "conversation summary wall duration");
+        AssertEqual(TimeSpan.FromSeconds(20), sessionA.ActiveDuration, "conversation summary active duration");
+        AssertEqual("Primary", sessionA.AccountLabel, "conversation summary account label");
+        AssertEqual("Analyze token usage", sessionA.ConversationTitle, "conversation summary title");
+        AssertEqual(@"C:\Support\GitHub\IntelligenceX", sessionA.WorkspacePath, "conversation summary workspace path");
+        AssertEqual("IntelligenceX", sessionA.WorkspaceName, "conversation summary workspace name");
+        AssertEqual("EvotecIT/IntelligenceX", sessionA.RepositoryName, "conversation summary repository");
+        AssertEqual("gpt-5.4", sessionA.Models[0], "conversation summary top model");
+        AssertEqual("cli", sessionA.Surfaces[0], "conversation summary top surface");
+    }
+
     private static void TestUsageTelemetryStoreMergesResponseDuplicates() {
         var store = new InMemoryUsageEventStore();
         var first = new UsageEventRecord(
@@ -154,8 +237,9 @@ internal static partial class Program {
         File.WriteAllText(
             sessionPath,
             string.Join(Environment.NewLine, new[] {
-                "{\"timestamp\":\"2026-03-11T15:02:44.663Z\",\"type\":\"session_meta\",\"payload\":{\"id\":\"" + sessionId + "\"}}",
+                "{\"timestamp\":\"2026-03-11T15:02:44.663Z\",\"type\":\"session_meta\",\"payload\":{\"id\":\"" + sessionId + "\",\"cwd\":\"C:\\\\Support\\\\GitHub\\\\IntelligenceX\",\"git\":{\"repository_url\":\"https://github.com/EvotecIT/IntelligenceX.git\"}}}",
                 "{\"timestamp\":\"2026-03-11T15:02:44.700Z\",\"type\":\"turn_context\",\"payload\":{\"model\":\"gpt-5.3-codex\"}}",
+                "{\"timestamp\":\"2026-03-11T15:02:45.000Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"thread_name_updated\",\"thread_id\":\"" + sessionId + "\",\"thread_name\":\"Audit usage context\"}}",
                 "{\"timestamp\":\"2026-03-11T15:02:49.000Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":8509,\"cached_input_tokens\":7424,\"output_tokens\":282,\"reasoning_output_tokens\":173,\"total_tokens\":8791},\"last_token_usage\":{\"input_tokens\":8509,\"cached_input_tokens\":7424,\"output_tokens\":282,\"reasoning_output_tokens\":173,\"total_tokens\":8791}}}}",
                 "{\"timestamp\":\"2026-03-11T15:02:50.000Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":8509,\"cached_input_tokens\":7424,\"output_tokens\":282,\"reasoning_output_tokens\":173,\"total_tokens\":8791},\"last_token_usage\":{\"input_tokens\":8509,\"cached_input_tokens\":7424,\"output_tokens\":282,\"reasoning_output_tokens\":173,\"total_tokens\":8791}}}}",
                 "{\"timestamp\":\"2026-03-11T15:02:55.000Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":21126,\"cached_input_tokens\":14848,\"output_tokens\":699,\"reasoning_output_tokens\":292,\"total_tokens\":21825},\"last_token_usage\":{\"input_tokens\":12617,\"cached_input_tokens\":7424,\"output_tokens\":417,\"reasoning_output_tokens\":119,\"total_tokens\":13034}}}}"
@@ -172,6 +256,9 @@ internal static partial class Program {
         AssertEqual(2, result.Count, "codex imported record count");
         AssertEqual("acct_codex_primary", result[0].ProviderAccountId, "codex account id");
         AssertEqual(sessionId, result[0].SessionId, "codex session id");
+        AssertEqual("Audit usage context", result[0].ConversationTitle, "codex session title");
+        AssertEqual(@"C:\Support\GitHub\IntelligenceX", result[0].WorkspacePath, "codex workspace path");
+        AssertEqual("EvotecIT/IntelligenceX", result[0].RepositoryName, "codex repository name");
         AssertEqual("gpt-5.3-codex", result[0].Model, "codex model");
         AssertEqual("cli", result[0].Surface, "codex surface");
         AssertEqual(8509L, result[0].InputTokens, "codex first input");

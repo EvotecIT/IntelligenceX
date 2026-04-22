@@ -197,7 +197,8 @@
                 <ScrollViewer VerticalScrollBarVisibility="Auto"
                               HorizontalScrollBarVisibility="Disabled"
                               Visibility="{Binding ShowUsageContent, Converter={StaticResource BoolToVis}}">
-                    <StackPanel DataContext="{Binding SelectedProvider}"
+                    <StackPanel x:Name="ProviderContentPanel"
+                                DataContext="{Binding SelectedProvider}"
                                 Margin="16,12,16,8">
 
                         <Border Style="{StaticResource CardStyle}">
@@ -219,6 +220,11 @@
                                                 Command="{Binding ExportJsonCommand}"
                                                 Margin="0,0,6,6">
                                             <TextBlock FontFamily="{StaticResource AppFont}" FontSize="10.5" Text="JSON" />
+                                        </Button>
+                                        <Button Style="{StaticResource LinkButtonStyle}"
+                                                Click="OnSavePngButtonClick"
+                                                Margin="0,0,6,6">
+                                            <TextBlock FontFamily="{StaticResource AppFont}" FontSize="10.5" Text="PNG" />
                                         </Button>
                                         <Button Style="{StaticResource LinkButtonStyle}"
                                                 Command="{Binding ClearFiltersCommand}"
@@ -296,7 +302,7 @@
                                                   SelectedItem="{Binding SelectedSurfaceFilter, Mode=TwoWay}" />
                                     </StackPanel>
                                 </Grid>
-                                <TextBlock Text="Usage sections below react to the selected range, while live limits stay current."
+                                <TextBlock Text="Usage sections below react to the selected range. Rollups are daily quick-scan rows; live limits stay current."
                                            FontFamily="{StaticResource AppFont}"
                                            FontSize="10"
                                            Foreground="{StaticResource TertiaryTextBrush}"
@@ -624,8 +630,7 @@
                                                FontFamily="{StaticResource AppFont}"
                                                FontSize="10"
                                                Foreground="{StaticResource TertiaryTextBrush}">
-                                        <Run Text="{Binding TodayEventCount, Mode=OneWay}" />
-                                        <Run Text=" events" />
+                                        <Run Text="{Binding TodayRollupCountText, Mode=OneWay}" />
                                     </TextBlock>
                                 </Grid>
 
@@ -685,7 +690,7 @@
                                                    Style="{StaticResource StatValueStyle}" />
                                     </StackPanel>
                                     <StackPanel Grid.Row="0" Grid.Column="2" Margin="0,0,0,8">
-                                        <TextBlock Style="{StaticResource LabelTextStyle}" Text="Cost" />
+                                        <TextBlock Style="{StaticResource LabelTextStyle}" Text="API equiv." />
                                         <TextBlock Text="{Binding TodayCostFormatted}"
                                                    Style="{StaticResource StatValueStyle}" />
                                     </StackPanel>
@@ -725,14 +730,14 @@
                                                       IsChecked="{Binding IsProviderComparisonCostSortSelected, Mode=OneWay}"
                                                       Click="OnProviderComparisonSortChipClick"
                                                       Tag="Cost">
-                                            <TextBlock Text="Cost" />
+                                            <TextBlock Text="API equiv." />
                                         </ToggleButton>
                                         <ToggleButton Style="{StaticResource RangeChipStyle}"
                                                       IsChecked="{Binding IsProviderComparisonEventsSortSelected, Mode=OneWay}"
                                                       Click="OnProviderComparisonSortChipClick"
                                                       Tag="Events"
                                                       Margin="0">
-                                            <TextBlock Text="Events" />
+                                            <TextBlock Text="Rollups" />
                                         </ToggleButton>
                                     </StackPanel>
                                 </Grid>
@@ -1771,7 +1776,7 @@
                                                Style="{StaticResource StatValueStyle}" FontSize="12" />
                                     <TextBlock Style="{StaticResource LabelTextStyle}" Margin="0,0,0,4">
                                         <Run Text="{Binding WeeklyCostFormatted, Mode=OneWay}" />
-                                        <Run Text=" cost" />
+                                        <Run Text=" API equiv." />
                                     </TextBlock>
                                 </StackPanel>
                             </Border>
@@ -1786,7 +1791,7 @@
                                                Style="{StaticResource StatValueStyle}" FontSize="12" />
                                     <TextBlock Style="{StaticResource LabelTextStyle}" Margin="0,0,0,4">
                                         <Run Text="{Binding MonthlyCostFormatted, Mode=OneWay}" />
-                                        <Run Text=" cost" />
+                                        <Run Text=" API equiv." />
                                     </TextBlock>
                                 </StackPanel>
                             </Border>
@@ -2015,7 +2020,124 @@
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
-                                    <TextBlock Text="EVENTS" Style="{StaticResource SectionHeaderStyle}" Margin="0" />
+                                    <TextBlock Text="CONVERSATIONS" Style="{StaticResource SectionHeaderStyle}" Margin="0" />
+                                    <TextBlock Grid.Column="1"
+                                               Text="{Binding ConversationStatsSummaryText}"
+                                               FontFamily="{StaticResource AppFont}"
+                                               FontSize="10.5"
+                                               Foreground="{StaticResource TertiaryTextBrush}"
+                                               TextTrimming="CharacterEllipsis"
+                                               MaxWidth="300" />
+                                </Grid>
+                                <Grid Margin="0,0,0,6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="88" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="86" />
+                                        <ColumnDefinition Width="72" />
+                                        <ColumnDefinition Width="74" />
+                                        <ColumnDefinition Width="56" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="Started" FontFamily="{StaticResource AppFont}" FontSize="10" FontWeight="SemiBold" Foreground="{StaticResource TertiaryTextBrush}" />
+                                    <TextBlock Grid.Column="1" Text="Session / context" FontFamily="{StaticResource AppFont}" FontSize="10" FontWeight="SemiBold" Foreground="{StaticResource TertiaryTextBrush}" />
+                                    <TextBlock Grid.Column="2" Text="Span / active" FontFamily="{StaticResource AppFont}" FontSize="10" FontWeight="SemiBold" Foreground="{StaticResource TertiaryTextBrush}" />
+                                    <TextBlock Grid.Column="3" Text="Turns" FontFamily="{StaticResource AppFont}" FontSize="10" FontWeight="SemiBold" Foreground="{StaticResource TertiaryTextBrush}" />
+                                    <TextBlock Grid.Column="4" Text="Tokens" FontFamily="{StaticResource AppFont}" FontSize="10" FontWeight="SemiBold" Foreground="{StaticResource TertiaryTextBrush}" HorizontalAlignment="Right" />
+                                    <TextBlock Grid.Column="5" Text="Compacts" FontFamily="{StaticResource AppFont}" FontSize="10" FontWeight="SemiBold" Foreground="{StaticResource TertiaryTextBrush}" HorizontalAlignment="Right" />
+                                </Grid>
+                                <ItemsControl ItemsSource="{Binding Conversations}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate DataType="{x:Type vm:ConversationUsageViewModel}">
+                                            <Grid Margin="0,0,0,8">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="88" />
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="86" />
+                                                    <ColumnDefinition Width="72" />
+                                                    <ColumnDefinition Width="74" />
+                                                    <ColumnDefinition Width="56" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Grid.Column="0"
+                                                           Text="{Binding StartedText}"
+                                                           FontFamily="{StaticResource AppFont}"
+                                                           FontSize="10.5"
+                                                           Foreground="{StaticResource SecondaryTextBrush}"
+                                                           Margin="0,0,8,0" />
+                                                <StackPanel Grid.Column="1" Margin="0,0,8,0">
+                                                    <TextBlock Text="{Binding TitleText}"
+                                                               FontFamily="{StaticResource AppFont}"
+                                                               FontSize="11"
+                                                               FontWeight="SemiBold"
+                                                               Foreground="{StaticResource PrimaryTextBrush}"
+                                                               TextTrimming="CharacterEllipsis" />
+                                                    <TextBlock Text="{Binding SessionText}"
+                                                               FontFamily="{StaticResource AppFont}"
+                                                               FontSize="9.5"
+                                                               Foreground="{StaticResource TertiaryTextBrush}"
+                                                               TextTrimming="CharacterEllipsis" />
+                                                    <TextBlock Text="{Binding RepositoryText}"
+                                                               FontFamily="{StaticResource AppFont}"
+                                                               FontSize="10"
+                                                               Foreground="{StaticResource SecondaryTextBrush}"
+                                                               TextTrimming="CharacterEllipsis" />
+                                                    <TextBlock Text="{Binding ModelsText}"
+                                                               FontFamily="{StaticResource AppFont}"
+                                                               FontSize="10"
+                                                               Foreground="{StaticResource TertiaryTextBrush}"
+                                                               TextTrimming="CharacterEllipsis" />
+                                                </StackPanel>
+                                                <StackPanel Grid.Column="2" Margin="0,0,8,0">
+                                                    <TextBlock Text="{Binding DurationText}"
+                                                               FontFamily="{StaticResource AppFont}"
+                                                               FontSize="10.5"
+                                                               Foreground="{StaticResource SecondaryTextBrush}" />
+                                                    <TextBlock Text="{Binding ActiveDurationText}"
+                                                               FontFamily="{StaticResource AppFont}"
+                                                               FontSize="9.5"
+                                                               Foreground="{StaticResource TertiaryTextBrush}" />
+                                                </StackPanel>
+                                                <TextBlock Grid.Column="3"
+                                                           Text="{Binding TurnsText}"
+                                                           FontFamily="{StaticResource AppFont}"
+                                                           FontSize="10.5"
+                                                           Foreground="{StaticResource SecondaryTextBrush}"
+                                                           Margin="0,0,8,0" />
+                                                <TextBlock Grid.Column="4"
+                                                           Text="{Binding TokensText}"
+                                                           FontFamily="{StaticResource AppFont}"
+                                                           FontSize="10.5"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="{StaticResource SecondaryTextBrush}"
+                                                           HorizontalAlignment="Right"
+                                                           Margin="0,0,8,0" />
+                                                <TextBlock Grid.Column="5"
+                                                           Text="{Binding CompactCountText}"
+                                                           FontFamily="{StaticResource AppFont}"
+                                                           FontSize="10.5"
+                                                           Foreground="{StaticResource TertiaryTextBrush}"
+                                                           HorizontalAlignment="Right" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <TextBlock Text="No conversations in the selected range"
+                                           FontFamily="{StaticResource AppFont}"
+                                           FontSize="11"
+                                           Foreground="{StaticResource TertiaryTextBrush}"
+                                           HorizontalAlignment="Center"
+                                           Margin="0,4"
+                                           Visibility="{Binding HasConversationStats, Converter={StaticResource InverseBoolToVis}}" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource CardStyle}">
+                            <StackPanel>
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="ROLLUPS" Style="{StaticResource SectionHeaderStyle}" Margin="0" />
                                     <StackPanel Grid.Column="1" Orientation="Horizontal">
                                         <Button Style="{StaticResource LinkButtonStyle}"
                                                 Command="{Binding CopySelectedEventJsonCommand}"
@@ -2044,7 +2166,7 @@
                                                       IsChecked="{Binding IsHighestCostSortSelected, Mode=OneWay}"
                                                       Click="OnEventSortChipClick"
                                                       Tag="HighestCost">
-                                            <TextBlock Text="Cost" />
+                                            <TextBlock Text="API equiv." />
                                         </ToggleButton>
                                         <ToggleButton Style="{StaticResource RangeChipStyle}"
                                                       IsChecked="{Binding IsModelSortSelected, Mode=OneWay}"
@@ -2097,7 +2219,7 @@
                                                Foreground="{StaticResource TertiaryTextBrush}"
                                                HorizontalAlignment="Right" />
                                     <TextBlock Grid.Column="5"
-                                               Text="Cost"
+                                               Text="API equiv."
                                                FontFamily="{StaticResource AppFont}"
                                                FontSize="10"
                                                FontWeight="SemiBold"
@@ -2171,7 +2293,7 @@
                                         </DataTemplate>
                                     </ListBox.ItemTemplate>
                                 </ListBox>
-                                <TextBlock Text="No events in the selected range"
+                                <TextBlock Text="No rollups in the selected range"
                                            FontFamily="{StaticResource AppFont}"
                                            FontSize="11"
                                            Foreground="{StaticResource TertiaryTextBrush}"
@@ -2191,7 +2313,7 @@
                                                 <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="Auto" />
                                             </Grid.ColumnDefinitions>
-                                            <TextBlock Text="Selected Event"
+                                            <TextBlock Text="Selected Rollup"
                                                        FontFamily="{StaticResource AppFont}"
                                                        FontSize="10"
                                                        FontWeight="Bold"
@@ -2293,7 +2415,7 @@
                                                 <TextBlock Text="{Binding ReasoningText}" Style="{StaticResource StatValueStyle}" />
                                             </StackPanel>
                                             <StackPanel Grid.Row="1" Grid.Column="2">
-                                                <TextBlock Text="Cost" Style="{StaticResource LabelTextStyle}" />
+                                                <TextBlock Text="API equiv." Style="{StaticResource LabelTextStyle}" />
                                                 <TextBlock Text="{Binding CostText}" Style="{StaticResource StatValueStyle}" />
                                             </StackPanel>
                                         </Grid>

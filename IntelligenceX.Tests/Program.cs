@@ -29,6 +29,8 @@ internal static partial class Program {
         failed += Run("EasySession forwards usage telemetry settings", TestEasySessionBuildClientOptionsCarriesUsageTelemetrySettings);
         failed += Run("Usage telemetry stable source root id normalizes paths", TestUsageTelemetryStableSourceRootIdNormalizesPaths);
         failed += Run("Usage telemetry dedupe prefers account session turn", TestUsageTelemetryDedupePrefersAccountSessionTurn);
+        failed += Run("Usage conversation summary builder groups raw conversation rows",
+            TestUsageConversationSummaryBuilderGroupsRawConversationRows);
         failed += Run("Usage telemetry store merges response duplicates", TestUsageTelemetryStoreMergesResponseDuplicates);
         failed += Run("Usage telemetry source root store orders roots", TestUsageTelemetrySourceRootStoreOrdersRoots);
         failed += Run("Usage telemetry sqlite store merges response duplicates", TestUsageTelemetrySqliteStoreMergesResponseDuplicates);
@@ -127,6 +129,8 @@ internal static partial class Program {
             TestGitHubWrappedCardHtmlRendererBuildsCompactCard);
         failed += Run("Usage overview html renderer builds provider diagnostics",
             TestUsageTelemetryOverviewHtmlRendererBuildsProviderDiagnostics);
+        failed += Run("Usage overview html renderer builds conversation pulse",
+            TestUsageTelemetryOverviewHtmlRendererBuildsConversationPulse);
         failed += Run("Popup placement math converts pixels to DIPs",
             TestPopupPlacementMathConvertsPixelsToDips);
         failed += Run("Popup placement math clamps within work area",

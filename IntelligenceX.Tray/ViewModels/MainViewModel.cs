@@ -496,6 +496,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
             var refreshData = await Task.Run(async () => {
                 var snapshot = await _usageService.ScanAsync(progress: scanProgress, startupWarmup: startupWarmup);
                 var events = snapshot.Events;
+                var rawEvents = snapshot.RawEvents.Count > 0 ? snapshot.RawEvents : snapshot.Events;
 
                 var byProvider = events
                     .GroupBy(e => e.ProviderId?.Trim()?.ToLowerInvariant() ?? "unknown")
@@ -503,7 +504,15 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
                     .OrderBy(g => ProviderMetadata.Resolve(g.Key).SortOrder)
                     .ToList();
 
-                var info = $"{events.Count} events, {byProvider.Count} providers";
+                var rawByProvider = rawEvents
+                    .GroupBy(e => e.ProviderId?.Trim()?.ToLowerInvariant() ?? "unknown")
+                    .Where(g => !string.IsNullOrWhiteSpace(g.Key))
+                    .ToDictionary(
+                        static group => group.Key,
+                        static group => group.ToList(),
+                        StringComparer.OrdinalIgnoreCase);
+
+                var info = $"{events.Count} rollups, {byProvider.Count} providers";
                 if (snapshot.ScanDurationMs > 0) {
                     info += $" ({snapshot.ScanDurationMs / 1000.0:F1}s)";
                 }
@@ -514,7 +523,11 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
 
                 return new RefreshComputationResult(
                     events.ToList(),
-                    byProvider.Select(group => new ProviderRefreshData(group.Key, group.ToList())).ToList(),
+                    rawEvents.ToList(),
+                    byProvider.Select(group => new ProviderRefreshData(
+                        group.Key,
+                        group.ToList(),
+                        rawByProvider.TryGetValue(group.Key, out var providerRawEvents) ? providerRawEvents : [])).ToList(),
                     snapshot.ScannedAtUtc,
                     info,
                     snapshot.DiscoveredProviderIds,
@@ -567,7 +580,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
                 refreshData.AllEvents,
                 refreshData.DiscoveredProviderIds,
                 refreshData.SourceRoots,
-                refreshData.Health);
+                refreshData.Health,
+                refreshData.RawEvents);
 
             _previousProviderSnapshots = new Dictionary<string, ProviderRefreshSnapshot>(currentProviderSnapshots, StringComparer.OrdinalIgnoreCase);
             if (!startupWarmup) {
@@ -1576,6 +1590,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
                 serviceSnapshot.DiscoveredProviderIds.ToList(),
                 serviceSnapshot.SourceRoots.ToList(),
                 serviceSnapshot.Events.ToList(),
+                serviceSnapshot.RawEvents.ToList(),
                 serviceSnapshot.Health);
             if (ShouldPreferCachedSnapshot(serviceCache, cachedSnapshot)) {
                 cachedSnapshot = serviceCache;
@@ -1584,7 +1599,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
                     serviceSnapshot.Events,
                     serviceSnapshot.DiscoveredProviderIds,
                     serviceSnapshot.SourceRoots,
-                    serviceSnapshot.Health);
+                    serviceSnapshot.Health,
+                    serviceSnapshot.RawEvents);
             }
         }
 
@@ -1596,7 +1612,12 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
             .GroupBy(e => e.ProviderId?.Trim()?.ToLowerInvariant() ?? "unknown")
             .Where(static group => !string.IsNullOrWhiteSpace(group.Key))
             .OrderBy(group => ProviderMetadata.Resolve(group.Key).SortOrder)
-            .Select(group => new ProviderRefreshData(group.Key, group.ToList()))
+            .Select(group => new ProviderRefreshData(
+                group.Key,
+                group.ToList(),
+                cachedSnapshot.RawEvents
+                    .Where(rawEvent => string.Equals(rawEvent.ProviderId, group.Key, StringComparison.OrdinalIgnoreCase))
+                    .ToList()))
             .ToList();
         var mergedProviderData = BuildMergedProviderData(byProvider, cachedSnapshot.DiscoveredProviderIds);
         var providerSnapshots = mergedProviderData.ToDictionary(
@@ -1685,14 +1706,14 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         }
 
         var currentProviderData = _displayedProviderEvents
-            .Select(static pair => new ProviderRefreshData(pair.Key, pair.Value))
+            .Select(static pair => new ProviderRefreshData(pair.Key, pair.Value, pair.Value))
             .ToList();
         foreach (var (providerId, events) in providerEventsById) {
             var existingIndex = currentProviderData.FindIndex(group => string.Equals(group.ProviderId, providerId, StringComparison.OrdinalIgnoreCase));
             if (existingIndex >= 0) {
-                currentProviderData[existingIndex] = new ProviderRefreshData(providerId, events);
+                currentProviderData[existingIndex] = new ProviderRefreshData(providerId, events, events);
             } else {
-                currentProviderData.Add(new ProviderRefreshData(providerId, events));
+                currentProviderData.Add(new ProviderRefreshData(providerId, events, events));
             }
         }
 
@@ -1746,7 +1767,10 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         var newProviders = new List<ProviderViewModel>();
         var shouldShowCombinedProvider = providerData.Count > 0 || allEvents.Count > 0;
         if (shouldShowCombinedProvider) {
-            var allVm = BuildCombinedProviderViewModel(allEvents, scannedAtUtc);
+            var allVm = BuildCombinedProviderViewModel(
+                allEvents,
+                providerData.SelectMany(static group => group.RawEvents).ToList(),
+                scannedAtUtc);
             ApplyUsageHealth(allVm, usageHealth, providerId: null);
             allVm.ApplyUsageScopeSummary(null);
             allVm.ApplyRefreshDelta(
@@ -1757,7 +1781,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         }
 
         foreach (var group in providerData) {
-            var vm = BuildProviderViewModel(group.ProviderId, group.Events);
+            var vm = BuildProviderViewModel(group.ProviderId, group.Events, group.RawEvents);
             vm.LastUpdated = scannedAtUtc;
             vm.IsFavorite = IsFavoriteProvider(group.ProviderId);
             ApplyUsageHealth(vm, usageHealth, group.ProviderId);
@@ -1810,16 +1834,20 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         RefreshProviderSelectionState();
     }
 
-    private static ProviderViewModel BuildProviderViewModel(string providerId, List<UsageEventRecord> events) {
+    private static ProviderViewModel BuildProviderViewModel(string providerId, List<UsageEventRecord> events, List<UsageEventRecord>? rawEvents = null) {
         var vm = new ProviderViewModel();
         var info = ProviderMetadata.Resolve(providerId);
         vm.ApplyProviderInfo(info);
         vm.ApplyUsageEvents(events);
+        vm.ApplyConversationEvents(rawEvents ?? events);
         return vm;
     }
 
-    private static ProviderViewModel BuildCombinedProviderViewModel(List<UsageEventRecord> events, DateTimeOffset scannedAtUtc) {
-        var allVm = BuildProviderViewModel("__all__", events);
+    private static ProviderViewModel BuildCombinedProviderViewModel(
+        List<UsageEventRecord> events,
+        List<UsageEventRecord> rawEvents,
+        DateTimeOffset scannedAtUtc) {
+        var allVm = BuildProviderViewModel("__all__", events, rawEvents);
         allVm.DisplayName = "All";
         allVm.ShortName = "All";
         allVm.IconKey = "IconIx";
@@ -1900,7 +1928,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
 
     private static string BuildOverallUsageHealthDetail(UsageTelemetrySnapshotHealth health) {
         var parts = new List<string> {
-            health.EventsCount.ToString(CultureInfo.InvariantCulture) + " events"
+            health.EventsCount.ToString(CultureInfo.InvariantCulture) + " rollups"
         };
         if (health.ReusedArtifacts > 0) {
             parts.Add(health.ReusedArtifacts.ToString(CultureInfo.InvariantCulture) + " cached artifacts");
@@ -1938,7 +1966,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
 
     private static string BuildProviderUsageHealthDetail(UsageTelemetryProviderHealth providerHealth) {
         var parts = new List<string> {
-            providerHealth.EventsCount.ToString(CultureInfo.InvariantCulture) + " events"
+            providerHealth.EventsCount.ToString(CultureInfo.InvariantCulture) + " rollups"
         };
         if (providerHealth.ReusedArtifacts > 0) {
             parts.Add(providerHealth.ReusedArtifacts.ToString(CultureInfo.InvariantCulture) + " cached artifacts");
@@ -1992,7 +2020,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
 
         return mergedProviderIds
             .Select(providerId => providerData.FirstOrDefault(group => string.Equals(group.ProviderId, providerId, StringComparison.OrdinalIgnoreCase))
-                                  ?? new ProviderRefreshData(providerId, []))
+                                  ?? new ProviderRefreshData(providerId, [], []))
             .ToList();
     }
 
@@ -2085,7 +2113,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
             }
 
             if (eventDelta != 0) {
-                parts.Add(FormatSignedCompact(eventDelta, eventDelta >= 0 ? " events" : " events"));
+                parts.Add(FormatSignedCompact(eventDelta, eventDelta >= 0 ? " rollups" : " rollups"));
             }
 
             if (costDelta != 0m) {
@@ -2207,7 +2235,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         cts?.Dispose();
     }
 
-    private sealed record ProviderRefreshData(string ProviderId, List<UsageEventRecord> Events);
+    private sealed record ProviderRefreshData(string ProviderId, List<UsageEventRecord> Events, List<UsageEventRecord> RawEvents);
 
     private sealed record ProviderRefreshSnapshot(long TotalTokens, int EventCount, decimal CostUsd) {
         public static ProviderRefreshSnapshot FromEvents(IEnumerable<UsageEventRecord> events) {
@@ -2221,6 +2249,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
 
     private sealed record RefreshComputationResult(
         List<UsageEventRecord> AllEvents,
+        List<UsageEventRecord> RawEvents,
         List<ProviderRefreshData> ByProvider,
         DateTimeOffset ScannedAtUtc,
         string ScanInfo,

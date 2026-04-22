@@ -12,7 +12,7 @@ public sealed class CodexSessionUsageAdapter : IUsageTelemetryAdapter {
     /// </summary>
     public const string StableAdapterId = "codex.session-log";
 
-    private const string ParserVersion = "codex.session-log/v2";
+    private const string ParserVersion = "codex.session-log/v4";
 
     /// <inheritdoc />
     public string AdapterId => StableAdapterId;

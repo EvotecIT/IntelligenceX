@@ -954,6 +954,9 @@ SELECT
   machine_id,
   session_id,
   thread_id,
+  conversation_title,
+  workspace_path,
+  repository_name,
   turn_id,
   response_id,
   timestamp_utc,
@@ -964,6 +967,7 @@ SELECT
   output_tokens,
   reasoning_tokens,
   total_tokens,
+  compact_count,
   duration_ms,
   cost_usd,
   truth_level,
@@ -999,6 +1003,9 @@ SELECT
   machine_id,
   session_id,
   thread_id,
+  conversation_title,
+  workspace_path,
+  repository_name,
   turn_id,
   response_id,
   timestamp_utc,
@@ -1009,6 +1016,7 @@ SELECT
   output_tokens,
   reasoning_tokens,
   total_tokens,
+  compact_count,
   duration_ms,
   cost_usd,
   truth_level,
@@ -1045,6 +1053,9 @@ INSERT INTO ix_usage_events (
   machine_id,
   session_id,
   thread_id,
+  conversation_title,
+  workspace_path,
+  repository_name,
   turn_id,
   response_id,
   timestamp_utc,
@@ -1055,6 +1066,7 @@ INSERT INTO ix_usage_events (
   output_tokens,
   reasoning_tokens,
   total_tokens,
+  compact_count,
   duration_ms,
   cost_usd,
   truth_level,
@@ -1072,6 +1084,9 @@ VALUES (
   @machine_id,
   @session_id,
   @thread_id,
+  @conversation_title,
+  @workspace_path,
+  @repository_name,
   @turn_id,
   @response_id,
   @timestamp_utc,
@@ -1082,6 +1097,7 @@ VALUES (
   @output_tokens,
   @reasoning_tokens,
   @total_tokens,
+  @compact_count,
   @duration_ms,
   @cost_usd,
   @truth_level,
@@ -1098,6 +1114,9 @@ ON CONFLICT(canonical_event_id) DO UPDATE SET
   machine_id = excluded.machine_id,
   session_id = excluded.session_id,
   thread_id = excluded.thread_id,
+  conversation_title = excluded.conversation_title,
+  workspace_path = excluded.workspace_path,
+  repository_name = excluded.repository_name,
   turn_id = excluded.turn_id,
   response_id = excluded.response_id,
   timestamp_utc = excluded.timestamp_utc,
@@ -1108,6 +1127,7 @@ ON CONFLICT(canonical_event_id) DO UPDATE SET
   output_tokens = excluded.output_tokens,
   reasoning_tokens = excluded.reasoning_tokens,
   total_tokens = excluded.total_tokens,
+  compact_count = excluded.compact_count,
   duration_ms = excluded.duration_ms,
   cost_usd = excluded.cost_usd,
   truth_level = excluded.truth_level,
@@ -1125,6 +1145,9 @@ ON CONFLICT(canonical_event_id) DO UPDATE SET
                 ["@machine_id"] = SqliteUsageTelemetrySchema.Normalize(record.MachineId),
                 ["@session_id"] = SqliteUsageTelemetrySchema.Normalize(record.SessionId),
                 ["@thread_id"] = SqliteUsageTelemetrySchema.Normalize(record.ThreadId),
+                ["@conversation_title"] = SqliteUsageTelemetrySchema.Normalize(record.ConversationTitle),
+                ["@workspace_path"] = SqliteUsageTelemetrySchema.Normalize(record.WorkspacePath),
+                ["@repository_name"] = SqliteUsageTelemetrySchema.Normalize(record.RepositoryName),
                 ["@turn_id"] = SqliteUsageTelemetrySchema.Normalize(record.TurnId),
                 ["@response_id"] = SqliteUsageTelemetrySchema.Normalize(record.ResponseId),
                 ["@timestamp_utc"] = record.TimestampUtc.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture),
@@ -1135,6 +1158,7 @@ ON CONFLICT(canonical_event_id) DO UPDATE SET
                 ["@output_tokens"] = record.OutputTokens,
                 ["@reasoning_tokens"] = record.ReasoningTokens,
                 ["@total_tokens"] = record.TotalTokens,
+                ["@compact_count"] = record.CompactCount,
                 ["@duration_ms"] = record.DurationMs,
                 ["@cost_usd"] = record.CostUsd,
                 ["@truth_level"] = record.TruthLevel.ToString(),
@@ -1187,6 +1211,9 @@ ON CONFLICT(dedupe_key) DO UPDATE SET
             MachineId = SqliteUsageTelemetrySchema.ReadOptionalString(row, "machine_id"),
             SessionId = SqliteUsageTelemetrySchema.ReadOptionalString(row, "session_id"),
             ThreadId = SqliteUsageTelemetrySchema.ReadOptionalString(row, "thread_id"),
+            ConversationTitle = SqliteUsageTelemetrySchema.ReadOptionalString(row, "conversation_title"),
+            WorkspacePath = SqliteUsageTelemetrySchema.ReadOptionalString(row, "workspace_path"),
+            RepositoryName = SqliteUsageTelemetrySchema.ReadOptionalString(row, "repository_name"),
             TurnId = SqliteUsageTelemetrySchema.ReadOptionalString(row, "turn_id"),
             ResponseId = SqliteUsageTelemetrySchema.ReadOptionalString(row, "response_id"),
             Model = SqliteUsageTelemetrySchema.ReadOptionalString(row, "model"),
@@ -1196,6 +1223,7 @@ ON CONFLICT(dedupe_key) DO UPDATE SET
             OutputTokens = SqliteUsageTelemetrySchema.ReadNullableInt64(row, "output_tokens"),
             ReasoningTokens = SqliteUsageTelemetrySchema.ReadNullableInt64(row, "reasoning_tokens"),
             TotalTokens = SqliteUsageTelemetrySchema.ReadNullableInt64(row, "total_tokens"),
+            CompactCount = ReadNullableInt32(row, "compact_count"),
             DurationMs = SqliteUsageTelemetrySchema.ReadNullableInt64(row, "duration_ms"),
             CostUsd = SqliteUsageTelemetrySchema.ReadNullableDecimal(row, "cost_usd"),
             TruthLevel = truthLevel,
@@ -1217,6 +1245,9 @@ ON CONFLICT(dedupe_key) DO UPDATE SET
             MachineId = record.MachineId,
             SessionId = record.SessionId,
             ThreadId = record.ThreadId,
+            ConversationTitle = record.ConversationTitle,
+            WorkspacePath = record.WorkspacePath,
+            RepositoryName = record.RepositoryName,
             TurnId = record.TurnId,
             ResponseId = record.ResponseId,
             Model = record.Model,
@@ -1226,6 +1257,7 @@ ON CONFLICT(dedupe_key) DO UPDATE SET
             OutputTokens = record.OutputTokens,
             ReasoningTokens = record.ReasoningTokens,
             TotalTokens = record.TotalTokens,
+            CompactCount = record.CompactCount,
             DurationMs = record.DurationMs,
             CostUsd = record.CostUsd,
             TruthLevel = record.TruthLevel,
@@ -1241,6 +1273,9 @@ ON CONFLICT(dedupe_key) DO UPDATE SET
         updated |= MergeString(existing.MachineId, incoming.MachineId, value => existing.MachineId = value);
         updated |= MergeString(existing.SessionId, incoming.SessionId, value => existing.SessionId = value);
         updated |= MergeString(existing.ThreadId, incoming.ThreadId, value => existing.ThreadId = value);
+        updated |= MergeString(existing.ConversationTitle, incoming.ConversationTitle, value => existing.ConversationTitle = value);
+        updated |= MergeString(existing.WorkspacePath, incoming.WorkspacePath, value => existing.WorkspacePath = value);
+        updated |= MergeString(existing.RepositoryName, incoming.RepositoryName, value => existing.RepositoryName = value);
         updated |= MergeString(existing.TurnId, incoming.TurnId, value => existing.TurnId = value);
         updated |= MergeString(existing.ResponseId, incoming.ResponseId, value => existing.ResponseId = value);
         updated |= MergeString(existing.Model, incoming.Model, value => existing.Model = value);
@@ -1250,6 +1285,7 @@ ON CONFLICT(dedupe_key) DO UPDATE SET
         updated |= MergeNullableInt64(existing.OutputTokens, incoming.OutputTokens, value => existing.OutputTokens = value);
         updated |= MergeNullableInt64(existing.ReasoningTokens, incoming.ReasoningTokens, value => existing.ReasoningTokens = value);
         updated |= MergeNullableInt64(existing.TotalTokens, incoming.TotalTokens, value => existing.TotalTokens = value);
+        updated |= MergeNullableInt32(existing.CompactCount, incoming.CompactCount, value => existing.CompactCount = value);
         updated |= MergeNullableInt64(existing.DurationMs, incoming.DurationMs, value => existing.DurationMs = value);
         updated |= MergeNullableDecimal(existing.CostUsd, incoming.CostUsd, value => existing.CostUsd = value);
         updated |= MergeTruthLevel(existing.TruthLevel, incoming.TruthLevel, value => existing.TruthLevel = value);
@@ -1285,6 +1321,24 @@ ON CONFLICT(dedupe_key) DO UPDATE SET
 
         apply(incoming);
         return true;
+    }
+
+    private static bool MergeNullableInt32(int? target, int? incoming, Action<int?> apply) {
+        if (target.HasValue || !incoming.HasValue) {
+            return false;
+        }
+
+        apply(incoming);
+        return true;
+    }
+
+    private static int? ReadNullableInt32(DataRow row, string columnName) {
+        var value = SqliteUsageTelemetrySchema.ReadNullableInt64(row, columnName);
+        if (!value.HasValue) {
+            return null;
+        }
+
+        return value.Value > int.MaxValue ? int.MaxValue : (int)value.Value;
     }
 
     private static bool MergeNullableDecimal(decimal? target, decimal? incoming, Action<decimal?> apply) {
@@ -1361,6 +1415,9 @@ CREATE TABLE IF NOT EXISTS ix_usage_events (
   machine_id TEXT NULL,
   session_id TEXT NULL,
   thread_id TEXT NULL,
+  conversation_title TEXT NULL,
+  workspace_path TEXT NULL,
+  repository_name TEXT NULL,
   turn_id TEXT NULL,
   response_id TEXT NULL,
   timestamp_utc TEXT NOT NULL,
@@ -1371,6 +1428,7 @@ CREATE TABLE IF NOT EXISTS ix_usage_events (
   output_tokens INTEGER NULL,
   reasoning_tokens INTEGER NULL,
   total_tokens INTEGER NULL,
+  compact_count INTEGER NULL,
   duration_ms INTEGER NULL,
   cost_usd REAL NULL,
   truth_level TEXT NOT NULL,
@@ -1402,6 +1460,26 @@ CREATE INDEX IF NOT EXISTS ix_usage_events_session ON ix_usage_events(provider_i
 CREATE INDEX IF NOT EXISTS ix_usage_events_response ON ix_usage_events(provider_id, response_id);");
         try {
             db.ExecuteNonQuery(fullPath, "ALTER TABLE ix_usage_events ADD COLUMN person_label TEXT NULL;");
+        } catch {
+            // Ignore when the column already exists.
+        }
+        try {
+            db.ExecuteNonQuery(fullPath, "ALTER TABLE ix_usage_events ADD COLUMN compact_count INTEGER NULL;");
+        } catch {
+            // Ignore when the column already exists.
+        }
+        try {
+            db.ExecuteNonQuery(fullPath, "ALTER TABLE ix_usage_events ADD COLUMN conversation_title TEXT NULL;");
+        } catch {
+            // Ignore when the column already exists.
+        }
+        try {
+            db.ExecuteNonQuery(fullPath, "ALTER TABLE ix_usage_events ADD COLUMN workspace_path TEXT NULL;");
+        } catch {
+            // Ignore when the column already exists.
+        }
+        try {
+            db.ExecuteNonQuery(fullPath, "ALTER TABLE ix_usage_events ADD COLUMN repository_name TEXT NULL;");
         } catch {
             // Ignore when the column already exists.
         }

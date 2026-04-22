@@ -43,6 +43,7 @@ internal static class LmStudioConversationImport {
         var sessionId = LmStudioConversationImportSupport.NormalizeOptional(LmStudioConversationImportSupport.ExtractSessionId(filePath))
                         ?? LmStudioConversationImportSupport.NormalizeOptional(conversation.GetString("name"))
                         ?? "lmstudio-session";
+        var conversationTitle = LmStudioConversationImportSupport.NormalizeOptional(conversation.GetString("name"));
         var fallbackTimestampUtc = LmStudioConversationImportSupport.TryReadUnixTimeMilliseconds(conversation, "assistantLastMessagedAt")
                                    ?? LmStudioConversationImportSupport.TryReadUnixTimeMilliseconds(conversation, "userLastMessagedAt")
                                    ?? LmStudioConversationImportSupport.TryReadUnixTimeMilliseconds(conversation, "createdAt")
@@ -127,6 +128,7 @@ internal static class LmStudioConversationImport {
                     surface: "chat",
                     durationMs: usageValue.DurationMs,
                     rawHash: UsageTelemetryIdentity.ComputeStableHash(rawPayload));
+                record.ConversationTitle = conversationTitle;
                 records.Add(record);
             }
         }

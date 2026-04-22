@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -5,7 +7,9 @@ using System.Diagnostics;
 using System.ComponentModel;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using IntelligenceX.Tray.ViewModels;
+using Microsoft.Win32;
 
 namespace IntelligenceX.Tray.Views;
 
@@ -14,6 +18,10 @@ public partial class TrayPopupWindow : Window {
     private const double MaximumPopupWidth = 560;
     private const double MinimumPopupHeight = 640;
     private const double MaximumPopupHeight = 840;
+    private const int MaxExportPixelWidth = 8192;
+    private const int MaxExportPixelHeight = 32768;
+    private const long MaxExportPixelCount = 40_000_000;
+    private const double MinExportScale = 0.2d;
 
     private bool _isPrimed;
     private DateTimeOffset _suppressDeactivateUntilUtc;
@@ -192,6 +200,28 @@ public partial class TrayPopupWindow : Window {
         CloseRequested?.Invoke(this, EventArgs.Empty);
     }
 
+    private void OnSavePngButtonClick(object sender, RoutedEventArgs e) {
+        if (ProviderContentPanel.DataContext is not ProviderViewModel provider) {
+            return;
+        }
+
+        PrepareForTrayOpen(TimeSpan.FromMinutes(2));
+        try {
+            var dialog = new SaveFileDialog {
+                Filter = "PNG images (*.png)|*.png|All files (*.*)|*.*",
+                FileName = BuildPngFileName(provider)
+            };
+            if (dialog.ShowDialog(this) != true) {
+                return;
+            }
+
+            SaveElementAsPng(ProviderContentPanel, dialog.FileName);
+            provider.ActionStatusMessage = "Saved PNG to " + dialog.FileName;
+        } catch (Exception ex) {
+            provider.ActionStatusMessage = "PNG save failed: " + ex.Message;
+        }
+    }
+
     private void OnWindowClosing(object? sender, CancelEventArgs e) {
         CloseInterceptRequested?.Invoke(this, e);
     }
@@ -215,6 +245,85 @@ public partial class TrayPopupWindow : Window {
 
     private static double Clamp(double value, double minimum, double maximum) {
         return Math.Max(minimum, Math.Min(maximum, value));
+    }
+
+    private void SaveElementAsPng(FrameworkElement element, string fileName) {
+        element.UpdateLayout();
+
+        var width = Math.Ceiling(element.ActualWidth);
+        var height = Math.Ceiling(element.ActualHeight);
+        if (width <= 0d || height <= 0d) {
+            throw new InvalidOperationException("Nothing visible to export.");
+        }
+
+        var dpi = VisualTreeHelper.GetDpi(element);
+        // Clamp oversized exports before allocating the bitmap so tall provider panels cannot exhaust UI-thread memory.
+        var exportScale = CalculateSafePngExportScale(width, height, dpi);
+
+        var pixelWidth = Math.Max(1, (int)Math.Ceiling(width * dpi.DpiScaleX * exportScale));
+        var pixelHeight = Math.Max(1, (int)Math.Ceiling(height * dpi.DpiScaleY * exportScale));
+        var bitmap = new RenderTargetBitmap(
+            pixelWidth,
+            pixelHeight,
+            96d * dpi.DpiScaleX * exportScale,
+            96d * dpi.DpiScaleY * exportScale,
+            PixelFormats.Pbgra32);
+
+        var visual = new DrawingVisual();
+        using (var context = visual.RenderOpen()) {
+            var background = TryFindResource("BackgroundBrush") as Brush ?? Brushes.Transparent;
+            context.DrawRectangle(background, null, new Rect(0d, 0d, width, height));
+            context.DrawRectangle(
+                new VisualBrush(element) {
+                    AlignmentX = AlignmentX.Left,
+                    AlignmentY = AlignmentY.Top,
+                    Stretch = Stretch.None
+                },
+                null,
+                new Rect(0d, 0d, width, height));
+        }
+
+        bitmap.Render(visual);
+
+        var encoder = new PngBitmapEncoder();
+        encoder.Frames.Add(BitmapFrame.Create(bitmap));
+        using var stream = File.Create(fileName);
+        encoder.Save(stream);
+    }
+
+    private static double CalculateSafePngExportScale(double width, double height, DpiScale dpi) {
+        var exportScale = 1d;
+        exportScale = Math.Min(exportScale, MaxExportPixelWidth / Math.Max(1d, width * dpi.DpiScaleX));
+        exportScale = Math.Min(exportScale, MaxExportPixelHeight / Math.Max(1d, height * dpi.DpiScaleY));
+
+        var nativePixelCount = width * dpi.DpiScaleX * height * dpi.DpiScaleY;
+        if (nativePixelCount > MaxExportPixelCount) {
+            exportScale = Math.Min(exportScale, Math.Sqrt(MaxExportPixelCount / nativePixelCount));
+        }
+
+        if (exportScale < MinExportScale) {
+            throw new InvalidOperationException("The selected content is too large to export safely as a single PNG.");
+        }
+
+        return exportScale;
+    }
+
+    private static string BuildPngFileName(ProviderViewModel provider) {
+        return SanitizeFileSegment(provider.DisplayName)
+               + "-"
+               + provider.SelectedRange.ToString().ToLowerInvariant()
+               + "-"
+               + DateTime.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture)
+               + ".png";
+    }
+
+    private static string SanitizeFileSegment(string? value) {
+        var segment = string.IsNullOrWhiteSpace(value) ? "usage" : value.Trim();
+        foreach (var invalid in Path.GetInvalidFileNameChars()) {
+            segment = segment.Replace(invalid, '-');
+        }
+
+        return string.IsNullOrWhiteSpace(segment) ? "usage" : segment;
     }
 
     private static bool IsDragSourceInteractive(DependencyObject? source) {

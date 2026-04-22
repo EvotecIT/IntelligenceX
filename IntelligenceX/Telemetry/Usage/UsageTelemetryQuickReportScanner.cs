@@ -116,6 +116,11 @@ public sealed class UsageTelemetryQuickReportResult {
     public List<UsageEventRecord> Events { get; } = new();
 
     /// <summary>
+    /// Gets deduplicated per-turn usage records before day-level quick-report merging.
+    /// </summary>
+    public List<UsageEventRecord> RawEvents { get; } = new();
+
+    /// <summary>
     /// Gets or sets the number of source roots considered by the scan.
     /// </summary>
     public int RootsConsidered { get; set; }
@@ -159,7 +164,7 @@ public sealed class UsageTelemetryQuickReportScanner {
         new UsageTelemetryQuickReportProviderDefinition(
             "codex",
             "codex.quick-report",
-            "codex.quick-report/v2",
+            "codex.quick-report/v6",
             CodexQuickReportImport.EnumerateCandidateFiles,
             static (root, filePath, options, cancellationToken, definition) =>
                 CodexQuickReportImport.ParseFile(root, filePath, options, definition.AdapterId, definition.ProviderId, cancellationToken)),
@@ -257,6 +262,7 @@ public sealed class UsageTelemetryQuickReportScanner {
         result.ProviderDiagnostics.AddRange(providerDiagnostics.Values
             .OrderBy(static item => UsageTelemetryProviderCatalog.ResolveSortOrder(item.ProviderId))
             .ThenBy(static item => item.ProviderId, StringComparer.OrdinalIgnoreCase));
+        result.RawEvents.AddRange(OrderRawRecords(deduped));
         result.Events.AddRange(MergeRecords(deduped));
         return Task.FromResult(result);
     }
@@ -267,6 +273,15 @@ public sealed class UsageTelemetryQuickReportScanner {
     /// <param name="artifacts">Cached raw artifacts with quick-report state.</param>
     /// <returns>Merged usage events restored from cached quick-report state.</returns>
     internal static IReadOnlyList<UsageEventRecord> RestoreFromCachedArtifacts(IEnumerable<RawArtifactDescriptor> artifacts) {
+        return MergeRecords(RestoreRawFromCachedArtifacts(artifacts));
+    }
+
+    /// <summary>
+    /// Rehydrates cached quick-report artifacts into deduplicated per-turn usage events.
+    /// </summary>
+    /// <param name="artifacts">Cached raw artifacts with quick-report state.</param>
+    /// <returns>Deduplicated usage events restored from cached quick-report state.</returns>
+    internal static IReadOnlyList<UsageEventRecord> RestoreRawFromCachedArtifacts(IEnumerable<RawArtifactDescriptor> artifacts) {
         if (artifacts is null) {
             return Array.Empty<UsageEventRecord>();
         }
@@ -288,7 +303,7 @@ public sealed class UsageTelemetryQuickReportScanner {
             return Array.Empty<UsageEventRecord>();
         }
 
-        return MergeRecords(DeduplicateRecords(records));
+        return OrderRawRecords(DeduplicateRecords(records));
     }
 
     private static void ScanRoot(
@@ -515,6 +530,9 @@ public sealed class UsageTelemetryQuickReportScanner {
                 .Add("machineId", record.MachineId)
                 .Add("sessionId", record.SessionId)
                 .Add("threadId", record.ThreadId)
+                .Add("conversationTitle", record.ConversationTitle)
+                .Add("workspacePath", record.WorkspacePath)
+                .Add("repositoryName", record.RepositoryName)
                 .Add("turnId", record.TurnId)
                 .Add("responseId", record.ResponseId)
                 .Add("model", record.Model)
@@ -526,6 +544,7 @@ public sealed class UsageTelemetryQuickReportScanner {
             AddOptionalInt64(obj, "outputTokens", record.OutputTokens);
             AddOptionalInt64(obj, "reasoningTokens", record.ReasoningTokens);
             AddOptionalInt64(obj, "totalTokens", record.TotalTokens);
+            AddOptionalInt64(obj, "compactCount", record.CompactCount.HasValue ? (long?)record.CompactCount.Value : null);
 
             array.Add(obj);
         }
@@ -560,6 +579,9 @@ public sealed class UsageTelemetryQuickReportScanner {
                 MachineId = NormalizeOptional(obj.GetString("machineId")),
                 SessionId = NormalizeOptional(obj.GetString("sessionId")),
                 ThreadId = NormalizeOptional(obj.GetString("threadId")),
+                ConversationTitle = NormalizeOptional(obj.GetString("conversationTitle")),
+                WorkspacePath = NormalizeOptional(obj.GetString("workspacePath")),
+                RepositoryName = NormalizeOptional(obj.GetString("repositoryName")),
                 TurnId = NormalizeOptional(obj.GetString("turnId")),
                 ResponseId = NormalizeOptional(obj.GetString("responseId")),
                 Model = NormalizeOptional(obj.GetString("model")),
@@ -570,6 +592,7 @@ public sealed class UsageTelemetryQuickReportScanner {
                 OutputTokens = obj.GetInt64("outputTokens"),
                 ReasoningTokens = obj.GetInt64("reasoningTokens"),
                 TotalTokens = obj.GetInt64("totalTokens"),
+                CompactCount = ReadOptionalInt32(obj, "compactCount"),
                 TruthLevel = UsageTruthLevel.Exact
             });
         }
@@ -605,6 +628,16 @@ public sealed class UsageTelemetryQuickReportScanner {
         return deduplicated;
     }
 
+    private static IReadOnlyList<UsageEventRecord> OrderRawRecords(IEnumerable<UsageEventRecord> records) {
+        return records
+            .OrderBy(static record => record.TimestampUtc)
+            .ThenBy(static record => record.ProviderId, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(static record => record.SessionId, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(static record => record.TurnId, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(static record => record.EventId, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
     private static UsageEventRecord CloneRecord(UsageEventRecord record) {
         return new UsageEventRecord(
             record.EventId,
@@ -618,6 +651,9 @@ public sealed class UsageTelemetryQuickReportScanner {
             MachineId = record.MachineId,
             SessionId = record.SessionId,
             ThreadId = record.ThreadId,
+            ConversationTitle = record.ConversationTitle,
+            WorkspacePath = record.WorkspacePath,
+            RepositoryName = record.RepositoryName,
             TurnId = record.TurnId,
             ResponseId = record.ResponseId,
             Model = record.Model,
@@ -627,6 +663,7 @@ public sealed class UsageTelemetryQuickReportScanner {
             OutputTokens = record.OutputTokens,
             ReasoningTokens = record.ReasoningTokens,
             TotalTokens = record.TotalTokens,
+            CompactCount = record.CompactCount,
             DurationMs = record.DurationMs,
             CostUsd = record.CostUsd,
             TruthLevel = record.TruthLevel,
@@ -641,6 +678,9 @@ public sealed class UsageTelemetryQuickReportScanner {
         canonical.MachineId = NormalizeOptional(canonical.MachineId) ?? NormalizeOptional(duplicate.MachineId);
         canonical.SessionId = NormalizeOptional(canonical.SessionId) ?? NormalizeOptional(duplicate.SessionId);
         canonical.ThreadId = NormalizeOptional(canonical.ThreadId) ?? NormalizeOptional(duplicate.ThreadId);
+        canonical.ConversationTitle = NormalizeOptional(canonical.ConversationTitle) ?? NormalizeOptional(duplicate.ConversationTitle);
+        canonical.WorkspacePath = NormalizeOptional(canonical.WorkspacePath) ?? NormalizeOptional(duplicate.WorkspacePath);
+        canonical.RepositoryName = NormalizeOptional(canonical.RepositoryName) ?? NormalizeOptional(duplicate.RepositoryName);
         canonical.TurnId = NormalizeOptional(canonical.TurnId) ?? NormalizeOptional(duplicate.TurnId);
         canonical.ResponseId = NormalizeOptional(canonical.ResponseId) ?? NormalizeOptional(duplicate.ResponseId);
         canonical.Model = NormalizeOptional(canonical.Model) ?? NormalizeOptional(duplicate.Model);
@@ -651,6 +691,7 @@ public sealed class UsageTelemetryQuickReportScanner {
         canonical.OutputTokens = MergeMax(canonical.OutputTokens, duplicate.OutputTokens);
         canonical.ReasoningTokens = MergeMax(canonical.ReasoningTokens, duplicate.ReasoningTokens);
         canonical.TotalTokens = MergeMax(canonical.TotalTokens, duplicate.TotalTokens);
+        canonical.CompactCount = MergeMax(canonical.CompactCount, duplicate.CompactCount);
         canonical.DurationMs = MergeMax(canonical.DurationMs, duplicate.DurationMs);
         canonical.CostUsd = MergeMax(canonical.CostUsd, duplicate.CostUsd);
         if (duplicate.TruthLevel > canonical.TruthLevel) {
@@ -681,6 +722,17 @@ public sealed class UsageTelemetryQuickReportScanner {
         return Math.Max(current.Value, incoming.Value);
     }
 
+    private static int? MergeMax(int? current, int? incoming) {
+        if (!current.HasValue) {
+            return incoming;
+        }
+        if (!incoming.HasValue) {
+            return current;
+        }
+
+        return Math.Max(current.Value, incoming.Value);
+    }
+
     private static decimal? MergeMax(decimal? current, decimal? incoming) {
         if (!current.HasValue) {
             return incoming;
@@ -698,6 +750,15 @@ public sealed class UsageTelemetryQuickReportScanner {
         }
 
         obj.Add(key, value.Value);
+    }
+
+    private static int? ReadOptionalInt32(JsonObject obj, string key) {
+        var value = obj.GetInt64(key);
+        if (!value.HasValue || value.Value <= 0L) {
+            return null;
+        }
+
+        return value.Value > int.MaxValue ? int.MaxValue : (int)value.Value;
     }
 
     private static IReadOnlyList<UsageEventRecord> MergeRecords(IEnumerable<UsageEventRecord> records) {
@@ -729,6 +790,7 @@ public sealed class UsageTelemetryQuickReportScanner {
                     OutputTokens = materialized.Sum(static item => item.OutputTokens ?? 0L),
                     ReasoningTokens = materialized.Sum(static item => item.ReasoningTokens ?? 0L),
                     TotalTokens = materialized.Sum(static item => item.TotalTokens ?? 0L),
+                    CompactCount = materialized.Sum(static item => item.CompactCount ?? 0),
                     TruthLevel = UsageTruthLevel.Exact
                 };
             })

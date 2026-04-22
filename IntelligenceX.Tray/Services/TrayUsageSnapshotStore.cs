@@ -34,6 +34,9 @@ public sealed class TrayUsageSnapshotStore {
                 .Cast<SourceRootRecord>()
                 .ToList();
             var events = persisted.Events.Select(static item => item.ToUsageEvent()).ToList();
+            var rawEvents = persisted.RawEvents.Count > 0
+                ? persisted.RawEvents.Select(static item => item.ToUsageEvent()).ToList()
+                : events;
             var discoveredProviderIds = persisted.DiscoveredProviderIds
                 .Where(static item => !string.IsNullOrWhiteSpace(item))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -43,6 +46,7 @@ public sealed class TrayUsageSnapshotStore {
                 discoveredProviderIds,
                 sourceRoots,
                 events,
+                rawEvents,
                 persisted.Health?.ToSnapshotHealth()
                 ?? BuildFallbackHealth(sourceRoots, events, discoveredProviderIds));
         } catch {
@@ -55,7 +59,8 @@ public sealed class TrayUsageSnapshotStore {
         IReadOnlyList<UsageEventRecord> events,
         IReadOnlyList<string>? discoveredProviderIds = null,
         IReadOnlyList<SourceRootRecord>? sourceRoots = null,
-        UsageTelemetrySnapshotHealth? health = null) {
+        UsageTelemetrySnapshotHealth? health = null,
+        IReadOnlyList<UsageEventRecord>? rawEvents = null) {
         ArgumentNullException.ThrowIfNull(events);
         if (events.Count == 0) {
             return;
@@ -77,6 +82,7 @@ public sealed class TrayUsageSnapshotStore {
                 .Select(static item => PersistedSourceRoot.FromSourceRoot(item))
                 .ToList(),
             Events = events.Select(static item => PersistedUsageEvent.FromUsageEvent(item)).ToList(),
+            RawEvents = (rawEvents ?? events).Select(static item => PersistedUsageEvent.FromUsageEvent(item)).ToList(),
             Health = health is null ? null : PersistedSnapshotHealth.FromSnapshotHealth(health)
         };
         var json = JsonSerializer.Serialize(payload, SerializerOptions);
@@ -88,6 +94,7 @@ public sealed class TrayUsageSnapshotStore {
         List<string> DiscoveredProviderIds,
         List<SourceRootRecord> SourceRoots,
         List<UsageEventRecord> Events,
+        List<UsageEventRecord> RawEvents,
         UsageTelemetrySnapshotHealth? Health);
 
     private sealed class PersistedUsageSnapshot {
@@ -95,6 +102,7 @@ public sealed class TrayUsageSnapshotStore {
         public List<string> DiscoveredProviderIds { get; set; } = [];
         public List<PersistedSourceRoot> SourceRoots { get; set; } = [];
         public List<PersistedUsageEvent> Events { get; set; } = [];
+        public List<PersistedUsageEvent> RawEvents { get; set; } = [];
         public PersistedSnapshotHealth? Health { get; set; }
     }
 
@@ -305,6 +313,9 @@ public sealed class TrayUsageSnapshotStore {
         public string? MachineId { get; set; }
         public string? SessionId { get; set; }
         public string? ThreadId { get; set; }
+        public string? ConversationTitle { get; set; }
+        public string? WorkspacePath { get; set; }
+        public string? RepositoryName { get; set; }
         public string? TurnId { get; set; }
         public string? ResponseId { get; set; }
         public string? Model { get; set; }
@@ -314,6 +325,7 @@ public sealed class TrayUsageSnapshotStore {
         public long? OutputTokens { get; set; }
         public long? ReasoningTokens { get; set; }
         public long? TotalTokens { get; set; }
+        public int? CompactCount { get; set; }
         public long? DurationMs { get; set; }
         public decimal? CostUsd { get; set; }
         public UsageTruthLevel TruthLevel { get; set; }
@@ -332,6 +344,9 @@ public sealed class TrayUsageSnapshotStore {
                 MachineId = usageEvent.MachineId,
                 SessionId = usageEvent.SessionId,
                 ThreadId = usageEvent.ThreadId,
+                ConversationTitle = usageEvent.ConversationTitle,
+                WorkspacePath = usageEvent.WorkspacePath,
+                RepositoryName = usageEvent.RepositoryName,
                 TurnId = usageEvent.TurnId,
                 ResponseId = usageEvent.ResponseId,
                 Model = usageEvent.Model,
@@ -341,6 +356,7 @@ public sealed class TrayUsageSnapshotStore {
                 OutputTokens = usageEvent.OutputTokens,
                 ReasoningTokens = usageEvent.ReasoningTokens,
                 TotalTokens = usageEvent.TotalTokens,
+                CompactCount = usageEvent.CompactCount,
                 DurationMs = usageEvent.DurationMs,
                 CostUsd = usageEvent.CostUsd,
                 TruthLevel = usageEvent.TruthLevel,
@@ -356,6 +372,9 @@ public sealed class TrayUsageSnapshotStore {
                 MachineId = MachineId,
                 SessionId = SessionId,
                 ThreadId = ThreadId,
+                ConversationTitle = ConversationTitle,
+                WorkspacePath = WorkspacePath,
+                RepositoryName = RepositoryName,
                 TurnId = TurnId,
                 ResponseId = ResponseId,
                 Model = Model,
@@ -365,6 +384,7 @@ public sealed class TrayUsageSnapshotStore {
                 OutputTokens = OutputTokens,
                 ReasoningTokens = ReasoningTokens,
                 TotalTokens = TotalTokens,
+                CompactCount = CompactCount,
                 DurationMs = DurationMs,
                 CostUsd = CostUsd,
                 TruthLevel = TruthLevel,

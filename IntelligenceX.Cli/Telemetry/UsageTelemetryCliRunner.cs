@@ -1199,6 +1199,10 @@ internal static class UsageTelemetryCliRunner {
             ? new JsonObject()
             : CloneJsonObject(overview.Metadata);
         metadata.Add("scanContext", BuildQuickReportScanContext(options, dbPath, scanResult, roots));
+        var conversations = BuildQuickReportConversationMetadata(scanResult, options);
+        if (conversations is not null) {
+            metadata.Add("conversations", conversations);
+        }
 
         return new UsageTelemetryOverviewDocument(
             overview.Title,
@@ -1210,6 +1214,107 @@ internal static class UsageTelemetryCliRunner {
             overview.Heatmaps,
             overview.ProviderSections,
             metadata);
+    }
+
+    private static JsonObject? BuildQuickReportConversationMetadata(
+        UsageTelemetryQuickReportResult scanResult,
+        ReportOptions options) {
+        var rawEvents = (scanResult?.RawEvents ?? new List<UsageEventRecord>())
+            .Where(record => MatchesProvider(record.ProviderId, options.ProviderId))
+            .Where(record => MatchesAccount(record, options.AccountFilter))
+            .Where(record => MatchesPerson(record, options.PersonFilter))
+            .OrderBy(static record => record.TimestampUtc)
+            .ToArray();
+        if (rawEvents.Length == 0) {
+            return null;
+        }
+
+        var conversations = UsageConversationSummaryBuilder.Build(rawEvents);
+        if (conversations.Count == 0) {
+            return null;
+        }
+
+        var items = new JsonArray();
+        foreach (var conversation in conversations.Take(25)) {
+            var models = new JsonArray();
+            foreach (var model in conversation.Models) {
+                models.Add(model);
+            }
+
+            var surfaces = new JsonArray();
+            foreach (var surface in conversation.Surfaces) {
+                surfaces.Add(surface);
+            }
+
+            items.Add(new JsonObject()
+                .Add("conversationKey", conversation.ConversationKey)
+                .Add("providerId", conversation.ProviderId)
+                .Add("provider", UsageTelemetryProviderCatalog.ResolveDisplayTitle(conversation.ProviderId))
+                .Add("providerAccountId", conversation.ProviderAccountId)
+                .Add("account", NormalizeConversationAccount(conversation.AccountLabel, conversation.ProviderAccountId) ?? "Unknown account")
+                .Add("sessionId", conversation.SessionId)
+                .Add("title", conversation.ConversationTitle)
+                .Add("workspacePath", conversation.WorkspacePath)
+                .Add("workspace", conversation.WorkspaceName)
+                .Add("repository", conversation.RepositoryName)
+                .Add("label", FormatSessionSnippet(conversation.SessionId))
+                .Add("startedLocal", conversation.StartedUtc.ToLocalTime().ToString("MMM d HH:mm", CultureInfo.CurrentCulture))
+                .Add("startedUtc", conversation.StartedUtc.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture))
+                .Add("lastSeenLocal", conversation.LastSeenUtc.ToLocalTime().ToString("MMM d HH:mm", CultureInfo.CurrentCulture))
+                .Add("lastSeenUtc", conversation.LastSeenUtc.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture))
+                .Add("durationMs", (long)conversation.Duration.TotalMilliseconds)
+                .Add("duration", HeatmapDisplayText.FormatDuration(conversation.Duration))
+                .Add("activeDurationMs", (long)conversation.ActiveDuration.TotalMilliseconds)
+                .Add("activeDuration", HeatmapDisplayText.FormatDuration(conversation.ActiveDuration))
+                .Add("turnCount", conversation.TurnCount)
+                .Add("compactCount", conversation.CompactCount)
+                .Add("inputTokens", conversation.InputTokens)
+                .Add("outputTokens", conversation.OutputTokens)
+                .Add("cachedTokens", conversation.CachedInputTokens)
+                .Add("reasoningTokens", conversation.ReasoningTokens)
+                .Add("totalTokens", conversation.TotalTokens)
+                .Add("apiEquivalentCostUsd", (double)conversation.CostUsd)
+                .Add("costApproximate", conversation.CostUsesEstimatedFallback)
+                .Add("models", models)
+                .Add("surfaces", surfaces));
+        }
+
+        return new JsonObject()
+            .Add("totalCount", conversations.Count)
+            .Add("shownCount", items.Count)
+            .Add("tokenTotal", conversations.Sum(static conversation => conversation.TotalTokens))
+            .Add("turnCount", conversations.Sum(static conversation => (long)conversation.TurnCount))
+            .Add("compactCount", conversations.Sum(static conversation => (long)conversation.CompactCount))
+            .Add("items", items);
+    }
+
+    private static string FormatSessionSnippet(string value) {
+        var normalized = NormalizeOptional(value) ?? "unknown";
+        if (normalized.Length <= 18) {
+            return normalized;
+        }
+
+        return normalized[..8] + "..." + normalized[^6..];
+    }
+
+    private static string? NormalizeConversationAccount(string? accountLabel, string? providerAccountId) {
+        var normalized = NormalizeOptional(accountLabel);
+        if (normalized is null || string.Equals(normalized, "unknown-account", StringComparison.OrdinalIgnoreCase)) {
+            normalized = NormalizeOptional(providerAccountId);
+            if (normalized is null || string.Equals(normalized, "unknown-account", StringComparison.OrdinalIgnoreCase)) {
+                return null;
+            }
+        }
+
+        if (normalized.StartsWith("acct:", StringComparison.OrdinalIgnoreCase)) {
+            return normalized["acct:".Length..];
+        }
+
+        if (normalized.StartsWith("label:", StringComparison.OrdinalIgnoreCase)) {
+            return normalized["label:".Length..];
+        }
+
+        return normalized;
     }
 
     private static UsageTelemetryOverviewDocument ApplyQuickReportDiagnosticsInsights(
