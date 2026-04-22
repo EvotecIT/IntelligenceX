@@ -817,6 +817,79 @@ internal static partial class Program {
             "merge blockers do not match non-critical heading as critical section");
     }
 
+    private static void TestReviewSummaryParserIgnoresStarredProseForParseIncomplete() {
+        var body = string.Join("\n", new[] {
+            "## Todo List ✅",
+            "*Impact:* no follow-up work remains here.",
+            "None.",
+            "",
+            "## Critical Issues ⚠️",
+            "None."
+        });
+
+        var findings = ReviewSummaryParser.ExtractMergeBlockerFindings(body, settings: null, maxItems: 10, hitLimit: out var hitLimit,
+            parseIncomplete: out var parseIncomplete);
+
+        AssertEqual(false, ReviewSummaryParser.HasMergeBlockers(body), "merge blockers starred prose is non-blocking");
+        AssertEqual(0, findings.Count, "findings starred prose count");
+        AssertEqual(false, hitLimit, "findings starred prose does not hit limit");
+        AssertEqual(false, parseIncomplete, "findings starred prose does not mark parse incomplete");
+    }
+
+    private static void TestReviewSummaryParserKeepsFlexibleStarredChecklistAsParseIncomplete() {
+        var body = string.Join("\n", new[] {
+            "## Todo List ✅",
+            "*    [ ] retry transport",
+            "",
+            "## Critical Issues ⚠️",
+            "None."
+        });
+
+        var findings = ReviewSummaryParser.ExtractMergeBlockerFindings(body, settings: null, maxItems: 10, hitLimit: out var hitLimit,
+            parseIncomplete: out var parseIncomplete);
+
+        AssertEqual(false, ReviewSummaryParser.HasMergeBlockers(body), "merge blockers flexible starred checklist still bypasses normalization");
+        AssertEqual(0, findings.Count, "findings flexible starred checklist count");
+        AssertEqual(false, hitLimit, "findings flexible starred checklist does not hit limit");
+        AssertEqual(true, parseIncomplete, "findings flexible starred checklist keeps parse incomplete safety");
+    }
+
+    private static void TestReviewSummaryParserKeepsPlainStarredBulletAsParseIncomplete() {
+        var body = string.Join("\n", new[] {
+            "## Todo List ✅",
+            "* retry transport",
+            "",
+            "## Critical Issues ⚠️",
+            "None."
+        });
+
+        var findings = ReviewSummaryParser.ExtractMergeBlockerFindings(body, settings: null, maxItems: 10, hitLimit: out var hitLimit,
+            parseIncomplete: out var parseIncomplete);
+
+        AssertEqual(false, ReviewSummaryParser.HasMergeBlockers(body), "merge blockers plain starred bullet still bypasses normalization");
+        AssertEqual(0, findings.Count, "findings plain starred bullet count");
+        AssertEqual(false, hitLimit, "findings plain starred bullet does not hit limit");
+        AssertEqual(true, parseIncomplete, "findings plain starred bullet keeps parse incomplete safety");
+    }
+
+    private static void TestReviewSummaryParserKeepsCompactStarredChecklistAsParseIncomplete() {
+        var body = string.Join("\n", new[] {
+            "## Todo List ✅",
+            "*[ ] retry transport",
+            "",
+            "## Critical Issues ⚠️",
+            "None."
+        });
+
+        var findings = ReviewSummaryParser.ExtractMergeBlockerFindings(body, settings: null, maxItems: 10, hitLimit: out var hitLimit,
+            parseIncomplete: out var parseIncomplete);
+
+        AssertEqual(false, ReviewSummaryParser.HasMergeBlockers(body), "merge blockers compact starred checklist still bypasses normalization");
+        AssertEqual(0, findings.Count, "findings compact starred checklist count");
+        AssertEqual(false, hitLimit, "findings compact starred checklist does not hit limit");
+        AssertEqual(true, parseIncomplete, "findings compact starred checklist keeps parse incomplete safety");
+    }
+
     private static void TestReviewSummaryParserMergeBlockerDetectionCompactDefaults() {
         var settings = new ReviewSettings {
             OutputStyle = "compact"
