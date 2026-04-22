@@ -41,7 +41,7 @@
     <MailozaurrNuGetVersion Condition="'$(MailozaurrNuGetVersion)'==''">2.0.7</MailozaurrNuGetVersion>
     <EventViewerXNuGetVersion Condition="'$(EventViewerXNuGetVersion)'==''">3.3.3</EventViewerXNuGetVersion>
     <OfficeImoReaderNuGetVersion Condition="'$(OfficeImoReaderNuGetVersion)'==''">0.1.18</OfficeImoReaderNuGetVersion>
-    <DnsClientXNuGetVersion Condition="'$(DnsClientXNuGetVersion)'==''">1.0.7</DnsClientXNuGetVersion>
+    <DnsClientXNuGetVersion Condition="'$(DnsClientXNuGetVersion)'==''">1.0.8</DnsClientXNuGetVersion>
     <OfficeImoRepoRootInput>$(OfficeImoRepoRoot)</OfficeImoRepoRootInput>
     <OfficeImoRepoRootInputNormalized Condition="'$(OfficeImoRepoRootInput)' != ''">$([MSBuild]::EnsureTrailingSlash($([System.IO.Path]::GetFullPath('$(OfficeImoRepoRootInput)\\'))))</OfficeImoRepoRootInputNormalized>
     <OfficeImoRepoRoot Condition="'$(OfficeImoRepoRootInputNormalized)' != '' and Exists('$(OfficeImoRepoRootInputNormalized)OfficeIMO.Reader\\OfficeIMO.Reader.csproj')">$(OfficeImoRepoRootInputNormalized)</OfficeImoRepoRoot>
