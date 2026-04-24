@@ -104,6 +104,7 @@ public sealed partial class UiShellAssetsTests {
         Assert.Contains("model: defaultLocalModel", script, StringComparison.Ordinal);
         Assert.DoesNotContain("model: \"gpt-5.5\"", script, StringComparison.Ordinal);
         Assert.Contains("var defaultLocalModel = \"" + OpenAIModelCatalog.DefaultModel + "\";", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("{{IXCHAT_DEFAULT_LOCAL_MODEL}}", html, StringComparison.Ordinal);
     }
 
     /// <summary>

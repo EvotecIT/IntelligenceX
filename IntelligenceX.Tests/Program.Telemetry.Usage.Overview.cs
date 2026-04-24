@@ -64,6 +64,20 @@ internal static partial class Program {
         AssertEqual(9.55m, displayCost.EstimatedFallbackCostUsd, "api pricing display cost includes gpt-5.5 fast");
         AssertEqual(1_250_000L, displayCost.CoveredTokens, "api pricing display cost covers gpt-5.5 fast tokens");
         AssertEqual(0L, displayCost.UncoveredTokens, "api pricing display cost leaves no gpt-5.5 fast tokens uncovered");
+
+        var nonOpenAiEstimate = UsageTelemetryApiPricing.EstimateEvent(new UsageEventRecord(
+            "evt-third-party-fast",
+            "third-party",
+            "api.logs",
+            "src-1",
+            new DateTimeOffset(2026, 03, 10, 11, 15, 0, TimeSpan.Zero)) {
+            Model = "vendor/gpt-5.5/fast",
+            InputTokens = 1_000_000,
+            TotalTokens = 1_000_000,
+            TruthLevel = UsageTruthLevel.Exact
+        });
+        AssertEqual(false, nonOpenAiEstimate.HasKnownPricing, "api pricing does not apply OpenAI mode pricing to third-party slash ids");
+        AssertEqual("vendor/gpt-5.5/fast", nonOpenAiEstimate.Model, "api pricing preserves third-party slash id");
     }
 
     private static void TestProviderLimitForecastingFlagsOverLimitPace() {

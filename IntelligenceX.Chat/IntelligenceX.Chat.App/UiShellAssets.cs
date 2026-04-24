@@ -85,6 +85,7 @@ internal static class UiShellAssets {
 
             ValidateTemplate(template, diagnostics);
             ValidateJavaScriptContracts(js, diagnostics);
+            ValidateCatalogBackedJavaScriptDefaults(js, diagnostics);
 
             if (string.IsNullOrWhiteSpace(template) || string.IsNullOrWhiteSpace(css) || string.IsNullOrWhiteSpace(js) || diagnostics.Count > 0) {
                 // Do not cache fallback diagnostics HTML. A transient startup packaging issue
@@ -105,6 +106,31 @@ internal static class UiShellAssets {
             DefaultLocalModelToken,
             JsonSerializer.Serialize(OpenAIModelCatalog.DefaultModel),
             StringComparison.Ordinal);
+    }
+
+    private static void ValidateCatalogBackedJavaScriptDefaults(string js, List<string> diagnostics) {
+        var tokenCount = CountOccurrences(js, DefaultLocalModelToken);
+        if (tokenCount != 1) {
+            diagnostics.Add($"Expected exactly one default local model token in JavaScript, found {tokenCount}.");
+        }
+    }
+
+    private static int CountOccurrences(string value, string token) {
+        if (string.IsNullOrEmpty(value) || string.IsNullOrEmpty(token)) {
+            return 0;
+        }
+
+        var count = 0;
+        var startIndex = 0;
+        while (true) {
+            var index = value.IndexOf(token, startIndex, StringComparison.Ordinal);
+            if (index < 0) {
+                return count;
+            }
+
+            count++;
+            startIndex = index + token.Length;
+        }
     }
 
     private static string ReadTextOrEmpty(string path) {

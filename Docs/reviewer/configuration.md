@@ -281,6 +281,8 @@ For backward compatibility, the loader also accepts `modelProfiles` and `authPro
 
 The Copilot example intentionally keeps its OpenAI-family Copilot model on `gpt-5.4` to show that provider-specific profiles can
 choose a different model from the OpenAI default.
+Older examples may have named that profile `copilot-gpt54`; the profile ID is arbitrary, so keep or rename it as long as
+all `agentProfile` references match.
 
 For swarm shadow runs, reviewer lanes and the aggregator can reference those same profiles:
 
