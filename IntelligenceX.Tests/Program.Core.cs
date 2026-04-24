@@ -685,9 +685,13 @@ internal static partial class Program {
     }
 
     private static void TestOpenAiModelCatalogNormalizesFastModeSuffix() {
-        AssertEqual("gpt-5.4/fast", OpenAIModelCatalog.NormalizeModelId("openai/gpt-5.4/fast"),
+        AssertEqual("gpt-5.5/fast", OpenAIModelCatalog.NormalizeModelId("openai/gpt-5.5/fast"),
             "openai model normalize fast suffix");
-        AssertEqual("gpt-5.4", OpenAIModelCatalog.NormalizeModelId("openai/gpt-5.4"),
+        AssertEqual("gpt-5.5/fast/spark", OpenAIModelCatalog.NormalizeModelId("openai/gpt-5.5/fast/spark"),
+            "openai model normalize compound mode suffix");
+        AssertEqual("gpt-5.5", OpenAIModelCatalog.NormalizeBaseModelId("openai/gpt-5.5/fast/spark"),
+            "openai model normalize pricing base from compound mode suffix");
+        AssertEqual("gpt-5.5", OpenAIModelCatalog.NormalizeModelId("openai/gpt-5.5"),
             "openai model normalize provider prefix");
     }
 
@@ -706,6 +710,10 @@ internal static partial class Program {
         var models = method!.Invoke(null, Array.Empty<object>()) as IReadOnlyList<string>;
         AssertNotNull(models, "baseline fallback models");
         var baselineModels = models!;
+        AssertEqual(true, baselineModels.Contains("gpt-5.5", StringComparer.OrdinalIgnoreCase),
+            "baseline fallback models include gpt-5.5");
+        AssertEqual(true, baselineModels.Contains("gpt-5.4", StringComparer.OrdinalIgnoreCase),
+            "baseline fallback models keep gpt-5.4");
         AssertEqual(true, baselineModels.Contains("gpt-5-mini", StringComparer.OrdinalIgnoreCase),
             "baseline fallback models include gpt-5-mini");
         AssertEqual(true, baselineModels.Contains("gpt-5-nano", StringComparer.OrdinalIgnoreCase),

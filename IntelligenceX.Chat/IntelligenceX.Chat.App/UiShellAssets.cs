@@ -4,7 +4,9 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Text;
+using System.Text.Json;
 using IntelligenceX.Chat.App.Theming;
+using IntelligenceX.OpenAI;
 
 namespace IntelligenceX.Chat.App;
 
@@ -14,6 +16,7 @@ internal static class UiShellAssets {
     private const string CssSplitPattern = "Shell.*.css";
     private const string JsFile = "Shell.js";
     private const string JsSplitPattern = "Shell.*.js";
+    private const string DefaultLocalModelToken = "\"{{IXCHAT_DEFAULT_LOCAL_MODEL}}\"";
     private const int MaxDiagnosticsInFallback = 24;
 
     private static readonly string[] TemplateTokens = [
@@ -82,6 +85,7 @@ internal static class UiShellAssets {
 
             ValidateTemplate(template, diagnostics);
             ValidateJavaScriptContracts(js, diagnostics);
+            ValidateCatalogBackedJavaScriptDefaults(js, diagnostics);
 
             if (string.IsNullOrWhiteSpace(template) || string.IsNullOrWhiteSpace(css) || string.IsNullOrWhiteSpace(js) || diagnostics.Count > 0) {
                 // Do not cache fallback diagnostics HTML. A transient startup packaging issue
@@ -92,8 +96,40 @@ internal static class UiShellAssets {
             _cachedHtml = template
                 .Replace("/*{{IXCHAT_CSS}}*/", css, StringComparison.Ordinal)
                 .Replace("<!--{{IXCHAT_THEME_OPTIONS}}-->", ThemeContract.BuildThemeOptionTagsHtml(), StringComparison.Ordinal)
-                .Replace("//{{IXCHAT_JS}}", js, StringComparison.Ordinal);
+                .Replace("//{{IXCHAT_JS}}", ApplyCatalogBackedJavaScriptDefaults(js), StringComparison.Ordinal);
             return _cachedHtml;
+        }
+    }
+
+    private static string ApplyCatalogBackedJavaScriptDefaults(string js) {
+        return js.Replace(
+            DefaultLocalModelToken,
+            JsonSerializer.Serialize(OpenAIModelCatalog.DefaultModel),
+            StringComparison.Ordinal);
+    }
+
+    private static void ValidateCatalogBackedJavaScriptDefaults(string js, List<string> diagnostics) {
+        var tokenCount = CountOccurrences(js, DefaultLocalModelToken);
+        if (tokenCount == 0) {
+            diagnostics.Add("Expected at least one default local model token in JavaScript, found none.");
+        }
+    }
+
+    private static int CountOccurrences(string value, string token) {
+        if (string.IsNullOrEmpty(value) || string.IsNullOrEmpty(token)) {
+            return 0;
+        }
+
+        var count = 0;
+        var startIndex = 0;
+        while (true) {
+            var index = value.IndexOf(token, startIndex, StringComparison.Ordinal);
+            if (index < 0) {
+                return count;
+            }
+
+            count++;
+            startIndex = index + token.Length;
         }
     }
 

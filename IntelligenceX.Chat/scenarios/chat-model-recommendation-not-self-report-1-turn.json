@@ -9,7 +9,7 @@
       "name": "Model recommendation ask should not self-report runtime",
       "user": "What model should I use for DNS anomaly triage?",
       "assert_contains_any": ["depends", "recommend", "model", "dns", "triage"],
-      "assert_not_contains": ["This chat is running on", "gpt-5.3-codex", "gpt-5.4", "Runtime capability handshake"],
+      "assert_not_contains": ["This chat is running on", "gpt-5.3-codex", "gpt-5.4", "gpt-5.5", "Runtime capability handshake"],
       "forbid_tools": ["*"]
     }
   ]

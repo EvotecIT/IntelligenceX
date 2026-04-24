@@ -71,7 +71,7 @@ flowchart LR
 
 **Default Mode + Model Policy**
 - Default review mode: `hybrid` (summary + inline when supported; falls back to summary-only).
-- Default provider/model: OpenAI with `gpt-5.4` unless configured otherwise; Claude and Copilot are opt-in.
+- Default provider/model: OpenAI with `gpt-5.5` unless configured otherwise; Claude and Copilot are opt-in.
 - Safe defaults: skip drafts; skip workflow changes unless allowed; no secrets/writes on untrusted PRs; core reviewer defaults fail-open only for transient errors, while the bundled GitHub workflow exports fail-open env defaults for provider/runtime failures so auth outages do not block CI; budget summary enabled; auto-resolve limited to bot threads with evidence; secrets audit on.
 
 ## Reusable workflow (quick start)
@@ -120,7 +120,7 @@ The reusable workflow maps `with:` inputs to environment variables the reviewer 
   "review": {
     "provider": "openai",
     "openaiTransport": "native",
-    "model": "gpt-5.4",
+    "model": "gpt-5.5",
     "mode": "inline",
     "length": "long",
     "reviewUsageSummary": true

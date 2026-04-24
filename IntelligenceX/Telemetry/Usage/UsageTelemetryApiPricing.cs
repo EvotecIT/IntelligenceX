@@ -88,6 +88,8 @@ public static class UsageTelemetryApiPricing {
 
     private static readonly IReadOnlyDictionary<string, UsageTelemetryApiPrice> ApiPricingByModel =
         new Dictionary<string, UsageTelemetryApiPrice>(StringComparer.OrdinalIgnoreCase) {
+            ["gpt-5.5"] = new(5m, 0.50m, 30m),
+            ["gpt-5.5/fast"] = new(5m, 0.50m, 30m),
             ["gpt-5.4"] = new(2.50m, 0.25m, 15m),
             ["gpt-5.4-codex"] = new(2.50m, 0.25m, 15m),
             ["gpt-5-mini"] = new(0.25m, 0.025m, 2m),
@@ -184,9 +186,9 @@ public static class UsageTelemetryApiPricing {
             throw new ArgumentNullException(nameof(record));
         }
 
-        var normalizedModel = NormalizePricingModelId(record.ProviderId, record.Model);
+        var normalizedModel = NormalizePricingModelId(record.ProviderId, record.Model, out var allowOpenAiModePricing);
         var totalTokens = record.TotalTokens ?? 0L;
-        if (!TryResolveApiPrice(normalizedModel, out var rate)) {
+        if (!TryResolveApiPrice(normalizedModel, allowOpenAiModePricing, out var rate)) {
             return new UsageTelemetryApiEventCostEstimate(
                 normalizedModel,
                 totalTokens,
@@ -220,18 +222,29 @@ public static class UsageTelemetryApiPricing {
         return tokens / 1_000_000m * usdPerMillion;
     }
 
-    private static string NormalizePricingModelId(string? providerId, string? model) {
+    private static string NormalizePricingModelId(string? providerId, string? model, out bool allowOpenAiModePricing) {
         var provider = NormalizeOptional(providerId)?.ToLowerInvariant();
         if (provider is "codex" or "openai" or "ix" or "openai-codex" or "chatgpt-codex") {
+            allowOpenAiModePricing = true;
             return OpenAIModelCatalog.NormalizeModelId(model, "unknown-model").Trim().ToLowerInvariant();
         }
 
+        allowOpenAiModePricing = false;
         return NormalizeOptional(model)?.ToLowerInvariant() ?? "unknown-model";
     }
 
-    private static bool TryResolveApiPrice(string normalizedModelId, out UsageTelemetryApiPrice rate) {
+    private static bool TryResolveApiPrice(string normalizedModelId, bool allowOpenAiModePricing, out UsageTelemetryApiPrice rate) {
         if (ApiPricingByModel.TryGetValue(normalizedModelId, out rate!)) {
             return true;
+        }
+
+        if (allowOpenAiModePricing) {
+            // Known OpenAI mode suffixes currently share the base model price until a distinct SKU is published here.
+            var baseModelId = OpenAIModelCatalog.NormalizeBaseModelId(normalizedModelId, normalizedModelId).ToLowerInvariant();
+            if (!string.Equals(baseModelId, normalizedModelId, StringComparison.OrdinalIgnoreCase) &&
+                ApiPricingByModel.TryGetValue(baseModelId, out rate!)) {
+                return true;
+            }
         }
 
         if (normalizedModelId.StartsWith("claude-opus-4-6", StringComparison.OrdinalIgnoreCase) ||

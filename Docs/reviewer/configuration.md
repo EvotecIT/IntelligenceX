@@ -62,7 +62,7 @@ GitHub Actions input/env aliases:
 {
   "review": {
     "provider": "openai",
-    "model": "gpt-5.4",
+    "model": "gpt-5.5",
     "mode": "inline",
     "length": "long",
     "outputStyle": "compact",
@@ -249,11 +249,11 @@ For backward compatibility, the loader also accepts `modelProfiles` and `authPro
   "review": {
     "agentProfile": "copilot-claude",
     "agentProfiles": {
-      "chatgpt-gpt54": {
+      "chatgpt-gpt55": {
         "provider": "openai",
         "authenticator": "chatgpt",
         "openaiTransport": "native",
-        "model": "gpt-5.4",
+        "model": "gpt-5.5",
         "openaiAccountId": "acct-review"
       },
       "copilot-gpt54": {
@@ -279,6 +279,9 @@ For backward compatibility, the loader also accepts `modelProfiles` and `authPro
 }
 ```
 
+The Copilot example intentionally keeps its OpenAI-family Copilot model on `gpt-5.4` to show that provider-specific profiles can
+choose a different model from the OpenAI default.
+
 For swarm shadow runs, reviewer lanes and the aggregator can reference those same profiles:
 
 ```json
@@ -288,12 +291,12 @@ For swarm shadow runs, reviewer lanes and the aggregator can reference those sam
       "enabled": true,
       "shadowMode": true,
       "reviewers": [
-        { "id": "correctness", "agentProfile": "chatgpt-gpt54" },
+        { "id": "correctness", "agentProfile": "chatgpt-gpt55" },
         { "id": "compat", "agentProfile": "copilot-gpt54" },
         { "id": "tests", "agentProfile": "copilot-claude" }
       ],
       "aggregator": {
-        "agentProfile": "chatgpt-gpt54"
+        "agentProfile": "chatgpt-gpt55"
       }
     }
   }
@@ -324,10 +327,10 @@ All swarm settings are optional and default to off unless you explicitly enable 
       ],
       "maxParallel": 4,
       "publishSubreviews": false,
-      "aggregatorModel": "gpt-5.4",
+      "aggregatorModel": "gpt-5.5",
       "aggregator": {
         "provider": "openai",
-        "model": "gpt-5.4",
+        "model": "gpt-5.5",
         "reasoningEffort": "high"
       },
       "failOpenOnPartial": true,

@@ -125,7 +125,7 @@ jobs:
     uses: evotecit/intelligencex/.github/workflows/review-intelligencex-core.yml@master
     with:
       provider: openai
-      model: gpt-5.4
+      model: gpt-5.5
 """;
 
         var content = SetupRunner.BuildWorkflowYamlFromSeedForTests(Array.Empty<string>(), seed);
@@ -223,7 +223,7 @@ jobs:
     uses: evotecit/intelligencex/.github/workflows/review-intelligencex-core.yml@master
     with:
       provider: openai
-      model: gpt-5.4
+      model: gpt-5.5
 """;
 
         var content = SetupRunner.BuildWorkflowYamlFromSeedForTests(Array.Empty<string>(), seed);
@@ -232,7 +232,7 @@ jobs:
         AssertContainsText(content, "openai_model:", "workflow template openai model input");
         AssertContainsText(content, "openai_model: ${{ inputs.openai_model }}",
             "workflow template openai model pass-through");
-        AssertContainsText(content, "model: gpt-5.4", "workflow template default model updated");
+        AssertContainsText(content, "model: gpt-5.5", "workflow template default model updated");
     }
 
     private static void TestReviewReusableWorkflowDispatchIncludesOpenAiModelInput() {

@@ -23,6 +23,7 @@
     }
     return Math.floor(parsed);
   }
+  var defaultLocalModel = "{{IXCHAT_DEFAULT_LOCAL_MODEL}}";
 
   var menu = byId("menu");
   var promptEl = byId("prompt");
@@ -125,7 +126,7 @@
         transport: "native",
         baseUrl: "",
         modelsEndpoint: "",
-        model: "gpt-5.4",
+        model: defaultLocalModel,
         openAIAuthMode: "bearer",
         openAIBasicUsername: "",
         openAIAccountId: "",

@@ -234,8 +234,8 @@ internal static partial class Program {
     private static void TestSetupProviderCatalogReturnsRecommendedOpenAiModels() {
         var models = IntelligenceX.Cli.Setup.SetupProviderCatalog.GetRecommendedModels("openai");
         AssertEqual(true, models.Count >= 3, "setup provider catalog openai model count");
-        AssertEqual("gpt-5.4", models[0], "setup provider catalog openai default first");
-        AssertEqual(true, models.Contains("gpt-5.4/fast", StringComparer.OrdinalIgnoreCase),
+        AssertEqual("gpt-5.5", models[0], "setup provider catalog openai default first");
+        AssertEqual(true, models.Contains("gpt-5.5/fast", StringComparer.OrdinalIgnoreCase),
             "setup provider catalog openai fast present");
         AssertEqual(true, models.Contains("gpt-5-mini", StringComparer.OrdinalIgnoreCase),
             "setup provider catalog openai mini present");
@@ -252,7 +252,7 @@ internal static partial class Program {
     }
 
     private static void TestSetupProviderCatalogDescribesRecommendedModelProfiles() {
-        var openAiProfile = IntelligenceX.Cli.Setup.SetupProviderCatalog.TryGetRecommendedModelProfile("openai", "gpt-5.4");
+        var openAiProfile = IntelligenceX.Cli.Setup.SetupProviderCatalog.TryGetRecommendedModelProfile("openai", "gpt-5.5");
         AssertEqual(true, openAiProfile.HasValue, "setup provider catalog openai profile exists");
         AssertContainsText(openAiProfile?.Summary ?? string.Empty, "default quality", "setup provider catalog openai profile summary");
         AssertEqual(true, openAiProfile?.IsRecommendedDefault ?? false, "setup provider catalog openai default flag");

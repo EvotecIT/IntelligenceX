@@ -18,6 +18,7 @@ using IntelligenceX.Chat.App.Launch;
 using IntelligenceX.Chat.App.Rendering;
 using IntelligenceX.Chat.App.Theming;
 using IntelligenceX.Chat.Client;
+using IntelligenceX.OpenAI;
 using Microsoft.UI.Input;
 using Microsoft.UI;
 using Microsoft.UI.Dispatching;
@@ -55,7 +56,7 @@ public sealed partial class MainWindow : Window {
     private const string SystemConversationId = "chat-system";
     private const string SystemConversationTitle = "System";
     private const string DefaultConversationTitle = "New Chat";
-    private const string DefaultLocalModel = "gpt-5.4";
+    private const string DefaultLocalModel = OpenAIModelCatalog.DefaultModel;
     private const string TransportNative = "native";
     private const string TransportCompatibleHttp = "compatible-http";
     private const string TransportCopilotCli = "copilot-cli";

@@ -9,7 +9,7 @@
       "name": "Recommendation ask should not self-report runtime",
       "user": "What tools should I install for this workspace?",
       "assert_contains_any": ["depends", "workspace", "recommend", "use", "install"],
-      "assert_not_contains": ["This chat is running on", "gpt-5.3-codex", "gpt-5.4", "Runtime capability handshake"],
+      "assert_not_contains": ["This chat is running on", "gpt-5.3-codex", "gpt-5.4", "gpt-5.5", "Runtime capability handshake"],
       "forbid_tools": ["*"]
     }
   ]
