@@ -256,7 +256,7 @@ For backward compatibility, the loader also accepts `modelProfiles` and `authPro
         "model": "gpt-5.5",
         "openaiAccountId": "acct-review"
       },
-      "copilot-openai-review": {
+      "copilot-gpt54": {
         "provider": "copilot",
         "authenticator": "copilot-cli",
         "model": "gpt-5.4",
@@ -281,8 +281,6 @@ For backward compatibility, the loader also accepts `modelProfiles` and `authPro
 
 The Copilot example intentionally keeps its OpenAI-family Copilot model on `gpt-5.4` to show that provider-specific profiles can
 choose a different model from the OpenAI default.
-Older examples may have named that profile `copilot-gpt54`; the profile ID is arbitrary, so keep or rename it as long as
-all `agentProfile` references match.
 
 For swarm shadow runs, reviewer lanes and the aggregator can reference those same profiles:
 
@@ -294,7 +292,7 @@ For swarm shadow runs, reviewer lanes and the aggregator can reference those sam
       "shadowMode": true,
       "reviewers": [
         { "id": "correctness", "agentProfile": "chatgpt-gpt55" },
-        { "id": "compat", "agentProfile": "copilot-openai-review" },
+        { "id": "compat", "agentProfile": "copilot-gpt54" },
         { "id": "tests", "agentProfile": "copilot-claude" }
       ],
       "aggregator": {

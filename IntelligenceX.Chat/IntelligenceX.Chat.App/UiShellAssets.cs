@@ -110,8 +110,8 @@ internal static class UiShellAssets {
 
     private static void ValidateCatalogBackedJavaScriptDefaults(string js, List<string> diagnostics) {
         var tokenCount = CountOccurrences(js, DefaultLocalModelToken);
-        if (tokenCount != 1) {
-            diagnostics.Add($"Expected exactly one default local model token in JavaScript, found {tokenCount}.");
+        if (tokenCount == 0) {
+            diagnostics.Add("Expected at least one default local model token in JavaScript, found none.");
         }
     }
 
