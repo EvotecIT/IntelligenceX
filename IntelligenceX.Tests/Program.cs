@@ -101,6 +101,8 @@ internal static partial class Program {
             TestUsageTelemetryOverviewBuilderBuildsCopilotActivitySectionWithoutTokens);
         failed += Run("Usage telemetry API pricing blends exact and estimated costs",
             TestUsageTelemetryApiPricingBlendsExactAndEstimatedCosts);
+        failed += Run("Usage telemetry API pricing covers OpenAI mode suffixes",
+            TestUsageTelemetryApiPricingCoversOpenAiModeSuffixes);
         failed += Run("Provider limit forecasting flags over-limit pace",
             TestProviderLimitForecastingFlagsOverLimitPace);
         failed += Run("Provider limit forecasting recognizes on-pace window",

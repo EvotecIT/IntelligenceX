@@ -279,6 +279,9 @@ For backward compatibility, the loader also accepts `modelProfiles` and `authPro
 }
 ```
 
+The Copilot example intentionally keeps `copilot-gpt54` on `gpt-5.4` to show that provider-specific profiles can
+choose a different model from the OpenAI default.
+
 For swarm shadow runs, reviewer lanes and the aggregator can reference those same profiles:
 
 ```json

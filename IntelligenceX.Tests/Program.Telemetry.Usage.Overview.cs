@@ -44,6 +44,28 @@ internal static partial class Program {
         AssertEqual(4_100_000L, estimate.CoveredTokens, "api pricing covered tokens");
     }
 
+    private static void TestUsageTelemetryApiPricingCoversOpenAiModeSuffixes() {
+        var evt = new UsageEventRecord("evt-fast", "openai", "codex.logs", "src-1", new DateTimeOffset(2026, 03, 10, 11, 0, 0, TimeSpan.Zero)) {
+            Model = "openai/gpt-5.5/fast",
+            InputTokens = 1_000_000,
+            CachedInputTokens = 100_000,
+            OutputTokens = 100_000,
+            ReasoningTokens = 50_000,
+            TotalTokens = 1_250_000,
+            TruthLevel = UsageTruthLevel.Exact
+        };
+
+        var eventEstimate = UsageTelemetryApiPricing.EstimateEvent(evt);
+        AssertEqual(true, eventEstimate.HasKnownPricing, "api pricing recognizes openai fast suffix");
+        AssertEqual("gpt-5.5/fast", eventEstimate.Model, "api pricing normalizes openai fast suffix");
+        AssertEqual(9.55m, eventEstimate.EstimatedCostUsd, "api pricing estimates gpt-5.5 fast from base model");
+
+        var displayCost = UsageTelemetryApiPricing.BuildDisplayCost(evt);
+        AssertEqual(9.55m, displayCost.EstimatedFallbackCostUsd, "api pricing display cost includes gpt-5.5 fast");
+        AssertEqual(1_250_000L, displayCost.CoveredTokens, "api pricing display cost covers gpt-5.5 fast tokens");
+        AssertEqual(0L, displayCost.UncoveredTokens, "api pricing display cost leaves no gpt-5.5 fast tokens uncovered");
+    }
+
     private static void TestProviderLimitForecastingFlagsOverLimitPace() {
         var now = new DateTimeOffset(2026, 03, 18, 12, 00, 00, TimeSpan.Zero);
         var snapshot = new ProviderLimitSnapshot(
