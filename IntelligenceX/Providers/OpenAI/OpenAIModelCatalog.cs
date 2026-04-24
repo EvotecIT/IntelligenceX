@@ -49,12 +49,36 @@ public static class OpenAIModelCatalog {
             return trimmed;
         }
 
-        var lastIndex = parts.Count - 1;
-        if (IsModeToken(parts[lastIndex]) && parts.Count >= 2) {
-            return parts[lastIndex - 1] + "/" + parts[lastIndex];
+        var firstModeIndex = parts.Count;
+        while (firstModeIndex > 0 && IsModeToken(parts[firstModeIndex - 1])) {
+            firstModeIndex--;
+        }
+        if (firstModeIndex > 0 && firstModeIndex < parts.Count) {
+            return string.Join("/", parts.GetRange(firstModeIndex - 1, parts.Count - firstModeIndex + 1));
         }
 
-        return parts[lastIndex];
+        return parts[parts.Count - 1];
+    }
+
+    /// <summary>
+    /// Returns the normalized base model id without known OpenAI mode suffixes such as <c>/fast</c> or <c>/spark</c>.
+    /// </summary>
+    public static string NormalizeBaseModelId(string? model, string? fallback = null) {
+        var normalized = NormalizeModelId(model, fallback).Trim();
+        var rawParts = normalized.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+        var parts = new List<string>(rawParts.Length);
+        for (var i = 0; i < rawParts.Length; i++) {
+            var part = rawParts[i].Trim();
+            if (part.Length > 0) {
+                parts.Add(part);
+            }
+        }
+
+        while (parts.Count > 1 && IsModeToken(parts[parts.Count - 1])) {
+            parts.RemoveAt(parts.Count - 1);
+        }
+
+        return parts.Count == 0 ? DefaultModel : string.Join("/", parts);
     }
 
     internal static IReadOnlyList<string> GetBaselineFallbackModels() => BaselineFallbackModels;

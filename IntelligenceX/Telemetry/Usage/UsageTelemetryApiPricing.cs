@@ -235,13 +235,10 @@ public static class UsageTelemetryApiPricing {
             return true;
         }
 
-        var modeSeparator = normalizedModelId.IndexOf('/');
-        if (modeSeparator > 0 && modeSeparator < normalizedModelId.Length - 1) {
-            var mode = normalizedModelId.Substring(modeSeparator + 1);
-            if (IsOpenAiPricingModeSuffix(mode) &&
-                ApiPricingByModel.TryGetValue(normalizedModelId.Substring(0, modeSeparator), out rate!)) {
-                return true;
-            }
+        var baseModelId = OpenAIModelCatalog.NormalizeBaseModelId(normalizedModelId, normalizedModelId).ToLowerInvariant();
+        if (!string.Equals(baseModelId, normalizedModelId, StringComparison.OrdinalIgnoreCase) &&
+            ApiPricingByModel.TryGetValue(baseModelId, out rate!)) {
+            return true;
         }
 
         if (normalizedModelId.StartsWith("claude-opus-4-6", StringComparison.OrdinalIgnoreCase) ||
@@ -253,11 +250,6 @@ public static class UsageTelemetryApiPricing {
 
         rate = null!;
         return false;
-    }
-
-    private static bool IsOpenAiPricingModeSuffix(string value) {
-        return value.Equals("fast", StringComparison.OrdinalIgnoreCase) ||
-               value.Equals("spark", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string? NormalizeOptional(string? value) {

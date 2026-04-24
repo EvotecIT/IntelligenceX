@@ -4,7 +4,9 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Text;
+using System.Text.Json;
 using IntelligenceX.Chat.App.Theming;
+using IntelligenceX.OpenAI;
 
 namespace IntelligenceX.Chat.App;
 
@@ -14,6 +16,7 @@ internal static class UiShellAssets {
     private const string CssSplitPattern = "Shell.*.css";
     private const string JsFile = "Shell.js";
     private const string JsSplitPattern = "Shell.*.js";
+    private const string DefaultLocalModelToken = "\"{{IXCHAT_DEFAULT_LOCAL_MODEL}}\"";
     private const int MaxDiagnosticsInFallback = 24;
 
     private static readonly string[] TemplateTokens = [
@@ -92,9 +95,16 @@ internal static class UiShellAssets {
             _cachedHtml = template
                 .Replace("/*{{IXCHAT_CSS}}*/", css, StringComparison.Ordinal)
                 .Replace("<!--{{IXCHAT_THEME_OPTIONS}}-->", ThemeContract.BuildThemeOptionTagsHtml(), StringComparison.Ordinal)
-                .Replace("//{{IXCHAT_JS}}", js, StringComparison.Ordinal);
+                .Replace("//{{IXCHAT_JS}}", ApplyCatalogBackedJavaScriptDefaults(js), StringComparison.Ordinal);
             return _cachedHtml;
         }
+    }
+
+    private static string ApplyCatalogBackedJavaScriptDefaults(string js) {
+        return js.Replace(
+            DefaultLocalModelToken,
+            JsonSerializer.Serialize(OpenAIModelCatalog.DefaultModel),
+            StringComparison.Ordinal);
     }
 
     private static string ReadTextOrEmpty(string path) {

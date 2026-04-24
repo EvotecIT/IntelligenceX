@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Linq;
 using IntelligenceX.Chat.App;
+using IntelligenceX.OpenAI;
 using Xunit;
 
 namespace IntelligenceX.Chat.App.Tests;
@@ -88,6 +89,21 @@ public sealed partial class UiShellAssetsTests {
         Assert.Contains("if (!shouldRenderHeaderStatusChip(value)) {", script, StringComparison.Ordinal);
         Assert.Contains("var structuredStartupStatus = resolveHeaderStatusChipFromStructuredStartupContext();", script, StringComparison.Ordinal);
         Assert.Contains("var fallbackStatus = resolveHeaderStatusChipFallbackStatus();", script, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Ensures the static shell source receives its initial model default from the C# catalog during composition.
+    /// </summary>
+    [Fact]
+    public void Load_InjectsCatalogBackedDefaultLocalModel() {
+        var scriptPath = Path.Combine(UiDirectory, "Shell.10.core.js");
+        var script = File.ReadAllText(scriptPath);
+        var html = UiShellAssets.Load();
+
+        Assert.Contains("var defaultLocalModel = \"{{IXCHAT_DEFAULT_LOCAL_MODEL}}\";", script, StringComparison.Ordinal);
+        Assert.Contains("model: defaultLocalModel", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("model: \"gpt-5.5\"", script, StringComparison.Ordinal);
+        Assert.Contains("var defaultLocalModel = \"" + OpenAIModelCatalog.DefaultModel + "\";", html, StringComparison.Ordinal);
     }
 
     /// <summary>

@@ -687,6 +687,10 @@ internal static partial class Program {
     private static void TestOpenAiModelCatalogNormalizesFastModeSuffix() {
         AssertEqual("gpt-5.5/fast", OpenAIModelCatalog.NormalizeModelId("openai/gpt-5.5/fast"),
             "openai model normalize fast suffix");
+        AssertEqual("gpt-5.5/fast/spark", OpenAIModelCatalog.NormalizeModelId("openai/gpt-5.5/fast/spark"),
+            "openai model normalize compound mode suffix");
+        AssertEqual("gpt-5.5", OpenAIModelCatalog.NormalizeBaseModelId("openai/gpt-5.5/fast/spark"),
+            "openai model normalize pricing base from compound mode suffix");
         AssertEqual("gpt-5.5", OpenAIModelCatalog.NormalizeModelId("openai/gpt-5.5"),
             "openai model normalize provider prefix");
     }

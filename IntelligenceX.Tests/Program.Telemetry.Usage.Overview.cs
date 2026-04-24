@@ -46,7 +46,7 @@ internal static partial class Program {
 
     private static void TestUsageTelemetryApiPricingCoversOpenAiModeSuffixes() {
         var evt = new UsageEventRecord("evt-fast", "openai", "codex.logs", "src-1", new DateTimeOffset(2026, 03, 10, 11, 0, 0, TimeSpan.Zero)) {
-            Model = "openai/gpt-5.5/fast",
+            Model = "openai/gpt-5.5/fast/spark",
             InputTokens = 1_000_000,
             CachedInputTokens = 100_000,
             OutputTokens = 100_000,
@@ -57,8 +57,8 @@ internal static partial class Program {
 
         var eventEstimate = UsageTelemetryApiPricing.EstimateEvent(evt);
         AssertEqual(true, eventEstimate.HasKnownPricing, "api pricing recognizes openai fast suffix");
-        AssertEqual("gpt-5.5/fast", eventEstimate.Model, "api pricing normalizes openai fast suffix");
-        AssertEqual(9.55m, eventEstimate.EstimatedCostUsd, "api pricing estimates gpt-5.5 fast from base model");
+        AssertEqual("gpt-5.5/fast/spark", eventEstimate.Model, "api pricing normalizes openai compound mode suffix");
+        AssertEqual(9.55m, eventEstimate.EstimatedCostUsd, "api pricing estimates gpt-5.5 compound mode from base model");
 
         var displayCost = UsageTelemetryApiPricing.BuildDisplayCost(evt);
         AssertEqual(9.55m, displayCost.EstimatedFallbackCostUsd, "api pricing display cost includes gpt-5.5 fast");
