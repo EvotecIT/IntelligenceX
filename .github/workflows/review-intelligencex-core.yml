@@ -55,7 +55,7 @@ on:
       model:
         description: 'Model id (provider-specific)'
         required: false
-        default: 'gpt-5.4'
+        default: 'gpt-5.5'
         type: string
       openai_model:
         description: 'OpenAI model id (overrides model when provider=openai)'

@@ -88,6 +88,7 @@ public static class UsageTelemetryApiPricing {
 
     private static readonly IReadOnlyDictionary<string, UsageTelemetryApiPrice> ApiPricingByModel =
         new Dictionary<string, UsageTelemetryApiPrice>(StringComparer.OrdinalIgnoreCase) {
+            ["gpt-5.5"] = new(5m, 0.50m, 30m),
             ["gpt-5.4"] = new(2.50m, 0.25m, 15m),
             ["gpt-5.4-codex"] = new(2.50m, 0.25m, 15m),
             ["gpt-5-mini"] = new(0.25m, 0.025m, 2m),

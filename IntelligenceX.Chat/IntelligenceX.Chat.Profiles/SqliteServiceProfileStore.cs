@@ -624,7 +624,7 @@ LIMIT 1;",
         }
 
         var profile = new ServiceProfile {
-            Model = ReadString(r, "model") ?? "gpt-5.4",
+            Model = ReadString(r, "model") ?? OpenAIModelCatalog.DefaultModel,
             OpenAITransport = transport,
             OpenAIBaseUrl = ReadString(r, "openai_base_url"),
             OpenAIAuthMode = authMode,
@@ -834,7 +834,7 @@ ON CONFLICT(name) DO UPDATE SET
         IReadOnlyList<string> extraRequiredInsertColumns) {
         var parameters = new Dictionary<string, object?> {
             ["@name"] = trimmed,
-            ["@model"] = string.IsNullOrWhiteSpace(profile.Model) ? "gpt-5.4" : profile.Model.Trim(),
+            ["@model"] = string.IsNullOrWhiteSpace(profile.Model) ? OpenAIModelCatalog.DefaultModel : profile.Model.Trim(),
             ["@transport_kind"] = transportKind,
             ["@openai_base_url"] = string.IsNullOrWhiteSpace(profile.OpenAIBaseUrl) ? null : profile.OpenAIBaseUrl.Trim(),
             ["@openai_auth_mode"] = authMode,

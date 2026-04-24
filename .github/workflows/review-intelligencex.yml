@@ -362,7 +362,7 @@ jobs:
       pr_number: ${{ github.event.pull_request.number || inputs.pr_number }}
       provider: ${{ inputs.provider || vars.IX_REVIEW_PROVIDER || 'openai' }}
       agent_profile: ${{ inputs.agent_profile != '' && inputs.agent_profile || ((inputs.provider != '' || inputs.model != '' || inputs.openai_model != '' || inputs.copilot_model != '') && 'none' || vars.IX_REVIEW_AGENT_PROFILE) }}
-      model: ${{ inputs.model || vars.IX_REVIEW_MODEL || 'gpt-5.4' }}
+      model: ${{ inputs.model || vars.IX_REVIEW_MODEL || 'gpt-5.5' }}
       openai_model: ${{ inputs.openai_model }}
       copilot_model: ${{ inputs.copilot_model || vars.IX_REVIEW_COPILOT_MODEL }}
       copilot_launcher: ${{ inputs.copilot_launcher || vars.IX_REVIEW_COPILOT_LAUNCHER }}

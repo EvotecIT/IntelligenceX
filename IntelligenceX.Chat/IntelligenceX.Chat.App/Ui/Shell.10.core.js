@@ -125,7 +125,7 @@
         transport: "native",
         baseUrl: "",
         modelsEndpoint: "",
-        model: "gpt-5.4",
+        model: "gpt-5.5",
         openAIAuthMode: "bearer",
         openAIBasicUsername: "",
         openAIAccountId: "",

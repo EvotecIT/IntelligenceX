@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using DBAClientX;
 using IntelligenceX.Chat.Abstractions.Protocol;
+using IntelligenceX.OpenAI;
 
 namespace IntelligenceX.Chat.App;
 
@@ -226,7 +227,7 @@ internal sealed class ChatAppState {
     public string ThemePreset { get; set; } = "default";
     public string LocalProviderTransport { get; set; } = "native";
     public string? LocalProviderBaseUrl { get; set; }
-    public string LocalProviderModel { get; set; } = "gpt-5.4";
+    public string LocalProviderModel { get; set; } = OpenAIModelCatalog.DefaultModel;
     public string LocalProviderOpenAIAuthMode { get; set; } = "bearer";
     public string LocalProviderOpenAIBasicUsername { get; set; } = string.Empty;
     public string LocalProviderOpenAIAccountId { get; set; } = string.Empty;

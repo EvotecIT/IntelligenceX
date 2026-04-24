@@ -10,10 +10,11 @@ public static class OpenAIModelCatalog {
     /// <summary>
     /// Default OpenAI model for new IntelligenceX sessions and reviewer runs.
     /// </summary>
-    public const string DefaultModel = "gpt-5.4";
+    public const string DefaultModel = "gpt-5.5";
 
     private static readonly string[] BaselineFallbackModels = {
         DefaultModel,
+        "gpt-5.4",
         "gpt-5.4-codex",
         "gpt-5-mini",
         "gpt-5-nano",

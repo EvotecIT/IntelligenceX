@@ -22,7 +22,7 @@ using IntelligenceX.Tools.Common;
 namespace IntelligenceX.Chat.Service;
 
 internal sealed partial class ChatServiceSession {
-    private const string DefaultRuntimeModel = "gpt-5.4";
+    private const string DefaultRuntimeModel = OpenAIModelCatalog.DefaultModel;
     private const string PluginLoadTimingWarningPrefix = "[plugin] load_timing ";
     private const string PluginLoadProgressWarningPrefix = "[plugin] load_progress ";
     private const string PackLoadProgressWarningPrefix = "[startup] pack_load_progress ";

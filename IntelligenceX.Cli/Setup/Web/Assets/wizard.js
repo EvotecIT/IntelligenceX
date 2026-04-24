@@ -161,8 +161,8 @@ const reviewModelProfile = $('reviewModelProfile');
 
 const PROVIDER_MODEL_CATALOG = {
   openai: [
-    { profileId: 'openai-default-review', profileLabel: 'OpenAI default review', id: 'gpt-5.4', label: 'gpt-5.4', description: 'Best default quality for reviewer runs.', isDefault: true },
-    { profileId: 'openai-fast-review', profileLabel: 'OpenAI fast review', id: 'gpt-5.4/fast', label: 'gpt-5.4/fast', description: 'Lower-latency default when you want faster PR turnaround.' },
+    { profileId: 'openai-default-review', profileLabel: 'OpenAI default review', id: 'gpt-5.5', label: 'gpt-5.5', description: 'Best default quality for reviewer runs.', isDefault: true },
+    { profileId: 'openai-fast-review', profileLabel: 'OpenAI fast review', id: 'gpt-5.5/fast', label: 'gpt-5.5/fast', description: 'Lower-latency default when you want faster PR turnaround.' },
     { profileId: 'openai-budget-review', profileLabel: 'OpenAI budget review', id: 'gpt-5-mini', label: 'gpt-5-mini', description: 'Cheaper review pass with solid quality for routine repos.' },
     { profileId: 'openai-nano-check', profileLabel: 'OpenAI nano check', id: 'gpt-5-nano', label: 'gpt-5-nano', description: 'Smallest budget option for lightweight checks or experimentation.' }
   ],
@@ -250,7 +250,7 @@ function syncProviderModelSelection(previousProvider, nextProvider) {
   const hint = $('reviewModelHint');
   if (hint) {
     hint.textContent = nextProvider === 'openai'
-      ? 'Set the review model for OpenAI runs. Use a named profile, quick pick, or custom model id. Default: gpt-5.4.'
+      ? 'Set the review model for OpenAI runs. Use a named profile, quick pick, or custom model id. Default: gpt-5.5.'
       : nextProvider === 'claude'
         ? 'Set the review model for Claude runs. Use a named profile, quick pick, or custom model id. Default: claude-opus-4-1.'
         : 'Copilot setup does not use the managed model field here.';

@@ -30,7 +30,7 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
 
     public bool ShowHelp { get; set; }
     public string PipeName { get; set; } = "intelligencex.chat";
-    public string Model { get; set; } = "gpt-5.4";
+    public string Model { get; set; } = OpenAIModelCatalog.DefaultModel;
 
     // Provider selection for the underlying IntelligenceXClient used by the service.
     public OpenAITransportKind OpenAITransport { get; set; } = OpenAITransportKind.Native;
@@ -747,7 +747,7 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
         Console.WriteLine();
         Console.WriteLine("Options:");
         Console.WriteLine("  --pipe <NAME>           Named pipe name (default: intelligencex.chat)");
-        Console.WriteLine("  --model <NAME>          OpenAI model (default: gpt-5.4)");
+        Console.WriteLine($"  --model <NAME>          OpenAI model (default: {OpenAIModelCatalog.DefaultModel})");
         Console.WriteLine("  --reasoning-effort <LEVEL>   Reasoning effort hint: minimal|low|medium|high|xhigh.");
         Console.WriteLine("  --reasoning-summary <LEVEL>  Reasoning summary hint: auto|concise|detailed|off.");
         Console.WriteLine("  --text-verbosity <LEVEL>     Text verbosity hint: low|medium|high.");
