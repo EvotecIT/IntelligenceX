@@ -370,9 +370,7 @@ internal static class ReviewHistoryBuilder {
             Source = "intelligencex",
             SummaryCommentId = summaryCommentId,
             ReviewedSha = reviewedCommit?.Trim() ?? string.Empty,
-            SameHeadAsCurrent = !string.IsNullOrWhiteSpace(reviewedCommit) &&
-                                !string.IsNullOrWhiteSpace(currentHeadSha) &&
-                                currentHeadSha.StartsWith(reviewedCommit!, StringComparison.OrdinalIgnoreCase),
+            SameHeadAsCurrent = IsSameHead(reviewedCommit, currentHeadSha),
             HasMergeBlockers = hasMergeBlockers,
             MergeBlockerStatus = mergeBlockerStatus,
             Recommendation = recommendation,
@@ -495,6 +493,11 @@ internal static class ReviewHistoryBuilder {
 
         return hasMergeBlockers ? "needs-work" : "approve";
     }
+
+    private static bool IsSameHead(string? reviewedSha, string? currentHeadSha) =>
+        !string.IsNullOrWhiteSpace(reviewedSha) &&
+        !string.IsNullOrWhiteSpace(currentHeadSha) &&
+        string.Equals(currentHeadSha.Trim(), reviewedSha.Trim(), StringComparison.OrdinalIgnoreCase);
 
     private static string NormalizeRecommendationLabel(string recommendation) {
         return recommendation.Trim().ToLowerInvariant() switch {

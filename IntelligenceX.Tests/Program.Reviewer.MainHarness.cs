@@ -830,6 +830,8 @@ internal static partial class Program {
         failed += Run("Review history builder builds comment block", TestReviewHistoryBuilderBuildsCommentBlock);
         failed += Run("Review history builder treats missing optional blocker section as clean posture",
             TestReviewHistoryBuilderTreatsMissingOptionalBlockerSectionAsCleanPosture);
+        failed += Run("Review history builder requires exact same-head SHA",
+            TestReviewHistoryBuilderRequiresExactSameHeadSha);
         failed += Run("Review history builder uses latest same-head round",
             TestReviewHistoryBuilderUsesLatestSameHeadRound);
         failed += Run("Review history builder does not resolve across different heads",
@@ -858,6 +860,8 @@ internal static partial class Program {
             TestReviewHistoryMarkerRoundTripsStickyLedger);
         failed += Run("Review history marker keeps latest rounds and recomputes head",
             TestReviewHistoryMarkerKeepsLatestRoundsAndRecomputesHead);
+        failed += Run("Review history marker requires exact same-head SHA",
+            TestReviewHistoryMarkerRequiresExactSameHeadSha);
         failed += Run("Review state block renders deterministic recommendation",
             TestReviewStateBlockRendersDeterministicRecommendation);
         failed += Run("Review state block fails closed without merge blocker sections",

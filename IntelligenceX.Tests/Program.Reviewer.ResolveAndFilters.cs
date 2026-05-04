@@ -963,6 +963,27 @@ internal static partial class Program {
             "review history missing optional blocker section has no empty visible progress block");
     }
 
+    private static void TestReviewHistoryBuilderRequiresExactSameHeadSha() {
+        var settings = new ReviewSettings();
+        settings.History.Enabled = true;
+        var body = string.Join("\n", new[] {
+            ReviewFormatter.SummaryMarker,
+            "## IntelligenceX Review",
+            "Reviewed commit: `abc1234`",
+            "",
+            "## Todo List ✅",
+            "None.",
+            "",
+            "## Critical Issues ⚠️",
+            "None."
+        });
+
+        var round = ReviewHistoryBuilder.BuildSummaryRound(body, 10, "abc1234567890", settings);
+
+        AssertEqual(false, round?.SameHeadAsCurrent ?? true,
+            "review history builder does not treat abbreviated reviewed SHA as current head");
+    }
+
     private static void TestReviewHistoryBuilderUsesLatestSameHeadRound() {
         var settings = new ReviewSettings();
         settings.History.Enabled = true;
@@ -1755,6 +1776,46 @@ internal static partial class Program {
         AssertEqual("abc4444", rounds[1].ReviewedSha, "review history marker keeps current round");
         AssertEqual(true, rounds[1].SameHeadAsCurrent,
             "review history marker recomputes same-head value for current round");
+    }
+
+    private static void TestReviewHistoryMarkerRequiresExactSameHeadSha() {
+        var settings = new ReviewSettings();
+        settings.History.Enabled = true;
+        settings.History.MaxRounds = 6;
+        var priorSnapshot = new ReviewHistorySnapshot {
+            Rounds = new[] {
+                new ReviewHistoryRound {
+                    Sequence = 1,
+                    Source = "intelligencex",
+                    ReviewedSha = "abc1234",
+                    SameHeadAsCurrent = true
+                }
+            }
+        };
+        var context = new PullRequestContext("owner/repo", "owner", "repo", 12, "Test title", "Body", false,
+            "abc1234567890", "base", Array.Empty<string>(), "owner/repo", false, null);
+        var currentComment = ReviewFormatter.BuildComment(context, string.Join("\n", new[] {
+                "## Summary 📝",
+                "Looks good overall.",
+                "",
+                "## Todo List ✅",
+                "None.",
+                "",
+                "## Critical Issues ⚠️",
+                "None."
+            }), settings, inlineSupported: true, inlineSuppressed: false, autoResolveNote: string.Empty,
+            budgetNote: string.Empty, usageLine: string.Empty, findingsBlock: string.Empty);
+
+        var withMarker = ReviewHistoryMarker.AppendOrReplace(currentComment, priorSnapshot, context, settings);
+
+        AssertEqual(true, ReviewHistoryMarker.TryReadRounds(withMarker, "abc1234567890", settings, out var rounds),
+            "review history marker parses exact-sha fixture");
+        AssertEqual(false, rounds[0].SameHeadAsCurrent,
+            "review history marker does not treat abbreviated prior reviewed SHA as current head");
+        AssertEqual("abc1234567890", rounds[^1].ReviewedSha,
+            "review history marker stores full current head from formatter");
+        AssertEqual(true, rounds[^1].SameHeadAsCurrent,
+            "review history marker treats exact full current head as same-head");
     }
 
     private static void TestRedactionDefaults() {

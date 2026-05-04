@@ -157,9 +157,7 @@ internal static class ReviewHistoryMarker {
 
     private static ReviewHistoryRound ReadRound(JsonElement element, string? currentHeadSha, int sequence) {
         var reviewedSha = ReadString(element, "reviewedSha");
-        var sameHeadAsCurrent = !string.IsNullOrWhiteSpace(reviewedSha) &&
-                                !string.IsNullOrWhiteSpace(currentHeadSha) &&
-                                currentHeadSha!.StartsWith(reviewedSha, StringComparison.OrdinalIgnoreCase);
+        var sameHeadAsCurrent = IsSameHead(reviewedSha, currentHeadSha);
         return new ReviewHistoryRound {
             Sequence = sequence,
             Source = ReadString(element, "source", "intelligencex"),
@@ -217,7 +215,7 @@ internal static class ReviewHistoryMarker {
     private static bool IsSameHead(string? reviewedSha, string? currentHeadSha) =>
         !string.IsNullOrWhiteSpace(reviewedSha) &&
         !string.IsNullOrWhiteSpace(currentHeadSha) &&
-        currentHeadSha!.StartsWith(reviewedSha, StringComparison.OrdinalIgnoreCase);
+        string.Equals(currentHeadSha.Trim(), reviewedSha.Trim(), StringComparison.OrdinalIgnoreCase);
 
     private static string ReadString(JsonElement element, string propertyName, string fallback = "") {
         return element.TryGetProperty(propertyName, out var value) && value.ValueKind == global::System.Text.Json.JsonValueKind.String

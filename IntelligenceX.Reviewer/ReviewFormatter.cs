@@ -226,8 +226,7 @@ internal static class ReviewFormatter {
             return string.Empty;
         }
         var trimmed = sha.Trim();
-        var shortSha = trimmed.Length > 7 ? trimmed.Substring(0, 7) : trimmed;
-        return $"{ReviewedCommitMarker} `{shortSha}`\n";
+        return $"{ReviewedCommitMarker} `{trimmed}`\n";
     }
 
     private static string BuildReasoningLabel(ReasoningEffort? effort) {

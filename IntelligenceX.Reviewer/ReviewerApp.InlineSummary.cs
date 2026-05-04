@@ -709,7 +709,7 @@ public static partial class ReviewerApp {
         if (string.IsNullOrWhiteSpace(reviewedCommit)) {
             return true;
         }
-        return !headSha.StartsWith(reviewedCommit, StringComparison.OrdinalIgnoreCase);
+        return !string.Equals(headSha.Trim(), reviewedCommit.Trim(), StringComparison.OrdinalIgnoreCase);
     }
 
     private static string? ExtractReviewedCommit(string body) {
