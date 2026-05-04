@@ -211,6 +211,21 @@ public static partial class ReviewerApp {
                IsTrustedSummaryAuthor(comment.Author);
     }
 
+    private static IssueComment? SelectOwnedSummaryComment(IEnumerable<IssueComment> comments) {
+        IssueComment? newest = null;
+        foreach (var comment in comments) {
+            if (!IsOwnedSummaryComment(comment)) {
+                continue;
+            }
+
+            if (newest is null || comment.Id > newest.Id) {
+                newest = comment;
+            }
+        }
+
+        return newest;
+    }
+
     private static async Task<HashSet<string>?> PostInlineCommentsAsync(IReviewCodeHostReader codeHostReader, GitHubClient github,
         PullRequestContext context, IReadOnlyList<PullRequestFile> files, ReviewSettings settings,
         IReadOnlyList<InlineReviewComment> inlineComments, CancellationToken cancellationToken) {
@@ -678,11 +693,7 @@ public static partial class ReviewerApp {
         try {
             var comments = await codeHostReader.ListIssueCommentsAsync(context, limit, cancellationToken)
                 .ConfigureAwait(false);
-            foreach (var comment in comments) {
-                if (IsOwnedSummaryComment(comment)) {
-                    return comment;
-                }
-            }
+            return SelectOwnedSummaryComment(comments);
         } catch (Exception ex) {
             // Best-effort: failing to locate an existing sticky summary should not block posting a new one.
             Console.Error.WriteLine($"Failed to search for existing summary comment: {ex.Message}");

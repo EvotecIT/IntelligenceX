@@ -98,10 +98,6 @@
         "needs-human-review",
         "no-auto-approve"
       ],
-      "allowedAuthors": [
-        "dependabot[bot]",
-        "app/dependabot"
-      ],
       "ignoredCheckNames": [
         "IntelligenceX Review",
         "review / review"

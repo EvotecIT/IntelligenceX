@@ -36,7 +36,7 @@ Reviewed examples:
 
 3. Approval posture without auto-merge
    - Add an explicit `recommendation` field/section: `approve`, `needs-work`, `manual-review`, `skipped`.
-   - Do not let the LLM directly approve by default. Treat auto-approval as a separate policy gate that requires: bot-authored PR, green required checks, no IX blockers, no unresolved review threads, allowed author, allowed files, and maintainer opt-in.
+   - Do not let the LLM directly approve by default. Treat auto-approval as a separate policy gate that can apply to any PR when enabled, but may be narrowed by labels, allowed authors, or file policy; require green required checks, no IX blockers, no unresolved review threads, and maintainer opt-in.
 
 4. Low-cost bot PR handling
    - Dependabot PRs are usually better handled by tests, dependency metadata, advisory checks, and static analysis than by full LLM review.

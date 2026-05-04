@@ -703,7 +703,6 @@ the sticky comment. It submits an approving pull request review only when all co
       "dryRun": true,
       "requiredLabels": ["ix-auto-approve"],
       "blockedLabels": ["do-not-merge", "needs-human-review", "no-auto-approve"],
-      "allowedAuthors": ["dependabot[bot]", "app/dependabot"],
       "ignoredCheckNames": ["IntelligenceX Review"],
       "requireNoMergeBlockers": true,
       "requireReviewSuccess": true,
@@ -716,7 +715,9 @@ the sticky comment. It submits an approving pull request review only when all co
 ```
 
 Use `dryRun: true` first to audit decisions without submitting approvals. Set `dryRun: false` only after branch
-protection, labels, allowed authors, and ignored check names are confirmed for the repository. `ignoredCheckNames`
+protection, labels, author policy, and ignored check names are confirmed for the repository. Omit `allowedAuthors` or
+set it to an empty array to allow any PR author once the other gates pass. Set it only when a repository wants a narrower
+policy, such as Dependabot-only approvals. `ignoredCheckNames`
 exists because the reviewer workflow's own check can still be pending while the reviewer is deciding whether every
 other check has passed.
 
@@ -908,6 +909,7 @@ Prefer `directTokenEnv` over `directToken` to avoid committing secrets to source
 - `conventions`: custom repo-owned structured review guidance objects
 - `autoApprove.enabled`: render approval-readiness gates and optionally submit an approving PR review
 - `autoApprove.dryRun`: audit auto-approval decisions without submitting an approval
+- `autoApprove.allowedAuthors`: optional author allow-list; omit it or set an empty array when author should not be a gate
 - `reviewUsageSummary`: append usage line to the footer (OpenAI ChatGPT usage snapshot or Claude live limit snapshot)
 - `openaiAccountId`: pin a preferred ChatGPT account id
 - `openaiAccountIds`: ordered account ids used for rotation/failover

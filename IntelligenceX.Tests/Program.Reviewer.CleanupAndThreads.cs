@@ -189,6 +189,17 @@ internal static partial class Program {
         AssertEqual(false, CallIsOwnedSummaryComment(untrusted), "untrusted summary comment");
     }
 
+    private static void TestOwnedSummarySelectionPrefersNewestTrustedComment() {
+        var older = new IssueComment(10, $"{ReviewFormatter.SummaryMarker}\nOlder", "intelligencex-review[bot]");
+        var newest = new IssueComment(42, $"{ReviewFormatter.SummaryMarker}\nNewest", "github-actions[bot]");
+        var untrusted = new IssueComment(99, $"{ReviewFormatter.SummaryMarker}\nIgnore me", "alice");
+
+        var selected = CallSelectOwnedSummaryComment(new[] { older, untrusted, newest });
+
+        AssertNotNull(selected, "owned summary selection returns trusted summary");
+        AssertEqual(42L, selected!.Id, "owned summary selection prefers newest trusted summary");
+    }
+
     private static void TestThreadAssessmentEvidenceParse() {
         const string json = "{\"threads\":[{\"id\":\"t1\",\"action\":\"resolve\",\"reason\":\"fixed\",\"evidence\":\"42: added guard\"}]}";
         var method = typeof(ReviewerApp).GetMethod("ParseThreadAssessments", BindingFlags.NonPublic | BindingFlags.Static);

@@ -17,6 +17,8 @@ internal static partial class Program {
         failed += Run("GitHub event fork parsing", TestGitHubEventForkParsing);
         failed += Run("GitHub event missing head repo fails closed", TestGitHubEventMissingHeadRepoFailsClosed);
         failed += Run("Owned summary comment requires trusted author", TestOwnedSummaryCommentRequiresTrustedAuthor);
+        failed += Run("Owned summary selection prefers newest trusted comment",
+            TestOwnedSummarySelectionPrefersNewestTrustedComment);
         failed += Run("Thread assessment evidence parse", TestThreadAssessmentEvidenceParse);
         failed += Run("Thread triage fallback summary", TestThreadTriageFallbackSummary);
         failed += Run("Thread assessment candidates skip static analysis inline threads",

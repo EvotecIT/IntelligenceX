@@ -191,6 +191,10 @@ internal static partial class Program {
         return ReviewerApp.IsOwnedSummaryCommentForTests(comment);
     }
 
+    private static IssueComment? CallSelectOwnedSummaryComment(IEnumerable<IssueComment> comments) {
+        return ReviewerApp.SelectOwnedSummaryCommentForTests(comments);
+    }
+
     private static IReadOnlyList<PullRequestReviewThread> CallSelectAssessmentCandidates(
         IReadOnlyList<PullRequestReviewThread> threads, ReviewSettings settings) {
         return ReviewerApp.SelectAssessmentCandidatesForTests(threads, settings);
