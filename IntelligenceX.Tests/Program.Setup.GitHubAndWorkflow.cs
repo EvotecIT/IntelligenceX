@@ -190,8 +190,8 @@ jobs:
             "workflow template review style pass-through");
         AssertContainsText(content, "review_config_path: ${{ inputs.review_config_path || '.intelligencex/reviewer.json' }}",
             "workflow template review config path pass-through");
-        AssertContainsText(content, "max_files: ${{ fromJSON(inputs.max_files || '30') }}",
-            "workflow template max files pass-through");
+        AssertContainsText(content, "max_files: ${{ inputs.max_files }}",
+            "workflow template max files pass-through without YAML default");
         AssertContainsText(content, "diagnostics: ${{ fromJSON(inputs.diagnostics || 'false') }}",
             "workflow template diagnostics pass-through");
         AssertContainsText(content,
@@ -297,8 +297,8 @@ jobs:
             "wrapper workflow passes review style through with default");
         AssertContainsText(wrapperContent, "review_config_path: ${{ inputs.review_config_path || '.intelligencex/reviewer.json' }}",
             "wrapper workflow passes review config path through with default");
-        AssertContainsText(wrapperContent, "max_files: ${{ fromJSON(inputs.max_files || '30') }}",
-            "wrapper workflow passes max files through with default");
+        AssertContainsText(wrapperContent, "max_files: ${{ inputs.max_files }}",
+            "wrapper workflow passes max files through without overriding repo config");
         AssertContainsText(wrapperContent, "diagnostics: ${{ fromJSON(inputs.diagnostics || 'false') }}",
             "wrapper workflow passes diagnostics through with default");
         AssertEqual(false, content.Contains("workflow_dispatch:", StringComparison.Ordinal),
@@ -368,12 +368,20 @@ jobs:
             "reusable workflow does not export optional author skip overrides at job scope");
         AssertEqual(false, jobEnvContent.Contains("INPUT_FORCE_REVIEW_LABELS:", StringComparison.Ordinal),
             "reusable workflow does not export optional force-review overrides at job scope");
+        AssertEqual(false, jobEnvContent.Contains("INPUT_MAX_FILES:", StringComparison.Ordinal),
+            "reusable workflow does not export optional max files override at job scope");
+        AssertEqual(false, jobEnvContent.Contains("INPUT_MAX_PATCH_CHARS:", StringComparison.Ordinal),
+            "reusable workflow does not export optional max patch chars override at job scope");
         AssertContainsText(optionalOverridesStep, "add_if_set INPUT_AUTO_APPROVE_ENABLED \"$AUTO_APPROVE_ENABLED\"",
             "reusable workflow exports auto-approval override only when supplied");
         AssertContainsText(optionalOverridesStep, "add_if_set INPUT_SKIP_AUTHORS \"$SKIP_AUTHORS\"",
             "reusable workflow exports skip-author override only when supplied");
         AssertContainsText(optionalOverridesStep, "add_if_set INPUT_FORCE_REVIEW_LABELS \"$FORCE_REVIEW_LABELS\"",
             "reusable workflow exports force-review labels override only when supplied");
+        AssertContainsText(optionalOverridesStep, "add_if_set INPUT_MAX_FILES \"$MAX_FILES\"",
+            "reusable workflow exports max files override only when supplied");
+        AssertContainsText(optionalOverridesStep, "add_if_set INPUT_MAX_PATCH_CHARS \"$MAX_PATCH_CHARS\"",
+            "reusable workflow exports max patch chars override only when supplied");
         AssertContainsText(content, "inputs.reviewer_source == 'source' && steps.reviewer_build.outcome == 'success'",
             "reusable workflow gates source reviewer execution on a successful source build");
         AssertContainsText(content, "git diff --name-only HEAD^1 HEAD^2 > artifacts/changed-files.txt",
