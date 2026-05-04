@@ -299,6 +299,8 @@ jobs:
             "wrapper workflow passes review config path through with default");
         AssertContainsText(wrapperContent, "max_files: ${{ inputs.max_files }}",
             "wrapper workflow passes max files through without overriding repo config");
+        AssertContainsText(wrapperContent, "max_inline_comments: ${{ inputs.max_inline_comments }}",
+            "wrapper workflow passes max inline comments through without overriding repo config");
         AssertContainsText(wrapperContent, """
       auto_approve_enabled:
         description: 'Auto-approval enablement override for reusable callers'
@@ -313,6 +315,13 @@ jobs:
         default: ''
         type: string
 """, "wrapper workflow keeps numeric review overrides as explicit empty string pass-through");
+        AssertContainsText(wrapperContent, """
+      max_inline_comments:
+        description: 'Max inline comments override for reusable callers'
+        required: false
+        default: ''
+        type: string
+""", "wrapper workflow keeps max inline comments as explicit empty string pass-through");
         AssertContainsText(wrapperContent, "diagnostics: ${{ fromJSON(inputs.diagnostics || 'false') }}",
             "wrapper workflow passes diagnostics through with default");
         AssertEqual(false, content.Contains("workflow_dispatch:", StringComparison.Ordinal),
@@ -550,6 +559,8 @@ jobs:
         AssertContainsText(content, "diagnostics:", "workflow explicit-secrets diagnostics input");
         AssertContainsText(content, "preflight:", "workflow explicit-secrets preflight input");
         AssertContainsText(content, "preflight_timeout_seconds:", "workflow explicit-secrets preflight timeout input");
+        AssertContainsText(content, "max_inline_comments: ${{ inputs.max_inline_comments }}",
+            "workflow explicit-secrets passes max inline comments through");
         AssertContainsText(content, "copilot_auto_install:", "workflow explicit-secrets Copilot auto-install input");
         AssertContainsText(content, "(inputs.copilot_launcher || vars.IX_REVIEW_COPILOT_LAUNCHER) == 'auto'",
             "workflow explicit-secrets maps Copilot launcher auto to auto-install");
@@ -584,6 +595,8 @@ jobs:
             "--explicit-secrets", "false"
         }, seed);
 
+        AssertContainsText(content, "max_inline_comments: ${{ inputs.max_inline_comments }}",
+            "workflow non-explicit secrets passes max inline comments through");
         AssertContainsText(content, "secrets: inherit", "workflow non-explicit secrets inherit");
         AssertEqual(false, content.Contains("INTELLIGENCEX_AUTH_B64:", StringComparison.Ordinal),
             "workflow non-explicit secrets no explicit auth mapping");

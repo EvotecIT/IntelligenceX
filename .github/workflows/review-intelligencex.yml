@@ -338,6 +338,11 @@ on:
         required: false
         default: ''
         type: string
+      max_inline_comments:
+        description: 'Max inline comments override for reusable callers'
+        required: false
+        default: ''
+        type: string
       include_issue_comments:
         description: 'Issue comment inclusion override for reusable callers'
         required: false
@@ -444,6 +449,7 @@ jobs:
       review_config_path: ${{ inputs.review_config_path || '.intelligencex/reviewer.json' }}
       max_files: ${{ inputs.max_files }}
       max_patch_chars: ${{ inputs.max_patch_chars }}
+      max_inline_comments: ${{ inputs.max_inline_comments }}
       include_issue_comments: ${{ fromJSON(inputs.include_issue_comments || 'true') }}
       include_review_comments: ${{ fromJSON(inputs.include_review_comments || 'true') }}
       include_related_prs: ${{ fromJSON(inputs.include_related_prs || 'true') }}

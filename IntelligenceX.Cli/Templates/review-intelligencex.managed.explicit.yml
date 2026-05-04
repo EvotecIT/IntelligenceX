@@ -71,6 +71,7 @@ review:
     review_config_path: ${{ inputs.review_config_path || '.intelligencex/reviewer.json' }}
     max_files: ${{ inputs.max_files }}
     max_patch_chars: ${{ inputs.max_patch_chars }}
+    max_inline_comments: ${{ inputs.max_inline_comments }}
     include_issue_comments: ${{ fromJSON(inputs.include_issue_comments || '{{IncludeIssueComments}}') }}
     include_review_comments: ${{ fromJSON(inputs.include_review_comments || '{{IncludeReviewComments}}') }}
     include_related_prs: ${{ fromJSON(inputs.include_related_prs || '{{IncludeRelatedPullRequests}}') }}
