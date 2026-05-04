@@ -14,7 +14,6 @@ public static partial class ReviewerApp {
         bool reviewFailed,
         bool hasMergeBlockers,
         ReviewHistorySnapshot? history,
-        bool? requiresConversationResolution,
         bool allowWrites,
         bool reviewThreadsUnavailable,
         CancellationToken cancellationToken) {
@@ -35,7 +34,7 @@ public static partial class ReviewerApp {
         }
 
         return ReviewAutoApproval.Evaluate(context, settings, reviewFailed, hasMergeBlockers, history,
-            requiresConversationResolution, allowWrites, checks, reviewThreadsUnavailable);
+            allowWrites, checks, reviewThreadsUnavailable);
     }
 
     private static async Task SubmitAutoApprovalIfEligibleAsync(GitHubClient github, PullRequestContext context,

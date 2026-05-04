@@ -29,7 +29,6 @@ internal static class ReviewAutoApproval {
         bool reviewFailed,
         bool hasMergeBlockers,
         ReviewHistorySnapshot? history,
-        bool? requiresConversationResolution,
         bool allowWrites,
         ReviewCheckSnapshot? checks,
         bool reviewThreadsUnavailable = false) {
@@ -50,7 +49,7 @@ internal static class ReviewAutoApproval {
         var labelAllowed = AddLabelGate(context, auto, blockers, passed);
         var authorAllowed = AddAuthorGate(context, auto, blockers, passed);
         AddReviewGate(auto, reviewFailed, hasMergeBlockers, blockers, passed);
-        AddThreadGate(auto, history, requiresConversationResolution, reviewThreadsUnavailable, blockers, passed);
+        AddThreadGate(auto, history, reviewThreadsUnavailable, blockers, passed);
 
         var effectiveChecks = checks is null ? null : FilterChecks(checks, auto.IgnoredCheckNames);
         AddCheckGate(auto, checks, effectiveChecks, blockers, passed);
@@ -163,7 +162,7 @@ internal static class ReviewAutoApproval {
     }
 
     private static void AddThreadGate(ReviewAutoApproveSettings auto, ReviewHistorySnapshot? history,
-        bool? requiresConversationResolution, bool reviewThreadsUnavailable, List<string> blockers, List<string> passed) {
+        bool reviewThreadsUnavailable, List<string> blockers, List<string> passed) {
         if (!auto.RequireNoActiveReviewThreads) {
             passed.Add("review-thread gate disabled");
             return;

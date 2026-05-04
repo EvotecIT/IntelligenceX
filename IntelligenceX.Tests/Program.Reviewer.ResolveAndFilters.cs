@@ -609,7 +609,7 @@ internal static partial class Program {
         });
 
         var decision = ReviewAutoApproval.Evaluate(context, settings, reviewFailed: false, hasMergeBlockers: false,
-            history, requiresConversationResolution: true, allowWrites: true, checks);
+            history, allowWrites: true, checks: checks);
         AssertEqual(true, decision.ShouldApprove, "auto approval eligible after ignored pending reviewer check");
         AssertEqual(true, decision.DisplayReadiness, "auto approval readiness displays after opt-in gates pass");
         AssertEqual(true, decision.DryRun, "auto approval dry run default");
@@ -620,7 +620,7 @@ internal static partial class Program {
         AssertContainsText(block, "1 passed, 0 failed, 0 pending", "auto approval comment block filtered checks");
 
         var blocked = ReviewAutoApproval.Evaluate(context, settings, reviewFailed: false, hasMergeBlockers: true,
-            history, requiresConversationResolution: true, allowWrites: true, checks);
+            history, allowWrites: true, checks: checks);
         AssertEqual(false, blocked.ShouldApprove, "auto approval blocked by merge blockers");
         AssertContainsText(string.Join("\n", blocked.Blockers), "merge blockers detected",
             "auto approval merge blocker reason");
@@ -630,7 +630,7 @@ internal static partial class Program {
             context.HeadRepoFullName, context.IsFork, context.AuthorAssociation, context.HeadRepositoryKnown,
             context.BaseRefName, context.AuthorLogin);
         blocked = ReviewAutoApproval.Evaluate(noLabel, settings, reviewFailed: false, hasMergeBlockers: false,
-            history, requiresConversationResolution: true, allowWrites: true, checks);
+            history, allowWrites: true, checks: checks);
         AssertEqual(false, blocked.ShouldApprove, "auto approval blocked without required label");
         AssertEqual(false, blocked.DisplayReadiness, "auto approval readiness hides without required opt-in label");
         AssertContainsText(string.Join("\n", blocked.Blockers), "missing required label",
@@ -642,7 +642,7 @@ internal static partial class Program {
             new ReviewCheckRun("IntelligenceX Review", "completed", "success", null)
         });
         blocked = ReviewAutoApproval.Evaluate(context, settings, reviewFailed: false, hasMergeBlockers: false,
-            history, requiresConversationResolution: true, allowWrites: true, onlyIgnoredChecks);
+            history, allowWrites: true, checks: onlyIgnoredChecks);
         AssertEqual(false, blocked.ShouldApprove, "auto approval blocks zero effective checks");
         AssertContainsText(string.Join("\n", blocked.Blockers), "no effective checks",
             "auto approval zero effective checks reason");
@@ -653,7 +653,7 @@ internal static partial class Program {
             new ReviewCheckRun("Build", "in_progress", null, null)
         });
         blocked = ReviewAutoApproval.Evaluate(context, settings, reviewFailed: false, hasMergeBlockers: false,
-            history, requiresConversationResolution: true, allowWrites: true, pendingChecks);
+            history, allowWrites: true, checks: pendingChecks);
         AssertEqual(false, blocked.ShouldApprove, "auto approval pending-only mode blocks pending checks");
         AssertContainsText(string.Join("\n", blocked.Blockers), "pending check",
             "auto approval pending-only blocker reason");
@@ -662,7 +662,7 @@ internal static partial class Program {
             new ReviewCheckRun("Experimental", "completed", "failure", null)
         });
         var pendingOnlyDecision = ReviewAutoApproval.Evaluate(context, settings, reviewFailed: false,
-            hasMergeBlockers: false, history, requiresConversationResolution: true, allowWrites: true, failedChecks);
+            hasMergeBlockers: false, history, allowWrites: true, checks: failedChecks);
         AssertEqual(true, pendingOnlyDecision.ShouldApprove,
             "auto approval pending-only mode ignores completed failing checks when pass gate is disabled");
         AssertContainsText(string.Join("\n", pendingOnlyDecision.PassedGates), "no pending checks",
@@ -671,14 +671,14 @@ internal static partial class Program {
         settings.AutoApprove.RequireChecksPass = true;
         settings.AutoApprove.RequireNoPendingChecks = true;
         blocked = ReviewAutoApproval.Evaluate(context, settings, reviewFailed: false, hasMergeBlockers: false,
-            history: null, requiresConversationResolution: false, allowWrites: true, checks,
+            history: null, allowWrites: true, checks: checks,
             reviewThreadsUnavailable: true);
         AssertEqual(false, blocked.ShouldApprove, "auto approval blocks unavailable review thread state");
         AssertContainsText(string.Join("\n", blocked.Blockers), "review thread state unavailable",
             "auto approval unavailable review thread reason");
 
         blocked = ReviewAutoApproval.Evaluate(context, settings, reviewFailed: false, hasMergeBlockers: false,
-            history: null, requiresConversationResolution: false, allowWrites: true, checks,
+            history: null, allowWrites: true, checks: checks,
             reviewThreadsUnavailable: false);
         AssertEqual(false, blocked.ShouldApprove,
             "auto approval blocks missing review thread snapshot without branch protection requirement");
@@ -705,7 +705,7 @@ internal static partial class Program {
         });
 
         var blocked = ReviewAutoApproval.Evaluate(context, settings, reviewFailed: false, hasMergeBlockers: false,
-            history, requiresConversationResolution: true, allowWrites: true, pendingChecks);
+            history, allowWrites: true, checks: pendingChecks);
         AssertEqual(false, blocked.ShouldApprove,
             "auto approval pending-only mode blocks when checks are still running");
         AssertContainsText(string.Join("\n", blocked.Blockers), "1 pending check(s)",
@@ -715,7 +715,7 @@ internal static partial class Program {
             new ReviewCheckRun("Experimental", "completed", "failure", null)
         });
         var eligible = ReviewAutoApproval.Evaluate(context, settings, reviewFailed: false, hasMergeBlockers: false,
-            history, requiresConversationResolution: true, allowWrites: true, failedChecks);
+            history, allowWrites: true, checks: failedChecks);
         AssertEqual(true, eligible.ShouldApprove,
             "auto approval pending-only mode ignores completed failing checks when pass gate is disabled");
         AssertContainsText(string.Join("\n", eligible.PassedGates), "no pending checks",
