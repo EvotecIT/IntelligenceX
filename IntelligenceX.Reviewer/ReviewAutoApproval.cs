@@ -206,6 +206,8 @@ internal static class ReviewAutoApproval {
             } else {
                 passed.Add("checks passed");
             }
+        } else if (auto.RequireNoPendingChecks && effectiveChecks.FailedCount > 0) {
+            blockers.Add($"{effectiveChecks.FailedCount} completed failing check(s)");
         }
 
         if (auto.RequireNoPendingChecks) {
