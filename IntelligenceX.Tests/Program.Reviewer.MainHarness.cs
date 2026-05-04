@@ -862,6 +862,8 @@ internal static partial class Program {
             TestReviewStateBlockRendersDeterministicRecommendation);
         failed += Run("Review state block fails closed without merge blocker sections",
             TestReviewStateBlockFailsClosedWithoutMergeBlockerSections);
+        failed += Run("Review state block fails closed when required blocker section is missing",
+            TestReviewStateBlockFailsClosedWhenRequiredBlockerSectionIsMissing);
         failed += Run("Redaction defaults", TestRedactionDefaults);
         failed += Run("Review budget note", TestReviewBudgetNote);
         failed += Run("Review budget note empty", TestReviewBudgetNoteEmpty);

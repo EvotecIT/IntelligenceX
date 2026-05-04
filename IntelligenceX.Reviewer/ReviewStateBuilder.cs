@@ -38,11 +38,14 @@ internal static class ReviewStateBuilder {
                 "configured merge-blocker sections were missing");
         }
 
+        if (hasMergeBlockers && openCount == 0) {
+            return new ReviewState("manual-review", "Manual review", "unknown",
+                "configured merge-blocker sections were missing or could not be normalized");
+        }
+
         if (hasMergeBlockers) {
             return new ReviewState("needs-work", "Needs work", FormatBlockerCount(openCount, true),
-                openCount > 0
-                    ? "open Todo/Critical item(s) detected"
-                    : "merge-blocker posture detected but no normalized item was available");
+                "open Todo/Critical item(s) detected");
         }
 
         return new ReviewState("approve", "Approve", "none detected",

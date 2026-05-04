@@ -1696,6 +1696,27 @@ internal static partial class Program {
             "review state missing sections has unknown blockers");
     }
 
+    private static void TestReviewStateBlockFailsClosedWhenRequiredBlockerSectionIsMissing() {
+        var settings = new ReviewSettings();
+        var reviewBody = string.Join("\n", new[] {
+            "## Summary 📝",
+            "Looks good.",
+            "",
+            "## Todo List ✅",
+            "None."
+        });
+
+        var block = ReviewStateBuilder.BuildCommentBlock(reviewBody, settings, reviewFailed: false);
+        var state = ReviewStateBuilder.Build(reviewBody, settings, reviewFailed: false);
+
+        AssertEqual("manual-review", state.Recommendation,
+            "review state missing required blocker section requires manual review");
+        AssertEqual("unknown", state.MergeBlockerLabel,
+            "review state missing required blocker section has unknown blockers");
+        AssertContainsText(block, "| Manual review | unknown | configured merge-blocker sections were missing or could not be normalized |",
+            "review state missing required blocker section table");
+    }
+
     private static void TestReviewHistoryMarkerKeepsLatestRoundsAndRecomputesHead() {
         var settings = new ReviewSettings();
         settings.History.Enabled = true;
