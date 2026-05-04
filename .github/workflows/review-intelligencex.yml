@@ -194,22 +194,27 @@ on:
       auto_approve_enabled:
         description: 'Auto-approval enablement override for reusable callers'
         required: false
+        default: ''
         type: string
       auto_approve_dry_run:
         description: 'Auto-approval dry-run override for reusable callers'
         required: false
+        default: ''
         type: string
       auto_approve_required_labels:
         description: 'Auto-approval required labels for reusable callers'
         required: false
+        default: ''
         type: string
       auto_approve_allowed_authors:
         description: 'Auto-approval allowed authors for reusable callers'
         required: false
+        default: ''
         type: string
       auto_approve_ignored_check_names:
         description: 'Auto-approval ignored check names for reusable callers'
         required: false
+        default: ''
         type: string
       length:
         description: 'Review length override for reusable callers'
@@ -326,10 +331,12 @@ on:
       max_files:
         description: 'Max files override for reusable callers'
         required: false
+        default: ''
         type: string
       max_patch_chars:
         description: 'Max patch chars override for reusable callers'
         required: false
+        default: ''
         type: string
       include_issue_comments:
         description: 'Issue comment inclusion override for reusable callers'

@@ -145,22 +145,27 @@ on:
       auto_approve_enabled:
         description: 'Enable guarded auto-approval readiness/approval'
         required: false
+        default: ''
         type: string
       auto_approve_dry_run:
         description: 'Audit auto-approval decisions without submitting approvals'
         required: false
+        default: ''
         type: string
       auto_approve_required_labels:
         description: 'Comma-separated labels required before auto-approval'
         required: false
+        default: ''
         type: string
       auto_approve_allowed_authors:
         description: 'Comma-separated PR author logins eligible for auto-approval'
         required: false
+        default: ''
         type: string
       auto_approve_ignored_check_names:
         description: 'Comma-separated check names ignored by auto-approval'
         required: false
+        default: ''
         type: string
       length:
         description: 'Review length: short, medium, long'
@@ -335,14 +340,17 @@ on:
       max_files:
         description: 'Max files to review'
         required: false
+        default: ''
         type: string
       max_patch_chars:
         description: 'Max patch chars per file'
         required: false
+        default: ''
         type: string
       max_inline_comments:
         description: 'Max inline comments'
         required: false
+        default: ''
         type: string
       severity_threshold:
         description: 'Only include issues >= severity (low/medium/high/critical)'
@@ -377,10 +385,12 @@ on:
       skip_authors:
         description: 'Comma-separated PR author logins to skip before provider auth'
         required: false
+        default: ''
         type: string
       force_review_labels:
         description: 'Comma-separated labels that bypass author skip filters'
         required: false
+        default: ''
         type: string
       skip_paths:
         description: 'Comma-separated glob patterns; if all files match, skip'
