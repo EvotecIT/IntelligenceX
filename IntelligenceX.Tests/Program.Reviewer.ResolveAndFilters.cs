@@ -672,6 +672,14 @@ internal static partial class Program {
         AssertEqual(false, blocked.ShouldApprove, "auto approval blocks unavailable review thread state");
         AssertContainsText(string.Join("\n", blocked.Blockers), "review thread state unavailable",
             "auto approval unavailable review thread reason");
+
+        blocked = ReviewAutoApproval.Evaluate(context, settings, reviewFailed: false, hasMergeBlockers: false,
+            history: null, requiresConversationResolution: false, allowWrites: true, checks,
+            reviewThreadsUnavailable: false);
+        AssertEqual(false, blocked.ShouldApprove,
+            "auto approval blocks missing review thread snapshot without branch protection requirement");
+        AssertContainsText(string.Join("\n", blocked.Blockers), "review thread state unavailable",
+            "auto approval missing review thread snapshot reason");
     }
 
     private static void TestReviewAutoApprovalPendingOnlyGateIsIndependent() {

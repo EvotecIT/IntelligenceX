@@ -178,9 +178,7 @@ internal static class ReviewAutoApproval {
             return;
         }
 
-        blockers.Add(requiresConversationResolution == true
-            ? "review thread state unknown while conversation resolution is required"
-            : "review thread state unavailable");
+        blockers.Add("review thread state unavailable");
     }
 
     private static void AddCheckGate(ReviewAutoApproveSettings auto, ReviewCheckSnapshot? rawChecks,
