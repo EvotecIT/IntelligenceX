@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace IntelligenceX.Tests;
 
 #if INTELLIGENCEX_REVIEWER
@@ -190,14 +192,39 @@ internal static partial class Program {
     }
 
     private static void TestOwnedSummarySelectionPrefersNewestTrustedComment() {
-        var older = new IssueComment(10, $"{ReviewFormatter.SummaryMarker}\nOlder", "intelligencex-review[bot]");
-        var newest = new IssueComment(42, $"{ReviewFormatter.SummaryMarker}\nNewest", "github-actions[bot]");
-        var untrusted = new IssueComment(99, $"{ReviewFormatter.SummaryMarker}\nIgnore me", "alice");
+        var older = new IssueComment(
+            42,
+            $"{ReviewFormatter.SummaryMarker}\nOlder",
+            "intelligencex-review[bot]",
+            createdAt: DateTimeOffset.Parse("2026-05-04T10:00:00Z", CultureInfo.InvariantCulture),
+            updatedAt: DateTimeOffset.Parse("2026-05-04T10:05:00Z", CultureInfo.InvariantCulture));
+        var newest = new IssueComment(
+            10,
+            $"{ReviewFormatter.SummaryMarker}\nNewest",
+            "github-actions[bot]",
+            createdAt: DateTimeOffset.Parse("2026-05-04T11:00:00Z", CultureInfo.InvariantCulture),
+            updatedAt: DateTimeOffset.Parse("2026-05-04T11:05:00Z", CultureInfo.InvariantCulture));
+        var untrusted = new IssueComment(
+            99,
+            $"{ReviewFormatter.SummaryMarker}\nIgnore me",
+            "alice",
+            createdAt: DateTimeOffset.Parse("2026-05-04T12:00:00Z", CultureInfo.InvariantCulture),
+            updatedAt: DateTimeOffset.Parse("2026-05-04T12:05:00Z", CultureInfo.InvariantCulture));
 
         var selected = CallSelectOwnedSummaryComment(new[] { older, untrusted, newest });
 
         AssertNotNull(selected, "owned summary selection returns trusted summary");
-        AssertEqual(42L, selected!.Id, "owned summary selection prefers newest trusted summary");
+        AssertEqual(10L, selected!.Id, "owned summary selection prefers newest trusted summary by timestamp");
+    }
+
+    private static void TestOwnedSummarySelectionPreservesApiOrderWithoutTimestamps() {
+        var first = new IssueComment(10, $"{ReviewFormatter.SummaryMarker}\nFirst", "intelligencex-review[bot]");
+        var second = new IssueComment(42, $"{ReviewFormatter.SummaryMarker}\nSecond", "github-actions[bot]");
+
+        var selected = CallSelectOwnedSummaryComment(new[] { first, second });
+
+        AssertNotNull(selected, "owned summary selection returns trusted summary without timestamps");
+        AssertEqual(10L, selected!.Id, "owned summary selection preserves API order when recency is unknown");
     }
 
     private static void TestThreadAssessmentEvidenceParse() {

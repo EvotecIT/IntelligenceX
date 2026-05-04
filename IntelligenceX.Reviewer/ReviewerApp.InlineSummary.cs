@@ -218,12 +218,30 @@ public static partial class ReviewerApp {
                 continue;
             }
 
-            if (newest is null || comment.Id > newest.Id) {
+            if (newest is null || CompareIssueCommentRecency(comment, newest) > 0) {
                 newest = comment;
             }
         }
 
         return newest;
+    }
+
+    private static int CompareIssueCommentRecency(IssueComment left, IssueComment right) {
+        var leftTime = left.UpdatedAt ?? left.CreatedAt;
+        var rightTime = right.UpdatedAt ?? right.CreatedAt;
+        if (leftTime.HasValue && rightTime.HasValue) {
+            return leftTime.Value.CompareTo(rightTime.Value);
+        }
+
+        if (leftTime.HasValue) {
+            return 1;
+        }
+
+        if (rightTime.HasValue) {
+            return -1;
+        }
+
+        return 0;
     }
 
     private static async Task<HashSet<string>?> PostInlineCommentsAsync(IReviewCodeHostReader codeHostReader, GitHubClient github,

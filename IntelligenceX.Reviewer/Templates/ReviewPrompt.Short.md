@@ -33,7 +33,9 @@ Only include inline comments for merge-blocking items from Todo List and Critica
 - ## Tests / Coverage 🧪
 {{NextStepsSection}}
 In Todo List, include only merge-blocking items as markdown checkboxes. If there are no merge-blocking items, write "None.".
-Critical Issues are merge-blocking. If there are no critical issues, write "None." in that section. Other Issues are non-blocking suggestions.
+Critical Issues are merge-blocking. If there are no critical issues, write "None." in that section.
+Do not put non-blocking bullets under Todo List or Critical Issues; after writing "None.", start the next H2 section before any other bullet.
+Other Issues are non-blocking suggestions.
 If you include any merge-blocking item that has a specific file location, ensure it is also represented in Inline Comments.
 {{NarrativeContractBlock}}
 If no reviewer thread context is provided, omit the Other Reviews section.

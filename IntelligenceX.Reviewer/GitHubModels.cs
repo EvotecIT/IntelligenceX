@@ -63,15 +63,20 @@ internal sealed class PullRequestFile {
 }
 
 internal sealed class IssueComment {
-    public IssueComment(long id, string body, string? author = null) {
+    public IssueComment(long id, string body, string? author = null, DateTimeOffset? createdAt = null,
+        DateTimeOffset? updatedAt = null) {
         Id = id;
         Body = body;
         Author = author;
+        CreatedAt = createdAt;
+        UpdatedAt = updatedAt;
     }
 
     public long Id { get; }
     public string Body { get; }
     public string? Author { get; }
+    public DateTimeOffset? CreatedAt { get; }
+    public DateTimeOffset? UpdatedAt { get; }
 }
 
 internal sealed class PullRequestReviewComment {

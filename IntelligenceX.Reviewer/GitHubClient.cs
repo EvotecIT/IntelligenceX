@@ -1,5 +1,4 @@
 using System;
-using System.Globalization;
 using System.Collections.Generic;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -227,7 +226,9 @@ internal sealed partial class GitHubClient : IDisposable {
                 var id = obj.GetInt64("id") ?? 0;
                 var body = obj.GetString("body") ?? string.Empty;
                 var author = obj.GetObject("user")?.GetString("login");
-                comments.Add(new IssueComment(id, body, author));
+                var createdAt = ParseGitHubDateTime(obj.GetString("created_at"));
+                var updatedAt = ParseGitHubDateTime(obj.GetString("updated_at"));
+                comments.Add(new IssueComment(id, body, author, createdAt, updatedAt));
                 if (maxResults > 0 && comments.Count >= maxResults) {
                     break;
                 }
@@ -519,7 +520,10 @@ internal sealed partial class GitHubClient : IDisposable {
             .ConfigureAwait(false);
         var obj = response.AsObject();
         var id = obj?.GetInt64("id") ?? 0;
-        return new IssueComment(id, body);
+        var createdAt = ParseGitHubDateTime(obj?.GetString("created_at"));
+        var updatedAt = ParseGitHubDateTime(obj?.GetString("updated_at"));
+        var author = obj?.GetObject("user")?.GetString("login");
+        return new IssueComment(id, body, author, createdAt, updatedAt);
     }
 
     public async Task UpdatePullRequestAsync(string owner, string repo, int number, string title, string body,
