@@ -34,14 +34,9 @@ internal sealed partial class GitHubClient {
             page++;
         }
 
-        var snapshot = GitHubCiSignals.SummarizeCheckRuns(checkRuns);
-        return new ReviewCheckSnapshot(
-            snapshot.PassedCount,
-            snapshot.FailedCount,
-            snapshot.PendingCount,
-            snapshot.FailedChecks
-                .Select(item => new ReviewCheckRun(item.Name, item.Status, item.Conclusion, item.DetailsUrl))
-                .ToList());
+        return new ReviewCheckSnapshot(checkRuns
+            .Select(item => new ReviewCheckRun(item.Name, item.Status, item.Conclusion, item.DetailsUrl))
+            .ToList());
     }
 
     public async Task<IReadOnlyList<ReviewWorkflowRun>> GetFailedWorkflowRunsAsync(string owner, string repo, string? headSha,

@@ -604,6 +604,25 @@ public static partial class ReviewerApp {
         return false;
     }
 
+    private static bool ShouldSkipByAuthor(PullRequestContext context, ReviewSettings settings) {
+        if (string.IsNullOrWhiteSpace(context.AuthorLogin) || settings.SkipAuthors.Count == 0) {
+            return false;
+        }
+
+        if (ShouldSkipByLabels(context.Labels, settings.ForceReviewLabels)) {
+            return false;
+        }
+
+        foreach (var skipAuthor in settings.SkipAuthors) {
+            if (!string.IsNullOrWhiteSpace(skipAuthor) &&
+                context.AuthorLogin.Equals(skipAuthor.Trim(), StringComparison.OrdinalIgnoreCase)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static bool ShouldSkipByPaths(IReadOnlyList<PullRequestFile> files, IReadOnlyList<string> skipPaths) {
         if (files.Count == 0 || skipPaths.Count == 0) {
             return false;

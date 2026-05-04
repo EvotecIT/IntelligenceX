@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Text;
 
 namespace IntelligenceX.Reviewer;
@@ -91,11 +93,12 @@ internal static class ReviewHistoryBuilder {
 
         var lines = new List<string>();
         var latestSameHeadRound = FindLatestSameHeadRound(snapshot.Rounds);
+        if (latestSameHeadRound is not null) {
+            AppendPostureTable(lines, latestSameHeadRound);
+        }
         if (snapshot.OpenFindings.Count > 0) {
             lines.Add("Open on current head:");
-            foreach (var finding in snapshot.OpenFindings) {
-                lines.Add($"- [{NormalizeSectionLabel(finding.Section)}] {finding.Text}");
-            }
+            AppendFindingTable(lines, "Open", snapshot.OpenFindings);
         } else if (latestSameHeadRound is not null && latestSameHeadRound.FindingsParseIncomplete) {
             lines.Add("Open on current head: unknown; merge-blocker lines could not be fully normalized.");
         } else {
@@ -104,13 +107,11 @@ internal static class ReviewHistoryBuilder {
 
         if (snapshot.ResolvedSinceLastRound.Count > 0) {
             lines.Add("Resolved since last round:");
-            foreach (var finding in snapshot.ResolvedSinceLastRound) {
-                lines.Add($"- [{NormalizeSectionLabel(finding.Section)}] {finding.Text}");
-            }
+            AppendFindingTable(lines, "Resolved", snapshot.ResolvedSinceLastRound);
         }
 
-        if (lines.Count == 1 &&
-            string.Equals(lines[0], "Open on current head: none.", StringComparison.Ordinal)) {
+        if (snapshot.ResolvedSinceLastRound.Count == 0 &&
+            lines.Contains("Open on current head: none.", StringComparer.Ordinal)) {
             lines.Add("Resolved since last round: none newly resolved.");
         }
 
@@ -150,14 +151,25 @@ internal static class ReviewHistoryBuilder {
             return;
         }
 
-        ownedSummaries.Reverse();
-        for (var index = 0; index < ownedSummaries.Count; index++) {
-            var round = BuildStickySummaryRound(ownedSummaries[index], currentHeadSha, settings, index + 1);
-            if (round is null) {
+        foreach (var summary in ownedSummaries) {
+            if (!ReviewHistoryMarker.TryReadRounds(summary.Body, currentHeadSha, settings, out var markerRounds)) {
                 continue;
             }
 
-            rounds.Add(round);
+            rounds.AddRange(markerRounds);
+            break;
+        }
+
+        if (rounds.Count == 0) {
+            ownedSummaries.Reverse();
+            for (var index = 0; index < ownedSummaries.Count; index++) {
+                var round = BuildStickySummaryRound(ownedSummaries[index], currentHeadSha, settings, index + 1);
+                if (round is null) {
+                    continue;
+                }
+
+                rounds.Add(round);
+            }
         }
 
         var latestSameHeadRound = FindLatestSameHeadRound(rounds);
@@ -316,10 +328,21 @@ internal static class ReviewHistoryBuilder {
 
     private static ReviewHistoryRound? BuildStickySummaryRound(IssueComment existingSummary, string? currentHeadSha,
         ReviewSettings settings, int sequence = 1) {
-        ReviewSummaryParser.TryGetReviewedCommit(existingSummary.Body, out var reviewedCommit);
-        var findings = ReviewSummaryParser.ExtractMergeBlockerFindings(existingSummary.Body, settings, settings.History.MaxItems,
+        return BuildSummaryRound(existingSummary.Body, existingSummary.Id, currentHeadSha, settings, sequence);
+    }
+
+    internal static ReviewHistoryRound? BuildSummaryRound(string? body, long? summaryCommentId, string? currentHeadSha,
+        ReviewSettings settings, int sequence = 1) {
+        if (string.IsNullOrWhiteSpace(body)) {
+            return null;
+        }
+
+        body = ReviewHistoryMarker.Remove(body);
+        ReviewSummaryParser.TryGetReviewedCommit(body, out var reviewedCommit);
+        var findings = ReviewSummaryParser.ExtractMergeBlockerFindings(body, settings, settings.History.MaxItems,
             out var findingsHitLimit, out var findingsParseIncomplete);
-        var hasMergeBlockers = ReviewSummaryParser.HasMergeBlockers(existingSummary.Body, settings);
+        var hasMergeBlockers = ReviewSummaryParser.HasMergeBlockers(body, settings);
+        var recommendation = ResolveRecommendation(hasMergeBlockers, findingsParseIncomplete);
         var mergeBlockerStatus = findings.Count == 0
             ? findingsParseIncomplete
                 ? "unknown; merge-blocker lines were present but could not be normalized."
@@ -332,17 +355,60 @@ internal static class ReviewHistoryBuilder {
         return new ReviewHistoryRound {
             Sequence = sequence,
             Source = "intelligencex",
-            SummaryCommentId = existingSummary.Id,
+            SummaryCommentId = summaryCommentId,
             ReviewedSha = reviewedCommit?.Trim() ?? string.Empty,
             SameHeadAsCurrent = !string.IsNullOrWhiteSpace(reviewedCommit) &&
                                 !string.IsNullOrWhiteSpace(currentHeadSha) &&
                                 currentHeadSha.StartsWith(reviewedCommit!, StringComparison.OrdinalIgnoreCase),
             HasMergeBlockers = hasMergeBlockers,
             MergeBlockerStatus = mergeBlockerStatus,
+            Recommendation = recommendation,
+            PositiveHighlights = ExtractSectionItems(body, new[] { "Excellent Aspects", "Code Quality Assessment" }, 3),
+            RiskNotes = ExtractSectionItems(body, new[] { "Other Issues", "Security & Performance", "Backward Compatibility" }, 3),
+            FollowUps = ExtractSectionItems(body, new[] { "Recommendations", "Next Steps", "Test Quality", "Documentation" }, 3),
             FindingsHitLimit = findingsHitLimit,
             FindingsParseIncomplete = findingsParseIncomplete,
             Findings = ConvertFindings(findings)
         };
+    }
+
+    private static void AppendPostureTable(List<string> lines, ReviewHistoryRound round) {
+        if (string.IsNullOrWhiteSpace(round.Recommendation) &&
+            round.PositiveHighlights.Count == 0 &&
+            round.RiskNotes.Count == 0 &&
+            round.FollowUps.Count == 0) {
+            return;
+        }
+
+        lines.Add("Latest review posture:");
+        lines.Add("| Recommendation | Good | Risks / Bad | Follow-up |");
+        lines.Add("| --- | --- | --- | --- |");
+        lines.Add($"| {EscapeTableCell(NormalizeRecommendationLabel(round.Recommendation))} | {EscapeTableCell(JoinSummaryItems(round.PositiveHighlights))} | {EscapeTableCell(JoinSummaryItems(round.RiskNotes))} | {EscapeTableCell(JoinSummaryItems(round.FollowUps))} |");
+    }
+
+    private static void AppendFindingTable(List<string> lines, string state, IReadOnlyList<ReviewHistoryFinding> findings) {
+        lines.Add("| State | Finding |");
+        lines.Add("| --- | --- |");
+        foreach (var finding in findings) {
+            lines.Add($"| {EscapeTableCell(state)} | [{EscapeTableCell(NormalizeSectionLabel(finding.Section))}] {EscapeTableCell(finding.Text)} |");
+        }
+    }
+
+    private static string EscapeTableCell(string value) {
+        return (value ?? string.Empty)
+            .Replace("\\", "\\\\", StringComparison.Ordinal)
+            .Replace("|", "\\|", StringComparison.Ordinal)
+            .Replace("\r", " ", StringComparison.Ordinal)
+            .Replace("\n", " ", StringComparison.Ordinal)
+            .Trim();
+    }
+
+    private static string JoinSummaryItems(IReadOnlyList<string> items) {
+        if (items.Count == 0) {
+            return "None noted.";
+        }
+
+        return string.Join("; ", items);
     }
 
     private static IReadOnlyList<ReviewHistoryFinding> ConvertFindings(IReadOnlyList<ReviewSummaryFinding> findings) {
@@ -362,6 +428,105 @@ internal static class ReviewHistoryBuilder {
         return converted;
     }
 
+    private static string ResolveRecommendation(bool hasMergeBlockers, bool findingsParseIncomplete) {
+        if (findingsParseIncomplete) {
+            return "manual-review";
+        }
+
+        return hasMergeBlockers ? "needs-work" : "approve";
+    }
+
+    private static string NormalizeRecommendationLabel(string recommendation) {
+        return recommendation.Trim().ToLowerInvariant() switch {
+            "approve" => "Approve",
+            "needs-work" => "Needs work",
+            "manual-review" => "Manual review",
+            "skipped" => "Skipped",
+            _ => string.IsNullOrWhiteSpace(recommendation) ? "Unknown" : recommendation.Trim()
+        };
+    }
+
+    private static IReadOnlyList<string> ExtractSectionItems(string body, IReadOnlyList<string> sectionNames, int maxItems) {
+        if (string.IsNullOrWhiteSpace(body) || maxItems <= 0 || sectionNames.Count == 0) {
+            return Array.Empty<string>();
+        }
+
+        var targetSections = new HashSet<string>(sectionNames.Select(NormalizeHeader), StringComparer.OrdinalIgnoreCase);
+        var items = new List<string>();
+        var inTargetSection = false;
+        using var reader = new StringReader(ReviewFormatter.NormalizeSectionLayout(body));
+        string? line;
+        while ((line = reader.ReadLine()) is not null) {
+            var trimmed = line.Trim();
+            if (trimmed.StartsWith("## ", StringComparison.Ordinal)) {
+                inTargetSection = targetSections.Contains(NormalizeHeader(trimmed));
+                continue;
+            }
+
+            if (!inTargetSection || items.Count >= maxItems || !TryExtractSummaryItem(trimmed, out var item)) {
+                continue;
+            }
+
+            items.Add(item);
+        }
+
+        return items;
+    }
+
+    private static bool TryExtractSummaryItem(string line, out string item) {
+        item = string.Empty;
+        if (string.IsNullOrWhiteSpace(line) ||
+            line.StartsWith("<!--", StringComparison.Ordinal) ||
+            line.StartsWith("|", StringComparison.Ordinal) ||
+            line.StartsWith("```", StringComparison.Ordinal) ||
+            IsNoneLine(line)) {
+            return false;
+        }
+
+        var trimmed = line.Trim();
+        if (trimmed.StartsWith("- [ ]", StringComparison.Ordinal) ||
+            trimmed.StartsWith("- [x]", StringComparison.OrdinalIgnoreCase)) {
+            item = trimmed.Substring(5).Trim();
+        } else if (trimmed.StartsWith("-", StringComparison.Ordinal) ||
+                   trimmed.StartsWith("*", StringComparison.Ordinal)) {
+            item = trimmed.Substring(1).Trim();
+        } else {
+            return false;
+        }
+
+        return !string.IsNullOrWhiteSpace(item) && !IsNoneLine(item);
+    }
+
+    private static bool IsNoneLine(string value) {
+        var normalized = value.Trim().TrimEnd('.').Trim();
+        return normalized.Equals("none", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Equals("none noted", StringComparison.OrdinalIgnoreCase) ||
+               normalized.Equals("n/a", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string NormalizeHeader(string header) {
+        var trimmed = header.Trim();
+        while (trimmed.StartsWith("#", StringComparison.Ordinal)) {
+            trimmed = trimmed.Substring(1).TrimStart();
+        }
+
+        var sb = new StringBuilder(trimmed.Length);
+        var pendingSpace = false;
+        foreach (var ch in trimmed.ToLowerInvariant()) {
+            if (char.IsLetterOrDigit(ch)) {
+                if (pendingSpace && sb.Length > 0) {
+                    sb.Append(' ');
+                }
+                sb.Append(ch);
+                pendingSpace = false;
+            } else {
+                pendingSpace = true;
+            }
+        }
+
+        return sb.ToString().Trim();
+    }
+
     private static void AppendStickySummaryLines(List<string> lines, ReviewHistoryRound round, string currentHeadSha) {
         var hasReviewedCommit = !string.IsNullOrWhiteSpace(round.ReviewedSha);
         var reviewedCommitLabel = hasReviewedCommit ? $"`{ShortSha(round.ReviewedSha)}`" : "an unknown commit";
@@ -372,6 +537,12 @@ internal static class ReviewHistoryBuilder {
                 ? $"prior round on {reviewedCommitLabel} before current head {currentHeadLabel}"
                 : $"prior round before current head {currentHeadLabel}";
         lines.Add($"- Round {round.Sequence}: IX sticky summary reviewed {reviewedCommitLabel} ({roundLabel}).");
+        if (!string.IsNullOrWhiteSpace(round.Recommendation)) {
+            lines.Add($"- IX recommendation: {NormalizeRecommendationLabel(round.Recommendation)}.");
+        }
+        AppendRoundHighlights(lines, "Good", round.PositiveHighlights);
+        AppendRoundHighlights(lines, "Risks / bad", round.RiskNotes);
+        AppendRoundHighlights(lines, "Follow-up", round.FollowUps);
 
         if (round.Findings.Count == 0) {
             lines.Add($"- IX merge blockers in sticky summary: {round.MergeBlockerStatus}");
@@ -387,6 +558,14 @@ internal static class ReviewHistoryBuilder {
         if (round.FindingsParseIncomplete) {
             lines.Add("  - Additional merge-blocker lines were present but could not be normalized; do not infer missing same-head findings as resolved from this round alone.");
         }
+    }
+
+    private static void AppendRoundHighlights(List<string> lines, string label, IReadOnlyList<string> items) {
+        if (items.Count == 0) {
+            return;
+        }
+
+        lines.Add($"- IX {label}: {string.Join("; ", items)}");
     }
 
     private static ReviewHistoryThreadSnapshot? BuildThreadSnapshot(IReadOnlyList<PullRequestReviewThread> reviewThreads,

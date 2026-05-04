@@ -50,6 +50,10 @@ public static partial class ReviewerApp {
         HashSet<string>? inlineKeys, int inlineCommentsCount) =>
         ShouldAutoResolveMissingInlineThreads(settings, context, inlineKeys, inlineCommentsCount);
 
+    /// <summary>Test-only forwarder for author skip filtering.</summary>
+    internal static bool ShouldSkipByAuthorForTests(PullRequestContext context, ReviewSettings settings) =>
+        ShouldSkipByAuthor(context, settings);
+
     /// <summary>Test-only forwarder for review context extra loading.</summary>
     internal static Task<ReviewContextExtras> BuildExtrasForTestsAsync(GitHubClient github, PullRequestContext context,
         ReviewSettings settings, bool forceReviewThreads, CancellationToken cancellationToken = default) {

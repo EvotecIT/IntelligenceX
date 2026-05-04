@@ -89,6 +89,27 @@ internal sealed partial class ReviewSettings {
             settings.Focus = ParseList(focus);
         }
 
+        var repositoryGuidancePaths = GetInput("repository_guidance_paths", "REVIEW_REPOSITORY_GUIDANCE_PATHS");
+        if (!string.IsNullOrWhiteSpace(repositoryGuidancePaths)) {
+            settings.RepositoryGuidance.Paths = ParseList(repositoryGuidancePaths, settings.RepositoryGuidance.Paths);
+        }
+
+        var repositoryGuidanceEnabled = GetInput("repository_guidance_enabled", "REVIEW_REPOSITORY_GUIDANCE_ENABLED");
+        if (!string.IsNullOrWhiteSpace(repositoryGuidanceEnabled)) {
+            settings.RepositoryGuidance.Enabled =
+                ParseBoolean(repositoryGuidanceEnabled, settings.RepositoryGuidance.Enabled);
+        }
+
+        var repositoryGuidanceMaxChars = GetInput(
+            "repository_guidance_max_chars",
+            "REVIEW_REPOSITORY_GUIDANCE_MAX_CHARS");
+        if (!string.IsNullOrWhiteSpace(repositoryGuidanceMaxChars)) {
+            settings.RepositoryGuidance.MaxChars =
+                ParseNonNegativeInt(repositoryGuidanceMaxChars, settings.RepositoryGuidance.MaxChars);
+        }
+
+        ApplyEnvironmentAutoApproveSettings(settings);
+
         var persona = GetInput("persona", "REVIEW_PERSONA");
         if (!string.IsNullOrWhiteSpace(persona)) {
             settings.Persona = persona;
@@ -205,6 +226,54 @@ internal sealed partial class ReviewSettings {
         settings.AgentProfile = agentProfile;
     }
 
+    private static void ApplyEnvironmentAutoApproveSettings(ReviewSettings settings) {
+        var enabled = GetInput("auto_approve_enabled", "REVIEW_AUTO_APPROVE_ENABLED");
+        if (!string.IsNullOrWhiteSpace(enabled)) {
+            settings.AutoApprove.Enabled = ParseBoolean(enabled, settings.AutoApprove.Enabled);
+        }
+
+        var dryRun = GetInput("auto_approve_dry_run", "REVIEW_AUTO_APPROVE_DRY_RUN");
+        if (!string.IsNullOrWhiteSpace(dryRun)) {
+            settings.AutoApprove.DryRun = ParseBoolean(dryRun, settings.AutoApprove.DryRun);
+        }
+
+        var requiredLabels = GetInput("auto_approve_required_labels", "REVIEW_AUTO_APPROVE_REQUIRED_LABELS");
+        if (!string.IsNullOrWhiteSpace(requiredLabels)) {
+            settings.AutoApprove.RequiredLabels = ParseList(requiredLabels, settings.AutoApprove.RequiredLabels);
+        }
+
+        var blockedLabels = GetInput("auto_approve_blocked_labels", "REVIEW_AUTO_APPROVE_BLOCKED_LABELS");
+        if (!string.IsNullOrWhiteSpace(blockedLabels)) {
+            settings.AutoApprove.BlockedLabels = ParseList(blockedLabels, settings.AutoApprove.BlockedLabels);
+        }
+
+        var allowedAuthors = GetInput("auto_approve_allowed_authors", "REVIEW_AUTO_APPROVE_ALLOWED_AUTHORS");
+        if (!string.IsNullOrWhiteSpace(allowedAuthors)) {
+            settings.AutoApprove.AllowedAuthors = ParseList(allowedAuthors, settings.AutoApprove.AllowedAuthors);
+        }
+
+        var ignoredCheckNames = GetInput("auto_approve_ignored_check_names", "REVIEW_AUTO_APPROVE_IGNORED_CHECK_NAMES");
+        if (!string.IsNullOrWhiteSpace(ignoredCheckNames)) {
+            settings.AutoApprove.IgnoredCheckNames = ParseList(ignoredCheckNames, settings.AutoApprove.IgnoredCheckNames);
+        }
+
+        var requireNoPendingChecks = GetInput(
+            "auto_approve_require_no_pending_checks",
+            "REVIEW_AUTO_APPROVE_REQUIRE_NO_PENDING_CHECKS");
+        if (!string.IsNullOrWhiteSpace(requireNoPendingChecks)) {
+            settings.AutoApprove.RequireNoPendingChecks =
+                ParseBoolean(requireNoPendingChecks, settings.AutoApprove.RequireNoPendingChecks);
+        }
+
+        var requireNoActiveReviewThreads = GetInput(
+            "auto_approve_require_no_active_review_threads",
+            "REVIEW_AUTO_APPROVE_REQUIRE_NO_ACTIVE_REVIEW_THREADS");
+        if (!string.IsNullOrWhiteSpace(requireNoActiveReviewThreads)) {
+            settings.AutoApprove.RequireNoActiveReviewThreads =
+                ParseBoolean(requireNoActiveReviewThreads, settings.AutoApprove.RequireNoActiveReviewThreads);
+        }
+    }
+
     private static void ApplyEnvironmentScopeAndPromptSettings(ReviewSettings settings) {
         var skipDraft = GetInput("skip_draft", "SKIP_DRAFT");
         if (!string.IsNullOrWhiteSpace(skipDraft)) {
@@ -219,6 +288,16 @@ internal sealed partial class ReviewSettings {
         var skipLabels = GetInput("skip_labels", "SKIP_LABELS");
         if (!string.IsNullOrWhiteSpace(skipLabels)) {
             settings.SkipLabels = ParseList(skipLabels, settings.SkipLabels);
+        }
+
+        var skipAuthors = GetInput("skip_authors", "SKIP_AUTHORS");
+        if (!string.IsNullOrWhiteSpace(skipAuthors)) {
+            settings.SkipAuthors = ParseList(skipAuthors, settings.SkipAuthors);
+        }
+
+        var forceReviewLabels = GetInput("force_review_labels", "FORCE_REVIEW_LABELS");
+        if (!string.IsNullOrWhiteSpace(forceReviewLabels)) {
+            settings.ForceReviewLabels = ParseList(forceReviewLabels, settings.ForceReviewLabels);
         }
 
         var skipPaths = GetInput("skip_paths", "SKIP_PATHS");

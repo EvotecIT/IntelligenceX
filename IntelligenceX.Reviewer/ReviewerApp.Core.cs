@@ -214,6 +214,12 @@ public static partial class ReviewerApp {
                 }
             }
 
+            if (ShouldSkipByAuthor(context, settings)) {
+                Console.WriteLine(
+                    $"Skipping pull request authored by '{context.AuthorLogin}' due to author filter. Add one of these labels to force a full review: {string.Join(", ", settings.ForceReviewLabels)}.");
+                return 0;
+            }
+
             if (!await TryWriteAuthFromEnvAsync().ConfigureAwait(false)) {
                 return 1;
             }
@@ -329,8 +335,11 @@ public static partial class ReviewerApp {
             progress.Files = ReviewProgressState.Complete;
             progress.StatusLine = "Analyzed changed files.";
 
+            var forceReviewThreads = settings.TriageOnly ||
+                                     (settings.AutoApprove.Enabled &&
+                                      settings.AutoApprove.RequireNoActiveReviewThreads);
             var extras = await BuildExtrasAsync(codeHostReader, github, fallbackGithub, context, settings, cancellationToken,
-                    settings.TriageOnly)
+                    forceReviewThreads)
                 .ConfigureAwait(false);
             extras.ReviewHistory = extras.IssueComments.Count > 0
                 ? ReviewHistoryBuilder.BuildSnapshot(extras.IssueComments, context.HeadSha, extras.ReviewThreads, settings)
@@ -560,8 +569,15 @@ public static partial class ReviewerApp {
             var usageLine = await TryBuildUsageLineAsync(settings, effectiveProvider).ConfigureAwait(false);
             var findingsBlock = settings.StructuredFindings ? ReviewFindingsBuilder.Build(inlineComments) : string.Empty;
             var historyBlock = ReviewHistoryBuilder.BuildCommentBlock(extras.ReviewHistory);
+            var autoApprovalDecision = await BuildAutoApprovalDecisionAsync(github, fallbackGithub, context, settings,
+                    reviewFailed, hasMergeBlockers, extras.ReviewHistory, requiresConversationResolution, allowWrites,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            var autoApprovalBlock = ReviewAutoApproval.BuildCommentBlock(autoApprovalDecision);
+            var statusBlocks = CombineCommentBlocks(historyBlock, autoApprovalBlock);
             var commentBody = ReviewFormatter.BuildComment(context, summaryBody, settings, inlineSupported, inlineSuppressed,
-                autoResolveSummary, budgetNote, usageLine, findingsBlock, historyBlock);
+                autoResolveSummary, budgetNote, usageLine, findingsBlock, statusBlocks);
+            commentBody = ReviewHistoryMarker.AppendOrReplace(commentBody, extras.ReviewHistory, context, settings);
             progress.Review = ReviewProgressState.Complete;
             progress.Finalize = ReviewProgressState.InProgress;
             progress.StatusLine = "Finalizing summary.";
@@ -600,6 +616,8 @@ public static partial class ReviewerApp {
                             .ConfigureAwait(false);
                         summaryPosted = true;
                         Console.WriteLine("Updated existing review comment.");
+                        await SubmitAutoApprovalIfEligibleAsync(github, context, settings, autoApprovalDecision, cancellationToken)
+                            .ConfigureAwait(false);
                         return 0;
                     } catch (Exception ex) {
                         Console.Error.WriteLine($"Failed to update existing review comment {existing.Id}: {ex.Message}");
@@ -616,6 +634,8 @@ public static partial class ReviewerApp {
                 Console.WriteLine("Posted review comment.");
             }
 
+            await SubmitAutoApprovalIfEligibleAsync(github, context, settings, autoApprovalDecision, cancellationToken)
+                .ConfigureAwait(false);
             return 0;
         } catch (OperationCanceledException) {
             Console.Error.WriteLine("Operation canceled.");

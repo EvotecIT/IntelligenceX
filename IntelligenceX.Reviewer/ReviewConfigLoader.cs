@@ -66,6 +66,8 @@ internal static class ReviewConfigLoader {
         ApplyLength(reviewObj, settings);
         ApplyContext(reviewObj, settings);
         ApplyHistory(reviewObj, settings);
+        ApplyConventions(reviewObj, settings);
+        ApplyAutoApprove(reviewObj, settings);
         ApplyCiContext(reviewObj, settings);
         ApplySwarm(reviewObj, settings);
         ApplyCodex(root, settings);
@@ -186,6 +188,16 @@ internal static class ReviewConfigLoader {
             settings.SkipLabels = skipLabels;
         }
 
+        var skipAuthors = ReadStringList(obj, "skipAuthors");
+        if (skipAuthors is not null) {
+            settings.SkipAuthors = skipAuthors;
+        }
+
+        var forceReviewLabels = ReadStringList(obj, "forceReviewLabels");
+        if (forceReviewLabels is not null) {
+            settings.ForceReviewLabels = forceReviewLabels;
+        }
+
         var skipPaths = ReadStringList(obj, "skipPaths");
         if (skipPaths is not null) {
             settings.SkipPaths = skipPaths;
@@ -214,6 +226,12 @@ internal static class ReviewConfigLoader {
         if (redactionPatterns is not null) {
             settings.RedactionPatterns = redactionPatterns;
         }
+
+        var repositoryGuidancePaths = ReadStringList(obj, "repositoryGuidancePaths") ??
+                                      ReadStringList(obj, "guidancePaths");
+        if (repositoryGuidancePaths is not null) {
+            settings.RepositoryGuidance.Paths = repositoryGuidancePaths;
+        }
     }
 
     private static void ApplyNumbers(JsonObject obj, ReviewSettings settings) {
@@ -241,6 +259,8 @@ internal static class ReviewConfigLoader {
             ReadInt(obj, "reviewUsageSummaryCacheMinutes", settings.ReviewUsageSummaryCacheMinutes));
         settings.ReviewUsageSummaryTimeoutSeconds = Math.Max(1,
             ReadInt(obj, "reviewUsageSummaryTimeoutSeconds", settings.ReviewUsageSummaryTimeoutSeconds));
+        settings.RepositoryGuidance.MaxChars = ReadNonNegativeInt(obj, "repositoryGuidanceMaxChars",
+            settings.RepositoryGuidance.MaxChars);
     }
 
     private static void ApplyBooleans(JsonObject obj, ReviewSettings settings) {
@@ -278,6 +298,8 @@ internal static class ReviewConfigLoader {
         settings.TriageOnly = ReadBool(obj, "triageOnly", settings.TriageOnly);
         settings.UntrustedPrAllowSecrets = ReadBool(obj, "untrustedPrAllowSecrets", settings.UntrustedPrAllowSecrets);
         settings.UntrustedPrAllowWrites = ReadBool(obj, "untrustedPrAllowWrites", settings.UntrustedPrAllowWrites);
+        settings.RepositoryGuidance.Enabled =
+            ReadBool(obj, "repositoryGuidanceEnabled", settings.RepositoryGuidance.Enabled);
     }
 
     private static void ApplyCommentMode(JsonObject obj, ReviewSettings settings) {
@@ -399,6 +421,90 @@ internal static class ReviewConfigLoader {
         settings.History.Artifacts = ReadBool(history, "artifacts", settings.History.Artifacts);
         settings.History.MaxRounds = Math.Max(0, ReadNonNegativeInt(history, "maxRounds", settings.History.MaxRounds));
         settings.History.MaxItems = Math.Max(0, ReadNonNegativeInt(history, "maxItems", settings.History.MaxItems));
+    }
+
+    private static void ApplyConventions(JsonObject reviewObj, ReviewSettings settings) {
+        if (!reviewObj.TryGetValue("conventions", out var value) || value is null) {
+            return;
+        }
+
+        var array = value.AsArray();
+        if (array is null) {
+            return;
+        }
+
+        var packs = new List<ReviewConventionPack>();
+        foreach (var item in array) {
+            var obj = item.AsObject();
+            if (obj is null) {
+                continue;
+            }
+
+            var pack = ParseConventionPack(obj);
+            if (pack is not null) {
+                packs.Add(pack);
+            }
+        }
+
+        settings.Conventions = packs;
+    }
+
+    private static ReviewConventionPack? ParseConventionPack(JsonObject obj) {
+        var id = obj.GetString("id") ?? obj.GetString("name");
+        if (string.IsNullOrWhiteSpace(id)) {
+            return null;
+        }
+
+        return new ReviewConventionPack {
+            Id = id!,
+            Title = obj.GetString("title") ?? id!,
+            AppliesTo = ReadStringList(obj, "appliesTo") ?? ReadStringList(obj, "paths") ?? Array.Empty<string>(),
+            Rules = ReadStringList(obj, "rules") ?? Array.Empty<string>(),
+            GoodSignals = ReadStringList(obj, "goodSignals") ?? ReadStringList(obj, "good") ?? Array.Empty<string>(),
+            RiskSignals = ReadStringList(obj, "riskSignals") ?? ReadStringList(obj, "risks") ?? Array.Empty<string>(),
+            FollowUps = ReadStringList(obj, "followUps") ?? ReadStringList(obj, "followups") ?? Array.Empty<string>()
+        };
+    }
+
+    private static void ApplyAutoApprove(JsonObject reviewObj, ReviewSettings settings) {
+        var auto = reviewObj.GetObject("autoApprove");
+        if (auto is null) {
+            return;
+        }
+
+        settings.AutoApprove.Enabled = ReadBool(auto, "enabled", settings.AutoApprove.Enabled);
+        settings.AutoApprove.DryRun = ReadBool(auto, "dryRun", settings.AutoApprove.DryRun);
+        settings.AutoApprove.RequireNoMergeBlockers =
+            ReadBool(auto, "requireNoMergeBlockers", settings.AutoApprove.RequireNoMergeBlockers);
+        settings.AutoApprove.RequireReviewSuccess =
+            ReadBool(auto, "requireReviewSuccess", settings.AutoApprove.RequireReviewSuccess);
+        settings.AutoApprove.RequireChecksPass =
+            ReadBool(auto, "requireChecksPass", settings.AutoApprove.RequireChecksPass);
+        settings.AutoApprove.RequireNoPendingChecks =
+            ReadBool(auto, "requireNoPendingChecks", settings.AutoApprove.RequireNoPendingChecks);
+        settings.AutoApprove.RequireNoActiveReviewThreads =
+            ReadBool(auto, "requireNoActiveReviewThreads", settings.AutoApprove.RequireNoActiveReviewThreads);
+        settings.AutoApprove.Body = auto.GetString("body") ?? settings.AutoApprove.Body;
+
+        var requiredLabels = ReadStringList(auto, "requiredLabels");
+        if (requiredLabels is not null) {
+            settings.AutoApprove.RequiredLabels = requiredLabels;
+        }
+
+        var blockedLabels = ReadStringList(auto, "blockedLabels");
+        if (blockedLabels is not null) {
+            settings.AutoApprove.BlockedLabels = blockedLabels;
+        }
+
+        var allowedAuthors = ReadStringList(auto, "allowedAuthors");
+        if (allowedAuthors is not null) {
+            settings.AutoApprove.AllowedAuthors = allowedAuthors;
+        }
+
+        var ignoredCheckNames = ReadStringList(auto, "ignoredCheckNames");
+        if (ignoredCheckNames is not null) {
+            settings.AutoApprove.IgnoredCheckNames = ignoredCheckNames;
+        }
     }
 
     private static void ApplySwarm(JsonObject reviewObj, ReviewSettings settings) {

@@ -506,6 +506,96 @@ internal static partial class Program {
             "compact prompt review history safety contract covers critical issues");
     }
 
+    private static void TestPromptBuilderIncludesConventionPacks() {
+        var context = BuildContext();
+        var files = BuildFiles("src/app.cs", "assets/logo.png");
+        var guidanceDir = Path.Combine(Directory.GetCurrentDirectory(), ".intelligencex");
+        Directory.CreateDirectory(guidanceDir);
+        var guidancePath = Path.Combine(guidanceDir, $"reviewer-guidance-test-{Guid.NewGuid():N}.md");
+        var settings = new ReviewSettings {
+            Conventions = new[] {
+                new ReviewConventionPack {
+                    Id = "png-assets",
+                    Title = "PNG asset rules",
+                    AppliesTo = new[] { "**/*.png" },
+                    Rules = new[] { "Keep binary assets compressed and intentional." },
+                    GoodSignals = new[] { "Asset change is isolated." },
+                    RiskSignals = new[] { "Asset churn without visual context." },
+                    FollowUps = new[] { "Ask for before/after screenshots." }
+                },
+                new ReviewConventionPack {
+                    Id = "docs-only",
+                    Title = "Docs only",
+                    AppliesTo = new[] { "docs/**/*.md" },
+                    Rules = new[] { "This should not apply to src/app.cs." }
+                }
+            }
+        };
+        settings.RepositoryGuidance.Paths = new[] { $".intelligencex/{Path.GetFileName(guidancePath)}" };
+        try {
+            File.WriteAllText(guidancePath, "Prefer repository-owned design guidance over global assumptions.");
+            var prompt = PromptBuilder.Build(context, files, settings, null, null, inlineSupported: false);
+
+            AssertContainsText(prompt, "Repository guidance:", "prompt repository guidance header");
+            AssertContainsText(prompt, "Prefer repository-owned design guidance over global assumptions.",
+                "prompt repository guidance content");
+            AssertContainsText(prompt, "Configured review conventions:", "prompt custom convention header");
+            AssertContainsText(prompt, "PNG asset rules", "prompt custom convention title");
+            AssertContainsText(prompt, "Ask for before/after screenshots.", "prompt custom convention follow-up");
+            AssertDoesNotContainText(prompt, "This should not apply to src/app.cs.",
+                "prompt skips convention pack with non-matching paths");
+        } finally {
+            if (File.Exists(guidancePath)) {
+                File.Delete(guidancePath);
+            }
+        }
+    }
+
+    private static void TestReviewAutoApprovalReadinessGates() {
+        var context = new PullRequestContext("owner/repo", "owner", "repo", 12, "Bump package", null, false,
+            "abc1234", "base", new[] { "ix-auto-approve" }, "owner/repo", false, null,
+            authorLogin: "dependabot[bot]");
+        var settings = new ReviewSettings();
+        settings.AutoApprove.Enabled = true;
+        settings.AutoApprove.AllowedAuthors = new[] { "dependabot[bot]" };
+        var history = new ReviewHistorySnapshot {
+            ThreadSnapshot = new ReviewHistoryThreadSnapshot {
+                ActiveCount = 0,
+                ResolvedCount = 1
+            }
+        };
+        var checks = new ReviewCheckSnapshot(new[] {
+            new ReviewCheckRun("Build", "completed", "success", null),
+            new ReviewCheckRun("IntelligenceX Review", "in_progress", null, null)
+        });
+
+        var decision = ReviewAutoApproval.Evaluate(context, settings, reviewFailed: false, hasMergeBlockers: false,
+            history, requiresConversationResolution: true, allowWrites: true, checks);
+        AssertEqual(true, decision.ShouldApprove, "auto approval eligible after ignored pending reviewer check");
+        AssertEqual(true, decision.DryRun, "auto approval dry run default");
+        AssertEqual(0, decision.EffectiveCheckSnapshot!.PendingCount, "auto approval ignored check removes pending count");
+        var block = ReviewAutoApproval.BuildCommentBlock(decision);
+        AssertContainsText(block, "Auto-Approval Readiness", "auto approval comment block heading");
+        AssertContainsText(block, "Eligible (dry run)", "auto approval comment block dry-run status");
+        AssertContainsText(block, "1 passed, 0 failed, 0 pending", "auto approval comment block filtered checks");
+
+        var blocked = ReviewAutoApproval.Evaluate(context, settings, reviewFailed: false, hasMergeBlockers: true,
+            history, requiresConversationResolution: true, allowWrites: true, checks);
+        AssertEqual(false, blocked.ShouldApprove, "auto approval blocked by merge blockers");
+        AssertContainsText(string.Join("\n", blocked.Blockers), "merge blockers detected",
+            "auto approval merge blocker reason");
+
+        var noLabel = new PullRequestContext(context.RepoFullName, context.Owner, context.Repo, context.Number,
+            context.Title, context.Body, context.Draft, context.HeadSha, context.BaseSha, Array.Empty<string>(),
+            context.HeadRepoFullName, context.IsFork, context.AuthorAssociation, context.HeadRepositoryKnown,
+            context.BaseRefName, context.AuthorLogin);
+        blocked = ReviewAutoApproval.Evaluate(noLabel, settings, reviewFailed: false, hasMergeBlockers: false,
+            history, requiresConversationResolution: true, allowWrites: true, checks);
+        AssertEqual(false, blocked.ShouldApprove, "auto approval blocked without required label");
+        AssertContainsText(string.Join("\n", blocked.Blockers), "missing required label",
+            "auto approval required label reason");
+    }
+
     private static void TestReviewHistoryBuilderIncludesStickySummaryAndThreadSnapshot() {
         var settings = new ReviewSettings {
             MaxCommentChars = 120
@@ -1178,6 +1268,10 @@ internal static partial class Program {
                     ReviewedSha = "9999999",
                     HasMergeBlockers = true,
                     MergeBlockerStatus = "1 normalized item(s).",
+                    Recommendation = "needs-work",
+                    PositiveHighlights = new[] { "Clear parser split." },
+                    RiskNotes = new[] { "Compatibility surface changed." },
+                    FollowUps = new[] { "Add regression coverage." },
                     Findings = new[] {
                         new ReviewHistoryFinding {
                             Fingerprint = "todo-add-null-guard",
@@ -1235,6 +1329,9 @@ internal static partial class Program {
         AssertContainsText(json, "\"externalSummaries\": 1",
             "review history artifact json external summary count");
         AssertContainsText(json, "\"author\": \"claude\"", "review history artifact json external author");
+        AssertContainsText(json, "\"recommendation\": \"needs-work\"",
+            "review history artifact json recommendation");
+        AssertContainsText(json, "\"positiveHighlights\"", "review history artifact json positive highlights");
         AssertContainsText(markdown, "# IntelligenceX Review History Artifact",
             "review history artifact markdown title");
         AssertContainsText(markdown, "- Open findings: `1`", "review history artifact markdown open count");
@@ -1242,9 +1339,101 @@ internal static partial class Program {
             "review history artifact markdown external count");
         AssertContainsText(markdown, "Supporting context only; these summaries are not treated as IX-owned blocker state.",
             "review history artifact markdown external safety label");
+        AssertContainsText(markdown, "recommendation `needs-work`",
+            "review history artifact markdown recommendation");
+        AssertContainsText(markdown, "Good: Clear parser split.",
+            "review history artifact markdown positive signal");
         AssertContainsText(markdown, "reviewer (src/app.cs:42): Please add regression coverage.",
             "review history artifact markdown thread excerpt");
         AssertContainsText(markdown, "## Prompt Section", "review history artifact markdown prompt section");
+    }
+
+    private static void TestReviewHistoryMarkerRoundTripsStickyLedger() {
+        var settings = new ReviewSettings();
+        settings.History.Enabled = true;
+        settings.History.MaxRounds = 6;
+        var context = new PullRequestContext("owner/repo", "owner", "repo", 12, "Test title", "Body", false,
+            "abc2222", "base", Array.Empty<string>(), "owner/repo", false, null);
+        var priorSnapshot = new ReviewHistorySnapshot {
+            CurrentHeadSha = "abc2222",
+            Rounds = new[] {
+                new ReviewHistoryRound {
+                    Sequence = 1,
+                    Source = "intelligencex",
+                    ReviewedSha = "abc1111",
+                    HasMergeBlockers = true,
+                    MergeBlockerStatus = "1 normalized item(s).",
+                    Findings = new[] {
+                        new ReviewHistoryFinding {
+                            Fingerprint = "todo-add-null-guard",
+                            Section = "Todo List",
+                            Text = "Add null guard in parser.",
+                            Status = "open"
+                        }
+                    }
+                }
+            }
+        };
+        var currentComment = ReviewFormatter.BuildComment(context, string.Join("\n", new[] {
+                "## Summary 📝",
+                "Looks good overall.",
+                "",
+                "## Todo List ✅",
+                "None.",
+                "",
+                "## Critical Issues ⚠️",
+                "None.",
+                "",
+                "## Excellent Aspects ✨",
+                "- Keeps the parser path simple.",
+                "",
+                "## Other Issues 🧯",
+                "- Watch the compatibility surface.",
+                "",
+                "## Recommendations 💡",
+                "- Add a focused regression test."
+            }), settings, inlineSupported: true, inlineSuppressed: false, autoResolveNote: string.Empty,
+            budgetNote: string.Empty, usageLine: string.Empty, findingsBlock: string.Empty);
+
+        var withMarker = ReviewHistoryMarker.AppendOrReplace(currentComment, priorSnapshot, context, settings);
+
+        AssertContainsText(withMarker, "<!-- intelligencex:history:v1 ", "review history marker appended");
+        AssertEqual(true, ReviewHistoryMarker.TryReadRounds(withMarker, "abc2222", settings, out var rounds),
+            "review history marker parses");
+        AssertEqual(2, rounds.Count, "review history marker preserves prior and current rounds");
+        AssertEqual("abc1111", rounds[0].ReviewedSha, "review history marker prior round sha");
+        AssertEqual("abc2222", rounds[1].ReviewedSha, "review history marker current round sha");
+        AssertEqual(true, rounds[1].SameHeadAsCurrent, "review history marker current round same-head");
+        AssertEqual("approve", rounds[1].Recommendation, "review history marker stores current recommendation");
+        AssertEqual("Keeps the parser path simple.", rounds[1].PositiveHighlights[0],
+            "review history marker stores positive highlight");
+        AssertEqual("Watch the compatibility surface.", rounds[1].RiskNotes[0],
+            "review history marker stores risk note");
+        AssertEqual("Add a focused regression test.", rounds[1].FollowUps[0],
+            "review history marker stores follow-up");
+
+        var issueComments = new[] { new IssueComment(20, withMarker, "intelligencex-review") };
+        var snapshot = ReviewHistoryBuilder.BuildSnapshot(issueComments, "abc2222",
+            Array.Empty<PullRequestReviewThread>(), settings);
+        AssertEqual(2, snapshot.Rounds.Count, "review history builder loads marker rounds");
+        AssertEqual(0, snapshot.ResolvedSinceLastRound.Count,
+            "review history marker ledger does not infer cross-head resolution");
+        AssertDoesNotContainText(ReviewHistoryMarker.Remove(withMarker), "<!-- intelligencex:history:v1 ",
+            "review history marker can be stripped before parsing visible summary");
+        var promptSection = ReviewHistoryBuilder.Render(snapshot);
+        AssertContainsText(promptSection, "Prior-head IX merge blockers from sticky summary",
+            "review history marker ledger preserves prior-head context for prompt");
+        AssertContainsText(promptSection, "IX recommendation: Approve.",
+            "review history marker ledger renders recommendation in prompt context");
+        AssertContainsText(promptSection, "IX Good: Keeps the parser path simple.",
+            "review history marker ledger renders positive highlights in prompt context");
+        AssertContainsText(promptSection, "[todo] Add null guard in parser.",
+            "review history marker ledger renders prior finding in prompt context");
+        var block = ReviewHistoryBuilder.BuildCommentBlock(snapshot);
+        AssertContainsText(block, "| Recommendation | Good | Risks / Bad | Follow-up |",
+            "review history comment block renders posture table");
+        AssertContainsText(block, "Keeps the parser path simple.",
+            "review history comment block renders positive highlight");
     }
 
     private static void TestRedactionDefaults() {

@@ -101,6 +101,7 @@ internal sealed partial class GitHubClient : IDisposable {
         var headRepoFullName = headRepo?.GetString("full_name");
         var isFork = headRepo?.GetBoolean("fork") ?? false;
         var authorAssociation = obj.GetString("author_association");
+        var authorLogin = obj.GetObject("user")?.GetString("login");
 
         var labels = new List<string>();
         var labelsArray = obj.GetArray("labels");
@@ -115,7 +116,7 @@ internal sealed partial class GitHubClient : IDisposable {
         }
 
         var context = new PullRequestContext(repoFullName, owner, repo, prNumber, title, body, draft, headSha, baseSha,
-            labels, headRepoFullName, isFork, authorAssociation, headRepo is not null, baseRefName);
+            labels, headRepoFullName, isFork, authorAssociation, headRepo is not null, baseRefName, authorLogin);
         _pullRequestCache[cacheKey] = context;
         return context;
     }
@@ -563,6 +564,16 @@ internal sealed partial class GitHubClient : IDisposable {
             .Add("in_reply_to", inReplyTo);
         // Non-idempotent write: do not retry (avoid duplicate comments).
         await PostJsonAsync($"/repos/{owner}/{repo}/pulls/{number}/comments", payload, cancellationToken, allowRetries: false)
+            .ConfigureAwait(false);
+    }
+
+    public async Task CreatePullRequestReviewAsync(string owner, string repo, int number, string body, string reviewEvent,
+        CancellationToken cancellationToken) {
+        var payload = new JsonObject()
+            .Add("body", body)
+            .Add("event", reviewEvent);
+        // Non-idempotent write: do not retry (avoid duplicate reviews).
+        await PostJsonAsync($"/repos/{owner}/{repo}/pulls/{number}/reviews", payload, cancellationToken, allowRetries: false)
             .ConfigureAwait(false);
     }
 

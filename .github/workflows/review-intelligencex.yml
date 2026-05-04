@@ -191,6 +191,26 @@ on:
         description: 'Focus override for reusable callers'
         required: false
         type: string
+      auto_approve_enabled:
+        description: 'Auto-approval enablement override for reusable callers'
+        required: false
+        type: string
+      auto_approve_dry_run:
+        description: 'Auto-approval dry-run override for reusable callers'
+        required: false
+        type: string
+      auto_approve_required_labels:
+        description: 'Auto-approval required labels for reusable callers'
+        required: false
+        type: string
+      auto_approve_allowed_authors:
+        description: 'Auto-approval allowed authors for reusable callers'
+        required: false
+        type: string
+      auto_approve_ignored_check_names:
+        description: 'Auto-approval ignored check names for reusable callers'
+        required: false
+        type: string
       length:
         description: 'Review length override for reusable callers'
         required: false
@@ -344,9 +364,8 @@ jobs:
   # INTELLIGENCEX:BEGIN
   review:
     # Do not run secret-dependent review on any forked pull requests.
-    # Skip Dependabot PRs by default to avoid unnecessary LLM usage/budget burn.
-    # Maintainers can opt-in per PR by adding the `needs-ai-review` label.
-    if: ${{ (github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork) && (github.event_name != 'pull_request' || (github.actor != 'dependabot[bot]' && github.actor != 'app/dependabot') || contains(github.event.pull_request.labels.*.name, 'needs-ai-review')) }}
+    # Dependabot PRs still run the job, then the reviewer exits before LLM/auth unless `needs-ai-review` is present.
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
     permissions:
       contents: read
       pull-requests: write
@@ -383,6 +402,11 @@ jobs:
       strictness: ${{ inputs.strictness }}
       tone: ${{ inputs.tone }}
       focus: ${{ inputs.focus }}
+      auto_approve_enabled: ${{ fromJSON(inputs.auto_approve_enabled || 'false') }}
+      auto_approve_dry_run: ${{ fromJSON(inputs.auto_approve_dry_run || 'true') }}
+      auto_approve_required_labels: ${{ inputs.auto_approve_required_labels || 'ix-auto-approve' }}
+      auto_approve_allowed_authors: ${{ inputs.auto_approve_allowed_authors }}
+      auto_approve_ignored_check_names: ${{ inputs.auto_approve_ignored_check_names || 'IntelligenceX Review' }}
       length: ${{ inputs.length || 'medium' }}
       mode: ${{ inputs.mode || 'hybrid' }}
       persona: ${{ inputs.persona }}

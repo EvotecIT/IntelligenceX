@@ -677,6 +677,14 @@ internal static partial class Program {
             TestReviewSettingsLoadConfigAllowsZeroForNonNegativeLimits);
         failed += Run("Review settings env allows zero for non-negative limits",
             TestReviewSettingsFromEnvironmentAllowsZeroForNonNegativeLimits);
+        failed += Run("Review settings author skip defaults config and env",
+            TestReviewSettingsAuthorSkipDefaultsConfigAndEnv);
+        failed += Run("Review settings repository guidance config and env",
+            TestReviewSettingsConventionPacksConfigAndEnv);
+        failed += Run("Review settings auto approval config and env",
+            TestReviewSettingsAutoApprovalConfigAndEnv);
+        failed += Run("Reviewer author skip honors force-review labels and event author",
+            TestReviewerAuthorSkipHonorsForceReviewLabelsAndEventAuthor);
         failed += Run("Setup-generated reviewer config validates and loads canonical related PRs",
             TestSetupGeneratedReviewerConfigValidatesAndLoadsWithCanonicalRelatedPrs);
         failed += Run("Review settings policy preview clamp range", TestReviewSettingsPolicyRulePreviewConfigClampRange);
@@ -804,6 +812,8 @@ internal static partial class Program {
         failed += Run("Prompt includes review history section", TestPromptBuilderIncludesReviewHistorySection);
         failed += Run("Prompt compact history guard includes critical issues",
             TestPromptBuilderCompactHistoryGuardIncludesCriticalIssues);
+        failed += Run("Prompt includes repository guidance and custom conventions", TestPromptBuilderIncludesConventionPacks);
+        failed += Run("Review auto approval readiness gates", TestReviewAutoApprovalReadinessGates);
         failed += Run("Prompt includes ci context section", TestPromptBuilderIncludesCiContextSection);
         failed += Run("Review history builder includes sticky summary and thread snapshot",
             TestReviewHistoryBuilderIncludesStickySummaryAndThreadSnapshot);
@@ -832,6 +842,8 @@ internal static partial class Program {
             TestReviewSummaryStabilityDropsHistoryProgressBlock);
         failed += Run("Review history artifacts render json and markdown",
             TestReviewHistoryArtifactsRenderJsonAndMarkdown);
+        failed += Run("Review history marker round-trips sticky ledger",
+            TestReviewHistoryMarkerRoundTripsStickyLedger);
         failed += Run("Redaction defaults", TestRedactionDefaults);
         failed += Run("Review budget note", TestReviewBudgetNote);
         failed += Run("Review budget note empty", TestReviewBudgetNoteEmpty);
