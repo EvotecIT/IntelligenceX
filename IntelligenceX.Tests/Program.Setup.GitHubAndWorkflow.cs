@@ -311,6 +311,7 @@ jobs:
         var sourceStep = ExtractWorkflowStepBlock(content, "Run IntelligenceX.Reviewer (source)");
         var releaseUnixStep = ExtractWorkflowStepBlock(content, "Run IntelligenceX.Reviewer (release, unix)");
         var releaseWindowsStep = ExtractWorkflowStepBlock(content, "Run IntelligenceX.Reviewer (release, windows)");
+        var optionalOverridesStep = ExtractWorkflowStepBlock(content, "Apply optional reviewer config overrides");
         AssertContainsText(content, "workflow_call:", "reusable workflow defines workflow_call");
         AssertEqual(1, CountOccurrences(content, "openai_model:"),
             "reusable workflow defines openai_model once for workflow_call");
@@ -361,6 +362,18 @@ jobs:
         AssertEqual(1, CountOccurrences(content,
                 "INPUT_HISTORY_INCLUDE_EXTERNAL_BOT_SUMMARIES: ${{ inputs.history_include_external_bot_summaries }}"),
             "reusable workflow exports external bot history env once");
+        AssertEqual(false, jobEnvContent.Contains("INPUT_AUTO_APPROVE_ENABLED:", StringComparison.Ordinal),
+            "reusable workflow does not export optional auto-approval overrides at job scope");
+        AssertEqual(false, jobEnvContent.Contains("INPUT_SKIP_AUTHORS:", StringComparison.Ordinal),
+            "reusable workflow does not export optional author skip overrides at job scope");
+        AssertEqual(false, jobEnvContent.Contains("INPUT_FORCE_REVIEW_LABELS:", StringComparison.Ordinal),
+            "reusable workflow does not export optional force-review overrides at job scope");
+        AssertContainsText(optionalOverridesStep, "add_if_set INPUT_AUTO_APPROVE_ENABLED \"$AUTO_APPROVE_ENABLED\"",
+            "reusable workflow exports auto-approval override only when supplied");
+        AssertContainsText(optionalOverridesStep, "add_if_set INPUT_SKIP_AUTHORS \"$SKIP_AUTHORS\"",
+            "reusable workflow exports skip-author override only when supplied");
+        AssertContainsText(optionalOverridesStep, "add_if_set INPUT_FORCE_REVIEW_LABELS \"$FORCE_REVIEW_LABELS\"",
+            "reusable workflow exports force-review labels override only when supplied");
         AssertContainsText(content, "inputs.reviewer_source == 'source' && steps.reviewer_build.outcome == 'success'",
             "reusable workflow gates source reviewer execution on a successful source build");
         AssertContainsText(content, "git diff --name-only HEAD^1 HEAD^2 > artifacts/changed-files.txt",

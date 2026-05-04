@@ -145,27 +145,22 @@ on:
       auto_approve_enabled:
         description: 'Enable guarded auto-approval readiness/approval'
         required: false
-        default: ''
         type: string
       auto_approve_dry_run:
         description: 'Audit auto-approval decisions without submitting approvals'
         required: false
-        default: ''
         type: string
       auto_approve_required_labels:
         description: 'Comma-separated labels required before auto-approval'
         required: false
-        default: ''
         type: string
       auto_approve_allowed_authors:
         description: 'Comma-separated PR author logins eligible for auto-approval'
         required: false
-        default: ''
         type: string
       auto_approve_ignored_check_names:
         description: 'Comma-separated check names ignored by auto-approval'
         required: false
-        default: ''
         type: string
       length:
         description: 'Review length: short, medium, long'
@@ -385,12 +380,10 @@ on:
       skip_authors:
         description: 'Comma-separated PR author logins to skip before provider auth'
         required: false
-        default: ''
         type: string
       force_review_labels:
         description: 'Comma-separated labels that bypass author skip filters'
         required: false
-        default: ''
         type: string
       skip_paths:
         description: 'Comma-separated glob patterns; if all files match, skip'
@@ -588,11 +581,6 @@ jobs:
       INPUT_STRICTNESS: ${{ inputs.strictness }}
       INPUT_TONE: ${{ inputs.tone }}
       INPUT_FOCUS: ${{ inputs.focus }}
-      INPUT_AUTO_APPROVE_ENABLED: ${{ inputs.auto_approve_enabled }}
-      INPUT_AUTO_APPROVE_DRY_RUN: ${{ inputs.auto_approve_dry_run }}
-      INPUT_AUTO_APPROVE_REQUIRED_LABELS: ${{ inputs.auto_approve_required_labels }}
-      INPUT_AUTO_APPROVE_ALLOWED_AUTHORS: ${{ inputs.auto_approve_allowed_authors }}
-      INPUT_AUTO_APPROVE_IGNORED_CHECK_NAMES: ${{ inputs.auto_approve_ignored_check_names }}
       INPUT_LENGTH: ${{ inputs.length }}
       INPUT_MODE: ${{ inputs.mode }}
       INPUT_PERSONA: ${{ inputs.persona }}
@@ -638,8 +626,6 @@ jobs:
       INPUT_SKIP_DRAFT: ${{ inputs.skip_draft }}
       INPUT_SKIP_TITLES: ${{ inputs.skip_titles }}
       INPUT_SKIP_LABELS: ${{ inputs.skip_labels }}
-      INPUT_SKIP_AUTHORS: ${{ inputs.skip_authors }}
-      INPUT_FORCE_REVIEW_LABELS: ${{ inputs.force_review_labels }}
       INPUT_SKIP_PATHS: ${{ inputs.skip_paths }}
       INPUT_REDACT_PII: ${{ inputs.redact_pii }}
       INPUT_REDACTION_PATTERNS: ${{ inputs.redaction_patterns }}
@@ -692,6 +678,33 @@ jobs:
         with:
           app-id: ${{ env.INTELLIGENCEX_APP_ID }}
           private-key: ${{ env.INTELLIGENCEX_APP_KEY }}
+      - name: Apply optional reviewer config overrides
+        shell: bash
+        env:
+          AUTO_APPROVE_ENABLED: ${{ inputs.auto_approve_enabled }}
+          AUTO_APPROVE_DRY_RUN: ${{ inputs.auto_approve_dry_run }}
+          AUTO_APPROVE_REQUIRED_LABELS: ${{ inputs.auto_approve_required_labels }}
+          AUTO_APPROVE_ALLOWED_AUTHORS: ${{ inputs.auto_approve_allowed_authors }}
+          AUTO_APPROVE_IGNORED_CHECK_NAMES: ${{ inputs.auto_approve_ignored_check_names }}
+          SKIP_AUTHORS: ${{ inputs.skip_authors }}
+          FORCE_REVIEW_LABELS: ${{ inputs.force_review_labels }}
+        run: |
+          set -euo pipefail
+          add_if_set() {
+            local name="$1"
+            local value="$2"
+            if [ -n "${value//[[:space:]]/}" ]; then
+              printf '%s=%s\n' "$name" "$value" >> "$GITHUB_ENV"
+            fi
+          }
+
+          add_if_set INPUT_AUTO_APPROVE_ENABLED "$AUTO_APPROVE_ENABLED"
+          add_if_set INPUT_AUTO_APPROVE_DRY_RUN "$AUTO_APPROVE_DRY_RUN"
+          add_if_set INPUT_AUTO_APPROVE_REQUIRED_LABELS "$AUTO_APPROVE_REQUIRED_LABELS"
+          add_if_set INPUT_AUTO_APPROVE_ALLOWED_AUTHORS "$AUTO_APPROVE_ALLOWED_AUTHORS"
+          add_if_set INPUT_AUTO_APPROVE_IGNORED_CHECK_NAMES "$AUTO_APPROVE_IGNORED_CHECK_NAMES"
+          add_if_set INPUT_SKIP_AUTHORS "$SKIP_AUTHORS"
+          add_if_set INPUT_FORCE_REVIEW_LABELS "$FORCE_REVIEW_LABELS"
       - name: Resolve reviewer release
         if: ${{ inputs.reviewer_source == 'release' && inputs.reviewer_release_url == '' }}
         id: reviewer_release
