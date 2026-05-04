@@ -659,10 +659,10 @@ internal static partial class Program {
         });
         var pendingOnlyDecision = ReviewAutoApproval.Evaluate(context, settings, reviewFailed: false,
             hasMergeBlockers: false, history, requiresConversationResolution: true, allowWrites: true, failedChecks);
-        AssertEqual(false, pendingOnlyDecision.ShouldApprove,
-            "auto approval pending-only mode blocks completed failing checks");
-        AssertContainsText(string.Join("\n", pendingOnlyDecision.Blockers), "completed failing check",
-            "auto approval pending-only failure blocker reason");
+        AssertEqual(true, pendingOnlyDecision.ShouldApprove,
+            "auto approval pending-only mode ignores completed failing checks when pass gate is disabled");
+        AssertContainsText(string.Join("\n", pendingOnlyDecision.PassedGates), "no pending checks",
+            "auto approval pending-only pass reason");
 
         settings.AutoApprove.RequireChecksPass = true;
         settings.AutoApprove.RequireNoPendingChecks = true;
@@ -704,10 +704,10 @@ internal static partial class Program {
         });
         var eligible = ReviewAutoApproval.Evaluate(context, settings, reviewFailed: false, hasMergeBlockers: false,
             history, requiresConversationResolution: true, allowWrites: true, failedChecks);
-        AssertEqual(false, eligible.ShouldApprove,
-            "auto approval pending-only mode blocks completed failing checks");
-        AssertContainsText(string.Join("\n", eligible.Blockers), "1 completed failing check(s)",
-            "auto approval pending-only mode reports completed failure blocker");
+        AssertEqual(true, eligible.ShouldApprove,
+            "auto approval pending-only mode ignores completed failing checks when pass gate is disabled");
+        AssertContainsText(string.Join("\n", eligible.PassedGates), "no pending checks",
+            "auto approval pending-only mode records the independent pass gate");
     }
 
     private static void TestGitHubCommitStatusesContributeToCheckSnapshot() {
