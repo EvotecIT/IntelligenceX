@@ -34,8 +34,8 @@
     }
   },
   "review": {
-    "maxFiles": 30,
-    "maxPatchChars": 20000,
+    "maxFiles": 80,
+    "maxPatchChars": 60000,
     "reviewDiffRange": "pr-base",
     "summaryStability": true,
     "includeIssueComments": true,
