@@ -8,6 +8,7 @@ namespace IntelligenceX.Reviewer;
 internal sealed class ReviewAutoApprovalDecision {
     public bool Enabled { get; init; }
     public bool DryRun { get; init; }
+    public bool DisplayReadiness { get; init; }
     public bool ShouldApprove { get; init; }
     public IReadOnlyList<string> PassedGates { get; init; } = Array.Empty<string>();
     public IReadOnlyList<string> Blockers { get; init; } = Array.Empty<string>();
@@ -46,8 +47,8 @@ internal static class ReviewAutoApproval {
             blockers.Add("GitHub writes disabled");
         }
 
-        AddLabelGate(context, auto, blockers, passed);
-        AddAuthorGate(context, auto, blockers, passed);
+        var labelAllowed = AddLabelGate(context, auto, blockers, passed);
+        var authorAllowed = AddAuthorGate(context, auto, blockers, passed);
         AddReviewGate(auto, reviewFailed, hasMergeBlockers, blockers, passed);
         AddThreadGate(auto, history, requiresConversationResolution, reviewThreadsUnavailable, blockers, passed);
 
@@ -57,6 +58,7 @@ internal static class ReviewAutoApproval {
         return new ReviewAutoApprovalDecision {
             Enabled = true,
             DryRun = auto.DryRun,
+            DisplayReadiness = allowWrites && labelAllowed && authorAllowed,
             ShouldApprove = blockers.Count == 0,
             PassedGates = passed,
             Blockers = blockers,
@@ -66,7 +68,7 @@ internal static class ReviewAutoApproval {
     }
 
     public static string BuildCommentBlock(ReviewAutoApprovalDecision decision) {
-        if (!decision.Enabled) {
+        if (!decision.Enabled || !decision.DisplayReadiness) {
             return string.Empty;
         }
 
@@ -100,40 +102,44 @@ internal static class ReviewAutoApproval {
         return sb.ToString().TrimEnd();
     }
 
-    private static void AddLabelGate(PullRequestContext context, ReviewAutoApproveSettings auto,
+    private static bool AddLabelGate(PullRequestContext context, ReviewAutoApproveSettings auto,
         List<string> blockers, List<string> passed) {
         var labels = context.Labels ?? Array.Empty<string>();
         if (auto.BlockedLabels.Count > 0 &&
             labels.Any(label => auto.BlockedLabels.Contains(label, StringComparer.OrdinalIgnoreCase))) {
             blockers.Add("blocked by label");
-            return;
+            return false;
         }
 
         if (auto.RequiredLabels.Count == 0) {
             passed.Add("label gate disabled");
-            return;
+            return true;
         }
 
         if (labels.Any(label => auto.RequiredLabels.Contains(label, StringComparer.OrdinalIgnoreCase))) {
             passed.Add("required label present");
+            return true;
         } else {
             blockers.Add($"missing required label: {string.Join(", ", auto.RequiredLabels)}");
+            return false;
         }
     }
 
-    private static void AddAuthorGate(PullRequestContext context, ReviewAutoApproveSettings auto,
+    private static bool AddAuthorGate(PullRequestContext context, ReviewAutoApproveSettings auto,
         List<string> blockers, List<string> passed) {
         if (auto.AllowedAuthors.Count == 0) {
             passed.Add("author gate disabled");
-            return;
+            return true;
         }
 
         var author = context.AuthorLogin;
         if (!string.IsNullOrWhiteSpace(author) &&
             auto.AllowedAuthors.Contains(author, StringComparer.OrdinalIgnoreCase)) {
             passed.Add("author allowed");
+            return true;
         } else {
             blockers.Add("author not allowed");
+            return false;
         }
     }
 

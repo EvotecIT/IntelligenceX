@@ -92,27 +92,30 @@ internal static class ReviewHistoryBuilder {
         }
 
         var lines = new List<string>();
+        var hasVisibleProgress = false;
         var latestSameHeadRound = FindLatestSameHeadRound(snapshot.Rounds);
         if (latestSameHeadRound is not null) {
-            AppendPostureTable(lines, latestSameHeadRound);
+            hasVisibleProgress |= AppendPostureTable(lines, latestSameHeadRound);
         }
         if (snapshot.OpenFindings.Count > 0) {
             lines.Add("Open on current head:");
             AppendFindingTable(lines, "Open", snapshot.OpenFindings);
-        } else if (latestSameHeadRound is not null && latestSameHeadRound.FindingsParseIncomplete) {
+            hasVisibleProgress = true;
+        } else if (latestSameHeadRound is not null &&
+                   (latestSameHeadRound.FindingsParseIncomplete ||
+                    (latestSameHeadRound.HasMergeBlockers && latestSameHeadRound.Findings.Count == 0))) {
             lines.Add("Open on current head: unknown; merge-blocker lines could not be fully normalized.");
-        } else {
-            lines.Add("Open on current head: none.");
+            hasVisibleProgress = true;
         }
 
         if (snapshot.ResolvedSinceLastRound.Count > 0) {
             lines.Add("Resolved since last round:");
             AppendFindingTable(lines, "Resolved", snapshot.ResolvedSinceLastRound);
+            hasVisibleProgress = true;
         }
 
-        if (snapshot.ResolvedSinceLastRound.Count == 0 &&
-            lines.Contains("Open on current head: none.", StringComparer.Ordinal)) {
-            lines.Add("Resolved since last round: none newly resolved.");
+        if (!hasVisibleProgress) {
+            return string.Empty;
         }
 
         var sb = new StringBuilder();
@@ -372,18 +375,26 @@ internal static class ReviewHistoryBuilder {
         };
     }
 
-    private static void AppendPostureTable(List<string> lines, ReviewHistoryRound round) {
+    private static bool AppendPostureTable(List<string> lines, ReviewHistoryRound round) {
         if (string.IsNullOrWhiteSpace(round.Recommendation) &&
             round.PositiveHighlights.Count == 0 &&
             round.RiskNotes.Count == 0 &&
             round.FollowUps.Count == 0) {
-            return;
+            return false;
+        }
+
+        if (round.PositiveHighlights.Count == 0 &&
+            round.RiskNotes.Count == 0 &&
+            round.FollowUps.Count == 0 &&
+            string.Equals(round.Recommendation, "approve", StringComparison.OrdinalIgnoreCase)) {
+            return false;
         }
 
         lines.Add("Latest review posture:");
         lines.Add("| Recommendation | Good | Risks / Bad | Follow-up |");
         lines.Add("| --- | --- | --- | --- |");
         lines.Add($"| {EscapeTableCell(NormalizeRecommendationLabel(round.Recommendation))} | {EscapeTableCell(JoinSummaryItems(round.PositiveHighlights))} | {EscapeTableCell(JoinSummaryItems(round.RiskNotes))} | {EscapeTableCell(JoinSummaryItems(round.FollowUps))} |");
+        return true;
     }
 
     private static void AppendFindingTable(List<string> lines, string state, IReadOnlyList<ReviewHistoryFinding> findings) {

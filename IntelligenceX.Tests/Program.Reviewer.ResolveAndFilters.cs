@@ -611,6 +611,7 @@ internal static partial class Program {
         var decision = ReviewAutoApproval.Evaluate(context, settings, reviewFailed: false, hasMergeBlockers: false,
             history, requiresConversationResolution: true, allowWrites: true, checks);
         AssertEqual(true, decision.ShouldApprove, "auto approval eligible after ignored pending reviewer check");
+        AssertEqual(true, decision.DisplayReadiness, "auto approval readiness displays after opt-in gates pass");
         AssertEqual(true, decision.DryRun, "auto approval dry run default");
         AssertEqual(0, decision.EffectiveCheckSnapshot!.PendingCount, "auto approval ignored check removes pending count");
         var block = ReviewAutoApproval.BuildCommentBlock(decision);
@@ -631,8 +632,11 @@ internal static partial class Program {
         blocked = ReviewAutoApproval.Evaluate(noLabel, settings, reviewFailed: false, hasMergeBlockers: false,
             history, requiresConversationResolution: true, allowWrites: true, checks);
         AssertEqual(false, blocked.ShouldApprove, "auto approval blocked without required label");
+        AssertEqual(false, blocked.DisplayReadiness, "auto approval readiness hides without required opt-in label");
         AssertContainsText(string.Join("\n", blocked.Blockers), "missing required label",
             "auto approval required label reason");
+        AssertEqual(string.Empty, ReviewAutoApproval.BuildCommentBlock(blocked),
+            "auto approval comment block hides when policy opt-in is missing");
 
         var onlyIgnoredChecks = new ReviewCheckSnapshot(new[] {
             new ReviewCheckRun("IntelligenceX Review", "completed", "success", null)
@@ -957,7 +961,6 @@ internal static partial class Program {
             "review history latest same-head round marks disappeared stale finding resolved");
         AssertEqual("Retry the alternate transport.", snapshot.ResolvedSinceLastRound[0].Text,
             "review history resolved stale same-head finding text");
-        AssertContainsText(block, "Open on current head: none.", "review history latest same-head block no open findings");
         AssertContainsText(block, "Resolved since last round:", "review history latest same-head block resolved label");
         AssertContainsText(block, "[todo] Retry the alternate transport.",
             "review history latest same-head block resolved stale finding");
@@ -1000,9 +1003,8 @@ internal static partial class Program {
         AssertEqual(0, snapshot.OpenFindings.Count, "review history cross-head snapshot has no current same-head open findings");
         AssertEqual(0, snapshot.ResolvedSinceLastRound.Count,
             "review history cross-head snapshot does not mark disappeared finding resolved");
-        AssertContainsText(block, "Open on current head: none.", "review history cross-head block no open findings");
-        AssertContainsText(block, "Resolved since last round: none newly resolved.",
-            "review history cross-head block no resolved findings");
+        AssertEqual(string.Empty, block,
+            "review history cross-head block hides when there is no current-head progress to display");
         AssertDoesNotContainText(block, "Retry the alternate transport.",
             "review history cross-head block does not surface prior-head finding as resolved");
     }
@@ -1123,8 +1125,6 @@ internal static partial class Program {
             "review history latest same-head snapshot suppresses finding resolved later in same round");
         AssertEqual(1, snapshot.ResolvedSinceLastRound.Count,
             "review history latest same-head snapshot keeps resolved finding when latest round checks it off");
-        AssertContainsText(block, "Open on current head: none.",
-            "review history latest same-head block has no current open finding after later resolution");
         AssertContainsText(block, "[todo] Retry the alternate transport.",
             "review history latest same-head block reports the resolved finding once");
     }
@@ -1217,9 +1217,9 @@ internal static partial class Program {
             "review history unparseable same-head snapshot has no normalized open findings");
         AssertEqual(0, snapshot.ResolvedSinceLastRound.Count,
             "review history unparseable same-head snapshot does not infer missing finding resolved");
-        AssertContainsText(block, "Open on current head: none.",
-            "review history unparseable same-head block reports no normalized open findings");
-        AssertContainsText(block, "Resolved since last round: none newly resolved.",
+        AssertContainsText(block, "Open on current head: unknown; merge-blocker lines could not be fully normalized.",
+            "review history unparseable same-head block reports unknown normalized open findings");
+        AssertDoesNotContainText(block, "Resolved since last round:",
             "review history unparseable same-head block does not claim the missing finding resolved");
         AssertDoesNotContainText(block, "[todo] Retry the alternate transport.",
             "review history unparseable same-head block does not surface prior finding as resolved");
@@ -1380,8 +1380,8 @@ internal static partial class Program {
 
         AssertEqual(0, snapshot.ResolvedSinceLastRound.Count,
             "review history duplicate previous statuses do not emit a fresh resolved finding");
-        AssertContainsText(block, "Resolved since last round: none newly resolved.",
-            "review history duplicate previous statuses block does not claim a new resolution");
+        AssertEqual(string.Empty, block,
+            "review history duplicate previous statuses block hides when there is no new visible progress");
         AssertDoesNotContainText(block, "[todo] Retry the alternate transport.",
             "review history duplicate previous statuses block does not surface already-resolved duplicate as newly resolved");
     }

@@ -631,9 +631,10 @@ When history is enabled, sticky GitHub review comments also carry a hidden `inte
 compact base64url JSON ledger. The marker is the durable source for prior IX rounds when the visible sticky comment is
 updated; artifacts remain the expanded diagnostic copy for CI and troubleshooting. Each round records merge-blocker
 state plus a deterministic recommendation (`approve`, `needs-work`, or `manual-review`) and compact positive, risk, and
-follow-up highlights parsed from the review sections. The visible `History Progress` block renders the latest posture
-and current-head/same-head resolved blocker state as small tables. Prior-head blockers are kept as prompt context and
-are not automatically marked resolved unless same-head evidence supports that conclusion.
+follow-up highlights parsed from the review sections. The visible `History Progress` block renders only when there is
+current-head posture, open blocker state, unresolved parse uncertainty, or same-head resolved blocker movement worth
+showing. Prior-head blockers are kept as prompt context and are not automatically marked resolved unless same-head
+evidence supports that conclusion.
 
 GitHub Actions input/env aliases:
 - `history_enabled` / `REVIEW_HISTORY_ENABLED`
@@ -692,8 +693,8 @@ Env aliases:
 ## Auto-approval readiness
 
 Auto-approval is default-off and conservative. When enabled, the reviewer renders an `Auto-Approval Readiness` table in
-the sticky comment. It submits an approving pull request review only when all configured gates pass and `dryRun` is
-`false`.
+the sticky comment only after policy opt-in gates allow the PR, such as required labels and author policy. It submits an
+approving pull request review only when all configured gates pass and `dryRun` is `false`.
 
 ```json
 {
