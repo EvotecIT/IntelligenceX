@@ -820,6 +820,8 @@ internal static partial class Program {
             TestReviewAutoApprovalPendingOnlyGateIsIndependent);
         failed += Run("GitHub commit statuses contribute to check snapshot",
             TestGitHubCommitStatusesContributeToCheckSnapshot);
+        failed += Run("GitHub auto approval review match requires exact head sha",
+            TestGitHubAutoApprovalReviewMatchRequiresExactHeadSha);
         failed += Run("Prompt includes ci context section", TestPromptBuilderIncludesCiContextSection);
         failed += Run("Review history builder includes sticky summary and thread snapshot",
             TestReviewHistoryBuilderIncludesStickySummaryAndThreadSnapshot);

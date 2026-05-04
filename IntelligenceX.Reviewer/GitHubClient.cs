@@ -593,10 +593,7 @@ internal sealed partial class GitHubClient : IDisposable {
                 var state = obj.GetString("state");
                 var commitId = obj.GetString("commit_id");
                 var body = obj.GetString("body") ?? string.Empty;
-                if (state?.Equals("APPROVED", StringComparison.OrdinalIgnoreCase) == true &&
-                    !string.IsNullOrWhiteSpace(commitId) &&
-                    headSha.StartsWith(commitId!, StringComparison.OrdinalIgnoreCase) &&
-                    body.Contains(marker, StringComparison.OrdinalIgnoreCase)) {
+                if (IsMatchingAutoApprovalReview(state, commitId, body, headSha, marker)) {
                     return true;
                 }
             }
@@ -623,6 +620,17 @@ internal sealed partial class GitHubClient : IDisposable {
         approvalBody.Contains("IntelligenceX auto-approval", StringComparison.OrdinalIgnoreCase)
             ? "IntelligenceX auto-approval"
             : approvalBody.Trim();
+
+    internal static bool IsMatchingAutoApprovalReviewForTests(string? state, string? commitId, string? body,
+        string? headSha, string marker) =>
+        IsMatchingAutoApprovalReview(state, commitId, body ?? string.Empty, headSha, marker);
+
+    private static bool IsMatchingAutoApprovalReview(string? state, string? commitId, string body, string? headSha,
+        string marker) =>
+        state?.Equals("APPROVED", StringComparison.OrdinalIgnoreCase) == true &&
+        !string.IsNullOrWhiteSpace(commitId) &&
+        string.Equals(commitId, headSha, StringComparison.OrdinalIgnoreCase) &&
+        body.Contains(marker, StringComparison.OrdinalIgnoreCase);
 
     public void Dispose() {
         _http.Dispose();

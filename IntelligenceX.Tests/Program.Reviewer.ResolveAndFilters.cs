@@ -731,6 +731,26 @@ internal static partial class Program {
         AssertContainsText(runs[1].Name, "status: legacy-quality", "legacy status run name");
     }
 
+    private static void TestGitHubAutoApprovalReviewMatchRequiresExactHeadSha() {
+        const string marker = "IntelligenceX auto-approval";
+        const string headSha = "abcdef1234567890";
+        const string prefix = "abcdef1";
+        var body = $"Approved by {marker}.";
+
+        AssertEqual(true,
+            GitHubClient.IsMatchingAutoApprovalReviewForTests("APPROVED", headSha, body, headSha, marker),
+            "auto approval review matches exact head sha");
+        AssertEqual(false,
+            GitHubClient.IsMatchingAutoApprovalReviewForTests("APPROVED", prefix, body, headSha, marker),
+            "auto approval review rejects commit id prefixes");
+        AssertEqual(false,
+            GitHubClient.IsMatchingAutoApprovalReviewForTests("COMMENTED", headSha, body, headSha, marker),
+            "auto approval review rejects non-approval states");
+        AssertEqual(false,
+            GitHubClient.IsMatchingAutoApprovalReviewForTests("APPROVED", headSha, "Looks good", headSha, marker),
+            "auto approval review requires approval marker");
+    }
+
     private static void TestReviewHistoryBuilderIncludesStickySummaryAndThreadSnapshot() {
         var settings = new ReviewSettings {
             MaxCommentChars = 120
