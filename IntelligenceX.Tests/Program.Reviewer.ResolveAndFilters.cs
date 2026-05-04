@@ -916,9 +916,14 @@ internal static partial class Program {
 
         AssertContainsText(block, "## History Progress 🔁", "review history comment block heading");
         AssertContainsText(block, "Open on current head:", "review history comment block open label");
-        AssertContainsText(block, "[todo] Add null guard in parser.", "review history comment block open item");
+        AssertContainsText(block, "Open on current head: 1 finding.", "review history comment block open count");
         AssertContainsText(block, "Resolved since last round:", "review history comment block resolved label");
-        AssertContainsText(block, "[critical] Cover the stale thread path.", "review history comment block resolved item");
+        AssertContainsText(block, "Resolved since last round: 1 finding.", "review history comment block resolved count");
+        AssertContainsText(block, "Finding lifecycle:", "review history comment block lifecycle label");
+        AssertContainsText(block, "| New | todo | Add null guard in parser. |",
+            "review history comment block lifecycle new item");
+        AssertContainsText(block, "| Resolved | critical | Cover the stale thread path. |",
+            "review history comment block lifecycle resolved item");
     }
 
     private static void TestReviewHistoryBuilderTreatsMissingOptionalBlockerSectionAsCleanPosture() {
@@ -999,7 +1004,7 @@ internal static partial class Program {
         AssertEqual("Retry the alternate transport.", snapshot.ResolvedSinceLastRound[0].Text,
             "review history resolved stale same-head finding text");
         AssertContainsText(block, "Resolved since last round:", "review history latest same-head block resolved label");
-        AssertContainsText(block, "[todo] Retry the alternate transport.",
+        AssertContainsText(block, "| Resolved | todo | Retry the alternate transport. |",
             "review history latest same-head block resolved stale finding");
     }
 
@@ -1115,11 +1120,11 @@ internal static partial class Program {
         AssertEqual(1, snapshot.OpenFindings.Count, "review history capped same-head snapshot keeps extracted open finding");
         AssertEqual(0, snapshot.ResolvedSinceLastRound.Count,
             "review history capped same-head snapshot does not infer missing finding resolved");
-        AssertContainsText(block, "[todo] Add a new blocker ahead of the older one.",
+        AssertContainsText(block, "| New | todo | Add a new blocker ahead of the older one. |",
             "review history capped same-head block keeps current extracted open finding");
         AssertDoesNotContainText(block, "Resolved since last round:",
             "review history capped same-head block omits resolved section when nothing was resolved");
-        AssertDoesNotContainText(block, "[todo] Retry the alternate transport.",
+        AssertDoesNotContainText(block, "| Resolved | todo | Retry the alternate transport. |",
             "review history capped same-head block does not falsely report hidden finding resolved");
     }
 
@@ -1162,7 +1167,7 @@ internal static partial class Program {
             "review history latest same-head snapshot suppresses finding resolved later in same round");
         AssertEqual(1, snapshot.ResolvedSinceLastRound.Count,
             "review history latest same-head snapshot keeps resolved finding when latest round checks it off");
-        AssertContainsText(block, "[todo] Retry the alternate transport.",
+        AssertContainsText(block, "| Resolved | todo | Retry the alternate transport. |",
             "review history latest same-head block reports the resolved finding once");
     }
 
@@ -1207,7 +1212,7 @@ internal static partial class Program {
             "review history exact-cap complete snapshot still reports legitimate same-head resolution");
         AssertContainsText(block, "Resolved since last round:",
             "review history exact-cap complete block includes resolved section");
-        AssertContainsText(block, "[todo] Retry the alternate transport.",
+        AssertContainsText(block, "| Resolved | todo | Retry the alternate transport. |",
             "review history exact-cap complete block includes resolved finding text");
     }
 
@@ -1314,14 +1319,14 @@ internal static partial class Program {
             "review history partial-parse same-head snapshot does not infer malformed missing finding resolved");
         AssertEqual(true, snapshot.Rounds[1].FindingsParseIncomplete,
             "review history partial-parse same-head round records incomplete parsing");
-        AssertContainsText(block, "[todo] Add a new blocker ahead of the older one.",
+        AssertContainsText(block, "| New | todo | Add a new blocker ahead of the older one. |",
             "review history partial-parse same-head block includes normalized current finding");
         AssertContainsText(rendered,
             "Additional merge-blocker lines were present but could not be normalized",
             "review history partial-parse same-head snapshot warns about incomplete normalization");
         AssertDoesNotContainText(block, "Resolved since last round:",
             "review history partial-parse same-head block omits resolved section when nothing was resolved");
-        AssertDoesNotContainText(block, "[todo] Retry the alternate transport.",
+        AssertDoesNotContainText(block, "| Resolved | todo | Retry the alternate transport. |",
             "review history partial-parse same-head block does not falsely report malformed missing finding resolved");
     }
 
@@ -1438,6 +1443,12 @@ internal static partial class Program {
             "None."
         });
         var historyBlock = string.Join("\n", new[] {
+            "## Review State 🧭",
+            "",
+            "| Recommendation | Merge blockers | Evidence |",
+            "| --- | --- | --- |",
+            "| Approve | none detected | configured merge-blocker sections parsed with no open items |",
+            "",
             "## History Progress 🔁",
             "",
             "Open on current head:",
@@ -1457,6 +1468,9 @@ internal static partial class Program {
         var extracted = ReviewerApp.ExtractSummaryBodyForTests(comment, 10000) ?? string.Empty;
 
         AssertDoesNotContainText(extracted, "History Progress 🔁", "summary stability strips history progress heading");
+        AssertDoesNotContainText(extracted, "Review State 🧭", "summary stability strips review state heading");
+        AssertDoesNotContainText(extracted, "configured merge-blocker sections parsed",
+            "summary stability strips review state body");
         AssertDoesNotContainText(extracted, "Previous issue", "summary stability strips history progress body");
         AssertDoesNotContainText(extracted, "Auto-Approval Readiness", "summary stability strips auto approval heading");
         AssertDoesNotContainText(extracted, "checks passed", "summary stability strips auto approval body");
@@ -1643,6 +1657,43 @@ internal static partial class Program {
             "review history comment block renders posture table");
         AssertContainsText(block, "Keeps the parser path simple.",
             "review history comment block renders positive highlight");
+    }
+
+    private static void TestReviewStateBlockRendersDeterministicRecommendation() {
+        var settings = new ReviewSettings();
+        var reviewBody = string.Join("\n", new[] {
+            "## Summary 📝",
+            "Looks good.",
+            "",
+            "## Todo List ✅",
+            "None.",
+            "",
+            "## Critical Issues ⚠️",
+            "None."
+        });
+
+        var block = ReviewStateBuilder.BuildCommentBlock(reviewBody, settings, reviewFailed: false);
+        var state = ReviewStateBuilder.Build(reviewBody, settings, reviewFailed: false);
+
+        AssertEqual("approve", state.Recommendation, "review state approve recommendation");
+        AssertContainsText(block, "## Review State 🧭", "review state heading");
+        AssertContainsText(block, "| Approve | none detected | configured merge-blocker sections parsed with no open items |",
+            "review state approve table");
+    }
+
+    private static void TestReviewStateBlockFailsClosedWithoutMergeBlockerSections() {
+        var settings = new ReviewSettings();
+        var reviewBody = string.Join("\n", new[] {
+            "## Summary 📝",
+            "Looks good."
+        });
+
+        var state = ReviewStateBuilder.Build(reviewBody, settings, reviewFailed: false);
+
+        AssertEqual("manual-review", state.Recommendation,
+            "review state missing sections requires manual review");
+        AssertEqual("unknown", state.MergeBlockerLabel,
+            "review state missing sections has unknown blockers");
     }
 
     private static void TestReviewHistoryMarkerKeepsLatestRoundsAndRecomputesHead() {

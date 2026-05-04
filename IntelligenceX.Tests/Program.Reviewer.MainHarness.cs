@@ -858,6 +858,10 @@ internal static partial class Program {
             TestReviewHistoryMarkerRoundTripsStickyLedger);
         failed += Run("Review history marker keeps latest rounds and recomputes head",
             TestReviewHistoryMarkerKeepsLatestRoundsAndRecomputesHead);
+        failed += Run("Review state block renders deterministic recommendation",
+            TestReviewStateBlockRendersDeterministicRecommendation);
+        failed += Run("Review state block fails closed without merge blocker sections",
+            TestReviewStateBlockFailsClosedWithoutMergeBlockerSections);
         failed += Run("Redaction defaults", TestRedactionDefaults);
         failed += Run("Review budget note", TestReviewBudgetNote);
         failed += Run("Review budget note empty", TestReviewBudgetNoteEmpty);

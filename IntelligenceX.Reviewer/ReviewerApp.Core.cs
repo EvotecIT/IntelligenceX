@@ -568,14 +568,16 @@ public static partial class ReviewerApp {
             }
             var usageLine = await TryBuildUsageLineAsync(settings, effectiveProvider).ConfigureAwait(false);
             var findingsBlock = settings.StructuredFindings ? ReviewFindingsBuilder.Build(inlineComments) : string.Empty;
+            var finalHasMergeBlockers = ReviewSummaryParser.HasMergeBlockers(summaryBody, settings);
+            var reviewStateBlock = ReviewStateBuilder.BuildCommentBlock(summaryBody, settings, reviewFailed);
             var historyBlock = ReviewHistoryBuilder.BuildCommentBlock(extras.ReviewHistory);
             var autoApprovalDecision = await BuildAutoApprovalDecisionAsync(github, fallbackGithub, context, settings,
-                    reviewFailed, hasMergeBlockers, extras.ReviewHistory, requiresConversationResolution, allowWrites,
+                    reviewFailed, finalHasMergeBlockers, extras.ReviewHistory, requiresConversationResolution, allowWrites,
                     extras.ReviewThreadsUnavailable,
                     cancellationToken)
                 .ConfigureAwait(false);
             var autoApprovalBlock = ReviewAutoApproval.BuildCommentBlock(autoApprovalDecision);
-            var statusBlocks = CombineCommentBlocks(historyBlock, autoApprovalBlock);
+            var statusBlocks = CombineCommentBlocks(reviewStateBlock, historyBlock, autoApprovalBlock);
             var commentBody = ReviewFormatter.BuildComment(context, summaryBody, settings, inlineSupported, inlineSuppressed,
                 autoResolveSummary, budgetNote, usageLine, findingsBlock, statusBlocks);
             commentBody = ReviewHistoryMarker.AppendOrReplace(commentBody, extras.ReviewHistory, context, settings);

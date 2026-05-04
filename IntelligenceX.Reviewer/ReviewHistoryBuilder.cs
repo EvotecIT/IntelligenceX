@@ -98,8 +98,7 @@ internal static class ReviewHistoryBuilder {
             hasVisibleProgress |= AppendPostureTable(lines, latestSameHeadRound);
         }
         if (snapshot.OpenFindings.Count > 0) {
-            lines.Add("Open on current head:");
-            AppendFindingTable(lines, "Open", snapshot.OpenFindings);
+            lines.Add($"Open on current head: {FormatCount(snapshot.OpenFindings.Count, "finding")}.");
             hasVisibleProgress = true;
         } else if (latestSameHeadRound is not null &&
                    (latestSameHeadRound.FindingsParseIncomplete ||
@@ -109,8 +108,13 @@ internal static class ReviewHistoryBuilder {
         }
 
         if (snapshot.ResolvedSinceLastRound.Count > 0) {
-            lines.Add("Resolved since last round:");
-            AppendFindingTable(lines, "Resolved", snapshot.ResolvedSinceLastRound);
+            lines.Add($"Resolved since last round: {FormatCount(snapshot.ResolvedSinceLastRound.Count, "finding")}.");
+            hasVisibleProgress = true;
+        }
+
+        if (snapshot.OpenFindings.Count > 0 || snapshot.ResolvedSinceLastRound.Count > 0) {
+            lines.Add("Finding lifecycle:");
+            AppendLifecycleTable(lines, snapshot);
             hasVisibleProgress = true;
         }
 
@@ -403,12 +407,51 @@ internal static class ReviewHistoryBuilder {
         return true;
     }
 
-    private static void AppendFindingTable(List<string> lines, string state, IReadOnlyList<ReviewHistoryFinding> findings) {
-        lines.Add("| State | Finding |");
-        lines.Add("| --- | --- |");
-        foreach (var finding in findings) {
-            lines.Add($"| {EscapeTableCell(state)} | [{EscapeTableCell(NormalizeSectionLabel(finding.Section))}] {EscapeTableCell(finding.Text)} |");
+    private static void AppendLifecycleTable(List<string> lines, ReviewHistorySnapshot snapshot) {
+        var priorOpenFingerprints = CollectPriorOpenFingerprints(snapshot.Rounds);
+        lines.Add("| State | Section | Finding |");
+        lines.Add("| --- | --- | --- |");
+        foreach (var finding in snapshot.OpenFindings) {
+            var state = priorOpenFingerprints.Contains(finding.Fingerprint) ? "Still open" : "New";
+            lines.Add($"| {EscapeTableCell(state)} | {EscapeTableCell(NormalizeSectionLabel(finding.Section))} | {EscapeTableCell(finding.Text)} |");
         }
+
+        foreach (var finding in snapshot.ResolvedSinceLastRound) {
+            lines.Add($"| Resolved | {EscapeTableCell(NormalizeSectionLabel(finding.Section))} | {EscapeTableCell(finding.Text)} |");
+        }
+    }
+
+    private static string FormatCount(int count, string singular) {
+        if (count == 1) {
+            return $"1 {singular}";
+        }
+
+        return $"{count} {singular}s";
+    }
+
+    private static HashSet<string> CollectPriorOpenFingerprints(IReadOnlyList<ReviewHistoryRound> rounds) {
+        var fingerprints = new HashSet<string>(StringComparer.Ordinal);
+        if (rounds.Count <= 1) {
+            return fingerprints;
+        }
+
+        var latestSameHeadRound = FindLatestSameHeadRound(rounds);
+        foreach (var round in rounds) {
+            if (ReferenceEquals(round, latestSameHeadRound)) {
+                continue;
+            }
+
+            foreach (var finding in round.Findings) {
+                if (string.IsNullOrWhiteSpace(finding.Fingerprint) ||
+                    !string.Equals(finding.Status, "open", StringComparison.OrdinalIgnoreCase)) {
+                    continue;
+                }
+
+                fingerprints.Add(finding.Fingerprint);
+            }
+        }
+
+        return fingerprints;
     }
 
     private static string EscapeTableCell(string value) {

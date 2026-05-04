@@ -754,6 +754,7 @@ public static partial class ReviewerApp {
         }
 
         var block = string.Join("\n", lines, startIndex, endIndex - startIndex).Trim();
+        block = RemoveSection(block, "Review State 🧭").Trim();
         block = RemoveSection(block, "History Progress 🔁").Trim();
         block = RemoveSection(block, "Auto-Approval Readiness 🤝").Trim();
         if (string.IsNullOrWhiteSpace(block)) {

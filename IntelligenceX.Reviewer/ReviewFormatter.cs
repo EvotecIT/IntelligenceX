@@ -14,6 +14,7 @@ internal static class ReviewFormatter {
     private static readonly string[] SectionLabels = {
         "Summary 📝",
         "Review Summary 📝",
+        "Review State 🧭",
         "History Progress 🔁",
         "Auto-Approval Readiness 🤝",
         "Todo List ✅",
