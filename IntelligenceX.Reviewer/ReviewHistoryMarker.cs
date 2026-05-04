@@ -104,7 +104,8 @@ internal static class ReviewHistoryMarker {
             }
 
             if (settings.History.MaxRounds > 0 && parsed.Count > settings.History.MaxRounds) {
-                parsed = parsed.Skip(parsed.Count - settings.History.MaxRounds)
+                var skipOldest = Math.Max(0, parsed.Count - settings.History.MaxRounds);
+                parsed = parsed.Skip(skipOldest)
                     .Select((round, index) => CloneRound(round, index + 1, currentHeadSha))
                     .ToList();
             }
