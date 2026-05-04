@@ -145,17 +145,17 @@ on:
       auto_approve_enabled:
         description: 'Enable guarded auto-approval readiness/approval'
         required: false
-        default: false
-        type: boolean
+        default: ''
+        type: string
       auto_approve_dry_run:
         description: 'Audit auto-approval decisions without submitting approvals'
         required: false
-        default: true
-        type: boolean
+        default: ''
+        type: string
       auto_approve_required_labels:
         description: 'Comma-separated labels required before auto-approval'
         required: false
-        default: 'ix-auto-approve'
+        default: ''
         type: string
       auto_approve_allowed_authors:
         description: 'Comma-separated PR author logins eligible for auto-approval'
@@ -165,7 +165,7 @@ on:
       auto_approve_ignored_check_names:
         description: 'Comma-separated check names ignored by auto-approval'
         required: false
-        default: 'IntelligenceX Review'
+        default: ''
         type: string
       length:
         description: 'Review length: short, medium, long'
@@ -385,12 +385,12 @@ on:
       skip_authors:
         description: 'Comma-separated PR author logins to skip before provider auth'
         required: false
-        default: 'dependabot[bot],app/dependabot'
+        default: ''
         type: string
       force_review_labels:
         description: 'Comma-separated labels that bypass author skip filters'
         required: false
-        default: 'needs-ai-review'
+        default: ''
         type: string
       skip_paths:
         description: 'Comma-separated glob patterns; if all files match, skip'

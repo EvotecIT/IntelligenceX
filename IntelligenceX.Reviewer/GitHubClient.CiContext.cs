@@ -15,7 +15,7 @@ internal sealed partial class GitHubClient {
         }
 
         var page = 1;
-        var checkRuns = new List<GitHubCheckRunInfo>();
+        var runs = new List<ReviewCheckRun>();
 
         while (true) {
             var shaToken = Uri.EscapeDataString(headSha);
@@ -26,7 +26,7 @@ internal sealed partial class GitHubClient {
                 break;
             }
 
-            checkRuns.AddRange(pageRuns);
+            runs.AddRange(pageRuns.Select(item => new ReviewCheckRun(item.Name, item.Status, item.Conclusion, item.DetailsUrl)));
 
             if (pageRuns.Count < 100) {
                 break;
@@ -34,9 +34,8 @@ internal sealed partial class GitHubClient {
             page++;
         }
 
-        return new ReviewCheckSnapshot(checkRuns
-            .Select(item => new ReviewCheckRun(item.Name, item.Status, item.Conclusion, item.DetailsUrl))
-            .ToList());
+        runs.AddRange(await GetCommitStatusRunsAsync(owner, repo, headSha, cancellationToken).ConfigureAwait(false));
+        return new ReviewCheckSnapshot(runs);
     }
 
     public async Task<IReadOnlyList<ReviewWorkflowRun>> GetFailedWorkflowRunsAsync(string owner, string repo, string? headSha,
@@ -78,5 +77,53 @@ internal sealed partial class GitHubClient {
 
         var evidence = GitHubCiSignals.SummarizeWorkflowFailureEvidence(jobs, maxChars);
         return evidence.HasData ? evidence : null;
+    }
+
+    private async Task<IReadOnlyList<ReviewCheckRun>> GetCommitStatusRunsAsync(string owner, string repo, string headSha,
+        CancellationToken cancellationToken) {
+        var shaToken = Uri.EscapeDataString(headSha);
+        try {
+            var json = await GetJsonAsync($"/repos/{owner}/{repo}/commits/{shaToken}/status", cancellationToken)
+                .ConfigureAwait(false);
+            return ParseCommitStatusRuns(json.AsObject());
+        } catch (InvalidOperationException ex) when (ex.Message.Contains("404 Not Found", StringComparison.OrdinalIgnoreCase)) {
+            return Array.Empty<ReviewCheckRun>();
+        }
+    }
+
+    internal static IReadOnlyList<ReviewCheckRun> ParseCommitStatusRunsForTests(IntelligenceX.Json.JsonObject? root) =>
+        ParseCommitStatusRuns(root);
+
+    private static IReadOnlyList<ReviewCheckRun> ParseCommitStatusRuns(IntelligenceX.Json.JsonObject? root) {
+        var statuses = root?.GetArray("statuses");
+        if (statuses is null || statuses.Count == 0) {
+            return Array.Empty<ReviewCheckRun>();
+        }
+
+        var runs = new List<ReviewCheckRun>(statuses.Count);
+        foreach (var item in statuses) {
+            var obj = item.AsObject();
+            if (obj is null) {
+                continue;
+            }
+
+            var context = obj.GetString("context") ?? obj.GetString("description") ?? "legacy-status";
+            var state = obj.GetString("state") ?? string.Empty;
+            var (status, conclusion) = MapCommitStatusState(state);
+            runs.Add(new ReviewCheckRun($"status: {context}", status, conclusion, obj.GetString("target_url")));
+        }
+        return runs;
+    }
+
+    private static (string Status, string? Conclusion) MapCommitStatusState(string state) {
+        if (state.Equals("success", StringComparison.OrdinalIgnoreCase)) {
+            return ("completed", "success");
+        }
+        if (state.Equals("failure", StringComparison.OrdinalIgnoreCase) ||
+            state.Equals("error", StringComparison.OrdinalIgnoreCase)) {
+            return ("completed", "failure");
+        }
+
+        return ("pending", null);
     }
 }

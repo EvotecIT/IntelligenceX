@@ -177,6 +177,7 @@ public static partial class ReviewerApp {
                 // Review threads are supplemental context; avoid failing the whole review on GitHub GraphQL rate limits.
                 Console.Error.WriteLine($"Failed to load review threads: {ex.Message}");
                 extras.ReviewThreads = Array.Empty<PullRequestReviewThread>();
+                extras.ReviewThreadsUnavailable = true;
             }
         }
         if (settings.IncludeReviewComments && string.IsNullOrEmpty(extras.ReviewThreadsSection)) {

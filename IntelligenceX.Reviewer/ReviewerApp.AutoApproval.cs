@@ -16,9 +16,11 @@ public static partial class ReviewerApp {
         ReviewHistorySnapshot? history,
         bool? requiresConversationResolution,
         bool allowWrites,
+        bool reviewThreadsUnavailable,
         CancellationToken cancellationToken) {
         ReviewCheckSnapshot? checks = null;
-        if (settings.AutoApprove.Enabled && settings.AutoApprove.RequireChecksPass) {
+        if (settings.AutoApprove.Enabled &&
+            (settings.AutoApprove.RequireChecksPass || settings.AutoApprove.RequireNoPendingChecks)) {
             try {
                 var readGithub = fallbackGithub ?? github;
                 checks = await readGithub.GetCheckSnapshotAsync(context.Owner, context.Repo, context.HeadSha, cancellationToken)
@@ -27,13 +29,13 @@ public static partial class ReviewerApp {
                 throw;
             } catch (Exception ex) {
                 if (settings.Diagnostics) {
-                    Console.Error.WriteLine($"Auto-approval check-status lookup failed open: {ex.GetType().Name}: {ex.Message}");
+                    Console.Error.WriteLine($"Auto-approval check-status lookup unavailable: {ex.GetType().Name}: {ex.Message}");
                 }
             }
         }
 
         return ReviewAutoApproval.Evaluate(context, settings, reviewFailed, hasMergeBlockers, history,
-            requiresConversationResolution, allowWrites, checks);
+            requiresConversationResolution, allowWrites, checks, reviewThreadsUnavailable);
     }
 
     private static async Task SubmitAutoApprovalIfEligibleAsync(GitHubClient github, PullRequestContext context,
@@ -48,6 +50,14 @@ public static partial class ReviewerApp {
         }
 
         try {
+            var alreadyApproved = await github.HasAutoApprovalReviewAsync(context.Owner, context.Repo, context.Number,
+                    context.HeadSha, settings.AutoApprove.Body, cancellationToken)
+                .ConfigureAwait(false);
+            if (alreadyApproved) {
+                Console.WriteLine("Auto-approval skipped: approving review already exists on this head.");
+                return;
+            }
+
             await github.CreatePullRequestReviewAsync(context.Owner, context.Repo, context.Number,
                     settings.AutoApprove.Body, "APPROVE", cancellationToken)
                 .ConfigureAwait(false);

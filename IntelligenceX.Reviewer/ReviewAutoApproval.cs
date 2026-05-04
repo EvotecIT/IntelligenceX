@@ -30,7 +30,8 @@ internal static class ReviewAutoApproval {
         ReviewHistorySnapshot? history,
         bool? requiresConversationResolution,
         bool allowWrites,
-        ReviewCheckSnapshot? checks) {
+        ReviewCheckSnapshot? checks,
+        bool reviewThreadsUnavailable = false) {
         var auto = settings.AutoApprove;
         if (!auto.Enabled) {
             return DisabledDecision;
@@ -48,7 +49,7 @@ internal static class ReviewAutoApproval {
         AddLabelGate(context, auto, blockers, passed);
         AddAuthorGate(context, auto, blockers, passed);
         AddReviewGate(auto, reviewFailed, hasMergeBlockers, blockers, passed);
-        AddThreadGate(auto, history, requiresConversationResolution, blockers, passed);
+        AddThreadGate(auto, history, requiresConversationResolution, reviewThreadsUnavailable, blockers, passed);
 
         var effectiveChecks = checks is null ? null : FilterChecks(checks, auto.IgnoredCheckNames);
         AddCheckGate(auto, checks, effectiveChecks, blockers, passed);
@@ -156,9 +157,14 @@ internal static class ReviewAutoApproval {
     }
 
     private static void AddThreadGate(ReviewAutoApproveSettings auto, ReviewHistorySnapshot? history,
-        bool? requiresConversationResolution, List<string> blockers, List<string> passed) {
+        bool? requiresConversationResolution, bool reviewThreadsUnavailable, List<string> blockers, List<string> passed) {
         if (!auto.RequireNoActiveReviewThreads) {
             passed.Add("review-thread gate disabled");
+            return;
+        }
+
+        if (reviewThreadsUnavailable) {
+            blockers.Add("review thread state unavailable");
             return;
         }
 
@@ -172,16 +178,14 @@ internal static class ReviewAutoApproval {
             return;
         }
 
-        if (requiresConversationResolution == true) {
-            blockers.Add("review thread state unknown while conversation resolution is required");
-        } else {
-            passed.Add("review-thread state not required");
-        }
+        blockers.Add(requiresConversationResolution == true
+            ? "review thread state unknown while conversation resolution is required"
+            : "review thread state unavailable");
     }
 
     private static void AddCheckGate(ReviewAutoApproveSettings auto, ReviewCheckSnapshot? rawChecks,
         ReviewCheckSnapshot? effectiveChecks, List<string> blockers, List<string> passed) {
-        if (!auto.RequireChecksPass) {
+        if (!auto.RequireChecksPass && !auto.RequireNoPendingChecks) {
             passed.Add("check gate disabled");
             return;
         }
@@ -191,7 +195,12 @@ internal static class ReviewAutoApproval {
             return;
         }
 
-        if (effectiveChecks.FailedCount > 0) {
+        if (!effectiveChecks.HasData) {
+            blockers.Add("no effective checks after ignored check filtering");
+            return;
+        }
+
+        if (auto.RequireChecksPass && effectiveChecks.FailedCount > 0) {
             blockers.Add($"{effectiveChecks.FailedCount} failing check(s)");
         }
 
@@ -199,8 +208,12 @@ internal static class ReviewAutoApproval {
             blockers.Add($"{effectiveChecks.PendingCount} pending check(s)");
         }
 
-        if (effectiveChecks.FailedCount == 0 && (!auto.RequireNoPendingChecks || effectiveChecks.PendingCount == 0)) {
+        if (auto.RequireChecksPass &&
+            effectiveChecks.FailedCount == 0 &&
+            (!auto.RequireNoPendingChecks || effectiveChecks.PendingCount == 0)) {
             passed.Add("checks passed");
+        } else if (!auto.RequireChecksPass && auto.RequireNoPendingChecks && effectiveChecks.PendingCount == 0) {
+            passed.Add("no pending checks");
         }
     }
 

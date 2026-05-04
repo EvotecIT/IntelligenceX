@@ -12,7 +12,7 @@ internal static class RepositoryGuidanceLoader {
             return string.Empty;
         }
 
-        var entries = LoadEntries(settings.RepositoryGuidance.Paths, settings.RepositoryGuidance.MaxChars);
+        var entries = LoadEntries(settings.RepositoryRoot, settings.RepositoryGuidance.Paths, settings.RepositoryGuidance.MaxChars);
         if (entries.Count == 0) {
             return string.Empty;
         }
@@ -28,12 +28,14 @@ internal static class RepositoryGuidanceLoader {
         return sb.ToString().TrimEnd();
     }
 
-    private static IReadOnlyList<RepositoryGuidanceEntry> LoadEntries(IReadOnlyList<string> paths, int maxChars) {
+    private static IReadOnlyList<RepositoryGuidanceEntry> LoadEntries(string repositoryRoot, IReadOnlyList<string> paths, int maxChars) {
         if (maxChars <= 0) {
             return Array.Empty<RepositoryGuidanceEntry>();
         }
 
-        var root = Path.GetFullPath(Directory.GetCurrentDirectory());
+        var root = Path.GetFullPath(string.IsNullOrWhiteSpace(repositoryRoot)
+            ? Directory.GetCurrentDirectory()
+            : repositoryRoot);
         var remaining = maxChars;
         var entries = new List<RepositoryGuidanceEntry>();
         foreach (var path in paths) {

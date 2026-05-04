@@ -567,6 +567,47 @@ internal sealed partial class GitHubClient : IDisposable {
             .ConfigureAwait(false);
     }
 
+    public async Task<bool> HasAutoApprovalReviewAsync(string owner, string repo, int number, string? headSha,
+        string approvalBody, CancellationToken cancellationToken) {
+        if (string.IsNullOrWhiteSpace(headSha)) {
+            return false;
+        }
+
+        var page = 1;
+        var marker = ResolveAutoApprovalBodyMarker(approvalBody);
+        while (true) {
+            var json = await GetJsonAsync($"/repos/{owner}/{repo}/pulls/{number}/reviews?per_page=100&page={page}",
+                    cancellationToken)
+                .ConfigureAwait(false);
+            var array = json.AsArray();
+            if (array is null || array.Count == 0) {
+                return false;
+            }
+
+            foreach (var item in array) {
+                var obj = item.AsObject();
+                if (obj is null) {
+                    continue;
+                }
+
+                var state = obj.GetString("state");
+                var commitId = obj.GetString("commit_id");
+                var body = obj.GetString("body") ?? string.Empty;
+                if (state?.Equals("APPROVED", StringComparison.OrdinalIgnoreCase) == true &&
+                    !string.IsNullOrWhiteSpace(commitId) &&
+                    headSha.StartsWith(commitId!, StringComparison.OrdinalIgnoreCase) &&
+                    body.Contains(marker, StringComparison.OrdinalIgnoreCase)) {
+                    return true;
+                }
+            }
+
+            if (array.Count < 100) {
+                return false;
+            }
+            page++;
+        }
+    }
+
     public async Task CreatePullRequestReviewAsync(string owner, string repo, int number, string body, string reviewEvent,
         CancellationToken cancellationToken) {
         var payload = new JsonObject()
@@ -576,6 +617,12 @@ internal sealed partial class GitHubClient : IDisposable {
         await PostJsonAsync($"/repos/{owner}/{repo}/pulls/{number}/reviews", payload, cancellationToken, allowRetries: false)
             .ConfigureAwait(false);
     }
+
+    private static string ResolveAutoApprovalBodyMarker(string approvalBody) =>
+        !string.IsNullOrWhiteSpace(approvalBody) &&
+        approvalBody.Contains("IntelligenceX auto-approval", StringComparison.OrdinalIgnoreCase)
+            ? "IntelligenceX auto-approval"
+            : approvalBody.Trim();
 
     public void Dispose() {
         _http.Dispose();

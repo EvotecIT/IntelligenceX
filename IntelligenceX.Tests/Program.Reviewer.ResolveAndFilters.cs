@@ -551,6 +551,45 @@ internal static partial class Program {
         }
     }
 
+    private static void TestRepositoryGuidanceResolvesAgainstConfigRoot() {
+        var previousConfigPath = Environment.GetEnvironmentVariable("REVIEW_CONFIG_PATH");
+        var previousDirectory = Directory.GetCurrentDirectory();
+        var root = Path.Combine(Path.GetTempPath(), $"ix-guidance-{Guid.NewGuid():N}");
+        var configDir = Path.Combine(root, ".intelligencex");
+        var subdir = Path.Combine(root, "src");
+        try {
+            Directory.CreateDirectory(configDir);
+            Directory.CreateDirectory(subdir);
+            var configPath = Path.Combine(configDir, "reviewer.json");
+            var guidancePath = Path.Combine(configDir, "reviewer-guidance.md");
+            File.WriteAllText(configPath, """
+{
+  "review": {
+    "repositoryGuidancePaths": [".intelligencex/reviewer-guidance.md"]
+  }
+}
+""");
+            File.WriteAllText(guidancePath, "Review from the repository root, even when launched below it.");
+
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", configPath);
+            Directory.SetCurrentDirectory(subdir);
+            var settings = new ReviewSettings();
+            ReviewConfigLoader.Apply(settings);
+
+            AssertEqual(root, settings.RepositoryRoot, "review repository root resolves from config path");
+            var prompt = PromptBuilder.Build(BuildContext(), BuildFiles("src/app.cs"), settings, null, null,
+                inlineSupported: false);
+            AssertContainsText(prompt, "Review from the repository root",
+                "repository guidance loads from config repository root");
+        } finally {
+            Directory.SetCurrentDirectory(previousDirectory);
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", previousConfigPath);
+            if (Directory.Exists(root)) {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
     private static void TestReviewAutoApprovalReadinessGates() {
         var context = new PullRequestContext("owner/repo", "owner", "repo", 12, "Bump package", null, false,
             "abc1234", "base", new[] { "ix-auto-approve" }, "owner/repo", false, null,
@@ -594,6 +633,66 @@ internal static partial class Program {
         AssertEqual(false, blocked.ShouldApprove, "auto approval blocked without required label");
         AssertContainsText(string.Join("\n", blocked.Blockers), "missing required label",
             "auto approval required label reason");
+
+        var onlyIgnoredChecks = new ReviewCheckSnapshot(new[] {
+            new ReviewCheckRun("IntelligenceX Review", "completed", "success", null)
+        });
+        blocked = ReviewAutoApproval.Evaluate(context, settings, reviewFailed: false, hasMergeBlockers: false,
+            history, requiresConversationResolution: true, allowWrites: true, onlyIgnoredChecks);
+        AssertEqual(false, blocked.ShouldApprove, "auto approval blocks zero effective checks");
+        AssertContainsText(string.Join("\n", blocked.Blockers), "no effective checks",
+            "auto approval zero effective checks reason");
+
+        settings.AutoApprove.RequireChecksPass = false;
+        settings.AutoApprove.RequireNoPendingChecks = true;
+        var pendingChecks = new ReviewCheckSnapshot(new[] {
+            new ReviewCheckRun("Build", "in_progress", null, null)
+        });
+        blocked = ReviewAutoApproval.Evaluate(context, settings, reviewFailed: false, hasMergeBlockers: false,
+            history, requiresConversationResolution: true, allowWrites: true, pendingChecks);
+        AssertEqual(false, blocked.ShouldApprove, "auto approval pending-only mode blocks pending checks");
+        AssertContainsText(string.Join("\n", blocked.Blockers), "pending check",
+            "auto approval pending-only blocker reason");
+
+        var failedChecks = new ReviewCheckSnapshot(new[] {
+            new ReviewCheckRun("Experimental", "completed", "failure", null)
+        });
+        var pendingOnlyDecision = ReviewAutoApproval.Evaluate(context, settings, reviewFailed: false,
+            hasMergeBlockers: false, history, requiresConversationResolution: true, allowWrites: true, failedChecks);
+        AssertEqual(true, pendingOnlyDecision.ShouldApprove,
+            "auto approval pending-only mode does not require failed checks to pass");
+        AssertContainsText(string.Join("\n", pendingOnlyDecision.PassedGates), "no pending checks",
+            "auto approval pending-only pass reason");
+
+        settings.AutoApprove.RequireChecksPass = true;
+        settings.AutoApprove.RequireNoPendingChecks = true;
+        blocked = ReviewAutoApproval.Evaluate(context, settings, reviewFailed: false, hasMergeBlockers: false,
+            history: null, requiresConversationResolution: false, allowWrites: true, checks,
+            reviewThreadsUnavailable: true);
+        AssertEqual(false, blocked.ShouldApprove, "auto approval blocks unavailable review thread state");
+        AssertContainsText(string.Join("\n", blocked.Blockers), "review thread state unavailable",
+            "auto approval unavailable review thread reason");
+    }
+
+    private static void TestGitHubCommitStatusesContributeToCheckSnapshot() {
+        var root = IntelligenceX.Json.JsonLite.Parse("""
+{
+  "statuses": [
+    { "context": "legacy-build", "state": "success", "target_url": "https://example.test/build" },
+    { "context": "legacy-quality", "state": "failure", "target_url": "https://example.test/quality" },
+    { "context": "legacy-deploy", "state": "pending", "target_url": "https://example.test/deploy" }
+  ]
+}
+""")?.AsObject();
+
+        var runs = GitHubClient.ParseCommitStatusRunsForTests(root);
+        var snapshot = new ReviewCheckSnapshot(runs);
+
+        AssertEqual(3, runs.Count, "legacy status check run count");
+        AssertEqual(1, snapshot.PassedCount, "legacy status passed count");
+        AssertEqual(1, snapshot.FailedCount, "legacy status failed count");
+        AssertEqual(1, snapshot.PendingCount, "legacy status pending count");
+        AssertContainsText(runs[1].Name, "status: legacy-quality", "legacy status run name");
     }
 
     private static void TestReviewHistoryBuilderIncludesStickySummaryAndThreadSnapshot() {
@@ -1243,14 +1342,23 @@ internal static partial class Program {
             "Open on current head:",
             "- [todo] Previous issue."
         });
+        var autoApprovalBlock = string.Join("\n", new[] {
+            "## Auto-Approval Readiness 🤝",
+            "",
+            "| Status | Checks | Passed gates | Blockers |",
+            "| --- | --- | --- | --- |",
+            "| Eligible | 1 passed, 0 failed, 0 pending | checks passed | none |"
+        });
 
         var comment = ReviewFormatter.BuildComment(context, reviewBody, settings, inlineSupported: true,
             inlineSuppressed: false, autoResolveNote: string.Empty, budgetNote: string.Empty, usageLine: string.Empty,
-            findingsBlock: string.Empty, historyBlock: historyBlock);
+            findingsBlock: string.Empty, historyBlock: string.Join("\n\n", historyBlock, autoApprovalBlock));
         var extracted = ReviewerApp.ExtractSummaryBodyForTests(comment, 10000) ?? string.Empty;
 
         AssertDoesNotContainText(extracted, "History Progress 🔁", "summary stability strips history progress heading");
         AssertDoesNotContainText(extracted, "Previous issue", "summary stability strips history progress body");
+        AssertDoesNotContainText(extracted, "Auto-Approval Readiness", "summary stability strips auto approval heading");
+        AssertDoesNotContainText(extracted, "checks passed", "summary stability strips auto approval body");
         AssertContainsText(extracted, "## Summary 📝", "summary stability keeps review summary heading");
         AssertContainsText(extracted, "Looks good overall.", "summary stability keeps review summary body");
     }
@@ -1434,6 +1542,46 @@ internal static partial class Program {
             "review history comment block renders posture table");
         AssertContainsText(block, "Keeps the parser path simple.",
             "review history comment block renders positive highlight");
+    }
+
+    private static void TestReviewHistoryMarkerKeepsLatestRoundsAndRecomputesHead() {
+        var settings = new ReviewSettings();
+        settings.History.Enabled = true;
+        settings.History.MaxRounds = 2;
+        var context = new PullRequestContext("owner/repo", "owner", "repo", 12, "Test title", "Body", false,
+            "abc4444", "base", Array.Empty<string>(), "owner/repo", false, null);
+        var priorSnapshot = new ReviewHistorySnapshot {
+            Rounds = new[] {
+                new ReviewHistoryRound { Sequence = 1, Source = "intelligencex", ReviewedSha = "abc1111" },
+                new ReviewHistoryRound { Sequence = 2, Source = "intelligencex", ReviewedSha = "abc2222" },
+                new ReviewHistoryRound {
+                    Sequence = 3,
+                    Source = "intelligencex",
+                    ReviewedSha = "abc3333",
+                    SameHeadAsCurrent = true
+                }
+            }
+        };
+        var currentComment = ReviewFormatter.BuildComment(context, string.Join("\n", new[] {
+                "## Summary 📝",
+                "Looks good overall.",
+                "",
+                "## Todo List ✅",
+                "None."
+            }), settings, inlineSupported: true, inlineSuppressed: false, autoResolveNote: string.Empty,
+            budgetNote: string.Empty, usageLine: string.Empty, findingsBlock: string.Empty);
+
+        var withMarker = ReviewHistoryMarker.AppendOrReplace(currentComment, priorSnapshot, context, settings);
+
+        AssertEqual(true, ReviewHistoryMarker.TryReadRounds(withMarker, "abc4444", settings, out var rounds),
+            "review history marker parses trimmed rounds");
+        AssertEqual(2, rounds.Count, "review history marker keeps max latest rounds");
+        AssertEqual("abc3333", rounds[0].ReviewedSha, "review history marker keeps newest prior round");
+        AssertEqual(false, rounds[0].SameHeadAsCurrent,
+            "review history marker recomputes stale same-head value for prior round");
+        AssertEqual("abc4444", rounds[1].ReviewedSha, "review history marker keeps current round");
+        AssertEqual(true, rounds[1].SameHeadAsCurrent,
+            "review history marker recomputes same-head value for current round");
     }
 
     private static void TestRedactionDefaults() {

@@ -15,6 +15,7 @@ internal static class ReviewConfigLoader {
             return;
         }
 
+        settings.RepositoryRoot = ResolveRepositoryRoot(path);
         var text = File.ReadAllText(path);
         var value = JsonLite.Parse(text);
         var root = value?.AsObject();
@@ -91,6 +92,20 @@ internal static class ReviewConfigLoader {
         var baseDir = !string.IsNullOrWhiteSpace(workspace) ? workspace : Environment.CurrentDirectory;
         var candidate = Path.Combine(baseDir, ".intelligencex", "reviewer.json");
         return candidate;
+    }
+
+    internal static string ResolveRepositoryRoot(string configPath) {
+        var fullPath = Path.GetFullPath(configPath);
+        var directory = Path.GetDirectoryName(fullPath);
+        if (string.IsNullOrWhiteSpace(directory)) {
+            return Path.GetFullPath(Environment.CurrentDirectory);
+        }
+
+        if (string.Equals(Path.GetFileName(directory), ".intelligencex", StringComparison.OrdinalIgnoreCase)) {
+            return Directory.GetParent(directory)?.FullName ?? directory;
+        }
+
+        return directory;
     }
 
     private static void ApplyStrings(JsonObject obj, ReviewSettings settings) {

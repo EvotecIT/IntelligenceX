@@ -27,25 +27,23 @@ internal static class ReviewHistoryMarker {
         }
 
         var rounds = new List<ReviewHistoryRound>();
-        foreach (var round in snapshot.Rounds) {
-            if (rounds.Count >= settings.History.MaxRounds) {
-                break;
-            }
-
-            rounds.Add(CloneRound(round, rounds.Count + 1));
+        var priorRounds = snapshot.Rounds;
+        var startIndex = Math.Max(0, priorRounds.Count - settings.History.MaxRounds);
+        foreach (var round in priorRounds.Skip(startIndex)) {
+            rounds.Add(CloneRound(round, rounds.Count + 1, context.HeadSha));
         }
 
         if (rounds.Count > 0 &&
             !string.IsNullOrWhiteSpace(currentRound.ReviewedSha) &&
             string.Equals(rounds[^1].ReviewedSha, currentRound.ReviewedSha, StringComparison.OrdinalIgnoreCase)) {
-            rounds[^1] = CloneRound(currentRound, rounds.Count);
+            rounds[^1] = CloneRound(currentRound, rounds.Count, context.HeadSha);
         } else {
-            rounds.Add(CloneRound(currentRound, rounds.Count + 1));
+            rounds.Add(CloneRound(currentRound, rounds.Count + 1, context.HeadSha));
         }
 
         if (settings.History.MaxRounds > 0 && rounds.Count > settings.History.MaxRounds) {
             rounds = rounds.Skip(rounds.Count - settings.History.MaxRounds)
-                .Select((round, index) => CloneRound(round, index + 1))
+                .Select((round, index) => CloneRound(round, index + 1, context.HeadSha))
                 .ToList();
         }
 
@@ -102,13 +100,14 @@ internal static class ReviewHistoryMarker {
 
             var parsed = new List<ReviewHistoryRound>();
             foreach (var roundElement in roundsElement.EnumerateArray()) {
-                if (parsed.Count >= settings.History.MaxRounds) {
-                    break;
-                }
-
                 parsed.Add(ReadRound(roundElement, currentHeadSha, parsed.Count + 1));
             }
 
+            if (settings.History.MaxRounds > 0 && parsed.Count > settings.History.MaxRounds) {
+                parsed = parsed.Skip(parsed.Count - settings.History.MaxRounds)
+                    .Select((round, index) => CloneRound(round, index + 1, currentHeadSha))
+                    .ToList();
+            }
             rounds = parsed;
             return parsed.Count > 0;
         } catch {
@@ -195,13 +194,13 @@ internal static class ReviewHistoryMarker {
         return findings;
     }
 
-    private static ReviewHistoryRound CloneRound(ReviewHistoryRound round, int sequence) {
+    private static ReviewHistoryRound CloneRound(ReviewHistoryRound round, int sequence, string? currentHeadSha) {
         return new ReviewHistoryRound {
             Sequence = sequence,
             Source = round.Source,
             SummaryCommentId = round.SummaryCommentId,
             ReviewedSha = round.ReviewedSha,
-            SameHeadAsCurrent = round.SameHeadAsCurrent,
+            SameHeadAsCurrent = IsSameHead(round.ReviewedSha, currentHeadSha),
             HasMergeBlockers = round.HasMergeBlockers,
             MergeBlockerStatus = round.MergeBlockerStatus,
             Recommendation = round.Recommendation,
@@ -213,6 +212,11 @@ internal static class ReviewHistoryMarker {
             Findings = round.Findings
         };
     }
+
+    private static bool IsSameHead(string? reviewedSha, string? currentHeadSha) =>
+        !string.IsNullOrWhiteSpace(reviewedSha) &&
+        !string.IsNullOrWhiteSpace(currentHeadSha) &&
+        currentHeadSha!.StartsWith(reviewedSha, StringComparison.OrdinalIgnoreCase);
 
     private static string ReadString(JsonElement element, string propertyName, string fallback = "") {
         return element.TryGetProperty(propertyName, out var value) && value.ValueKind == global::System.Text.Json.JsonValueKind.String

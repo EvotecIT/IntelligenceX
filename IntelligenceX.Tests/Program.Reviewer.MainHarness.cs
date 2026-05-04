@@ -813,7 +813,11 @@ internal static partial class Program {
         failed += Run("Prompt compact history guard includes critical issues",
             TestPromptBuilderCompactHistoryGuardIncludesCriticalIssues);
         failed += Run("Prompt includes repository guidance and custom conventions", TestPromptBuilderIncludesConventionPacks);
+        failed += Run("Repository guidance resolves against config root",
+            TestRepositoryGuidanceResolvesAgainstConfigRoot);
         failed += Run("Review auto approval readiness gates", TestReviewAutoApprovalReadinessGates);
+        failed += Run("GitHub commit statuses contribute to check snapshot",
+            TestGitHubCommitStatusesContributeToCheckSnapshot);
         failed += Run("Prompt includes ci context section", TestPromptBuilderIncludesCiContextSection);
         failed += Run("Review history builder includes sticky summary and thread snapshot",
             TestReviewHistoryBuilderIncludesStickySummaryAndThreadSnapshot);
@@ -844,6 +848,8 @@ internal static partial class Program {
             TestReviewHistoryArtifactsRenderJsonAndMarkdown);
         failed += Run("Review history marker round-trips sticky ledger",
             TestReviewHistoryMarkerRoundTripsStickyLedger);
+        failed += Run("Review history marker keeps latest rounds and recomputes head",
+            TestReviewHistoryMarkerKeepsLatestRoundsAndRecomputesHead);
         failed += Run("Redaction defaults", TestRedactionDefaults);
         failed += Run("Review budget note", TestReviewBudgetNote);
         failed += Run("Review budget note empty", TestReviewBudgetNoteEmpty);

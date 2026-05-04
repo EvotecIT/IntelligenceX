@@ -402,11 +402,11 @@ jobs:
       strictness: ${{ inputs.strictness }}
       tone: ${{ inputs.tone }}
       focus: ${{ inputs.focus }}
-      auto_approve_enabled: ${{ fromJSON(inputs.auto_approve_enabled || 'false') }}
-      auto_approve_dry_run: ${{ fromJSON(inputs.auto_approve_dry_run || 'true') }}
-      auto_approve_required_labels: ${{ inputs.auto_approve_required_labels || 'ix-auto-approve' }}
+      auto_approve_enabled: ${{ inputs.auto_approve_enabled }}
+      auto_approve_dry_run: ${{ inputs.auto_approve_dry_run }}
+      auto_approve_required_labels: ${{ inputs.auto_approve_required_labels }}
       auto_approve_allowed_authors: ${{ inputs.auto_approve_allowed_authors }}
-      auto_approve_ignored_check_names: ${{ inputs.auto_approve_ignored_check_names || 'IntelligenceX Review' }}
+      auto_approve_ignored_check_names: ${{ inputs.auto_approve_ignored_check_names }}
       length: ${{ inputs.length || 'medium' }}
       mode: ${{ inputs.mode || 'hybrid' }}
       persona: ${{ inputs.persona }}

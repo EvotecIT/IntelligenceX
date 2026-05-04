@@ -571,6 +571,7 @@ public static partial class ReviewerApp {
             var historyBlock = ReviewHistoryBuilder.BuildCommentBlock(extras.ReviewHistory);
             var autoApprovalDecision = await BuildAutoApprovalDecisionAsync(github, fallbackGithub, context, settings,
                     reviewFailed, hasMergeBlockers, extras.ReviewHistory, requiresConversationResolution, allowWrites,
+                    extras.ReviewThreadsUnavailable,
                     cancellationToken)
                 .ConfigureAwait(false);
             var autoApprovalBlock = ReviewAutoApproval.BuildCommentBlock(autoApprovalDecision);

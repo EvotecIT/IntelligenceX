@@ -182,6 +182,7 @@ internal sealed partial class ReviewSettings {
     };
 
     public string Mode { get; set; } = "hybrid";
+    public string RepositoryRoot { get; set; } = Environment.CurrentDirectory;
     public ReviewProvider Provider { get; set; } = ReviewProvider.OpenAI;
     public ReviewProvider? ProviderFallback { get; set; }
     public ReviewCodeHost CodeHost { get; set; } = ReviewCodeHost.GitHub;
