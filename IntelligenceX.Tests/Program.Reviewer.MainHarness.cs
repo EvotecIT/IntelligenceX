@@ -828,6 +828,8 @@ internal static partial class Program {
         failed += Run("Review history builder includes sticky summary and thread snapshot",
             TestReviewHistoryBuilderIncludesStickySummaryAndThreadSnapshot);
         failed += Run("Review history builder builds comment block", TestReviewHistoryBuilderBuildsCommentBlock);
+        failed += Run("Review history builder treats missing optional blocker section as clean posture",
+            TestReviewHistoryBuilderTreatsMissingOptionalBlockerSectionAsCleanPosture);
         failed += Run("Review history builder uses latest same-head round",
             TestReviewHistoryBuilderUsesLatestSameHeadRound);
         failed += Run("Review history builder does not resolve across different heads",

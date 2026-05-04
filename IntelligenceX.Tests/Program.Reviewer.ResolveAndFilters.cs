@@ -921,6 +921,43 @@ internal static partial class Program {
         AssertContainsText(block, "[critical] Cover the stale thread path.", "review history comment block resolved item");
     }
 
+    private static void TestReviewHistoryBuilderTreatsMissingOptionalBlockerSectionAsCleanPosture() {
+        var settings = new ReviewSettings();
+        settings.History.Enabled = true;
+        var body = string.Join("\n", new[] {
+            ReviewFormatter.SummaryMarker,
+            "## IntelligenceX Review",
+            "Reviewed commit: `abc1234`",
+            "",
+            "## Summary 📝",
+            "Looks good.",
+            "",
+            "## Todo List ✅",
+            "None.",
+            "",
+            "### Static Analysis Policy 🧭",
+            "- Status: fail",
+            "",
+            "### Static Analysis 🔎",
+            "- [warning] `src/app.cs:1` (IXLOC001) File has 701 lines."
+        });
+        var comments = new[] {
+            new IssueComment(10, body, "intelligencex-review")
+        };
+
+        var snapshot = ReviewHistoryBuilder.BuildSnapshot(comments, "abc1234",
+            Array.Empty<PullRequestReviewThread>(), settings);
+        var block = ReviewHistoryBuilder.BuildCommentBlock(snapshot);
+
+        AssertEqual(1, snapshot.Rounds.Count, "review history missing optional section round count");
+        AssertEqual(false, snapshot.Rounds[0].HasMergeBlockers,
+            "review history missing optional blocker section does not record needs-work posture");
+        AssertEqual("approve", snapshot.Rounds[0].Recommendation,
+            "review history missing optional blocker section records clean recommendation");
+        AssertEqual(string.Empty, block,
+            "review history missing optional blocker section has no empty visible progress block");
+    }
+
     private static void TestReviewHistoryBuilderUsesLatestSameHeadRound() {
         var settings = new ReviewSettings();
         settings.History.Enabled = true;

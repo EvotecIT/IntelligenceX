@@ -345,6 +345,12 @@ internal static class ReviewHistoryBuilder {
         var findings = ReviewSummaryParser.ExtractMergeBlockerFindings(body, settings, settings.History.MaxItems,
             out var findingsHitLimit, out var findingsParseIncomplete);
         var hasMergeBlockers = ReviewSummaryParser.HasMergeBlockers(body, settings);
+        if (hasMergeBlockers &&
+            findings.Count == 0 &&
+            !findingsParseIncomplete &&
+            ReviewSummaryParser.HasAnyMergeBlockerSection(body, settings)) {
+            hasMergeBlockers = false;
+        }
         var recommendation = ResolveRecommendation(hasMergeBlockers, findingsParseIncomplete);
         var mergeBlockerStatus = findings.Count == 0
             ? findingsParseIncomplete
