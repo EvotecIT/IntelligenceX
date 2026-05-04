@@ -41,11 +41,7 @@ internal static class ReviewHistoryMarker {
             rounds.Add(CloneRound(currentRound, rounds.Count + 1, context.HeadSha));
         }
 
-        if (settings.History.MaxRounds > 0 && rounds.Count > settings.History.MaxRounds) {
-            rounds = rounds.Skip(rounds.Count - settings.History.MaxRounds)
-                .Select((round, index) => CloneRound(round, index + 1, context.HeadSha))
-                .ToList();
-        }
+        rounds = KeepNewestRounds(rounds, settings.History.MaxRounds, context.HeadSha);
 
         var payload = new {
             schema = Schema,
@@ -103,12 +99,7 @@ internal static class ReviewHistoryMarker {
                 parsed.Add(ReadRound(roundElement, currentHeadSha, parsed.Count + 1));
             }
 
-            if (settings.History.MaxRounds > 0 && parsed.Count > settings.History.MaxRounds) {
-                var skipOldest = Math.Max(0, parsed.Count - settings.History.MaxRounds);
-                parsed = parsed.Skip(skipOldest)
-                    .Select((round, index) => CloneRound(round, index + 1, currentHeadSha))
-                    .ToList();
-            }
+            parsed = KeepNewestRounds(parsed, settings.History.MaxRounds, currentHeadSha);
             rounds = parsed;
             return parsed.Count > 0;
         } catch {
@@ -210,6 +201,21 @@ internal static class ReviewHistoryMarker {
             FindingsParseIncomplete = round.FindingsParseIncomplete,
             Findings = round.Findings
         };
+    }
+
+    private static List<ReviewHistoryRound> KeepNewestRounds(IReadOnlyList<ReviewHistoryRound> rounds, int maxRounds,
+        string? currentHeadSha) {
+        if (maxRounds <= 0 || rounds.Count <= maxRounds) {
+            return rounds
+                .Select((round, index) => CloneRound(round, index + 1, currentHeadSha))
+                .ToList();
+        }
+
+        var firstNewestIndex = Math.Max(0, rounds.Count - maxRounds);
+        return rounds
+            .Skip(firstNewestIndex)
+            .Select((round, index) => CloneRound(round, index + 1, currentHeadSha))
+            .ToList();
     }
 
     private static bool IsSameHead(string? reviewedSha, string? currentHeadSha) =>

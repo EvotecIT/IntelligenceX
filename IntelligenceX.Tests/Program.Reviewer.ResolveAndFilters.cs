@@ -1831,6 +1831,47 @@ internal static partial class Program {
             "review history marker recomputes same-head value for current round");
     }
 
+    private static void TestReviewHistoryMarkerTryReadRoundsKeepsNewestParsedRounds() {
+        var writeSettings = new ReviewSettings();
+        writeSettings.History.Enabled = true;
+        writeSettings.History.MaxRounds = 6;
+        var context = new PullRequestContext("owner/repo", "owner", "repo", 12, "Test title", "Body", false,
+            "abc4444", "base", Array.Empty<string>(), "owner/repo", false, null);
+        var priorSnapshot = new ReviewHistorySnapshot {
+            Rounds = new[] {
+                new ReviewHistoryRound { Sequence = 1, Source = "intelligencex", ReviewedSha = "abc1111" },
+                new ReviewHistoryRound { Sequence = 2, Source = "intelligencex", ReviewedSha = "abc2222" },
+                new ReviewHistoryRound { Sequence = 3, Source = "intelligencex", ReviewedSha = "abc3333" }
+            }
+        };
+        var currentComment = ReviewFormatter.BuildComment(context, string.Join("\n", new[] {
+                "## Summary 📝",
+                "Looks good overall.",
+                "",
+                "## Todo List ✅",
+                "None.",
+                "",
+                "## Critical Issues ⚠️",
+                "None."
+            }), writeSettings, inlineSupported: true, inlineSuppressed: false, autoResolveNote: string.Empty,
+            budgetNote: string.Empty, usageLine: string.Empty, findingsBlock: string.Empty);
+
+        var withMarker = ReviewHistoryMarker.AppendOrReplace(currentComment, priorSnapshot, context, writeSettings);
+        var readSettings = new ReviewSettings();
+        readSettings.History.Enabled = true;
+        readSettings.History.MaxRounds = 2;
+
+        AssertEqual(true, ReviewHistoryMarker.TryReadRounds(withMarker, "abc4444", readSettings, out var rounds),
+            "review history marker parses oversized marker payload");
+        AssertEqual(2, rounds.Count, "review history marker read trim keeps configured max rounds");
+        AssertEqual("abc3333", rounds[0].ReviewedSha,
+            "review history marker read trim keeps newest prior round");
+        AssertEqual("abc4444", rounds[1].ReviewedSha,
+            "review history marker read trim keeps current round");
+        AssertEqual(1, rounds[0].Sequence, "review history marker read trim resequences first kept round");
+        AssertEqual(2, rounds[1].Sequence, "review history marker read trim resequences current round");
+    }
+
     private static void TestReviewHistoryMarkerRequiresExactSameHeadSha() {
         var settings = new ReviewSettings();
         settings.History.Enabled = true;

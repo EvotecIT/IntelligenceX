@@ -864,6 +864,8 @@ internal static partial class Program {
             TestReviewHistoryMarkerRoundTripsStickyLedger);
         failed += Run("Review history marker keeps latest rounds and recomputes head",
             TestReviewHistoryMarkerKeepsLatestRoundsAndRecomputesHead);
+        failed += Run("Review history marker read keeps newest parsed rounds",
+            TestReviewHistoryMarkerTryReadRoundsKeepsNewestParsedRounds);
         failed += Run("Review history marker requires exact same-head SHA",
             TestReviewHistoryMarkerRequiresExactSameHeadSha);
         failed += Run("Review state block renders deterministic recommendation",
