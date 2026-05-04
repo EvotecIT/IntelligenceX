@@ -28,13 +28,13 @@ Only include inline comments for merge-blocking items from Todo List and Critica
 {{SummaryStabilityBlock}}Return your review in markdown using H2 headings exactly as shown (use the emoji):
 - ## Summary 📝
 - ## Todo List ✅
-- ## Critical Issues ⚠️ (if any)
+- ## Critical Issues ⚠️
 - ## Other Issues 🧯
 - ## Other Reviews 🧩 (if provided)
 - ## Tests / Coverage 🧪
 {{NextStepsSection}}
 In Todo List, include only merge-blocking items as markdown checkboxes. If there are no merge-blocking items, write "None.".
-Critical Issues are merge-blocking. Other Issues are non-blocking suggestions.
+Critical Issues are merge-blocking. If there are no critical issues, write "None." in that section. Other Issues are non-blocking suggestions.
 If you include any merge-blocking item that has a specific file location, ensure it is also represented in Inline Comments.
 {{NarrativeContractBlock}}
 If no reviewer thread context is provided, omit the Other Reviews section.

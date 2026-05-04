@@ -344,6 +344,20 @@ internal static partial class Program {
         var filteredComments = ReviewerApp.ExcludeWorkflowInlineComments(comments);
         AssertEqual(1, filteredComments.Count, "workflow inline comments excluded");
         AssertEqual("src/app.cs", filteredComments[0].Path, "non-workflow inline comments remain");
+
+        var threads = new[] {
+            new PullRequestReviewThread("workflow-thread", false, false, 1, new[] {
+                new PullRequestReviewThreadComment(1, null, "Fix this workflow.", "intelligencex-review",
+                    ".github/workflows/ci.yml", 12)
+            }),
+            new PullRequestReviewThread("source-thread", false, false, 1, new[] {
+                new PullRequestReviewThreadComment(2, null, "Fix this source file.", "intelligencex-review",
+                    "src/app.cs", 20)
+            })
+        };
+        var filteredThreads = ReviewerApp.ExcludeWorkflowReviewThreads(threads);
+        AssertEqual(1, filteredThreads.Count, "workflow review threads excluded");
+        AssertEqual("source-thread", filteredThreads[0].Id, "non-workflow review thread remains");
     }
 
     private static void TestWorkflowGuardNoteSkip() {
@@ -382,6 +396,11 @@ internal static partial class Program {
         AssertEqual(false, sanitized.Contains("- [ ] Fix `.github/workflows/review-intelligencex-core.yml`.", StringComparison.Ordinal),
             "workflow sanitizer removes excluded workflow todo");
         AssertContainsText(sanitized, "src/app.cs", "workflow sanitizer preserves other sections");
+
+        var promptHistory = WorkflowGuardSanitizer.RemoveExcludedWorkflowReferences(body, workflowGuardActive: true);
+        AssertEqual(false, promptHistory.Contains(".github/workflows/review-intelligencex-core.yml", StringComparison.OrdinalIgnoreCase),
+            "workflow sanitizer removes excluded workflow references from prompt history");
+        AssertContainsText(promptHistory, "src/app.cs", "workflow sanitizer preserves non-workflow prompt history");
     }
 
     private static void TestSecretsAuditRecords() {

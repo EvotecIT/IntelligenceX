@@ -177,6 +177,7 @@ Avoid chain-of-thought.
         }
         return
             $"Merge-blocker sections: {string.Join(", ", sections)}.\n" +
-            "Put merge-blocking findings only under those sections.\n";
+            "Put merge-blocking findings only under those sections.\n" +
+            "Always include every merge-blocker section as an H2 heading; if a section has no findings, write \"None.\" in that section.\n";
     }
 }

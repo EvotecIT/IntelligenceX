@@ -663,6 +663,24 @@ public static partial class ReviewerApp {
         return comments.Where(comment => !IsWorkflowPath(comment.Path)).ToArray();
     }
 
+    internal static IReadOnlyList<PullRequestReviewThread> ExcludeWorkflowReviewThreads(
+        IReadOnlyList<PullRequestReviewThread> threads) {
+        if (threads.Count == 0) {
+            return threads;
+        }
+
+        return threads.Where(thread => !IsWorkflowReviewThread(thread)).ToArray();
+    }
+
+    internal static bool IsWorkflowReviewThread(PullRequestReviewThread thread) {
+        foreach (var comment in thread.Comments) {
+            if (IsWorkflowPath(comment.Path)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     internal static string BuildWorkflowGuardNote(string? headSha, int workflowFileCount, int reviewedFiles, bool skipped) {
         var normalizedWorkflowCount = Math.Max(0, workflowFileCount);
         var normalizedReviewedCount = Math.Max(0, reviewedFiles);
