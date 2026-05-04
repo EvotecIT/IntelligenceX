@@ -527,6 +527,13 @@ public static partial class ReviewerApp {
                 }
             }
 
+            var workflowGuardActive = !settings.AllowWorkflowChanges && !string.IsNullOrWhiteSpace(workflowGuardNote);
+            if (workflowGuardActive) {
+                var filteredInlineComments = ExcludeWorkflowInlineComments(inlineComments);
+                inlineComments = filteredInlineComments as InlineReviewComment[] ?? filteredInlineComments.ToArray();
+                summaryBody = WorkflowGuardSanitizer.RemoveExcludedWorkflowBlockers(summaryBody, settings, workflowGuardActive);
+            }
+
             HashSet<string>? inlineKeys = null;
             if (inlineAllowed) {
                 inlineKeys = await PostInlineCommentsAsync(codeHostReader, github, context, files, settings, inlineComments,

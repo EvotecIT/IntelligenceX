@@ -336,6 +336,14 @@ internal static partial class Program {
 
         AssertEqual(2, ReviewerApp.CountWorkflowFiles(files), "workflow file count");
         AssertSequenceEqual(new[] { "src/app.cs", "docs/readme.md" }, GetFilenames(filtered), "exclude workflow files");
+
+        var comments = new[] {
+            new InlineReviewComment(".github/workflows/ci.yml", 12, "Do not post this."),
+            new InlineReviewComment("src/app.cs", 20, "Post this.")
+        };
+        var filteredComments = ReviewerApp.ExcludeWorkflowInlineComments(comments);
+        AssertEqual(1, filteredComments.Count, "workflow inline comments excluded");
+        AssertEqual("src/app.cs", filteredComments[0].Path, "non-workflow inline comments remain");
     }
 
     private static void TestWorkflowGuardNoteSkip() {
@@ -349,6 +357,31 @@ internal static partial class Program {
         var note = ReviewerApp.BuildWorkflowGuardNote("abc1234", 1, 3, skipped: false);
         AssertContainsText(note, "excluded 1 workflow file", "workflow guard filtered count");
         AssertContainsText(note, "reviewed 3 non-workflow file(s)", "workflow guard filtered reviewed");
+        AssertContainsText(note, "Do not report Todo, Critical, or inline findings for excluded workflow files",
+            "workflow guard tells reviewer not to report excluded workflow findings");
+    }
+
+    private static void TestWorkflowGuardSanitizerRemovesExcludedWorkflowTodo() {
+        var settings = new ReviewSettings {
+            MergeBlockerSections = new[] { "Todo List" },
+            MergeBlockerRequireAllSections = false
+        };
+        var body = string.Join("\n", new[] {
+            "## Summary 📝",
+            "Looks close.",
+            "## Todo List ✅",
+            "- [ ] Fix `.github/workflows/review-intelligencex-core.yml`.",
+            "## Other Issues 🧯",
+            "- `src/app.cs` can be tidier."
+        });
+
+        var sanitized = WorkflowGuardSanitizer.RemoveExcludedWorkflowBlockers(body, settings, workflowGuardActive: true);
+
+        AssertContainsText(sanitized, "## Todo List", "workflow sanitizer keeps blocker section");
+        AssertContainsText(sanitized, "- none.", "workflow sanitizer marks empty blocker section");
+        AssertEqual(false, sanitized.Contains("- [ ] Fix `.github/workflows/review-intelligencex-core.yml`.", StringComparison.Ordinal),
+            "workflow sanitizer removes excluded workflow todo");
+        AssertContainsText(sanitized, "src/app.cs", "workflow sanitizer preserves other sections");
     }
 
     private static void TestSecretsAuditRecords() {

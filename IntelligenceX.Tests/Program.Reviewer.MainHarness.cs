@@ -804,6 +804,8 @@ internal static partial class Program {
         failed += Run("Workflow changes filtering", TestWorkflowChangesFiltering);
         failed += Run("Workflow guard note skip", TestWorkflowGuardNoteSkip);
         failed += Run("Workflow guard note filtered", TestWorkflowGuardNoteFiltered);
+        failed += Run("Workflow guard sanitizer removes excluded workflow todo",
+            TestWorkflowGuardSanitizerRemovesExcludedWorkflowTodo);
         failed += Run("Secrets audit records", TestSecretsAuditRecords);
         failed += Run("Prompt language hints", TestPromptBuilderLanguageHints);
         failed += Run("Prompt language hints disabled", TestPromptBuilderLanguageHintsDisabled);

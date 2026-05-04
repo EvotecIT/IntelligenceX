@@ -655,6 +655,14 @@ public static partial class ReviewerApp {
         return files.Where(file => !IsWorkflowPath(file.Filename)).ToList();
     }
 
+    internal static IReadOnlyList<InlineReviewComment> ExcludeWorkflowInlineComments(IReadOnlyList<InlineReviewComment> comments) {
+        if (comments.Count == 0) {
+            return comments;
+        }
+
+        return comments.Where(comment => !IsWorkflowPath(comment.Path)).ToArray();
+    }
+
     internal static string BuildWorkflowGuardNote(string? headSha, int workflowFileCount, int reviewedFiles, bool skipped) {
         var normalizedWorkflowCount = Math.Max(0, workflowFileCount);
         var normalizedReviewedCount = Math.Max(0, reviewedFiles);
@@ -666,7 +674,7 @@ public static partial class ReviewerApp {
                    "Set allowWorkflowChanges or REVIEW_ALLOW_WORKFLOW_CHANGES=true to override.";
         }
         return $"Workflow guardrail active: excluded {normalizedWorkflowCount} {workflowLabel} at commit {head}; " +
-               $"reviewed {normalizedReviewedCount} non-workflow file(s).";
+               $"reviewed {normalizedReviewedCount} non-workflow file(s). Do not report Todo, Critical, or inline findings for excluded workflow files.";
     }
 
     private static bool IsWorkflowPath(string? path) {
