@@ -674,6 +674,42 @@ internal static partial class Program {
             "auto approval unavailable review thread reason");
     }
 
+    private static void TestReviewAutoApprovalPendingOnlyGateIsIndependent() {
+        var context = new PullRequestContext("owner/repo", "owner", "repo", 12, "Bump package", null, false,
+            "abc1234", "base", new[] { "ix-auto-approve" }, "owner/repo", false, null,
+            authorLogin: "dependabot[bot]");
+        var settings = new ReviewSettings();
+        settings.AutoApprove.Enabled = true;
+        settings.AutoApprove.AllowedAuthors = new[] { "dependabot[bot]" };
+        settings.AutoApprove.RequireChecksPass = false;
+        settings.AutoApprove.RequireNoPendingChecks = true;
+        var history = new ReviewHistorySnapshot {
+            ThreadSnapshot = new ReviewHistoryThreadSnapshot {
+                ActiveCount = 0
+            }
+        };
+        var pendingChecks = new ReviewCheckSnapshot(new[] {
+            new ReviewCheckRun("Build", "in_progress", null, null)
+        });
+
+        var blocked = ReviewAutoApproval.Evaluate(context, settings, reviewFailed: false, hasMergeBlockers: false,
+            history, requiresConversationResolution: true, allowWrites: true, pendingChecks);
+        AssertEqual(false, blocked.ShouldApprove,
+            "auto approval pending-only mode blocks when checks are still running");
+        AssertContainsText(string.Join("\n", blocked.Blockers), "1 pending check(s)",
+            "auto approval pending-only mode reports pending blocker");
+
+        var failedChecks = new ReviewCheckSnapshot(new[] {
+            new ReviewCheckRun("Experimental", "completed", "failure", null)
+        });
+        var eligible = ReviewAutoApproval.Evaluate(context, settings, reviewFailed: false, hasMergeBlockers: false,
+            history, requiresConversationResolution: true, allowWrites: true, failedChecks);
+        AssertEqual(true, eligible.ShouldApprove,
+            "auto approval pending-only mode does not require failed checks to pass");
+        AssertContainsText(string.Join("\n", eligible.PassedGates), "no pending checks",
+            "auto approval pending-only mode records the independent pass gate");
+    }
+
     private static void TestGitHubCommitStatusesContributeToCheckSnapshot() {
         var root = IntelligenceX.Json.JsonLite.Parse("""
 {

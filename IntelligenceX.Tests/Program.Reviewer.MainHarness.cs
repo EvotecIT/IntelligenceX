@@ -816,6 +816,8 @@ internal static partial class Program {
         failed += Run("Repository guidance resolves against config root",
             TestRepositoryGuidanceResolvesAgainstConfigRoot);
         failed += Run("Review auto approval readiness gates", TestReviewAutoApprovalReadinessGates);
+        failed += Run("Review auto approval pending-only gate is independent",
+            TestReviewAutoApprovalPendingOnlyGateIsIndependent);
         failed += Run("GitHub commit statuses contribute to check snapshot",
             TestGitHubCommitStatusesContributeToCheckSnapshot);
         failed += Run("Prompt includes ci context section", TestPromptBuilderIncludesCiContextSection);

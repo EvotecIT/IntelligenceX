@@ -200,20 +200,20 @@ internal static class ReviewAutoApproval {
             return;
         }
 
-        if (auto.RequireChecksPass && effectiveChecks.FailedCount > 0) {
-            blockers.Add($"{effectiveChecks.FailedCount} failing check(s)");
+        if (auto.RequireChecksPass) {
+            if (effectiveChecks.FailedCount > 0) {
+                blockers.Add($"{effectiveChecks.FailedCount} failing check(s)");
+            } else {
+                passed.Add("checks passed");
+            }
         }
 
-        if (auto.RequireNoPendingChecks && effectiveChecks.PendingCount > 0) {
-            blockers.Add($"{effectiveChecks.PendingCount} pending check(s)");
-        }
-
-        if (auto.RequireChecksPass &&
-            effectiveChecks.FailedCount == 0 &&
-            (!auto.RequireNoPendingChecks || effectiveChecks.PendingCount == 0)) {
-            passed.Add("checks passed");
-        } else if (!auto.RequireChecksPass && auto.RequireNoPendingChecks && effectiveChecks.PendingCount == 0) {
-            passed.Add("no pending checks");
+        if (auto.RequireNoPendingChecks) {
+            if (effectiveChecks.PendingCount > 0) {
+                blockers.Add($"{effectiveChecks.PendingCount} pending check(s)");
+            } else {
+                passed.Add("no pending checks");
+            }
         }
     }
 
