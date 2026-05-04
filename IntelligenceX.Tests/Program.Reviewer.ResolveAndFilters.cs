@@ -722,6 +722,59 @@ internal static partial class Program {
             "auto approval pending-only mode records the independent pass gate");
     }
 
+    private static void TestReviewThreadBlockerSanitizerRemovesStaleThreadTodo() {
+        var settings = new ReviewSettings {
+            MergeBlockerSections = new[] { "Todo List" },
+            MergeBlockerRequireAllSections = false
+        };
+        var history = new ReviewHistorySnapshot {
+            ThreadSnapshot = new ReviewHistoryThreadSnapshot {
+                ActiveCount = 0,
+                ResolvedCount = 3
+            }
+        };
+        var body = string.Join("\n", new[] {
+            "## Summary 📝",
+            "Looks good.",
+            "## Todo List ✅",
+            "- [ ] Resolve the still-active review threads on `ReviewAutoApproval.cs` and `GitHubClient.cs`.",
+            "## Other Issues 🧯",
+            "- Consider simplifying a helper later."
+        });
+
+        var sanitized = ReviewThreadBlockerSanitizer.RemoveResolvedThreadBlockers(body, settings, history,
+            reviewThreadsUnavailable: false);
+
+        AssertDoesNotContainText(sanitized, "still-active review threads",
+            "review thread sanitizer removes stale merge-blocker todo");
+        AssertContainsText(sanitized, "- none.", "review thread sanitizer leaves explicit clean section marker");
+        AssertEqual(false, ReviewSummaryParser.HasMergeBlockers(sanitized, settings),
+            "review thread sanitizer clears stale thread blocker from merge state");
+        AssertContainsText(sanitized, "Consider simplifying a helper later.",
+            "review thread sanitizer preserves non-blocking sections");
+    }
+
+    private static void TestReviewThreadBlockerSanitizerKeepsTodoWhenThreadsUnavailable() {
+        var settings = new ReviewSettings();
+        var history = new ReviewHistorySnapshot {
+            ThreadSnapshot = new ReviewHistoryThreadSnapshot {
+                ActiveCount = 0
+            }
+        };
+        var body = string.Join("\n", new[] {
+            "## Todo List ✅",
+            "- [ ] Resolve the still-active review threads before merging."
+        });
+
+        var sanitized = ReviewThreadBlockerSanitizer.RemoveResolvedThreadBlockers(body, settings, history,
+            reviewThreadsUnavailable: true);
+
+        AssertContainsText(sanitized, "still-active review threads",
+            "review thread sanitizer keeps blocker when thread state is unavailable");
+        AssertEqual(true, ReviewSummaryParser.HasMergeBlockers(sanitized, settings),
+            "review thread sanitizer preserves blocker when structured thread state is unavailable");
+    }
+
     private static void TestGitHubCommitStatusesContributeToCheckSnapshot() {
         var root = IntelligenceX.Json.JsonLite.Parse("""
 {

@@ -820,6 +820,10 @@ internal static partial class Program {
         failed += Run("Review auto approval readiness gates", TestReviewAutoApprovalReadinessGates);
         failed += Run("Review auto approval pending-only gate is independent",
             TestReviewAutoApprovalPendingOnlyGateIsIndependent);
+        failed += Run("Review thread blocker sanitizer removes stale thread todo",
+            TestReviewThreadBlockerSanitizerRemovesStaleThreadTodo);
+        failed += Run("Review thread blocker sanitizer keeps todo when thread state unavailable",
+            TestReviewThreadBlockerSanitizerKeepsTodoWhenThreadsUnavailable);
         failed += Run("GitHub commit statuses contribute to check snapshot",
             TestGitHubCommitStatusesContributeToCheckSnapshot);
         failed += Run("GitHub auto approval review match requires exact head sha",

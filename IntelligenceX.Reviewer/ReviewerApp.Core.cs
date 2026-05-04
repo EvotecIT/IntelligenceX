@@ -566,6 +566,8 @@ public static partial class ReviewerApp {
             if (allowWrites && settings.ReviewThreadsAutoResolveSummaryAlways && string.IsNullOrWhiteSpace(autoResolveSummary)) {
                 autoResolveSummary = triageResult.FallbackSummary;
             }
+            summaryBody = ReviewThreadBlockerSanitizer.RemoveResolvedThreadBlockers(summaryBody, settings,
+                extras.ReviewHistory, extras.ReviewThreadsUnavailable);
             var usageLine = await TryBuildUsageLineAsync(settings, effectiveProvider).ConfigureAwait(false);
             var findingsBlock = settings.StructuredFindings ? ReviewFindingsBuilder.Build(inlineComments) : string.Empty;
             var finalHasMergeBlockers = ReviewSummaryParser.HasMergeBlockers(summaryBody, settings);
