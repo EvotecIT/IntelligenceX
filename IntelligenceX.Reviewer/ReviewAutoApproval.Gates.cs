@@ -93,6 +93,7 @@ internal static partial class ReviewAutoApproval {
     private static void AddCheckGate(ReviewAutoApproveSettings auto, ReviewCheckSnapshot? rawChecks,
         ReviewCheckSnapshot? effectiveChecks, List<string> blockers, List<string> passed) {
         if (!auto.RequireChecksPass && !auto.RequireNoPendingChecks) {
+            // Only bypass check data when both check-related approval gates are explicitly disabled.
             passed.Add("check gate disabled");
             return;
         }

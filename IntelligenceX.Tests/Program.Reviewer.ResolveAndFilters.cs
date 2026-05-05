@@ -837,6 +837,21 @@ internal static partial class Program {
             "auto approval pending-only mode ignores completed failing checks when pass gate is disabled");
         AssertContainsText(string.Join("\n", eligible.PassedGates), "no pending checks",
             "auto approval pending-only mode records the independent pass gate");
+
+        var unavailable = ReviewAutoApproval.Evaluate(context, settings, reviewFailed: false, hasMergeBlockers: false,
+            history, allowWrites: true, checks: null);
+        AssertEqual(false, unavailable.ShouldApprove,
+            "auto approval pending-only mode fails closed when check data is unavailable");
+        AssertContainsText(string.Join("\n", unavailable.Blockers), "check status unavailable",
+            "auto approval pending-only mode reports unavailable check status");
+
+        settings.AutoApprove.RequireNoPendingChecks = false;
+        var disabledCheckGate = ReviewAutoApproval.Evaluate(context, settings, reviewFailed: false,
+            hasMergeBlockers: false, history, allowWrites: true, checks: null);
+        AssertEqual(true, disabledCheckGate.ShouldApprove,
+            "auto approval check data is bypassed only when both check gates are disabled");
+        AssertContainsText(string.Join("\n", disabledCheckGate.PassedGates), "check gate disabled",
+            "auto approval disabled check gate records explicit bypass");
     }
 
     private static void TestReviewThreadBlockerSanitizerRemovesStaleThreadTodo() {
@@ -2076,6 +2091,18 @@ internal static partial class Program {
             "## Critical Issues ⚠️",
             "None.",
             "",
+            "## Other Issues 🧯",
+            "- Watch the intended risk.",
+            "",
+            "### Extra Risk Detail",
+            "- Do not count this nested risk.",
+            "",
+            "## Tests / Coverage 🧪",
+            "Coverage is described.",
+            "",
+            "### Raw Test Notes",
+            "- Do not count this nested test note.",
+            "",
             "## Next Steps 🚀",
             "Looks merge-ready.",
             "",
@@ -2088,8 +2115,16 @@ internal static partial class Program {
 
         AssertContainsText(block, "- **Good:** 1 positive signal captured in Summary / Excellent Aspects / Code Quality Assessment.",
             "review highlights stops next steps good fallback count");
+        AssertContainsText(block, "- **Risks / Watch:** 1 watch item captured in Other Issues / Security & Performance / Backward Compatibility.",
+            "review highlights stops risk capture at nested headings");
+        AssertContainsText(block, "- **Tests:** 1 test or coverage note captured in Tests / Coverage / Test Quality.",
+            "review highlights stops test capture at nested headings");
         AssertContainsText(block, "- **Next:** 1 follow-up note captured in Next Steps / Recommendations.",
             "review highlights stops next steps at nested headings");
+        AssertDoesNotContainText(block, "2 watch items",
+            "review highlights does not count nested risk bullets");
+        AssertDoesNotContainText(block, "2 test or coverage notes",
+            "review highlights does not count nested test bullets");
         AssertDoesNotContainText(block, "Looks merge-ready.",
             "review highlights does not duplicate next steps prose");
         AssertDoesNotContainText(block, "Config mode: respect",
