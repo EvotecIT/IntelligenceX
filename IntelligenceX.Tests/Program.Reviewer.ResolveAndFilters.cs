@@ -392,7 +392,7 @@ internal static partial class Program {
         var sanitized = WorkflowGuardSanitizer.RemoveExcludedWorkflowBlockers(body, settings, workflowGuardActive: true);
 
         AssertContainsText(sanitized, "## Todo List", "workflow sanitizer keeps blocker section");
-        AssertContainsText(sanitized, "- none.", "workflow sanitizer marks empty blocker section");
+        AssertContainsText(sanitized, "None.", "workflow sanitizer marks empty blocker section");
         AssertEqual(false, sanitized.Contains("- [ ] Fix `.github/workflows/review-intelligencex-core.yml`.", StringComparison.Ordinal),
             "workflow sanitizer removes excluded workflow todo");
         AssertContainsText(sanitized, "src/app.cs", "workflow sanitizer preserves other sections");
@@ -799,7 +799,7 @@ internal static partial class Program {
 
         AssertDoesNotContainText(sanitized, "still-active review threads",
             "review thread sanitizer removes stale merge-blocker todo");
-        AssertContainsText(sanitized, "- none.", "review thread sanitizer leaves explicit clean section marker");
+        AssertContainsText(sanitized, "None.", "review thread sanitizer leaves explicit clean section marker");
         AssertEqual(false, ReviewSummaryParser.HasMergeBlockers(sanitized, settings),
             "review thread sanitizer clears stale thread blocker from merge state");
         AssertContainsText(sanitized, "Consider simplifying a helper later.",

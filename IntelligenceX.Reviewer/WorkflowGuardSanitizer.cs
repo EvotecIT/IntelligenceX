@@ -49,7 +49,7 @@ internal static class WorkflowGuardSanitizer {
             }
 
             if (removedWorkflowBlocker && !sectionHasOpenItem) {
-                sectionLines.Add("- none.");
+                sectionLines.Add("None.");
             }
 
             foreach (var sectionLine in sectionLines) {

@@ -35,7 +35,7 @@ internal static class ReviewThreadBlockerSanitizer {
             }
 
             if (removedThreadBlocker && !sectionHasOpenItem) {
-                sectionLines.Add("- none.");
+                sectionLines.Add("None.");
             }
 
             foreach (var sectionLine in sectionLines) {
