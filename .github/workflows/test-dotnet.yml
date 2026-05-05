@@ -79,14 +79,6 @@ jobs:
               with:
                   name: coverage-reports-windows
                   path: '**/coverage.cobertura.xml'
-            - name: Upload coverage to Codecov
-              uses: codecov/codecov-action@ab904c41d6ece82784817410c45d8b8c02684457 # v3
-              if: ${{ runner.os == 'Linux' && hashFiles('**/coverage.cobertura.xml') != '' }}
-              with:
-                  files: '**/coverage.cobertura.xml'
-                  fail_ci_if_error: false
-                  verbose: true
-
     test-ubuntu:
         name: 'Ubuntu'
         # While the repo is private, prefer self-hosted runners to avoid GitHub-hosted spend limits.
@@ -137,7 +129,7 @@ jobs:
                   name: test-results-ubuntu
                   path: '**/*.trx'
             - name: Upload coverage to Codecov
-              uses: codecov/codecov-action@ab904c41d6ece82784817410c45d8b8c02684457 # v3
+              uses: codecov/codecov-action@3f20e214133d0983f9a10f3d63b0faf9241a3daa # v6.0.0
               if: ${{ runner.os == 'Linux' && hashFiles('**/coverage.cobertura.xml') != '' }}
               with:
                   files: '**/coverage.cobertura.xml'
@@ -187,10 +179,3 @@ jobs:
               with:
                   name: test-results-macos
                   path: '**/*.trx'
-            - name: Upload coverage to Codecov
-              uses: codecov/codecov-action@ab904c41d6ece82784817410c45d8b8c02684457 # v3
-              if: ${{ runner.os == 'Linux' && hashFiles('**/coverage.cobertura.xml') != '' }}
-              with:
-                  files: '**/coverage.cobertura.xml'
-                  fail_ci_if_error: false
-                  verbose: true
