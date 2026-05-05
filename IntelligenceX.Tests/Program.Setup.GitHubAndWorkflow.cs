@@ -190,8 +190,8 @@ jobs:
             "workflow template review style pass-through");
         AssertContainsText(content, "review_config_path: ${{ inputs.review_config_path || '.intelligencex/reviewer.json' }}",
             "workflow template review config path pass-through");
-        AssertContainsText(content, "max_files: ${{ fromJSON(inputs.max_files || '30') }}",
-            "workflow template max files pass-through");
+        AssertContainsText(content, "max_files: ${{ inputs.max_files }}",
+            "workflow template max files pass-through without YAML default");
         AssertContainsText(content, "diagnostics: ${{ fromJSON(inputs.diagnostics || 'false') }}",
             "workflow template diagnostics pass-through");
         AssertContainsText(content,
@@ -297,8 +297,31 @@ jobs:
             "wrapper workflow passes review style through with default");
         AssertContainsText(wrapperContent, "review_config_path: ${{ inputs.review_config_path || '.intelligencex/reviewer.json' }}",
             "wrapper workflow passes review config path through with default");
-        AssertContainsText(wrapperContent, "max_files: ${{ fromJSON(inputs.max_files || '30') }}",
-            "wrapper workflow passes max files through with default");
+        AssertContainsText(wrapperContent, "max_files: ${{ inputs.max_files }}",
+            "wrapper workflow passes max files through without overriding repo config");
+        AssertContainsText(wrapperContent, "max_inline_comments: ${{ inputs.max_inline_comments }}",
+            "wrapper workflow passes max inline comments through without overriding repo config");
+        AssertContainsText(wrapperContent, """
+      auto_approve_enabled:
+        description: 'Auto-approval enablement override for reusable callers'
+        required: false
+        default: ''
+        type: string
+""", "wrapper workflow keeps auto-approval overrides as explicit empty string pass-through");
+        AssertContainsText(wrapperContent, """
+      max_files:
+        description: 'Max files override for reusable callers'
+        required: false
+        default: ''
+        type: string
+""", "wrapper workflow keeps numeric review overrides as explicit empty string pass-through");
+        AssertContainsText(wrapperContent, """
+      max_inline_comments:
+        description: 'Max inline comments override for reusable callers'
+        required: false
+        default: ''
+        type: string
+""", "wrapper workflow keeps max inline comments as explicit empty string pass-through");
         AssertContainsText(wrapperContent, "diagnostics: ${{ fromJSON(inputs.diagnostics || 'false') }}",
             "wrapper workflow passes diagnostics through with default");
         AssertEqual(false, content.Contains("workflow_dispatch:", StringComparison.Ordinal),
@@ -311,6 +334,7 @@ jobs:
         var sourceStep = ExtractWorkflowStepBlock(content, "Run IntelligenceX.Reviewer (source)");
         var releaseUnixStep = ExtractWorkflowStepBlock(content, "Run IntelligenceX.Reviewer (release, unix)");
         var releaseWindowsStep = ExtractWorkflowStepBlock(content, "Run IntelligenceX.Reviewer (release, windows)");
+        var optionalOverridesStep = ExtractWorkflowStepBlock(content, "Apply optional reviewer config overrides");
         AssertContainsText(content, "workflow_call:", "reusable workflow defines workflow_call");
         AssertEqual(1, CountOccurrences(content, "openai_model:"),
             "reusable workflow defines openai_model once for workflow_call");
@@ -322,6 +346,27 @@ jobs:
             "reusable workflow defines external bot history once for workflow_call");
         AssertEqual(1, CountOccurrences(content, "swarm_max_parallel:"),
             "reusable workflow defines swarm max parallel once for workflow_call");
+        AssertContainsText(content, """
+      auto_approve_enabled:
+        description: 'Enable guarded auto-approval readiness/approval'
+        required: false
+        default: ''
+        type: string
+""", "reusable workflow keeps auto-approval overrides as explicit empty string pass-through");
+        AssertContainsText(content, """
+      max_files:
+        description: 'Max files to review'
+        required: false
+        default: ''
+        type: string
+""", "reusable workflow keeps numeric review overrides as explicit empty string pass-through");
+        AssertContainsText(content, """
+      skip_authors:
+        description: 'Comma-separated PR author logins to skip before provider auth'
+        required: false
+        default: ''
+        type: string
+""", "reusable workflow keeps author-skip overrides as explicit empty string pass-through");
         AssertContainsText(content, "default: 180",
             "reusable workflow gives PR-sized reviewer prompts a longer default wait window");
         AssertContainsText(content, "dotnet-version: '8.0.x'",
@@ -361,6 +406,26 @@ jobs:
         AssertEqual(1, CountOccurrences(content,
                 "INPUT_HISTORY_INCLUDE_EXTERNAL_BOT_SUMMARIES: ${{ inputs.history_include_external_bot_summaries }}"),
             "reusable workflow exports external bot history env once");
+        AssertEqual(false, jobEnvContent.Contains("INPUT_AUTO_APPROVE_ENABLED:", StringComparison.Ordinal),
+            "reusable workflow does not export optional auto-approval overrides at job scope");
+        AssertEqual(false, jobEnvContent.Contains("INPUT_SKIP_AUTHORS:", StringComparison.Ordinal),
+            "reusable workflow does not export optional author skip overrides at job scope");
+        AssertEqual(false, jobEnvContent.Contains("INPUT_FORCE_REVIEW_LABELS:", StringComparison.Ordinal),
+            "reusable workflow does not export optional force-review overrides at job scope");
+        AssertEqual(false, jobEnvContent.Contains("INPUT_MAX_FILES:", StringComparison.Ordinal),
+            "reusable workflow does not export optional max files override at job scope");
+        AssertEqual(false, jobEnvContent.Contains("INPUT_MAX_PATCH_CHARS:", StringComparison.Ordinal),
+            "reusable workflow does not export optional max patch chars override at job scope");
+        AssertContainsText(optionalOverridesStep, "add_if_set INPUT_AUTO_APPROVE_ENABLED \"$AUTO_APPROVE_ENABLED\"",
+            "reusable workflow exports auto-approval override only when supplied");
+        AssertContainsText(optionalOverridesStep, "add_if_set INPUT_SKIP_AUTHORS \"$SKIP_AUTHORS\"",
+            "reusable workflow exports skip-author override only when supplied");
+        AssertContainsText(optionalOverridesStep, "add_if_set INPUT_FORCE_REVIEW_LABELS \"$FORCE_REVIEW_LABELS\"",
+            "reusable workflow exports force-review labels override only when supplied");
+        AssertContainsText(optionalOverridesStep, "add_if_set INPUT_MAX_FILES \"$MAX_FILES\"",
+            "reusable workflow exports max files override only when supplied");
+        AssertContainsText(optionalOverridesStep, "add_if_set INPUT_MAX_PATCH_CHARS \"$MAX_PATCH_CHARS\"",
+            "reusable workflow exports max patch chars override only when supplied");
         AssertContainsText(content, "inputs.reviewer_source == 'source' && steps.reviewer_build.outcome == 'success'",
             "reusable workflow gates source reviewer execution on a successful source build");
         AssertContainsText(content, "git diff --name-only HEAD^1 HEAD^2 > artifacts/changed-files.txt",
@@ -494,6 +559,8 @@ jobs:
         AssertContainsText(content, "diagnostics:", "workflow explicit-secrets diagnostics input");
         AssertContainsText(content, "preflight:", "workflow explicit-secrets preflight input");
         AssertContainsText(content, "preflight_timeout_seconds:", "workflow explicit-secrets preflight timeout input");
+        AssertContainsText(content, "max_inline_comments: ${{ inputs.max_inline_comments }}",
+            "workflow explicit-secrets passes max inline comments through");
         AssertContainsText(content, "copilot_auto_install:", "workflow explicit-secrets Copilot auto-install input");
         AssertContainsText(content, "(inputs.copilot_launcher || vars.IX_REVIEW_COPILOT_LAUNCHER) == 'auto'",
             "workflow explicit-secrets maps Copilot launcher auto to auto-install");
@@ -528,6 +595,8 @@ jobs:
             "--explicit-secrets", "false"
         }, seed);
 
+        AssertContainsText(content, "max_inline_comments: ${{ inputs.max_inline_comments }}",
+            "workflow non-explicit secrets passes max inline comments through");
         AssertContainsText(content, "secrets: inherit", "workflow non-explicit secrets inherit");
         AssertEqual(false, content.Contains("INTELLIGENCEX_AUTH_B64:", StringComparison.Ordinal),
             "workflow non-explicit secrets no explicit auth mapping");

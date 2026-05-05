@@ -27,7 +27,7 @@ Confirm the next PR is reviewed end-to-end (analysis + reviewer) without manual 
 
 ## Expected Variations
 
-- Dependabot PRs can show comments from `github-actions` instead of your app bot. This is expected because secrets are usually not exposed to Dependabot workflows.
+- Dependabot PRs run the reviewer job but skip the LLM step by default before provider auth. Add `needs-ai-review` to force a full review when a dependency bump needs human-grade analysis.
 - If no actionable findings exist, review output may include only summary sections.
 
 ## Common Issues and Fixes

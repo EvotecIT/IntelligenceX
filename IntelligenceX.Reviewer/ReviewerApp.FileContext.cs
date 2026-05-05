@@ -177,6 +177,7 @@ public static partial class ReviewerApp {
                 // Review threads are supplemental context; avoid failing the whole review on GitHub GraphQL rate limits.
                 Console.Error.WriteLine($"Failed to load review threads: {ex.Message}");
                 extras.ReviewThreads = Array.Empty<PullRequestReviewThread>();
+                extras.ReviewThreadsUnavailable = true;
             }
         }
         if (settings.IncludeReviewComments && string.IsNullOrEmpty(extras.ReviewThreadsSection)) {
@@ -522,6 +523,68 @@ public static partial class ReviewerApp {
             Console.Error.WriteLine(
                 $"Thread auto-resolve (stale): scanned={scanned}; resolved={resolved}; failed={failed}; " +
                 $"skip_resolved={skippedResolved}; skip_not_outdated={skippedNotOutdated}; " +
+                $"skip_non_bot={skippedNonBot}; skip_partial_view={skippedPartialBotView}.");
+        }
+        return AutoResolvePermissionDiagnostics.From(permissionDeniedCount, permissionDeniedCredentials);
+    }
+
+    private static async Task<AutoResolvePermissionDiagnostics> AutoResolveExcludedWorkflowThreadsAsync(
+        GitHubClient github, GitHubClient? fallbackGithub, IReadOnlyList<PullRequestReviewThread> threads,
+        ReviewSettings settings, CancellationToken cancellationToken) {
+        if (threads.Count == 0 || settings.ReviewThreadsAutoResolveMax <= 0) {
+            return AutoResolvePermissionDiagnostics.Empty;
+        }
+
+        var resolved = 0;
+        var scanned = 0;
+        var skippedResolved = 0;
+        var skippedNonWorkflow = 0;
+        var skippedNonBot = 0;
+        var skippedPartialBotView = 0;
+        var failed = 0;
+        var permissionDeniedCount = 0;
+        var permissionDeniedCredentials = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var thread in threads) {
+            scanned++;
+            if (resolved >= settings.ReviewThreadsAutoResolveMax) {
+                break;
+            }
+            if (thread.IsResolved) {
+                skippedResolved++;
+                continue;
+            }
+            if (!IsWorkflowReviewThread(thread)) {
+                skippedNonWorkflow++;
+                continue;
+            }
+            if (settings.ReviewThreadsAutoResolveBotsOnly && thread.TotalComments > thread.Comments.Count) {
+                skippedPartialBotView++;
+                continue;
+            }
+            if (settings.ReviewThreadsAutoResolveBotsOnly && !ThreadHasOnlyBotComments(thread, settings)) {
+                skippedNonBot++;
+                continue;
+            }
+
+            var result = await TryResolveThreadAsync(github, fallbackGithub, thread.Id, cancellationToken).ConfigureAwait(false);
+            if (result.Resolved) {
+                resolved++;
+                continue;
+            }
+            if (result.PermissionDenied) {
+                permissionDeniedCount++;
+                foreach (var label in result.PermissionDeniedCredentialLabels) {
+                    permissionDeniedCredentials.Add(label);
+                }
+            }
+            failed++;
+            Console.Error.WriteLine($"Failed to resolve excluded workflow review thread {thread.Id}: {result.Error ?? "unknown error"}");
+        }
+
+        if (scanned > 0) {
+            Console.Error.WriteLine(
+                $"Thread auto-resolve (workflow-guard): scanned={scanned}; resolved={resolved}; failed={failed}; " +
+                $"skip_resolved={skippedResolved}; skip_non_workflow={skippedNonWorkflow}; " +
                 $"skip_non_bot={skippedNonBot}; skip_partial_view={skippedPartialBotView}.");
         }
         return AutoResolvePermissionDiagnostics.From(permissionDeniedCount, permissionDeniedCredentials);

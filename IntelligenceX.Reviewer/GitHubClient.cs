@@ -1,5 +1,4 @@
 using System;
-using System.Globalization;
 using System.Collections.Generic;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -101,6 +100,7 @@ internal sealed partial class GitHubClient : IDisposable {
         var headRepoFullName = headRepo?.GetString("full_name");
         var isFork = headRepo?.GetBoolean("fork") ?? false;
         var authorAssociation = obj.GetString("author_association");
+        var authorLogin = obj.GetObject("user")?.GetString("login");
 
         var labels = new List<string>();
         var labelsArray = obj.GetArray("labels");
@@ -115,7 +115,7 @@ internal sealed partial class GitHubClient : IDisposable {
         }
 
         var context = new PullRequestContext(repoFullName, owner, repo, prNumber, title, body, draft, headSha, baseSha,
-            labels, headRepoFullName, isFork, authorAssociation, headRepo is not null, baseRefName);
+            labels, headRepoFullName, isFork, authorAssociation, headRepo is not null, baseRefName, authorLogin);
         _pullRequestCache[cacheKey] = context;
         return context;
     }
@@ -226,7 +226,9 @@ internal sealed partial class GitHubClient : IDisposable {
                 var id = obj.GetInt64("id") ?? 0;
                 var body = obj.GetString("body") ?? string.Empty;
                 var author = obj.GetObject("user")?.GetString("login");
-                comments.Add(new IssueComment(id, body, author));
+                var createdAt = ParseGitHubDateTime(obj.GetString("created_at"));
+                var updatedAt = ParseGitHubDateTime(obj.GetString("updated_at"));
+                comments.Add(new IssueComment(id, body, author, createdAt, updatedAt));
                 if (maxResults > 0 && comments.Count >= maxResults) {
                     break;
                 }
@@ -518,7 +520,10 @@ internal sealed partial class GitHubClient : IDisposable {
             .ConfigureAwait(false);
         var obj = response.AsObject();
         var id = obj?.GetInt64("id") ?? 0;
-        return new IssueComment(id, body);
+        var createdAt = ParseGitHubDateTime(obj?.GetString("created_at"));
+        var updatedAt = ParseGitHubDateTime(obj?.GetString("updated_at"));
+        var author = obj?.GetObject("user")?.GetString("login");
+        return new IssueComment(id, body, author, createdAt, updatedAt);
     }
 
     public async Task UpdatePullRequestAsync(string owner, string repo, int number, string title, string body,
@@ -565,6 +570,73 @@ internal sealed partial class GitHubClient : IDisposable {
         await PostJsonAsync($"/repos/{owner}/{repo}/pulls/{number}/comments", payload, cancellationToken, allowRetries: false)
             .ConfigureAwait(false);
     }
+
+    public async Task<bool> HasAutoApprovalReviewAsync(string owner, string repo, int number, string? headSha,
+        string approvalBody, CancellationToken cancellationToken) {
+        if (string.IsNullOrWhiteSpace(headSha)) {
+            return false;
+        }
+
+        var page = 1;
+        var marker = ResolveAutoApprovalBodyMarker(approvalBody);
+        while (true) {
+            var json = await GetJsonAsync($"/repos/{owner}/{repo}/pulls/{number}/reviews?per_page=100&page={page}",
+                    cancellationToken)
+                .ConfigureAwait(false);
+            var array = json.AsArray();
+            if (array is null || array.Count == 0) {
+                return false;
+            }
+
+            foreach (var item in array) {
+                var obj = item.AsObject();
+                if (obj is null) {
+                    continue;
+                }
+
+                var state = obj.GetString("state");
+                var commitId = obj.GetString("commit_id");
+                var body = obj.GetString("body") ?? string.Empty;
+                if (IsMatchingAutoApprovalReview(state, commitId, body, headSha, marker)) {
+                    return true;
+                }
+            }
+
+            if (array.Count < 100) {
+                return false;
+            }
+            page++;
+        }
+    }
+
+    public async Task CreatePullRequestReviewAsync(string owner, string repo, int number, string body, string reviewEvent,
+        CancellationToken cancellationToken) {
+        var payload = new JsonObject()
+            .Add("body", body)
+            .Add("event", reviewEvent);
+        // Non-idempotent write: do not retry (avoid duplicate reviews).
+        await PostJsonAsync($"/repos/{owner}/{repo}/pulls/{number}/reviews", payload, cancellationToken, allowRetries: false)
+            .ConfigureAwait(false);
+    }
+
+    private static string ResolveAutoApprovalBodyMarker(string approvalBody) =>
+        !string.IsNullOrWhiteSpace(approvalBody) &&
+        approvalBody.Contains("IntelligenceX auto-approval", StringComparison.OrdinalIgnoreCase)
+            ? "IntelligenceX auto-approval"
+            : approvalBody.Trim();
+
+    internal static bool IsMatchingAutoApprovalReviewForTests(string? state, string? commitId, string? body,
+        string? headSha, string marker) =>
+        IsMatchingAutoApprovalReview(state, commitId, body ?? string.Empty, headSha, marker);
+
+    private static bool IsMatchingAutoApprovalReview(string? state, string? commitId, string body, string? headSha,
+        string marker) =>
+        state?.Equals("APPROVED", StringComparison.OrdinalIgnoreCase) == true &&
+        !string.IsNullOrWhiteSpace(commitId) &&
+        string.Equals(commitId, headSha, StringComparison.OrdinalIgnoreCase) &&
+        // The body marker keeps IX-created approvals distinct from human approvals on the same head SHA.
+        // Keep configured approval bodies distinctive when downstream repos customize the approval text.
+        body.Contains(marker, StringComparison.OrdinalIgnoreCase);
 
     public void Dispose() {
         _http.Dispose();

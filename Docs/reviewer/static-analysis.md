@@ -211,6 +211,12 @@ You can override configured packs per run with `intelligencex analyze run --pack
 `intelligencex analyze validate-catalog` validates rules/packs integrity (duplicates, bad refs, cycles, invalid severities).
 `intelligencex analyze list-rules` prints the built-in rule inventory (`--format text|markdown|json`) and supports pack-scoped views (`--pack` / `--packs`).
 
+### Whole-repository quality runs
+
+The reviewer normally uses analysis artifacts as PR context and applies file filters before rendering inline comments. The analysis engine itself is not limited to PR diffs: running `intelligencex analyze run --config .intelligencex/reviewer.json --out artifacts --framework net8.0` from the repository root scans the configured workspace and emits SARIF plus `artifacts/intelligencex.findings.json` for the whole checkout. That makes it suitable for a scheduled quality posture job similar to GitHub's repository-level code scanning view.
+
+For large repositories, start with a curated tier such as `all-50` or `all-security-50`, publish SARIF through GitHub code scanning if desired, then tighten gates with `analysis.gate` once the baseline is understood. Use `analysis.hotspots.statePath` and duplication baselines when you want "new issues only" behavior instead of trying to clean every historical finding in one PR.
+
 Current built-in runners in `analyze run`:
 - C#: Roslyn via `dotnet build` (SARIF output).
 - PowerShell: PSScriptAnalyzer via `pwsh` (IntelligenceX findings JSON output).

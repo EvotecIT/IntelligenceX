@@ -627,6 +627,22 @@ Recommended first use:
 - leave `includeExternalBotSummaries` off unless you explicitly want bounded Claude/Copilot bot summary excerpts as supporting context
 - keep `summaryStability: true` enabled as well if you want same-SHA wording to stay stable across reruns
 
+When history is enabled, sticky GitHub review comments also carry a hidden `intelligencex:history:v1` marker with a
+compact base64url JSON ledger. The marker is the durable source for prior IX rounds when the visible sticky comment is
+updated; artifacts remain the expanded diagnostic copy for CI and troubleshooting. Each round records merge-blocker
+state plus a deterministic recommendation (`approve`, `needs-work`, or `manual-review`) and compact positive, risk, and
+follow-up highlights parsed from the review sections. The visible `History Progress` block renders only when there is
+current-head posture, open blocker state, unresolved parse uncertainty, or same-head resolved blocker movement worth
+showing. Prior-head blockers are kept as prompt context and are not automatically marked resolved unless same-head
+evidence supports that conclusion.
+
+The current review body also gets a visible `Review Highlights` section before the model-written sections. It reports
+non-duplicating signal counts instead of copying the model-written prose, and is parsed
+from Summary/Excellent Aspects/Code Quality Assessment for positives, Other Issues/Security & Performance/Backward
+Compatibility for risks, Tests / Coverage/Test Quality for test posture, and Next Steps/Recommendations for follow-up.
+This keeps the useful "good / watch / tests / next" posture visible even on the first run, before there is any history
+ledger to compare.
+
 GitHub Actions input/env aliases:
 - `history_enabled` / `REVIEW_HISTORY_ENABLED`
 - `history_include_ix_summary_history` / `REVIEW_HISTORY_INCLUDE_IX_SUMMARY_HISTORY`
@@ -636,6 +652,96 @@ GitHub Actions input/env aliases:
 - `history_artifacts` / `REVIEW_HISTORY_ARTIFACTS`
 - `history_max_rounds` / `REVIEW_HISTORY_MAX_ROUNDS`
 - `history_max_items` / `REVIEW_HISTORY_MAX_ITEMS`
+
+## Repository guidance
+
+Use repository guidance when a repo has domain-specific architecture, API, compatibility, or release rules that should
+shape both positives and risks. Guidance is repo-owned: IntelligenceX does not ship built-in packs for other projects.
+By default the reviewer looks for `.intelligencex/reviewer-guidance.md`, `.intelligencex/review-guidance.md`, and
+`AGENTS.md`. You can point it at design documents or other maintained docs with `repositoryGuidancePaths`.
+
+```json
+{
+  "review": {
+    "repositoryGuidancePaths": [
+      ".intelligencex/reviewer-guidance.md",
+      "Docs/design.md",
+      "Docs/architecture.md"
+    ],
+    "repositoryGuidanceMaxChars": 12000,
+    "conventions": [
+      {
+        "id": "my-repo-api",
+        "title": "My repo public API",
+        "appliesTo": ["src/**/*.cs"],
+        "rules": [
+          "Do not break existing public method names or chaining behavior."
+        ],
+        "goodSignals": [
+          "Adds tests proving backwards-compatible usage."
+        ],
+        "riskSignals": [
+          "Changes serialization or public surface without migration notes."
+        ],
+        "followUps": [
+          "Ask for docs/examples when public behavior changes."
+        ]
+      }
+    ]
+  }
+}
+```
+
+Env aliases:
+- `repository_guidance_paths` / `REVIEW_REPOSITORY_GUIDANCE_PATHS`
+- `repository_guidance_enabled` / `REVIEW_REPOSITORY_GUIDANCE_ENABLED`
+- `repository_guidance_max_chars` / `REVIEW_REPOSITORY_GUIDANCE_MAX_CHARS`
+
+## Auto-approval readiness
+
+Auto-approval is default-off and conservative. When enabled, the reviewer renders an `Auto-Approval Readiness` table in
+the sticky comment only after policy opt-in gates allow the PR, such as required labels and author policy. It submits an
+approving pull request review only when all configured gates pass and `dryRun` is `false`.
+
+```json
+{
+  "review": {
+    "autoApprove": {
+      "enabled": true,
+      "dryRun": true,
+      "requiredLabels": ["ix-auto-approve"],
+      "blockedLabels": ["do-not-merge", "needs-human-review", "no-auto-approve"],
+      "ignoredCheckNames": ["IntelligenceX Review"],
+      "requireNoMergeBlockers": true,
+      "requireReviewSuccess": true,
+      "requireChecksPass": true,
+      "requireNoPendingChecks": true,
+      "requireNoActiveReviewThreads": true
+    }
+  }
+}
+```
+
+Use `dryRun: true` first to audit decisions without submitting approvals. Set `dryRun: false` only after branch
+protection, labels, author policy, and ignored check names are confirmed for the repository. Omit `allowedAuthors` or
+set it to an empty array to allow any PR author once the other gates pass. Set it only when a repository wants a narrower
+policy, such as Dependabot-only approvals. `ignoredCheckNames`
+exists because the reviewer workflow's own check can still be pending while the reviewer is deciding whether every
+other check has passed.
+
+When approval submission is enabled, the reviewer de-duplicates its own approvals by requiring both an exact `headSha`
+match and a distinctive marker from the configured approval body. Keep customized approval bodies clearly IX-specific so
+the reviewer does not mistake a human approval for a prior automated approval on the same commit.
+
+Env aliases:
+- `auto_approve_enabled` / `REVIEW_AUTO_APPROVE_ENABLED`
+- `auto_approve_dry_run` / `REVIEW_AUTO_APPROVE_DRY_RUN`
+- `auto_approve_required_labels` / `REVIEW_AUTO_APPROVE_REQUIRED_LABELS`
+- `auto_approve_blocked_labels` / `REVIEW_AUTO_APPROVE_BLOCKED_LABELS`
+- `auto_approve_allowed_authors` / `REVIEW_AUTO_APPROVE_ALLOWED_AUTHORS`
+- `auto_approve_ignored_check_names` / `REVIEW_AUTO_APPROVE_IGNORED_CHECK_NAMES`
+- `auto_approve_require_no_pending_checks` / `REVIEW_AUTO_APPROVE_REQUIRE_NO_PENDING_CHECKS`
+- `auto_approve_require_no_active_review_threads` / `REVIEW_AUTO_APPROVE_REQUIRE_NO_ACTIVE_REVIEW_THREADS`
 
 ## Redaction (secrets)
 
@@ -810,6 +916,12 @@ Prefer `directTokenEnv` over `directToken` to avoid committing secrets to source
 - `reviewDiffRange`: `current`, `pr-base`, or `first-review`
 - `outputStyle`: rendering style preset (for the compact template, use `compact`)
 - `narrativeMode`: `structured` (default) or `freedom`
+- `repositoryGuidancePaths`: repo-owned guidance/design docs included in the prompt
+- `repositoryGuidanceMaxChars`: total character budget for repository guidance
+- `conventions`: custom repo-owned structured review guidance objects
+- `autoApprove.enabled`: render approval-readiness gates and optionally submit an approving PR review
+- `autoApprove.dryRun`: audit auto-approval decisions without submitting an approval
+- `autoApprove.allowedAuthors`: optional author allow-list; omit it or set an empty array when author should not be a gate
 - `reviewUsageSummary`: append usage line to the footer (OpenAI ChatGPT usage snapshot or Claude live limit snapshot)
 - `openaiAccountId`: pin a preferred ChatGPT account id
 - `openaiAccountIds`: ordered account ids used for rotation/failover
@@ -857,6 +969,8 @@ Prefer `directTokenEnv` over `directToken` to avoid committing secrets to source
 - `swarm.aggregator`: optional structured aggregator definition with provider/model/reasoningEffort
 - `swarm.failOpenOnPartial`: allow swarm aggregation to proceed when one sub-reviewer fails
 - `swarm.metrics`: emit swarm metrics/artifacts for comparison and rollout evaluation
+- `skipAuthors`: PR author logins skipped before provider auth (defaults to `dependabot[bot]` and `app/dependabot`)
+- `forceReviewLabels`: labels that bypass `skipAuthors` (defaults to `needs-ai-review`)
 - `skipPaths`: if **all** changed files in a PR match these globs, skip reviewing the entire PR
 - `skipBinaryFiles`: skip binary assets (images, archives, executables) from review context (default true)
 - `skipGeneratedFiles`: skip generated files (build output, generated sources) from review context (default true)
@@ -883,11 +997,12 @@ Prefer `directTokenEnv` over `directToken` to avoid committing secrets to source
 - `copilot.inheritEnvironment`: inherit full runner environment for Copilot CLI (`true` by default)
 
 **Path filter order of operations**
-1. `skipPaths` is evaluated first at the PR level. If **every** changed file matches `skipPaths`, the PR is skipped.
-2. If the PR is not skipped, `skipBinaryFiles`/`skipGeneratedFiles` (when enabled) remove binary and generated files from the review list.
+1. `skipAuthors` is evaluated after PR metadata is loaded and before provider auth. Matching authors are skipped unless the PR has a `forceReviewLabels` label.
+2. `skipPaths` is evaluated at the PR level. If **every** changed file matches `skipPaths`, the PR is skipped.
+3. If the PR is not skipped, `skipBinaryFiles`/`skipGeneratedFiles` (when enabled) remove binary and generated files from the review list.
    `generatedFileGlobs` extends the default generated-file patterns.
-3. `includePaths` (if set) selects which changed files are eligible for review.
-4. Finally, `excludePaths` (if set) removes any remaining files from review.
+4. `includePaths` (if set) selects which changed files are eligible for review.
+5. Finally, `excludePaths` (if set) removes any remaining files from review.
 
 ## Auto-resolve notes
 - `reviewThreadsAutoResolveBotLogins` defaults to `intelligencex-review` and `copilot-pull-request-reviewer`. When set,

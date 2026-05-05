@@ -142,6 +142,31 @@ on:
         required: false
         default: ''
         type: string
+      auto_approve_enabled:
+        description: 'Enable guarded auto-approval readiness/approval'
+        required: false
+        default: ''
+        type: string
+      auto_approve_dry_run:
+        description: 'Audit auto-approval decisions without submitting approvals'
+        required: false
+        default: ''
+        type: string
+      auto_approve_required_labels:
+        description: 'Comma-separated labels required before auto-approval'
+        required: false
+        default: ''
+        type: string
+      auto_approve_allowed_authors:
+        description: 'Comma-separated PR author logins eligible for auto-approval'
+        required: false
+        default: ''
+        type: string
+      auto_approve_ignored_check_names:
+        description: 'Comma-separated check names ignored by auto-approval'
+        required: false
+        default: ''
+        type: string
       length:
         description: 'Review length: short, medium, long'
         required: false
@@ -315,18 +340,18 @@ on:
       max_files:
         description: 'Max files to review'
         required: false
-        default: 30
-        type: number
+        default: ''
+        type: string
       max_patch_chars:
         description: 'Max patch chars per file'
         required: false
-        default: 20000
-        type: number
+        default: ''
+        type: string
       max_inline_comments:
         description: 'Max inline comments'
         required: false
-        default: 10
-        type: number
+        default: ''
+        type: string
       severity_threshold:
         description: 'Only include issues >= severity (low/medium/high/critical)'
         required: false
@@ -354,6 +379,16 @@ on:
         type: string
       skip_labels:
         description: 'Comma-separated labels to skip'
+        required: false
+        default: ''
+        type: string
+      skip_authors:
+        description: 'Comma-separated PR author logins to skip before provider auth'
+        required: false
+        default: ''
+        type: string
+      force_review_labels:
+        description: 'Comma-separated labels that bypass author skip filters'
         required: false
         default: ''
         type: string
@@ -589,9 +624,6 @@ jobs:
       REVIEW_FAIL_OPEN_TRANSIENT_ONLY: false
       INPUT_PREFLIGHT: ${{ inputs.preflight }}
       INPUT_PREFLIGHT_TIMEOUT_SECONDS: ${{ inputs.preflight_timeout_seconds }}
-      INPUT_MAX_FILES: ${{ inputs.max_files }}
-      INPUT_MAX_PATCH_CHARS: ${{ inputs.max_patch_chars }}
-      INPUT_MAX_INLINE_COMMENTS: ${{ inputs.max_inline_comments }}
       INPUT_SEVERITY_THRESHOLD: ${{ inputs.severity_threshold }}
       INPUT_WAIT_SECONDS: ${{ inputs.wait_seconds }}
       INPUT_IDLE_SECONDS: ${{ inputs.idle_seconds }}
@@ -650,6 +682,39 @@ jobs:
         with:
           app-id: ${{ env.INTELLIGENCEX_APP_ID }}
           private-key: ${{ env.INTELLIGENCEX_APP_KEY }}
+      - name: Apply optional reviewer config overrides
+        shell: bash
+        env:
+          AUTO_APPROVE_ENABLED: ${{ inputs.auto_approve_enabled }}
+          AUTO_APPROVE_DRY_RUN: ${{ inputs.auto_approve_dry_run }}
+          AUTO_APPROVE_REQUIRED_LABELS: ${{ inputs.auto_approve_required_labels }}
+          AUTO_APPROVE_ALLOWED_AUTHORS: ${{ inputs.auto_approve_allowed_authors }}
+          AUTO_APPROVE_IGNORED_CHECK_NAMES: ${{ inputs.auto_approve_ignored_check_names }}
+          SKIP_AUTHORS: ${{ inputs.skip_authors }}
+          FORCE_REVIEW_LABELS: ${{ inputs.force_review_labels }}
+          MAX_FILES: ${{ inputs.max_files }}
+          MAX_PATCH_CHARS: ${{ inputs.max_patch_chars }}
+          MAX_INLINE_COMMENTS: ${{ inputs.max_inline_comments }}
+        run: |
+          set -euo pipefail
+          add_if_set() {
+            local name="$1"
+            local value="$2"
+            if [ -n "${value//[[:space:]]/}" ]; then
+              printf '%s=%s\n' "$name" "$value" >> "$GITHUB_ENV"
+            fi
+          }
+
+          add_if_set INPUT_AUTO_APPROVE_ENABLED "$AUTO_APPROVE_ENABLED"
+          add_if_set INPUT_AUTO_APPROVE_DRY_RUN "$AUTO_APPROVE_DRY_RUN"
+          add_if_set INPUT_AUTO_APPROVE_REQUIRED_LABELS "$AUTO_APPROVE_REQUIRED_LABELS"
+          add_if_set INPUT_AUTO_APPROVE_ALLOWED_AUTHORS "$AUTO_APPROVE_ALLOWED_AUTHORS"
+          add_if_set INPUT_AUTO_APPROVE_IGNORED_CHECK_NAMES "$AUTO_APPROVE_IGNORED_CHECK_NAMES"
+          add_if_set INPUT_SKIP_AUTHORS "$SKIP_AUTHORS"
+          add_if_set INPUT_FORCE_REVIEW_LABELS "$FORCE_REVIEW_LABELS"
+          add_if_set INPUT_MAX_FILES "$MAX_FILES"
+          add_if_set INPUT_MAX_PATCH_CHARS "$MAX_PATCH_CHARS"
+          add_if_set INPUT_MAX_INLINE_COMMENTS "$MAX_INLINE_COMMENTS"
       - name: Resolve reviewer release
         if: ${{ inputs.reviewer_source == 'release' && inputs.reviewer_release_url == '' }}
         id: reviewer_release

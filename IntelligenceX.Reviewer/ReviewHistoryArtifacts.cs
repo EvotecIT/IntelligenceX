@@ -108,6 +108,10 @@ internal static class ReviewHistoryArtifacts {
                 sameHeadAsCurrent = round.SameHeadAsCurrent,
                 hasMergeBlockers = round.HasMergeBlockers,
                 mergeBlockerStatus = round.MergeBlockerStatus,
+                recommendation = round.Recommendation,
+                positiveHighlights = round.PositiveHighlights,
+                riskNotes = round.RiskNotes,
+                followUps = round.FollowUps,
                 findingsHitLimit = round.FindingsHitLimit,
                 findingsParseIncomplete = round.FindingsParseIncomplete,
                 findings = BuildFindingItems(round.Findings)
@@ -213,8 +217,27 @@ internal static class ReviewHistoryArtifacts {
             if (round.FindingsParseIncomplete) {
                 sb.Append(", findings parse incomplete");
             }
+            if (!string.IsNullOrWhiteSpace(round.Recommendation)) {
+                sb.Append(", recommendation `");
+                sb.Append(EscapeInline(round.Recommendation));
+                sb.Append("`");
+            }
             sb.AppendLine();
+            AppendRoundSignals(sb, "Good", round.PositiveHighlights);
+            AppendRoundSignals(sb, "Risks / Bad", round.RiskNotes);
+            AppendRoundSignals(sb, "Follow-up", round.FollowUps);
         }
+    }
+
+    private static void AppendRoundSignals(StringBuilder sb, string label, IReadOnlyList<string> items) {
+        if (items.Count == 0) {
+            return;
+        }
+
+        sb.Append("  - ");
+        sb.Append(label);
+        sb.Append(": ");
+        sb.AppendLine(string.Join("; ", items));
     }
 
     private static void AppendExternalSummaries(StringBuilder sb,

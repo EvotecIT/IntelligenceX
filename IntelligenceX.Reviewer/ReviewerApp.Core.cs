@@ -214,6 +214,12 @@ public static partial class ReviewerApp {
                 }
             }
 
+            if (ShouldSkipByAuthor(context, settings)) {
+                Console.WriteLine(
+                    $"Skipping pull request authored by '{context.AuthorLogin}' due to author filter. Add one of these labels to force a full review: {string.Join(", ", settings.ForceReviewLabels)}.");
+                return 0;
+            }
+
             if (!await TryWriteAuthFromEnvAsync().ConfigureAwait(false)) {
                 return 1;
             }
@@ -281,6 +287,7 @@ public static partial class ReviewerApp {
                     $"Workflow file changes detected; excluding {workflowFileCount} workflow file(s) from review. Reviewing {reviewableFiles.Count} non-workflow file(s).");
                 files = reviewableFiles;
             }
+            var workflowGuardActive = !settings.AllowWorkflowChanges && !string.IsNullOrWhiteSpace(workflowGuardNote);
 
             if (allowWrites) {
                 context = await CleanupService.RunAsync(github, context, settings, cancellationToken)
@@ -300,6 +307,7 @@ public static partial class ReviewerApp {
                     !string.IsNullOrWhiteSpace(context.HeadSha) &&
                     !IsSummaryOutdated(existingSummary, context.HeadSha)) {
                     previousSummary = ExtractSummaryBody(existingSummary.Body, settings.MaxCommentChars);
+                    previousSummary = WorkflowGuardSanitizer.RemoveExcludedWorkflowReferences(previousSummary, workflowGuardActive);
                 }
             }
 
@@ -329,9 +337,25 @@ public static partial class ReviewerApp {
             progress.Files = ReviewProgressState.Complete;
             progress.StatusLine = "Analyzed changed files.";
 
+            var forceReviewThreads = settings.TriageOnly ||
+                                     (settings.AutoApprove.Enabled &&
+                                      settings.AutoApprove.RequireNoActiveReviewThreads);
             var extras = await BuildExtrasAsync(codeHostReader, github, fallbackGithub, context, settings, cancellationToken,
-                    settings.TriageOnly)
+                    forceReviewThreads)
                 .ConfigureAwait(false);
+            if (workflowGuardActive) {
+                if (allowWrites) {
+                    var workflowThreadPermissions = await AutoResolveExcludedWorkflowThreadsAsync(github, fallbackGithub,
+                            extras.ReviewThreads, settings, cancellationToken)
+                        .ConfigureAwait(false);
+                    extras.StaleThreadAutoResolvePermissions =
+                        extras.StaleThreadAutoResolvePermissions.Merge(workflowThreadPermissions);
+                }
+                extras.ReviewThreads = ExcludeWorkflowReviewThreads(extras.ReviewThreads);
+                if (settings.IncludeReviewThreads) {
+                    extras.ReviewThreadsSection = BuildReviewThreadsSection(extras.ReviewThreads, settings);
+                }
+            }
             extras.ReviewHistory = extras.IssueComments.Count > 0
                 ? ReviewHistoryBuilder.BuildSnapshot(extras.IssueComments, context.HeadSha, extras.ReviewThreads, settings)
                 : ReviewHistoryBuilder.BuildSnapshot(existingSummary, context.HeadSha, extras.ReviewThreads, settings);
@@ -359,7 +383,8 @@ public static partial class ReviewerApp {
                     return 0;
                 }
                 var triageRunner = new ReviewRunner(settings);
-                var (triageOnlyFiles, triageOnlyNote) = await ResolveThreadTriageFilesAsync(codeHostReader, context, settings, allFiles,
+                var triageOnlySourceFiles = workflowGuardActive ? files : allFiles;
+                var (triageOnlyFiles, triageOnlyNote) = await ResolveThreadTriageFilesAsync(codeHostReader, context, settings, triageOnlySourceFiles,
                         cancellationToken)
                     .ConfigureAwait(false);
                 var triageOnlyResult = await MaybeAutoResolveAssessedThreadsAsync(github, fallbackGithub, triageRunner, context, triageOnlyFiles,
@@ -382,7 +407,10 @@ public static partial class ReviewerApp {
                 budgetNote = string.Empty;
             }
             budgetNote = CombineNotes(workflowGuardNote, budgetNote);
-            var prompt = PromptBuilder.Build(context, limitedFiles, settings, diffNote, extras, inlineSupported, previousSummary);
+            var promptDiffNote = string.IsNullOrWhiteSpace(workflowGuardNote)
+                ? diffNote
+                : CombineNotes(diffNote, $"Review policy: {workflowGuardNote}");
+            var prompt = PromptBuilder.Build(context, limitedFiles, settings, promptDiffNote, extras, inlineSupported, previousSummary);
             if (settings.RedactPii) {
                 prompt = Redaction.Apply(prompt, settings.RedactionPatterns, settings.RedactionReplacement);
             }
@@ -518,6 +546,13 @@ public static partial class ReviewerApp {
                 }
             }
 
+            if (workflowGuardActive) {
+                summaryBody = WorkflowGuardSanitizer.RemoveExcludedWorkflowReferences(summaryBody, workflowGuardActive);
+                var filteredInlineComments = ExcludeWorkflowInlineComments(inlineComments);
+                inlineComments = filteredInlineComments as InlineReviewComment[] ?? filteredInlineComments.ToArray();
+                summaryBody = WorkflowGuardSanitizer.RemoveExcludedWorkflowBlockers(summaryBody, settings, workflowGuardActive);
+            }
+
             HashSet<string>? inlineKeys = null;
             if (inlineAllowed) {
                 inlineKeys = await PostInlineCommentsAsync(codeHostReader, github, context, files, settings, inlineComments,
@@ -532,7 +567,8 @@ public static partial class ReviewerApp {
 
             var triageResult = ThreadTriageResult.Empty;
             if (allowWrites) {
-                var (triageFiles, triageNote) = await ResolveThreadTriageFilesAsync(codeHostReader, context, settings, allFiles,
+                var triageSourceFiles = workflowGuardActive ? files : allFiles;
+                var (triageFiles, triageNote) = await ResolveThreadTriageFilesAsync(codeHostReader, context, settings, triageSourceFiles,
                         cancellationToken)
                     .ConfigureAwait(false);
                 triageResult = await MaybeAutoResolveAssessedThreadsAsync(github, fallbackGithub, runner, context, triageFiles,
@@ -557,11 +593,24 @@ public static partial class ReviewerApp {
             if (allowWrites && settings.ReviewThreadsAutoResolveSummaryAlways && string.IsNullOrWhiteSpace(autoResolveSummary)) {
                 autoResolveSummary = triageResult.FallbackSummary;
             }
+            summaryBody = ReviewThreadBlockerSanitizer.RemoveResolvedThreadBlockers(summaryBody, settings,
+                extras.ReviewHistory, extras.ReviewThreadsUnavailable);
             var usageLine = await TryBuildUsageLineAsync(settings, effectiveProvider).ConfigureAwait(false);
             var findingsBlock = settings.StructuredFindings ? ReviewFindingsBuilder.Build(inlineComments) : string.Empty;
-            var historyBlock = ReviewHistoryBuilder.BuildCommentBlock(extras.ReviewHistory);
+            var finalHasMergeBlockers = ReviewSummaryParser.HasMergeBlockers(summaryBody, settings);
+            var reviewStateBlock = ReviewStateBuilder.BuildCommentBlock(summaryBody, settings, reviewFailed);
+            var reviewHighlightsBlock = ReviewHighlightsBuilder.BuildCommentBlock(summaryBody, settings, reviewFailed);
+            var visibleHistory = ReviewHistoryBuilder.AppendCurrentRound(extras.ReviewHistory, summaryBody, context.HeadSha, settings);
+            var historyBlock = ReviewHistoryBuilder.BuildCommentBlock(visibleHistory);
+            var autoApprovalDecision = await BuildAutoApprovalDecisionAsync(github, fallbackGithub, context, settings,
+                    reviewFailed, finalHasMergeBlockers, extras.ReviewHistory, allowWrites, extras.ReviewThreadsUnavailable,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            var autoApprovalBlock = ReviewAutoApproval.BuildCommentBlock(autoApprovalDecision);
+            var statusBlocks = CombineCommentBlocks(reviewStateBlock, reviewHighlightsBlock, historyBlock, autoApprovalBlock);
             var commentBody = ReviewFormatter.BuildComment(context, summaryBody, settings, inlineSupported, inlineSuppressed,
-                autoResolveSummary, budgetNote, usageLine, findingsBlock, historyBlock);
+                autoResolveSummary, budgetNote, usageLine, findingsBlock, statusBlocks);
+            commentBody = ReviewHistoryMarker.AppendOrReplace(commentBody, extras.ReviewHistory, context, settings);
             progress.Review = ReviewProgressState.Complete;
             progress.Finalize = ReviewProgressState.InProgress;
             progress.StatusLine = "Finalizing summary.";
@@ -600,6 +649,8 @@ public static partial class ReviewerApp {
                             .ConfigureAwait(false);
                         summaryPosted = true;
                         Console.WriteLine("Updated existing review comment.");
+                        await SubmitAutoApprovalIfEligibleAsync(github, context, settings, autoApprovalDecision, cancellationToken)
+                            .ConfigureAwait(false);
                         return 0;
                     } catch (Exception ex) {
                         Console.Error.WriteLine($"Failed to update existing review comment {existing.Id}: {ex.Message}");
@@ -616,6 +667,8 @@ public static partial class ReviewerApp {
                 Console.WriteLine("Posted review comment.");
             }
 
+            await SubmitAutoApprovalIfEligibleAsync(github, context, settings, autoApprovalDecision, cancellationToken)
+                .ConfigureAwait(false);
             return 0;
         } catch (OperationCanceledException) {
             Console.Error.WriteLine("Operation canceled.");

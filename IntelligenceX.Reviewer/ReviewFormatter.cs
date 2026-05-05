@@ -14,7 +14,10 @@ internal static class ReviewFormatter {
     private static readonly string[] SectionLabels = {
         "Summary 📝",
         "Review Summary 📝",
+        "Review State 🧭",
+        "Review Highlights ✨",
         "History Progress 🔁",
+        "Auto-Approval Readiness 🤝",
         "Todo List ✅",
         "Critical Issues ⚠️ (if any)",
         "Critical Issues ⚠️",
@@ -224,8 +227,7 @@ internal static class ReviewFormatter {
             return string.Empty;
         }
         var trimmed = sha.Trim();
-        var shortSha = trimmed.Length > 7 ? trimmed.Substring(0, 7) : trimmed;
-        return $"{ReviewedCommitMarker} `{shortSha}`\n";
+        return $"{ReviewedCommitMarker} `{trimmed}`\n";
     }
 
     private static string BuildReasoningLabel(ReasoningEffort? effort) {

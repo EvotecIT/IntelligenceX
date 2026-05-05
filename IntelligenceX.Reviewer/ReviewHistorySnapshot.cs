@@ -22,6 +22,10 @@ internal sealed class ReviewHistoryRound {
     public bool SameHeadAsCurrent { get; init; }
     public bool HasMergeBlockers { get; init; }
     public string MergeBlockerStatus { get; init; } = string.Empty;
+    public string Recommendation { get; init; } = string.Empty;
+    public IReadOnlyList<string> PositiveHighlights { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<string> RiskNotes { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<string> FollowUps { get; init; } = Array.Empty<string>();
     public bool FindingsHitLimit { get; init; }
     public bool FindingsParseIncomplete { get; init; }
     public IReadOnlyList<ReviewHistoryFinding> Findings { get; init; } = Array.Empty<ReviewHistoryFinding>();

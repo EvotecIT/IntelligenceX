@@ -68,6 +68,42 @@ internal sealed class ReviewHistorySettings {
     public int MaxItems { get; set; } = 8;
 }
 
+internal sealed class ReviewAutoApproveSettings {
+    public bool Enabled { get; set; }
+    public bool DryRun { get; set; } = true;
+    public bool RequireNoMergeBlockers { get; set; } = true;
+    public bool RequireReviewSuccess { get; set; } = true;
+    public bool RequireChecksPass { get; set; } = true;
+    public bool RequireNoPendingChecks { get; set; } = true;
+    public bool RequireNoActiveReviewThreads { get; set; } = true;
+    public IReadOnlyList<string> RequiredLabels { get; set; } = new[] { "ix-auto-approve" };
+    public IReadOnlyList<string> BlockedLabels { get; set; } = new[] { "do-not-merge", "needs-human-review", "no-auto-approve" };
+    public IReadOnlyList<string> AllowedAuthors { get; set; } = Array.Empty<string>();
+    public IReadOnlyList<string> IgnoredCheckNames { get; set; } = new[] { "IntelligenceX Review" };
+    public string Body { get; set; } =
+        "IntelligenceX auto-approval: no merge blockers detected and configured approval gates passed.";
+}
+
+internal sealed class ReviewConventionPack {
+    public string Id { get; init; } = string.Empty;
+    public string Title { get; init; } = string.Empty;
+    public IReadOnlyList<string> AppliesTo { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<string> Rules { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<string> GoodSignals { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<string> RiskSignals { get; init; } = Array.Empty<string>();
+    public IReadOnlyList<string> FollowUps { get; init; } = Array.Empty<string>();
+}
+
+internal sealed class ReviewRepositoryGuidanceSettings {
+    public bool Enabled { get; set; } = true;
+    public IReadOnlyList<string> Paths { get; set; } = new[] {
+        ".intelligencex/reviewer-guidance.md",
+        ".intelligencex/review-guidance.md",
+        "AGENTS.md"
+    };
+    public int MaxChars { get; set; } = 12000;
+}
+
 internal sealed class ReviewSwarmReviewerSettings {
     public string Id { get; set; } = string.Empty;
     public string? AgentProfile { get; set; }
@@ -146,6 +182,7 @@ internal sealed partial class ReviewSettings {
     };
 
     public string Mode { get; set; } = "hybrid";
+    public string RepositoryRoot { get; set; } = Environment.CurrentDirectory;
     public ReviewProvider Provider { get; set; } = ReviewProvider.OpenAI;
     public ReviewProvider? ProviderFallback { get; set; }
     public ReviewCodeHost CodeHost { get; set; } = ReviewCodeHost.GitHub;
@@ -179,8 +216,11 @@ internal sealed partial class ReviewSettings {
     public string? OutputStyle { get; set; }
     public ReviewNarrativeMode NarrativeMode { get; set; } = ReviewNarrativeMode.Structured;
     public IReadOnlyList<string> Focus { get; set; } = Array.Empty<string>();
+    public IReadOnlyList<ReviewConventionPack> Conventions { get; set; } = Array.Empty<ReviewConventionPack>();
+    public ReviewRepositoryGuidanceSettings RepositoryGuidance { get; } = new();
     public string? Persona { get; set; }
     public string? Notes { get; set; }
+    public ReviewAutoApproveSettings AutoApprove { get; } = new();
     public string Model { get; set; } = OpenAIModelCatalog.DefaultModel;
     public ReasoningEffort? ReasoningEffort { get; set; }
     public ReasoningSummary? ReasoningSummary { get; set; }
@@ -317,6 +357,8 @@ internal sealed partial class ReviewSettings {
     public bool SkipDraft { get; set; } = true;
     public IReadOnlyList<string> SkipTitles { get; set; } = new[] { "[WIP]", "[skip-review]" };
     public IReadOnlyList<string> SkipLabels { get; set; } = Array.Empty<string>();
+    public IReadOnlyList<string> SkipAuthors { get; set; } = new[] { "dependabot[bot]", "app/dependabot" };
+    public IReadOnlyList<string> ForceReviewLabels { get; set; } = new[] { "needs-ai-review" };
     /// <summary>
     /// Paths that, when matched by <b>all</b> changed files in a pull request, cause the entire PR to be skipped.
     /// This is evaluated before <see cref="IncludePaths"/> and <see cref="ExcludePaths"/>.
