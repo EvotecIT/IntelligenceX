@@ -56,6 +56,7 @@ internal static partial class ReviewAutoApproval {
         return new ReviewAutoApprovalDecision {
             Enabled = true,
             DryRun = auto.DryRun,
+            // Display the readiness table after operator-controlled gates pass; later gates still decide approval.
             DisplayReadiness = allowWrites && labelAllowed && authorAllowed,
             ShouldApprove = blockers.Count == 0,
             PassedGates = passed,
