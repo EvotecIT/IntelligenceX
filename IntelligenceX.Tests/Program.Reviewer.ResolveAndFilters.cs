@@ -386,7 +386,7 @@ internal static partial class Program {
             "## Todo List ✅",
             "- [ ] Fix `.github/workflows/review-intelligencex-core.yml`.",
             "- [ ] Fix `src/app.cs` before merge.",
-            "- Plain workflow context for `.github/workflows/build.yml` should remain visible.",
+            "- Plain blocker mentioning `.github/workflows/build.yml` should remain visible.",
             "## Other Issues 🧯",
             "- `src/app.cs` can be tidier."
         });
@@ -399,8 +399,8 @@ internal static partial class Program {
             "workflow sanitizer removes excluded workflow todo");
         AssertContainsText(sanitized, "- [ ] Fix `src/app.cs` before merge.",
             "workflow sanitizer preserves non-workflow todo in same blocker section");
-        AssertContainsText(sanitized, "Plain workflow context for `.github/workflows/build.yml` should remain visible.",
-            "workflow sanitizer preserves plain workflow bullets in blocker sections");
+        AssertContainsText(sanitized, "- Plain blocker mentioning `.github/workflows/build.yml` should remain visible.",
+            "workflow sanitizer preserves plain workflow blocker bullets");
         AssertEqual(true, ReviewSummaryParser.HasMergeBlockers(sanitized, settings),
             "workflow sanitizer keeps remaining blocker section active");
         AssertContainsText(sanitized, "src/app.cs", "workflow sanitizer preserves other sections");

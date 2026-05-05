@@ -8,16 +8,6 @@ namespace IntelligenceX.Reviewer;
 internal static class ReviewBlockerSectionSanitizer {
     public static string RemoveMatchingOpenItems(string? reviewBody, ReviewSettings settings,
         Func<string, bool> shouldRemoveOpenItem) {
-        return RemoveMatchingItems(reviewBody, settings, shouldRemoveOpenItem, checklistItemsOnly: false);
-    }
-
-    public static string RemoveMatchingOpenChecklistItems(string? reviewBody, ReviewSettings settings,
-        Func<string, bool> shouldRemoveOpenItem) {
-        return RemoveMatchingItems(reviewBody, settings, shouldRemoveOpenItem, checklistItemsOnly: true);
-    }
-
-    private static string RemoveMatchingItems(string? reviewBody, ReviewSettings settings,
-        Func<string, bool> shouldRemoveOpenItem, bool checklistItemsOnly) {
         if (string.IsNullOrWhiteSpace(reviewBody)) {
             return reviewBody ?? string.Empty;
         }
@@ -73,7 +63,7 @@ internal static class ReviewBlockerSectionSanitizer {
             if (inMergeBlockerSection && IsCleanMarker(trimmed)) {
                 sectionHasCleanMarker = true;
             } else if (inMergeBlockerSection && IsOpenListItem(trimmed)) {
-                if ((!checklistItemsOnly || IsOpenChecklistItem(trimmed)) && shouldRemoveOpenItem(trimmed)) {
+                if (shouldRemoveOpenItem(trimmed)) {
                     removedBlocker = true;
                     continue;
                 }
@@ -149,9 +139,6 @@ internal static class ReviewBlockerSectionSanitizer {
         return line.StartsWith("- [ ]", StringComparison.Ordinal) ||
                line.StartsWith("-", StringComparison.Ordinal);
     }
-
-    private static bool IsOpenChecklistItem(string line) =>
-        line.StartsWith("- [ ]", StringComparison.Ordinal);
 
     private static bool IsCleanMarker(string line) {
         if (string.IsNullOrWhiteSpace(line)) {
