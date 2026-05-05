@@ -56,11 +56,30 @@ Reviewed examples:
 - Sticky review comments now carry a hidden `intelligencex:history:v1` base64url JSON marker so prior IX rounds survive sticky comment updates.
 - The hidden history marker and expanded artifacts now track recommendation, positive highlights, risk notes, follow-ups, and current-head open/resolved blocker state.
 - The visible history block now renders latest review posture and blocker lifecycle as compact tables while preserving prior-head findings as prompt context only.
+- The visible review comment now includes deterministic `Review State` and `Review Highlights` tables. `Review Highlights` summarizes good/risk/test/next posture from the current review body, so the Claude-style scan surface exists even on the first run with no history.
+
+## Supported Now
+
+- Deterministic merge-blocker recommendation table.
+- Deterministic current-review highlights table for good/risk/test/next posture.
+- Hidden sticky history marker with recommendation, positives, risk notes, follow-ups, and blocker lifecycle metadata.
+- Visible history progress table when prior rounds contain current-head posture, unresolved blockers, resolved blockers, or parse uncertainty.
+- Repo-owned guidance files instead of hardcoded repo convention packs.
+- Dependabot/default author skipping with force-review label override.
+- Whole-repository static analysis commands and docs; scheduled quality workflow template is still separate future work.
+- Auto-approval readiness and optional approval submission behind explicit config/policy gates.
+
+## Not Supported Yet
+
+- Claude-style per-file "reviewed changes" summary table generated deterministically.
+- Deterministic categorization of every current finding as new/still-open/resolved on the first run; lifecycle state needs prior IX rounds or active thread evidence.
+- A repository-quality scheduled workflow that publishes SARIF and baseline/new-only posture by default.
+- Rich edited-comment diff display; GitHub exposes edit metadata, but IX does not currently render human-readable edit deltas.
+- Native artifact-backed review history outside the sticky hidden marker and CI artifacts.
 
 ## Recommended Next Features
 
 1. Add a deterministic review recommendation block and machine-readable metadata.
-2. Add first-class domain convention packs so the positive/risk highlights can be evaluated against repo-specific rules.
-3. Add repo convention packs as first-class config.
-4. Add an opt-in auto-approval command or workflow, policy-gated outside the reviewer comment path.
-5. Add a scheduled repository-quality workflow template that runs `analyze run`, uploads SARIF, and compares against baselines.
+2. Add a deterministic per-file reviewed-changes table similar to Claude's file summary.
+3. Add artifact-backed review history so hidden sticky metadata is a cache, not the only durable ledger.
+4. Add a scheduled repository-quality workflow template that runs `analyze run`, uploads SARIF, and compares against baselines.

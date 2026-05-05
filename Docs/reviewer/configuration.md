@@ -636,6 +636,12 @@ current-head posture, open blocker state, unresolved parse uncertainty, or same-
 showing. Prior-head blockers are kept as prompt context and are not automatically marked resolved unless same-head
 evidence supports that conclusion.
 
+The current review body also gets a visible `Review Highlights` table before the model-written sections. It is parsed
+from Summary/Excellent Aspects/Code Quality Assessment for positives, Other Issues/Security & Performance/Backward
+Compatibility for risks, Tests / Coverage/Test Quality for test posture, and Next Steps/Recommendations for follow-up.
+This keeps the useful "good / watch / tests / next" posture visible even on the first run, before there is any history
+ledger to compare.
+
 GitHub Actions input/env aliases:
 - `history_enabled` / `REVIEW_HISTORY_ENABLED`
 - `history_include_ix_summary_history` / `REVIEW_HISTORY_INCLUDE_IX_SUMMARY_HISTORY`

@@ -1972,6 +1972,38 @@ internal static partial class Program {
             "review state missing required blocker section table");
     }
 
+    private static void TestReviewHighlightsBlockSummarizesCurrentReviewSections() {
+        var settings = new ReviewSettings();
+        var reviewBody = string.Join("\n", new[] {
+            "## Summary 📝",
+            "This PR improves reviewer output and keeps merge gates deterministic.",
+            "",
+            "## Todo List ✅",
+            "None.",
+            "",
+            "## Critical Issues ⚠️",
+            "None.",
+            "",
+            "## Other Issues 🧯",
+            "- Watch history marker size as more fields are added.",
+            "",
+            "## Tests / Coverage 🧪",
+            "- Added coverage for output highlights.",
+            "",
+            "## Next Steps 🚀",
+            "Looks ready after CI passes."
+        });
+
+        var block = ReviewHighlightsBuilder.BuildCommentBlock(reviewBody, settings, reviewFailed: false);
+
+        AssertContainsText(block, "## Review Highlights ✨", "review highlights heading");
+        AssertContainsText(block, "| Recommendation | Good | Risks / Watch | Tests | Next |",
+            "review highlights table header");
+        AssertContainsText(block,
+            "| Approve | This PR improves reviewer output and keeps merge gates deterministic. | Watch history marker size as more fields are added. | Added coverage for output highlights. | Looks ready after CI passes. |",
+            "review highlights table row");
+    }
+
     private static void TestReviewHistoryMarkerKeepsLatestRoundsAndRecomputesHead() {
         var settings = new ReviewSettings();
         settings.History.Enabled = true;

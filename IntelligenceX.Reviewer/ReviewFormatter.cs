@@ -15,6 +15,7 @@ internal static class ReviewFormatter {
         "Summary 📝",
         "Review Summary 📝",
         "Review State 🧭",
+        "Review Highlights ✨",
         "History Progress 🔁",
         "Auto-Approval Readiness 🤝",
         "Todo List ✅",
