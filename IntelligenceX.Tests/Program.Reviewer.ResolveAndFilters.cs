@@ -385,6 +385,8 @@ internal static partial class Program {
             "Looks close.",
             "## Todo List ✅",
             "- [ ] Fix `.github/workflows/review-intelligencex-core.yml`.",
+            "- [ ] Fix `src/app.cs` before merge.",
+            "- Plain workflow context for `.github/workflows/build.yml` should remain visible.",
             "## Other Issues 🧯",
             "- `src/app.cs` can be tidier."
         });
@@ -392,15 +394,32 @@ internal static partial class Program {
         var sanitized = WorkflowGuardSanitizer.RemoveExcludedWorkflowBlockers(body, settings, workflowGuardActive: true);
 
         AssertContainsText(sanitized, "## Todo List", "workflow sanitizer keeps blocker section");
-        AssertContainsText(sanitized, "None.", "workflow sanitizer marks empty blocker section");
+        AssertDoesNotContainText(sanitized, "None.", "workflow sanitizer does not mark mixed blocker section clean");
         AssertEqual(false, sanitized.Contains("- [ ] Fix `.github/workflows/review-intelligencex-core.yml`.", StringComparison.Ordinal),
             "workflow sanitizer removes excluded workflow todo");
+        AssertContainsText(sanitized, "- [ ] Fix `src/app.cs` before merge.",
+            "workflow sanitizer preserves non-workflow todo in same blocker section");
+        AssertContainsText(sanitized, "Plain workflow context for `.github/workflows/build.yml` should remain visible.",
+            "workflow sanitizer preserves plain workflow bullets in blocker sections");
+        AssertEqual(true, ReviewSummaryParser.HasMergeBlockers(sanitized, settings),
+            "workflow sanitizer keeps remaining blocker section active");
         AssertContainsText(sanitized, "src/app.cs", "workflow sanitizer preserves other sections");
 
         var promptHistory = WorkflowGuardSanitizer.RemoveExcludedWorkflowReferences(body, workflowGuardActive: true);
         AssertEqual(false, promptHistory.Contains(".github/workflows/review-intelligencex-core.yml", StringComparison.OrdinalIgnoreCase),
             "workflow sanitizer removes excluded workflow references from prompt history");
         AssertContainsText(promptHistory, "src/app.cs", "workflow sanitizer preserves non-workflow prompt history");
+
+        var workflowOnly = string.Join("\n", new[] {
+            "## Summary 📝",
+            "Looks close.",
+            "## Todo List ✅",
+            "- [ ] Fix `.github/workflows/review-intelligencex-core.yml`."
+        });
+        var workflowOnlySanitized = WorkflowGuardSanitizer.RemoveExcludedWorkflowBlockers(workflowOnly, settings,
+            workflowGuardActive: true);
+        AssertContainsText(workflowOnlySanitized, "None.",
+            "workflow sanitizer marks workflow-only blocker section clean");
     }
 
     private static void TestSecretsAuditRecords() {

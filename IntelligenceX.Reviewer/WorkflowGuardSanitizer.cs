@@ -28,8 +28,12 @@ internal static class WorkflowGuardSanitizer {
             return reviewBody ?? string.Empty;
         }
 
-        return ReviewBlockerSectionSanitizer.RemoveMatchingOpenItems(reviewBody, settings, MentionsWorkflowPath);
+        return ReviewBlockerSectionSanitizer.RemoveMatchingOpenItems(reviewBody, settings, IsExcludedWorkflowChecklistItem);
     }
+
+    private static bool IsExcludedWorkflowChecklistItem(string line) =>
+        line.StartsWith("- [ ]", StringComparison.Ordinal) &&
+        MentionsWorkflowPath(line);
 
     private static bool MentionsWorkflowPath(string line) =>
         line.Contains(".github/workflows/", StringComparison.OrdinalIgnoreCase);
