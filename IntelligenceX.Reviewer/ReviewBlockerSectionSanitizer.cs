@@ -7,7 +7,12 @@ namespace IntelligenceX.Reviewer;
 
 internal static class ReviewBlockerSectionSanitizer {
     public static string RemoveMatchingOpenItems(string? reviewBody, ReviewSettings settings,
-        Func<string, bool> shouldRemoveOpenItem) {
+        Func<string, bool> shouldRemoveOpenItem) =>
+        RemoveMatchingItemsFromMergeBlockerSections(reviewBody, settings,
+            line => IsOpenListItem(line) && shouldRemoveOpenItem(line));
+
+    public static string RemoveMatchingItemsFromMergeBlockerSections(string? reviewBody, ReviewSettings settings,
+        Func<string, bool> shouldRemoveLine, Func<string, bool>? isRemainingOpenItem = null) {
         if (string.IsNullOrWhiteSpace(reviewBody)) {
             return reviewBody ?? string.Empty;
         }
@@ -19,6 +24,7 @@ internal static class ReviewBlockerSectionSanitizer {
         }
 
         using var reader = new StringReader(body);
+        isRemainingOpenItem ??= IsOpenListItem;
         var output = new StringBuilder();
         var sectionLines = new List<string>();
         var inMergeBlockerSection = false;
@@ -62,12 +68,10 @@ internal static class ReviewBlockerSectionSanitizer {
 
             if (inMergeBlockerSection && IsCleanMarker(trimmed)) {
                 sectionHasCleanMarker = true;
-            } else if (inMergeBlockerSection && IsOpenListItem(trimmed)) {
-                if (shouldRemoveOpenItem(trimmed)) {
-                    removedBlocker = true;
-                    continue;
-                }
-
+            } else if (inMergeBlockerSection && shouldRemoveLine(trimmed)) {
+                removedBlocker = true;
+                continue;
+            } else if (inMergeBlockerSection && isRemainingOpenItem(trimmed)) {
                 sectionHasOpenItem = true;
             }
 
