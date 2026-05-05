@@ -2004,6 +2004,34 @@ internal static partial class Program {
             "review highlights table row");
     }
 
+    private static void TestReviewHighlightsBlockStopsAtNestedHeadings() {
+        var settings = new ReviewSettings();
+        var reviewBody = string.Join("\n", new[] {
+            "## Summary 📝",
+            "Looks good.",
+            "",
+            "## Todo List ✅",
+            "None.",
+            "",
+            "## Critical Issues ⚠️",
+            "None.",
+            "",
+            "## Next Steps 🚀",
+            "Looks merge-ready.",
+            "",
+            "### Static Analysis Policy 🧭",
+            "- Config mode: respect",
+            "- Packs: All Essentials"
+        });
+
+        var block = ReviewHighlightsBuilder.BuildCommentBlock(reviewBody, settings, reviewFailed: false);
+
+        AssertContainsText(block, "| Approve | Looks good. | None noted. | None noted. | Looks merge-ready. |",
+            "review highlights stops next steps at nested headings");
+        AssertDoesNotContainText(block, "Config mode: respect",
+            "review highlights excludes nested static analysis bullets");
+    }
+
     private static void TestReviewHistoryMarkerKeepsLatestRoundsAndRecomputesHead() {
         var settings = new ReviewSettings();
         settings.History.Enabled = true;

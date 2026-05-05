@@ -89,8 +89,8 @@ internal static class ReviewHighlightsBuilder {
         string? line;
         while ((line = reader.ReadLine()) is not null) {
             var trimmed = line.Trim();
-            if (trimmed.StartsWith("## ", StringComparison.Ordinal)) {
-                inTargetSection = targetSections.Contains(NormalizeHeader(trimmed));
+            if (IsMarkdownHeading(trimmed)) {
+                inTargetSection = IsH2Heading(trimmed) && targetSections.Contains(NormalizeHeader(trimmed));
                 continue;
             }
 
@@ -117,9 +117,9 @@ internal static class ReviewHighlightsBuilder {
         string? line;
         while ((line = reader.ReadLine()) is not null) {
             var trimmed = line.Trim();
-            if (trimmed.StartsWith("## ", StringComparison.Ordinal)) {
+            if (IsMarkdownHeading(trimmed)) {
                 FlushParagraph(paragraph, items, maxItems);
-                inTargetSection = targetSections.Contains(NormalizeHeader(trimmed));
+                inTargetSection = IsH2Heading(trimmed) && targetSections.Contains(NormalizeHeader(trimmed));
                 continue;
             }
 
@@ -184,6 +184,28 @@ internal static class ReviewHighlightsBuilder {
         return normalized.Equals("none", StringComparison.OrdinalIgnoreCase) ||
                normalized.Equals("none noted", StringComparison.OrdinalIgnoreCase) ||
                normalized.Equals("n/a", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsMarkdownHeading(string line) {
+        if (string.IsNullOrWhiteSpace(line) || line[0] != '#') {
+            return false;
+        }
+
+        var index = 0;
+        while (index < line.Length && line[index] == '#') {
+            index++;
+        }
+
+        return index > 0 && index < line.Length && char.IsWhiteSpace(line[index]);
+    }
+
+    private static bool IsH2Heading(string line) {
+        if (!line.StartsWith("##", StringComparison.Ordinal) ||
+            line.StartsWith("###", StringComparison.Ordinal)) {
+            return false;
+        }
+
+        return line.Length > 2 && char.IsWhiteSpace(line[2]);
     }
 
     private static string NormalizeHeader(string header) {

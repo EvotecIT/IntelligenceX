@@ -886,6 +886,8 @@ internal static partial class Program {
             TestReviewStateBlockFailsClosedWhenRequiredBlockerSectionIsMissing);
         failed += Run("Review highlights block summarizes current review sections",
             TestReviewHighlightsBlockSummarizesCurrentReviewSections);
+        failed += Run("Review highlights block stops at nested headings",
+            TestReviewHighlightsBlockStopsAtNestedHeadings);
         failed += Run("Redaction defaults", TestRedactionDefaults);
         failed += Run("Review budget note", TestReviewBudgetNote);
         failed += Run("Review budget note empty", TestReviewBudgetNoteEmpty);
