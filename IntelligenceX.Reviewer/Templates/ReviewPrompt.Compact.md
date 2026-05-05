@@ -38,7 +38,7 @@ Only use suggestions when you are confident the replacement is correct and limit
 - Backward Compatibility 🔄
 - Recommendations 💡
 {{NextStepsSection}}
-The reviewer will add deterministic Review State and Review Highlights sections from your sections, so put positives in Review Summary/Excellent Aspects/Code Quality Assessment, risks in Security & Performance/Backward Compatibility, test posture in Test Quality, and follow-up guidance in Recommendations/Next Steps.
+The reviewer will add deterministic Review State and non-duplicating Review Highlights signal counts from your sections, so put positives in Review Summary/Excellent Aspects/Code Quality Assessment, risks in Security & Performance/Backward Compatibility, test posture in Test Quality, and follow-up guidance in Recommendations/Next Steps.
 In Code Quality Assessment, include a 1-5 star rating as the first bullet (e.g., ⭐⭐⭐⭐☆).
 In Todo List, include only merge-blocking items as markdown checkboxes. If there are no merge-blocking items, write "None.".
 If there are no inline comments, write "None." under Inline Comments.

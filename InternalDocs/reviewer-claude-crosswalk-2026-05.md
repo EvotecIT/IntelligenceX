@@ -56,12 +56,12 @@ Reviewed examples:
 - Sticky review comments now carry a hidden `intelligencex:history:v1` base64url JSON marker so prior IX rounds survive sticky comment updates.
 - The hidden history marker and expanded artifacts now track recommendation, positive highlights, risk notes, follow-ups, and current-head open/resolved blocker state.
 - The visible history block now renders latest review posture and blocker lifecycle as compact tables while preserving prior-head findings as prompt context only.
-- The visible review comment now includes deterministic `Review State` and readable `Review Highlights` sections. `Review Highlights` summarizes good/risk/test/next posture from the current review body, so the Claude-style scan surface exists even on the first run with no history.
+- The visible review comment now includes deterministic `Review State` and non-duplicating `Review Highlights` sections. `Review Highlights` reports good/risk/test/next signal counts from the current review body, so the Claude-style scan surface exists without echoing the sections that follow.
 
 ## Supported Now
 
 - Deterministic merge-blocker recommendation section.
-- Deterministic current-review highlights section for good/risk/test/next posture.
+- Deterministic current-review highlights section for good/risk/test/next signal counts without repeated prose.
 - Hidden sticky history marker with recommendation, positives, risk notes, follow-ups, and blocker lifecycle metadata.
 - Visible history progress table when prior rounds contain current-head posture, unresolved blockers, resolved blockers, or parse uncertainty.
 - Repo-owned guidance files instead of hardcoded repo convention packs.

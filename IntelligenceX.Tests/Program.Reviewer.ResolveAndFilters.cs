@@ -1149,10 +1149,8 @@ internal static partial class Program {
         var block = ReviewHistoryBuilder.BuildCommentBlock(snapshot);
 
         AssertContainsText(block, "## History Progress 🔁", "review history comment block heading");
-        AssertContainsText(block, "Open on current head:", "review history comment block open label");
-        AssertContainsText(block, "Open on current head: 1 finding.", "review history comment block open count");
-        AssertContainsText(block, "Resolved since last round:", "review history comment block resolved label");
-        AssertContainsText(block, "Resolved since last round: 1 finding.", "review history comment block resolved count");
+        AssertContainsText(block, "- **Open on current head:** 1 finding.", "review history comment block open count");
+        AssertContainsText(block, "- **Resolved since last round:** 1 finding.", "review history comment block resolved count");
         AssertContainsText(block, "Finding lifecycle:", "review history comment block lifecycle label");
         AssertContainsText(block, "| New | todo | Add null guard in parser. |",
             "review history comment block lifecycle new item");
@@ -1193,8 +1191,12 @@ internal static partial class Program {
             "review history missing optional blocker section does not record needs-work posture");
         AssertEqual("approve", snapshot.Rounds[0].Recommendation,
             "review history missing optional blocker section records clean recommendation");
-        AssertEqual(string.Empty, block,
-            "review history missing optional blocker section has no empty visible progress block");
+        AssertContainsText(block, "## History Progress 🔁",
+            "review history missing optional blocker section still renders tracking block");
+        AssertContainsText(block, "- **Tracked rounds:** 1 IX round; 1 round on current head.",
+            "review history missing optional blocker section shows tracked round count");
+        AssertContainsText(block, "- **Open on current head:** none.",
+            "review history missing optional blocker section shows clean open state");
     }
 
     private static void TestReviewHistoryBuilderRequiresExactSameHeadSha() {
@@ -1300,8 +1302,10 @@ internal static partial class Program {
         AssertEqual(0, snapshot.OpenFindings.Count, "review history cross-head snapshot has no current same-head open findings");
         AssertEqual(0, snapshot.ResolvedSinceLastRound.Count,
             "review history cross-head snapshot does not mark disappeared finding resolved");
-        AssertEqual(string.Empty, block,
-            "review history cross-head block hides when there is no current-head progress to display");
+        AssertContainsText(block, "## History Progress 🔁",
+            "review history cross-head block renders tracking state");
+        AssertContainsText(block, "1 round on current head",
+            "review history cross-head block shows current-head round count");
         AssertDoesNotContainText(block, "Retry the alternate transport.",
             "review history cross-head block does not surface prior-head finding as resolved");
     }
@@ -1377,8 +1381,8 @@ internal static partial class Program {
             "review history capped same-head snapshot does not infer missing finding resolved");
         AssertContainsText(block, "| New | todo | Add a new blocker ahead of the older one. |",
             "review history capped same-head block keeps current extracted open finding");
-        AssertDoesNotContainText(block, "Resolved since last round:",
-            "review history capped same-head block omits resolved section when nothing was resolved");
+        AssertContainsText(block, "- **Resolved since last round:** none.",
+            "review history capped same-head block shows no resolved findings");
         AssertDoesNotContainText(block, "| Resolved | todo | Retry the alternate transport. |",
             "review history capped same-head block does not falsely report hidden finding resolved");
     }
@@ -1514,10 +1518,10 @@ internal static partial class Program {
             "review history unparseable same-head snapshot has no normalized open findings");
         AssertEqual(0, snapshot.ResolvedSinceLastRound.Count,
             "review history unparseable same-head snapshot does not infer missing finding resolved");
-        AssertContainsText(block, "Open on current head: unknown; merge-blocker lines could not be fully normalized.",
+        AssertContainsText(block, "- **Open on current head:** unknown; merge-blocker lines could not be fully normalized.",
             "review history unparseable same-head block reports unknown normalized open findings");
-        AssertDoesNotContainText(block, "Resolved since last round:",
-            "review history unparseable same-head block does not claim the missing finding resolved");
+        AssertContainsText(block, "- **Resolved since last round:** none.",
+            "review history unparseable same-head block shows no resolved findings");
         AssertDoesNotContainText(block, "[todo] Retry the alternate transport.",
             "review history unparseable same-head block does not surface prior finding as resolved");
     }
@@ -1579,8 +1583,8 @@ internal static partial class Program {
         AssertContainsText(rendered,
             "Additional merge-blocker lines were present but could not be normalized",
             "review history partial-parse same-head snapshot warns about incomplete normalization");
-        AssertDoesNotContainText(block, "Resolved since last round:",
-            "review history partial-parse same-head block omits resolved section when nothing was resolved");
+        AssertContainsText(block, "- **Resolved since last round:** none.",
+            "review history partial-parse same-head block shows no resolved findings");
         AssertDoesNotContainText(block, "| Resolved | todo | Retry the alternate transport. |",
             "review history partial-parse same-head block does not falsely report malformed missing finding resolved");
     }
@@ -1632,7 +1636,7 @@ internal static partial class Program {
         AssertEqual("unknown; merge-blocker lines were present but could not be normalized.",
             snapshot.Rounds[1].MergeBlockerStatus,
             "review history parse-incomplete same-head round surfaces unknown merge-blocker state");
-        AssertContainsText(block, "Open on current head: unknown; merge-blocker lines could not be fully normalized.",
+        AssertContainsText(block, "- **Open on current head:** unknown; merge-blocker lines could not be fully normalized.",
             "review history parse-incomplete same-head block surfaces unknown current-head status");
         AssertDoesNotContainText(block, "[todo] Retry the alternate transport.",
             "review history parse-incomplete same-head block does not surface malformed missing finding as resolved");
@@ -1677,10 +1681,53 @@ internal static partial class Program {
 
         AssertEqual(0, snapshot.ResolvedSinceLastRound.Count,
             "review history duplicate previous statuses do not emit a fresh resolved finding");
-        AssertEqual(string.Empty, block,
-            "review history duplicate previous statuses block hides when there is no new visible progress");
+        AssertContainsText(block, "- **Tracked rounds:** 2 IX rounds; 2 rounds on current head.",
+            "review history duplicate previous statuses block keeps tracking visible");
+        AssertContainsText(block, "- **Resolved since last round:** none.",
+            "review history duplicate previous statuses block shows no new resolution");
         AssertDoesNotContainText(block, "[todo] Retry the alternate transport.",
             "review history duplicate previous statuses block does not surface already-resolved duplicate as newly resolved");
+    }
+
+    private static void TestReviewHistoryBuilderAppendsCurrentRoundForVisibleTracking() {
+        var settings = new ReviewSettings();
+        settings.History.Enabled = true;
+        var priorSnapshot = new ReviewHistorySnapshot {
+            CurrentHeadSha = "def5678",
+            Rounds = new[] {
+                new ReviewHistoryRound {
+                    Sequence = 1,
+                    Source = "intelligencex",
+                    ReviewedSha = "abc1234",
+                    SameHeadAsCurrent = false,
+                    Recommendation = "approve",
+                    MergeBlockerStatus = "none."
+                }
+            }
+        };
+        var currentBody = string.Join("\n", new[] {
+            "## Summary 📝",
+            "Looks good overall.",
+            "",
+            "## Todo List ✅",
+            "None.",
+            "",
+            "## Critical Issues ⚠️",
+            "None."
+        });
+
+        var snapshot = ReviewHistoryBuilder.AppendCurrentRound(priorSnapshot, currentBody, "def5678", settings);
+        var block = ReviewHistoryBuilder.BuildCommentBlock(snapshot);
+
+        AssertEqual(2, snapshot.Rounds.Count, "review history visible tracking appends current round");
+        AssertEqual(true, snapshot.Rounds[1].SameHeadAsCurrent,
+            "review history visible tracking marks appended round current");
+        AssertContainsText(block, "- **Tracked rounds:** 2 IX rounds; 1 round on current head.",
+            "review history visible tracking shows current round");
+        AssertContainsText(block, "- **Latest reviewed head:** def5678 (current).",
+            "review history visible tracking latest head is current");
+        AssertContainsText(block, "- **Open on current head:** none.",
+            "review history visible tracking shows clean current state");
     }
 
     private static void TestReviewSummaryStabilityDropsHistoryProgressBlock() {
@@ -1908,10 +1955,10 @@ internal static partial class Program {
         AssertContainsText(promptSection, "[todo] Add null guard in parser.",
             "review history marker ledger renders prior finding in prompt context");
         var block = ReviewHistoryBuilder.BuildCommentBlock(snapshot);
-        AssertContainsText(block, "| Recommendation | Good | Risks / Bad | Follow-up |",
-            "review history comment block renders posture table");
-        AssertContainsText(block, "Keeps the parser path simple.",
-            "review history comment block renders positive highlight");
+        AssertContainsText(block, "- **Tracked rounds:** 2 IX rounds; 1 round on current head.",
+            "review history comment block renders tracked round count");
+        AssertDoesNotContainText(block, "Keeps the parser path simple.",
+            "review history comment block does not duplicate positive highlight text");
     }
 
     private static void TestReviewStateBlockRendersDeterministicRecommendation() {
@@ -2005,20 +2052,16 @@ internal static partial class Program {
         var block = ReviewHighlightsBuilder.BuildCommentBlock(reviewBody, settings, reviewFailed: false);
 
         AssertContainsText(block, "## Review Highlights ✨", "review highlights heading");
-        AssertContainsText(block, "**Verdict:** Approve. Merge blockers: none detected.",
-            "review highlights verdict");
-        AssertContainsText(block, "**Good**", "review highlights good heading");
-        AssertContainsText(block, "- This PR improves reviewer output and keeps merge gates deterministic.",
-            "review highlights good item");
-        AssertContainsText(block, "**Risks / Watch**", "review highlights risks heading");
-        AssertContainsText(block, "- Watch history marker size as more fields are added.",
-            "review highlights risk item");
-        AssertContainsText(block, "**Tests**", "review highlights tests heading");
-        AssertContainsText(block, "- Added coverage for output highlights.",
-            "review highlights tests item");
-        AssertContainsText(block, "**Next**", "review highlights next heading");
-        AssertContainsText(block, "- Looks ready after CI passes.",
-            "review highlights next item");
+        AssertContainsText(block, "- **Good:** 1 positive signal captured in Summary / Excellent Aspects / Code Quality Assessment.",
+            "review highlights good signal count");
+        AssertContainsText(block, "- **Risks / Watch:** 1 watch item captured in Other Issues / Security & Performance / Backward Compatibility.",
+            "review highlights risk signal count");
+        AssertContainsText(block, "- **Tests:** 1 test or coverage note captured in Tests / Coverage / Test Quality.",
+            "review highlights tests signal count");
+        AssertContainsText(block, "- **Next:** 1 follow-up note captured in Next Steps / Recommendations.",
+            "review highlights next signal count");
+        AssertDoesNotContainText(block, "This PR improves reviewer output and keeps merge gates deterministic.",
+            "review highlights does not duplicate summary text");
     }
 
     private static void TestReviewHighlightsBlockStopsAtNestedHeadings() {
@@ -2043,12 +2086,12 @@ internal static partial class Program {
 
         var block = ReviewHighlightsBuilder.BuildCommentBlock(reviewBody, settings, reviewFailed: false);
 
-        AssertContainsText(block, "**Verdict:** Approve. Merge blockers: none detected.",
-            "review highlights stops next steps verdict");
-        AssertContainsText(block, "- Looks good.",
-            "review highlights stops next steps good fallback");
-        AssertContainsText(block, "- Looks merge-ready.",
+        AssertContainsText(block, "- **Good:** 1 positive signal captured in Summary / Excellent Aspects / Code Quality Assessment.",
+            "review highlights stops next steps good fallback count");
+        AssertContainsText(block, "- **Next:** 1 follow-up note captured in Next Steps / Recommendations.",
             "review highlights stops next steps at nested headings");
+        AssertDoesNotContainText(block, "Looks merge-ready.",
+            "review highlights does not duplicate next steps prose");
         AssertDoesNotContainText(block, "Config mode: respect",
             "review highlights excludes nested static analysis bullets");
     }

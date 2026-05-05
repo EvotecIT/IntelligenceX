@@ -33,7 +33,6 @@ internal static class ReviewHighlightsBuilder {
             return string.Empty;
         }
 
-        var state = ReviewStateBuilder.Build(reviewBody, settings, reviewFailed);
         var positives = ExtractSectionItems(reviewBody, PositiveSections, 2);
         if (positives.Count == 0) {
             positives = ExtractSummarySentences(reviewBody, 1);
@@ -55,28 +54,20 @@ internal static class ReviewHighlightsBuilder {
         var sb = new StringBuilder();
         sb.AppendLine("## Review Highlights ✨");
         sb.AppendLine();
-        sb.AppendLine($"**Verdict:** {NormalizeLine(state.RecommendationLabel)}. Merge blockers: {NormalizeLine(state.MergeBlockerLabel)}.");
-        sb.AppendLine();
-        AppendItemSection(sb, "Good", positives);
-        AppendItemSection(sb, "Risks / Watch", risks);
-        AppendItemSection(sb, "Tests", tests);
-        AppendItemSection(sb, "Next", next);
+        AppendSignalLine(sb, "Good", positives.Count, "positive signal", "Summary / Excellent Aspects / Code Quality Assessment");
+        AppendSignalLine(sb, "Risks / Watch", risks.Count, "watch item", "Other Issues / Security & Performance / Backward Compatibility");
+        AppendSignalLine(sb, "Tests", tests.Count, "test or coverage note", "Tests / Coverage / Test Quality");
+        AppendSignalLine(sb, "Next", next.Count, "follow-up note", "Next Steps / Recommendations");
         return sb.ToString().TrimEnd();
     }
 
-    private static void AppendItemSection(StringBuilder sb, string title, IReadOnlyList<string> items) {
-        sb.AppendLine($"**{title}**");
-        if (items.Count == 0) {
-            sb.AppendLine("None noted.");
-            sb.AppendLine();
+    private static void AppendSignalLine(StringBuilder sb, string title, int count, string singular, string sources) {
+        if (count <= 0) {
+            sb.AppendLine($"- **{title}:** none captured in {sources}.");
             return;
         }
 
-        foreach (var item in items) {
-            sb.AppendLine($"- {TrimHighlightItem(item)}");
-        }
-
-        sb.AppendLine();
+        sb.AppendLine($"- **{title}:** {FormatCount(count, singular)} captured in {sources}.");
     }
 
     private static IReadOnlyList<string> ExtractSummarySentences(string body, int maxItems) {
@@ -249,22 +240,13 @@ internal static class ReviewHighlightsBuilder {
         return sb.ToString().Trim();
     }
 
-    private static string TrimHighlightItem(string value) {
-        var trimmed = NormalizeLine(value);
-        const int maxLength = 500;
-        return trimmed.Length <= maxLength ? trimmed : trimmed.Substring(0, maxLength - 3).TrimEnd() + "...";
+    private static string FormatCount(int count, string singular) {
+        return count == 1 ? $"1 {singular}" : $"{count} {singular}s";
     }
 
     private static string FirstSentence(string value) {
         var trimmed = value.Trim();
         var index = trimmed.IndexOf(". ", StringComparison.Ordinal);
         return index < 0 ? trimmed : trimmed.Substring(0, index + 1);
-    }
-
-    private static string NormalizeLine(string value) {
-        return (value ?? string.Empty)
-            .Replace("\r", " ", StringComparison.Ordinal)
-            .Replace("\n", " ", StringComparison.Ordinal)
-            .Trim();
     }
 }

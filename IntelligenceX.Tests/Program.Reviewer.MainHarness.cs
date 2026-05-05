@@ -866,6 +866,8 @@ internal static partial class Program {
             TestReviewHistoryBuilderDoesNotResolveWhenLatestSameHeadParseIncompleteWithoutDetectedBlockers);
         failed += Run("Review history builder does not infer resolution from previously resolved duplicate",
             TestReviewHistoryBuilderDoesNotInferResolutionFromPreviouslyResolvedDuplicate);
+        failed += Run("Review history builder appends current round for visible tracking",
+            TestReviewHistoryBuilderAppendsCurrentRoundForVisibleTracking);
         failed += Run("Review summary stability drops history progress block",
             TestReviewSummaryStabilityDropsHistoryProgressBlock);
         failed += Run("Review history artifacts render json and markdown",

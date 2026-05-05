@@ -600,7 +600,8 @@ public static partial class ReviewerApp {
             var finalHasMergeBlockers = ReviewSummaryParser.HasMergeBlockers(summaryBody, settings);
             var reviewStateBlock = ReviewStateBuilder.BuildCommentBlock(summaryBody, settings, reviewFailed);
             var reviewHighlightsBlock = ReviewHighlightsBuilder.BuildCommentBlock(summaryBody, settings, reviewFailed);
-            var historyBlock = ReviewHistoryBuilder.BuildCommentBlock(extras.ReviewHistory);
+            var visibleHistory = ReviewHistoryBuilder.AppendCurrentRound(extras.ReviewHistory, summaryBody, context.HeadSha, settings);
+            var historyBlock = ReviewHistoryBuilder.BuildCommentBlock(visibleHistory);
             var autoApprovalDecision = await BuildAutoApprovalDecisionAsync(github, fallbackGithub, context, settings,
                     reviewFailed, finalHasMergeBlockers, extras.ReviewHistory, allowWrites, extras.ReviewThreadsUnavailable,
                     cancellationToken)
