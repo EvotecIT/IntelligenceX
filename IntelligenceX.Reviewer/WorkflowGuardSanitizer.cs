@@ -15,7 +15,7 @@ internal static class WorkflowGuardSanitizer {
         var output = new StringBuilder();
         string? line;
         while ((line = reader.ReadLine()) is not null) {
-            if (MentionsWorkflowPath(line)) {
+            if (MentionsWorkflowPath(line) && IsWorkflowFindingLine(line)) {
                 continue;
             }
             output.AppendLine(line);
@@ -102,6 +102,15 @@ internal static class WorkflowGuardSanitizer {
     private static bool IsOpenWorkflowChecklistItem(string line) =>
         line.StartsWith("- [ ]", StringComparison.Ordinal) &&
         MentionsWorkflowPath(line);
+
+    private static bool IsWorkflowFindingLine(string line) {
+        var trimmed = line.TrimStart();
+        return trimmed.StartsWith("- [ ]", StringComparison.Ordinal) ||
+               trimmed.StartsWith("- [x]", StringComparison.OrdinalIgnoreCase) ||
+               trimmed.StartsWith("- [warning]", StringComparison.OrdinalIgnoreCase) ||
+               trimmed.StartsWith("- [error]", StringComparison.OrdinalIgnoreCase) ||
+               trimmed.StartsWith("- [critical]", StringComparison.OrdinalIgnoreCase);
+    }
 
     private static bool IsOpenListItem(string line) {
         if (string.IsNullOrWhiteSpace(line)) {

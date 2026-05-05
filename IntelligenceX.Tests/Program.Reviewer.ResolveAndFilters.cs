@@ -406,8 +406,11 @@ internal static partial class Program {
         AssertContainsText(sanitized, "src/app.cs", "workflow sanitizer preserves other sections");
 
         var promptHistory = WorkflowGuardSanitizer.RemoveExcludedWorkflowReferences(body, workflowGuardActive: true);
-        AssertEqual(false, promptHistory.Contains(".github/workflows/review-intelligencex-core.yml", StringComparison.OrdinalIgnoreCase),
-            "workflow sanitizer removes excluded workflow references from prompt history");
+        AssertEqual(false,
+            promptHistory.Contains("- [ ] Fix `.github/workflows/review-intelligencex-core.yml`.", StringComparison.Ordinal),
+            "workflow sanitizer removes excluded workflow finding references from prompt history");
+        AssertContainsText(promptHistory, "- Plain blocker mentioning `.github/workflows/build.yml` should remain visible.",
+            "workflow sanitizer preserves non-finding workflow context in prompt history");
         AssertContainsText(promptHistory, "src/app.cs", "workflow sanitizer preserves non-workflow prompt history");
 
         var workflowOnly = string.Join("\n", new[] {
