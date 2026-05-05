@@ -10,6 +10,7 @@ internal static class ReviewHistoryMarker {
     private const string MarkerPrefix = "<!-- intelligencex:history:v1 ";
     private const string MarkerSuffix = " -->";
     private const string Schema = "intelligencex.review.history.v1";
+    private const int StickyCommentSizeWarningThreshold = 60000;
 
     public static string AppendOrReplace(string commentBody, ReviewHistorySnapshot snapshot, PullRequestContext context,
         ReviewSettings settings) {
@@ -71,7 +72,13 @@ internal static class ReviewHistoryMarker {
         };
         var json = JsonSerializer.Serialize(payload);
         var encoded = Base64UrlEncode(Encoding.UTF8.GetBytes(json));
-        return $"{cleaned.TrimEnd()}\n\n{MarkerPrefix}{encoded}{MarkerSuffix}";
+        var result = $"{cleaned.TrimEnd()}\n\n{MarkerPrefix}{encoded}{MarkerSuffix}";
+        if (settings.Diagnostics && result.Length >= StickyCommentSizeWarningThreshold) {
+            Console.Error.WriteLine(
+                $"Review history marker produced a large sticky comment ({result.Length} chars). Reduce review.history.maxRounds or review.history.maxItems if GitHub rejects the update.");
+        }
+
+        return result;
     }
 
     public static bool TryReadRounds(string? body, string? currentHeadSha, ReviewSettings settings,

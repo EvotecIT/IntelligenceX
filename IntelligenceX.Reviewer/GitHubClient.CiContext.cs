@@ -124,6 +124,7 @@ internal sealed partial class GitHubClient {
             return ("completed", "failure");
         }
 
+        // Unknown legacy states stay pending so auto-approval cannot pass on an unrecognized status value.
         return ("pending", null);
     }
 }
