@@ -58,15 +58,27 @@ internal static class RepositoryGuidanceLoader {
                 continue;
             }
 
-            if (text.Length > remaining) {
-                text = text[..remaining];
-            }
+            text = TrimToBudget(text, remaining);
 
             entries.Add(new RepositoryGuidanceEntry(path.Trim(), text));
             remaining -= text.Length;
         }
 
         return entries;
+    }
+
+    private static string TrimToBudget(string text, int maxChars) {
+        if (text.Length <= maxChars) {
+            return text;
+        }
+
+        var prefix = text[..maxChars];
+        var lastNewline = prefix.LastIndexOfAny(new[] { '\r', '\n' });
+        if (lastNewline > 0) {
+            return prefix[..lastNewline].TrimEnd();
+        }
+
+        return prefix;
     }
 
     private static bool IsUnderRoot(string root, string path) {

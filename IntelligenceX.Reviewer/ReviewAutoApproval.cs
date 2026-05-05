@@ -14,7 +14,7 @@ internal sealed class ReviewAutoApprovalDecision {
     public IReadOnlyList<string> Blockers { get; init; } = Array.Empty<string>();
     public ReviewCheckSnapshot? CheckSnapshot { get; init; }
     public ReviewCheckSnapshot? EffectiveCheckSnapshot { get; init; }
-    public bool HasCheckData => CheckSnapshot?.HasData == true;
+    public bool HasCheckData => (EffectiveCheckSnapshot ?? CheckSnapshot)?.HasData == true;
 }
 
 internal static class ReviewAutoApproval {

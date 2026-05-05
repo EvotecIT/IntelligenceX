@@ -821,6 +821,8 @@ internal static partial class Program {
         failed += Run("Prompt includes repository guidance and custom conventions", TestPromptBuilderIncludesConventionPacks);
         failed += Run("Repository guidance resolves against config root",
             TestRepositoryGuidanceResolvesAgainstConfigRoot);
+        failed += Run("Repository guidance truncates on line boundary",
+            TestRepositoryGuidanceTruncatesOnLineBoundary);
         failed += Run("Review auto approval readiness gates", TestReviewAutoApprovalReadinessGates);
         failed += Run("Review auto approval pending-only gate is independent",
             TestReviewAutoApprovalPendingOnlyGateIsIndependent);

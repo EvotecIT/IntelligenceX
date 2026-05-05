@@ -722,6 +722,10 @@ policy, such as Dependabot-only approvals. `ignoredCheckNames`
 exists because the reviewer workflow's own check can still be pending while the reviewer is deciding whether every
 other check has passed.
 
+When approval submission is enabled, the reviewer de-duplicates its own approvals by requiring both an exact `headSha`
+match and a distinctive marker from the configured approval body. Keep customized approval bodies clearly IX-specific so
+the reviewer does not mistake a human approval for a prior automated approval on the same commit.
+
 Env aliases:
 - `auto_approve_enabled` / `REVIEW_AUTO_APPROVE_ENABLED`
 - `auto_approve_dry_run` / `REVIEW_AUTO_APPROVE_DRY_RUN`

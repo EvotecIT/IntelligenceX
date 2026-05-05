@@ -642,6 +642,35 @@ internal static partial class Program {
         }
     }
 
+    private static void TestRepositoryGuidanceTruncatesOnLineBoundary() {
+        var root = Path.Combine(Path.GetTempPath(), $"ix-guidance-trim-{Guid.NewGuid():N}");
+        try {
+            var guidanceDir = Path.Combine(root, ".intelligencex");
+            Directory.CreateDirectory(guidanceDir);
+            var guidancePath = Path.Combine(guidanceDir, "reviewer-guidance.md");
+            const string content = "# Review posture\nKeep complete guidance lines.\nSecond line should not appear.";
+            File.WriteAllText(guidancePath, content);
+
+            var settings = new ReviewSettings {
+                RepositoryRoot = root
+            };
+            settings.RepositoryGuidance.Paths = new[] { ".intelligencex/reviewer-guidance.md" };
+            settings.RepositoryGuidance.MaxChars = "# Review posture\nKeep complete guidance lines.\nSec".Length;
+
+            var prompt = PromptBuilder.Build(BuildContext(), BuildFiles("src/app.cs"), settings, null, null,
+                inlineSupported: false);
+
+            AssertContainsText(prompt, "# Review posture", "repository guidance keeps first heading");
+            AssertContainsText(prompt, "Keep complete guidance lines.",
+                "repository guidance keeps complete line before truncation");
+            AssertDoesNotContainText(prompt, "\nSec", "repository guidance avoids partial next line");
+        } finally {
+            if (Directory.Exists(root)) {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
     private static void TestReviewAutoApprovalReadinessGates() {
         var context = new PullRequestContext("owner/repo", "owner", "repo", 12, "Bump package", null, false,
             "abc1234", "base", new[] { "ix-auto-approve" }, "owner/repo", false, null,
@@ -696,6 +725,7 @@ internal static partial class Program {
         blocked = ReviewAutoApproval.Evaluate(context, settings, reviewFailed: false, hasMergeBlockers: false,
             history, allowWrites: true, checks: onlyIgnoredChecks);
         AssertEqual(false, blocked.ShouldApprove, "auto approval blocks zero effective checks");
+        AssertEqual(false, blocked.HasCheckData, "auto approval check-data flag reflects effective checks");
         AssertContainsText(string.Join("\n", blocked.Blockers), "no effective checks",
             "auto approval zero effective checks reason");
 

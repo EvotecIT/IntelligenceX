@@ -634,6 +634,8 @@ internal sealed partial class GitHubClient : IDisposable {
         state?.Equals("APPROVED", StringComparison.OrdinalIgnoreCase) == true &&
         !string.IsNullOrWhiteSpace(commitId) &&
         string.Equals(commitId, headSha, StringComparison.OrdinalIgnoreCase) &&
+        // The body marker keeps IX-created approvals distinct from human approvals on the same head SHA.
+        // Keep configured approval bodies distinctive when downstream repos customize the approval text.
         body.Contains(marker, StringComparison.OrdinalIgnoreCase);
 
     public void Dispose() {
