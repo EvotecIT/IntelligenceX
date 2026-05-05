@@ -755,7 +755,7 @@ internal static partial class Program {
         blocked = ReviewAutoApproval.Evaluate(context, settings, reviewFailed: false, hasMergeBlockers: false,
             history, allowWrites: true, checks: onlyIgnoredChecks);
         AssertEqual(false, blocked.ShouldApprove, "auto approval blocks zero effective checks");
-        AssertEqual(false, blocked.HasCheckData, "auto approval check-data flag reflects effective checks");
+        AssertEqual(false, blocked.HasEffectiveCheckData, "auto approval effective check-data flag reflects effective checks");
         AssertContainsText(string.Join("\n", blocked.Blockers), "no effective checks",
             "auto approval zero effective checks reason");
 
