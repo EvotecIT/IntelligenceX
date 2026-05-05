@@ -12,7 +12,8 @@ internal static class RepositoryGuidanceLoader {
             return string.Empty;
         }
 
-        var entries = LoadEntries(settings.RepositoryRoot, settings.RepositoryGuidance.Paths, settings.RepositoryGuidance.MaxChars);
+        var entries = LoadEntries(settings.RepositoryRoot, settings.RepositoryGuidance.Paths,
+            settings.RepositoryGuidance.MaxChars, settings.Diagnostics);
         if (entries.Count == 0) {
             return string.Empty;
         }
@@ -28,7 +29,8 @@ internal static class RepositoryGuidanceLoader {
         return sb.ToString().TrimEnd();
     }
 
-    private static IReadOnlyList<RepositoryGuidanceEntry> LoadEntries(string repositoryRoot, IReadOnlyList<string> paths, int maxChars) {
+    private static IReadOnlyList<RepositoryGuidanceEntry> LoadEntries(string repositoryRoot, IReadOnlyList<string> paths,
+        int maxChars, bool diagnostics) {
         if (maxChars <= 0) {
             return Array.Empty<RepositoryGuidanceEntry>();
         }
@@ -45,11 +47,18 @@ internal static class RepositoryGuidanceLoader {
 
             var normalized = path.Trim().Replace('\\', Path.DirectorySeparatorChar).Replace('/', Path.DirectorySeparatorChar);
             if (Path.IsPathRooted(normalized)) {
+                LogDiagnostic(diagnostics, $"Repository guidance skipped rooted path: {path.Trim()}");
                 continue;
             }
 
             var fullPath = Path.GetFullPath(Path.Combine(root, normalized));
-            if (!IsUnderRoot(root, fullPath) || !File.Exists(fullPath)) {
+            if (!IsUnderRoot(root, fullPath)) {
+                LogDiagnostic(diagnostics, $"Repository guidance skipped outside repository root: {path.Trim()}");
+                continue;
+            }
+
+            if (!File.Exists(fullPath)) {
+                LogDiagnostic(diagnostics, $"Repository guidance skipped missing path: {path.Trim()}");
                 continue;
             }
 
@@ -58,7 +67,12 @@ internal static class RepositoryGuidanceLoader {
                 continue;
             }
 
+            var originalLength = text.Length;
             text = TrimToBudget(text, remaining);
+            if (text.Length < originalLength) {
+                LogDiagnostic(diagnostics,
+                    $"Repository guidance truncated {path.Trim()} from {originalLength} to {text.Length} chars.");
+            }
 
             entries.Add(new RepositoryGuidanceEntry(path.Trim(), text));
             remaining -= text.Length;
@@ -88,6 +102,12 @@ internal static class RepositoryGuidanceLoader {
         return normalizedPath.StartsWith(normalizedRoot, StringComparison.OrdinalIgnoreCase) ||
                string.Equals(normalizedPath, root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
                    StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void LogDiagnostic(bool diagnostics, string message) {
+        if (diagnostics) {
+            Console.Error.WriteLine(message);
+        }
     }
 
     private sealed record RepositoryGuidanceEntry(string Path, string Content);

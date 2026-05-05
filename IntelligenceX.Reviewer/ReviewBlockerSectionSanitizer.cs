@@ -134,6 +134,8 @@ internal static class ReviewBlockerSectionSanitizer {
     private static bool IsOpenChecklistItem(string line) =>
         line.StartsWith("- [ ]", StringComparison.Ordinal);
 
+    // Keep this broad to match ReviewSummaryParser's fail-closed merge-blocker contract:
+    // plain dash bullets in Todo/Critical sections are still considered unresolved blockers.
     private static bool IsMergeBlockerListItem(string line) {
         if (string.IsNullOrWhiteSpace(line)) {
             return false;

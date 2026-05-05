@@ -97,6 +97,10 @@ internal static partial class ReviewAutoApproval {
         if (decision.ShouldApprove && decision.DryRun) {
             sb.AppendLine();
             sb.AppendLine("> Auto-approval dry run is enabled; no approving review was submitted.");
+        } else if (decision.ShouldApprove) {
+            sb.AppendLine();
+            sb.AppendLine(
+                "> Auto-approval submission runs after this sticky summary is posted or updated; final submitted/skipped/failed status is recorded in workflow logs.");
         }
         return sb.ToString().TrimEnd();
     }

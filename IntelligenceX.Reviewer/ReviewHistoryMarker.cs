@@ -73,9 +73,15 @@ internal static class ReviewHistoryMarker {
         var json = JsonSerializer.Serialize(payload);
         var encoded = Base64UrlEncode(Encoding.UTF8.GetBytes(json));
         var result = $"{cleaned.TrimEnd()}\n\n{MarkerPrefix}{encoded}{MarkerSuffix}";
-        if (settings.Diagnostics && result.Length >= StickyCommentSizeWarningThreshold) {
+        if (settings.Diagnostics) {
+            var visibleLength = cleaned.TrimEnd().Length;
+            var markerLength = result.Length - visibleLength;
             Console.Error.WriteLine(
-                $"Review history marker produced a large sticky comment ({result.Length} chars). Reduce review.history.maxRounds or review.history.maxItems if GitHub rejects the update.");
+                $"Review history marker size: visible={visibleLength} chars, marker={markerLength} chars, total={result.Length} chars, rounds={rounds.Count}.");
+            if (result.Length >= StickyCommentSizeWarningThreshold) {
+                Console.Error.WriteLine(
+                    $"Review history marker produced a large sticky comment ({result.Length} chars). Reduce review.history.maxRounds or review.history.maxItems if GitHub rejects the update.");
+            }
         }
 
         return result;

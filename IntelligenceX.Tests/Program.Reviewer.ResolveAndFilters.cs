@@ -721,6 +721,14 @@ internal static partial class Program {
         AssertContainsText(block, "Auto-Approval Readiness", "auto approval comment block heading");
         AssertContainsText(block, "Eligible (dry run)", "auto approval comment block dry-run status");
         AssertContainsText(block, "1 passed, 0 failed, 0 pending", "auto approval comment block filtered checks");
+        AssertContainsText(block, "dry run is enabled", "auto approval comment block dry-run note");
+
+        settings.AutoApprove.DryRun = false;
+        var writeDecision = ReviewAutoApproval.Evaluate(context, settings, reviewFailed: false, hasMergeBlockers: false,
+            history, allowWrites: true, checks: checks);
+        var writeBlock = ReviewAutoApproval.BuildCommentBlock(writeDecision);
+        AssertContainsText(writeBlock, "final submitted/skipped/failed status is recorded in workflow logs",
+            "auto approval comment block submission outcome note");
 
         var blocked = ReviewAutoApproval.Evaluate(context, settings, reviewFailed: false, hasMergeBlockers: true,
             history, allowWrites: true, checks: checks);
