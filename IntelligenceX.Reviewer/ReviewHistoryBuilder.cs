@@ -346,25 +346,8 @@ internal static class ReviewHistoryBuilder {
 
         body = ReviewHistoryMarker.Remove(body);
         ReviewSummaryParser.TryGetReviewedCommit(body, out var reviewedCommit);
-        var findings = ReviewSummaryParser.ExtractMergeBlockerFindings(body, settings, settings.History.MaxItems,
-            out var findingsHitLimit, out var findingsParseIncomplete);
-        var hasMergeBlockers = ReviewSummaryParser.HasMergeBlockers(body, settings);
-        if (hasMergeBlockers &&
-            findings.Count == 0 &&
-            !findingsParseIncomplete &&
-            ReviewSummaryParser.HasAnyMergeBlockerSection(body, settings)) {
-            hasMergeBlockers = false;
-        }
-        var recommendation = ResolveRecommendation(hasMergeBlockers, findingsParseIncomplete);
-        var mergeBlockerStatus = findings.Count == 0
-            ? findingsParseIncomplete
-                ? "unknown; merge-blocker lines were present but could not be normalized."
-                : hasMergeBlockers
-                ? "present, but markdown items could not be normalized."
-                : "none."
-            : findingsParseIncomplete
-                ? $"{findings.Count} normalized item(s), but additional merge-blocker lines could not be normalized."
-            : $"{findings.Count} normalized item(s).";
+        var posture = ReviewMergeBlockerPosture.Build(body, settings, settings.History.MaxItems);
+        var hasMergeBlockers = posture.HasHistoryMergeBlockers();
         return new ReviewHistoryRound {
             Sequence = sequence,
             Source = "intelligencex",
@@ -372,14 +355,14 @@ internal static class ReviewHistoryBuilder {
             ReviewedSha = reviewedCommit?.Trim() ?? string.Empty,
             SameHeadAsCurrent = IsSameHead(reviewedCommit, currentHeadSha),
             HasMergeBlockers = hasMergeBlockers,
-            MergeBlockerStatus = mergeBlockerStatus,
-            Recommendation = recommendation,
+            MergeBlockerStatus = posture.FormatHistoryMergeBlockerStatus(),
+            Recommendation = posture.ResolveHistoryRecommendation(),
             PositiveHighlights = ExtractSectionItems(body, new[] { "Excellent Aspects", "Code Quality Assessment" }, 3),
             RiskNotes = ExtractSectionItems(body, new[] { "Other Issues", "Security & Performance", "Backward Compatibility" }, 3),
             FollowUps = ExtractSectionItems(body, new[] { "Recommendations", "Next Steps", "Test Quality", "Documentation" }, 3),
-            FindingsHitLimit = findingsHitLimit,
-            FindingsParseIncomplete = findingsParseIncomplete,
-            Findings = ConvertFindings(findings)
+            FindingsHitLimit = posture.FindingsHitLimit,
+            FindingsParseIncomplete = posture.FindingsParseIncomplete,
+            Findings = ConvertFindings(posture.Findings)
         };
     }
 
@@ -484,14 +467,6 @@ internal static class ReviewHistoryBuilder {
             });
         }
         return converted;
-    }
-
-    private static string ResolveRecommendation(bool hasMergeBlockers, bool findingsParseIncomplete) {
-        if (findingsParseIncomplete) {
-            return "manual-review";
-        }
-
-        return hasMergeBlockers ? "needs-work" : "approve";
     }
 
     private static bool IsSameHead(string? reviewedSha, string? currentHeadSha) =>

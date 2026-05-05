@@ -1,5 +1,4 @@
 using System;
-using System.Linq;
 using System.Text;
 
 namespace IntelligenceX.Reviewer;
@@ -21,30 +20,27 @@ internal static class ReviewStateBuilder {
             return new ReviewState("manual-review", "Manual review", "unknown", "review provider failed or returned a failure body");
         }
 
-        var findings = ReviewSummaryParser.ExtractMergeBlockerFindings(reviewBody, settings, settings.History.MaxItems,
-            out var hitLimit, out var parseIncomplete);
-        var openCount = findings.Count(finding => string.Equals(finding.Status, "open", StringComparison.OrdinalIgnoreCase));
-        var hasMergeBlockerSections = ReviewSummaryParser.HasAnyMergeBlockerSection(reviewBody, settings);
-        var hasMergeBlockers = ReviewSummaryParser.HasMergeBlockers(reviewBody, settings);
+        var posture = ReviewMergeBlockerPosture.Build(reviewBody, settings, settings.History.MaxItems);
 
-        if (parseIncomplete) {
-            return new ReviewState("manual-review", "Manual review", FormatBlockerCount(openCount, hasMergeBlockers),
+        if (posture.FindingsParseIncomplete) {
+            return new ReviewState("manual-review", "Manual review",
+                FormatBlockerCount(posture.OpenFindingCount, posture.HasMergeBlockers),
                 "merge-blocker section contained lines that could not be normalized");
         }
 
-        if (!hasMergeBlockerSections && (settings.MergeBlockerRequireSectionMatch ||
-                                         settings.MergeBlockerRequireAllSections)) {
+        if (posture.MissingRequiredSections) {
             return new ReviewState("manual-review", "Manual review", "unknown",
                 "configured merge-blocker sections were missing");
         }
 
-        if (hasMergeBlockers && openCount == 0) {
+        if (posture.HasMergeBlockers && posture.OpenFindingCount == 0) {
             return new ReviewState("manual-review", "Manual review", "unknown",
                 "configured merge-blocker sections were missing or could not be normalized");
         }
 
-        if (hasMergeBlockers) {
-            return new ReviewState("needs-work", "Needs work", FormatBlockerCount(openCount, true),
+        if (posture.HasMergeBlockers) {
+            return new ReviewState("needs-work", "Needs work",
+                FormatBlockerCount(posture.OpenFindingCount, true),
                 "open Todo/Critical item(s) detected");
         }
 
