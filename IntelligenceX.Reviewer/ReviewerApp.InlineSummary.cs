@@ -241,7 +241,7 @@ public static partial class ReviewerApp {
             return -1;
         }
 
-        return 0;
+        return left.Id.CompareTo(right.Id);
     }
 
     private static async Task<HashSet<string>?> PostInlineCommentsAsync(IReviewCodeHostReader codeHostReader, GitHubClient github,

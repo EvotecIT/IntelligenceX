@@ -217,14 +217,14 @@ internal static partial class Program {
         AssertEqual(10L, selected!.Id, "owned summary selection prefers newest trusted summary by timestamp");
     }
 
-    private static void TestOwnedSummarySelectionPreservesApiOrderWithoutTimestamps() {
+    private static void TestOwnedSummarySelectionUsesIdTiebreakerWithoutTimestamps() {
         var first = new IssueComment(10, $"{ReviewFormatter.SummaryMarker}\nFirst", "intelligencex-review[bot]");
         var second = new IssueComment(42, $"{ReviewFormatter.SummaryMarker}\nSecond", "github-actions[bot]");
 
         var selected = CallSelectOwnedSummaryComment(new[] { first, second });
 
         AssertNotNull(selected, "owned summary selection returns trusted summary without timestamps");
-        AssertEqual(10L, selected!.Id, "owned summary selection preserves API order when recency is unknown");
+        AssertEqual(42L, selected!.Id, "owned summary selection falls back to highest id when timestamps are missing");
     }
 
     private static void TestThreadAssessmentEvidenceParse() {

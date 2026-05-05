@@ -19,8 +19,8 @@ internal static partial class Program {
         failed += Run("Owned summary comment requires trusted author", TestOwnedSummaryCommentRequiresTrustedAuthor);
         failed += Run("Owned summary selection prefers newest trusted comment",
             TestOwnedSummarySelectionPrefersNewestTrustedComment);
-        failed += Run("Owned summary selection preserves API order without timestamps",
-            TestOwnedSummarySelectionPreservesApiOrderWithoutTimestamps);
+        failed += Run("Owned summary selection uses id tiebreaker without timestamps",
+            TestOwnedSummarySelectionUsesIdTiebreakerWithoutTimestamps);
         failed += Run("Thread assessment evidence parse", TestThreadAssessmentEvidenceParse);
         failed += Run("Thread triage fallback summary", TestThreadTriageFallbackSummary);
         failed += Run("Thread assessment candidates skip static analysis inline threads",
