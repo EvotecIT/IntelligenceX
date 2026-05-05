@@ -1,9 +1,8 @@
 # INTELLIGENCEX:BEGIN
 review:
   # Do not run secret-dependent review on any forked pull requests.
-  # Skip Dependabot PRs by default to avoid unnecessary LLM usage/budget burn.
-  # Maintainers can opt-in per PR by adding the `needs-ai-review` label.
-  if: ${{ (github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork) && (github.event_name != 'pull_request' || (github.actor != 'dependabot[bot]' && github.actor != 'app/dependabot') || contains(github.event.pull_request.labels.*.name, 'needs-ai-review')) }}
+  # Dependabot PRs still run the job, then the reviewer exits before LLM/auth unless `needs-ai-review` is present.
+  if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
   permissions:
     contents: read
     pull-requests: write
@@ -70,8 +69,9 @@ review:
     swarm_fail_open_on_partial: ${{ inputs.swarm_fail_open_on_partial }}
     swarm_metrics: ${{ inputs.swarm_metrics }}
     review_config_path: ${{ inputs.review_config_path || '.intelligencex/reviewer.json' }}
-    max_files: ${{ fromJSON(inputs.max_files || '30') }}
-    max_patch_chars: ${{ fromJSON(inputs.max_patch_chars || '20000') }}
+    max_files: ${{ inputs.max_files }}
+    max_patch_chars: ${{ inputs.max_patch_chars }}
+    max_inline_comments: ${{ inputs.max_inline_comments }}
     include_issue_comments: ${{ fromJSON(inputs.include_issue_comments || '{{IncludeIssueComments}}') }}
     include_review_comments: ${{ fromJSON(inputs.include_review_comments || '{{IncludeReviewComments}}') }}
     include_related_prs: ${{ fromJSON(inputs.include_related_prs || '{{IncludeRelatedPullRequests}}') }}

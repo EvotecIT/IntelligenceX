@@ -584,7 +584,7 @@ public static partial class ReviewerApp {
                 continue;
             }
 
-            parts.Add($"{FormatProviderWindowLabel(window.Label)}: {remaining.Value:0.#}% remaining");
+            parts.Add($"{FormatProviderWindowLabel(window.Label)}: {remaining.Value.ToString("0.#", CultureInfo.InvariantCulture)}% remaining");
         }
 
         if (!string.IsNullOrWhiteSpace(snapshot.Summary)) {

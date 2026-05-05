@@ -9,22 +9,27 @@ using IntelligenceX.Json;
 namespace IntelligenceX.Reviewer;
 
 internal sealed partial class GitHubClient {
+    private static DateTimeOffset? ParseGitHubDateTime(string? raw) {
+        if (string.IsNullOrWhiteSpace(raw)) {
+            return null;
+        }
+
+        return DateTimeOffset.TryParse(
+            raw,
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+            out var parsed)
+            ? parsed
+            : null;
+    }
+
     private static PullRequestReviewThreadComment ParseReviewThreadComment(JsonObject commentObj) {
         var body = commentObj.GetString("body") ?? string.Empty;
         var author = commentObj.GetObject("author")?.GetString("login");
         var path = commentObj.GetString("path");
         var line = commentObj.GetInt64("line");
         var databaseId = commentObj.GetInt64("databaseId");
-        var createdAtRaw = commentObj.GetString("createdAt");
-        DateTimeOffset? createdAt = null;
-        if (!string.IsNullOrWhiteSpace(createdAtRaw) &&
-            DateTimeOffset.TryParse(
-                createdAtRaw,
-                CultureInfo.InvariantCulture,
-                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
-                out var parsed)) {
-            createdAt = parsed;
-        }
+        var createdAt = ParseGitHubDateTime(commentObj.GetString("createdAt"));
 
         return new PullRequestReviewThreadComment(
             databaseId,

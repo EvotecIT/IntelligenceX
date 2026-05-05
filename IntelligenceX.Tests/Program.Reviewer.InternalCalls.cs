@@ -80,6 +80,10 @@ internal static partial class Program {
         return ReviewerApp.ShouldAutoResolveMissingInlineThreadsForTests(settings, context, inlineKeys, inlineCommentsCount);
     }
 
+    private static bool CallShouldSkipByAuthor(PullRequestContext context, ReviewSettings settings) {
+        return ReviewerApp.ShouldSkipByAuthorForTests(context, settings);
+    }
+
     private static ReviewContextExtras CallBuildExtrasAsync(GitHubClient github, PullRequestContext context,
         ReviewSettings settings, bool forceReviewThreads) {
         return ReviewerApp.BuildExtrasForTestsAsync(github, context, settings, forceReviewThreads, CancellationToken.None)
@@ -185,6 +189,10 @@ internal static partial class Program {
 
     private static bool CallIsOwnedSummaryComment(IssueComment comment) {
         return ReviewerApp.IsOwnedSummaryCommentForTests(comment);
+    }
+
+    private static IssueComment? CallSelectOwnedSummaryComment(IEnumerable<IssueComment> comments) {
+        return ReviewerApp.SelectOwnedSummaryCommentForTests(comments);
     }
 
     private static IReadOnlyList<PullRequestReviewThread> CallSelectAssessmentCandidates(

@@ -17,6 +17,10 @@ internal static partial class Program {
         failed += Run("GitHub event fork parsing", TestGitHubEventForkParsing);
         failed += Run("GitHub event missing head repo fails closed", TestGitHubEventMissingHeadRepoFailsClosed);
         failed += Run("Owned summary comment requires trusted author", TestOwnedSummaryCommentRequiresTrustedAuthor);
+        failed += Run("Owned summary selection prefers newest trusted comment",
+            TestOwnedSummarySelectionPrefersNewestTrustedComment);
+        failed += Run("Owned summary selection uses id tiebreaker without timestamps",
+            TestOwnedSummarySelectionUsesIdTiebreakerWithoutTimestamps);
         failed += Run("Thread assessment evidence parse", TestThreadAssessmentEvidenceParse);
         failed += Run("Thread triage fallback summary", TestThreadTriageFallbackSummary);
         failed += Run("Thread assessment candidates skip static analysis inline threads",
@@ -677,6 +681,14 @@ internal static partial class Program {
             TestReviewSettingsLoadConfigAllowsZeroForNonNegativeLimits);
         failed += Run("Review settings env allows zero for non-negative limits",
             TestReviewSettingsFromEnvironmentAllowsZeroForNonNegativeLimits);
+        failed += Run("Review settings author skip defaults config and env",
+            TestReviewSettingsAuthorSkipDefaultsConfigAndEnv);
+        failed += Run("Review settings repository guidance config and env",
+            TestReviewSettingsConventionPacksConfigAndEnv);
+        failed += Run("Review settings auto approval config and env",
+            TestReviewSettingsAutoApprovalConfigAndEnv);
+        failed += Run("Reviewer author skip honors force-review labels and event author",
+            TestReviewerAuthorSkipHonorsForceReviewLabelsAndEventAuthor);
         failed += Run("Setup-generated reviewer config validates and loads canonical related PRs",
             TestSetupGeneratedReviewerConfigValidatesAndLoadsWithCanonicalRelatedPrs);
         failed += Run("Review settings policy preview clamp range", TestReviewSettingsPolicyRulePreviewConfigClampRange);
@@ -794,6 +806,8 @@ internal static partial class Program {
         failed += Run("Workflow changes filtering", TestWorkflowChangesFiltering);
         failed += Run("Workflow guard note skip", TestWorkflowGuardNoteSkip);
         failed += Run("Workflow guard note filtered", TestWorkflowGuardNoteFiltered);
+        failed += Run("Workflow guard sanitizer removes excluded workflow todo",
+            TestWorkflowGuardSanitizerRemovesExcludedWorkflowTodo);
         failed += Run("Secrets audit records", TestSecretsAuditRecords);
         failed += Run("Prompt language hints", TestPromptBuilderLanguageHints);
         failed += Run("Prompt language hints disabled", TestPromptBuilderLanguageHintsDisabled);
@@ -804,10 +818,34 @@ internal static partial class Program {
         failed += Run("Prompt includes review history section", TestPromptBuilderIncludesReviewHistorySection);
         failed += Run("Prompt compact history guard includes critical issues",
             TestPromptBuilderCompactHistoryGuardIncludesCriticalIssues);
+        failed += Run("Prompt includes repository guidance and custom conventions", TestPromptBuilderIncludesConventionPacks);
+        failed += Run("Repository guidance resolves against config root",
+            TestRepositoryGuidanceResolvesAgainstConfigRoot);
+        failed += Run("Repository guidance truncates on line boundary",
+            TestRepositoryGuidanceTruncatesOnLineBoundary);
+        failed += Run("Review auto approval readiness gates", TestReviewAutoApprovalReadinessGates);
+        failed += Run("Review auto approval pending-only gate is independent",
+            TestReviewAutoApprovalPendingOnlyGateIsIndependent);
+        failed += Run("Review thread blocker sanitizer removes stale thread todo",
+            TestReviewThreadBlockerSanitizerRemovesStaleThreadTodo);
+        failed += Run("Review thread blocker sanitizer preserves plain thread bullets",
+            TestReviewThreadBlockerSanitizerPreservesPlainThreadBullets);
+        failed += Run("Review thread blocker sanitizer keeps todo when thread state unavailable",
+            TestReviewThreadBlockerSanitizerKeepsTodoWhenThreadsUnavailable);
+        failed += Run("GitHub commit statuses contribute to check snapshot",
+            TestGitHubCommitStatusesContributeToCheckSnapshot);
+        failed += Run("GitHub commit statuses keep latest status per context",
+            TestGitHubCommitStatusesKeepLatestStatusPerContext);
+        failed += Run("GitHub auto approval review match requires exact head sha",
+            TestGitHubAutoApprovalReviewMatchRequiresExactHeadSha);
         failed += Run("Prompt includes ci context section", TestPromptBuilderIncludesCiContextSection);
         failed += Run("Review history builder includes sticky summary and thread snapshot",
             TestReviewHistoryBuilderIncludesStickySummaryAndThreadSnapshot);
         failed += Run("Review history builder builds comment block", TestReviewHistoryBuilderBuildsCommentBlock);
+        failed += Run("Review history builder treats missing optional blocker section as clean posture",
+            TestReviewHistoryBuilderTreatsMissingOptionalBlockerSectionAsCleanPosture);
+        failed += Run("Review history builder requires exact same-head SHA",
+            TestReviewHistoryBuilderRequiresExactSameHeadSha);
         failed += Run("Review history builder uses latest same-head round",
             TestReviewHistoryBuilderUsesLatestSameHeadRound);
         failed += Run("Review history builder does not resolve across different heads",
@@ -828,10 +866,30 @@ internal static partial class Program {
             TestReviewHistoryBuilderDoesNotResolveWhenLatestSameHeadParseIncompleteWithoutDetectedBlockers);
         failed += Run("Review history builder does not infer resolution from previously resolved duplicate",
             TestReviewHistoryBuilderDoesNotInferResolutionFromPreviouslyResolvedDuplicate);
+        failed += Run("Review history builder appends current round for visible tracking",
+            TestReviewHistoryBuilderAppendsCurrentRoundForVisibleTracking);
         failed += Run("Review summary stability drops history progress block",
             TestReviewSummaryStabilityDropsHistoryProgressBlock);
         failed += Run("Review history artifacts render json and markdown",
             TestReviewHistoryArtifactsRenderJsonAndMarkdown);
+        failed += Run("Review history marker round-trips sticky ledger",
+            TestReviewHistoryMarkerRoundTripsStickyLedger);
+        failed += Run("Review history marker keeps latest rounds and recomputes head",
+            TestReviewHistoryMarkerKeepsLatestRoundsAndRecomputesHead);
+        failed += Run("Review history marker read keeps newest parsed rounds",
+            TestReviewHistoryMarkerTryReadRoundsKeepsNewestParsedRounds);
+        failed += Run("Review history marker requires exact same-head SHA",
+            TestReviewHistoryMarkerRequiresExactSameHeadSha);
+        failed += Run("Review state block renders deterministic recommendation",
+            TestReviewStateBlockRendersDeterministicRecommendation);
+        failed += Run("Review state block fails closed without merge blocker sections",
+            TestReviewStateBlockFailsClosedWithoutMergeBlockerSections);
+        failed += Run("Review state block fails closed when required blocker section is missing",
+            TestReviewStateBlockFailsClosedWhenRequiredBlockerSectionIsMissing);
+        failed += Run("Review highlights block summarizes current review sections",
+            TestReviewHighlightsBlockSummarizesCurrentReviewSections);
+        failed += Run("Review highlights block stops at nested headings",
+            TestReviewHighlightsBlockStopsAtNestedHeadings);
         failed += Run("Redaction defaults", TestRedactionDefaults);
         failed += Run("Review budget note", TestReviewBudgetNote);
         failed += Run("Review budget note empty", TestReviewBudgetNoteEmpty);

@@ -604,6 +604,25 @@ public static partial class ReviewerApp {
         return false;
     }
 
+    private static bool ShouldSkipByAuthor(PullRequestContext context, ReviewSettings settings) {
+        if (string.IsNullOrWhiteSpace(context.AuthorLogin) || settings.SkipAuthors.Count == 0) {
+            return false;
+        }
+
+        if (ShouldSkipByLabels(context.Labels, settings.ForceReviewLabels)) {
+            return false;
+        }
+
+        foreach (var skipAuthor in settings.SkipAuthors) {
+            if (!string.IsNullOrWhiteSpace(skipAuthor) &&
+                context.AuthorLogin.Equals(skipAuthor.Trim(), StringComparison.OrdinalIgnoreCase)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static bool ShouldSkipByPaths(IReadOnlyList<PullRequestFile> files, IReadOnlyList<string> skipPaths) {
         if (files.Count == 0 || skipPaths.Count == 0) {
             return false;
@@ -636,6 +655,32 @@ public static partial class ReviewerApp {
         return files.Where(file => !IsWorkflowPath(file.Filename)).ToList();
     }
 
+    internal static IReadOnlyList<InlineReviewComment> ExcludeWorkflowInlineComments(IReadOnlyList<InlineReviewComment> comments) {
+        if (comments.Count == 0) {
+            return comments;
+        }
+
+        return comments.Where(comment => !IsWorkflowPath(comment.Path)).ToArray();
+    }
+
+    internal static IReadOnlyList<PullRequestReviewThread> ExcludeWorkflowReviewThreads(
+        IReadOnlyList<PullRequestReviewThread> threads) {
+        if (threads.Count == 0) {
+            return threads;
+        }
+
+        return threads.Where(thread => !IsWorkflowReviewThread(thread)).ToArray();
+    }
+
+    internal static bool IsWorkflowReviewThread(PullRequestReviewThread thread) {
+        foreach (var comment in thread.Comments) {
+            if (IsWorkflowPath(comment.Path)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     internal static string BuildWorkflowGuardNote(string? headSha, int workflowFileCount, int reviewedFiles, bool skipped) {
         var normalizedWorkflowCount = Math.Max(0, workflowFileCount);
         var normalizedReviewedCount = Math.Max(0, reviewedFiles);
@@ -647,7 +692,7 @@ public static partial class ReviewerApp {
                    "Set allowWorkflowChanges or REVIEW_ALLOW_WORKFLOW_CHANGES=true to override.";
         }
         return $"Workflow guardrail active: excluded {normalizedWorkflowCount} {workflowLabel} at commit {head}; " +
-               $"reviewed {normalizedReviewedCount} non-workflow file(s).";
+               $"reviewed {normalizedReviewedCount} non-workflow file(s). Do not report Todo, Critical, or inline findings for excluded workflow files.";
     }
 
     private static bool IsWorkflowPath(string? path) {

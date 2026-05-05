@@ -183,6 +183,198 @@ internal static partial class Program {
         }
     }
 
+    private static void TestReviewSettingsAuthorSkipDefaultsConfigAndEnv() {
+        var previousConfigPath = Environment.GetEnvironmentVariable("REVIEW_CONFIG_PATH");
+        var previousSkipAuthors = Environment.GetEnvironmentVariable("SKIP_AUTHORS");
+        var previousForceLabels = Environment.GetEnvironmentVariable("FORCE_REVIEW_LABELS");
+        var configPath = Path.Combine(Path.GetTempPath(), $"intelligencex-review-author-skip-{Guid.NewGuid():N}.json");
+        try {
+            var defaults = new ReviewSettings();
+            AssertEqual(true, defaults.SkipAuthors.Contains("dependabot[bot]", StringComparer.OrdinalIgnoreCase),
+                "author skip default includes dependabot bot");
+            AssertEqual(true, defaults.SkipAuthors.Contains("app/dependabot", StringComparer.OrdinalIgnoreCase),
+                "author skip default includes dependabot app login");
+            AssertEqual(true, defaults.ForceReviewLabels.Contains("needs-ai-review", StringComparer.OrdinalIgnoreCase),
+                "author skip default has force-review label");
+
+            File.WriteAllText(configPath, """
+{
+  "review": {
+    "skipAuthors": ["renovate[bot]"],
+    "forceReviewLabels": ["review-anyway"]
+  }
+}
+""");
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", configPath);
+            var settings = ReviewSettings.Load();
+            AssertEqual("renovate[bot]", settings.SkipAuthors.Single(), "author skip config list");
+            AssertEqual("review-anyway", settings.ForceReviewLabels.Single(), "force review label config list");
+
+            Environment.SetEnvironmentVariable("SKIP_AUTHORS", "dependabot[bot],app/dependabot");
+            Environment.SetEnvironmentVariable("FORCE_REVIEW_LABELS", "needs-ai-review,security-review");
+            settings = ReviewSettings.Load();
+            AssertEqual(2, settings.SkipAuthors.Count, "author skip env list count");
+            AssertEqual(true, settings.SkipAuthors.Contains("app/dependabot", StringComparer.OrdinalIgnoreCase),
+                "author skip env includes app login");
+            AssertEqual(2, settings.ForceReviewLabels.Count, "force review labels env list count");
+            AssertEqual(true, settings.ForceReviewLabels.Contains("security-review", StringComparer.OrdinalIgnoreCase),
+                "force review labels env includes security-review");
+        } finally {
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", previousConfigPath);
+            Environment.SetEnvironmentVariable("SKIP_AUTHORS", previousSkipAuthors);
+            Environment.SetEnvironmentVariable("FORCE_REVIEW_LABELS", previousForceLabels);
+            if (File.Exists(configPath)) {
+                File.Delete(configPath);
+            }
+        }
+    }
+
+    private static void TestReviewSettingsConventionPacksConfigAndEnv() {
+        var previousConfigPath = Environment.GetEnvironmentVariable("REVIEW_CONFIG_PATH");
+        var previousGuidancePaths = Environment.GetEnvironmentVariable("REVIEW_REPOSITORY_GUIDANCE_PATHS");
+        var configPath = Path.Combine(Path.GetTempPath(), $"intelligencex-review-conventions-{Guid.NewGuid():N}.json");
+        try {
+            File.WriteAllText(configPath, """
+{
+  "review": {
+    "repositoryGuidancePaths": [".intelligencex/reviewer-guidance.md", "Docs/design.md"],
+    "repositoryGuidanceMaxChars": 777,
+    "conventions": [
+      {
+        "id": "repo-api",
+        "title": "Repo API",
+        "appliesTo": ["src/**/*.cs"],
+        "rules": ["Keep fluent APIs source-compatible."],
+        "goodSignals": ["Adds public API tests."],
+        "riskSignals": ["Changes method names."],
+        "followUps": ["Update examples."]
+      }
+    ]
+  }
+}
+""");
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", configPath);
+            Environment.SetEnvironmentVariable("REVIEW_REPOSITORY_GUIDANCE_PATHS", null);
+
+            var settings = ReviewSettings.Load();
+            AssertEqual(1, settings.Conventions.Count, "review settings custom conventions config count");
+            AssertEqual("repo-api", settings.Conventions[0].Id, "review settings convention custom id");
+            AssertEqual("Keep fluent APIs source-compatible.", settings.Conventions[0].Rules[0],
+                "review settings convention custom rule");
+            AssertEqual(2, settings.RepositoryGuidance.Paths.Count, "review settings repository guidance path count");
+            AssertEqual(777, settings.RepositoryGuidance.MaxChars, "review settings repository guidance max chars");
+
+            Environment.SetEnvironmentVariable("REVIEW_REPOSITORY_GUIDANCE_PATHS", "AGENTS.md,Docs/architecture.md");
+            settings = ReviewSettings.Load();
+            AssertEqual(2, settings.RepositoryGuidance.Paths.Count, "review settings repository guidance env count");
+            AssertEqual("AGENTS.md", settings.RepositoryGuidance.Paths[0], "review settings repository guidance env first path");
+            AssertEqual("Docs/architecture.md", settings.RepositoryGuidance.Paths[1],
+                "review settings repository guidance env second path");
+        } finally {
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", previousConfigPath);
+            Environment.SetEnvironmentVariable("REVIEW_REPOSITORY_GUIDANCE_PATHS", previousGuidancePaths);
+            if (File.Exists(configPath)) {
+                File.Delete(configPath);
+            }
+        }
+    }
+
+    private static void TestReviewSettingsAutoApprovalConfigAndEnv() {
+        var previousConfigPath = Environment.GetEnvironmentVariable("REVIEW_CONFIG_PATH");
+        var previousEnabled = Environment.GetEnvironmentVariable("REVIEW_AUTO_APPROVE_ENABLED");
+        var previousDryRun = Environment.GetEnvironmentVariable("REVIEW_AUTO_APPROVE_DRY_RUN");
+        var previousRequiredLabels = Environment.GetEnvironmentVariable("REVIEW_AUTO_APPROVE_REQUIRED_LABELS");
+        var previousIgnoredChecks = Environment.GetEnvironmentVariable("REVIEW_AUTO_APPROVE_IGNORED_CHECK_NAMES");
+        var configPath = Path.Combine(Path.GetTempPath(), $"intelligencex-review-auto-approve-{Guid.NewGuid():N}.json");
+        try {
+            File.WriteAllText(configPath, """
+{
+  "review": {
+    "autoApprove": {
+      "enabled": true,
+      "dryRun": false,
+      "requiredLabels": ["ship-it"],
+      "allowedAuthors": ["dependabot[bot]"],
+      "ignoredCheckNames": ["IntelligenceX Review", "Docs"]
+    }
+  }
+}
+""");
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", configPath);
+            Environment.SetEnvironmentVariable("REVIEW_AUTO_APPROVE_ENABLED", null);
+            Environment.SetEnvironmentVariable("REVIEW_AUTO_APPROVE_DRY_RUN", null);
+            Environment.SetEnvironmentVariable("REVIEW_AUTO_APPROVE_REQUIRED_LABELS", null);
+            Environment.SetEnvironmentVariable("REVIEW_AUTO_APPROVE_IGNORED_CHECK_NAMES", null);
+
+            var settings = ReviewSettings.Load();
+            AssertEqual(true, settings.AutoApprove.Enabled, "auto approval config enabled");
+            AssertEqual(false, settings.AutoApprove.DryRun, "auto approval config dry run");
+            AssertEqual("ship-it", settings.AutoApprove.RequiredLabels.Single(), "auto approval config required label");
+            AssertEqual("dependabot[bot]", settings.AutoApprove.AllowedAuthors.Single(),
+                "auto approval config allowed author");
+            AssertEqual(2, settings.AutoApprove.IgnoredCheckNames.Count, "auto approval config ignored checks");
+
+            Environment.SetEnvironmentVariable("REVIEW_AUTO_APPROVE_ENABLED", "false");
+            Environment.SetEnvironmentVariable("REVIEW_AUTO_APPROVE_DRY_RUN", "true");
+            Environment.SetEnvironmentVariable("REVIEW_AUTO_APPROVE_REQUIRED_LABELS", "ix-auto-approve,dependencies");
+            Environment.SetEnvironmentVariable("REVIEW_AUTO_APPROVE_IGNORED_CHECK_NAMES", "IntelligenceX Review");
+            settings = ReviewSettings.Load();
+            AssertEqual(false, settings.AutoApprove.Enabled, "auto approval env enabled override");
+            AssertEqual(true, settings.AutoApprove.DryRun, "auto approval env dry run override");
+            AssertEqual(2, settings.AutoApprove.RequiredLabels.Count, "auto approval env required labels");
+            AssertEqual("IntelligenceX Review", settings.AutoApprove.IgnoredCheckNames.Single(),
+                "auto approval env ignored check");
+        } finally {
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", previousConfigPath);
+            Environment.SetEnvironmentVariable("REVIEW_AUTO_APPROVE_ENABLED", previousEnabled);
+            Environment.SetEnvironmentVariable("REVIEW_AUTO_APPROVE_DRY_RUN", previousDryRun);
+            Environment.SetEnvironmentVariable("REVIEW_AUTO_APPROVE_REQUIRED_LABELS", previousRequiredLabels);
+            Environment.SetEnvironmentVariable("REVIEW_AUTO_APPROVE_IGNORED_CHECK_NAMES", previousIgnoredChecks);
+            if (File.Exists(configPath)) {
+                File.Delete(configPath);
+            }
+        }
+    }
+
+    private static void TestReviewerAuthorSkipHonorsForceReviewLabelsAndEventAuthor() {
+        var json = """
+{
+  "repository": { "full_name": "owner/repo" },
+  "pull_request": {
+    "number": 12,
+    "title": "Bump dependency",
+    "body": "",
+    "draft": false,
+    "author_association": "NONE",
+    "user": { "login": "app/dependabot" },
+    "head": {
+      "sha": "head",
+      "repo": { "full_name": "owner/repo", "fork": false }
+    },
+    "base": {
+      "sha": "base",
+      "ref": "master"
+    },
+    "labels": []
+  }
+}
+""";
+        var root = IntelligenceX.Json.JsonLite.Parse(json)?.AsObject();
+        AssertNotNull(root, "dependabot event root parses");
+        var context = GitHubEventParser.ParsePullRequest(root!);
+        AssertEqual("app/dependabot", context.AuthorLogin, "event parser captures author login");
+
+        var settings = new ReviewSettings();
+        AssertEqual(true, CallShouldSkipByAuthor(context, settings), "dependabot author is skipped by default");
+
+        var forced = new PullRequestContext(context.RepoFullName, context.Owner, context.Repo, context.Number,
+            context.Title, context.Body, context.Draft, context.HeadSha, context.BaseSha,
+            new[] { "needs-ai-review" }, context.HeadRepoFullName, context.IsFork, context.AuthorAssociation,
+            context.HeadRepositoryKnown, context.BaseRefName, context.AuthorLogin);
+        AssertEqual(false, CallShouldSkipByAuthor(forced, settings),
+            "force review label bypasses author skip");
+    }
+
     private static void TestReviewSettingsLoadConfigThenEnvPrecedenceForCiContextAndSwarm() {
         var previousConfigPath = Environment.GetEnvironmentVariable("REVIEW_CONFIG_PATH");
         var previousCiContextEnabled = Environment.GetEnvironmentVariable("REVIEW_CI_CONTEXT_ENABLED");

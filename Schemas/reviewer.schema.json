@@ -82,6 +82,31 @@
         "outputStyle": { "type": "string" },
         "narrativeMode": { "type": "string", "enum": ["structured", "freedom"] },
         "focus": { "type": "array", "items": { "type": "string" } },
+        "repositoryGuidanceEnabled": { "type": "boolean" },
+        "repositoryGuidancePaths": { "type": "array", "items": { "type": "string" } },
+        "guidancePaths": { "type": "array", "items": { "type": "string" } },
+        "repositoryGuidanceMaxChars": { "type": "integer", "minimum": 0 },
+        "conventions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "id": { "type": "string" },
+              "name": { "type": "string" },
+              "title": { "type": "string" },
+              "appliesTo": { "type": "array", "items": { "type": "string" } },
+              "paths": { "type": "array", "items": { "type": "string" } },
+              "rules": { "type": "array", "items": { "type": "string" } },
+              "goodSignals": { "type": "array", "items": { "type": "string" } },
+              "good": { "type": "array", "items": { "type": "string" } },
+              "riskSignals": { "type": "array", "items": { "type": "string" } },
+              "risks": { "type": "array", "items": { "type": "string" } },
+              "followUps": { "type": "array", "items": { "type": "string" } },
+              "followups": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        },
         "persona": { "type": "string" },
         "notes": { "type": "string" },
         "model": { "type": "string" },
@@ -96,6 +121,24 @@
         "reviewUsageBudgetAllowCredits": { "type": "boolean" },
         "reviewUsageBudgetAllowWeeklyLimit": { "type": "boolean" },
         "structuredFindings": { "type": "boolean" },
+        "autoApprove": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "dryRun": { "type": "boolean" },
+            "requireNoMergeBlockers": { "type": "boolean" },
+            "requireReviewSuccess": { "type": "boolean" },
+            "requireChecksPass": { "type": "boolean" },
+            "requireNoPendingChecks": { "type": "boolean" },
+            "requireNoActiveReviewThreads": { "type": "boolean" },
+            "requiredLabels": { "type": "array", "items": { "type": "string" } },
+            "blockedLabels": { "type": "array", "items": { "type": "string" } },
+            "allowedAuthors": { "type": "array", "items": { "type": "string" } },
+            "ignoredCheckNames": { "type": "array", "items": { "type": "string" } },
+            "body": { "type": "string" }
+          }
+        },
         "ciContext": {
           "type": "object",
           "additionalProperties": true,
@@ -290,6 +333,8 @@
         "summaryStability": { "type": "boolean" },
         "skipTitles": { "type": "array", "items": { "type": "string" } },
         "skipLabels": { "type": "array", "items": { "type": "string" } },
+        "skipAuthors": { "type": "array", "items": { "type": "string" } },
+        "forceReviewLabels": { "type": "array", "items": { "type": "string" } },
         "skipPaths": { "type": "array", "items": { "type": "string" } },
         "skipBinaryFiles": { "type": "boolean" },
         "skipGeneratedFiles": { "type": "boolean" },

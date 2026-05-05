@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace IntelligenceX.Tests;
 
 #if INTELLIGENCEX_REVIEWER
@@ -187,6 +189,42 @@ internal static partial class Program {
         AssertEqual(true, CallIsOwnedSummaryComment(trusted), "trusted summary comment");
         AssertEqual(true, CallIsOwnedSummaryComment(githubActions), "github actions summary comment");
         AssertEqual(false, CallIsOwnedSummaryComment(untrusted), "untrusted summary comment");
+    }
+
+    private static void TestOwnedSummarySelectionPrefersNewestTrustedComment() {
+        var older = new IssueComment(
+            42,
+            $"{ReviewFormatter.SummaryMarker}\nOlder",
+            "intelligencex-review[bot]",
+            createdAt: DateTimeOffset.Parse("2026-05-04T10:00:00Z", CultureInfo.InvariantCulture),
+            updatedAt: DateTimeOffset.Parse("2026-05-04T10:05:00Z", CultureInfo.InvariantCulture));
+        var newest = new IssueComment(
+            10,
+            $"{ReviewFormatter.SummaryMarker}\nNewest",
+            "github-actions[bot]",
+            createdAt: DateTimeOffset.Parse("2026-05-04T11:00:00Z", CultureInfo.InvariantCulture),
+            updatedAt: DateTimeOffset.Parse("2026-05-04T11:05:00Z", CultureInfo.InvariantCulture));
+        var untrusted = new IssueComment(
+            99,
+            $"{ReviewFormatter.SummaryMarker}\nIgnore me",
+            "alice",
+            createdAt: DateTimeOffset.Parse("2026-05-04T12:00:00Z", CultureInfo.InvariantCulture),
+            updatedAt: DateTimeOffset.Parse("2026-05-04T12:05:00Z", CultureInfo.InvariantCulture));
+
+        var selected = CallSelectOwnedSummaryComment(new[] { older, untrusted, newest });
+
+        AssertNotNull(selected, "owned summary selection returns trusted summary");
+        AssertEqual(10L, selected!.Id, "owned summary selection prefers newest trusted summary by timestamp");
+    }
+
+    private static void TestOwnedSummarySelectionUsesIdTiebreakerWithoutTimestamps() {
+        var first = new IssueComment(10, $"{ReviewFormatter.SummaryMarker}\nFirst", "intelligencex-review[bot]");
+        var second = new IssueComment(42, $"{ReviewFormatter.SummaryMarker}\nSecond", "github-actions[bot]");
+
+        var selected = CallSelectOwnedSummaryComment(new[] { first, second });
+
+        AssertNotNull(selected, "owned summary selection returns trusted summary without timestamps");
+        AssertEqual(42L, selected!.Id, "owned summary selection falls back to highest id when timestamps are missing");
     }
 
     private static void TestThreadAssessmentEvidenceParse() {
