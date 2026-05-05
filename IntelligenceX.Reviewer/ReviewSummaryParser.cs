@@ -65,7 +65,7 @@ internal static class ReviewSummaryParser {
         string? line;
         while ((line = reader.ReadLine()) is not null) {
             var trimmed = line.Trim();
-            if (trimmed.StartsWith("## ", StringComparison.Ordinal)) {
+            if (IsMarkdownHeading(trimmed)) {
                 currentSection = MatchConfiguredSection(trimmed, mergeBlockerSections);
                 if (currentSection.Length > 0) {
                     seenSections.Add(currentSection);
@@ -118,7 +118,7 @@ internal static class ReviewSummaryParser {
         string? line;
         while ((line = reader.ReadLine()) is not null) {
             var trimmed = line.Trim();
-            if (trimmed.StartsWith("## ", StringComparison.Ordinal)) {
+            if (IsMarkdownHeading(trimmed)) {
                 currentSection = MatchConfiguredSection(trimmed, mergeBlockerSections);
                 continue;
             }
@@ -138,6 +138,32 @@ internal static class ReviewSummaryParser {
         }
 
         return items;
+    }
+
+    internal static bool HasAnyMergeBlockerSection(string? body, ReviewSettings? settings = null) {
+        if (string.IsNullOrWhiteSpace(body)) {
+            return false;
+        }
+
+        body = ReviewFormatter.NormalizeSectionLayout(body);
+        var configuredSections = settings?.ResolveMergeBlockerSections()
+                                 ?? new[] { "todo list", "critical issues" };
+        var mergeBlockerSections = ReviewSettings.NormalizeMergeBlockerSections(configuredSections);
+        if (mergeBlockerSections.Count == 0) {
+            mergeBlockerSections = new[] { "todo list", "critical issues" };
+        }
+
+        using var reader = new StringReader(body);
+        string? line;
+        while ((line = reader.ReadLine()) is not null) {
+            var trimmed = line.Trim();
+            if (IsMarkdownHeading(trimmed) &&
+                MatchConfiguredSection(trimmed, mergeBlockerSections).Length > 0) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     internal static IReadOnlyList<ReviewSummaryFinding> ExtractMergeBlockerFindings(string? body, ReviewSettings? settings = null,
@@ -172,7 +198,7 @@ internal static class ReviewSummaryParser {
         string? line;
         while ((line = reader.ReadLine()) is not null) {
             var trimmed = line.Trim();
-            if (trimmed.StartsWith("## ", StringComparison.Ordinal)) {
+            if (IsMarkdownHeading(trimmed)) {
                 currentSection = MatchConfiguredSection(trimmed, mergeBlockerSections);
                 continue;
             }
@@ -220,6 +246,19 @@ internal static class ReviewSummaryParser {
         }
 
         return sb.ToString().Trim();
+    }
+
+    private static bool IsMarkdownHeading(string line) {
+        if (string.IsNullOrWhiteSpace(line) || line[0] != '#') {
+            return false;
+        }
+
+        var index = 0;
+        while (index < line.Length && line[index] == '#') {
+            index++;
+        }
+
+        return index > 0 && index < line.Length && char.IsWhiteSpace(line[index]);
     }
 
     private static string MatchConfiguredSection(string header, IReadOnlyList<string> configuredSections) {

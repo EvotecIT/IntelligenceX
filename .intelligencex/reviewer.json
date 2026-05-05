@@ -34,8 +34,8 @@
     }
   },
   "review": {
-    "maxFiles": 30,
-    "maxPatchChars": 20000,
+    "maxFiles": 80,
+    "maxPatchChars": 60000,
     "reviewDiffRange": "pr-base",
     "summaryStability": true,
     "includeIssueComments": true,
@@ -63,6 +63,18 @@
     "commentMode": "sticky",
     "includeRelatedPrs": true,
     "progressUpdates": true,
+    "repositoryGuidancePaths": [
+      "AGENTS.md",
+      ".intelligencex/reviewer-guidance.md"
+    ],
+    "repositoryGuidanceMaxChars": 14000,
+    "skipAuthors": [
+      "dependabot[bot]",
+      "app/dependabot"
+    ],
+    "forceReviewLabels": [
+      "needs-ai-review"
+    ],
     "diagnostics": false,
     "preflight": false,
     "preflightTimeoutSeconds": 15,
@@ -74,6 +86,27 @@
       "artifacts": true,
       "maxRounds": 6,
       "maxItems": 8
+    },
+    "autoApprove": {
+      "enabled": true,
+      "dryRun": true,
+      "requiredLabels": [
+        "ix-auto-approve"
+      ],
+      "blockedLabels": [
+        "do-not-merge",
+        "needs-human-review",
+        "no-auto-approve"
+      ],
+      "ignoredCheckNames": [
+        "IntelligenceX Review",
+        "review / review"
+      ],
+      "requireNoMergeBlockers": true,
+      "requireReviewSuccess": true,
+      "requireChecksPass": true,
+      "requireNoPendingChecks": true,
+      "requireNoActiveReviewThreads": true
     }
   }
 }

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 
 namespace IntelligenceX.Reviewer;
@@ -15,6 +16,7 @@ internal static class PromptBuilder {
         var toneBlock = string.IsNullOrWhiteSpace(settings.Tone) ? string.Empty : $"Tone: {settings.Tone}\n";
         var outputStyleBlock = string.IsNullOrWhiteSpace(settings.OutputStyle) ? string.Empty : $"Output style: {settings.OutputStyle}\n";
         var focusBlock = settings.Focus.Count == 0 ? string.Empty : $"Focus areas: {string.Join(", ", settings.Focus)}\n";
+        var guidanceBlock = BuildGuidanceBlock(files, settings);
         var personaBlock = string.IsNullOrWhiteSpace(settings.Persona) ? string.Empty : $"Persona: {settings.Persona}\n";
         var notesBlock = string.IsNullOrWhiteSpace(settings.Notes) ? string.Empty : $"Additional guidance: {settings.Notes}\n";
         var mergeBlockerSectionsBlock = BuildMergeBlockerSectionsBlock(settings);
@@ -36,6 +38,7 @@ internal static class PromptBuilder {
             ["ToneBlock"] = toneBlock,
             ["OutputStyleBlock"] = outputStyleBlock,
             ["FocusBlock"] = focusBlock,
+            ["GuidanceBlock"] = guidanceBlock,
             ["PersonaBlock"] = personaBlock,
             ["NotesBlock"] = notesBlock,
             ["MergeBlockerSectionsBlock"] = mergeBlockerSectionsBlock,
@@ -112,6 +115,61 @@ Avoid chain-of-thought.
         };
     }
 
+    private static string BuildConventionBlock(IReadOnlyList<PullRequestFile> files, ReviewSettings settings) {
+        if (settings.Conventions.Count == 0) {
+            return string.Empty;
+        }
+
+        var applicable = settings.Conventions
+            .Where(pack => AppliesToChangedFiles(pack, files))
+            .ToArray();
+        if (applicable.Length == 0) {
+            return string.Empty;
+        }
+
+        var sb = new StringBuilder();
+        sb.AppendLine("Configured review conventions:");
+        sb.AppendLine("Treat these as repo-owned review guidance. Use them to classify good signals, risks, and follow-up items.");
+        foreach (var pack in applicable) {
+            var title = string.IsNullOrWhiteSpace(pack.Title) ? pack.Id : pack.Title;
+            sb.AppendLine($"- {title} ({pack.Id})");
+            AppendConventionItems(sb, "Rules", pack.Rules);
+            AppendConventionItems(sb, "Good signals", pack.GoodSignals);
+            AppendConventionItems(sb, "Risk signals", pack.RiskSignals);
+            AppendConventionItems(sb, "Follow-ups", pack.FollowUps);
+        }
+        return sb.ToString();
+    }
+
+    private static string BuildGuidanceBlock(IReadOnlyList<PullRequestFile> files, ReviewSettings settings) {
+        var blocks = new[] {
+                RepositoryGuidanceLoader.BuildBlock(settings),
+                BuildConventionBlock(files, settings)
+            }
+            .Where(block => !string.IsNullOrWhiteSpace(block))
+            .ToArray();
+        return blocks.Length == 0 ? string.Empty : string.Join("\n\n", blocks) + "\n";
+    }
+
+    private static bool AppliesToChangedFiles(ReviewConventionPack pack, IReadOnlyList<PullRequestFile> files) {
+        if (pack.AppliesTo.Count == 0 || files.Count == 0) {
+            return true;
+        }
+
+        return files.Any(file => pack.AppliesTo.Any(pattern => GlobMatcher.IsMatch(pattern, file.Filename)));
+    }
+
+    private static void AppendConventionItems(StringBuilder sb, string label, IReadOnlyList<string> items) {
+        if (items.Count == 0) {
+            return;
+        }
+
+        sb.Append("  - ");
+        sb.Append(label);
+        sb.Append(": ");
+        sb.AppendLine(string.Join("; ", items));
+    }
+
     private static string BuildMergeBlockerSectionsBlock(ReviewSettings settings) {
         var sections = settings.ResolveMergeBlockerSections();
         if (sections.Count == 0) {
@@ -119,6 +177,7 @@ Avoid chain-of-thought.
         }
         return
             $"Merge-blocker sections: {string.Join(", ", sections)}.\n" +
-            "Put merge-blocking findings only under those sections.\n";
+            "Put merge-blocking findings only under those sections.\n" +
+            "Always include every merge-blocker section as an H2 heading; if a section has no findings, write \"None.\" in that section.\n";
     }
 }

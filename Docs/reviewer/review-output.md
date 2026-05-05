@@ -24,13 +24,25 @@ flowchart TD
   A --> D["Other Issues"]
   A --> E["Next Steps"]
   A --> F["Other Reviews (triage context)"]
+  A --> H["Review State and Highlights"]
   C --> G["Inline comments for actionable findings"]
   B --> G
 
   class B,C,D required;
-  class E,F optional;
+  class E,F,H optional;
   class G inline;
 ```
+
+## Review state and highlights
+
+Current reviewer comments can include deterministic sections before the model-written review body:
+
+- `Review State 🧭`: machine-parsed recommendation, merge-blocker status, and evidence from the configured blocker sections.
+- `Review Highlights ✨`: non-duplicating good / risks / tests / next signal counts parsed from the current review sections.
+- `History Progress 🔁`: visible round tracking, current-head status, latest recommendation, and blocker lifecycle when IX history is enabled.
+- `Auto-Approval Readiness 🤝`: policy gate status, rendered only when auto-approval is enabled and operator-controlled gates allow it to be shown.
+
+`Review Highlights ✨` is intentionally derived from the current body so a first review run can still show a Claude-like posture summary. It reports counts and source sections instead of repeating the same prose that appears below. The hidden history marker keeps richer repeat-run metadata, and `History Progress 🔁` renders that tracking state visibly once history is enabled.
 
 ## Merge blockers vs suggestions
 

@@ -211,6 +211,39 @@ public static partial class ReviewerApp {
                IsTrustedSummaryAuthor(comment.Author);
     }
 
+    private static IssueComment? SelectOwnedSummaryComment(IEnumerable<IssueComment> comments) {
+        IssueComment? newest = null;
+        foreach (var comment in comments) {
+            if (!IsOwnedSummaryComment(comment)) {
+                continue;
+            }
+
+            if (newest is null || CompareIssueCommentRecency(comment, newest) > 0) {
+                newest = comment;
+            }
+        }
+
+        return newest;
+    }
+
+    private static int CompareIssueCommentRecency(IssueComment left, IssueComment right) {
+        var leftTime = left.UpdatedAt ?? left.CreatedAt;
+        var rightTime = right.UpdatedAt ?? right.CreatedAt;
+        if (leftTime.HasValue && rightTime.HasValue) {
+            return leftTime.Value.CompareTo(rightTime.Value);
+        }
+
+        if (leftTime.HasValue) {
+            return 1;
+        }
+
+        if (rightTime.HasValue) {
+            return -1;
+        }
+
+        return left.Id.CompareTo(right.Id);
+    }
+
     private static async Task<HashSet<string>?> PostInlineCommentsAsync(IReviewCodeHostReader codeHostReader, GitHubClient github,
         PullRequestContext context, IReadOnlyList<PullRequestFile> files, ReviewSettings settings,
         IReadOnlyList<InlineReviewComment> inlineComments, CancellationToken cancellationToken) {
@@ -678,11 +711,7 @@ public static partial class ReviewerApp {
         try {
             var comments = await codeHostReader.ListIssueCommentsAsync(context, limit, cancellationToken)
                 .ConfigureAwait(false);
-            foreach (var comment in comments) {
-                if (IsOwnedSummaryComment(comment)) {
-                    return comment;
-                }
-            }
+            return SelectOwnedSummaryComment(comments);
         } catch (Exception ex) {
             // Best-effort: failing to locate an existing sticky summary should not block posting a new one.
             Console.Error.WriteLine($"Failed to search for existing summary comment: {ex.Message}");
@@ -698,7 +727,7 @@ public static partial class ReviewerApp {
         if (string.IsNullOrWhiteSpace(reviewedCommit)) {
             return true;
         }
-        return !headSha.StartsWith(reviewedCommit, StringComparison.OrdinalIgnoreCase);
+        return !string.Equals(headSha.Trim(), reviewedCommit.Trim(), StringComparison.OrdinalIgnoreCase);
     }
 
     private static string? ExtractReviewedCommit(string body) {
@@ -743,7 +772,9 @@ public static partial class ReviewerApp {
         }
 
         var block = string.Join("\n", lines, startIndex, endIndex - startIndex).Trim();
+        block = RemoveSection(block, "Review State 🧭").Trim();
         block = RemoveSection(block, "History Progress 🔁").Trim();
+        block = RemoveSection(block, "Auto-Approval Readiness 🤝").Trim();
         if (string.IsNullOrWhiteSpace(block)) {
             return null;
         }

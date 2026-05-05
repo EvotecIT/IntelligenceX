@@ -50,6 +50,10 @@ public static partial class ReviewerApp {
         HashSet<string>? inlineKeys, int inlineCommentsCount) =>
         ShouldAutoResolveMissingInlineThreads(settings, context, inlineKeys, inlineCommentsCount);
 
+    /// <summary>Test-only forwarder for author skip filtering.</summary>
+    internal static bool ShouldSkipByAuthorForTests(PullRequestContext context, ReviewSettings settings) =>
+        ShouldSkipByAuthor(context, settings);
+
     /// <summary>Test-only forwarder for review context extra loading.</summary>
     internal static Task<ReviewContextExtras> BuildExtrasForTestsAsync(GitHubClient github, PullRequestContext context,
         ReviewSettings settings, bool forceReviewThreads, CancellationToken cancellationToken = default) {
@@ -75,6 +79,10 @@ public static partial class ReviewerApp {
 
     /// <summary>Test-only forwarder for summary ownership detection.</summary>
     internal static bool IsOwnedSummaryCommentForTests(IssueComment comment) => IsOwnedSummaryComment(comment);
+
+    /// <summary>Test-only forwarder for sticky summary selection.</summary>
+    internal static IssueComment? SelectOwnedSummaryCommentForTests(IEnumerable<IssueComment> comments) =>
+        SelectOwnedSummaryComment(comments);
 
     /// <summary>Test-only forwarder for summary-stability carryover body extraction.</summary>
     internal static string? ExtractSummaryBodyForTests(string? body, int maxChars) => ExtractSummaryBody(body, maxChars);
