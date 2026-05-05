@@ -900,6 +900,43 @@ internal static partial class Program {
         AssertContainsText(runs[1].Name, "status: legacy-quality", "legacy status run name");
     }
 
+    private static void TestGitHubCommitStatusesKeepLatestStatusPerContext() {
+        var root = IntelligenceX.Json.JsonLite.Parse("""
+{
+  "statuses": [
+    {
+      "context": "legacy-build",
+      "state": "failure",
+      "target_url": "https://example.test/build-old",
+      "updated_at": "2026-05-04T10:00:00Z"
+    },
+    {
+      "context": "legacy-build",
+      "state": "success",
+      "target_url": "https://example.test/build-new",
+      "updated_at": "2026-05-04T10:05:00Z"
+    },
+    {
+      "context": "legacy-quality",
+      "state": "pending",
+      "target_url": "https://example.test/quality",
+      "updated_at": "2026-05-04T10:06:00Z"
+    }
+  ]
+}
+""")?.AsObject();
+
+        var runs = GitHubClient.ParseCommitStatusRunsForTests(root);
+        var snapshot = new ReviewCheckSnapshot(runs);
+
+        AssertEqual(2, runs.Count, "legacy status duplicate context run count");
+        AssertEqual(1, snapshot.PassedCount, "legacy status duplicate context passed count");
+        AssertEqual(0, snapshot.FailedCount, "legacy status duplicate context failed count");
+        AssertEqual(1, snapshot.PendingCount, "legacy status duplicate context pending count");
+        AssertContainsText(runs[0].DetailsUrl ?? string.Empty, "build-new",
+            "legacy status duplicate context keeps newest target url");
+    }
+
     private static void TestGitHubAutoApprovalReviewMatchRequiresExactHeadSha() {
         const string marker = "IntelligenceX auto-approval";
         const string headSha = "abcdef1234567890";

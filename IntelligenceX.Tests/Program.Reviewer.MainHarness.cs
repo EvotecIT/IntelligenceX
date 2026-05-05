@@ -832,6 +832,8 @@ internal static partial class Program {
             TestReviewThreadBlockerSanitizerKeepsTodoWhenThreadsUnavailable);
         failed += Run("GitHub commit statuses contribute to check snapshot",
             TestGitHubCommitStatusesContributeToCheckSnapshot);
+        failed += Run("GitHub commit statuses keep latest status per context",
+            TestGitHubCommitStatusesKeepLatestStatusPerContext);
         failed += Run("GitHub auto approval review match requires exact head sha",
             TestGitHubAutoApprovalReviewMatchRequiresExactHeadSha);
         failed += Run("Prompt includes ci context section", TestPromptBuilderIncludesCiContextSection);

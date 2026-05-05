@@ -100,7 +100,8 @@ internal sealed partial class GitHubClient {
             return Array.Empty<ReviewCheckRun>();
         }
 
-        var runs = new List<ReviewCheckRun>(statuses.Count);
+        var runsByContext = new Dictionary<string, CommitStatusRunCandidate>(StringComparer.OrdinalIgnoreCase);
+        var fallbackOrder = 0;
         foreach (var item in statuses) {
             var obj = item.AsObject();
             if (obj is null) {
@@ -110,9 +111,32 @@ internal sealed partial class GitHubClient {
             var context = obj.GetString("context") ?? obj.GetString("description") ?? "legacy-status";
             var state = obj.GetString("state") ?? string.Empty;
             var (status, conclusion) = MapCommitStatusState(state);
-            runs.Add(new ReviewCheckRun($"status: {context}", status, conclusion, obj.GetString("target_url")));
+            var candidate = new CommitStatusRunCandidate(
+                new ReviewCheckRun($"status: {context}", status, conclusion, obj.GetString("target_url")),
+                ParseGitHubDateTime(obj.GetString("updated_at")) ?? ParseGitHubDateTime(obj.GetString("created_at")),
+                fallbackOrder++);
+
+            if (!runsByContext.TryGetValue(context, out var existing) || IsNewerStatusCandidate(candidate, existing)) {
+                runsByContext[context] = candidate;
+            }
         }
-        return runs;
+
+        return runsByContext.Values
+            .OrderBy(item => item.FallbackOrder)
+            .Select(item => item.Run)
+            .ToList();
+    }
+
+    private static bool IsNewerStatusCandidate(CommitStatusRunCandidate candidate, CommitStatusRunCandidate existing) {
+        if (candidate.Timestamp is not null && existing.Timestamp is not null) {
+            return candidate.Timestamp > existing.Timestamp;
+        }
+
+        if (candidate.Timestamp is not null) {
+            return true;
+        }
+
+        return false;
     }
 
     private static (string Status, string? Conclusion) MapCommitStatusState(string state) {
@@ -127,4 +151,7 @@ internal sealed partial class GitHubClient {
         // Unknown legacy states stay pending so auto-approval cannot pass on an unrecognized status value.
         return ("pending", null);
     }
+
+    private readonly record struct CommitStatusRunCandidate(ReviewCheckRun Run, DateTimeOffset? Timestamp,
+        int FallbackOrder);
 }
