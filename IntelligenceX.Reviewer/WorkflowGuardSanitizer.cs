@@ -45,6 +45,33 @@ internal static class WorkflowGuardSanitizer {
                trimmed.StartsWith("- [critical]", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static bool MentionsWorkflowPath(string line) =>
-        line.Contains(".github/workflows/", StringComparison.OrdinalIgnoreCase);
+    private static bool MentionsWorkflowPath(string line) {
+        const string marker = ".github/workflows/";
+        var index = 0;
+        while ((index = line.IndexOf(marker, index, StringComparison.OrdinalIgnoreCase)) >= 0) {
+            var end = index;
+            while (end < line.Length && !IsWorkflowPathTerminator(line[end])) {
+                end++;
+            }
+
+            var token = line.Substring(index, end - index).TrimEnd('.', ',', ';', ':', '!', '?');
+            if (token.EndsWith(".yml", StringComparison.OrdinalIgnoreCase) ||
+                token.EndsWith(".yaml", StringComparison.OrdinalIgnoreCase)) {
+                return true;
+            }
+
+            index = end + 1;
+        }
+
+        return false;
+    }
+
+    private static bool IsWorkflowPathTerminator(char value) =>
+        char.IsWhiteSpace(value) ||
+        value == '`' ||
+        value == '\'' ||
+        value == '"' ||
+        value == ')' ||
+        value == ']' ||
+        value == '}';
 }

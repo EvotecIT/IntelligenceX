@@ -385,6 +385,7 @@ internal static partial class Program {
             "Looks close.",
             "## Todo List ✅",
             "- [ ] Fix `.github/workflows/review-intelligencex-core.yml`.",
+            "- [ ] Document the `.github/workflows/` guardrail.",
             "- [ ] Fix `src/app.cs` before merge.",
             "- Plain blocker mentioning `.github/workflows/build.yml` should remain visible.",
             "## Other Issues 🧯",
@@ -397,6 +398,8 @@ internal static partial class Program {
         AssertDoesNotContainText(sanitized, "None.", "workflow sanitizer does not mark mixed blocker section clean");
         AssertEqual(false, sanitized.Contains("- [ ] Fix `.github/workflows/review-intelligencex-core.yml`.", StringComparison.Ordinal),
             "workflow sanitizer removes excluded workflow todo");
+        AssertContainsText(sanitized, "- [ ] Document the `.github/workflows/` guardrail.",
+            "workflow sanitizer preserves checklist items that mention the workflow directory without a file path");
         AssertContainsText(sanitized, "- [ ] Fix `src/app.cs` before merge.",
             "workflow sanitizer preserves non-workflow todo in same blocker section");
         AssertContainsText(sanitized, "- Plain blocker mentioning `.github/workflows/build.yml` should remain visible.",
@@ -411,6 +414,8 @@ internal static partial class Program {
             "workflow sanitizer removes excluded workflow finding references from prompt history");
         AssertContainsText(promptHistory, "- Plain blocker mentioning `.github/workflows/build.yml` should remain visible.",
             "workflow sanitizer preserves non-finding workflow context in prompt history");
+        AssertContainsText(promptHistory, "- [ ] Document the `.github/workflows/` guardrail.",
+            "workflow sanitizer preserves workflow directory mentions in prompt history");
         AssertContainsText(promptHistory, "src/app.cs", "workflow sanitizer preserves non-workflow prompt history");
 
         var workflowOnly = string.Join("\n", new[] {
