@@ -9,7 +9,7 @@ internal static class ReviewBlockerSectionSanitizer {
     public static string RemoveMatchingOpenItems(string? reviewBody, ReviewSettings settings,
         Func<string, bool> shouldRemoveOpenItem) =>
         RemoveMatchingItemsFromMergeBlockerSections(reviewBody, settings,
-            line => IsOpenListItem(line) && shouldRemoveOpenItem(line));
+            line => IsOpenChecklistItem(line) && shouldRemoveOpenItem(line));
 
     public static string RemoveMatchingItemsFromMergeBlockerSections(string? reviewBody, ReviewSettings settings,
         Func<string, bool> shouldRemoveLine, Func<string, bool>? isRemainingOpenItem = null) {
@@ -24,7 +24,7 @@ internal static class ReviewBlockerSectionSanitizer {
         }
 
         using var reader = new StringReader(body);
-        isRemainingOpenItem ??= IsOpenListItem;
+        isRemainingOpenItem ??= IsMergeBlockerListItem;
         var output = new StringBuilder();
         var sectionLines = new List<string>();
         var inMergeBlockerSection = false;
@@ -131,7 +131,10 @@ internal static class ReviewBlockerSectionSanitizer {
         return index > 0 && index < line.Length && char.IsWhiteSpace(line[index]);
     }
 
-    private static bool IsOpenListItem(string line) {
+    private static bool IsOpenChecklistItem(string line) =>
+        line.StartsWith("- [ ]", StringComparison.Ordinal);
+
+    private static bool IsMergeBlockerListItem(string line) {
         if (string.IsNullOrWhiteSpace(line)) {
             return false;
         }

@@ -828,6 +828,8 @@ internal static partial class Program {
             TestReviewAutoApprovalPendingOnlyGateIsIndependent);
         failed += Run("Review thread blocker sanitizer removes stale thread todo",
             TestReviewThreadBlockerSanitizerRemovesStaleThreadTodo);
+        failed += Run("Review thread blocker sanitizer preserves plain thread bullets",
+            TestReviewThreadBlockerSanitizerPreservesPlainThreadBullets);
         failed += Run("Review thread blocker sanitizer keeps todo when thread state unavailable",
             TestReviewThreadBlockerSanitizerKeepsTodoWhenThreadsUnavailable);
         failed += Run("GitHub commit statuses contribute to check snapshot",

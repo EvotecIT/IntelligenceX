@@ -858,6 +858,33 @@ internal static partial class Program {
             "review thread sanitizer preserves non-blocking sections");
     }
 
+    private static void TestReviewThreadBlockerSanitizerPreservesPlainThreadBullets() {
+        var settings = new ReviewSettings {
+            MergeBlockerSections = new[] { "Todo List" },
+            MergeBlockerRequireAllSections = false
+        };
+        var history = new ReviewHistorySnapshot {
+            ThreadSnapshot = new ReviewHistoryThreadSnapshot {
+                ActiveCount = 0,
+                ResolvedCount = 1
+            }
+        };
+        var body = string.Join("\n", new[] {
+            "## Todo List ✅",
+            "- Resolve the stale review thread wording in a follow-up note."
+        });
+
+        var sanitized = ReviewThreadBlockerSanitizer.RemoveResolvedThreadBlockers(body, settings, history,
+            reviewThreadsUnavailable: false);
+
+        AssertContainsText(sanitized, "- Resolve the stale review thread wording in a follow-up note.",
+            "review thread sanitizer preserves plain bullets");
+        AssertDoesNotContainText(sanitized, "None.",
+            "review thread sanitizer does not mark plain-bullet section clean");
+        AssertEqual(true, ReviewSummaryParser.HasMergeBlockers(sanitized, settings),
+            "review thread sanitizer keeps plain merge-blocker bullet active");
+    }
+
     private static void TestReviewThreadBlockerSanitizerKeepsTodoWhenThreadsUnavailable() {
         var settings = new ReviewSettings();
         var history = new ReviewHistorySnapshot {
