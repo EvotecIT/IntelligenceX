@@ -55,10 +55,28 @@ internal static class ReviewHighlightsBuilder {
         var sb = new StringBuilder();
         sb.AppendLine("## Review Highlights ✨");
         sb.AppendLine();
-        sb.AppendLine("| Recommendation | Good | Risks / Watch | Tests | Next |");
-        sb.AppendLine("| --- | --- | --- | --- | --- |");
-        sb.AppendLine($"| {EscapeTableCell(state.RecommendationLabel)} | {EscapeTableCell(JoinItems(positives))} | {EscapeTableCell(JoinItems(risks))} | {EscapeTableCell(JoinItems(tests))} | {EscapeTableCell(JoinItems(next))} |");
+        sb.AppendLine($"**Verdict:** {NormalizeLine(state.RecommendationLabel)}. Merge blockers: {NormalizeLine(state.MergeBlockerLabel)}.");
+        sb.AppendLine();
+        AppendItemSection(sb, "Good", positives);
+        AppendItemSection(sb, "Risks / Watch", risks);
+        AppendItemSection(sb, "Tests", tests);
+        AppendItemSection(sb, "Next", next);
         return sb.ToString().TrimEnd();
+    }
+
+    private static void AppendItemSection(StringBuilder sb, string title, IReadOnlyList<string> items) {
+        sb.AppendLine($"**{title}**");
+        if (items.Count == 0) {
+            sb.AppendLine("None noted.");
+            sb.AppendLine();
+            return;
+        }
+
+        foreach (var item in items) {
+            sb.AppendLine($"- {TrimHighlightItem(item)}");
+        }
+
+        sb.AppendLine();
     }
 
     private static IReadOnlyList<string> ExtractSummarySentences(string body, int maxItems) {
@@ -231,12 +249,9 @@ internal static class ReviewHighlightsBuilder {
         return sb.ToString().Trim();
     }
 
-    private static string JoinItems(IReadOnlyList<string> items) =>
-        items.Count == 0 ? "None noted." : string.Join("<br>", items.Select(TrimTableItem));
-
-    private static string TrimTableItem(string value) {
-        var trimmed = value.Trim();
-        const int maxLength = 240;
+    private static string TrimHighlightItem(string value) {
+        var trimmed = NormalizeLine(value);
+        const int maxLength = 500;
         return trimmed.Length <= maxLength ? trimmed : trimmed.Substring(0, maxLength - 3).TrimEnd() + "...";
     }
 
@@ -246,10 +261,8 @@ internal static class ReviewHighlightsBuilder {
         return index < 0 ? trimmed : trimmed.Substring(0, index + 1);
     }
 
-    private static string EscapeTableCell(string value) {
+    private static string NormalizeLine(string value) {
         return (value ?? string.Empty)
-            .Replace("\\", "\\\\", StringComparison.Ordinal)
-            .Replace("|", "\\|", StringComparison.Ordinal)
             .Replace("\r", " ", StringComparison.Ordinal)
             .Replace("\n", " ", StringComparison.Ordinal)
             .Trim();

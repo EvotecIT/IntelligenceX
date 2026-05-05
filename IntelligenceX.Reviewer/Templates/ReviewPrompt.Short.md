@@ -32,7 +32,7 @@ Only include inline comments for merge-blocking items from Todo List and Critica
 - ## Other Reviews 🧩 (if provided)
 - ## Tests / Coverage 🧪
 {{NextStepsSection}}
-The reviewer will add deterministic Review State and Review Highlights tables from your sections, so put positives in Summary/Excellent Aspects/Code Quality Assessment, risks in Other Issues, test posture in Tests / Coverage, and follow-up guidance in Next Steps.
+The reviewer will add deterministic Review State and Review Highlights sections from your sections, so put positives in Summary/Excellent Aspects/Code Quality Assessment, risks in Other Issues, test posture in Tests / Coverage, and follow-up guidance in Next Steps.
 In Todo List, include only merge-blocking items as markdown checkboxes. If there are no merge-blocking items, write "None.".
 Critical Issues are merge-blocking. If there are no critical issues, write "None." in that section.
 Do not put non-blocking bullets under Todo List or Critical Issues; after writing "None.", start the next H2 section before any other bullet.

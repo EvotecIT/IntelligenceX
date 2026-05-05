@@ -1700,9 +1700,9 @@ internal static partial class Program {
         var historyBlock = string.Join("\n", new[] {
             "## Review State 🧭",
             "",
-            "| Recommendation | Merge blockers | Evidence |",
-            "| --- | --- | --- |",
-            "| Approve | none detected | configured merge-blocker sections parsed with no open items |",
+            "- **Recommendation:** Approve",
+            "- **Merge blockers:** none detected",
+            "- **Evidence:** configured merge-blocker sections parsed with no open items",
             "",
             "## History Progress 🔁",
             "",
@@ -1932,8 +1932,12 @@ internal static partial class Program {
 
         AssertEqual("approve", state.Recommendation, "review state approve recommendation");
         AssertContainsText(block, "## Review State 🧭", "review state heading");
-        AssertContainsText(block, "| Approve | none detected | configured merge-blocker sections parsed with no open items |",
-            "review state approve table");
+        AssertContainsText(block, "- **Recommendation:** Approve",
+            "review state approve recommendation line");
+        AssertContainsText(block, "- **Merge blockers:** none detected",
+            "review state approve blocker line");
+        AssertContainsText(block, "- **Evidence:** configured merge-blocker sections parsed with no open items",
+            "review state approve evidence line");
     }
 
     private static void TestReviewStateBlockFailsClosedWithoutMergeBlockerSections() {
@@ -1968,8 +1972,12 @@ internal static partial class Program {
             "review state missing required blocker section requires manual review");
         AssertEqual("unknown", state.MergeBlockerLabel,
             "review state missing required blocker section has unknown blockers");
-        AssertContainsText(block, "| Manual review | unknown | configured merge-blocker sections were missing or could not be normalized |",
-            "review state missing required blocker section table");
+        AssertContainsText(block, "- **Recommendation:** Manual review",
+            "review state missing required blocker section recommendation line");
+        AssertContainsText(block, "- **Merge blockers:** unknown",
+            "review state missing required blocker section blocker line");
+        AssertContainsText(block, "- **Evidence:** configured merge-blocker sections were missing or could not be normalized",
+            "review state missing required blocker section evidence line");
     }
 
     private static void TestReviewHighlightsBlockSummarizesCurrentReviewSections() {
@@ -1997,11 +2005,20 @@ internal static partial class Program {
         var block = ReviewHighlightsBuilder.BuildCommentBlock(reviewBody, settings, reviewFailed: false);
 
         AssertContainsText(block, "## Review Highlights ✨", "review highlights heading");
-        AssertContainsText(block, "| Recommendation | Good | Risks / Watch | Tests | Next |",
-            "review highlights table header");
-        AssertContainsText(block,
-            "| Approve | This PR improves reviewer output and keeps merge gates deterministic. | Watch history marker size as more fields are added. | Added coverage for output highlights. | Looks ready after CI passes. |",
-            "review highlights table row");
+        AssertContainsText(block, "**Verdict:** Approve. Merge blockers: none detected.",
+            "review highlights verdict");
+        AssertContainsText(block, "**Good**", "review highlights good heading");
+        AssertContainsText(block, "- This PR improves reviewer output and keeps merge gates deterministic.",
+            "review highlights good item");
+        AssertContainsText(block, "**Risks / Watch**", "review highlights risks heading");
+        AssertContainsText(block, "- Watch history marker size as more fields are added.",
+            "review highlights risk item");
+        AssertContainsText(block, "**Tests**", "review highlights tests heading");
+        AssertContainsText(block, "- Added coverage for output highlights.",
+            "review highlights tests item");
+        AssertContainsText(block, "**Next**", "review highlights next heading");
+        AssertContainsText(block, "- Looks ready after CI passes.",
+            "review highlights next item");
     }
 
     private static void TestReviewHighlightsBlockStopsAtNestedHeadings() {
@@ -2026,7 +2043,11 @@ internal static partial class Program {
 
         var block = ReviewHighlightsBuilder.BuildCommentBlock(reviewBody, settings, reviewFailed: false);
 
-        AssertContainsText(block, "| Approve | Looks good. | None noted. | None noted. | Looks merge-ready. |",
+        AssertContainsText(block, "**Verdict:** Approve. Merge blockers: none detected.",
+            "review highlights stops next steps verdict");
+        AssertContainsText(block, "- Looks good.",
+            "review highlights stops next steps good fallback");
+        AssertContainsText(block, "- Looks merge-ready.",
             "review highlights stops next steps at nested headings");
         AssertDoesNotContainText(block, "Config mode: respect",
             "review highlights excludes nested static analysis bullets");

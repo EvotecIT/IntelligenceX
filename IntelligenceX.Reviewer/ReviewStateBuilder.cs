@@ -9,9 +9,9 @@ internal static class ReviewStateBuilder {
         var sb = new StringBuilder();
         sb.AppendLine("## Review State 🧭");
         sb.AppendLine();
-        sb.AppendLine("| Recommendation | Merge blockers | Evidence |");
-        sb.AppendLine("| --- | --- | --- |");
-        sb.AppendLine($"| {EscapeTableCell(state.RecommendationLabel)} | {EscapeTableCell(state.MergeBlockerLabel)} | {EscapeTableCell(state.Evidence)} |");
+        sb.AppendLine($"- **Recommendation:** {NormalizeLine(state.RecommendationLabel)}");
+        sb.AppendLine($"- **Merge blockers:** {NormalizeLine(state.MergeBlockerLabel)}");
+        sb.AppendLine($"- **Evidence:** {NormalizeLine(state.Evidence)}");
         return sb.ToString().TrimEnd();
     }
 
@@ -56,10 +56,8 @@ internal static class ReviewStateBuilder {
         return hasMergeBlockers ? "present" : "none detected";
     }
 
-    private static string EscapeTableCell(string value) {
+    private static string NormalizeLine(string value) {
         return (value ?? string.Empty)
-            .Replace("\\", "\\\\", StringComparison.Ordinal)
-            .Replace("|", "\\|", StringComparison.Ordinal)
             .Replace("\r", " ", StringComparison.Ordinal)
             .Replace("\n", " ", StringComparison.Ordinal)
             .Trim();

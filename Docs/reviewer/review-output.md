@@ -38,11 +38,11 @@ flowchart TD
 Current reviewer comments can include deterministic sections before the model-written review body:
 
 - `Review State 🧭`: machine-parsed recommendation, merge-blocker status, and evidence from the configured blocker sections.
-- `Review Highlights ✨`: compact good / risks / tests / next posture parsed from the current review sections.
+- `Review Highlights ✨`: readable good / risks / tests / next posture parsed from the current review sections.
 - `History Progress 🔁`: repeat-run lifecycle state when prior IX rounds contain current-head posture, open blockers, resolved blockers, or parse uncertainty worth showing.
 - `Auto-Approval Readiness 🤝`: policy gate status, rendered only when auto-approval is enabled and operator-controlled gates allow it to be shown.
 
-`Review Highlights ✨` is intentionally derived from the current body so a first review run can still show a Claude-like posture summary. The hidden history marker keeps richer repeat-run metadata, but the visible highlights do not require prior history.
+`Review Highlights ✨` is intentionally derived from the current body so a first review run can still show a Claude-like posture summary. It renders as short Markdown sections instead of a wide table so GitHub can wrap the content naturally. The hidden history marker keeps richer repeat-run metadata, but the visible highlights do not require prior history.
 
 ## Merge blockers vs suggestions
 
