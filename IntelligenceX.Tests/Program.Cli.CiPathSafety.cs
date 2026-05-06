@@ -504,5 +504,46 @@ internal static partial class Program {
             try { Directory.Delete(root, recursive: true); } catch { }
         }
     }
+
+    private static void TestCiRepositoryQualityReadsWorkflowDispatchInputs() {
+        var root = Path.Combine(Path.GetTempPath(), "ix-ci-repo-quality-inputs-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var previousEventPath = Environment.GetEnvironmentVariable("GITHUB_EVENT_PATH");
+        try {
+            var eventPath = Path.Combine(root, "event.json");
+            File.WriteAllText(eventPath, """
+{
+  "inputs": {
+    "config_path": "custom/reviewer.json",
+    "baseline_path": "custom/baseline.json",
+    "framework": "net10.0",
+    "strict": "true",
+    "gate_new_only": "false"
+  }
+}
+""");
+            Environment.SetEnvironmentVariable("GITHUB_EVENT_PATH", eventPath);
+
+            var summaryPath = Path.Combine(root, "summary.md");
+            var exit = CiRepositoryQualityCommand.RunAsync(new[] {
+                    "--workspace", root,
+                    "--out", "artifacts",
+                    "--summary", summaryPath
+                })
+                .GetAwaiter().GetResult();
+
+            AssertEqual(1, exit, "repository-quality missing custom config exit code");
+            var summary = File.ReadAllText(summaryPath);
+            AssertContainsText(summary, Path.Combine(root, "custom", "reviewer.json"),
+                "repository-quality summary uses workflow-dispatch config input");
+            AssertContainsText(summary, Path.Combine(root, "custom", "baseline.json"),
+                "repository-quality summary uses workflow-dispatch baseline input");
+            AssertContainsText(summary, "`false`", "repository-quality summary uses workflow-dispatch gate input");
+            AssertContainsText(summary, "`net10.0`", "repository-quality summary uses workflow-dispatch framework input");
+        } finally {
+            Environment.SetEnvironmentVariable("GITHUB_EVENT_PATH", previousEventPath);
+            try { Directory.Delete(root, recursive: true); } catch { }
+        }
+    }
 #endif
 }

@@ -161,13 +161,10 @@ project={{ProjectNumber}}
         AssertContainsText(rendered, "workflow_dispatch:", "repository quality workflow supports manual dispatch");
         AssertContainsText(rendered, "security-events: write", "repository quality workflow can publish SARIF");
         AssertContainsText(rendered, "ci repository-quality", "repository quality workflow delegates posture logic to CLI engine");
-        AssertContainsText(rendered, "inputs.config_path || '.intelligencex/reviewer.json'",
-            "repository quality workflow resolves scheduled defaults through inputs context");
-        AssertContainsText(rendered, "--config \"$IX_REVIEW_CONFIG_PATH\"",
-            "repository quality workflow passes defaulted env values to engine");
+        AssertEqual(false, rendered.Contains("inputs.", StringComparison.Ordinal),
+            "repository quality workflow leaves trigger input resolution to the CLI engine");
         AssertContainsText(rendered, "github/codeql-action/upload-sarif@", "repository quality workflow uploads SARIF");
-        AssertContainsText(rendered, "--gate-new-only", "repository quality workflow preserves new-only baseline gate option");
-        AssertContainsText(rendered, "--baseline", "repository quality workflow passes baseline path to engine");
+        AssertContainsText(rendered, "--out artifacts", "repository quality workflow passes artifact path to engine");
         AssertContainsText(rendered, "actions/upload-artifact@", "repository quality workflow uploads analysis artifacts");
     }
 

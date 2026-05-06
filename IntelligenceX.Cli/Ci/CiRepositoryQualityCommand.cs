@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Cli.Analysis;
@@ -28,11 +29,14 @@ internal static class CiRepositoryQualityCommand {
         var outDir = Path.GetFullPath(Path.Combine(workspace, options.OutDir ?? "artifacts"));
         Directory.CreateDirectory(outDir);
 
-        var configPath = ResolvePath(workspace, options.ConfigPath ?? ".intelligencex/reviewer.json");
-        var baselinePath = ResolvePath(workspace, options.BaselinePath ?? ".intelligencex/analysis-baseline.json");
-        var framework = string.IsNullOrWhiteSpace(options.Framework) ? "net8.0" : options.Framework.Trim();
-        var strict = options.Strict;
-        var gateNewOnly = options.GateNewOnly;
+        var workflowInputs = LoadWorkflowDispatchInputs();
+        var configPath = ResolvePath(workspace,
+            options.ConfigPath ?? GetWorkflowInput(workflowInputs, "config_path") ?? ".intelligencex/reviewer.json");
+        var baselinePath = ResolvePath(workspace,
+            options.BaselinePath ?? GetWorkflowInput(workflowInputs, "baseline_path") ?? ".intelligencex/analysis-baseline.json");
+        var framework = options.Framework ?? GetWorkflowInput(workflowInputs, "framework") ?? "net8.0";
+        var strict = options.Strict ?? GetWorkflowBool(workflowInputs, "strict") ?? false;
+        var gateNewOnly = options.GateNewOnly ?? GetWorkflowBool(workflowInputs, "gate_new_only") ?? true;
 
         var runLogPath = Path.Combine(outDir, "analysis-run.log");
         var gateLogPath = Path.Combine(outDir, "analysis-gate.log");
@@ -205,6 +209,51 @@ internal static class CiRepositoryQualityCommand {
         return Path.GetFullPath(Path.IsPathRooted(value) ? value : Path.Combine(workspace, value));
     }
 
+    private static Dictionary<string, string> LoadWorkflowDispatchInputs() {
+        var eventPath = Environment.GetEnvironmentVariable("GITHUB_EVENT_PATH");
+        if (string.IsNullOrWhiteSpace(eventPath) || !File.Exists(eventPath)) {
+            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        try {
+            using var document = JsonDocument.Parse(File.ReadAllText(eventPath));
+            if (!document.RootElement.TryGetProperty("inputs", out var inputs) ||
+                inputs.ValueKind != JsonValueKind.Object) {
+                return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            }
+
+            var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var property in inputs.EnumerateObject()) {
+                if (property.Value.ValueKind == JsonValueKind.String) {
+                    var value = property.Value.GetString();
+                    if (!string.IsNullOrWhiteSpace(value)) {
+                        result[property.Name] = value.Trim();
+                    }
+                }
+            }
+            return result;
+        } catch (Exception ex) {
+            Console.Error.WriteLine($"Warning: failed to parse GITHUB_EVENT_PATH inputs: {ex.Message}");
+            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        }
+    }
+
+    private static string? GetWorkflowInput(IReadOnlyDictionary<string, string> inputs, string name) {
+        return inputs.TryGetValue(name, out var value) && !string.IsNullOrWhiteSpace(value) ? value.Trim() : null;
+    }
+
+    private static bool? GetWorkflowBool(IReadOnlyDictionary<string, string> inputs, string name) {
+        var value = GetWorkflowInput(inputs, name);
+        if (string.IsNullOrWhiteSpace(value)) {
+            return null;
+        }
+        if (bool.TryParse(value, out var parsed)) {
+            return parsed;
+        }
+        Console.Error.WriteLine($"Warning: ignoring invalid workflow input '{name}' value '{value}'. Expected true or false.");
+        return null;
+    }
+
     private static Options ParseArgs(string[] args) {
         var options = new Options();
         for (var i = 0; i < args.Length; i++) {
@@ -288,8 +337,8 @@ internal static class CiRepositoryQualityCommand {
         public string? ConfigPath { get; set; }
         public string? BaselinePath { get; set; }
         public string? Framework { get; set; }
-        public bool Strict { get; set; }
-        public bool GateNewOnly { get; set; } = true;
+        public bool? Strict { get; set; }
+        public bool? GateNewOnly { get; set; }
         public string? OutDir { get; set; }
         public string? SummaryPath { get; set; }
     }
