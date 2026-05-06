@@ -163,6 +163,8 @@ project={{ProjectNumber}}
         AssertContainsText(rendered, "ci repository-quality", "repository quality workflow delegates posture logic to CLI engine");
         AssertContainsText(rendered, "inputs.config_path || '.intelligencex/reviewer.json'",
             "repository quality workflow resolves scheduled defaults through inputs context");
+        AssertContainsText(rendered, "--config \"$IX_REVIEW_CONFIG_PATH\"",
+            "repository quality workflow passes defaulted env values to engine");
         AssertContainsText(rendered, "github/codeql-action/upload-sarif@", "repository quality workflow uploads SARIF");
         AssertContainsText(rendered, "--gate-new-only", "repository quality workflow preserves new-only baseline gate option");
         AssertContainsText(rendered, "--baseline", "repository quality workflow passes baseline path to engine");

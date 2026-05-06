@@ -48,16 +48,22 @@ jobs:
 
       - name: Run repository quality posture
         shell: bash
+        env:
+          IX_REVIEW_CONFIG_PATH: ${{ inputs.config_path || '.intelligencex/reviewer.json' }}
+          IX_ANALYSIS_BASELINE_PATH: ${{ inputs.baseline_path || '.intelligencex/analysis-baseline.json' }}
+          IX_ANALYSIS_FRAMEWORK: ${{ inputs.framework || 'net8.0' }}
+          IX_ANALYSIS_STRICT: ${{ inputs.strict || 'false' }}
+          IX_ANALYSIS_GATE_NEW_ONLY: ${{ inputs.gate_new_only || 'true' }}
         run: |
           set -euo pipefail
           dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- \
             ci repository-quality \
             --workspace . \
-            --config "${{ inputs.config_path || '.intelligencex/reviewer.json' }}" \
-            --baseline "${{ inputs.baseline_path || '.intelligencex/analysis-baseline.json' }}" \
-            --framework "${{ inputs.framework || 'net8.0' }}" \
-            --strict "${{ inputs.strict || 'false' }}" \
-            --gate-new-only "${{ inputs.gate_new_only || 'true' }}" \
+            --config "$IX_REVIEW_CONFIG_PATH" \
+            --baseline "$IX_ANALYSIS_BASELINE_PATH" \
+            --framework "$IX_ANALYSIS_FRAMEWORK" \
+            --strict "$IX_ANALYSIS_STRICT" \
+            --gate-new-only "$IX_ANALYSIS_GATE_NEW_ONLY" \
             --out artifacts
 
       - name: Upload SARIF to code scanning
