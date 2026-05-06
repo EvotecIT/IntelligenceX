@@ -124,6 +124,7 @@ internal static partial class SetupRunner {
         public bool? ReviewUsageSummary { get; set; }
         public int? ReviewUsageSummaryCacheMinutes { get; set; }
         public int? ReviewUsageSummaryTimeoutSeconds { get; set; }
+        public bool? ReviewedChanges { get; set; }
         public bool? ReviewUsageBudgetGuard { get; set; }
         public bool? ReviewUsageBudgetAllowCredits { get; set; }
         public bool? ReviewUsageBudgetAllowWeeklyLimit { get; set; }
@@ -170,6 +171,7 @@ internal static partial class SetupRunner {
             ReviewUsageSummary.HasValue ||
             ReviewUsageSummaryCacheMinutes.HasValue ||
             ReviewUsageSummaryTimeoutSeconds.HasValue ||
+            ReviewedChanges.HasValue ||
             ReviewUsageBudgetGuard.HasValue ||
             ReviewUsageBudgetAllowCredits.HasValue ||
             ReviewUsageBudgetAllowWeeklyLimit.HasValue ||

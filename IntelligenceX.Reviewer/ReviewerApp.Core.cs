@@ -588,7 +588,9 @@ public static partial class ReviewerApp {
             var finalHasMergeBlockers = ReviewSummaryParser.HasMergeBlockers(summaryBody, settings);
             var reviewStateBlock = ReviewStateBuilder.BuildCommentBlock(summaryBody, settings, reviewFailed);
             var reviewHighlightsBlock = ReviewHighlightsBuilder.BuildCommentBlock(summaryBody, settings, reviewFailed);
-            var reviewedChangesBlock = ReviewReviewedChangesBuilder.BuildCommentBlock(files, limitedFiles, reviewFailed);
+            var reviewedChangesBlock = settings.ReviewedChanges
+                ? ReviewReviewedChangesBuilder.BuildCommentBlock(files, limitedFiles, reviewFailed)
+                : string.Empty;
             var visibleHistory = ReviewHistoryBuilder.AppendCurrentRound(extras.ReviewHistory, summaryBody, context.HeadSha, settings);
             var historyBlock = ReviewHistoryBuilder.BuildCommentBlock(visibleHistory);
             await WriteReviewHistoryArtifactsAsync(context, settings, visibleHistory,

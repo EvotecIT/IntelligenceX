@@ -689,6 +689,8 @@ internal static partial class Program {
             TestReviewSettingsConventionPacksConfigAndEnv);
         failed += Run("Review settings auto approval config and env",
             TestReviewSettingsAutoApprovalConfigAndEnv);
+        failed += Run("Review settings reviewed changes config and env",
+            TestReviewSettingsReviewedChangesConfigAndEnv);
         failed += Run("Reviewer author skip honors force-review labels and event author",
             TestReviewerAuthorSkipHonorsForceReviewLabelsAndEventAuthor);
         failed += Run("Setup-generated reviewer config validates and loads canonical related PRs",

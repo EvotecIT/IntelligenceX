@@ -119,6 +119,39 @@ internal static partial class Program {
         }
     }
 
+    private static void TestReviewSettingsReviewedChangesConfigAndEnv() {
+        var previousConfigPath = Environment.GetEnvironmentVariable("REVIEW_CONFIG_PATH");
+        var previousReviewedChanges = Environment.GetEnvironmentVariable("REVIEW_REVIEWED_CHANGES");
+        var configPath = Path.Combine(Path.GetTempPath(), $"intelligencex-review-reviewed-changes-{Guid.NewGuid():N}.json");
+        try {
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", null);
+            Environment.SetEnvironmentVariable("REVIEW_REVIEWED_CHANGES", null);
+            var settings = ReviewSettings.Load();
+            AssertEqual(false, settings.ReviewedChanges, "reviewed changes default disabled");
+
+            File.WriteAllText(configPath, """
+{
+  "review": {
+    "reviewedChanges": true
+  }
+}
+""");
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", configPath);
+            settings = ReviewSettings.Load();
+            AssertEqual(true, settings.ReviewedChanges, "reviewed changes config enabled");
+
+            Environment.SetEnvironmentVariable("REVIEW_REVIEWED_CHANGES", "false");
+            settings = ReviewSettings.Load();
+            AssertEqual(false, settings.ReviewedChanges, "reviewed changes env override disabled");
+        } finally {
+            Environment.SetEnvironmentVariable("REVIEW_CONFIG_PATH", previousConfigPath);
+            Environment.SetEnvironmentVariable("REVIEW_REVIEWED_CHANGES", previousReviewedChanges);
+            if (File.Exists(configPath)) {
+                File.Delete(configPath);
+            }
+        }
+    }
+
     private static void TestReviewSettingsLoadConfigAllowsZeroForNonNegativeLimits() {
         var previousConfigPath = Environment.GetEnvironmentVariable("REVIEW_CONFIG_PATH");
         var configPath = Path.Combine(Path.GetTempPath(), $"intelligencex-review-zero-limits-{Guid.NewGuid():N}.json");

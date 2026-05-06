@@ -68,7 +68,7 @@ Reviewed examples:
 - Dependabot/default author skipping with force-review label override.
 - Whole-repository static analysis commands and docs plus a scheduled repository-quality workflow template that stays a thin launcher over the CLI engine.
 - Auto-approval readiness and optional approval submission behind explicit config/policy gates.
-- Deterministic per-file reviewed-changes table from PR file metadata and available diff hunks.
+- Optional deterministic per-file reviewed-changes table from PR file metadata and available diff hunks (`reviewedChanges`, disabled by default).
 - Scheduled repository-quality workflow template with SARIF upload, generated baseline artifact, workflow-dispatch input/default handling, and baseline/new-only gate posture owned by `intelligencex ci repository-quality`.
 - Human-readable sticky edit diff showing section and merge-blocker deltas from the previous IX summary.
 - Artifact-backed durable review history ledger that includes the final current round when available and is uploaded by the reusable reviewer workflow; sticky comment history remains a compact continuity cache.

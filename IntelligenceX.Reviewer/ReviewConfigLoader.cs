@@ -310,6 +310,7 @@ internal static class ReviewConfigLoader {
         settings.ReviewUsageBudgetAllowWeeklyLimit =
             ReadBool(obj, "reviewUsageBudgetAllowWeeklyLimit", settings.ReviewUsageBudgetAllowWeeklyLimit);
         settings.StructuredFindings = ReadBool(obj, "structuredFindings", settings.StructuredFindings);
+        settings.ReviewedChanges = ReadBool(obj, "reviewedChanges", settings.ReviewedChanges);
         settings.TriageOnly = ReadBool(obj, "triageOnly", settings.TriageOnly);
         settings.UntrustedPrAllowSecrets = ReadBool(obj, "untrustedPrAllowSecrets", settings.UntrustedPrAllowSecrets);
         settings.UntrustedPrAllowWrites = ReadBool(obj, "untrustedPrAllowWrites", settings.UntrustedPrAllowWrites);

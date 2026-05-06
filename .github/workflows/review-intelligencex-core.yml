@@ -222,6 +222,11 @@ on:
         required: false
         default: ''
         type: string
+      reviewed_changes:
+        description: 'Override Reviewed Changes table rendering (true|false)'
+        required: false
+        default: ''
+        type: string
       history_enabled:
         description: 'Override reviewer history awareness (true|false) for this run'
         required: false
@@ -599,6 +604,7 @@ jobs:
       INPUT_CI_CONTEXT_MAX_FAILED_RUNS: ${{ inputs.ci_context_max_failed_runs }}
       INPUT_CI_CONTEXT_MAX_SNIPPET_CHARS_PER_RUN: ${{ inputs.ci_context_max_snippet_chars_per_run }}
       INPUT_CI_CONTEXT_CLASSIFY_INFRA_FAILURES: ${{ inputs.ci_context_classify_infra_failures }}
+      INPUT_REVIEWED_CHANGES: ${{ inputs.reviewed_changes }}
       INPUT_HISTORY_ENABLED: ${{ inputs.history_enabled }}
       INPUT_HISTORY_INCLUDE_IX_SUMMARY_HISTORY: ${{ inputs.history_include_ix_summary_history }}
       INPUT_HISTORY_INCLUDE_REVIEW_THREADS: ${{ inputs.history_include_review_threads }}

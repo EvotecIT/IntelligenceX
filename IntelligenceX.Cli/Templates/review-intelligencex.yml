@@ -235,6 +235,10 @@ on:
         description: 'CI infra-failure classification override for reusable callers'
         required: false
         type: string
+      reviewed_changes:
+        description: 'Reviewed Changes table rendering override for reusable callers'
+        required: false
+        type: string
       history_enabled:
         description: 'Reviewer history-awareness override for reusable callers'
         required: false

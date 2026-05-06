@@ -52,6 +52,7 @@ review:
     ci_context_max_failed_runs: ${{ inputs.ci_context_max_failed_runs }}
     ci_context_max_snippet_chars_per_run: ${{ inputs.ci_context_max_snippet_chars_per_run }}
     ci_context_classify_infra_failures: ${{ inputs.ci_context_classify_infra_failures }}
+    reviewed_changes: ${{ inputs.reviewed_changes }}
     history_enabled: ${{ inputs.history_enabled }}
     history_include_ix_summary_history: ${{ inputs.history_include_ix_summary_history }}
     history_include_review_threads: ${{ inputs.history_include_review_threads }}
