@@ -464,6 +464,7 @@ internal static partial class Program {
                 "jobs:",
                 "  # INTELLIGENCEX:BEGIN",
                 "  review:",
+                "    # Dependabot PRs still run the job, then the reviewer exits before LLM/auth unless `needs-ai-review` is present.",
                 "    if: ${{ !github.event.pull_request.head.repo.fork }}",
                 "    uses: ./.github/workflows/review-intelligencex-core.yml",
                 "    with:",
@@ -490,6 +491,7 @@ internal static partial class Program {
                 "jobs:",
                 "  # INTELLIGENCEX:BEGIN",
                 "  review:",
+                "    # Dependabot PRs still run the job, then the reviewer exits before LLM/auth unless `needs-ai-review` is present.",
                 "    if: ${{ !github.event.pull_request.head.repo.fork }}",
                 "    uses: ./.github/workflows/review-intelligencex-core.yml",
                 "    secrets: inherit",
@@ -500,6 +502,29 @@ internal static partial class Program {
             exit = CiVerifyManagedWorkflowCommand.RunAsync(new[] { "--workflow", workflowPath })
                 .GetAwaiter().GetResult();
             AssertEqual(1, exit, "verify-managed-workflow ignores provider/model outside managed block");
+
+            File.WriteAllText(workflowPath, string.Join(Environment.NewLine, new[] {
+                "name: review",
+                string.Empty,
+                "on:",
+                "  pull_request:",
+                string.Empty,
+                "jobs:",
+                "  # INTELLIGENCEX:BEGIN",
+                "  review:",
+                "    if: ${{ !github.event.pull_request.head.repo.fork }}",
+                "    uses: ./.github/workflows/review-intelligencex-core.yml",
+                "    with:",
+                "      provider: openai",
+                "      model: gpt-5",
+                "    secrets: inherit",
+                "  # INTELLIGENCEX:END",
+                string.Empty
+            }));
+
+            exit = CiVerifyManagedWorkflowCommand.RunAsync(new[] { "--workflow", workflowPath })
+                .GetAwaiter().GetResult();
+            AssertEqual(1, exit, "verify-managed-workflow requires force-review label contract");
         } finally {
             try { Directory.Delete(root, recursive: true); } catch { }
         }

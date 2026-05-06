@@ -11,6 +11,7 @@ internal static class CiVerifyManagedWorkflowCommand {
     private static readonly Regex ReviewJob = new(@"(?m)^[ \t]*review:[ \t\r]*$", RegexOptions.Compiled);
     private static readonly Regex ReusableWorkflow = new(@"(?m)^[ \t]*uses:[ \t]+(?:\./\.github/workflows/review-intelligencex-(?:core|reusable)\.yml|.+/\.github/workflows/review-intelligencex-(?:core|reusable)\.yml@.+)[ \t\r]*$", RegexOptions.Compiled);
     private static readonly Regex ForkGate = new(@"(?m)^[ \t]*if:[ \t]+\$\{\{.+head\.repo\.fork.+\}\}[ \t\r]*$", RegexOptions.Compiled);
+    private static readonly Regex ForceReviewLabelContract = new(@"\bneeds-ai-review\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex ProviderInput = new(@"(?m)^[ \t]*provider:[ \t]+", RegexOptions.Compiled);
     private static readonly Regex ModelInput = new(@"(?m)^[ \t]*model:[ \t]+", RegexOptions.Compiled);
     private static readonly Regex InheritedSecrets = new(@"(?m)^[ \t]*secrets:[ \t]*inherit[ \t\r]*$", RegexOptions.Compiled);
@@ -48,6 +49,10 @@ internal static class CiVerifyManagedWorkflowCommand {
         }
         if (!ForkGate.IsMatch(managedBlock)) {
             Console.Error.WriteLine("ERROR: missing fork safety gate in managed block");
+            return Task.FromResult(1);
+        }
+        if (!ForceReviewLabelContract.IsMatch(managedBlock)) {
+            Console.Error.WriteLine("ERROR: missing needs-ai-review force-review contract in managed block");
             return Task.FromResult(1);
         }
         if (!ProviderInput.IsMatch(managedBlock)) {

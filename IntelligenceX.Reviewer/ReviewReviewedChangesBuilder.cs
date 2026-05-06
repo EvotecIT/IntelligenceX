@@ -19,7 +19,7 @@ internal static class ReviewReviewedChangesBuilder {
             .ToDictionary(static group => group.Key, static group => group.First(), StringComparer.OrdinalIgnoreCase);
         var rows = reviewFiles.Take(MaxRows).ToArray();
         var omittedRows = Math.Max(0, reviewFiles.Count - rows.Length);
-        var omittedFromPrompt = Math.Max(0, reviewFiles.Count - promptFiles.Count);
+        var omittedFromPrompt = reviewFiles.Count(file => !promptFileMap.ContainsKey(NormalizePath(file.Filename)));
 
         var sb = new StringBuilder();
         sb.AppendLine("## Reviewed Changes 📋");

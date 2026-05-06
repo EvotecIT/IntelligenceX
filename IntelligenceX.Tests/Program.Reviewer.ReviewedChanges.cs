@@ -40,7 +40,8 @@ internal static partial class Program {
             new PullRequestFile("src/Bar.cs", "added", "@@ -0,0 +1,1 @@\n+bar();")
         };
         var promptFiles = new[] {
-            new PullRequestFile("src/Foo.cs", "modified", "@@ -1,1 +1,2 @@\n-new();")
+            new PullRequestFile("src/Foo.cs", "modified", "@@ -1,1 +1,2 @@\n-new();"),
+            new PullRequestFile("src\\Foo.cs", "modified", "@@ -1,1 +1,2 @@\n-new();")
         };
 
         var block = ReviewReviewedChangesBuilder.BuildCommentBlock(files, promptFiles, reviewFailed: false);
