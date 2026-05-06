@@ -22,6 +22,7 @@ internal static class ReviewReviewedChangesBuilder {
         var omittedRows = Math.Max(0, reviewFiles.Count - rows.Length);
         var omittedFromPrompt = reviewFiles
             .Select(static file => NormalizePath(file.Filename))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
             .Count(path => !promptPathSet.Contains(path));
 
         var sb = new StringBuilder();

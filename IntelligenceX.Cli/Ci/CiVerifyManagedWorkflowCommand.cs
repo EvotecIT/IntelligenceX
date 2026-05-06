@@ -10,8 +10,7 @@ internal static class CiVerifyManagedWorkflowCommand {
     private static readonly Regex EndMarker = new(@"(?m)^[ \t]*# INTELLIGENCEX:END[ \t\r]*$", RegexOptions.Compiled);
     private static readonly Regex ReviewJob = new(@"(?m)^[ \t]*review:[ \t\r]*$", RegexOptions.Compiled);
     private static readonly Regex ReusableWorkflow = new(@"(?m)^[ \t]*uses:[ \t]+(?:\./\.github/workflows/review-intelligencex-(?:core|reusable)\.yml|.+/\.github/workflows/review-intelligencex-(?:core|reusable)\.yml@.+)[ \t\r]*$", RegexOptions.Compiled);
-    private static readonly Regex ForkSafetyGateExpression = new(@"(?m)^[ \t]*if:[ \t]+\$\{\{.+head\.repo\.fork.+\}\}[ \t\r]*$", RegexOptions.Compiled);
-    private static readonly Regex ForceReviewLabelContract = new(@"\bneeds-ai-review\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex ForkSafetyGateExpression = new(@"(?im)^[ \t]*if:[ \t]+\$\{\{(?=[^\r\n]*head\.repo\.fork)(?=[^\r\n]*needs-ai-review).+\}\}[ \t\r]*$", RegexOptions.Compiled);
     private static readonly Regex ProviderInput = new(@"(?m)^[ \t]*provider:[ \t]+", RegexOptions.Compiled);
     private static readonly Regex ModelInput = new(@"(?m)^[ \t]*model:[ \t]+", RegexOptions.Compiled);
     private static readonly Regex InheritedSecrets = new(@"(?m)^[ \t]*secrets:[ \t]*inherit[ \t\r]*$", RegexOptions.Compiled);
@@ -99,7 +98,7 @@ internal static class CiVerifyManagedWorkflowCommand {
     }
 
     private static bool HasManagedForkAndForceReviewSafetyGate(string managedBlock) {
-        return ForkSafetyGateExpression.IsMatch(managedBlock) && ForceReviewLabelContract.IsMatch(managedBlock);
+        return ForkSafetyGateExpression.IsMatch(managedBlock);
     }
 
     private static Options ParseArgs(string[] args) {

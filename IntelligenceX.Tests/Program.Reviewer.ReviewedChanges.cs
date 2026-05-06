@@ -37,7 +37,8 @@ internal static partial class Program {
         });
         var files = new[] {
             new PullRequestFile("src/Foo.cs", "modified", sourcePatch),
-            new PullRequestFile("src/Bar.cs", "added", "@@ -0,0 +1,1 @@\n+bar();")
+            new PullRequestFile("src/Bar.cs", "added", "@@ -0,0 +1,1 @@\n+bar();"),
+            new PullRequestFile("src\\Bar.cs", "added", "@@ -0,0 +1,1 @@\n+bar();")
         };
         var promptFiles = new[] {
             new PullRequestFile("src/Foo.cs", "modified", "@@ -1,1 +1,2 @@\n-new();"),
