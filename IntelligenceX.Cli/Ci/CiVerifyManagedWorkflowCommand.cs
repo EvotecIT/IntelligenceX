@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -103,7 +104,7 @@ internal static class CiVerifyManagedWorkflowCommand {
     private static bool HasManagedForkAndForceReviewSafetyGate(string managedBlock) {
         foreach (Match match in IfExpression.Matches(managedBlock)) {
             var expression = match.Groups["expr"].Value;
-            if (IsManagedSafetyGateContract(NormalizeGateExpression(expression))) {
+            if (IsManagedSafetyGateContract(expression)) {
                 return true;
             }
         }
@@ -112,11 +113,55 @@ internal static class CiVerifyManagedWorkflowCommand {
     }
 
     private static bool IsManagedSafetyGateContract(string expression) {
-        return expression.Equals($"{ForkGateContract}||{ForceReviewLabelContract}", StringComparison.Ordinal) ||
-               expression.Equals($"{PullRequestBypassContract}||{ForkGateContract}||{ForceReviewLabelContract}", StringComparison.Ordinal);
+        var hasForkGate = false;
+        var hasForceReviewGate = false;
+        var terms = new List<string>();
+        CollectOrTerms(expression, terms);
+        foreach (var term in terms) {
+            var normalized = NormalizeGateExpression(term);
+            if (normalized.Equals(ForkGateContract, StringComparison.Ordinal)) {
+                hasForkGate = true;
+            } else if (normalized.Equals(ForceReviewLabelContract, StringComparison.Ordinal)) {
+                hasForceReviewGate = true;
+            }
+        }
+
+        return hasForkGate && hasForceReviewGate;
+    }
+
+    private static void CollectOrTerms(string expression, List<string> terms) {
+        expression = StripWrappingParentheses(expression.Trim());
+        var start = 0;
+        var depth = 0;
+        for (var i = 0; i < expression.Length; i++) {
+            if (expression[i] == '\'' || expression[i] == '"') {
+                i = SkipQuotedString(expression, i);
+                continue;
+            }
+
+            if (expression[i] == '(') {
+                depth++;
+            } else if (expression[i] == ')') {
+                depth = Math.Max(0, depth - 1);
+            } else if (depth == 0 &&
+                       i + 1 < expression.Length &&
+                       expression[i] == '|' &&
+                       expression[i + 1] == '|') {
+                CollectOrTerms(expression.Substring(start, i - start), terms);
+                i++;
+                start = i + 1;
+            }
+        }
+
+        if (start == 0) {
+            terms.Add(expression);
+        } else {
+            CollectOrTerms(expression.Substring(start), terms);
+        }
     }
 
     private static string NormalizeGateExpression(string expression) {
+        expression = StripWrappingParentheses(expression.Trim());
         var builder = new System.Text.StringBuilder(expression.Length);
         foreach (var ch in expression) {
             if (!char.IsWhiteSpace(ch)) {
@@ -124,6 +169,56 @@ internal static class CiVerifyManagedWorkflowCommand {
             }
         }
         return builder.ToString();
+    }
+
+    private static string StripWrappingParentheses(string expression) {
+        while (expression.Length >= 2 &&
+               expression[0] == '(' &&
+               expression[expression.Length - 1] == ')' &&
+               IsWrappedBySinglePair(expression)) {
+            expression = expression.Substring(1, expression.Length - 2).Trim();
+        }
+
+        return expression;
+    }
+
+    private static bool IsWrappedBySinglePair(string expression) {
+        var depth = 0;
+        for (var i = 0; i < expression.Length; i++) {
+            if (expression[i] == '\'' || expression[i] == '"') {
+                i = SkipQuotedString(expression, i);
+                continue;
+            }
+
+            if (expression[i] == '(') {
+                depth++;
+            } else if (expression[i] == ')') {
+                depth--;
+                if (depth == 0 && i < expression.Length - 1) {
+                    return false;
+                }
+            }
+        }
+
+        return depth == 0;
+    }
+
+    private static int SkipQuotedString(string expression, int quoteIndex) {
+        var quote = expression[quoteIndex];
+        for (var i = quoteIndex + 1; i < expression.Length; i++) {
+            if (expression[i] != quote) {
+                continue;
+            }
+
+            if (i + 1 < expression.Length && expression[i + 1] == quote) {
+                i++;
+                continue;
+            }
+
+            return i;
+        }
+
+        return expression.Length - 1;
     }
 
     private static Options ParseArgs(string[] args) {

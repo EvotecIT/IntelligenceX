@@ -530,6 +530,29 @@ internal static partial class Program {
                 "on:",
                 "  pull_request:",
                 string.Empty,
+                "jobs:",
+                "  # INTELLIGENCEX:BEGIN",
+                "  review:",
+                "    if: ${{ (contains(github.event.pull_request.labels.*.name, 'needs-ai-review') || (!github.event.pull_request.head.repo.fork)) || github.event_name != 'pull_request' }}",
+                "    uses: ./.github/workflows/review-intelligencex-core.yml",
+                "    with:",
+                "      provider: openai",
+                "      model: gpt-5",
+                "    secrets: inherit",
+                "  # INTELLIGENCEX:END",
+                string.Empty
+            }));
+
+            exit = CiVerifyManagedWorkflowCommand.RunAsync(new[] { "--workflow", workflowPath })
+                .GetAwaiter().GetResult();
+            AssertEqual(0, exit, "verify-managed-workflow accepts equivalent grouped gate expression");
+
+            File.WriteAllText(workflowPath, string.Join(Environment.NewLine, new[] {
+                "name: review",
+                string.Empty,
+                "on:",
+                "  pull_request:",
+                string.Empty,
                 "provider: outside-managed-block",
                 "model: outside-managed-block",
                 string.Empty,
