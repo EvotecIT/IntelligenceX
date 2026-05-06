@@ -10,7 +10,8 @@ internal static class CiVerifyManagedWorkflowCommand {
     private static readonly Regex EndMarker = new(@"(?m)^[ \t]*# INTELLIGENCEX:END[ \t\r]*$", RegexOptions.Compiled);
     private static readonly Regex ReviewJob = new(@"(?m)^[ \t]*review:[ \t\r]*$", RegexOptions.Compiled);
     private static readonly Regex ReusableWorkflow = new(@"(?m)^[ \t]*uses:[ \t]+(?:\./\.github/workflows/review-intelligencex-(?:core|reusable)\.yml|.+/\.github/workflows/review-intelligencex-(?:core|reusable)\.yml@.+)[ \t\r]*$", RegexOptions.Compiled);
-    private static readonly Regex ForkSafetyGateExpression = new(@"(?im)^[ \t]*if:[ \t]+\$\{\{(?=[^\r\n]*head\.repo\.fork)(?=[^\r\n]*needs-ai-review).+\}\}[ \t\r]*$", RegexOptions.Compiled);
+    private static readonly Regex IfExpression = new(@"(?m)^[ \t]*if:[ \t]+\$\{\{(?<expr>.+)\}\}[ \t\r]*$", RegexOptions.Compiled);
+    private static readonly Regex ForceReviewLabelExpression = new(@"contains\(\s*github\.event\.pull_request\.labels\.\*\.name\s*,\s*['""]needs-ai-review['""]\s*\)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex ProviderInput = new(@"(?m)^[ \t]*provider:[ \t]+", RegexOptions.Compiled);
     private static readonly Regex ModelInput = new(@"(?m)^[ \t]*model:[ \t]+", RegexOptions.Compiled);
     private static readonly Regex InheritedSecrets = new(@"(?m)^[ \t]*secrets:[ \t]*inherit[ \t\r]*$", RegexOptions.Compiled);
@@ -98,7 +99,99 @@ internal static class CiVerifyManagedWorkflowCommand {
     }
 
     private static bool HasManagedForkAndForceReviewSafetyGate(string managedBlock) {
-        return ForkSafetyGateExpression.IsMatch(managedBlock);
+        foreach (Match match in IfExpression.Matches(managedBlock)) {
+            var expression = match.Groups["expr"].Value;
+            if (ContainsOutsideString(expression, "head.repo.fork") &&
+                ContainsForceReviewLabelCall(expression)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool ContainsForceReviewLabelCall(string expression) {
+        for (var i = 0; i < expression.Length; i++) {
+            if (expression[i] == '\'' || expression[i] == '"') {
+                i = SkipQuotedString(expression, i);
+                continue;
+            }
+
+            if (!StartsWithIgnoreCase(expression, i, "contains(")) {
+                continue;
+            }
+
+            var end = FindCallEnd(expression, i + "contains".Length);
+            if (end >= i && ForceReviewLabelExpression.IsMatch(expression.Substring(i, end - i + 1))) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool ContainsOutsideString(string expression, string value) {
+        for (var i = 0; i < expression.Length; i++) {
+            if (expression[i] == '\'' || expression[i] == '"') {
+                i = SkipQuotedString(expression, i);
+                continue;
+            }
+
+            if (StartsWith(expression, i, value, StringComparison.Ordinal)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static int FindCallEnd(string expression, int openParenIndex) {
+        var depth = 0;
+        for (var i = openParenIndex; i < expression.Length; i++) {
+            if (expression[i] == '\'' || expression[i] == '"') {
+                i = SkipQuotedString(expression, i);
+                continue;
+            }
+
+            if (expression[i] == '(') {
+                depth++;
+            } else if (expression[i] == ')') {
+                depth--;
+                if (depth == 0) {
+                    return i;
+                }
+            }
+        }
+
+        return -1;
+    }
+
+    private static int SkipQuotedString(string expression, int quoteIndex) {
+        var quote = expression[quoteIndex];
+        for (var i = quoteIndex + 1; i < expression.Length; i++) {
+            if (expression[i] != quote) {
+                continue;
+            }
+
+            if (i + 1 < expression.Length && expression[i + 1] == quote) {
+                i++;
+                continue;
+            }
+
+            return i;
+        }
+
+        return expression.Length - 1;
+    }
+
+    private static bool StartsWithIgnoreCase(string expression, int startIndex, string value) {
+        return StartsWith(expression, startIndex, value, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool StartsWith(string expression, int startIndex, string value, StringComparison comparison) {
+        return startIndex >= 0 &&
+            startIndex + value.Length <= expression.Length &&
+            string.Compare(expression, startIndex, value, 0, value.Length, comparison) == 0;
     }
 
     private static Options ParseArgs(string[] args) {

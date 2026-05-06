@@ -510,6 +510,52 @@ internal static partial class Program {
                 "jobs:",
                 "  # INTELLIGENCEX:BEGIN",
                 "  review:",
+                "    if: ${{ !github.event.pull_request.head.repo.fork || 'needs-ai-review' != '' }}",
+                "    uses: ./.github/workflows/review-intelligencex-core.yml",
+                "    with:",
+                "      provider: openai",
+                "      model: gpt-5",
+                "    secrets: inherit",
+                "  # INTELLIGENCEX:END",
+                string.Empty
+            }));
+
+            exit = CiVerifyManagedWorkflowCommand.RunAsync(new[] { "--workflow", workflowPath })
+                .GetAwaiter().GetResult();
+            AssertEqual(1, exit, "verify-managed-workflow rejects inert force-review label text");
+
+            File.WriteAllText(workflowPath, string.Join(Environment.NewLine, new[] {
+                "name: review",
+                string.Empty,
+                "on:",
+                "  pull_request:",
+                string.Empty,
+                "jobs:",
+                "  # INTELLIGENCEX:BEGIN",
+                "  review:",
+                "    if: ${{ !github.event.pull_request.head.repo.fork || 'contains(github.event.pull_request.labels.*.name, ''needs-ai-review'')' != '' }}",
+                "    uses: ./.github/workflows/review-intelligencex-core.yml",
+                "    with:",
+                "      provider: openai",
+                "      model: gpt-5",
+                "    secrets: inherit",
+                "  # INTELLIGENCEX:END",
+                string.Empty
+            }));
+
+            exit = CiVerifyManagedWorkflowCommand.RunAsync(new[] { "--workflow", workflowPath })
+                .GetAwaiter().GetResult();
+            AssertEqual(1, exit, "verify-managed-workflow rejects quoted force-review expression text");
+
+            File.WriteAllText(workflowPath, string.Join(Environment.NewLine, new[] {
+                "name: review",
+                string.Empty,
+                "on:",
+                "  pull_request:",
+                string.Empty,
+                "jobs:",
+                "  # INTELLIGENCEX:BEGIN",
+                "  review:",
                 "    if: ${{ !github.event.pull_request.head.repo.fork }}",
                 "    uses: ./.github/workflows/review-intelligencex-core.yml",
                 "    with:",
