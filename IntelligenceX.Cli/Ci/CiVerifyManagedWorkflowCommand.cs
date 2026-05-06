@@ -6,14 +6,14 @@ using System.Threading.Tasks;
 namespace IntelligenceX.Cli.Ci;
 
 internal static class CiVerifyManagedWorkflowCommand {
-    private static readonly Regex BeginMarker = new(@"(?m)^[ \t]*# INTELLIGENCEX:BEGIN[ \t]*$", RegexOptions.Compiled);
-    private static readonly Regex EndMarker = new(@"(?m)^[ \t]*# INTELLIGENCEX:END[ \t]*$", RegexOptions.Compiled);
-    private static readonly Regex ReviewJob = new(@"(?m)^[ \t]*review:[ \t]*$", RegexOptions.Compiled);
-    private static readonly Regex ReusableWorkflow = new(@"(?m)^[ \t]*uses:[ \t]+(?:\./\.github/workflows/review-intelligencex-(?:core|reusable)\.yml|.+/\.github/workflows/review-intelligencex-(?:core|reusable)\.yml@.+)[ \t]*$", RegexOptions.Compiled);
-    private static readonly Regex ForkGate = new(@"(?m)^[ \t]*if:[ \t]+\$\{\{.+head\.repo\.fork.+\}\}[ \t]*$", RegexOptions.Compiled);
+    private static readonly Regex BeginMarker = new(@"(?m)^[ \t]*# INTELLIGENCEX:BEGIN[ \t\r]*$", RegexOptions.Compiled);
+    private static readonly Regex EndMarker = new(@"(?m)^[ \t]*# INTELLIGENCEX:END[ \t\r]*$", RegexOptions.Compiled);
+    private static readonly Regex ReviewJob = new(@"(?m)^[ \t]*review:[ \t\r]*$", RegexOptions.Compiled);
+    private static readonly Regex ReusableWorkflow = new(@"(?m)^[ \t]*uses:[ \t]+(?:\./\.github/workflows/review-intelligencex-(?:core|reusable)\.yml|.+/\.github/workflows/review-intelligencex-(?:core|reusable)\.yml@.+)[ \t\r]*$", RegexOptions.Compiled);
+    private static readonly Regex ForkGate = new(@"(?m)^[ \t]*if:[ \t]+\$\{\{.+head\.repo\.fork.+\}\}[ \t\r]*$", RegexOptions.Compiled);
     private static readonly Regex ProviderInput = new(@"(?m)^[ \t]*provider:[ \t]+", RegexOptions.Compiled);
     private static readonly Regex ModelInput = new(@"(?m)^[ \t]*model:[ \t]+", RegexOptions.Compiled);
-    private static readonly Regex InheritedSecrets = new(@"(?m)^[ \t]*secrets:[ \t]*inherit[ \t]*$", RegexOptions.Compiled);
+    private static readonly Regex InheritedSecrets = new(@"(?m)^[ \t]*secrets:[ \t]*inherit[ \t\r]*$", RegexOptions.Compiled);
 
     public static Task<int> RunAsync(string[] args) {
         var options = ParseArgs(args);

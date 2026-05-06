@@ -452,48 +452,50 @@ internal static partial class Program {
         Directory.CreateDirectory(root);
         try {
             var workflowPath = Path.Combine(root, "review-intelligencex.yml");
-            File.WriteAllText(workflowPath, """
-name: review
-
-on:
-  pull_request:
-
-provider: outside-managed-block
-model: outside-managed-block
-
-jobs:
-  # INTELLIGENCEX:BEGIN
-  review:
-    if: ${{ !github.event.pull_request.head.repo.fork }}
-    uses: ./.github/workflows/review-intelligencex-core.yml
-    with:
-      provider: openai
-      model: gpt-5
-    secrets: inherit
-  # INTELLIGENCEX:END
-""");
+            File.WriteAllText(workflowPath, string.Join(Environment.NewLine, new[] {
+                "name: review",
+                string.Empty,
+                "on:",
+                "  pull_request:",
+                string.Empty,
+                "provider: outside-managed-block",
+                "model: outside-managed-block",
+                string.Empty,
+                "jobs:",
+                "  # INTELLIGENCEX:BEGIN",
+                "  review:",
+                "    if: ${{ !github.event.pull_request.head.repo.fork }}",
+                "    uses: ./.github/workflows/review-intelligencex-core.yml",
+                "    with:",
+                "      provider: openai",
+                "      model: gpt-5",
+                "    secrets: inherit",
+                "  # INTELLIGENCEX:END",
+                string.Empty
+            }));
 
             var exit = CiVerifyManagedWorkflowCommand.RunAsync(new[] { "--workflow", workflowPath })
                 .GetAwaiter().GetResult();
             AssertEqual(0, exit, "verify-managed-workflow valid managed block exit code");
 
-            File.WriteAllText(workflowPath, """
-name: review
-
-on:
-  pull_request:
-
-provider: outside-managed-block
-model: outside-managed-block
-
-jobs:
-  # INTELLIGENCEX:BEGIN
-  review:
-    if: ${{ !github.event.pull_request.head.repo.fork }}
-    uses: ./.github/workflows/review-intelligencex-core.yml
-    secrets: inherit
-  # INTELLIGENCEX:END
-""");
+            File.WriteAllText(workflowPath, string.Join(Environment.NewLine, new[] {
+                "name: review",
+                string.Empty,
+                "on:",
+                "  pull_request:",
+                string.Empty,
+                "provider: outside-managed-block",
+                "model: outside-managed-block",
+                string.Empty,
+                "jobs:",
+                "  # INTELLIGENCEX:BEGIN",
+                "  review:",
+                "    if: ${{ !github.event.pull_request.head.repo.fork }}",
+                "    uses: ./.github/workflows/review-intelligencex-core.yml",
+                "    secrets: inherit",
+                "  # INTELLIGENCEX:END",
+                string.Empty
+            }));
 
             exit = CiVerifyManagedWorkflowCommand.RunAsync(new[] { "--workflow", workflowPath })
                 .GetAwaiter().GetResult();
