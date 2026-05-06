@@ -66,20 +66,18 @@ Reviewed examples:
 - Visible history progress table when prior rounds contain current-head posture, unresolved blockers, resolved blockers, or parse uncertainty.
 - Repo-owned guidance files instead of hardcoded repo convention packs.
 - Dependabot/default author skipping with force-review label override.
-- Whole-repository static analysis commands and docs; scheduled quality workflow template is still separate future work.
+- Whole-repository static analysis commands and docs plus a scheduled repository-quality workflow template.
 - Auto-approval readiness and optional approval submission behind explicit config/policy gates.
+- Deterministic per-file reviewed-changes table from PR file metadata and available diff hunks.
+- Scheduled repository-quality workflow template with SARIF upload, generated baseline artifact, and baseline/new-only gate posture.
+- Human-readable sticky edit diff showing section and merge-blocker deltas from the previous IX summary.
+- Artifact-backed durable review history ledger that includes the final current round when available and is uploaded by the reusable reviewer workflow; sticky comment history remains a compact continuity cache.
+- Reviewer Actions output now reports reviewer/build/pre-run exit codes in the job summary and treats deleted sticky comments as an intentional fresh-context reset.
 
 ## Not Supported Yet
 
-- Claude-style per-file "reviewed changes" summary table generated deterministically.
 - Deterministic categorization of every current finding as new/still-open/resolved on the first run; lifecycle state needs prior IX rounds or active thread evidence.
-- A repository-quality scheduled workflow that publishes SARIF and baseline/new-only posture by default.
-- Rich edited-comment diff display; GitHub exposes edit metadata, but IX does not currently render human-readable edit deltas.
-- Native artifact-backed review history outside the sticky hidden marker and CI artifacts.
 
 ## Recommended Next Features
 
-1. Add a deterministic review recommendation block and machine-readable metadata.
-2. Add a deterministic per-file reviewed-changes table similar to Claude's file summary.
-3. Add artifact-backed review history so hidden sticky metadata is a cache, not the only durable ledger.
-4. Add a scheduled repository-quality workflow template that runs `analyze run`, uploads SARIF, and compares against baselines.
+1. Keep first-run lifecycle classification conservative unless a future run has prior IX history, active review-thread evidence, or another explicit maintainer-provided baseline.

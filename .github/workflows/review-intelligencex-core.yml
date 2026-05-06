@@ -719,7 +719,7 @@ jobs:
         if: ${{ inputs.reviewer_source == 'release' && inputs.reviewer_release_url == '' }}
         id: reviewer_release
         continue-on-error: true
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         with:
           script: |
             const repoInput = '${{ inputs.reviewer_release_repo }}';
@@ -781,7 +781,11 @@ jobs:
           set +e
           dotnet build IntelligenceX.Reviewer/IntelligenceX.Reviewer.csproj -c Release -f net8.0 2>&1 | tee "$log_path"
           exit_code=${PIPESTATUS[0]}
-          exit "$exit_code"
+          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+          if [ "$exit_code" -ne 0 ]; then
+            echo "::warning title=IntelligenceX reviewer build failed::Source reviewer build exited with $exit_code. The workflow will summarize this without failing the overall fail-open review job."
+          fi
+          exit 0
       - name: Prepare static analysis context
         shell: bash
         run: |
@@ -806,19 +810,29 @@ jobs:
             fi
           fi
       - name: Run IntelligenceX analysis (pre-review, best-effort)
+        id: analysis_pre_run
         continue-on-error: true
         shell: bash
         run: |
-          set -euo pipefail
+          set -uo pipefail
           if [ ! -f "$IX_REVIEW_CONFIG_PATH" ]; then
             echo "Static analysis pre-run skipped: config '$IX_REVIEW_CONFIG_PATH' not found."
+            echo "exit_code=0" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           if [ ! -f IntelligenceX.Cli/IntelligenceX.Cli.csproj ]; then
             echo "Static analysis pre-run skipped: IntelligenceX.Cli source project is not available in this checkout."
+            echo "exit_code=0" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          set +e
           dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -c Release -f net8.0 -p:EnableWindowsTargeting=true -- analyze run --workspace . --config "$IX_REVIEW_CONFIG_PATH"
+          exit_code=$?
+          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+          if [ "$exit_code" -ne 0 ]; then
+            echo "::warning title=IntelligenceX analysis pre-run failed::Best-effort analysis exited with $exit_code. The enforcing analysis gate still runs separately."
+          fi
+          exit 0
       - name: Evaluate IntelligenceX analysis gate (pre-review, enforcing)
         shell: bash
         run: |
@@ -837,7 +851,7 @@ jobs:
             dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -c Release -f net8.0 -p:EnableWindowsTargeting=true -- analyze gate --workspace . --config "$IX_REVIEW_CONFIG_PATH"
           fi
       - name: Run IntelligenceX.Reviewer (source)
-        if: ${{ inputs.reviewer_source == 'source' && steps.reviewer_build.outcome == 'success' }}
+        if: ${{ inputs.reviewer_source == 'source' && steps.reviewer_build.outputs.exit_code == '0' }}
         id: reviewer_run_source
         continue-on-error: true
         env:
@@ -853,7 +867,11 @@ jobs:
           set +e
           dotnet run --project IntelligenceX.Reviewer/IntelligenceX.Reviewer.csproj -c Release -f net8.0 2>&1 | tee "$log_path"
           exit_code=${PIPESTATUS[0]}
-          exit "$exit_code"
+          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+          if [ "$exit_code" -ne 0 ]; then
+            echo "::warning title=IntelligenceX reviewer exited non-zero::Source reviewer exited with $exit_code. Check the reviewer summary below and the captured log artifact."
+          fi
+          exit 0
       - name: Run IntelligenceX.Reviewer (release, unix)
         if: ${{ inputs.reviewer_source == 'release' && runner.os != 'Windows' && steps.reviewer_download_unix.outcome == 'success' }}
         id: reviewer_run_release_unix
@@ -871,12 +889,18 @@ jobs:
           reviewer_dll=$(find reviewer-release -type f -name IntelligenceX.Reviewer.dll | head -n 1)
           if [ -z "$reviewer_dll" ]; then
             echo "Reviewer DLL not found under reviewer-release."
-            exit 1
+            echo "exit_code=1" >> "$GITHUB_OUTPUT"
+            echo "::warning title=IntelligenceX reviewer unavailable::Reviewer DLL was not found under reviewer-release."
+            exit 0
           fi
           set +e
           dotnet "$reviewer_dll" 2>&1 | tee "$log_path"
           exit_code=${PIPESTATUS[0]}
-          exit "$exit_code"
+          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+          if [ "$exit_code" -ne 0 ]; then
+            echo "::warning title=IntelligenceX reviewer exited non-zero::Release reviewer exited with $exit_code. Check the reviewer summary below and the captured log artifact."
+          fi
+          exit 0
       - name: Run IntelligenceX.Reviewer (release, windows)
         if: ${{ inputs.reviewer_source == 'release' && runner.os == 'Windows' && steps.reviewer_download_windows.outcome == 'success' }}
         id: reviewer_run_release_windows
@@ -891,22 +915,27 @@ jobs:
           $logPath = "artifacts/reviewer-run-release-windows.log"
           $reviewer = Get-ChildItem -Path reviewer-release -Recurse -Filter IntelligenceX.Reviewer.dll | Select-Object -First 1
           if (-not $reviewer) {
-            Write-Error "Reviewer DLL not found under reviewer-release."
-            exit 1
+            Write-Warning "Reviewer DLL not found under reviewer-release."
+            "exit_code=1" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            exit 0
           }
           $output = & dotnet $reviewer.FullName 2>&1
           $exitCode = $LASTEXITCODE
           $output | Tee-Object -FilePath $logPath
-          exit $exitCode
+          "exit_code=$exitCode" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          if ($exitCode -ne 0) {
+            Write-Warning "IntelligenceX release reviewer exited with $exitCode. Check the reviewer summary below and the captured log artifact."
+          }
+          exit 0
       - name: Finalize fail-open reviewer summary
         if: >-
           ${{
             always() &&
             (
-              steps.reviewer_build.outcome == 'failure' ||
-              steps.reviewer_run_source.outcome == 'failure' ||
-              steps.reviewer_run_release_unix.outcome == 'failure' ||
-              steps.reviewer_run_release_windows.outcome == 'failure'
+              steps.reviewer_build.outputs.exit_code != '' && steps.reviewer_build.outputs.exit_code != '0' ||
+              steps.reviewer_run_source.outputs.exit_code != '' && steps.reviewer_run_source.outputs.exit_code != '0' ||
+              steps.reviewer_run_release_unix.outputs.exit_code != '' && steps.reviewer_run_release_unix.outputs.exit_code != '0' ||
+              steps.reviewer_run_release_windows.outputs.exit_code != '' && steps.reviewer_run_release_windows.outputs.exit_code != '0'
             )
           }}
         continue-on-error: true
@@ -925,3 +954,38 @@ jobs:
             --source-log artifacts/reviewer-run-source.log \
             --release-unix-log artifacts/reviewer-run-release-unix.log \
             --release-windows-log artifacts/reviewer-run-release-windows.log
+
+      - name: Write reviewer Actions summary
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          build_exit="${{ steps.reviewer_build.outputs.exit_code }}"
+          analysis_exit="${{ steps.analysis_pre_run.outputs.exit_code }}"
+          source_exit="${{ steps.reviewer_run_source.outputs.exit_code }}"
+          release_unix_exit="${{ steps.reviewer_run_release_unix.outputs.exit_code }}"
+          release_windows_exit="${{ steps.reviewer_run_release_windows.outputs.exit_code }}"
+          {
+            echo "## IntelligenceX Reviewer"
+            echo
+            echo "| Stage | Result | Exit code | Notes |"
+            echo "| --- | --- | --- | --- |"
+            printf '| Source build | `%s` | `%s` | %s |\n' "${{ steps.reviewer_build.outcome }}" "${build_exit:-n/a}" "Required before source reviewer runs."
+            printf '| Analysis pre-run | `%s` | `%s` | %s |\n' "${{ steps.analysis_pre_run.outcome }}" "${analysis_exit:-n/a}" "Best-effort; enforcing gate is reported separately."
+            printf '| Source reviewer | `%s` | `%s` | %s |\n' "${{ steps.reviewer_run_source.outcome }}" "${source_exit:-n/a}" "Runs when reviewer_source is source and build succeeds."
+            printf '| Release reviewer (unix) | `%s` | `%s` | %s |\n' "${{ steps.reviewer_run_release_unix.outcome }}" "${release_unix_exit:-n/a}" "Runs for release reviewer on Linux/macOS."
+            printf '| Release reviewer (windows) | `%s` | `%s` | %s |\n' "${{ steps.reviewer_run_release_windows.outcome }}" "${release_windows_exit:-n/a}" "Runs for release reviewer on Windows."
+            echo
+            if [ "${build_exit:-0}" != "0" ] || [ "${source_exit:-0}" != "0" ] || [ "${release_unix_exit:-0}" != "0" ] || [ "${release_windows_exit:-0}" != "0" ]; then
+              echo "> Reviewer execution produced a non-zero exit code, but the job is fail-open by policy. The PR comment contains the user-facing failure summary when a PR number is available."
+              echo
+            fi
+            echo "- Sticky comment deletion is treated as an intentional reset: the next run starts with fresh IX context."
+            echo "- Durable reviewer artifacts, when enabled, are per-run evidence for Actions and audits; they do not override an owner-deleted sticky comment."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload reviewer artifacts
+        if: ${{ always() && hashFiles('artifacts/reviewer/**') != '' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: intelligencex-reviewer-artifacts
+          path: artifacts/reviewer

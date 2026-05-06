@@ -426,8 +426,8 @@ jobs:
             "reusable workflow exports max files override only when supplied");
         AssertContainsText(optionalOverridesStep, "add_if_set INPUT_MAX_PATCH_CHARS \"$MAX_PATCH_CHARS\"",
             "reusable workflow exports max patch chars override only when supplied");
-        AssertContainsText(content, "inputs.reviewer_source == 'source' && steps.reviewer_build.outcome == 'success'",
-            "reusable workflow gates source reviewer execution on a successful source build");
+        AssertContainsText(content, "inputs.reviewer_source == 'source' && steps.reviewer_build.outputs.exit_code == '0'",
+            "reusable workflow gates source reviewer execution on a successful source build exit code");
         AssertContainsText(content, "git diff --name-only HEAD^1 HEAD^2 > artifacts/changed-files.txt",
             "reusable workflow falls back to merge-parent changed-files diff");
         AssertContainsText(content, "-p:EnableWindowsTargeting=true -- analyze run",
@@ -444,6 +444,10 @@ jobs:
         if: ${{ inputs.reviewer_source == 'source' }}
 """, StringComparison.Ordinal),
             "reusable workflow keeps static analysis pre-run independent from reviewer_source");
+        AssertContainsText(content, "id: analysis_pre_run",
+            "reusable workflow records best-effort analysis pre-run status");
+        AssertContainsText(content, "IntelligenceX analysis pre-run failed",
+            "reusable workflow reports best-effort analysis failures as warnings");
         AssertEqual(false, content.Contains("""
       - name: Evaluate IntelligenceX analysis gate (pre-review, enforcing)
         if: ${{ inputs.reviewer_source == 'source' }}
@@ -453,7 +457,7 @@ jobs:
             "reusable workflow finalizes fail-open reviewer runs with a summary update");
         AssertContainsText(content, "continue-on-error: true",
             "reusable workflow keeps fail-open finalization best-effort");
-        AssertContainsText(content, "steps.reviewer_build.outcome == 'failure'",
+        AssertContainsText(content, "steps.reviewer_build.outputs.exit_code != '' && steps.reviewer_build.outputs.exit_code != '0'",
             "reusable workflow finalizes fail-open summaries when the source reviewer build fails");
         AssertContainsText(content, "INTELLIGENCEX_GITHUB_TOKEN: ${{ steps.app_token.outputs.token || secrets.GITHUB_TOKEN }}",
             "reusable workflow passes the app token to fail-open summary finalization");
@@ -467,6 +471,16 @@ jobs:
             "reusable workflow passes release unix log path to CLI helper");
         AssertContainsText(content, "--release-windows-log artifacts/reviewer-run-release-windows.log",
             "reusable workflow passes release windows log path to CLI helper");
+        AssertContainsText(content, "Write reviewer Actions summary",
+            "reusable workflow writes a job summary for reviewer outcomes");
+        AssertContainsText(content, "Analysis pre-run",
+            "reusable workflow includes best-effort analysis status in the job summary");
+        AssertContainsText(content, "Sticky comment deletion is treated as an intentional reset",
+            "reusable workflow documents deleted sticky comments as fresh context");
+        AssertContainsText(content, "Upload reviewer artifacts",
+            "reusable workflow uploads durable reviewer artifacts");
+        AssertContainsText(content, "path: artifacts/reviewer",
+            "reusable workflow uploads reviewer artifact directory");
         AssertEqual(false, content.Contains("&review_inputs", StringComparison.Ordinal),
             "reusable workflow should avoid YAML anchors in workflow schema");
         AssertEqual(false, content.Contains("*review_inputs", StringComparison.Ordinal),

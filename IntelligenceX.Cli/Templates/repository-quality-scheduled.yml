@@ -1,0 +1,147 @@
+name: IntelligenceX Repository Quality
+
+on:
+  schedule:
+    - cron: "23 3 * * 1"
+  workflow_dispatch:
+    inputs:
+      config_path:
+        description: "Path to reviewer.json"
+        required: false
+        default: ".intelligencex/reviewer.json"
+      baseline_path:
+        description: "Path to committed analysis baseline"
+        required: false
+        default: ".intelligencex/analysis-baseline.json"
+      framework:
+        description: "Target framework for C# analysis"
+        required: false
+        default: "net8.0"
+      strict:
+        description: "Fail when an analyzer runner/tool fails (true|false)"
+        required: false
+        default: "false"
+      gate_new_only:
+        description: "Gate only findings not present in the baseline (true|false)"
+        required: false
+        default: "true"
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  quality:
+    name: Repository quality posture
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 1
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 # v5.2.0
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Prepare quality run
+        shell: bash
+        run: |
+          set -euo pipefail
+          config_path="${{ github.event.inputs.config_path }}"
+          baseline_path="${{ github.event.inputs.baseline_path }}"
+          framework="${{ github.event.inputs.framework }}"
+          strict="${{ github.event.inputs.strict }}"
+          gate_new_only="${{ github.event.inputs.gate_new_only }}"
+          if [ -z "$config_path" ]; then config_path=".intelligencex/reviewer.json"; fi
+          if [ -z "$baseline_path" ]; then baseline_path=".intelligencex/analysis-baseline.json"; fi
+          if [ -z "$framework" ]; then framework="net8.0"; fi
+          if [ -z "$strict" ]; then strict="false"; fi
+          if [ -z "$gate_new_only" ]; then gate_new_only="true"; fi
+          mkdir -p artifacts
+          {
+            echo "IX_REVIEW_CONFIG_PATH=$config_path"
+            echo "IX_ANALYSIS_BASELINE_PATH=$baseline_path"
+            echo "IX_ANALYSIS_FRAMEWORK=$framework"
+            echo "IX_ANALYSIS_STRICT=$strict"
+            echo "IX_ANALYSIS_GATE_NEW_ONLY=$gate_new_only"
+            echo "IX_ANALYSIS_OUT=artifacts"
+          } >> "$GITHUB_ENV"
+
+      - name: Validate analysis catalog
+        run: dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- analyze validate-catalog --workspace .
+
+      - name: Run whole-repository analysis
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -f "$IX_REVIEW_CONFIG_PATH" ]; then
+            echo "Missing reviewer config: $IX_REVIEW_CONFIG_PATH"
+            echo "Run IntelligenceX setup before enabling repository quality posture."
+            exit 1
+          fi
+          args=(analyze run --workspace . --config "$IX_REVIEW_CONFIG_PATH" --out "$IX_ANALYSIS_OUT" --framework "$IX_ANALYSIS_FRAMEWORK")
+          if [ "$IX_ANALYSIS_STRICT" = "true" ]; then
+            args+=(--strict)
+          fi
+          dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- "${args[@]}" 2>&1 | tee "$IX_ANALYSIS_OUT/analysis-run.log"
+
+      - name: Upload SARIF to code scanning
+        if: ${{ always() && hashFiles('artifacts/**/*.sarif') != '' }}
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@0daab03d71ff584ef619d027a3fd9146679c5d84 # v3
+        with:
+          sarif_file: artifacts
+
+      - name: Evaluate baseline/new-only posture
+        shell: bash
+        run: |
+          set -euo pipefail
+          generated_baseline="$IX_ANALYSIS_OUT/analysis-baseline.generated.json"
+          bootstrap_baseline="$IX_ANALYSIS_OUT/analysis-baseline.bootstrap.json"
+          args=(analyze gate --workspace . --config "$IX_REVIEW_CONFIG_PATH" --write-baseline "$generated_baseline")
+          if [ "$IX_ANALYSIS_GATE_NEW_ONLY" = "true" ]; then
+            if [ -f "$IX_ANALYSIS_BASELINE_PATH" ]; then
+              args+=(--new-only --baseline "$IX_ANALYSIS_BASELINE_PATH")
+            else
+              echo "No committed baseline found at $IX_ANALYSIS_BASELINE_PATH."
+              echo "Writing bootstrap baseline artifact at $bootstrap_baseline and passing this run."
+              dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- \
+                analyze gate --workspace . --config "$IX_REVIEW_CONFIG_PATH" --write-baseline "$bootstrap_baseline" \
+                2>&1 | tee "$IX_ANALYSIS_OUT/analysis-gate.log"
+              exit 0
+            fi
+          fi
+          dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- "${args[@]}" 2>&1 | tee "$IX_ANALYSIS_OUT/analysis-gate.log"
+
+      - name: Write quality summary
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          {
+            echo "## IntelligenceX Repository Quality"
+            echo
+            echo "- Config: \`$IX_REVIEW_CONFIG_PATH\`"
+            echo "- Baseline: \`$IX_ANALYSIS_BASELINE_PATH\`"
+            echo "- New-only gate: \`$IX_ANALYSIS_GATE_NEW_ONLY\`"
+            echo "- Framework: \`$IX_ANALYSIS_FRAMEWORK\`"
+            echo
+            if [ -f "$IX_ANALYSIS_OUT/analysis-gate.log" ]; then
+              echo "### Gate output"
+              echo
+              echo '```text'
+              tail -n 80 "$IX_ANALYSIS_OUT/analysis-gate.log"
+              echo '```'
+            else
+              echo "_No gate log was produced._"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload repository quality artifacts
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ix-repository-quality
+          path: artifacts

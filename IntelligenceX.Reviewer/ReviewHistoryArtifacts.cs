@@ -15,7 +15,8 @@ internal static class ReviewHistoryArtifacts {
     private const string MarkdownFileName = "ix-review-history.md";
 
     public static async Task WriteAsync(PullRequestContext context, ReviewSettings settings,
-        ReviewHistorySnapshot snapshot, string renderedPromptSection, CancellationToken cancellationToken) {
+        ReviewHistorySnapshot snapshot, string renderedPromptSection, CancellationToken cancellationToken,
+        bool includesCurrentRound = false) {
         if (!settings.History.Enabled || !settings.History.Artifacts || !snapshot.HasContent) {
             return;
         }
@@ -23,17 +24,23 @@ internal static class ReviewHistoryArtifacts {
         Directory.CreateDirectory(ArtifactDirectory);
         var jsonPath = Path.Combine(ArtifactDirectory, JsonFileName);
         var markdownPath = Path.Combine(ArtifactDirectory, MarkdownFileName);
-        await File.WriteAllTextAsync(jsonPath, BuildJson(context, snapshot, renderedPromptSection), cancellationToken)
+        await File.WriteAllTextAsync(jsonPath,
+                BuildJson(context, snapshot, renderedPromptSection, includesCurrentRound), cancellationToken)
             .ConfigureAwait(false);
-        await File.WriteAllTextAsync(markdownPath, BuildMarkdown(context, snapshot, renderedPromptSection),
-                cancellationToken)
+        await File.WriteAllTextAsync(markdownPath,
+                BuildMarkdown(context, snapshot, renderedPromptSection, includesCurrentRound), cancellationToken)
             .ConfigureAwait(false);
     }
 
     internal static string BuildJson(PullRequestContext context, ReviewHistorySnapshot snapshot,
-        string renderedPromptSection) {
+        string renderedPromptSection, bool includesCurrentRound = false) {
         var payload = new {
             schema = "intelligencex.review.history.v1",
+            artifact = new {
+                role = "durable-review-history-ledger",
+                includesCurrentRound,
+                stickyCommentHistory = "cache"
+            },
             generatedAtUtc = DateTimeOffset.UtcNow,
             repository = context.RepoFullName,
             pullRequest = context.Number,
@@ -62,10 +69,13 @@ internal static class ReviewHistoryArtifacts {
     }
 
     internal static string BuildMarkdown(PullRequestContext context, ReviewHistorySnapshot snapshot,
-        string renderedPromptSection) {
+        string renderedPromptSection, bool includesCurrentRound = false) {
         var sb = new StringBuilder();
         sb.AppendLine("# IntelligenceX Review History Artifact");
         sb.AppendLine();
+        sb.AppendLine("- Artifact role: `durable-review-history-ledger`");
+        sb.AppendLine($"- Includes current round: `{(includesCurrentRound ? "true" : "false")}`");
+        sb.AppendLine("- Sticky comment history: `cache`");
         sb.AppendLine($"- Repository: `{context.RepoFullName}`");
         sb.AppendLine($"- Pull request: `#{context.Number}`");
         if (!string.IsNullOrWhiteSpace(context.HeadSha)) {

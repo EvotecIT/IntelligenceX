@@ -27,8 +27,8 @@ if ($content -notmatch "(?m)^\s*review:\s*$") {
 if ($content -notmatch "(?m)^\s*uses:\s+(?:\./\.github/workflows/review-intelligencex-(?:core|reusable)\.yml|.+/\.github/workflows/review-intelligencex-(?:core|reusable)\.yml@.+)\s*$") {
     Fail "ERROR: missing reusable review workflow reference"
 }
-if ($content -notmatch "(?m)^\s*if:\s+\$\{\{.+needs-ai-review.+\}\}\s*$") {
-    Fail "ERROR: missing fork/dependabot safety gate in managed block"
+if ($content -notmatch "(?m)^\s*if:\s+\$\{\{.+head\.repo\.fork.+\}\}\s*$") {
+    Fail "ERROR: missing fork safety gate in managed block"
 }
 if ($content -notmatch "(?m)^\s*provider:\s+") {
     Fail "ERROR: missing provider input in managed block"

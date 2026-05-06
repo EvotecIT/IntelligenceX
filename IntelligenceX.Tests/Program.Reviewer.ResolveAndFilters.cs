@@ -1795,6 +1795,88 @@ internal static partial class Program {
         AssertContainsText(extracted, "Looks good overall.", "summary stability keeps review summary body");
     }
 
+    private static void TestReviewEditDiffBlockSummarizesStickyChanges() {
+        var settings = new ReviewSettings();
+        var previous = new IssueComment(42, string.Join("\n", new[] {
+            "## IntelligenceX Review",
+            "Reviewing PR #1: **Test title**",
+            "",
+            "## Summary 📝",
+            "Initial review.",
+            "",
+            "## Todo List ✅",
+            "- [ ] Add null guard.",
+            "",
+            "## Critical Issues ⚠️",
+            "None.",
+            "",
+            "## Other Issues 🧯",
+            "- Watch compatibility."
+        }), "intelligencex-review", DateTimeOffset.Parse("2026-05-05T08:00:00Z"),
+            DateTimeOffset.Parse("2026-05-05T09:30:00Z"));
+        var next = string.Join("\n", new[] {
+            "## IntelligenceX Review",
+            "Reviewing PR #1: **Test title**",
+            "",
+            "## Summary 📝",
+            "Updated review.",
+            "",
+            "## Review Highlights ✨",
+            "- **Good:** 1 positive signal captured.",
+            "",
+            "## Todo List ✅",
+            "None.",
+            "",
+            "## Critical Issues ⚠️",
+            "- [ ] Fix race condition."
+        });
+
+        var block = ReviewEditDiffBuilder.BuildCommentBlock(previous, next, settings);
+
+        AssertContainsText(block, "## Sticky Edit Diff 🧾", "edit diff heading");
+        AssertContainsText(block, "- **Compared with:** previous sticky update from 2026-05-05 09:30:00 UTC.",
+            "edit diff timestamp");
+        AssertContainsText(block, "- **Merge blockers:** 1 new open item, 1 resolved/removed item, 0 unchanged open items.",
+            "edit diff blocker delta");
+        AssertContainsText(block, "- **Sections added:** `Review Highlights ✨`.", "edit diff added section");
+        AssertContainsText(block, "- **Sections removed:** `Other Issues 🧯`.", "edit diff removed section");
+        AssertContainsText(block, "`Summary 📝`", "edit diff changed summary section");
+        AssertContainsText(block, "`Todo List ✅`", "edit diff changed todo section");
+        AssertContainsText(block, "`Critical Issues ⚠️`", "edit diff changed critical section");
+    }
+
+    private static void TestReviewSummaryStabilityDropsGeneratedStatusBlocks() {
+        var context = BuildContext();
+        var settings = new ReviewSettings {
+            Model = "gpt-5-test",
+            Length = ReviewLength.Medium,
+            Mode = "summary"
+        };
+        var reviewBody = string.Join("\n", new[] {
+            "## Summary 📝",
+            "Looks good overall.",
+            "",
+            "## Todo List ✅",
+            "None."
+        });
+        var generatedBlocks = string.Join("\n\n", new[] {
+            "## Review Highlights ✨\n\n- **Good:** 1 positive signal captured.",
+            "## Reviewed Changes 📋\n\n| File | Status | Change | IX checked |\n| --- | --- | --- | --- |\n| `src/Foo.cs` | Modified | +1/-0 across 1 hunk | diff patch |",
+            "## Sticky Edit Diff 🧾\n\n- **Compared with:** previous sticky summary."
+        });
+
+        var comment = ReviewFormatter.BuildComment(context, reviewBody, settings, inlineSupported: true,
+            inlineSuppressed: false, autoResolveNote: string.Empty, budgetNote: string.Empty, usageLine: string.Empty,
+            findingsBlock: string.Empty, historyBlock: generatedBlocks);
+        var extracted = ReviewerApp.ExtractSummaryBodyForTests(comment, 10000) ?? string.Empty;
+
+        AssertDoesNotContainText(extracted, "Review Highlights ✨", "summary stability strips highlights heading");
+        AssertDoesNotContainText(extracted, "Reviewed Changes 📋", "summary stability strips reviewed changes heading");
+        AssertDoesNotContainText(extracted, "Sticky Edit Diff 🧾", "summary stability strips edit diff heading");
+        AssertContainsText(extracted, "## Summary 📝", "summary stability keeps summary heading after generated blocks");
+        AssertContainsText(extracted, "Looks good overall.", "summary stability keeps summary body after generated blocks");
+    }
+
     private static void TestReviewHistoryArtifactsRenderJsonAndMarkdown() {
         var context = new PullRequestContext("owner/repo", "owner", "repo", 12, "Test title", "Body", false,
             "abc1234", "base", Array.Empty<string>(), "owner/repo", false, null);
@@ -1856,12 +1938,16 @@ internal static partial class Program {
         };
 
         var json = ReviewRunner.BuildReviewHistoryArtifactJsonForTests(context, snapshot,
-            "Review history snapshot:\n- Open findings confirmed on the current head.");
+            "Review history snapshot:\n- Open findings confirmed on the current head.", includesCurrentRound: true);
         var markdown = ReviewRunner.BuildReviewHistoryArtifactMarkdownForTests(context, snapshot,
-            "Review history snapshot:\n- Open findings confirmed on the current head.");
+            "Review history snapshot:\n- Open findings confirmed on the current head.", includesCurrentRound: true);
 
         AssertContainsText(json, "\"schema\": \"intelligencex.review.history.v1\"",
             "review history artifact json schema");
+        AssertContainsText(json, "\"role\": \"durable-review-history-ledger\"",
+            "review history artifact json durable ledger role");
+        AssertContainsText(json, "\"includesCurrentRound\": true",
+            "review history artifact json includes current round");
         AssertContainsText(json, "\"repository\": \"owner/repo\"", "review history artifact json repository");
         AssertContainsText(json, "\"openFindings\": 1", "review history artifact json open count");
         AssertContainsText(json, "\"fingerprint\": \"todo-add-null-guard\"",
@@ -1874,6 +1960,10 @@ internal static partial class Program {
         AssertContainsText(json, "\"positiveHighlights\"", "review history artifact json positive highlights");
         AssertContainsText(markdown, "# IntelligenceX Review History Artifact",
             "review history artifact markdown title");
+        AssertContainsText(markdown, "- Artifact role: `durable-review-history-ledger`",
+            "review history artifact markdown durable ledger role");
+        AssertContainsText(markdown, "- Includes current round: `true`",
+            "review history artifact markdown includes current round");
         AssertContainsText(markdown, "- Open findings: `1`", "review history artifact markdown open count");
         AssertContainsText(markdown, "- External bot summaries: `1`",
             "review history artifact markdown external count");
