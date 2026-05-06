@@ -2,48 +2,11 @@
 set -euo pipefail
 
 WORKFLOW_PATH="${1:-.github/workflows/review-intelligencex.yml}"
+CLI_DLL="IntelligenceX.Cli/bin/Release/net8.0/IntelligenceX.Cli.dll"
 
-if [[ ! -f "$WORKFLOW_PATH" ]]; then
-  echo "ERROR: workflow file not found: $WORKFLOW_PATH" >&2
-  exit 1
-fi
-
-if ! grep -Eq '# INTELLIGENCEX:BEGIN' "$WORKFLOW_PATH"; then
-  echo "ERROR: missing INTELLIGENCEX:BEGIN marker" >&2
-  exit 1
-fi
-if ! grep -Eq '# INTELLIGENCEX:END' "$WORKFLOW_PATH"; then
-  echo "ERROR: missing INTELLIGENCEX:END marker" >&2
-  exit 1
-fi
-if ! grep -Eq '^\s*review:\s*$' "$WORKFLOW_PATH"; then
-  echo "ERROR: missing review job in workflow" >&2
-  exit 1
-fi
-if ! grep -Eq '^\s*uses:\s+(\./\.github/workflows/review-intelligencex-(core|reusable)\.yml|.+/\.github/workflows/review-intelligencex-(core|reusable)\.yml@.+)\s*$' "$WORKFLOW_PATH"; then
-  echo "ERROR: missing reusable review workflow reference" >&2
-  exit 1
-fi
-if ! grep -Eq '^\s*if:\s+\$\{\{.+head\.repo\.fork.+\}\}\s*$' "$WORKFLOW_PATH"; then
-  echo "ERROR: missing fork safety gate in managed block" >&2
-  exit 1
-fi
-if ! grep -Eq '^\s*provider:\s+' "$WORKFLOW_PATH"; then
-  echo "ERROR: missing provider input in managed block" >&2
-  exit 1
-fi
-if ! grep -Eq '^\s*model:\s+' "$WORKFLOW_PATH"; then
-  echo "ERROR: missing model input in managed block" >&2
-  exit 1
-fi
-
-if grep -Eq '^\s*secrets:\s*inherit\s*$' "$WORKFLOW_PATH"; then
-  echo "OK: workflow uses inherited secrets"
-elif grep -Eq 'INTELLIGENCEX_AUTH_B64' "$WORKFLOW_PATH"; then
-  echo "OK: workflow uses explicit secrets block"
+if [[ -f "$CLI_DLL" ]]; then
+  dotnet "$CLI_DLL" ci verify-managed-workflow --workflow "$WORKFLOW_PATH"
 else
-  echo "ERROR: workflow has neither secrets: inherit nor explicit INTELLIGENCEX secrets" >&2
-  exit 1
+  dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -c Release -f net8.0 --no-restore -- \
+    ci verify-managed-workflow --workflow "$WORKFLOW_PATH"
 fi
-
-echo "OK: managed workflow validation passed ($WORKFLOW_PATH)"

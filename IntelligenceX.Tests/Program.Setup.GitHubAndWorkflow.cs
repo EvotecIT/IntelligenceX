@@ -473,10 +473,10 @@ jobs:
             "reusable workflow passes release windows log path to CLI helper");
         AssertContainsText(content, "Write reviewer Actions summary",
             "reusable workflow writes a job summary for reviewer outcomes");
-        AssertContainsText(content, "Analysis pre-run",
-            "reusable workflow includes best-effort analysis status in the job summary");
-        AssertContainsText(content, "Sticky comment deletion is treated as an intentional reset",
-            "reusable workflow documents deleted sticky comments as fresh context");
+        AssertContainsText(content, "ci reviewer-run-summary",
+            "reusable workflow delegates reviewer Actions summary rendering to the CLI helper");
+        AssertContainsText(content, "--analysis-pre-run-outcome",
+            "reusable workflow passes best-effort analysis status to the summary helper");
         AssertContainsText(content, "Upload reviewer artifacts",
             "reusable workflow uploads durable reviewer artifacts");
         AssertContainsText(content, "path: artifacts/reviewer",

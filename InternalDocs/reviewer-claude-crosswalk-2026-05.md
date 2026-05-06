@@ -66,13 +66,13 @@ Reviewed examples:
 - Visible history progress table when prior rounds contain current-head posture, unresolved blockers, resolved blockers, or parse uncertainty.
 - Repo-owned guidance files instead of hardcoded repo convention packs.
 - Dependabot/default author skipping with force-review label override.
-- Whole-repository static analysis commands and docs plus a scheduled repository-quality workflow template.
+- Whole-repository static analysis commands and docs plus a scheduled repository-quality workflow template that stays a thin launcher over the CLI engine.
 - Auto-approval readiness and optional approval submission behind explicit config/policy gates.
 - Deterministic per-file reviewed-changes table from PR file metadata and available diff hunks.
-- Scheduled repository-quality workflow template with SARIF upload, generated baseline artifact, and baseline/new-only gate posture.
+- Scheduled repository-quality workflow template with SARIF upload, generated baseline artifact, and baseline/new-only gate posture owned by `intelligencex ci repository-quality`.
 - Human-readable sticky edit diff showing section and merge-blocker deltas from the previous IX summary.
 - Artifact-backed durable review history ledger that includes the final current round when available and is uploaded by the reusable reviewer workflow; sticky comment history remains a compact continuity cache.
-- Reviewer Actions output now reports reviewer/build/pre-run exit codes in the job summary and treats deleted sticky comments as an intentional fresh-context reset.
+- Reviewer Actions output now reports reviewer/build/pre-run exit codes in the job summary and treats deleted sticky comments as an intentional fresh-context reset through `intelligencex ci reviewer-run-summary`.
 
 ## Not Supported Yet
 

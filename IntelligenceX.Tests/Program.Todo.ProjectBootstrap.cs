@@ -160,13 +160,12 @@ project={{ProjectNumber}}
         AssertContainsText(rendered, "schedule:", "repository quality workflow has a schedule trigger");
         AssertContainsText(rendered, "workflow_dispatch:", "repository quality workflow supports manual dispatch");
         AssertContainsText(rendered, "security-events: write", "repository quality workflow can publish SARIF");
-        AssertContainsText(rendered, "analyze validate-catalog", "repository quality workflow validates catalog");
-        AssertContainsText(rendered, "analyze run", "repository quality workflow runs whole-repo analysis");
+        AssertContainsText(rendered, "ci repository-quality", "repository quality workflow delegates posture logic to CLI engine");
+        AssertContainsText(rendered, "inputs.config_path || '.intelligencex/reviewer.json'",
+            "repository quality workflow resolves scheduled defaults through inputs context");
         AssertContainsText(rendered, "github/codeql-action/upload-sarif@", "repository quality workflow uploads SARIF");
-        AssertContainsText(rendered, "analyze gate", "repository quality workflow evaluates gate posture");
-        AssertContainsText(rendered, "--new-only --baseline", "repository quality workflow supports new-only baseline gate");
-        AssertContainsText(rendered, "--write-baseline", "repository quality workflow writes generated baseline artifact");
-        AssertContainsText(rendered, "analysis-baseline.bootstrap.json", "repository quality workflow bootstraps missing baseline");
+        AssertContainsText(rendered, "--gate-new-only", "repository quality workflow preserves new-only baseline gate option");
+        AssertContainsText(rendered, "--baseline", "repository quality workflow passes baseline path to engine");
         AssertContainsText(rendered, "actions/upload-artifact@", "repository quality workflow uploads analysis artifacts");
     }
 

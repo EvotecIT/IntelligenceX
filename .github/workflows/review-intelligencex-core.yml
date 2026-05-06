@@ -959,29 +959,21 @@ jobs:
         if: ${{ always() }}
         shell: bash
         run: |
-          build_exit="${{ steps.reviewer_build.outputs.exit_code }}"
-          analysis_exit="${{ steps.analysis_pre_run.outputs.exit_code }}"
-          source_exit="${{ steps.reviewer_run_source.outputs.exit_code }}"
-          release_unix_exit="${{ steps.reviewer_run_release_unix.outputs.exit_code }}"
-          release_windows_exit="${{ steps.reviewer_run_release_windows.outputs.exit_code }}"
-          {
-            echo "## IntelligenceX Reviewer"
-            echo
-            echo "| Stage | Result | Exit code | Notes |"
-            echo "| --- | --- | --- | --- |"
-            printf '| Source build | `%s` | `%s` | %s |\n' "${{ steps.reviewer_build.outcome }}" "${build_exit:-n/a}" "Required before source reviewer runs."
-            printf '| Analysis pre-run | `%s` | `%s` | %s |\n' "${{ steps.analysis_pre_run.outcome }}" "${analysis_exit:-n/a}" "Best-effort; enforcing gate is reported separately."
-            printf '| Source reviewer | `%s` | `%s` | %s |\n' "${{ steps.reviewer_run_source.outcome }}" "${source_exit:-n/a}" "Runs when reviewer_source is source and build succeeds."
-            printf '| Release reviewer (unix) | `%s` | `%s` | %s |\n' "${{ steps.reviewer_run_release_unix.outcome }}" "${release_unix_exit:-n/a}" "Runs for release reviewer on Linux/macOS."
-            printf '| Release reviewer (windows) | `%s` | `%s` | %s |\n' "${{ steps.reviewer_run_release_windows.outcome }}" "${release_windows_exit:-n/a}" "Runs for release reviewer on Windows."
-            echo
-            if [ "${build_exit:-0}" != "0" ] || [ "${source_exit:-0}" != "0" ] || [ "${release_unix_exit:-0}" != "0" ] || [ "${release_windows_exit:-0}" != "0" ]; then
-              echo "> Reviewer execution produced a non-zero exit code, but the job is fail-open by policy. The PR comment contains the user-facing failure summary when a PR number is available."
-              echo
-            fi
-            echo "- Sticky comment deletion is treated as an intentional reset: the next run starts with fresh IX context."
-            echo "- Durable reviewer artifacts, when enabled, are per-run evidence for Actions and audits; they do not override an owner-deleted sticky comment."
-          } >> "$GITHUB_STEP_SUMMARY"
+          if [ ! -f IntelligenceX.Cli/IntelligenceX.Cli.csproj ]; then
+            echo "Reviewer Actions summary skipped: IntelligenceX.Cli source project is not available in this checkout."
+            exit 0
+          fi
+          dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -c Release -f net8.0 -- ci reviewer-run-summary \
+            --source-build-outcome "${{ steps.reviewer_build.outcome }}" \
+            --source-build-exit "${{ steps.reviewer_build.outputs.exit_code }}" \
+            --analysis-pre-run-outcome "${{ steps.analysis_pre_run.outcome }}" \
+            --analysis-pre-run-exit "${{ steps.analysis_pre_run.outputs.exit_code }}" \
+            --source-reviewer-outcome "${{ steps.reviewer_run_source.outcome }}" \
+            --source-reviewer-exit "${{ steps.reviewer_run_source.outputs.exit_code }}" \
+            --release-unix-outcome "${{ steps.reviewer_run_release_unix.outcome }}" \
+            --release-unix-exit "${{ steps.reviewer_run_release_unix.outputs.exit_code }}" \
+            --release-windows-outcome "${{ steps.reviewer_run_release_windows.outcome }}" \
+            --release-windows-exit "${{ steps.reviewer_run_release_windows.outputs.exit_code }}"
 
       - name: Upload reviewer artifacts
         if: ${{ always() && hashFiles('artifacts/reviewer/**') != '' }}

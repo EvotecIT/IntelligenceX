@@ -46,47 +46,19 @@ jobs:
         with:
           dotnet-version: "8.0.x"
 
-      - name: Prepare quality run
+      - name: Run repository quality posture
         shell: bash
         run: |
           set -euo pipefail
-          config_path="${{ github.event.inputs.config_path }}"
-          baseline_path="${{ github.event.inputs.baseline_path }}"
-          framework="${{ github.event.inputs.framework }}"
-          strict="${{ github.event.inputs.strict }}"
-          gate_new_only="${{ github.event.inputs.gate_new_only }}"
-          if [ -z "$config_path" ]; then config_path=".intelligencex/reviewer.json"; fi
-          if [ -z "$baseline_path" ]; then baseline_path=".intelligencex/analysis-baseline.json"; fi
-          if [ -z "$framework" ]; then framework="net8.0"; fi
-          if [ -z "$strict" ]; then strict="false"; fi
-          if [ -z "$gate_new_only" ]; then gate_new_only="true"; fi
-          mkdir -p artifacts
-          {
-            echo "IX_REVIEW_CONFIG_PATH=$config_path"
-            echo "IX_ANALYSIS_BASELINE_PATH=$baseline_path"
-            echo "IX_ANALYSIS_FRAMEWORK=$framework"
-            echo "IX_ANALYSIS_STRICT=$strict"
-            echo "IX_ANALYSIS_GATE_NEW_ONLY=$gate_new_only"
-            echo "IX_ANALYSIS_OUT=artifacts"
-          } >> "$GITHUB_ENV"
-
-      - name: Validate analysis catalog
-        run: dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- analyze validate-catalog --workspace .
-
-      - name: Run whole-repository analysis
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [ ! -f "$IX_REVIEW_CONFIG_PATH" ]; then
-            echo "Missing reviewer config: $IX_REVIEW_CONFIG_PATH"
-            echo "Run IntelligenceX setup before enabling repository quality posture."
-            exit 1
-          fi
-          args=(analyze run --workspace . --config "$IX_REVIEW_CONFIG_PATH" --out "$IX_ANALYSIS_OUT" --framework "$IX_ANALYSIS_FRAMEWORK")
-          if [ "$IX_ANALYSIS_STRICT" = "true" ]; then
-            args+=(--strict)
-          fi
-          dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- "${args[@]}" 2>&1 | tee "$IX_ANALYSIS_OUT/analysis-run.log"
+          dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- \
+            ci repository-quality \
+            --workspace . \
+            --config "${{ inputs.config_path || '.intelligencex/reviewer.json' }}" \
+            --baseline "${{ inputs.baseline_path || '.intelligencex/analysis-baseline.json' }}" \
+            --framework "${{ inputs.framework || 'net8.0' }}" \
+            --strict "${{ inputs.strict || 'false' }}" \
+            --gate-new-only "${{ inputs.gate_new_only || 'true' }}" \
+            --out artifacts
 
       - name: Upload SARIF to code scanning
         if: ${{ always() && hashFiles('artifacts/**/*.sarif') != '' }}
@@ -94,50 +66,6 @@ jobs:
         uses: github/codeql-action/upload-sarif@0daab03d71ff584ef619d027a3fd9146679c5d84 # v3
         with:
           sarif_file: artifacts
-
-      - name: Evaluate baseline/new-only posture
-        shell: bash
-        run: |
-          set -euo pipefail
-          generated_baseline="$IX_ANALYSIS_OUT/analysis-baseline.generated.json"
-          bootstrap_baseline="$IX_ANALYSIS_OUT/analysis-baseline.bootstrap.json"
-          args=(analyze gate --workspace . --config "$IX_REVIEW_CONFIG_PATH" --write-baseline "$generated_baseline")
-          if [ "$IX_ANALYSIS_GATE_NEW_ONLY" = "true" ]; then
-            if [ -f "$IX_ANALYSIS_BASELINE_PATH" ]; then
-              args+=(--new-only --baseline "$IX_ANALYSIS_BASELINE_PATH")
-            else
-              echo "No committed baseline found at $IX_ANALYSIS_BASELINE_PATH."
-              echo "Writing bootstrap baseline artifact at $bootstrap_baseline and passing this run."
-              dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- \
-                analyze gate --workspace . --config "$IX_REVIEW_CONFIG_PATH" --write-baseline "$bootstrap_baseline" \
-                2>&1 | tee "$IX_ANALYSIS_OUT/analysis-gate.log"
-              exit 0
-            fi
-          fi
-          dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- "${args[@]}" 2>&1 | tee "$IX_ANALYSIS_OUT/analysis-gate.log"
-
-      - name: Write quality summary
-        if: ${{ always() }}
-        shell: bash
-        run: |
-          {
-            echo "## IntelligenceX Repository Quality"
-            echo
-            echo "- Config: \`$IX_REVIEW_CONFIG_PATH\`"
-            echo "- Baseline: \`$IX_ANALYSIS_BASELINE_PATH\`"
-            echo "- New-only gate: \`$IX_ANALYSIS_GATE_NEW_ONLY\`"
-            echo "- Framework: \`$IX_ANALYSIS_FRAMEWORK\`"
-            echo
-            if [ -f "$IX_ANALYSIS_OUT/analysis-gate.log" ]; then
-              echo "### Gate output"
-              echo
-              echo '```text'
-              tail -n 80 "$IX_ANALYSIS_OUT/analysis-gate.log"
-              echo '```'
-            else
-              echo "_No gate log was produced._"
-            fi
-          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload repository quality artifacts
         if: ${{ always() }}

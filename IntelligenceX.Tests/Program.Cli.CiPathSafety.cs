@@ -414,5 +414,93 @@ internal static partial class Program {
             try { Directory.Delete(root, recursive: true); } catch { }
         }
     }
+
+    private static void TestCiReviewerRunSummaryWritesActionsSummary() {
+        var root = Path.Combine(Path.GetTempPath(), "ix-ci-reviewer-summary-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try {
+            var summaryPath = Path.Combine(root, "summary.md");
+            var exit = CiReviewerRunSummaryCommand.RunAsync(new[] {
+                    "--summary", summaryPath,
+                    "--source-build-outcome", "success",
+                    "--source-build-exit", "0",
+                    "--analysis-pre-run-outcome", "success",
+                    "--analysis-pre-run-exit", "0",
+                    "--source-reviewer-outcome", "failure",
+                    "--source-reviewer-exit", "1",
+                    "--release-unix-outcome", "skipped",
+                    "--release-unix-exit", "",
+                    "--release-windows-outcome", "skipped",
+                    "--release-windows-exit", ""
+                })
+                .GetAwaiter().GetResult();
+
+            AssertEqual(0, exit, "reviewer-run-summary exit code");
+            var content = File.ReadAllText(summaryPath);
+            AssertContainsText(content, "## IntelligenceX Reviewer", "reviewer-run-summary heading");
+            AssertContainsText(content, "| Source reviewer | `failure` | `1` |", "reviewer-run-summary source reviewer row");
+            AssertContainsText(content, "fail-open by policy", "reviewer-run-summary fail-open note");
+            AssertContainsText(content, "Sticky comment deletion is treated as an intentional reset",
+                "reviewer-run-summary sticky deletion policy note");
+        } finally {
+            try { Directory.Delete(root, recursive: true); } catch { }
+        }
+    }
+
+    private static void TestCiVerifyManagedWorkflowValidatesOnlyManagedBlock() {
+        var root = Path.Combine(Path.GetTempPath(), "ix-ci-managed-workflow-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try {
+            var workflowPath = Path.Combine(root, "review-intelligencex.yml");
+            File.WriteAllText(workflowPath, """
+name: review
+
+on:
+  pull_request:
+
+provider: outside-managed-block
+model: outside-managed-block
+
+jobs:
+  # INTELLIGENCEX:BEGIN
+  review:
+    if: ${{ !github.event.pull_request.head.repo.fork }}
+    uses: ./.github/workflows/review-intelligencex-core.yml
+    with:
+      provider: openai
+      model: gpt-5
+    secrets: inherit
+  # INTELLIGENCEX:END
+""");
+
+            var exit = CiVerifyManagedWorkflowCommand.RunAsync(new[] { "--workflow", workflowPath })
+                .GetAwaiter().GetResult();
+            AssertEqual(0, exit, "verify-managed-workflow valid managed block exit code");
+
+            File.WriteAllText(workflowPath, """
+name: review
+
+on:
+  pull_request:
+
+provider: outside-managed-block
+model: outside-managed-block
+
+jobs:
+  # INTELLIGENCEX:BEGIN
+  review:
+    if: ${{ !github.event.pull_request.head.repo.fork }}
+    uses: ./.github/workflows/review-intelligencex-core.yml
+    secrets: inherit
+  # INTELLIGENCEX:END
+""");
+
+            exit = CiVerifyManagedWorkflowCommand.RunAsync(new[] { "--workflow", workflowPath })
+                .GetAwaiter().GetResult();
+            AssertEqual(1, exit, "verify-managed-workflow ignores provider/model outside managed block");
+        } finally {
+            try { Directory.Delete(root, recursive: true); } catch { }
+        }
+    }
 #endif
 }
