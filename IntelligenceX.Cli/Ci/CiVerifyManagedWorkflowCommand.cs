@@ -10,6 +10,7 @@ internal static class CiVerifyManagedWorkflowCommand {
     private const string PullRequestBypassContract = "github.event_name!='pull_request'";
     private const string ForkGateContract = "!github.event.pull_request.head.repo.fork";
     private const string ForceReviewLabelContract = "contains(github.event.pull_request.labels.*.name,'needs-ai-review')";
+    private const string BooleanAndOperator = "&&";
     private static readonly Regex BeginMarker = new(@"(?m)^[ \t]*# INTELLIGENCEX:BEGIN[ \t\r]*$", RegexOptions.Compiled);
     private static readonly Regex EndMarker = new(@"(?m)^[ \t]*# INTELLIGENCEX:END[ \t\r]*$", RegexOptions.Compiled);
     private static readonly Regex ReviewJob = new(@"(?m)^[ \t]*review:[ \t\r]*$", RegexOptions.Compiled);
@@ -118,15 +119,24 @@ internal static class CiVerifyManagedWorkflowCommand {
         var terms = new List<string>();
         CollectOrTerms(expression, terms);
         foreach (var term in terms) {
-            var normalized = NormalizeGateExpression(term);
-            if (normalized.Equals(ForkGateContract, StringComparison.Ordinal)) {
+            if (IsStandaloneGateTerm(term, ForkGateContract)) {
                 hasForkGate = true;
-            } else if (normalized.Equals(ForceReviewLabelContract, StringComparison.Ordinal)) {
+            } else if (IsStandaloneGateTerm(term, ForceReviewLabelContract)) {
                 hasForceReviewGate = true;
             }
         }
 
         return hasForkGate && hasForceReviewGate;
+    }
+
+    private static bool IsStandaloneGateTerm(string term, string contract) {
+        var normalized = NormalizeGateExpression(term);
+        if (contract.Equals(ForceReviewLabelContract, StringComparison.Ordinal) &&
+            normalized.Contains(BooleanAndOperator, StringComparison.Ordinal)) {
+            return false;
+        }
+
+        return normalized.Equals(contract, StringComparison.Ordinal);
     }
 
     private static void CollectOrTerms(string expression, List<string> terms) {
