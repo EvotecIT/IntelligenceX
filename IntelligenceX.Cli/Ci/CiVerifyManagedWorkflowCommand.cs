@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -11,7 +12,7 @@ internal static class CiVerifyManagedWorkflowCommand {
     private static readonly Regex ReviewJob = new(@"(?m)^[ \t]*review:[ \t\r]*$", RegexOptions.Compiled);
     private static readonly Regex ReusableWorkflow = new(@"(?m)^[ \t]*uses:[ \t]+(?:\./\.github/workflows/review-intelligencex-(?:core|reusable)\.yml|.+/\.github/workflows/review-intelligencex-(?:core|reusable)\.yml@.+)[ \t\r]*$", RegexOptions.Compiled);
     private static readonly Regex IfExpression = new(@"(?m)^[ \t]*if:[ \t]+\$\{\{(?<expr>.+)\}\}[ \t\r]*$", RegexOptions.Compiled);
-    private static readonly Regex ForceReviewLabelExpression = new(@"contains\(\s*github\.event\.pull_request\.labels\.\*\.name\s*,\s*['""]needs-ai-review['""]\s*\)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex ForceReviewLabelExpression = new(@"^contains\(\s*github\.event\.pull_request\.labels\.\*\.name\s*,\s*['""]needs-ai-review['""]\s*\)$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex ProviderInput = new(@"(?m)^[ \t]*provider:[ \t]+", RegexOptions.Compiled);
     private static readonly Regex ModelInput = new(@"(?m)^[ \t]*model:[ \t]+", RegexOptions.Compiled);
     private static readonly Regex InheritedSecrets = new(@"(?m)^[ \t]*secrets:[ \t]*inherit[ \t\r]*$", RegexOptions.Compiled);
@@ -101,8 +102,20 @@ internal static class CiVerifyManagedWorkflowCommand {
     private static bool HasManagedForkAndForceReviewSafetyGate(string managedBlock) {
         foreach (Match match in IfExpression.Matches(managedBlock)) {
             var expression = match.Groups["expr"].Value;
-            if (ContainsOutsideString(expression, "head.repo.fork") &&
-                ContainsForceReviewLabelCall(expression)) {
+            var terms = SplitTopLevelOrTerms(expression);
+            var hasForkGate = false;
+            var hasForceReviewGate = false;
+            foreach (var term in terms) {
+                var normalized = NormalizeGateTerm(term);
+                if (normalized.Equals("!github.event.pull_request.head.repo.fork", StringComparison.Ordinal)) {
+                    hasForkGate = true;
+                }
+                if (ForceReviewLabelExpression.IsMatch(normalized)) {
+                    hasForceReviewGate = true;
+                }
+            }
+
+            if (hasForkGate && hasForceReviewGate) {
                 return true;
             }
         }
@@ -110,44 +123,11 @@ internal static class CiVerifyManagedWorkflowCommand {
         return false;
     }
 
-    private static bool ContainsForceReviewLabelCall(string expression) {
-        for (var i = 0; i < expression.Length; i++) {
-            if (expression[i] == '\'' || expression[i] == '"') {
-                i = SkipQuotedString(expression, i);
-                continue;
-            }
-
-            if (!StartsWithIgnoreCase(expression, i, "contains(")) {
-                continue;
-            }
-
-            var end = FindCallEnd(expression, i + "contains".Length);
-            if (end >= i && ForceReviewLabelExpression.IsMatch(expression.Substring(i, end - i + 1))) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static bool ContainsOutsideString(string expression, string value) {
-        for (var i = 0; i < expression.Length; i++) {
-            if (expression[i] == '\'' || expression[i] == '"') {
-                i = SkipQuotedString(expression, i);
-                continue;
-            }
-
-            if (StartsWith(expression, i, value, StringComparison.Ordinal)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static int FindCallEnd(string expression, int openParenIndex) {
+    private static IReadOnlyList<string> SplitTopLevelOrTerms(string expression) {
+        var terms = new List<string>();
+        var termStart = 0;
         var depth = 0;
-        for (var i = openParenIndex; i < expression.Length; i++) {
+        for (var i = 0; i < expression.Length; i++) {
             if (expression[i] == '\'' || expression[i] == '"') {
                 i = SkipQuotedString(expression, i);
                 continue;
@@ -156,14 +136,57 @@ internal static class CiVerifyManagedWorkflowCommand {
             if (expression[i] == '(') {
                 depth++;
             } else if (expression[i] == ')') {
-                depth--;
-                if (depth == 0) {
-                    return i;
-                }
+                depth = Math.Max(0, depth - 1);
+            } else if (depth == 0 &&
+                       i + 1 < expression.Length &&
+                       expression[i] == '|' &&
+                       expression[i + 1] == '|') {
+                terms.Add(expression.Substring(termStart, i - termStart));
+                i++;
+                termStart = i + 1;
             }
         }
 
-        return -1;
+        terms.Add(expression.Substring(termStart));
+        return terms;
+    }
+
+    private static string NormalizeGateTerm(string term) {
+        term = StripWrappingParentheses(term.Trim());
+        var builder = new System.Text.StringBuilder(term.Length);
+        foreach (var ch in term) {
+            if (!char.IsWhiteSpace(ch)) {
+                builder.Append(ch);
+            }
+        }
+        return builder.ToString();
+    }
+
+    private static string StripWrappingParentheses(string term) {
+        while (term.Length >= 2 && term[0] == '(' && term[term.Length - 1] == ')' && IsWrappedBySinglePair(term)) {
+            term = term.Substring(1, term.Length - 2).Trim();
+        }
+        return term;
+    }
+
+    private static bool IsWrappedBySinglePair(string term) {
+        var depth = 0;
+        for (var i = 0; i < term.Length; i++) {
+            if (term[i] == '\'' || term[i] == '"') {
+                i = SkipQuotedString(term, i);
+                continue;
+            }
+
+            if (term[i] == '(') {
+                depth++;
+            } else if (term[i] == ')') {
+                depth--;
+                if (depth == 0 && i < term.Length - 1) {
+                    return false;
+                }
+            }
+        }
+        return depth == 0;
     }
 
     private static int SkipQuotedString(string expression, int quoteIndex) {
@@ -182,16 +205,6 @@ internal static class CiVerifyManagedWorkflowCommand {
         }
 
         return expression.Length - 1;
-    }
-
-    private static bool StartsWithIgnoreCase(string expression, int startIndex, string value) {
-        return StartsWith(expression, startIndex, value, StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static bool StartsWith(string expression, int startIndex, string value, StringComparison comparison) {
-        return startIndex >= 0 &&
-            startIndex + value.Length <= expression.Length &&
-            string.Compare(expression, startIndex, value, 0, value.Length, comparison) == 0;
     }
 
     private static Options ParseArgs(string[] args) {
