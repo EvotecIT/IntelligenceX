@@ -125,7 +125,14 @@ internal static class CiRepositoryQualityCommand {
     }
 
     internal static int ResolveBootstrapExitCode(int bootstrapExit, string bootstrapBaselinePath) {
-        return File.Exists(bootstrapBaselinePath) ? 0 : bootstrapExit;
+        if (AnalyzeGateBaseline.TryValidateBaselineArtifact(bootstrapBaselinePath, out var error)) {
+            return 0;
+        }
+
+        if (!string.IsNullOrWhiteSpace(error)) {
+            Console.Error.WriteLine($"Bootstrap baseline artifact is not usable: {error}");
+        }
+        return bootstrapExit;
     }
 
     private static async Task<int> RunAndCaptureAsync(Func<Task<int>> run, string logPath) {

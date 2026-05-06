@@ -442,6 +442,29 @@ internal static partial class Program {
             AssertContainsText(content, "fail-open by policy", "reviewer-run-summary fail-open note");
             AssertContainsText(content, "Sticky comment deletion is treated as an intentional reset",
                 "reviewer-run-summary sticky deletion policy note");
+
+            var analysisOnlySummaryPath = Path.Combine(root, "analysis-only-summary.md");
+            exit = CiReviewerRunSummaryCommand.RunAsync(new[] {
+                    "--summary", analysisOnlySummaryPath,
+                    "--source-build-outcome", "success",
+                    "--source-build-exit", "0",
+                    "--analysis-pre-run-outcome", "failure",
+                    "--analysis-pre-run-exit", "1",
+                    "--source-reviewer-outcome", "skipped",
+                    "--source-reviewer-exit", "",
+                    "--release-unix-outcome", "skipped",
+                    "--release-unix-exit", "",
+                    "--release-windows-outcome", "skipped",
+                    "--release-windows-exit", ""
+                })
+                .GetAwaiter().GetResult();
+
+            AssertEqual(0, exit, "reviewer-run-summary analysis-only failure exit code");
+            var analysisOnlyContent = File.ReadAllText(analysisOnlySummaryPath);
+            AssertContainsText(analysisOnlyContent, "| Analysis pre-run | `failure` | `1` |",
+                "reviewer-run-summary analysis pre-run row");
+            AssertContainsText(analysisOnlyContent, "Reviewer or analysis execution produced a non-zero exit code",
+                "reviewer-run-summary analysis pre-run fail-open note");
         } finally {
             try { Directory.Delete(root, recursive: true); } catch { }
         }
@@ -623,7 +646,21 @@ internal static partial class Program {
             var missingExit = CiRepositoryQualityCommand.ResolveBootstrapExitCode(1, bootstrapBaselinePath);
             AssertEqual(1, missingExit, "repository-quality bootstrap missing artifact preserves gate exit code");
 
+            File.WriteAllText(bootstrapBaselinePath, "");
+            var emptyExit = CiRepositoryQualityCommand.ResolveBootstrapExitCode(1, bootstrapBaselinePath);
+            AssertEqual(1, emptyExit, "repository-quality bootstrap empty artifact preserves gate exit code");
+
             File.WriteAllText(bootstrapBaselinePath, "{}");
+            var emptyObjectExit = CiRepositoryQualityCommand.ResolveBootstrapExitCode(1, bootstrapBaselinePath);
+            AssertEqual(1, emptyObjectExit, "repository-quality bootstrap schema-less artifact preserves gate exit code");
+
+            File.WriteAllText(bootstrapBaselinePath, """
+{
+  "schema": "intelligencex.analysis-baseline.v1",
+  "generatedAtUtc": "2026-05-06T00:00:00.0000000Z",
+  "items": []
+}
+""");
 
             var exit = CiRepositoryQualityCommand.ResolveBootstrapExitCode(1, bootstrapBaselinePath);
 

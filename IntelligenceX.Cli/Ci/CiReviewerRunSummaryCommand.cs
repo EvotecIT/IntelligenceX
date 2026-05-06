@@ -51,10 +51,11 @@ internal static class CiReviewerRunSummaryCommand {
         builder.AppendLine();
 
         if (HasNonZeroExit(options.SourceBuildExit) ||
+            HasNonZeroExit(options.AnalysisPreRunExit) ||
             HasNonZeroExit(options.SourceReviewerExit) ||
             HasNonZeroExit(options.ReleaseUnixExit) ||
             HasNonZeroExit(options.ReleaseWindowsExit)) {
-            builder.AppendLine("> Reviewer execution produced a non-zero exit code, but the job is fail-open by policy. The PR comment contains the user-facing failure summary when a PR number is available.");
+            builder.AppendLine("> Reviewer or analysis execution produced a non-zero exit code, but the job is fail-open by policy. The PR comment contains the user-facing failure summary when a PR number is available.");
             builder.AppendLine();
         }
 
