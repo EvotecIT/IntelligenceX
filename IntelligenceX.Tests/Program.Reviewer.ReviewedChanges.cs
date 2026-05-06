@@ -51,6 +51,8 @@ internal static partial class Program {
             "reviewed changes trimmed patch row");
         AssertContainsText(block, "| `src/Bar.cs` | Added | +1/-0 across 1 hunk | not included in prompt |",
             "reviewed changes omitted prompt row");
+        AssertDoesNotContainText(block, "| `src\\Bar.cs` | Added | +1/-0 across 1 hunk | not included in prompt |",
+            "reviewed changes deduplicates normalized paths");
         AssertContainsText(block, "_1 selected file was outside the LLM prompt file budget._",
             "reviewed changes prompt budget note");
     }

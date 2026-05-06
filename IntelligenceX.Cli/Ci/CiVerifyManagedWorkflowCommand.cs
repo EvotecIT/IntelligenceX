@@ -121,7 +121,7 @@ internal static class CiVerifyManagedWorkflowCommand {
         foreach (var term in terms) {
             if (IsStandaloneGateTerm(term, ForkGateContract)) {
                 hasForkGate = true;
-            } else if (IsStandaloneGateTerm(term, ForceReviewLabelContract)) {
+            } else if (IsStandaloneForceReviewLabelGateTerm(term)) {
                 hasForceReviewGate = true;
             }
         }
@@ -131,12 +131,16 @@ internal static class CiVerifyManagedWorkflowCommand {
 
     private static bool IsStandaloneGateTerm(string term, string contract) {
         var normalized = NormalizeGateExpression(term);
-        if (contract.Equals(ForceReviewLabelContract, StringComparison.Ordinal) &&
-            normalized.Contains(BooleanAndOperator, StringComparison.Ordinal)) {
+        return normalized.Equals(contract, StringComparison.Ordinal);
+    }
+
+    private static bool IsStandaloneForceReviewLabelGateTerm(string term) {
+        var normalized = NormalizeGateExpression(term);
+        if (normalized.Contains(BooleanAndOperator, StringComparison.Ordinal)) {
             return false;
         }
 
-        return normalized.Equals(contract, StringComparison.Ordinal);
+        return normalized.Equals(ForceReviewLabelContract, StringComparison.Ordinal);
     }
 
     private static void CollectOrTerms(string expression, List<string> terms) {

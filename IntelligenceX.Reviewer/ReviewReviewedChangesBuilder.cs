@@ -18,11 +18,14 @@ internal static class ReviewReviewedChangesBuilder {
             .GroupBy(static file => NormalizePath(file.Filename), StringComparer.OrdinalIgnoreCase)
             .ToDictionary(static group => group.Key, static group => group.First(), StringComparer.OrdinalIgnoreCase);
         var promptPathSet = new HashSet<string>(promptFileMap.Keys, StringComparer.OrdinalIgnoreCase);
-        var rows = reviewFiles.Take(MaxRows).ToArray();
-        var omittedRows = Math.Max(0, reviewFiles.Count - rows.Length);
-        var omittedFromPrompt = reviewFiles
+        var distinctReviewFiles = reviewFiles
+            .GroupBy(static file => NormalizePath(file.Filename), StringComparer.OrdinalIgnoreCase)
+            .Select(static group => group.First())
+            .ToArray();
+        var rows = distinctReviewFiles.Take(MaxRows).ToArray();
+        var omittedRows = Math.Max(0, distinctReviewFiles.Length - rows.Length);
+        var omittedFromPrompt = distinctReviewFiles
             .Select(static file => NormalizePath(file.Filename))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
             .Count(path => !promptPathSet.Contains(path));
 
         var sb = new StringBuilder();
