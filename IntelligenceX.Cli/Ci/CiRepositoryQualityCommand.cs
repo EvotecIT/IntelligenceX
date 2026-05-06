@@ -109,7 +109,12 @@ internal static class CiRepositoryQualityCommand {
                         gateLogPath)
                     .ConfigureAwait(false);
                 WriteSummary(options, configPath, baselinePath, framework, gateNewOnly, gateLogPath);
-                return bootstrapExit == 0 ? 0 : bootstrapExit;
+                var resolvedExit = ResolveBootstrapExitCode(bootstrapExit, bootstrapBaselinePath);
+                if (bootstrapExit != 0 && resolvedExit == 0) {
+                    Console.WriteLine($"Bootstrap baseline artifact was written; passing first run despite gate exit {bootstrapExit.ToString(CultureInfo.InvariantCulture)}.");
+                }
+
+                return resolvedExit;
             }
         }
 
@@ -117,6 +122,10 @@ internal static class CiRepositoryQualityCommand {
             .ConfigureAwait(false);
         WriteSummary(options, configPath, baselinePath, framework, gateNewOnly, gateLogPath);
         return gateExit;
+    }
+
+    internal static int ResolveBootstrapExitCode(int bootstrapExit, string bootstrapBaselinePath) {
+        return File.Exists(bootstrapBaselinePath) ? 0 : bootstrapExit;
     }
 
     private static async Task<int> RunAndCaptureAsync(Func<Task<int>> run, string logPath) {

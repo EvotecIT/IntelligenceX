@@ -545,5 +545,23 @@ internal static partial class Program {
             try { Directory.Delete(root, recursive: true); } catch { }
         }
     }
+
+    private static void TestCiRepositoryQualityBootstrapPassesWhenBaselineArtifactExists() {
+        var root = Path.Combine(Path.GetTempPath(), "ix-ci-repo-quality-bootstrap-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try {
+            var bootstrapBaselinePath = Path.Combine(root, "analysis-baseline.bootstrap.json");
+            var missingExit = CiRepositoryQualityCommand.ResolveBootstrapExitCode(1, bootstrapBaselinePath);
+            AssertEqual(1, missingExit, "repository-quality bootstrap missing artifact preserves gate exit code");
+
+            File.WriteAllText(bootstrapBaselinePath, "{}");
+
+            var exit = CiRepositoryQualityCommand.ResolveBootstrapExitCode(1, bootstrapBaselinePath);
+
+            AssertEqual(0, exit, "repository-quality bootstrap baseline artifact pass exit code");
+        } finally {
+            try { Directory.Delete(root, recursive: true); } catch { }
+        }
+    }
 #endif
 }
