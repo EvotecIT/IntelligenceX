@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -7,12 +6,14 @@ using System.Threading.Tasks;
 namespace IntelligenceX.Cli.Ci;
 
 internal static class CiVerifyManagedWorkflowCommand {
+    private const string PullRequestBypassContract = "github.event_name!='pull_request'";
+    private const string ForkGateContract = "!github.event.pull_request.head.repo.fork";
+    private const string ForceReviewLabelContract = "contains(github.event.pull_request.labels.*.name,'needs-ai-review')";
     private static readonly Regex BeginMarker = new(@"(?m)^[ \t]*# INTELLIGENCEX:BEGIN[ \t\r]*$", RegexOptions.Compiled);
     private static readonly Regex EndMarker = new(@"(?m)^[ \t]*# INTELLIGENCEX:END[ \t\r]*$", RegexOptions.Compiled);
     private static readonly Regex ReviewJob = new(@"(?m)^[ \t]*review:[ \t\r]*$", RegexOptions.Compiled);
     private static readonly Regex ReusableWorkflow = new(@"(?m)^[ \t]*uses:[ \t]+(?:\./\.github/workflows/review-intelligencex-(?:core|reusable)\.yml|.+/\.github/workflows/review-intelligencex-(?:core|reusable)\.yml@.+)[ \t\r]*$", RegexOptions.Compiled);
     private static readonly Regex IfExpression = new(@"(?m)^[ \t]*if:[ \t]+\$\{\{(?<expr>.+)\}\}[ \t\r]*$", RegexOptions.Compiled);
-    private static readonly Regex ForceReviewLabelExpression = new(@"^contains\(\s*github\.event\.pull_request\.labels\.\*\.name\s*,\s*['""]needs-ai-review['""]\s*\)$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex ProviderInput = new(@"(?m)^[ \t]*provider:[ \t]+", RegexOptions.Compiled);
     private static readonly Regex ModelInput = new(@"(?m)^[ \t]*model:[ \t]+", RegexOptions.Compiled);
     private static readonly Regex InheritedSecrets = new(@"(?m)^[ \t]*secrets:[ \t]*inherit[ \t\r]*$", RegexOptions.Compiled);
@@ -102,20 +103,7 @@ internal static class CiVerifyManagedWorkflowCommand {
     private static bool HasManagedForkAndForceReviewSafetyGate(string managedBlock) {
         foreach (Match match in IfExpression.Matches(managedBlock)) {
             var expression = match.Groups["expr"].Value;
-            var terms = SplitTopLevelOrTerms(expression);
-            var hasForkGate = false;
-            var hasForceReviewGate = false;
-            foreach (var term in terms) {
-                var normalized = NormalizeGateTerm(term);
-                if (normalized.Equals("!github.event.pull_request.head.repo.fork", StringComparison.Ordinal)) {
-                    hasForkGate = true;
-                }
-                if (ForceReviewLabelExpression.IsMatch(normalized)) {
-                    hasForceReviewGate = true;
-                }
-            }
-
-            if (hasForkGate && hasForceReviewGate) {
+            if (IsManagedSafetyGateContract(NormalizeGateExpression(expression))) {
                 return true;
             }
         }
@@ -123,88 +111,19 @@ internal static class CiVerifyManagedWorkflowCommand {
         return false;
     }
 
-    private static IReadOnlyList<string> SplitTopLevelOrTerms(string expression) {
-        var terms = new List<string>();
-        var termStart = 0;
-        var depth = 0;
-        for (var i = 0; i < expression.Length; i++) {
-            if (expression[i] == '\'' || expression[i] == '"') {
-                i = SkipQuotedString(expression, i);
-                continue;
-            }
-
-            if (expression[i] == '(') {
-                depth++;
-            } else if (expression[i] == ')') {
-                depth = Math.Max(0, depth - 1);
-            } else if (depth == 0 &&
-                       i + 1 < expression.Length &&
-                       expression[i] == '|' &&
-                       expression[i + 1] == '|') {
-                terms.Add(expression.Substring(termStart, i - termStart));
-                i++;
-                termStart = i + 1;
-            }
-        }
-
-        terms.Add(expression.Substring(termStart));
-        return terms;
+    private static bool IsManagedSafetyGateContract(string expression) {
+        return expression.Equals($"{ForkGateContract}||{ForceReviewLabelContract}", StringComparison.Ordinal) ||
+               expression.Equals($"{PullRequestBypassContract}||{ForkGateContract}||{ForceReviewLabelContract}", StringComparison.Ordinal);
     }
 
-    private static string NormalizeGateTerm(string term) {
-        term = StripWrappingParentheses(term.Trim());
-        var builder = new System.Text.StringBuilder(term.Length);
-        foreach (var ch in term) {
+    private static string NormalizeGateExpression(string expression) {
+        var builder = new System.Text.StringBuilder(expression.Length);
+        foreach (var ch in expression) {
             if (!char.IsWhiteSpace(ch)) {
                 builder.Append(ch);
             }
         }
         return builder.ToString();
-    }
-
-    private static string StripWrappingParentheses(string term) {
-        while (term.Length >= 2 && term[0] == '(' && term[term.Length - 1] == ')' && IsWrappedBySinglePair(term)) {
-            term = term.Substring(1, term.Length - 2).Trim();
-        }
-        return term;
-    }
-
-    private static bool IsWrappedBySinglePair(string term) {
-        var depth = 0;
-        for (var i = 0; i < term.Length; i++) {
-            if (term[i] == '\'' || term[i] == '"') {
-                i = SkipQuotedString(term, i);
-                continue;
-            }
-
-            if (term[i] == '(') {
-                depth++;
-            } else if (term[i] == ')') {
-                depth--;
-                if (depth == 0 && i < term.Length - 1) {
-                    return false;
-                }
-            }
-        }
-        return depth == 0;
-    }
-
-    private static int SkipQuotedString(string expression, int quoteIndex) {
-        var quote = expression[quoteIndex];
-        for (var i = quoteIndex + 1; i < expression.Length; i++) {
-            if (expression[i] != quote) {
-                continue;
-            }
-
-            if (i + 1 < expression.Length && expression[i + 1] == quote) {
-                i++;
-                continue;
-            }
-
-            return i;
-        }
-
-        return expression.Length - 1;
     }
 
     private static Options ParseArgs(string[] args) {

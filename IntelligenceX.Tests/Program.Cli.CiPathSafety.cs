@@ -507,6 +507,29 @@ internal static partial class Program {
                 "on:",
                 "  pull_request:",
                 string.Empty,
+                "jobs:",
+                "  # INTELLIGENCEX:BEGIN",
+                "  review:",
+                "    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork || contains(github.event.pull_request.labels.*.name, 'needs-ai-review') }}",
+                "    uses: ./.github/workflows/review-intelligencex-core.yml",
+                "    with:",
+                "      provider: openai",
+                "      model: gpt-5",
+                "    secrets: inherit",
+                "  # INTELLIGENCEX:END",
+                string.Empty
+            }));
+
+            exit = CiVerifyManagedWorkflowCommand.RunAsync(new[] { "--workflow", workflowPath })
+                .GetAwaiter().GetResult();
+            AssertEqual(0, exit, "verify-managed-workflow valid event/fork/label gate exit code");
+
+            File.WriteAllText(workflowPath, string.Join(Environment.NewLine, new[] {
+                "name: review",
+                string.Empty,
+                "on:",
+                "  pull_request:",
+                string.Empty,
                 "provider: outside-managed-block",
                 "model: outside-managed-block",
                 string.Empty,
