@@ -17,9 +17,12 @@ internal static class ReviewReviewedChangesBuilder {
         var promptFileMap = promptFiles
             .GroupBy(static file => NormalizePath(file.Filename), StringComparer.OrdinalIgnoreCase)
             .ToDictionary(static group => group.Key, static group => group.First(), StringComparer.OrdinalIgnoreCase);
+        var promptPathSet = new HashSet<string>(promptFileMap.Keys, StringComparer.OrdinalIgnoreCase);
         var rows = reviewFiles.Take(MaxRows).ToArray();
         var omittedRows = Math.Max(0, reviewFiles.Count - rows.Length);
-        var omittedFromPrompt = reviewFiles.Count(file => !promptFileMap.ContainsKey(NormalizePath(file.Filename)));
+        var omittedFromPrompt = reviewFiles
+            .Select(static file => NormalizePath(file.Filename))
+            .Count(path => !promptPathSet.Contains(path));
 
         var sb = new StringBuilder();
         sb.AppendLine("## Reviewed Changes 📋");
