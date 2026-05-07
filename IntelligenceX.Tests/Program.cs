@@ -677,6 +677,10 @@ internal static partial class Program {
         failed += Run("CI review-fail-open-summary creates comment for manual PR run", TestCiReviewFailOpenSummaryCreatesCommentForManualPrRun);
         failed += Run("CI review-fail-open-summary prefers reviewer token over GitHub token", TestCiReviewFailOpenSummaryPrefersReviewerTokenOverGitHubToken);
         failed += Run("CI review-fail-open-summary skips when PR number unavailable", TestCiReviewFailOpenSummarySkipsWhenPrNumberUnavailable);
+        failed += Run("CI reviewer-run-summary writes Actions summary", TestCiReviewerRunSummaryWritesActionsSummary);
+        failed += Run("CI verify-managed-workflow validates only managed block", TestCiVerifyManagedWorkflowValidatesOnlyManagedBlock);
+        failed += Run("CI repository-quality reads workflow dispatch inputs", TestCiRepositoryQualityReadsWorkflowDispatchInputs);
+        failed += Run("CI repository-quality bootstrap passes when baseline artifact exists", TestCiRepositoryQualityBootstrapPassesWhenBaselineArtifactExists);
         failed += Run("Reviewer GraphQL mutation detection", TestReviewerGraphQlMutationDetection);
 #endif
 

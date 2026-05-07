@@ -643,7 +643,12 @@ Compatibility for risks, Tests / Coverage/Test Quality for test posture, and Nex
 This keeps the useful "good / watch / tests / next" posture visible even on the first run, before there is any history
 ledger to compare.
 
+`Reviewed Changes` is optional and disabled by default. Set `reviewedChanges: true` (or
+`REVIEW_REVIEWED_CHANGES=true`) to add the deterministic file table that summarizes what changed and whether IX saw
+the full diff patch, path/status only, a trimmed diff patch, or no prompt context for each listed file.
+
 GitHub Actions input/env aliases:
+- `reviewed_changes` / `REVIEW_REVIEWED_CHANGES`
 - `history_enabled` / `REVIEW_HISTORY_ENABLED`
 - `history_include_ix_summary_history` / `REVIEW_HISTORY_INCLUDE_IX_SUMMARY_HISTORY`
 - `history_include_review_threads` / `REVIEW_HISTORY_INCLUDE_REVIEW_THREADS`
@@ -930,6 +935,7 @@ Prefer `directTokenEnv` over `directToken` to avoid committing secrets to source
 - `reviewUsageBudgetGuard`: fail early when configured usage budget sources are exhausted
 - `reviewUsageBudgetAllowCredits`: allow runs when credits are available
 - `reviewUsageBudgetAllowWeeklyLimit`: allow runs when weekly limit capacity is available
+- `reviewedChanges`: include the deterministic Reviewed Changes table in the public review comment (default false)
 - `ciContext.enabled`: opt into reviewer-side CI/check awareness (default off)
 - `ciContext.includeCheckSummary`: include PR check counts and failing check names when CI context is enabled
 - `ciContext.includeFailedRuns`: include failed workflow run metadata for the current SHA when CI context is enabled

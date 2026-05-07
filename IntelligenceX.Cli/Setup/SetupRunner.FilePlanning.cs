@@ -400,6 +400,7 @@ internal static partial class SetupRunner {
             ["reviewUsageSummary"] = settings.ReviewUsageSummary,
             ["reviewUsageSummaryCacheMinutes"] = settings.ReviewUsageSummaryCacheMinutes,
             ["reviewUsageSummaryTimeoutSeconds"] = settings.ReviewUsageSummaryTimeoutSeconds,
+            ["reviewedChanges"] = settings.ReviewedChanges,
             ["reviewUsageBudgetGuard"] = settings.ReviewUsageBudgetGuard,
             ["reviewUsageBudgetAllowCredits"] = settings.ReviewUsageBudgetAllowCredits,
             ["reviewUsageBudgetAllowWeeklyLimit"] = settings.ReviewUsageBudgetAllowWeeklyLimit,

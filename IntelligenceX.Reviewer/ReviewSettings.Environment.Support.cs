@@ -189,6 +189,11 @@ internal sealed partial class ReviewSettings {
             settings.StructuredFindings = ParseBoolean(structuredFindings, settings.StructuredFindings);
         }
 
+        var reviewedChanges = GetInput("reviewed_changes", "REVIEW_REVIEWED_CHANGES");
+        if (!string.IsNullOrWhiteSpace(reviewedChanges)) {
+            settings.ReviewedChanges = ParseBoolean(reviewedChanges, settings.ReviewedChanges);
+        }
+
         ApplyOpenAiEnvironment(settings);
         ApplyOpenAiCompatibleEnvironment(settings);
         ApplyAnthropicEnvironment(settings);

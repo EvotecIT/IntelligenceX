@@ -63,6 +63,59 @@ internal static class AnalyzeGateBaseline {
         }
     }
 
+    public static bool TryValidateBaselineArtifact(string path, out string? error) {
+        error = null;
+        if (string.IsNullOrWhiteSpace(path)) {
+            error = "baseline path is empty";
+            return false;
+        }
+
+        FileInfo fileInfo;
+        try {
+            fileInfo = new FileInfo(path);
+        } catch (Exception ex) {
+            error = $"could not inspect baseline file ({FormatExceptionMessage(ex)})";
+            return false;
+        }
+
+        if (!fileInfo.Exists) {
+            error = $"baseline file not found: {path}";
+            return false;
+        }
+        if (fileInfo.Length == 0) {
+            error = "baseline file is empty";
+            return false;
+        }
+
+        JsonObject? root;
+        try {
+            root = JsonLite.Parse(File.ReadAllText(path))?.AsObject();
+        } catch (Exception ex) {
+            error = $"could not parse baseline file ({FormatExceptionMessage(ex)})";
+            return false;
+        }
+        if (root is null) {
+            error = "baseline file root must be a JSON object";
+            return false;
+        }
+
+        var schema = root.GetString("schema") ?? string.Empty;
+        if (!schema.Equals(BaselineSchemaValue, StringComparison.OrdinalIgnoreCase) &&
+            !schema.Equals(FindingsSchemaValue, StringComparison.OrdinalIgnoreCase)) {
+            error = string.IsNullOrWhiteSpace(schema)
+                ? "baseline file is missing a supported schema"
+                : $"unsupported baseline schema '{schema}'";
+            return false;
+        }
+
+        if (root.GetArray("items") is null) {
+            error = "baseline file is missing an items array";
+            return false;
+        }
+
+        return true;
+    }
+
     public static bool TryLoadBaselineKeys(string path, out HashSet<string> keys, out string schema, out bool schemaInferred,
         out string? error) {
         keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -572,5 +625,4 @@ internal static class AnalyzeGateBaseline {
         int WindowLines,
         string Fingerprint);
 }
-
 

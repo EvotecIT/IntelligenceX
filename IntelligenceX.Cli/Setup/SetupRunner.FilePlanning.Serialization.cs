@@ -101,6 +101,7 @@ internal static partial class SetupRunner {
         review["reviewUsageSummary"] = settings.ReviewUsageSummary;
         review["reviewUsageSummaryCacheMinutes"] = settings.ReviewUsageSummaryCacheMinutes;
         review["reviewUsageSummaryTimeoutSeconds"] = settings.ReviewUsageSummaryTimeoutSeconds;
+        review["reviewedChanges"] = settings.ReviewedChanges;
         review["reviewUsageBudgetGuard"] = settings.ReviewUsageBudgetGuard;
         review["reviewUsageBudgetAllowCredits"] = settings.ReviewUsageBudgetAllowCredits;
         review["reviewUsageBudgetAllowWeeklyLimit"] = settings.ReviewUsageBudgetAllowWeeklyLimit;
@@ -391,6 +392,7 @@ internal static partial class SetupRunner {
                 snapshot.ReviewUsageSummary = ReadJsonBool(review, "reviewUsageSummary");
                 snapshot.ReviewUsageSummaryCacheMinutes = ReadJsonInt(review, "reviewUsageSummaryCacheMinutes");
                 snapshot.ReviewUsageSummaryTimeoutSeconds = ReadJsonInt(review, "reviewUsageSummaryTimeoutSeconds");
+                snapshot.ReviewedChanges = ReadJsonBool(review, "reviewedChanges");
                 snapshot.ReviewUsageBudgetGuard = ReadJsonBool(review, "reviewUsageBudgetGuard");
                 snapshot.ReviewUsageBudgetAllowCredits = ReadJsonBool(review, "reviewUsageBudgetAllowCredits");
                 snapshot.ReviewUsageBudgetAllowWeeklyLimit = ReadJsonBool(review, "reviewUsageBudgetAllowWeeklyLimit");

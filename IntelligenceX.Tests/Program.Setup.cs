@@ -558,6 +558,7 @@ internal static partial class Program {
         AssertEqual(true, review["reviewThreadsAutoResolveAIReply"]?.GetValue<bool>(),
             "config json auto-resolve ai reply");
         AssertEqual(true, review["reviewUsageSummary"]?.GetValue<bool>(), "config json usage summary");
+        AssertEqual(false, review["reviewedChanges"]?.GetValue<bool>(), "config json reviewed changes");
         AssertEqual(true, review["reviewUsageBudgetGuard"]?.GetValue<bool>(), "config json usage budget guard");
         AssertEqual(true, review["reviewUsageBudgetAllowCredits"]?.GetValue<bool>(),
             "config json usage budget credits");

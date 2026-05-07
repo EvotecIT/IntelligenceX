@@ -299,7 +299,9 @@ public static partial class ReviewerApp {
             IssueComment? existingSummary = null;
             string? previousSummary = null;
             if (settings.SummaryStability ||
-                (settings.History.Enabled && settings.History.IncludeIxSummaryHistory)) {
+                (settings.History.Enabled && settings.History.IncludeIxSummaryHistory) ||
+                (settings.CommentMode == ReviewCommentMode.Sticky &&
+                 (settings.OverwriteSummary || settings.OverwriteSummaryOnNewCommit))) {
                 existingSummary = await FindExistingSummaryAsync(codeHostReader, context, settings, cancellationToken)
                     .ConfigureAwait(false);
                 if (settings.SummaryStability &&
@@ -360,23 +362,9 @@ public static partial class ReviewerApp {
                 ? ReviewHistoryBuilder.BuildSnapshot(extras.IssueComments, context.HeadSha, extras.ReviewThreads, settings)
                 : ReviewHistoryBuilder.BuildSnapshot(existingSummary, context.HeadSha, extras.ReviewThreads, settings);
             extras.ReviewHistorySection = ReviewHistoryBuilder.Render(extras.ReviewHistory);
-            if (settings.History.Artifacts) {
-                try {
-                    await ReviewHistoryArtifacts.WriteAsync(context, settings, extras.ReviewHistory,
-                            extras.ReviewHistorySection, cancellationToken)
-                        .ConfigureAwait(false);
-                    if (settings.Diagnostics && extras.ReviewHistory.HasContent) {
-                        Console.Error.WriteLine("Review history artifacts written under artifacts/reviewer/history.");
-                    }
-                } catch (OperationCanceledException) {
-                    throw;
-                } catch (Exception ex) {
-                    if (settings.Diagnostics) {
-                        Console.Error.WriteLine(
-                            $"Review history artifact write failed open: {ex.GetType().Name}: {ex.Message}");
-                    }
-                }
-            }
+            await WriteReviewHistoryArtifactsAsync(context, settings, extras.ReviewHistory,
+                    extras.ReviewHistorySection, cancellationToken)
+                .ConfigureAwait(false);
             if (settings.TriageOnly) {
                 if (!allowWrites) {
                     Console.WriteLine("Skipping thread triage for untrusted pull request.");
@@ -600,16 +588,31 @@ public static partial class ReviewerApp {
             var finalHasMergeBlockers = ReviewSummaryParser.HasMergeBlockers(summaryBody, settings);
             var reviewStateBlock = ReviewStateBuilder.BuildCommentBlock(summaryBody, settings, reviewFailed);
             var reviewHighlightsBlock = ReviewHighlightsBuilder.BuildCommentBlock(summaryBody, settings, reviewFailed);
+            var reviewedChangesBlock = settings.ReviewedChanges
+                ? ReviewReviewedChangesBuilder.BuildCommentBlock(files, limitedFiles, reviewFailed)
+                : string.Empty;
             var visibleHistory = ReviewHistoryBuilder.AppendCurrentRound(extras.ReviewHistory, summaryBody, context.HeadSha, settings);
             var historyBlock = ReviewHistoryBuilder.BuildCommentBlock(visibleHistory);
+            await WriteReviewHistoryArtifactsAsync(context, settings, visibleHistory,
+                    ReviewHistoryBuilder.Render(visibleHistory), cancellationToken, includesCurrentRound: true)
+                .ConfigureAwait(false);
             var autoApprovalDecision = await BuildAutoApprovalDecisionAsync(github, fallbackGithub, context, settings,
                     reviewFailed, finalHasMergeBlockers, extras.ReviewHistory, allowWrites, extras.ReviewThreadsUnavailable,
                     cancellationToken)
                 .ConfigureAwait(false);
             var autoApprovalBlock = ReviewAutoApproval.BuildCommentBlock(autoApprovalDecision);
-            var statusBlocks = CombineCommentBlocks(reviewStateBlock, reviewHighlightsBlock, historyBlock, autoApprovalBlock);
-            var commentBody = ReviewFormatter.BuildComment(context, summaryBody, settings, inlineSupported, inlineSuppressed,
+            var statusBlocks = CombineCommentBlocks(reviewStateBlock, reviewHighlightsBlock, reviewedChangesBlock, historyBlock, autoApprovalBlock);
+            var commentBodyWithoutEditDiff = ReviewFormatter.BuildComment(context, summaryBody, settings, inlineSupported, inlineSuppressed,
                 autoResolveSummary, budgetNote, usageLine, findingsBlock, statusBlocks);
+            var editDiffBlock = ReviewEditDiffBuilder.BuildCommentBlock(existingSummary, commentBodyWithoutEditDiff, settings);
+            if (!string.IsNullOrWhiteSpace(editDiffBlock)) {
+                statusBlocks = CombineCommentBlocks(reviewStateBlock, reviewHighlightsBlock, reviewedChangesBlock, editDiffBlock,
+                    historyBlock, autoApprovalBlock);
+            }
+            var commentBody = string.IsNullOrWhiteSpace(editDiffBlock)
+                ? commentBodyWithoutEditDiff
+                : ReviewFormatter.BuildComment(context, summaryBody, settings, inlineSupported, inlineSuppressed,
+                    autoResolveSummary, budgetNote, usageLine, findingsBlock, statusBlocks);
             commentBody = ReviewHistoryMarker.AppendOrReplace(commentBody, extras.ReviewHistory, context, settings);
             progress.Review = ReviewProgressState.Complete;
             progress.Finalize = ReviewProgressState.InProgress;
@@ -752,6 +755,31 @@ public static partial class ReviewerApp {
                !string.IsNullOrWhiteSpace(context.HeadSha) &&
                inlineKeys is not null &&
                (inlineCommentsCount == 0 || inlineKeys.Count > 0);
+    }
+
+    private static async Task WriteReviewHistoryArtifactsAsync(PullRequestContext context, ReviewSettings settings,
+        ReviewHistorySnapshot snapshot, string renderedPromptSection, CancellationToken cancellationToken,
+        bool includesCurrentRound = false) {
+        if (!settings.History.Artifacts) {
+            return;
+        }
+
+        try {
+            await ReviewHistoryArtifacts.WriteAsync(context, settings, snapshot, renderedPromptSection,
+                    cancellationToken, includesCurrentRound)
+                .ConfigureAwait(false);
+            if (settings.Diagnostics && snapshot.HasContent) {
+                var scope = includesCurrentRound ? "final review history ledger" : "review history snapshot";
+                Console.Error.WriteLine($"{scope} written under artifacts/reviewer/history.");
+            }
+        } catch (OperationCanceledException) {
+            throw;
+        } catch (Exception ex) {
+            if (settings.Diagnostics) {
+                Console.Error.WriteLine(
+                    $"Review history artifact write failed open: {ex.GetType().Name}: {ex.Message}");
+            }
+        }
     }
 
     private static async Task<bool?> TryGetRequiredConversationResolutionAsync(GitHubClient github, PullRequestContext context,

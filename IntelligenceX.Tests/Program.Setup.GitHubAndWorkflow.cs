@@ -46,6 +46,7 @@ internal static partial class Program {
         AssertEqual(true, review["reviewThreadsAutoResolveAIReply"]?.GetValue<bool>(),
             "config json merge refreshes auto-resolve ai reply");
         AssertEqual(true, review["reviewUsageSummary"]?.GetValue<bool>(), "config json merge refreshes usage summary");
+        AssertEqual(false, review["reviewedChanges"]?.GetValue<bool>(), "config json merge refreshes reviewed changes");
 
         var analysis = root["analysis"] as System.Text.Json.Nodes.JsonObject;
         AssertNotNull(analysis, "config json merge analysis object");
@@ -143,6 +144,7 @@ jobs:
         AssertContainsText(content, "copilot_launcher:", "workflow template copilot launcher input");
         AssertContainsText(content, "profile:", "workflow template prompt profile input");
         AssertContainsText(content, "ci_context_enabled:", "workflow template CI context input");
+        AssertContainsText(content, "reviewed_changes:", "workflow template reviewed changes input");
         AssertContainsText(content, "history_enabled:", "workflow template history enabled input");
         AssertContainsText(content, "history_include_external_bot_summaries:",
             "workflow template external bot history input");
@@ -173,6 +175,8 @@ jobs:
             "workflow template usage budget credits pass-through");
         AssertContainsText(content, "usage_budget_allow_weekly_limit: ${{ inputs.usage_budget_allow_weekly_limit }}",
             "workflow template usage budget weekly pass-through");
+        AssertContainsText(content, "reviewed_changes: ${{ inputs.reviewed_changes }}",
+            "workflow template reviewed changes pass-through");
         AssertContainsText(content,
             "agent_profile: ${{ inputs.agent_profile != '' && inputs.agent_profile || ((inputs.provider != '' || inputs.model != '' || inputs.openai_model != '' || inputs.copilot_model != '') && 'none' || vars.IX_REVIEW_AGENT_PROFILE) }}",
             "workflow template agent profile input can override or deliberately suppress repo variable");
@@ -260,6 +264,8 @@ jobs:
             "wrapper workflow exposes prompt profile reusable-call override");
         AssertContainsText(wrapperContent, "ci_context_enabled:",
             "wrapper workflow exposes CI context reusable-call override");
+        AssertContainsText(wrapperContent, "reviewed_changes:",
+            "wrapper workflow exposes reviewed changes reusable-call override");
         AssertContainsText(wrapperContent, "history_include_ix_summary_history:",
             "wrapper workflow exposes IX summary history reusable-call override");
         AssertContainsText(wrapperContent, "swarm_publish_subreviews:",
@@ -280,6 +286,8 @@ jobs:
             "wrapper workflow copilot auto-install respects launcher repo variable");
         AssertContainsText(wrapperContent, "history_enabled: ${{ inputs.history_enabled }}",
             "wrapper workflow passes history awareness through to reusable workflow");
+        AssertContainsText(wrapperContent, "reviewed_changes: ${{ inputs.reviewed_changes }}",
+            "wrapper workflow passes reviewed changes through to reusable workflow");
         AssertContainsText(wrapperContent,
             "history_include_external_bot_summaries: ${{ inputs.history_include_external_bot_summaries }}",
             "wrapper workflow passes external bot history through to reusable workflow");
@@ -342,6 +350,8 @@ jobs:
             "reusable workflow defines copilot_launcher once for workflow_call");
         AssertEqual(1, CountOccurrences(content, "history_enabled:"),
             "reusable workflow defines history_enabled once for workflow_call");
+        AssertEqual(1, CountOccurrences(content, "reviewed_changes:"),
+            "reusable workflow defines reviewed_changes once for workflow_call");
         AssertEqual(1, CountOccurrences(content, "history_include_external_bot_summaries:"),
             "reusable workflow defines external bot history once for workflow_call");
         AssertEqual(1, CountOccurrences(content, "swarm_max_parallel:"),
@@ -403,6 +413,8 @@ jobs:
             "reusable workflow exports copilot launcher env once");
         AssertEqual(1, CountOccurrences(content, "INPUT_HISTORY_ENABLED: ${{ inputs.history_enabled }}"),
             "reusable workflow exports history enabled env once");
+        AssertEqual(1, CountOccurrences(content, "INPUT_REVIEWED_CHANGES: ${{ inputs.reviewed_changes }}"),
+            "reusable workflow exports reviewed changes env once");
         AssertEqual(1, CountOccurrences(content,
                 "INPUT_HISTORY_INCLUDE_EXTERNAL_BOT_SUMMARIES: ${{ inputs.history_include_external_bot_summaries }}"),
             "reusable workflow exports external bot history env once");
@@ -426,8 +438,8 @@ jobs:
             "reusable workflow exports max files override only when supplied");
         AssertContainsText(optionalOverridesStep, "add_if_set INPUT_MAX_PATCH_CHARS \"$MAX_PATCH_CHARS\"",
             "reusable workflow exports max patch chars override only when supplied");
-        AssertContainsText(content, "inputs.reviewer_source == 'source' && steps.reviewer_build.outcome == 'success'",
-            "reusable workflow gates source reviewer execution on a successful source build");
+        AssertContainsText(content, "inputs.reviewer_source == 'source' && steps.reviewer_build.outputs.exit_code == '0'",
+            "reusable workflow gates source reviewer execution on a successful source build exit code");
         AssertContainsText(content, "git diff --name-only HEAD^1 HEAD^2 > artifacts/changed-files.txt",
             "reusable workflow falls back to merge-parent changed-files diff");
         AssertContainsText(content, "-p:EnableWindowsTargeting=true -- analyze run",
@@ -444,6 +456,10 @@ jobs:
         if: ${{ inputs.reviewer_source == 'source' }}
 """, StringComparison.Ordinal),
             "reusable workflow keeps static analysis pre-run independent from reviewer_source");
+        AssertContainsText(content, "id: analysis_pre_run",
+            "reusable workflow records best-effort analysis pre-run status");
+        AssertContainsText(content, "IntelligenceX analysis pre-run failed",
+            "reusable workflow reports best-effort analysis failures as warnings");
         AssertEqual(false, content.Contains("""
       - name: Evaluate IntelligenceX analysis gate (pre-review, enforcing)
         if: ${{ inputs.reviewer_source == 'source' }}
@@ -453,7 +469,7 @@ jobs:
             "reusable workflow finalizes fail-open reviewer runs with a summary update");
         AssertContainsText(content, "continue-on-error: true",
             "reusable workflow keeps fail-open finalization best-effort");
-        AssertContainsText(content, "steps.reviewer_build.outcome == 'failure'",
+        AssertContainsText(content, "steps.reviewer_build.outputs.exit_code != '' && steps.reviewer_build.outputs.exit_code != '0'",
             "reusable workflow finalizes fail-open summaries when the source reviewer build fails");
         AssertContainsText(content, "INTELLIGENCEX_GITHUB_TOKEN: ${{ steps.app_token.outputs.token || secrets.GITHUB_TOKEN }}",
             "reusable workflow passes the app token to fail-open summary finalization");
@@ -467,6 +483,16 @@ jobs:
             "reusable workflow passes release unix log path to CLI helper");
         AssertContainsText(content, "--release-windows-log artifacts/reviewer-run-release-windows.log",
             "reusable workflow passes release windows log path to CLI helper");
+        AssertContainsText(content, "Write reviewer Actions summary",
+            "reusable workflow writes a job summary for reviewer outcomes");
+        AssertContainsText(content, "ci reviewer-run-summary",
+            "reusable workflow delegates reviewer Actions summary rendering to the CLI helper");
+        AssertContainsText(content, "--analysis-pre-run-outcome",
+            "reusable workflow passes best-effort analysis status to the summary helper");
+        AssertContainsText(content, "Upload reviewer artifacts",
+            "reusable workflow uploads durable reviewer artifacts");
+        AssertContainsText(content, "path: artifacts/reviewer",
+            "reusable workflow uploads reviewer artifact directory");
         AssertEqual(false, content.Contains("&review_inputs", StringComparison.Ordinal),
             "reusable workflow should avoid YAML anchors in workflow schema");
         AssertEqual(false, content.Contains("*review_inputs", StringComparison.Ordinal),

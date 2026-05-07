@@ -344,6 +344,10 @@ internal sealed partial class ReviewSettings {
     /// When enabled, include a summary note if review context was truncated by file or patch limits.
     /// </summary>
     public bool ReviewBudgetSummary { get; set; } = true;
+    /// <summary>
+    /// When enabled, render the deterministic Reviewed Changes table in the public review comment.
+    /// </summary>
+    public bool ReviewedChanges { get; set; }
     public string? PromptTemplate { get; set; }
     public string? PromptTemplatePath { get; set; }
     public string? SummaryTemplate { get; set; }

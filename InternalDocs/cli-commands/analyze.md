@@ -101,6 +101,8 @@ Gate behavior is configured by `analysis.gate` in `.intelligencex/reviewer.json`
 - `duplication.newIssuesOnly`: apply baseline/new-only suppression to duplication violations.
 - `duplication.failOnUnavailable`: fail/passthrough behavior when duplication metrics are unavailable.
 
+For scheduled whole-repository posture, copy `IntelligenceX.Cli/Templates/repository-quality-scheduled.yml` into `.github/workflows/`. The workflow stays a thin launcher over `intelligencex ci repository-quality`, which owns workflow-dispatch input/default resolution, catalog validation, whole-repo analysis, SARIF/artifact generation, baseline/new-only gate posture, bootstrap baseline behavior, and the Actions job summary.
+
 Optional flags:
 - `--config <path>`: explicit path to `.intelligencex/reviewer.json`.
 - `--workspace <path>`: repository root for catalog/config discovery.

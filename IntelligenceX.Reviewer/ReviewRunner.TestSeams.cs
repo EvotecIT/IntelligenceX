@@ -72,13 +72,13 @@ internal sealed partial class ReviewRunner {
 
     /// <summary>Test-only forwarder for review history JSON artifact rendering.</summary>
     internal static string BuildReviewHistoryArtifactJsonForTests(PullRequestContext context,
-        ReviewHistorySnapshot snapshot, string renderedPromptSection) =>
-        ReviewHistoryArtifacts.BuildJson(context, snapshot, renderedPromptSection);
+        ReviewHistorySnapshot snapshot, string renderedPromptSection, bool includesCurrentRound = false) =>
+        ReviewHistoryArtifacts.BuildJson(context, snapshot, renderedPromptSection, includesCurrentRound);
 
     /// <summary>Test-only forwarder for review history Markdown artifact rendering.</summary>
     internal static string BuildReviewHistoryArtifactMarkdownForTests(PullRequestContext context,
-        ReviewHistorySnapshot snapshot, string renderedPromptSection) =>
-        ReviewHistoryArtifacts.BuildMarkdown(context, snapshot, renderedPromptSection);
+        ReviewHistorySnapshot snapshot, string renderedPromptSection, bool includesCurrentRound = false) =>
+        ReviewHistoryArtifacts.BuildMarkdown(context, snapshot, renderedPromptSection, includesCurrentRound);
 
     /// <summary>Test-only forwarder for swarm shadow result diagnostics.</summary>
     internal static string RenderSwarmShadowResultsForTests(ReviewSwarmShadowRunResult result) =>

@@ -481,6 +481,8 @@ internal static partial class Program {
             TestProjectBootstrapWorkflowTemplateUpsertsControlIssueSummaryComment);
         failed += Run("Todo triage index workflow upserts control issue summary comment",
             TestTriageIndexWorkflowTemplateUpsertsControlIssueSummaryComment);
+        failed += Run("Repository quality scheduled workflow publishes SARIF and baseline posture",
+            TestRepositoryQualityScheduledWorkflowTemplatePublishesSarifAndBaselinePosture);
         failed += Run("Todo project bootstrap control issue body includes context", TestProjectBootstrapBuildControlIssueBodyIncludesProjectContext);
         failed += Run("Todo project bootstrap parses issue url output", TestProjectBootstrapParseIssueNumberFromGhOutputParsesIssueUrl);
         failed += Run("Todo project bootstrap parses trailing issue number", TestProjectBootstrapParseIssueNumberFromGhOutputParsesTrailingInteger);
@@ -687,6 +689,8 @@ internal static partial class Program {
             TestReviewSettingsConventionPacksConfigAndEnv);
         failed += Run("Review settings auto approval config and env",
             TestReviewSettingsAutoApprovalConfigAndEnv);
+        failed += Run("Review settings reviewed changes config and env",
+            TestReviewSettingsReviewedChangesConfigAndEnv);
         failed += Run("Reviewer author skip honors force-review labels and event author",
             TestReviewerAuthorSkipHonorsForceReviewLabelsAndEventAuthor);
         failed += Run("Setup-generated reviewer config validates and loads canonical related PRs",
@@ -890,6 +894,14 @@ internal static partial class Program {
             TestReviewHighlightsBlockSummarizesCurrentReviewSections);
         failed += Run("Review highlights block stops at nested headings",
             TestReviewHighlightsBlockStopsAtNestedHeadings);
+        failed += Run("Review edit diff block summarizes sticky changes",
+            TestReviewEditDiffBlockSummarizesStickyChanges);
+        failed += Run("Review summary stability drops generated status blocks",
+            TestReviewSummaryStabilityDropsGeneratedStatusBlocks);
+        failed += Run("Reviewed changes block summarizes file scope",
+            TestReviewedChangesBlockSummarizesFileScope);
+        failed += Run("Reviewed changes block marks prompt omissions",
+            TestReviewedChangesBlockMarksPromptOmissions);
         failed += Run("Redaction defaults", TestRedactionDefaults);
         failed += Run("Review budget note", TestReviewBudgetNote);
         failed += Run("Review budget note empty", TestReviewBudgetNoteEmpty);

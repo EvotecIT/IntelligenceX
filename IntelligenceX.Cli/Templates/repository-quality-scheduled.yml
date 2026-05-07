@@ -1,0 +1,70 @@
+name: IntelligenceX Repository Quality
+
+on:
+  schedule:
+    - cron: "23 3 * * 1"
+  workflow_dispatch:
+    inputs:
+      config_path:
+        description: "Path to reviewer.json"
+        required: false
+        default: ".intelligencex/reviewer.json"
+      baseline_path:
+        description: "Path to committed analysis baseline"
+        required: false
+        default: ".intelligencex/analysis-baseline.json"
+      framework:
+        description: "Target framework for C# analysis"
+        required: false
+        default: "net8.0"
+      strict:
+        description: "Fail when an analyzer runner/tool fails (true|false)"
+        required: false
+        default: "false"
+      gate_new_only:
+        description: "Gate only findings not present in the baseline (true|false)"
+        required: false
+        default: "true"
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  quality:
+    name: Repository quality posture
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 1
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 # v5.2.0
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Run repository quality posture
+        shell: bash
+        run: |
+          set -euo pipefail
+          dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj --framework net8.0 -- \
+            ci repository-quality \
+            --workspace . \
+            --out artifacts
+
+      - name: Upload SARIF to code scanning
+        if: ${{ always() && hashFiles('artifacts/**/*.sarif') != '' }}
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@0daab03d71ff584ef619d027a3fd9146679c5d84 # v3
+        with:
+          sarif_file: artifacts
+
+      - name: Upload repository quality artifacts
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ix-repository-quality
+          path: artifacts

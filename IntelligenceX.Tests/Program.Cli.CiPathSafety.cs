@@ -414,5 +414,352 @@ internal static partial class Program {
             try { Directory.Delete(root, recursive: true); } catch { }
         }
     }
+
+    private static void TestCiReviewerRunSummaryWritesActionsSummary() {
+        var root = Path.Combine(Path.GetTempPath(), "ix-ci-reviewer-summary-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try {
+            var summaryPath = Path.Combine(root, "summary.md");
+            var exit = CiReviewerRunSummaryCommand.RunAsync(new[] {
+                    "--summary", summaryPath,
+                    "--source-build-outcome", "success",
+                    "--source-build-exit", "0",
+                    "--analysis-pre-run-outcome", "success",
+                    "--analysis-pre-run-exit", "0",
+                    "--source-reviewer-outcome", "failure",
+                    "--source-reviewer-exit", "1",
+                    "--release-unix-outcome", "skipped",
+                    "--release-unix-exit", "",
+                    "--release-windows-outcome", "skipped",
+                    "--release-windows-exit", ""
+                })
+                .GetAwaiter().GetResult();
+
+            AssertEqual(0, exit, "reviewer-run-summary exit code");
+            var content = File.ReadAllText(summaryPath);
+            AssertContainsText(content, "## IntelligenceX Reviewer", "reviewer-run-summary heading");
+            AssertContainsText(content, "| Source reviewer | `failure` | `1` |", "reviewer-run-summary source reviewer row");
+            AssertContainsText(content, "fail-open by policy", "reviewer-run-summary fail-open note");
+            AssertContainsText(content, "Sticky comment deletion is treated as an intentional reset",
+                "reviewer-run-summary sticky deletion policy note");
+
+            var analysisOnlySummaryPath = Path.Combine(root, "analysis-only-summary.md");
+            exit = CiReviewerRunSummaryCommand.RunAsync(new[] {
+                    "--summary", analysisOnlySummaryPath,
+                    "--source-build-outcome", "success",
+                    "--source-build-exit", "0",
+                    "--analysis-pre-run-outcome", "failure",
+                    "--analysis-pre-run-exit", "1",
+                    "--source-reviewer-outcome", "skipped",
+                    "--source-reviewer-exit", "",
+                    "--release-unix-outcome", "skipped",
+                    "--release-unix-exit", "",
+                    "--release-windows-outcome", "skipped",
+                    "--release-windows-exit", ""
+                })
+                .GetAwaiter().GetResult();
+
+            AssertEqual(0, exit, "reviewer-run-summary analysis-only failure exit code");
+            var analysisOnlyContent = File.ReadAllText(analysisOnlySummaryPath);
+            AssertContainsText(analysisOnlyContent, "| Analysis pre-run | `failure` | `1` |",
+                "reviewer-run-summary analysis pre-run row");
+            AssertContainsText(analysisOnlyContent, "Reviewer or analysis execution produced a non-zero exit code",
+                "reviewer-run-summary analysis pre-run fail-open note");
+        } finally {
+            try { Directory.Delete(root, recursive: true); } catch { }
+        }
+    }
+
+    private static void TestCiVerifyManagedWorkflowValidatesOnlyManagedBlock() {
+        var root = Path.Combine(Path.GetTempPath(), "ix-ci-managed-workflow-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try {
+            var workflowPath = Path.Combine(root, "review-intelligencex.yml");
+            File.WriteAllText(workflowPath, string.Join(Environment.NewLine, new[] {
+                "name: review",
+                string.Empty,
+                "on:",
+                "  pull_request:",
+                string.Empty,
+                "provider: outside-managed-block",
+                "model: outside-managed-block",
+                string.Empty,
+                "jobs:",
+                "  # INTELLIGENCEX:BEGIN",
+                "  review:",
+                "    if: ${{ !github.event.pull_request.head.repo.fork || contains(github.event.pull_request.labels.*.name, 'needs-ai-review') }}",
+                "    uses: ./.github/workflows/review-intelligencex-core.yml",
+                "    with:",
+                "      provider: openai",
+                "      model: gpt-5",
+                "    secrets: inherit",
+                "  # INTELLIGENCEX:END",
+                string.Empty
+            }));
+
+            var exit = CiVerifyManagedWorkflowCommand.RunAsync(new[] { "--workflow", workflowPath })
+                .GetAwaiter().GetResult();
+            AssertEqual(0, exit, "verify-managed-workflow valid managed block exit code");
+
+            File.WriteAllText(workflowPath, string.Join(Environment.NewLine, new[] {
+                "name: review",
+                string.Empty,
+                "on:",
+                "  pull_request:",
+                string.Empty,
+                "jobs:",
+                "  # INTELLIGENCEX:BEGIN",
+                "  review:",
+                "    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork || contains(github.event.pull_request.labels.*.name, 'needs-ai-review') }}",
+                "    uses: ./.github/workflows/review-intelligencex-core.yml",
+                "    with:",
+                "      provider: openai",
+                "      model: gpt-5",
+                "    secrets: inherit",
+                "  # INTELLIGENCEX:END",
+                string.Empty
+            }));
+
+            exit = CiVerifyManagedWorkflowCommand.RunAsync(new[] { "--workflow", workflowPath })
+                .GetAwaiter().GetResult();
+            AssertEqual(0, exit, "verify-managed-workflow valid event/fork/label gate exit code");
+
+            File.WriteAllText(workflowPath, string.Join(Environment.NewLine, new[] {
+                "name: review",
+                string.Empty,
+                "on:",
+                "  pull_request:",
+                string.Empty,
+                "jobs:",
+                "  # INTELLIGENCEX:BEGIN",
+                "  review:",
+                "    if: ${{ (contains(github.event.pull_request.labels.*.name, 'needs-ai-review') || (!github.event.pull_request.head.repo.fork)) || github.event_name != 'pull_request' }}",
+                "    uses: ./.github/workflows/review-intelligencex-core.yml",
+                "    with:",
+                "      provider: openai",
+                "      model: gpt-5",
+                "    secrets: inherit",
+                "  # INTELLIGENCEX:END",
+                string.Empty
+            }));
+
+            exit = CiVerifyManagedWorkflowCommand.RunAsync(new[] { "--workflow", workflowPath })
+                .GetAwaiter().GetResult();
+            AssertEqual(0, exit, "verify-managed-workflow accepts equivalent grouped gate expression");
+
+            File.WriteAllText(workflowPath, string.Join(Environment.NewLine, new[] {
+                "name: review",
+                string.Empty,
+                "on:",
+                "  pull_request:",
+                string.Empty,
+                "provider: outside-managed-block",
+                "model: outside-managed-block",
+                string.Empty,
+                "jobs:",
+                "  # INTELLIGENCEX:BEGIN",
+                "  review:",
+                "    if: ${{ !github.event.pull_request.head.repo.fork || contains(github.event.pull_request.labels.*.name, 'needs-ai-review') }}",
+                "    uses: ./.github/workflows/review-intelligencex-core.yml",
+                "    secrets: inherit",
+                "  # INTELLIGENCEX:END",
+                string.Empty
+            }));
+
+            exit = CiVerifyManagedWorkflowCommand.RunAsync(new[] { "--workflow", workflowPath })
+                .GetAwaiter().GetResult();
+            AssertEqual(1, exit, "verify-managed-workflow ignores provider/model outside managed block");
+
+            File.WriteAllText(workflowPath, string.Join(Environment.NewLine, new[] {
+                "name: review",
+                string.Empty,
+                "on:",
+                "  pull_request:",
+                string.Empty,
+                "jobs:",
+                "  # INTELLIGENCEX:BEGIN",
+                "  review:",
+                "    if: ${{ !github.event.pull_request.head.repo.fork || 'needs-ai-review' != '' }}",
+                "    uses: ./.github/workflows/review-intelligencex-core.yml",
+                "    with:",
+                "      provider: openai",
+                "      model: gpt-5",
+                "    secrets: inherit",
+                "  # INTELLIGENCEX:END",
+                string.Empty
+            }));
+
+            exit = CiVerifyManagedWorkflowCommand.RunAsync(new[] { "--workflow", workflowPath })
+                .GetAwaiter().GetResult();
+            AssertEqual(1, exit, "verify-managed-workflow rejects inert force-review label text");
+
+            File.WriteAllText(workflowPath, string.Join(Environment.NewLine, new[] {
+                "name: review",
+                string.Empty,
+                "on:",
+                "  pull_request:",
+                string.Empty,
+                "jobs:",
+                "  # INTELLIGENCEX:BEGIN",
+                "  review:",
+                "    if: ${{ !github.event.pull_request.head.repo.fork || 'contains(github.event.pull_request.labels.*.name, ''needs-ai-review'')' != '' }}",
+                "    uses: ./.github/workflows/review-intelligencex-core.yml",
+                "    with:",
+                "      provider: openai",
+                "      model: gpt-5",
+                "    secrets: inherit",
+                "  # INTELLIGENCEX:END",
+                string.Empty
+            }));
+
+            exit = CiVerifyManagedWorkflowCommand.RunAsync(new[] { "--workflow", workflowPath })
+                .GetAwaiter().GetResult();
+            AssertEqual(1, exit, "verify-managed-workflow rejects quoted force-review expression text");
+
+            File.WriteAllText(workflowPath, string.Join(Environment.NewLine, new[] {
+                "name: review",
+                string.Empty,
+                "on:",
+                "  pull_request:",
+                string.Empty,
+                "jobs:",
+                "  # INTELLIGENCEX:BEGIN",
+                "  review:",
+                "    if: ${{ !github.event.pull_request.head.repo.fork || (contains(github.event.pull_request.labels.*.name, 'needs-ai-review') && false) }}",
+                "    uses: ./.github/workflows/review-intelligencex-core.yml",
+                "    with:",
+                "      provider: openai",
+                "      model: gpt-5",
+                "    secrets: inherit",
+                "  # INTELLIGENCEX:END",
+                string.Empty
+            }));
+
+            exit = CiVerifyManagedWorkflowCommand.RunAsync(new[] { "--workflow", workflowPath })
+                .GetAwaiter().GetResult();
+            AssertEqual(1, exit, "verify-managed-workflow rejects non-gating force-review label expression");
+
+            File.WriteAllText(workflowPath, string.Join(Environment.NewLine, new[] {
+                "name: review",
+                string.Empty,
+                "on:",
+                "  pull_request:",
+                string.Empty,
+                "jobs:",
+                "  # INTELLIGENCEX:BEGIN",
+                "  review:",
+                "    if: ${{ !github.event.pull_request.head.repo.fork || (contains(github.event.pull_request.labels.*.name, 'needs-ai-review') && someOtherFalseCondition) }}",
+                "    uses: ./.github/workflows/review-intelligencex-core.yml",
+                "    with:",
+                "      provider: openai",
+                "      model: gpt-5",
+                "    secrets: inherit",
+                "  # INTELLIGENCEX:END",
+                string.Empty
+            }));
+
+            exit = CiVerifyManagedWorkflowCommand.RunAsync(new[] { "--workflow", workflowPath })
+                .GetAwaiter().GetResult();
+            AssertEqual(1, exit, "verify-managed-workflow rejects constrained force-review label expression");
+
+            File.WriteAllText(workflowPath, string.Join(Environment.NewLine, new[] {
+                "name: review",
+                string.Empty,
+                "on:",
+                "  pull_request:",
+                string.Empty,
+                "jobs:",
+                "  # INTELLIGENCEX:BEGIN",
+                "  review:",
+                "    if: ${{ !github.event.pull_request.head.repo.fork }}",
+                "    uses: ./.github/workflows/review-intelligencex-core.yml",
+                "    with:",
+                "      provider: openai",
+                "      model: gpt-5",
+                "    secrets: inherit",
+                "  # INTELLIGENCEX:END",
+                string.Empty
+            }));
+
+            exit = CiVerifyManagedWorkflowCommand.RunAsync(new[] { "--workflow", workflowPath })
+                .GetAwaiter().GetResult();
+            AssertEqual(1, exit, "verify-managed-workflow requires force-review label contract");
+        } finally {
+            try { Directory.Delete(root, recursive: true); } catch { }
+        }
+    }
+
+    private static void TestCiRepositoryQualityReadsWorkflowDispatchInputs() {
+        var root = Path.Combine(Path.GetTempPath(), "ix-ci-repo-quality-inputs-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var previousEventPath = Environment.GetEnvironmentVariable("GITHUB_EVENT_PATH");
+        try {
+            var eventPath = Path.Combine(root, "event.json");
+            File.WriteAllText(eventPath, """
+{
+  "inputs": {
+    "config_path": "custom/reviewer.json",
+    "baseline_path": "custom/baseline.json",
+    "framework": "net10.0",
+    "strict": "true",
+    "gate_new_only": "false"
+  }
+}
+""");
+            Environment.SetEnvironmentVariable("GITHUB_EVENT_PATH", eventPath);
+
+            var summaryPath = Path.Combine(root, "summary.md");
+            var exit = CiRepositoryQualityCommand.RunAsync(new[] {
+                    "--workspace", root,
+                    "--out", "artifacts",
+                    "--summary", summaryPath
+                })
+                .GetAwaiter().GetResult();
+
+            AssertEqual(1, exit, "repository-quality missing custom config exit code");
+            var summary = File.ReadAllText(summaryPath);
+            AssertContainsText(summary, Path.Combine(root, "custom", "reviewer.json"),
+                "repository-quality summary uses workflow-dispatch config input");
+            AssertContainsText(summary, Path.Combine(root, "custom", "baseline.json"),
+                "repository-quality summary uses workflow-dispatch baseline input");
+            AssertContainsText(summary, "`false`", "repository-quality summary uses workflow-dispatch gate input");
+            AssertContainsText(summary, "`net10.0`", "repository-quality summary uses workflow-dispatch framework input");
+        } finally {
+            Environment.SetEnvironmentVariable("GITHUB_EVENT_PATH", previousEventPath);
+            try { Directory.Delete(root, recursive: true); } catch { }
+        }
+    }
+
+    private static void TestCiRepositoryQualityBootstrapPassesWhenBaselineArtifactExists() {
+        var root = Path.Combine(Path.GetTempPath(), "ix-ci-repo-quality-bootstrap-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try {
+            var bootstrapBaselinePath = Path.Combine(root, "analysis-baseline.bootstrap.json");
+            var missingExit = CiRepositoryQualityCommand.ResolveBootstrapExitCode(1, bootstrapBaselinePath);
+            AssertEqual(1, missingExit, "repository-quality bootstrap missing artifact preserves gate exit code");
+
+            File.WriteAllText(bootstrapBaselinePath, "");
+            var emptyExit = CiRepositoryQualityCommand.ResolveBootstrapExitCode(1, bootstrapBaselinePath);
+            AssertEqual(1, emptyExit, "repository-quality bootstrap empty artifact preserves gate exit code");
+
+            File.WriteAllText(bootstrapBaselinePath, "{}");
+            var emptyObjectExit = CiRepositoryQualityCommand.ResolveBootstrapExitCode(1, bootstrapBaselinePath);
+            AssertEqual(1, emptyObjectExit, "repository-quality bootstrap schema-less artifact preserves gate exit code");
+
+            File.WriteAllText(bootstrapBaselinePath, """
+{
+  "schema": "intelligencex.analysis-baseline.v1",
+  "generatedAtUtc": "2026-05-06T00:00:00.0000000Z",
+  "items": []
+}
+""");
+
+            var exit = CiRepositoryQualityCommand.ResolveBootstrapExitCode(1, bootstrapBaselinePath);
+
+            AssertEqual(0, exit, "repository-quality bootstrap baseline artifact pass exit code");
+        } finally {
+            try { Directory.Delete(root, recursive: true); } catch { }
+        }
+    }
 #endif
 }

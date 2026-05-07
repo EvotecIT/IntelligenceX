@@ -1,8 +1,9 @@
 # INTELLIGENCEX:BEGIN
 review:
-  # Do not run secret-dependent review on any forked pull requests.
+  # Do not run secret-dependent review on forked pull requests unless a maintainer opts in.
+  # Maintainers can force a forked PR review by adding `needs-ai-review`.
   # Dependabot PRs still run the job, then the reviewer exits before LLM/auth unless `needs-ai-review` is present.
-  if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork }}
+  if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork || contains(github.event.pull_request.labels.*.name, 'needs-ai-review') }}
   permissions:
     contents: read
     pull-requests: write
@@ -52,6 +53,7 @@ review:
     ci_context_max_failed_runs: ${{ inputs.ci_context_max_failed_runs }}
     ci_context_max_snippet_chars_per_run: ${{ inputs.ci_context_max_snippet_chars_per_run }}
     ci_context_classify_infra_failures: ${{ inputs.ci_context_classify_infra_failures }}
+    reviewed_changes: ${{ inputs.reviewed_changes }}
     history_enabled: ${{ inputs.history_enabled }}
     history_include_ix_summary_history: ${{ inputs.history_include_ix_summary_history }}
     history_include_review_threads: ${{ inputs.history_include_review_threads }}

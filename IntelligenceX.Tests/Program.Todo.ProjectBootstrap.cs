@@ -153,6 +153,21 @@ project={{ProjectNumber}}
         AssertContainsText(rendered, "Maintainer Quick Links", "index workflow dashboard includes quick links section");
     }
 
+    private static void TestRepositoryQualityScheduledWorkflowTemplatePublishesSarifAndBaselinePosture() {
+        var templatePath = Path.Combine("IntelligenceX.Cli", "Templates", "repository-quality-scheduled.yml");
+        var rendered = File.ReadAllText(templatePath);
+
+        AssertContainsText(rendered, "schedule:", "repository quality workflow has a schedule trigger");
+        AssertContainsText(rendered, "workflow_dispatch:", "repository quality workflow supports manual dispatch");
+        AssertContainsText(rendered, "security-events: write", "repository quality workflow can publish SARIF");
+        AssertContainsText(rendered, "ci repository-quality", "repository quality workflow delegates posture logic to CLI engine");
+        AssertEqual(false, rendered.Contains("inputs.", StringComparison.Ordinal),
+            "repository quality workflow leaves trigger input resolution to the CLI engine");
+        AssertContainsText(rendered, "github/codeql-action/upload-sarif@", "repository quality workflow uploads SARIF");
+        AssertContainsText(rendered, "--out artifacts", "repository quality workflow passes artifact path to engine");
+        AssertContainsText(rendered, "actions/upload-artifact@", "repository quality workflow uploads analysis artifacts");
+    }
+
     private static void TestProjectBootstrapBuildControlIssueBodyIncludesProjectContext() {
         var body = IntelligenceX.Cli.Todo.ProjectBootstrapRunner.BuildControlIssueBody(
             "EvotecIT/IntelligenceX",

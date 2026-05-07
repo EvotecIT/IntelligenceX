@@ -215,6 +215,8 @@ You can override configured packs per run with `intelligencex analyze run --pack
 
 The reviewer normally uses analysis artifacts as PR context and applies file filters before rendering inline comments. The analysis engine itself is not limited to PR diffs: running `intelligencex analyze run --config .intelligencex/reviewer.json --out artifacts --framework net8.0` from the repository root scans the configured workspace and emits SARIF plus `artifacts/intelligencex.findings.json` for the whole checkout. That makes it suitable for a scheduled quality posture job similar to GitHub's repository-level code scanning view.
 
+For a ready-to-copy GitHub Actions example, use `IntelligenceX.Cli/Templates/repository-quality-scheduled.yml`. The template runs weekly by default, validates the catalog, runs whole-repository analysis, uploads SARIF to code scanning when available, uploads the generated artifacts, and evaluates `analyze gate --new-only --baseline ...` when a committed baseline exists. If the baseline is missing, the first run writes `artifacts/analysis-baseline.bootstrap.json` so maintainers can review and commit a starting point intentionally.
+
 For large repositories, start with a curated tier such as `all-50` or `all-security-50`, publish SARIF through GitHub code scanning if desired, then tighten gates with `analysis.gate` once the baseline is understood. Use `analysis.hotspots.statePath` and duplication baselines when you want "new issues only" behavior instead of trying to clean every historical finding in one PR.
 
 Current built-in runners in `analyze run`:
