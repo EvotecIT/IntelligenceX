@@ -62,6 +62,26 @@ public sealed class ChatOptionsCloneTests {
                 continue;
             }
 
+            if (prop.Name == nameof(ChatOptions.ImageGeneration)) {
+                Assert.NotNull(originalValue);
+                Assert.NotNull(clonedValue);
+
+                var originalImageGeneration = Assert.IsType<ImageGenerationOptions>(originalValue);
+                var clonedImageGeneration = Assert.IsType<ImageGenerationOptions>(clonedValue);
+
+                Assert.NotSame(originalImageGeneration, clonedImageGeneration);
+                Assert.Equal(originalImageGeneration.Enabled, clonedImageGeneration.Enabled);
+                Assert.Equal(originalImageGeneration.Quality, clonedImageGeneration.Quality);
+                Assert.Equal(originalImageGeneration.Size, clonedImageGeneration.Size);
+                Assert.Equal(originalImageGeneration.OutputFormat, clonedImageGeneration.OutputFormat);
+                Assert.Equal(originalImageGeneration.OutputCompression, clonedImageGeneration.OutputCompression);
+                Assert.Equal(originalImageGeneration.Background, clonedImageGeneration.Background);
+                Assert.Equal(originalImageGeneration.PartialImages, clonedImageGeneration.PartialImages);
+                Assert.Equal(originalImageGeneration.OutputDirectory, clonedImageGeneration.OutputDirectory);
+                Assert.Equal(originalImageGeneration.SaveOutputImages, clonedImageGeneration.SaveOutputImages);
+                continue;
+            }
+
             Assert.Equal(originalValue, clonedValue);
         }
     }
@@ -150,6 +170,20 @@ public sealed class ChatOptionsCloneTests {
 
         if (t == typeof(SandboxPolicy)) {
             return new SandboxPolicy("test-sandbox", networkAccess: true, writableRoots: new List<string> { "C:\\Temp" });
+        }
+
+        if (t == typeof(ImageGenerationOptions)) {
+            return new ImageGenerationOptions {
+                Enabled = true,
+                Quality = "high",
+                Size = "1024x1024",
+                OutputFormat = "webp",
+                OutputCompression = 80,
+                Background = "transparent",
+                PartialImages = 2,
+                OutputDirectory = "C:\\Temp\\Images",
+                SaveOutputImages = true
+            };
         }
 
         throw new NotSupportedException($"No sample value generator for property '{propertyName}' of type '{propertyType.FullName}'.");
