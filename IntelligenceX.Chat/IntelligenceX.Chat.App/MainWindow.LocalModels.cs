@@ -173,6 +173,13 @@ public sealed partial class MainWindow : Window {
             reasoningSummaryValue: _localProviderReasoningSummary,
             textVerbosityValue: _localProviderTextVerbosity,
             temperatureValue: _localProviderTemperature?.ToString("0.###", CultureInfo.InvariantCulture),
+            imageGenerationEnabled: _localProviderImageGenerationEnabled,
+            imageGenerationQualityValue: _localProviderImageGenerationQuality,
+            imageGenerationSizeValue: _localProviderImageGenerationSize,
+            imageGenerationOutputFormatValue: _localProviderImageGenerationOutputFormat,
+            imageGenerationOutputCompressionValue: _localProviderImageGenerationOutputCompression,
+            imageGenerationBackgroundValue: _localProviderImageGenerationBackground,
+            imageGenerationOutputDirectoryValue: _localProviderImageGenerationOutputDirectory,
             apiKeyValue: null,
             clearBasicAuth: false,
             clearApiKey: false,
@@ -255,7 +262,10 @@ public sealed partial class MainWindow : Window {
     private async Task ApplyLocalProviderAsync(string? transportValue, string? baseUrlValue, string? modelValue, string? openAIAuthModeValue,
         string? openAIBasicUsernameValue, string? openAIBasicPasswordValue, string? openAIAccountIdValue, int? activeNativeAccountSlotValue,
         string? activeSlotAccountIdValue, string? reasoningEffortValue, string? reasoningSummaryValue, string? textVerbosityValue,
-        string? temperatureValue, string? apiKeyValue, bool clearBasicAuth, bool clearApiKey, bool forceModelRefresh, long? requestIdValue) {
+        string? temperatureValue, bool imageGenerationEnabled, string? imageGenerationQualityValue, string? imageGenerationSizeValue,
+        string? imageGenerationOutputFormatValue, int? imageGenerationOutputCompressionValue, string? imageGenerationBackgroundValue,
+        string? imageGenerationOutputDirectoryValue, string? apiKeyValue, bool clearBasicAuth, bool clearApiKey, bool forceModelRefresh,
+        long? requestIdValue) {
         var normalizedRequestId = requestIdValue.GetValueOrDefault();
         if (normalizedRequestId <= 0) {
             normalizedRequestId = Interlocked.Increment(ref _runtimeApplyRequestCounter);
@@ -280,6 +290,13 @@ public sealed partial class MainWindow : Window {
             ReasoningSummary: reasoningSummaryValue,
             TextVerbosity: textVerbosityValue,
             Temperature: temperatureValue,
+            ImageGenerationEnabled: imageGenerationEnabled,
+            ImageGenerationQuality: imageGenerationQualityValue,
+            ImageGenerationSize: imageGenerationSizeValue,
+            ImageGenerationOutputFormat: imageGenerationOutputFormatValue,
+            ImageGenerationOutputCompression: imageGenerationOutputCompressionValue,
+            ImageGenerationBackground: imageGenerationBackgroundValue,
+            ImageGenerationOutputDirectory: imageGenerationOutputDirectoryValue,
             ApiKey: apiKeyValue,
             ClearBasicAuth: clearBasicAuth,
             ClearApiKey: clearApiKey,
@@ -364,6 +381,12 @@ public sealed partial class MainWindow : Window {
         var normalizedReasoningSummary = NormalizeLocalProviderReasoningSummary(request.ReasoningSummary);
         var normalizedTextVerbosity = NormalizeLocalProviderTextVerbosity(request.TextVerbosity);
         var normalizedTemperature = NormalizeLocalProviderTemperature(request.Temperature);
+        var normalizedImageGenerationQuality = NormalizeLocalProviderImageGenerationQuality(request.ImageGenerationQuality);
+        var normalizedImageGenerationSize = NormalizeLocalProviderImageGenerationSize(request.ImageGenerationSize);
+        var normalizedImageGenerationOutputFormat = NormalizeLocalProviderImageGenerationOutputFormat(request.ImageGenerationOutputFormat);
+        var normalizedImageGenerationOutputCompression = NormalizeLocalProviderImageGenerationOutputCompression(request.ImageGenerationOutputCompression);
+        var normalizedImageGenerationBackground = NormalizeLocalProviderImageGenerationBackground(request.ImageGenerationBackground);
+        var normalizedImageGenerationOutputDirectory = NormalizeLocalProviderImageGenerationOutputDirectory(request.ImageGenerationOutputDirectory);
         if (!SupportsLocalProviderReasoningControls(normalizedTransport, normalizedBaseUrl)) {
             normalizedReasoningEffort = string.Empty;
             normalizedReasoningSummary = string.Empty;
@@ -384,6 +407,13 @@ public sealed partial class MainWindow : Window {
         var previousReasoningSummary = _localProviderReasoningSummary;
         var previousTextVerbosity = _localProviderTextVerbosity;
         var previousTemperature = _localProviderTemperature;
+        var previousImageGenerationEnabled = _localProviderImageGenerationEnabled;
+        var previousImageGenerationQuality = _localProviderImageGenerationQuality;
+        var previousImageGenerationSize = _localProviderImageGenerationSize;
+        var previousImageGenerationOutputFormat = _localProviderImageGenerationOutputFormat;
+        var previousImageGenerationOutputCompression = _localProviderImageGenerationOutputCompression;
+        var previousImageGenerationBackground = _localProviderImageGenerationBackground;
+        var previousImageGenerationOutputDirectory = _localProviderImageGenerationOutputDirectory;
         var previousIsAuthenticated = _isAuthenticated;
         var previousAuthenticatedAccountId = _authenticatedAccountId;
         var previousInteractiveAuthenticationStateKnown = _interactiveAuthenticationStateKnown;
@@ -411,6 +441,13 @@ public sealed partial class MainWindow : Window {
                       || !string.Equals(previousReasoningSummary, normalizedReasoningSummary, StringComparison.Ordinal)
                       || !string.Equals(previousTextVerbosity, normalizedTextVerbosity, StringComparison.Ordinal)
                       || previousTemperature != normalizedTemperature
+                      || previousImageGenerationEnabled != request.ImageGenerationEnabled
+                      || !string.Equals(previousImageGenerationQuality, normalizedImageGenerationQuality, StringComparison.Ordinal)
+                      || !string.Equals(previousImageGenerationSize, normalizedImageGenerationSize, StringComparison.Ordinal)
+                      || !string.Equals(previousImageGenerationOutputFormat, normalizedImageGenerationOutputFormat, StringComparison.Ordinal)
+                      || previousImageGenerationOutputCompression != normalizedImageGenerationOutputCompression
+                      || !string.Equals(previousImageGenerationBackground, normalizedImageGenerationBackground, StringComparison.Ordinal)
+                      || !string.Equals(previousImageGenerationOutputDirectory, normalizedImageGenerationOutputDirectory, StringComparison.Ordinal)
                       || hasBasicPasswordUpdate
                       || hasApiKeyUpdate;
 
@@ -422,6 +459,13 @@ public sealed partial class MainWindow : Window {
         _localProviderReasoningSummary = normalizedReasoningSummary;
         _localProviderTextVerbosity = normalizedTextVerbosity;
         _localProviderTemperature = normalizedTemperature;
+        _localProviderImageGenerationEnabled = request.ImageGenerationEnabled;
+        _localProviderImageGenerationQuality = normalizedImageGenerationQuality;
+        _localProviderImageGenerationSize = normalizedImageGenerationSize;
+        _localProviderImageGenerationOutputFormat = normalizedImageGenerationOutputFormat;
+        _localProviderImageGenerationOutputCompression = normalizedImageGenerationOutputCompression;
+        _localProviderImageGenerationBackground = normalizedImageGenerationBackground;
+        _localProviderImageGenerationOutputDirectory = normalizedImageGenerationOutputDirectory;
         if (ShouldResetEnsureLoginProbeCacheForAuthContextChange(
                 requiresInteractiveSignIn: RequiresInteractiveSignInForCurrentTransport()
                                            || string.Equals(previousTransport, TransportNative, StringComparison.OrdinalIgnoreCase),
@@ -447,6 +491,13 @@ public sealed partial class MainWindow : Window {
         _appState.LocalProviderReasoningSummary = _localProviderReasoningSummary;
         _appState.LocalProviderTextVerbosity = _localProviderTextVerbosity;
         _appState.LocalProviderTemperature = _localProviderTemperature;
+        _appState.LocalProviderImageGenerationEnabled = _localProviderImageGenerationEnabled;
+        _appState.LocalProviderImageGenerationQuality = _localProviderImageGenerationQuality;
+        _appState.LocalProviderImageGenerationSize = _localProviderImageGenerationSize;
+        _appState.LocalProviderImageGenerationOutputFormat = _localProviderImageGenerationOutputFormat;
+        _appState.LocalProviderImageGenerationOutputCompression = _localProviderImageGenerationOutputCompression;
+        _appState.LocalProviderImageGenerationBackground = _localProviderImageGenerationBackground;
+        _appState.LocalProviderImageGenerationOutputDirectory = _localProviderImageGenerationOutputDirectory;
 
         void RestorePreviousRuntimeState() {
             _localProviderTransport = previousTransport;
@@ -459,6 +510,13 @@ public sealed partial class MainWindow : Window {
             _localProviderReasoningSummary = previousReasoningSummary;
             _localProviderTextVerbosity = previousTextVerbosity;
             _localProviderTemperature = previousTemperature;
+            _localProviderImageGenerationEnabled = previousImageGenerationEnabled;
+            _localProviderImageGenerationQuality = previousImageGenerationQuality;
+            _localProviderImageGenerationSize = previousImageGenerationSize;
+            _localProviderImageGenerationOutputFormat = previousImageGenerationOutputFormat;
+            _localProviderImageGenerationOutputCompression = previousImageGenerationOutputCompression;
+            _localProviderImageGenerationBackground = previousImageGenerationBackground;
+            _localProviderImageGenerationOutputDirectory = previousImageGenerationOutputDirectory;
             _activeNativeAccountSlot = previousActiveNativeSlot;
             RestoreNativeAccountSlotsFromSnapshot(previousNativeSlots);
             _interactiveAuthenticationStateKnown = previousInteractiveAuthenticationStateKnown;
@@ -477,6 +535,13 @@ public sealed partial class MainWindow : Window {
             _appState.LocalProviderReasoningSummary = _localProviderReasoningSummary;
             _appState.LocalProviderTextVerbosity = _localProviderTextVerbosity;
             _appState.LocalProviderTemperature = _localProviderTemperature;
+            _appState.LocalProviderImageGenerationEnabled = _localProviderImageGenerationEnabled;
+            _appState.LocalProviderImageGenerationQuality = _localProviderImageGenerationQuality;
+            _appState.LocalProviderImageGenerationSize = _localProviderImageGenerationSize;
+            _appState.LocalProviderImageGenerationOutputFormat = _localProviderImageGenerationOutputFormat;
+            _appState.LocalProviderImageGenerationOutputCompression = _localProviderImageGenerationOutputCompression;
+            _appState.LocalProviderImageGenerationBackground = _localProviderImageGenerationBackground;
+            _appState.LocalProviderImageGenerationOutputDirectory = _localProviderImageGenerationOutputDirectory;
         }
 
         var profileSaved = ContainsProfileName(_serviceProfileNames, _appProfileName);
@@ -512,6 +577,13 @@ public sealed partial class MainWindow : Window {
                 reasoningSummary: _localProviderReasoningSummary,
                 textVerbosity: _localProviderTextVerbosity,
                 temperature: _localProviderTemperature,
+                imageGenerationEnabled: _localProviderImageGenerationEnabled,
+                imageGenerationQuality: _localProviderImageGenerationQuality,
+                imageGenerationSize: _localProviderImageGenerationSize,
+                imageGenerationOutputFormat: _localProviderImageGenerationOutputFormat,
+                imageGenerationOutputCompression: _localProviderImageGenerationOutputCompression,
+                imageGenerationBackground: _localProviderImageGenerationBackground,
+                imageGenerationOutputDirectory: _localProviderImageGenerationOutputDirectory,
                 enablePackIds: null,
                 disablePackIds: null).ConfigureAwait(false);
         if (liveApply) {
@@ -559,6 +631,13 @@ public sealed partial class MainWindow : Window {
         string? reasoningSummary,
         string? textVerbosity,
         double? temperature,
+        bool? imageGenerationEnabled,
+        string? imageGenerationQuality,
+        string? imageGenerationSize,
+        string? imageGenerationOutputFormat,
+        int? imageGenerationOutputCompression,
+        string? imageGenerationBackground,
+        string? imageGenerationOutputDirectory,
         IReadOnlyList<string>? enablePackIds,
         IReadOnlyList<string>? disablePackIds) {
         var client = _client;
@@ -592,6 +671,13 @@ public sealed partial class MainWindow : Window {
                     reasoningSummary: reasoningSummary,
                     textVerbosity: textVerbosity,
                     temperature: temperature,
+                    imageGenerationEnabled: imageGenerationEnabled,
+                    imageGenerationQuality: imageGenerationQuality,
+                    imageGenerationSize: imageGenerationSize,
+                    imageGenerationOutputFormat: imageGenerationOutputFormat,
+                    imageGenerationOutputCompression: imageGenerationOutputCompression,
+                    imageGenerationBackground: imageGenerationBackground,
+                    imageGenerationOutputDirectory: imageGenerationOutputDirectory,
                     enablePackIds: enablePackIds,
                     disablePackIds: disablePackIds,
                     profileName: profileSaved ? _appProfileName : null,
@@ -627,6 +713,13 @@ public sealed partial class MainWindow : Window {
                     ReasoningSummary: null,
                     TextVerbosity: null,
                     Temperature: null,
+                    ImageGenerationEnabled: false,
+                    ImageGenerationQuality: null,
+                    ImageGenerationSize: null,
+                    ImageGenerationOutputFormat: null,
+                    ImageGenerationOutputCompression: null,
+                    ImageGenerationBackground: null,
+                    ImageGenerationOutputDirectory: null,
                     ApiKey: null,
                     ClearBasicAuth: false,
                     ClearApiKey: false,
@@ -667,6 +760,11 @@ public sealed partial class MainWindow : Window {
         var reasoningEffort = (_localProviderReasoningEffort ?? string.Empty).Trim();
         var reasoningSummary = (_localProviderReasoningSummary ?? string.Empty).Trim();
         var textVerbosity = (_localProviderTextVerbosity ?? string.Empty).Trim();
+        var imageQuality = (_localProviderImageGenerationQuality ?? string.Empty).Trim();
+        var imageSize = (_localProviderImageGenerationSize ?? string.Empty).Trim();
+        var imageOutputFormat = (_localProviderImageGenerationOutputFormat ?? string.Empty).Trim();
+        var imageBackground = (_localProviderImageGenerationBackground ?? string.Empty).Trim();
+        var imageOutputDirectory = (_localProviderImageGenerationOutputDirectory ?? string.Empty).Trim();
 
         return new ServiceLaunchProfileOptions {
             LoadProfileName = profileName,
@@ -683,6 +781,13 @@ public sealed partial class MainWindow : Window {
             ReasoningSummary = reasoningSummary.Length == 0 ? null : reasoningSummary,
             TextVerbosity = textVerbosity.Length == 0 ? null : textVerbosity,
             Temperature = _localProviderTemperature,
+            ImageGenerationEnabled = _localProviderImageGenerationEnabled,
+            ImageGenerationQuality = imageQuality.Length == 0 ? null : imageQuality,
+            ImageGenerationSize = imageSize.Length == 0 ? null : imageSize,
+            ImageGenerationOutputFormat = imageOutputFormat.Length == 0 ? null : imageOutputFormat,
+            ImageGenerationOutputCompression = _localProviderImageGenerationOutputCompression,
+            ImageGenerationBackground = imageBackground.Length == 0 ? null : imageBackground,
+            ImageGenerationOutputDirectory = imageOutputDirectory.Length == 0 ? null : imageOutputDirectory,
             PackToggles = BuildRuntimePackTogglesFromSessionPolicy()
         };
     }

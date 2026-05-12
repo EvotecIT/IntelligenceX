@@ -711,6 +711,13 @@ public sealed partial class MainWindow : Window {
                             reasoningSummary: _localProviderReasoningSummary,
                             textVerbosity: _localProviderTextVerbosity,
                             temperature: _localProviderTemperature,
+                            imageGenerationEnabled: _localProviderImageGenerationEnabled,
+                            imageGenerationQuality: _localProviderImageGenerationQuality,
+                            imageGenerationSize: _localProviderImageGenerationSize,
+                            imageGenerationOutputFormat: _localProviderImageGenerationOutputFormat,
+                            imageGenerationOutputCompression: _localProviderImageGenerationOutputCompression,
+                            imageGenerationBackground: _localProviderImageGenerationBackground,
+                            imageGenerationOutputDirectory: _localProviderImageGenerationOutputDirectory,
                             enablePackIds: enablePackIds,
                             disablePackIds: disablePackIds).ConfigureAwait(false);
                     if (liveSynced) {

@@ -331,6 +331,13 @@ public sealed partial class MainWindow : Window {
     private string _localProviderReasoningSummary = string.Empty;
     private string _localProviderTextVerbosity = string.Empty;
     private double? _localProviderTemperature;
+    private bool _localProviderImageGenerationEnabled;
+    private string _localProviderImageGenerationQuality = string.Empty;
+    private string _localProviderImageGenerationSize = string.Empty;
+    private string _localProviderImageGenerationOutputFormat = "png";
+    private int? _localProviderImageGenerationOutputCompression;
+    private string _localProviderImageGenerationBackground = string.Empty;
+    private string _localProviderImageGenerationOutputDirectory = string.Empty;
     private bool _localRuntimeDetectionRan;
     private bool _localRuntimeLmStudioAvailable;
     private bool _localRuntimeOllamaAvailable;
@@ -591,6 +598,13 @@ public sealed partial class MainWindow : Window {
         string? ReasoningSummary,
         string? TextVerbosity,
         string? Temperature,
+        bool ImageGenerationEnabled,
+        string? ImageGenerationQuality,
+        string? ImageGenerationSize,
+        string? ImageGenerationOutputFormat,
+        int? ImageGenerationOutputCompression,
+        string? ImageGenerationBackground,
+        string? ImageGenerationOutputDirectory,
         string? ApiKey,
         bool ClearBasicAuth,
         bool ClearApiKey,
@@ -680,6 +694,13 @@ public sealed partial class MainWindow : Window {
         public string? ReasoningSummary { get; init; }
         public string? TextVerbosity { get; init; }
         public double? Temperature { get; init; }
+        public bool? ImageGenerationEnabled { get; init; }
+        public string? ImageGenerationQuality { get; init; }
+        public string? ImageGenerationSize { get; init; }
+        public string? ImageGenerationOutputFormat { get; init; }
+        public int? ImageGenerationOutputCompression { get; init; }
+        public string? ImageGenerationBackground { get; init; }
+        public string? ImageGenerationOutputDirectory { get; init; }
         public IReadOnlyList<ServiceLaunchArguments.PackToggle>? PackToggles { get; init; }
     }
 

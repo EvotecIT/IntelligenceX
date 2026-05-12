@@ -422,6 +422,13 @@ public sealed partial class MainWindow : Window {
                         var reasoningSummary = TryGetString(root, "reasoningSummary");
                         var textVerbosity = TryGetString(root, "textVerbosity");
                         var temperature = TryGetString(root, "temperature");
+                        var imageGenerationEnabled = TryGetBoolean(root, "imageGenerationEnabled") ?? false;
+                        var imageGenerationQuality = TryGetString(root, "imageGenerationQuality");
+                        var imageGenerationSize = TryGetString(root, "imageGenerationSize");
+                        var imageGenerationOutputFormat = TryGetString(root, "imageGenerationOutputFormat");
+                        var imageGenerationOutputCompression = TryGetInt32(root, "imageGenerationOutputCompression");
+                        var imageGenerationBackground = TryGetString(root, "imageGenerationBackground");
+                        var imageGenerationOutputDirectory = TryGetString(root, "imageGenerationOutputDirectory");
                         var apiKey = TryGetString(root, "apiKey");
                         var clearBasicAuth = TryGetBoolean(root, "clearBasicAuth");
                         var clearApiKey = TryGetBoolean(root, "clearApiKey");
@@ -441,6 +448,13 @@ public sealed partial class MainWindow : Window {
                                 reasoningSummary,
                                 textVerbosity,
                                 temperature,
+                                imageGenerationEnabled,
+                                imageGenerationQuality,
+                                imageGenerationSize,
+                                imageGenerationOutputFormat,
+                                imageGenerationOutputCompression,
+                                imageGenerationBackground,
+                                imageGenerationOutputDirectory,
                                 apiKey,
                                 clearBasicAuth ?? false,
                                 clearApiKey ?? false,

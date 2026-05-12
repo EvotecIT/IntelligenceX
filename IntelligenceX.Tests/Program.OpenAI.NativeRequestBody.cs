@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Reflection;
 using IntelligenceX.Json;
 using IntelligenceX.OpenAI;
@@ -80,6 +81,108 @@ internal static partial class Program {
         AssertNotNull(toolChoice, "tool_choice object");
         AssertEqual("custom", toolChoice!.GetString("type") ?? string.Empty, "custom choice type");
         AssertEqual("ad_domain_info", toolChoice.GetString("name") ?? string.Empty, "custom tool choice name is normalized");
+    }
+
+    private static void TestNativeRequestBodyIncludesImageGenerationTool() {
+        var ix = typeof(IntelligenceXClient).Assembly;
+        var optionsType = ix.GetType("IntelligenceX.OpenAI.Native.OpenAINativeOptions", throwOnError: true)!;
+        var transportType = ix.GetType("IntelligenceX.OpenAI.Native.OpenAINativeTransport", throwOnError: true)!;
+
+        var options = Activator.CreateInstance(optionsType);
+        AssertNotNull(options, "OpenAINativeOptions");
+
+        var transport = Activator.CreateInstance(transportType, options);
+        AssertNotNull(transport, "OpenAINativeTransport");
+
+        var wireEnum = transportType.GetNestedType("ToolWireFormat", BindingFlags.NonPublic);
+        AssertNotNull(wireEnum, "ToolWireFormat enum");
+        var customParameters = Enum.Parse(wireEnum!, "CustomParameters");
+
+        var method = transportType.GetMethod("BuildRequestBody", BindingFlags.Instance | BindingFlags.NonPublic);
+        AssertNotNull(method, "BuildRequestBody method");
+
+        var body = (JsonObject)method!.Invoke(transport, new object?[] {
+            "gpt-5.5",
+            new List<JsonObject>(),
+            "session",
+            new ChatOptions {
+                ImageGeneration = new ImageGenerationOptions {
+                    Enabled = true,
+                    Quality = "high",
+                    Size = "1536x1024",
+                    OutputFormat = "webp",
+                    OutputCompression = 80,
+                    Background = "auto"
+                }
+            },
+            customParameters
+        })!;
+
+        var tools = body.GetArray("tools");
+        AssertNotNull(tools, "tools array");
+        AssertEqual(1, tools!.Count, "image generation tool count");
+        var imageTool = tools[0].AsObject();
+        AssertNotNull(imageTool, "image generation tool object");
+        AssertEqual("image_generation", imageTool!.GetString("type") ?? string.Empty, "tool type");
+        AssertEqual("high", imageTool.GetString("quality") ?? string.Empty, "quality");
+        AssertEqual("1536x1024", imageTool.GetString("size") ?? string.Empty, "size");
+        AssertEqual("webp", imageTool.GetString("output_format") ?? string.Empty, "output format");
+        AssertEqual("auto", imageTool.GetString("background") ?? string.Empty, "background");
+        AssertEqual(false, body.TryGetValue("tool_choice", out _), "tool_choice omitted when only hosted image tool is present");
+    }
+
+    private static void TestNativeImageGenerationOutputSavesBase64Payload() {
+        var ix = typeof(IntelligenceXClient).Assembly;
+        var optionsType = ix.GetType("IntelligenceX.OpenAI.Native.OpenAINativeOptions", throwOnError: true)!;
+        var transportType = ix.GetType("IntelligenceX.OpenAI.Native.OpenAINativeTransport", throwOnError: true)!;
+
+        var outputRoot = Path.Combine(Path.GetTempPath(), "ix-imagegen-" + Guid.NewGuid().ToString("N"));
+        try {
+            var options = Activator.CreateInstance(optionsType);
+            AssertNotNull(options, "OpenAINativeOptions");
+
+            var transport = Activator.CreateInstance(transportType, options);
+            AssertNotNull(transport, "OpenAINativeTransport");
+
+            var method = transportType.GetMethod("ParseOutputsFromResponse", BindingFlags.Instance | BindingFlags.NonPublic);
+            AssertNotNull(method, "ParseOutputsFromResponse method");
+
+            var response = new JsonObject()
+                .Add("output", new JsonArray {
+                    new JsonObject()
+                        .Add("type", "image_generation_call")
+                        .Add("id", "../ig 1")
+                        .Add("status", "completed")
+                        .Add("revised_prompt", "A blue square")
+                        .Add("result", "Zm9v")
+                });
+
+            var outputs = (List<JsonObject>)method!.Invoke(transport, new object?[] {
+                response,
+                "session/../1",
+                new ChatOptions {
+                    ImageGeneration = new ImageGenerationOptions {
+                        Enabled = true,
+                        OutputFormat = "png",
+                        OutputDirectory = outputRoot
+                    }
+                }
+            })!;
+
+            AssertEqual(1, outputs.Count, "image output count");
+            var output = outputs[0];
+            AssertEqual("image", output.GetString("type") ?? string.Empty, "output type");
+            AssertEqual("Zm9v", output.GetString("base64") ?? string.Empty, "base64");
+            var path = output.GetString("path");
+            AssertNotNull(path, "saved image path");
+            AssertEqual(true, File.Exists(path!), "saved image file exists");
+            AssertEqual("foo", System.Text.Encoding.UTF8.GetString(File.ReadAllBytes(path!)), "saved image bytes");
+            AssertEqual(true, path!.StartsWith(outputRoot, StringComparison.OrdinalIgnoreCase), "saved image stays under output root");
+        } finally {
+            if (Directory.Exists(outputRoot)) {
+                Directory.Delete(outputRoot, recursive: true);
+            }
+        }
     }
 
     private static void TestNativeRequestBodyNormalizesToolReplayInputItems() {

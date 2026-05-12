@@ -25,6 +25,7 @@ public sealed class ChatOptions {
         ReasoningEffort = other.ReasoningEffort;
         ReasoningSummary = other.ReasoningSummary;
         TextVerbosity = other.TextVerbosity;
+        ImageGeneration = other.ImageGeneration?.Clone();
         Temperature = other.Temperature;
         WorkingDirectory = other.WorkingDirectory;
         Workspace = other.Workspace;
@@ -73,6 +74,10 @@ public sealed class ChatOptions {
     /// Text verbosity hint.
     /// </summary>
     public TextVerbosity? TextVerbosity { get; set; }
+    /// <summary>
+    /// Image generation built-in tool options.
+    /// </summary>
+    public ImageGenerationOptions? ImageGeneration { get; set; }
     /// <summary>
     /// Sampling temperature.
     /// </summary>

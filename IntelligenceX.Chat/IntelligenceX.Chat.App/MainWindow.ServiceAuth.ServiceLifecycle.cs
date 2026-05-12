@@ -88,6 +88,13 @@ public sealed partial class MainWindow {
                     ReasoningSummary = pending.ReasoningSummary,
                     TextVerbosity = pending.TextVerbosity,
                     Temperature = pending.Temperature,
+                    ImageGenerationEnabled = pending.ImageGenerationEnabled,
+                    ImageGenerationQuality = pending.ImageGenerationQuality,
+                    ImageGenerationSize = pending.ImageGenerationSize,
+                    ImageGenerationOutputFormat = pending.ImageGenerationOutputFormat,
+                    ImageGenerationOutputCompression = pending.ImageGenerationOutputCompression,
+                    ImageGenerationBackground = pending.ImageGenerationBackground,
+                    ImageGenerationOutputDirectory = pending.ImageGenerationOutputDirectory,
                     PackToggles = pending.PackToggles
                 },
                 additionalPluginPaths: launchPluginPaths,

@@ -56,6 +56,7 @@ internal static partial class Program {
         if (options.Temperature.HasValue) {
             Console.WriteLine($"Temperature: {options.Temperature.Value}");
         }
+        Console.WriteLine($"Image generation: {(options.EnableImageGeneration ? "on" : "off")}");
         Console.WriteLine($"Max table rows: {(options.MaxTableRows <= 0 ? "(none)" : options.MaxTableRows)}");
         Console.WriteLine($"Max sample items: {(options.MaxSample <= 0 ? "(none)" : options.MaxSample)}");
         Console.WriteLine($"Redaction: {(options.Redact ? "on" : "off")}");
@@ -152,6 +153,13 @@ internal static partial class Program {
                 TransportKind = options.OpenAITransport,
                 DefaultModel = options.Model
             };
+            clientOptions.NativeOptions.ImageGeneration.Enabled = options.EnableImageGeneration;
+            clientOptions.NativeOptions.ImageGeneration.Quality = options.ImageGenerationQuality;
+            clientOptions.NativeOptions.ImageGeneration.Size = options.ImageGenerationSize;
+            clientOptions.NativeOptions.ImageGeneration.OutputFormat = options.ImageGenerationOutputFormat;
+            clientOptions.NativeOptions.ImageGeneration.OutputCompression = options.ImageGenerationOutputCompression;
+            clientOptions.NativeOptions.ImageGeneration.Background = options.ImageGenerationBackground;
+            clientOptions.NativeOptions.ImageGeneration.OutputDirectory = options.ImageGenerationOutputDirectory;
 
             var instructions = LoadInstructions(options);
             var shaped = ApplyRuntimeShaping(instructions, options);
@@ -626,6 +634,14 @@ internal static partial class Program {
         Console.WriteLine("  --reasoning-summary <LEVEL>  Reasoning summary hint: auto|concise|detailed|off.");
         Console.WriteLine("  --text-verbosity <LEVEL>     Text verbosity hint: low|medium|high.");
         Console.WriteLine("  --temperature <N>       Sampling temperature (0-2).");
+        Console.WriteLine("  --enable-image-generation    Enable the OpenAI hosted image_generation tool.");
+        Console.WriteLine("  --disable-image-generation   Disable the OpenAI hosted image_generation tool.");
+        Console.WriteLine("  --image-generation-quality <VALUE>  Image quality override (for example: low|medium|high|auto).");
+        Console.WriteLine("  --image-generation-size <VALUE>     Image size override (for example: 1024x1024|1536x1024|auto).");
+        Console.WriteLine("  --image-generation-output-format <VALUE>  Image format override (png|jpeg|webp).");
+        Console.WriteLine("  --image-generation-output-compression <N> Image compression override (0-100).");
+        Console.WriteLine("  --image-generation-background <VALUE> Image background override (for example: auto|transparent).");
+        Console.WriteLine("  --image-generation-output-directory <PATH> Directory for saved image outputs.");
         Console.WriteLine("  --openai-transport <KIND>  Provider transport: native|appserver|compatible-http|copilot-cli (default: native).");
         Console.WriteLine("  --openai-base-url <URL> Base URL for compatible-http (example: http://127.0.0.1:11434 or http://127.0.0.1:11434/v1).");
         Console.WriteLine("  --openai-api-key <KEY>  Optional Bearer token for compatible-http.");

@@ -136,6 +136,11 @@ internal sealed partial class SqliteServiceProfileStore {
         return normalized.Length == 0 ? null : normalized;
     }
 
+    private static string? NormalizeOptionalText(string? value) {
+        var normalized = (value ?? string.Empty).Trim();
+        return normalized.Length == 0 ? null : normalized;
+    }
+
     private static bool SequenceEqualOrdinalIgnoreCase(IReadOnlyList<string>? left, IReadOnlyList<string>? right) {
         if (ReferenceEquals(left, right)) {
             return true;
@@ -207,6 +212,23 @@ internal sealed partial class SqliteServiceProfileStore {
             return (int)l;
         }
         return int.TryParse(value.ToString(), out var parsed) ? parsed : defaultValue;
+    }
+
+    private static int? ReadNullableInt(DataRow row, string col) {
+        if (!row.Table.Columns.Contains(col)) {
+            return null;
+        }
+        var value = row[col];
+        if (value is null || value == DBNull.Value) {
+            return null;
+        }
+        if (value is int i) {
+            return i;
+        }
+        if (value is long l) {
+            return (int)l;
+        }
+        return int.TryParse(value.ToString(), out var parsed) ? parsed : null;
     }
 
     private static double? ReadDouble(DataRow row, string col) {

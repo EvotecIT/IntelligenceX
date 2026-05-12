@@ -499,4 +499,29 @@ internal sealed partial class ChatServiceSession {
         return ChatEnumParser.ParseTextVerbosity(normalized) ?? fallback;
     }
 
+    private ImageGenerationOptions? ResolveImageGenerationOptions(ChatRequestOptions? requestOptions) {
+        if (!_options.EnableImageGeneration && requestOptions?.ImageGenerationEnabled != true) {
+            return null;
+        }
+
+        return new ImageGenerationOptions {
+            Enabled = requestOptions?.ImageGenerationEnabled ?? _options.EnableImageGeneration,
+            Quality = NormalizeOptional(requestOptions?.ImageGenerationQuality) ?? NormalizeOptional(_options.ImageGenerationQuality),
+            Size = NormalizeOptional(requestOptions?.ImageGenerationSize) ?? NormalizeOptional(_options.ImageGenerationSize),
+            OutputFormat = NormalizeOptional(requestOptions?.ImageGenerationOutputFormat) ??
+                           NormalizeOptional(_options.ImageGenerationOutputFormat) ??
+                           "png",
+            OutputCompression = requestOptions?.ImageGenerationOutputCompression ?? _options.ImageGenerationOutputCompression,
+            Background = NormalizeOptional(requestOptions?.ImageGenerationBackground) ?? NormalizeOptional(_options.ImageGenerationBackground),
+            OutputDirectory = NormalizeOptional(requestOptions?.ImageGenerationOutputDirectory) ??
+                              NormalizeOptional(_options.ImageGenerationOutputDirectory),
+            SaveOutputImages = true
+        };
+    }
+
+    private static string? NormalizeOptional(string? value) {
+        var trimmed = value?.Trim();
+        return string.IsNullOrWhiteSpace(trimmed) ? null : trimmed;
+    }
+
 }

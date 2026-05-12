@@ -623,6 +623,34 @@ public sealed record ApplyRuntimeSettingsRequest : ChatServiceRequest {
     /// </summary>
     public double? Temperature { get; init; }
     /// <summary>
+    /// Optional image-generation hosted tool toggle. Null keeps prior value.
+    /// </summary>
+    public bool? ImageGenerationEnabled { get; init; }
+    /// <summary>
+    /// Optional image-generation quality override. Empty clears override.
+    /// </summary>
+    public string? ImageGenerationQuality { get; init; }
+    /// <summary>
+    /// Optional image-generation size override. Empty clears override.
+    /// </summary>
+    public string? ImageGenerationSize { get; init; }
+    /// <summary>
+    /// Optional image-generation output format override. Empty clears override.
+    /// </summary>
+    public string? ImageGenerationOutputFormat { get; init; }
+    /// <summary>
+    /// Optional image-generation output compression override (0..100). Null keeps prior value.
+    /// </summary>
+    public int? ImageGenerationOutputCompression { get; init; }
+    /// <summary>
+    /// Optional image-generation background override. Empty clears override.
+    /// </summary>
+    public string? ImageGenerationBackground { get; init; }
+    /// <summary>
+    /// Optional image-generation output directory override. Empty clears override.
+    /// </summary>
+    public string? ImageGenerationOutputDirectory { get; init; }
+    /// <summary>
     /// Optional runtime pack ids to enable for the active session/profile.
     /// </summary>
     public string[]? EnablePackIds { get; init; }
@@ -737,6 +765,34 @@ public sealed record ChatRequestOptions {
     /// Optional temperature override for this request (0..2).
     /// </summary>
     public double? Temperature { get; init; }
+    /// <summary>
+    /// Optional per-request image generation built-in tool toggle.
+    /// </summary>
+    public bool? ImageGenerationEnabled { get; init; }
+    /// <summary>
+    /// Optional image generation quality override.
+    /// </summary>
+    public string? ImageGenerationQuality { get; init; }
+    /// <summary>
+    /// Optional image generation output size override.
+    /// </summary>
+    public string? ImageGenerationSize { get; init; }
+    /// <summary>
+    /// Optional image generation output format override.
+    /// </summary>
+    public string? ImageGenerationOutputFormat { get; init; }
+    /// <summary>
+    /// Optional image generation output compression override.
+    /// </summary>
+    public int? ImageGenerationOutputCompression { get; init; }
+    /// <summary>
+    /// Optional image generation background override.
+    /// </summary>
+    public string? ImageGenerationBackground { get; init; }
+    /// <summary>
+    /// Optional image generation output directory override.
+    /// </summary>
+    public string? ImageGenerationOutputDirectory { get; init; }
     /// <summary>
     /// Max tool-call rounds per user message
     /// (<see cref="ChatRequestOptionLimits.MinToolRounds"/>..<see cref="ChatRequestOptionLimits.MaxToolRounds"/>).

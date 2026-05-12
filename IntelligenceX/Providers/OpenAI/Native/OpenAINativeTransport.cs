@@ -250,7 +250,8 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
     }
 
     private async Task<TurnInfo> ProcessResponseAsync(HttpResponseMessage response, string turnId, string model,
-        NativeThreadState state, IReadOnlyList<JsonObject> inputItems, bool trackMessages, CancellationToken cancellationToken) {
+        NativeThreadState state, IReadOnlyList<JsonObject> inputItems, bool trackMessages, ChatOptions options,
+        CancellationToken cancellationToken) {
         if (!response.IsSuccessStatusCode) {
             var error = await ParseErrorResponseAsync(response, cancellationToken).ConfigureAwait(false);
             if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized) {
@@ -280,7 +281,7 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
         }
 
         var outputs = completedResponse is not null
-            ? ParseOutputsFromResponse(completedResponse)
+            ? ParseOutputsFromResponse(completedResponse, state.SessionId, options)
             : BuildOutputsFromDelta(delta.ToString());
         if (outputs.Count == 0 && delta.Length > 0) {
             outputs.Add(new JsonObject().Add("type", "text").Add("text", delta.ToString()));
@@ -305,7 +306,8 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
                     if (string.Equals(type, "message", StringComparison.Ordinal) ||
                         string.Equals(type, "custom_tool_call", StringComparison.OrdinalIgnoreCase) ||
                         string.Equals(type, "tool_call", StringComparison.OrdinalIgnoreCase) ||
-                        string.Equals(type, "function_call", StringComparison.OrdinalIgnoreCase)) {
+                        string.Equals(type, "function_call", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(type, "image_generation_call", StringComparison.OrdinalIgnoreCase)) {
                         state.Messages.Add(NormalizeInputItemForResponsesRequest(item));
                     }
                 }
@@ -376,7 +378,7 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
         if (!_options.EnableToolSchemaFallback || options.Tools is null || options.Tools.Count == 0) {
             using var response = await SendAsync(body, accessToken, accountId, state.SessionId, cancellationToken)
                 .ConfigureAwait(false);
-            return await ProcessResponseAsync(response, turnId, model, state, inputItems, trackMessages, cancellationToken)
+            return await ProcessResponseAsync(response, turnId, model, state, inputItems, trackMessages, options, cancellationToken)
                 .ConfigureAwait(false);
         }
 
@@ -388,7 +390,7 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
             var requestBody = prebuiltBody ?? BuildRequestBody(model, requestMessages, state.SessionId, options, toolWireFormat);
             using var response = await SendAsync(requestBody, accessToken, accountId, state.SessionId, cancellationToken)
                 .ConfigureAwait(false);
-            return await ProcessResponseAsync(response, turnId, model, state, inputItems, trackMessages, cancellationToken)
+            return await ProcessResponseAsync(response, turnId, model, state, inputItems, trackMessages, options, cancellationToken)
                 .ConfigureAwait(false);
         }
 

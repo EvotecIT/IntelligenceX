@@ -167,6 +167,15 @@ internal static partial class Program {
                 ReasoningSummary = _options.ReasoningSummary,
                 TextVerbosity = _options.TextVerbosity,
                 Temperature = _options.Temperature,
+                ImageGeneration = new ImageGenerationOptions {
+                    Enabled = _options.EnableImageGeneration,
+                    Quality = _options.ImageGenerationQuality,
+                    Size = _options.ImageGenerationSize,
+                    OutputFormat = _options.ImageGenerationOutputFormat,
+                    OutputCompression = _options.ImageGenerationOutputCompression,
+                    Background = _options.ImageGenerationBackground,
+                    OutputDirectory = _options.ImageGenerationOutputDirectory
+                },
                 ParallelToolCalls = _options.ParallelToolCalls,
                 Tools = toolDefs.Count == 0 ? null : toolDefs,
                 ToolChoice = toolDefs.Count == 0 ? null : ToolChoice.Auto,

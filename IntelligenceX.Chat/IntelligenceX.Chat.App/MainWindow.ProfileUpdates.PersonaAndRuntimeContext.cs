@@ -95,6 +95,10 @@ public sealed partial class MainWindow {
                       + ", summary: " + (string.IsNullOrWhiteSpace(_localProviderReasoningSummary) ? "provider default" : _localProviderReasoningSummary)
                       + ", verbosity: " + (string.IsNullOrWhiteSpace(_localProviderTextVerbosity) ? "provider default" : _localProviderTextVerbosity)
                       + ", temperature: " + (_localProviderTemperature?.ToString("0.###", CultureInfo.InvariantCulture) ?? "provider default"));
+            lines.Add("Image generation: " + (_localProviderImageGenerationEnabled ? "enabled" : "disabled")
+                      + ", quality: " + (string.IsNullOrWhiteSpace(_localProviderImageGenerationQuality) ? "provider default" : _localProviderImageGenerationQuality)
+                      + ", size: " + (string.IsNullOrWhiteSpace(_localProviderImageGenerationSize) ? "provider default" : _localProviderImageGenerationSize)
+                      + ", format: " + (string.IsNullOrWhiteSpace(_localProviderImageGenerationOutputFormat) ? "png" : _localProviderImageGenerationOutputFormat));
             lines.Add("Reasoning controls support: " + DescribeLocalProviderReasoningSupport(_localProviderTransport, _localProviderBaseUrl));
             lines.Add("Configured tool packs: enabled " + enabledTools.ToString(CultureInfo.InvariantCulture)
                       + ", disabled " + disabledTools.ToString(CultureInfo.InvariantCulture));

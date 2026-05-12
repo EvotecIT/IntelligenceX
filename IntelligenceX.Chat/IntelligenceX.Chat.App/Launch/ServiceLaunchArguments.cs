@@ -30,6 +30,13 @@ internal static class ServiceLaunchArguments {
         public string? ReasoningSummary { get; init; }
         public string? TextVerbosity { get; init; }
         public double? Temperature { get; init; }
+        public bool? ImageGenerationEnabled { get; init; }
+        public string? ImageGenerationQuality { get; init; }
+        public string? ImageGenerationSize { get; init; }
+        public string? ImageGenerationOutputFormat { get; init; }
+        public int? ImageGenerationOutputCompression { get; init; }
+        public string? ImageGenerationBackground { get; init; }
+        public string? ImageGenerationOutputDirectory { get; init; }
         public IReadOnlyList<PackToggle>? PackToggles { get; init; }
     }
 
@@ -108,6 +115,18 @@ internal static class ServiceLaunchArguments {
                 args.Add("--temperature");
                 args.Add(profileOptions.Temperature.Value.ToString(System.Globalization.CultureInfo.InvariantCulture));
             }
+            if (profileOptions.ImageGenerationEnabled.HasValue) {
+                args.Add(profileOptions.ImageGenerationEnabled.Value ? "--enable-image-generation" : "--disable-image-generation");
+            }
+            AddKeyValueArg(args, "--image-generation-quality", profileOptions.ImageGenerationQuality);
+            AddKeyValueArg(args, "--image-generation-size", profileOptions.ImageGenerationSize);
+            AddKeyValueArg(args, "--image-generation-output-format", profileOptions.ImageGenerationOutputFormat);
+            if (profileOptions.ImageGenerationOutputCompression.HasValue) {
+                args.Add("--image-generation-output-compression");
+                args.Add(profileOptions.ImageGenerationOutputCompression.Value.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            }
+            AddKeyValueArg(args, "--image-generation-background", profileOptions.ImageGenerationBackground);
+            AddKeyValueArg(args, "--image-generation-output-directory", profileOptions.ImageGenerationOutputDirectory);
 
             AddPackToggleArgs(args, profileOptions.PackToggles);
         }
