@@ -643,6 +643,10 @@ public sealed record ApplyRuntimeSettingsRequest : ChatServiceRequest {
     /// </summary>
     public int? ImageGenerationOutputCompression { get; init; }
     /// <summary>
+    /// When true, clears the image-generation output compression override.
+    /// </summary>
+    public bool ClearImageGenerationOutputCompression { get; init; }
+    /// <summary>
     /// Optional image-generation background override. Empty clears override.
     /// </summary>
     public string? ImageGenerationBackground { get; init; }

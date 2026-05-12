@@ -603,6 +603,7 @@ public sealed partial class MainWindow : Window {
         string? ImageGenerationSize,
         string? ImageGenerationOutputFormat,
         int? ImageGenerationOutputCompression,
+        bool ClearImageGenerationOutputCompression,
         string? ImageGenerationBackground,
         string? ImageGenerationOutputDirectory,
         string? ApiKey,

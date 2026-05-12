@@ -422,11 +422,12 @@ public sealed partial class MainWindow : Window {
                         var reasoningSummary = TryGetString(root, "reasoningSummary");
                         var textVerbosity = TryGetString(root, "textVerbosity");
                         var temperature = TryGetString(root, "temperature");
-                        var imageGenerationEnabled = TryGetBoolean(root, "imageGenerationEnabled") ?? false;
+                        var imageGenerationEnabled = TryGetBoolean(root, "imageGenerationEnabled") ?? _localProviderImageGenerationEnabled;
                         var imageGenerationQuality = TryGetString(root, "imageGenerationQuality");
                         var imageGenerationSize = TryGetString(root, "imageGenerationSize");
                         var imageGenerationOutputFormat = TryGetString(root, "imageGenerationOutputFormat");
                         var imageGenerationOutputCompression = TryGetInt32(root, "imageGenerationOutputCompression");
+                        var clearImageGenerationOutputCompression = TryGetBoolean(root, "clearImageGenerationOutputCompression") ?? false;
                         var imageGenerationBackground = TryGetString(root, "imageGenerationBackground");
                         var imageGenerationOutputDirectory = TryGetString(root, "imageGenerationOutputDirectory");
                         var apiKey = TryGetString(root, "apiKey");
@@ -453,6 +454,7 @@ public sealed partial class MainWindow : Window {
                                 imageGenerationSize,
                                 imageGenerationOutputFormat,
                                 imageGenerationOutputCompression,
+                                clearImageGenerationOutputCompression,
                                 imageGenerationBackground,
                                 imageGenerationOutputDirectory,
                                 apiKey,

@@ -1546,6 +1546,7 @@
       imageGenerationSize: imageGenerationSize,
       imageGenerationOutputFormat: imageGenerationOutputFormat,
       imageGenerationOutputCompression: imageGenerationOutputCompression === "" ? null : Number(imageGenerationOutputCompression),
+      clearImageGenerationOutputCompression: imageGenerationOutputCompression === "",
       imageGenerationBackground: imageGenerationBackground,
       imageGenerationOutputDirectory: imageGenerationOutputDirectory,
       apiKey: apiKey,

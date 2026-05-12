@@ -74,6 +74,32 @@ public sealed class ChatServiceProfilePresetTests {
     }
 
     [Fact]
+    public async Task HandleApplyRuntimeSettingsAsync_ClearsImageGenerationOutputCompression() {
+        var options = new ServiceOptions {
+            NoStateDb = true,
+            ImageGenerationOutputCompression = 72
+        };
+        using var buffer = new MemoryStream();
+        using var writer = new StreamWriter(buffer, new UTF8Encoding(false), 1024, leaveOpen: true);
+        var session = new ChatServiceSession(options, Stream.Null);
+        var request = new ApplyRuntimeSettingsRequest {
+            RequestId = "req_runtime_clear_image_compression",
+            ClearImageGenerationOutputCompression = true
+        };
+
+        await InvokeHandleApplyRuntimeSettingsAsync(session, writer, request);
+        writer.Flush();
+        buffer.Position = 0;
+
+        using var document = await JsonDocument.ParseAsync(buffer);
+        var response = JsonSerializer.Deserialize(document.RootElement.GetRawText(), ChatServiceJsonContext.Default.ChatServiceMessage);
+        var ack = Assert.IsType<AckMessage>(response);
+
+        Assert.True(ack.Ok);
+        Assert.Null(options.ImageGenerationOutputCompression);
+    }
+
+    [Fact]
     public async Task HandleSetProfileAsync_LoadsSavedProfileNamedPluginOnly_BeforeBuiltInPreset() {
         var dbPath = CreateTempProfileDbPath();
         try {
@@ -228,6 +254,13 @@ public sealed class ChatServiceProfilePresetTests {
 
     private static async Task InvokeHandleSetProfileAsync(ChatServiceSession session, StreamWriter writer, SetProfileRequest request) {
         var method = typeof(ChatServiceSession).GetMethod("HandleSetProfileAsync", BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(method);
+        var task = Assert.IsAssignableFrom<Task>(method!.Invoke(session, new object?[] { writer, request, CancellationToken.None }));
+        await task;
+    }
+
+    private static async Task InvokeHandleApplyRuntimeSettingsAsync(ChatServiceSession session, StreamWriter writer, ApplyRuntimeSettingsRequest request) {
+        var method = typeof(ChatServiceSession).GetMethod("HandleApplyRuntimeSettingsAsync", BindingFlags.Instance | BindingFlags.NonPublic);
         Assert.NotNull(method);
         var task = Assert.IsAssignableFrom<Task>(method!.Invoke(session, new object?[] { writer, request, CancellationToken.None }));
         await task;

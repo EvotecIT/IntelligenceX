@@ -716,6 +716,7 @@ public sealed partial class MainWindow : Window {
                             imageGenerationSize: _localProviderImageGenerationSize,
                             imageGenerationOutputFormat: _localProviderImageGenerationOutputFormat,
                             imageGenerationOutputCompression: _localProviderImageGenerationOutputCompression,
+                            clearImageGenerationOutputCompression: _localProviderImageGenerationOutputCompression is null,
                             imageGenerationBackground: _localProviderImageGenerationBackground,
                             imageGenerationOutputDirectory: _localProviderImageGenerationOutputDirectory,
                             enablePackIds: enablePackIds,

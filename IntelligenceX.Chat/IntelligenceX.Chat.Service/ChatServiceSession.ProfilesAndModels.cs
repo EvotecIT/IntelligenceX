@@ -546,7 +546,9 @@ internal sealed partial class ChatServiceSession {
             if (request.ImageGenerationOutputFormat is not null) {
                 _options.ImageGenerationOutputFormat = NormalizeRuntimeOptionalValue(request.ImageGenerationOutputFormat);
             }
-            if (request.ImageGenerationOutputCompression.HasValue) {
+            if (request.ClearImageGenerationOutputCompression) {
+                _options.ImageGenerationOutputCompression = null;
+            } else if (request.ImageGenerationOutputCompression.HasValue) {
                 var compression = request.ImageGenerationOutputCompression.Value;
                 if (compression < 0 || compression > 100) {
                     await WriteAsync(writer, new ErrorMessage {
