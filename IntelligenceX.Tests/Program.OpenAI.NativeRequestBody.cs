@@ -110,8 +110,8 @@ internal static partial class Program {
                     Enabled = true,
                     Quality = "high",
                     Size = "1536x1024",
-                    OutputFormat = "webp",
-                    OutputCompression = 80,
+                    OutputFormat = "jpg",
+                    OutputCompression = 200,
                     Background = "auto"
                 }
             },
@@ -126,8 +126,9 @@ internal static partial class Program {
         AssertEqual("image_generation", imageTool!.GetString("type") ?? string.Empty, "tool type");
         AssertEqual("high", imageTool.GetString("quality") ?? string.Empty, "quality");
         AssertEqual("1536x1024", imageTool.GetString("size") ?? string.Empty, "size");
-        AssertEqual("webp", imageTool.GetString("output_format") ?? string.Empty, "output format");
+        AssertEqual("jpeg", imageTool.GetString("output_format") ?? string.Empty, "output format");
         AssertEqual("auto", imageTool.GetString("background") ?? string.Empty, "background");
+        AssertEqual(false, imageTool.TryGetValue("output_compression", out _), "invalid output compression omitted");
         AssertEqual(false, body.TryGetValue("tool_choice", out _), "tool_choice omitted when only hosted image tool is present");
     }
 
@@ -178,6 +179,62 @@ internal static partial class Program {
             AssertEqual(true, File.Exists(path!), "saved image file exists");
             AssertEqual("foo", System.Text.Encoding.UTF8.GetString(File.ReadAllBytes(path!)), "saved image bytes");
             AssertEqual(true, path!.StartsWith(outputRoot, StringComparison.OrdinalIgnoreCase), "saved image stays under output root");
+
+            var noSaveResponse = new JsonObject()
+                .Add("output", new JsonArray {
+                    new JsonObject()
+                        .Add("type", "image_generation_call")
+                        .Add("status", "completed")
+                        .Add("result", "YmFy")
+                });
+
+            var noSaveOutputs = (List<JsonObject>)method!.Invoke(transport, new object?[] {
+                noSaveResponse,
+                "session-no-save",
+                new ChatOptions {
+                    ImageGeneration = new ImageGenerationOptions {
+                        Enabled = false,
+                        OutputFormat = "png",
+                        OutputDirectory = outputRoot
+                    }
+                }
+            })!;
+
+            AssertEqual(1, noSaveOutputs.Count, "disabled image output count");
+            AssertEqual(false, noSaveOutputs[0].TryGetValue("path", out _), "disabled image generation does not save output");
+
+            var fallbackIdResponse = new JsonObject()
+                .Add("output", new JsonArray {
+                    new JsonObject()
+                        .Add("type", "image_generation_call")
+                        .Add("status", "completed")
+                        .Add("result", "YmF6"),
+                    new JsonObject()
+                        .Add("type", "image_generation_call")
+                        .Add("status", "completed")
+                        .Add("result", "cXV4")
+                });
+
+            var fallbackOutputs = (List<JsonObject>)method!.Invoke(transport, new object?[] {
+                fallbackIdResponse,
+                "session-fallback",
+                new ChatOptions {
+                    ImageGeneration = new ImageGenerationOptions {
+                        Enabled = true,
+                        OutputFormat = "png",
+                        OutputDirectory = outputRoot
+                    }
+                }
+            })!;
+
+            AssertEqual(2, fallbackOutputs.Count, "fallback image output count");
+            var firstFallbackPath = fallbackOutputs[0].GetString("path");
+            var secondFallbackPath = fallbackOutputs[1].GetString("path");
+            AssertNotNull(firstFallbackPath, "first fallback image path");
+            AssertNotNull(secondFallbackPath, "second fallback image path");
+            AssertEqual(false, string.Equals(firstFallbackPath, secondFallbackPath, StringComparison.OrdinalIgnoreCase), "fallback image paths are unique");
+            AssertEqual(true, File.Exists(firstFallbackPath!), "first fallback image file exists");
+            AssertEqual(true, File.Exists(secondFallbackPath!), "second fallback image file exists");
         } finally {
             if (Directory.Exists(outputRoot)) {
                 Directory.Delete(outputRoot, recursive: true);

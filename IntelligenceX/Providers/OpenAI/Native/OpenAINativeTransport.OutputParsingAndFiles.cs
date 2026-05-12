@@ -18,6 +18,8 @@ using IntelligenceX.Utils;
 namespace IntelligenceX.OpenAI.Native;
 
 internal sealed partial class OpenAINativeTransport : IOpenAITransport {
+    private int _imageGenerationArtifactSequence;
+
     private static List<JsonObject> BuildOutputsFromDelta(string text) {
         var list = new List<JsonObject>();
         if (!string.IsNullOrWhiteSpace(text)) {
@@ -103,8 +105,8 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
             return;
         }
 
-        var imageOptions = ResolveImageGenerationOptions(options) ?? _options.ImageGeneration;
-        var mimeType = GuessImageMimeType(imageOptions.OutputFormat);
+        var imageOptions = ResolveImageGenerationOptions(options);
+        var mimeType = GuessImageMimeType(imageOptions?.OutputFormat);
         var output = new JsonObject()
             .Add("type", "image")
             .Add("base64", result)
@@ -120,7 +122,7 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
             output.Add("revised_prompt", revisedPrompt!.Trim());
         }
 
-        if (imageOptions.SaveOutputImages) {
+        if (imageOptions is not null && imageOptions.SaveOutputImages) {
             try {
                 var path = SaveImageGenerationResult(sessionId, id, result!, imageOptions);
                 output.Add("path", path);
@@ -158,7 +160,9 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
     private string GetImageGenerationArtifactPath(string sessionId, string? callId, ImageGenerationOptions options) {
         var directory = ResolveImageGenerationOutputDirectory(options);
         var safeSession = SanitizePathPart(sessionId, "session");
-        var safeCall = SanitizePathPart(callId, "generated_image");
+        var fallbackCall = "generated_image_" + DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString(System.Globalization.CultureInfo.InvariantCulture) +
+                           "_" + Interlocked.Increment(ref _imageGenerationArtifactSequence).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        var safeCall = SanitizePathPart(callId, fallbackCall);
         var extension = ResolveImageExtension(options.OutputFormat);
         return Path.Combine(directory, safeSession, safeCall + extension);
     }

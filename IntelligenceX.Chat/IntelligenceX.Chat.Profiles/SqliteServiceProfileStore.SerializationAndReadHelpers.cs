@@ -209,6 +209,9 @@ internal sealed partial class SqliteServiceProfileStore {
             return i;
         }
         if (value is long l) {
+            if (l < int.MinValue || l > int.MaxValue) {
+                return defaultValue;
+            }
             return (int)l;
         }
         return int.TryParse(value.ToString(), out var parsed) ? parsed : defaultValue;
@@ -226,6 +229,9 @@ internal sealed partial class SqliteServiceProfileStore {
             return i;
         }
         if (value is long l) {
+            if (l < int.MinValue || l > int.MaxValue) {
+                return null;
+            }
             return (int)l;
         }
         return int.TryParse(value.ToString(), out var parsed) ? parsed : null;

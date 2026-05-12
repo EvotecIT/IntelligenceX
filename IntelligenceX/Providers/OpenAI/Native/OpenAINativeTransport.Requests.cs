@@ -120,10 +120,11 @@ internal sealed partial class OpenAINativeTransport {
             Enabled = true,
             Quality = NormalizeOptional(request?.Quality) ?? NormalizeOptional(defaults.Quality),
             Size = NormalizeOptional(request?.Size) ?? NormalizeOptional(defaults.Size),
-            OutputFormat = NormalizeOptional(request?.OutputFormat) ?? NormalizeOptional(defaults.OutputFormat) ?? "png",
-            OutputCompression = request?.OutputCompression ?? defaults.OutputCompression,
+            OutputFormat = NormalizeImageGenerationOutputFormat(request?.OutputFormat) ??
+                           NormalizeImageGenerationOutputFormat(defaults.OutputFormat),
+            OutputCompression = NormalizeImageGenerationOutputCompression(request?.OutputCompression ?? defaults.OutputCompression),
             Background = NormalizeOptional(request?.Background) ?? NormalizeOptional(defaults.Background),
-            PartialImages = request?.PartialImages ?? defaults.PartialImages,
+            PartialImages = NormalizeImageGenerationPartialImages(request?.PartialImages ?? defaults.PartialImages),
             OutputDirectory = NormalizeOptional(request?.OutputDirectory) ?? NormalizeOptional(defaults.OutputDirectory),
             SaveOutputImages = request?.SaveOutputImages ?? defaults.SaveOutputImages
         };
@@ -157,6 +158,23 @@ internal sealed partial class OpenAINativeTransport {
     private static string? NormalizeOptional(string? value) {
         var trimmed = value?.Trim();
         return string.IsNullOrWhiteSpace(trimmed) ? null : trimmed;
+    }
+
+    private static int? NormalizeImageGenerationOutputCompression(int? value) {
+        return value is >= 0 and <= 100 ? value : null;
+    }
+
+    private static int? NormalizeImageGenerationPartialImages(int? value) {
+        return value is >= 0 and <= 3 ? value : null;
+    }
+
+    private static string? NormalizeImageGenerationOutputFormat(string? value) {
+        var normalized = NormalizeOptional(value)?.ToLowerInvariant();
+        return normalized switch {
+            "jpg" => "jpeg",
+            "jpeg" or "png" or "webp" => normalized,
+            _ => null
+        };
     }
 
     private static IReadOnlyList<ToolDefinition> GetValidTools(IReadOnlyList<ToolDefinition>? tools) {

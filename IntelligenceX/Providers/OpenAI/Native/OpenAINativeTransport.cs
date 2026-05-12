@@ -306,8 +306,7 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
                     if (string.Equals(type, "message", StringComparison.Ordinal) ||
                         string.Equals(type, "custom_tool_call", StringComparison.OrdinalIgnoreCase) ||
                         string.Equals(type, "tool_call", StringComparison.OrdinalIgnoreCase) ||
-                        string.Equals(type, "function_call", StringComparison.OrdinalIgnoreCase) ||
-                        string.Equals(type, "image_generation_call", StringComparison.OrdinalIgnoreCase)) {
+                        string.Equals(type, "function_call", StringComparison.OrdinalIgnoreCase)) {
                         state.Messages.Add(NormalizeInputItemForResponsesRequest(item));
                     }
                 }

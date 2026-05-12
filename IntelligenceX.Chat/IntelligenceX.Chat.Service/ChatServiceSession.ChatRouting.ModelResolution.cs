@@ -508,10 +508,10 @@ internal sealed partial class ChatServiceSession {
             Enabled = requestOptions?.ImageGenerationEnabled ?? _options.EnableImageGeneration,
             Quality = NormalizeOptional(requestOptions?.ImageGenerationQuality) ?? NormalizeOptional(_options.ImageGenerationQuality),
             Size = NormalizeOptional(requestOptions?.ImageGenerationSize) ?? NormalizeOptional(_options.ImageGenerationSize),
-            OutputFormat = NormalizeOptional(requestOptions?.ImageGenerationOutputFormat) ??
-                           NormalizeOptional(_options.ImageGenerationOutputFormat) ??
-                           "png",
-            OutputCompression = requestOptions?.ImageGenerationOutputCompression ?? _options.ImageGenerationOutputCompression,
+            OutputFormat = NormalizeImageGenerationOutputFormat(requestOptions?.ImageGenerationOutputFormat) ??
+                           NormalizeImageGenerationOutputFormat(_options.ImageGenerationOutputFormat),
+            OutputCompression = NormalizeImageGenerationOutputCompression(
+                requestOptions?.ImageGenerationOutputCompression ?? _options.ImageGenerationOutputCompression),
             Background = NormalizeOptional(requestOptions?.ImageGenerationBackground) ?? NormalizeOptional(_options.ImageGenerationBackground),
             OutputDirectory = NormalizeOptional(requestOptions?.ImageGenerationOutputDirectory) ??
                               NormalizeOptional(_options.ImageGenerationOutputDirectory),
@@ -522,6 +522,19 @@ internal sealed partial class ChatServiceSession {
     private static string? NormalizeOptional(string? value) {
         var trimmed = value?.Trim();
         return string.IsNullOrWhiteSpace(trimmed) ? null : trimmed;
+    }
+
+    private static int? NormalizeImageGenerationOutputCompression(int? value) {
+        return value is >= 0 and <= 100 ? value : null;
+    }
+
+    private static string? NormalizeImageGenerationOutputFormat(string? value) {
+        var normalized = NormalizeOptional(value)?.ToLowerInvariant();
+        return normalized switch {
+            "jpg" => "jpeg",
+            "jpeg" or "png" or "webp" => normalized,
+            _ => null
+        };
     }
 
 }
