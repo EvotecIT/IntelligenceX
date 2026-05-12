@@ -1960,6 +1960,15 @@
     var reasoningSummary = normalizeReasoningSummaryValue(local.reasoningSummary || "");
     var textVerbosity = normalizeTextVerbosityValue(local.textVerbosity || "");
     var temperatureText = normalizeTemperatureText(local.temperature);
+    var imageGenerationEnabled = local.imageGenerationEnabled === true;
+    var imageGenerationQuality = String(local.imageGenerationQuality || "").trim().toLowerCase();
+    var imageGenerationSize = String(local.imageGenerationSize || "").trim().toLowerCase();
+    var imageGenerationOutputFormat = String(local.imageGenerationOutputFormat || "").trim().toLowerCase();
+    var imageGenerationOutputCompression = local.imageGenerationOutputCompression == null
+      ? ""
+      : String(local.imageGenerationOutputCompression).trim();
+    var imageGenerationBackground = String(local.imageGenerationBackground || "").trim().toLowerCase();
+    var imageGenerationOutputDirectory = String(local.imageGenerationOutputDirectory || "").trim();
     var models = Array.isArray(local.models) ? local.models : [];
     var authenticatedAccountId = normalizeModelText(local.authenticatedAccountId || "");
     var accountUsage = Array.isArray(local.accountUsage) ? local.accountUsage : [];
@@ -2696,6 +2705,65 @@
       temperatureInput.disabled = isApplying;
     }
 
+    var imageEnabledInput = byId("optImageGenerationEnabled");
+    if (imageEnabledInput) {
+      imageEnabledInput.checked = imageGenerationEnabled;
+      imageEnabledInput.disabled = isApplying || transport !== "native";
+    }
+    var imageControlsDisabled = isApplying || transport !== "native" || !imageGenerationEnabled;
+    var imageQualitySelect = byId("optImageGenerationQuality");
+    if (imageQualitySelect) {
+      imageQualitySelect.value = imageGenerationQuality;
+      if (imageQualitySelect.value !== imageGenerationQuality) {
+        imageQualitySelect.value = "";
+      }
+      imageQualitySelect.disabled = imageControlsDisabled;
+      syncCustomSelect(imageQualitySelect);
+    }
+    var imageSizeSelect = byId("optImageGenerationSize");
+    if (imageSizeSelect) {
+      imageSizeSelect.value = imageGenerationSize;
+      if (imageSizeSelect.value !== imageGenerationSize) {
+        imageSizeSelect.value = "";
+      }
+      imageSizeSelect.disabled = imageControlsDisabled;
+      syncCustomSelect(imageSizeSelect);
+    }
+    var imageFormatSelect = byId("optImageGenerationOutputFormat");
+    if (imageFormatSelect) {
+      imageFormatSelect.value = imageGenerationOutputFormat || "";
+      if (imageFormatSelect.value !== (imageGenerationOutputFormat || "")) {
+        imageFormatSelect.value = "";
+      }
+      imageFormatSelect.disabled = imageControlsDisabled;
+      syncCustomSelect(imageFormatSelect);
+    }
+    var imageCompressionInput = byId("optImageGenerationOutputCompression");
+    if (imageCompressionInput) {
+      imageCompressionInput.value = imageGenerationOutputCompression;
+      imageCompressionInput.disabled = imageControlsDisabled;
+    }
+    var imageBackgroundSelect = byId("optImageGenerationBackground");
+    if (imageBackgroundSelect) {
+      imageBackgroundSelect.value = imageGenerationBackground;
+      if (imageBackgroundSelect.value !== imageGenerationBackground) {
+        imageBackgroundSelect.value = "";
+      }
+      imageBackgroundSelect.disabled = imageControlsDisabled;
+      syncCustomSelect(imageBackgroundSelect);
+    }
+    var imageOutputDirectoryInput = byId("optImageGenerationOutputDirectory");
+    if (imageOutputDirectoryInput) {
+      imageOutputDirectoryInput.value = imageGenerationOutputDirectory;
+      imageOutputDirectoryInput.disabled = imageControlsDisabled;
+    }
+    var imageHint = byId("optImageGenerationHint");
+    if (imageHint) {
+      imageHint.textContent = transport === "native"
+        ? "OpenAI native transport can expose the hosted image_generation tool on supported models."
+        : "Image generation is available through the OpenAI native transport.";
+    }
+
     var reasoningHint = byId("optReasoningHint");
     if (reasoningHint) {
       var hintParts = ["Reasoning controls are provider/model dependent."];
@@ -2882,6 +2950,15 @@
     resetRuntimePanelManagedVisibility("optTextVerbosityRow");
     resetRuntimePanelManagedVisibility("optTemperatureRow");
     resetRuntimePanelManagedVisibility("optReasoningHint");
+    resetRuntimePanelManagedVisibility("optRuntimeSectionImagesTitle");
+    resetRuntimePanelManagedVisibility("optImageGenerationEnabledRow");
+    resetRuntimePanelManagedVisibility("optImageGenerationQualityRow");
+    resetRuntimePanelManagedVisibility("optImageGenerationSizeRow");
+    resetRuntimePanelManagedVisibility("optImageGenerationOutputFormatRow");
+    resetRuntimePanelManagedVisibility("optImageGenerationOutputCompressionRow");
+    resetRuntimePanelManagedVisibility("optImageGenerationBackgroundRow");
+    resetRuntimePanelManagedVisibility("optImageGenerationOutputDirectoryRow");
+    resetRuntimePanelManagedVisibility("optImageGenerationHint");
     resetRuntimePanelManagedVisibility("optRuntimeCapabilitiesTitle");
     resetRuntimePanelManagedVisibility("optRuntimeCapabilities");
     resetRuntimePanelManagedVisibility("optLocalModelsState");
@@ -2909,6 +2986,15 @@
     mergeRuntimePanelVisibility("optTextVerbosityRow", showModelPanel);
     mergeRuntimePanelVisibility("optTemperatureRow", showModelPanel);
     mergeRuntimePanelVisibility("optReasoningHint", showModelPanel);
+    mergeRuntimePanelVisibility("optRuntimeSectionImagesTitle", showModelPanel);
+    mergeRuntimePanelVisibility("optImageGenerationEnabledRow", showModelPanel);
+    mergeRuntimePanelVisibility("optImageGenerationQualityRow", showModelPanel);
+    mergeRuntimePanelVisibility("optImageGenerationSizeRow", showModelPanel);
+    mergeRuntimePanelVisibility("optImageGenerationOutputFormatRow", showModelPanel);
+    mergeRuntimePanelVisibility("optImageGenerationOutputCompressionRow", showModelPanel);
+    mergeRuntimePanelVisibility("optImageGenerationBackgroundRow", showModelPanel);
+    mergeRuntimePanelVisibility("optImageGenerationOutputDirectoryRow", showModelPanel);
+    mergeRuntimePanelVisibility("optImageGenerationHint", showModelPanel);
     mergeRuntimePanelVisibility("optRuntimeCapabilitiesTitle", showModelPanel);
     mergeRuntimePanelVisibility("optRuntimeCapabilities", showModelPanel);
     mergeRuntimePanelVisibility("optLocalModelsState", showModelPanel);

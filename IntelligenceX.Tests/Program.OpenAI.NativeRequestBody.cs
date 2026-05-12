@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Reflection;
 using IntelligenceX.Json;
 using IntelligenceX.OpenAI;
@@ -80,6 +81,190 @@ internal static partial class Program {
         AssertNotNull(toolChoice, "tool_choice object");
         AssertEqual("custom", toolChoice!.GetString("type") ?? string.Empty, "custom choice type");
         AssertEqual("ad_domain_info", toolChoice.GetString("name") ?? string.Empty, "custom tool choice name is normalized");
+    }
+
+    private static void TestNativeRequestBodyIncludesImageGenerationTool() {
+        var ix = typeof(IntelligenceXClient).Assembly;
+        var optionsType = ix.GetType("IntelligenceX.OpenAI.Native.OpenAINativeOptions", throwOnError: true)!;
+        var transportType = ix.GetType("IntelligenceX.OpenAI.Native.OpenAINativeTransport", throwOnError: true)!;
+
+        var options = Activator.CreateInstance(optionsType);
+        AssertNotNull(options, "OpenAINativeOptions");
+
+        var transport = Activator.CreateInstance(transportType, options);
+        AssertNotNull(transport, "OpenAINativeTransport");
+
+        var wireEnum = transportType.GetNestedType("ToolWireFormat", BindingFlags.NonPublic);
+        AssertNotNull(wireEnum, "ToolWireFormat enum");
+        var customParameters = Enum.Parse(wireEnum!, "CustomParameters");
+
+        var method = transportType.GetMethod("BuildRequestBody", BindingFlags.Instance | BindingFlags.NonPublic);
+        AssertNotNull(method, "BuildRequestBody method");
+
+        var body = (JsonObject)method!.Invoke(transport, new object?[] {
+            "gpt-5.5",
+            new List<JsonObject>(),
+            "session",
+            new ChatOptions {
+                ImageGeneration = new ImageGenerationOptions {
+                    Enabled = true,
+                    Quality = "high",
+                    Size = "1536x1024",
+                    OutputFormat = "jpg",
+                    OutputCompression = 200,
+                    Background = "auto"
+                }
+            },
+            customParameters
+        })!;
+
+        var tools = body.GetArray("tools");
+        AssertNotNull(tools, "tools array");
+        AssertEqual(1, tools!.Count, "image generation tool count");
+        var imageTool = tools[0].AsObject();
+        AssertNotNull(imageTool, "image generation tool object");
+        AssertEqual("image_generation", imageTool!.GetString("type") ?? string.Empty, "tool type");
+        AssertEqual("high", imageTool.GetString("quality") ?? string.Empty, "quality");
+        AssertEqual("1536x1024", imageTool.GetString("size") ?? string.Empty, "size");
+        AssertEqual("jpeg", imageTool.GetString("output_format") ?? string.Empty, "output format");
+        AssertEqual("auto", imageTool.GetString("background") ?? string.Empty, "background");
+        AssertEqual(false, imageTool.TryGetValue("output_compression", out _), "invalid output compression omitted");
+        AssertEqual(false, body.TryGetValue("tool_choice", out _), "tool_choice omitted when only hosted image tool is present");
+    }
+
+    private static void TestNativeImageGenerationOutputSavesBase64Payload() {
+        var ix = typeof(IntelligenceXClient).Assembly;
+        var optionsType = ix.GetType("IntelligenceX.OpenAI.Native.OpenAINativeOptions", throwOnError: true)!;
+        var transportType = ix.GetType("IntelligenceX.OpenAI.Native.OpenAINativeTransport", throwOnError: true)!;
+
+        var outputRoot = Path.Combine(Path.GetTempPath(), "ix-imagegen-" + Guid.NewGuid().ToString("N"));
+        try {
+            var options = Activator.CreateInstance(optionsType);
+            AssertNotNull(options, "OpenAINativeOptions");
+
+            var transport = Activator.CreateInstance(transportType, options);
+            AssertNotNull(transport, "OpenAINativeTransport");
+
+            var method = transportType.GetMethod("ParseOutputsFromResponse", BindingFlags.Instance | BindingFlags.NonPublic);
+            AssertNotNull(method, "ParseOutputsFromResponse method");
+
+            var response = new JsonObject()
+                .Add("output", new JsonArray {
+                    new JsonObject()
+                        .Add("type", "image_generation_call")
+                        .Add("id", "../ig 1")
+                        .Add("status", "completed")
+                        .Add("revised_prompt", "A blue square")
+                        .Add("result", "Zm9v")
+                });
+
+            var outputs = (List<JsonObject>)method!.Invoke(transport, new object?[] {
+                response,
+                "session/../1",
+                new ChatOptions {
+                    ImageGeneration = new ImageGenerationOptions {
+                        Enabled = true,
+                        OutputFormat = "png",
+                        OutputDirectory = outputRoot
+                    }
+                }
+            })!;
+
+            AssertEqual(2, outputs.Count, "image output count");
+            var output = outputs[0];
+            AssertEqual("image", output.GetString("type") ?? string.Empty, "output type");
+            AssertEqual("Zm9v", output.GetString("base64") ?? string.Empty, "base64");
+            var path = output.GetString("path");
+            AssertNotNull(path, "saved image path");
+            AssertEqual(true, File.Exists(path!), "saved image file exists");
+            AssertEqual("foo", System.Text.Encoding.UTF8.GetString(File.ReadAllBytes(path!)), "saved image bytes");
+            AssertEqual(true, path!.StartsWith(outputRoot, StringComparison.OrdinalIgnoreCase), "saved image stays under output root");
+            AssertEqual("text", outputs[1].GetString("type") ?? string.Empty, "image fallback text type");
+            AssertEqual(true, (outputs[1].GetString("text") ?? string.Empty).Contains("Generated an image.", StringComparison.Ordinal), "image fallback text");
+
+            var noSaveResponse = new JsonObject()
+                .Add("output", new JsonArray {
+                    new JsonObject()
+                        .Add("type", "image_generation_call")
+                        .Add("status", "completed")
+                        .Add("result", "YmFy")
+                });
+
+            var noSaveOutputs = (List<JsonObject>)method!.Invoke(transport, new object?[] {
+                noSaveResponse,
+                "session-no-save",
+                new ChatOptions {
+                    ImageGeneration = new ImageGenerationOptions {
+                        Enabled = false,
+                        OutputFormat = "png",
+                        OutputDirectory = outputRoot
+                    }
+                }
+            })!;
+
+            AssertEqual(2, noSaveOutputs.Count, "disabled image output count");
+            AssertEqual(false, noSaveOutputs[0].TryGetValue("path", out _), "disabled image generation does not save output");
+
+            var noSaveDefaultOptions = Activator.CreateInstance(optionsType);
+            AssertNotNull(noSaveDefaultOptions, "OpenAINativeOptions no-save default");
+            var noSaveDefaultImageOptions = optionsType.GetProperty("ImageGeneration")!.GetValue(noSaveDefaultOptions);
+            AssertNotNull(noSaveDefaultImageOptions, "OpenAINativeOptions.ImageGeneration no-save default");
+            noSaveDefaultImageOptions!.GetType().GetProperty("SaveOutputImages")!.SetValue(noSaveDefaultImageOptions, false);
+            var noSaveDefaultTransport = Activator.CreateInstance(transportType, noSaveDefaultOptions);
+            AssertNotNull(noSaveDefaultTransport, "OpenAINativeTransport no-save default");
+            var noSaveDefaultOutputs = (List<JsonObject>)method!.Invoke(noSaveDefaultTransport, new object?[] {
+                noSaveResponse,
+                "session-no-save-default",
+                new ChatOptions {
+                    ImageGeneration = new ImageGenerationOptions {
+                        Enabled = true,
+                        OutputFormat = "png",
+                        OutputDirectory = outputRoot
+                    }
+                }
+            })!;
+
+            AssertEqual(2, noSaveDefaultOutputs.Count, "default-disabled image output count");
+            AssertEqual(false, noSaveDefaultOutputs[0].TryGetValue("path", out _), "transport save-output default is preserved");
+
+            var fallbackIdResponse = new JsonObject()
+                .Add("output", new JsonArray {
+                    new JsonObject()
+                        .Add("type", "image_generation_call")
+                        .Add("status", "completed")
+                        .Add("result", "YmF6"),
+                    new JsonObject()
+                        .Add("type", "image_generation_call")
+                        .Add("status", "completed")
+                        .Add("result", "cXV4")
+                });
+
+            var fallbackOutputs = (List<JsonObject>)method!.Invoke(transport, new object?[] {
+                fallbackIdResponse,
+                "session-fallback",
+                new ChatOptions {
+                    ImageGeneration = new ImageGenerationOptions {
+                        Enabled = true,
+                        OutputFormat = "png",
+                        OutputDirectory = outputRoot
+                    }
+                }
+            })!;
+
+            AssertEqual(3, fallbackOutputs.Count, "fallback image output count");
+            var firstFallbackPath = fallbackOutputs[0].GetString("path");
+            var secondFallbackPath = fallbackOutputs[1].GetString("path");
+            AssertNotNull(firstFallbackPath, "first fallback image path");
+            AssertNotNull(secondFallbackPath, "second fallback image path");
+            AssertEqual(false, string.Equals(firstFallbackPath, secondFallbackPath, StringComparison.OrdinalIgnoreCase), "fallback image paths are unique");
+            AssertEqual(true, File.Exists(firstFallbackPath!), "first fallback image file exists");
+            AssertEqual(true, File.Exists(secondFallbackPath!), "second fallback image file exists");
+            AssertEqual("text", fallbackOutputs[2].GetString("type") ?? string.Empty, "fallback image text output type");
+        } finally {
+            if (Directory.Exists(outputRoot)) {
+                Directory.Delete(outputRoot, recursive: true);
+            }
+        }
     }
 
     private static void TestNativeRequestBodyNormalizesToolReplayInputItems() {

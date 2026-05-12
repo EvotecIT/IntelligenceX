@@ -76,19 +76,26 @@ internal sealed partial class OpenAINativeTransport {
         // We keep conversation state client-side via NativeThreadState.Messages.
 
         var requestTools = GetValidTools(options.Tools);
-        if (requestTools.Count > 0) {
+        var imageGeneration = ResolveImageGenerationOptions(options);
+        var hasImageGenerationTool = imageGeneration is { Enabled: true };
+        if (requestTools.Count > 0 || hasImageGenerationTool) {
             var tools = new JsonArray();
+            if (hasImageGenerationTool) {
+                tools.Add(SerializeImageGenerationTool(imageGeneration!));
+            }
             foreach (var tool in requestTools) {
                 tools.Add(SerializeToolDefinition(tool, toolWireFormat));
             }
             body.Add("tools", tools);
 
-            var choice = NormalizeToolChoice(options.ToolChoice, requestTools);
-            var toolChoice = SerializeToolChoice(choice, toolWireFormat);
-            if (toolChoice is JsonObject obj) {
-                body.Add("tool_choice", obj);
-            } else {
-                body.Add("tool_choice", (string)toolChoice);
+            if (requestTools.Count > 0) {
+                var choice = NormalizeToolChoice(options.ToolChoice, requestTools);
+                var toolChoice = SerializeToolChoice(choice, toolWireFormat);
+                if (toolChoice is JsonObject obj) {
+                    body.Add("tool_choice", obj);
+                } else {
+                    body.Add("tool_choice", (string)toolChoice);
+                }
             }
 
             if (options.ParallelToolCalls.HasValue) {
@@ -99,6 +106,75 @@ internal sealed partial class OpenAINativeTransport {
         }
 
         return body;
+    }
+
+    private ImageGenerationOptions? ResolveImageGenerationOptions(ChatOptions options) {
+        var request = options.ImageGeneration;
+        var defaults = _options.ImageGeneration;
+        var enabled = request?.Enabled ?? defaults.Enabled;
+        if (!enabled) {
+            return null;
+        }
+
+        return new ImageGenerationOptions {
+            Enabled = true,
+            Quality = NormalizeOptional(request?.Quality) ?? NormalizeOptional(defaults.Quality),
+            Size = NormalizeOptional(request?.Size) ?? NormalizeOptional(defaults.Size),
+            OutputFormat = NormalizeImageGenerationOutputFormat(request?.OutputFormat) ??
+                           NormalizeImageGenerationOutputFormat(defaults.OutputFormat),
+            OutputCompression = NormalizeImageGenerationOutputCompression(request?.OutputCompression ?? defaults.OutputCompression),
+            Background = NormalizeOptional(request?.Background) ?? NormalizeOptional(defaults.Background),
+            PartialImages = NormalizeImageGenerationPartialImages(request?.PartialImages ?? defaults.PartialImages),
+            OutputDirectory = NormalizeOptional(request?.OutputDirectory) ?? NormalizeOptional(defaults.OutputDirectory),
+            SaveOutputImages = request?.SaveOutputImages ?? defaults.SaveOutputImages ?? true
+        };
+    }
+
+    private static JsonObject SerializeImageGenerationTool(ImageGenerationOptions options) {
+        var tool = new JsonObject()
+            .Add("type", "image_generation");
+
+        AddOptionalString(tool, "quality", options.Quality);
+        AddOptionalString(tool, "size", options.Size);
+        AddOptionalString(tool, "output_format", options.OutputFormat);
+        AddOptionalString(tool, "background", options.Background);
+        if (options.OutputCompression.HasValue) {
+            tool.Add("output_compression", options.OutputCompression.Value);
+        }
+        if (options.PartialImages.HasValue) {
+            tool.Add("partial_images", options.PartialImages.Value);
+        }
+
+        return tool;
+    }
+
+    private static void AddOptionalString(JsonObject target, string name, string? value) {
+        var normalized = NormalizeOptional(value);
+        if (!string.IsNullOrWhiteSpace(normalized)) {
+            target.Add(name, normalized);
+        }
+    }
+
+    private static string? NormalizeOptional(string? value) {
+        var trimmed = value?.Trim();
+        return string.IsNullOrWhiteSpace(trimmed) ? null : trimmed;
+    }
+
+    private static int? NormalizeImageGenerationOutputCompression(int? value) {
+        return value is >= 0 and <= 100 ? value : null;
+    }
+
+    private static int? NormalizeImageGenerationPartialImages(int? value) {
+        return value is >= 0 and <= 3 ? value : null;
+    }
+
+    private static string? NormalizeImageGenerationOutputFormat(string? value) {
+        var normalized = NormalizeOptional(value)?.ToLowerInvariant();
+        return normalized switch {
+            "jpg" => "jpeg",
+            "jpeg" or "png" or "webp" => normalized,
+            _ => null
+        };
     }
 
     private static IReadOnlyList<ToolDefinition> GetValidTools(IReadOnlyList<ToolDefinition>? tools) {

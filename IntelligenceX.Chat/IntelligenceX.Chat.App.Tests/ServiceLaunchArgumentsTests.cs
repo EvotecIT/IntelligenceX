@@ -257,6 +257,33 @@ public sealed class ServiceLaunchArgumentsTests {
     }
 
     /// <summary>
+    /// Ensures cleared image-generation overrides are emitted so saved profile values can be cleared on relaunch.
+    /// </summary>
+    [Fact]
+    public void Build_IncludesImageGenerationClearOverrides_WhenValuesAreCleared() {
+        var args = ServiceLaunchArguments.Build(
+            "intelligencex.chat",
+            detachedServiceMode: true,
+            parentProcessId: 12345,
+            new ServiceLaunchArguments.ProfileOptions {
+                ImageGenerationQuality = string.Empty,
+                ImageGenerationSize = string.Empty,
+                ImageGenerationOutputFormat = string.Empty,
+                ClearImageGenerationOutputCompression = true,
+                ImageGenerationBackground = string.Empty,
+                ImageGenerationOutputDirectory = string.Empty
+            });
+
+        AssertContainsPair(args, "--image-generation-quality", string.Empty);
+        AssertContainsPair(args, "--image-generation-size", string.Empty);
+        AssertContainsPair(args, "--image-generation-output-format", string.Empty);
+        Assert.Contains("--clear-image-generation-output-compression", args);
+        AssertContainsPair(args, "--image-generation-background", string.Empty);
+        AssertContainsPair(args, "--image-generation-output-directory", string.Empty);
+        Assert.DoesNotContain("--image-generation-output-compression", args);
+    }
+
+    /// <summary>
     /// Ensures repeatable plugin paths are forwarded, while empty/duplicate entries are ignored.
     /// </summary>
     [Fact]
@@ -364,6 +391,17 @@ public sealed class ServiceLaunchArgumentsTests {
         }
 
         return values;
+    }
+
+    private static void AssertContainsPair(IReadOnlyList<string> args, string key, string value) {
+        for (var i = 0; i < args.Count - 1; i++) {
+            if (string.Equals(args[i], key, StringComparison.Ordinal) &&
+                string.Equals(args[i + 1], value, StringComparison.Ordinal)) {
+                return;
+            }
+        }
+
+        Assert.Fail($"Expected argument pair '{key}' '{value}'.");
     }
 
     private static string NormalizeForAssertion(string path) {

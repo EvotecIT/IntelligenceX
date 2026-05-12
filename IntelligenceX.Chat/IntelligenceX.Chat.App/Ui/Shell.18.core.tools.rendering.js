@@ -50,6 +50,10 @@
     ensureCustomSelect("optReasoningEffort");
     ensureCustomSelect("optReasoningSummary");
     ensureCustomSelect("optTextVerbosity");
+    ensureCustomSelect("optImageGenerationQuality");
+    ensureCustomSelect("optImageGenerationSize");
+    ensureCustomSelect("optImageGenerationOutputFormat");
+    ensureCustomSelect("optImageGenerationBackground");
     ensureCustomSelect("optAutonomyParallel");
     ensureCustomSelect("optAutonomyPlanReview");
     ensureCustomSelect("optAutonomyWeightedRouting");

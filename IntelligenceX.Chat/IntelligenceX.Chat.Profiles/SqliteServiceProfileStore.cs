@@ -72,6 +72,13 @@ CREATE TABLE IF NOT EXISTS {ProfileTable} (
   reasoning_summary TEXT NULL,
   text_verbosity TEXT NULL,
   temperature REAL NULL,
+  enable_image_generation INTEGER NOT NULL DEFAULT 0,
+  image_generation_quality TEXT NULL,
+  image_generation_size TEXT NULL,
+  image_generation_output_format TEXT NULL,
+  image_generation_output_compression INTEGER NULL,
+  image_generation_background TEXT NULL,
+  image_generation_output_directory TEXT NULL,
   max_tool_rounds INTEGER NOT NULL,
   parallel_tools INTEGER NOT NULL,
   allow_mutating_parallel_tool_calls INTEGER NOT NULL DEFAULT 0,
@@ -163,6 +170,13 @@ CREATE INDEX IF NOT EXISTS ix_service_profiles_transport_kind ON {ProfileTable}(
         EnsureColumnExists(ProfileTable, knownProfileColumns, "require_authentication_runtime", "INTEGER NOT NULL DEFAULT 0");
         EnsureColumnExists(ProfileTable, knownProfileColumns, "run_as_profile_path", "TEXT NULL");
         EnsureColumnExists(ProfileTable, knownProfileColumns, "authentication_profile_path", "TEXT NULL");
+        EnsureColumnExists(ProfileTable, knownProfileColumns, "enable_image_generation", "INTEGER NOT NULL DEFAULT 0");
+        EnsureColumnExists(ProfileTable, knownProfileColumns, "image_generation_quality", "TEXT NULL");
+        EnsureColumnExists(ProfileTable, knownProfileColumns, "image_generation_size", "TEXT NULL");
+        EnsureColumnExists(ProfileTable, knownProfileColumns, "image_generation_output_format", "TEXT NULL");
+        EnsureColumnExists(ProfileTable, knownProfileColumns, "image_generation_output_compression", "INTEGER NULL");
+        EnsureColumnExists(ProfileTable, knownProfileColumns, "image_generation_background", "TEXT NULL");
+        EnsureColumnExists(ProfileTable, knownProfileColumns, "image_generation_output_directory", "TEXT NULL");
 
         var refreshedProfileColumns = TryGetTableColumns(ProfileTable);
         if (HasDeprecatedPackToggleColumns(refreshedProfileColumns)) {
@@ -393,7 +407,7 @@ CREATE INDEX IF NOT EXISTS ix_service_profiles_transport_kind ON {ProfileTable}(
 
     private void MigrateProfileTableDroppingDeprecatedPackToggleColumns(IEnumerable<string>? knownColumns = null) {
         const string migratedTable = "ix_service_profiles_v2";
-        const string currentColumnList = "name, model, transport_kind, openai_base_url, openai_auth_mode, openai_api_key, openai_basic_username, openai_basic_password, openai_account_id, openai_streaming, openai_allow_insecure_http, openai_allow_insecure_http_non_loopback, reasoning_effort, reasoning_summary, text_verbosity, temperature, max_tool_rounds, parallel_tools, allow_mutating_parallel_tool_calls, turn_timeout_seconds, tool_timeout_seconds, instructions_file, max_table_rows, max_sample, redact, ad_domain_controller, ad_default_search_base_dn, ad_max_results, powershell_allow_write, enable_built_in_pack_loading, use_default_built_in_tool_assembly_names, enable_default_plugin_paths, write_governance_mode, require_write_governance_runtime, require_write_audit_sink, require_explicit_routing_metadata, write_audit_sink_mode, write_audit_sink_path, authentication_runtime_preset, require_authentication_runtime, run_as_profile_path, authentication_profile_path, updated_utc";
+        const string currentColumnList = "name, model, transport_kind, openai_base_url, openai_auth_mode, openai_api_key, openai_basic_username, openai_basic_password, openai_account_id, openai_streaming, openai_allow_insecure_http, openai_allow_insecure_http_non_loopback, reasoning_effort, reasoning_summary, text_verbosity, temperature, enable_image_generation, image_generation_quality, image_generation_size, image_generation_output_format, image_generation_output_compression, image_generation_background, image_generation_output_directory, max_tool_rounds, parallel_tools, allow_mutating_parallel_tool_calls, turn_timeout_seconds, tool_timeout_seconds, instructions_file, max_table_rows, max_sample, redact, ad_domain_controller, ad_default_search_base_dn, ad_max_results, powershell_allow_write, enable_built_in_pack_loading, use_default_built_in_tool_assembly_names, enable_default_plugin_paths, write_governance_mode, require_write_governance_runtime, require_write_audit_sink, require_explicit_routing_metadata, write_audit_sink_mode, write_audit_sink_path, authentication_runtime_preset, require_authentication_runtime, run_as_profile_path, authentication_profile_path, updated_utc";
         var legacyToggleColumns = ResolveDeprecatedPackToggleColumns(knownColumns ?? TryGetTableColumns(ProfileTable));
 
         _db.BeginTransaction(_dbPath);
@@ -417,6 +431,13 @@ CREATE TABLE {migratedTable} (
   reasoning_summary TEXT NULL,
   text_verbosity TEXT NULL,
   temperature REAL NULL,
+  enable_image_generation INTEGER NOT NULL DEFAULT 0,
+  image_generation_quality TEXT NULL,
+  image_generation_size TEXT NULL,
+  image_generation_output_format TEXT NULL,
+  image_generation_output_compression INTEGER NULL,
+  image_generation_background TEXT NULL,
+  image_generation_output_directory TEXT NULL,
   max_tool_rounds INTEGER NOT NULL,
   parallel_tools INTEGER NOT NULL,
   allow_mutating_parallel_tool_calls INTEGER NOT NULL DEFAULT 0,
@@ -639,6 +660,13 @@ LIMIT 1;",
             ReasoningSummary = ChatEnumParser.ParseReasoningSummary(ReadString(r, "reasoning_summary")),
             TextVerbosity = ChatEnumParser.ParseTextVerbosity(ReadString(r, "text_verbosity")),
             Temperature = ReadDouble(r, "temperature"),
+            EnableImageGeneration = ReadBool(r, "enable_image_generation", defaultValue: false),
+            ImageGenerationQuality = ReadString(r, "image_generation_quality"),
+            ImageGenerationSize = ReadString(r, "image_generation_size"),
+            ImageGenerationOutputFormat = ReadString(r, "image_generation_output_format"),
+            ImageGenerationOutputCompression = ReadNullableInt(r, "image_generation_output_compression"),
+            ImageGenerationBackground = ReadString(r, "image_generation_background"),
+            ImageGenerationOutputDirectory = ReadString(r, "image_generation_output_directory"),
             MaxToolRounds = ReadInt(r, "max_tool_rounds", defaultValue: 24),
             ParallelTools = ReadBool(r, "parallel_tools", defaultValue: true),
             AllowMutatingParallelToolCalls = ReadBool(r, "allow_mutating_parallel_tool_calls", defaultValue: false),
@@ -720,6 +748,8 @@ INSERT INTO {ProfileTable} (
   name, model, transport_kind, openai_base_url, openai_auth_mode, openai_api_key, openai_basic_username, openai_basic_password, openai_account_id, openai_streaming,
   openai_allow_insecure_http, openai_allow_insecure_http_non_loopback,
   reasoning_effort, reasoning_summary, text_verbosity, temperature,
+  enable_image_generation, image_generation_quality, image_generation_size, image_generation_output_format,
+  image_generation_output_compression, image_generation_background, image_generation_output_directory,
   max_tool_rounds, parallel_tools, allow_mutating_parallel_tool_calls, turn_timeout_seconds, tool_timeout_seconds,
   instructions_file, max_table_rows, max_sample, redact,
   ad_domain_controller, ad_default_search_base_dn, ad_max_results,
@@ -737,6 +767,8 @@ VALUES (
   @name, @model, @transport_kind, @openai_base_url, @openai_auth_mode, @openai_api_key, @openai_basic_username, @openai_basic_password, @openai_account_id, @openai_streaming,
   @openai_allow_insecure_http, @openai_allow_insecure_http_non_loopback,
   @reasoning_effort, @reasoning_summary, @text_verbosity, @temperature,
+  @enable_image_generation, @image_generation_quality, @image_generation_size, @image_generation_output_format,
+  @image_generation_output_compression, @image_generation_background, @image_generation_output_directory,
   @max_tool_rounds, @parallel_tools, @allow_mutating_parallel_tool_calls, @turn_timeout_seconds, @tool_timeout_seconds,
   @instructions_file, @max_table_rows, @max_sample, @redact,
   @ad_domain_controller, @ad_default_search_base_dn, @ad_max_results,
@@ -766,6 +798,13 @@ ON CONFLICT(name) DO UPDATE SET
   reasoning_summary = excluded.reasoning_summary,
   text_verbosity = excluded.text_verbosity,
   temperature = excluded.temperature,
+  enable_image_generation = excluded.enable_image_generation,
+  image_generation_quality = excluded.image_generation_quality,
+  image_generation_size = excluded.image_generation_size,
+  image_generation_output_format = excluded.image_generation_output_format,
+  image_generation_output_compression = excluded.image_generation_output_compression,
+  image_generation_background = excluded.image_generation_background,
+  image_generation_output_directory = excluded.image_generation_output_directory,
   max_tool_rounds = excluded.max_tool_rounds,
   parallel_tools = excluded.parallel_tools,
   allow_mutating_parallel_tool_calls = excluded.allow_mutating_parallel_tool_calls,
@@ -850,6 +889,13 @@ ON CONFLICT(name) DO UPDATE SET
             ["@reasoning_summary"] = profile.ReasoningSummary.HasValue ? profile.ReasoningSummary.Value.ToString().ToLowerInvariant() : null,
             ["@text_verbosity"] = profile.TextVerbosity.HasValue ? profile.TextVerbosity.Value.ToString().ToLowerInvariant() : null,
             ["@temperature"] = profile.Temperature,
+            ["@enable_image_generation"] = profile.EnableImageGeneration ? 1 : 0,
+            ["@image_generation_quality"] = NormalizeOptionalText(profile.ImageGenerationQuality),
+            ["@image_generation_size"] = NormalizeOptionalText(profile.ImageGenerationSize),
+            ["@image_generation_output_format"] = NormalizeOptionalText(profile.ImageGenerationOutputFormat),
+            ["@image_generation_output_compression"] = profile.ImageGenerationOutputCompression,
+            ["@image_generation_background"] = NormalizeOptionalText(profile.ImageGenerationBackground),
+            ["@image_generation_output_directory"] = NormalizeOptionalPath(profile.ImageGenerationOutputDirectory),
             ["@max_tool_rounds"] = profile.MaxToolRounds,
             ["@parallel_tools"] = profile.ParallelTools ? 1 : 0,
             ["@allow_mutating_parallel_tool_calls"] = profile.AllowMutatingParallelToolCalls ? 1 : 0,
@@ -892,7 +938,7 @@ ON CONFLICT(name) DO UPDATE SET
     }
 
     private List<string> ResolveRequiredInsertBackfillColumns() {
-        const string currentInsertColumnsCsv = "name, model, transport_kind, openai_base_url, openai_auth_mode, openai_api_key, openai_basic_username, openai_basic_password, openai_account_id, openai_streaming, openai_allow_insecure_http, openai_allow_insecure_http_non_loopback, reasoning_effort, reasoning_summary, text_verbosity, temperature, max_tool_rounds, parallel_tools, allow_mutating_parallel_tool_calls, turn_timeout_seconds, tool_timeout_seconds, instructions_file, max_table_rows, max_sample, redact, ad_domain_controller, ad_default_search_base_dn, ad_max_results, powershell_allow_write, enable_built_in_pack_loading, use_default_built_in_tool_assembly_names, enable_default_plugin_paths, write_governance_mode, require_write_governance_runtime, require_write_audit_sink, require_explicit_routing_metadata, write_audit_sink_mode, write_audit_sink_path, authentication_runtime_preset, require_authentication_runtime, run_as_profile_path, authentication_profile_path, updated_utc";
+        const string currentInsertColumnsCsv = "name, model, transport_kind, openai_base_url, openai_auth_mode, openai_api_key, openai_basic_username, openai_basic_password, openai_account_id, openai_streaming, openai_allow_insecure_http, openai_allow_insecure_http_non_loopback, reasoning_effort, reasoning_summary, text_verbosity, temperature, enable_image_generation, image_generation_quality, image_generation_size, image_generation_output_format, image_generation_output_compression, image_generation_background, image_generation_output_directory, max_tool_rounds, parallel_tools, allow_mutating_parallel_tool_calls, turn_timeout_seconds, tool_timeout_seconds, instructions_file, max_table_rows, max_sample, redact, ad_domain_controller, ad_default_search_base_dn, ad_max_results, powershell_allow_write, enable_built_in_pack_loading, use_default_built_in_tool_assembly_names, enable_default_plugin_paths, write_governance_mode, require_write_governance_runtime, require_write_audit_sink, require_explicit_routing_metadata, write_audit_sink_mode, write_audit_sink_path, authentication_runtime_preset, require_authentication_runtime, run_as_profile_path, authentication_profile_path, updated_utc";
 
         var knownColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var split = currentInsertColumnsCsv.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);

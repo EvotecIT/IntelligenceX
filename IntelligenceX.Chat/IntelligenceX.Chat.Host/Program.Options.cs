@@ -38,6 +38,13 @@ internal static partial class Program {
         public ReasoningSummary? ReasoningSummary { get; set; }
         public TextVerbosity? TextVerbosity { get; set; }
         public double? Temperature { get; set; }
+        public bool EnableImageGeneration { get; set; }
+        public string? ImageGenerationQuality { get; set; }
+        public string? ImageGenerationSize { get; set; }
+        public string? ImageGenerationOutputFormat { get; set; }
+        public int? ImageGenerationOutputCompression { get; set; }
+        public string? ImageGenerationBackground { get; set; }
+        public string? ImageGenerationOutputDirectory { get; set; }
 
         public string? ProfileName { get; set; }
         public string? StateDbPath { get; set; }
@@ -197,6 +204,55 @@ internal static partial class Program {
                             return options;
                         }
                         options.Temperature = temp;
+                        break;
+                    case "--enable-image-generation":
+                        options.EnableImageGeneration = true;
+                        break;
+                    case "--disable-image-generation":
+                        options.EnableImageGeneration = false;
+                        break;
+                    case "--image-generation-quality":
+                        if (!TryGetValue(args, ref i, out var imageQuality, out error)) {
+                            return options;
+                        }
+                        options.ImageGenerationQuality = NormalizeOptionalValue(imageQuality);
+                        break;
+                    case "--image-generation-size":
+                        if (!TryGetValue(args, ref i, out var imageSize, out error)) {
+                            return options;
+                        }
+                        options.ImageGenerationSize = NormalizeOptionalValue(imageSize);
+                        break;
+                    case "--image-generation-output-format":
+                        if (!TryGetValue(args, ref i, out var imageOutputFormat, out error)) {
+                            return options;
+                        }
+                        options.ImageGenerationOutputFormat = NormalizeOptionalValue(imageOutputFormat);
+                        break;
+                    case "--image-generation-output-compression":
+                        if (!TryGetValue(args, ref i, out var imageCompressionValue, out error)) {
+                            return options;
+                        }
+                        if (!int.TryParse(imageCompressionValue, out var imageCompression) || imageCompression < 0 || imageCompression > 100) {
+                            error = "--image-generation-output-compression must be an integer between 0 and 100.";
+                            return options;
+                        }
+                        options.ImageGenerationOutputCompression = imageCompression;
+                        break;
+                    case "--clear-image-generation-output-compression":
+                        options.ImageGenerationOutputCompression = null;
+                        break;
+                    case "--image-generation-background":
+                        if (!TryGetValue(args, ref i, out var imageBackground, out error)) {
+                            return options;
+                        }
+                        options.ImageGenerationBackground = NormalizeOptionalValue(imageBackground);
+                        break;
+                    case "--image-generation-output-directory":
+                        if (!TryGetValue(args, ref i, out var imageOutputDirectory, out error)) {
+                            return options;
+                        }
+                        options.ImageGenerationOutputDirectory = NormalizeOptionalValue(imageOutputDirectory);
                         break;
                     case "--openai-transport":
                         if (!TryGetValue(args, ref i, out var kindValue, out error)) {
@@ -537,6 +593,13 @@ internal static partial class Program {
             ReasoningSummary = profile.ReasoningSummary;
             TextVerbosity = profile.TextVerbosity;
             Temperature = profile.Temperature;
+            EnableImageGeneration = profile.EnableImageGeneration;
+            ImageGenerationQuality = profile.ImageGenerationQuality;
+            ImageGenerationSize = profile.ImageGenerationSize;
+            ImageGenerationOutputFormat = profile.ImageGenerationOutputFormat;
+            ImageGenerationOutputCompression = profile.ImageGenerationOutputCompression;
+            ImageGenerationBackground = profile.ImageGenerationBackground;
+            ImageGenerationOutputDirectory = profile.ImageGenerationOutputDirectory;
 
             MaxToolRounds = Math.Clamp(profile.MaxToolRounds, ChatRequestOptionLimits.MinToolRounds, MaxToolRoundsLimit);
             ParallelToolCalls = profile.ParallelTools;
@@ -613,6 +676,13 @@ internal static partial class Program {
                 ReasoningSummary = ReasoningSummary,
                 TextVerbosity = TextVerbosity,
                 Temperature = Temperature,
+                EnableImageGeneration = EnableImageGeneration,
+                ImageGenerationQuality = ImageGenerationQuality,
+                ImageGenerationSize = ImageGenerationSize,
+                ImageGenerationOutputFormat = ImageGenerationOutputFormat,
+                ImageGenerationOutputCompression = ImageGenerationOutputCompression,
+                ImageGenerationBackground = ImageGenerationBackground,
+                ImageGenerationOutputDirectory = ImageGenerationOutputDirectory,
                 ProfileName = ProfileName,
                 StateDbPath = StateDbPath,
                 ShowHelp = ShowHelp,
@@ -692,6 +762,13 @@ internal static partial class Program {
             ReasoningSummary = source.ReasoningSummary;
             TextVerbosity = source.TextVerbosity;
             Temperature = source.Temperature;
+            EnableImageGeneration = source.EnableImageGeneration;
+            ImageGenerationQuality = source.ImageGenerationQuality;
+            ImageGenerationSize = source.ImageGenerationSize;
+            ImageGenerationOutputFormat = source.ImageGenerationOutputFormat;
+            ImageGenerationOutputCompression = source.ImageGenerationOutputCompression;
+            ImageGenerationBackground = source.ImageGenerationBackground;
+            ImageGenerationOutputDirectory = source.ImageGenerationOutputDirectory;
             ProfileName = source.ProfileName;
             StateDbPath = source.StateDbPath;
             ShowHelp = source.ShowHelp;
@@ -824,6 +901,11 @@ internal static partial class Program {
                 return false;
             }
             return true;
+        }
+
+        private static string? NormalizeOptionalValue(string? value) {
+            var normalized = (value ?? string.Empty).Trim();
+            return normalized.Length == 0 ? null : normalized;
         }
 
         private static bool TryParseTransport(string value, out OpenAITransportKind kind) {

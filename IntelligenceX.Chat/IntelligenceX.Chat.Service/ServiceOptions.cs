@@ -48,6 +48,13 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
     public ReasoningSummary? ReasoningSummary { get; set; }
     public TextVerbosity? TextVerbosity { get; set; }
     public double? Temperature { get; set; }
+    public bool EnableImageGeneration { get; set; }
+    public string? ImageGenerationQuality { get; set; }
+    public string? ImageGenerationSize { get; set; }
+    public string? ImageGenerationOutputFormat { get; set; }
+    public int? ImageGenerationOutputCompression { get; set; }
+    public string? ImageGenerationBackground { get; set; }
+    public string? ImageGenerationOutputDirectory { get; set; }
 
     public string? ProfileName { get; set; }
     public string? SaveProfileName { get; set; }
@@ -235,6 +242,64 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
                     return options;
                 }
                 options.Temperature = temp;
+                continue;
+            }
+            if (arg is "--enable-image-generation") {
+                options.EnableImageGeneration = true;
+                continue;
+            }
+            if (arg is "--disable-image-generation") {
+                options.EnableImageGeneration = false;
+                continue;
+            }
+            if (arg is "--image-generation-quality") {
+                if (!TryConsume(args, ref i, out var value, out error)) {
+                    return options;
+                }
+                options.ImageGenerationQuality = NormalizeOptionalValue(value);
+                continue;
+            }
+            if (arg is "--image-generation-size") {
+                if (!TryConsume(args, ref i, out var value, out error)) {
+                    return options;
+                }
+                options.ImageGenerationSize = NormalizeOptionalValue(value);
+                continue;
+            }
+            if (arg is "--image-generation-output-format") {
+                if (!TryConsume(args, ref i, out var value, out error)) {
+                    return options;
+                }
+                options.ImageGenerationOutputFormat = NormalizeOptionalValue(value);
+                continue;
+            }
+            if (arg is "--image-generation-output-compression") {
+                if (!TryConsume(args, ref i, out var value, out error)) {
+                    return options;
+                }
+                if (!int.TryParse(value, out var compression) || compression < 0 || compression > 100) {
+                    error = "--image-generation-output-compression must be an integer between 0 and 100.";
+                    return options;
+                }
+                options.ImageGenerationOutputCompression = compression;
+                continue;
+            }
+            if (arg is "--clear-image-generation-output-compression") {
+                options.ImageGenerationOutputCompression = null;
+                continue;
+            }
+            if (arg is "--image-generation-background") {
+                if (!TryConsume(args, ref i, out var value, out error)) {
+                    return options;
+                }
+                options.ImageGenerationBackground = NormalizeOptionalValue(value);
+                continue;
+            }
+            if (arg is "--image-generation-output-directory") {
+                if (!TryConsume(args, ref i, out var value, out error)) {
+                    return options;
+                }
+                options.ImageGenerationOutputDirectory = NormalizeOptionalValue(value);
                 continue;
             }
             if (arg is "--openai-transport") {
@@ -1058,6 +1123,11 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
 
     private static string NormalizeBackgroundSchedulerThreadId(string? threadId) {
         return (threadId ?? string.Empty).Trim();
+    }
+
+    private static string? NormalizeOptionalValue(string? value) {
+        var trimmed = value?.Trim();
+        return string.IsNullOrWhiteSpace(trimmed) ? null : trimmed;
     }
 
     private static void RemoveThreadId(List<string> threadIds, string normalizedThreadId) {

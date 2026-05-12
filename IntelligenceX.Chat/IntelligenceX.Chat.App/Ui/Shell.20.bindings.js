@@ -1414,6 +1414,13 @@
     var reasoningSummary = (byId("optReasoningSummary").value || "").trim();
     var textVerbosity = (byId("optTextVerbosity").value || "").trim();
     var temperature = (byId("optTemperature").value || "").trim();
+    var imageGenerationEnabled = byId("optImageGenerationEnabled").checked === true;
+    var imageGenerationQuality = (byId("optImageGenerationQuality").value || "").trim();
+    var imageGenerationSize = (byId("optImageGenerationSize").value || "").trim();
+    var imageGenerationOutputFormat = (byId("optImageGenerationOutputFormat").value || "").trim();
+    var imageGenerationOutputCompression = (byId("optImageGenerationOutputCompression").value || "").trim();
+    var imageGenerationBackground = (byId("optImageGenerationBackground").value || "").trim();
+    var imageGenerationOutputDirectory = (byId("optImageGenerationOutputDirectory").value || "").trim();
     var reasoningSupport = resolveReasoningSupportForDraft(transport, baseUrl);
     if (!reasoningSupport.supported) {
       reasoningEffort = "";
@@ -1497,6 +1504,13 @@
       state.options.localModel.reasoningSummary = reasoningSummary;
       state.options.localModel.textVerbosity = textVerbosity;
       state.options.localModel.temperature = temperature;
+      state.options.localModel.imageGenerationEnabled = imageGenerationEnabled;
+      state.options.localModel.imageGenerationQuality = imageGenerationQuality;
+      state.options.localModel.imageGenerationSize = imageGenerationSize;
+      state.options.localModel.imageGenerationOutputFormat = imageGenerationOutputFormat;
+      state.options.localModel.imageGenerationOutputCompression = imageGenerationOutputCompression;
+      state.options.localModel.imageGenerationBackground = imageGenerationBackground;
+      state.options.localModel.imageGenerationOutputDirectory = imageGenerationOutputDirectory;
       state.options.localModel.isApplying = true;
       var runtimeApply = state.options.localModel.runtimeApply;
       if (!runtimeApply || typeof runtimeApply !== "object") {
@@ -1527,6 +1541,14 @@
       reasoningSummary: reasoningSummary,
       textVerbosity: textVerbosity,
       temperature: temperature,
+      imageGenerationEnabled: imageGenerationEnabled,
+      imageGenerationQuality: imageGenerationQuality,
+      imageGenerationSize: imageGenerationSize,
+      imageGenerationOutputFormat: imageGenerationOutputFormat,
+      imageGenerationOutputCompression: imageGenerationOutputCompression === "" ? null : Number(imageGenerationOutputCompression),
+      clearImageGenerationOutputCompression: imageGenerationOutputCompression === "",
+      imageGenerationBackground: imageGenerationBackground,
+      imageGenerationOutputDirectory: imageGenerationOutputDirectory,
       apiKey: apiKey,
       clearBasicAuth: shouldClearBasicAuth,
       clearApiKey: shouldClearApiKey,
@@ -1576,6 +1598,20 @@
       ? String(local.textVerbosity || "").trim().toLowerCase()
       : "";
     var draftTemperature = (byId("optTemperature").value || "").trim();
+    var draftImageGenerationEnabled = byId("optImageGenerationEnabled").checked === true;
+    var draftImageGenerationQuality = (byId("optImageGenerationQuality").value || "").trim().toLowerCase();
+    var draftImageGenerationSize = (byId("optImageGenerationSize").value || "").trim().toLowerCase();
+    var draftImageGenerationOutputFormat = (byId("optImageGenerationOutputFormat").value || "").trim().toLowerCase();
+    var draftImageGenerationOutputCompression = (byId("optImageGenerationOutputCompression").value || "").trim();
+    var draftImageGenerationBackground = (byId("optImageGenerationBackground").value || "").trim().toLowerCase();
+    var draftImageGenerationOutputDirectory = (byId("optImageGenerationOutputDirectory").value || "").trim();
+    var currentImageGenerationEnabled = local.imageGenerationEnabled === true;
+    var currentImageGenerationQuality = String(local.imageGenerationQuality || "").trim().toLowerCase();
+    var currentImageGenerationSize = String(local.imageGenerationSize || "").trim().toLowerCase();
+    var currentImageGenerationOutputFormat = String(local.imageGenerationOutputFormat || "").trim().toLowerCase();
+    var currentImageGenerationOutputCompression = String(local.imageGenerationOutputCompression == null ? "" : local.imageGenerationOutputCompression).trim();
+    var currentImageGenerationBackground = String(local.imageGenerationBackground || "").trim().toLowerCase();
+    var currentImageGenerationOutputDirectory = String(local.imageGenerationOutputDirectory || "").trim();
     var draftOpenAIAuthMode = transportUsesCompatibleHttp(draftTransport)
       ? normalizeCompatibleAuthMode(byId("optLocalAuthMode").value || "bearer")
       : "bearer";
@@ -1602,6 +1638,13 @@
       || draftReasoningSummary !== currentReasoningSummary
       || draftTextVerbosity !== currentTextVerbosity
       || draftTemperature !== String(local.temperature == null ? "" : local.temperature).trim()
+      || draftImageGenerationEnabled !== currentImageGenerationEnabled
+      || draftImageGenerationQuality !== currentImageGenerationQuality
+      || draftImageGenerationSize !== currentImageGenerationSize
+      || draftImageGenerationOutputFormat !== currentImageGenerationOutputFormat
+      || draftImageGenerationOutputCompression !== currentImageGenerationOutputCompression
+      || draftImageGenerationBackground !== currentImageGenerationBackground
+      || draftImageGenerationOutputDirectory !== currentImageGenerationOutputDirectory
       || draftOpenAIAuthMode !== currentOpenAIAuthMode
       || draftOpenAIBasicUsername !== currentOpenAIBasicUsername
       || draftOpenAIBasicPassword.length > 0
@@ -1758,6 +1801,34 @@
   });
 
   byId("optTemperature").addEventListener("change", function() {
+    markLocalProviderDraftChanged();
+  });
+
+  byId("optImageGenerationEnabled").addEventListener("change", function() {
+    markLocalProviderDraftChanged();
+  });
+
+  byId("optImageGenerationQuality").addEventListener("change", function() {
+    markLocalProviderDraftChanged();
+  });
+
+  byId("optImageGenerationSize").addEventListener("change", function() {
+    markLocalProviderDraftChanged();
+  });
+
+  byId("optImageGenerationOutputFormat").addEventListener("change", function() {
+    markLocalProviderDraftChanged();
+  });
+
+  byId("optImageGenerationOutputCompression").addEventListener("change", function() {
+    markLocalProviderDraftChanged();
+  });
+
+  byId("optImageGenerationBackground").addEventListener("change", function() {
+    markLocalProviderDraftChanged();
+  });
+
+  byId("optImageGenerationOutputDirectory").addEventListener("change", function() {
     markLocalProviderDraftChanged();
   });
 

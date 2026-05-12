@@ -364,6 +364,73 @@ public sealed partial class MainWindow : Window {
         return NormalizeLocalProviderTemperature(parsed);
     }
 
+    private static string NormalizeLocalProviderImageGenerationQuality(string? value) {
+        var normalized = (value ?? string.Empty).Trim().ToLowerInvariant();
+        return normalized switch {
+            "auto" => "auto",
+            "low" => "low",
+            "medium" => "medium",
+            "high" => "high",
+            _ => string.Empty
+        };
+    }
+
+    private static string NormalizeLocalProviderImageGenerationSize(string? value) {
+        var normalized = (value ?? string.Empty).Trim().ToLowerInvariant();
+        return normalized switch {
+            "auto" => "auto",
+            "1024x1024" => "1024x1024",
+            "1024x1536" => "1024x1536",
+            "1536x1024" => "1536x1024",
+            _ => string.Empty
+        };
+    }
+
+    private static string NormalizeLocalProviderImageGenerationOutputFormat(string? value) {
+        var normalized = (value ?? string.Empty).Trim().ToLowerInvariant();
+        return normalized switch {
+            "jpeg" => "jpeg",
+            "jpg" => "jpeg",
+            "png" => "png",
+            "webp" => "webp",
+            _ => string.Empty
+        };
+    }
+
+    private static int? NormalizeLocalProviderImageGenerationOutputCompression(int? value) {
+        if (!value.HasValue) {
+            return null;
+        }
+
+        return value.Value >= 0 && value.Value <= 100 ? value.Value : null;
+    }
+
+    private static int? NormalizeLocalProviderImageGenerationOutputCompression(string? value) {
+        var normalized = (value ?? string.Empty).Trim();
+        if (normalized.Length == 0) {
+            return null;
+        }
+
+        return int.TryParse(normalized, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
+            ? NormalizeLocalProviderImageGenerationOutputCompression(parsed)
+            : null;
+    }
+
+    private static string NormalizeLocalProviderImageGenerationBackground(string? value) {
+        var normalized = (value ?? string.Empty).Trim().ToLowerInvariant();
+        return normalized switch {
+            "auto" => "auto",
+            "transparent" => "transparent",
+            "opaque" => "opaque",
+            _ => string.Empty
+        };
+    }
+
+    private static string NormalizeLocalProviderImageGenerationOutputDirectory(string? value) {
+        var normalized = (value ?? string.Empty).Trim();
+        return normalized.Length == 0 ? string.Empty : normalized;
+    }
+
     private static bool? ParseAutonomyParallelMode(string? raw) {
         var text = (raw ?? string.Empty).Trim();
         if (text.Equals("on", StringComparison.OrdinalIgnoreCase)) {

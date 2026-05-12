@@ -515,6 +515,7 @@ internal sealed partial class ChatServiceSession {
             ReasoningSummary = ResolveReasoningSummary(request.Options?.ReasoningSummary, _options.ReasoningSummary),
             TextVerbosity = ResolveTextVerbosity(request.Options?.TextVerbosity, _options.TextVerbosity),
             Temperature = request.Options?.Temperature ?? _options.Temperature,
+            ImageGeneration = ResolveImageGenerationOptions(request.Options),
             ParallelToolCalls = parallelTools,
             Tools = toolDefs.Count == 0 ? null : toolDefs,
             ToolChoice = toolDefs.Count == 0 ? null : ToolChoice.Auto

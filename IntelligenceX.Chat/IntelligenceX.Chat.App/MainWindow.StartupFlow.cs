@@ -1181,6 +1181,13 @@ public sealed partial class MainWindow : Window {
         _localProviderReasoningSummary = NormalizeLocalProviderReasoningSummary(_appState.LocalProviderReasoningSummary);
         _localProviderTextVerbosity = NormalizeLocalProviderTextVerbosity(_appState.LocalProviderTextVerbosity);
         _localProviderTemperature = NormalizeLocalProviderTemperature(_appState.LocalProviderTemperature);
+        _localProviderImageGenerationEnabled = _appState.LocalProviderImageGenerationEnabled;
+        _localProviderImageGenerationQuality = NormalizeLocalProviderImageGenerationQuality(_appState.LocalProviderImageGenerationQuality);
+        _localProviderImageGenerationSize = NormalizeLocalProviderImageGenerationSize(_appState.LocalProviderImageGenerationSize);
+        _localProviderImageGenerationOutputFormat = NormalizeLocalProviderImageGenerationOutputFormat(_appState.LocalProviderImageGenerationOutputFormat);
+        _localProviderImageGenerationOutputCompression = NormalizeLocalProviderImageGenerationOutputCompression(_appState.LocalProviderImageGenerationOutputCompression);
+        _localProviderImageGenerationBackground = NormalizeLocalProviderImageGenerationBackground(_appState.LocalProviderImageGenerationBackground);
+        _localProviderImageGenerationOutputDirectory = NormalizeLocalProviderImageGenerationOutputDirectory(_appState.LocalProviderImageGenerationOutputDirectory);
         _appState.LocalProviderTransport = _localProviderTransport;
         _appState.LocalProviderBaseUrl = _localProviderBaseUrl;
         _appState.LocalProviderModel = _localProviderModel;
@@ -1191,6 +1198,13 @@ public sealed partial class MainWindow : Window {
         _appState.LocalProviderReasoningSummary = _localProviderReasoningSummary;
         _appState.LocalProviderTextVerbosity = _localProviderTextVerbosity;
         _appState.LocalProviderTemperature = _localProviderTemperature;
+        _appState.LocalProviderImageGenerationEnabled = _localProviderImageGenerationEnabled;
+        _appState.LocalProviderImageGenerationQuality = _localProviderImageGenerationQuality;
+        _appState.LocalProviderImageGenerationSize = _localProviderImageGenerationSize;
+        _appState.LocalProviderImageGenerationOutputFormat = _localProviderImageGenerationOutputFormat;
+        _appState.LocalProviderImageGenerationOutputCompression = _localProviderImageGenerationOutputCompression;
+        _appState.LocalProviderImageGenerationBackground = _localProviderImageGenerationBackground;
+        _appState.LocalProviderImageGenerationOutputDirectory = _localProviderImageGenerationOutputDirectory;
         if (!RequiresInteractiveSignInForCurrentTransport()) {
             ApplyNonNativeAuthenticationStateIfNeeded();
         } else if (!string.Equals(previousTransport, TransportNative, StringComparison.OrdinalIgnoreCase)) {

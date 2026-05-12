@@ -35,6 +35,13 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
         ReasoningSummary = profile.ReasoningSummary;
         TextVerbosity = profile.TextVerbosity;
         Temperature = profile.Temperature;
+        EnableImageGeneration = profile.EnableImageGeneration;
+        ImageGenerationQuality = profile.ImageGenerationQuality;
+        ImageGenerationSize = profile.ImageGenerationSize;
+        ImageGenerationOutputFormat = profile.ImageGenerationOutputFormat;
+        ImageGenerationOutputCompression = profile.ImageGenerationOutputCompression;
+        ImageGenerationBackground = profile.ImageGenerationBackground;
+        ImageGenerationOutputDirectory = profile.ImageGenerationOutputDirectory;
 
         MaxToolRounds = Math.Clamp(profile.MaxToolRounds, 1, MaxToolRoundsLimit);
         ParallelTools = profile.ParallelTools;
@@ -152,6 +159,13 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
             ReasoningSummary = ReasoningSummary,
             TextVerbosity = TextVerbosity,
             Temperature = Temperature,
+            EnableImageGeneration = EnableImageGeneration,
+            ImageGenerationQuality = ImageGenerationQuality,
+            ImageGenerationSize = ImageGenerationSize,
+            ImageGenerationOutputFormat = ImageGenerationOutputFormat,
+            ImageGenerationOutputCompression = ImageGenerationOutputCompression,
+            ImageGenerationBackground = ImageGenerationBackground,
+            ImageGenerationOutputDirectory = ImageGenerationOutputDirectory,
             MaxToolRounds = Math.Clamp(MaxToolRounds, 1, MaxToolRoundsLimit),
             ParallelTools = ParallelTools,
             AllowMutatingParallelToolCalls = AllowMutatingParallelToolCalls,

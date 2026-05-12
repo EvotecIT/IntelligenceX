@@ -1,10 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Net;
-using System.Net.Http;
-using System.Net.Http.Headers;
-using System.Runtime.ExceptionServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -22,6 +18,8 @@ using IntelligenceX.Utils;
 namespace IntelligenceX.OpenAI.Native;
 
 internal sealed partial class OpenAINativeTransport : IOpenAITransport {
+    private int _imageGenerationArtifactSequence;
+
     private static List<JsonObject> BuildOutputsFromDelta(string text) {
         var list = new List<JsonObject>();
         if (!string.IsNullOrWhiteSpace(text)) {
@@ -30,7 +28,7 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
         return list;
     }
 
-    private static List<JsonObject> ParseOutputsFromResponse(JsonObject response) {
+    private List<JsonObject> ParseOutputsFromResponse(JsonObject response, string sessionId, ChatOptions options) {
         var outputs = new List<JsonObject>();
         var outputArray = response.GetArray("output");
         if (outputArray is null) {
@@ -54,6 +52,10 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
                 AddImageOutput(item, outputs);
                 continue;
             }
+            if (string.Equals(type, "image_generation_call", StringComparison.OrdinalIgnoreCase)) {
+                AddImageGenerationOutput(item, sessionId, options, outputs);
+                continue;
+            }
             if (string.Equals(type, "custom_tool_call", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(type, "tool_call", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(type, "function_call", StringComparison.OrdinalIgnoreCase)) {
@@ -66,6 +68,7 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
             }
         }
 
+        EnsureAssistantVisibleImageText(outputs);
         return outputs;
     }
 
@@ -97,6 +100,84 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
         }
     }
 
+    private void AddImageGenerationOutput(JsonObject item, string sessionId, ChatOptions options, List<JsonObject> outputs) {
+        var result = item.GetString("result");
+        if (string.IsNullOrWhiteSpace(result)) {
+            return;
+        }
+
+        var imageOptions = ResolveImageGenerationOptions(options);
+        var mimeType = GuessImageMimeType(imageOptions?.OutputFormat);
+        var output = new JsonObject()
+            .Add("type", "image")
+            .Add("base64", result)
+            .Add("mime_type", mimeType);
+
+        var id = item.GetString("id") ?? item.GetString("call_id") ?? item.GetString("callId");
+        if (!string.IsNullOrWhiteSpace(id)) {
+            output.Add("id", id!.Trim());
+        }
+
+        var revisedPrompt = item.GetString("revised_prompt") ?? item.GetString("revisedPrompt");
+        if (!string.IsNullOrWhiteSpace(revisedPrompt)) {
+            output.Add("revised_prompt", revisedPrompt!.Trim());
+        }
+
+        if (imageOptions is not null && imageOptions.SaveOutputImages == true) {
+            try {
+                var path = SaveImageGenerationResult(sessionId, id, result!, imageOptions);
+                output.Add("path", path);
+            } catch (Exception ex) when (ex is FormatException || ex is IOException || ex is UnauthorizedAccessException ||
+                                         ex is ArgumentException || ex is NotSupportedException) {
+                output.Add("save_error", ex.Message);
+            }
+        }
+
+        outputs.Add(output);
+    }
+
+    private static void EnsureAssistantVisibleImageText(List<JsonObject> outputs) {
+        var imageCount = 0;
+        var savedPaths = new List<string>();
+        foreach (var output in outputs) {
+            var type = output.GetString("type");
+            if (string.Equals(type, "text", StringComparison.OrdinalIgnoreCase) &&
+                !string.IsNullOrWhiteSpace(output.GetString("text"))) {
+                return;
+            }
+            if (!string.Equals(type, "image", StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            imageCount++;
+            var path = output.GetString("path");
+            if (!string.IsNullOrWhiteSpace(path)) {
+                savedPaths.Add(path!.Trim());
+            }
+        }
+
+        if (imageCount == 0) {
+            return;
+        }
+
+        var text = imageCount == 1 ? "Generated an image." : $"Generated {imageCount} images.";
+        if (savedPaths.Count == 1) {
+            text += " Saved to: " + savedPaths[0];
+        } else if (savedPaths.Count > 1) {
+            var sb = new StringBuilder(text);
+            sb.AppendLine();
+            sb.Append("Saved outputs:");
+            foreach (var path in savedPaths) {
+                sb.AppendLine();
+                sb.Append("- ");
+                sb.Append(path);
+            }
+            text = sb.ToString();
+        }
+
+        outputs.Add(new JsonObject().Add("type", "text").Add("text", text));
+    }
+
     private static void AddImageOutput(JsonObject part, List<JsonObject> outputs) {
         var url = part.GetString("image_url") ?? part.GetString("url");
         if (string.IsNullOrWhiteSpace(url)) {
@@ -105,6 +186,90 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
         }
         if (!string.IsNullOrWhiteSpace(url)) {
             outputs.Add(new JsonObject().Add("type", "image").Add("url", url));
+        }
+    }
+
+    private string SaveImageGenerationResult(string sessionId, string? callId, string result, ImageGenerationOptions options) {
+        var bytes = Convert.FromBase64String(result.Trim());
+        var path = GetImageGenerationArtifactPath(sessionId, callId, options);
+        var directory = Path.GetDirectoryName(path);
+        if (!string.IsNullOrWhiteSpace(directory)) {
+            Directory.CreateDirectory(directory!);
+        }
+        File.WriteAllBytes(path, bytes);
+        return path;
+    }
+
+    private string GetImageGenerationArtifactPath(string sessionId, string? callId, ImageGenerationOptions options) {
+        var directory = ResolveImageGenerationOutputDirectory(options);
+        var safeSession = SanitizePathPart(sessionId, "session");
+        var fallbackCall = "generated_image_" + DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString(System.Globalization.CultureInfo.InvariantCulture) +
+                           "_" + Interlocked.Increment(ref _imageGenerationArtifactSequence).ToString(System.Globalization.CultureInfo.InvariantCulture);
+        var safeCall = SanitizePathPart(callId, fallbackCall);
+        var extension = ResolveImageExtension(options.OutputFormat);
+        return Path.Combine(directory, safeSession, safeCall + extension);
+    }
+
+    private string ResolveImageGenerationOutputDirectory(ImageGenerationOptions options) {
+        if (!string.IsNullOrWhiteSpace(options.OutputDirectory)) {
+            return options.OutputDirectory!.Trim();
+        }
+
+        if (!string.IsNullOrWhiteSpace(_options.CodexHome)) {
+            return Path.Combine(_options.CodexHome!.Trim(), "generated_images");
+        }
+
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        if (string.IsNullOrWhiteSpace(home)) {
+            home = ".";
+        }
+        return Path.Combine(home, ".intelligencex", "generated_images");
+    }
+
+    private static string SanitizePathPart(string? value, string fallback) {
+        var source = string.IsNullOrWhiteSpace(value) ? fallback : value!.Trim();
+        var builder = new StringBuilder(source.Length);
+        for (var i = 0; i < source.Length; i++) {
+            var ch = source[i];
+            if ((ch >= 'a' && ch <= 'z') ||
+                (ch >= 'A' && ch <= 'Z') ||
+                (ch >= '0' && ch <= '9') ||
+                ch == '-' ||
+                ch == '_') {
+                builder.Append(ch);
+            } else {
+                builder.Append('_');
+            }
+        }
+
+        return builder.Length == 0 ? fallback : builder.ToString();
+    }
+
+    private static string ResolveImageExtension(string? outputFormat) {
+        var format = NormalizeOptional(outputFormat) ?? "png";
+        switch (format.ToLowerInvariant()) {
+            case "jpg":
+            case "jpeg":
+                return ".jpg";
+            case "webp":
+                return ".webp";
+            case "png":
+            default:
+                return ".png";
+        }
+    }
+
+    private static string GuessImageMimeType(string? outputFormat) {
+        var format = NormalizeOptional(outputFormat) ?? "png";
+        switch (format.ToLowerInvariant()) {
+            case "jpg":
+            case "jpeg":
+                return "image/jpeg";
+            case "webp":
+                return "image/webp";
+            case "png":
+            default:
+                return "image/png";
         }
     }
 

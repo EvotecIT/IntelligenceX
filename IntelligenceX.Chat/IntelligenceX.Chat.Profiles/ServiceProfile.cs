@@ -28,6 +28,13 @@ internal sealed class ServiceProfile {
     public ReasoningSummary? ReasoningSummary { get; set; }
     public TextVerbosity? TextVerbosity { get; set; }
     public double? Temperature { get; set; }
+    public bool EnableImageGeneration { get; set; }
+    public string? ImageGenerationQuality { get; set; }
+    public string? ImageGenerationSize { get; set; }
+    public string? ImageGenerationOutputFormat { get; set; }
+    public int? ImageGenerationOutputCompression { get; set; }
+    public string? ImageGenerationBackground { get; set; }
+    public string? ImageGenerationOutputDirectory { get; set; }
 
     public int MaxToolRounds { get; set; } = 24;
     public bool ParallelTools { get; set; } = true;

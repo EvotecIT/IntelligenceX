@@ -68,6 +68,13 @@ internal sealed partial class ChatServiceSession {
         if (opts.TransportKind == OpenAITransportKind.Native) {
             var accountId = (_options.OpenAIAccountId ?? string.Empty).Trim();
             opts.NativeOptions.AuthAccountId = accountId.Length == 0 ? null : accountId;
+            opts.NativeOptions.ImageGeneration.Enabled = _options.EnableImageGeneration;
+            opts.NativeOptions.ImageGeneration.Quality = _options.ImageGenerationQuality;
+            opts.NativeOptions.ImageGeneration.Size = _options.ImageGenerationSize;
+            opts.NativeOptions.ImageGeneration.OutputFormat = _options.ImageGenerationOutputFormat;
+            opts.NativeOptions.ImageGeneration.OutputCompression = _options.ImageGenerationOutputCompression;
+            opts.NativeOptions.ImageGeneration.Background = _options.ImageGenerationBackground;
+            opts.NativeOptions.ImageGeneration.OutputDirectory = _options.ImageGenerationOutputDirectory;
         }
 
         if (opts.TransportKind == OpenAITransportKind.CompatibleHttp) {
@@ -527,6 +534,41 @@ internal sealed partial class ChatServiceSession {
                 _options.Temperature = temperature;
             }
 
+            if (request.ImageGenerationEnabled.HasValue) {
+                _options.EnableImageGeneration = request.ImageGenerationEnabled.Value;
+            }
+            if (request.ImageGenerationQuality is not null) {
+                _options.ImageGenerationQuality = NormalizeRuntimeOptionalValue(request.ImageGenerationQuality);
+            }
+            if (request.ImageGenerationSize is not null) {
+                _options.ImageGenerationSize = NormalizeRuntimeOptionalValue(request.ImageGenerationSize);
+            }
+            if (request.ImageGenerationOutputFormat is not null) {
+                _options.ImageGenerationOutputFormat = NormalizeRuntimeOptionalValue(request.ImageGenerationOutputFormat);
+            }
+            if (request.ClearImageGenerationOutputCompression) {
+                _options.ImageGenerationOutputCompression = null;
+            } else if (request.ImageGenerationOutputCompression.HasValue) {
+                var compression = request.ImageGenerationOutputCompression.Value;
+                if (compression < 0 || compression > 100) {
+                    await WriteAsync(writer, new ErrorMessage {
+                        Kind = ChatServiceMessageKind.Response,
+                        RequestId = request.RequestId,
+                        Error = "imageGenerationOutputCompression must be between 0 and 100.",
+                        Code = "invalid_argument"
+                    }, cancellationToken).ConfigureAwait(false);
+                    return new SetProfileResult(ReconnectClient: false, ModelChanged: false);
+                }
+
+                _options.ImageGenerationOutputCompression = compression;
+            }
+            if (request.ImageGenerationBackground is not null) {
+                _options.ImageGenerationBackground = NormalizeRuntimeOptionalValue(request.ImageGenerationBackground);
+            }
+            if (request.ImageGenerationOutputDirectory is not null) {
+                _options.ImageGenerationOutputDirectory = NormalizeRuntimeOptionalValue(request.ImageGenerationOutputDirectory);
+            }
+
             if (request.EnablePackIds is { Length: > 0 } enablePackIds) {
                 for (var i = 0; i < enablePackIds.Length; i++) {
                     if (!ServiceOptions.TryApplyPackEnablement(
@@ -636,6 +678,11 @@ internal sealed partial class ChatServiceSession {
 
             return new SetProfileResult(ReconnectClient: false, ModelChanged: false);
         }
+    }
+
+    private static string? NormalizeRuntimeOptionalValue(string? value) {
+        var normalized = (value ?? string.Empty).Trim();
+        return normalized.Length == 0 ? null : normalized;
     }
 
     private void RebuildToolingFromOptions() {

@@ -499,4 +499,41 @@ internal sealed partial class ChatServiceSession {
         return ChatEnumParser.ParseTextVerbosity(normalized) ?? fallback;
     }
 
+    private ImageGenerationOptions? ResolveImageGenerationOptions(ChatRequestOptions? requestOptions) {
+        if (!_options.EnableImageGeneration && requestOptions?.ImageGenerationEnabled != true) {
+            return null;
+        }
+
+        return new ImageGenerationOptions {
+            Enabled = requestOptions?.ImageGenerationEnabled ?? _options.EnableImageGeneration,
+            Quality = NormalizeOptional(requestOptions?.ImageGenerationQuality) ?? NormalizeOptional(_options.ImageGenerationQuality),
+            Size = NormalizeOptional(requestOptions?.ImageGenerationSize) ?? NormalizeOptional(_options.ImageGenerationSize),
+            OutputFormat = NormalizeImageGenerationOutputFormat(requestOptions?.ImageGenerationOutputFormat) ??
+                           NormalizeImageGenerationOutputFormat(_options.ImageGenerationOutputFormat),
+            OutputCompression = NormalizeImageGenerationOutputCompression(
+                requestOptions?.ImageGenerationOutputCompression ?? _options.ImageGenerationOutputCompression),
+            Background = NormalizeOptional(requestOptions?.ImageGenerationBackground) ?? NormalizeOptional(_options.ImageGenerationBackground),
+            OutputDirectory = NormalizeOptional(requestOptions?.ImageGenerationOutputDirectory) ??
+                              NormalizeOptional(_options.ImageGenerationOutputDirectory)
+        };
+    }
+
+    private static string? NormalizeOptional(string? value) {
+        var trimmed = value?.Trim();
+        return string.IsNullOrWhiteSpace(trimmed) ? null : trimmed;
+    }
+
+    private static int? NormalizeImageGenerationOutputCompression(int? value) {
+        return value is >= 0 and <= 100 ? value : null;
+    }
+
+    private static string? NormalizeImageGenerationOutputFormat(string? value) {
+        var normalized = NormalizeOptional(value)?.ToLowerInvariant();
+        return normalized switch {
+            "jpg" => "jpeg",
+            "jpeg" or "png" or "webp" => normalized,
+            _ => null
+        };
+    }
+
 }

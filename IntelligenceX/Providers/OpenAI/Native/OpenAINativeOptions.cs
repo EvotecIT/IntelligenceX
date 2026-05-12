@@ -79,6 +79,11 @@ public sealed class OpenAINativeOptions {
         ChatEnumParser.ParseTextVerbosity(Environment.GetEnvironmentVariable("INTELLIGENCEX_TEXT_VERBOSITY"))
         ?? TextVerbosity.Medium;
     /// <summary>
+    /// Default image generation built-in tool options.
+    /// </summary>
+    public ImageGenerationOptions ImageGeneration { get; set; } =
+        OpenAINativeImageGenerationEnvironment.CreateDefaultOptions();
+    /// <summary>
     /// Whether to include encrypted reasoning content.
     /// </summary>
     public bool IncludeReasoningEncryptedContent { get; set; } = true;
@@ -138,6 +143,9 @@ public sealed class OpenAINativeOptions {
         }
         if (string.IsNullOrWhiteSpace(Instructions)) {
             throw new ArgumentException("Instructions cannot be null or whitespace.", nameof(Instructions));
+        }
+        if (ImageGeneration is null) {
+            throw new ArgumentNullException(nameof(ImageGeneration));
         }
         // Use a local to keep nullable flow analysis happy for older TFMs (netstandard2.0/net472).
         var authAccountId = AuthAccountId;

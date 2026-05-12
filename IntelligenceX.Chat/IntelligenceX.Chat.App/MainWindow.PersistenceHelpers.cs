@@ -63,6 +63,13 @@ public sealed partial class MainWindow : Window {
             _appState.LocalProviderReasoningSummary = _localProviderReasoningSummary;
             _appState.LocalProviderTextVerbosity = _localProviderTextVerbosity;
             _appState.LocalProviderTemperature = _localProviderTemperature;
+            _appState.LocalProviderImageGenerationEnabled = _localProviderImageGenerationEnabled;
+            _appState.LocalProviderImageGenerationQuality = _localProviderImageGenerationQuality;
+            _appState.LocalProviderImageGenerationSize = _localProviderImageGenerationSize;
+            _appState.LocalProviderImageGenerationOutputFormat = _localProviderImageGenerationOutputFormat;
+            _appState.LocalProviderImageGenerationOutputCompression = _localProviderImageGenerationOutputCompression;
+            _appState.LocalProviderImageGenerationBackground = _localProviderImageGenerationBackground;
+            _appState.LocalProviderImageGenerationOutputDirectory = _localProviderImageGenerationOutputDirectory;
             CaptureModelCatalogCacheIntoAppState();
             _appState.MemoryFacts = NormalizeMemoryFacts(_appState.MemoryFacts);
             _appState.ActiveConversationId = _activeConversationId;
