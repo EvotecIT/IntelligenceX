@@ -170,7 +170,7 @@ internal static partial class Program {
                 }
             })!;
 
-            AssertEqual(1, outputs.Count, "image output count");
+            AssertEqual(2, outputs.Count, "image output count");
             var output = outputs[0];
             AssertEqual("image", output.GetString("type") ?? string.Empty, "output type");
             AssertEqual("Zm9v", output.GetString("base64") ?? string.Empty, "base64");
@@ -179,6 +179,8 @@ internal static partial class Program {
             AssertEqual(true, File.Exists(path!), "saved image file exists");
             AssertEqual("foo", System.Text.Encoding.UTF8.GetString(File.ReadAllBytes(path!)), "saved image bytes");
             AssertEqual(true, path!.StartsWith(outputRoot, StringComparison.OrdinalIgnoreCase), "saved image stays under output root");
+            AssertEqual("text", outputs[1].GetString("type") ?? string.Empty, "image fallback text type");
+            AssertEqual(true, (outputs[1].GetString("text") ?? string.Empty).Contains("Generated an image.", StringComparison.Ordinal), "image fallback text");
 
             var noSaveResponse = new JsonObject()
                 .Add("output", new JsonArray {
@@ -200,8 +202,30 @@ internal static partial class Program {
                 }
             })!;
 
-            AssertEqual(1, noSaveOutputs.Count, "disabled image output count");
+            AssertEqual(2, noSaveOutputs.Count, "disabled image output count");
             AssertEqual(false, noSaveOutputs[0].TryGetValue("path", out _), "disabled image generation does not save output");
+
+            var noSaveDefaultOptions = Activator.CreateInstance(optionsType);
+            AssertNotNull(noSaveDefaultOptions, "OpenAINativeOptions no-save default");
+            var noSaveDefaultImageOptions = optionsType.GetProperty("ImageGeneration")!.GetValue(noSaveDefaultOptions);
+            AssertNotNull(noSaveDefaultImageOptions, "OpenAINativeOptions.ImageGeneration no-save default");
+            noSaveDefaultImageOptions!.GetType().GetProperty("SaveOutputImages")!.SetValue(noSaveDefaultImageOptions, false);
+            var noSaveDefaultTransport = Activator.CreateInstance(transportType, noSaveDefaultOptions);
+            AssertNotNull(noSaveDefaultTransport, "OpenAINativeTransport no-save default");
+            var noSaveDefaultOutputs = (List<JsonObject>)method!.Invoke(noSaveDefaultTransport, new object?[] {
+                noSaveResponse,
+                "session-no-save-default",
+                new ChatOptions {
+                    ImageGeneration = new ImageGenerationOptions {
+                        Enabled = true,
+                        OutputFormat = "png",
+                        OutputDirectory = outputRoot
+                    }
+                }
+            })!;
+
+            AssertEqual(2, noSaveDefaultOutputs.Count, "default-disabled image output count");
+            AssertEqual(false, noSaveDefaultOutputs[0].TryGetValue("path", out _), "transport save-output default is preserved");
 
             var fallbackIdResponse = new JsonObject()
                 .Add("output", new JsonArray {
@@ -227,7 +251,7 @@ internal static partial class Program {
                 }
             })!;
 
-            AssertEqual(2, fallbackOutputs.Count, "fallback image output count");
+            AssertEqual(3, fallbackOutputs.Count, "fallback image output count");
             var firstFallbackPath = fallbackOutputs[0].GetString("path");
             var secondFallbackPath = fallbackOutputs[1].GetString("path");
             AssertNotNull(firstFallbackPath, "first fallback image path");
@@ -235,6 +259,7 @@ internal static partial class Program {
             AssertEqual(false, string.Equals(firstFallbackPath, secondFallbackPath, StringComparison.OrdinalIgnoreCase), "fallback image paths are unique");
             AssertEqual(true, File.Exists(firstFallbackPath!), "first fallback image file exists");
             AssertEqual(true, File.Exists(secondFallbackPath!), "second fallback image file exists");
+            AssertEqual("text", fallbackOutputs[2].GetString("type") ?? string.Empty, "fallback image text output type");
         } finally {
             if (Directory.Exists(outputRoot)) {
                 Directory.Delete(outputRoot, recursive: true);

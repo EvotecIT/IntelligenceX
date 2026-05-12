@@ -71,9 +71,9 @@ public sealed class ImageGenerationOptions {
     public string? OutputDirectory { get; set; }
 
     /// <summary>
-    /// Whether generated image base64 payloads should be persisted to disk.
+    /// Optional override for whether generated image base64 payloads should be persisted to disk.
     /// </summary>
-    public bool SaveOutputImages { get; set; } = true;
+    public bool? SaveOutputImages { get; set; }
 
     /// <summary>
     /// Creates a deep copy.

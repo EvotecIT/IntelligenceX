@@ -68,6 +68,7 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
             }
         }
 
+        EnsureAssistantVisibleImageText(outputs);
         return outputs;
     }
 
@@ -122,7 +123,7 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
             output.Add("revised_prompt", revisedPrompt!.Trim());
         }
 
-        if (imageOptions is not null && imageOptions.SaveOutputImages) {
+        if (imageOptions is not null && imageOptions.SaveOutputImages == true) {
             try {
                 var path = SaveImageGenerationResult(sessionId, id, result!, imageOptions);
                 output.Add("path", path);
@@ -133,6 +134,48 @@ internal sealed partial class OpenAINativeTransport : IOpenAITransport {
         }
 
         outputs.Add(output);
+    }
+
+    private static void EnsureAssistantVisibleImageText(List<JsonObject> outputs) {
+        var imageCount = 0;
+        var savedPaths = new List<string>();
+        foreach (var output in outputs) {
+            var type = output.GetString("type");
+            if (string.Equals(type, "text", StringComparison.OrdinalIgnoreCase) &&
+                !string.IsNullOrWhiteSpace(output.GetString("text"))) {
+                return;
+            }
+            if (!string.Equals(type, "image", StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            imageCount++;
+            var path = output.GetString("path");
+            if (!string.IsNullOrWhiteSpace(path)) {
+                savedPaths.Add(path!.Trim());
+            }
+        }
+
+        if (imageCount == 0) {
+            return;
+        }
+
+        var text = imageCount == 1 ? "Generated an image." : $"Generated {imageCount} images.";
+        if (savedPaths.Count == 1) {
+            text += " Saved to: " + savedPaths[0];
+        } else if (savedPaths.Count > 1) {
+            var sb = new StringBuilder(text);
+            sb.AppendLine();
+            sb.Append("Saved outputs:");
+            foreach (var path in savedPaths) {
+                sb.AppendLine();
+                sb.Append("- ");
+                sb.Append(path);
+            }
+            text = sb.ToString();
+        }
+
+        outputs.Add(new JsonObject().Add("type", "text").Add("text", text));
     }
 
     private static void AddImageOutput(JsonObject part, List<JsonObject> outputs) {

@@ -1417,7 +1417,7 @@
     var imageGenerationEnabled = byId("optImageGenerationEnabled").checked === true;
     var imageGenerationQuality = (byId("optImageGenerationQuality").value || "").trim();
     var imageGenerationSize = (byId("optImageGenerationSize").value || "").trim();
-    var imageGenerationOutputFormat = (byId("optImageGenerationOutputFormat").value || "png").trim();
+    var imageGenerationOutputFormat = (byId("optImageGenerationOutputFormat").value || "").trim();
     var imageGenerationOutputCompression = (byId("optImageGenerationOutputCompression").value || "").trim();
     var imageGenerationBackground = (byId("optImageGenerationBackground").value || "").trim();
     var imageGenerationOutputDirectory = (byId("optImageGenerationOutputDirectory").value || "").trim();
@@ -1601,14 +1601,14 @@
     var draftImageGenerationEnabled = byId("optImageGenerationEnabled").checked === true;
     var draftImageGenerationQuality = (byId("optImageGenerationQuality").value || "").trim().toLowerCase();
     var draftImageGenerationSize = (byId("optImageGenerationSize").value || "").trim().toLowerCase();
-    var draftImageGenerationOutputFormat = (byId("optImageGenerationOutputFormat").value || "png").trim().toLowerCase();
+    var draftImageGenerationOutputFormat = (byId("optImageGenerationOutputFormat").value || "").trim().toLowerCase();
     var draftImageGenerationOutputCompression = (byId("optImageGenerationOutputCompression").value || "").trim();
     var draftImageGenerationBackground = (byId("optImageGenerationBackground").value || "").trim().toLowerCase();
     var draftImageGenerationOutputDirectory = (byId("optImageGenerationOutputDirectory").value || "").trim();
     var currentImageGenerationEnabled = local.imageGenerationEnabled === true;
     var currentImageGenerationQuality = String(local.imageGenerationQuality || "").trim().toLowerCase();
     var currentImageGenerationSize = String(local.imageGenerationSize || "").trim().toLowerCase();
-    var currentImageGenerationOutputFormat = String(local.imageGenerationOutputFormat || "png").trim().toLowerCase();
+    var currentImageGenerationOutputFormat = String(local.imageGenerationOutputFormat || "").trim().toLowerCase();
     var currentImageGenerationOutputCompression = String(local.imageGenerationOutputCompression == null ? "" : local.imageGenerationOutputCompression).trim();
     var currentImageGenerationBackground = String(local.imageGenerationBackground || "").trim().toLowerCase();
     var currentImageGenerationOutputDirectory = String(local.imageGenerationOutputDirectory || "").trim();

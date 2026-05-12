@@ -393,7 +393,7 @@ public sealed partial class MainWindow : Window {
             "jpg" => "jpeg",
             "png" => "png",
             "webp" => "webp",
-            _ => "png"
+            _ => string.Empty
         };
     }
 

@@ -284,6 +284,10 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
                 options.ImageGenerationOutputCompression = compression;
                 continue;
             }
+            if (arg is "--clear-image-generation-output-compression") {
+                options.ImageGenerationOutputCompression = null;
+                continue;
+            }
             if (arg is "--image-generation-background") {
                 if (!TryConsume(args, ref i, out var value, out error)) {
                     return options;

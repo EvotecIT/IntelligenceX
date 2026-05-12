@@ -239,6 +239,9 @@ internal static partial class Program {
                         }
                         options.ImageGenerationOutputCompression = imageCompression;
                         break;
+                    case "--clear-image-generation-output-compression":
+                        options.ImageGenerationOutputCompression = null;
+                        break;
                     case "--image-generation-background":
                         if (!TryGetValue(args, ref i, out var imageBackground, out error)) {
                             return options;

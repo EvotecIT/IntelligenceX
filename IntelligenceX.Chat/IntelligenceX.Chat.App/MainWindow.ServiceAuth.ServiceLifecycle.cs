@@ -93,6 +93,7 @@ public sealed partial class MainWindow {
                     ImageGenerationSize = pending.ImageGenerationSize,
                     ImageGenerationOutputFormat = pending.ImageGenerationOutputFormat,
                     ImageGenerationOutputCompression = pending.ImageGenerationOutputCompression,
+                    ClearImageGenerationOutputCompression = pending.ClearImageGenerationOutputCompression,
                     ImageGenerationBackground = pending.ImageGenerationBackground,
                     ImageGenerationOutputDirectory = pending.ImageGenerationOutputDirectory,
                     PackToggles = pending.PackToggles

@@ -640,6 +640,7 @@ internal static partial class Program {
         Console.WriteLine("  --image-generation-size <VALUE>     Image size override (for example: 1024x1024|1536x1024|auto).");
         Console.WriteLine("  --image-generation-output-format <VALUE>  Image format override (png|jpeg|webp).");
         Console.WriteLine("  --image-generation-output-compression <N> Image compression override (0-100).");
+        Console.WriteLine("  --clear-image-generation-output-compression Clear the saved image compression override.");
         Console.WriteLine("  --image-generation-background <VALUE> Image background override (for example: auto|transparent).");
         Console.WriteLine("  --image-generation-output-directory <PATH> Directory for saved image outputs.");
         Console.WriteLine("  --openai-transport <KIND>  Provider transport: native|appserver|compatible-http|copilot-cli (default: native).");

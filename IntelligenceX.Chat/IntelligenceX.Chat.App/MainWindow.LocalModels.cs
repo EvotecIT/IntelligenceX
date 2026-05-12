@@ -789,12 +789,13 @@ public sealed partial class MainWindow : Window {
             TextVerbosity = textVerbosity.Length == 0 ? null : textVerbosity,
             Temperature = _localProviderTemperature,
             ImageGenerationEnabled = _localProviderImageGenerationEnabled,
-            ImageGenerationQuality = imageQuality.Length == 0 ? null : imageQuality,
-            ImageGenerationSize = imageSize.Length == 0 ? null : imageSize,
-            ImageGenerationOutputFormat = imageOutputFormat.Length == 0 ? null : imageOutputFormat,
+            ImageGenerationQuality = imageQuality,
+            ImageGenerationSize = imageSize,
+            ImageGenerationOutputFormat = imageOutputFormat,
             ImageGenerationOutputCompression = _localProviderImageGenerationOutputCompression,
-            ImageGenerationBackground = imageBackground.Length == 0 ? null : imageBackground,
-            ImageGenerationOutputDirectory = imageOutputDirectory.Length == 0 ? null : imageOutputDirectory,
+            ClearImageGenerationOutputCompression = _localProviderImageGenerationOutputCompression is null,
+            ImageGenerationBackground = imageBackground,
+            ImageGenerationOutputDirectory = imageOutputDirectory,
             PackToggles = BuildRuntimePackTogglesFromSessionPolicy()
         };
     }

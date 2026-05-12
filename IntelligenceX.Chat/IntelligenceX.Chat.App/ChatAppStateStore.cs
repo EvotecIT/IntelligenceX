@@ -243,7 +243,7 @@ internal sealed class ChatAppState {
     public bool LocalProviderImageGenerationEnabled { get; set; }
     public string LocalProviderImageGenerationQuality { get; set; } = string.Empty;
     public string LocalProviderImageGenerationSize { get; set; } = string.Empty;
-    public string LocalProviderImageGenerationOutputFormat { get; set; } = "png";
+    public string LocalProviderImageGenerationOutputFormat { get; set; } = string.Empty;
     public int? LocalProviderImageGenerationOutputCompression { get; set; }
     public string LocalProviderImageGenerationBackground { get; set; } = string.Empty;
     public string LocalProviderImageGenerationOutputDirectory { get; set; } = string.Empty;

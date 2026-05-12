@@ -1963,7 +1963,7 @@
     var imageGenerationEnabled = local.imageGenerationEnabled === true;
     var imageGenerationQuality = String(local.imageGenerationQuality || "").trim().toLowerCase();
     var imageGenerationSize = String(local.imageGenerationSize || "").trim().toLowerCase();
-    var imageGenerationOutputFormat = String(local.imageGenerationOutputFormat || "png").trim().toLowerCase();
+    var imageGenerationOutputFormat = String(local.imageGenerationOutputFormat || "").trim().toLowerCase();
     var imageGenerationOutputCompression = local.imageGenerationOutputCompression == null
       ? ""
       : String(local.imageGenerationOutputCompression).trim();
@@ -2731,9 +2731,9 @@
     }
     var imageFormatSelect = byId("optImageGenerationOutputFormat");
     if (imageFormatSelect) {
-      imageFormatSelect.value = imageGenerationOutputFormat || "png";
-      if (!imageFormatSelect.value) {
-        imageFormatSelect.value = "png";
+      imageFormatSelect.value = imageGenerationOutputFormat || "";
+      if (imageFormatSelect.value !== (imageGenerationOutputFormat || "")) {
+        imageFormatSelect.value = "";
       }
       imageFormatSelect.disabled = imageControlsDisabled;
       syncCustomSelect(imageFormatSelect);

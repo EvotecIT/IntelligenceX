@@ -126,7 +126,7 @@ internal sealed partial class OpenAINativeTransport {
             Background = NormalizeOptional(request?.Background) ?? NormalizeOptional(defaults.Background),
             PartialImages = NormalizeImageGenerationPartialImages(request?.PartialImages ?? defaults.PartialImages),
             OutputDirectory = NormalizeOptional(request?.OutputDirectory) ?? NormalizeOptional(defaults.OutputDirectory),
-            SaveOutputImages = request?.SaveOutputImages ?? defaults.SaveOutputImages
+            SaveOutputImages = request?.SaveOutputImages ?? defaults.SaveOutputImages ?? true
         };
     }
 

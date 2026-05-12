@@ -334,7 +334,7 @@ public sealed partial class MainWindow : Window {
     private bool _localProviderImageGenerationEnabled;
     private string _localProviderImageGenerationQuality = string.Empty;
     private string _localProviderImageGenerationSize = string.Empty;
-    private string _localProviderImageGenerationOutputFormat = "png";
+    private string _localProviderImageGenerationOutputFormat = string.Empty;
     private int? _localProviderImageGenerationOutputCompression;
     private string _localProviderImageGenerationBackground = string.Empty;
     private string _localProviderImageGenerationOutputDirectory = string.Empty;
@@ -700,6 +700,7 @@ public sealed partial class MainWindow : Window {
         public string? ImageGenerationSize { get; init; }
         public string? ImageGenerationOutputFormat { get; init; }
         public int? ImageGenerationOutputCompression { get; init; }
+        public bool ClearImageGenerationOutputCompression { get; init; }
         public string? ImageGenerationBackground { get; init; }
         public string? ImageGenerationOutputDirectory { get; init; }
         public IReadOnlyList<ServiceLaunchArguments.PackToggle>? PackToggles { get; init; }

@@ -514,8 +514,7 @@ internal sealed partial class ChatServiceSession {
                 requestOptions?.ImageGenerationOutputCompression ?? _options.ImageGenerationOutputCompression),
             Background = NormalizeOptional(requestOptions?.ImageGenerationBackground) ?? NormalizeOptional(_options.ImageGenerationBackground),
             OutputDirectory = NormalizeOptional(requestOptions?.ImageGenerationOutputDirectory) ??
-                              NormalizeOptional(_options.ImageGenerationOutputDirectory),
-            SaveOutputImages = true
+                              NormalizeOptional(_options.ImageGenerationOutputDirectory)
         };
     }
 
