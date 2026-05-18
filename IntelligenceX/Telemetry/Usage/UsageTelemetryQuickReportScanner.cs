@@ -206,7 +206,7 @@ public sealed class UsageTelemetryQuickReportScanner {
         var result = new UsageTelemetryQuickReportResult();
         var allRecords = new List<UsageEventRecord>();
         var providerDiagnostics = new Dictionary<string, UsageTelemetryQuickReportProviderDiagnostics>(StringComparer.OrdinalIgnoreCase);
-        var parsedArtifacts = 0;
+        var artifactBudgetUsed = 0;
         var scanPlans = new List<RootScanPlan>();
 
         foreach (var root in roots.Where(static root => root is not null && root.Enabled)) {
@@ -227,6 +227,7 @@ public sealed class UsageTelemetryQuickReportScanner {
 
             if (TryResolveQuickReportProvider(root.ProviderId, out var quickReportProvider)) {
                 var cachedArtifacts = effectiveOptions.ForceReimport || effectiveOptions.RawArtifactStore is null
+                    || effectiveOptions.MaxArtifacts.HasValue
                     ? null
                     : effectiveOptions.RawArtifactStore.GetBySourceRootAdapter(root.Id, quickReportProvider.AdapterId);
                 var candidateFiles = quickReportProvider.EnumerateCandidateFiles(root.Path, effectiveOptions.PreferRecentArtifacts).ToArray();
@@ -243,7 +244,7 @@ public sealed class UsageTelemetryQuickReportScanner {
                 effectiveOptions,
                 allRecords,
                 providerDiagnostics,
-                ref parsedArtifacts,
+                ref artifactBudgetUsed,
                 result,
                 artifactOffset,
                 totalArtifactCount,
@@ -273,7 +274,16 @@ public sealed class UsageTelemetryQuickReportScanner {
     /// <param name="artifacts">Cached raw artifacts with quick-report state.</param>
     /// <returns>Merged usage events restored from cached quick-report state.</returns>
     internal static IReadOnlyList<UsageEventRecord> RestoreFromCachedArtifacts(IEnumerable<RawArtifactDescriptor> artifacts) {
-        return MergeRecords(RestoreRawFromCachedArtifacts(artifacts));
+        return BuildMergedEventsFromRawRecords(RestoreRawFromCachedArtifacts(artifacts));
+    }
+
+    /// <summary>
+    /// Builds display rollups from deduplicated raw quick-report usage records.
+    /// </summary>
+    /// <param name="records">Raw usage records to aggregate into display rows.</param>
+    /// <returns>Daily/model/surface/account rollups suitable for tray and overview reporting.</returns>
+    public static IReadOnlyList<UsageEventRecord> BuildMergedEventsFromRawRecords(IEnumerable<UsageEventRecord> records) {
+        return MergeRecords(DeduplicateRecords(records ?? Array.Empty<UsageEventRecord>()));
     }
 
     /// <summary>
@@ -281,7 +291,7 @@ public sealed class UsageTelemetryQuickReportScanner {
     /// </summary>
     /// <param name="artifacts">Cached raw artifacts with quick-report state.</param>
     /// <returns>Deduplicated usage events restored from cached quick-report state.</returns>
-    internal static IReadOnlyList<UsageEventRecord> RestoreRawFromCachedArtifacts(IEnumerable<RawArtifactDescriptor> artifacts) {
+    public static IReadOnlyList<UsageEventRecord> RestoreRawFromCachedArtifacts(IEnumerable<RawArtifactDescriptor> artifacts) {
         if (artifacts is null) {
             return Array.Empty<UsageEventRecord>();
         }
@@ -311,7 +321,7 @@ public sealed class UsageTelemetryQuickReportScanner {
         UsageTelemetryQuickReportOptions options,
         List<UsageEventRecord> allRecords,
         IDictionary<string, UsageTelemetryQuickReportProviderDiagnostics> providerDiagnostics,
-        ref int parsedArtifacts,
+        ref int artifactBudgetUsed,
         UsageTelemetryQuickReportResult result,
         int artifactOffset,
         int totalArtifactCount,
@@ -327,6 +337,10 @@ public sealed class UsageTelemetryQuickReportScanner {
             artifactOrdinal++;
             var providerArtifactOrdinal = artifactOffset + artifactOrdinal;
             var artifact = RawArtifactDescriptor.CreateFile(root.Id, provider.AdapterId, filePath, provider.ParserVersion, options.UtcNow());
+            if (!TryReserveArtifactBudget(options, ref artifactBudgetUsed, result)) {
+                break;
+            }
+
             ReportArtifactProgress(
                 options,
                 root,
@@ -352,9 +366,6 @@ public sealed class UsageTelemetryQuickReportScanner {
                     result.ArtifactsReused,
                     "artifact-cache");
                 continue;
-            }
-            if (!TryReserveArtifactBudget(options, ref parsedArtifacts, result)) {
-                break;
             }
 
             var records = provider.ParseFile(root, filePath, options, cancellationToken, provider);
@@ -467,11 +478,28 @@ public sealed class UsageTelemetryQuickReportScanner {
         out IReadOnlyList<UsageEventRecord> records) {
         records = Array.Empty<UsageEventRecord>();
         if (options.ForceReimport || options.RawArtifactStore is null || cachedArtifacts is null) {
-            return false;
+            if (options.ForceReimport || options.RawArtifactStore is null) {
+                return false;
+            }
+
+            if (!options.RawArtifactStore.TryGet(artifact.SourceRootId, artifact.AdapterId, artifact.Path, out var directArtifact)) {
+                return false;
+            }
+
+            return TryUseCachedArtifact(artifact, directArtifact, out records);
         }
         if (!cachedArtifacts.TryGetValue(artifact.Path, out var existing)) {
             return false;
         }
+
+        return TryUseCachedArtifact(artifact, existing, out records);
+    }
+
+    private static bool TryUseCachedArtifact(
+        RawArtifactDescriptor artifact,
+        RawArtifactDescriptor existing,
+        out IReadOnlyList<UsageEventRecord> records) {
+        records = Array.Empty<UsageEventRecord>();
         if (!string.Equals(existing.Fingerprint, artifact.Fingerprint, StringComparison.Ordinal) ||
             !string.Equals(NormalizeOptional(existing.ParserVersion), NormalizeOptional(artifact.ParserVersion), StringComparison.OrdinalIgnoreCase) ||
             string.IsNullOrWhiteSpace(existing.StateJson)) {
@@ -484,17 +512,17 @@ public sealed class UsageTelemetryQuickReportScanner {
 
     private static bool TryReserveArtifactBudget(
         UsageTelemetryQuickReportOptions options,
-        ref int parsedArtifacts,
+        ref int artifactBudgetUsed,
         UsageTelemetryQuickReportResult result) {
         if (!options.MaxArtifacts.HasValue) {
-            parsedArtifacts++;
+            artifactBudgetUsed++;
             return true;
         }
-        if (parsedArtifacts >= options.MaxArtifacts.Value) {
+        if (artifactBudgetUsed >= options.MaxArtifacts.Value) {
             result.ArtifactBudgetReached = true;
             return false;
         }
-        parsedArtifacts++;
+        artifactBudgetUsed++;
         return true;
     }
 

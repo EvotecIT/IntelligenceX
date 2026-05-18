@@ -13,7 +13,7 @@ namespace IntelligenceX.Telemetry.Usage;
 /// Shared snapshot service for lightweight usage discovery and aggregation.
 /// </summary>
 public sealed class UsageTelemetrySnapshotService {
-    private const int TrayMaxArtifacts = 60;
+    private const int TrayMaxArtifacts = 24;
     private const int StartupCachedArtifactsPerSourceRoot = 24;
     private readonly Func<IReadOnlyList<IUsageTelemetryRootDiscovery>> _createDiscoveries;
     private readonly Func<UsageTelemetryQuickReportScanner> _createScanner;
@@ -58,7 +58,6 @@ public sealed class UsageTelemetrySnapshotService {
             return null;
         }
 
-        var rawEvents = UsageTelemetryQuickReportScanner.RestoreRawFromCachedArtifacts(artifacts);
         var events = UsageTelemetryQuickReportScanner.RestoreFromCachedArtifacts(artifacts);
         if (events.Count == 0) {
             return null;
@@ -84,7 +83,7 @@ public sealed class UsageTelemetrySnapshotService {
                 .ToArray(),
             sourceRoots: enabledRoots,
             health: BuildCachedSnapshotHealth(allRoots, enabledRoots, artifacts, events),
-            rawEvents: rawEvents);
+            rawEvents: Array.Empty<UsageEventRecord>());
     }
 
     /// <summary>
@@ -181,10 +180,12 @@ public sealed class UsageTelemetrySnapshotService {
                 providerResults,
                 errors,
                 rootsByProvider.Select(static group => group.Key).ToArray()),
-            rawEvents: providerResults
-                .SelectMany(static result => result.RawEvents)
-                .OrderBy(static usageEvent => usageEvent.TimestampUtc)
-                .ToArray());
+            rawEvents: startupWarmup
+                ? Array.Empty<UsageEventRecord>()
+                : providerResults
+                    .SelectMany(static result => result.RawEvents)
+                    .OrderBy(static usageEvent => usageEvent.TimestampUtc)
+                    .ToArray());
     }
 
     private IReadOnlyList<SourceRootRecord> DiscoverAllRoots() {
@@ -274,7 +275,12 @@ public sealed class UsageTelemetrySnapshotService {
             var result = await scanner
                 .ScanAsync(providerRoots.ToArray(), options, cancellationToken)
                 .ConfigureAwait(false);
-            return new ProviderScanResult(providerRoots.Key, result.Events.ToList(), result.RawEvents.ToList(), result, null);
+            return new ProviderScanResult(
+                providerRoots.Key,
+                result.Events.ToList(),
+                startupWarmup ? Array.Empty<UsageEventRecord>() : result.RawEvents.ToList(),
+                result,
+                null);
         } catch (Exception ex) {
             return new ProviderScanResult(
                 providerRoots.Key,
@@ -378,7 +384,7 @@ public sealed class UsageTelemetrySnapshotService {
 
         return new UsageTelemetrySnapshotHealth(
             isCachedSnapshot: true,
-            isPartialScan: false,
+            isPartialScan: true,
             providerCount: providerIds.Length,
             rootsCount: enabledRoots.Count,
             accountLabels: BuildDistinctAccountLabels(events, enabledRoots),

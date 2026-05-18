@@ -198,12 +198,17 @@ public static class UsageTelemetryApiPricing {
 
         var inputTokens = Math.Max(0L, record.InputTokens ?? 0L);
         var cachedInputTokens = Math.Max(0L, record.CachedInputTokens ?? 0L);
+        var freshInputTokens = ShouldTreatCachedInputAsInputSubset(record.ProviderId)
+            ? Math.Max(0L, inputTokens - Math.Min(inputTokens, cachedInputTokens))
+            : inputTokens;
         var outputTokens = Math.Max(0L, record.OutputTokens ?? 0L);
         var reasoningTokens = Math.Max(0L, record.ReasoningTokens ?? 0L);
-        var effectiveOutputTokens = outputTokens + reasoningTokens;
+        var effectiveOutputTokens = ShouldTreatReasoningAsOutputSubset(record.ProviderId)
+            ? outputTokens > 0L ? outputTokens : reasoningTokens
+            : outputTokens + reasoningTokens;
 
         var estimatedCostUsd =
-            ComputePerMillionCost(inputTokens, rate.InputUsdPerMillion) +
+            ComputePerMillionCost(freshInputTokens, rate.InputUsdPerMillion) +
             ComputePerMillionCost(cachedInputTokens, rate.CachedInputUsdPerMillion ?? rate.InputUsdPerMillion) +
             ComputePerMillionCost(effectiveOutputTokens, rate.OutputUsdPerMillion);
 
@@ -212,6 +217,20 @@ public static class UsageTelemetryApiPricing {
             totalTokens,
             estimatedCostUsd,
             hasKnownPricing: true);
+    }
+
+    private static bool ShouldTreatCachedInputAsInputSubset(string? providerId) {
+        return string.Equals(providerId, "codex", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(providerId, "openai", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(providerId, "chatgpt", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(providerId, "ix", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool ShouldTreatReasoningAsOutputSubset(string? providerId) {
+        return string.Equals(providerId, "codex", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(providerId, "openai", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(providerId, "chatgpt", StringComparison.OrdinalIgnoreCase)
+               || string.Equals(providerId, "ix", StringComparison.OrdinalIgnoreCase);
     }
 
     private static decimal ComputePerMillionCost(long tokens, decimal usdPerMillion) {

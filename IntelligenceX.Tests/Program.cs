@@ -103,6 +103,8 @@ internal static partial class Program {
             TestUsageTelemetryApiPricingBlendsExactAndEstimatedCosts);
         failed += Run("Usage telemetry API pricing covers OpenAI mode suffixes",
             TestUsageTelemetryApiPricingCoversOpenAiModeSuffixes);
+        failed += Run("Usage telemetry scope summary keeps provider errors compact",
+            TestUsageTelemetryScopeSummaryKeepsProviderErrorsCompact);
         failed += Run("Provider limit forecasting flags over-limit pace",
             TestProviderLimitForecastingFlagsOverLimitPace);
         failed += Run("Provider limit forecasting recognizes on-pace window",
@@ -123,6 +125,8 @@ internal static partial class Program {
             TestProviderLimitForecastingUsesLiveWindowWordingForZeroUsage);
         failed += Run("Usage telemetry overview builder builds cards and heatmaps",
             TestUsageTelemetryOverviewBuilderBuildsCardsAndHeatmaps);
+        failed += Run("Usage telemetry overview builder splits cached input in token mix",
+            TestUsageTelemetryOverviewBuilderSplitsCachedInputInTokenMix);
         failed += Run("Usage telemetry overview builder estimates API cost for mini and nano models",
             TestUsageTelemetryOverviewBuilderEstimatesApiCostForMiniAndNanoModels);
         failed += Run("GitHub wrapped html renderer builds shareable page",
