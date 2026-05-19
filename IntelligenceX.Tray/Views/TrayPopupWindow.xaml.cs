@@ -81,6 +81,7 @@ public partial class TrayPopupWindow : Window {
         if (sender is RadioButton { Tag: ProviderViewModel provider } &&
             DataContext is MainViewModel mainVm) {
             mainVm.SelectedProvider = provider;
+            KeepProviderTabVisible((FrameworkElement)sender);
         }
     }
 
@@ -90,6 +91,22 @@ public partial class TrayPopupWindow : Window {
 
     private void OnProviderTabsScrollRightClick(object sender, RoutedEventArgs e) {
         ScrollProviderTabs(ProviderTabsScrollStep);
+    }
+
+    private void OnProviderTabsLoaded(object sender, RoutedEventArgs e) {
+        UpdateProviderTabScrollButtons();
+        ScrollSelectedProviderTabIntoView();
+    }
+
+    private void OnProviderTabsSizeChanged(object sender, SizeChangedEventArgs e) {
+        Dispatcher.BeginInvoke(new Action(() => {
+            UpdateProviderTabScrollButtons();
+            ScrollSelectedProviderTabIntoView();
+        }));
+    }
+
+    private void OnProviderTabsScrollChanged(object sender, ScrollChangedEventArgs e) {
+        UpdateProviderTabScrollButtons();
     }
 
     private void OnProviderTabsPreviewMouseWheel(object sender, MouseWheelEventArgs e) {
@@ -111,6 +128,75 @@ public partial class TrayPopupWindow : Window {
             0d,
             ProviderTabsScrollViewer.ScrollableWidth);
         ProviderTabsScrollViewer.ScrollToHorizontalOffset(target);
+        UpdateProviderTabScrollButtons();
+    }
+
+    private void UpdateProviderTabScrollButtons() {
+        if (ProviderTabsScrollLeftButton is null || ProviderTabsScrollRightButton is null || ProviderTabsScrollViewer is null) {
+            return;
+        }
+
+        var canScroll = ProviderTabsScrollViewer.ScrollableWidth > 0.5d;
+        ProviderTabsScrollLeftButton.IsEnabled = canScroll && ProviderTabsScrollViewer.HorizontalOffset > 0.5d;
+        ProviderTabsScrollRightButton.IsEnabled = canScroll && ProviderTabsScrollViewer.HorizontalOffset < ProviderTabsScrollViewer.ScrollableWidth - 0.5d;
+    }
+
+    private void ScrollSelectedProviderTabIntoView() {
+        Dispatcher.BeginInvoke(new Action(() => {
+            var selected = FindVisualChild<RadioButton>(
+                ProviderTabsItemsControl,
+                radioButton => radioButton.IsChecked == true);
+            if (selected is not null) {
+                KeepProviderTabVisible(selected);
+            } else {
+                UpdateProviderTabScrollButtons();
+            }
+        }));
+    }
+
+    private void KeepProviderTabVisible(FrameworkElement tab) {
+        Dispatcher.BeginInvoke(new Action(() => {
+            if (ProviderTabsScrollViewer is null || tab.ActualWidth <= 0d || ProviderTabsScrollViewer.ViewportWidth <= 0d) {
+                UpdateProviderTabScrollButtons();
+                return;
+            }
+
+            try {
+                var bounds = tab
+                    .TransformToAncestor(ProviderTabsScrollViewer)
+                    .TransformBounds(new Rect(0d, 0d, tab.ActualWidth, tab.ActualHeight));
+                const double edgePadding = 6d;
+                var target = ProviderTabsScrollViewer.HorizontalOffset;
+                if (bounds.Left < edgePadding) {
+                    target += bounds.Left - edgePadding;
+                } else if (bounds.Right > ProviderTabsScrollViewer.ViewportWidth - edgePadding) {
+                    target += bounds.Right - ProviderTabsScrollViewer.ViewportWidth + edgePadding;
+                }
+
+                target = Math.Clamp(target, 0d, ProviderTabsScrollViewer.ScrollableWidth);
+                ProviderTabsScrollViewer.ScrollToHorizontalOffset(target);
+            } catch (InvalidOperationException) {
+                // The tab rail may be rebuilding; the next layout pass will update the buttons.
+            }
+
+            UpdateProviderTabScrollButtons();
+        }));
+    }
+
+    private static T? FindVisualChild<T>(DependencyObject root, Predicate<T> predicate) where T : DependencyObject {
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++) {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is T candidate && predicate(candidate)) {
+                return candidate;
+            }
+
+            var nested = FindVisualChild(child, predicate);
+            if (nested is not null) {
+                return nested;
+            }
+        }
+
+        return null;
     }
 
     private void OnRangeChipClick(object sender, RoutedEventArgs e) {

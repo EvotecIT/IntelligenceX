@@ -20,6 +20,38 @@
         <conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVis" />
         <conv:ProportionToWidthConverter x:Key="PropToWidth" />
         <conv:ProportionAndWidthToWidthConverter x:Key="PropToActualWidth" />
+        <Style x:Key="ProviderRailButtonStyle" TargetType="{x:Type RepeatButton}">
+            <Setter Property="MinWidth" Value="34" />
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type RepeatButton}">
+                        <Border x:Name="Bd"
+                                Background="{StaticResource SubtleSurfaceMutedBrush}"
+                                BorderBrush="{StaticResource BorderBrush}"
+                                BorderThickness="1"
+                                CornerRadius="10"
+                                Padding="8"
+                                Cursor="Hand">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource SubtleSurfaceEmphasisBrush}" />
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource CardBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Bd" Property="Opacity" Value="0.35" />
+                                <Setter TargetName="Bd" Property="Cursor" Value="Arrow" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
 
     <Border Background="{StaticResource BackgroundBrush}"
@@ -174,12 +206,15 @@
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <Button Style="{StaticResource RefreshButtonStyle}"
-                            Click="OnProviderTabsScrollLeftClick"
-                            ToolTip="Scroll providers left"
-                            AutomationProperties.Name="Scroll providers left"
-                            VerticalAlignment="Stretch"
-                            Margin="0,0,8,0">
+                    <RepeatButton x:Name="ProviderTabsScrollLeftButton"
+                                  Style="{StaticResource ProviderRailButtonStyle}"
+                                  Click="OnProviderTabsScrollLeftClick"
+                                  Delay="260"
+                                  Interval="70"
+                                  ToolTip="Scroll providers left"
+                                  AutomationProperties.Name="Scroll providers left"
+                                  VerticalAlignment="Stretch"
+                                  Margin="0,0,8,0">
                         <Viewbox Width="13" Height="13">
                             <Path Data="{StaticResource IconChevronRight}"
                                   Fill="{StaticResource SecondaryTextBrush}"
@@ -190,13 +225,17 @@
                                 </Path.RenderTransform>
                             </Path>
                         </Viewbox>
-                    </Button>
+                    </RepeatButton>
                     <ScrollViewer x:Name="ProviderTabsScrollViewer"
                                   Grid.Column="1"
                                   HorizontalScrollBarVisibility="Hidden"
                                   VerticalScrollBarVisibility="Disabled"
+                                  Loaded="OnProviderTabsLoaded"
+                                  SizeChanged="OnProviderTabsSizeChanged"
+                                  ScrollChanged="OnProviderTabsScrollChanged"
                                   PreviewMouseWheel="OnProviderTabsPreviewMouseWheel">
-                        <ItemsControl ItemsSource="{Binding Providers}">
+                        <ItemsControl x:Name="ProviderTabsItemsControl"
+                                      ItemsSource="{Binding Providers}">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate>
                                     <StackPanel Orientation="Horizontal" />
@@ -260,19 +299,22 @@
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
                     </ScrollViewer>
-                    <Button Grid.Column="2"
-                            Style="{StaticResource RefreshButtonStyle}"
-                            Click="OnProviderTabsScrollRightClick"
-                            ToolTip="Scroll providers right"
-                            AutomationProperties.Name="Scroll providers right"
-                            VerticalAlignment="Stretch"
-                            Margin="8,0,0,0">
+                    <RepeatButton x:Name="ProviderTabsScrollRightButton"
+                                  Grid.Column="2"
+                                  Style="{StaticResource ProviderRailButtonStyle}"
+                                  Click="OnProviderTabsScrollRightClick"
+                                  Delay="260"
+                                  Interval="70"
+                                  ToolTip="Scroll providers right"
+                                  AutomationProperties.Name="Scroll providers right"
+                                  VerticalAlignment="Stretch"
+                                  Margin="8,0,0,0">
                         <Viewbox Width="13" Height="13">
                             <Path Data="{StaticResource IconChevronRight}"
                                   Fill="{StaticResource SecondaryTextBrush}"
                                   Stretch="Uniform" />
                         </Viewbox>
-                    </Button>
+                    </RepeatButton>
                 </Grid>
             </Border>
 
