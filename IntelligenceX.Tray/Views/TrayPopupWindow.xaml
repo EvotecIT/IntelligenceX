@@ -681,7 +681,8 @@
                             </Button>
                         </UniformGrid>
 
-                        <Border Style="{StaticResource CardStyle}"
+                        <Border x:Name="ProviderDetailsCard"
+                                Style="{StaticResource CardStyle}"
                                 Padding="12"
                                 Visibility="{Binding IsDetailsOpen, Converter={StaticResource BoolToVis}}">
                             <StackPanel>
@@ -3228,7 +3229,7 @@
                                 CornerRadius="12"
                                 Padding="12,10"
                                 Margin="0,0,0,10"
-                                Visibility="{Binding ShowCompactIdentityBar, Converter={StaticResource BoolToVis}}">
+                                Visibility="Collapsed">
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
@@ -3831,7 +3832,7 @@
                         </Border>
 
                         <!-- GitHub data -->
-                        <StackPanel Visibility="{Binding HasData, Converter={StaticResource BoolToVis}}">
+                        <StackPanel Visibility="Collapsed">
 
                             <!-- User login -->
                             <Border Style="{StaticResource CardStyle}">

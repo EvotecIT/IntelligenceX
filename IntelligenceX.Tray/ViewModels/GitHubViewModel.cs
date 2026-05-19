@@ -497,8 +497,8 @@ public sealed class GitHubViewModel : ViewModelBase {
         }
     }
     public string ObservabilitySetupText => WatchCount > 0
-        ? "Tracked repos are read from the shared telemetry SQLite store used by the GitHub telemetry CLI. With GitHub auth available, the tray can auto-sync watched repos, useful forks, and stargazer audiences in the background."
-        : "Use `intelligencex telemetry github watches add --repo owner/name` and `... watches sync --stargazers` to start tracking repo momentum, fork networks, and audience overlap.";
+        ? "Watched repositories can sync in the background and surface movement, fork networks, and audience overlap."
+        : "Add watched repositories from the GitHub report to turn this panel into repo movement, fork, and audience pulse.";
     public GitHubRepoSortMode SelectedRepoSort {
         get => _selectedRepoSort;
         set {

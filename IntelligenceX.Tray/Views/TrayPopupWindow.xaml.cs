@@ -116,6 +116,9 @@ public partial class TrayPopupWindow : Window {
     private void OnDetailsToggleClick(object sender, RoutedEventArgs e) {
         if (sender is FrameworkElement { DataContext: ProviderViewModel provider }) {
             provider.ToggleDetails();
+            if (provider.IsDetailsOpen) {
+                ScrollDetailsIntoView();
+            }
         }
     }
 
@@ -126,6 +129,7 @@ public partial class TrayPopupWindow : Window {
 
         if (Enum.TryParse<ProviderDetailsMode>(rawMode, ignoreCase: true, out var mode)) {
             provider.SetDetailsMode(mode);
+            ScrollDetailsIntoView();
         }
     }
 
@@ -135,7 +139,12 @@ public partial class TrayPopupWindow : Window {
         }
 
         provider.SetDetailsMode(ProviderDetailsMode.Scope);
+        ScrollDetailsIntoView();
         e.Handled = true;
+    }
+
+    private void ScrollDetailsIntoView() {
+        Dispatcher.BeginInvoke(new Action(() => ProviderDetailsCard?.BringIntoView()));
     }
 
     private void OnOpenUrlClick(object sender, RoutedEventArgs e) {
