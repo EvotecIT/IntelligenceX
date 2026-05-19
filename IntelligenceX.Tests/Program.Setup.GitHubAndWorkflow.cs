@@ -240,9 +240,9 @@ jobs:
     }
 
     private static void TestReviewReusableWorkflowDispatchIncludesOpenAiModelInput() {
-        var workflowPath = ResolveRepoFilePath(".github", "workflows", "review-intelligencex-core.yml.disabled");
+        var workflowPath = ResolveRepoFilePath(".github", "workflows", "review-intelligencex-core.yml");
         var content = NormalizeWorkflowText(File.ReadAllText(workflowPath));
-        var wrapperWorkflowPath = ResolveRepoFilePath(".github", "workflows", "review-intelligencex.yml.disabled");
+        var wrapperWorkflowPath = ResolveRepoFilePath(".github", "workflows", "review-intelligencex.yml");
         var wrapperContent = NormalizeWorkflowText(File.ReadAllText(wrapperWorkflowPath));
 
         AssertContainsText(wrapperContent, "workflow_dispatch:", "wrapper workflow defines workflow_dispatch");
