@@ -87,6 +87,8 @@ public sealed class ProviderViewModel : ViewModelBase {
     private long _pulseOutputTokens;
     private long _pulseCachedTokens;
     private long _pulseReasoningTokens;
+    private long _pulseFreshInputTokens;
+    private long _pulseVisibleOutputTokens;
     private decimal _pulseCostUsd;
     private bool _pulseCostUsesEstimate;
     private int _pulseEventCount;
@@ -439,12 +441,8 @@ public sealed class ProviderViewModel : ViewModelBase {
                                   + " • cached " + FormatTokens(PulseCachedTokens)
                                   + " • output " + PulseVisibleOutputFormatted
                                   + " • reasoning " + FormatTokens(PulseReasoningTokens);
-    public long PulseFreshInputTokens => UsageTelemetryApiPricing.ShouldTreatCachedInputAsInputSubset(ProviderId)
-        ? Math.Max(0L, PulseInputTokens - Math.Min(PulseInputTokens, PulseCachedTokens))
-        : PulseInputTokens;
-    public long PulseVisibleOutputTokens => UsageTelemetryApiPricing.ShouldTreatReasoningAsOutputSubset(ProviderId)
-        ? Math.Max(0L, PulseOutputTokens - Math.Min(PulseOutputTokens, PulseReasoningTokens))
-        : PulseOutputTokens;
+    public long PulseFreshInputTokens => _pulseFreshInputTokens;
+    public long PulseVisibleOutputTokens => _pulseVisibleOutputTokens;
     public long PulseMixTotalTokens {
         get {
             var total = PulseFreshInputTokens + PulseCachedTokens + PulseVisibleOutputTokens + PulseReasoningTokens;
@@ -1501,6 +1499,8 @@ public sealed class ProviderViewModel : ViewModelBase {
         _pulseOutputTokens = pulseEvents.Sum(e => e.OutputTokens ?? 0L);
         _pulseCachedTokens = pulseEvents.Sum(e => e.CachedInputTokens ?? 0L);
         _pulseReasoningTokens = pulseEvents.Sum(e => e.ReasoningTokens ?? 0L);
+        _pulseFreshInputTokens = pulseEvents.Sum(GetPulseFreshInputTokens);
+        _pulseVisibleOutputTokens = pulseEvents.Sum(GetPulseVisibleOutputTokens);
         ApplyDisplayCost(
             UsageTelemetryApiPricing.BuildDisplayCost(pulseEvents),
             value => _pulseCostUsd = value,
@@ -1666,6 +1666,26 @@ public sealed class ProviderViewModel : ViewModelBase {
         OnPropertyChanged(nameof(PulseCachedBarWidth));
         OnPropertyChanged(nameof(PulseFreshInputBarWidth));
         OnPropertyChanged(nameof(PulseReasoningBarWidth));
+    }
+
+    private static long GetPulseFreshInputTokens(UsageEventRecord usageEvent) {
+        var inputTokens = usageEvent.InputTokens ?? 0L;
+        if (!UsageTelemetryApiPricing.ShouldTreatCachedInputAsInputSubset(usageEvent.ProviderId)) {
+            return inputTokens;
+        }
+
+        var cachedTokens = usageEvent.CachedInputTokens ?? 0L;
+        return Math.Max(0L, inputTokens - Math.Min(inputTokens, cachedTokens));
+    }
+
+    private static long GetPulseVisibleOutputTokens(UsageEventRecord usageEvent) {
+        var outputTokens = usageEvent.OutputTokens ?? 0L;
+        if (!UsageTelemetryApiPricing.ShouldTreatReasoningAsOutputSubset(usageEvent.ProviderId)) {
+            return outputTokens;
+        }
+
+        var reasoningTokens = usageEvent.ReasoningTokens ?? 0L;
+        return Math.Max(0L, outputTokens - Math.Min(outputTokens, reasoningTokens));
     }
 
     private void NotifyPulseStatusChanged() {

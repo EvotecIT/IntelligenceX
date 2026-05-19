@@ -3310,7 +3310,7 @@
                                 CornerRadius="12"
                                 Padding="12,10"
                                 Margin="0,0,0,10"
-                                Visibility="Collapsed">
+                                Visibility="{Binding ShowCompactIdentityBar, Converter={StaticResource BoolToVis}}">
                             <Grid>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
@@ -3331,6 +3331,7 @@
                                 <Button Grid.Column="1"
                                         Style="{StaticResource RefreshButtonStyle}"
                                         Click="OnShowGitHubAccountEditorClick"
+                                        AutomationProperties.Name="Change GitHub username"
                                         Margin="8,0,0,0">
                                     <TextBlock FontFamily="{StaticResource AppFont}"
                                                FontSize="10.5"
