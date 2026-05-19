@@ -240,9 +240,9 @@ jobs:
     }
 
     private static void TestReviewReusableWorkflowDispatchIncludesOpenAiModelInput() {
-        var workflowPath = ResolveRepoFilePath(".github", "workflows", "review-intelligencex-core.yml");
+        var workflowPath = ResolveReviewWorkflowPath("review-intelligencex-core.yml");
         var content = NormalizeWorkflowText(File.ReadAllText(workflowPath));
-        var wrapperWorkflowPath = ResolveRepoFilePath(".github", "workflows", "review-intelligencex.yml");
+        var wrapperWorkflowPath = ResolveReviewWorkflowPath("review-intelligencex.yml");
         var wrapperContent = NormalizeWorkflowText(File.ReadAllText(wrapperWorkflowPath));
 
         AssertContainsText(wrapperContent, "workflow_dispatch:", "wrapper workflow defines workflow_dispatch");
@@ -501,6 +501,14 @@ jobs:
 
     private static string NormalizeWorkflowText(string content) {
         return content.Replace("\r\n", "\n");
+    }
+
+    private static string ResolveReviewWorkflowPath(string fileName) {
+        try {
+            return ResolveRepoFilePath(".github", "workflows", fileName);
+        } catch (InvalidOperationException) when (fileName.EndsWith(".yml", StringComparison.OrdinalIgnoreCase)) {
+            return ResolveRepoFilePath(".github", "workflows", fileName + ".disabled");
+        }
     }
 
     private static int CountWorkflowDispatchInputs(string content) {
