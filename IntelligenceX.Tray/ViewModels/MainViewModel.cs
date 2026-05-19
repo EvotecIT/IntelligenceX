@@ -2071,6 +2071,10 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
 
     private void ReplaceProviders(IEnumerable<ProviderViewModel> providers) {
         var preferredSelection = SelectedProvider?.ProviderId ?? _preferences.SelectedProviderId;
+        if (string.Equals(preferredSelection, "__github__", StringComparison.Ordinal)) {
+            preferredSelection = "__all__";
+        }
+
         var orderedProviders = OrderProviders(providers);
         UnsubscribeProviders();
         Providers.Clear();

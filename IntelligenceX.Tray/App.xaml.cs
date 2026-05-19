@@ -39,6 +39,10 @@ public partial class App : Application {
         base.OnStartup(e);
 
         try {
+            var openOnStartup = e.Args.Any(static arg =>
+                string.Equals(arg, "--open", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(arg, "--show", StringComparison.OrdinalIgnoreCase));
+
             _usageArtifactStore = new SqliteRawArtifactStore(ResolveTrayUsageCachePath());
             var usageService = new UsageTelemetrySnapshotService(_usageArtifactStore);
             var limitService = new ProviderLimitSnapshotService();
@@ -81,6 +85,11 @@ public partial class App : Application {
             Dispatcher.InvokeAsync(
                 async () => await RefreshStartupRegistrationStateAsync(),
                 DispatcherPriority.Background);
+            if (openOnStartup) {
+                Dispatcher.InvokeAsync(
+                    () => ShowPopup(TimeSpan.FromSeconds(30)),
+                    DispatcherPriority.ApplicationIdle);
+            }
         } catch (Exception ex) {
             MessageBox.Show(
                 $"IntelligenceX Tray failed to start:\n\n{ex}",
@@ -372,12 +381,12 @@ public partial class App : Application {
         }
     }
 
-    private void ShowPopup() {
+    private void ShowPopup(TimeSpan? suppressDeactivateFor = null) {
         if (_popupWindow is null) {
             return;
         }
 
-        _popupWindow.PrepareForTrayOpen();
+        _popupWindow.PrepareForTrayOpen(suppressDeactivateFor);
         _suppressTrayToggleUntilUtc = DateTimeOffset.UtcNow.AddMilliseconds(500);
         PositionPopupForOpen();
         _popupWindow.Show();

@@ -81,6 +81,14 @@ public sealed class ProviderViewModel : ViewModelBase {
     private decimal _todayCostUsd;
     private bool _todayCostUsesEstimate;
     private int _todayEventCount;
+    private long _pulseTotalTokens;
+    private long _pulseInputTokens;
+    private long _pulseOutputTokens;
+    private long _pulseCachedTokens;
+    private long _pulseReasoningTokens;
+    private decimal _pulseCostUsd;
+    private bool _pulseCostUsesEstimate;
+    private int _pulseEventCount;
 
     // 7-day rolling
     private long _weeklyTotalTokens;
@@ -330,17 +338,29 @@ public sealed class ProviderViewModel : ViewModelBase {
     }
 
     public string TodayTotalTokensFormatted => FormatTokens(TodayTotalTokens);
-    public string PulseProviderMetricText => TodayTotalTokens > 0
-        ? TodayTotalTokensFormatted
-        : WeeklyTotalTokens > 0
-            ? WeeklyTotalTokensFormatted
-            : TodayEventCount > 0
-                ? TodayRollupCountText
+    public string PulseProviderMetricText => PulseTotalTokens > 0
+        ? PulseTotalTokensFormatted
+            : WeeklyTotalTokens > 0
+                ? WeeklyTotalTokensFormatted
+            : PulseEventCount > 0
+                ? PulseRollupCountText
                 : "idle";
-    public string PulsePrimaryLabel => SelectedRange == ProviderTimeRange.Today ? "Today" : TodayLabel;
-    public string PulsePrimaryValue => TodayTotalTokensFormatted;
-    public string PulseSecondaryLabel => HasTodayCost ? "API equiv." : "Rollups";
-    public string PulseSecondaryValue => HasTodayCost ? TodayCostFormatted : TodayRollupCountText;
+    public long PulseTotalTokens => _pulseTotalTokens;
+    public long PulseInputTokens => _pulseInputTokens;
+    public long PulseOutputTokens => _pulseOutputTokens;
+    public long PulseCachedTokens => _pulseCachedTokens;
+    public long PulseReasoningTokens => _pulseReasoningTokens;
+    public decimal PulseCostUsd => _pulseCostUsd;
+    public bool PulseCostUsesEstimate => _pulseCostUsesEstimate;
+    public int PulseEventCount => _pulseEventCount;
+    public string PulseTotalTokensFormatted => FormatTokens(PulseTotalTokens);
+    public string PulsePrimaryLabel => "Today";
+    public string PulsePrimaryValue => PulseTotalTokensFormatted;
+    public bool HasPulseCost => PulseCostUsd > 0;
+    public string PulseCostFormatted => FormatCostDisplay(PulseCostUsd, PulseCostUsesEstimate);
+    public string PulseRollupCountText => FormatCountLabel(PulseEventCount, "rollup", "rollups");
+    public string PulseSecondaryLabel => HasPulseCost ? "API equiv." : "Rollups";
+    public string PulseSecondaryValue => HasPulseCost ? PulseCostFormatted : PulseRollupCountText;
     public string PulseStatusText {
         get {
             if (HasLimitStatusMessage) {
@@ -368,18 +388,38 @@ public sealed class ProviderViewModel : ViewModelBase {
     public string PulseTopModelText => ModelBreakdown.Count > 0
         ? ModelBreakdown[0].ModelName + " • " + ModelBreakdown[0].TotalTokensFormatted
         : "No model signal";
-    public string PulseTokenMixText => "Input " + TodayInputTokensFormatted
-                                  + " • Cached " + TodayCachedTokensFormatted
-                                  + " • Output " + TodayOutputTokensFormatted
-                                  + " • Reasoning " + TodayReasoningTokensFormatted;
-    public double PulseCachedBarWidth => TodayTotalTokens > 0
-        ? Math.Max(2d, 310d * TodayCachedTokens / TodayTotalTokens)
+    public string PulseTokenMixText => "Fresh input " + PulseFreshInputFormatted
+                                  + " • cached " + FormatTokens(PulseCachedTokens)
+                                  + " • output " + PulseVisibleOutputFormatted
+                                  + " • reasoning " + FormatTokens(PulseReasoningTokens);
+    public long PulseFreshInputTokens => Math.Max(0L, PulseInputTokens - PulseCachedTokens);
+    public long PulseVisibleOutputTokens => Math.Max(0L, PulseOutputTokens - PulseReasoningTokens);
+    public long PulseMixTotalTokens {
+        get {
+            var total = PulseFreshInputTokens + PulseCachedTokens + PulseVisibleOutputTokens + PulseReasoningTokens;
+            return total > 0 ? total : PulseTotalTokens;
+        }
+    }
+    public double PulseFreshInputProportion => PulseMixProportion(PulseFreshInputTokens);
+    public double PulseCachedInputProportion => PulseMixProportion(PulseCachedTokens);
+    public double PulseOutputProportion => PulseMixProportion(PulseVisibleOutputTokens);
+    public double PulseReasoningProportion => PulseMixProportion(PulseReasoningTokens);
+    public string PulseFreshInputFormatted => FormatTokens(PulseFreshInputTokens);
+    public string PulseVisibleOutputFormatted => FormatTokens(PulseVisibleOutputTokens);
+    public string PulseFreshInputPercentText => FormatPulsePercent(PulseFreshInputProportion);
+    public string PulseCachedInputPercentText => FormatPulsePercent(PulseCachedInputProportion);
+    public string PulseOutputPercentText => FormatPulsePercent(PulseOutputProportion);
+    public string PulseReasoningPercentText => FormatPulsePercent(PulseReasoningProportion);
+    public IEnumerable<ModelUsageViewModel> PulseTopModels => ModelBreakdown.Take(3);
+    public bool HasPulseTopModels => ModelBreakdown.Count > 0;
+    public double PulseCachedBarWidth => PulseTotalTokens > 0
+        ? Math.Max(2d, 310d * PulseCachedTokens / PulseTotalTokens)
         : 2d;
-    public double PulseFreshInputBarWidth => TodayTotalTokens > 0
-        ? Math.Max(2d, 310d * Math.Max(0L, TodayInputTokens - TodayCachedTokens) / TodayTotalTokens)
+    public double PulseFreshInputBarWidth => PulseTotalTokens > 0
+        ? Math.Max(2d, 310d * PulseFreshInputTokens / PulseTotalTokens)
         : 2d;
-    public double PulseReasoningBarWidth => TodayTotalTokens > 0
-        ? Math.Max(2d, 310d * TodayReasoningTokens / TodayTotalTokens)
+    public double PulseReasoningBarWidth => PulseTotalTokens > 0
+        ? Math.Max(2d, 310d * PulseReasoningTokens / PulseTotalTokens)
         : 2d;
 
     public string TodayLabel {
@@ -1395,6 +1435,18 @@ public sealed class ProviderViewModel : ViewModelBase {
             value => MonthlyCostUsd = value,
             value => MonthlyCostUsesEstimate = value);
 
+        var pulseEvents = FilterByWindow(today, today);
+        _pulseTotalTokens = pulseEvents.Sum(e => e.TotalTokens ?? 0L);
+        _pulseInputTokens = pulseEvents.Sum(e => e.InputTokens ?? 0L);
+        _pulseOutputTokens = pulseEvents.Sum(e => e.OutputTokens ?? 0L);
+        _pulseCachedTokens = pulseEvents.Sum(e => e.CachedInputTokens ?? 0L);
+        _pulseReasoningTokens = pulseEvents.Sum(e => e.ReasoningTokens ?? 0L);
+        ApplyDisplayCost(
+            UsageTelemetryApiPricing.BuildDisplayCost(pulseEvents),
+            value => _pulseCostUsd = value,
+            value => _pulseCostUsesEstimate = value);
+        _pulseEventCount = pulseEvents.Count;
+
         var dailyTotals = new List<(DateTime Day, long Tokens)>();
         for (var i = 6; i >= 0; i--) {
             var day = today.AddDays(-i);
@@ -1501,8 +1553,20 @@ public sealed class ProviderViewModel : ViewModelBase {
 
     private void OnPulseChanged() {
         OnPropertyChanged(nameof(PulseProviderMetricText));
+        OnPropertyChanged(nameof(PulseTotalTokens));
+        OnPropertyChanged(nameof(PulseInputTokens));
+        OnPropertyChanged(nameof(PulseOutputTokens));
+        OnPropertyChanged(nameof(PulseCachedTokens));
+        OnPropertyChanged(nameof(PulseReasoningTokens));
+        OnPropertyChanged(nameof(PulseCostUsd));
+        OnPropertyChanged(nameof(PulseCostUsesEstimate));
+        OnPropertyChanged(nameof(PulseEventCount));
+        OnPropertyChanged(nameof(PulseTotalTokensFormatted));
         OnPropertyChanged(nameof(PulsePrimaryLabel));
         OnPropertyChanged(nameof(PulsePrimaryValue));
+        OnPropertyChanged(nameof(HasPulseCost));
+        OnPropertyChanged(nameof(PulseCostFormatted));
+        OnPropertyChanged(nameof(PulseRollupCountText));
         OnPropertyChanged(nameof(PulseSecondaryLabel));
         OnPropertyChanged(nameof(PulseSecondaryValue));
         OnPropertyChanged(nameof(PulseStatusText));
@@ -1511,9 +1575,35 @@ public sealed class ProviderViewModel : ViewModelBase {
         OnPropertyChanged(nameof(PulseHealthChipText));
         OnPropertyChanged(nameof(PulseTopModelText));
         OnPropertyChanged(nameof(PulseTokenMixText));
+        OnPropertyChanged(nameof(PulseFreshInputTokens));
+        OnPropertyChanged(nameof(PulseVisibleOutputTokens));
+        OnPropertyChanged(nameof(PulseMixTotalTokens));
+        OnPropertyChanged(nameof(PulseFreshInputProportion));
+        OnPropertyChanged(nameof(PulseCachedInputProportion));
+        OnPropertyChanged(nameof(PulseOutputProportion));
+        OnPropertyChanged(nameof(PulseReasoningProportion));
+        OnPropertyChanged(nameof(PulseFreshInputFormatted));
+        OnPropertyChanged(nameof(PulseVisibleOutputFormatted));
+        OnPropertyChanged(nameof(PulseFreshInputPercentText));
+        OnPropertyChanged(nameof(PulseCachedInputPercentText));
+        OnPropertyChanged(nameof(PulseOutputPercentText));
+        OnPropertyChanged(nameof(PulseReasoningPercentText));
+        OnPropertyChanged(nameof(PulseTopModels));
+        OnPropertyChanged(nameof(HasPulseTopModels));
         OnPropertyChanged(nameof(PulseCachedBarWidth));
         OnPropertyChanged(nameof(PulseFreshInputBarWidth));
         OnPropertyChanged(nameof(PulseReasoningBarWidth));
+    }
+
+    private double PulseMixProportion(long value) {
+        var denominator = PulseMixTotalTokens;
+        return denominator > 0
+            ? Math.Max(0d, Math.Min(1d, (double)value / denominator))
+            : 0d;
+    }
+
+    private static string FormatPulsePercent(double proportion) {
+        return (proportion * 100d).ToString("0.#", CultureInfo.CurrentCulture) + "%";
     }
 
     private string BuildPulseInsightText() {
@@ -1526,8 +1616,8 @@ public sealed class ProviderViewModel : ViewModelBase {
             return leader.DisplayName + " leads this view with " + leader.TokensText + " across " + leader.EventCountText + ".";
         }
 
-        if (TodayCachedTokens > 0 && TodayInputTokens > 0) {
-            var cachedPercent = Math.Round(100d * TodayCachedTokens / Math.Max(1d, TodayInputTokens), MidpointRounding.AwayFromZero);
+        if (PulseCachedTokens > 0 && PulseInputTokens > 0) {
+            var cachedPercent = Math.Round(100d * PulseCachedTokens / Math.Max(1d, PulseInputTokens), MidpointRounding.AwayFromZero);
             return "Cached input is " + cachedPercent.ToString("N0", CultureInfo.CurrentCulture) + "% of input, so cost is lower than raw input volume suggests.";
         }
 
@@ -1535,11 +1625,11 @@ public sealed class ProviderViewModel : ViewModelBase {
             return ModelBreakdown[0].ModelName + " is the top model in this view.";
         }
 
-        if (TodayEventCount > 0) {
-            return TodayRollupCountText + " in the selected view.";
+        if (PulseEventCount > 0) {
+            return PulseRollupCountText + " today.";
         }
 
-        return "No local activity in this view yet.";
+        return "No local activity today yet.";
     }
 
     private void RebuildCodeChurnBars() {
@@ -1763,8 +1853,10 @@ public sealed class ProviderViewModel : ViewModelBase {
             .ToList();
 
         var max = modelGroups.Count > 0 ? modelGroups.Max(static group => group.Total) : 0L;
+        var rank = 1;
         foreach (var group in modelGroups) {
             ModelBreakdown.Add(new ModelUsageViewModel {
+                Rank = rank++,
                 ModelName = group.Model,
                 TotalTokens = group.Total,
                 Proportion = max > 0 ? (double)group.Total / max : 0d,

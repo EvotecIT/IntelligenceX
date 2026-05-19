@@ -4,7 +4,7 @@
         xmlns:vm="clr-namespace:IntelligenceX.Tray.ViewModels"
         xmlns:conv="clr-namespace:IntelligenceX.Tray.Converters"
         Title="IntelligenceX Usage"
-        Width="520" Height="720"
+        Width="560" Height="760"
         WindowStyle="None"
         AllowsTransparency="True"
         Background="Transparent"
@@ -61,7 +61,7 @@
                             Cursor="SizeAll"
                             MouseLeftButtonDown="OnHeaderMouseLeftButtonDown">
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <Border Width="26" Height="26" CornerRadius="7" Margin="0,0,10,0"
+                            <Border Width="34" Height="34" CornerRadius="9" Margin="0,0,12,0"
                                     ToolTip="{Binding AccentToolTip}">
                                 <Border.Background>
                                     <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
@@ -70,16 +70,27 @@
                                     </LinearGradientBrush>
                                 </Border.Background>
                                 <TextBlock Text="IX" FontFamily="{StaticResource AppFont}"
-                                           FontSize="11" FontWeight="ExtraBold"
+                                           FontSize="14" FontWeight="ExtraBold"
                                            Foreground="White"
                                            HorizontalAlignment="Center"
                                            VerticalAlignment="Center" />
                             </Border>
-                            <TextBlock FontFamily="{StaticResource AppFont}"
-                                       FontSize="15" FontWeight="SemiBold"
-                                       VerticalAlignment="Center"
-                                       Foreground="{StaticResource PrimaryTextBrush}"
-                                       Text="{Binding HeaderTitle}" />
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock FontFamily="{StaticResource AppFont}"
+                                           FontSize="19" FontWeight="SemiBold"
+                                           Foreground="{StaticResource PrimaryTextBrush}"
+                                           Text="Usage Pulse" />
+                                <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                                    <TextBlock FontFamily="{StaticResource AppFont}"
+                                               FontSize="11"
+                                               Foreground="{StaticResource SecondaryTextBrush}"
+                                               Text="{Binding LastRefreshedFormatted, StringFormat=Updated {0}}" />
+                                    <Ellipse Width="7" Height="7"
+                                             Margin="8,0,0,0"
+                                             VerticalAlignment="Center"
+                                             Fill="{StaticResource SuccessBrush}" />
+                                </StackPanel>
+                            </StackPanel>
                         </StackPanel>
                     </Border>
                     <StackPanel Grid.Column="1" Orientation="Horizontal">
@@ -88,44 +99,30 @@
                                 IsEnabled="{Binding CanToggleFavoriteSelectedProvider}"
                                 VerticalAlignment="Center"
                                 Margin="0,0,6,0">
-                            <TextBlock FontFamily="{StaticResource AppFont}" FontSize="11"
-                                       Text="{Binding FavoriteSelectedProviderLabel}" />
+                            <TextBlock FontFamily="{StaticResource AppFont}" FontSize="12"
+                                       Text="Pin" />
                         </Button>
                         <Button Style="{StaticResource RefreshButtonStyle}"
-                                Command="{Binding OpenOpenAiCacheCommand}"
+                                Command="{Binding HeaderRefreshCommand}"
+                                ToolTip="{Binding HeaderRefreshLabel}"
                                 VerticalAlignment="Center"
                                 Margin="0,0,6,0">
-                            <TextBlock FontFamily="{StaticResource AppFont}" FontSize="11"
-                                       Text="Cache" />
+                            <TextBlock FontFamily="{StaticResource AppFont}" FontSize="18"
+                                       Text="↻" />
                         </Button>
                         <Button Style="{StaticResource RefreshButtonStyle}"
                                 Command="{Binding CycleThemeModeCommand}"
                                 ToolTip="{Binding ThemeToolTip}"
                                 VerticalAlignment="Center"
                                 Margin="0,0,6,0">
-                            <TextBlock FontFamily="{StaticResource AppFont}" FontSize="11"
-                                       Text="{Binding ThemeButtonLabel}" />
-                        </Button>
-                        <Button Style="{StaticResource RefreshButtonStyle}"
-                                Command="{Binding HeaderRefreshCommand}"
-                                VerticalAlignment="Center">
-                            <TextBlock FontFamily="{StaticResource AppFont}" FontSize="11"
-                                       Text="{Binding HeaderRefreshLabel}" />
-                        </Button>
-                        <Button Style="{StaticResource RefreshButtonStyle}"
-                                Click="OnMinimizeButtonClick"
-                                ToolTip="Hide to tray"
-                                VerticalAlignment="Center"
-                                Margin="6,0,0,0">
-                            <TextBlock FontFamily="{StaticResource AppFont}" FontSize="14"
-                                       Text="−" />
+                            <TextBlock FontFamily="{StaticResource AppFont}" FontSize="17"
+                                       Text="⚙" />
                         </Button>
                         <Button Style="{StaticResource RefreshButtonStyle}"
                                 Click="OnCloseButtonClick"
                                 ToolTip="Close tray app"
-                                VerticalAlignment="Center"
-                                Margin="6,0,0,0">
-                            <TextBlock FontFamily="{StaticResource AppFont}" FontSize="13"
+                                VerticalAlignment="Center">
+                            <TextBlock FontFamily="{StaticResource AppFont}" FontSize="18"
                                        Text="×" />
                         </Button>
                     </StackPanel>
@@ -137,7 +134,7 @@
                     Background="{StaticResource SectionStripBrush}"
                     BorderBrush="{StaticResource BorderBrush}"
                     BorderThickness="0,1,0,1"
-                    Padding="6,2">
+                    Padding="14,10">
                 <ScrollViewer HorizontalScrollBarVisibility="Auto"
                               VerticalScrollBarVisibility="Disabled">
                     <ItemsControl ItemsSource="{Binding Providers}">
@@ -153,40 +150,52 @@
                                              IsChecked="{Binding IsSelected, RelativeSource={RelativeSource Self}}"
                                              Click="OnProviderTabClick"
                                              Tag="{Binding}">
-                                    <StackPanel Width="72">
-                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                    <Grid Width="68" Height="58">
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="*" />
+                                        </Grid.RowDefinitions>
+                                        <Grid Grid.Row="0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
                                             <Viewbox Width="13" Height="13"
-                                                     Margin="0,0,4,0"
+                                                     Margin="0,0,5,0"
                                                      VerticalAlignment="Center">
                                                 <Path Data="{Binding IconGeometry}"
                                                       Fill="{Binding AccentBrush}"
                                                       Stretch="Uniform" />
                                             </Viewbox>
-                                            <TextBlock Text="{Binding ShortName}"
-                                                       MaxWidth="48"
+                                            <TextBlock Grid.Column="1"
+                                                       Text="{Binding ShortName}"
                                                        TextTrimming="CharacterEllipsis"
+                                                       FontSize="11.5"
                                                        VerticalAlignment="Center" />
-                                        </StackPanel>
-                                        <StackPanel Orientation="Horizontal"
-                                                    HorizontalAlignment="Center"
-                                                    Margin="0,3,0,0">
-                                            <Ellipse Width="5" Height="5"
+                                            <Ellipse Grid.Column="2"
+                                                     Width="7" Height="7"
                                                      Fill="{Binding PulseStatusBrush}"
-                                                     VerticalAlignment="Center"
-                                                     Margin="0,0,4,0" />
+                                                     VerticalAlignment="Center" />
+                                        </Grid>
+                                        <StackPanel Grid.Row="1"
+                                                    Orientation="Horizontal"
+                                                    VerticalAlignment="Bottom"
+                                                    Margin="0,6,0,0">
                                             <TextBlock Text="{Binding PulseProviderMetricText}"
-                                                       FontSize="9"
-                                                       Foreground="{StaticResource TertiaryTextBrush}"
+                                                       FontSize="14"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="{StaticResource SecondaryTextBrush}"
                                                        TextTrimming="CharacterEllipsis"
-                                                       MaxWidth="54" />
+                                                       MaxWidth="64" />
                                             <TextBlock Text="★"
-                                                       Margin="3,0,0,0"
+                                                       Margin="5,0,0,2"
                                                        FontSize="8"
                                                        Foreground="{StaticResource FavoriteBadgeBrush}"
-                                                       VerticalAlignment="Center"
+                                                       VerticalAlignment="Bottom"
                                                        Visibility="{Binding IsFavorite, Converter={StaticResource BoolToVis}}" />
                                         </StackPanel>
-                                    </StackPanel>
+                                    </Grid>
                                 </RadioButton>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
@@ -205,162 +214,261 @@
                                 Margin="16,12,16,8">
 
                         <Border Style="{StaticResource CardStyle}"
-                                Padding="14"
+                                Padding="16"
                                 Background="{StaticResource SubtleSurfaceEmphasisBrush}">
-                            <StackPanel>
-                                <Grid Margin="0,0,0,8">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <StackPanel>
-                                        <TextBlock Text="{Binding PulsePrimaryLabel}"
-                                                   Style="{StaticResource SectionHeaderStyle}"
-                                                   Margin="0,0,0,3" />
-                                        <StackPanel Orientation="Horizontal">
-                                            <TextBlock Text="{Binding PulsePrimaryValue}"
-                                                       Style="{StaticResource ValueTextStyle}"
-                                                       FontSize="28" />
-                                            <TextBlock Text=" tokens"
-                                                       Style="{StaticResource LabelTextStyle}"
-                                                       VerticalAlignment="Bottom"
-                                                       Margin="5,0,0,5" />
-                                        </StackPanel>
-                                    </StackPanel>
-                                    <StackPanel Grid.Column="1" HorizontalAlignment="Right">
-                                        <Border Padding="8,3"
-                                                CornerRadius="12"
-                                                Background="{StaticResource InsetPanelBrush}"
-                                                HorizontalAlignment="Right">
-                                            <StackPanel Orientation="Horizontal">
-                                                <Ellipse Width="7" Height="7"
-                                                         Fill="{Binding PulseStatusBrush}"
-                                                         VerticalAlignment="Center"
-                                                         Margin="0,0,5,0" />
-                                                <TextBlock Text="{Binding PulseStatusText}"
-                                                           FontFamily="{StaticResource AppFont}"
-                                                           FontSize="10"
-                                                           FontWeight="SemiBold"
-                                                           Foreground="{StaticResource PrimaryTextBrush}" />
-                                            </StackPanel>
-                                        </Border>
-                                        <TextBlock Text="{Binding PulseSecondaryLabel}"
-                                                   FontFamily="{StaticResource AppFont}"
-                                                   FontSize="10"
-                                                   Foreground="{StaticResource TertiaryTextBrush}"
-                                                   HorizontalAlignment="Right"
-                                                   Margin="0,8,0,0" />
-                                        <TextBlock Text="{Binding PulseSecondaryValue}"
-                                                   FontFamily="{StaticResource AppFont}"
-                                                   FontSize="18"
-                                                   FontWeight="SemiBold"
-                                                   Foreground="{StaticResource PrimaryTextBrush}"
-                                                   HorizontalAlignment="Right" />
-                                    </StackPanel>
-                                </Grid>
-
-                                <Grid Height="9" Margin="0,4,0,10">
-                                    <Border CornerRadius="5" Background="{StaticResource SubtleSurfaceStrongBrush}" />
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="220" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="{Binding PulsePrimaryLabel}"
+                                               Style="{StaticResource SectionHeaderStyle}"
+                                               Margin="0,0,0,4" />
                                     <StackPanel Orientation="Horizontal">
-                                        <Border Height="9"
-                                                MinWidth="2"
-                                                Width="{Binding PulseFreshInputBarWidth}"
-                                                CornerRadius="5,0,0,5">
-                                            <Border.Background>
-                                                <SolidColorBrush Color="{Binding InputColor}" Opacity="0.85" />
-                                            </Border.Background>
-                                        </Border>
-                                        <Border Height="9"
-                                                MinWidth="2"
-                                                Width="{Binding PulseCachedBarWidth}"
-                                                Background="{StaticResource SuccessBrush}" />
-                                        <Border Height="9"
-                                                MinWidth="2"
-                                                Width="{Binding OutputBarWidth}">
-                                            <Border.Background>
-                                                <SolidColorBrush Color="{Binding OutputColor}" Opacity="0.85" />
-                                            </Border.Background>
-                                        </Border>
-                                        <Border Height="9"
-                                                MinWidth="2"
-                                                Width="{Binding PulseReasoningBarWidth}"
-                                                CornerRadius="0,5,5,0"
-                                                Background="{StaticResource WarningBrush}" />
+                                        <TextBlock Text="{Binding PulsePrimaryValue}"
+                                                   Style="{StaticResource ValueTextStyle}"
+                                                   FontSize="42" />
+                                        <TextBlock Text=" tokens"
+                                                   Style="{StaticResource LabelTextStyle}"
+                                                   FontSize="13"
+                                                   VerticalAlignment="Bottom"
+                                                   Margin="7,0,0,9" />
                                     </StackPanel>
-                                </Grid>
-
-                                <TextBlock Text="{Binding PulseInsightText}"
+                                    <TextBlock Text="{Binding PulseSecondaryLabel}"
+                                               Style="{StaticResource LabelTextStyle}"
+                                               Margin="0,8,0,2" />
+                                    <TextBlock Text="{Binding PulseSecondaryValue}"
+                                               FontFamily="{StaticResource AppFont}"
+                                               FontSize="24"
+                                               FontWeight="SemiBold"
+                                               Foreground="{StaticResource PrimaryTextBrush}" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="1">
+                                    <Border Padding="10,5"
+                                            CornerRadius="14"
+                                            Background="{StaticResource InsetPanelBrush}"
+                                            HorizontalAlignment="Right"
+                                            Margin="0,0,0,12">
+                                        <StackPanel Orientation="Horizontal">
+                                            <Ellipse Width="8" Height="8"
+                                                     Fill="{Binding PulseStatusBrush}"
+                                                     VerticalAlignment="Center"
+                                                     Margin="0,0,7,0" />
+                                            <TextBlock Text="{Binding PulseStatusText}"
+                                                       FontFamily="{StaticResource AppFont}"
+                                                       FontSize="12"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="{StaticResource PrimaryTextBrush}" />
+                                        </StackPanel>
+                                    </Border>
+                                    <ItemsControl ItemsSource="{Binding DailyBars}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <UniformGrid Columns="7" />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate DataType="{x:Type vm:DailyBarViewModel}">
+                                                <StackPanel HorizontalAlignment="Center" Margin="2,0">
+                                                    <Grid Height="70" VerticalAlignment="Bottom">
+                                                        <Border CornerRadius="4"
+                                                                Width="13"
+                                                                Background="{StaticResource SubtleSurfaceStrongBrush}" />
+                                                        <Border CornerRadius="4"
+                                                                Width="13"
+                                                                Background="{Binding BarBrush}"
+                                                                VerticalAlignment="Bottom"
+                                                                Height="{Binding BarHeight}" />
+                                                    </Grid>
+                                                    <TextBlock Text="{Binding DayLabel}"
+                                                               FontFamily="{StaticResource AppFont}"
+                                                               FontSize="8.5"
+                                                               Foreground="{StaticResource TertiaryTextBrush}"
+                                                               HorizontalAlignment="Center"
+                                                               Margin="0,5,0,0" />
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                                <TextBlock Grid.ColumnSpan="2"
+                                           Text="{Binding PulseInsightText}"
                                            FontFamily="{StaticResource AppFont}"
-                                           FontSize="11.5"
+                                           FontSize="13"
                                            FontWeight="SemiBold"
                                            Foreground="{StaticResource PrimaryTextBrush}"
                                            TextWrapping="Wrap"
-                                           Margin="0,0,0,10" />
+                                           VerticalAlignment="Bottom"
+                                           Margin="0,142,0,0" />
+                            </Grid>
+                        </Border>
 
-                                <UniformGrid Columns="3" Margin="0,0,0,10">
-                                    <Border Background="{StaticResource InsetPanelBrush}" CornerRadius="9" Padding="9,7" Margin="0,0,6,0">
-                                        <StackPanel>
-                                            <TextBlock Text="7d" Style="{StaticResource LabelTextStyle}" />
-                                            <TextBlock Text="{Binding WeeklyTotalTokensFormatted}" Style="{StaticResource StatValueStyle}" />
-                                        </StackPanel>
-                                    </Border>
-                                    <Border Background="{StaticResource InsetPanelBrush}" CornerRadius="9" Padding="9,7" Margin="3,0">
-                                        <StackPanel>
-                                            <TextBlock Text="30d" Style="{StaticResource LabelTextStyle}" />
-                                            <TextBlock Text="{Binding MonthlyTotalTokensFormatted}" Style="{StaticResource StatValueStyle}" />
-                                        </StackPanel>
-                                    </Border>
-                                    <Border Background="{StaticResource InsetPanelBrush}" CornerRadius="9" Padding="9,7" Margin="6,0,0,0">
-                                        <StackPanel>
-                                            <TextBlock Text="Health" Style="{StaticResource LabelTextStyle}" />
-                                            <TextBlock Text="{Binding PulseHealthChipText}"
-                                                       Style="{StaticResource StatValueStyle}"
-                                                       FontSize="12"
-                                                       TextTrimming="CharacterEllipsis" />
-                                        </StackPanel>
-                                    </Border>
-                                </UniformGrid>
+                        <UniformGrid Columns="3" Margin="0,0,0,10">
+                            <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="12" Padding="13,10" Margin="0,0,7,0">
+                                <StackPanel>
+                                    <TextBlock Text="7d" Style="{StaticResource LabelTextStyle}" />
+                                    <TextBlock Text="{Binding WeeklyTotalTokensFormatted}" Style="{StaticResource StatValueStyle}" FontSize="18" />
+                                    <TextBlock Text="{Binding WeeklyAvgPerDayFormatted}" Style="{StaticResource LabelTextStyle}" />
+                                </StackPanel>
+                            </Border>
+                            <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="12" Padding="13,10" Margin="3,0">
+                                <StackPanel>
+                                    <TextBlock Text="30d" Style="{StaticResource LabelTextStyle}" />
+                                    <TextBlock Text="{Binding MonthlyTotalTokensFormatted}" Style="{StaticResource StatValueStyle}" FontSize="18" />
+                                    <TextBlock Text="{Binding MonthlyAvgPerDayFormatted}" Style="{StaticResource LabelTextStyle}" />
+                                </StackPanel>
+                            </Border>
+                            <Border Background="{StaticResource CardBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="12" Padding="13,10" Margin="7,0,0,0">
+                                <StackPanel>
+                                    <TextBlock Text="Health" Style="{StaticResource LabelTextStyle}" />
+                                    <TextBlock Text="{Binding PulseHealthChipText}"
+                                               Style="{StaticResource StatValueStyle}"
+                                               FontSize="16"
+                                               Foreground="{Binding PulseStatusBrush}"
+                                               TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="Data health" Style="{StaticResource LabelTextStyle}" />
+                                </StackPanel>
+                            </Border>
+                        </UniformGrid>
 
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <StackPanel>
-                                        <TextBlock Text="{Binding PulseTopModelText}"
-                                                   FontFamily="{StaticResource AppFont}"
-                                                   FontSize="10.5"
-                                                   Foreground="{StaticResource SecondaryTextBrush}"
-                                                   TextTrimming="CharacterEllipsis" />
-                                        <TextBlock Text="{Binding PulseTokenMixText}"
-                                                   FontFamily="{StaticResource AppFont}"
-                                                   FontSize="9.5"
-                                                   Foreground="{StaticResource TertiaryTextBrush}"
-                                                   TextTrimming="CharacterEllipsis"
-                                                   Margin="0,3,0,0" />
-                                    </StackPanel>
-                                    <StackPanel Grid.Column="1"
-                                                Orientation="Horizontal"
-                                                VerticalAlignment="Center"
-                                                Margin="10,0,0,0">
-                                        <Button Style="{StaticResource LinkButtonStyle}"
-                                                Command="{Binding OpenDetailedReportCommand}"
-                                                Margin="0,0,6,0">
-                                            <TextBlock Text="Open report" />
-                                        </Button>
-                                        <Button Style="{StaticResource LinkButtonStyle}"
-                                                Command="{Binding ExportJsonCommand}"
-                                                Margin="0,0,6,0">
-                                            <TextBlock Text="Export" />
-                                        </Button>
-                                        <Button Style="{StaticResource LinkButtonStyle}"
-                                                Click="OnDetailsToggleClick">
-                                            <TextBlock Text="{Binding DetailsButtonText}" />
-                                        </Button>
+                        <Border Style="{StaticResource CardStyle}" Padding="14,12">
+                            <StackPanel>
+                                <Grid Margin="0,0,0,9">
+                                    <TextBlock Text="TOKEN MIX"
+                                               Style="{StaticResource SectionHeaderStyle}"
+                                               Margin="0" />
+                                    <TextBlock Text="{Binding PulseTokenMixText}"
+                                               FontFamily="{StaticResource AppFont}"
+                                               FontSize="10.5"
+                                               Foreground="{StaticResource SecondaryTextBrush}"
+                                               HorizontalAlignment="Right"
+                                               TextTrimming="CharacterEllipsis"
+                                               MaxWidth="330" />
+                                </Grid>
+                                <Grid x:Name="TokenMixTrack" Height="13" Margin="0,0,0,10">
+                                    <Border CornerRadius="7" Background="{StaticResource SubtleSurfaceStrongBrush}" />
+                                    <StackPanel Orientation="Horizontal" ClipToBounds="True">
+                                        <Border Height="13" CornerRadius="7,0,0,7">
+                                            <Border.Width>
+                                                <MultiBinding Converter="{StaticResource PropToActualWidth}">
+                                                    <Binding Path="PulseFreshInputProportion" />
+                                                    <Binding ElementName="TokenMixTrack" Path="ActualWidth" />
+                                                </MultiBinding>
+                                            </Border.Width>
+                                            <Border.Background>
+                                                <SolidColorBrush Color="{Binding InputColor}" />
+                                            </Border.Background>
+                                        </Border>
+                                        <Border Height="13" Background="{StaticResource SuccessBrush}">
+                                            <Border.Width>
+                                                <MultiBinding Converter="{StaticResource PropToActualWidth}">
+                                                    <Binding Path="PulseCachedInputProportion" />
+                                                    <Binding ElementName="TokenMixTrack" Path="ActualWidth" />
+                                                </MultiBinding>
+                                            </Border.Width>
+                                        </Border>
+                                        <Border Height="13">
+                                            <Border.Width>
+                                                <MultiBinding Converter="{StaticResource PropToActualWidth}">
+                                                    <Binding Path="PulseOutputProportion" />
+                                                    <Binding ElementName="TokenMixTrack" Path="ActualWidth" />
+                                                </MultiBinding>
+                                            </Border.Width>
+                                            <Border.Background>
+                                                <SolidColorBrush Color="{Binding OutputColor}" />
+                                            </Border.Background>
+                                        </Border>
+                                        <Border Height="13" CornerRadius="0,7,7,0" Background="{StaticResource WarningBrush}">
+                                            <Border.Width>
+                                                <MultiBinding Converter="{StaticResource PropToActualWidth}">
+                                                    <Binding Path="PulseReasoningProportion" />
+                                                    <Binding ElementName="TokenMixTrack" Path="ActualWidth" />
+                                                </MultiBinding>
+                                            </Border.Width>
+                                        </Border>
                                     </StackPanel>
                                 </Grid>
+                                <UniformGrid Columns="4">
+                                    <TextBlock Text="{Binding PulseFreshInputPercentText, StringFormat=Fresh {0}}" Style="{StaticResource LabelTextStyle}" />
+                                    <TextBlock Text="{Binding PulseCachedInputPercentText, StringFormat=Cached {0}}" Style="{StaticResource LabelTextStyle}" />
+                                    <TextBlock Text="{Binding PulseOutputPercentText, StringFormat=Output {0}}" Style="{StaticResource LabelTextStyle}" />
+                                    <TextBlock Text="{Binding PulseReasoningPercentText, StringFormat=Reasoning {0}}" Style="{StaticResource LabelTextStyle}" />
+                                </UniformGrid>
                             </StackPanel>
                         </Border>
+
+                        <Border Style="{StaticResource CardStyle}" Padding="14,12">
+                            <StackPanel>
+                                <TextBlock Text="TOP MODELS"
+                                           Style="{StaticResource SectionHeaderStyle}"
+                                           Margin="0,0,0,8" />
+                                <ItemsControl ItemsSource="{Binding PulseTopModels}"
+                                              AlternationCount="4">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate DataType="{x:Type vm:ModelUsageViewModel}">
+                                            <Grid Margin="0,0,0,8">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="20" />
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding RankText}"
+                                                           FontFamily="{StaticResource AppFont}"
+                                                           FontSize="12"
+                                                           Foreground="{StaticResource SecondaryTextBrush}" />
+                                                <StackPanel Grid.Column="1">
+                                                    <TextBlock Text="{Binding ModelName}"
+                                                               FontFamily="{StaticResource AppFont}"
+                                                               FontSize="13"
+                                                               FontWeight="SemiBold"
+                                                               Foreground="{StaticResource PrimaryTextBrush}"
+                                                               TextTrimming="CharacterEllipsis" />
+                                                    <Grid Height="6" Margin="0,4,14,0">
+                                                        <Border CornerRadius="3" Background="{StaticResource SubtleSurfaceStrongBrush}" />
+                                                        <Border CornerRadius="3"
+                                                                HorizontalAlignment="Left"
+                                                                Background="{Binding BarBrush}">
+                                                            <Border.Width>
+                                                                <Binding Path="Proportion" Converter="{StaticResource PropToWidth}" ConverterParameter="310" />
+                                                            </Border.Width>
+                                                        </Border>
+                                                    </Grid>
+                                                </StackPanel>
+                                                <TextBlock Grid.Column="2"
+                                                           Text="{Binding TotalTokensFormatted}"
+                                                           FontFamily="{StaticResource AppFont}"
+                                                           FontSize="12"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="{StaticResource SecondaryTextBrush}"
+                                                           Margin="8,0,0,0" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Border>
+
+                        <UniformGrid Columns="3" Margin="0,0,0,10">
+                            <Button Style="{StaticResource RefreshButtonStyle}"
+                                    Command="{Binding OpenDetailedReportCommand}"
+                                    Margin="0,0,7,0"
+                                    Padding="14,10">
+                                <TextBlock Text="Open report" />
+                            </Button>
+                            <Button Style="{StaticResource RefreshButtonStyle}"
+                                    Command="{Binding ExportJsonCommand}"
+                                    Margin="3,0"
+                                    Padding="14,10">
+                                <TextBlock Text="Export" />
+                            </Button>
+                            <Button Style="{StaticResource RefreshButtonStyle}"
+                                    Click="OnDetailsToggleClick"
+                                    Margin="7,0,0,0"
+                                    Padding="14,10">
+                                <TextBlock Text="{Binding DetailsButtonText}" />
+                            </Button>
+                        </UniformGrid>
 
                         <Border Style="{StaticResource CardStyle}"
                                 Padding="12"
@@ -539,6 +647,7 @@
                             </StackPanel>
                         </Border>
 
+                        <StackPanel Visibility="{Binding IsDetailsOpen, Converter={StaticResource BoolToVis}}">
                         <Border Style="{StaticResource CardStyle}"
                                 Visibility="{Binding HasCombinedOverviewCards, Converter={StaticResource BoolToVis}}">
                             <StackPanel>
@@ -2755,7 +2864,7 @@
                                 </Border>
                             </StackPanel>
                         </Border>
-
+                        </StackPanel>
                     </StackPanel>
                 </ScrollViewer>
 

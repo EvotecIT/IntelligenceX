@@ -7,6 +7,7 @@ namespace IntelligenceX.Tray.ViewModels;
 /// </summary>
 public sealed class ModelUsageViewModel : ViewModelBase {
     private string _modelName = string.Empty;
+    private int _rank;
     private long _totalTokens;
     private double _proportion;
     private Brush _barBrush = Brushes.Gray;
@@ -15,6 +16,17 @@ public sealed class ModelUsageViewModel : ViewModelBase {
         get => _modelName;
         set => SetProperty(ref _modelName, value);
     }
+
+    public int Rank {
+        get => _rank;
+        set {
+            if (SetProperty(ref _rank, value)) {
+                OnPropertyChanged(nameof(RankText));
+            }
+        }
+    }
+
+    public string RankText => Rank > 0 ? Rank.ToString() + "." : string.Empty;
 
     public long TotalTokens {
         get => _totalTokens;
