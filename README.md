@@ -129,6 +129,59 @@ _Placeholder (generated visual; to be replaced with real product capture)._
 
 <img src="Assets/README/library.svg" alt=".NET library product visual" width="760" />
 
+### Treatment API
+
+The .NET library includes a generic treatment layer for workflows that need to
+turn private input artifacts into structured AI output. A caller provides a
+brief, source artifacts, output expectations and optional image-generation
+settings; IntelligenceX handles prompt construction and provider execution.
+
+```csharp
+using IntelligenceX.OpenAI;
+using IntelligenceX.Treatment;
+
+var request = new TreatmentRequest {
+    Id = "writer-job-2026-05-19",
+    Prompt = "Read the evidence and produce original publication drafts in Polish.",
+    Instructions = "You are an independent technology editor. Do not copy source text.",
+    WorkingDirectory = @"C:\Support\GitHub\NewsIntel\.newsintel\scan\evidence\appleradar",
+    Inputs = new[] {
+        new TreatmentInputArtifact {
+            Id = "writer-job",
+            Role = "brief",
+            MediaType = "application/json",
+            Path = "writer-job.json"
+        },
+        new TreatmentInputArtifact {
+            Id = "evidence-bundle",
+            Role = "evidence",
+            MediaType = "application/json",
+            Path = "evidence-bundle.json"
+        }
+    },
+    Outputs = new[] {
+        new TreatmentOutputSpec {
+            Id = "writer-output",
+            Modality = TreatmentOutputModality.Json,
+            Description = "Publisher-safe article drafts with source references."
+        }
+    },
+    OutputSchema = new TreatmentOutputSchema {
+        Contract = "newsintel.writer-output.v1",
+        Strict = true
+    }
+};
+
+using var client = await IntelligenceXClient.ConnectAsync();
+var engine = new TreatmentEngine(new OpenAIChatTreatmentProvider(client));
+TreatmentResult result = await engine.RunAsync(request);
+```
+
+Local text-like input files such as JSON, Markdown, text, XML, YAML, CSV and
+HTML can be inlined into the model prompt with a per-file character limit. This
+keeps private evidence available to the AI writer without making the evidence a
+public website contract.
+
 ## Quick Start 🚀
 
 Recommended onboarding:
