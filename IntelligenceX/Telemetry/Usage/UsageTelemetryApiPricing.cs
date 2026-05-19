@@ -219,14 +219,14 @@ public static class UsageTelemetryApiPricing {
             hasKnownPricing: true);
     }
 
-    private static bool ShouldTreatCachedInputAsInputSubset(string? providerId) {
+    public static bool ShouldTreatCachedInputAsInputSubset(string? providerId) {
         return string.Equals(providerId, "codex", StringComparison.OrdinalIgnoreCase)
                || string.Equals(providerId, "openai", StringComparison.OrdinalIgnoreCase)
                || string.Equals(providerId, "chatgpt", StringComparison.OrdinalIgnoreCase)
                || string.Equals(providerId, "ix", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static bool ShouldTreatReasoningAsOutputSubset(string? providerId) {
+    public static bool ShouldTreatReasoningAsOutputSubset(string? providerId) {
         return string.Equals(providerId, "codex", StringComparison.OrdinalIgnoreCase)
                || string.Equals(providerId, "openai", StringComparison.OrdinalIgnoreCase)
                || string.Equals(providerId, "chatgpt", StringComparison.OrdinalIgnoreCase)

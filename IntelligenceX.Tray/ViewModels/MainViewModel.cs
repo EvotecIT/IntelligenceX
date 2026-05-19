@@ -1071,6 +1071,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
             SavePreferences();
         }
 
+        RefreshGitHubProviderPulse();
         OnPropertyChanged(nameof(ShowCombinedGitHubPulse));
     }
 
@@ -2154,8 +2155,21 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
             OutputColor = Color.FromRgb(64, 196, 99)
         };
         gitHubProvider.ApplyRefreshDelta(0L, 0);
-        gitHubProvider.ApplyPulseProviderMetricOverride(BuildGitHubProviderMetricText());
+        ApplyGitHubProviderPulse(gitHubProvider);
         return gitHubProvider;
+    }
+
+    private void RefreshGitHubProviderPulse() {
+        if (Providers.FirstOrDefault(provider => string.Equals(provider.ProviderId, "__github__", StringComparison.Ordinal)) is { } gitHubProvider) {
+            ApplyGitHubProviderPulse(gitHubProvider);
+        }
+    }
+
+    private void ApplyGitHubProviderPulse(ProviderViewModel gitHubProvider) {
+        gitHubProvider.ApplyPulseProviderMetricOverride(BuildGitHubProviderMetricText());
+        gitHubProvider.LimitStatusMessage = GitHub.HasError
+            ? "GitHub data needs attention"
+            : null;
     }
 
     private string BuildGitHubProviderMetricText() {

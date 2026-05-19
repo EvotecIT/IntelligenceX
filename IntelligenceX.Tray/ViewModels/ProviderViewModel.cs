@@ -163,12 +163,14 @@ public sealed class ProviderViewModel : ViewModelBase {
             OnPropertyChanged(nameof(HasLiveLimitData));
             OnPropertyChanged(nameof(ShowSharedLimitWindows));
             OnPropertyChanged(nameof(HasLimitSection));
+            NotifyPulseStatusChanged();
         };
         LimitAccounts.CollectionChanged += (_, _) => {
             OnPropertyChanged(nameof(HasLimitAccounts));
             OnPropertyChanged(nameof(HasMultipleLimitAccounts));
             OnPropertyChanged(nameof(ShowSharedLimitWindows));
             OnPropertyChanged(nameof(HasLimitSection));
+            NotifyPulseStatusChanged();
         };
         AccountBreakdown.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasAccountBreakdown));
         SurfaceBreakdown.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasSurfaceBreakdown));
@@ -409,6 +411,11 @@ public sealed class ProviderViewModel : ViewModelBase {
         "Partial" => FrozenBrush(Color.FromRgb(240, 192, 64)),
         _ => FrozenBrush(Color.FromRgb(80, 216, 128))
     };
+    public Brush PulseStatusPanelBrush => PulseStatusText switch {
+        "Needs attention" => FrozenBrush(Color.FromArgb(0x22, 0xF0, 0xC0, 0x40)),
+        "Partial" => FrozenBrush(Color.FromArgb(0x22, 0xF0, 0xC0, 0x40)),
+        _ => FrozenBrush(Color.FromArgb(0x22, 0x50, 0xD8, 0x80))
+    };
     public string PulseInsightText => BuildPulseInsightText();
     public string PulseHealthChipText => HasLimitStatusMessage
         ? "Limits need attention"
@@ -432,8 +439,12 @@ public sealed class ProviderViewModel : ViewModelBase {
                                   + " • cached " + FormatTokens(PulseCachedTokens)
                                   + " • output " + PulseVisibleOutputFormatted
                                   + " • reasoning " + FormatTokens(PulseReasoningTokens);
-    public long PulseFreshInputTokens => Math.Max(0L, PulseInputTokens - PulseCachedTokens);
-    public long PulseVisibleOutputTokens => Math.Max(0L, PulseOutputTokens - PulseReasoningTokens);
+    public long PulseFreshInputTokens => UsageTelemetryApiPricing.ShouldTreatCachedInputAsInputSubset(ProviderId)
+        ? Math.Max(0L, PulseInputTokens - Math.Min(PulseInputTokens, PulseCachedTokens))
+        : PulseInputTokens;
+    public long PulseVisibleOutputTokens => UsageTelemetryApiPricing.ShouldTreatReasoningAsOutputSubset(ProviderId)
+        ? Math.Max(0L, PulseOutputTokens - Math.Min(PulseOutputTokens, PulseReasoningTokens))
+        : PulseOutputTokens;
     public long PulseMixTotalTokens {
         get {
             var total = PulseFreshInputTokens + PulseCachedTokens + PulseVisibleOutputTokens + PulseReasoningTokens;
@@ -1627,6 +1638,7 @@ public sealed class ProviderViewModel : ViewModelBase {
         OnPropertyChanged(nameof(PulsePreviousDayTokens));
         OnPropertyChanged(nameof(PulseStatusText));
         OnPropertyChanged(nameof(PulseStatusBrush));
+        OnPropertyChanged(nameof(PulseStatusPanelBrush));
         OnPropertyChanged(nameof(PulseInsightText));
         OnPropertyChanged(nameof(PulseHealthChipText));
         OnPropertyChanged(nameof(PulseTopModelText));
@@ -1659,6 +1671,7 @@ public sealed class ProviderViewModel : ViewModelBase {
     private void NotifyPulseStatusChanged() {
         OnPropertyChanged(nameof(PulseStatusText));
         OnPropertyChanged(nameof(PulseStatusBrush));
+        OnPropertyChanged(nameof(PulseStatusPanelBrush));
         OnPropertyChanged(nameof(PulseInsightText));
         OnPropertyChanged(nameof(PulseHealthChipText));
     }
