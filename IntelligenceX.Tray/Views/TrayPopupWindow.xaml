@@ -596,7 +596,7 @@
                                         <ColumnDefinition Width="38" />
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
-                                    <Border Width="30" Height="30" CornerRadius="8" Background="{StaticResource PulseWarningPanelBrush}" VerticalAlignment="Center">
+                                    <Border Width="30" Height="30" CornerRadius="8" Background="{Binding PulseStatusPanelBrush}" VerticalAlignment="Center">
                                         <Viewbox Width="18" Height="18" HorizontalAlignment="Center" VerticalAlignment="Center">
                                             <Path Data="{StaticResource IconShield}" Fill="{Binding PulseStatusBrush}" Stretch="Uniform" />
                                         </Viewbox>
