@@ -129,6 +129,15 @@ public partial class TrayPopupWindow : Window {
         }
     }
 
+    private void OnHealthCardClick(object sender, MouseButtonEventArgs e) {
+        if (sender is not FrameworkElement { DataContext: ProviderViewModel provider }) {
+            return;
+        }
+
+        provider.SetDetailsMode(ProviderDetailsMode.Scope);
+        e.Handled = true;
+    }
+
     private void OnOpenUrlClick(object sender, RoutedEventArgs e) {
         if (sender is not FrameworkElement { Tag: string url } || string.IsNullOrWhiteSpace(url)) {
             return;

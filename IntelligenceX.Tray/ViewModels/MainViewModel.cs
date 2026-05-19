@@ -31,6 +31,9 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     private const int GitHubWatchStargazerFreshnessSeconds = 86400;
     private const double LimitWarningThresholdPercent = 90d;
     private const double LimitExhaustedThresholdPercent = 100d;
+    private static readonly Geometry ThemeAutoIcon = CreateFrozenGeometry("M12 3C7.03 3 3 7.03 3 12H1L4 15L7 12H5C5 8.13 8.13 5 12 5C14.12 5 16.03 5.93 17.33 7.4L18.75 5.98C17.1 4.15 14.7 3 12 3ZM20 9L17 12H19C19 15.87 15.87 19 12 19C9.88 19 7.97 18.07 6.67 16.6L5.25 18.02C6.9 19.85 9.3 21 12 21C16.97 21 21 16.97 21 12H23L20 9Z");
+    private static readonly Geometry ThemeDarkIcon = CreateFrozenGeometry("M21 14.4C19.73 14.93 18.34 15.22 16.88 15.22C10.86 15.22 5.98 10.34 5.98 4.32C5.98 3.18 6.16 2.08 6.48 1.05C3.79 2.6 2 5.5 2 8.81C2 13.78 6.03 17.81 11 17.81C15.3 17.81 18.9 14.79 19.78 10.75C20.18 12.04 20.58 13.2 21 14.4Z");
+    private static readonly Geometry ThemeLightIcon = CreateFrozenGeometry("M12 4.5C7.86 4.5 4.5 7.86 4.5 12C4.5 16.14 7.86 19.5 12 19.5C16.14 19.5 19.5 16.14 19.5 12C19.5 7.86 16.14 4.5 12 4.5ZM12 7C14.76 7 17 9.24 17 12C17 14.76 14.76 17 12 17C9.24 17 7 14.76 7 12C7 9.24 9.24 7 12 7ZM11 1H13V4H11V1ZM11 20H13V23H11V20ZM20 11H23V13H20V11ZM1 11H4V13H1V11ZM18.36 4.22L19.78 5.64L17.66 7.76L16.24 6.34L18.36 4.22ZM4.22 18.36L6.34 16.24L7.76 17.66L5.64 19.78L4.22 18.36ZM17.66 16.24L19.78 18.36L18.36 19.78L16.24 17.66L17.66 16.24ZM4.22 5.64L5.64 4.22L7.76 6.34L6.34 7.76L4.22 5.64Z");
 
     private readonly UsageTelemetrySnapshotService _usageService;
     private readonly ProviderLimitSnapshotService _limitService;
@@ -302,6 +305,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         private set {
             if (SetProperty(ref _themeMode, value)) {
                 OnPropertyChanged(nameof(ThemeButtonLabel));
+                OnPropertyChanged(nameof(ThemeButtonIcon));
                 OnPropertyChanged(nameof(ThemeToolTip));
             }
         }
@@ -336,7 +340,12 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         ? "Manual refresh"
         : "Auto " + FormatRefreshInterval(AutoRefreshIntervalSeconds);
     public string ThemeButtonLabel => TrayThemeService.GetDisplayName(ThemeMode);
-    public string ThemeToolTip => "Theme: " + TrayThemeService.GetDisplayName(ThemeMode) + ". Click to cycle Auto, Dark, Light.";
+    public Geometry ThemeButtonIcon => TrayThemeService.NormalizeThemeMode(ThemeMode) switch {
+        TrayThemeService.DarkMode => ThemeDarkIcon,
+        TrayThemeService.LightMode => ThemeLightIcon,
+        _ => ThemeAutoIcon
+    };
+    public string ThemeToolTip => "Theme: " + TrayThemeService.GetDisplayName(ThemeMode) + ". Next: " + TrayThemeService.GetDisplayName(GetNextThemeMode(ThemeMode)) + ".";
     public string AccentSummaryLabel => TrayThemeService.GetAccentDisplayName(AccentPreset);
     public string AccentToolTip => "Accent: " + TrayThemeService.GetAccentDisplayName(AccentPreset) + ". Use the tray context menu to switch presets.";
 
@@ -1090,6 +1099,12 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
             TrayThemeService.DarkMode => TrayThemeService.LightMode,
             _ => TrayThemeService.SystemMode
         };
+    }
+
+    private static Geometry CreateFrozenGeometry(string data) {
+        var geometry = Geometry.Parse(data);
+        geometry.Freeze();
+        return geometry;
     }
 
     private void ConfigureRefreshTimer() {
