@@ -234,6 +234,7 @@ public sealed class GitHubViewModel : ViewModelBase {
                 OnPropertyChanged(nameof(ShowUsernameInput));
                 OnPropertyChanged(nameof(ShowCompactIdentityBar));
                 OnPropertyChanged(nameof(UsernameEditorTitle));
+                OnGitHubPulseChanged();
             }
         }
     }
@@ -367,6 +368,40 @@ public sealed class GitHubViewModel : ViewModelBase {
     }
     public bool HasObservabilitySummary => WatchCount > 0 || TrackedRepositoryCount > 0;
     public bool HasObservabilityMomentum => HistoryReadyCount > 0;
+    public bool ShouldShowGitHubProfilePulse => HasData && !HasObservabilityMomentum;
+    public string GitHubPulseTitle => "GitHub Pulse";
+    public string GitHubPulseSubtitle {
+        get {
+            if (!ShouldShowGitHubProfilePulse) {
+                return ObservabilityCoverageText;
+            }
+
+            var identity = HasDisplayName ? DisplayName : Login;
+            return string.IsNullOrWhiteSpace(identity)
+                ? "Profile and repository signal loaded."
+                : identity + " • profile and repository signal loaded.";
+        }
+    }
+    public string GitHubPulseStatusText => ShouldShowGitHubProfilePulse
+        ? "Profile loaded"
+        : ObservabilityLatestCaptureText;
+    public string GitHubPulsePrimaryValue => ShouldShowGitHubProfilePulse
+        ? OwnedRepositoriesFormatted
+        : ChangedTrackedRepositoryCountFormatted;
+    public string GitHubPulsePrimaryLabel => ShouldShowGitHubProfilePulse
+        ? "owned repositories"
+        : "repos moved on the last sync";
+    public string GitHubPulseMomentumText => ShouldShowGitHubProfilePulse
+        ? BuildGitHubProfilePulseSummary()
+        : ObservabilityMomentumText;
+    public string GitHubPulseStat1Label => ShouldShowGitHubProfilePulse ? "Public repos" : "Watched";
+    public string GitHubPulseStat1Value => ShouldShowGitHubProfilePulse ? PublicRepositoriesFormatted : WatchCountFormatted;
+    public string GitHubPulseStat2Label => ShouldShowGitHubProfilePulse ? "Stars" : "Tracked";
+    public string GitHubPulseStat2Value => ShouldShowGitHubProfilePulse ? TotalStarsFormatted : TrackedRepositoryCountFormatted;
+    public string GitHubPulseStat3Label => ShouldShowGitHubProfilePulse ? "Forks" : "Stars";
+    public string GitHubPulseStat3Value => ShouldShowGitHubProfilePulse ? TotalForksFormatted : PositiveStarDeltaFormatted;
+    public string GitHubPulseStat4Label => ShouldShowGitHubProfilePulse ? "Followers" : "Forks";
+    public string GitHubPulseStat4Value => ShouldShowGitHubProfilePulse ? FollowersFormatted : PositiveForkDeltaFormatted;
     public string ObservabilityCoverageText => WatchCount switch {
         <= 0 => "No watched repo pulse yet. Profile data is loaded below.",
         _ when TrackedRepositoryCount <= 0 => $"{WatchCountFormatted} watched repos waiting for first snapshot.",
@@ -659,6 +694,7 @@ public sealed class GitHubViewModel : ViewModelBase {
         ForkMomentumPrimaryText = string.Empty;
         ForkMomentumSummaryText = string.Empty;
         WatchedRepositories.Clear();
+        OnGitHubPulseChanged();
     }
 
     internal void ApplyObservabilitySummary(GitHubObservabilitySummaryData data) {
@@ -700,6 +736,8 @@ public sealed class GitHubViewModel : ViewModelBase {
                 TrendSummaryText = BuildTrendSummaryText(repository.TrendPoints)
             });
         }
+
+        OnGitHubPulseChanged();
     }
 
     internal void ApplyLocalActivityCorrelationSummary(GitHubLocalActivityCorrelationSummaryData data) {
@@ -932,6 +970,35 @@ public sealed class GitHubViewModel : ViewModelBase {
         RebuildTopRepos();
         HasData = true;
         ErrorMessage = string.Empty;
+        OnGitHubPulseChanged();
+    }
+
+    private void OnGitHubPulseChanged() {
+        OnPropertyChanged(nameof(ShouldShowGitHubProfilePulse));
+        OnPropertyChanged(nameof(GitHubPulseTitle));
+        OnPropertyChanged(nameof(GitHubPulseSubtitle));
+        OnPropertyChanged(nameof(GitHubPulseStatusText));
+        OnPropertyChanged(nameof(GitHubPulsePrimaryValue));
+        OnPropertyChanged(nameof(GitHubPulsePrimaryLabel));
+        OnPropertyChanged(nameof(GitHubPulseMomentumText));
+        OnPropertyChanged(nameof(GitHubPulseStat1Label));
+        OnPropertyChanged(nameof(GitHubPulseStat1Value));
+        OnPropertyChanged(nameof(GitHubPulseStat2Label));
+        OnPropertyChanged(nameof(GitHubPulseStat2Value));
+        OnPropertyChanged(nameof(GitHubPulseStat3Label));
+        OnPropertyChanged(nameof(GitHubPulseStat3Value));
+        OnPropertyChanged(nameof(GitHubPulseStat4Label));
+        OnPropertyChanged(nameof(GitHubPulseStat4Value));
+    }
+
+    private string BuildGitHubProfilePulseSummary() {
+        var language = string.IsNullOrWhiteSpace(DominantLanguage) || string.Equals(DominantLanguage, "Unknown", StringComparison.OrdinalIgnoreCase)
+            ? "Repository"
+            : DominantLanguage;
+        var repoScope = OwnedRepositories > 0
+            ? $"{OwnedRepositoriesFormatted} owned repos"
+            : $"{PublicRepositoriesFormatted} public repos";
+        return $"{language} leads this GitHub view with {TotalStarsFormatted} stars and {TotalForksFormatted} forks across {repoScope}.";
     }
 
     public void SetRepoSort(GitHubRepoSortMode sort) {

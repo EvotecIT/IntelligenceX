@@ -3242,12 +3242,12 @@
                                         </Viewbox>
                                     </Border>
                                     <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
-                                        <TextBlock Text="GitHub Pulse"
+                                        <TextBlock Text="{Binding GitHubPulseTitle}"
                                                    FontFamily="{StaticResource AppFont}"
                                                    FontSize="18"
                                                    FontWeight="SemiBold"
                                                    Foreground="{StaticResource PrimaryTextBrush}" />
-                                        <TextBlock Text="{Binding ObservabilityCoverageText}"
+                                        <TextBlock Text="{Binding GitHubPulseSubtitle}"
                                                    FontFamily="{StaticResource AppFont}"
                                                    FontSize="10.5"
                                                    Foreground="{StaticResource SecondaryTextBrush}"
@@ -3260,7 +3260,7 @@
                                             VerticalAlignment="Center">
                                         <StackPanel Orientation="Horizontal">
                                             <Ellipse Width="7" Height="7" Fill="{StaticResource SuccessBrush}" VerticalAlignment="Center" Margin="0,0,6,0" />
-                                            <TextBlock Text="{Binding ObservabilityLatestCaptureText}"
+                                            <TextBlock Text="{Binding GitHubPulseStatusText}"
                                                        FontFamily="{StaticResource AppFont}"
                                                        FontSize="10"
                                                        FontWeight="SemiBold"
@@ -3277,13 +3277,13 @@
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
                                     <StackPanel>
-                                        <TextBlock Text="{Binding ChangedTrackedRepositoryCountFormatted}"
+                                        <TextBlock Text="{Binding GitHubPulsePrimaryValue}"
                                                    Style="{StaticResource ValueTextStyle}"
                                                    FontSize="34" />
-                                        <TextBlock Text="repos moved on the last sync"
+                                        <TextBlock Text="{Binding GitHubPulsePrimaryLabel}"
                                                    Style="{StaticResource LabelTextStyle}"
                                                    Margin="0,2,0,0" />
-                                        <TextBlock Text="{Binding ObservabilityMomentumText}"
+                                        <TextBlock Text="{Binding GitHubPulseMomentumText}"
                                                    FontFamily="{StaticResource AppFont}"
                                                    FontSize="11.5"
                                                    FontWeight="SemiBold"
@@ -3294,26 +3294,26 @@
                                     <UniformGrid Grid.Column="1" Columns="2">
                                         <Border Background="{StaticResource InsetPanelBrush}" CornerRadius="10" Padding="10,8" Margin="0,0,6,6">
                                             <StackPanel>
-                                                <TextBlock Text="Watched" Style="{StaticResource LabelTextStyle}" />
-                                                <TextBlock Text="{Binding WatchCountFormatted}" Style="{StaticResource StatValueStyle}" FontSize="18" />
+                                                <TextBlock Text="{Binding GitHubPulseStat1Label}" Style="{StaticResource LabelTextStyle}" />
+                                                <TextBlock Text="{Binding GitHubPulseStat1Value}" Style="{StaticResource StatValueStyle}" FontSize="18" />
                                             </StackPanel>
                                         </Border>
                                         <Border Background="{StaticResource InsetPanelBrush}" CornerRadius="10" Padding="10,8" Margin="6,0,0,6">
                                             <StackPanel>
-                                                <TextBlock Text="Tracked" Style="{StaticResource LabelTextStyle}" />
-                                                <TextBlock Text="{Binding TrackedRepositoryCountFormatted}" Style="{StaticResource StatValueStyle}" FontSize="18" />
+                                                <TextBlock Text="{Binding GitHubPulseStat2Label}" Style="{StaticResource LabelTextStyle}" />
+                                                <TextBlock Text="{Binding GitHubPulseStat2Value}" Style="{StaticResource StatValueStyle}" FontSize="18" />
                                             </StackPanel>
                                         </Border>
                                         <Border Background="{StaticResource InsetPanelBrush}" CornerRadius="10" Padding="10,8" Margin="0,6,6,0">
                                             <StackPanel>
-                                                <TextBlock Text="Stars" Style="{StaticResource LabelTextStyle}" />
-                                                <TextBlock Text="{Binding PositiveStarDeltaFormatted}" Style="{StaticResource StatValueStyle}" FontSize="18" Foreground="{StaticResource PulseFreshBrush}" />
+                                                <TextBlock Text="{Binding GitHubPulseStat3Label}" Style="{StaticResource LabelTextStyle}" />
+                                                <TextBlock Text="{Binding GitHubPulseStat3Value}" Style="{StaticResource StatValueStyle}" FontSize="18" Foreground="{StaticResource PulseFreshBrush}" />
                                             </StackPanel>
                                         </Border>
                                         <Border Background="{StaticResource InsetPanelBrush}" CornerRadius="10" Padding="10,8" Margin="6,6,0,0">
                                             <StackPanel>
-                                                <TextBlock Text="Forks" Style="{StaticResource LabelTextStyle}" />
-                                                <TextBlock Text="{Binding PositiveForkDeltaFormatted}" Style="{StaticResource StatValueStyle}" FontSize="18" Foreground="{StaticResource PulseReasoningBrush}" />
+                                                <TextBlock Text="{Binding GitHubPulseStat4Label}" Style="{StaticResource LabelTextStyle}" />
+                                                <TextBlock Text="{Binding GitHubPulseStat4Value}" Style="{StaticResource StatValueStyle}" FontSize="18" Foreground="{StaticResource PulseReasoningBrush}" />
                                             </StackPanel>
                                         </Border>
                                     </UniformGrid>
