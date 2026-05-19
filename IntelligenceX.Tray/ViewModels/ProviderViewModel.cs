@@ -71,6 +71,7 @@ public sealed class ProviderViewModel : ViewModelBase {
     private Color _inputColor;
     private Color _outputColor;
     private Color _totalColor;
+    private bool _isSelected;
 
     // Today
     private long _todayTotalTokens;
@@ -89,6 +90,7 @@ public sealed class ProviderViewModel : ViewModelBase {
     private decimal _pulseCostUsd;
     private bool _pulseCostUsesEstimate;
     private int _pulseEventCount;
+    private long _pulsePreviousDayTokens;
 
     // 7-day rolling
     private long _weeklyTotalTokens;
@@ -254,6 +256,11 @@ public sealed class ProviderViewModel : ViewModelBase {
         set => SetProperty(ref _isFavorite, value);
     }
 
+    public bool IsSelected {
+        get => _isSelected;
+        set => SetProperty(ref _isSelected, value);
+    }
+
     public int NewEventsSinceRefresh {
         get => _newEventsSinceRefresh;
         private set {
@@ -361,6 +368,12 @@ public sealed class ProviderViewModel : ViewModelBase {
     public string PulseRollupCountText => FormatCountLabel(PulseEventCount, "rollup", "rollups");
     public string PulseSecondaryLabel => HasPulseCost ? "API equiv." : "Rollups";
     public string PulseSecondaryValue => HasPulseCost ? PulseCostFormatted : PulseRollupCountText;
+    public bool ShowProviderPulseHeader => !IsCombinedProvider;
+    public string PulseTrendText => BuildPulseTrendText();
+    public Brush PulseTrendBrush => PulseTotalTokens >= PulsePreviousDayTokens
+        ? FrozenBrush(Color.FromRgb(80, 216, 128))
+        : FrozenBrush(Color.FromRgb(255, 138, 24));
+    public long PulsePreviousDayTokens => _pulsePreviousDayTokens;
     public string PulseStatusText {
         get {
             if (HasLimitStatusMessage) {
@@ -388,6 +401,14 @@ public sealed class ProviderViewModel : ViewModelBase {
     public string PulseTopModelText => ModelBreakdown.Count > 0
         ? ModelBreakdown[0].ModelName + " • " + ModelBreakdown[0].TotalTokensFormatted
         : "No model signal";
+    public string PulseTopModelName => ModelBreakdown.Count > 0 ? ModelBreakdown[0].ModelName : "No model signal";
+    public string PulseTopModelDetailText => ModelBreakdown.Count > 0
+        ? ModelBreakdown[0].TotalTokensFormatted + " • " + ModelBreakdown[0].SharePercentText
+        : "Waiting for today's model signal";
+    public string PulseCachedSavingsValue => PulseCachedTokens > 0 ? FormatTokens(PulseCachedTokens) : "--";
+    public string PulseCachedSavingsDetail => PulseInputTokens > 0
+        ? FormatPulsePercent(Math.Min(1d, Math.Max(0d, (double)PulseCachedTokens / PulseInputTokens))) + " of today's input"
+        : "Cached input appears when token telemetry includes it.";
     public string PulseTokenMixText => "Fresh input " + PulseFreshInputFormatted
                                   + " • cached " + FormatTokens(PulseCachedTokens)
                                   + " • output " + PulseVisibleOutputFormatted
@@ -1446,6 +1467,8 @@ public sealed class ProviderViewModel : ViewModelBase {
             value => _pulseCostUsd = value,
             value => _pulseCostUsesEstimate = value);
         _pulseEventCount = pulseEvents.Count;
+        var previousDayEvents = FilterByWindow(today.AddDays(-1), today.AddDays(-1));
+        _pulsePreviousDayTokens = previousDayEvents.Sum(e => e.TotalTokens ?? 0L);
 
         var dailyTotals = new List<(DateTime Day, long Tokens)>();
         for (var i = 6; i >= 0; i--) {
@@ -1456,8 +1479,8 @@ public sealed class ProviderViewModel : ViewModelBase {
             dailyTotals.Add((day, tokens));
         }
 
-        var baseBrush = FrozenBrush(OutputColor);
-        var todayBrush = FrozenBrush(InputColor);
+        var baseBrush = BuildPulseActivityBrush(today: false);
+        var todayBrush = BuildPulseActivityBrush(today: true);
         var maxDaily = dailyTotals.Count > 0 ? dailyTotals.Max(static value => value.Tokens) : 0L;
         DailyBars.Clear();
         foreach (var (day, tokens) in dailyTotals) {
@@ -1564,16 +1587,24 @@ public sealed class ProviderViewModel : ViewModelBase {
         OnPropertyChanged(nameof(PulseTotalTokensFormatted));
         OnPropertyChanged(nameof(PulsePrimaryLabel));
         OnPropertyChanged(nameof(PulsePrimaryValue));
+        OnPropertyChanged(nameof(ShowProviderPulseHeader));
         OnPropertyChanged(nameof(HasPulseCost));
         OnPropertyChanged(nameof(PulseCostFormatted));
         OnPropertyChanged(nameof(PulseRollupCountText));
         OnPropertyChanged(nameof(PulseSecondaryLabel));
         OnPropertyChanged(nameof(PulseSecondaryValue));
+        OnPropertyChanged(nameof(PulseTrendText));
+        OnPropertyChanged(nameof(PulseTrendBrush));
+        OnPropertyChanged(nameof(PulsePreviousDayTokens));
         OnPropertyChanged(nameof(PulseStatusText));
         OnPropertyChanged(nameof(PulseStatusBrush));
         OnPropertyChanged(nameof(PulseInsightText));
         OnPropertyChanged(nameof(PulseHealthChipText));
         OnPropertyChanged(nameof(PulseTopModelText));
+        OnPropertyChanged(nameof(PulseTopModelName));
+        OnPropertyChanged(nameof(PulseTopModelDetailText));
+        OnPropertyChanged(nameof(PulseCachedSavingsValue));
+        OnPropertyChanged(nameof(PulseCachedSavingsDetail));
         OnPropertyChanged(nameof(PulseTokenMixText));
         OnPropertyChanged(nameof(PulseFreshInputTokens));
         OnPropertyChanged(nameof(PulseVisibleOutputTokens));
@@ -1630,6 +1661,35 @@ public sealed class ProviderViewModel : ViewModelBase {
         }
 
         return "No local activity today yet.";
+    }
+
+    private string BuildPulseTrendText() {
+        if (PulseTotalTokens <= 0 && PulsePreviousDayTokens <= 0) {
+            return "No activity yet today";
+        }
+
+        if (PulsePreviousDayTokens <= 0) {
+            return "New activity today";
+        }
+
+        var ratio = ((double)PulseTotalTokens - PulsePreviousDayTokens) / Math.Max(1d, PulsePreviousDayTokens);
+        var percent = Math.Round(Math.Abs(ratio) * 100d, MidpointRounding.AwayFromZero);
+        var prefix = ratio >= 0 ? "+" : "-";
+        return prefix + percent.ToString("N0", CultureInfo.CurrentCulture) + "% vs yesterday";
+    }
+
+    private Brush BuildPulseActivityBrush(bool today) {
+        var color = ProviderId.ToLowerInvariant() switch {
+            "__all__" => today ? Color.FromRgb(93, 162, 255) : Color.FromRgb(122, 104, 255),
+            "codex" => today ? Color.FromRgb(152, 168, 255) : Color.FromRgb(124, 111, 245),
+            "claude" => today ? Color.FromRgb(255, 138, 24) : Color.FromRgb(243, 116, 32),
+            "github" or "__github__" => today ? Color.FromRgb(80, 216, 128) : Color.FromRgb(54, 180, 112),
+            "copilot" => today ? Color.FromRgb(82, 147, 255) : Color.FromRgb(74, 127, 227),
+            "lmstudio" => today ? Color.FromRgb(67, 215, 238) : Color.FromRgb(47, 146, 163),
+            _ => today ? InputColor : OutputColor
+        };
+
+        return FrozenBrush(color);
     }
 
     private void RebuildCodeChurnBars() {
@@ -1853,6 +1913,7 @@ public sealed class ProviderViewModel : ViewModelBase {
             .ToList();
 
         var max = modelGroups.Count > 0 ? modelGroups.Max(static group => group.Total) : 0L;
+        var total = modelGroups.Sum(static group => group.Total);
         var rank = 1;
         foreach (var group in modelGroups) {
             ModelBreakdown.Add(new ModelUsageViewModel {
@@ -1860,6 +1921,7 @@ public sealed class ProviderViewModel : ViewModelBase {
                 ModelName = group.Model,
                 TotalTokens = group.Total,
                 Proportion = max > 0 ? (double)group.Total / max : 0d,
+                Share = total > 0 ? (double)group.Total / total : 0d,
                 BarBrush = FrozenBrush(OutputColor)
             });
         }

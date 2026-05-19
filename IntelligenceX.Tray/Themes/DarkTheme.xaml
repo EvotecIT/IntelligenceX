@@ -31,6 +31,19 @@
     <SolidColorBrush x:Key="GreenBrush" Color="{StaticResource GreenColor}" />
     <SolidColorBrush x:Key="SuccessBrush" Color="{StaticResource GreenColor}" />
     <SolidColorBrush x:Key="WarningBrush" Color="{StaticResource WarningColor}" />
+    <SolidColorBrush x:Key="InfoBrush" Color="#5da2ff" />
+    <SolidColorBrush x:Key="CyanBrush" Color="#43d7ee" />
+    <SolidColorBrush x:Key="PurpleBrush" Color="#9b7cff" />
+    <SolidColorBrush x:Key="OrangeBrush" Color="#ff8a18" />
+    <SolidColorBrush x:Key="PulseFreshBrush" Color="#58d77b" />
+    <SolidColorBrush x:Key="PulseCachedBrush" Color="#5da2ff" />
+    <SolidColorBrush x:Key="PulseOutputBrush" Color="#8a6dff" />
+    <SolidColorBrush x:Key="PulseReasoningBrush" Color="#ff8a18" />
+    <SolidColorBrush x:Key="PulseHeroBrush" Color="#26101d2a" />
+    <SolidColorBrush x:Key="PulseGlassBrush" Color="#1f7fb8ff" />
+    <SolidColorBrush x:Key="PulseGlowBrush" Color="#335da2ff" />
+    <SolidColorBrush x:Key="PulseSuccessPanelBrush" Color="#2458d77b" />
+    <SolidColorBrush x:Key="PulseWarningPanelBrush" Color="#2aff8a18" />
     <SolidColorBrush x:Key="SectionStripBrush" Color="#08ffffff" />
     <SolidColorBrush x:Key="FavoriteBadgeBrush" Color="#f0c040" />
     <SolidColorBrush x:Key="SuccessBadgeBrush" Color="#2050d880" />

@@ -1423,6 +1423,10 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     }
 
     private void RefreshProviderSelectionState() {
+        foreach (var provider in Providers) {
+            provider.IsSelected = ReferenceEquals(provider, SelectedProvider);
+        }
+
         OnPropertyChanged(nameof(HeaderTitle));
         OnPropertyChanged(nameof(IsGitHubTabSelected));
         OnPropertyChanged(nameof(HasData));
