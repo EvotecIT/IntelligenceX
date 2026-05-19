@@ -668,6 +668,7 @@
                             </Button>
                             <Button Style="{StaticResource RefreshButtonStyle}"
                                     Click="OnDetailsToggleClick"
+                                    AutomationProperties.Name="{Binding DetailsButtonText}"
                                     Margin="7,0,0,0"
                                     Padding="14,10">
                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
@@ -684,39 +685,53 @@
                                 Padding="12"
                                 Visibility="{Binding IsDetailsOpen, Converter={StaticResource BoolToVis}}">
                             <StackPanel>
-                                <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                                    <ToggleButton Style="{StaticResource RangeChipStyle}"
-                                                  IsChecked="{Binding IsDetailsActivitySelected, Mode=OneWay}"
-                                                  Click="OnDetailsModeClick"
-                                                  Tag="Activity">
-                                        <TextBlock Text="Activity" />
-                                    </ToggleButton>
-                                    <ToggleButton Style="{StaticResource RangeChipStyle}"
-                                                  IsChecked="{Binding IsDetailsLimitsSelected, Mode=OneWay}"
-                                                  Click="OnDetailsModeClick"
-                                                  Tag="Limits">
-                                        <TextBlock Text="Limits" />
-                                    </ToggleButton>
-                                    <ToggleButton Style="{StaticResource RangeChipStyle}"
-                                                  IsChecked="{Binding IsDetailsModelsSelected, Mode=OneWay}"
-                                                  Click="OnDetailsModeClick"
-                                                  Tag="Models">
-                                        <TextBlock Text="Models" />
-                                    </ToggleButton>
-                                    <ToggleButton Style="{StaticResource RangeChipStyle}"
-                                                  IsChecked="{Binding IsDetailsEventsSelected, Mode=OneWay}"
-                                                  Click="OnDetailsModeClick"
-                                                  Tag="Events">
-                                        <TextBlock Text="Events" />
-                                    </ToggleButton>
-                                    <ToggleButton Style="{StaticResource RangeChipStyle}"
-                                                  IsChecked="{Binding IsDetailsScopeSelected, Mode=OneWay}"
-                                                  Click="OnDetailsModeClick"
-                                                  Tag="Scope"
-                                                  Margin="0">
-                                        <TextBlock Text="Scope" />
-                                    </ToggleButton>
-                                </StackPanel>
+                                <Grid Margin="0,0,0,10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <WrapPanel>
+                                        <ToggleButton Style="{StaticResource RangeChipStyle}"
+                                                      IsChecked="{Binding IsDetailsActivitySelected, Mode=OneWay}"
+                                                      Click="OnDetailsModeClick"
+                                                      Tag="Activity">
+                                            <TextBlock Text="Activity" />
+                                        </ToggleButton>
+                                        <ToggleButton Style="{StaticResource RangeChipStyle}"
+                                                      IsChecked="{Binding IsDetailsLimitsSelected, Mode=OneWay}"
+                                                      Click="OnDetailsModeClick"
+                                                      Tag="Limits">
+                                            <TextBlock Text="Limits" />
+                                        </ToggleButton>
+                                        <ToggleButton Style="{StaticResource RangeChipStyle}"
+                                                      IsChecked="{Binding IsDetailsModelsSelected, Mode=OneWay}"
+                                                      Click="OnDetailsModeClick"
+                                                      Tag="Models">
+                                            <TextBlock Text="Models" />
+                                        </ToggleButton>
+                                        <ToggleButton Style="{StaticResource RangeChipStyle}"
+                                                      IsChecked="{Binding IsDetailsEventsSelected, Mode=OneWay}"
+                                                      Click="OnDetailsModeClick"
+                                                      Tag="Events">
+                                            <TextBlock Text="Events" />
+                                        </ToggleButton>
+                                        <ToggleButton Style="{StaticResource RangeChipStyle}"
+                                                      IsChecked="{Binding IsDetailsScopeSelected, Mode=OneWay}"
+                                                      Click="OnDetailsModeClick"
+                                                      Tag="Scope"
+                                                      Margin="0">
+                                            <TextBlock Text="Scope" />
+                                        </ToggleButton>
+                                    </WrapPanel>
+                                    <Button Grid.Column="1"
+                                            Style="{StaticResource LinkButtonStyle}"
+                                            Click="OnDetailsToggleClick"
+                                            AutomationProperties.Name="Collapse details"
+                                            Margin="8,0,0,0"
+                                            VerticalAlignment="Top">
+                                        <TextBlock Text="Collapse" />
+                                    </Button>
+                                </Grid>
 
                                 <StackPanel Visibility="{Binding IsDetailsActivitySelected, Converter={StaticResource BoolToVis}}">
                                     <ItemsControl ItemsSource="{Binding DailyBars}">
@@ -853,11 +868,25 @@
                                                TextWrapping="Wrap"
                                                Margin="0,5,0,0"
                                                Visibility="{Binding HasScopeLocalText, Converter={StaticResource BoolToVis}}" />
+                                    <TextBlock Text="{Binding ScopeOnlineText, StringFormat=Online: {0}}"
+                                               FontFamily="{StaticResource AppFont}"
+                                               FontSize="10"
+                                               Foreground="{StaticResource SecondaryTextBrush}"
+                                               TextWrapping="Wrap"
+                                               Margin="0,5,0,0"
+                                               Visibility="{Binding HasScopeOnlineText, Converter={StaticResource BoolToVis}}" />
+                                    <TextBlock Text="{Binding ScopeDifferenceText, StringFormat=Why they differ: {0}}"
+                                               FontFamily="{StaticResource AppFont}"
+                                               FontSize="10"
+                                               Foreground="{StaticResource TertiaryTextBrush}"
+                                               TextWrapping="Wrap"
+                                               Margin="0,5,0,0"
+                                               Visibility="{Binding HasScopeDifferenceText, Converter={StaticResource BoolToVis}}" />
                                 </StackPanel>
                             </StackPanel>
                         </Border>
 
-                        <StackPanel Visibility="Collapsed">
+                        <StackPanel Visibility="{Binding IsDetailsOpen, Converter={StaticResource BoolToVis}}">
                         <Border Style="{StaticResource CardStyle}"
                                 Visibility="{Binding HasCombinedOverviewCards, Converter={StaticResource BoolToVis}}">
                             <StackPanel>
@@ -3830,7 +3859,7 @@
                         </Border>
 
                         <!-- GitHub data -->
-                        <StackPanel Visibility="Collapsed">
+                        <StackPanel Visibility="{Binding HasData, Converter={StaticResource BoolToVis}}">
 
                             <!-- User login -->
                             <Border Style="{StaticResource CardStyle}">

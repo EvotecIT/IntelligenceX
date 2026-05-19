@@ -2090,9 +2090,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
 
     private void ReplaceProviders(IEnumerable<ProviderViewModel> providers) {
         var preferredSelection = SelectedProvider?.ProviderId ?? _preferences.SelectedProviderId;
-        if (string.Equals(preferredSelection, "__github__", StringComparison.Ordinal)) {
-            preferredSelection = "__all__";
-        }
 
         var orderedProviders = OrderProviders(providers);
         UnsubscribeProviders();
@@ -2154,7 +2151,28 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
             OutputColor = Color.FromRgb(64, 196, 99)
         };
         gitHubProvider.ApplyRefreshDelta(0L, 0);
+        gitHubProvider.ApplyPulseProviderMetricOverride(BuildGitHubProviderMetricText());
         return gitHubProvider;
+    }
+
+    private string BuildGitHubProviderMetricText() {
+        if (GitHub.ChangedTrackedRepositoryCount > 0) {
+            return GitHub.ChangedTrackedRepositoryCountFormatted + " moved";
+        }
+
+        if (GitHub.TrackedRepositoryCount > 0) {
+            return GitHub.TrackedRepositoryCountFormatted + " tracked";
+        }
+
+        if (GitHub.WatchCount > 0) {
+            return GitHub.WatchCountFormatted + " watched";
+        }
+
+        if (GitHub.PublicRepositories > 0) {
+            return GitHub.PublicRepositoriesFormatted + " repos";
+        }
+
+        return "idle";
     }
 
     private static void ApplyUsageHealth(

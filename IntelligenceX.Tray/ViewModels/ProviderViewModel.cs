@@ -91,6 +91,7 @@ public sealed class ProviderViewModel : ViewModelBase {
     private bool _pulseCostUsesEstimate;
     private int _pulseEventCount;
     private long _pulsePreviousDayTokens;
+    private string? _pulseProviderMetricOverride;
 
     // 7-day rolling
     private long _weeklyTotalTokens;
@@ -171,6 +172,13 @@ public sealed class ProviderViewModel : ViewModelBase {
         };
         AccountBreakdown.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasAccountBreakdown));
         SurfaceBreakdown.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasSurfaceBreakdown));
+        PulseModelBreakdown.CollectionChanged += (_, _) => {
+            OnPropertyChanged(nameof(PulseTopModelText));
+            OnPropertyChanged(nameof(PulseTopModelName));
+            OnPropertyChanged(nameof(PulseTopModelDetailText));
+            OnPropertyChanged(nameof(PulseTopModels));
+            OnPropertyChanged(nameof(HasPulseTopModels));
+        };
         ModelDaySummaries.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasModelDaySummaries));
         RecentActivity.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasRecentActivity));
         Conversations.CollectionChanged += (_, _) => {
@@ -239,6 +247,13 @@ public sealed class ProviderViewModel : ViewModelBase {
     public void ApplyRefreshDelta(long tokenDelta, int eventDelta) {
         NewTokensSinceRefresh = Math.Max(0L, tokenDelta);
         NewEventsSinceRefresh = Math.Max(0, eventDelta);
+    }
+
+    public void ApplyPulseProviderMetricOverride(string? metricText) {
+        var normalized = string.IsNullOrWhiteSpace(metricText) ? null : metricText.Trim();
+        if (SetProperty(ref _pulseProviderMetricOverride, normalized)) {
+            OnPropertyChanged(nameof(PulseProviderMetricText));
+        }
     }
 
     public void ClearRefreshBadge() {
@@ -345,7 +360,9 @@ public sealed class ProviderViewModel : ViewModelBase {
     }
 
     public string TodayTotalTokensFormatted => FormatTokens(TodayTotalTokens);
-    public string PulseProviderMetricText => PulseTotalTokens > 0
+    public string PulseProviderMetricText => !string.IsNullOrWhiteSpace(_pulseProviderMetricOverride)
+        ? _pulseProviderMetricOverride!
+        : PulseTotalTokens > 0
         ? PulseTotalTokensFormatted
             : WeeklyTotalTokens > 0
                 ? WeeklyTotalTokensFormatted
@@ -380,7 +397,7 @@ public sealed class ProviderViewModel : ViewModelBase {
                 return "Needs attention";
             }
 
-            if (HasUsageHealthSummary && UsageHealthSummary!.IndexOf("partial", StringComparison.OrdinalIgnoreCase) >= 0) {
+            if (HasPartialUsageHealth) {
                 return "Partial";
             }
 
@@ -395,15 +412,17 @@ public sealed class ProviderViewModel : ViewModelBase {
     public string PulseInsightText => BuildPulseInsightText();
     public string PulseHealthChipText => HasLimitStatusMessage
         ? "Limits need attention"
-        : HasUsageHealthSummary
+        : HasPartialUsageHealth
+            ? "Partial scan"
+            : HasUsageHealthSummary
             ? UsageHealthSummary!
             : "Health OK";
-    public string PulseTopModelText => ModelBreakdown.Count > 0
-        ? ModelBreakdown[0].ModelName + " • " + ModelBreakdown[0].TotalTokensFormatted
+    public string PulseTopModelText => PulseModelBreakdown.Count > 0
+        ? PulseModelBreakdown[0].ModelName + " • " + PulseModelBreakdown[0].TotalTokensFormatted
         : "No model signal";
-    public string PulseTopModelName => ModelBreakdown.Count > 0 ? ModelBreakdown[0].ModelName : "No model signal";
-    public string PulseTopModelDetailText => ModelBreakdown.Count > 0
-        ? ModelBreakdown[0].TotalTokensFormatted + " • " + ModelBreakdown[0].SharePercentText
+    public string PulseTopModelName => PulseModelBreakdown.Count > 0 ? PulseModelBreakdown[0].ModelName : "No model signal";
+    public string PulseTopModelDetailText => PulseModelBreakdown.Count > 0
+        ? PulseModelBreakdown[0].TotalTokensFormatted + " • " + PulseModelBreakdown[0].SharePercentText
         : "Waiting for today's model signal";
     public string PulseCachedSavingsValue => PulseCachedTokens > 0 ? FormatTokens(PulseCachedTokens) : "--";
     public string PulseCachedSavingsDetail => PulseInputTokens > 0
@@ -431,8 +450,8 @@ public sealed class ProviderViewModel : ViewModelBase {
     public string PulseCachedInputPercentText => FormatPulsePercent(PulseCachedInputProportion);
     public string PulseOutputPercentText => FormatPulsePercent(PulseOutputProportion);
     public string PulseReasoningPercentText => FormatPulsePercent(PulseReasoningProportion);
-    public IEnumerable<ModelUsageViewModel> PulseTopModels => ModelBreakdown.Take(3);
-    public bool HasPulseTopModels => ModelBreakdown.Count > 0;
+    public IEnumerable<ModelUsageViewModel> PulseTopModels => PulseModelBreakdown.Take(3);
+    public bool HasPulseTopModels => PulseModelBreakdown.Count > 0;
     public double PulseCachedBarWidth => PulseTotalTokens > 0
         ? Math.Max(2d, 310d * PulseCachedTokens / PulseTotalTokens)
         : 2d;
@@ -822,6 +841,7 @@ public sealed class ProviderViewModel : ViewModelBase {
             if (SetProperty(ref _limitStatusMessage, value)) {
                 OnPropertyChanged(nameof(HasLimitStatusMessage));
                 OnPropertyChanged(nameof(HasLimitSection));
+                NotifyPulseStatusChanged();
             }
         }
     }
@@ -859,7 +879,9 @@ public sealed class ProviderViewModel : ViewModelBase {
         set {
             if (SetProperty(ref _usageHealthSummary, value)) {
                 OnPropertyChanged(nameof(HasUsageHealthSummary));
+                OnPropertyChanged(nameof(HasPartialUsageHealth));
                 OnPropertyChanged(nameof(HasUsageHealthSection));
+                NotifyPulseStatusChanged();
             }
         }
     }
@@ -869,7 +891,9 @@ public sealed class ProviderViewModel : ViewModelBase {
         set {
             if (SetProperty(ref _usageHealthDetail, value)) {
                 OnPropertyChanged(nameof(HasUsageHealthDetail));
+                OnPropertyChanged(nameof(HasPartialUsageHealth));
                 OnPropertyChanged(nameof(HasUsageHealthSection));
+                NotifyPulseStatusChanged();
             }
         }
     }
@@ -920,6 +944,9 @@ public sealed class ProviderViewModel : ViewModelBase {
     public bool HasLimitAccountsOverview => !string.IsNullOrWhiteSpace(LimitAccountsOverviewText);
     public bool HasUsageHealthSummary => !string.IsNullOrWhiteSpace(UsageHealthSummary);
     public bool HasUsageHealthDetail => !string.IsNullOrWhiteSpace(UsageHealthDetail);
+    public bool HasPartialUsageHealth =>
+        ContainsPartialUsageHealth(UsageHealthSummary)
+        || ContainsPartialUsageHealth(UsageHealthDetail);
     public bool HasUsageHealthAccounts => !string.IsNullOrWhiteSpace(UsageHealthAccountsText);
     public bool HasScopeLocalText => !string.IsNullOrWhiteSpace(ScopeLocalText);
     public bool HasScopeOnlineText => !string.IsNullOrWhiteSpace(ScopeOnlineText);
@@ -966,6 +993,7 @@ public sealed class ProviderViewModel : ViewModelBase {
     public ObservableCollection<ProviderLimitAccountViewModel> LimitAccounts { get; } = [];
     public ObservableCollection<UsageBreakdownEntryViewModel> AccountBreakdown { get; } = [];
     public ObservableCollection<UsageBreakdownEntryViewModel> SurfaceBreakdown { get; } = [];
+    public ObservableCollection<ModelUsageViewModel> PulseModelBreakdown { get; } = [];
     public ObservableCollection<ProviderComparisonEntryViewModel> ProviderComparison { get; } = [];
     public ObservableCollection<ProviderOverviewCardViewModel> CombinedOverviewCards { get; } = [];
     public ObservableCollection<RecentUsageItemViewModel> RecentActivity { get; } = [];
@@ -1469,6 +1497,7 @@ public sealed class ProviderViewModel : ViewModelBase {
         _pulseEventCount = pulseEvents.Count;
         var previousDayEvents = FilterByWindow(today.AddDays(-1), today.AddDays(-1));
         _pulsePreviousDayTokens = previousDayEvents.Sum(e => e.TotalTokens ?? 0L);
+        PopulatePulseModelBreakdown(pulseEvents);
 
         var dailyTotals = new List<(DateTime Day, long Tokens)>();
         for (var i = 6; i >= 0; i--) {
@@ -1603,6 +1632,7 @@ public sealed class ProviderViewModel : ViewModelBase {
         OnPropertyChanged(nameof(PulseTopModelText));
         OnPropertyChanged(nameof(PulseTopModelName));
         OnPropertyChanged(nameof(PulseTopModelDetailText));
+        OnPropertyChanged(nameof(PulseModelBreakdown));
         OnPropertyChanged(nameof(PulseCachedSavingsValue));
         OnPropertyChanged(nameof(PulseCachedSavingsDetail));
         OnPropertyChanged(nameof(PulseTokenMixText));
@@ -1624,6 +1654,18 @@ public sealed class ProviderViewModel : ViewModelBase {
         OnPropertyChanged(nameof(PulseCachedBarWidth));
         OnPropertyChanged(nameof(PulseFreshInputBarWidth));
         OnPropertyChanged(nameof(PulseReasoningBarWidth));
+    }
+
+    private void NotifyPulseStatusChanged() {
+        OnPropertyChanged(nameof(PulseStatusText));
+        OnPropertyChanged(nameof(PulseStatusBrush));
+        OnPropertyChanged(nameof(PulseInsightText));
+        OnPropertyChanged(nameof(PulseHealthChipText));
+    }
+
+    private static bool ContainsPartialUsageHealth(string? value) {
+        return !string.IsNullOrWhiteSpace(value)
+               && value.IndexOf("partial", StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
     private double PulseMixProportion(long value) {
@@ -1652,8 +1694,8 @@ public sealed class ProviderViewModel : ViewModelBase {
             return "Cached input is " + cachedPercent.ToString("N0", CultureInfo.CurrentCulture) + "% of input, so cost is lower than raw input volume suggests.";
         }
 
-        if (ModelBreakdown.Count > 0) {
-            return ModelBreakdown[0].ModelName + " is the top model in this view.";
+        if (PulseModelBreakdown.Count > 0) {
+            return PulseModelBreakdown[0].ModelName + " is the top model today.";
         }
 
         if (PulseEventCount > 0) {
@@ -1899,8 +1941,19 @@ public sealed class ProviderViewModel : ViewModelBase {
     }
 
     private void PopulateModelBreakdown(IReadOnlyList<UsageEventRecord> events) {
-        ModelBreakdown.Clear();
-        var modelGroups = events
+        PopulateModelBreakdown(ModelBreakdown, events, FrozenBrush(OutputColor));
+    }
+
+    private void PopulatePulseModelBreakdown(IReadOnlyList<UsageEventRecord> events) {
+        PopulateModelBreakdown(PulseModelBreakdown, events, FrozenBrush(OutputColor));
+    }
+
+    private static void PopulateModelBreakdown(
+        ObservableCollection<ModelUsageViewModel> target,
+        IReadOnlyList<UsageEventRecord> events,
+        Brush barBrush) {
+        target.Clear();
+        var allModelGroups = events
             .Where(static e => !string.IsNullOrWhiteSpace(e.Model))
             .GroupBy(static e => e.Model!.Trim(), StringComparer.OrdinalIgnoreCase)
             .Select(static group => new {
@@ -1909,20 +1962,20 @@ public sealed class ProviderViewModel : ViewModelBase {
             })
             .Where(static group => group.Total > 0)
             .OrderByDescending(static group => group.Total)
-            .Take(8)
             .ToList();
 
-        var max = modelGroups.Count > 0 ? modelGroups.Max(static group => group.Total) : 0L;
-        var total = modelGroups.Sum(static group => group.Total);
+        var visibleModelGroups = allModelGroups.Take(8).ToList();
+        var max = allModelGroups.Count > 0 ? allModelGroups.Max(static group => group.Total) : 0L;
+        var total = allModelGroups.Sum(static group => group.Total);
         var rank = 1;
-        foreach (var group in modelGroups) {
-            ModelBreakdown.Add(new ModelUsageViewModel {
+        foreach (var group in visibleModelGroups) {
+            target.Add(new ModelUsageViewModel {
                 Rank = rank++,
                 ModelName = group.Model,
                 TotalTokens = group.Total,
                 Proportion = max > 0 ? (double)group.Total / max : 0d,
                 Share = total > 0 ? (double)group.Total / total : 0d,
-                BarBrush = FrozenBrush(OutputColor)
+                BarBrush = barBrush
             });
         }
     }
