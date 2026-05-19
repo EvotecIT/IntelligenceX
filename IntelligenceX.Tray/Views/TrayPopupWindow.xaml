@@ -427,12 +427,12 @@
                                             Visibility="{Binding IsCombinedProvider, Converter={StaticResource BoolToVis}}">
                                     <Border Padding="10,5"
                                             CornerRadius="14"
-                                            Background="{StaticResource PulseSuccessPanelBrush}"
+                                            Background="{Binding PulseStatusPanelBrush}"
                                             HorizontalAlignment="Right"
                                             Margin="0,0,0,12">
                                         <StackPanel Orientation="Horizontal">
                                             <Viewbox Width="13" Height="13" Margin="0,0,7,0">
-                                                <Path Data="{StaticResource IconCheckCircle}" Fill="{StaticResource SuccessBrush}" Stretch="Uniform" />
+                                                <Path Data="{StaticResource IconCheckCircle}" Fill="{Binding PulseStatusBrush}" Stretch="Uniform" />
                                             </Viewbox>
                                             <TextBlock Text="{Binding PulseStatusText}"
                                                        FontFamily="{StaticResource AppFont}"
