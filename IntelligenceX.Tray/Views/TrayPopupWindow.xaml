@@ -211,7 +211,8 @@
             <!-- ═══ MAIN CONTENT ═══ -->
             <Grid Grid.Row="2">
                 <!-- ── USAGE CONTENT (provider tab selected) ── -->
-                <ScrollViewer VerticalScrollBarVisibility="Auto"
+                <ScrollViewer x:Name="UsageContentScrollViewer"
+                              VerticalScrollBarVisibility="Auto"
                               HorizontalScrollBarVisibility="Disabled"
                               Visibility="{Binding ShowUsageContent, Converter={StaticResource BoolToVis}}">
                     <StackPanel x:Name="ProviderContentPanel"
@@ -479,15 +480,11 @@
                                     BorderThickness="1"
                                     CornerRadius="12"
                                     Padding="13,10"
-                                    Margin="7,0,0,0"
-                                    Cursor="Hand"
-                                    ToolTip="Open data health details"
-                                    MouseLeftButtonDown="OnHealthCardClick">
+                                    Margin="7,0,0,0">
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="38" />
                                         <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
                                     <Border Width="30" Height="30" CornerRadius="8" Background="{StaticResource PulseWarningPanelBrush}" VerticalAlignment="Center">
                                         <Viewbox Width="18" Height="18" HorizontalAlignment="Center" VerticalAlignment="Center">
@@ -503,9 +500,6 @@
                                                    TextTrimming="CharacterEllipsis" />
                                         <TextBlock Text="Data health" Style="{StaticResource LabelTextStyle}" />
                                     </StackPanel>
-                                    <Viewbox Grid.Column="2" Width="14" Height="14" VerticalAlignment="Center">
-                                        <Path Data="{StaticResource IconChevronRight}" Fill="{StaticResource SecondaryTextBrush}" Stretch="Uniform" />
-                                    </Viewbox>
                                 </Grid>
                             </Border>
                         </UniformGrid>
@@ -674,9 +668,6 @@
                                         <Path Data="{StaticResource IconList}" Fill="{StaticResource PurpleBrush}" Stretch="Uniform" />
                                     </Viewbox>
                                     <TextBlock Text="{Binding DetailsButtonText}" />
-                                    <Viewbox Width="13" Height="13" Margin="8,1,0,0">
-                                        <Path Data="{StaticResource IconChevronRight}" Fill="{StaticResource SecondaryTextBrush}" Stretch="Uniform" />
-                                    </Viewbox>
                                 </StackPanel>
                             </Button>
                         </UniformGrid>

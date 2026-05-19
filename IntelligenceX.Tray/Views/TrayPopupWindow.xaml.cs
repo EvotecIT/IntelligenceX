@@ -133,18 +133,18 @@ public partial class TrayPopupWindow : Window {
         }
     }
 
-    private void OnHealthCardClick(object sender, MouseButtonEventArgs e) {
-        if (sender is not FrameworkElement { DataContext: ProviderViewModel provider }) {
-            return;
-        }
-
-        provider.SetDetailsMode(ProviderDetailsMode.Scope);
-        ScrollDetailsIntoView();
-        e.Handled = true;
-    }
-
     private void ScrollDetailsIntoView() {
-        Dispatcher.BeginInvoke(new Action(() => ProviderDetailsCard?.BringIntoView()));
+        Dispatcher.BeginInvoke(new Action(() => {
+            if (ProviderDetailsCard is null || ProviderContentPanel is null || UsageContentScrollViewer is null) {
+                return;
+            }
+
+            var detailsTop = ProviderDetailsCard
+                .TransformToAncestor(ProviderContentPanel)
+                .Transform(new Point(0d, 0d))
+                .Y;
+            UsageContentScrollViewer.ScrollToVerticalOffset(Math.Max(0d, detailsTop - 10d));
+        }));
     }
 
     private void OnOpenUrlClick(object sender, RoutedEventArgs e) {
