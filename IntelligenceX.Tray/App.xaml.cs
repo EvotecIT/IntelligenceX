@@ -507,16 +507,74 @@ public partial class App : Application {
             return new PopupPoint(left, top);
         }
 
-        var virtualLeft = SystemParameters.VirtualScreenLeft;
-        var virtualTop = SystemParameters.VirtualScreenTop;
-        var virtualRight = virtualLeft + SystemParameters.VirtualScreenWidth;
-        var virtualBottom = virtualTop + SystemParameters.VirtualScreenHeight;
-        var maxLeft = Math.Max(virtualLeft, virtualRight - _popupWindow.Width);
-        var maxTop = Math.Max(virtualTop, virtualBottom - _popupWindow.Height);
+        if (!TryGetWorkAreaForPopupPlacement(left, top, out var workArea)) {
+            workArea = new PopupBounds(
+                SystemParameters.WorkArea.Left,
+                SystemParameters.WorkArea.Top,
+                SystemParameters.WorkArea.Right,
+                SystemParameters.WorkArea.Bottom);
+        }
+
+        const double margin = 8d;
+        var minLeft = workArea.Left + margin;
+        var minTop = workArea.Top + margin;
+        var maxLeft = Math.Max(minLeft, workArea.Right - _popupWindow.Width - margin);
+        var maxTop = Math.Max(minTop, workArea.Bottom - _popupWindow.Height - margin);
 
         return new PopupPoint(
-            Math.Clamp(left, virtualLeft, maxLeft),
-            Math.Clamp(top, virtualTop, maxTop));
+            Math.Clamp(left, minLeft, maxLeft),
+            Math.Clamp(top, minTop, maxTop));
+    }
+
+    private bool TryGetWorkAreaForPopupPlacement(double left, double top, out PopupBounds workArea) {
+        workArea = default;
+        if (_popupWindow is null) {
+            return false;
+        }
+
+        var probePoint = new Point(
+            left + Math.Max(1d, _popupWindow.Width / 2d),
+            top + Math.Max(1d, _popupWindow.Height / 2d));
+        var source = PresentationSource.FromVisual(_popupWindow);
+        if (source?.CompositionTarget is not null) {
+            probePoint = source.CompositionTarget.TransformToDevice.Transform(probePoint);
+        }
+
+        var monitor = MonitorFromPoint(
+            new NativePoint {
+                X = (int)Math.Round(probePoint.X),
+                Y = (int)Math.Round(probePoint.Y)
+            },
+            MonitorDefaultToNearest);
+        if (monitor == IntPtr.Zero) {
+            return false;
+        }
+
+        var monitorInfo = new NativeMonitorInfo();
+        monitorInfo.CbSize = Marshal.SizeOf<NativeMonitorInfo>();
+        if (!GetMonitorInfo(monitor, ref monitorInfo)) {
+            return false;
+        }
+
+        var dpiX = 96d;
+        var dpiY = 96d;
+        try {
+            if (GetDpiForMonitor(monitor, MonitorDpiTypeEffective, out var monitorDpiX, out var monitorDpiY) == 0) {
+                dpiX = monitorDpiX;
+                dpiY = monitorDpiY;
+            }
+        } catch (DllNotFoundException) {
+        } catch (EntryPointNotFoundException) {
+        }
+
+        workArea = PopupPlacementMath.ConvertPixelBoundsToDips(
+            monitorInfo.Work.Left,
+            monitorInfo.Work.Top,
+            monitorInfo.Work.Right,
+            monitorInfo.Work.Bottom,
+            dpiX,
+            dpiY);
+        return true;
     }
 
     private void OnPopupManualPlacementCommitted(object? sender, EventArgs e) {
