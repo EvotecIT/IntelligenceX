@@ -22,6 +22,8 @@ public sealed class GitHubViewModel : ViewModelBase {
     private string _location = "";
     private string _websiteUrl = "";
     private string _usernameInput = "";
+    private bool _rememberUsername = true;
+    private string _rememberedUsername = "";
     private bool _hasToken;
     private int _ownerCount;
     private int _followers;
@@ -109,7 +111,32 @@ public sealed class GitHubViewModel : ViewModelBase {
     public bool HasLocation => !string.IsNullOrWhiteSpace(Location);
     public string WebsiteUrl { get => _websiteUrl; set { if (SetProperty(ref _websiteUrl, value)) OnPropertyChanged(nameof(HasWebsiteUrl)); } }
     public bool HasWebsiteUrl => !string.IsNullOrWhiteSpace(WebsiteUrl);
-    public string UsernameInput { get => _usernameInput; set => SetProperty(ref _usernameInput, value); }
+    public string UsernameInput {
+        get => _usernameInput;
+        set {
+            if (SetProperty(ref _usernameInput, value)) {
+                OnPropertyChanged(nameof(UsernameMemoryText));
+            }
+        }
+    }
+    public bool RememberUsername {
+        get => _rememberUsername;
+        set {
+            if (SetProperty(ref _rememberUsername, value)) {
+                OnPropertyChanged(nameof(UsernameMemoryText));
+            }
+        }
+    }
+    public string RememberedUsername {
+        get => _rememberedUsername;
+        set {
+            if (SetProperty(ref _rememberedUsername, value)) {
+                OnPropertyChanged(nameof(HasRememberedUsername));
+                OnPropertyChanged(nameof(UsernameMemoryText));
+            }
+        }
+    }
+    public bool HasRememberedUsername => !string.IsNullOrWhiteSpace(RememberedUsername);
     public bool HasToken {
         get => _hasToken;
         set {
@@ -137,6 +164,20 @@ public sealed class GitHubViewModel : ViewModelBase {
     public string UsernameHelpText => HasToken
         ? "Leave blank to load the authenticated account, or enter a username to inspect someone else."
         : "Enter a username to view public repos. Run 'gh auth login' or set GITHUB_TOKEN/GH_TOKEN for full contribution data.";
+    public string UsernameMemoryText {
+        get {
+            if (!RememberUsername) {
+                return "Username memory is off for this device.";
+            }
+
+            var candidate = string.IsNullOrWhiteSpace(UsernameInput)
+                ? RememberedUsername
+                : UsernameInput;
+            return string.IsNullOrWhiteSpace(candidate)
+                ? "The next loaded username will be remembered."
+                : "Remembered for next launch: " + candidate.Trim();
+        }
+    }
     public string CompactIdentityText => HasToken
         ? "Authenticated as " + (string.IsNullOrWhiteSpace(Login) ? "GitHub account" : Login)
         : "Viewing public profile " + (string.IsNullOrWhiteSpace(Login) ? string.Empty : Login);

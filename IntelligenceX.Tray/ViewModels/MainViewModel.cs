@@ -123,7 +123,9 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
             StringComparer.OrdinalIgnoreCase);
 
         GitHub = new GitHubViewModel {
-            UsernameInput = _preferences.GitHubUsername ?? string.Empty
+            RememberUsername = _preferences.GitHubRememberUsername,
+            RememberedUsername = _preferences.GitHubUsername ?? string.Empty,
+            UsernameInput = _preferences.GitHubRememberUsername ? _preferences.GitHubUsername ?? string.Empty : string.Empty
         };
         GitHub.PropertyChanged += OnGitHubPropertyChanged;
 
@@ -1067,12 +1069,34 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
 
     private void OnGitHubPropertyChanged(object? sender, PropertyChangedEventArgs e) {
         if (string.Equals(e.PropertyName, nameof(GitHubViewModel.UsernameInput), StringComparison.Ordinal)) {
-            _preferences.GitHubUsername = GitHub.UsernameInput?.Trim() ?? string.Empty;
+            SaveGitHubUsernamePreference();
+        } else if (string.Equals(e.PropertyName, nameof(GitHubViewModel.RememberUsername), StringComparison.Ordinal)) {
+            _preferences.GitHubRememberUsername = GitHub.RememberUsername;
+            if (!GitHub.RememberUsername) {
+                _preferences.GitHubUsername = string.Empty;
+                GitHub.RememberedUsername = string.Empty;
+            } else {
+                SaveGitHubUsernamePreference(savePreferences: false);
+            }
+
             SavePreferences();
         }
 
         RefreshGitHubProviderPulse();
         OnPropertyChanged(nameof(ShowCombinedGitHubPulse));
+    }
+
+    private void SaveGitHubUsernamePreference(bool savePreferences = true) {
+        if (!GitHub.RememberUsername) {
+            return;
+        }
+
+        var username = GitHub.UsernameInput?.Trim() ?? string.Empty;
+        _preferences.GitHubUsername = username;
+        GitHub.RememberedUsername = username;
+        if (savePreferences) {
+            SavePreferences();
+        }
     }
 
     private void OnProviderPropertyChanged(object? sender, PropertyChangedEventArgs e) {

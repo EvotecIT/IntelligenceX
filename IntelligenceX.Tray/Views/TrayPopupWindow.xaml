@@ -3415,6 +3415,26 @@
                                            FontFamily="{StaticResource AppFont}"
                                            FontSize="10"
                                            Foreground="{StaticResource TertiaryTextBrush}" />
+                                <Grid Margin="0,10,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <CheckBox Grid.Column="0"
+                                              IsChecked="{Binding RememberUsername, Mode=TwoWay}"
+                                              VerticalAlignment="Center"
+                                              Foreground="{StaticResource PrimaryTextBrush}"
+                                              FontFamily="{StaticResource AppFont}"
+                                              FontSize="11"
+                                              Content="Remember username" />
+                                    <TextBlock Grid.Column="1"
+                                               Text="{Binding UsernameMemoryText}"
+                                               TextWrapping="Wrap"
+                                               FontFamily="{StaticResource AppFont}"
+                                               FontSize="10"
+                                               Foreground="{StaticResource TertiaryTextBrush}"
+                                               Margin="12,1,0,0" />
+                                </Grid>
                             </StackPanel>
                         </Border>
 
