@@ -625,6 +625,19 @@ public sealed class ProviderViewModel : ViewModelBase {
         IsDetailsOpen = true;
     }
 
+    public void ApplyTransientUiState(bool isDetailsOpen, ProviderDetailsMode selectedDetailsMode) {
+        _isDetailsOpen = isDetailsOpen;
+        _selectedDetailsMode = selectedDetailsMode;
+        OnPropertyChanged(nameof(IsDetailsOpen));
+        OnPropertyChanged(nameof(DetailsButtonText));
+        OnPropertyChanged(nameof(SelectedDetailsMode));
+        OnPropertyChanged(nameof(IsDetailsActivitySelected));
+        OnPropertyChanged(nameof(IsDetailsLimitsSelected));
+        OnPropertyChanged(nameof(IsDetailsModelsSelected));
+        OnPropertyChanged(nameof(IsDetailsEventsSelected));
+        OnPropertyChanged(nameof(IsDetailsScopeSelected));
+    }
+
     public long TodayInputTokens {
         get => _todayInputTokens;
         set {
@@ -856,6 +869,8 @@ public sealed class ProviderViewModel : ViewModelBase {
         set {
             if (SetProperty(ref _limitStatusMessage, value)) {
                 OnPropertyChanged(nameof(HasLimitStatusMessage));
+                OnPropertyChanged(nameof(LimitStatusDisplayText));
+                OnPropertyChanged(nameof(HasLimitStatusDisplayText));
                 OnPropertyChanged(nameof(HasLimitSection));
                 OnPropertyChanged(nameof(PulseHealthDetailText));
                 NotifyPulseStatusChanged();
@@ -959,6 +974,8 @@ public sealed class ProviderViewModel : ViewModelBase {
 
     public bool HasLimitSummary => !string.IsNullOrWhiteSpace(LimitSummary);
     public bool HasLimitStatusMessage => !string.IsNullOrWhiteSpace(LimitStatusMessage);
+    public string? LimitStatusDisplayText => BuildLimitStatusDisplayText(LimitStatusMessage);
+    public bool HasLimitStatusDisplayText => !string.IsNullOrWhiteSpace(LimitStatusDisplayText);
     public bool HasRecommendedLimitAccount => !string.IsNullOrWhiteSpace(RecommendedLimitAccountLabel);
     public bool HasLimitAccountsOverview => !string.IsNullOrWhiteSpace(LimitAccountsOverviewText);
     public bool HasUsageHealthSummary => !string.IsNullOrWhiteSpace(UsageHealthSummary);
@@ -1781,6 +1798,30 @@ public sealed class ProviderViewModel : ViewModelBase {
         }
 
         return "Live limits need attention; local usage still updates.";
+    }
+
+    private static string? BuildLimitStatusDisplayText(string? value) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            return null;
+        }
+
+        var text = value.Trim();
+        if (text.IndexOf("OAuth", StringComparison.OrdinalIgnoreCase) >= 0
+            || text.IndexOf("refresh token", StringComparison.OrdinalIgnoreCase) >= 0
+            || text.IndexOf("access token", StringComparison.OrdinalIgnoreCase) >= 0
+            || text.IndexOf("signing in", StringComparison.OrdinalIgnoreCase) >= 0
+            || text.IndexOf("session key", StringComparison.OrdinalIgnoreCase) >= 0) {
+            return "Live limits need a refreshed sign-in. Local usage telemetry is still available.";
+        }
+
+        if (text.IndexOf("not available", StringComparison.OrdinalIgnoreCase) >= 0
+            || text.IndexOf("unavailable", StringComparison.OrdinalIgnoreCase) >= 0) {
+            return "Live limits are unavailable for this provider right now.";
+        }
+
+        return text.Length <= 160
+            ? text
+            : text[..157] + "...";
     }
 
     private string BuildPulseTrendText() {

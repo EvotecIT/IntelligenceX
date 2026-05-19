@@ -877,12 +877,12 @@
                                 </StackPanel>
 
                                 <StackPanel Visibility="{Binding IsDetailsLimitsSelected, Converter={StaticResource BoolToVis}}">
-                                    <TextBlock Text="{Binding LimitStatusMessage}"
+                                    <TextBlock Text="{Binding LimitStatusDisplayText}"
                                                FontFamily="{StaticResource AppFont}"
                                                FontSize="11"
                                                Foreground="{StaticResource PrimaryTextBrush}"
                                                TextWrapping="Wrap"
-                                               Visibility="{Binding HasLimitStatusMessage, Converter={StaticResource BoolToVis}}" />
+                                               Visibility="{Binding HasLimitStatusDisplayText, Converter={StaticResource BoolToVis}}" />
                                     <TextBlock Text="{Binding LimitSummary}"
                                                FontFamily="{StaticResource AppFont}"
                                                FontSize="11"
@@ -1002,7 +1002,7 @@
                                 <ItemsControl ItemsSource="{Binding CombinedOverviewCards}">
                                     <ItemsControl.ItemsPanel>
                                         <ItemsPanelTemplate>
-                                            <UniformGrid Columns="2" />
+                                            <WrapPanel />
                                         </ItemsPanelTemplate>
                                     </ItemsControl.ItemsPanel>
                                     <ItemsControl.ItemTemplate>
@@ -1011,6 +1011,8 @@
                                                     BorderBrush="{StaticResource BorderBrush}"
                                                     BorderThickness="1"
                                                     CornerRadius="10"
+                                                    Width="298"
+                                                    MinHeight="92"
                                                     Margin="0,0,8,8"
                                                     Padding="10,9">
                                                 <StackPanel>
@@ -2535,12 +2537,12 @@
                                            Margin="0,0,0,6"
                                            Visibility="{Binding HasLimitSummary, Converter={StaticResource BoolToVis}}" />
 
-                                <TextBlock Text="{Binding LimitStatusMessage}"
+                                <TextBlock Text="{Binding LimitStatusDisplayText}"
                                            FontFamily="{StaticResource AppFont}"
                                            FontSize="11"
                                            Foreground="{StaticResource TertiaryTextBrush}"
                                            TextWrapping="Wrap"
-                                           Visibility="{Binding HasLimitStatusMessage, Converter={StaticResource BoolToVis}}" />
+                                           Visibility="{Binding HasLimitStatusDisplayText, Converter={StaticResource BoolToVis}}" />
                             </StackPanel>
                         </Border>
 

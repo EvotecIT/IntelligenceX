@@ -92,6 +92,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     private DateTimeOffset _usageDirtyAtUtc;
     private string? _latestUsageChangePath;
 
+    private sealed record ProviderTransientUiState(bool IsDetailsOpen, ProviderDetailsMode SelectedDetailsMode);
+
     internal MainViewModel(
         UsageTelemetrySnapshotService usageService,
         ProviderLimitSnapshotService limitService,
@@ -2150,11 +2152,21 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
 
     private void ReplaceProviders(IEnumerable<ProviderViewModel> providers) {
         var preferredSelection = SelectedProvider?.ProviderId ?? _preferences.SelectedProviderId;
+        var providerUiState = Providers
+            .Where(static provider => !string.IsNullOrWhiteSpace(provider.ProviderId))
+            .ToDictionary(
+                static provider => provider.ProviderId,
+                static provider => new ProviderTransientUiState(provider.IsDetailsOpen, provider.SelectedDetailsMode),
+                StringComparer.OrdinalIgnoreCase);
 
         var orderedProviders = OrderProviders(providers);
         UnsubscribeProviders();
         Providers.Clear();
         foreach (var provider in orderedProviders) {
+            if (providerUiState.TryGetValue(provider.ProviderId, out var uiState)) {
+                provider.ApplyTransientUiState(uiState.IsDetailsOpen, uiState.SelectedDetailsMode);
+            }
+
             provider.RefreshIconGeometry();
             if (provider.ProviderId != "__github__") {
                 provider.PropertyChanged += OnProviderPropertyChanged;
@@ -2439,7 +2451,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
             var brush = new SolidColorBrush(Color.FromRgb(144, 144, 184));
             brush.Freeze();
             return new ProviderComparisonHealthInfo {
-                SummaryText = provider.LimitStatusMessage!,
+                SummaryText = provider.LimitStatusDisplayText ?? "Live limits need attention",
                 SummaryBrush = brush
             };
         }
