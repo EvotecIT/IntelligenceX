@@ -560,7 +560,7 @@ public sealed class ProviderViewModel : ViewModelBase {
         }
     }
 
-    public string DetailsButtonText => IsDetailsOpen ? "Hide details" : "Details";
+    public string DetailsButtonText => IsDetailsOpen ? "Hide details" : "Show details";
 
     public ProviderDetailsMode SelectedDetailsMode {
         get => _selectedDetailsMode;

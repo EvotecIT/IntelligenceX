@@ -340,12 +340,12 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         ? "Manual refresh"
         : "Auto " + FormatRefreshInterval(AutoRefreshIntervalSeconds);
     public string ThemeButtonLabel => TrayThemeService.GetDisplayName(ThemeMode);
-    public Geometry ThemeButtonIcon => TrayThemeService.NormalizeThemeMode(ThemeMode) switch {
+    public Geometry ThemeButtonIcon => TrayThemeService.NormalizeThemeMode(GetNextThemeMode(ThemeMode)) switch {
         TrayThemeService.DarkMode => ThemeDarkIcon,
         TrayThemeService.LightMode => ThemeLightIcon,
         _ => ThemeAutoIcon
     };
-    public string ThemeToolTip => "Theme: " + TrayThemeService.GetDisplayName(ThemeMode) + ". Next: " + TrayThemeService.GetDisplayName(GetNextThemeMode(ThemeMode)) + ".";
+    public string ThemeToolTip => "Switch to " + TrayThemeService.GetDisplayName(GetNextThemeMode(ThemeMode)) + " theme. Current: " + TrayThemeService.GetDisplayName(ThemeMode) + ".";
     public string AccentSummaryLabel => TrayThemeService.GetAccentDisplayName(AccentPreset);
     public string AccentToolTip => "Accent: " + TrayThemeService.GetAccentDisplayName(AccentPreset) + ". Use the tray context menu to switch presets.";
 

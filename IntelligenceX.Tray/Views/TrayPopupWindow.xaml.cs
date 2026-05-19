@@ -118,6 +118,8 @@ public partial class TrayPopupWindow : Window {
             provider.ToggleDetails();
             if (provider.IsDetailsOpen) {
                 ScrollDetailsIntoView();
+            } else {
+                ScrollProviderSummaryIntoView();
             }
         }
     }
@@ -145,6 +147,10 @@ public partial class TrayPopupWindow : Window {
                 .Y;
             UsageContentScrollViewer.ScrollToVerticalOffset(Math.Max(0d, detailsTop - 10d));
         }));
+    }
+
+    private void ScrollProviderSummaryIntoView() {
+        Dispatcher.BeginInvoke(new Action(() => UsageContentScrollViewer?.ScrollToVerticalOffset(0d)));
     }
 
     private void OnOpenUrlClick(object sender, RoutedEventArgs e) {
