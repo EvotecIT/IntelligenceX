@@ -21,6 +21,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     private const int DefaultRefreshIntervalSeconds = 120;
     private const int StartupWarmRefreshFreshnessSeconds = 900;
     private const int StartupWarmRefreshDelaySeconds = 300;
+    private const int StartupFullUsageRefreshDelaySeconds = 8;
     private const int UsageRootSafetySweepSeconds = 21600;
     private const int UsageChangeDebounceSeconds = 15;
     private const int RefreshHistoryDepth = 4;
@@ -130,7 +131,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         };
         GitHub.PropertyChanged += OnGitHubPropertyChanged;
 
-        RefreshCommand = new RelayCommand(() => RefreshAsync(startupWarmup: true));
+        RefreshCommand = new RelayCommand(() => RefreshAsync(startupWarmup: false));
         RefreshGitHubCommand = new RelayCommand(RefreshGitHubCurrentAsync);
         OpenOpenAiCacheCommand = new RelayCommand(OpenOpenAiCacheAsync);
         CycleThemeModeCommand = new RelayCommand(CycleThemeModeAsync);
@@ -383,8 +384,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     }
 
     private async Task RefreshStartupUsageAfterCacheAsync() {
-        await Task.Delay(TimeSpan.FromSeconds(StartupWarmRefreshDelaySeconds)).ConfigureAwait(true);
-        await RefreshAsync(startupWarmup: true);
+        await Task.Delay(TimeSpan.FromSeconds(StartupFullUsageRefreshDelaySeconds)).ConfigureAwait(true);
+        await RefreshAsync(startupWarmup: false);
     }
 
     private static bool ShouldRunStartupWarmRefreshAfterCache(TrayUsageSnapshotStore.TrayUsageSnapshotCache? cachedSnapshot) {
@@ -431,6 +432,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
 
     private async Task RefreshStartupUsageWithoutCacheAsync() {
         await RefreshAsync(startupWarmup: true);
+        await Task.Delay(TimeSpan.FromSeconds(StartupFullUsageRefreshDelaySeconds)).ConfigureAwait(true);
+        await RefreshAsync(startupWarmup: false);
     }
 
     private async Task RefreshAutoAsync() {
@@ -439,7 +442,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         }
 
         if (ShouldRunFullAutomaticUsageRefresh()) {
-            await RefreshAsync(startupWarmup: true);
+            await RefreshAsync(startupWarmup: false);
             return;
         }
 
@@ -751,11 +754,11 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     }
 
     private async Task RefreshUsageIfDirtyAsync() {
-        if (AutoRefreshIntervalSeconds <= 0 || IsLoading || IsStartupQuietWindowActive() || !HasPendingUsageChanges()) {
+        if (AutoRefreshIntervalSeconds <= 0 || IsLoading || !HasPendingUsageChanges()) {
             return;
         }
 
-        await RefreshAsync(startupWarmup: true).ConfigureAwait(false);
+        await RefreshAsync(startupWarmup: false).ConfigureAwait(false);
     }
 
     private string BuildLoadingStatusText(string? value) {
@@ -1808,9 +1811,9 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         _usageChangeWatcher.SetRoots(cachedSnapshot.SourceRoots);
         LastRefreshed = cachedSnapshot.ScannedAtUtc.ToLocalTime();
         StatusText = ShouldRunStartupWarmRefreshAfterCache(cachedSnapshot)
-            ? "Showing saved usage snapshot. Refreshing local telemetry in background..."
+            ? "Showing saved usage snapshot. Full telemetry refresh starts shortly..."
             : "Showing saved usage snapshot.";
-        LoadingDetailText = "Showing saved usage while local telemetry catch-up waits for the startup quiet window.";
+        LoadingDetailText = "Showing saved usage while full local telemetry catches up in the background.";
         ScheduleGitCodeChurnRefreshAfterStartup();
         return true;
     }
@@ -2309,7 +2312,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
             parts.Add(health.DuplicateRecordsCollapsed.ToString(CultureInfo.InvariantCulture) + " deduped");
         }
         if (health.IsPartialScan) {
-            parts.Add("partial scan");
+            parts.Add(health.IsCachedSnapshot ? "full scan pending" : "partial scan");
         }
         if (health.IssueCount > 0) {
             parts.Add(health.IssueCount.ToString(CultureInfo.InvariantCulture) + " issues");

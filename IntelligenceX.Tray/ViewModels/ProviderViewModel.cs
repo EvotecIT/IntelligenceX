@@ -2315,6 +2315,20 @@ public sealed class ProviderViewModel : ViewModelBase {
         var detail = NormalizeOptional(UsageHealthDetail) ?? NormalizeOptional(UsageHealthAccountsText);
         var combinedText = string.Join(" ", new[] { summary, detail }.Where(static value => !string.IsNullOrWhiteSpace(value))).ToLowerInvariant();
 
+        if (combinedText.Contains("cached", StringComparison.Ordinal)) {
+            return (
+                "Cached",
+                summary ?? detail ?? "The tray is showing saved data while local telemetry catches up.",
+                FrozenBrush(Color.FromRgb(144, 144, 184)));
+        }
+
+        if (combinedText.Contains("pending", StringComparison.Ordinal)) {
+            return (
+                "Catching up",
+                summary ?? detail ?? "A full local scan is running shortly after startup.",
+                FrozenBrush(Color.FromRgb(96, 176, 232)));
+        }
+
         if (combinedText.Contains("partial", StringComparison.Ordinal) ||
             combinedText.Contains("missing", StringComparison.Ordinal) ||
             combinedText.Contains("stale", StringComparison.Ordinal)) {
@@ -2322,13 +2336,6 @@ public sealed class ProviderViewModel : ViewModelBase {
                 "Partial",
                 summary ?? detail ?? "Some provider roots or artifacts were incomplete during the last scan.",
                 FrozenBrush(Color.FromRgb(240, 192, 64)));
-        }
-
-        if (combinedText.Contains("cached", StringComparison.Ordinal)) {
-            return (
-                "Cached",
-                summary ?? detail ?? "The tray is currently using persisted snapshot data.",
-                FrozenBrush(Color.FromRgb(144, 144, 184)));
         }
 
         if (!string.IsNullOrWhiteSpace(summary) || !string.IsNullOrWhiteSpace(detail)) {
