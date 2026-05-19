@@ -339,7 +339,7 @@ query($owner: String!, $repo: String!, $first: Int!, $after: String) {
 
     private async Task<GitHubContribData> FetchContributionsAsync(string login, CancellationToken cancellationToken) {
         var now = DateTimeOffset.UtcNow;
-        var from = now.AddDays(-29).Date;
+        var from = now.AddDays(-364).Date;
         var to = now.Date;
         const string query = """
 query($login: String!, $from: DateTime!, $to: DateTime!) {
