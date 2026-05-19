@@ -155,7 +155,7 @@
                                              IsChecked="{Binding IsSelected, Mode=OneWay}"
                                              Click="OnProviderTabClick"
                                              Tag="{Binding}">
-                                    <Grid Width="68" Height="58">
+                                    <Grid Width="106" Height="60">
                                         <Grid.RowDefinitions>
                                             <RowDefinition Height="Auto" />
                                             <RowDefinition Height="*" />
@@ -166,8 +166,8 @@
                                                 <ColumnDefinition Width="*" />
                                                 <ColumnDefinition Width="Auto" />
                                             </Grid.ColumnDefinitions>
-                                            <Viewbox Width="13" Height="13"
-                                                     Margin="0,0,5,0"
+                                            <Viewbox Width="15" Height="15"
+                                                     Margin="0,0,7,0"
                                                      VerticalAlignment="Center">
                                                 <Path Data="{Binding IconGeometry}"
                                                       Fill="{Binding AccentBrush}"
@@ -176,7 +176,7 @@
                                             <TextBlock Grid.Column="1"
                                                        Text="{Binding ShortName}"
                                                        TextTrimming="CharacterEllipsis"
-                                                       FontSize="11.5"
+                                                       FontSize="13"
                                                        VerticalAlignment="Center" />
                                             <Ellipse Grid.Column="2"
                                                      Width="7" Height="7"
@@ -188,11 +188,11 @@
                                                     VerticalAlignment="Bottom"
                                                     Margin="0,6,0,0">
                                             <TextBlock Text="{Binding PulseProviderMetricText}"
-                                                       FontSize="14"
+                                                       FontSize="18"
                                                        FontWeight="SemiBold"
-                                                       Foreground="{StaticResource SecondaryTextBrush}"
+                                                       Foreground="{StaticResource PrimaryTextBrush}"
                                                        TextTrimming="CharacterEllipsis"
-                                                       MaxWidth="64" />
+                                                       MaxWidth="96" />
                                             <TextBlock Text="★"
                                                        Margin="5,0,0,2"
                                                        FontSize="8"
