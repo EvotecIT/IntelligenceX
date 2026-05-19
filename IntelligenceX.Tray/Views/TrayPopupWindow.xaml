@@ -9,7 +9,7 @@
         AllowsTransparency="True"
         Background="Transparent"
         ShowInTaskbar="False"
-        Topmost="True"
+        Topmost="False"
         ResizeMode="NoResize"
         SizeChanged="OnWindowSizeChanged"
         Deactivated="OnDeactivated"

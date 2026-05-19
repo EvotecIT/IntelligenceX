@@ -401,6 +401,10 @@ public sealed class ProviderViewModel : ViewModelBase {
                 return "Needs attention";
             }
 
+            if (HasCachedOrPendingUsageHealth) {
+                return "Updating";
+            }
+
             if (HasPartialUsageHealth) {
                 return "Partial";
             }
@@ -410,17 +414,21 @@ public sealed class ProviderViewModel : ViewModelBase {
     }
     public Brush PulseStatusBrush => PulseStatusText switch {
         "Needs attention" => FrozenBrush(Color.FromRgb(240, 192, 64)),
+        "Updating" => FrozenBrush(Color.FromRgb(240, 192, 64)),
         "Partial" => FrozenBrush(Color.FromRgb(240, 192, 64)),
         _ => FrozenBrush(Color.FromRgb(80, 216, 128))
     };
     public Brush PulseStatusPanelBrush => PulseStatusText switch {
         "Needs attention" => FrozenBrush(Color.FromArgb(0x22, 0xF0, 0xC0, 0x40)),
+        "Updating" => FrozenBrush(Color.FromArgb(0x22, 0xF0, 0xC0, 0x40)),
         "Partial" => FrozenBrush(Color.FromArgb(0x22, 0xF0, 0xC0, 0x40)),
         _ => FrozenBrush(Color.FromArgb(0x22, 0x50, 0xD8, 0x80))
     };
     public string PulseInsightText => BuildPulseInsightText();
     public string PulseHealthChipText => HasLimitStatusMessage
         ? BuildPulseLimitChipText()
+        : HasCachedOrPendingUsageHealth
+            ? "Updating scan"
         : HasPartialUsageHealth
             ? "Partial scan"
             : HasUsageHealthSummary
@@ -428,6 +436,8 @@ public sealed class ProviderViewModel : ViewModelBase {
             : "Health OK";
     public string PulseHealthDetailText => HasLimitStatusMessage
         ? "Limit status"
+        : HasCachedOrPendingUsageHealth
+            ? "Data health"
         : HasPartialUsageHealth
             ? "Data health"
             : HasUsageHealthSummary
@@ -912,6 +922,7 @@ public sealed class ProviderViewModel : ViewModelBase {
             if (SetProperty(ref _usageHealthSummary, value)) {
                 OnPropertyChanged(nameof(HasUsageHealthSummary));
                 OnPropertyChanged(nameof(HasPartialUsageHealth));
+                OnPropertyChanged(nameof(HasCachedOrPendingUsageHealth));
                 OnPropertyChanged(nameof(HasUsageHealthSection));
                 OnPropertyChanged(nameof(PulseHealthDetailText));
                 NotifyPulseStatusChanged();
@@ -925,6 +936,7 @@ public sealed class ProviderViewModel : ViewModelBase {
             if (SetProperty(ref _usageHealthDetail, value)) {
                 OnPropertyChanged(nameof(HasUsageHealthDetail));
                 OnPropertyChanged(nameof(HasPartialUsageHealth));
+                OnPropertyChanged(nameof(HasCachedOrPendingUsageHealth));
                 OnPropertyChanged(nameof(HasUsageHealthSection));
                 OnPropertyChanged(nameof(PulseHealthDetailText));
                 NotifyPulseStatusChanged();
@@ -983,6 +995,9 @@ public sealed class ProviderViewModel : ViewModelBase {
     public bool HasPartialUsageHealth =>
         ContainsPartialUsageHealth(UsageHealthSummary)
         || ContainsPartialUsageHealth(UsageHealthDetail);
+    public bool HasCachedOrPendingUsageHealth =>
+        ContainsCachedOrPendingUsageHealth(UsageHealthSummary)
+        || ContainsCachedOrPendingUsageHealth(UsageHealthDetail);
     public bool HasUsageHealthAccounts => !string.IsNullOrWhiteSpace(UsageHealthAccountsText);
     public bool HasScopeLocalText => !string.IsNullOrWhiteSpace(ScopeLocalText);
     public bool HasScopeOnlineText => !string.IsNullOrWhiteSpace(ScopeOnlineText);
@@ -1726,6 +1741,16 @@ public sealed class ProviderViewModel : ViewModelBase {
     private static bool ContainsPartialUsageHealth(string? value) {
         return !string.IsNullOrWhiteSpace(value)
                && value.IndexOf("partial", StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
+    private static bool ContainsCachedOrPendingUsageHealth(string? value) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            return false;
+        }
+
+        return value.IndexOf("cached snapshot", StringComparison.OrdinalIgnoreCase) >= 0
+               || value.IndexOf("full scan pending", StringComparison.OrdinalIgnoreCase) >= 0
+               || value.IndexOf("scan pending", StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
     private double PulseMixProportion(long value) {

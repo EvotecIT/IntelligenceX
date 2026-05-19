@@ -756,7 +756,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     }
 
     private async Task RefreshUsageIfDirtyAsync() {
-        if (AutoRefreshIntervalSeconds <= 0 || IsLoading || !HasPendingUsageChanges()) {
+        if (AutoRefreshIntervalSeconds <= 0 || IsLoading || IsStartupQuietWindowActive() || !HasPendingUsageChanges()) {
             return;
         }
 
