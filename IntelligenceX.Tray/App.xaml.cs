@@ -17,6 +17,9 @@ using System.ComponentModel;
 namespace IntelligenceX.Tray;
 
 public partial class App : Application {
+    private const string SingleInstanceMutexName = "Local\\IntelligenceX.Tray.SingleInstance";
+    private const string ShowPopupEventName = "Local\\IntelligenceX.Tray.ShowPopup";
+
     private TaskbarIcon? _trayIcon;
     private TrayPopupWindow? _popupWindow;
     private MainViewModel? _viewModel;
@@ -33,15 +36,22 @@ public partial class App : Application {
     private DateTimeOffset _suppressTrayToggleUntilUtc;
     private bool _restoringPopupPlacement;
     private bool _isExiting;
+    private Mutex? _singleInstanceMutex;
+    private EventWaitHandle? _showPopupEvent;
+    private RegisteredWaitHandle? _showPopupRegistration;
     private readonly WindowsStartupRegistrationService _startupRegistrationService = new();
 
     protected override void OnStartup(StartupEventArgs e) {
-        base.OnStartup(e);
-
         try {
             var openOnStartup = e.Args.Any(static arg =>
                 string.Equals(arg, "--open", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(arg, "--show", StringComparison.OrdinalIgnoreCase));
+            if (!TryClaimSingleInstance(openOnStartup)) {
+                Shutdown(0);
+                return;
+            }
+
+            base.OnStartup(e);
 
             _usageArtifactStore = new SqliteRawArtifactStore(ResolveTrayUsageCachePath());
             var usageService = new UsageTelemetrySnapshotService(_usageArtifactStore);
@@ -98,6 +108,48 @@ public partial class App : Application {
                 MessageBoxImage.Error);
             Shutdown(1);
         }
+    }
+
+    private bool TryClaimSingleInstance(bool requestOpen) {
+        _singleInstanceMutex = new Mutex(initiallyOwned: true, SingleInstanceMutexName, out var ownsInstance);
+        if (!ownsInstance) {
+            SignalExistingInstance(requestOpen);
+            _singleInstanceMutex.Dispose();
+            _singleInstanceMutex = null;
+            return false;
+        }
+
+        _showPopupEvent = new EventWaitHandle(false, EventResetMode.AutoReset, ShowPopupEventName);
+        _showPopupRegistration = ThreadPool.RegisterWaitForSingleObject(
+            _showPopupEvent,
+            OnShowPopupSignal,
+            state: null,
+            millisecondsTimeOutInterval: -1,
+            executeOnlyOnce: false);
+        return true;
+    }
+
+    private static void SignalExistingInstance(bool requestOpen) {
+        if (!requestOpen) {
+            return;
+        }
+
+        try {
+            using var showPopupEvent = EventWaitHandle.OpenExisting(ShowPopupEventName);
+            showPopupEvent.Set();
+        } catch (WaitHandleCannotBeOpenedException) {
+        } catch (UnauthorizedAccessException) {
+        }
+    }
+
+    private void OnShowPopupSignal(object? state, bool timedOut) {
+        if (timedOut || _isExiting) {
+            return;
+        }
+
+        Dispatcher.BeginInvoke(
+            new Action(() => ShowPopup(TimeSpan.FromSeconds(10))),
+            DispatcherPriority.ApplicationIdle);
     }
 
     private async Task StartBackgroundInitializationAsync() {
@@ -680,6 +732,13 @@ public partial class App : Application {
         _viewModel?.Dispose();
         _usageArtifactStore?.Dispose();
         _usageArtifactStore = null;
+        _showPopupRegistration?.Unregister(null);
+        _showPopupRegistration = null;
+        _showPopupEvent?.Dispose();
+        _showPopupEvent = null;
+        _singleInstanceMutex?.ReleaseMutex();
+        _singleInstanceMutex?.Dispose();
+        _singleInstanceMutex = null;
         _trayIcon?.Dispose();
         if (_popupWindow is not null) {
             _popupWindow.ManualPlacementCommitted -= OnPopupManualPlacementCommitted;

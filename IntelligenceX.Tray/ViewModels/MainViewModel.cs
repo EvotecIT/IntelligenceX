@@ -174,6 +174,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
                 RefreshProviderSelectionState();
                 OnPropertyChanged(nameof(CanToggleFavoriteSelectedProvider));
                 OnPropertyChanged(nameof(FavoriteSelectedProviderLabel));
+                OnPropertyChanged(nameof(FavoriteSelectedProviderActionLabel));
                 ToggleSelectedProviderFavoriteCommand.RaiseCanExecuteChanged();
                 SaveSelectedProviderPreference(value?.ProviderId);
             }
@@ -283,6 +284,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     public bool HasData => Providers.Count > 0 && SelectedProvider != null;
     public bool CanToggleFavoriteSelectedProvider => SelectedProvider is { ProviderId: not "__all__" };
     public string FavoriteSelectedProviderLabel => SelectedProvider?.IsFavorite == true ? "Pinned" : "Pin";
+    public string FavoriteSelectedProviderActionLabel => SelectedProvider?.IsFavorite == true ? "Unpin provider" : "Pin provider";
     public ICommand HeaderRefreshCommand => ShowGitHubContent ? RefreshGitHubCommand : RefreshCommand;
     public string HeaderRefreshLabel => ShowGitHubContent ? "Load" : "Refresh";
 
@@ -769,6 +771,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
 
         ReorderProviders();
         OnPropertyChanged(nameof(FavoriteSelectedProviderLabel));
+        OnPropertyChanged(nameof(FavoriteSelectedProviderActionLabel));
         ToggleSelectedProviderFavoriteCommand.RaiseCanExecuteChanged();
         SavePreferences();
         StatusText = IsFavoriteProvider(providerId)

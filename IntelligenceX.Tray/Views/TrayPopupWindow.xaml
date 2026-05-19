@@ -104,7 +104,8 @@
                         <Button Style="{StaticResource RefreshButtonStyle}"
                                 Command="{Binding ToggleSelectedProviderFavoriteCommand}"
                                 IsEnabled="{Binding CanToggleFavoriteSelectedProvider}"
-                                ToolTip="Pin provider"
+                                ToolTip="{Binding FavoriteSelectedProviderActionLabel}"
+                                AutomationProperties.Name="{Binding FavoriteSelectedProviderActionLabel}"
                                 VerticalAlignment="Center"
                                 Margin="0,0,6,0">
                             <Viewbox Width="15" Height="15">
@@ -114,6 +115,7 @@
                         <Button Style="{StaticResource RefreshButtonStyle}"
                                 Command="{Binding HeaderRefreshCommand}"
                                 ToolTip="{Binding HeaderRefreshLabel}"
+                                AutomationProperties.Name="{Binding HeaderRefreshLabel}"
                                 VerticalAlignment="Center"
                                 Margin="0,0,6,0">
                             <Viewbox Width="16" Height="16">
@@ -123,6 +125,7 @@
                         <Button Style="{StaticResource RefreshButtonStyle}"
                                 Command="{Binding CycleThemeModeCommand}"
                                 ToolTip="{Binding ThemeToolTip}"
+                                AutomationProperties.Name="{Binding ThemeToolTip}"
                                 VerticalAlignment="Center"
                                 Margin="0,0,6,0">
                             <Viewbox Width="17" Height="17">
@@ -130,8 +133,19 @@
                             </Viewbox>
                         </Button>
                         <Button Style="{StaticResource RefreshButtonStyle}"
+                                Click="OnMinimizeButtonClick"
+                                ToolTip="Minimize to tray"
+                                AutomationProperties.Name="Minimize to tray"
+                                VerticalAlignment="Center"
+                                Margin="0,0,6,0">
+                            <Viewbox Width="15" Height="15">
+                                <Path Data="{StaticResource IconMinimize}" Fill="{StaticResource PrimaryTextBrush}" Stretch="Uniform" />
+                            </Viewbox>
+                        </Button>
+                        <Button Style="{StaticResource RefreshButtonStyle}"
                                 Click="OnCloseButtonClick"
-                                ToolTip="Close tray app"
+                                ToolTip="Close"
+                                AutomationProperties.Name="Close"
                                 VerticalAlignment="Center">
                             <Viewbox Width="15" Height="15">
                                 <Path Data="{StaticResource IconClose}" Fill="{StaticResource PrimaryTextBrush}" Stretch="Uniform" />
@@ -146,73 +160,113 @@
                     Background="{StaticResource SectionStripBrush}"
                     BorderBrush="{StaticResource BorderBrush}"
                     BorderThickness="0,1,0,1"
-                    Padding="14,10">
-                <ScrollViewer HorizontalScrollBarVisibility="Auto"
-                              VerticalScrollBarVisibility="Disabled">
-                    <ItemsControl ItemsSource="{Binding Providers}">
-                        <ItemsControl.ItemsPanel>
-                            <ItemsPanelTemplate>
-                                <StackPanel Orientation="Horizontal" />
-                            </ItemsPanelTemplate>
-                        </ItemsControl.ItemsPanel>
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate DataType="{x:Type vm:ProviderViewModel}">
-                                <RadioButton Style="{StaticResource ProviderTabStyle}"
-                                             GroupName="ProviderTabs"
-                                             IsChecked="{Binding IsSelected, Mode=OneWay}"
-                                             Click="OnProviderTabClick"
-                                             Tag="{Binding}">
-                                    <Grid Width="106" Height="60">
-                                        <Grid.RowDefinitions>
-                                            <RowDefinition Height="Auto" />
-                                            <RowDefinition Height="*" />
-                                        </Grid.RowDefinitions>
-                                        <Grid Grid.Row="0">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="Auto" />
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="Auto" />
-                                            </Grid.ColumnDefinitions>
-                                            <Viewbox Width="15" Height="15"
-                                                     Margin="0,0,7,0"
-                                                     VerticalAlignment="Center">
-                                                <Path Data="{Binding IconGeometry}"
-                                                      Fill="{Binding AccentBrush}"
-                                                      Stretch="Uniform" />
-                                            </Viewbox>
-                                            <TextBlock Grid.Column="1"
-                                                       Text="{Binding ShortName}"
-                                                       TextTrimming="CharacterEllipsis"
-                                                       FontSize="13"
-                                                       VerticalAlignment="Center" />
-                                            <Ellipse Grid.Column="2"
-                                                     Width="7" Height="7"
-                                                     Fill="{Binding PulseStatusBrush}"
-                                                     VerticalAlignment="Center" />
+                    Padding="10,10">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Button Style="{StaticResource RefreshButtonStyle}"
+                            Click="OnProviderTabsScrollLeftClick"
+                            ToolTip="Scroll providers left"
+                            AutomationProperties.Name="Scroll providers left"
+                            VerticalAlignment="Stretch"
+                            Margin="0,0,8,0">
+                        <Viewbox Width="13" Height="13">
+                            <Path Data="{StaticResource IconChevronRight}"
+                                  Fill="{StaticResource SecondaryTextBrush}"
+                                  Stretch="Uniform"
+                                  RenderTransformOrigin="0.5,0.5">
+                                <Path.RenderTransform>
+                                    <RotateTransform Angle="180" />
+                                </Path.RenderTransform>
+                            </Path>
+                        </Viewbox>
+                    </Button>
+                    <ScrollViewer x:Name="ProviderTabsScrollViewer"
+                                  Grid.Column="1"
+                                  HorizontalScrollBarVisibility="Hidden"
+                                  VerticalScrollBarVisibility="Disabled"
+                                  PreviewMouseWheel="OnProviderTabsPreviewMouseWheel">
+                        <ItemsControl ItemsSource="{Binding Providers}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Horizontal" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="{x:Type vm:ProviderViewModel}">
+                                    <RadioButton Style="{StaticResource ProviderTabStyle}"
+                                                 GroupName="ProviderTabs"
+                                                 IsChecked="{Binding IsSelected, Mode=OneWay}"
+                                                 Click="OnProviderTabClick"
+                                                 Tag="{Binding}">
+                                        <Grid Width="106" Height="60">
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="*" />
+                                            </Grid.RowDefinitions>
+                                            <Grid Grid.Row="0">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <Viewbox Width="15" Height="15"
+                                                         Margin="0,0,7,0"
+                                                         VerticalAlignment="Center">
+                                                    <Path Data="{Binding IconGeometry}"
+                                                          Fill="{Binding AccentBrush}"
+                                                          Stretch="Uniform" />
+                                                </Viewbox>
+                                                <TextBlock Grid.Column="1"
+                                                           Text="{Binding ShortName}"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           FontSize="13"
+                                                           VerticalAlignment="Center" />
+                                                <Ellipse Grid.Column="2"
+                                                         Width="7" Height="7"
+                                                         Fill="{Binding PulseStatusBrush}"
+                                                         VerticalAlignment="Center" />
+                                            </Grid>
+                                            <StackPanel Grid.Row="1"
+                                                        Orientation="Horizontal"
+                                                        VerticalAlignment="Bottom"
+                                                        Margin="0,6,0,0">
+                                                <TextBlock Text="{Binding PulseProviderMetricText}"
+                                                           FontSize="18"
+                                                           FontWeight="SemiBold"
+                                                           Foreground="{StaticResource PrimaryTextBrush}"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           MaxWidth="96" />
+                                                <TextBlock Text="★"
+                                                           Margin="5,0,0,2"
+                                                           FontSize="8"
+                                                           Foreground="{StaticResource FavoriteBadgeBrush}"
+                                                           VerticalAlignment="Bottom"
+                                                           Visibility="{Binding IsFavorite, Converter={StaticResource BoolToVis}}" />
+                                            </StackPanel>
                                         </Grid>
-                                        <StackPanel Grid.Row="1"
-                                                    Orientation="Horizontal"
-                                                    VerticalAlignment="Bottom"
-                                                    Margin="0,6,0,0">
-                                            <TextBlock Text="{Binding PulseProviderMetricText}"
-                                                       FontSize="18"
-                                                       FontWeight="SemiBold"
-                                                       Foreground="{StaticResource PrimaryTextBrush}"
-                                                       TextTrimming="CharacterEllipsis"
-                                                       MaxWidth="96" />
-                                            <TextBlock Text="★"
-                                                       Margin="5,0,0,2"
-                                                       FontSize="8"
-                                                       Foreground="{StaticResource FavoriteBadgeBrush}"
-                                                       VerticalAlignment="Bottom"
-                                                       Visibility="{Binding IsFavorite, Converter={StaticResource BoolToVis}}" />
-                                        </StackPanel>
-                                    </Grid>
-                                </RadioButton>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </ScrollViewer>
+                                    </RadioButton>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                    <Button Grid.Column="2"
+                            Style="{StaticResource RefreshButtonStyle}"
+                            Click="OnProviderTabsScrollRightClick"
+                            ToolTip="Scroll providers right"
+                            AutomationProperties.Name="Scroll providers right"
+                            VerticalAlignment="Stretch"
+                            Margin="8,0,0,0">
+                        <Viewbox Width="13" Height="13">
+                            <Path Data="{StaticResource IconChevronRight}"
+                                  Fill="{StaticResource SecondaryTextBrush}"
+                                  Stretch="Uniform" />
+                        </Viewbox>
+                    </Button>
+                </Grid>
             </Border>
 
             <!-- ═══ MAIN CONTENT ═══ -->

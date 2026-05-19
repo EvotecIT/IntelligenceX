@@ -22,6 +22,7 @@ public partial class TrayPopupWindow : Window {
     private const int MaxExportPixelHeight = 32768;
     private const long MaxExportPixelCount = 40_000_000;
     private const double MinExportScale = 0.2d;
+    private const double ProviderTabsScrollStep = 180d;
 
     private bool _isPrimed;
     private DateTimeOffset _suppressDeactivateUntilUtc;
@@ -81,6 +82,35 @@ public partial class TrayPopupWindow : Window {
             DataContext is MainViewModel mainVm) {
             mainVm.SelectedProvider = provider;
         }
+    }
+
+    private void OnProviderTabsScrollLeftClick(object sender, RoutedEventArgs e) {
+        ScrollProviderTabs(-ProviderTabsScrollStep);
+    }
+
+    private void OnProviderTabsScrollRightClick(object sender, RoutedEventArgs e) {
+        ScrollProviderTabs(ProviderTabsScrollStep);
+    }
+
+    private void OnProviderTabsPreviewMouseWheel(object sender, MouseWheelEventArgs e) {
+        if (ProviderTabsScrollViewer.ScrollableWidth <= 0) {
+            return;
+        }
+
+        ScrollProviderTabs(e.Delta < 0 ? ProviderTabsScrollStep : -ProviderTabsScrollStep);
+        e.Handled = true;
+    }
+
+    private void ScrollProviderTabs(double delta) {
+        if (ProviderTabsScrollViewer.ScrollableWidth <= 0) {
+            return;
+        }
+
+        var target = Math.Clamp(
+            ProviderTabsScrollViewer.HorizontalOffset + delta,
+            0d,
+            ProviderTabsScrollViewer.ScrollableWidth);
+        ProviderTabsScrollViewer.ScrollToHorizontalOffset(target);
     }
 
     private void OnRangeChipClick(object sender, RoutedEventArgs e) {
