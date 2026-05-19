@@ -420,12 +420,19 @@ public sealed class ProviderViewModel : ViewModelBase {
     };
     public string PulseInsightText => BuildPulseInsightText();
     public string PulseHealthChipText => HasLimitStatusMessage
-        ? "Limits need attention"
+        ? BuildPulseLimitChipText()
         : HasPartialUsageHealth
             ? "Partial scan"
             : HasUsageHealthSummary
             ? UsageHealthSummary!
             : "Health OK";
+    public string PulseHealthDetailText => HasLimitStatusMessage
+        ? "Limit status"
+        : HasPartialUsageHealth
+            ? "Data health"
+            : HasUsageHealthSummary
+                ? "Data health"
+                : "Ready";
     public string PulseTopModelText => PulseModelBreakdown.Count > 0
         ? PulseModelBreakdown[0].ModelName + " • " + PulseModelBreakdown[0].TotalTokensFormatted
         : "No model signal";
@@ -850,6 +857,7 @@ public sealed class ProviderViewModel : ViewModelBase {
             if (SetProperty(ref _limitStatusMessage, value)) {
                 OnPropertyChanged(nameof(HasLimitStatusMessage));
                 OnPropertyChanged(nameof(HasLimitSection));
+                OnPropertyChanged(nameof(PulseHealthDetailText));
                 NotifyPulseStatusChanged();
             }
         }
@@ -890,6 +898,7 @@ public sealed class ProviderViewModel : ViewModelBase {
                 OnPropertyChanged(nameof(HasUsageHealthSummary));
                 OnPropertyChanged(nameof(HasPartialUsageHealth));
                 OnPropertyChanged(nameof(HasUsageHealthSection));
+                OnPropertyChanged(nameof(PulseHealthDetailText));
                 NotifyPulseStatusChanged();
             }
         }
@@ -902,6 +911,7 @@ public sealed class ProviderViewModel : ViewModelBase {
                 OnPropertyChanged(nameof(HasUsageHealthDetail));
                 OnPropertyChanged(nameof(HasPartialUsageHealth));
                 OnPropertyChanged(nameof(HasUsageHealthSection));
+                OnPropertyChanged(nameof(PulseHealthDetailText));
                 NotifyPulseStatusChanged();
             }
         }
@@ -1713,13 +1723,15 @@ public sealed class ProviderViewModel : ViewModelBase {
     }
 
     private string BuildPulseInsightText() {
-        if (HasLimitStatusMessage) {
-            return LimitStatusMessage!;
-        }
-
         if (IsCombinedProvider && ProviderComparison.Count > 0) {
             var leader = ProviderComparison[0];
             return leader.DisplayName + " leads this view with " + leader.TokensText + " across " + leader.EventCountText + ".";
+        }
+
+        if (PulseTotalTokens <= 0) {
+            return HasLimitStatusMessage
+                ? DisplayName + " has no local usage today. " + BuildPulseLimitInsightText()
+                : "No local " + DisplayName + " activity today yet.";
         }
 
         if (PulseCachedTokens > 0 && PulseInputTokens > 0) {
@@ -1735,7 +1747,40 @@ public sealed class ProviderViewModel : ViewModelBase {
             return PulseRollupCountText + " today.";
         }
 
+        if (HasLimitStatusMessage) {
+            return BuildPulseLimitInsightText();
+        }
+
         return "No local activity today yet.";
+    }
+
+    private string BuildPulseLimitChipText() {
+        var text = LimitStatusMessage ?? string.Empty;
+        if (text.IndexOf("OAuth", StringComparison.OrdinalIgnoreCase) >= 0
+            || text.IndexOf("token", StringComparison.OrdinalIgnoreCase) >= 0
+            || text.IndexOf("sign", StringComparison.OrdinalIgnoreCase) >= 0
+            || text.IndexOf("session", StringComparison.OrdinalIgnoreCase) >= 0) {
+            return "Limit sign-in";
+        }
+
+        if (text.IndexOf("unavailable", StringComparison.OrdinalIgnoreCase) >= 0
+            || text.IndexOf("not available", StringComparison.OrdinalIgnoreCase) >= 0) {
+            return "Limits unavailable";
+        }
+
+        return "Limits attention";
+    }
+
+    private string BuildPulseLimitInsightText() {
+        var text = LimitStatusMessage ?? string.Empty;
+        if (text.IndexOf("OAuth", StringComparison.OrdinalIgnoreCase) >= 0
+            || text.IndexOf("token", StringComparison.OrdinalIgnoreCase) >= 0
+            || text.IndexOf("sign", StringComparison.OrdinalIgnoreCase) >= 0
+            || text.IndexOf("session", StringComparison.OrdinalIgnoreCase) >= 0) {
+            return "Live limits need a refreshed sign-in; local usage still updates.";
+        }
+
+        return "Live limits need attention; local usage still updates.";
     }
 
     private string BuildPulseTrendText() {

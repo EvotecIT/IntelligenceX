@@ -608,7 +608,7 @@
                                                    FontSize="16"
                                                    Foreground="{Binding PulseStatusBrush}"
                                                    TextTrimming="CharacterEllipsis" />
-                                        <TextBlock Text="Data health" Style="{StaticResource LabelTextStyle}" />
+                                        <TextBlock Text="{Binding PulseHealthDetailText}" Style="{StaticResource LabelTextStyle}" />
                                     </StackPanel>
                                 </Grid>
                             </Border>
@@ -743,6 +743,9 @@
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
+                                <TextBlock Text="No model activity in the selected pulse window."
+                                           Style="{StaticResource LabelTextStyle}"
+                                           Visibility="{Binding HasPulseTopModels, Converter={StaticResource InverseBoolToVis}}" />
                             </StackPanel>
                         </Border>
 
