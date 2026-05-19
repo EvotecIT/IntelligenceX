@@ -30,6 +30,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     private const int GitHubWatchSnapshotFreshnessSeconds = 21600;
     private const int GitHubWatchForkFreshnessSeconds = 86400;
     private const int GitHubWatchStargazerFreshnessSeconds = 86400;
+    private const string GitHubTokenAutoLoadKey = "__token_authenticated__";
     private const double LimitWarningThresholdPercent = 90d;
     private const double LimitExhaustedThresholdPercent = 100d;
     private static readonly Geometry ThemeAutoIcon = CreateFrozenGeometry("M12 3C7.03 3 3 7.03 3 12H1L4 15L7 12H5C5 8.13 8.13 5 12 5C14.12 5 16.03 5.93 17.33 7.4L18.75 5.98C17.1 4.15 14.7 3 12 3ZM20 9L17 12H19C19 15.87 15.87 19 12 19C9.88 19 7.97 18.07 6.67 16.6L5.25 18.02C6.9 19.85 9.3 21 12 21C16.97 21 21 16.97 21 12H23L20 9Z");
@@ -75,7 +76,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     private DateTimeOffset _lastLimitRefreshUtc;
     private int _gitHubRefreshVersion;
     private CancellationTokenSource? _gitHubRefreshCts;
-    private string? _lastAutoLoadedGitHubLogin;
+    private string? _lastAutoLoadedGitHubKey;
     private int _limitRefreshVersion;
     private CancellationTokenSource? _limitRefreshCts;
     private string _themeMode = TrayThemeService.SystemMode;
@@ -420,16 +421,16 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
             }
         }
 
-        if (string.IsNullOrWhiteSpace(login)) {
+        var autoLoadKey = string.IsNullOrWhiteSpace(login)
+            ? GitHubTokenAutoLoadKey
+            : login;
+
+        if (string.Equals(_lastAutoLoadedGitHubKey, autoLoadKey, StringComparison.OrdinalIgnoreCase)) {
             return;
         }
 
-        if (string.Equals(_lastAutoLoadedGitHubLogin, login, StringComparison.OrdinalIgnoreCase)) {
-            return;
-        }
-
-        _lastAutoLoadedGitHubLogin = login;
-        _ = RefreshGitHubAsync(login);
+        _lastAutoLoadedGitHubKey = autoLoadKey;
+        _ = RefreshGitHubAsync(login, autoLoadKey);
     }
 
     private async Task RefreshStartupUsageWithoutCacheAsync() {
@@ -974,7 +975,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         return Task.CompletedTask;
     }
 
-    private async Task RefreshGitHubAsync(string? ghLogin) {
+    private async Task RefreshGitHubAsync(string? ghLogin, string? autoLoadKey = null) {
         var dispatcher = Application.Current.Dispatcher;
         var currentVersion = Interlocked.Increment(ref _gitHubRefreshVersion);
         using var refreshCts = new CancellationTokenSource();
@@ -1020,6 +1021,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
                 TryApplyGitHubAutoSyncStatus(observabilityRefresh.AutoSyncResult);
                 GitHub.IsLoading = false;
             });
+            ResetGitHubAutoLoadKeyIfUnresolved(autoLoadKey);
             Interlocked.CompareExchange(ref _gitHubRefreshCts, null, refreshCts);
             return;
         }
@@ -1051,6 +1053,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
                 if (!hasToken && !string.IsNullOrWhiteSpace(effectiveLogin)) {
                     GitHub.ErrorMessage = $"No public GitHub data was returned for '{effectiveLogin}'.";
                 }
+
+                ResetGitHubAutoLoadKeyIfUnresolved(autoLoadKey);
             });
         } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
             // A newer refresh superseded this one.
@@ -1073,6 +1077,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
                 }
 
                 GitHub.ErrorMessage = ghEx.Message;
+                ResetGitHubAutoLoadKeyIfUnresolved(autoLoadKey);
             });
         } finally {
             await dispatcher.InvokeAsync(() => {
@@ -1086,6 +1091,16 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
             if (ReferenceEquals(Interlocked.CompareExchange(ref _gitHubRefreshCts, null, refreshCts), refreshCts)) {
                 // cleared
             }
+        }
+    }
+
+    private void ResetGitHubAutoLoadKeyIfUnresolved(string? autoLoadKey) {
+        if (string.IsNullOrWhiteSpace(autoLoadKey) || GitHub.HasData) {
+            return;
+        }
+
+        if (string.Equals(_lastAutoLoadedGitHubKey, autoLoadKey, StringComparison.OrdinalIgnoreCase)) {
+            _lastAutoLoadedGitHubKey = null;
         }
     }
 
