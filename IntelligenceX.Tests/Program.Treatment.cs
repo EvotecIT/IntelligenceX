@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Json;
@@ -53,6 +54,60 @@ internal static partial class Program {
 
     private static void TestTreatmentPromptBuilderRejectsEmptyRequest() {
         AssertThrows<ArgumentException>(() => TreatmentPromptBuilder.Build(new TreatmentRequest()), "empty treatment request");
+    }
+
+    private static void TestTreatmentPromptBuilderInlinesLocalTextArtifacts() {
+        var directory = Path.Combine(Path.GetTempPath(), "ix-treatment-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try {
+            File.WriteAllText(Path.Combine(directory, "evidence.json"), "{\"items\":[{\"title\":\"Matter lock\"}]}");
+            var request = new TreatmentRequest {
+                Prompt = "Read the evidence.",
+                WorkingDirectory = directory,
+                Inputs = new[] {
+                    new TreatmentInputArtifact {
+                        Id = "evidence",
+                        MediaType = "application/json",
+                        Path = "evidence.json"
+                    }
+                }
+            };
+
+            var prompt = TreatmentPromptBuilder.Build(request);
+
+            AssertContainsText(prompt, "resolvedPath:", "treatment prompt resolved path");
+            AssertContainsText(prompt, "Matter lock", "treatment prompt inlined file content");
+        } finally {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    private static void TestTreatmentPromptBuilderHonorsInlineLocalFileLimit() {
+        var directory = Path.Combine(Path.GetTempPath(), "ix-treatment-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try {
+            File.WriteAllText(Path.Combine(directory, "content.md"), "abcdefghij");
+            var request = new TreatmentRequest {
+                Prompt = "Read the evidence.",
+                WorkingDirectory = directory,
+                MaxInlineFileCharacters = 4,
+                Inputs = new[] {
+                    new TreatmentInputArtifact {
+                        Id = "content",
+                        MediaType = "text/markdown",
+                        Path = "content.md"
+                    }
+                }
+            };
+
+            var prompt = TreatmentPromptBuilder.Build(request);
+
+            AssertContainsText(prompt, "textTruncated:", "treatment prompt truncated marker");
+            AssertContainsText(prompt, "abcd", "treatment prompt truncated content");
+            AssertDoesNotContainText(prompt, "abcde", "treatment prompt excludes beyond limit");
+        } finally {
+            Directory.Delete(directory, recursive: true);
+        }
     }
 
     private static void TestOpenAIChatTreatmentProviderMapsTextJsonAndOptions() {

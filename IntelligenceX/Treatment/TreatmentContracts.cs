@@ -77,6 +77,14 @@ public sealed class TreatmentRequest {
     /// Caller metadata that should travel with the run.
     /// </summary>
     public IReadOnlyDictionary<string, string> Metadata { get; set; } = EmptyDictionary;
+    /// <summary>
+    /// Whether local text-like input files should be inlined into provider prompts.
+    /// </summary>
+    public bool InlineLocalInputFiles { get; set; } = true;
+    /// <summary>
+    /// Maximum characters to inline per local input file.
+    /// </summary>
+    public int? MaxInlineFileCharacters { get; set; } = 120000;
 
     internal static readonly IReadOnlyDictionary<string, string> EmptyDictionary = new Dictionary<string, string>(0);
 }

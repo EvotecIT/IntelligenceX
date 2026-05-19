@@ -32,7 +32,11 @@ public sealed class OpenAIChatTreatmentProvider : ITreatmentProvider {
     public async Task<TreatmentResult> RunAsync(TreatmentRequest request, CancellationToken cancellationToken = default) {
         TreatmentPromptBuilder.Validate(request);
 
-        var prompt = TreatmentPromptBuilder.Build(request);
+        var prompt = TreatmentPromptBuilder.Build(request, new TreatmentPromptBuildOptions {
+            BaseDirectory = request.WorkingDirectory ?? request.Workspace,
+            InlineLocalFiles = request.InlineLocalInputFiles,
+            MaxInlineFileCharacters = request.MaxInlineFileCharacters ?? 120000
+        });
         var input = ChatInput.FromText(prompt);
         AddImageInputs(input, request);
 

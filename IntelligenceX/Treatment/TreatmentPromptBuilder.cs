@@ -12,7 +12,15 @@ public static class TreatmentPromptBuilder {
     /// Builds a single prompt from a treatment request.
     /// </summary>
     public static string Build(TreatmentRequest request) {
+        return Build(request, null);
+    }
+
+    /// <summary>
+    /// Builds a single prompt from a treatment request.
+    /// </summary>
+    public static string Build(TreatmentRequest request, TreatmentPromptBuildOptions? options) {
         Validate(request);
+        options ??= CreateDefaultOptions(request);
 
         var sb = new StringBuilder();
         sb.AppendLine("# Treatment Request");
@@ -30,7 +38,7 @@ public static class TreatmentPromptBuilder {
             sb.AppendLine("## Inputs");
             sb.AppendLine("Use the following artifacts as source material. Private artifacts are not publishable output by themselves.");
             for (var i = 0; i < request.Inputs.Count; i++) {
-                AppendInput(sb, request.Inputs[i], i + 1);
+                AppendInput(sb, request.Inputs[i], i + 1, options);
             }
             sb.AppendLine();
         }
@@ -100,7 +108,15 @@ public static class TreatmentPromptBuilder {
         }
     }
 
-    private static void AppendInput(StringBuilder sb, TreatmentInputArtifact input, int index) {
+    private static TreatmentPromptBuildOptions CreateDefaultOptions(TreatmentRequest request) {
+        return new TreatmentPromptBuildOptions {
+            BaseDirectory = request.WorkingDirectory ?? request.Workspace,
+            InlineLocalFiles = request.InlineLocalInputFiles,
+            MaxInlineFileCharacters = request.MaxInlineFileCharacters ?? 120000
+        };
+    }
+
+    private static void AppendInput(StringBuilder sb, TreatmentInputArtifact input, int index, TreatmentPromptBuildOptions options) {
         if (input is null) {
             throw new ArgumentException("Treatment input cannot contain null entries.");
         }
@@ -126,6 +142,18 @@ public static class TreatmentPromptBuilder {
         if (!string.IsNullOrWhiteSpace(input.Text)) {
             sb.AppendLine("text:");
             sb.AppendLine(input.Text!.Trim());
+        } else {
+            var localContent = TreatmentLocalInputReader.TryRead(input, options);
+            if (localContent is not null) {
+                AppendLine(sb, "resolvedPath", localContent.Path);
+                if (!string.IsNullOrWhiteSpace(localContent.Warning)) {
+                    AppendLine(sb, "warning", localContent.Warning);
+                }
+                if (localContent.Text is not null) {
+                    sb.AppendLine(localContent.Truncated ? "textTruncated:" : "text:");
+                    sb.AppendLine(localContent.Text.Trim());
+                }
+            }
         }
     }
 

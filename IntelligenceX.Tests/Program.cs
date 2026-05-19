@@ -407,6 +407,8 @@ internal static partial class Program {
         failed += Run("Native image generation output saves base64 payload", TestNativeImageGenerationOutputSavesBase64Payload);
         failed += Run("Treatment prompt builder includes artifacts and contract", TestTreatmentPromptBuilderIncludesArtifactsAndContract);
         failed += Run("Treatment prompt builder rejects empty request", TestTreatmentPromptBuilderRejectsEmptyRequest);
+        failed += Run("Treatment prompt builder inlines local text artifacts", TestTreatmentPromptBuilderInlinesLocalTextArtifacts);
+        failed += Run("Treatment prompt builder honors inline local file limit", TestTreatmentPromptBuilderHonorsInlineLocalFileLimit);
         failed += Run("OpenAI treatment provider maps text JSON and options", TestOpenAIChatTreatmentProviderMapsTextJsonAndOptions);
         failed += Run("OpenAI treatment provider maps image assets", TestOpenAIChatTreatmentProviderMapsImageAssets);
         failed += Run("Native request body normalizes tool replay items", TestNativeRequestBodyNormalizesToolReplayInputItems);
