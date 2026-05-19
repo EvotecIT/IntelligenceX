@@ -4,7 +4,7 @@
         xmlns:vm="clr-namespace:IntelligenceX.Tray.ViewModels"
         xmlns:conv="clr-namespace:IntelligenceX.Tray.Converters"
         Title="IntelligenceX Usage"
-        Width="560" Height="760"
+        Width="720" Height="760"
         WindowStyle="None"
         AllowsTransparency="True"
         Background="Transparent"
@@ -59,8 +59,13 @@
                     <Border Grid.Column="0"
                             Background="Transparent"
                             Cursor="SizeAll"
+                            Margin="0,0,10,0"
                             MouseLeftButtonDown="OnHeaderMouseLeftButtonDown">
-                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Grid VerticalAlignment="Center">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
                             <Border Width="34" Height="34" CornerRadius="9" Margin="0,0,12,0"
                                     ToolTip="{Binding AccentToolTip}">
                                 <Border.Background>
@@ -75,23 +80,25 @@
                                            HorizontalAlignment="Center"
                                            VerticalAlignment="Center" />
                             </Border>
-                            <StackPanel VerticalAlignment="Center">
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
                                 <TextBlock FontFamily="{StaticResource AppFont}"
                                            FontSize="19" FontWeight="SemiBold"
                                            Foreground="{StaticResource PrimaryTextBrush}"
-                                           Text="Usage Pulse" />
+                                           Text="Usage Pulse"
+                                           TextTrimming="CharacterEllipsis" />
                                 <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
                                     <TextBlock FontFamily="{StaticResource AppFont}"
                                                FontSize="11"
                                                Foreground="{StaticResource SecondaryTextBrush}"
-                                               Text="{Binding LastRefreshedFormatted, StringFormat=Updated {0}}" />
+                                               Text="{Binding LastRefreshedFormatted, StringFormat=Updated {0}}"
+                                               TextTrimming="CharacterEllipsis" />
                                     <Ellipse Width="7" Height="7"
                                              Margin="8,0,0,0"
                                              VerticalAlignment="Center"
                                              Fill="{StaticResource SuccessBrush}" />
                                 </StackPanel>
                             </StackPanel>
-                        </StackPanel>
+                        </Grid>
                     </Border>
                     <StackPanel Grid.Column="1" Orientation="Horizontal">
                         <Button Style="{StaticResource RefreshButtonStyle}"

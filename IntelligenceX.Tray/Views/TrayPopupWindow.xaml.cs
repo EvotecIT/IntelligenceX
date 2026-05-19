@@ -14,8 +14,8 @@ using Microsoft.Win32;
 namespace IntelligenceX.Tray.Views;
 
 public partial class TrayPopupWindow : Window {
-    private const double MinimumPopupWidth = 400;
-    private const double MaximumPopupWidth = 560;
+    private const double MinimumPopupWidth = 520;
+    private const double MaximumPopupWidth = 720;
     private const double MinimumPopupHeight = 640;
     private const double MaximumPopupHeight = 840;
     private const int MaxExportPixelWidth = 8192;
@@ -268,7 +268,7 @@ public partial class TrayPopupWindow : Window {
 
     private void ApplyAdaptiveSizing() {
         var workArea = SystemParameters.WorkArea;
-        Width = Clamp(workArea.Width * 0.38, MinimumPopupWidth, MaximumPopupWidth);
+        Width = Clamp(workArea.Width * 0.46, MinimumPopupWidth, MaximumPopupWidth);
         Height = Clamp(workArea.Height * 0.74, MinimumPopupHeight, MaximumPopupHeight);
         UpdateClipGeometry();
     }
