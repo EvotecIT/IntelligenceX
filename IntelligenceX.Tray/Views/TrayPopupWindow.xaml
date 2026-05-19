@@ -125,12 +125,19 @@
                         <Button Style="{StaticResource RefreshButtonStyle}"
                                 Command="{Binding CycleThemeModeCommand}"
                                 ToolTip="{Binding ThemeToolTip}"
-                                AutomationProperties.Name="{Binding ThemeToolTip}"
+                                AutomationProperties.Name="{Binding ThemeActionLabel}"
                                 VerticalAlignment="Center"
                                 Margin="0,0,6,0">
-                            <Viewbox Width="17" Height="17">
-                                <Path Data="{Binding ThemeButtonIcon}" Fill="{StaticResource PrimaryTextBrush}" Stretch="Uniform" />
-                            </Viewbox>
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <Viewbox Width="14" Height="14" Margin="0,0,5,0">
+                                    <Path Data="{Binding ThemeButtonIcon}" Fill="{StaticResource PrimaryTextBrush}" Stretch="Uniform" />
+                                </Viewbox>
+                                <TextBlock Text="{Binding ThemeButtonNextLabel}"
+                                           FontFamily="{StaticResource AppFont}"
+                                           FontSize="10.5"
+                                           FontWeight="SemiBold"
+                                           Foreground="{StaticResource PrimaryTextBrush}" />
+                            </StackPanel>
                         </Button>
                         <Button Style="{StaticResource RefreshButtonStyle}"
                                 Click="OnMinimizeButtonClick"
