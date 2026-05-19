@@ -74,6 +74,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     private DateTimeOffset _lastLimitRefreshUtc;
     private int _gitHubRefreshVersion;
     private CancellationTokenSource? _gitHubRefreshCts;
+    private string? _lastAutoLoadedGitHubLogin;
     private int _limitRefreshVersion;
     private CancellationTokenSource? _limitRefreshCts;
     private string _themeMode = TrayThemeService.SystemMode;
@@ -179,6 +180,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
                 OnPropertyChanged(nameof(FavoriteSelectedProviderActionLabel));
                 ToggleSelectedProviderFavoriteCommand.RaiseCanExecuteChanged();
                 SaveSelectedProviderPreference(value?.ProviderId);
+                RefreshGitHubProfileIfReady();
             }
         }
     }
@@ -367,9 +369,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         var cachedUsageSnapshot = await LoadBestCachedUsageSnapshotAsync().ConfigureAwait(true);
         var loadedCachedUsageSnapshot = ApplyCachedUsageSnapshot(cachedUsageSnapshot);
         ConfigureRefreshTimer();
-        if (ShouldRefreshGitHubOnStartup()) {
-            _ = RefreshGitHubAsync(GitHub.UsernameInput);
-        }
+        RefreshGitHubProfileIfReady();
 
         if (loadedCachedUsageSnapshot) {
             if (ShouldRunStartupWarmRefreshAfterCache(cachedUsageSnapshot)) {
@@ -402,6 +402,31 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
 
     private bool ShouldRefreshGitHubOnStartup() {
         return string.Equals(SelectedProvider?.ProviderId, "__github__", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void RefreshGitHubProfileIfReady() {
+        if (!ShowGitHubContent || GitHub.IsLoading || GitHub.HasData) {
+            return;
+        }
+
+        var login = GitHub.UsernameInput?.Trim();
+        if (string.IsNullOrWhiteSpace(login)) {
+            login = GitHub.RememberedUsername?.Trim();
+            if (!string.IsNullOrWhiteSpace(login)) {
+                GitHub.UsernameInput = login;
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(login)) {
+            return;
+        }
+
+        if (string.Equals(_lastAutoLoadedGitHubLogin, login, StringComparison.OrdinalIgnoreCase)) {
+            return;
+        }
+
+        _lastAutoLoadedGitHubLogin = login;
+        _ = RefreshGitHubAsync(login);
     }
 
     private async Task RefreshStartupUsageWithoutCacheAsync() {
