@@ -40,6 +40,14 @@ public enum ProviderComparisonSort {
     Events
 }
 
+public enum ProviderDetailsMode {
+    Activity,
+    Limits,
+    Models,
+    Events,
+    Scope
+}
+
 internal static class ProviderFilterDefaults {
     public const string AllAccounts = "All accounts";
     public const string AllModels = "All models";
@@ -116,6 +124,8 @@ public sealed class ProviderViewModel : ViewModelBase {
     private int _filteredEventCount;
     private ProviderEventSort _selectedEventSort = ProviderEventSort.MostRecent;
     private ProviderComparisonSort _selectedProviderComparisonSort = ProviderComparisonSort.Tokens;
+    private ProviderDetailsMode _selectedDetailsMode = ProviderDetailsMode.Activity;
+    private bool _isDetailsOpen;
     private bool _isApplyingExplorerPreferences;
     private RecentUsageItemViewModel? _selectedEvent;
     private IReadOnlyDictionary<string, ProviderComparisonHealthInfo> _providerComparisonHealth = new Dictionary<string, ProviderComparisonHealthInfo>(StringComparer.OrdinalIgnoreCase);
@@ -320,6 +330,57 @@ public sealed class ProviderViewModel : ViewModelBase {
     }
 
     public string TodayTotalTokensFormatted => FormatTokens(TodayTotalTokens);
+    public string PulseProviderMetricText => TodayTotalTokens > 0
+        ? TodayTotalTokensFormatted
+        : WeeklyTotalTokens > 0
+            ? WeeklyTotalTokensFormatted
+            : TodayEventCount > 0
+                ? TodayRollupCountText
+                : "idle";
+    public string PulsePrimaryLabel => SelectedRange == ProviderTimeRange.Today ? "Today" : TodayLabel;
+    public string PulsePrimaryValue => TodayTotalTokensFormatted;
+    public string PulseSecondaryLabel => HasTodayCost ? "API equiv." : "Rollups";
+    public string PulseSecondaryValue => HasTodayCost ? TodayCostFormatted : TodayRollupCountText;
+    public string PulseStatusText {
+        get {
+            if (HasLimitStatusMessage) {
+                return "Needs attention";
+            }
+
+            if (HasUsageHealthSummary && UsageHealthSummary!.IndexOf("partial", StringComparison.OrdinalIgnoreCase) >= 0) {
+                return "Partial";
+            }
+
+            return "Fresh snapshot";
+        }
+    }
+    public Brush PulseStatusBrush => PulseStatusText switch {
+        "Needs attention" => FrozenBrush(Color.FromRgb(240, 192, 64)),
+        "Partial" => FrozenBrush(Color.FromRgb(240, 192, 64)),
+        _ => FrozenBrush(Color.FromRgb(80, 216, 128))
+    };
+    public string PulseInsightText => BuildPulseInsightText();
+    public string PulseHealthChipText => HasLimitStatusMessage
+        ? "Limits need attention"
+        : HasUsageHealthSummary
+            ? UsageHealthSummary!
+            : "Health OK";
+    public string PulseTopModelText => ModelBreakdown.Count > 0
+        ? ModelBreakdown[0].ModelName + " • " + ModelBreakdown[0].TotalTokensFormatted
+        : "No model signal";
+    public string PulseTokenMixText => "Input " + TodayInputTokensFormatted
+                                  + " • Cached " + TodayCachedTokensFormatted
+                                  + " • Output " + TodayOutputTokensFormatted
+                                  + " • Reasoning " + TodayReasoningTokensFormatted;
+    public double PulseCachedBarWidth => TodayTotalTokens > 0
+        ? Math.Max(2d, 310d * TodayCachedTokens / TodayTotalTokens)
+        : 2d;
+    public double PulseFreshInputBarWidth => TodayTotalTokens > 0
+        ? Math.Max(2d, 310d * Math.Max(0L, TodayInputTokens - TodayCachedTokens) / TodayTotalTokens)
+        : 2d;
+    public double PulseReasoningBarWidth => TodayTotalTokens > 0
+        ? Math.Max(2d, 310d * TodayReasoningTokens / TodayTotalTokens)
+        : 2d;
 
     public string TodayLabel {
         get => _todayLabel;
@@ -428,6 +489,45 @@ public sealed class ProviderViewModel : ViewModelBase {
     public bool IsProviderComparisonTokensSortSelected => SelectedProviderComparisonSort == ProviderComparisonSort.Tokens;
     public bool IsProviderComparisonCostSortSelected => SelectedProviderComparisonSort == ProviderComparisonSort.Cost;
     public bool IsProviderComparisonEventsSortSelected => SelectedProviderComparisonSort == ProviderComparisonSort.Events;
+
+    public bool IsDetailsOpen {
+        get => _isDetailsOpen;
+        set {
+            if (SetProperty(ref _isDetailsOpen, value)) {
+                OnPropertyChanged(nameof(DetailsButtonText));
+            }
+        }
+    }
+
+    public string DetailsButtonText => IsDetailsOpen ? "Hide details" : "Details";
+
+    public ProviderDetailsMode SelectedDetailsMode {
+        get => _selectedDetailsMode;
+        set {
+            if (SetProperty(ref _selectedDetailsMode, value)) {
+                OnPropertyChanged(nameof(IsDetailsActivitySelected));
+                OnPropertyChanged(nameof(IsDetailsLimitsSelected));
+                OnPropertyChanged(nameof(IsDetailsModelsSelected));
+                OnPropertyChanged(nameof(IsDetailsEventsSelected));
+                OnPropertyChanged(nameof(IsDetailsScopeSelected));
+            }
+        }
+    }
+
+    public bool IsDetailsActivitySelected => SelectedDetailsMode == ProviderDetailsMode.Activity;
+    public bool IsDetailsLimitsSelected => SelectedDetailsMode == ProviderDetailsMode.Limits;
+    public bool IsDetailsModelsSelected => SelectedDetailsMode == ProviderDetailsMode.Models;
+    public bool IsDetailsEventsSelected => SelectedDetailsMode == ProviderDetailsMode.Events;
+    public bool IsDetailsScopeSelected => SelectedDetailsMode == ProviderDetailsMode.Scope;
+
+    public void ToggleDetails() {
+        IsDetailsOpen = !IsDetailsOpen;
+    }
+
+    public void SetDetailsMode(ProviderDetailsMode mode) {
+        SelectedDetailsMode = mode;
+        IsDetailsOpen = true;
+    }
 
     public long TodayInputTokens {
         get => _todayInputTokens;
@@ -1394,8 +1494,52 @@ public sealed class ProviderViewModel : ViewModelBase {
         PopulateCombinedOverview(rangeEvents);
         PopulateConversationStats(ApplyFilters(GetConversationRangeEvents(SelectedRange)));
         PopulateRecentActivity(rangeEvents);
+        OnPulseChanged();
 
         ActionStatusMessage = string.Empty;
+    }
+
+    private void OnPulseChanged() {
+        OnPropertyChanged(nameof(PulseProviderMetricText));
+        OnPropertyChanged(nameof(PulsePrimaryLabel));
+        OnPropertyChanged(nameof(PulsePrimaryValue));
+        OnPropertyChanged(nameof(PulseSecondaryLabel));
+        OnPropertyChanged(nameof(PulseSecondaryValue));
+        OnPropertyChanged(nameof(PulseStatusText));
+        OnPropertyChanged(nameof(PulseStatusBrush));
+        OnPropertyChanged(nameof(PulseInsightText));
+        OnPropertyChanged(nameof(PulseHealthChipText));
+        OnPropertyChanged(nameof(PulseTopModelText));
+        OnPropertyChanged(nameof(PulseTokenMixText));
+        OnPropertyChanged(nameof(PulseCachedBarWidth));
+        OnPropertyChanged(nameof(PulseFreshInputBarWidth));
+        OnPropertyChanged(nameof(PulseReasoningBarWidth));
+    }
+
+    private string BuildPulseInsightText() {
+        if (HasLimitStatusMessage) {
+            return LimitStatusMessage!;
+        }
+
+        if (IsCombinedProvider && ProviderComparison.Count > 0) {
+            var leader = ProviderComparison[0];
+            return leader.DisplayName + " leads this view with " + leader.TokensText + " across " + leader.EventCountText + ".";
+        }
+
+        if (TodayCachedTokens > 0 && TodayInputTokens > 0) {
+            var cachedPercent = Math.Round(100d * TodayCachedTokens / Math.Max(1d, TodayInputTokens), MidpointRounding.AwayFromZero);
+            return "Cached input is " + cachedPercent.ToString("N0", CultureInfo.CurrentCulture) + "% of input, so cost is lower than raw input volume suggests.";
+        }
+
+        if (ModelBreakdown.Count > 0) {
+            return ModelBreakdown[0].ModelName + " is the top model in this view.";
+        }
+
+        if (TodayEventCount > 0) {
+            return TodayRollupCountText + " in the selected view.";
+        }
+
+        return "No local activity in this view yet.";
     }
 
     private void RebuildCodeChurnBars() {

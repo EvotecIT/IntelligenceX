@@ -113,6 +113,22 @@ public partial class TrayPopupWindow : Window {
         }
     }
 
+    private void OnDetailsToggleClick(object sender, RoutedEventArgs e) {
+        if (sender is FrameworkElement { DataContext: ProviderViewModel provider }) {
+            provider.ToggleDetails();
+        }
+    }
+
+    private void OnDetailsModeClick(object sender, RoutedEventArgs e) {
+        if (sender is not FrameworkElement { Tag: string rawMode, DataContext: ProviderViewModel provider }) {
+            return;
+        }
+
+        if (Enum.TryParse<ProviderDetailsMode>(rawMode, ignoreCase: true, out var mode)) {
+            provider.SetDetailsMode(mode);
+        }
+    }
+
     private void OnOpenUrlClick(object sender, RoutedEventArgs e) {
         if (sender is not FrameworkElement { Tag: string url } || string.IsNullOrWhiteSpace(url)) {
             return;
