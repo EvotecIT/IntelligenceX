@@ -1,0 +1,159 @@
+using System;
+using System.Text;
+using IntelligenceX.Json;
+
+namespace IntelligenceX.Treatment;
+
+/// <summary>
+/// Builds provider prompts from generic treatment requests.
+/// </summary>
+public static class TreatmentPromptBuilder {
+    /// <summary>
+    /// Builds a single prompt from a treatment request.
+    /// </summary>
+    public static string Build(TreatmentRequest request) {
+        Validate(request);
+
+        var sb = new StringBuilder();
+        sb.AppendLine("# Treatment Request");
+        AppendLine(sb, "id", request.Id);
+        AppendLine(sb, "name", request.Name);
+        sb.AppendLine();
+
+        if (!string.IsNullOrWhiteSpace(request.Prompt)) {
+            sb.AppendLine("## Brief");
+            sb.AppendLine(request.Prompt!.Trim());
+            sb.AppendLine();
+        }
+
+        if (request.Inputs.Count > 0) {
+            sb.AppendLine("## Inputs");
+            sb.AppendLine("Use the following artifacts as source material. Private artifacts are not publishable output by themselves.");
+            for (var i = 0; i < request.Inputs.Count; i++) {
+                AppendInput(sb, request.Inputs[i], i + 1);
+            }
+            sb.AppendLine();
+        }
+
+        if (request.Outputs.Count > 0) {
+            sb.AppendLine("## Expected Outputs");
+            for (var i = 0; i < request.Outputs.Count; i++) {
+                AppendOutput(sb, request.Outputs[i], i + 1);
+            }
+            sb.AppendLine();
+        }
+
+        if (request.OutputSchema is not null) {
+            sb.AppendLine("## Output Contract");
+            AppendLine(sb, "contract", request.OutputSchema.Contract);
+            sb.AppendLine("strict: " + request.OutputSchema.Strict.ToString().ToLowerInvariant());
+            if (request.OutputSchema.JsonSchema is not null) {
+                sb.AppendLine("jsonSchema:");
+                sb.AppendLine(JsonLite.Serialize(JsonValue.From(request.OutputSchema.JsonSchema)));
+            }
+            if (request.OutputSchema.ExampleJson is not null) {
+                sb.AppendLine("exampleJson:");
+                sb.AppendLine(JsonLite.Serialize(JsonValue.From(request.OutputSchema.ExampleJson)));
+            }
+            sb.AppendLine();
+        }
+
+        if (request.ImageGeneration is { Enabled: true }) {
+            sb.AppendLine("## Visual Assets");
+            sb.AppendLine("Generate image assets only when requested by the expected outputs or brief.");
+            AppendLine(sb, "quality", request.ImageGeneration.Quality);
+            AppendLine(sb, "size", request.ImageGeneration.Size);
+            AppendLine(sb, "format", request.ImageGeneration.OutputFormat);
+            sb.AppendLine();
+        }
+
+        if (request.Metadata.Count > 0) {
+            sb.AppendLine("## Metadata");
+            foreach (var pair in request.Metadata) {
+                AppendLine(sb, pair.Key, pair.Value);
+            }
+            sb.AppendLine();
+        }
+
+        sb.AppendLine("Return only the requested deliverable. When a JSON contract is supplied, return JSON that matches it.");
+        return sb.ToString().TrimEnd();
+    }
+
+    /// <summary>
+    /// Validates a treatment request before it is sent to a provider.
+    /// </summary>
+    public static void Validate(TreatmentRequest request) {
+        if (request is null) {
+            throw new ArgumentNullException(nameof(request));
+        }
+        if (string.IsNullOrWhiteSpace(request.Prompt) && (request.Inputs is null || request.Inputs.Count == 0)) {
+            throw new ArgumentException("Treatment request must include a prompt or at least one input artifact.", nameof(request));
+        }
+        if (request.Inputs is null) {
+            throw new ArgumentException("Treatment inputs cannot be null.", nameof(request));
+        }
+        if (request.Outputs is null) {
+            throw new ArgumentException("Treatment outputs cannot be null.", nameof(request));
+        }
+        if (request.Metadata is null) {
+            throw new ArgumentException("Treatment metadata cannot be null.", nameof(request));
+        }
+    }
+
+    private static void AppendInput(StringBuilder sb, TreatmentInputArtifact input, int index) {
+        if (input is null) {
+            throw new ArgumentException("Treatment input cannot contain null entries.");
+        }
+
+        sb.AppendLine("### Input " + index.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        AppendLine(sb, "id", input.Id);
+        AppendLine(sb, "role", input.Role);
+        AppendLine(sb, "name", input.Name);
+        AppendLine(sb, "mediaType", input.MediaType);
+        sb.AppendLine("private: " + input.IsPrivate.ToString().ToLowerInvariant());
+        AppendLine(sb, "path", input.Path);
+        AppendLine(sb, "uri", input.Uri?.ToString());
+        if (input.Metadata.Count > 0) {
+            sb.AppendLine("metadata:");
+            foreach (var pair in input.Metadata) {
+                AppendLine(sb, "  " + pair.Key, pair.Value);
+            }
+        }
+        if (input.Json is not null) {
+            sb.AppendLine("json:");
+            sb.AppendLine(JsonLite.Serialize(JsonValue.From(input.Json)));
+        }
+        if (!string.IsNullOrWhiteSpace(input.Text)) {
+            sb.AppendLine("text:");
+            sb.AppendLine(input.Text!.Trim());
+        }
+    }
+
+    private static void AppendOutput(StringBuilder sb, TreatmentOutputSpec output, int index) {
+        if (output is null) {
+            throw new ArgumentException("Treatment output cannot contain null entries.");
+        }
+
+        sb.Append("- ");
+        sb.Append(output.Id ?? ("output-" + index.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+        sb.Append(" [");
+        sb.Append(output.Modality);
+        sb.Append("]");
+        if (!output.Required) {
+            sb.Append(" optional");
+        }
+        sb.AppendLine();
+        AppendLine(sb, "  description", output.Description);
+        AppendLine(sb, "  mediaType", output.MediaType);
+        AppendLine(sb, "  path", output.Path);
+    }
+
+    private static void AppendLine(StringBuilder sb, string key, string? value) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            return;
+        }
+        sb.Append(key);
+        sb.Append(": ");
+        sb.AppendLine(value!.Trim());
+    }
+}
