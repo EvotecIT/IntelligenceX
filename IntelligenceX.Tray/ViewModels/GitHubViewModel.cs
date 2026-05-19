@@ -368,19 +368,19 @@ public sealed class GitHubViewModel : ViewModelBase {
     public bool HasObservabilitySummary => WatchCount > 0 || TrackedRepositoryCount > 0;
     public bool HasObservabilityMomentum => HistoryReadyCount > 0;
     public string ObservabilityCoverageText => WatchCount switch {
-        <= 0 => "No watched repositories are registered in the local telemetry store yet.",
-        _ when TrackedRepositoryCount <= 0 => $"{WatchCountFormatted} watched repos configured, but no snapshots have been synced yet.",
-        _ when HistoryReadyCount <= 0 => $"{TrackedRepositoryCountFormatted} watched repos have baseline snapshots. Run another sync to start delta tracking.",
+        <= 0 => "No watched repo pulse yet. Profile data is loaded below.",
+        _ when TrackedRepositoryCount <= 0 => $"{WatchCountFormatted} watched repos waiting for first snapshot.",
+        _ when HistoryReadyCount <= 0 => $"{TrackedRepositoryCountFormatted} watched repos have baselines. Movement starts after the next sync.",
         _ => $"{TrackedRepositoryCountFormatted} tracked repos • {HistoryReadyCountFormatted} with comparable history."
     };
     public string ObservabilityMomentumText => HistoryReadyCount switch {
-        <= 0 when WatchCount > 0 => "Momentum appears after each watched repo has at least two synced snapshots.",
-        <= 0 => "Watch repos to see star, fork, and watcher movement over time.",
+        <= 0 when WatchCount > 0 => "Waiting for the next snapshot to compare repo movement.",
+        <= 0 => "No repo movement yet. Use profile and repository stats below.",
         _ => $"{ChangedTrackedRepositoryCountFormatted} repos moved on the last sync • {PositiveStarDeltaFormatted} stars • {PositiveForkDeltaFormatted} forks • {PositiveWatcherDeltaFormatted} watchers"
     };
     public string ObservabilityLatestCaptureText => LatestTrackedCaptureAtUtc.HasValue
         ? "Latest capture " + LatestTrackedCaptureAtUtc.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.CurrentCulture)
-        : "No synced watch snapshots yet.";
+        : "No watch snapshots yet.";
     public bool HasPositiveCorrelation => !string.IsNullOrWhiteSpace(PositiveCorrelationPairText);
     public string PositiveCorrelationPairText {
         get => _positiveCorrelationPairText;
@@ -538,8 +538,8 @@ public sealed class GitHubViewModel : ViewModelBase {
         }
     }
     public string ObservabilitySetupText => WatchCount > 0
-        ? "Watched repositories can sync in the background and surface movement, fork networks, and audience overlap."
-        : "Add watched repositories from the GitHub report to turn this panel into repo movement, fork, and audience pulse.";
+        ? "Watched repositories sync movement, fork networks, and audience overlap."
+        : "Open the full report when you want to add watched repositories.";
     public GitHubRepoSortMode SelectedRepoSort {
         get => _selectedRepoSort;
         set {
