@@ -25,7 +25,7 @@ public sealed class TrayUsageSnapshotStore {
 
             var json = File.ReadAllText(SnapshotPath);
             var persisted = JsonSerializer.Deserialize<PersistedUsageSnapshot>(json, SerializerOptions);
-            if (persisted is null || persisted.Events.Count == 0) {
+            if (persisted is null || (persisted.Events.Count == 0 && persisted.RawEvents.Count == 0)) {
                 return null;
             }
 
