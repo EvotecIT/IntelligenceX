@@ -36,6 +36,7 @@ public partial class App : Application {
     private DateTimeOffset _suppressTrayToggleUntilUtc;
     private bool _restoringPopupPlacement;
     private bool _isExiting;
+    private bool _ownsSingleInstanceMutex;
     private Mutex? _singleInstanceMutex;
     private EventWaitHandle? _showPopupEvent;
     private RegisteredWaitHandle? _showPopupRegistration;
@@ -119,6 +120,7 @@ public partial class App : Application {
             return false;
         }
 
+        _ownsSingleInstanceMutex = true;
         _showPopupEvent = new EventWaitHandle(false, EventResetMode.AutoReset, ShowPopupEventName);
         _showPopupRegistration = ThreadPool.RegisterWaitForSingleObject(
             _showPopupEvent,
@@ -794,9 +796,19 @@ public partial class App : Application {
         _showPopupRegistration = null;
         _showPopupEvent?.Dispose();
         _showPopupEvent = null;
-        _singleInstanceMutex?.ReleaseMutex();
-        _singleInstanceMutex?.Dispose();
-        _singleInstanceMutex = null;
+        if (_singleInstanceMutex is not null) {
+            if (_ownsSingleInstanceMutex) {
+                try {
+                    _singleInstanceMutex.ReleaseMutex();
+                } catch (ApplicationException) {
+                    // The mutex was abandoned or ownership was lost during shutdown.
+                }
+            }
+
+            _ownsSingleInstanceMutex = false;
+            _singleInstanceMutex.Dispose();
+            _singleInstanceMutex = null;
+        }
         _trayIcon?.Dispose();
         if (_popupWindow is not null) {
             _popupWindow.ManualPlacementCommitted -= OnPopupManualPlacementCommitted;
