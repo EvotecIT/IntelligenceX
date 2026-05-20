@@ -220,17 +220,15 @@ public static class UsageTelemetryApiPricing {
     }
 
     public static bool ShouldTreatCachedInputAsInputSubset(string? providerId) {
-        return string.Equals(providerId, "codex", StringComparison.OrdinalIgnoreCase)
-               || string.Equals(providerId, "openai", StringComparison.OrdinalIgnoreCase)
-               || string.Equals(providerId, "chatgpt", StringComparison.OrdinalIgnoreCase)
-               || string.Equals(providerId, "ix", StringComparison.OrdinalIgnoreCase);
+        return IsOpenAiFamilyProvider(providerId);
     }
 
     public static bool ShouldTreatReasoningAsOutputSubset(string? providerId) {
-        return string.Equals(providerId, "codex", StringComparison.OrdinalIgnoreCase)
-               || string.Equals(providerId, "openai", StringComparison.OrdinalIgnoreCase)
-               || string.Equals(providerId, "chatgpt", StringComparison.OrdinalIgnoreCase)
-               || string.Equals(providerId, "ix", StringComparison.OrdinalIgnoreCase);
+        return IsOpenAiFamilyProvider(providerId);
+    }
+
+    private static bool IsOpenAiFamilyProvider(string? providerId) {
+        return NormalizeOptional(providerId)?.ToLowerInvariant() is "codex" or "openai" or "chatgpt" or "ix" or "openai-codex" or "chatgpt-codex";
     }
 
     private static decimal ComputePerMillionCost(long tokens, decimal usdPerMillion) {
@@ -242,8 +240,7 @@ public static class UsageTelemetryApiPricing {
     }
 
     private static string NormalizePricingModelId(string? providerId, string? model, out bool allowOpenAiModePricing) {
-        var provider = NormalizeOptional(providerId)?.ToLowerInvariant();
-        if (provider is "codex" or "openai" or "ix" or "openai-codex" or "chatgpt-codex") {
+        if (IsOpenAiFamilyProvider(providerId)) {
             allowOpenAiModePricing = true;
             return OpenAIModelCatalog.NormalizeModelId(model, "unknown-model").Trim().ToLowerInvariant();
         }

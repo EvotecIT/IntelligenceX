@@ -78,6 +78,25 @@ internal static partial class Program {
         AssertEqual("gpt-5.5/fast", fastEstimate.Model, "api pricing preserves explicit gpt-5.5 fast model");
         AssertEqual(7.55m, fastEstimate.EstimatedCostUsd, "api pricing estimates explicit gpt-5.5 fast model");
 
+        foreach (var providerAlias in new[] { "openai-codex", "chatgpt-codex" }) {
+            var aliasEstimate = UsageTelemetryApiPricing.EstimateEvent(new UsageEventRecord(
+                "evt-fast-" + providerAlias,
+                providerAlias,
+                "codex.logs",
+                "src-1",
+                new DateTimeOffset(2026, 03, 10, 11, 10, 0, TimeSpan.Zero)) {
+                Model = "gpt-5.5/fast",
+                InputTokens = 1_000_000,
+                CachedInputTokens = 100_000,
+                OutputTokens = 100_000,
+                ReasoningTokens = 50_000,
+                TotalTokens = 1_250_000,
+                TruthLevel = UsageTruthLevel.Exact
+            });
+            AssertEqual(true, aliasEstimate.HasKnownPricing, "api pricing recognizes " + providerAlias + " alias");
+            AssertEqual(7.55m, aliasEstimate.EstimatedCostUsd, "api pricing applies OpenAI subset semantics to " + providerAlias);
+        }
+
         var displayCost = UsageTelemetryApiPricing.BuildDisplayCost(evt);
         AssertEqual(7.55m, displayCost.EstimatedFallbackCostUsd, "api pricing display cost includes gpt-5.5 fast");
         AssertEqual(1_250_000L, displayCost.CoveredTokens, "api pricing display cost covers gpt-5.5 fast tokens");

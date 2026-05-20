@@ -391,12 +391,16 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         await RefreshAsync(startupWarmup: false);
     }
 
-    private static bool ShouldRunStartupWarmRefreshAfterCache(TrayUsageSnapshotStore.TrayUsageSnapshotCache? cachedSnapshot) {
+    private bool ShouldRunStartupWarmRefreshAfterCache(TrayUsageSnapshotStore.TrayUsageSnapshotCache? cachedSnapshot) {
         if (cachedSnapshot is null || cachedSnapshot.Events.Count == 0) {
             return true;
         }
 
         if (cachedSnapshot.Health?.IsPartialScan == true) {
+            return true;
+        }
+
+        if (!_usageChangeWatcher.HasActiveWatchers) {
             return true;
         }
 
@@ -602,7 +606,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
                             rawEvents);
                         events = UsageTelemetryQuickReportScanner.BuildMergedEventsFromRawRecords(rawEvents).ToList();
                     } else {
-                        events = MergeUsageEventSnapshots(baselineEvents, events);
+                        events = MergeUsageEventSnapshots(baselineEvents, events, sumMetrics: true);
                         rawEvents = baselineRawEvents.Count > 0
                             ? baselineRawEvents.Select(CloneUsageEvent).ToList()
                             : [];
@@ -718,12 +722,12 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     }
 
     private bool ShouldRunFullAutomaticUsageRefresh() {
-        if (IsStartupQuietWindowActive()) {
-            return false;
-        }
-
         if (!HasUsageProviders || _lastUsageSnapshotScannedAtUtc == default) {
             return true;
+        }
+
+        if (IsStartupQuietWindowActive()) {
+            return false;
         }
 
         if (!_usageChangeWatcher.HasActiveWatchers) {
@@ -1749,13 +1753,16 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
                     serviceSnapshot.RawEvents.ToList(),
                     serviceSnapshot.Health);
                 if (cachedSnapshot is not null) {
-                    var canMergeRawEvents = cachedSnapshot.RawEvents.Count > 0 && serviceCache.RawEvents.Count > 0;
-                    var mergedRawEvents = canMergeRawEvents
-                        ? MergeUsageEventSnapshots(cachedSnapshot.RawEvents, serviceCache.RawEvents)
+                    var hasCachedRawEvents = cachedSnapshot.RawEvents.Count > 0;
+                    var hasServiceRawEvents = serviceCache.RawEvents.Count > 0;
+                    var mergedRawEvents = hasCachedRawEvents || hasServiceRawEvents
+                        ? MergeUsageEventSnapshots(
+                            hasCachedRawEvents ? cachedSnapshot.RawEvents : Array.Empty<UsageEventRecord>(),
+                            hasServiceRawEvents ? serviceCache.RawEvents : Array.Empty<UsageEventRecord>())
                         : new List<UsageEventRecord>();
-                    var mergedEvents = canMergeRawEvents
+                    var mergedEvents = hasCachedRawEvents && hasServiceRawEvents
                         ? UsageTelemetryQuickReportScanner.BuildMergedEventsFromRawRecords(mergedRawEvents).ToList()
-                        : MergeUsageEventSnapshots(cachedSnapshot.Events, serviceCache.Events);
+                        : MergeUsageEventSnapshots(cachedSnapshot.Events, serviceCache.Events, sumMetrics: true);
                     var mergedProviderIds = cachedSnapshot.DiscoveredProviderIds
                         .Concat(serviceCache.DiscoveredProviderIds)
                         .Concat(mergedEvents.Select(static usageEvent => usageEvent.ProviderId))
@@ -1986,7 +1993,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
 
     private static List<UsageEventRecord> MergeUsageEventSnapshots(
         IEnumerable<UsageEventRecord> baselineEvents,
-        IEnumerable<UsageEventRecord> incomingEvents) {
+        IEnumerable<UsageEventRecord> incomingEvents,
+        bool sumMetrics = false) {
         var mergedById = new Dictionary<string, UsageEventRecord>(StringComparer.OrdinalIgnoreCase);
         foreach (var usageEvent in baselineEvents ?? Array.Empty<UsageEventRecord>()) {
             if (usageEvent is null || string.IsNullOrWhiteSpace(usageEvent.EventId)) {
@@ -2006,7 +2014,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
                 continue;
             }
 
-            MergeUsageEventInto(existing, usageEvent);
+            MergeUsageEventInto(existing, usageEvent, sumMetrics);
         }
 
         return mergedById.Values
@@ -2050,7 +2058,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         };
     }
 
-    private static void MergeUsageEventInto(UsageEventRecord existing, UsageEventRecord incoming) {
+    private static void MergeUsageEventInto(UsageEventRecord existing, UsageEventRecord incoming, bool sumMetrics) {
         existing.ProviderAccountId = PreferIncoming(existing.ProviderAccountId, incoming.ProviderAccountId);
         existing.AccountLabel = PreferIncoming(existing.AccountLabel, incoming.AccountLabel);
         existing.PersonLabel = PreferIncoming(existing.PersonLabel, incoming.PersonLabel);
@@ -2065,14 +2073,14 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         existing.Model = PreferExisting(existing.Model, incoming.Model);
         existing.Surface = PreferExisting(existing.Surface, incoming.Surface);
         existing.RawHash = PreferExisting(existing.RawHash, incoming.RawHash);
-        existing.InputTokens = MaxNullable(existing.InputTokens, incoming.InputTokens);
-        existing.CachedInputTokens = MaxNullable(existing.CachedInputTokens, incoming.CachedInputTokens);
-        existing.OutputTokens = MaxNullable(existing.OutputTokens, incoming.OutputTokens);
-        existing.ReasoningTokens = MaxNullable(existing.ReasoningTokens, incoming.ReasoningTokens);
-        existing.TotalTokens = MaxNullable(existing.TotalTokens, incoming.TotalTokens);
-        existing.CompactCount = MaxNullable(existing.CompactCount, incoming.CompactCount);
-        existing.DurationMs = MaxNullable(existing.DurationMs, incoming.DurationMs);
-        existing.CostUsd = MaxNullable(existing.CostUsd, incoming.CostUsd);
+        existing.InputTokens = sumMetrics ? SumNullable(existing.InputTokens, incoming.InputTokens) : MaxNullable(existing.InputTokens, incoming.InputTokens);
+        existing.CachedInputTokens = sumMetrics ? SumNullable(existing.CachedInputTokens, incoming.CachedInputTokens) : MaxNullable(existing.CachedInputTokens, incoming.CachedInputTokens);
+        existing.OutputTokens = sumMetrics ? SumNullable(existing.OutputTokens, incoming.OutputTokens) : MaxNullable(existing.OutputTokens, incoming.OutputTokens);
+        existing.ReasoningTokens = sumMetrics ? SumNullable(existing.ReasoningTokens, incoming.ReasoningTokens) : MaxNullable(existing.ReasoningTokens, incoming.ReasoningTokens);
+        existing.TotalTokens = sumMetrics ? SumNullable(existing.TotalTokens, incoming.TotalTokens) : MaxNullable(existing.TotalTokens, incoming.TotalTokens);
+        existing.CompactCount = sumMetrics ? SumNullable(existing.CompactCount, incoming.CompactCount) : MaxNullable(existing.CompactCount, incoming.CompactCount);
+        existing.DurationMs = sumMetrics ? SumNullable(existing.DurationMs, incoming.DurationMs) : MaxNullable(existing.DurationMs, incoming.DurationMs);
+        existing.CostUsd = sumMetrics ? SumNullable(existing.CostUsd, incoming.CostUsd) : MaxNullable(existing.CostUsd, incoming.CostUsd);
         if (incoming.TruthLevel > existing.TruthLevel) {
             existing.TruthLevel = incoming.TruthLevel;
         }
@@ -2098,6 +2106,18 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         return Math.Max(existing.Value, incoming.Value);
     }
 
+    private static long? SumNullable(long? existing, long? incoming) {
+        if (!existing.HasValue) {
+            return incoming;
+        }
+
+        if (!incoming.HasValue) {
+            return existing;
+        }
+
+        return existing.Value + incoming.Value;
+    }
+
     private static int? MaxNullable(int? existing, int? incoming) {
         if (!existing.HasValue) {
             return incoming;
@@ -2110,6 +2130,18 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         return Math.Max(existing.Value, incoming.Value);
     }
 
+    private static int? SumNullable(int? existing, int? incoming) {
+        if (!existing.HasValue) {
+            return incoming;
+        }
+
+        if (!incoming.HasValue) {
+            return existing;
+        }
+
+        return existing.Value + incoming.Value;
+    }
+
     private static decimal? MaxNullable(decimal? existing, decimal? incoming) {
         if (!existing.HasValue) {
             return incoming;
@@ -2120,6 +2152,18 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         }
 
         return Math.Max(existing.Value, incoming.Value);
+    }
+
+    private static decimal? SumNullable(decimal? existing, decimal? incoming) {
+        if (!existing.HasValue) {
+            return incoming;
+        }
+
+        if (!incoming.HasValue) {
+            return existing;
+        }
+
+        return existing.Value + incoming.Value;
     }
 
     private void UpdateLatestSourceRoots(IReadOnlyList<SourceRootRecord> sourceRoots) {
