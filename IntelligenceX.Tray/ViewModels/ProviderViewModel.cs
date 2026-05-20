@@ -1776,7 +1776,10 @@ public sealed class ProviderViewModel : ViewModelBase {
                 : "No local " + DisplayName + " activity today yet.";
         }
 
-        if (PulseCachedTokens > 0 && PulseInputTokens > 0) {
+        if (!IsCombinedProvider
+            && UsageTelemetryApiPricing.ShouldTreatCachedInputAsInputSubset(ProviderId)
+            && PulseCachedTokens > 0
+            && PulseInputTokens > 0) {
             var cachedPercent = Math.Round(100d * PulseCachedTokens / Math.Max(1d, PulseInputTokens), MidpointRounding.AwayFromZero);
             return "Cached input is " + cachedPercent.ToString("N0", CultureInfo.CurrentCulture) + "% of input, so cost is lower than raw input volume suggests.";
         }

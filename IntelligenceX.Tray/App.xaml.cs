@@ -547,6 +547,11 @@ public partial class App : Application {
         var source = PresentationSource.FromVisual(_popupWindow);
         if (source?.CompositionTarget is not null) {
             probePoint = source.CompositionTarget.TransformToDevice.Transform(probePoint);
+        } else {
+            var dpi = VisualTreeHelper.GetDpi(_popupWindow);
+            probePoint = new Point(
+                probePoint.X * dpi.DpiScaleX,
+                probePoint.Y * dpi.DpiScaleY);
         }
 
         var monitor = MonitorFromPoint(
