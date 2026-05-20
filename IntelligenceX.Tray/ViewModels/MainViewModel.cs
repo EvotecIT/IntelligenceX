@@ -433,6 +433,16 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         _ = RefreshGitHubAsync(login, autoLoadKey);
     }
 
+    private bool ShouldRefreshGitHubDuringLightweightAuto() {
+        return ShouldRefreshGitHubOnStartup()
+            || GitHub.HasData
+            || GitHub.HasToken
+            || GitHub.HasObservabilitySummary
+            || GitHubWatchAutoSyncEnabled
+            || !string.IsNullOrWhiteSpace(GitHub.UsernameInput)
+            || !string.IsNullOrWhiteSpace(GitHub.RememberedUsername);
+    }
+
     private async Task RefreshStartupUsageWithoutCacheAsync() {
         await RefreshAsync(startupWarmup: true);
         await Task.Delay(TimeSpan.FromSeconds(StartupFullUsageRefreshDelaySeconds)).ConfigureAwait(true);
@@ -582,16 +592,20 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
             var refreshData = await Task.Run(async () => {
                 var snapshot = await _usageService.ScanAsync(progress: scanProgress, startupWarmup: startupWarmup);
                 var events = snapshot.Events.ToList();
-                var rawEvents = (snapshot.RawEvents.Count > 0 ? snapshot.RawEvents : snapshot.Events).ToList();
+                var rawEvents = snapshot.RawEvents.Count > 0 || startupWarmup
+                    ? snapshot.RawEvents.ToList()
+                    : snapshot.Events.ToList();
                 if (startupWarmup && baselineEvents.Count > 0) {
-                    if (baselineRawEvents.Count > 0) {
+                    if (baselineRawEvents.Count > 0 && rawEvents.Count > 0) {
                         rawEvents = MergeUsageEventSnapshots(
                             baselineRawEvents,
-                            rawEvents.Count > 0 ? rawEvents : events);
+                            rawEvents);
                         events = UsageTelemetryQuickReportScanner.BuildMergedEventsFromRawRecords(rawEvents).ToList();
                     } else {
                         events = MergeUsageEventSnapshots(baselineEvents, events);
-                        rawEvents = [];
+                        rawEvents = baselineRawEvents.Count > 0
+                            ? baselineRawEvents.Select(CloneUsageEvent).ToList()
+                            : [];
                     }
                 }
 
@@ -737,7 +751,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
             .ToArray();
 
         var backgroundTasks = new List<Task>();
-        if (ShouldRefreshGitHubOnStartup()) {
+        if (ShouldRefreshGitHubDuringLightweightAuto()) {
             backgroundTasks.Add(RefreshGitHubAsync(GitHub.UsernameInput));
         }
 
@@ -1756,19 +1770,21 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
                     var mergedScannedAtUtc = cachedSnapshot.ScannedAtUtc > serviceCache.ScannedAtUtc
                         ? cachedSnapshot.ScannedAtUtc
                         : serviceCache.ScannedAtUtc;
+                    var mergedHealth = SelectMergedCachedUsageSnapshotHealth(cachedSnapshot.Health, serviceCache.Health);
                     cachedSnapshot = new TrayUsageSnapshotStore.TrayUsageSnapshotCache(
                         mergedScannedAtUtc,
                         mergedProviderIds,
                         mergedSourceRoots,
                         mergedEvents,
                         mergedRawEvents,
-                        null);
+                        mergedHealth);
                     _usageSnapshotStore.Save(
                         mergedScannedAtUtc,
                         mergedEvents,
                         mergedProviderIds,
                         mergedSourceRoots,
-                        rawEvents: mergedRawEvents);
+                        mergedHealth,
+                        mergedRawEvents);
                 } else if (ShouldPreferCachedSnapshot(serviceCache, cachedSnapshot)) {
                     cachedSnapshot = serviceCache;
                     _usageSnapshotStore.Save(
@@ -1783,6 +1799,20 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
 
             return cachedSnapshot;
         }).ConfigureAwait(false);
+    }
+
+    private static UsageTelemetrySnapshotHealth? SelectMergedCachedUsageSnapshotHealth(
+        UsageTelemetrySnapshotHealth? cachedHealth,
+        UsageTelemetrySnapshotHealth? serviceHealth) {
+        if (cachedHealth?.IsPartialScan == true) {
+            return cachedHealth;
+        }
+
+        if (serviceHealth?.IsPartialScan == true) {
+            return serviceHealth;
+        }
+
+        return cachedHealth ?? serviceHealth;
     }
 
     private bool ApplyCachedUsageSnapshot(TrayUsageSnapshotStore.TrayUsageSnapshotCache? cachedSnapshot) {
