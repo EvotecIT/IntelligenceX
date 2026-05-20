@@ -16,6 +16,7 @@ namespace IntelligenceX.Telemetry.GitHub;
 /// Native GitHub dashboard service for shared observability scenarios.
 /// </summary>
 public sealed class GitHubDashboardService : IDisposable {
+    private const int MaxDashboardCacheEntries = 32;
     private static readonly object DashboardCacheGate = new();
     private static readonly Dictionary<string, DashboardCacheEntry> DashboardCache = new(StringComparer.Ordinal);
     private static readonly TimeSpan DashboardCacheDuration = TimeSpan.FromMinutes(10);
@@ -447,13 +448,10 @@ query($login: String!, $from: DateTime!, $to: DateTime!) {
 
     private bool TryGetCachedDashboard(string cacheKey, DateTimeOffset now, out GitHubDashboardData data) {
         lock (DashboardCacheGate) {
+            PruneExpiredDashboardCacheEntries(now);
             if (DashboardCache.TryGetValue(cacheKey, out var entry)) {
-                if (now - entry.FetchedAtUtc <= DashboardCacheDuration) {
-                    data = entry.Data;
-                    return true;
-                }
-
-                DashboardCache.Remove(cacheKey);
+                data = entry.Data;
+                return true;
             }
         }
 
@@ -463,7 +461,29 @@ query($login: String!, $from: DateTime!, $to: DateTime!) {
 
     private static void StoreCachedDashboard(string cacheKey, GitHubDashboardData data, DateTimeOffset fetchedAtUtc) {
         lock (DashboardCacheGate) {
+            PruneExpiredDashboardCacheEntries(fetchedAtUtc);
             DashboardCache[cacheKey] = new DashboardCacheEntry(data, fetchedAtUtc);
+            TrimDashboardCache();
+        }
+    }
+
+    private static void PruneExpiredDashboardCacheEntries(DateTimeOffset now) {
+        foreach (var key in DashboardCache
+                     .Where(pair => now - pair.Value.FetchedAtUtc > DashboardCacheDuration)
+                     .Select(static pair => pair.Key)
+                     .ToArray()) {
+            DashboardCache.Remove(key);
+        }
+    }
+
+    private static void TrimDashboardCache() {
+        while (DashboardCache.Count > MaxDashboardCacheEntries) {
+            var oldestKey = DashboardCache
+                .OrderBy(static pair => pair.Value.FetchedAtUtc)
+                .ThenBy(static pair => pair.Key, StringComparer.Ordinal)
+                .First()
+                .Key;
+            DashboardCache.Remove(oldestKey);
         }
     }
 

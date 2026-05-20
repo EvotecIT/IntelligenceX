@@ -1076,6 +1076,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
             });
         } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
             // A newer refresh superseded this one.
+            await dispatcher.InvokeAsync(() => ResetGitHubAutoLoadKeyIfUnresolved(autoLoadKey));
         } catch (Exception ghEx) {
             var observabilityRefresh = await observabilityTask.ConfigureAwait(false);
             await dispatcher.InvokeAsync(() => {
