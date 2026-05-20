@@ -129,9 +129,10 @@ public static class TreatmentPromptBuilder {
         sb.AppendLine("private: " + input.IsPrivate.ToString().ToLowerInvariant());
         AppendLine(sb, "path", input.Path);
         AppendLine(sb, "uri", input.Uri?.ToString());
-        if (input.Metadata.Count > 0) {
+        var metadata = input.Metadata ?? TreatmentRequest.EmptyDictionary;
+        if (metadata.Count > 0) {
             sb.AppendLine("metadata:");
-            foreach (var pair in input.Metadata) {
+            foreach (var pair in metadata) {
                 AppendLine(sb, "  " + pair.Key, pair.Value);
             }
         }
@@ -145,7 +146,7 @@ public static class TreatmentPromptBuilder {
         } else {
             var localContent = TreatmentLocalInputReader.TryRead(input, options);
             if (localContent is not null) {
-                AppendLine(sb, "resolvedPath", localContent.Path);
+                AppendLine(sb, "resolvedPath", FormatPromptPath(localContent.Path, options.BaseDirectory));
                 if (!string.IsNullOrWhiteSpace(localContent.Warning)) {
                     AppendLine(sb, "warning", localContent.Warning);
                 }
@@ -155,6 +156,38 @@ public static class TreatmentPromptBuilder {
                 }
             }
         }
+    }
+
+    private static string FormatPromptPath(string path, string? baseDirectory) {
+        try {
+            if (!string.IsNullOrWhiteSpace(baseDirectory)) {
+                var root = System.IO.Path.GetFullPath(baseDirectory!);
+                var fullPath = System.IO.Path.GetFullPath(path);
+                var relative = MakeRelativePath(root, fullPath);
+                if (!relative.StartsWith("..", StringComparison.Ordinal) && !System.IO.Path.IsPathRooted(relative)) {
+                    return relative.Replace(System.IO.Path.DirectorySeparatorChar, '/');
+                }
+            }
+        } catch (ArgumentException) {
+        } catch (NotSupportedException) {
+        }
+
+        return System.IO.Path.GetFileName(path);
+    }
+
+    private static string MakeRelativePath(string root, string path) {
+        var rootUri = new Uri(AppendDirectorySeparator(root));
+        var pathUri = new Uri(path);
+        if (!rootUri.IsBaseOf(pathUri)) {
+            return path;
+        }
+
+        return Uri.UnescapeDataString(rootUri.MakeRelativeUri(pathUri).ToString()).Replace('/', System.IO.Path.DirectorySeparatorChar);
+    }
+
+    private static string AppendDirectorySeparator(string path) {
+        var separator = System.IO.Path.DirectorySeparatorChar.ToString();
+        return path.EndsWith(separator, StringComparison.Ordinal) ? path : path + separator;
     }
 
     private static void AppendOutput(StringBuilder sb, TreatmentOutputSpec output, int index) {

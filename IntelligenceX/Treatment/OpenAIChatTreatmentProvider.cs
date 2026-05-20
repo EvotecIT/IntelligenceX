@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -32,11 +33,7 @@ public sealed class OpenAIChatTreatmentProvider : ITreatmentProvider {
     public async Task<TreatmentResult> RunAsync(TreatmentRequest request, CancellationToken cancellationToken = default) {
         TreatmentPromptBuilder.Validate(request);
 
-        var prompt = TreatmentPromptBuilder.Build(request, new TreatmentPromptBuildOptions {
-            BaseDirectory = request.WorkingDirectory ?? request.Workspace,
-            InlineLocalFiles = request.InlineLocalInputFiles,
-            MaxInlineFileCharacters = request.MaxInlineFileCharacters ?? 120000
-        });
+        var prompt = TreatmentPromptBuilder.Build(request);
         var input = ChatInput.FromText(prompt);
         AddImageInputs(input, request);
 
@@ -63,6 +60,7 @@ public sealed class OpenAIChatTreatmentProvider : ITreatmentProvider {
             NewThread = request.NewThread,
             TelemetryFeature = "treatment",
             TelemetrySurface = "IntelligenceX.Treatment",
+            RequireWorkspaceForFileAccess = true,
             ImageGeneration = MapImageOptions(request.ImageGeneration)
         };
     }
@@ -89,16 +87,45 @@ public sealed class OpenAIChatTreatmentProvider : ITreatmentProvider {
             if (artifact is null) {
                 continue;
             }
-            var mediaType = artifact.MediaType ?? string.Empty;
-            if (!mediaType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)) {
+            if (!IsImageArtifact(artifact)) {
                 continue;
             }
             if (!string.IsNullOrWhiteSpace(artifact.Path)) {
-                input.AddImagePath(artifact.Path!);
+                input.AddImagePath(ResolveLocalArtifactPath(artifact.Path!, request));
             } else if (artifact.Uri is not null) {
                 input.AddImageUrl(artifact.Uri.ToString());
             }
         }
+    }
+
+    private static bool IsImageArtifact(TreatmentInputArtifact artifact) {
+        var mediaType = NormalizeMediaType(artifact.MediaType);
+        if (mediaType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)) {
+            return true;
+        }
+
+        var extension = Path.GetExtension(artifact.Path ?? artifact.Uri?.AbsolutePath ?? string.Empty);
+        return extension.Equals(".png", StringComparison.OrdinalIgnoreCase) ||
+               extension.Equals(".jpg", StringComparison.OrdinalIgnoreCase) ||
+               extension.Equals(".jpeg", StringComparison.OrdinalIgnoreCase) ||
+               extension.Equals(".gif", StringComparison.OrdinalIgnoreCase) ||
+               extension.Equals(".webp", StringComparison.OrdinalIgnoreCase) ||
+               extension.Equals(".avif", StringComparison.OrdinalIgnoreCase) ||
+               extension.Equals(".svg", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string ResolveLocalArtifactPath(string path, TreatmentRequest request) {
+        var baseDirectory = request.WorkingDirectory ?? request.Workspace;
+        return TreatmentLocalInputReader.ResolvePath(path, baseDirectory);
+    }
+
+    private static string NormalizeMediaType(string? mediaType) {
+        if (string.IsNullOrWhiteSpace(mediaType)) {
+            return string.Empty;
+        }
+
+        var semicolon = mediaType!.IndexOf(';');
+        return (semicolon < 0 ? mediaType : mediaType.Substring(0, semicolon)).Trim();
     }
 
     private static string? JoinText(IReadOnlyList<TreatmentChatOutput> outputs) {
@@ -153,16 +180,13 @@ public sealed class OpenAIChatTreatmentProvider : ITreatmentProvider {
         return Uri.TryCreate(value, UriKind.Absolute, out var uri) ? uri : null;
     }
 
-    private static JsonObject? TryExtractJson(string? text) {
+    private static JsonValue? TryExtractJson(string? text) {
         if (string.IsNullOrWhiteSpace(text)) {
             return null;
         }
         var trimmed = StripJsonFence(text!.Trim());
-        if (!(trimmed.StartsWith("{", StringComparison.Ordinal) && trimmed.EndsWith("}", StringComparison.Ordinal))) {
-            return null;
-        }
         try {
-            return JsonLite.Parse(trimmed).AsObject();
+            return JsonLite.Parse(trimmed);
         } catch {
             return null;
         }

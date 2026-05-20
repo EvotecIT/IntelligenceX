@@ -11,7 +11,7 @@ public sealed class TreatmentResult {
     /// <summary>
     /// Initializes a new treatment result.
     /// </summary>
-    public TreatmentResult(string id, string? status, string? text, JsonObject? json, IReadOnlyList<TreatmentAsset>? assets,
+    public TreatmentResult(string id, string? status, string? text, JsonValue? json, IReadOnlyList<TreatmentAsset>? assets,
         object? raw, IReadOnlyDictionary<string, string>? metadata = null) {
         Id = id;
         Status = status;
@@ -37,7 +37,11 @@ public sealed class TreatmentResult {
     /// <summary>
     /// Parsed JSON output when available.
     /// </summary>
-    public JsonObject? Json { get; }
+    public JsonValue? Json { get; }
+    /// <summary>
+    /// Parsed JSON object output when the provider returned an object.
+    /// </summary>
+    public JsonObject? JsonObject => Json?.AsObject();
     /// <summary>
     /// Assets generated or selected during treatment.
     /// </summary>

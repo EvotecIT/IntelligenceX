@@ -1,4 +1,5 @@
 using System;
+using System.Collections.ObjectModel;
 using System.Collections.Generic;
 using IntelligenceX.Json;
 using IntelligenceX.OpenAI.Chat;
@@ -86,7 +87,8 @@ public sealed class TreatmentRequest {
     /// </summary>
     public int? MaxInlineFileCharacters { get; set; } = 120000;
 
-    internal static readonly IReadOnlyDictionary<string, string> EmptyDictionary = new Dictionary<string, string>(0);
+    internal static readonly IReadOnlyDictionary<string, string> EmptyDictionary =
+        new ReadOnlyDictionary<string, string>(new Dictionary<string, string>(0));
 }
 
 /// <summary>
