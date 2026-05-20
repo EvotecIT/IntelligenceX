@@ -144,6 +144,8 @@ internal static partial class Program {
 #if !NET472
         failed += Run("GitHub dashboard service explicit self lookup keeps authenticated organizations",
             TestGitHubDashboardServiceExplicitSelfLookupKeepsAuthenticatedOrganizations);
+        failed += Run("GitHub dashboard service reuses fresh cached dashboard",
+            TestGitHubDashboardServiceReusesFreshCachedDashboard);
 #endif
 #if !NET472
         failed += Run("GitHub dashboard repository ranking deduplicates overlapping repositories",

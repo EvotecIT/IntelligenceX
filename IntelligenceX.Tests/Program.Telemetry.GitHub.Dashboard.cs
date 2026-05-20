@@ -75,6 +75,81 @@ internal static partial class Program {
         AssertEqual(true, dashboard.AllRepos.Any(static repo => string.Equals(repo.NameWithOwner, "private-org/repo-a", StringComparison.OrdinalIgnoreCase)), "github dashboard includes authenticated org repositories");
     }
 
+    private static void TestGitHubDashboardServiceReusesFreshCachedDashboard() {
+        var graphqlPayload = JsonSerializer.Serialize(new {
+            data = new {
+                user = new {
+                    contributionsCollection = new {
+                        totalCommitContributions = 1,
+                        totalIssueContributions = 0,
+                        totalPullRequestContributions = 0,
+                        totalPullRequestReviewContributions = 0,
+                        contributionCalendar = new {
+                            totalContributions = 1,
+                            weeks = new[] {
+                                new {
+                                    contributionDays = new[] {
+                                        new {
+                                            date = "2026-05-20",
+                                            contributionCount = 1,
+                                            color = "#40c463"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                repositoryOwner = new {
+                    repositories = new {
+                        pageInfo = new {
+                            hasNextPage = false,
+                            endCursor = (string?)null
+                        },
+                        nodes = Array.Empty<object>()
+                    }
+                }
+            }
+        });
+
+        var graphqlRequests = 0;
+        var orgRequests = 0;
+        using var http = new HttpClient(new GitHubDashboardDelegateHttpMessageHandler((request, _) => {
+            if (request.Method == HttpMethod.Get && request.RequestUri?.AbsolutePath == "/user") {
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) {
+                    Content = new StringContent("{\"login\":\"octocat\",\"name\":\"Octo Cat\"}", Encoding.UTF8, "application/json")
+                });
+            }
+
+            if (request.Method == HttpMethod.Get && request.RequestUri?.AbsolutePath == "/user/orgs") {
+                orgRequests++;
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) {
+                    Content = new StringContent("[]", Encoding.UTF8, "application/json")
+                });
+            }
+
+            if (request.Method == HttpMethod.Post && request.RequestUri?.AbsolutePath == "/graphql") {
+                graphqlRequests++;
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) {
+                    Content = new StringContent(graphqlPayload, Encoding.UTF8, "application/json")
+                });
+            }
+
+            throw new InvalidOperationException("Unexpected request: " + request.Method + " " + request.RequestUri);
+        })) {
+            BaseAddress = new Uri("https://cache.github.test")
+        };
+        using var service = new GitHubDashboardService(http, disposeHttpClient: false);
+
+        var first = service.FetchAsync("octocat").GetAwaiter().GetResult();
+        var second = service.FetchAsync("octocat").GetAwaiter().GetResult();
+
+        AssertEqual(1, first.Contributions.TotalContributions, "github dashboard cache first contribution total");
+        AssertEqual(1, second.Contributions.TotalContributions, "github dashboard cache second contribution total");
+        AssertEqual(2, graphqlRequests, "github dashboard cache avoids repeated contribution and repository GraphQL calls");
+        AssertEqual(1, orgRequests, "github dashboard cache avoids repeated organization lookup");
+    }
+
     private static void TestGitHubDashboardRepositoryRankingDeduplicatesOverlappingRepositories() {
         var ranked = GitHubDashboardRepositoryRanking.BuildTopRepositories(
             new[] {
