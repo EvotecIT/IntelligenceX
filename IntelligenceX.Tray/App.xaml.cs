@@ -112,7 +112,14 @@ public partial class App : Application {
     }
 
     private bool TryClaimSingleInstance(bool requestOpen) {
-        _singleInstanceMutex = new Mutex(initiallyOwned: true, SingleInstanceMutexName, out var ownsInstance);
+        _singleInstanceMutex = new Mutex(initiallyOwned: false, SingleInstanceMutexName, out _);
+        var ownsInstance = false;
+        try {
+            ownsInstance = _singleInstanceMutex.WaitOne(0);
+        } catch (AbandonedMutexException) {
+            ownsInstance = true;
+        }
+
         if (!ownsInstance) {
             SignalExistingInstance(requestOpen);
             _singleInstanceMutex.Dispose();

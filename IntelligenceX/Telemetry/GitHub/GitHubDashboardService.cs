@@ -42,6 +42,20 @@ public sealed class GitHubDashboardService : IDisposable {
     /// <returns>GitHub dashboard data.</returns>
     public async Task<GitHubDashboardData> FetchAsync(string? login = null, CancellationToken cancellationToken = default) {
         var explicitLogin = NormalizeOptional(login);
+        var now = DateTimeOffset.UtcNow;
+        if (explicitLogin is not null) {
+            var explicitCacheKey = BuildDashboardCacheKey(explicitLogin);
+            if (TryGetCachedDashboard(explicitCacheKey, now, out var cachedExplicitData)) {
+                return cachedExplicitData;
+            }
+        }
+
+        var authenticatedCacheKey = BuildAuthenticatedDashboardCacheKey();
+        if (explicitLogin is null &&
+            TryGetCachedDashboard(authenticatedCacheKey, now, out var cachedAuthenticatedData)) {
+            return cachedAuthenticatedData;
+        }
+
         var authenticatedLogin = await GetAuthenticatedLoginAsync(cancellationToken).ConfigureAwait(false);
         var effectiveLogin = explicitLogin ?? authenticatedLogin;
         if (string.IsNullOrWhiteSpace(effectiveLogin)) {
@@ -51,7 +65,6 @@ public sealed class GitHubDashboardService : IDisposable {
         var isAuthenticatedSelfLookup = !string.IsNullOrWhiteSpace(authenticatedLogin)
                                         && string.Equals(normalizedLogin, authenticatedLogin, StringComparison.OrdinalIgnoreCase);
         var cacheKey = BuildDashboardCacheKey(normalizedLogin);
-        var now = DateTimeOffset.UtcNow;
         if (TryGetCachedDashboard(cacheKey, now, out var cachedData)) {
             return cachedData;
         }
@@ -75,7 +88,12 @@ public sealed class GitHubDashboardService : IDisposable {
             contributionsTask.Result,
             GitHubDashboardRepositoryRanking.BuildTopRepositories(allRepos, limit: 8),
             allRepos);
-        StoreCachedDashboard(cacheKey, data, DateTimeOffset.UtcNow);
+        var fetchedAtUtc = DateTimeOffset.UtcNow;
+        StoreCachedDashboard(cacheKey, data, fetchedAtUtc);
+        if (isAuthenticatedSelfLookup) {
+            StoreCachedDashboard(authenticatedCacheKey, data, fetchedAtUtc);
+        }
+
         return data;
     }
 
@@ -457,6 +475,10 @@ query($login: String!, $from: DateTime!, $to: DateTime!) {
             authorization?.Scheme ?? string.Empty,
             FingerprintSecret(authorization?.Parameter),
             login.Trim().ToLowerInvariant());
+    }
+
+    private string BuildAuthenticatedDashboardCacheKey() {
+        return BuildDashboardCacheKey("__authenticated_self__");
     }
 
     private static string FingerprintSecret(string? value) {

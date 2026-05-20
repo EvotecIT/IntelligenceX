@@ -414,7 +414,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         }
 
         var login = GitHub.UsernameInput?.Trim();
-        if (string.IsNullOrWhiteSpace(login)) {
+        if (string.IsNullOrWhiteSpace(login) && GitHub.RememberUsername) {
             login = GitHub.RememberedUsername?.Trim();
             if (!string.IsNullOrWhiteSpace(login)) {
                 GitHub.UsernameInput = login;
@@ -440,7 +440,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
             || GitHub.HasObservabilitySummary
             || GitHubWatchAutoSyncEnabled
             || !string.IsNullOrWhiteSpace(GitHub.UsernameInput)
-            || !string.IsNullOrWhiteSpace(GitHub.RememberedUsername);
+            || (GitHub.RememberUsername && !string.IsNullOrWhiteSpace(GitHub.RememberedUsername));
     }
 
     private async Task RefreshStartupUsageWithoutCacheAsync() {
