@@ -77,9 +77,7 @@ public sealed class TrayUsageSnapshotStore {
             Directory.CreateDirectory(directory);
         }
 
-        var rawEventsToPersist = (rawEvents ?? events).Count <= MaxPersistedRawEvents
-            ? rawEvents ?? events
-            : Array.Empty<UsageEventRecord>();
+        var rawEventsToPersist = SelectRawEventsToPersist(rawEvents ?? events);
         var payload = new PersistedUsageSnapshot {
             ScannedAtUtc = scannedAtUtc,
             DiscoveredProviderIds = (discoveredProviderIds ?? Array.Empty<string>())
@@ -96,6 +94,25 @@ public sealed class TrayUsageSnapshotStore {
         };
         var json = JsonSerializer.Serialize(payload, SerializerOptions);
         File.WriteAllText(SnapshotPath, json);
+    }
+
+    private static IReadOnlyList<UsageEventRecord> SelectRawEventsToPersist(IReadOnlyList<UsageEventRecord> rawEvents) {
+        if (rawEvents.Count <= MaxPersistedRawEvents) {
+            return rawEvents;
+        }
+
+        return rawEvents
+            .Where(static item => item is not null)
+            .OrderByDescending(static item => item.TimestampUtc)
+            .ThenBy(static item => item.ProviderId, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(static item => item.Model, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(static item => item.EventId, StringComparer.OrdinalIgnoreCase)
+            .Take(MaxPersistedRawEvents)
+            .OrderBy(static item => item.TimestampUtc)
+            .ThenBy(static item => item.ProviderId, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(static item => item.Model, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(static item => item.EventId, StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     public sealed record TrayUsageSnapshotCache(
