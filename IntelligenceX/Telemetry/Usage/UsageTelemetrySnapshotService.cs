@@ -379,7 +379,7 @@ public sealed class UsageTelemetrySnapshotService {
                 reusedArtifacts,
                 duplicateRecordsCollapsed: 0,
                 latestEventUtc: GetLatestEventTimestampUtc(providerEvents),
-                isPartialScan: false));
+                isPartialScan: true));
         }
 
         return new UsageTelemetrySnapshotHealth(

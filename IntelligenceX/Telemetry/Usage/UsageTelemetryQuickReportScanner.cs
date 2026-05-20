@@ -274,7 +274,7 @@ public sealed class UsageTelemetryQuickReportScanner {
     /// <param name="artifacts">Cached raw artifacts with quick-report state.</param>
     /// <returns>Merged usage events restored from cached quick-report state.</returns>
     internal static IReadOnlyList<UsageEventRecord> RestoreFromCachedArtifacts(IEnumerable<RawArtifactDescriptor> artifacts) {
-        return BuildMergedEventsFromRawRecords(RestoreRawFromCachedArtifacts(artifacts));
+        return MergeRecords(RestoreRawFromCachedArtifacts(artifacts));
     }
 
     /// <summary>

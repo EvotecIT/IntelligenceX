@@ -124,7 +124,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         };
         GitHub.PropertyChanged += OnGitHubPropertyChanged;
 
-        RefreshCommand = new RelayCommand(() => RefreshAsync(startupWarmup: true));
+        RefreshCommand = new RelayCommand(() => RefreshAsync());
         RefreshGitHubCommand = new RelayCommand(RefreshGitHubCurrentAsync);
         OpenOpenAiCacheCommand = new RelayCommand(OpenOpenAiCacheAsync);
         CycleThemeModeCommand = new RelayCommand(CycleThemeModeAsync);
@@ -389,6 +389,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
 
     private async Task RefreshStartupUsageWithoutCacheAsync() {
         await RefreshAsync(startupWarmup: true);
+        await Task.Delay(TimeSpan.FromSeconds(StartupWarmRefreshDelaySeconds)).ConfigureAwait(true);
+        await RefreshAsync();
     }
 
     private async Task RefreshAutoAsync() {
@@ -397,7 +399,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         }
 
         if (ShouldRunFullAutomaticUsageRefresh()) {
-            await RefreshAsync(startupWarmup: true);
+            await RefreshAsync();
             return;
         }
 
@@ -713,7 +715,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
             return;
         }
 
-        await RefreshAsync(startupWarmup: true).ConfigureAwait(false);
+        await RefreshAsync().ConfigureAwait(false);
     }
 
     private string BuildLoadingStatusText(string? value) {
@@ -1629,10 +1631,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     private async Task<TrayUsageSnapshotStore.TrayUsageSnapshotCache?> LoadBestCachedUsageSnapshotAsync() {
         return await Task.Run(() => {
             var cachedSnapshot = _usageSnapshotStore.Load();
-            if (cachedSnapshot is not null && cachedSnapshot.Events.Count > 0) {
-                return cachedSnapshot;
-            }
-
             var serviceSnapshot = _usageService.TryLoadCachedSnapshot();
             if (serviceSnapshot is not null && serviceSnapshot.Events.Count > 0) {
                 var serviceCache = new TrayUsageSnapshotStore.TrayUsageSnapshotCache(

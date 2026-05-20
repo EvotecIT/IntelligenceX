@@ -155,7 +155,7 @@ public static class UsageTelemetryScopeSummaryBuilder {
         const int maxDetailLength = 180;
         return normalized.Length <= maxDetailLength
             ? normalized
-            : normalized[..maxDetailLength].TrimEnd() + "...";
+            : normalized.Substring(0, maxDetailLength).TrimEnd() + "...";
     }
 
     private static string? BuildDifferenceText(
