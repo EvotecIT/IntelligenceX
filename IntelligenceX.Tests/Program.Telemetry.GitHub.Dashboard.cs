@@ -112,7 +112,8 @@ internal static partial class Program {
             }
         });
 
-        var graphqlRequests = 0;
+        var contributionGraphqlRequests = 0;
+        var repositoryGraphqlRequests = 0;
         var orgRequests = 0;
         var userRequests = 0;
         using var http = new HttpClient(new GitHubDashboardDelegateHttpMessageHandler((request, _) => {
@@ -131,7 +132,15 @@ internal static partial class Program {
             }
 
             if (request.Method == HttpMethod.Post && request.RequestUri?.AbsolutePath == "/graphql") {
-                graphqlRequests++;
+                var requestBody = request.Content?.ReadAsStringAsync().GetAwaiter().GetResult() ?? string.Empty;
+                if (requestBody.Contains("contributionsCollection", StringComparison.Ordinal)) {
+                    contributionGraphqlRequests++;
+                }
+
+                if (requestBody.Contains("repositoryOwner", StringComparison.Ordinal)) {
+                    repositoryGraphqlRequests++;
+                }
+
                 return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) {
                     Content = new StringContent(graphqlPayload, Encoding.UTF8, "application/json")
                 });
@@ -150,7 +159,8 @@ internal static partial class Program {
         AssertEqual(1, first.Contributions.TotalContributions, "github dashboard cache first contribution total");
         AssertEqual(1, second.Contributions.TotalContributions, "github dashboard cache second contribution total");
         AssertEqual(userRequestsAfterFirstFetch, userRequests, "github dashboard cache avoids repeated authenticated login lookup");
-        AssertEqual(2, graphqlRequests, "github dashboard cache avoids repeated contribution and repository GraphQL calls");
+        AssertEqual(1, contributionGraphqlRequests, "github dashboard cache avoids repeated contribution GraphQL calls");
+        AssertEqual(1, repositoryGraphqlRequests, "github dashboard cache avoids repeated repository GraphQL calls");
         AssertEqual(1, orgRequests, "github dashboard cache avoids repeated organization lookup");
     }
 
