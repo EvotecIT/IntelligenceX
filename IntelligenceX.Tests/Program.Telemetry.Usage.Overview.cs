@@ -142,6 +142,36 @@ internal static partial class Program {
         AssertDoesNotContainText(summary.OnlineScopeText ?? string.Empty, "{", "scope hides raw json");
     }
 
+    private static void TestUsageTelemetryCachedStartupMergeAvoidsIncompleteRawOverlap() {
+        var cachedScannedAt = new DateTimeOffset(2026, 03, 10, 9, 0, 0, TimeSpan.Zero);
+        var serviceScannedAt = cachedScannedAt.AddMinutes(5);
+        var cachedEvents = new[] {
+            new UsageEventRecord("codex-rollup-cached", "codex", "codex.logs", "src-1", cachedScannedAt) {
+                InputTokens = 100,
+                TotalTokens = 100
+            }
+        };
+        var serviceEvents = new[] {
+            new UsageEventRecord("codex-rollup-service", "codex", "codex.logs", "src-1", cachedScannedAt) {
+                InputTokens = 120,
+                TotalTokens = 120
+            }
+        };
+
+        var merged = UsageTelemetryCachedSnapshotMerge.SelectStartupEvents(
+            cachedEvents,
+            serviceEvents,
+            cachedEvents,
+            hasCachedRawEvents: true,
+            hasServiceRawEvents: false,
+            cachedScannedAt,
+            serviceScannedAt);
+
+        AssertEqual(1, merged.Count, "cached startup merge keeps one rollup when raw coverage is incomplete");
+        AssertEqual("codex-rollup-service", merged[0].EventId, "cached startup merge prefers the newest rollup");
+        AssertEqual(120L, merged[0].TotalTokens, "cached startup merge does not sum overlapping rollup totals");
+    }
+
     private static void TestProviderLimitForecastingFlagsOverLimitPace() {
         var now = new DateTimeOffset(2026, 03, 18, 12, 00, 00, TimeSpan.Zero);
         var snapshot = new ProviderLimitSnapshot(

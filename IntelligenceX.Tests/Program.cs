@@ -105,6 +105,8 @@ internal static partial class Program {
             TestUsageTelemetryApiPricingCoversOpenAiModeSuffixes);
         failed += Run("Usage telemetry scope summary keeps provider errors compact",
             TestUsageTelemetryScopeSummaryKeepsProviderErrorsCompact);
+        failed += Run("Usage telemetry cached startup merge avoids incomplete raw overlap",
+            TestUsageTelemetryCachedStartupMergeAvoidsIncompleteRawOverlap);
         failed += Run("Provider limit forecasting flags over-limit pace",
             TestProviderLimitForecastingFlagsOverLimitPace);
         failed += Run("Provider limit forecasting recognizes on-pace window",

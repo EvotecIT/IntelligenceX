@@ -1666,9 +1666,15 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
                             hasCachedRawEvents ? cachedSnapshot.RawEvents : Array.Empty<UsageEventRecord>(),
                             hasServiceRawEvents ? serviceCache.RawEvents : Array.Empty<UsageEventRecord>())
                         : new List<UsageEventRecord>();
-                    var mergedEvents = hasCachedRawEvents && hasServiceRawEvents
-                        ? UsageTelemetryQuickReportScanner.BuildMergedEventsFromRawRecords(mergedRawEvents).ToList()
-                        : MergeUsageEventSnapshots(cachedSnapshot.Events, serviceCache.Events);
+                    var mergedEvents = UsageTelemetryCachedSnapshotMerge.SelectStartupEvents(
+                            cachedSnapshot.Events,
+                            serviceCache.Events,
+                            mergedRawEvents,
+                            hasCachedRawEvents,
+                            hasServiceRawEvents,
+                            cachedSnapshot.ScannedAtUtc,
+                            serviceCache.ScannedAtUtc)
+                        .ToList();
                     var mergedProviderIds = cachedSnapshot.DiscoveredProviderIds
                         .Concat(serviceCache.DiscoveredProviderIds)
                         .Concat(mergedEvents.Select(static usageEvent => usageEvent.ProviderId))
