@@ -21,6 +21,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     private const int DefaultRefreshIntervalSeconds = 120;
     private const int StartupWarmRefreshFreshnessSeconds = 900;
     private const int StartupWarmRefreshDelaySeconds = 300;
+    private const int StartupFullUsageRefreshDelaySeconds = 8;
     private const int UsageRootSafetySweepSeconds = 21600;
     private const int UsageChangeDebounceSeconds = 15;
     private const int RefreshHistoryDepth = 4;
@@ -366,8 +367,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     }
 
     private async Task RefreshStartupUsageAfterCacheAsync() {
-        await Task.Delay(TimeSpan.FromSeconds(StartupWarmRefreshDelaySeconds)).ConfigureAwait(true);
-        await RefreshAsync(startupWarmup: true);
+        await Task.Delay(TimeSpan.FromSeconds(StartupFullUsageRefreshDelaySeconds)).ConfigureAwait(true);
+        await RefreshAsync(startupWarmup: false);
     }
 
     private static bool ShouldRunStartupWarmRefreshAfterCache(TrayUsageSnapshotStore.TrayUsageSnapshotCache? cachedSnapshot) {
@@ -389,8 +390,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
 
     private async Task RefreshStartupUsageWithoutCacheAsync() {
         await RefreshAsync(startupWarmup: true);
-        await Task.Delay(TimeSpan.FromSeconds(StartupWarmRefreshDelaySeconds)).ConfigureAwait(true);
-        await RefreshAsync();
+        await Task.Delay(TimeSpan.FromSeconds(StartupFullUsageRefreshDelaySeconds)).ConfigureAwait(true);
+        await RefreshAsync(startupWarmup: false);
     }
 
     private async Task RefreshAutoAsync() {
