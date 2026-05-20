@@ -1745,7 +1745,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         return await Task.Run(() => {
             var cachedSnapshot = _usageSnapshotStore.Load();
             var serviceSnapshot = _usageService.TryLoadCachedSnapshot();
-            if (serviceSnapshot is not null && serviceSnapshot.Events.Count > 0) {
+            if (serviceSnapshot is not null && (serviceSnapshot.Events.Count > 0 || serviceSnapshot.RawEvents.Count > 0)) {
                 var serviceCache = new TrayUsageSnapshotStore.TrayUsageSnapshotCache(
                     serviceSnapshot.ScannedAtUtc,
                     serviceSnapshot.DiscoveredProviderIds.ToList(),
