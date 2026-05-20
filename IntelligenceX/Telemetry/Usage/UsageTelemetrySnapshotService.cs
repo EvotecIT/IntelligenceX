@@ -58,11 +58,12 @@ public sealed class UsageTelemetrySnapshotService {
             return null;
         }
 
-        var events = UsageTelemetryQuickReportScanner.RestoreFromCachedArtifacts(artifacts);
-        if (events.Count == 0) {
+        var rawEvents = UsageTelemetryQuickReportScanner.RestoreRawFromCachedArtifacts(artifacts);
+        if (rawEvents.Count == 0) {
             return null;
         }
 
+        var events = UsageTelemetryQuickReportScanner.BuildMergedEventsFromRawRecords(rawEvents);
         var scannedAtUtc = artifacts
             .Select(static artifact => artifact.ImportedAtUtc)
             .Where(static value => value > DateTimeOffset.MinValue)
@@ -83,7 +84,7 @@ public sealed class UsageTelemetrySnapshotService {
                 .ToArray(),
             sourceRoots: enabledRoots,
             health: BuildCachedSnapshotHealth(allRoots, enabledRoots, artifacts, events),
-            rawEvents: Array.Empty<UsageEventRecord>());
+            rawEvents: rawEvents);
     }
 
     /// <summary>
