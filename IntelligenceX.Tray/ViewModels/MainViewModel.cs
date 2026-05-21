@@ -30,8 +30,12 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     private const int GitHubWatchSnapshotFreshnessSeconds = 21600;
     private const int GitHubWatchForkFreshnessSeconds = 86400;
     private const int GitHubWatchStargazerFreshnessSeconds = 86400;
+    private const string GitHubTokenAutoLoadKey = "__token_authenticated__";
     private const double LimitWarningThresholdPercent = 90d;
     private const double LimitExhaustedThresholdPercent = 100d;
+    private static readonly Geometry ThemeAutoIcon = CreateFrozenGeometry("M12 3C7.03 3 3 7.03 3 12H1L4 15L7 12H5C5 8.13 8.13 5 12 5C14.12 5 16.03 5.93 17.33 7.4L18.75 5.98C17.1 4.15 14.7 3 12 3ZM20 9L17 12H19C19 15.87 15.87 19 12 19C9.88 19 7.97 18.07 6.67 16.6L5.25 18.02C6.9 19.85 9.3 21 12 21C16.97 21 21 16.97 21 12H23L20 9Z");
+    private static readonly Geometry ThemeDarkIcon = CreateFrozenGeometry("M20.5 14.15C18.97 15.02 17.2 15.46 15.36 15.28C10.9 14.86 7.36 11.32 6.94 6.86C6.76 5.02 7.2 3.25 8.07 1.72C4.55 3.14 2.05 6.6 2.05 10.65C2.05 15.96 6.36 20.27 11.67 20.27C15.72 20.27 19.08 17.77 20.5 14.15Z");
+    private static readonly Geometry ThemeLightIcon = CreateFrozenGeometry("M12 4.5C7.86 4.5 4.5 7.86 4.5 12C4.5 16.14 7.86 19.5 12 19.5C16.14 19.5 19.5 16.14 19.5 12C19.5 7.86 16.14 4.5 12 4.5ZM12 7C14.76 7 17 9.24 17 12C17 14.76 14.76 17 12 17C9.24 17 7 14.76 7 12C7 9.24 9.24 7 12 7ZM11 1H13V4H11V1ZM11 20H13V23H11V20ZM20 11H23V13H20V11ZM1 11H4V13H1V11ZM18.36 4.22L19.78 5.64L17.66 7.76L16.24 6.34L18.36 4.22ZM4.22 18.36L6.34 16.24L7.76 17.66L5.64 19.78L4.22 18.36ZM17.66 16.24L19.78 18.36L18.36 19.78L16.24 17.66L17.66 16.24ZM4.22 5.64L5.64 4.22L7.76 6.34L6.34 7.76L4.22 5.64Z");
 
     private readonly UsageTelemetrySnapshotService _usageService;
     private readonly ProviderLimitSnapshotService _limitService;
@@ -72,6 +76,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     private DateTimeOffset _lastLimitRefreshUtc;
     private int _gitHubRefreshVersion;
     private CancellationTokenSource? _gitHubRefreshCts;
+    private string? _lastAutoLoadedGitHubKey;
     private int _limitRefreshVersion;
     private CancellationTokenSource? _limitRefreshCts;
     private string _themeMode = TrayThemeService.SystemMode;
@@ -87,6 +92,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     private DateTimeOffset _lastUsageRootDiscoveryUtc;
     private DateTimeOffset _usageDirtyAtUtc;
     private string? _latestUsageChangePath;
+
+    private sealed record ProviderTransientUiState(bool IsDetailsOpen, ProviderDetailsMode SelectedDetailsMode);
 
     internal MainViewModel(
         UsageTelemetrySnapshotService usageService,
@@ -121,11 +128,13 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
             StringComparer.OrdinalIgnoreCase);
 
         GitHub = new GitHubViewModel {
-            UsernameInput = _preferences.GitHubUsername ?? string.Empty
+            RememberUsername = _preferences.GitHubRememberUsername,
+            RememberedUsername = _preferences.GitHubUsername ?? string.Empty,
+            UsernameInput = _preferences.GitHubRememberUsername ? _preferences.GitHubUsername ?? string.Empty : string.Empty
         };
         GitHub.PropertyChanged += OnGitHubPropertyChanged;
 
-        RefreshCommand = new RelayCommand(() => RefreshAsync());
+        RefreshCommand = new RelayCommand(() => RefreshAsync(startupWarmup: false));
         RefreshGitHubCommand = new RelayCommand(RefreshGitHubCurrentAsync);
         OpenOpenAiCacheCommand = new RelayCommand(OpenOpenAiCacheAsync);
         CycleThemeModeCommand = new RelayCommand(CycleThemeModeAsync);
@@ -172,8 +181,10 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
                 RefreshProviderSelectionState();
                 OnPropertyChanged(nameof(CanToggleFavoriteSelectedProvider));
                 OnPropertyChanged(nameof(FavoriteSelectedProviderLabel));
+                OnPropertyChanged(nameof(FavoriteSelectedProviderActionLabel));
                 ToggleSelectedProviderFavoriteCommand.RaiseCanExecuteChanged();
                 SaveSelectedProviderPreference(value?.ProviderId);
+                RefreshGitHubProfileIfReady();
             }
         }
     }
@@ -281,6 +292,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     public bool HasData => Providers.Count > 0 && SelectedProvider != null;
     public bool CanToggleFavoriteSelectedProvider => SelectedProvider is { ProviderId: not "__all__" };
     public string FavoriteSelectedProviderLabel => SelectedProvider?.IsFavorite == true ? "Pinned" : "Pin";
+    public string FavoriteSelectedProviderActionLabel => SelectedProvider?.IsFavorite == true ? "Unpin provider" : "Pin provider";
     public ICommand HeaderRefreshCommand => ShowGitHubContent ? RefreshGitHubCommand : RefreshCommand;
     public string HeaderRefreshLabel => ShowGitHubContent ? "Load" : "Refresh";
 
@@ -303,7 +315,10 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         private set {
             if (SetProperty(ref _themeMode, value)) {
                 OnPropertyChanged(nameof(ThemeButtonLabel));
+                OnPropertyChanged(nameof(ThemeButtonNextLabel));
+                OnPropertyChanged(nameof(ThemeButtonIcon));
                 OnPropertyChanged(nameof(ThemeToolTip));
+                OnPropertyChanged(nameof(ThemeActionLabel));
             }
         }
     }
@@ -337,7 +352,14 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         ? "Manual refresh"
         : "Auto " + FormatRefreshInterval(AutoRefreshIntervalSeconds);
     public string ThemeButtonLabel => TrayThemeService.GetDisplayName(ThemeMode);
-    public string ThemeToolTip => "Theme: " + TrayThemeService.GetDisplayName(ThemeMode) + ". Click to cycle Auto, Dark, Light.";
+    public string ThemeButtonNextLabel => TrayThemeService.GetDisplayName(GetNextThemeMode(ThemeMode));
+    public Geometry ThemeButtonIcon => TrayThemeService.NormalizeThemeMode(GetNextThemeMode(ThemeMode)) switch {
+        TrayThemeService.DarkMode => ThemeDarkIcon,
+        TrayThemeService.LightMode => ThemeLightIcon,
+        _ => ThemeAutoIcon
+    };
+    public string ThemeActionLabel => "Switch theme to " + ThemeButtonNextLabel;
+    public string ThemeToolTip => ThemeActionLabel + ". Current: " + TrayThemeService.GetDisplayName(ThemeMode) + ".";
     public string AccentSummaryLabel => TrayThemeService.GetAccentDisplayName(AccentPreset);
     public string AccentToolTip => "Accent: " + TrayThemeService.GetAccentDisplayName(AccentPreset) + ". Use the tray context menu to switch presets.";
 
@@ -351,9 +373,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         var cachedUsageSnapshot = await LoadBestCachedUsageSnapshotAsync().ConfigureAwait(true);
         var loadedCachedUsageSnapshot = ApplyCachedUsageSnapshot(cachedUsageSnapshot);
         ConfigureRefreshTimer();
-        if (ShouldRefreshGitHubOnStartup()) {
-            _ = RefreshGitHubAsync(GitHub.UsernameInput);
-        }
+        RefreshGitHubProfileIfReady();
 
         if (loadedCachedUsageSnapshot) {
             if (ShouldRunStartupWarmRefreshAfterCache(cachedUsageSnapshot)) {
@@ -392,13 +412,39 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         return string.Equals(SelectedProvider?.ProviderId, "__github__", StringComparison.OrdinalIgnoreCase);
     }
 
+    private void RefreshGitHubProfileIfReady() {
+        if (!ShowGitHubContent || GitHub.IsLoading || GitHub.HasData) {
+            return;
+        }
+
+        var login = GitHub.UsernameInput?.Trim();
+        if (string.IsNullOrWhiteSpace(login) && GitHub.RememberUsername) {
+            login = GitHub.RememberedUsername?.Trim();
+            if (!string.IsNullOrWhiteSpace(login)) {
+                GitHub.UsernameInput = login;
+            }
+        }
+
+        var autoLoadKey = string.IsNullOrWhiteSpace(login)
+            ? GitHubTokenAutoLoadKey
+            : login;
+
+        if (string.Equals(_lastAutoLoadedGitHubKey, autoLoadKey, StringComparison.OrdinalIgnoreCase)) {
+            return;
+        }
+
+        _lastAutoLoadedGitHubKey = autoLoadKey;
+        _ = RefreshGitHubAsync(login, autoLoadKey);
+    }
+
     private bool ShouldRefreshGitHubDuringLightweightAuto() {
         return ShouldRefreshGitHubOnStartup()
             || GitHub.HasData
             || GitHub.HasToken
             || GitHub.HasObservabilitySummary
             || GitHubWatchAutoSyncEnabled
-            || !string.IsNullOrWhiteSpace(GitHub.UsernameInput);
+            || !string.IsNullOrWhiteSpace(GitHub.UsernameInput)
+            || (GitHub.RememberUsername && !string.IsNullOrWhiteSpace(GitHub.RememberedUsername));
     }
 
     private async Task RefreshStartupUsageWithoutCacheAsync() {
@@ -413,7 +459,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         }
 
         if (ShouldRunFullAutomaticUsageRefresh()) {
-            await RefreshAsync();
+            await RefreshAsync(startupWarmup: false);
             return;
         }
 
@@ -733,7 +779,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
             return;
         }
 
-        await RefreshAsync().ConfigureAwait(false);
+        await RefreshAsync(startupWarmup: false).ConfigureAwait(false);
     }
 
     private string BuildLoadingStatusText(string? value) {
@@ -780,6 +826,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
 
         ReorderProviders();
         OnPropertyChanged(nameof(FavoriteSelectedProviderLabel));
+        OnPropertyChanged(nameof(FavoriteSelectedProviderActionLabel));
         ToggleSelectedProviderFavoriteCommand.RaiseCanExecuteChanged();
         SavePreferences();
         StatusText = IsFavoriteProvider(providerId)
@@ -946,7 +993,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         return Task.CompletedTask;
     }
 
-    private async Task RefreshGitHubAsync(string? ghLogin) {
+    private async Task RefreshGitHubAsync(string? ghLogin, string? autoLoadKey = null) {
         var dispatcher = Application.Current.Dispatcher;
         var currentVersion = Interlocked.Increment(ref _gitHubRefreshVersion);
         using var refreshCts = new CancellationTokenSource();
@@ -992,6 +1039,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
                 TryApplyGitHubAutoSyncStatus(observabilityRefresh.AutoSyncResult);
                 GitHub.IsLoading = false;
             });
+            ResetGitHubAutoLoadKeyIfUnresolved(autoLoadKey);
             Interlocked.CompareExchange(ref _gitHubRefreshCts, null, refreshCts);
             return;
         }
@@ -1023,9 +1071,12 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
                 if (!hasToken && !string.IsNullOrWhiteSpace(effectiveLogin)) {
                     GitHub.ErrorMessage = $"No public GitHub data was returned for '{effectiveLogin}'.";
                 }
+
+                ResetGitHubAutoLoadKeyIfUnresolved(autoLoadKey);
             });
         } catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {
             // A newer refresh superseded this one.
+            await dispatcher.InvokeAsync(() => ResetGitHubAutoLoadKeyIfUnresolved(autoLoadKey));
         } catch (Exception ghEx) {
             var observabilityRefresh = await observabilityTask.ConfigureAwait(false);
             await dispatcher.InvokeAsync(() => {
@@ -1045,6 +1096,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
                 }
 
                 GitHub.ErrorMessage = ghEx.Message;
+                ResetGitHubAutoLoadKeyIfUnresolved(autoLoadKey);
             });
         } finally {
             await dispatcher.InvokeAsync(() => {
@@ -1058,6 +1110,16 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
             if (ReferenceEquals(Interlocked.CompareExchange(ref _gitHubRefreshCts, null, refreshCts), refreshCts)) {
                 // cleared
             }
+        }
+    }
+
+    private void ResetGitHubAutoLoadKeyIfUnresolved(string? autoLoadKey) {
+        if (string.IsNullOrWhiteSpace(autoLoadKey) || GitHub.HasData) {
+            return;
+        }
+
+        if (string.Equals(_lastAutoLoadedGitHubKey, autoLoadKey, StringComparison.OrdinalIgnoreCase)) {
+            _lastAutoLoadedGitHubKey = null;
         }
     }
 
@@ -1075,11 +1137,34 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
 
     private void OnGitHubPropertyChanged(object? sender, PropertyChangedEventArgs e) {
         if (string.Equals(e.PropertyName, nameof(GitHubViewModel.UsernameInput), StringComparison.Ordinal)) {
-            _preferences.GitHubUsername = GitHub.UsernameInput?.Trim() ?? string.Empty;
+            SaveGitHubUsernamePreference();
+        } else if (string.Equals(e.PropertyName, nameof(GitHubViewModel.RememberUsername), StringComparison.Ordinal)) {
+            _preferences.GitHubRememberUsername = GitHub.RememberUsername;
+            if (!GitHub.RememberUsername) {
+                _preferences.GitHubUsername = string.Empty;
+                GitHub.RememberedUsername = string.Empty;
+            } else {
+                SaveGitHubUsernamePreference(savePreferences: false);
+            }
+
             SavePreferences();
         }
 
+        RefreshGitHubProviderPulse();
         OnPropertyChanged(nameof(ShowCombinedGitHubPulse));
+    }
+
+    private void SaveGitHubUsernamePreference(bool savePreferences = true) {
+        if (!GitHub.RememberUsername) {
+            return;
+        }
+
+        var username = GitHub.UsernameInput?.Trim() ?? string.Empty;
+        _preferences.GitHubUsername = username;
+        GitHub.RememberedUsername = username;
+        if (savePreferences) {
+            SavePreferences();
+        }
     }
 
     private void OnProviderPropertyChanged(object? sender, PropertyChangedEventArgs e) {
@@ -1110,6 +1195,12 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
             TrayThemeService.DarkMode => TrayThemeService.LightMode,
             _ => TrayThemeService.SystemMode
         };
+    }
+
+    private static Geometry CreateFrozenGeometry(string data) {
+        var geometry = Geometry.Parse(data);
+        geometry.Freeze();
+        return geometry;
     }
 
     private void ConfigureRefreshTimer() {
@@ -1443,6 +1534,10 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     }
 
     private void RefreshProviderSelectionState() {
+        foreach (var provider in Providers) {
+            provider.IsSelected = ReferenceEquals(provider, SelectedProvider);
+        }
+
         OnPropertyChanged(nameof(HeaderTitle));
         OnPropertyChanged(nameof(IsGitHubTabSelected));
         OnPropertyChanged(nameof(HasData));
@@ -1764,9 +1859,9 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         _usageChangeWatcher.SetRoots(cachedSnapshot.SourceRoots);
         LastRefreshed = cachedSnapshot.ScannedAtUtc.ToLocalTime();
         StatusText = ShouldRunStartupWarmRefreshAfterCache(cachedSnapshot)
-            ? "Showing saved usage snapshot. Refreshing local telemetry in background..."
+            ? "Showing saved usage snapshot. Full telemetry refresh starts shortly..."
             : "Showing saved usage snapshot.";
-        LoadingDetailText = "Showing saved usage while local telemetry catch-up waits for the startup quiet window.";
+        LoadingDetailText = "Showing saved usage while full local telemetry catches up in the background.";
         ScheduleGitCodeChurnRefreshAfterStartup();
         return true;
     }
@@ -2140,10 +2235,21 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
 
     private void ReplaceProviders(IEnumerable<ProviderViewModel> providers) {
         var preferredSelection = SelectedProvider?.ProviderId ?? _preferences.SelectedProviderId;
+        var providerUiState = Providers
+            .Where(static provider => !string.IsNullOrWhiteSpace(provider.ProviderId))
+            .ToDictionary(
+                static provider => provider.ProviderId,
+                static provider => new ProviderTransientUiState(provider.IsDetailsOpen, provider.SelectedDetailsMode),
+                StringComparer.OrdinalIgnoreCase);
+
         var orderedProviders = OrderProviders(providers);
         UnsubscribeProviders();
         Providers.Clear();
         foreach (var provider in orderedProviders) {
+            if (providerUiState.TryGetValue(provider.ProviderId, out var uiState)) {
+                provider.ApplyTransientUiState(uiState.IsDetailsOpen, uiState.SelectedDetailsMode);
+            }
+
             provider.RefreshIconGeometry();
             if (provider.ProviderId != "__github__") {
                 provider.PropertyChanged += OnProviderPropertyChanged;
@@ -2200,7 +2306,44 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
             OutputColor = Color.FromRgb(64, 196, 99)
         };
         gitHubProvider.ApplyRefreshDelta(0L, 0);
+        ApplyGitHubProviderPulse(gitHubProvider);
         return gitHubProvider;
+    }
+
+    private void RefreshGitHubProviderPulse() {
+        if (Providers.FirstOrDefault(provider => string.Equals(provider.ProviderId, "__github__", StringComparison.Ordinal)) is { } gitHubProvider) {
+            ApplyGitHubProviderPulse(gitHubProvider);
+        }
+    }
+
+    private void ApplyGitHubProviderPulse(ProviderViewModel gitHubProvider) {
+        gitHubProvider.ApplyPulseProviderMetricOverride(BuildGitHubProviderMetricText());
+        gitHubProvider.LimitStatusMessage = GitHub.HasError
+            ? "GitHub data needs attention"
+            : null;
+        gitHubProvider.LimitPulseState = GitHub.HasError
+            ? ProviderLimitPulseState.Attention
+            : ProviderLimitPulseState.None;
+    }
+
+    private string BuildGitHubProviderMetricText() {
+        if (GitHub.ChangedTrackedRepositoryCount > 0) {
+            return GitHub.ChangedTrackedRepositoryCountFormatted + " moved";
+        }
+
+        if (GitHub.TrackedRepositoryCount > 0) {
+            return GitHub.TrackedRepositoryCountFormatted + " tracked";
+        }
+
+        if (GitHub.WatchCount > 0) {
+            return GitHub.WatchCountFormatted + " watched";
+        }
+
+        if (GitHub.PublicRepositories > 0) {
+            return GitHub.PublicRepositoriesFormatted + " repos";
+        }
+
+        return "idle";
     }
 
     private static void ApplyUsageHealth(
@@ -2215,6 +2358,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
             provider.UsageHealthSummary = null;
             provider.UsageHealthDetail = null;
             provider.UsageHealthAccountsText = null;
+            provider.UsageHealthState = ProviderUsageHealthState.None;
             return;
         }
 
@@ -2222,6 +2366,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
             provider.UsageHealthSummary = BuildOverallUsageHealthSummary(health);
             provider.UsageHealthDetail = BuildOverallUsageHealthDetail(health);
             provider.UsageHealthAccountsText = BuildUsageHealthAccountsText(health.AccountLabels);
+            provider.UsageHealthState = SelectProviderUsageHealthState(health.IsCachedSnapshot, health.IsPartialScan);
             return;
         }
 
@@ -2231,12 +2376,24 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
             provider.UsageHealthSummary = null;
             provider.UsageHealthDetail = null;
             provider.UsageHealthAccountsText = null;
+            provider.UsageHealthState = ProviderUsageHealthState.None;
             return;
         }
 
         provider.UsageHealthSummary = BuildProviderUsageHealthSummary(health, providerHealth);
         provider.UsageHealthDetail = BuildProviderUsageHealthDetail(providerHealth);
         provider.UsageHealthAccountsText = BuildUsageHealthAccountsText(providerHealth.AccountLabels);
+        provider.UsageHealthState = SelectProviderUsageHealthState(health.IsCachedSnapshot, providerHealth.IsPartialScan);
+    }
+
+    private static ProviderUsageHealthState SelectProviderUsageHealthState(bool isCachedSnapshot, bool isPartialScan) {
+        if (isCachedSnapshot) {
+            return ProviderUsageHealthState.Updating;
+        }
+
+        return isPartialScan
+            ? ProviderUsageHealthState.Partial
+            : ProviderUsageHealthState.Fresh;
     }
 
     private static string BuildOverallUsageHealthSummary(UsageTelemetrySnapshotHealth health) {
@@ -2267,7 +2424,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
             parts.Add(health.DuplicateRecordsCollapsed.ToString(CultureInfo.InvariantCulture) + " deduped");
         }
         if (health.IsPartialScan) {
-            parts.Add("partial scan");
+            parts.Add(health.IsCachedSnapshot ? "full scan pending" : "partial scan");
         }
         if (health.IssueCount > 0) {
             parts.Add(health.IssueCount.ToString(CultureInfo.InvariantCulture) + " issues");
@@ -2394,7 +2551,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
             var brush = new SolidColorBrush(Color.FromRgb(144, 144, 184));
             brush.Freeze();
             return new ProviderComparisonHealthInfo {
-                SummaryText = provider.LimitStatusMessage!,
+                SummaryText = provider.LimitStatusDisplayText ?? "Live limits need attention",
                 SummaryBrush = brush
             };
         }

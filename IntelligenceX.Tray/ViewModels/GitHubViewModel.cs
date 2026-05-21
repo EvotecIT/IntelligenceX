@@ -22,6 +22,8 @@ public sealed class GitHubViewModel : ViewModelBase {
     private string _location = "";
     private string _websiteUrl = "";
     private string _usernameInput = "";
+    private bool _rememberUsername = true;
+    private string _rememberedUsername = "";
     private bool _hasToken;
     private int _ownerCount;
     private int _followers;
@@ -109,7 +111,32 @@ public sealed class GitHubViewModel : ViewModelBase {
     public bool HasLocation => !string.IsNullOrWhiteSpace(Location);
     public string WebsiteUrl { get => _websiteUrl; set { if (SetProperty(ref _websiteUrl, value)) OnPropertyChanged(nameof(HasWebsiteUrl)); } }
     public bool HasWebsiteUrl => !string.IsNullOrWhiteSpace(WebsiteUrl);
-    public string UsernameInput { get => _usernameInput; set => SetProperty(ref _usernameInput, value); }
+    public string UsernameInput {
+        get => _usernameInput;
+        set {
+            if (SetProperty(ref _usernameInput, value)) {
+                OnPropertyChanged(nameof(UsernameMemoryText));
+            }
+        }
+    }
+    public bool RememberUsername {
+        get => _rememberUsername;
+        set {
+            if (SetProperty(ref _rememberUsername, value)) {
+                OnPropertyChanged(nameof(UsernameMemoryText));
+            }
+        }
+    }
+    public string RememberedUsername {
+        get => _rememberedUsername;
+        set {
+            if (SetProperty(ref _rememberedUsername, value)) {
+                OnPropertyChanged(nameof(HasRememberedUsername));
+                OnPropertyChanged(nameof(UsernameMemoryText));
+            }
+        }
+    }
+    public bool HasRememberedUsername => !string.IsNullOrWhiteSpace(RememberedUsername);
     public bool HasToken {
         get => _hasToken;
         set {
@@ -137,6 +164,20 @@ public sealed class GitHubViewModel : ViewModelBase {
     public string UsernameHelpText => HasToken
         ? "Leave blank to load the authenticated account, or enter a username to inspect someone else."
         : "Enter a username to view public repos. Run 'gh auth login' or set GITHUB_TOKEN/GH_TOKEN for full contribution data.";
+    public string UsernameMemoryText {
+        get {
+            if (!RememberUsername) {
+                return "Username memory is off for this device.";
+            }
+
+            var candidate = string.IsNullOrWhiteSpace(UsernameInput)
+                ? RememberedUsername
+                : UsernameInput;
+            return string.IsNullOrWhiteSpace(candidate)
+                ? "The next loaded username will be remembered."
+                : "Remembered for next launch: " + candidate.Trim();
+        }
+    }
     public string CompactIdentityText => HasToken
         ? "Authenticated as " + (string.IsNullOrWhiteSpace(Login) ? "GitHub account" : Login)
         : "Viewing public profile " + (string.IsNullOrWhiteSpace(Login) ? string.Empty : Login);
@@ -179,6 +220,7 @@ public sealed class GitHubViewModel : ViewModelBase {
                 OnPropertyChanged(nameof(TotalIssuesFormatted));
                 OnPropertyChanged(nameof(ContributionAvailabilityText));
                 OnPropertyChanged(nameof(ShowContributionFallbackMessage));
+                OnGitHubPresentationChanged();
             }
         }
     }
@@ -193,6 +235,7 @@ public sealed class GitHubViewModel : ViewModelBase {
                 OnPropertyChanged(nameof(ShowUsernameInput));
                 OnPropertyChanged(nameof(ShowCompactIdentityBar));
                 OnPropertyChanged(nameof(UsernameEditorTitle));
+                OnGitHubPulseChanged();
             }
         }
     }
@@ -326,20 +369,54 @@ public sealed class GitHubViewModel : ViewModelBase {
     }
     public bool HasObservabilitySummary => WatchCount > 0 || TrackedRepositoryCount > 0;
     public bool HasObservabilityMomentum => HistoryReadyCount > 0;
+    public bool ShouldShowGitHubProfilePulse => HasData && !HasObservabilityMomentum;
+    public string GitHubPulseTitle => "GitHub Pulse";
+    public string GitHubPulseSubtitle {
+        get {
+            if (!ShouldShowGitHubProfilePulse) {
+                return ObservabilityCoverageText;
+            }
+
+            var identity = HasDisplayName ? DisplayName : Login;
+            return string.IsNullOrWhiteSpace(identity)
+                ? "Profile and repository signal loaded."
+                : identity + " • profile and repository signal loaded.";
+        }
+    }
+    public string GitHubPulseStatusText => ShouldShowGitHubProfilePulse
+        ? "Profile loaded"
+        : ObservabilityLatestCaptureText;
+    public string GitHubPulsePrimaryValue => ShouldShowGitHubProfilePulse
+        ? HasContributionData ? TotalContributionsFormatted : OwnedRepositoriesFormatted
+        : ChangedTrackedRepositoryCountFormatted;
+    public string GitHubPulsePrimaryLabel => ShouldShowGitHubProfilePulse
+        ? HasContributionData ? "contributions in 12 months" : "owned repositories"
+        : "repos moved on the last sync";
+    public string GitHubPulseMomentumText => ShouldShowGitHubProfilePulse
+        ? BuildGitHubProfilePulseSummary()
+        : ObservabilityMomentumText;
+    public string GitHubPulseStat1Label => ShouldShowGitHubProfilePulse ? HasContributionData ? "Commits" : "Public repos" : "Watched";
+    public string GitHubPulseStat1Value => ShouldShowGitHubProfilePulse ? HasContributionData ? TotalCommitsFormatted : PublicRepositoriesFormatted : WatchCountFormatted;
+    public string GitHubPulseStat2Label => ShouldShowGitHubProfilePulse ? HasContributionData ? "PRs" : "Stars" : "Tracked";
+    public string GitHubPulseStat2Value => ShouldShowGitHubProfilePulse ? HasContributionData ? TotalPRsFormatted : TotalStarsFormatted : TrackedRepositoryCountFormatted;
+    public string GitHubPulseStat3Label => ShouldShowGitHubProfilePulse ? "Stars" : "Stars";
+    public string GitHubPulseStat3Value => ShouldShowGitHubProfilePulse ? TotalStarsFormatted : PositiveStarDeltaFormatted;
+    public string GitHubPulseStat4Label => ShouldShowGitHubProfilePulse ? "Forks" : "Forks";
+    public string GitHubPulseStat4Value => ShouldShowGitHubProfilePulse ? TotalForksFormatted : PositiveForkDeltaFormatted;
     public string ObservabilityCoverageText => WatchCount switch {
-        <= 0 => "No watched repositories are registered in the local telemetry store yet.",
-        _ when TrackedRepositoryCount <= 0 => $"{WatchCountFormatted} watched repos configured, but no snapshots have been synced yet.",
-        _ when HistoryReadyCount <= 0 => $"{TrackedRepositoryCountFormatted} watched repos have baseline snapshots. Run another sync to start delta tracking.",
+        <= 0 => "No watched repo pulse yet. Profile data is loaded below.",
+        _ when TrackedRepositoryCount <= 0 => $"{WatchCountFormatted} watched repos waiting for first snapshot.",
+        _ when HistoryReadyCount <= 0 => $"{TrackedRepositoryCountFormatted} watched repos have baselines. Movement starts after the next sync.",
         _ => $"{TrackedRepositoryCountFormatted} tracked repos • {HistoryReadyCountFormatted} with comparable history."
     };
     public string ObservabilityMomentumText => HistoryReadyCount switch {
-        <= 0 when WatchCount > 0 => "Momentum appears after each watched repo has at least two synced snapshots.",
-        <= 0 => "Watch repos to see star, fork, and watcher movement over time.",
+        <= 0 when WatchCount > 0 => "Waiting for the next snapshot to compare repo movement.",
+        <= 0 => "No repo movement yet. Use profile and repository stats below.",
         _ => $"{ChangedTrackedRepositoryCountFormatted} repos moved on the last sync • {PositiveStarDeltaFormatted} stars • {PositiveForkDeltaFormatted} forks • {PositiveWatcherDeltaFormatted} watchers"
     };
     public string ObservabilityLatestCaptureText => LatestTrackedCaptureAtUtc.HasValue
         ? "Latest capture " + LatestTrackedCaptureAtUtc.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.CurrentCulture)
-        : "No synced watch snapshots yet.";
+        : "No watch snapshots yet.";
     public bool HasPositiveCorrelation => !string.IsNullOrWhiteSpace(PositiveCorrelationPairText);
     public string PositiveCorrelationPairText {
         get => _positiveCorrelationPairText;
@@ -497,8 +574,8 @@ public sealed class GitHubViewModel : ViewModelBase {
         }
     }
     public string ObservabilitySetupText => WatchCount > 0
-        ? "Tracked repos are read from the shared telemetry SQLite store used by the GitHub telemetry CLI. With GitHub auth available, the tray can auto-sync watched repos, useful forks, and stargazer audiences in the background."
-        : "Use `intelligencex telemetry github watches add --repo owner/name` and `... watches sync --stargazers` to start tracking repo momentum, fork networks, and audience overlap.";
+        ? "Watched repositories sync movement, fork networks, and audience overlap."
+        : "Open the full report when you want to add watched repositories.";
     public GitHubRepoSortMode SelectedRepoSort {
         get => _selectedRepoSort;
         set {
@@ -535,13 +612,55 @@ public sealed class GitHubViewModel : ViewModelBase {
     };
 
     public ObservableCollection<GitHubContribBarViewModel> ContribBars { get; } = [];
+    public ObservableCollection<GitHubContributionCellViewModel> ContributionHeatmapCells { get; } = [];
     public ObservableCollection<GitHubLanguageViewModel> Languages { get; } = [];
     public ObservableCollection<GitHubOwnerViewModel> Owners { get; } = [];
     public ObservableCollection<GitHubRepoViewModel> TopRepos { get; } = [];
+    public ObservableCollection<GitHubRepoViewModel> TopRepoPreview { get; } = [];
     public ObservableCollection<GitHubWatchedRepositoryViewModel> WatchedRepositories { get; } = [];
+    public bool HasContributionHeatmap => ContributionHeatmapCells.Count > 0;
     public bool HasWatchedRepositories => WatchedRepositories.Count > 0;
     public GitHubWatchedRepositoryViewModel? LeadingWatchedRepository => WatchedRepositories.FirstOrDefault();
     public bool HasLeadingWatchedRepository => LeadingWatchedRepository is not null;
+    public string GitHubActivityPeriodText => HasContributionData ? "last 12 months" : "repository profile";
+    public string ActivityMixHeadlineText => HasContributionData
+        ? $"{ActivityCommitPercentText} commits • {ActivityPullRequestPercentText} PRs"
+        : "Contribution mix requires authenticated GitHub data.";
+    public string ActivityCommitPercentText => FormatContributionShare(TotalCommits);
+    public string ActivityPullRequestPercentText => FormatContributionShare(TotalPRs);
+    public string ActivityReviewPercentText => FormatContributionShare(TotalReviews);
+    public string ActivityIssuePercentText => FormatContributionShare(TotalIssues);
+    public string TopOrganizationName => Owners.FirstOrDefault(owner => !string.Equals(owner.KindText, "You", StringComparison.OrdinalIgnoreCase))?.Owner
+        ?? Owners.FirstOrDefault()?.Owner
+        ?? "--";
+    public string TopOrganizationDetail => Owners.FirstOrDefault(owner => string.Equals(owner.Owner, TopOrganizationName, StringComparison.OrdinalIgnoreCase)) is { } owner
+        ? owner.RepositoryCountFormatted + " repositories"
+        : "Repository ownership appears after GitHub loads.";
+    public string TopLanguageShareText {
+        get {
+            var top = Languages.FirstOrDefault();
+            return top is null
+                ? "Language mix appears after GitHub loads."
+                : FormatShare(top.RepositoryCount, Math.Max(1, _allRepositories.Count)) + " of repos";
+        }
+    }
+    public string RepoMomentumText => TopRepos.Any(repo => string.Equals(repo.StatusText, "Rising", StringComparison.OrdinalIgnoreCase))
+        ? "Rising"
+        : TopRepos.Any(repo => string.Equals(repo.StatusText, "Warm", StringComparison.OrdinalIgnoreCase))
+            ? "Warm"
+            : "Stable";
+    public string RepoMomentumDetail {
+        get {
+            var rising = TopRepos.Count(repo => string.Equals(repo.StatusText, "Rising", StringComparison.OrdinalIgnoreCase));
+            if (rising > 0) {
+                return rising.ToString("N0", CultureInfo.CurrentCulture) + " high-signal repos";
+            }
+
+            return TopRepos.Count > 0
+                ? TopRepos.Count.ToString("N0", CultureInfo.CurrentCulture) + " repos ranked"
+                : "Repository lens appears after GitHub loads.";
+        }
+    }
 
     public void ClearData() {
         ClearProfileData();
@@ -572,13 +691,16 @@ public sealed class GitHubViewModel : ViewModelBase {
         HasContributionData = true;
         ShowAccountSwitcher = false;
         ContribBars.Clear();
+        ContributionHeatmapCells.Clear();
         Languages.Clear();
         Owners.Clear();
         TopRepos.Clear();
+        TopRepoPreview.Clear();
         _allRepositories = [];
         HasData = false;
         ErrorMessage = string.Empty;
         OnPropertyChanged(nameof(ProfileUrl));
+        OnGitHubPresentationChanged();
     }
 
     public void ClearObservabilitySummary() {
@@ -618,6 +740,7 @@ public sealed class GitHubViewModel : ViewModelBase {
         ForkMomentumPrimaryText = string.Empty;
         ForkMomentumSummaryText = string.Empty;
         WatchedRepositories.Clear();
+        OnGitHubPulseChanged();
     }
 
     internal void ApplyObservabilitySummary(GitHubObservabilitySummaryData data) {
@@ -659,6 +782,8 @@ public sealed class GitHubViewModel : ViewModelBase {
                 TrendSummaryText = BuildTrendSummaryText(repository.TrendPoints)
             });
         }
+
+        OnGitHubPulseChanged();
     }
 
     internal void ApplyLocalActivityCorrelationSummary(GitHubLocalActivityCorrelationSummaryData data) {
@@ -844,8 +969,13 @@ public sealed class GitHubViewModel : ViewModelBase {
         DominantLanguage = languageGroups.FirstOrDefault()?.Language ?? "Unknown";
 
         ContribBars.Clear();
+        ContributionHeatmapCells.Clear();
         if (HasContributionData) {
-            var last30 = c.DailyContributions
+            var orderedDailyContributions = c.DailyContributions
+                .OrderBy(d => d.Date)
+                .ToList();
+            BuildContributionHeatmap(orderedDailyContributions);
+            var last30 = orderedDailyContributions
                 .OrderByDescending(d => d.Date)
                 .Take(30)
                 .OrderBy(d => d.Date)
@@ -865,6 +995,7 @@ public sealed class GitHubViewModel : ViewModelBase {
         }
 
         Owners.Clear();
+        var maxOwnerStars = Math.Max(1, ownerGroups.Select(static owner => owner.Stars).DefaultIfEmpty(0).Max());
         foreach (var owner in ownerGroups.Take(6)) {
             Owners.Add(new GitHubOwnerViewModel {
                 Owner = owner.Owner,
@@ -872,7 +1003,11 @@ public sealed class GitHubViewModel : ViewModelBase {
                 RepositoryCount = owner.RepositoryCount,
                 Stars = owner.Stars,
                 Forks = owner.Forks,
-                ProfileUrl = "https://github.com/" + owner.Owner
+                ProfileUrl = "https://github.com/" + owner.Owner,
+                BarWidth = Math.Max(8d, 320d * owner.Stars / maxOwnerStars),
+                MixMetricText = owner.Stars > 0
+                    ? FormatCount(owner.Stars) + " stars"
+                    : FormatCount(owner.RepositoryCount) + " repos"
             });
         }
 
@@ -891,6 +1026,78 @@ public sealed class GitHubViewModel : ViewModelBase {
         RebuildTopRepos();
         HasData = true;
         ErrorMessage = string.Empty;
+        OnGitHubPulseChanged();
+        OnGitHubPresentationChanged();
+    }
+
+    private void OnGitHubPulseChanged() {
+        OnPropertyChanged(nameof(ShouldShowGitHubProfilePulse));
+        OnPropertyChanged(nameof(GitHubPulseTitle));
+        OnPropertyChanged(nameof(GitHubPulseSubtitle));
+        OnPropertyChanged(nameof(GitHubPulseStatusText));
+        OnPropertyChanged(nameof(GitHubPulsePrimaryValue));
+        OnPropertyChanged(nameof(GitHubPulsePrimaryLabel));
+        OnPropertyChanged(nameof(GitHubPulseMomentumText));
+        OnPropertyChanged(nameof(GitHubPulseStat1Label));
+        OnPropertyChanged(nameof(GitHubPulseStat1Value));
+        OnPropertyChanged(nameof(GitHubPulseStat2Label));
+        OnPropertyChanged(nameof(GitHubPulseStat2Value));
+        OnPropertyChanged(nameof(GitHubPulseStat3Label));
+        OnPropertyChanged(nameof(GitHubPulseStat3Value));
+        OnPropertyChanged(nameof(GitHubPulseStat4Label));
+        OnPropertyChanged(nameof(GitHubPulseStat4Value));
+    }
+
+    private string BuildGitHubProfilePulseSummary() {
+        var language = string.IsNullOrWhiteSpace(DominantLanguage) || string.Equals(DominantLanguage, "Unknown", StringComparison.OrdinalIgnoreCase)
+            ? "Repository"
+            : DominantLanguage;
+        var repoScope = OwnedRepositories > 0
+            ? $"{OwnedRepositoriesFormatted} owned repos"
+            : $"{PublicRepositoriesFormatted} public repos";
+        return $"{language} leads this GitHub view with {TotalStarsFormatted} stars and {TotalForksFormatted} forks across {repoScope}.";
+    }
+
+    private void OnGitHubPresentationChanged() {
+        OnPropertyChanged(nameof(HasContributionHeatmap));
+        OnPropertyChanged(nameof(GitHubActivityPeriodText));
+        OnPropertyChanged(nameof(ActivityMixHeadlineText));
+        OnPropertyChanged(nameof(ActivityCommitPercentText));
+        OnPropertyChanged(nameof(ActivityPullRequestPercentText));
+        OnPropertyChanged(nameof(ActivityReviewPercentText));
+        OnPropertyChanged(nameof(ActivityIssuePercentText));
+        OnPropertyChanged(nameof(TopOrganizationName));
+        OnPropertyChanged(nameof(TopOrganizationDetail));
+        OnPropertyChanged(nameof(TopLanguageShareText));
+        OnPropertyChanged(nameof(RepoMomentumText));
+        OnPropertyChanged(nameof(RepoMomentumDetail));
+    }
+
+    private void BuildContributionHeatmap(IReadOnlyList<GitHubDailyContrib> dailyContributions) {
+        if (dailyContributions.Count == 0) {
+            OnPropertyChanged(nameof(HasContributionHeatmap));
+            return;
+        }
+
+        var firstDay = dailyContributions[0].Date.Date;
+        var leadingPlaceholders = (int)firstDay.DayOfWeek;
+        for (var i = 0; i < leadingPlaceholders; i++) {
+            ContributionHeatmapCells.Add(GitHubContributionCellViewModel.Placeholder);
+        }
+
+        foreach (var day in dailyContributions) {
+            var brush = ParseColorOrDefault(day.Color, day.Count > 0 ? "#40c463" : "#1f2937");
+            ContributionHeatmapCells.Add(new GitHubContributionCellViewModel {
+                Date = day.Date.Date,
+                Count = day.Count,
+                CellBrush = brush,
+                ToolTipText = day.Count.ToString("N0", CultureInfo.CurrentCulture)
+                              + " contributions on "
+                              + day.Date.ToString("MMM d, yyyy", CultureInfo.CurrentCulture)
+            });
+        }
+
+        OnPropertyChanged(nameof(HasContributionHeatmap));
     }
 
     public void SetRepoSort(GitHubRepoSortMode sort) {
@@ -899,8 +1106,11 @@ public sealed class GitHubViewModel : ViewModelBase {
 
     private void RebuildTopRepos() {
         TopRepos.Clear();
+        TopRepoPreview.Clear();
         OnPropertyChanged(nameof(HasTopRepos));
         if (_allRepositories.Count == 0) {
+            OnPropertyChanged(nameof(TopRepoPreview));
+            OnGitHubPresentationChanged();
             return;
         }
 
@@ -926,7 +1136,7 @@ public sealed class GitHubViewModel : ViewModelBase {
         foreach (var repo in ordered.Take(6)) {
             var owner = ExtractOwner(repo.NameWithOwner) ?? Login;
             var pushedAtText = repo.PushedAtUtc?.ToLocalTime().ToString("yyyy-MM-dd") ?? "no recent push";
-            TopRepos.Add(new GitHubRepoViewModel {
+            var item = new GitHubRepoViewModel {
                 Name = repo.NameWithOwner.Contains('/') ? repo.NameWithOwner.Split('/')[1] : repo.NameWithOwner,
                 FullName = repo.NameWithOwner,
                 Owner = owner,
@@ -943,20 +1153,35 @@ public sealed class GitHubViewModel : ViewModelBase {
                 PushedAtText = pushedAtText,
                 HasRecentPush = repo.PushedAtUtc.HasValue,
                 IsArchived = repo.IsArchived
-            });
+            };
+            TopRepos.Add(item);
+            if (TopRepoPreview.Count < 3) {
+                TopRepoPreview.Add(item);
+            }
         }
 
         OnPropertyChanged(nameof(HasTopRepos));
+        OnPropertyChanged(nameof(TopRepoPreview));
+        OnGitHubPresentationChanged();
     }
 
     private static SolidColorBrush ParseColorOrDefault(string? hex, string fallback) {
-        try {
-            var color = (Color)ColorConverter.ConvertFromString(hex ?? fallback);
+        if (TryParseColor(hex, out var color) || TryParseColor(fallback, out color)) {
             var brush = new SolidColorBrush(color);
             brush.Freeze();
             return brush;
+        }
+
+        return Brushes.Gray;
+    }
+
+    private static bool TryParseColor(string? value, out Color color) {
+        try {
+            color = (Color)ColorConverter.ConvertFromString(value)!;
+            return true;
         } catch {
-            return Brushes.Gray;
+            color = default;
+            return false;
         }
     }
 
@@ -1447,6 +1672,23 @@ public sealed class GitHubViewModel : ViewModelBase {
         _ => n.ToString("N0")
     };
 
+    private string FormatContributionShare(int value) {
+        var total = TotalCommits + TotalPRs + TotalReviews + TotalIssues;
+        if (!HasContributionData || total <= 0) {
+            return "--";
+        }
+
+        return (100d * value / total).ToString("0", CultureInfo.CurrentCulture) + "%";
+    }
+
+    private static string FormatShare(int value, int total) {
+        if (total <= 0) {
+            return "--";
+        }
+
+        return (100d * value / total).ToString("0", CultureInfo.CurrentCulture) + "%";
+    }
+
     private static string FormatSignedCount(int value) {
         if (value > 0) {
             return "+" + FormatCount(value);
@@ -1466,6 +1708,20 @@ public sealed class GitHubContribBarViewModel {
     public double BarHeight { get; set; }
     public Brush BarBrush { get; set; } = Brushes.Gray;
     public string DayLabel { get; set; } = "";
+}
+
+public sealed class GitHubContributionCellViewModel {
+    public static GitHubContributionCellViewModel Placeholder { get; } = new() {
+        IsPlaceholder = true,
+        CellBrush = Brushes.Transparent,
+        ToolTipText = string.Empty
+    };
+
+    public DateTime Date { get; set; }
+    public int Count { get; set; }
+    public Brush CellBrush { get; set; } = Brushes.Gray;
+    public string ToolTipText { get; set; } = "";
+    public bool IsPlaceholder { get; set; }
 }
 
 public sealed class GitHubRepoViewModel {
@@ -1525,6 +1781,8 @@ public sealed class GitHubOwnerViewModel {
     public int Stars { get; set; }
     public int Forks { get; set; }
     public string ProfileUrl { get; set; } = "";
+    public double BarWidth { get; set; } = 8d;
+    public string MixMetricText { get; set; } = "";
     public string RepositoryCountFormatted => RepositoryCount.ToString("N0");
     public string StarsFormatted => Stars >= 1000 ? $"{Stars / 1000.0:F1}K" : Stars.ToString("N0");
     public string ForksFormatted => Forks >= 1000 ? $"{Forks / 1000.0:F1}K" : Forks.ToString("N0");

@@ -223,11 +223,11 @@ public static class UsageTelemetryApiPricing {
             hasKnownPricing: true);
     }
 
-    private static bool ShouldTreatCachedInputAsInputSubset(string? providerId) {
+    internal static bool ShouldTreatCachedInputAsInputSubset(string? providerId) {
         return IsOpenAiFamilyProvider(providerId);
     }
 
-    private static bool ShouldTreatReasoningAsOutputSubset(string? providerId) {
+    internal static bool ShouldTreatReasoningAsOutputSubset(string? providerId) {
         return IsOpenAiFamilyProvider(providerId);
     }
 
