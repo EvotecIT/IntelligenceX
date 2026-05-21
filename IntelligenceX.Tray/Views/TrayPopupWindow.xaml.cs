@@ -70,8 +70,11 @@ public partial class TrayPopupWindow : Window {
     }
 
     private void OnDeactivated(object? sender, EventArgs e) {
-        // Keep the tray surface available while the user works across monitors.
-        // Explicit close/minimize/tray-toggle actions still hide the window.
+        if (DateTimeOffset.UtcNow < _suppressDeactivateUntilUtc) {
+            return;
+        }
+
+        Hide();
     }
 
     private void OnProviderTabClick(object sender, RoutedEventArgs e) {

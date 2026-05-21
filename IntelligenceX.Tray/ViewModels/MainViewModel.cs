@@ -2321,6 +2321,9 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         gitHubProvider.LimitStatusMessage = GitHub.HasError
             ? "GitHub data needs attention"
             : null;
+        gitHubProvider.LimitPulseState = GitHub.HasError
+            ? ProviderLimitPulseState.Attention
+            : ProviderLimitPulseState.None;
     }
 
     private string BuildGitHubProviderMetricText() {
@@ -2355,6 +2358,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
             provider.UsageHealthSummary = null;
             provider.UsageHealthDetail = null;
             provider.UsageHealthAccountsText = null;
+            provider.UsageHealthState = ProviderUsageHealthState.None;
             return;
         }
 
@@ -2362,6 +2366,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
             provider.UsageHealthSummary = BuildOverallUsageHealthSummary(health);
             provider.UsageHealthDetail = BuildOverallUsageHealthDetail(health);
             provider.UsageHealthAccountsText = BuildUsageHealthAccountsText(health.AccountLabels);
+            provider.UsageHealthState = SelectProviderUsageHealthState(health.IsCachedSnapshot, health.IsPartialScan);
             return;
         }
 
@@ -2371,12 +2376,24 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
             provider.UsageHealthSummary = null;
             provider.UsageHealthDetail = null;
             provider.UsageHealthAccountsText = null;
+            provider.UsageHealthState = ProviderUsageHealthState.None;
             return;
         }
 
         provider.UsageHealthSummary = BuildProviderUsageHealthSummary(health, providerHealth);
         provider.UsageHealthDetail = BuildProviderUsageHealthDetail(providerHealth);
         provider.UsageHealthAccountsText = BuildUsageHealthAccountsText(providerHealth.AccountLabels);
+        provider.UsageHealthState = SelectProviderUsageHealthState(health.IsCachedSnapshot, providerHealth.IsPartialScan);
+    }
+
+    private static ProviderUsageHealthState SelectProviderUsageHealthState(bool isCachedSnapshot, bool isPartialScan) {
+        if (isCachedSnapshot) {
+            return ProviderUsageHealthState.Updating;
+        }
+
+        return isPartialScan
+            ? ProviderUsageHealthState.Partial
+            : ProviderUsageHealthState.Fresh;
     }
 
     private static string BuildOverallUsageHealthSummary(UsageTelemetrySnapshotHealth health) {

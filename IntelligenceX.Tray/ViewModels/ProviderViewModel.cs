@@ -48,6 +48,26 @@ public enum ProviderDetailsMode {
     Scope
 }
 
+public enum ProviderUsageHealthState {
+    None,
+    Fresh,
+    Updating,
+    Partial
+}
+
+public enum ProviderLimitPulseState {
+    None,
+    Attention,
+    Unavailable
+}
+
+internal enum ProviderPulseStatusKind {
+    Fresh,
+    Updating,
+    Partial,
+    NeedsAttention
+}
+
 internal static class ProviderFilterDefaults {
     public const string AllAccounts = "All accounts";
     public const string AllModels = "All models";
@@ -119,6 +139,8 @@ public sealed class ProviderViewModel : ViewModelBase {
     private string? _usageHealthSummary;
     private string? _usageHealthDetail;
     private string? _usageHealthAccountsText;
+    private ProviderUsageHealthState _usageHealthState;
+    private ProviderLimitPulseState _limitPulseState;
     private string? _scopeLocalText;
     private string? _scopeOnlineText;
     private string? _scopeDifferenceText;
@@ -396,49 +418,40 @@ public sealed class ProviderViewModel : ViewModelBase {
         : FrozenBrush(Color.FromRgb(255, 138, 24));
     public long PulsePreviousDayTokens => _pulsePreviousDayTokens;
     public string PulseStatusText {
-        get {
-            if (HasLimitStatusMessage) {
-                return "Needs attention";
-            }
-
-            if (HasCachedOrPendingUsageHealth) {
-                return "Updating";
-            }
-
-            if (HasPartialUsageHealth) {
-                return "Partial";
-            }
-
-            return "Fresh snapshot";
-        }
+        get => GetPulseStatusKind() switch {
+            ProviderPulseStatusKind.NeedsAttention => "Needs attention",
+            ProviderPulseStatusKind.Updating => "Updating",
+            ProviderPulseStatusKind.Partial => "Partial",
+            _ => "Fresh snapshot"
+        };
     }
-    public Brush PulseStatusBrush => PulseStatusText switch {
-        "Needs attention" => FrozenBrush(Color.FromRgb(240, 192, 64)),
-        "Updating" => FrozenBrush(Color.FromRgb(240, 192, 64)),
-        "Partial" => FrozenBrush(Color.FromRgb(240, 192, 64)),
+    public Brush PulseStatusBrush => GetPulseStatusKind() switch {
+        ProviderPulseStatusKind.NeedsAttention => FrozenBrush(Color.FromRgb(240, 192, 64)),
+        ProviderPulseStatusKind.Updating => FrozenBrush(Color.FromRgb(240, 192, 64)),
+        ProviderPulseStatusKind.Partial => FrozenBrush(Color.FromRgb(240, 192, 64)),
         _ => FrozenBrush(Color.FromRgb(80, 216, 128))
     };
-    public Brush PulseStatusPanelBrush => PulseStatusText switch {
-        "Needs attention" => FrozenBrush(Color.FromArgb(0x22, 0xF0, 0xC0, 0x40)),
-        "Updating" => FrozenBrush(Color.FromArgb(0x22, 0xF0, 0xC0, 0x40)),
-        "Partial" => FrozenBrush(Color.FromArgb(0x22, 0xF0, 0xC0, 0x40)),
+    public Brush PulseStatusPanelBrush => GetPulseStatusKind() switch {
+        ProviderPulseStatusKind.NeedsAttention => FrozenBrush(Color.FromArgb(0x22, 0xF0, 0xC0, 0x40)),
+        ProviderPulseStatusKind.Updating => FrozenBrush(Color.FromArgb(0x22, 0xF0, 0xC0, 0x40)),
+        ProviderPulseStatusKind.Partial => FrozenBrush(Color.FromArgb(0x22, 0xF0, 0xC0, 0x40)),
         _ => FrozenBrush(Color.FromArgb(0x22, 0x50, 0xD8, 0x80))
     };
     public string PulseInsightText => BuildPulseInsightText();
     public string PulseHealthChipText => HasLimitStatusMessage
         ? BuildPulseLimitChipText()
-        : HasCachedOrPendingUsageHealth
+        : UsageHealthState == ProviderUsageHealthState.Updating
             ? "Updating scan"
-        : HasPartialUsageHealth
+        : UsageHealthState == ProviderUsageHealthState.Partial
             ? "Partial scan"
             : HasUsageHealthSummary
             ? UsageHealthSummary!
             : "Health OK";
     public string PulseHealthDetailText => HasLimitStatusMessage
         ? "Limit status"
-        : HasCachedOrPendingUsageHealth
+        : UsageHealthState == ProviderUsageHealthState.Updating
             ? "Data health"
-        : HasPartialUsageHealth
+        : UsageHealthState == ProviderUsageHealthState.Partial
             ? "Data health"
             : HasUsageHealthSummary
                 ? "Data health"
@@ -888,6 +901,17 @@ public sealed class ProviderViewModel : ViewModelBase {
         }
     }
 
+    public ProviderLimitPulseState LimitPulseState {
+        get => _limitPulseState;
+        set {
+            if (SetProperty(ref _limitPulseState, value)) {
+                OnPropertyChanged(nameof(LimitStatusDisplayText));
+                OnPropertyChanged(nameof(HasLimitStatusDisplayText));
+                NotifyPulseStatusChanged();
+            }
+        }
+    }
+
     public string? RecommendedLimitAccountLabel {
         get => _recommendedLimitAccountLabel;
         set {
@@ -921,8 +945,6 @@ public sealed class ProviderViewModel : ViewModelBase {
         set {
             if (SetProperty(ref _usageHealthSummary, value)) {
                 OnPropertyChanged(nameof(HasUsageHealthSummary));
-                OnPropertyChanged(nameof(HasPartialUsageHealth));
-                OnPropertyChanged(nameof(HasCachedOrPendingUsageHealth));
                 OnPropertyChanged(nameof(HasUsageHealthSection));
                 OnPropertyChanged(nameof(PulseHealthDetailText));
                 NotifyPulseStatusChanged();
@@ -935,9 +957,19 @@ public sealed class ProviderViewModel : ViewModelBase {
         set {
             if (SetProperty(ref _usageHealthDetail, value)) {
                 OnPropertyChanged(nameof(HasUsageHealthDetail));
+                OnPropertyChanged(nameof(HasUsageHealthSection));
+                OnPropertyChanged(nameof(PulseHealthDetailText));
+                NotifyPulseStatusChanged();
+            }
+        }
+    }
+
+    public ProviderUsageHealthState UsageHealthState {
+        get => _usageHealthState;
+        set {
+            if (SetProperty(ref _usageHealthState, value)) {
                 OnPropertyChanged(nameof(HasPartialUsageHealth));
                 OnPropertyChanged(nameof(HasCachedOrPendingUsageHealth));
-                OnPropertyChanged(nameof(HasUsageHealthSection));
                 OnPropertyChanged(nameof(PulseHealthDetailText));
                 NotifyPulseStatusChanged();
             }
@@ -986,18 +1018,14 @@ public sealed class ProviderViewModel : ViewModelBase {
 
     public bool HasLimitSummary => !string.IsNullOrWhiteSpace(LimitSummary);
     public bool HasLimitStatusMessage => !string.IsNullOrWhiteSpace(LimitStatusMessage);
-    public string? LimitStatusDisplayText => BuildLimitStatusDisplayText(LimitStatusMessage);
+    public string? LimitStatusDisplayText => BuildLimitStatusDisplayText(LimitStatusMessage, LimitPulseState);
     public bool HasLimitStatusDisplayText => !string.IsNullOrWhiteSpace(LimitStatusDisplayText);
     public bool HasRecommendedLimitAccount => !string.IsNullOrWhiteSpace(RecommendedLimitAccountLabel);
     public bool HasLimitAccountsOverview => !string.IsNullOrWhiteSpace(LimitAccountsOverviewText);
     public bool HasUsageHealthSummary => !string.IsNullOrWhiteSpace(UsageHealthSummary);
     public bool HasUsageHealthDetail => !string.IsNullOrWhiteSpace(UsageHealthDetail);
-    public bool HasPartialUsageHealth =>
-        ContainsPartialUsageHealth(UsageHealthSummary)
-        || ContainsPartialUsageHealth(UsageHealthDetail);
-    public bool HasCachedOrPendingUsageHealth =>
-        ContainsCachedOrPendingUsageHealth(UsageHealthSummary)
-        || ContainsCachedOrPendingUsageHealth(UsageHealthDetail);
+    public bool HasPartialUsageHealth => UsageHealthState == ProviderUsageHealthState.Partial;
+    public bool HasCachedOrPendingUsageHealth => UsageHealthState == ProviderUsageHealthState.Updating;
     public bool HasUsageHealthAccounts => !string.IsNullOrWhiteSpace(UsageHealthAccountsText);
     public bool HasScopeLocalText => !string.IsNullOrWhiteSpace(ScopeLocalText);
     public bool HasScopeOnlineText => !string.IsNullOrWhiteSpace(ScopeOnlineText);
@@ -1299,6 +1327,7 @@ public sealed class ProviderViewModel : ViewModelBase {
             LimitSummary = null;
             LimitSourceLabel = null;
             LimitStatusMessage = null;
+            LimitPulseState = ProviderLimitPulseState.None;
             RecommendedLimitAccountLabel = null;
             RecommendedLimitAccountSummary = null;
             LimitAccountsOverviewText = null;
@@ -1310,6 +1339,11 @@ public sealed class ProviderViewModel : ViewModelBase {
         LimitSummary = snapshot.Summary;
         LimitSourceLabel = snapshot.SourceLabel;
         LimitStatusMessage = snapshot.DetailMessage;
+        LimitPulseState = string.IsNullOrWhiteSpace(snapshot.DetailMessage)
+            ? ProviderLimitPulseState.None
+            : snapshot.IsAvailable
+                ? ProviderLimitPulseState.Attention
+                : ProviderLimitPulseState.Unavailable;
         RecommendedLimitAccountLabel = null;
         RecommendedLimitAccountSummary = null;
         LimitAccountsOverviewText = null;
@@ -1738,21 +1772,6 @@ public sealed class ProviderViewModel : ViewModelBase {
         OnPropertyChanged(nameof(PulseHealthChipText));
     }
 
-    private static bool ContainsPartialUsageHealth(string? value) {
-        return !string.IsNullOrWhiteSpace(value)
-               && value.IndexOf("partial", StringComparison.OrdinalIgnoreCase) >= 0;
-    }
-
-    private static bool ContainsCachedOrPendingUsageHealth(string? value) {
-        if (string.IsNullOrWhiteSpace(value)) {
-            return false;
-        }
-
-        return value.IndexOf("cached snapshot", StringComparison.OrdinalIgnoreCase) >= 0
-               || value.IndexOf("full scan pending", StringComparison.OrdinalIgnoreCase) >= 0
-               || value.IndexOf("scan pending", StringComparison.OrdinalIgnoreCase) >= 0;
-    }
-
     private double PulseMixProportion(long value) {
         var denominator = PulseMixTotalTokens;
         return denominator > 0
@@ -1800,53 +1819,43 @@ public sealed class ProviderViewModel : ViewModelBase {
     }
 
     private string BuildPulseLimitChipText() {
-        var text = LimitStatusMessage ?? string.Empty;
-        if (text.IndexOf("OAuth", StringComparison.OrdinalIgnoreCase) >= 0
-            || text.IndexOf("token", StringComparison.OrdinalIgnoreCase) >= 0
-            || text.IndexOf("sign", StringComparison.OrdinalIgnoreCase) >= 0
-            || text.IndexOf("session", StringComparison.OrdinalIgnoreCase) >= 0) {
-            return "Limit sign-in";
+        return LimitPulseState == ProviderLimitPulseState.Unavailable
+            ? "Limits unavailable"
+            : "Limits attention";
+    }
+
+    private ProviderPulseStatusKind GetPulseStatusKind() {
+        if (LimitPulseState != ProviderLimitPulseState.None) {
+            return ProviderPulseStatusKind.NeedsAttention;
         }
 
-        if (text.IndexOf("unavailable", StringComparison.OrdinalIgnoreCase) >= 0
-            || text.IndexOf("not available", StringComparison.OrdinalIgnoreCase) >= 0) {
-            return "Limits unavailable";
-        }
-
-        return "Limits attention";
+        return UsageHealthState switch {
+            ProviderUsageHealthState.Updating => ProviderPulseStatusKind.Updating,
+            ProviderUsageHealthState.Partial => ProviderPulseStatusKind.Partial,
+            _ => ProviderPulseStatusKind.Fresh
+        };
     }
 
     private string BuildPulseLimitInsightText() {
-        var text = LimitStatusMessage ?? string.Empty;
-        if (text.IndexOf("OAuth", StringComparison.OrdinalIgnoreCase) >= 0
-            || text.IndexOf("token", StringComparison.OrdinalIgnoreCase) >= 0
-            || text.IndexOf("sign", StringComparison.OrdinalIgnoreCase) >= 0
-            || text.IndexOf("session", StringComparison.OrdinalIgnoreCase) >= 0) {
-            return "Live limits need a refreshed sign-in; local usage still updates.";
-        }
-
-        return "Live limits need attention; local usage still updates.";
+        return LimitPulseState == ProviderLimitPulseState.Unavailable
+            ? "Live limits are unavailable; local usage still updates."
+            : "Live limits need attention; local usage still updates.";
     }
 
-    private static string? BuildLimitStatusDisplayText(string? value) {
+    private static string? BuildLimitStatusDisplayText(string? value, ProviderLimitPulseState state) {
         if (string.IsNullOrWhiteSpace(value)) {
             return null;
         }
 
-        var text = value.Trim();
-        if (text.IndexOf("OAuth", StringComparison.OrdinalIgnoreCase) >= 0
-            || text.IndexOf("refresh token", StringComparison.OrdinalIgnoreCase) >= 0
-            || text.IndexOf("access token", StringComparison.OrdinalIgnoreCase) >= 0
-            || text.IndexOf("signing in", StringComparison.OrdinalIgnoreCase) >= 0
-            || text.IndexOf("session key", StringComparison.OrdinalIgnoreCase) >= 0) {
-            return "Live limits need a refreshed sign-in. Local usage telemetry is still available.";
-        }
-
-        if (text.IndexOf("not available", StringComparison.OrdinalIgnoreCase) >= 0
-            || text.IndexOf("unavailable", StringComparison.OrdinalIgnoreCase) >= 0) {
+        if (state == ProviderLimitPulseState.Unavailable) {
             return "Live limits are unavailable for this provider right now.";
         }
 
+        if (state == ProviderLimitPulseState.Attention) {
+            return "Live limits need attention. Local usage telemetry is still available.";
+        }
+
+        var text = value.Trim();
         return text.Length <= 160
             ? text
             : text[..157] + "...";
@@ -2427,25 +2436,15 @@ public sealed class ProviderViewModel : ViewModelBase {
     private (string Metric, string Detail, Brush AccentBrush) BuildCombinedHealthOverview() {
         var summary = NormalizeOptional(UsageHealthSummary);
         var detail = NormalizeOptional(UsageHealthDetail) ?? NormalizeOptional(UsageHealthAccountsText);
-        var combinedText = string.Join(" ", new[] { summary, detail }.Where(static value => !string.IsNullOrWhiteSpace(value))).ToLowerInvariant();
 
-        if (combinedText.Contains("cached", StringComparison.Ordinal)) {
+        if (UsageHealthState == ProviderUsageHealthState.Updating) {
             return (
                 "Cached",
                 summary ?? detail ?? "The tray is showing saved data while local telemetry catches up.",
                 FrozenBrush(Color.FromRgb(144, 144, 184)));
         }
 
-        if (combinedText.Contains("pending", StringComparison.Ordinal)) {
-            return (
-                "Catching up",
-                summary ?? detail ?? "A full local scan is running shortly after startup.",
-                FrozenBrush(Color.FromRgb(96, 176, 232)));
-        }
-
-        if (combinedText.Contains("partial", StringComparison.Ordinal) ||
-            combinedText.Contains("missing", StringComparison.Ordinal) ||
-            combinedText.Contains("stale", StringComparison.Ordinal)) {
+        if (UsageHealthState == ProviderUsageHealthState.Partial) {
             return (
                 "Partial",
                 summary ?? detail ?? "Some provider roots or artifacts were incomplete during the last scan.",
