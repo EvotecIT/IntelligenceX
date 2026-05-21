@@ -780,14 +780,15 @@ public sealed partial class MainWindow : Window {
         var imageOutputFormat = (_localProviderImageGenerationOutputFormat ?? string.Empty).Trim();
         var imageBackground = (_localProviderImageGenerationBackground ?? string.Empty).Trim();
         var imageOutputDirectory = (_localProviderImageGenerationOutputDirectory ?? string.Empty).Trim();
-        var hasImageGenerationOverrides = _localProviderImageGenerationOverrideActive
-                                      || _localProviderImageGenerationEnabled
-                                      || imageQuality.Length > 0
-                                      || imageSize.Length > 0
-                                      || imageOutputFormat.Length > 0
-                                      || _localProviderImageGenerationOutputCompression.HasValue
-                                      || imageBackground.Length > 0
-                                      || imageOutputDirectory.Length > 0;
+        var hasImageGenerationOverrides = HasImageGenerationLaunchOverrides(
+            _localProviderImageGenerationOverrideActive,
+            _localProviderImageGenerationEnabled,
+            imageQuality,
+            imageSize,
+            imageOutputFormat,
+            _localProviderImageGenerationOutputCompression,
+            imageBackground,
+            imageOutputDirectory);
 
         return new ServiceLaunchProfileOptions {
             LoadProfileName = profileName,
@@ -815,6 +816,24 @@ public sealed partial class MainWindow : Window {
             PackToggles = BuildRuntimePackTogglesFromSessionPolicy()
         };
     }
+
+    internal static bool HasImageGenerationLaunchOverrides(
+        bool imageGenerationOverrideActive,
+        bool imageGenerationEnabled,
+        string? imageQuality,
+        string? imageSize,
+        string? imageOutputFormat,
+        int? imageOutputCompression,
+        string? imageBackground,
+        string? imageOutputDirectory) =>
+        imageGenerationOverrideActive ||
+        imageGenerationEnabled ||
+        !string.IsNullOrWhiteSpace(imageQuality) ||
+        !string.IsNullOrWhiteSpace(imageSize) ||
+        !string.IsNullOrWhiteSpace(imageOutputFormat) ||
+        imageOutputCompression.HasValue ||
+        !string.IsNullOrWhiteSpace(imageBackground) ||
+        !string.IsNullOrWhiteSpace(imageOutputDirectory);
 
     private ServiceLaunchArguments.PackToggle[]? BuildRuntimePackTogglesFromSessionPolicy() {
         var packs = RuntimeToolingMetadataResolver.ResolveEffectivePacks(
