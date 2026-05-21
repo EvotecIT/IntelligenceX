@@ -391,6 +391,44 @@ internal static partial class Program {
         AssertEqual(0.01m, merged[0].CostUsd ?? 0m, "cached startup merge preserves updated rollup cost metadata");
     }
 
+    private static void TestUsageTelemetryCachedStartupMergeDeduplicatesRefreshedRollupTimestamp() {
+        var cachedScannedAt = new DateTimeOffset(2026, 03, 10, 9, 0, 0, TimeSpan.Zero);
+        var serviceScannedAt = cachedScannedAt.AddMinutes(5);
+        var rawRecords = new[] {
+            new UsageEventRecord("raw-1", "codex", "codex.logs", "src-1", cachedScannedAt.AddMinutes(10)) {
+                InputTokens = 120,
+                OutputTokens = 40,
+                TotalTokens = 160,
+                CompactCount = 2
+            }
+        };
+        var rawRollup = UsageTelemetryQuickReportScanner.BuildMergedEventsFromRawRecords(rawRecords)[0];
+        var staleRollup = new UsageEventRecord(rawRollup.EventId, "codex", "codex.logs", "src-1", cachedScannedAt) {
+            Model = rawRollup.Model,
+            Surface = rawRollup.Surface,
+            InputTokens = 100,
+            OutputTokens = 30,
+            TotalTokens = 130,
+            CompactCount = 1,
+            CostUsd = 0.01m
+        };
+
+        var merged = UsageTelemetryCachedSnapshotMerge.SelectStartupEvents(
+            cachedEvents: new[] { staleRollup },
+            serviceEvents: Array.Empty<UsageEventRecord>(),
+            mergedRawEvents: rawRecords,
+            hasCachedRawEvents: true,
+            hasServiceRawEvents: true,
+            cachedScannedAt,
+            serviceScannedAt);
+
+        AssertEqual(1, merged.Count, "cached startup merge refreshed timestamp rollup count");
+        AssertEqual(120L, merged[0].InputTokens ?? 0L, "cached startup merge refreshed timestamp keeps dominating input");
+        AssertEqual(160L, merged[0].TotalTokens ?? 0L, "cached startup merge refreshed timestamp avoids double counting total");
+        AssertEqual(2, merged[0].CompactCount ?? 0, "cached startup merge refreshed timestamp keeps dominating compact count");
+        AssertEqual(0.01m, merged[0].CostUsd ?? 0m, "cached startup merge refreshed timestamp preserves cost metadata");
+    }
+
     private static void TestUsageTelemetryCachedStartupMergePrefersNewestSourceRootMetadata() {
         var cachedScannedAt = new DateTimeOffset(2026, 03, 10, 9, 0, 0, TimeSpan.Zero);
         var serviceScannedAt = cachedScannedAt.AddMinutes(5);

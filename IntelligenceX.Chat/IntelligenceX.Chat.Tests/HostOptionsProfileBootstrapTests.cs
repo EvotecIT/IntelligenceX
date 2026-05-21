@@ -83,6 +83,27 @@ public sealed class HostOptionsProfileBootstrapTests {
     }
 
     [Fact]
+    public void ApplyProfile_ReplacesImageGenerationRuntimeOverrideWithProfileValue() {
+        var options = CreateHostOptionsInstance();
+        Assert.NotNull(options);
+
+        var replOptionsType = options!.GetType();
+        var applyProfile = replOptionsType.GetMethod("ApplyProfile", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        Assert.NotNull(applyProfile);
+
+        SetBoolProperty(options, "EnableImageGeneration", true);
+        SetNullableBoolProperty(options, "ImageGenerationEnabledOverride", true);
+
+        var profile = new ServiceProfile {
+            EnableImageGeneration = false
+        };
+
+        applyProfile!.Invoke(options, new object?[] { profile });
+        Assert.False(ReadBoolProperty(options, "EnableImageGeneration"));
+        Assert.False(ReadNullableBoolProperty(options, "ImageGenerationEnabledOverride") ?? true);
+    }
+
+    [Fact]
     public void ApplyProfile_PropagatesExplicitRoutingMetadataRequirement() {
         var options = CreateHostOptionsInstance();
         Assert.NotNull(options);
@@ -465,6 +486,25 @@ public sealed class HostOptionsProfileBootstrapTests {
         var value = property!.GetValue(instance);
         Assert.IsType<bool>(value);
         return (bool)value!;
+    }
+
+    private static bool? ReadNullableBoolProperty(object instance, string propertyName) {
+        var property = instance.GetType().GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        Assert.NotNull(property);
+        var value = property!.GetValue(instance);
+        return value is null ? null : Assert.IsType<bool>(value);
+    }
+
+    private static void SetBoolProperty(object instance, string propertyName, bool value) {
+        var property = instance.GetType().GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        Assert.NotNull(property);
+        property!.SetValue(instance, value);
+    }
+
+    private static void SetNullableBoolProperty(object instance, string propertyName, bool? value) {
+        var property = instance.GetType().GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        Assert.NotNull(property);
+        property!.SetValue(instance, value);
     }
 
     private static int ReadIntProperty(object instance, string propertyName) {

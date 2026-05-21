@@ -135,7 +135,8 @@ internal static class UsageTelemetryCachedSnapshotMerge {
         for (var i = 0; i < contributions.Count; i++) {
             var existing = contributions[i];
             if (HasSameRollupCoverage(existing, incoming) ||
-                HasSameRollupIdentity(existing, incoming) && HasDominatingRollupCoverage(existing, incoming)) {
+                HasSameRollupIdentity(existing, incoming) && HasDominatingRollupCoverage(existing, incoming) ||
+                HasSameRollupIdentityIgnoringTimestamp(existing, incoming) && CoverageDominates(incoming, existing)) {
                 MergeDuplicateContributionInto(existing, incoming);
                 return true;
             }
@@ -203,6 +204,13 @@ internal static class UsageTelemetryCachedSnapshotMerge {
         string.Equals(existing.AdapterId, incoming.AdapterId, StringComparison.OrdinalIgnoreCase) &&
         string.Equals(existing.SourceRootId, incoming.SourceRootId, StringComparison.OrdinalIgnoreCase) &&
         existing.TimestampUtc == incoming.TimestampUtc &&
+        HasSameRollupIdentityIgnoringTimestamp(existing, incoming);
+
+    private static bool HasSameRollupIdentityIgnoringTimestamp(UsageEventRecord existing, UsageEventRecord incoming) =>
+        string.Equals(existing.EventId, incoming.EventId, StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(existing.ProviderId, incoming.ProviderId, StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(existing.AdapterId, incoming.AdapterId, StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(existing.SourceRootId, incoming.SourceRootId, StringComparison.OrdinalIgnoreCase) &&
         string.Equals(existing.ProviderAccountId ?? string.Empty, incoming.ProviderAccountId ?? string.Empty, StringComparison.OrdinalIgnoreCase) &&
         string.Equals(existing.AccountLabel ?? string.Empty, incoming.AccountLabel ?? string.Empty, StringComparison.OrdinalIgnoreCase) &&
         string.Equals(existing.SessionId ?? string.Empty, incoming.SessionId ?? string.Empty, StringComparison.OrdinalIgnoreCase) &&

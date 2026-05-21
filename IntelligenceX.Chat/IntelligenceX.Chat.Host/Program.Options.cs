@@ -597,6 +597,7 @@ internal static partial class Program {
             TextVerbosity = profile.TextVerbosity;
             Temperature = profile.Temperature;
             EnableImageGeneration = profile.EnableImageGeneration;
+            ImageGenerationEnabledOverride = profile.EnableImageGeneration;
             ImageGenerationQuality = profile.ImageGenerationQuality;
             ImageGenerationSize = profile.ImageGenerationSize;
             ImageGenerationOutputFormat = profile.ImageGenerationOutputFormat;
