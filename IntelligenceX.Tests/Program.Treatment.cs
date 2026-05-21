@@ -159,7 +159,10 @@ internal static partial class Program {
             var prompt = TreatmentPromptBuilder.Build(request);
 
             AssertContainsText(prompt, "warning:", "traversal prompt warning");
+            AssertContainsText(prompt, "local artifact path rejected", "traversal warning is sanitized");
             AssertDoesNotContainText(prompt, "do not inline", "traversal content not inlined");
+            AssertDoesNotContainText(prompt, root, "traversal warning omits root path");
+            AssertDoesNotContainText(prompt, sibling, "traversal warning omits escaped path");
         } finally {
             Directory.Delete(root, recursive: true);
             Directory.Delete(sibling, recursive: true);
@@ -287,6 +290,40 @@ internal static partial class Program {
             AssertEqual("source-image", result.Assets[0].SourceInputIds[0], "treatment image source id");
             AssertEqual("Clean product photo", result.Assets[0].RevisedPrompt, "treatment image revised prompt");
             AssertEqual(expectedImagePath, client.Input?.GetImagePaths()[0], "treatment image input path resolved under working directory");
+        } finally {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    private static void TestOpenAIChatTreatmentProviderSkipsUnsupportedImplicitImages() {
+        var directory = Path.Combine(Path.GetTempPath(), "ix-treatment-image-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var client = new FakeTreatmentChatClient(new TreatmentChatResponse(
+            "turn-unsupported-image",
+            "completed",
+            new[] {
+                new TreatmentChatOutput("out-1", "text", "ok")
+            }));
+        var provider = new OpenAIChatTreatmentProvider(client);
+        var request = new TreatmentRequest {
+            Prompt = "Use supported images only.",
+            WorkingDirectory = directory,
+            Inputs = new[] {
+                new TreatmentInputArtifact {
+                    Id = "svg",
+                    Path = "diagram.svg"
+                },
+                new TreatmentInputArtifact {
+                    Id = "avif",
+                    Path = "photo.avif"
+                }
+            }
+        };
+
+        try {
+            provider.RunAsync(request).GetAwaiter().GetResult();
+
+            AssertEqual(0, client.Input?.GetImagePaths().Length ?? -1, "unsupported implicit image inputs skipped");
         } finally {
             Directory.Delete(directory, recursive: true);
         }

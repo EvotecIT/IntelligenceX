@@ -100,7 +100,7 @@ public sealed class OpenAIChatTreatmentProvider : ITreatmentProvider {
 
     private static bool IsImageArtifact(TreatmentInputArtifact artifact) {
         var mediaType = NormalizeMediaType(artifact.MediaType);
-        if (mediaType.StartsWith("image/", StringComparison.OrdinalIgnoreCase)) {
+        if (IsSupportedImageMediaType(mediaType)) {
             return true;
         }
 
@@ -109,10 +109,15 @@ public sealed class OpenAIChatTreatmentProvider : ITreatmentProvider {
                extension.Equals(".jpg", StringComparison.OrdinalIgnoreCase) ||
                extension.Equals(".jpeg", StringComparison.OrdinalIgnoreCase) ||
                extension.Equals(".gif", StringComparison.OrdinalIgnoreCase) ||
-               extension.Equals(".webp", StringComparison.OrdinalIgnoreCase) ||
-               extension.Equals(".avif", StringComparison.OrdinalIgnoreCase) ||
-               extension.Equals(".svg", StringComparison.OrdinalIgnoreCase);
+               extension.Equals(".webp", StringComparison.OrdinalIgnoreCase);
     }
+
+    private static bool IsSupportedImageMediaType(string mediaType) =>
+        mediaType.Equals("image/png", StringComparison.OrdinalIgnoreCase) ||
+        mediaType.Equals("image/jpeg", StringComparison.OrdinalIgnoreCase) ||
+        mediaType.Equals("image/jpg", StringComparison.OrdinalIgnoreCase) ||
+        mediaType.Equals("image/gif", StringComparison.OrdinalIgnoreCase) ||
+        mediaType.Equals("image/webp", StringComparison.OrdinalIgnoreCase);
 
     private static string ResolveLocalArtifactPath(string path, TreatmentRequest request) {
         var baseDirectory = request.WorkingDirectory ?? request.Workspace;

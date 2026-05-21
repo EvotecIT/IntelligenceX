@@ -431,6 +431,7 @@ internal static partial class Program {
         failed += Run("OpenAI treatment provider maps text JSON and options", TestOpenAIChatTreatmentProviderMapsTextJsonAndOptions);
         failed += Run("OpenAI treatment provider parses array JSON", TestOpenAIChatTreatmentProviderParsesArrayJson);
         failed += Run("OpenAI treatment provider maps image assets", TestOpenAIChatTreatmentProviderMapsImageAssets);
+        failed += Run("OpenAI treatment provider skips unsupported implicit images", TestOpenAIChatTreatmentProviderSkipsUnsupportedImplicitImages);
         failed += Run("Native request body normalizes tool replay items", TestNativeRequestBodyNormalizesToolReplayInputItems);
         failed += Run("Native request body normalizes type-missing replay items", TestNativeRequestBodyNormalizesTypeMissingToolReplayItems);
         failed += Run("Native request body filters unpaired tool replay items", TestNativeRequestBodyFiltersUnpairedToolReplayItems);

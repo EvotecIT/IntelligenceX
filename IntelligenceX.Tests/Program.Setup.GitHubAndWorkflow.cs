@@ -504,11 +504,7 @@ jobs:
     }
 
     private static string ResolveReviewWorkflowPath(string fileName) {
-        try {
-            return ResolveRepoFilePath(".github", "workflows", fileName);
-        } catch (InvalidOperationException) when (fileName.EndsWith(".yml", StringComparison.OrdinalIgnoreCase)) {
-            return ResolveRepoFilePath(".github", "workflows", fileName + ".disabled");
-        }
+        return ResolveRepoFilePath(".github", "workflows", fileName);
     }
 
     private static int CountWorkflowDispatchInputs(string content) {

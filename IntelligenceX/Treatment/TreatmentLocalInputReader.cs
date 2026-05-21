@@ -19,7 +19,7 @@ internal static class TreatmentLocalInputReader {
         try {
             path = ResolvePath(input.Path!, options.BaseDirectory);
         } catch (Exception ex) when (IsLocalReadException(ex)) {
-            return new TreatmentLocalInputContent(input.Path!, null, false, false, ex.Message);
+            return new TreatmentLocalInputContent(input.Path!, null, false, false, CreateSafeWarning("local artifact path rejected", ex));
         }
 
         try {
@@ -39,7 +39,7 @@ internal static class TreatmentLocalInputReader {
                 : null;
             return new TreatmentLocalInputContent(path, text, true, truncated, warning);
         } catch (Exception ex) when (IsLocalReadException(ex)) {
-            return new TreatmentLocalInputContent(path, null, true, false, ex.Message);
+            return new TreatmentLocalInputContent(path, null, true, false, CreateSafeWarning("local artifact could not be read", ex));
         }
     }
 
@@ -91,6 +91,9 @@ internal static class TreatmentLocalInputReader {
 
     private static bool IsLocalReadException(Exception ex) =>
         ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException or InvalidOperationException;
+
+    private static string CreateSafeWarning(string message, Exception ex) =>
+        message + " (" + ex.GetType().Name + ")";
 
 }
 
