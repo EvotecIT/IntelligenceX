@@ -364,6 +364,8 @@ internal static partial class Program {
     }
 
     private static void TestOpenAIChatTreatmentProviderHandlesRelativeImageUris() {
+        var directory = Path.Combine(Path.GetTempPath(), "ix-treatment-image-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
         var client = new FakeTreatmentChatClient(new TreatmentChatResponse(
             "turn-relative-image-uri",
             "completed",
@@ -373,6 +375,7 @@ internal static partial class Program {
         var provider = new OpenAIChatTreatmentProvider(client);
         var request = new TreatmentRequest {
             Prompt = "Use the image.",
+            WorkingDirectory = directory,
             Inputs = new[] {
                 new TreatmentInputArtifact {
                     Id = "relative-image",
@@ -381,14 +384,19 @@ internal static partial class Program {
             }
         };
 
-        provider.RunAsync(request).GetAwaiter().GetResult();
+        try {
+            provider.RunAsync(request).GetAwaiter().GetResult();
 
-        var items = CallChatInputToJson(client.Input!);
-        AssertEqual(2, items.Count, "relative image uri input item count");
-        var image = items[1].AsObject();
-        AssertNotNull(image, "relative image uri item");
-        AssertEqual("image", image!.GetString("type"), "relative image uri item type");
-        AssertEqual("images/source.png?download=1#view", image.GetString("url"), "relative image uri preserved as url");
+            var expectedPath = Path.Combine(directory, "images", "source.png");
+            var items = CallChatInputToJson(client.Input!);
+            AssertEqual(2, items.Count, "relative image uri input item count");
+            var image = items[1].AsObject();
+            AssertNotNull(image, "relative image uri item");
+            AssertEqual("image", image!.GetString("type"), "relative image uri item type");
+            AssertEqual(expectedPath, image.GetString("path"), "relative image uri resolved as local path");
+        } finally {
+            Directory.Delete(directory, recursive: true);
+        }
     }
 
     private sealed class FakeTreatmentChatClient : ITreatmentChatClient {

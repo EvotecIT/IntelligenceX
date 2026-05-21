@@ -93,7 +93,11 @@ public sealed class OpenAIChatTreatmentProvider : ITreatmentProvider {
             if (!string.IsNullOrWhiteSpace(artifact.Path)) {
                 input.AddImagePath(ResolveLocalArtifactPath(artifact.Path!, request));
             } else if (artifact.Uri is not null) {
-                input.AddImageUrl(artifact.Uri.ToString());
+                if (TryGetRelativeUriPath(artifact.Uri, out var relativePath)) {
+                    input.AddImagePath(ResolveLocalArtifactPath(relativePath!, request));
+                } else {
+                    input.AddImageUrl(artifact.Uri.ToString());
+                }
             }
         }
     }
@@ -124,6 +128,16 @@ public sealed class OpenAIChatTreatmentProvider : ITreatmentProvider {
         var value = uri.OriginalString;
         var queryIndex = value.IndexOfAny(new[] { '?', '#' });
         return queryIndex < 0 ? value : value.Substring(0, queryIndex);
+    }
+
+    private static bool TryGetRelativeUriPath(Uri uri, out string? path) {
+        path = null;
+        if (uri.IsAbsoluteUri) {
+            return false;
+        }
+
+        path = GetUriExtensionPath(uri);
+        return !string.IsNullOrWhiteSpace(path);
     }
 
     private static bool IsSupportedImageMediaType(string mediaType) =>

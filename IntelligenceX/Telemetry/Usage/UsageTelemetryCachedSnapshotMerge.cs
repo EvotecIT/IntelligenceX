@@ -77,7 +77,7 @@ internal static class UsageTelemetryCachedSnapshotMerge {
                 contributionsById,
                 usageEvent,
                 allowDominatingCoverage: true,
-                allowOlderExistingDominance: false);
+                allowOlderExistingDominance: true);
         }
 
         foreach (var usageEvent in primaryEvents) {
@@ -159,19 +159,37 @@ internal static class UsageTelemetryCachedSnapshotMerge {
         UsageEventRecord incoming,
         bool allowDominatingCoverage,
         bool allowOlderExistingDominance) {
+        var matchedIndex = -1;
+        UsageEventRecord? merged = null;
         for (var i = 0; i < contributions.Count; i++) {
             var existing = contributions[i];
-            if (HasSameRollupCoverage(existing, incoming) ||
-                allowDominatingCoverage &&
-                HasSameRollupIdentity(existing, incoming) &&
-                HasCompatibleDominatingRollupCoverage(existing, incoming, allowOlderExistingDominance)) {
-                contributions[i] = MergeDuplicateContribution(existing, incoming);
-                return true;
+            if (!IsDuplicateContribution(existing, merged ?? incoming, allowDominatingCoverage, allowOlderExistingDominance)) {
+                continue;
+            }
+
+            merged = MergeDuplicateContribution(existing, merged ?? incoming);
+            if (matchedIndex < 0) {
+                matchedIndex = i;
+                contributions[i] = merged;
+            } else {
+                contributions[matchedIndex] = merged;
+                contributions.RemoveAt(i);
+                i--;
             }
         }
 
-        return false;
+        return matchedIndex >= 0;
     }
+
+    private static bool IsDuplicateContribution(
+        UsageEventRecord existing,
+        UsageEventRecord incoming,
+        bool allowDominatingCoverage,
+        bool allowOlderExistingDominance) =>
+        HasSameRollupCoverage(existing, incoming) ||
+        allowDominatingCoverage &&
+        HasSameRollupIdentity(existing, incoming) &&
+        HasCompatibleDominatingRollupCoverage(existing, incoming, allowOlderExistingDominance);
 
     private static UsageEventRecord RebuildMergedUsageEvent(IReadOnlyList<UsageEventRecord> contributions) {
         var merged = CloneUsageEvent(contributions[0]);
@@ -247,9 +265,11 @@ internal static class UsageTelemetryCachedSnapshotMerge {
         UsageEventRecord existing,
         UsageEventRecord incoming,
         bool allowOlderExistingDominance) =>
-        CoverageDominates(incoming, existing) ||
-        (allowOlderExistingDominance || existing.TimestampUtc >= incoming.TimestampUtc) &&
-        CoverageDominates(existing, incoming);
+        (incoming.TimestampUtc >= existing.TimestampUtc &&
+         CoverageDominates(incoming, existing)) ||
+        ((existing.TimestampUtc >= incoming.TimestampUtc ||
+          allowOlderExistingDominance && HasStrongerAggregateEvidence(existing, incoming)) &&
+         CoverageDominates(existing, incoming));
 
     private static bool CoverageDominates(UsageEventRecord candidate, UsageEventRecord other) =>
         NullableGreaterOrEqual(candidate.InputTokens, other.InputTokens) &&
@@ -258,6 +278,9 @@ internal static class UsageTelemetryCachedSnapshotMerge {
         NullableGreaterOrEqual(candidate.ReasoningTokens, other.ReasoningTokens) &&
         NullableGreaterOrEqual(candidate.TotalTokens, other.TotalTokens) &&
         NullableGreaterOrEqual(candidate.CompactCount, other.CompactCount);
+
+    private static bool HasStrongerAggregateEvidence(UsageEventRecord candidate, UsageEventRecord other) =>
+        NullableGreater(candidate.CompactCount, other.CompactCount);
 
     private static long? SumNullable(long? existing, long? incoming) {
         if (!existing.HasValue) {
@@ -336,4 +359,7 @@ internal static class UsageTelemetryCachedSnapshotMerge {
 
     private static bool NullableGreaterOrEqual(int? candidate, int? other) =>
         (candidate ?? 0) >= (other ?? 0);
+
+    private static bool NullableGreater(int? candidate, int? other) =>
+        (candidate ?? 0) > (other ?? 0);
 }
