@@ -1166,13 +1166,22 @@ public sealed class GitHubViewModel : ViewModelBase {
     }
 
     private static SolidColorBrush ParseColorOrDefault(string? hex, string fallback) {
-        try {
-            var color = (Color)ColorConverter.ConvertFromString(hex ?? fallback);
+        if (TryParseColor(hex, out var color) || TryParseColor(fallback, out color)) {
             var brush = new SolidColorBrush(color);
             brush.Freeze();
             return brush;
+        }
+
+        return Brushes.Gray;
+    }
+
+    private static bool TryParseColor(string? value, out Color color) {
+        try {
+            color = (Color)ColorConverter.ConvertFromString(value)!;
+            return true;
         } catch {
-            return Brushes.Gray;
+            color = default;
+            return false;
         }
     }
 

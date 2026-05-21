@@ -1819,9 +1819,15 @@ public sealed class ProviderViewModel : ViewModelBase {
     }
 
     private string BuildPulseLimitChipText() {
+        if (LimitPulseState == ProviderLimitPulseState.Attention) {
+            return !HasLiveLimitData && !HasLimitAccounts
+                ? "Needs attention"
+                : "Limits attention";
+        }
+
         return LimitPulseState == ProviderLimitPulseState.Unavailable
             ? "Limits unavailable"
-            : "Limits attention";
+            : "Needs attention";
     }
 
     private ProviderPulseStatusKind GetPulseStatusKind() {
@@ -1837,13 +1843,19 @@ public sealed class ProviderViewModel : ViewModelBase {
     }
 
     private string BuildPulseLimitInsightText() {
+        var message = FormatStatusMessage(LimitStatusMessage);
+        if (message is not null && LimitPulseState == ProviderLimitPulseState.Attention) {
+            return message;
+        }
+
         return LimitPulseState == ProviderLimitPulseState.Unavailable
             ? "Live limits are unavailable; local usage still updates."
             : "Live limits need attention; local usage still updates.";
     }
 
     private static string? BuildLimitStatusDisplayText(string? value, ProviderLimitPulseState state) {
-        if (string.IsNullOrWhiteSpace(value)) {
+        var text = FormatStatusMessage(value);
+        if (text is null) {
             return null;
         }
 
@@ -1852,7 +1864,17 @@ public sealed class ProviderViewModel : ViewModelBase {
         }
 
         if (state == ProviderLimitPulseState.Attention) {
-            return "Live limits need attention. Local usage telemetry is still available.";
+            return text;
+        }
+
+        return text.Length <= 160
+            ? text
+            : text[..157] + "...";
+    }
+
+    private static string? FormatStatusMessage(string? value) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            return null;
         }
 
         var text = value.Trim();
