@@ -565,6 +565,46 @@ internal static partial class Program {
         AssertEqual(rawRollup.TimestampUtc, merged[0].TimestampUtc, "cached startup merge newest duplicate timestamp");
     }
 
+    private static void TestUsageTelemetryCachedStartupMergeDeduplicatesOlderDominatingRollup() {
+        var cachedScannedAt = new DateTimeOffset(2026, 03, 10, 9, 0, 0, TimeSpan.Zero);
+        var serviceScannedAt = cachedScannedAt.AddMinutes(5);
+        var rawRecords = new[] {
+            new UsageEventRecord("raw-1", "codex", "codex.logs", "src-1", cachedScannedAt.AddMinutes(10)) {
+                InputTokens = 100,
+                OutputTokens = 30,
+                TotalTokens = 130,
+                CompactCount = 1,
+                CostUsd = 0.02m
+            }
+        };
+        var rawRollup = UsageTelemetryQuickReportScanner.BuildMergedEventsFromRawRecords(rawRecords)[0];
+        var olderDominatingRollup = new UsageEventRecord(rawRollup.EventId, "codex", "codex.logs", "src-1", cachedScannedAt) {
+            Model = rawRollup.Model,
+            Surface = rawRollup.Surface,
+            InputTokens = 120,
+            OutputTokens = 40,
+            TotalTokens = 160,
+            CompactCount = 2,
+            CostUsd = 0.04m
+        };
+
+        var merged = UsageTelemetryCachedSnapshotMerge.SelectStartupEvents(
+            cachedEvents: new[] { olderDominatingRollup },
+            serviceEvents: Array.Empty<UsageEventRecord>(),
+            mergedRawEvents: rawRecords,
+            hasCachedRawEvents: true,
+            hasServiceRawEvents: true,
+            cachedScannedAt,
+            serviceScannedAt);
+
+        AssertEqual(1, merged.Count, "cached startup merge older dominating rollup count");
+        AssertEqual(120L, merged[0].InputTokens ?? 0L, "cached startup merge older dominating input");
+        AssertEqual(160L, merged[0].TotalTokens ?? 0L, "cached startup merge older dominating total");
+        AssertEqual(2, merged[0].CompactCount ?? 0, "cached startup merge older dominating compact count");
+        AssertEqual(0.04m, merged[0].CostUsd ?? 0m, "cached startup merge older dominating cost avoids double count");
+        AssertEqual(rawRollup.TimestampUtc, merged[0].TimestampUtc, "cached startup merge older dominating preserves newest timestamp");
+    }
+
     private static void TestUsageTelemetryCachedStartupMergePrefersNewestSourceRootMetadata() {
         var cachedScannedAt = new DateTimeOffset(2026, 03, 10, 9, 0, 0, TimeSpan.Zero);
         var serviceScannedAt = cachedScannedAt.AddMinutes(5);
