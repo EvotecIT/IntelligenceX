@@ -111,6 +111,10 @@ internal static partial class Program {
             TestUsageTelemetryCachedStartupMergeAvoidsIncompleteRawOverlap);
         failed += Run("Usage telemetry cached startup merge keeps partial raw fallback rollups",
             TestUsageTelemetryCachedStartupMergeKeepsPartialRawFallbackRollups);
+        failed += Run("Usage telemetry cached startup merge prefers newest source root metadata",
+            TestUsageTelemetryCachedStartupMergePrefersNewestSourceRootMetadata);
+        failed += Run("Usage telemetry cached startup merge keeps complete health over partial service health",
+            TestUsageTelemetryCachedStartupMergeKeepsCompleteHealthOverPartialServiceHealth);
         failed += Run("Provider limit forecasting flags over-limit pace",
             TestProviderLimitForecastingFlagsOverLimitPace);
         failed += Run("Provider limit forecasting recognizes on-pace window",

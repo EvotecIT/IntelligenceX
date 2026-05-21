@@ -24,6 +24,48 @@ internal static class UsageTelemetryCachedSnapshotMerge {
             : cachedEvents.ToList();
     }
 
+    public static IReadOnlyList<SourceRootRecord> SelectStartupSourceRoots(
+        IReadOnlyList<SourceRootRecord> cachedSourceRoots,
+        IReadOnlyList<SourceRootRecord> serviceSourceRoots,
+        DateTimeOffset cachedScannedAtUtc,
+        DateTimeOffset serviceScannedAtUtc) {
+        var primaryRoots = serviceScannedAtUtc >= cachedScannedAtUtc
+            ? serviceSourceRoots
+            : cachedSourceRoots;
+        var fallbackRoots = serviceScannedAtUtc >= cachedScannedAtUtc
+            ? cachedSourceRoots
+            : serviceSourceRoots;
+
+        return primaryRoots
+            .Concat(fallbackRoots)
+            .Where(static root => root is not null && !string.IsNullOrWhiteSpace(root.Id))
+            .GroupBy(static root => root.Id, StringComparer.OrdinalIgnoreCase)
+            .Select(static group => group.First())
+            .ToList();
+    }
+
+    public static UsageTelemetrySnapshotHealth? SelectStartupHealth(
+        UsageTelemetrySnapshotHealth? cachedHealth,
+        UsageTelemetrySnapshotHealth? serviceHealth,
+        DateTimeOffset cachedScannedAtUtc,
+        DateTimeOffset serviceScannedAtUtc) {
+        if (cachedHealth is null) {
+            return serviceHealth;
+        }
+
+        if (serviceHealth is null) {
+            return cachedHealth;
+        }
+
+        if (cachedHealth.IsPartialScan != serviceHealth.IsPartialScan) {
+            return cachedHealth.IsPartialScan ? serviceHealth : cachedHealth;
+        }
+
+        return serviceScannedAtUtc >= cachedScannedAtUtc
+            ? serviceHealth
+            : cachedHealth;
+    }
+
     private static IReadOnlyList<UsageEventRecord> MergeRollups(
         IEnumerable<UsageEventRecord> primaryEvents,
         IEnumerable<UsageEventRecord> fallbackEvents) {
