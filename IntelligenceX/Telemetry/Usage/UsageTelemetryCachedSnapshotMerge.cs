@@ -135,8 +135,7 @@ internal static class UsageTelemetryCachedSnapshotMerge {
         for (var i = 0; i < contributions.Count; i++) {
             var existing = contributions[i];
             if (HasSameRollupCoverage(existing, incoming) ||
-                HasSameRollupIdentityWithTimestamp(existing, incoming) && HasDominatingRollupCoverage(existing, incoming) ||
-                HasSameRollupIdentity(existing, incoming) && CoverageDominates(incoming, existing)) {
+                HasSameRollupIdentity(existing, incoming) && HasCompatibleDominatingRollupCoverage(existing, incoming)) {
                 MergeDuplicateContributionInto(existing, incoming);
                 return true;
             }
@@ -198,14 +197,6 @@ internal static class UsageTelemetryCachedSnapshotMerge {
         existing.TotalTokens == incoming.TotalTokens &&
         existing.CompactCount == incoming.CompactCount;
 
-    private static bool HasSameRollupIdentityWithTimestamp(UsageEventRecord existing, UsageEventRecord incoming) =>
-        string.Equals(existing.EventId, incoming.EventId, StringComparison.OrdinalIgnoreCase) &&
-        string.Equals(existing.ProviderId, incoming.ProviderId, StringComparison.OrdinalIgnoreCase) &&
-        string.Equals(existing.AdapterId, incoming.AdapterId, StringComparison.OrdinalIgnoreCase) &&
-        string.Equals(existing.SourceRootId, incoming.SourceRootId, StringComparison.OrdinalIgnoreCase) &&
-        existing.TimestampUtc == incoming.TimestampUtc &&
-        HasSameRollupIdentity(existing, incoming);
-
     private static bool HasSameRollupIdentity(UsageEventRecord existing, UsageEventRecord incoming) =>
         string.Equals(existing.EventId, incoming.EventId, StringComparison.OrdinalIgnoreCase) &&
         string.Equals(existing.ProviderId, incoming.ProviderId, StringComparison.OrdinalIgnoreCase) &&
@@ -218,11 +209,12 @@ internal static class UsageTelemetryCachedSnapshotMerge {
         string.Equals(existing.TurnId ?? string.Empty, incoming.TurnId ?? string.Empty, StringComparison.OrdinalIgnoreCase) &&
         string.Equals(existing.ResponseId ?? string.Empty, incoming.ResponseId ?? string.Empty, StringComparison.OrdinalIgnoreCase) &&
         string.Equals(existing.Model ?? string.Empty, incoming.Model ?? string.Empty, StringComparison.OrdinalIgnoreCase) &&
-        string.Equals(existing.Surface ?? string.Empty, incoming.Surface ?? string.Empty, StringComparison.OrdinalIgnoreCase) &&
-        string.Equals(existing.RawHash ?? string.Empty, incoming.RawHash ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+        string.Equals(existing.Surface ?? string.Empty, incoming.Surface ?? string.Empty, StringComparison.OrdinalIgnoreCase);
 
-    private static bool HasDominatingRollupCoverage(UsageEventRecord existing, UsageEventRecord incoming) =>
-        CoverageDominates(existing, incoming) || CoverageDominates(incoming, existing);
+    private static bool HasCompatibleDominatingRollupCoverage(UsageEventRecord existing, UsageEventRecord incoming) =>
+        CoverageDominates(incoming, existing) ||
+        existing.TimestampUtc >= incoming.TimestampUtc &&
+        CoverageDominates(existing, incoming);
 
     private static bool CoverageDominates(UsageEventRecord candidate, UsageEventRecord other) =>
         NullableGreaterOrEqual(candidate.InputTokens, other.InputTokens) &&
@@ -305,8 +297,8 @@ internal static class UsageTelemetryCachedSnapshotMerge {
     }
 
     private static bool NullableGreaterOrEqual(long? candidate, long? other) =>
-        !other.HasValue || candidate.HasValue && candidate.Value >= other.Value;
+        (candidate ?? 0L) >= (other ?? 0L);
 
     private static bool NullableGreaterOrEqual(int? candidate, int? other) =>
-        !other.HasValue || candidate.HasValue && candidate.Value >= other.Value;
+        (candidate ?? 0) >= (other ?? 0);
 }
