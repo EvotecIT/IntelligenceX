@@ -533,7 +533,9 @@ internal static partial class Program {
             }
 
             return new ImageGenerationOptions {
-                Enabled = _options.ImageGenerationEnabledOverride ?? _options.EnableImageGeneration || HasImageGenerationSettingOverrides(),
+                Enabled = _options.ImageGenerationEnabledOverride.HasValue
+                    ? _options.ImageGenerationEnabledOverride.Value
+                    : _options.EnableImageGeneration || HasImageGenerationSettingOverrides(),
                 Quality = _options.ImageGenerationQuality,
                 Size = _options.ImageGenerationSize,
                 OutputFormat = _options.ImageGenerationOutputFormat,

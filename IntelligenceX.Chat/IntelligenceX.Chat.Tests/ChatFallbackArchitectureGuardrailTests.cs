@@ -139,6 +139,24 @@ public sealed class ChatFallbackArchitectureGuardrailTests {
     }
 
     [Fact]
+    public void ChatHost_ImageGenerationOptionsHonorsExplicitEnabledOverrideFirst() {
+        var source = File.ReadAllText(GetHostSourceFilePath("Program.Session.cs"));
+
+        Assert.Contains(
+            "Enabled = _options.ImageGenerationEnabledOverride.HasValue",
+            source,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "? _options.ImageGenerationEnabledOverride.Value",
+            source,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "Enabled = _options.ImageGenerationEnabledOverride ?? _options.EnableImageGeneration || HasImageGenerationSettingOverrides()",
+            source,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ToolingDiscovery_ShouldNotContainHardcodedBuiltInAssemblyAllowlistNames() {
         var source = File.ReadAllText(GetToolingSourceFilePath("ToolPackBootstrap.RegistryAndReflection.cs"));
         var disallowedAssemblyNames = new[] {
