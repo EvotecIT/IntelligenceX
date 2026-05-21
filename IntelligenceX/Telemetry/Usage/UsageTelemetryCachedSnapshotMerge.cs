@@ -135,8 +135,8 @@ internal static class UsageTelemetryCachedSnapshotMerge {
         for (var i = 0; i < contributions.Count; i++) {
             var existing = contributions[i];
             if (HasSameRollupCoverage(existing, incoming) ||
-                HasSameRollupIdentity(existing, incoming) && HasDominatingRollupCoverage(existing, incoming) ||
-                HasSameRollupIdentityIgnoringTimestamp(existing, incoming) && CoverageDominates(incoming, existing)) {
+                HasSameRollupIdentityWithTimestamp(existing, incoming) && HasDominatingRollupCoverage(existing, incoming) ||
+                HasSameRollupIdentity(existing, incoming) && CoverageDominates(incoming, existing)) {
                 MergeDuplicateContributionInto(existing, incoming);
                 return true;
             }
@@ -198,15 +198,15 @@ internal static class UsageTelemetryCachedSnapshotMerge {
         existing.TotalTokens == incoming.TotalTokens &&
         existing.CompactCount == incoming.CompactCount;
 
-    private static bool HasSameRollupIdentity(UsageEventRecord existing, UsageEventRecord incoming) =>
+    private static bool HasSameRollupIdentityWithTimestamp(UsageEventRecord existing, UsageEventRecord incoming) =>
         string.Equals(existing.EventId, incoming.EventId, StringComparison.OrdinalIgnoreCase) &&
         string.Equals(existing.ProviderId, incoming.ProviderId, StringComparison.OrdinalIgnoreCase) &&
         string.Equals(existing.AdapterId, incoming.AdapterId, StringComparison.OrdinalIgnoreCase) &&
         string.Equals(existing.SourceRootId, incoming.SourceRootId, StringComparison.OrdinalIgnoreCase) &&
         existing.TimestampUtc == incoming.TimestampUtc &&
-        HasSameRollupIdentityIgnoringTimestamp(existing, incoming);
+        HasSameRollupIdentity(existing, incoming);
 
-    private static bool HasSameRollupIdentityIgnoringTimestamp(UsageEventRecord existing, UsageEventRecord incoming) =>
+    private static bool HasSameRollupIdentity(UsageEventRecord existing, UsageEventRecord incoming) =>
         string.Equals(existing.EventId, incoming.EventId, StringComparison.OrdinalIgnoreCase) &&
         string.Equals(existing.ProviderId, incoming.ProviderId, StringComparison.OrdinalIgnoreCase) &&
         string.Equals(existing.AdapterId, incoming.AdapterId, StringComparison.OrdinalIgnoreCase) &&

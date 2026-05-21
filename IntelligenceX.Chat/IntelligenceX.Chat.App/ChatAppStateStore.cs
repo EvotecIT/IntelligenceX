@@ -4,6 +4,7 @@ using System.Data;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using DBAClientX;
@@ -71,7 +72,15 @@ internal sealed class ChatAppStateStore : IDisposable {
         }
 
         try {
+            using var document = JsonDocument.Parse(json);
+            var hasImageGenerationOverrideActive =
+                document.RootElement.ValueKind == JsonValueKind.Object &&
+                document.RootElement.TryGetProperty("localProviderImageGenerationOverrideActive", out _);
             var state = JsonSerializer.Deserialize<ChatAppState>(json, _json);
+            if (state is not null) {
+                state.LocalProviderImageGenerationOverrideActiveWasPresent = hasImageGenerationOverrideActive;
+            }
+
             return Task.FromResult(state);
         } catch (Exception ex) {
             throw new InvalidOperationException($"Failed to parse app profile '{profileName}'.", ex);
@@ -242,6 +251,8 @@ internal sealed class ChatAppState {
     public double? LocalProviderTemperature { get; set; }
     public bool LocalProviderImageGenerationEnabled { get; set; }
     public bool LocalProviderImageGenerationOverrideActive { get; set; }
+    [JsonIgnore]
+    internal bool LocalProviderImageGenerationOverrideActiveWasPresent { get; set; }
     public string LocalProviderImageGenerationQuality { get; set; } = string.Empty;
     public string LocalProviderImageGenerationSize { get; set; } = string.Empty;
     public string LocalProviderImageGenerationOutputFormat { get; set; } = string.Empty;
