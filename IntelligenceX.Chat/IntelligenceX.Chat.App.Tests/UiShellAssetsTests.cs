@@ -884,6 +884,21 @@ public sealed partial class UiShellAssetsTests {
     }
 
     /// <summary>
+    /// Ensures applying unrelated local-provider settings does not force image-generation overrides active.
+    /// </summary>
+    [Fact]
+    public void Load_DoesNotForceImageGenerationOverrideForEveryLocalProviderApply() {
+        var bindingsPath = Path.Combine(UiDirectory, "Shell.20.bindings.js");
+        var script = File.ReadAllText(bindingsPath);
+
+        Assert.Contains("var currentImageGenerationOverrideActive = local.imageGenerationOverrideActive === true;", script, StringComparison.Ordinal);
+        Assert.Contains("var imageGenerationOverrideActive = currentImageGenerationOverrideActive", script, StringComparison.Ordinal);
+        Assert.Contains("state.options.localModel.imageGenerationOverrideActive = imageGenerationOverrideActive;", script, StringComparison.Ordinal);
+        Assert.Contains("imageGenerationOverrideActive: imageGenerationOverrideActive,", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("imageGenerationOverrideActive: true,", script, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Ensures options conversations expose inline model override selection (without prompt dialogs)
     /// and post explicit set_conversation_model events.
     /// </summary>

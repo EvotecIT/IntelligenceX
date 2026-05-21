@@ -1421,6 +1421,15 @@
     var imageGenerationOutputCompression = (byId("optImageGenerationOutputCompression").value || "").trim();
     var imageGenerationBackground = (byId("optImageGenerationBackground").value || "").trim();
     var imageGenerationOutputDirectory = (byId("optImageGenerationOutputDirectory").value || "").trim();
+    var currentImageGenerationOverrideActive = local.imageGenerationOverrideActive === true;
+    var imageGenerationOverrideActive = currentImageGenerationOverrideActive
+      || imageGenerationEnabled !== (local.imageGenerationEnabled === true)
+      || imageGenerationQuality !== String(local.imageGenerationQuality || "").trim()
+      || imageGenerationSize !== String(local.imageGenerationSize || "").trim()
+      || imageGenerationOutputFormat !== String(local.imageGenerationOutputFormat || "").trim()
+      || imageGenerationOutputCompression !== String(local.imageGenerationOutputCompression == null ? "" : local.imageGenerationOutputCompression).trim()
+      || imageGenerationBackground !== String(local.imageGenerationBackground || "").trim()
+      || imageGenerationOutputDirectory !== String(local.imageGenerationOutputDirectory || "").trim();
     var reasoningSupport = resolveReasoningSupportForDraft(transport, baseUrl);
     if (!reasoningSupport.supported) {
       reasoningEffort = "";
@@ -1511,6 +1520,7 @@
       state.options.localModel.imageGenerationOutputCompression = imageGenerationOutputCompression;
       state.options.localModel.imageGenerationBackground = imageGenerationBackground;
       state.options.localModel.imageGenerationOutputDirectory = imageGenerationOutputDirectory;
+      state.options.localModel.imageGenerationOverrideActive = imageGenerationOverrideActive;
       state.options.localModel.isApplying = true;
       var runtimeApply = state.options.localModel.runtimeApply;
       if (!runtimeApply || typeof runtimeApply !== "object") {
@@ -1542,7 +1552,7 @@
       textVerbosity: textVerbosity,
       temperature: temperature,
       imageGenerationEnabled: imageGenerationEnabled,
-      imageGenerationOverrideActive: true,
+      imageGenerationOverrideActive: imageGenerationOverrideActive,
       imageGenerationQuality: imageGenerationQuality,
       imageGenerationSize: imageGenerationSize,
       imageGenerationOutputFormat: imageGenerationOutputFormat,

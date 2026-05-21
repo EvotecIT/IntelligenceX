@@ -169,7 +169,7 @@ internal static class UsageTelemetryCachedSnapshotMerge {
         existing.TotalTokens = SumNullable(existing.TotalTokens, incoming.TotalTokens);
         existing.CompactCount = SumNullable(existing.CompactCount, incoming.CompactCount);
         existing.DurationMs = MaxNullable(existing.DurationMs, incoming.DurationMs);
-        existing.CostUsd = MaxNullable(existing.CostUsd, incoming.CostUsd);
+        existing.CostUsd = SumNullable(existing.CostUsd, incoming.CostUsd);
         if (incoming.TruthLevel > existing.TruthLevel) {
             existing.TruthLevel = incoming.TruthLevel;
         }

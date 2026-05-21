@@ -277,6 +277,52 @@ internal static partial class Program {
         AssertEqual(0.05m, merged[0].CostUsd ?? 0m, "cached startup merge keeps fallback cost when raw rollup has none");
     }
 
+    private static void TestUsageTelemetryCachedStartupMergeSumsDistinctRollupCosts() {
+        var cachedScannedAt = new DateTimeOffset(2026, 03, 10, 9, 0, 0, TimeSpan.Zero);
+        var serviceScannedAt = cachedScannedAt.AddMinutes(5);
+        var rawRecords = new[] {
+            new UsageEventRecord("raw-1", "codex", "codex.logs", "src-1", cachedScannedAt) {
+                InputTokens = 100,
+                OutputTokens = 40,
+                TotalTokens = 140,
+                CompactCount = 1
+            }
+        };
+        var rawRollup = UsageTelemetryQuickReportScanner.BuildMergedEventsFromRawRecords(rawRecords)[0];
+        var firstContribution = new UsageEventRecord(rawRollup.EventId, "codex", "codex.logs", "src-1", cachedScannedAt) {
+            Model = rawRollup.Model,
+            Surface = rawRollup.Surface,
+            InputTokens = 50,
+            OutputTokens = 20,
+            TotalTokens = 70,
+            CompactCount = 1,
+            CostUsd = 0.05m
+        };
+        var secondContribution = new UsageEventRecord(rawRollup.EventId, "codex", "codex.logs", "src-1", cachedScannedAt.AddMinutes(1)) {
+            Model = rawRollup.Model,
+            Surface = rawRollup.Surface,
+            InputTokens = 25,
+            OutputTokens = 10,
+            TotalTokens = 35,
+            CompactCount = 1,
+            CostUsd = 0.02m
+        };
+
+        var merged = UsageTelemetryCachedSnapshotMerge.SelectStartupEvents(
+            cachedEvents: new[] { firstContribution, secondContribution },
+            serviceEvents: Array.Empty<UsageEventRecord>(),
+            mergedRawEvents: rawRecords,
+            hasCachedRawEvents: true,
+            hasServiceRawEvents: true,
+            cachedScannedAt,
+            serviceScannedAt);
+
+        AssertEqual(1, merged.Count, "cached startup merge distinct rollup cost count");
+        AssertEqual(125L, merged[0].InputTokens ?? 0L, "cached startup merge distinct cost input");
+        AssertEqual(175L, merged[0].TotalTokens ?? 0L, "cached startup merge distinct cost total");
+        AssertEqual(0.07m, merged[0].CostUsd ?? 0m, "cached startup merge sums distinct rollup costs");
+    }
+
     private static void TestUsageTelemetryCachedStartupMergeDeduplicatesEquivalentRollupsWithMetadata() {
         var cachedScannedAt = new DateTimeOffset(2026, 03, 10, 9, 0, 0, TimeSpan.Zero);
         var serviceScannedAt = cachedScannedAt.AddMinutes(5);
