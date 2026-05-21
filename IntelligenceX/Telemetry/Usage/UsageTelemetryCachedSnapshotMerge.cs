@@ -136,7 +136,7 @@ internal static class UsageTelemetryCachedSnapshotMerge {
             var existing = contributions[i];
             if (HasSameRollupCoverage(existing, incoming) ||
                 HasSameRollupIdentity(existing, incoming) && HasCompatibleDominatingRollupCoverage(existing, incoming)) {
-                MergeDuplicateContributionInto(existing, incoming);
+                contributions[i] = MergeDuplicateContribution(existing, incoming);
                 return true;
             }
         }
@@ -175,18 +175,21 @@ internal static class UsageTelemetryCachedSnapshotMerge {
         }
     }
 
-    private static void MergeDuplicateContributionInto(UsageEventRecord existing, UsageEventRecord incoming) {
-        existing.InputTokens = MaxNullable(existing.InputTokens, incoming.InputTokens);
-        existing.CachedInputTokens = MaxNullable(existing.CachedInputTokens, incoming.CachedInputTokens);
-        existing.OutputTokens = MaxNullable(existing.OutputTokens, incoming.OutputTokens);
-        existing.ReasoningTokens = MaxNullable(existing.ReasoningTokens, incoming.ReasoningTokens);
-        existing.TotalTokens = MaxNullable(existing.TotalTokens, incoming.TotalTokens);
-        existing.CompactCount = MaxNullable(existing.CompactCount, incoming.CompactCount);
-        existing.DurationMs = MaxNullable(existing.DurationMs, incoming.DurationMs);
-        existing.CostUsd = MaxNullable(existing.CostUsd, incoming.CostUsd);
-        if (incoming.TruthLevel > existing.TruthLevel) {
-            existing.TruthLevel = incoming.TruthLevel;
+    private static UsageEventRecord MergeDuplicateContribution(UsageEventRecord existing, UsageEventRecord incoming) {
+        var merged = CloneUsageEvent(existing.TimestampUtc >= incoming.TimestampUtc ? existing : incoming);
+        merged.InputTokens = MaxNullable(existing.InputTokens, incoming.InputTokens);
+        merged.CachedInputTokens = MaxNullable(existing.CachedInputTokens, incoming.CachedInputTokens);
+        merged.OutputTokens = MaxNullable(existing.OutputTokens, incoming.OutputTokens);
+        merged.ReasoningTokens = MaxNullable(existing.ReasoningTokens, incoming.ReasoningTokens);
+        merged.TotalTokens = MaxNullable(existing.TotalTokens, incoming.TotalTokens);
+        merged.CompactCount = MaxNullable(existing.CompactCount, incoming.CompactCount);
+        merged.DurationMs = MaxNullable(existing.DurationMs, incoming.DurationMs);
+        merged.CostUsd = MaxNullable(existing.CostUsd, incoming.CostUsd);
+        if (incoming.TruthLevel > merged.TruthLevel) {
+            merged.TruthLevel = incoming.TruthLevel;
         }
+
+        return merged;
     }
 
     private static bool HasSameRollupCoverage(UsageEventRecord existing, UsageEventRecord incoming) =>

@@ -513,6 +513,58 @@ internal static partial class Program {
         AssertEqual(0.01m, merged[0].CostUsd ?? 0m, "cached startup merge newer-first preserves cost metadata");
     }
 
+    private static void TestUsageTelemetryCachedStartupMergePreservesNewestDuplicateRollupTimestamp() {
+        var cachedScannedAt = new DateTimeOffset(2026, 03, 10, 9, 0, 0, TimeSpan.Zero);
+        var serviceScannedAt = cachedScannedAt.AddMinutes(5);
+        var rawRecords = new[] {
+            new UsageEventRecord("raw-1", "codex", "codex.logs", "src-1", cachedScannedAt.AddMinutes(10)) {
+                InputTokens = 120,
+                OutputTokens = 40,
+                TotalTokens = 160,
+                CompactCount = 2
+            }
+        };
+        var rawRollup = UsageTelemetryQuickReportScanner.BuildMergedEventsFromRawRecords(rawRecords)[0];
+        var staleRollup = new UsageEventRecord(rawRollup.EventId, "codex", "codex.logs", "src-1", cachedScannedAt) {
+            Model = rawRollup.Model,
+            Surface = rawRollup.Surface,
+            InputTokens = 100,
+            OutputTokens = 30,
+            TotalTokens = 130,
+            CompactCount = 1
+        };
+        var refreshedRollup = new UsageEventRecord(rawRollup.EventId, "codex", "codex.logs", "src-1", cachedScannedAt.AddMinutes(10)) {
+            Model = rawRollup.Model,
+            Surface = rawRollup.Surface,
+            InputTokens = 120,
+            OutputTokens = 40,
+            TotalTokens = 160,
+            CompactCount = 2
+        };
+        var middleDuplicate = new UsageEventRecord(rawRollup.EventId, "codex", "codex.logs", "src-1", cachedScannedAt.AddMinutes(5)) {
+            Model = rawRollup.Model,
+            Surface = rawRollup.Surface,
+            InputTokens = 100,
+            OutputTokens = 30,
+            TotalTokens = 130,
+            CompactCount = 1
+        };
+
+        var merged = UsageTelemetryCachedSnapshotMerge.SelectStartupEvents(
+            cachedEvents: new[] { staleRollup, refreshedRollup, middleDuplicate },
+            serviceEvents: Array.Empty<UsageEventRecord>(),
+            mergedRawEvents: rawRecords,
+            hasCachedRawEvents: true,
+            hasServiceRawEvents: true,
+            cachedScannedAt,
+            serviceScannedAt);
+
+        AssertEqual(1, merged.Count, "cached startup merge newest duplicate timestamp count");
+        AssertEqual(120L, merged[0].InputTokens ?? 0L, "cached startup merge newest duplicate timestamp input");
+        AssertEqual(160L, merged[0].TotalTokens ?? 0L, "cached startup merge newest duplicate timestamp total");
+        AssertEqual(rawRollup.TimestampUtc, merged[0].TimestampUtc, "cached startup merge newest duplicate timestamp");
+    }
+
     private static void TestUsageTelemetryCachedStartupMergePrefersNewestSourceRootMetadata() {
         var cachedScannedAt = new DateTimeOffset(2026, 03, 10, 9, 0, 0, TimeSpan.Zero);
         var serviceScannedAt = cachedScannedAt.AddMinutes(5);
