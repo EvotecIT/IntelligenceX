@@ -236,6 +236,69 @@ internal static partial class Program {
         AssertEqual(300L, merged.Sum(static item => item.TotalTokens ?? 0L), "cached startup merge preserves partial raw and full fallback totals");
     }
 
+    private static void TestUsageTelemetryCachedStartupMergePrefersNewestSourceRootMetadata() {
+        var cachedScannedAt = new DateTimeOffset(2026, 03, 10, 9, 0, 0, TimeSpan.Zero);
+        var serviceScannedAt = cachedScannedAt.AddMinutes(5);
+        var cachedSourceRoots = new[] {
+            new SourceRootRecord("src-codex", "codex", UsageSourceKind.LocalLogs, @"C:\Users\me\.codex\sessions") {
+                Enabled = false
+            }
+        };
+        var serviceSourceRoots = new[] {
+            new SourceRootRecord("src-codex", "codex", UsageSourceKind.LocalLogs, @"C:\Users\me\.codex\sessions") {
+                Enabled = true
+            },
+            new SourceRootRecord("src-claude", "claude", UsageSourceKind.LocalLogs, @"C:\Users\me\.claude\projects")
+        };
+
+        var merged = UsageTelemetryCachedSnapshotMerge.SelectStartupSourceRoots(
+            cachedSourceRoots,
+            serviceSourceRoots,
+            cachedScannedAt,
+            serviceScannedAt);
+
+        AssertEqual(2, merged.Count, "cached startup source root merge preserves distinct roots");
+        AssertEqual(true, merged.First(static root => string.Equals(root.Id, "src-codex", StringComparison.OrdinalIgnoreCase)).Enabled, "cached startup source root merge prefers newer duplicate metadata");
+    }
+
+    private static void TestUsageTelemetryCachedStartupMergeKeepsCompleteHealthOverPartialServiceHealth() {
+        var cachedScannedAt = new DateTimeOffset(2026, 03, 10, 9, 0, 0, TimeSpan.Zero);
+        var serviceScannedAt = cachedScannedAt.AddMinutes(5);
+        var completeCachedHealth = new UsageTelemetrySnapshotHealth(
+            isCachedSnapshot: true,
+            isPartialScan: false,
+            providerCount: 1,
+            rootsCount: 1,
+            accountLabels: Array.Empty<string>(),
+            eventsCount: 10,
+            parsedArtifacts: 10,
+            reusedArtifacts: 0,
+            duplicateRecordsCollapsed: 0,
+            latestEventUtc: cachedScannedAt,
+            issueCount: 0);
+        var partialServiceHealth = new UsageTelemetrySnapshotHealth(
+            isCachedSnapshot: true,
+            isPartialScan: true,
+            providerCount: 1,
+            rootsCount: 1,
+            accountLabels: Array.Empty<string>(),
+            eventsCount: 10,
+            parsedArtifacts: 0,
+            reusedArtifacts: 10,
+            duplicateRecordsCollapsed: 0,
+            latestEventUtc: serviceScannedAt,
+            issueCount: 0);
+
+        var mergedHealth = UsageTelemetryCachedSnapshotMerge.SelectStartupHealth(
+            completeCachedHealth,
+            partialServiceHealth,
+            cachedScannedAt,
+            serviceScannedAt);
+
+        AssertNotNull(mergedHealth, "cached startup health merge returns health");
+        AssertEqual(false, mergedHealth!.IsPartialScan, "cached startup health merge does not let partial service health override complete cached health");
+    }
+
     private static void TestProviderLimitForecastingFlagsOverLimitPace() {
         var now = new DateTimeOffset(2026, 03, 18, 12, 00, 00, TimeSpan.Zero);
         var snapshot = new ProviderLimitSnapshot(

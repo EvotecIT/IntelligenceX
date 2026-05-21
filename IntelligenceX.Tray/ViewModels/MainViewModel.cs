@@ -1776,15 +1776,20 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
                         .Where(static providerId => !string.IsNullOrWhiteSpace(providerId))
                         .Distinct(StringComparer.OrdinalIgnoreCase)
                         .ToList();
-                    var mergedSourceRoots = cachedSnapshot.SourceRoots
-                        .Concat(serviceCache.SourceRoots)
-                        .GroupBy(static root => root.Id, StringComparer.OrdinalIgnoreCase)
-                        .Select(static group => group.First())
+                    var mergedSourceRoots = UsageTelemetryCachedSnapshotMerge.SelectStartupSourceRoots(
+                            cachedSnapshot.SourceRoots,
+                            serviceCache.SourceRoots,
+                            cachedSnapshot.ScannedAtUtc,
+                            serviceCache.ScannedAtUtc)
                         .ToList();
                     var mergedScannedAtUtc = cachedSnapshot.ScannedAtUtc > serviceCache.ScannedAtUtc
                         ? cachedSnapshot.ScannedAtUtc
                         : serviceCache.ScannedAtUtc;
-                    var mergedHealth = SelectMergedCachedUsageSnapshotHealth(cachedSnapshot.Health, serviceCache.Health);
+                    var mergedHealth = UsageTelemetryCachedSnapshotMerge.SelectStartupHealth(
+                        cachedSnapshot.Health,
+                        serviceCache.Health,
+                        cachedSnapshot.ScannedAtUtc,
+                        serviceCache.ScannedAtUtc);
                     cachedSnapshot = new TrayUsageSnapshotStore.TrayUsageSnapshotCache(
                         mergedScannedAtUtc,
                         mergedProviderIds,
@@ -1813,20 +1818,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
 
             return cachedSnapshot;
         }).ConfigureAwait(false);
-    }
-
-    private static UsageTelemetrySnapshotHealth? SelectMergedCachedUsageSnapshotHealth(
-        UsageTelemetrySnapshotHealth? cachedHealth,
-        UsageTelemetrySnapshotHealth? serviceHealth) {
-        if (cachedHealth?.IsPartialScan == true) {
-            return cachedHealth;
-        }
-
-        if (serviceHealth?.IsPartialScan == true) {
-            return serviceHealth;
-        }
-
-        return cachedHealth ?? serviceHealth;
     }
 
     private bool ApplyCachedUsageSnapshot(TrayUsageSnapshotStore.TrayUsageSnapshotCache? cachedSnapshot) {
