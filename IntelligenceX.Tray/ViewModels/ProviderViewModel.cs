@@ -464,9 +464,7 @@ public sealed class ProviderViewModel : ViewModelBase {
         ? PulseModelBreakdown[0].TotalTokensFormatted + " • " + PulseModelBreakdown[0].SharePercentText
         : "Waiting for today's model signal";
     public string PulseCachedSavingsValue => PulseCachedTokens > 0 ? FormatTokens(PulseCachedTokens) : "--";
-    public string PulseCachedSavingsDetail => PulseInputTokens > 0
-        ? FormatPulsePercent(Math.Min(1d, Math.Max(0d, (double)PulseCachedTokens / PulseInputTokens))) + " of today's input"
-        : "Cached input appears when token telemetry includes it.";
+    public string PulseCachedSavingsDetail => BuildPulseCachedSavingsDetail();
     public string PulseTokenMixText => "Fresh input " + PulseFreshInputFormatted
                                   + " • cached " + FormatTokens(PulseCachedTokens)
                                   + " • output " + PulseVisibleOutputFormatted
@@ -1784,9 +1782,11 @@ public sealed class ProviderViewModel : ViewModelBase {
     }
 
     private string BuildPulseInsightText() {
-        if (IsCombinedProvider && ProviderComparison.Count > 0) {
-            var leader = ProviderComparison[0];
-            return leader.DisplayName + " leads this view with " + leader.TokensText + " across " + leader.EventCountText + ".";
+        if (IsCombinedProvider) {
+            var combinedInsight = BuildCombinedTodayPulseInsightText();
+            if (!string.IsNullOrWhiteSpace(combinedInsight)) {
+                return combinedInsight!;
+            }
         }
 
         if (PulseTotalTokens <= 0) {
@@ -1816,6 +1816,47 @@ public sealed class ProviderViewModel : ViewModelBase {
         }
 
         return "No local activity today yet.";
+    }
+
+    private string BuildPulseCachedSavingsDetail() {
+        if (PulseCachedTokens <= 0 || PulseInputTokens <= 0) {
+            return "Cached input appears when token telemetry includes it.";
+        }
+
+        if (!CanDescribePulseCachedInputAsSubset()) {
+            return "Cached input is reported separately by provider telemetry.";
+        }
+
+        return FormatPulsePercent(Math.Min(1d, Math.Max(0d, (double)PulseCachedTokens / PulseInputTokens))) + " of today's input";
+    }
+
+    private bool CanDescribePulseCachedInputAsSubset() {
+        var today = DateTime.Now.Date;
+        var events = FilterByWindow(today, today)
+            .Where(static usageEvent => (usageEvent.CachedInputTokens ?? 0L) > 0)
+            .ToList();
+        return events.Count > 0 &&
+               events.All(static usageEvent => UsageTelemetryApiPricing.ShouldTreatCachedInputAsInputSubset(usageEvent.ProviderId));
+    }
+
+    private string? BuildCombinedTodayPulseInsightText() {
+        var today = DateTime.Now.Date;
+        var leader = FilterByWindow(today, today)
+            .GroupBy(static usageEvent => usageEvent.ProviderId?.Trim()?.ToLowerInvariant() ?? "unknown")
+            .Where(static group => !string.IsNullOrWhiteSpace(group.Key))
+            .Select(static group => new {
+                Info = ProviderMetadata.Resolve(group.Key),
+                Events = group.Count(),
+                Tokens = group.Sum(static usageEvent => usageEvent.TotalTokens ?? 0L)
+            })
+            .Where(static group => group.Tokens > 0 || group.Events > 0)
+            .OrderByDescending(static group => group.Tokens)
+            .ThenByDescending(static group => group.Events)
+            .FirstOrDefault();
+
+        return leader is null
+            ? null
+            : leader.Info.DisplayName + " leads today with " + FormatTokens(leader.Tokens) + " across " + FormatCountLabel(leader.Events, "rollup", "rollups") + ".";
     }
 
     private string BuildPulseLimitChipText() {

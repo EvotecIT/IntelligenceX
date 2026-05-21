@@ -111,6 +111,8 @@ internal static partial class Program {
             TestUsageTelemetryCachedStartupMergeAvoidsIncompleteRawOverlap);
         failed += Run("Usage telemetry cached startup merge keeps partial raw fallback rollups",
             TestUsageTelemetryCachedStartupMergeKeepsPartialRawFallbackRollups);
+        failed += Run("Usage telemetry cached startup merge sums overlapping rollups",
+            TestUsageTelemetryCachedStartupMergeSumsOverlappingRollups);
         failed += Run("Usage telemetry cached startup merge prefers newest source root metadata",
             TestUsageTelemetryCachedStartupMergePrefersNewestSourceRootMetadata);
         failed += Run("Usage telemetry cached startup merge keeps complete health over partial service health",
@@ -424,6 +426,7 @@ internal static partial class Program {
         failed += Run("Treatment prompt builder includes artifacts and contract", TestTreatmentPromptBuilderIncludesArtifactsAndContract);
         failed += Run("Treatment prompt builder rejects empty request", TestTreatmentPromptBuilderRejectsEmptyRequest);
         failed += Run("Treatment prompt builder inlines local text artifacts", TestTreatmentPromptBuilderInlinesLocalTextArtifacts);
+        failed += Run("Treatment prompt builder prefers workspace for local artifacts", TestTreatmentPromptBuilderPrefersWorkspaceForLocalArtifacts);
         failed += Run("Treatment prompt builder honors inline local file limit", TestTreatmentPromptBuilderHonorsInlineLocalFileLimit);
         failed += Run("Treatment prompt builder handles null metadata and parameterized media type", TestTreatmentPromptBuilderHandlesNullMetadataAndParameterizedMediaType);
         failed += Run("Treatment prompt builder reports traversal as warning", TestTreatmentPromptBuilderReportsTraversalAsWarning);
@@ -432,6 +435,7 @@ internal static partial class Program {
         failed += Run("OpenAI treatment provider parses array JSON", TestOpenAIChatTreatmentProviderParsesArrayJson);
         failed += Run("OpenAI treatment provider maps image assets", TestOpenAIChatTreatmentProviderMapsImageAssets);
         failed += Run("OpenAI treatment provider skips unsupported implicit images", TestOpenAIChatTreatmentProviderSkipsUnsupportedImplicitImages);
+        failed += Run("OpenAI treatment provider handles relative image URIs", TestOpenAIChatTreatmentProviderHandlesRelativeImageUris);
         failed += Run("Native request body normalizes tool replay items", TestNativeRequestBodyNormalizesToolReplayInputItems);
         failed += Run("Native request body normalizes type-missing replay items", TestNativeRequestBodyNormalizesTypeMissingToolReplayItems);
         failed += Run("Native request body filters unpaired tool replay items", TestNativeRequestBodyFiltersUnpairedToolReplayItems);

@@ -236,6 +236,47 @@ internal static partial class Program {
         AssertEqual(300L, merged.Sum(static item => item.TotalTokens ?? 0L), "cached startup merge preserves partial raw and full fallback totals");
     }
 
+    private static void TestUsageTelemetryCachedStartupMergeSumsOverlappingRollups() {
+        var cachedScannedAt = new DateTimeOffset(2026, 03, 10, 9, 0, 0, TimeSpan.Zero);
+        var serviceScannedAt = cachedScannedAt.AddMinutes(5);
+        var rawRecords = new[] {
+            new UsageEventRecord("raw-1", "codex", "codex.logs", "src-1", cachedScannedAt) {
+                InputTokens = 100,
+                CachedInputTokens = 25,
+                OutputTokens = 40,
+                TotalTokens = 140,
+                CompactCount = 1,
+                CostUsd = 0.10m
+            }
+        };
+        var rawRollup = UsageTelemetryQuickReportScanner.BuildMergedEventsFromRawRecords(rawRecords)[0];
+        var fallbackRollup = new UsageEventRecord(rawRollup.EventId, "codex", "codex.logs", "src-1", cachedScannedAt) {
+            InputTokens = 50,
+            CachedInputTokens = 10,
+            OutputTokens = 20,
+            TotalTokens = 70,
+            CompactCount = 2,
+            CostUsd = 0.05m
+        };
+
+        var merged = UsageTelemetryCachedSnapshotMerge.SelectStartupEvents(
+            cachedEvents: new[] { fallbackRollup },
+            serviceEvents: Array.Empty<UsageEventRecord>(),
+            mergedRawEvents: rawRecords,
+            hasCachedRawEvents: true,
+            hasServiceRawEvents: true,
+            cachedScannedAt,
+            serviceScannedAt);
+
+        AssertEqual(1, merged.Count, "cached startup merge overlapping rollup count");
+        AssertEqual(150L, merged[0].InputTokens ?? 0L, "cached startup merge sums input tokens");
+        AssertEqual(35L, merged[0].CachedInputTokens ?? 0L, "cached startup merge sums cached input tokens");
+        AssertEqual(60L, merged[0].OutputTokens ?? 0L, "cached startup merge sums output tokens");
+        AssertEqual(210L, merged[0].TotalTokens ?? 0L, "cached startup merge sums total tokens");
+        AssertEqual(3, merged[0].CompactCount ?? 0, "cached startup merge sums compact count");
+        AssertEqual(0.05m, merged[0].CostUsd ?? 0m, "cached startup merge keeps fallback cost when raw rollup has none");
+    }
+
     private static void TestUsageTelemetryCachedStartupMergePrefersNewestSourceRootMetadata() {
         var cachedScannedAt = new DateTimeOffset(2026, 03, 10, 9, 0, 0, TimeSpan.Zero);
         var serviceScannedAt = cachedScannedAt.AddMinutes(5);

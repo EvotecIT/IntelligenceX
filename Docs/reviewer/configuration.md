@@ -259,7 +259,7 @@ For backward compatibility, the loader also accepts `modelProfiles` and `authPro
       "copilot-gpt54": {
         "provider": "copilot",
         "authenticator": "copilot-cli",
-        "model": "gpt-5.4",
+        "model": "gpt-5.5",
         "copilot": {
           "launcher": "auto",
           "autoInstall": true,
@@ -279,7 +279,7 @@ For backward compatibility, the loader also accepts `modelProfiles` and `authPro
 }
 ```
 
-The Copilot example intentionally keeps its OpenAI-family Copilot model on `gpt-5.4` to show that provider-specific profiles can
+The Copilot example intentionally keeps its OpenAI-family Copilot model on `gpt-5.5` to show that provider-specific profiles can
 choose a different model from the OpenAI default.
 
 For swarm shadow runs, reviewer lanes and the aggregator can reference those same profiles:

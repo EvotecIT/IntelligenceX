@@ -167,15 +167,7 @@ internal static partial class Program {
                 ReasoningSummary = _options.ReasoningSummary,
                 TextVerbosity = _options.TextVerbosity,
                 Temperature = _options.Temperature,
-                ImageGeneration = new ImageGenerationOptions {
-                    Enabled = _options.EnableImageGeneration,
-                    Quality = _options.ImageGenerationQuality,
-                    Size = _options.ImageGenerationSize,
-                    OutputFormat = _options.ImageGenerationOutputFormat,
-                    OutputCompression = _options.ImageGenerationOutputCompression,
-                    Background = _options.ImageGenerationBackground,
-                    OutputDirectory = _options.ImageGenerationOutputDirectory
-                },
+                ImageGeneration = BuildImageGenerationOptions(),
                 ParallelToolCalls = _options.ParallelToolCalls,
                 Tools = toolDefs.Count == 0 ? null : toolDefs,
                 ToolChoice = toolDefs.Count == 0 ? null : ToolChoice.Auto,
@@ -533,6 +525,22 @@ internal static partial class Program {
                 reportedCalls.Add(call);
                 reportedOutputs.Add(protocolOutputs[index]);
             }
+        }
+
+        private ImageGenerationOptions? BuildImageGenerationOptions() {
+            if (!_options.EnableImageGeneration) {
+                return null;
+            }
+
+            return new ImageGenerationOptions {
+                Enabled = true,
+                Quality = _options.ImageGenerationQuality,
+                Size = _options.ImageGenerationSize,
+                OutputFormat = _options.ImageGenerationOutputFormat,
+                OutputCompression = _options.ImageGenerationOutputCompression,
+                Background = _options.ImageGenerationBackground,
+                OutputDirectory = _options.ImageGenerationOutputDirectory
+            };
         }
 
         private bool ShouldSuppressReportedDuplicateReadOnlySignature(

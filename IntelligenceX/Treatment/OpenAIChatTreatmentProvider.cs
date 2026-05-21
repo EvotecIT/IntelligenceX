@@ -104,12 +104,20 @@ public sealed class OpenAIChatTreatmentProvider : ITreatmentProvider {
             return true;
         }
 
-        var extension = Path.GetExtension(artifact.Path ?? artifact.Uri?.AbsolutePath ?? string.Empty);
+        var extension = Path.GetExtension(artifact.Path ?? GetUriExtensionPath(artifact.Uri) ?? string.Empty);
         return extension.Equals(".png", StringComparison.OrdinalIgnoreCase) ||
                extension.Equals(".jpg", StringComparison.OrdinalIgnoreCase) ||
                extension.Equals(".jpeg", StringComparison.OrdinalIgnoreCase) ||
                extension.Equals(".gif", StringComparison.OrdinalIgnoreCase) ||
                extension.Equals(".webp", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string? GetUriExtensionPath(Uri? uri) {
+        if (uri is null) {
+            return null;
+        }
+
+        return uri.IsAbsoluteUri ? uri.AbsolutePath : uri.OriginalString;
     }
 
     private static bool IsSupportedImageMediaType(string mediaType) =>
@@ -120,9 +128,14 @@ public sealed class OpenAIChatTreatmentProvider : ITreatmentProvider {
         mediaType.Equals("image/webp", StringComparison.OrdinalIgnoreCase);
 
     private static string ResolveLocalArtifactPath(string path, TreatmentRequest request) {
-        var baseDirectory = request.WorkingDirectory ?? request.Workspace;
+        var baseDirectory = ResolveLocalArtifactBaseDirectory(request);
         return TreatmentLocalInputReader.ResolvePath(path, baseDirectory);
     }
+
+    private static string? ResolveLocalArtifactBaseDirectory(TreatmentRequest request) =>
+        !string.IsNullOrWhiteSpace(request.Workspace)
+            ? request.Workspace
+            : request.WorkingDirectory;
 
     private static string NormalizeMediaType(string? mediaType) {
         if (string.IsNullOrWhiteSpace(mediaType)) {

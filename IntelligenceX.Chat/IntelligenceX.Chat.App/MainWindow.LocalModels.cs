@@ -772,6 +772,13 @@ public sealed partial class MainWindow : Window {
         var imageOutputFormat = (_localProviderImageGenerationOutputFormat ?? string.Empty).Trim();
         var imageBackground = (_localProviderImageGenerationBackground ?? string.Empty).Trim();
         var imageOutputDirectory = (_localProviderImageGenerationOutputDirectory ?? string.Empty).Trim();
+        var hasImageGenerationOverrides = _localProviderImageGenerationEnabled
+                                      || imageQuality.Length > 0
+                                      || imageSize.Length > 0
+                                      || imageOutputFormat.Length > 0
+                                      || _localProviderImageGenerationOutputCompression.HasValue
+                                      || imageBackground.Length > 0
+                                      || imageOutputDirectory.Length > 0;
 
         return new ServiceLaunchProfileOptions {
             LoadProfileName = profileName,
@@ -788,14 +795,14 @@ public sealed partial class MainWindow : Window {
             ReasoningSummary = reasoningSummary.Length == 0 ? null : reasoningSummary,
             TextVerbosity = textVerbosity.Length == 0 ? null : textVerbosity,
             Temperature = _localProviderTemperature,
-            ImageGenerationEnabled = _localProviderImageGenerationEnabled,
-            ImageGenerationQuality = imageQuality,
-            ImageGenerationSize = imageSize,
-            ImageGenerationOutputFormat = imageOutputFormat,
-            ImageGenerationOutputCompression = _localProviderImageGenerationOutputCompression,
-            ClearImageGenerationOutputCompression = _localProviderImageGenerationOutputCompression is null,
-            ImageGenerationBackground = imageBackground,
-            ImageGenerationOutputDirectory = imageOutputDirectory,
+            ImageGenerationEnabled = hasImageGenerationOverrides ? _localProviderImageGenerationEnabled : null,
+            ImageGenerationQuality = hasImageGenerationOverrides ? imageQuality : null,
+            ImageGenerationSize = hasImageGenerationOverrides ? imageSize : null,
+            ImageGenerationOutputFormat = hasImageGenerationOverrides ? imageOutputFormat : null,
+            ImageGenerationOutputCompression = hasImageGenerationOverrides ? _localProviderImageGenerationOutputCompression : null,
+            ClearImageGenerationOutputCompression = hasImageGenerationOverrides && _localProviderImageGenerationOutputCompression is null,
+            ImageGenerationBackground = hasImageGenerationOverrides ? imageBackground : null,
+            ImageGenerationOutputDirectory = hasImageGenerationOverrides ? imageOutputDirectory : null,
             PackToggles = BuildRuntimePackTogglesFromSessionPolicy()
         };
     }

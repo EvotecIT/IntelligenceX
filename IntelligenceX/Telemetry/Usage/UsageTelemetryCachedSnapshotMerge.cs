@@ -80,6 +80,10 @@ internal static class UsageTelemetryCachedSnapshotMerge {
                 continue;
             }
 
+            if (HasSameRollupContribution(existing, usageEvent)) {
+                continue;
+            }
+
             MergeUsageEventInto(existing, usageEvent);
         }
 
@@ -125,44 +129,66 @@ internal static class UsageTelemetryCachedSnapshotMerge {
     }
 
     private static void MergeUsageEventInto(UsageEventRecord existing, UsageEventRecord incoming) {
-        existing.InputTokens = MaxNullable(existing.InputTokens, incoming.InputTokens);
-        existing.CachedInputTokens = MaxNullable(existing.CachedInputTokens, incoming.CachedInputTokens);
-        existing.OutputTokens = MaxNullable(existing.OutputTokens, incoming.OutputTokens);
-        existing.ReasoningTokens = MaxNullable(existing.ReasoningTokens, incoming.ReasoningTokens);
-        existing.TotalTokens = MaxNullable(existing.TotalTokens, incoming.TotalTokens);
-        existing.CompactCount = MaxNullable(existing.CompactCount, incoming.CompactCount);
+        existing.InputTokens = SumNullable(existing.InputTokens, incoming.InputTokens);
+        existing.CachedInputTokens = SumNullable(existing.CachedInputTokens, incoming.CachedInputTokens);
+        existing.OutputTokens = SumNullable(existing.OutputTokens, incoming.OutputTokens);
+        existing.ReasoningTokens = SumNullable(existing.ReasoningTokens, incoming.ReasoningTokens);
+        existing.TotalTokens = SumNullable(existing.TotalTokens, incoming.TotalTokens);
+        existing.CompactCount = SumNullable(existing.CompactCount, incoming.CompactCount);
         existing.DurationMs = MaxNullable(existing.DurationMs, incoming.DurationMs);
-        existing.CostUsd = MaxNullable(existing.CostUsd, incoming.CostUsd);
+        existing.CostUsd = SumNullable(existing.CostUsd, incoming.CostUsd);
         if (incoming.TruthLevel > existing.TruthLevel) {
             existing.TruthLevel = incoming.TruthLevel;
         }
     }
 
+    private static bool HasSameRollupContribution(UsageEventRecord existing, UsageEventRecord incoming) =>
+        existing.InputTokens == incoming.InputTokens &&
+        existing.CachedInputTokens == incoming.CachedInputTokens &&
+        existing.OutputTokens == incoming.OutputTokens &&
+        existing.ReasoningTokens == incoming.ReasoningTokens &&
+        existing.TotalTokens == incoming.TotalTokens &&
+        existing.CompactCount == incoming.CompactCount &&
+        existing.DurationMs == incoming.DurationMs &&
+        existing.CostUsd == incoming.CostUsd;
+
+    private static long? SumNullable(long? existing, long? incoming) {
+        if (!existing.HasValue) {
+            return incoming;
+        }
+
+        if (!incoming.HasValue) {
+            return existing;
+        }
+
+        return existing.Value + incoming.Value;
+    }
+
+    private static int? SumNullable(int? existing, int? incoming) {
+        if (!existing.HasValue) {
+            return incoming;
+        }
+
+        if (!incoming.HasValue) {
+            return existing;
+        }
+
+        return existing.Value + incoming.Value;
+    }
+
+    private static decimal? SumNullable(decimal? existing, decimal? incoming) {
+        if (!existing.HasValue) {
+            return incoming;
+        }
+
+        if (!incoming.HasValue) {
+            return existing;
+        }
+
+        return existing.Value + incoming.Value;
+    }
+
     private static long? MaxNullable(long? existing, long? incoming) {
-        if (!existing.HasValue) {
-            return incoming;
-        }
-
-        if (!incoming.HasValue) {
-            return existing;
-        }
-
-        return Math.Max(existing.Value, incoming.Value);
-    }
-
-    private static int? MaxNullable(int? existing, int? incoming) {
-        if (!existing.HasValue) {
-            return incoming;
-        }
-
-        if (!incoming.HasValue) {
-            return existing;
-        }
-
-        return Math.Max(existing.Value, incoming.Value);
-    }
-
-    private static decimal? MaxNullable(decimal? existing, decimal? incoming) {
         if (!existing.HasValue) {
             return incoming;
         }

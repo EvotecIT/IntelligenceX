@@ -284,6 +284,23 @@ public sealed class ServiceLaunchArgumentsTests {
     }
 
     /// <summary>
+    /// Ensures absent image-generation overrides do not disable native/env defaults.
+    /// </summary>
+    [Fact]
+    public void Build_OmitsImageGenerationFlags_WhenOverridesAreUnset() {
+        var args = ServiceLaunchArguments.Build(
+            "intelligencex.chat",
+            detachedServiceMode: true,
+            parentProcessId: 12345,
+            new ServiceLaunchArguments.ProfileOptions());
+
+        Assert.DoesNotContain("--enable-image-generation", args);
+        Assert.DoesNotContain("--disable-image-generation", args);
+        Assert.DoesNotContain("--image-generation-quality", args);
+        Assert.DoesNotContain("--clear-image-generation-output-compression", args);
+    }
+
+    /// <summary>
     /// Ensures repeatable plugin paths are forwarded, while empty/duplicate entries are ignored.
     /// </summary>
     [Fact]
