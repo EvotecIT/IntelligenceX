@@ -3,6 +3,7 @@ namespace IntelligenceX.Tray.Services;
 public sealed class TrayPreferences {
     public string? SelectedProviderId { get; set; }
     public string GitHubUsername { get; set; } = string.Empty;
+    public bool GitHubRememberUsername { get; set; } = true;
     public string ThemeMode { get; set; } = TrayThemeService.SystemMode;
     public string AccentPreset { get; set; } = TrayThemeService.DefaultAccentPreset;
     public int AutoRefreshIntervalSeconds { get; set; } = 120;

@@ -213,6 +213,21 @@ internal static partial class Program {
             AssertEqual(1, second.ProviderDiagnostics[0].DuplicateRecordsCollapsed, "quick report cached dedupe second provider collapsed");
             AssertEqual(1, second.Events.Count, "quick report cached dedupe second event count");
             AssertEqual(140L, second.Events[0].TotalTokens, "quick report cached dedupe second total");
+
+            var capped = scanner.ScanAsync(
+                    roots,
+                    new UsageTelemetryQuickReportOptions {
+                        ProviderId = "codex",
+                        RawArtifactStore = rawArtifactStore,
+                        MaxArtifacts = 1
+                    })
+                .GetAwaiter()
+                .GetResult();
+
+            AssertEqual(0, capped.ArtifactsParsed, "quick report cached dedupe capped parsed");
+            AssertEqual(1, capped.ArtifactsReused, "quick report cached dedupe capped reused");
+            AssertEqual(true, capped.ArtifactBudgetReached, "quick report cached dedupe capped budget reached");
+            AssertEqual(1, capped.RawEventsCollected, "quick report cached dedupe capped raw count");
         } finally {
             TryDeleteUsageTelemetryImportTempDirectory(tempDir);
         }

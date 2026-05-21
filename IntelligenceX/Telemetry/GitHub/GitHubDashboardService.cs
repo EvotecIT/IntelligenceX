@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -15,6 +16,10 @@ namespace IntelligenceX.Telemetry.GitHub;
 /// Native GitHub dashboard service for shared observability scenarios.
 /// </summary>
 public sealed class GitHubDashboardService : IDisposable {
+    private const int MaxDashboardCacheEntries = 32;
+    private static readonly object DashboardCacheGate = new();
+    private static readonly Dictionary<string, DashboardCacheEntry> DashboardCache = new(StringComparer.Ordinal);
+    private static readonly TimeSpan DashboardCacheDuration = TimeSpan.FromMinutes(10);
     private readonly HttpClient _http;
     private readonly bool _disposeHttpClient;
 
@@ -38,6 +43,20 @@ public sealed class GitHubDashboardService : IDisposable {
     /// <returns>GitHub dashboard data.</returns>
     public async Task<GitHubDashboardData> FetchAsync(string? login = null, CancellationToken cancellationToken = default) {
         var explicitLogin = NormalizeOptional(login);
+        var now = DateTimeOffset.UtcNow;
+        if (explicitLogin is not null) {
+            var explicitCacheKey = BuildDashboardCacheKey(explicitLogin);
+            if (TryGetCachedDashboard(explicitCacheKey, now, out var cachedExplicitData)) {
+                return cachedExplicitData;
+            }
+        }
+
+        var authenticatedCacheKey = BuildAuthenticatedDashboardCacheKey();
+        if (explicitLogin is null &&
+            TryGetCachedDashboard(authenticatedCacheKey, now, out var cachedAuthenticatedData)) {
+            return cachedAuthenticatedData;
+        }
+
         var authenticatedLogin = await GetAuthenticatedLoginAsync(cancellationToken).ConfigureAwait(false);
         var effectiveLogin = explicitLogin ?? authenticatedLogin;
         if (string.IsNullOrWhiteSpace(effectiveLogin)) {
@@ -46,6 +65,10 @@ public sealed class GitHubDashboardService : IDisposable {
         var normalizedLogin = effectiveLogin!;
         var isAuthenticatedSelfLookup = !string.IsNullOrWhiteSpace(authenticatedLogin)
                                         && string.Equals(normalizedLogin, authenticatedLogin, StringComparison.OrdinalIgnoreCase);
+        var cacheKey = BuildDashboardCacheKey(normalizedLogin);
+        if (TryGetCachedDashboard(cacheKey, now, out var cachedData)) {
+            return cachedData;
+        }
 
         var profileTask = FetchProfileAsync(
             normalizedLogin,
@@ -60,12 +83,19 @@ public sealed class GitHubDashboardService : IDisposable {
 
         var allRepos = repositoriesTask.Result;
 
-        return new GitHubDashboardData(
+        var data = new GitHubDashboardData(
             normalizedLogin,
             profileTask.Result,
             contributionsTask.Result,
             GitHubDashboardRepositoryRanking.BuildTopRepositories(allRepos, limit: 8),
             allRepos);
+        var fetchedAtUtc = DateTimeOffset.UtcNow;
+        StoreCachedDashboard(cacheKey, data, fetchedAtUtc);
+        if (isAuthenticatedSelfLookup) {
+            StoreCachedDashboard(authenticatedCacheKey, data, fetchedAtUtc);
+        }
+
+        return data;
     }
 
     /// <summary>
@@ -339,7 +369,7 @@ query($owner: String!, $repo: String!, $first: Int!, $after: String) {
 
     private async Task<GitHubContribData> FetchContributionsAsync(string login, CancellationToken cancellationToken) {
         var now = DateTimeOffset.UtcNow;
-        var from = now.AddDays(-29).Date;
+        var from = now.AddDays(-364).Date;
         var to = now.Date;
         const string query = """
 query($login: String!, $from: DateTime!, $to: DateTime!) {
@@ -415,6 +445,73 @@ query($login: String!, $from: DateTime!, $to: DateTime!) {
                 .OrderBy(static day => day.Date)
                 .ToArray());
     }
+
+    private bool TryGetCachedDashboard(string cacheKey, DateTimeOffset now, out GitHubDashboardData data) {
+        lock (DashboardCacheGate) {
+            PruneExpiredDashboardCacheEntries(now);
+            if (DashboardCache.TryGetValue(cacheKey, out var entry)) {
+                data = entry.Data;
+                return true;
+            }
+        }
+
+        data = null!;
+        return false;
+    }
+
+    private static void StoreCachedDashboard(string cacheKey, GitHubDashboardData data, DateTimeOffset fetchedAtUtc) {
+        lock (DashboardCacheGate) {
+            PruneExpiredDashboardCacheEntries(fetchedAtUtc);
+            DashboardCache[cacheKey] = new DashboardCacheEntry(data, fetchedAtUtc);
+            TrimDashboardCache();
+        }
+    }
+
+    private static void PruneExpiredDashboardCacheEntries(DateTimeOffset now) {
+        foreach (var key in DashboardCache
+                     .Where(pair => now - pair.Value.FetchedAtUtc > DashboardCacheDuration)
+                     .Select(static pair => pair.Key)
+                     .ToArray()) {
+            DashboardCache.Remove(key);
+        }
+    }
+
+    private static void TrimDashboardCache() {
+        while (DashboardCache.Count > MaxDashboardCacheEntries) {
+            var oldestKey = DashboardCache
+                .OrderBy(static pair => pair.Value.FetchedAtUtc)
+                .ThenBy(static pair => pair.Key, StringComparer.Ordinal)
+                .First()
+                .Key;
+            DashboardCache.Remove(oldestKey);
+        }
+    }
+
+    private string BuildDashboardCacheKey(string login) {
+        var authorization = _http.DefaultRequestHeaders.Authorization;
+        return string.Join(
+            "|",
+            _http.BaseAddress?.AbsoluteUri ?? string.Empty,
+            authorization?.Scheme ?? string.Empty,
+            FingerprintSecret(authorization?.Parameter),
+            login.Trim().ToLowerInvariant());
+    }
+
+    private string BuildAuthenticatedDashboardCacheKey() {
+        return BuildDashboardCacheKey("__authenticated_self__");
+    }
+
+    private static string FingerprintSecret(string? value) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            return string.Empty;
+        }
+
+        using var sha256 = SHA256.Create();
+        var hash = sha256.ComputeHash(Encoding.UTF8.GetBytes(value));
+        return Convert.ToBase64String(hash);
+    }
+
+    private sealed record DashboardCacheEntry(GitHubDashboardData Data, DateTimeOffset FetchedAtUtc);
 
     private async Task<IReadOnlyList<GitHubRepoInfo>> FetchRepositoriesAsync(
         string login,

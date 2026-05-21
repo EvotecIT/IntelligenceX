@@ -266,7 +266,7 @@ internal static partial class Program {
         try {
             var codexHome = Path.Combine(tempDir, ".codex");
             var sessionsDir = Path.Combine(codexHome, "sessions", "2026", "03", "11");
-            var archivedDir = Path.Combine(codexHome, "archived_sessions", "2026", "03", "11");
+            var archivedDir = Path.Combine(codexHome, "archived_sessions", "keep-codex-fast-20260503-105123", "2026", "03", "11");
             Directory.CreateDirectory(sessionsDir);
             Directory.CreateDirectory(archivedDir);
 

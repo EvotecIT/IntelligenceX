@@ -34,13 +34,13 @@ internal static partial class Program {
 
         var displayCost = UsageTelemetryApiPricing.BuildDisplayCost(events);
         AssertEqual(4.20m, displayCost.ExactCostUsd, "api pricing exact cost portion");
-        AssertEqual(7.7875m, displayCost.EstimatedFallbackCostUsd, "api pricing estimated fallback portion");
-        AssertEqual(11.9875m, displayCost.TotalCostUsd, "api pricing blended total");
+        AssertEqual(6.9125m, displayCost.EstimatedFallbackCostUsd, "api pricing estimated fallback portion");
+        AssertEqual(11.1125m, displayCost.TotalCostUsd, "api pricing blended total");
         AssertEqual(true, displayCost.UsesEstimatedFallback, "api pricing indicates approximation");
 
         var estimate = UsageTelemetryApiPricing.Estimate(events);
         AssertNotNull(estimate, "api pricing estimate exists");
-        AssertEqual(11.8375m, estimate!.TotalEstimatedCostUsd, "api pricing pure estimate total");
+        AssertEqual(10.4625m, estimate!.TotalEstimatedCostUsd, "api pricing pure estimate total");
         AssertEqual(4_100_000L, estimate.CoveredTokens, "api pricing covered tokens");
     }
 
@@ -58,7 +58,7 @@ internal static partial class Program {
         var eventEstimate = UsageTelemetryApiPricing.EstimateEvent(evt);
         AssertEqual(true, eventEstimate.HasKnownPricing, "api pricing recognizes openai fast suffix");
         AssertEqual("gpt-5.5/fast/spark", eventEstimate.Model, "api pricing normalizes openai compound mode suffix");
-        AssertEqual(9.55m, eventEstimate.EstimatedCostUsd, "api pricing estimates gpt-5.5 compound mode from base model");
+        AssertEqual(7.55m, eventEstimate.EstimatedCostUsd, "api pricing estimates gpt-5.5 compound mode from base model");
 
         var fastEstimate = UsageTelemetryApiPricing.EstimateEvent(new UsageEventRecord(
             "evt-fast-direct",
@@ -76,10 +76,29 @@ internal static partial class Program {
         });
         AssertEqual(true, fastEstimate.HasKnownPricing, "api pricing has explicit gpt-5.5 fast pricing");
         AssertEqual("gpt-5.5/fast", fastEstimate.Model, "api pricing preserves explicit gpt-5.5 fast model");
-        AssertEqual(9.55m, fastEstimate.EstimatedCostUsd, "api pricing estimates explicit gpt-5.5 fast model");
+        AssertEqual(7.55m, fastEstimate.EstimatedCostUsd, "api pricing estimates explicit gpt-5.5 fast model");
+
+        foreach (var providerAlias in new[] { "openai-codex", "chatgpt-codex" }) {
+            var aliasEstimate = UsageTelemetryApiPricing.EstimateEvent(new UsageEventRecord(
+                "evt-fast-" + providerAlias,
+                providerAlias,
+                "codex.logs",
+                "src-1",
+                new DateTimeOffset(2026, 03, 10, 11, 10, 0, TimeSpan.Zero)) {
+                Model = "gpt-5.5/fast",
+                InputTokens = 1_000_000,
+                CachedInputTokens = 100_000,
+                OutputTokens = 100_000,
+                ReasoningTokens = 50_000,
+                TotalTokens = 1_250_000,
+                TruthLevel = UsageTruthLevel.Exact
+            });
+            AssertEqual(true, aliasEstimate.HasKnownPricing, "api pricing recognizes " + providerAlias + " alias");
+            AssertEqual(7.55m, aliasEstimate.EstimatedCostUsd, "api pricing applies OpenAI subset semantics to " + providerAlias);
+        }
 
         var displayCost = UsageTelemetryApiPricing.BuildDisplayCost(evt);
-        AssertEqual(9.55m, displayCost.EstimatedFallbackCostUsd, "api pricing display cost includes gpt-5.5 fast");
+        AssertEqual(7.55m, displayCost.EstimatedFallbackCostUsd, "api pricing display cost includes gpt-5.5 fast");
         AssertEqual(1_250_000L, displayCost.CoveredTokens, "api pricing display cost covers gpt-5.5 fast tokens");
         AssertEqual(0L, displayCost.UncoveredTokens, "api pricing display cost leaves no gpt-5.5 fast tokens uncovered");
 
@@ -96,6 +115,188 @@ internal static partial class Program {
         });
         AssertEqual(false, nonOpenAiEstimate.HasKnownPricing, "api pricing does not apply OpenAI mode pricing to third-party slash ids");
         AssertEqual("vendor/gpt-5.5/fast", nonOpenAiEstimate.Model, "api pricing preserves third-party slash id");
+    }
+
+    private static void TestUsageTelemetryApiPricingClampsSubsetCachedInput() {
+        var clampedEstimate = UsageTelemetryApiPricing.EstimateEvent(new UsageEventRecord(
+            "evt-cached-clamped",
+            "openai",
+            "codex.logs",
+            "src-1",
+            new DateTimeOffset(2026, 03, 10, 11, 20, 0, TimeSpan.Zero)) {
+            Model = "gpt-5.5/fast",
+            InputTokens = 100,
+            CachedInputTokens = 100,
+            TotalTokens = 100,
+            TruthLevel = UsageTruthLevel.Exact
+        });
+        var overflowEstimate = UsageTelemetryApiPricing.EstimateEvent(new UsageEventRecord(
+            "evt-cached-overflow",
+            "openai",
+            "codex.logs",
+            "src-1",
+            new DateTimeOffset(2026, 03, 10, 11, 21, 0, TimeSpan.Zero)) {
+            Model = "gpt-5.5/fast",
+            InputTokens = 100,
+            CachedInputTokens = 200,
+            TotalTokens = 200,
+            TruthLevel = UsageTruthLevel.Exact
+        });
+
+        AssertEqual(true, overflowEstimate.HasKnownPricing, "api pricing recognizes cached overflow fixture");
+        AssertEqual(clampedEstimate.EstimatedCostUsd, overflowEstimate.EstimatedCostUsd, "api pricing clamps OpenAI cached input to input tokens");
+    }
+
+    private static void TestUsageTelemetryScopeSummaryKeepsProviderErrorsCompact() {
+        var sourceRoots = new[] {
+            new SourceRootRecord("src-codex", "codex", UsageSourceKind.LocalLogs, @"C:\Users\example\.codex\sessions") {
+                MachineLabel = "Workstation"
+            }
+        };
+        var snapshot = new ProviderLimitSnapshot(
+            "codex",
+            "Codex",
+            "Codex limits",
+            null,
+            null,
+            Array.Empty<ProviderLimitWindow>(),
+            null,
+            "OAuth token request failed (401): { \"error\": { \"message\": \"Your refresh token has already been used to generate a new access token. Please try signing in again.\", \"type\": \"invalid_request_error\", \"code\": \"refresh_token_reused\" } }",
+            DateTimeOffset.UtcNow);
+
+        var summary = UsageTelemetryScopeSummaryBuilder.Build("codex", sourceRoots, snapshot);
+
+        AssertContainsText(summary.LocalScopeText ?? string.Empty, "1 discovered root", "scope local root summary");
+        AssertContainsText(summary.OnlineScopeText ?? string.Empty, "fresh sign-in", "scope online sign-in summary");
+        AssertDoesNotContainText(summary.OnlineScopeText ?? string.Empty, "refresh_token_reused", "scope hides raw oauth code");
+        AssertDoesNotContainText(summary.OnlineScopeText ?? string.Empty, "{", "scope hides raw json");
+    }
+
+    private static void TestUsageTelemetryCachedStartupMergeAvoidsIncompleteRawOverlap() {
+        var cachedScannedAt = new DateTimeOffset(2026, 03, 10, 9, 0, 0, TimeSpan.Zero);
+        var serviceScannedAt = cachedScannedAt.AddMinutes(5);
+        var cachedEvents = UsageTelemetryQuickReportScanner.BuildMergedEventsFromRawRecords(new[] {
+            new UsageEventRecord("codex-raw-cached", "codex", "codex.logs", "src-1", cachedScannedAt) {
+                InputTokens = 100,
+                TotalTokens = 100
+            }
+        });
+        var serviceEvents = new[] {
+            new UsageEventRecord("codex-rollup-service", "codex", "codex.logs", "src-1", cachedScannedAt.AddDays(1)) {
+                InputTokens = 120,
+                TotalTokens = 120
+            }
+        };
+
+        var merged = UsageTelemetryCachedSnapshotMerge.SelectStartupEvents(
+            cachedEvents,
+            serviceEvents,
+            cachedEvents,
+            hasCachedRawEvents: true,
+            hasServiceRawEvents: false,
+            cachedScannedAt,
+            serviceScannedAt);
+
+        AssertEqual(2, merged.Count, "cached startup merge keeps available raw and fallback rollups");
+        AssertEqual(220L, merged.Sum(static item => item.TotalTokens ?? 0L), "cached startup merge preserves combined non-overlapping coverage");
+    }
+
+    private static void TestUsageTelemetryCachedStartupMergeKeepsPartialRawFallbackRollups() {
+        var cachedScannedAt = new DateTimeOffset(2026, 03, 10, 9, 0, 0, TimeSpan.Zero);
+        var serviceScannedAt = cachedScannedAt.AddMinutes(5);
+        var cachedEvents = new[] {
+            new UsageEventRecord("codex-rollup-cached", "codex", "codex.logs", "src-1", cachedScannedAt.AddDays(-1)) {
+                InputTokens = 80,
+                TotalTokens = 80
+            }
+        };
+        var serviceEvents = new[] {
+            new UsageEventRecord("codex-rollup-service", "codex", "codex.logs", "src-1", cachedScannedAt.AddDays(1)) {
+                InputTokens = 120,
+                TotalTokens = 120
+            }
+        };
+        var mergedRawEvents = new[] {
+            new UsageEventRecord("codex-raw-cached-partial", "codex", "codex.logs", "src-1", cachedScannedAt) {
+                InputTokens = 100,
+                TotalTokens = 100
+            }
+        };
+
+        var merged = UsageTelemetryCachedSnapshotMerge.SelectStartupEvents(
+            cachedEvents,
+            serviceEvents,
+            mergedRawEvents,
+            hasCachedRawEvents: true,
+            hasServiceRawEvents: true,
+            cachedScannedAt,
+            serviceScannedAt);
+
+        AssertEqual(3, merged.Count, "cached startup merge keeps fallback rollups when both raw caches are partial");
+        AssertEqual(300L, merged.Sum(static item => item.TotalTokens ?? 0L), "cached startup merge preserves partial raw and full fallback totals");
+    }
+
+    private static void TestUsageTelemetryCachedStartupMergePrefersNewestSourceRootMetadata() {
+        var cachedScannedAt = new DateTimeOffset(2026, 03, 10, 9, 0, 0, TimeSpan.Zero);
+        var serviceScannedAt = cachedScannedAt.AddMinutes(5);
+        var cachedSourceRoots = new[] {
+            new SourceRootRecord("src-codex", "codex", UsageSourceKind.LocalLogs, @"C:\Users\me\.codex\sessions") {
+                Enabled = false
+            }
+        };
+        var serviceSourceRoots = new[] {
+            new SourceRootRecord("src-codex", "codex", UsageSourceKind.LocalLogs, @"C:\Users\me\.codex\sessions") {
+                Enabled = true
+            },
+            new SourceRootRecord("src-claude", "claude", UsageSourceKind.LocalLogs, @"C:\Users\me\.claude\projects")
+        };
+
+        var merged = UsageTelemetryCachedSnapshotMerge.SelectStartupSourceRoots(
+            cachedSourceRoots,
+            serviceSourceRoots,
+            cachedScannedAt,
+            serviceScannedAt);
+
+        AssertEqual(2, merged.Count, "cached startup source root merge preserves distinct roots");
+        AssertEqual(true, merged.First(static root => string.Equals(root.Id, "src-codex", StringComparison.OrdinalIgnoreCase)).Enabled, "cached startup source root merge prefers newer duplicate metadata");
+    }
+
+    private static void TestUsageTelemetryCachedStartupMergeKeepsCompleteHealthOverPartialServiceHealth() {
+        var cachedScannedAt = new DateTimeOffset(2026, 03, 10, 9, 0, 0, TimeSpan.Zero);
+        var serviceScannedAt = cachedScannedAt.AddMinutes(5);
+        var completeCachedHealth = new UsageTelemetrySnapshotHealth(
+            isCachedSnapshot: true,
+            isPartialScan: false,
+            providerCount: 1,
+            rootsCount: 1,
+            accountLabels: Array.Empty<string>(),
+            eventsCount: 10,
+            parsedArtifacts: 10,
+            reusedArtifacts: 0,
+            duplicateRecordsCollapsed: 0,
+            latestEventUtc: cachedScannedAt,
+            issueCount: 0);
+        var partialServiceHealth = new UsageTelemetrySnapshotHealth(
+            isCachedSnapshot: true,
+            isPartialScan: true,
+            providerCount: 1,
+            rootsCount: 1,
+            accountLabels: Array.Empty<string>(),
+            eventsCount: 10,
+            parsedArtifacts: 0,
+            reusedArtifacts: 10,
+            duplicateRecordsCollapsed: 0,
+            latestEventUtc: serviceScannedAt,
+            issueCount: 0);
+
+        var mergedHealth = UsageTelemetryCachedSnapshotMerge.SelectStartupHealth(
+            completeCachedHealth,
+            partialServiceHealth,
+            cachedScannedAt,
+            serviceScannedAt);
+
+        AssertNotNull(mergedHealth, "cached startup health merge returns health");
+        AssertEqual(false, mergedHealth!.IsPartialScan, "cached startup health merge does not let partial service health override complete cached health");
     }
 
     private static void TestProviderLimitForecastingFlagsOverLimitPace() {
@@ -557,6 +758,34 @@ internal static partial class Program {
         AssertContainsText(json, "\"monthlyUsage\":[", "usage overview json provider monthly usage");
         AssertContainsText(json, "\"topModels\":[", "usage overview json provider top models");
         AssertContainsText(json, "\"apiCostEstimate\":", "usage overview json provider api estimate");
+    }
+
+    private static void TestUsageTelemetryOverviewBuilderSplitsCachedInputInTokenMix() {
+        var builder = new UsageTelemetryOverviewBuilder();
+        var events = new[] {
+            new UsageEventRecord("evt-cached", "codex", "codex.logs", "src-1", new DateTimeOffset(2026, 03, 10, 9, 0, 0, TimeSpan.Zero)) {
+                AccountLabel = "work",
+                Surface = "cli",
+                Model = "gpt-5.4",
+                InputTokens = 1_000,
+                CachedInputTokens = 800,
+                OutputTokens = 100,
+                TotalTokens = 1_100,
+                TruthLevel = UsageTruthLevel.Exact
+            }
+        };
+
+        var overview = builder.Build(events);
+        var composition = overview.ProviderSections.Single().Composition;
+
+        AssertNotNull(composition, "usage overview cached input composition");
+        AssertEqual(3, composition!.Items.Count, "usage overview cached input token mix item count");
+        AssertEqual("Fresh input", composition.Items[0].Label, "usage overview token mix fresh input label");
+        AssertEqual("200", composition.Items[0].Value, "usage overview token mix fresh input value");
+        AssertEqual("Cached input", composition.Items[1].Label, "usage overview token mix cached input label");
+        AssertEqual("800", composition.Items[1].Value, "usage overview token mix cached input value");
+        AssertEqual("Output", composition.Items[2].Label, "usage overview token mix output label");
+        AssertEqual("100", composition.Items[2].Value, "usage overview token mix output value");
     }
 
     private static void TestUsageTelemetryOverviewBuilderEstimatesApiCostForMiniAndNanoModels() {

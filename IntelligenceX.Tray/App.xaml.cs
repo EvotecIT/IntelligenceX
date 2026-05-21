@@ -17,6 +17,9 @@ using System.ComponentModel;
 namespace IntelligenceX.Tray;
 
 public partial class App : Application {
+    private const string SingleInstanceMutexName = "Local\\IntelligenceX.Tray.SingleInstance";
+    private const string ShowPopupEventName = "Local\\IntelligenceX.Tray.ShowPopup";
+
     private TaskbarIcon? _trayIcon;
     private TrayPopupWindow? _popupWindow;
     private MainViewModel? _viewModel;
@@ -33,12 +36,24 @@ public partial class App : Application {
     private DateTimeOffset _suppressTrayToggleUntilUtc;
     private bool _restoringPopupPlacement;
     private bool _isExiting;
+    private bool _ownsSingleInstanceMutex;
+    private Mutex? _singleInstanceMutex;
+    private EventWaitHandle? _showPopupEvent;
+    private RegisteredWaitHandle? _showPopupRegistration;
     private readonly WindowsStartupRegistrationService _startupRegistrationService = new();
 
     protected override void OnStartup(StartupEventArgs e) {
-        base.OnStartup(e);
-
         try {
+            var openOnStartup = e.Args.Any(static arg =>
+                string.Equals(arg, "--open", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(arg, "--show", StringComparison.OrdinalIgnoreCase));
+            if (!TryClaimSingleInstance(openOnStartup)) {
+                Shutdown(0);
+                return;
+            }
+
+            base.OnStartup(e);
+
             _usageArtifactStore = new SqliteRawArtifactStore(ResolveTrayUsageCachePath());
             var usageService = new UsageTelemetrySnapshotService(_usageArtifactStore);
             var limitService = new ProviderLimitSnapshotService();
@@ -81,14 +96,70 @@ public partial class App : Application {
             Dispatcher.InvokeAsync(
                 async () => await RefreshStartupRegistrationStateAsync(),
                 DispatcherPriority.Background);
+            if (openOnStartup) {
+                Dispatcher.InvokeAsync(
+                    () => ShowPopup(TimeSpan.FromSeconds(30)),
+                    DispatcherPriority.ApplicationIdle);
+            }
         } catch (Exception ex) {
             MessageBox.Show(
                 $"IntelligenceX Tray failed to start:\n\n{ex}",
                 "Startup Error",
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
+            DisposeSingleInstanceResources();
             Shutdown(1);
         }
+    }
+
+    private bool TryClaimSingleInstance(bool requestOpen) {
+        _singleInstanceMutex = new Mutex(initiallyOwned: false, SingleInstanceMutexName, out _);
+        var ownsInstance = false;
+        try {
+            ownsInstance = _singleInstanceMutex.WaitOne(0);
+        } catch (AbandonedMutexException) {
+            ownsInstance = true;
+        }
+
+        if (!ownsInstance) {
+            SignalExistingInstance(requestOpen);
+            _singleInstanceMutex.Dispose();
+            _singleInstanceMutex = null;
+            return false;
+        }
+
+        _ownsSingleInstanceMutex = true;
+        _showPopupEvent = new EventWaitHandle(false, EventResetMode.AutoReset, ShowPopupEventName);
+        _showPopupRegistration = ThreadPool.RegisterWaitForSingleObject(
+            _showPopupEvent,
+            OnShowPopupSignal,
+            state: null,
+            millisecondsTimeOutInterval: -1,
+            executeOnlyOnce: false);
+        return true;
+    }
+
+    private static void SignalExistingInstance(bool requestOpen) {
+        if (!requestOpen) {
+            return;
+        }
+
+        try {
+            using var showPopupEvent = EventWaitHandle.OpenExisting(ShowPopupEventName);
+            showPopupEvent.Set();
+        } catch (WaitHandleCannotBeOpenedException) {
+        } catch (UnauthorizedAccessException) {
+        }
+    }
+
+    private void OnShowPopupSignal(object? state, bool timedOut) {
+        if (timedOut || _isExiting) {
+            return;
+        }
+
+        Dispatcher.BeginInvoke(
+            new Action(() => ShowPopup(TimeSpan.FromSeconds(10))),
+            DispatcherPriority.ApplicationIdle);
     }
 
     private async Task StartBackgroundInitializationAsync() {
@@ -372,12 +443,12 @@ public partial class App : Application {
         }
     }
 
-    private void ShowPopup() {
+    private void ShowPopup(TimeSpan? suppressDeactivateFor = null) {
         if (_popupWindow is null) {
             return;
         }
 
-        _popupWindow.PrepareForTrayOpen();
+        _popupWindow.PrepareForTrayOpen(suppressDeactivateFor);
         _suppressTrayToggleUntilUtc = DateTimeOffset.UtcNow.AddMilliseconds(500);
         PositionPopupForOpen();
         _popupWindow.Show();
@@ -446,16 +517,79 @@ public partial class App : Application {
             return new PopupPoint(left, top);
         }
 
-        var virtualLeft = SystemParameters.VirtualScreenLeft;
-        var virtualTop = SystemParameters.VirtualScreenTop;
-        var virtualRight = virtualLeft + SystemParameters.VirtualScreenWidth;
-        var virtualBottom = virtualTop + SystemParameters.VirtualScreenHeight;
-        var maxLeft = Math.Max(virtualLeft, virtualRight - _popupWindow.Width);
-        var maxTop = Math.Max(virtualTop, virtualBottom - _popupWindow.Height);
+        if (!TryGetWorkAreaForPopupPlacement(left, top, out var workArea)) {
+            workArea = new PopupBounds(
+                SystemParameters.WorkArea.Left,
+                SystemParameters.WorkArea.Top,
+                SystemParameters.WorkArea.Right,
+                SystemParameters.WorkArea.Bottom);
+        }
+
+        const double margin = 8d;
+        var minLeft = workArea.Left + margin;
+        var minTop = workArea.Top + margin;
+        var maxLeft = Math.Max(minLeft, workArea.Right - _popupWindow.Width - margin);
+        var maxTop = Math.Max(minTop, workArea.Bottom - _popupWindow.Height - margin);
 
         return new PopupPoint(
-            Math.Clamp(left, virtualLeft, maxLeft),
-            Math.Clamp(top, virtualTop, maxTop));
+            Math.Clamp(left, minLeft, maxLeft),
+            Math.Clamp(top, minTop, maxTop));
+    }
+
+    private bool TryGetWorkAreaForPopupPlacement(double left, double top, out PopupBounds workArea) {
+        workArea = default;
+        if (_popupWindow is null) {
+            return false;
+        }
+
+        var probePoint = new Point(
+            left + Math.Max(1d, _popupWindow.Width / 2d),
+            top + Math.Max(1d, _popupWindow.Height / 2d));
+        var source = PresentationSource.FromVisual(_popupWindow);
+        if (source?.CompositionTarget is not null) {
+            probePoint = source.CompositionTarget.TransformToDevice.Transform(probePoint);
+        } else {
+            var dpi = VisualTreeHelper.GetDpi(_popupWindow);
+            probePoint = new Point(
+                probePoint.X * dpi.DpiScaleX,
+                probePoint.Y * dpi.DpiScaleY);
+        }
+
+        var monitor = MonitorFromPoint(
+            new NativePoint {
+                X = (int)Math.Round(probePoint.X),
+                Y = (int)Math.Round(probePoint.Y)
+            },
+            MonitorDefaultToNearest);
+        if (monitor == IntPtr.Zero) {
+            return false;
+        }
+
+        var monitorInfo = new NativeMonitorInfo();
+        monitorInfo.CbSize = Marshal.SizeOf<NativeMonitorInfo>();
+        if (!GetMonitorInfo(monitor, ref monitorInfo)) {
+            return false;
+        }
+
+        var dpiX = 96d;
+        var dpiY = 96d;
+        try {
+            if (GetDpiForMonitor(monitor, MonitorDpiTypeEffective, out var monitorDpiX, out var monitorDpiY) == 0) {
+                dpiX = monitorDpiX;
+                dpiY = monitorDpiY;
+            }
+        } catch (DllNotFoundException) {
+        } catch (EntryPointNotFoundException) {
+        }
+
+        workArea = PopupPlacementMath.ConvertPixelBoundsToDips(
+            monitorInfo.Work.Left,
+            monitorInfo.Work.Top,
+            monitorInfo.Work.Right,
+            monitorInfo.Work.Bottom,
+            dpiX,
+            dpiY);
+        return true;
     }
 
     private void OnPopupManualPlacementCommitted(object? sender, EventArgs e) {
@@ -671,6 +805,7 @@ public partial class App : Application {
         _viewModel?.Dispose();
         _usageArtifactStore?.Dispose();
         _usageArtifactStore = null;
+        DisposeSingleInstanceResources();
         _trayIcon?.Dispose();
         if (_popupWindow is not null) {
             _popupWindow.ManualPlacementCommitted -= OnPopupManualPlacementCommitted;
@@ -680,6 +815,28 @@ public partial class App : Application {
             _popupWindow.Close();
         }
         base.OnExit(e);
+    }
+
+    private void DisposeSingleInstanceResources() {
+        _showPopupRegistration?.Unregister(null);
+        _showPopupRegistration = null;
+        _showPopupEvent?.Dispose();
+        _showPopupEvent = null;
+        if (_singleInstanceMutex is null) {
+            return;
+        }
+
+        if (_ownsSingleInstanceMutex) {
+            try {
+                _singleInstanceMutex.ReleaseMutex();
+            } catch (ApplicationException) {
+                // The mutex was abandoned or ownership was lost during shutdown.
+            }
+        }
+
+        _ownsSingleInstanceMutex = false;
+        _singleInstanceMutex.Dispose();
+        _singleInstanceMutex = null;
     }
 
     private static string ResolveTrayUsageCachePath() {

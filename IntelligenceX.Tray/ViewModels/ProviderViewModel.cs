@@ -40,6 +40,34 @@ public enum ProviderComparisonSort {
     Events
 }
 
+public enum ProviderDetailsMode {
+    Activity,
+    Limits,
+    Models,
+    Events,
+    Scope
+}
+
+public enum ProviderUsageHealthState {
+    None,
+    Fresh,
+    Updating,
+    Partial
+}
+
+public enum ProviderLimitPulseState {
+    None,
+    Attention,
+    Unavailable
+}
+
+internal enum ProviderPulseStatusKind {
+    Fresh,
+    Updating,
+    Partial,
+    NeedsAttention
+}
+
 internal static class ProviderFilterDefaults {
     public const string AllAccounts = "All accounts";
     public const string AllModels = "All models";
@@ -63,6 +91,7 @@ public sealed class ProviderViewModel : ViewModelBase {
     private Color _inputColor;
     private Color _outputColor;
     private Color _totalColor;
+    private bool _isSelected;
 
     // Today
     private long _todayTotalTokens;
@@ -73,6 +102,18 @@ public sealed class ProviderViewModel : ViewModelBase {
     private decimal _todayCostUsd;
     private bool _todayCostUsesEstimate;
     private int _todayEventCount;
+    private long _pulseTotalTokens;
+    private long _pulseInputTokens;
+    private long _pulseOutputTokens;
+    private long _pulseCachedTokens;
+    private long _pulseReasoningTokens;
+    private long _pulseFreshInputTokens;
+    private long _pulseVisibleOutputTokens;
+    private decimal _pulseCostUsd;
+    private bool _pulseCostUsesEstimate;
+    private int _pulseEventCount;
+    private long _pulsePreviousDayTokens;
+    private string? _pulseProviderMetricOverride;
 
     // 7-day rolling
     private long _weeklyTotalTokens;
@@ -98,6 +139,8 @@ public sealed class ProviderViewModel : ViewModelBase {
     private string? _usageHealthSummary;
     private string? _usageHealthDetail;
     private string? _usageHealthAccountsText;
+    private ProviderUsageHealthState _usageHealthState;
+    private ProviderLimitPulseState _limitPulseState;
     private string? _scopeLocalText;
     private string? _scopeOnlineText;
     private string? _scopeDifferenceText;
@@ -116,6 +159,8 @@ public sealed class ProviderViewModel : ViewModelBase {
     private int _filteredEventCount;
     private ProviderEventSort _selectedEventSort = ProviderEventSort.MostRecent;
     private ProviderComparisonSort _selectedProviderComparisonSort = ProviderComparisonSort.Tokens;
+    private ProviderDetailsMode _selectedDetailsMode = ProviderDetailsMode.Activity;
+    private bool _isDetailsOpen;
     private bool _isApplyingExplorerPreferences;
     private RecentUsageItemViewModel? _selectedEvent;
     private IReadOnlyDictionary<string, ProviderComparisonHealthInfo> _providerComparisonHealth = new Dictionary<string, ProviderComparisonHealthInfo>(StringComparer.OrdinalIgnoreCase);
@@ -142,15 +187,24 @@ public sealed class ProviderViewModel : ViewModelBase {
             OnPropertyChanged(nameof(HasLiveLimitData));
             OnPropertyChanged(nameof(ShowSharedLimitWindows));
             OnPropertyChanged(nameof(HasLimitSection));
+            NotifyPulseStatusChanged();
         };
         LimitAccounts.CollectionChanged += (_, _) => {
             OnPropertyChanged(nameof(HasLimitAccounts));
             OnPropertyChanged(nameof(HasMultipleLimitAccounts));
             OnPropertyChanged(nameof(ShowSharedLimitWindows));
             OnPropertyChanged(nameof(HasLimitSection));
+            NotifyPulseStatusChanged();
         };
         AccountBreakdown.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasAccountBreakdown));
         SurfaceBreakdown.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasSurfaceBreakdown));
+        PulseModelBreakdown.CollectionChanged += (_, _) => {
+            OnPropertyChanged(nameof(PulseTopModelText));
+            OnPropertyChanged(nameof(PulseTopModelName));
+            OnPropertyChanged(nameof(PulseTopModelDetailText));
+            OnPropertyChanged(nameof(PulseTopModels));
+            OnPropertyChanged(nameof(HasPulseTopModels));
+        };
         ModelDaySummaries.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasModelDaySummaries));
         RecentActivity.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasRecentActivity));
         Conversations.CollectionChanged += (_, _) => {
@@ -221,6 +275,13 @@ public sealed class ProviderViewModel : ViewModelBase {
         NewEventsSinceRefresh = Math.Max(0, eventDelta);
     }
 
+    public void ApplyPulseProviderMetricOverride(string? metricText) {
+        var normalized = string.IsNullOrWhiteSpace(metricText) ? null : metricText.Trim();
+        if (SetProperty(ref _pulseProviderMetricOverride, normalized)) {
+            OnPropertyChanged(nameof(PulseProviderMetricText));
+        }
+    }
+
     public void ClearRefreshBadge() {
         NewTokensSinceRefresh = 0L;
         NewEventsSinceRefresh = 0;
@@ -234,6 +295,11 @@ public sealed class ProviderViewModel : ViewModelBase {
     public bool IsFavorite {
         get => _isFavorite;
         set => SetProperty(ref _isFavorite, value);
+    }
+
+    public bool IsSelected {
+        get => _isSelected;
+        set => SetProperty(ref _isSelected, value);
     }
 
     public int NewEventsSinceRefresh {
@@ -320,6 +386,120 @@ public sealed class ProviderViewModel : ViewModelBase {
     }
 
     public string TodayTotalTokensFormatted => FormatTokens(TodayTotalTokens);
+    public string PulseProviderMetricText => !string.IsNullOrWhiteSpace(_pulseProviderMetricOverride)
+        ? _pulseProviderMetricOverride!
+        : PulseTotalTokens > 0
+        ? PulseTotalTokensFormatted
+            : WeeklyTotalTokens > 0
+                ? WeeklyTotalTokensFormatted
+            : PulseEventCount > 0
+                ? PulseRollupCountText
+                : "idle";
+    public long PulseTotalTokens => _pulseTotalTokens;
+    public long PulseInputTokens => _pulseInputTokens;
+    public long PulseOutputTokens => _pulseOutputTokens;
+    public long PulseCachedTokens => _pulseCachedTokens;
+    public long PulseReasoningTokens => _pulseReasoningTokens;
+    public decimal PulseCostUsd => _pulseCostUsd;
+    public bool PulseCostUsesEstimate => _pulseCostUsesEstimate;
+    public int PulseEventCount => _pulseEventCount;
+    public string PulseTotalTokensFormatted => FormatTokens(PulseTotalTokens);
+    public string PulsePrimaryLabel => "Today";
+    public string PulsePrimaryValue => PulseTotalTokensFormatted;
+    public bool HasPulseCost => PulseCostUsd > 0;
+    public string PulseCostFormatted => FormatCostDisplay(PulseCostUsd, PulseCostUsesEstimate);
+    public string PulseRollupCountText => FormatCountLabel(PulseEventCount, "rollup", "rollups");
+    public string PulseSecondaryLabel => HasPulseCost ? "API equiv." : "Rollups";
+    public string PulseSecondaryValue => HasPulseCost ? PulseCostFormatted : PulseRollupCountText;
+    public bool ShowProviderPulseHeader => !IsCombinedProvider;
+    public string PulseTrendText => BuildPulseTrendText();
+    public Brush PulseTrendBrush => PulseTotalTokens >= PulsePreviousDayTokens
+        ? FrozenBrush(Color.FromRgb(80, 216, 128))
+        : FrozenBrush(Color.FromRgb(255, 138, 24));
+    public long PulsePreviousDayTokens => _pulsePreviousDayTokens;
+    public string PulseStatusText {
+        get => GetPulseStatusKind() switch {
+            ProviderPulseStatusKind.NeedsAttention => "Needs attention",
+            ProviderPulseStatusKind.Updating => "Updating",
+            ProviderPulseStatusKind.Partial => "Partial",
+            _ => "Fresh snapshot"
+        };
+    }
+    public Brush PulseStatusBrush => GetPulseStatusKind() switch {
+        ProviderPulseStatusKind.NeedsAttention => FrozenBrush(Color.FromRgb(240, 192, 64)),
+        ProviderPulseStatusKind.Updating => FrozenBrush(Color.FromRgb(240, 192, 64)),
+        ProviderPulseStatusKind.Partial => FrozenBrush(Color.FromRgb(240, 192, 64)),
+        _ => FrozenBrush(Color.FromRgb(80, 216, 128))
+    };
+    public Brush PulseStatusPanelBrush => GetPulseStatusKind() switch {
+        ProviderPulseStatusKind.NeedsAttention => FrozenBrush(Color.FromArgb(0x22, 0xF0, 0xC0, 0x40)),
+        ProviderPulseStatusKind.Updating => FrozenBrush(Color.FromArgb(0x22, 0xF0, 0xC0, 0x40)),
+        ProviderPulseStatusKind.Partial => FrozenBrush(Color.FromArgb(0x22, 0xF0, 0xC0, 0x40)),
+        _ => FrozenBrush(Color.FromArgb(0x22, 0x50, 0xD8, 0x80))
+    };
+    public string PulseInsightText => BuildPulseInsightText();
+    public string PulseHealthChipText => HasLimitStatusMessage
+        ? BuildPulseLimitChipText()
+        : UsageHealthState == ProviderUsageHealthState.Updating
+            ? "Updating scan"
+        : UsageHealthState == ProviderUsageHealthState.Partial
+            ? "Partial scan"
+            : HasUsageHealthSummary
+            ? UsageHealthSummary!
+            : "Health OK";
+    public string PulseHealthDetailText => HasLimitStatusMessage
+        ? "Limit status"
+        : UsageHealthState == ProviderUsageHealthState.Updating
+            ? "Data health"
+        : UsageHealthState == ProviderUsageHealthState.Partial
+            ? "Data health"
+            : HasUsageHealthSummary
+                ? "Data health"
+                : "Ready";
+    public string PulseTopModelText => PulseModelBreakdown.Count > 0
+        ? PulseModelBreakdown[0].ModelName + " • " + PulseModelBreakdown[0].TotalTokensFormatted
+        : "No model signal";
+    public string PulseTopModelName => PulseModelBreakdown.Count > 0 ? PulseModelBreakdown[0].ModelName : "No model signal";
+    public string PulseTopModelDetailText => PulseModelBreakdown.Count > 0
+        ? PulseModelBreakdown[0].TotalTokensFormatted + " • " + PulseModelBreakdown[0].SharePercentText
+        : "Waiting for today's model signal";
+    public string PulseCachedSavingsValue => PulseCachedTokens > 0 ? FormatTokens(PulseCachedTokens) : "--";
+    public string PulseCachedSavingsDetail => PulseInputTokens > 0
+        ? FormatPulsePercent(Math.Min(1d, Math.Max(0d, (double)PulseCachedTokens / PulseInputTokens))) + " of today's input"
+        : "Cached input appears when token telemetry includes it.";
+    public string PulseTokenMixText => "Fresh input " + PulseFreshInputFormatted
+                                  + " • cached " + FormatTokens(PulseCachedTokens)
+                                  + " • output " + PulseVisibleOutputFormatted
+                                  + " • reasoning " + FormatTokens(PulseReasoningTokens);
+    public long PulseFreshInputTokens => _pulseFreshInputTokens;
+    public long PulseVisibleOutputTokens => _pulseVisibleOutputTokens;
+    public long PulseMixTotalTokens {
+        get {
+            var total = PulseFreshInputTokens + PulseCachedTokens + PulseVisibleOutputTokens + PulseReasoningTokens;
+            return total > 0 ? total : PulseTotalTokens;
+        }
+    }
+    public double PulseFreshInputProportion => PulseMixProportion(PulseFreshInputTokens);
+    public double PulseCachedInputProportion => PulseMixProportion(PulseCachedTokens);
+    public double PulseOutputProportion => PulseMixProportion(PulseVisibleOutputTokens);
+    public double PulseReasoningProportion => PulseMixProportion(PulseReasoningTokens);
+    public string PulseFreshInputFormatted => FormatTokens(PulseFreshInputTokens);
+    public string PulseVisibleOutputFormatted => FormatTokens(PulseVisibleOutputTokens);
+    public string PulseFreshInputPercentText => FormatPulsePercent(PulseFreshInputProportion);
+    public string PulseCachedInputPercentText => FormatPulsePercent(PulseCachedInputProportion);
+    public string PulseOutputPercentText => FormatPulsePercent(PulseOutputProportion);
+    public string PulseReasoningPercentText => FormatPulsePercent(PulseReasoningProportion);
+    public IEnumerable<ModelUsageViewModel> PulseTopModels => PulseModelBreakdown.Take(3);
+    public bool HasPulseTopModels => PulseModelBreakdown.Count > 0;
+    public double PulseCachedBarWidth => PulseTotalTokens > 0
+        ? Math.Max(2d, 310d * PulseCachedTokens / PulseTotalTokens)
+        : 2d;
+    public double PulseFreshInputBarWidth => PulseTotalTokens > 0
+        ? Math.Max(2d, 310d * PulseFreshInputTokens / PulseTotalTokens)
+        : 2d;
+    public double PulseReasoningBarWidth => PulseTotalTokens > 0
+        ? Math.Max(2d, 310d * PulseReasoningTokens / PulseTotalTokens)
+        : 2d;
 
     public string TodayLabel {
         get => _todayLabel;
@@ -428,6 +608,58 @@ public sealed class ProviderViewModel : ViewModelBase {
     public bool IsProviderComparisonTokensSortSelected => SelectedProviderComparisonSort == ProviderComparisonSort.Tokens;
     public bool IsProviderComparisonCostSortSelected => SelectedProviderComparisonSort == ProviderComparisonSort.Cost;
     public bool IsProviderComparisonEventsSortSelected => SelectedProviderComparisonSort == ProviderComparisonSort.Events;
+
+    public bool IsDetailsOpen {
+        get => _isDetailsOpen;
+        set {
+            if (SetProperty(ref _isDetailsOpen, value)) {
+                OnPropertyChanged(nameof(DetailsButtonText));
+            }
+        }
+    }
+
+    public string DetailsButtonText => IsDetailsOpen ? "Hide details" : "Show details";
+
+    public ProviderDetailsMode SelectedDetailsMode {
+        get => _selectedDetailsMode;
+        set {
+            if (SetProperty(ref _selectedDetailsMode, value)) {
+                OnPropertyChanged(nameof(IsDetailsActivitySelected));
+                OnPropertyChanged(nameof(IsDetailsLimitsSelected));
+                OnPropertyChanged(nameof(IsDetailsModelsSelected));
+                OnPropertyChanged(nameof(IsDetailsEventsSelected));
+                OnPropertyChanged(nameof(IsDetailsScopeSelected));
+            }
+        }
+    }
+
+    public bool IsDetailsActivitySelected => SelectedDetailsMode == ProviderDetailsMode.Activity;
+    public bool IsDetailsLimitsSelected => SelectedDetailsMode == ProviderDetailsMode.Limits;
+    public bool IsDetailsModelsSelected => SelectedDetailsMode == ProviderDetailsMode.Models;
+    public bool IsDetailsEventsSelected => SelectedDetailsMode == ProviderDetailsMode.Events;
+    public bool IsDetailsScopeSelected => SelectedDetailsMode == ProviderDetailsMode.Scope;
+
+    public void ToggleDetails() {
+        IsDetailsOpen = !IsDetailsOpen;
+    }
+
+    public void SetDetailsMode(ProviderDetailsMode mode) {
+        SelectedDetailsMode = mode;
+        IsDetailsOpen = true;
+    }
+
+    public void ApplyTransientUiState(bool isDetailsOpen, ProviderDetailsMode selectedDetailsMode) {
+        _isDetailsOpen = isDetailsOpen;
+        _selectedDetailsMode = selectedDetailsMode;
+        OnPropertyChanged(nameof(IsDetailsOpen));
+        OnPropertyChanged(nameof(DetailsButtonText));
+        OnPropertyChanged(nameof(SelectedDetailsMode));
+        OnPropertyChanged(nameof(IsDetailsActivitySelected));
+        OnPropertyChanged(nameof(IsDetailsLimitsSelected));
+        OnPropertyChanged(nameof(IsDetailsModelsSelected));
+        OnPropertyChanged(nameof(IsDetailsEventsSelected));
+        OnPropertyChanged(nameof(IsDetailsScopeSelected));
+    }
 
     public long TodayInputTokens {
         get => _todayInputTokens;
@@ -660,7 +892,22 @@ public sealed class ProviderViewModel : ViewModelBase {
         set {
             if (SetProperty(ref _limitStatusMessage, value)) {
                 OnPropertyChanged(nameof(HasLimitStatusMessage));
+                OnPropertyChanged(nameof(LimitStatusDisplayText));
+                OnPropertyChanged(nameof(HasLimitStatusDisplayText));
                 OnPropertyChanged(nameof(HasLimitSection));
+                OnPropertyChanged(nameof(PulseHealthDetailText));
+                NotifyPulseStatusChanged();
+            }
+        }
+    }
+
+    public ProviderLimitPulseState LimitPulseState {
+        get => _limitPulseState;
+        set {
+            if (SetProperty(ref _limitPulseState, value)) {
+                OnPropertyChanged(nameof(LimitStatusDisplayText));
+                OnPropertyChanged(nameof(HasLimitStatusDisplayText));
+                NotifyPulseStatusChanged();
             }
         }
     }
@@ -699,6 +946,8 @@ public sealed class ProviderViewModel : ViewModelBase {
             if (SetProperty(ref _usageHealthSummary, value)) {
                 OnPropertyChanged(nameof(HasUsageHealthSummary));
                 OnPropertyChanged(nameof(HasUsageHealthSection));
+                OnPropertyChanged(nameof(PulseHealthDetailText));
+                NotifyPulseStatusChanged();
             }
         }
     }
@@ -709,6 +958,20 @@ public sealed class ProviderViewModel : ViewModelBase {
             if (SetProperty(ref _usageHealthDetail, value)) {
                 OnPropertyChanged(nameof(HasUsageHealthDetail));
                 OnPropertyChanged(nameof(HasUsageHealthSection));
+                OnPropertyChanged(nameof(PulseHealthDetailText));
+                NotifyPulseStatusChanged();
+            }
+        }
+    }
+
+    public ProviderUsageHealthState UsageHealthState {
+        get => _usageHealthState;
+        set {
+            if (SetProperty(ref _usageHealthState, value)) {
+                OnPropertyChanged(nameof(HasPartialUsageHealth));
+                OnPropertyChanged(nameof(HasCachedOrPendingUsageHealth));
+                OnPropertyChanged(nameof(PulseHealthDetailText));
+                NotifyPulseStatusChanged();
             }
         }
     }
@@ -755,10 +1018,14 @@ public sealed class ProviderViewModel : ViewModelBase {
 
     public bool HasLimitSummary => !string.IsNullOrWhiteSpace(LimitSummary);
     public bool HasLimitStatusMessage => !string.IsNullOrWhiteSpace(LimitStatusMessage);
+    public string? LimitStatusDisplayText => BuildLimitStatusDisplayText(LimitStatusMessage, LimitPulseState);
+    public bool HasLimitStatusDisplayText => !string.IsNullOrWhiteSpace(LimitStatusDisplayText);
     public bool HasRecommendedLimitAccount => !string.IsNullOrWhiteSpace(RecommendedLimitAccountLabel);
     public bool HasLimitAccountsOverview => !string.IsNullOrWhiteSpace(LimitAccountsOverviewText);
     public bool HasUsageHealthSummary => !string.IsNullOrWhiteSpace(UsageHealthSummary);
     public bool HasUsageHealthDetail => !string.IsNullOrWhiteSpace(UsageHealthDetail);
+    public bool HasPartialUsageHealth => UsageHealthState == ProviderUsageHealthState.Partial;
+    public bool HasCachedOrPendingUsageHealth => UsageHealthState == ProviderUsageHealthState.Updating;
     public bool HasUsageHealthAccounts => !string.IsNullOrWhiteSpace(UsageHealthAccountsText);
     public bool HasScopeLocalText => !string.IsNullOrWhiteSpace(ScopeLocalText);
     public bool HasScopeOnlineText => !string.IsNullOrWhiteSpace(ScopeOnlineText);
@@ -805,6 +1072,7 @@ public sealed class ProviderViewModel : ViewModelBase {
     public ObservableCollection<ProviderLimitAccountViewModel> LimitAccounts { get; } = [];
     public ObservableCollection<UsageBreakdownEntryViewModel> AccountBreakdown { get; } = [];
     public ObservableCollection<UsageBreakdownEntryViewModel> SurfaceBreakdown { get; } = [];
+    public ObservableCollection<ModelUsageViewModel> PulseModelBreakdown { get; } = [];
     public ObservableCollection<ProviderComparisonEntryViewModel> ProviderComparison { get; } = [];
     public ObservableCollection<ProviderOverviewCardViewModel> CombinedOverviewCards { get; } = [];
     public ObservableCollection<RecentUsageItemViewModel> RecentActivity { get; } = [];
@@ -1059,6 +1327,7 @@ public sealed class ProviderViewModel : ViewModelBase {
             LimitSummary = null;
             LimitSourceLabel = null;
             LimitStatusMessage = null;
+            LimitPulseState = ProviderLimitPulseState.None;
             RecommendedLimitAccountLabel = null;
             RecommendedLimitAccountSummary = null;
             LimitAccountsOverviewText = null;
@@ -1070,6 +1339,11 @@ public sealed class ProviderViewModel : ViewModelBase {
         LimitSummary = snapshot.Summary;
         LimitSourceLabel = snapshot.SourceLabel;
         LimitStatusMessage = snapshot.DetailMessage;
+        LimitPulseState = string.IsNullOrWhiteSpace(snapshot.DetailMessage)
+            ? ProviderLimitPulseState.None
+            : snapshot.IsAvailable
+                ? ProviderLimitPulseState.Attention
+                : ProviderLimitPulseState.Unavailable;
         RecommendedLimitAccountLabel = null;
         RecommendedLimitAccountSummary = null;
         LimitAccountsOverviewText = null;
@@ -1295,6 +1569,23 @@ public sealed class ProviderViewModel : ViewModelBase {
             value => MonthlyCostUsd = value,
             value => MonthlyCostUsesEstimate = value);
 
+        var pulseEvents = FilterByWindow(today, today);
+        _pulseTotalTokens = pulseEvents.Sum(e => e.TotalTokens ?? 0L);
+        _pulseInputTokens = pulseEvents.Sum(e => e.InputTokens ?? 0L);
+        _pulseOutputTokens = pulseEvents.Sum(e => e.OutputTokens ?? 0L);
+        _pulseCachedTokens = pulseEvents.Sum(e => e.CachedInputTokens ?? 0L);
+        _pulseReasoningTokens = pulseEvents.Sum(e => e.ReasoningTokens ?? 0L);
+        _pulseFreshInputTokens = pulseEvents.Sum(GetPulseFreshInputTokens);
+        _pulseVisibleOutputTokens = pulseEvents.Sum(GetPulseVisibleOutputTokens);
+        ApplyDisplayCost(
+            UsageTelemetryApiPricing.BuildDisplayCost(pulseEvents),
+            value => _pulseCostUsd = value,
+            value => _pulseCostUsesEstimate = value);
+        _pulseEventCount = pulseEvents.Count;
+        var previousDayEvents = FilterByWindow(today.AddDays(-1), today.AddDays(-1));
+        _pulsePreviousDayTokens = previousDayEvents.Sum(e => e.TotalTokens ?? 0L);
+        PopulatePulseModelBreakdown(pulseEvents);
+
         var dailyTotals = new List<(DateTime Day, long Tokens)>();
         for (var i = 6; i >= 0; i--) {
             var day = today.AddDays(-i);
@@ -1304,8 +1595,8 @@ public sealed class ProviderViewModel : ViewModelBase {
             dailyTotals.Add((day, tokens));
         }
 
-        var baseBrush = FrozenBrush(OutputColor);
-        var todayBrush = FrozenBrush(InputColor);
+        var baseBrush = BuildPulseActivityBrush(today: false);
+        var todayBrush = BuildPulseActivityBrush(today: true);
         var maxDaily = dailyTotals.Count > 0 ? dailyTotals.Max(static value => value.Tokens) : 0L;
         DailyBars.Clear();
         foreach (var (day, tokens) in dailyTotals) {
@@ -1394,8 +1685,231 @@ public sealed class ProviderViewModel : ViewModelBase {
         PopulateCombinedOverview(rangeEvents);
         PopulateConversationStats(ApplyFilters(GetConversationRangeEvents(SelectedRange)));
         PopulateRecentActivity(rangeEvents);
+        OnPulseChanged();
 
         ActionStatusMessage = string.Empty;
+    }
+
+    private void OnPulseChanged() {
+        OnPropertyChanged(nameof(PulseProviderMetricText));
+        OnPropertyChanged(nameof(PulseTotalTokens));
+        OnPropertyChanged(nameof(PulseInputTokens));
+        OnPropertyChanged(nameof(PulseOutputTokens));
+        OnPropertyChanged(nameof(PulseCachedTokens));
+        OnPropertyChanged(nameof(PulseReasoningTokens));
+        OnPropertyChanged(nameof(PulseCostUsd));
+        OnPropertyChanged(nameof(PulseCostUsesEstimate));
+        OnPropertyChanged(nameof(PulseEventCount));
+        OnPropertyChanged(nameof(PulseTotalTokensFormatted));
+        OnPropertyChanged(nameof(PulsePrimaryLabel));
+        OnPropertyChanged(nameof(PulsePrimaryValue));
+        OnPropertyChanged(nameof(ShowProviderPulseHeader));
+        OnPropertyChanged(nameof(HasPulseCost));
+        OnPropertyChanged(nameof(PulseCostFormatted));
+        OnPropertyChanged(nameof(PulseRollupCountText));
+        OnPropertyChanged(nameof(PulseSecondaryLabel));
+        OnPropertyChanged(nameof(PulseSecondaryValue));
+        OnPropertyChanged(nameof(PulseTrendText));
+        OnPropertyChanged(nameof(PulseTrendBrush));
+        OnPropertyChanged(nameof(PulsePreviousDayTokens));
+        OnPropertyChanged(nameof(PulseStatusText));
+        OnPropertyChanged(nameof(PulseStatusBrush));
+        OnPropertyChanged(nameof(PulseStatusPanelBrush));
+        OnPropertyChanged(nameof(PulseInsightText));
+        OnPropertyChanged(nameof(PulseHealthChipText));
+        OnPropertyChanged(nameof(PulseTopModelText));
+        OnPropertyChanged(nameof(PulseTopModelName));
+        OnPropertyChanged(nameof(PulseTopModelDetailText));
+        OnPropertyChanged(nameof(PulseModelBreakdown));
+        OnPropertyChanged(nameof(PulseCachedSavingsValue));
+        OnPropertyChanged(nameof(PulseCachedSavingsDetail));
+        OnPropertyChanged(nameof(PulseTokenMixText));
+        OnPropertyChanged(nameof(PulseFreshInputTokens));
+        OnPropertyChanged(nameof(PulseVisibleOutputTokens));
+        OnPropertyChanged(nameof(PulseMixTotalTokens));
+        OnPropertyChanged(nameof(PulseFreshInputProportion));
+        OnPropertyChanged(nameof(PulseCachedInputProportion));
+        OnPropertyChanged(nameof(PulseOutputProportion));
+        OnPropertyChanged(nameof(PulseReasoningProportion));
+        OnPropertyChanged(nameof(PulseFreshInputFormatted));
+        OnPropertyChanged(nameof(PulseVisibleOutputFormatted));
+        OnPropertyChanged(nameof(PulseFreshInputPercentText));
+        OnPropertyChanged(nameof(PulseCachedInputPercentText));
+        OnPropertyChanged(nameof(PulseOutputPercentText));
+        OnPropertyChanged(nameof(PulseReasoningPercentText));
+        OnPropertyChanged(nameof(PulseTopModels));
+        OnPropertyChanged(nameof(HasPulseTopModels));
+        OnPropertyChanged(nameof(PulseCachedBarWidth));
+        OnPropertyChanged(nameof(PulseFreshInputBarWidth));
+        OnPropertyChanged(nameof(PulseReasoningBarWidth));
+    }
+
+    private static long GetPulseFreshInputTokens(UsageEventRecord usageEvent) {
+        var inputTokens = usageEvent.InputTokens ?? 0L;
+        if (!UsageTelemetryApiPricing.ShouldTreatCachedInputAsInputSubset(usageEvent.ProviderId)) {
+            return inputTokens;
+        }
+
+        var cachedTokens = usageEvent.CachedInputTokens ?? 0L;
+        return Math.Max(0L, inputTokens - Math.Min(inputTokens, cachedTokens));
+    }
+
+    private static long GetPulseVisibleOutputTokens(UsageEventRecord usageEvent) {
+        var outputTokens = usageEvent.OutputTokens ?? 0L;
+        if (!UsageTelemetryApiPricing.ShouldTreatReasoningAsOutputSubset(usageEvent.ProviderId)) {
+            return outputTokens;
+        }
+
+        var reasoningTokens = usageEvent.ReasoningTokens ?? 0L;
+        return Math.Max(0L, outputTokens - Math.Min(outputTokens, reasoningTokens));
+    }
+
+    private void NotifyPulseStatusChanged() {
+        OnPropertyChanged(nameof(PulseStatusText));
+        OnPropertyChanged(nameof(PulseStatusBrush));
+        OnPropertyChanged(nameof(PulseStatusPanelBrush));
+        OnPropertyChanged(nameof(PulseInsightText));
+        OnPropertyChanged(nameof(PulseHealthChipText));
+    }
+
+    private double PulseMixProportion(long value) {
+        var denominator = PulseMixTotalTokens;
+        return denominator > 0
+            ? Math.Max(0d, Math.Min(1d, (double)value / denominator))
+            : 0d;
+    }
+
+    private static string FormatPulsePercent(double proportion) {
+        return (proportion * 100d).ToString("0.#", CultureInfo.CurrentCulture) + "%";
+    }
+
+    private string BuildPulseInsightText() {
+        if (IsCombinedProvider && ProviderComparison.Count > 0) {
+            var leader = ProviderComparison[0];
+            return leader.DisplayName + " leads this view with " + leader.TokensText + " across " + leader.EventCountText + ".";
+        }
+
+        if (PulseTotalTokens <= 0) {
+            return HasLimitStatusMessage
+                ? DisplayName + " has no local usage today. " + BuildPulseLimitInsightText()
+                : "No local " + DisplayName + " activity today yet.";
+        }
+
+        if (!IsCombinedProvider
+            && UsageTelemetryApiPricing.ShouldTreatCachedInputAsInputSubset(ProviderId)
+            && PulseCachedTokens > 0
+            && PulseInputTokens > 0) {
+            var cachedPercent = Math.Round(100d * PulseCachedTokens / Math.Max(1d, PulseInputTokens), MidpointRounding.AwayFromZero);
+            return "Cached input is " + cachedPercent.ToString("N0", CultureInfo.CurrentCulture) + "% of input, so cost is lower than raw input volume suggests.";
+        }
+
+        if (PulseModelBreakdown.Count > 0) {
+            return PulseModelBreakdown[0].ModelName + " is the top model today.";
+        }
+
+        if (PulseEventCount > 0) {
+            return PulseRollupCountText + " today.";
+        }
+
+        if (HasLimitStatusMessage) {
+            return BuildPulseLimitInsightText();
+        }
+
+        return "No local activity today yet.";
+    }
+
+    private string BuildPulseLimitChipText() {
+        if (LimitPulseState == ProviderLimitPulseState.Attention) {
+            return !HasLiveLimitData && !HasLimitAccounts
+                ? "Needs attention"
+                : "Limits attention";
+        }
+
+        return LimitPulseState == ProviderLimitPulseState.Unavailable
+            ? "Limits unavailable"
+            : "Needs attention";
+    }
+
+    private ProviderPulseStatusKind GetPulseStatusKind() {
+        if (LimitPulseState != ProviderLimitPulseState.None) {
+            return ProviderPulseStatusKind.NeedsAttention;
+        }
+
+        return UsageHealthState switch {
+            ProviderUsageHealthState.Updating => ProviderPulseStatusKind.Updating,
+            ProviderUsageHealthState.Partial => ProviderPulseStatusKind.Partial,
+            _ => ProviderPulseStatusKind.Fresh
+        };
+    }
+
+    private string BuildPulseLimitInsightText() {
+        var message = FormatStatusMessage(LimitStatusMessage);
+        if (message is not null && LimitPulseState == ProviderLimitPulseState.Attention) {
+            return message;
+        }
+
+        return LimitPulseState == ProviderLimitPulseState.Unavailable
+            ? "Live limits are unavailable; local usage still updates."
+            : "Live limits need attention; local usage still updates.";
+    }
+
+    private static string? BuildLimitStatusDisplayText(string? value, ProviderLimitPulseState state) {
+        var text = FormatStatusMessage(value);
+        if (text is null) {
+            return null;
+        }
+
+        if (state == ProviderLimitPulseState.Unavailable) {
+            return "Live limits are unavailable for this provider right now.";
+        }
+
+        if (state == ProviderLimitPulseState.Attention) {
+            return text;
+        }
+
+        return text.Length <= 160
+            ? text
+            : text[..157] + "...";
+    }
+
+    private static string? FormatStatusMessage(string? value) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            return null;
+        }
+
+        var text = value.Trim();
+        return text.Length <= 160
+            ? text
+            : text[..157] + "...";
+    }
+
+    private string BuildPulseTrendText() {
+        if (PulseTotalTokens <= 0 && PulsePreviousDayTokens <= 0) {
+            return "No activity yet today";
+        }
+
+        if (PulsePreviousDayTokens <= 0) {
+            return "New activity today";
+        }
+
+        var ratio = ((double)PulseTotalTokens - PulsePreviousDayTokens) / Math.Max(1d, PulsePreviousDayTokens);
+        var percent = Math.Round(Math.Abs(ratio) * 100d, MidpointRounding.AwayFromZero);
+        var prefix = ratio >= 0 ? "+" : "-";
+        return prefix + percent.ToString("N0", CultureInfo.CurrentCulture) + "% vs yesterday";
+    }
+
+    private Brush BuildPulseActivityBrush(bool today) {
+        var color = ProviderId.ToLowerInvariant() switch {
+            "__all__" => today ? Color.FromRgb(93, 162, 255) : Color.FromRgb(122, 104, 255),
+            "codex" => today ? Color.FromRgb(152, 168, 255) : Color.FromRgb(124, 111, 245),
+            "claude" => today ? Color.FromRgb(255, 138, 24) : Color.FromRgb(243, 116, 32),
+            "github" or "__github__" => today ? Color.FromRgb(80, 216, 128) : Color.FromRgb(54, 180, 112),
+            "copilot" => today ? Color.FromRgb(82, 147, 255) : Color.FromRgb(74, 127, 227),
+            "lmstudio" => today ? Color.FromRgb(67, 215, 238) : Color.FromRgb(47, 146, 163),
+            _ => today ? InputColor : OutputColor
+        };
+
+        return FrozenBrush(color);
     }
 
     private void RebuildCodeChurnBars() {
@@ -1605,8 +2119,19 @@ public sealed class ProviderViewModel : ViewModelBase {
     }
 
     private void PopulateModelBreakdown(IReadOnlyList<UsageEventRecord> events) {
-        ModelBreakdown.Clear();
-        var modelGroups = events
+        PopulateModelBreakdown(ModelBreakdown, events, FrozenBrush(OutputColor));
+    }
+
+    private void PopulatePulseModelBreakdown(IReadOnlyList<UsageEventRecord> events) {
+        PopulateModelBreakdown(PulseModelBreakdown, events, FrozenBrush(OutputColor));
+    }
+
+    private static void PopulateModelBreakdown(
+        ObservableCollection<ModelUsageViewModel> target,
+        IReadOnlyList<UsageEventRecord> events,
+        Brush barBrush) {
+        target.Clear();
+        var allModelGroups = events
             .Where(static e => !string.IsNullOrWhiteSpace(e.Model))
             .GroupBy(static e => e.Model!.Trim(), StringComparer.OrdinalIgnoreCase)
             .Select(static group => new {
@@ -1615,16 +2140,20 @@ public sealed class ProviderViewModel : ViewModelBase {
             })
             .Where(static group => group.Total > 0)
             .OrderByDescending(static group => group.Total)
-            .Take(8)
             .ToList();
 
-        var max = modelGroups.Count > 0 ? modelGroups.Max(static group => group.Total) : 0L;
-        foreach (var group in modelGroups) {
-            ModelBreakdown.Add(new ModelUsageViewModel {
+        var visibleModelGroups = allModelGroups.Take(8).ToList();
+        var max = allModelGroups.Count > 0 ? allModelGroups.Max(static group => group.Total) : 0L;
+        var total = allModelGroups.Sum(static group => group.Total);
+        var rank = 1;
+        foreach (var group in visibleModelGroups) {
+            target.Add(new ModelUsageViewModel {
+                Rank = rank++,
                 ModelName = group.Model,
                 TotalTokens = group.Total,
                 Proportion = max > 0 ? (double)group.Total / max : 0d,
-                BarBrush = FrozenBrush(OutputColor)
+                Share = total > 0 ? (double)group.Total / total : 0d,
+                BarBrush = barBrush
             });
         }
     }
@@ -1929,22 +2458,19 @@ public sealed class ProviderViewModel : ViewModelBase {
     private (string Metric, string Detail, Brush AccentBrush) BuildCombinedHealthOverview() {
         var summary = NormalizeOptional(UsageHealthSummary);
         var detail = NormalizeOptional(UsageHealthDetail) ?? NormalizeOptional(UsageHealthAccountsText);
-        var combinedText = string.Join(" ", new[] { summary, detail }.Where(static value => !string.IsNullOrWhiteSpace(value))).ToLowerInvariant();
 
-        if (combinedText.Contains("partial", StringComparison.Ordinal) ||
-            combinedText.Contains("missing", StringComparison.Ordinal) ||
-            combinedText.Contains("stale", StringComparison.Ordinal)) {
+        if (UsageHealthState == ProviderUsageHealthState.Updating) {
+            return (
+                "Cached",
+                summary ?? detail ?? "The tray is showing saved data while local telemetry catches up.",
+                FrozenBrush(Color.FromRgb(144, 144, 184)));
+        }
+
+        if (UsageHealthState == ProviderUsageHealthState.Partial) {
             return (
                 "Partial",
                 summary ?? detail ?? "Some provider roots or artifacts were incomplete during the last scan.",
                 FrozenBrush(Color.FromRgb(240, 192, 64)));
-        }
-
-        if (combinedText.Contains("cached", StringComparison.Ordinal)) {
-            return (
-                "Cached",
-                summary ?? detail ?? "The tray is currently using persisted snapshot data.",
-                FrozenBrush(Color.FromRgb(144, 144, 184)));
         }
 
         if (!string.IsNullOrWhiteSpace(summary) || !string.IsNullOrWhiteSpace(detail)) {

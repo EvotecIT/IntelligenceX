@@ -5,6 +5,7 @@ using IntelligenceX.Telemetry.Usage;
 namespace IntelligenceX.Tray.Services;
 
 public sealed class TrayUsageSnapshotStore {
+    private const int MaxPersistedRawEvents = 10000;
     private static readonly JsonSerializerOptions SerializerOptions = new() {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         WriteIndented = false
@@ -24,7 +25,7 @@ public sealed class TrayUsageSnapshotStore {
 
             var json = File.ReadAllText(SnapshotPath);
             var persisted = JsonSerializer.Deserialize<PersistedUsageSnapshot>(json, SerializerOptions);
-            if (persisted is null || persisted.Events.Count == 0) {
+            if (persisted is null || (persisted.Events.Count == 0 && persisted.RawEvents.Count == 0)) {
                 return null;
             }
 
@@ -33,10 +34,15 @@ public sealed class TrayUsageSnapshotStore {
                 .Where(static item => item is not null)
                 .Cast<SourceRootRecord>()
                 .ToList();
-            var events = persisted.Events.Select(static item => item.ToUsageEvent()).ToList();
+            var persistedEvents = persisted.Events.Select(static item => item.ToUsageEvent()).ToList();
             var rawEvents = persisted.RawEvents.Count > 0
                 ? persisted.RawEvents.Select(static item => item.ToUsageEvent()).ToList()
-                : events;
+                : [];
+            var events = persistedEvents.Count > 0
+                ? persistedEvents
+                : rawEvents.Count > 0
+                    ? UsageTelemetryQuickReportScanner.BuildMergedEventsFromRawRecords(rawEvents).ToList()
+                    : [];
             var discoveredProviderIds = persisted.DiscoveredProviderIds
                 .Where(static item => !string.IsNullOrWhiteSpace(item))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -71,6 +77,7 @@ public sealed class TrayUsageSnapshotStore {
             Directory.CreateDirectory(directory);
         }
 
+        var rawEventsToPersist = SelectRawEventsToPersist(rawEvents ?? events);
         var payload = new PersistedUsageSnapshot {
             ScannedAtUtc = scannedAtUtc,
             DiscoveredProviderIds = (discoveredProviderIds ?? Array.Empty<string>())
@@ -82,11 +89,30 @@ public sealed class TrayUsageSnapshotStore {
                 .Select(static item => PersistedSourceRoot.FromSourceRoot(item))
                 .ToList(),
             Events = events.Select(static item => PersistedUsageEvent.FromUsageEvent(item)).ToList(),
-            RawEvents = (rawEvents ?? events).Select(static item => PersistedUsageEvent.FromUsageEvent(item)).ToList(),
+            RawEvents = rawEventsToPersist.Select(static item => PersistedUsageEvent.FromUsageEvent(item)).ToList(),
             Health = health is null ? null : PersistedSnapshotHealth.FromSnapshotHealth(health)
         };
         var json = JsonSerializer.Serialize(payload, SerializerOptions);
         File.WriteAllText(SnapshotPath, json);
+    }
+
+    private static IReadOnlyList<UsageEventRecord> SelectRawEventsToPersist(IReadOnlyList<UsageEventRecord> rawEvents) {
+        if (rawEvents.Count <= MaxPersistedRawEvents) {
+            return rawEvents;
+        }
+
+        return rawEvents
+            .Where(static item => item is not null)
+            .OrderByDescending(static item => item.TimestampUtc)
+            .ThenBy(static item => item.ProviderId, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(static item => item.Model, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(static item => item.EventId, StringComparer.OrdinalIgnoreCase)
+            .Take(MaxPersistedRawEvents)
+            .OrderBy(static item => item.TimestampUtc)
+            .ThenBy(static item => item.ProviderId, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(static item => item.Model, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(static item => item.EventId, StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     public sealed record TrayUsageSnapshotCache(

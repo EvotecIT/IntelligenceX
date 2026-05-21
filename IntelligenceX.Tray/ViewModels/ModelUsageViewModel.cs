@@ -7,14 +7,27 @@ namespace IntelligenceX.Tray.ViewModels;
 /// </summary>
 public sealed class ModelUsageViewModel : ViewModelBase {
     private string _modelName = string.Empty;
+    private int _rank;
     private long _totalTokens;
     private double _proportion;
+    private double _share;
     private Brush _barBrush = Brushes.Gray;
 
     public string ModelName {
         get => _modelName;
         set => SetProperty(ref _modelName, value);
     }
+
+    public int Rank {
+        get => _rank;
+        set {
+            if (SetProperty(ref _rank, value)) {
+                OnPropertyChanged(nameof(RankText));
+            }
+        }
+    }
+
+    public string RankText => Rank > 0 ? Rank.ToString() + "." : string.Empty;
 
     public long TotalTokens {
         get => _totalTokens;
@@ -31,6 +44,19 @@ public sealed class ModelUsageViewModel : ViewModelBase {
         get => _proportion;
         set => SetProperty(ref _proportion, value);
     }
+
+    public double Share {
+        get => _share;
+        set {
+            if (SetProperty(ref _share, value)) {
+                OnPropertyChanged(nameof(SharePercentText));
+            }
+        }
+    }
+
+    public string SharePercentText => Share > 0
+        ? (Share * 100d).ToString("0.#") + "%"
+        : "--";
 
     public Brush BarBrush {
         get => _barBrush;
