@@ -856,6 +856,7 @@ public sealed class UsageTelemetryOverviewBuilder {
         var title = ResolveProviderTitle(providerId);
         var subtitle = BuildRangeLabel(rangeStartUtc, rangeEndUtc);
         var inputTokens = events.Sum(static record => record.InputTokens ?? 0L);
+        var cachedInputTokens = events.Sum(static record => record.CachedInputTokens ?? 0L);
         var outputTokens = events.Sum(static record => record.OutputTokens ?? 0L);
         var totalTokens = events.Sum(static record => record.TotalTokens ?? 0L);
         var hasTokenTelemetry = HasProviderTokenTelemetry(events);
@@ -864,7 +865,7 @@ public sealed class UsageTelemetryOverviewBuilder {
             ? BuildTokenMetrics(inputTokens, outputTokens, totalTokens, providerId)
             : BuildActivityMetrics(activityEvents, providerId, rangeStartUtc, rangeEndUtc);
         var composition = hasTokenTelemetry
-            ? BuildTokenComposition(inputTokens, outputTokens, totalTokens, providerId)
+            ? BuildTokenComposition(inputTokens, cachedInputTokens, outputTokens, totalTokens, providerId)
             : null;
         var monthlyUsage = hasTokenTelemetry
             ? BuildMonthlyUsage(events, rangeStartUtc, rangeEndUtc)
@@ -1127,6 +1128,7 @@ public sealed class UsageTelemetryOverviewBuilder {
 
     private static UsageTelemetryOverviewComposition? BuildTokenComposition(
         long inputTokens,
+        long cachedInputTokens,
         long outputTokens,
         long totalTokens,
         string providerId) {
@@ -1134,24 +1136,38 @@ public sealed class UsageTelemetryOverviewBuilder {
             return null;
         }
 
-        var otherTokens = Math.Max(0L, totalTokens - inputTokens - outputTokens);
+        var boundedCachedInputTokens = Math.Min(Math.Max(0L, cachedInputTokens), Math.Max(0L, inputTokens));
+        var freshInputTokens = Math.Max(0L, inputTokens - boundedCachedInputTokens);
+        var otherTokens = Math.Max(0L, totalTokens - freshInputTokens - boundedCachedInputTokens - outputTokens);
         var accent = ResolveProviderAccentColors(providerId);
-        var items = new List<UsageTelemetryOverviewCompositionItem> {
-            new(
+        var items = new List<UsageTelemetryOverviewCompositionItem>();
+        if (freshInputTokens > 0L || boundedCachedInputTokens == 0L) {
+            items.Add(new UsageTelemetryOverviewCompositionItem(
                 "input",
-                "Input",
-                FormatCompact(inputTokens),
-                FormatPercent(inputTokens, totalTokens),
-                ComputeRatio(inputTokens, totalTokens),
-                accent.Input),
-            new(
-                "output",
-                "Output",
-                FormatCompact(outputTokens),
-                FormatPercent(outputTokens, totalTokens),
-                ComputeRatio(outputTokens, totalTokens),
-                accent.Output)
-        };
+                boundedCachedInputTokens > 0L ? "Fresh input" : "Input",
+                FormatCompact(freshInputTokens),
+                FormatPercent(freshInputTokens, totalTokens),
+                ComputeRatio(freshInputTokens, totalTokens),
+                accent.Input));
+        }
+
+        if (boundedCachedInputTokens > 0L) {
+            items.Add(new UsageTelemetryOverviewCompositionItem(
+                "cached-input",
+                "Cached input",
+                FormatCompact(boundedCachedInputTokens),
+                FormatPercent(boundedCachedInputTokens, totalTokens),
+                ComputeRatio(boundedCachedInputTokens, totalTokens),
+                accent.Total));
+        }
+
+        items.Add(new UsageTelemetryOverviewCompositionItem(
+            "output",
+            "Output",
+            FormatCompact(outputTokens),
+            FormatPercent(outputTokens, totalTokens),
+            ComputeRatio(outputTokens, totalTokens),
+            accent.Output));
 
         if (otherTokens > 0L) {
             items.Add(new UsageTelemetryOverviewCompositionItem(

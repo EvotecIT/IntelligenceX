@@ -19,11 +19,13 @@ namespace IntelligenceX.Tray.ViewModels;
 
 public sealed class MainViewModel : ViewModelBase, IDisposable {
     private const int DefaultRefreshIntervalSeconds = 120;
-    private const int UsageStartupRefreshStalenessSeconds = 1800;
+    private const int StartupWarmRefreshFreshnessSeconds = 900;
+    private const int StartupWarmRefreshDelaySeconds = 300;
+    private const int StartupFullUsageRefreshDelaySeconds = 8;
     private const int UsageRootSafetySweepSeconds = 21600;
     private const int UsageChangeDebounceSeconds = 15;
     private const int RefreshHistoryDepth = 4;
-    private const int FreshLimitSnapshotWindowSeconds = 75;
+    private const int FreshLimitSnapshotWindowSeconds = 900;
     private const int GitHubWatchAutoSyncMinimumIntervalSeconds = 1800;
     private const int GitHubWatchSnapshotFreshnessSeconds = 21600;
     private const int GitHubWatchForkFreshnessSeconds = 86400;
@@ -44,11 +46,13 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     private readonly DispatcherTimer _loadingStatusTimer;
     private readonly DispatcherTimer _usageDirtyRefreshTimer;
     private readonly UsageChangeWatcher _usageChangeWatcher;
+    private readonly DateTimeOffset _startupQuietWindowEndsUtc = DateTimeOffset.UtcNow.AddSeconds(StartupWarmRefreshDelaySeconds);
     private readonly HashSet<string> _activeLimitNotificationKeys = new(StringComparer.Ordinal);
     private readonly HashSet<string> _favoriteProviderIds;
     private readonly Dictionary<string, ProviderLimitSnapshot> _latestLimitSnapshots = new(StringComparer.OrdinalIgnoreCase);
     private Dictionary<string, List<SourceRootRecord>> _latestSourceRootsByProvider = new(StringComparer.OrdinalIgnoreCase);
     private Dictionary<string, List<UsageEventRecord>> _displayedProviderEvents = new(StringComparer.OrdinalIgnoreCase);
+    private Dictionary<string, List<UsageEventRecord>> _displayedProviderRawEvents = new(StringComparer.OrdinalIgnoreCase);
     private Dictionary<string, ProviderRefreshSnapshot> _previousProviderSnapshots = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, Queue<ProviderRefreshSnapshot>> _providerRefreshHistory = new(StringComparer.OrdinalIgnoreCase);
     private UsageTelemetrySnapshotHealth? _latestUsageHealth;
@@ -344,19 +348,63 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     public RelayCommand ToggleSelectedProviderFavoriteCommand { get; }
 
     public async Task InitializeAsync() {
-        var loadedCachedUsageSnapshot = ApplyCachedUsageSnapshot();
+        var cachedUsageSnapshot = await LoadBestCachedUsageSnapshotAsync().ConfigureAwait(true);
+        var loadedCachedUsageSnapshot = ApplyCachedUsageSnapshot(cachedUsageSnapshot);
         ConfigureRefreshTimer();
-        _ = RefreshGitHubAsync(GitHub.UsernameInput);
+        if (ShouldRefreshGitHubOnStartup()) {
+            _ = RefreshGitHubAsync(GitHub.UsernameInput);
+        }
+
         if (loadedCachedUsageSnapshot) {
-            _ = RefreshLightweightAutoAsync();
-            if (ShouldRunStartupUsageRefresh()) {
-                _ = RefreshAsync();
+            if (ShouldRunStartupWarmRefreshAfterCache(cachedUsageSnapshot)) {
+                _ = RefreshStartupUsageAfterCacheAsync();
             }
+
             return;
         }
 
+        _ = RefreshStartupUsageWithoutCacheAsync();
+    }
+
+    private async Task RefreshStartupUsageAfterCacheAsync() {
+        await Task.Delay(TimeSpan.FromSeconds(StartupFullUsageRefreshDelaySeconds)).ConfigureAwait(true);
+        await RefreshAsync(startupWarmup: false);
+    }
+
+    private bool ShouldRunStartupWarmRefreshAfterCache(TrayUsageSnapshotStore.TrayUsageSnapshotCache? cachedSnapshot) {
+        if (cachedSnapshot is null || cachedSnapshot.Events.Count == 0) {
+            return true;
+        }
+
+        if (cachedSnapshot.Health?.IsPartialScan == true) {
+            return true;
+        }
+
+        if (!_usageChangeWatcher.HasActiveWatchers) {
+            return true;
+        }
+
+        var age = DateTimeOffset.UtcNow - cachedSnapshot.ScannedAtUtc;
+        return age.TotalSeconds >= StartupWarmRefreshFreshnessSeconds;
+    }
+
+    private bool ShouldRefreshGitHubOnStartup() {
+        return string.Equals(SelectedProvider?.ProviderId, "__github__", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool ShouldRefreshGitHubDuringLightweightAuto() {
+        return ShouldRefreshGitHubOnStartup()
+            || GitHub.HasData
+            || GitHub.HasToken
+            || GitHub.HasObservabilitySummary
+            || GitHubWatchAutoSyncEnabled
+            || !string.IsNullOrWhiteSpace(GitHub.UsernameInput);
+    }
+
+    private async Task RefreshStartupUsageWithoutCacheAsync() {
         await RefreshAsync(startupWarmup: true);
-        _ = RefreshAsync();
+        await Task.Delay(TimeSpan.FromSeconds(StartupFullUsageRefreshDelaySeconds)).ConfigureAwait(true);
+        await RefreshAsync(startupWarmup: false);
     }
 
     private async Task RefreshAutoAsync() {
@@ -396,6 +444,12 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
 
         try {
             var codeChurnTask = Task.Run(LoadGitCodeChurnSummarySafe);
+            var baselineEvents = startupWarmup
+                ? _displayedProviderEvents.Values.SelectMany(static events => events).Select(CloneUsageEvent).ToList()
+                : [];
+            var baselineRawEvents = startupWarmup
+                ? _displayedProviderRawEvents.Values.SelectMany(static events => events).Select(CloneUsageEvent).ToList()
+                : [];
             var discoveredProviderIds = new List<string>();
             var progressiveProviderEvents = new Dictionary<string, List<UsageEventRecord>>(StringComparer.OrdinalIgnoreCase);
             var dispatcher = Application.Current.Dispatcher;
@@ -495,8 +549,23 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
             });
             var refreshData = await Task.Run(async () => {
                 var snapshot = await _usageService.ScanAsync(progress: scanProgress, startupWarmup: startupWarmup);
-                var events = snapshot.Events;
-                var rawEvents = snapshot.RawEvents.Count > 0 ? snapshot.RawEvents : snapshot.Events;
+                var events = snapshot.Events.ToList();
+                var rawEvents = snapshot.RawEvents.Count > 0 || startupWarmup
+                    ? snapshot.RawEvents.ToList()
+                    : snapshot.Events.ToList();
+                if (startupWarmup && baselineEvents.Count > 0) {
+                    if (baselineRawEvents.Count > 0 && rawEvents.Count > 0) {
+                        rawEvents = MergeUsageEventSnapshots(
+                            baselineRawEvents,
+                            rawEvents);
+                        events = UsageTelemetryQuickReportScanner.BuildMergedEventsFromRawRecords(rawEvents).ToList();
+                    } else {
+                        events = MergeUsageEventSnapshots(baselineEvents, events, sumMetrics: true);
+                        rawEvents = baselineRawEvents.Count > 0
+                            ? baselineRawEvents.Select(CloneUsageEvent).ToList()
+                            : [];
+                    }
+                }
 
                 var byProvider = events
                     .GroupBy(e => e.ProviderId?.Trim()?.ToLowerInvariant() ?? "unknown")
@@ -611,6 +680,10 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
             return true;
         }
 
+        if (IsStartupQuietWindowActive()) {
+            return false;
+        }
+
         if (!_usageChangeWatcher.HasActiveWatchers) {
             return true;
         }
@@ -635,28 +708,20 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
-        var backgroundTasks = new List<Task> {
-            RefreshGitHubAsync(GitHub.UsernameInput)
-        };
+        var backgroundTasks = new List<Task>();
+        if (ShouldRefreshGitHubDuringLightweightAuto()) {
+            backgroundTasks.Add(RefreshGitHubAsync(GitHub.UsernameInput));
+        }
 
-        if (providerIds.Length > 0) {
+        if (providerIds.Length > 0 && !IsStartupQuietWindowActive()) {
             backgroundTasks.Add(RefreshProviderLimitsAsync(providerIds, "Usage snapshot current"));
         }
 
         await Task.WhenAll(backgroundTasks).ConfigureAwait(false);
     }
 
-    private bool ShouldRunStartupUsageRefresh() {
-        if (!HasUsageProviders || _lastUsageSnapshotScannedAtUtc == default) {
-            return true;
-        }
-
-        if (!_usageChangeWatcher.HasActiveWatchers) {
-            return true;
-        }
-
-        var age = DateTimeOffset.UtcNow - _lastUsageSnapshotScannedAtUtc;
-        return age.TotalSeconds >= UsageStartupRefreshStalenessSeconds;
+    private bool IsStartupQuietWindowActive() {
+        return DateTimeOffset.UtcNow < _startupQuietWindowEndsUtc;
     }
 
     private bool HasPendingUsageChanges() {
@@ -664,7 +729,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     }
 
     private async Task RefreshUsageIfDirtyAsync() {
-        if (AutoRefreshIntervalSeconds <= 0 || IsLoading || !HasPendingUsageChanges()) {
+        if (AutoRefreshIntervalSeconds <= 0 || IsLoading || IsStartupQuietWindowActive() || !HasPendingUsageChanges()) {
             return;
         }
 
@@ -1581,29 +1646,86 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         }
     }
 
-    private bool ApplyCachedUsageSnapshot() {
-        var cachedSnapshot = _usageSnapshotStore.Load();
-        var serviceSnapshot = _usageService.TryLoadCachedSnapshot();
-        if (serviceSnapshot is not null && serviceSnapshot.Events.Count > 0) {
-            var serviceCache = new TrayUsageSnapshotStore.TrayUsageSnapshotCache(
-                serviceSnapshot.ScannedAtUtc,
-                serviceSnapshot.DiscoveredProviderIds.ToList(),
-                serviceSnapshot.SourceRoots.ToList(),
-                serviceSnapshot.Events.ToList(),
-                serviceSnapshot.RawEvents.ToList(),
-                serviceSnapshot.Health);
-            if (ShouldPreferCachedSnapshot(serviceCache, cachedSnapshot)) {
-                cachedSnapshot = serviceCache;
-                _usageSnapshotStore.Save(
+    private async Task<TrayUsageSnapshotStore.TrayUsageSnapshotCache?> LoadBestCachedUsageSnapshotAsync() {
+        return await Task.Run(() => {
+            var cachedSnapshot = _usageSnapshotStore.Load();
+            var serviceSnapshot = _usageService.TryLoadCachedSnapshot();
+            if (serviceSnapshot is not null && (serviceSnapshot.Events.Count > 0 || serviceSnapshot.RawEvents.Count > 0)) {
+                var serviceCache = new TrayUsageSnapshotStore.TrayUsageSnapshotCache(
                     serviceSnapshot.ScannedAtUtc,
-                    serviceSnapshot.Events,
-                    serviceSnapshot.DiscoveredProviderIds,
-                    serviceSnapshot.SourceRoots,
-                    serviceSnapshot.Health,
-                    serviceSnapshot.RawEvents);
+                    serviceSnapshot.DiscoveredProviderIds.ToList(),
+                    serviceSnapshot.SourceRoots.ToList(),
+                    serviceSnapshot.Events.ToList(),
+                    serviceSnapshot.RawEvents.ToList(),
+                    serviceSnapshot.Health);
+                if (cachedSnapshot is not null) {
+                    var hasCachedRawEvents = cachedSnapshot.RawEvents.Count > 0;
+                    var hasServiceRawEvents = serviceCache.RawEvents.Count > 0;
+                    var mergedRawEvents = hasCachedRawEvents || hasServiceRawEvents
+                        ? MergeUsageEventSnapshots(
+                            hasCachedRawEvents ? cachedSnapshot.RawEvents : Array.Empty<UsageEventRecord>(),
+                            hasServiceRawEvents ? serviceCache.RawEvents : Array.Empty<UsageEventRecord>())
+                        : new List<UsageEventRecord>();
+                    var mergedEvents = UsageTelemetryCachedSnapshotMerge.SelectStartupEvents(
+                            cachedSnapshot.Events,
+                            serviceCache.Events,
+                            mergedRawEvents,
+                            hasCachedRawEvents,
+                            hasServiceRawEvents,
+                            cachedSnapshot.ScannedAtUtc,
+                            serviceCache.ScannedAtUtc)
+                        .ToList();
+                    var mergedProviderIds = cachedSnapshot.DiscoveredProviderIds
+                        .Concat(serviceCache.DiscoveredProviderIds)
+                        .Concat(mergedEvents.Select(static usageEvent => usageEvent.ProviderId))
+                        .Where(static providerId => !string.IsNullOrWhiteSpace(providerId))
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .ToList();
+                    var mergedSourceRoots = UsageTelemetryCachedSnapshotMerge.SelectStartupSourceRoots(
+                            cachedSnapshot.SourceRoots,
+                            serviceCache.SourceRoots,
+                            cachedSnapshot.ScannedAtUtc,
+                            serviceCache.ScannedAtUtc)
+                        .ToList();
+                    var mergedScannedAtUtc = cachedSnapshot.ScannedAtUtc > serviceCache.ScannedAtUtc
+                        ? cachedSnapshot.ScannedAtUtc
+                        : serviceCache.ScannedAtUtc;
+                    var mergedHealth = UsageTelemetryCachedSnapshotMerge.SelectStartupHealth(
+                        cachedSnapshot.Health,
+                        serviceCache.Health,
+                        cachedSnapshot.ScannedAtUtc,
+                        serviceCache.ScannedAtUtc);
+                    cachedSnapshot = new TrayUsageSnapshotStore.TrayUsageSnapshotCache(
+                        mergedScannedAtUtc,
+                        mergedProviderIds,
+                        mergedSourceRoots,
+                        mergedEvents,
+                        mergedRawEvents,
+                        mergedHealth);
+                    _usageSnapshotStore.Save(
+                        mergedScannedAtUtc,
+                        mergedEvents,
+                        mergedProviderIds,
+                        mergedSourceRoots,
+                        mergedHealth,
+                        mergedRawEvents);
+                } else if (ShouldPreferCachedSnapshot(serviceCache, cachedSnapshot)) {
+                    cachedSnapshot = serviceCache;
+                    _usageSnapshotStore.Save(
+                        serviceSnapshot.ScannedAtUtc,
+                        serviceSnapshot.Events,
+                        serviceSnapshot.DiscoveredProviderIds,
+                        serviceSnapshot.SourceRoots,
+                        serviceSnapshot.Health,
+                        serviceSnapshot.RawEvents);
+                }
             }
-        }
 
+            return cachedSnapshot;
+        }).ConfigureAwait(false);
+    }
+
+    private bool ApplyCachedUsageSnapshot(TrayUsageSnapshotStore.TrayUsageSnapshotCache? cachedSnapshot) {
         if (cachedSnapshot is null || cachedSnapshot.Events.Count == 0) {
             return false;
         }
@@ -1632,20 +1754,43 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
             cachedSnapshot.Health,
             providerDelta: null,
             providerHistory: null);
-        _latestGitCodeChurnSummary = LoadGitCodeChurnSummarySafe();
-        ApplyCodeChurnSummary(cachedProviders, _latestGitCodeChurnSummary);
         ReplaceProviders(cachedProviders);
         UpdateDisplayedProviderEvents(mergedProviderData);
         RefreshGitHubLocalActivityCorrelationSummary();
         _previousProviderSnapshots = new Dictionary<string, ProviderRefreshSnapshot>(providerSnapshots, StringComparer.OrdinalIgnoreCase);
         _latestUsageHealth = cachedSnapshot.Health;
         _lastUsageSnapshotScannedAtUtc = cachedSnapshot.ScannedAtUtc;
-        _lastUsageRootDiscoveryUtc = cachedSnapshot.ScannedAtUtc;
+        _lastUsageRootDiscoveryUtc = DateTimeOffset.UtcNow;
         _usageChangeWatcher.SetRoots(cachedSnapshot.SourceRoots);
         LastRefreshed = cachedSnapshot.ScannedAtUtc.ToLocalTime();
-        StatusText = "Loaded last usage snapshot from disk. Watching for local changes.";
-        LoadingDetailText = "Showing cached usage while providers refresh.";
+        StatusText = ShouldRunStartupWarmRefreshAfterCache(cachedSnapshot)
+            ? "Showing saved usage snapshot. Refreshing local telemetry in background..."
+            : "Showing saved usage snapshot.";
+        LoadingDetailText = "Showing saved usage while local telemetry catch-up waits for the startup quiet window.";
+        ScheduleGitCodeChurnRefreshAfterStartup();
         return true;
+    }
+
+    private void ScheduleGitCodeChurnRefreshAfterStartup() {
+        _ = Task.Run(async () => {
+                await Task.Delay(TimeSpan.FromSeconds(StartupWarmRefreshDelaySeconds)).ConfigureAwait(false);
+                return LoadGitCodeChurnSummarySafe();
+            })
+            .ContinueWith(task => {
+                var summary = task.Status == TaskStatus.RanToCompletion
+                    ? task.Result
+                    : GitCodeChurnSummaryData.Empty;
+                var dispatcher = Application.Current?.Dispatcher;
+                if (dispatcher is null) {
+                    return;
+                }
+
+                _ = dispatcher.InvokeAsync(() => {
+                    _latestGitCodeChurnSummary = summary;
+                    ApplyCodeChurnSummary(Providers, summary);
+                    RefreshGitHubLocalActivityCorrelationSummary();
+                });
+            }, TaskScheduler.Default);
     }
 
     private static bool ShouldPreferCachedSnapshot(
@@ -1706,7 +1851,10 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         }
 
         var currentProviderData = _displayedProviderEvents
-            .Select(static pair => new ProviderRefreshData(pair.Key, pair.Value, pair.Value))
+            .Select(pair => new ProviderRefreshData(
+                pair.Key,
+                pair.Value,
+                _displayedProviderRawEvents.TryGetValue(pair.Key, out var rawEvents) ? rawEvents : pair.Value))
             .ToList();
         foreach (var (providerId, events) in providerEventsById) {
             var existingIndex = currentProviderData.FindIndex(group => string.Equals(group.ProviderId, providerId, StringComparison.OrdinalIgnoreCase));
@@ -1740,6 +1888,185 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
             static group => group.ProviderId,
             static group => group.Events.ToList(),
             StringComparer.OrdinalIgnoreCase);
+        _displayedProviderRawEvents = providerData.ToDictionary(
+            static group => group.ProviderId,
+            static group => group.RawEvents.Count > 0 ? group.RawEvents.ToList() : group.Events.ToList(),
+            StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static List<UsageEventRecord> MergeUsageEventSnapshots(
+        IEnumerable<UsageEventRecord> baselineEvents,
+        IEnumerable<UsageEventRecord> incomingEvents,
+        bool sumMetrics = false) {
+        var mergedById = new Dictionary<string, UsageEventRecord>(StringComparer.OrdinalIgnoreCase);
+        foreach (var usageEvent in baselineEvents ?? Array.Empty<UsageEventRecord>()) {
+            if (usageEvent is null || string.IsNullOrWhiteSpace(usageEvent.EventId)) {
+                continue;
+            }
+
+            mergedById[usageEvent.EventId] = CloneUsageEvent(usageEvent);
+        }
+
+        foreach (var usageEvent in incomingEvents ?? Array.Empty<UsageEventRecord>()) {
+            if (usageEvent is null || string.IsNullOrWhiteSpace(usageEvent.EventId)) {
+                continue;
+            }
+
+            if (!mergedById.TryGetValue(usageEvent.EventId, out var existing)) {
+                mergedById[usageEvent.EventId] = CloneUsageEvent(usageEvent);
+                continue;
+            }
+
+            MergeUsageEventInto(existing, usageEvent, sumMetrics);
+        }
+
+        return mergedById.Values
+            .OrderBy(static usageEvent => usageEvent.TimestampUtc)
+            .ThenBy(static usageEvent => usageEvent.ProviderId, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(static usageEvent => usageEvent.Model, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(static usageEvent => usageEvent.EventId, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static UsageEventRecord CloneUsageEvent(UsageEventRecord usageEvent) {
+        return new UsageEventRecord(
+            usageEvent.EventId,
+            usageEvent.ProviderId,
+            usageEvent.AdapterId,
+            usageEvent.SourceRootId,
+            usageEvent.TimestampUtc) {
+            ProviderAccountId = usageEvent.ProviderAccountId,
+            AccountLabel = usageEvent.AccountLabel,
+            PersonLabel = usageEvent.PersonLabel,
+            MachineId = usageEvent.MachineId,
+            SessionId = usageEvent.SessionId,
+            ThreadId = usageEvent.ThreadId,
+            ConversationTitle = usageEvent.ConversationTitle,
+            WorkspacePath = usageEvent.WorkspacePath,
+            RepositoryName = usageEvent.RepositoryName,
+            TurnId = usageEvent.TurnId,
+            ResponseId = usageEvent.ResponseId,
+            Model = usageEvent.Model,
+            Surface = usageEvent.Surface,
+            InputTokens = usageEvent.InputTokens,
+            CachedInputTokens = usageEvent.CachedInputTokens,
+            OutputTokens = usageEvent.OutputTokens,
+            ReasoningTokens = usageEvent.ReasoningTokens,
+            TotalTokens = usageEvent.TotalTokens,
+            CompactCount = usageEvent.CompactCount,
+            DurationMs = usageEvent.DurationMs,
+            CostUsd = usageEvent.CostUsd,
+            TruthLevel = usageEvent.TruthLevel,
+            RawHash = usageEvent.RawHash
+        };
+    }
+
+    private static void MergeUsageEventInto(UsageEventRecord existing, UsageEventRecord incoming, bool sumMetrics) {
+        existing.ProviderAccountId = PreferIncoming(existing.ProviderAccountId, incoming.ProviderAccountId);
+        existing.AccountLabel = PreferIncoming(existing.AccountLabel, incoming.AccountLabel);
+        existing.PersonLabel = PreferIncoming(existing.PersonLabel, incoming.PersonLabel);
+        existing.MachineId = PreferExisting(existing.MachineId, incoming.MachineId);
+        existing.SessionId = PreferExisting(existing.SessionId, incoming.SessionId);
+        existing.ThreadId = PreferExisting(existing.ThreadId, incoming.ThreadId);
+        existing.ConversationTitle = PreferExisting(existing.ConversationTitle, incoming.ConversationTitle);
+        existing.WorkspacePath = PreferExisting(existing.WorkspacePath, incoming.WorkspacePath);
+        existing.RepositoryName = PreferExisting(existing.RepositoryName, incoming.RepositoryName);
+        existing.TurnId = PreferExisting(existing.TurnId, incoming.TurnId);
+        existing.ResponseId = PreferExisting(existing.ResponseId, incoming.ResponseId);
+        existing.Model = PreferExisting(existing.Model, incoming.Model);
+        existing.Surface = PreferExisting(existing.Surface, incoming.Surface);
+        existing.RawHash = PreferExisting(existing.RawHash, incoming.RawHash);
+        existing.InputTokens = sumMetrics ? SumNullable(existing.InputTokens, incoming.InputTokens) : MaxNullable(existing.InputTokens, incoming.InputTokens);
+        existing.CachedInputTokens = sumMetrics ? SumNullable(existing.CachedInputTokens, incoming.CachedInputTokens) : MaxNullable(existing.CachedInputTokens, incoming.CachedInputTokens);
+        existing.OutputTokens = sumMetrics ? SumNullable(existing.OutputTokens, incoming.OutputTokens) : MaxNullable(existing.OutputTokens, incoming.OutputTokens);
+        existing.ReasoningTokens = sumMetrics ? SumNullable(existing.ReasoningTokens, incoming.ReasoningTokens) : MaxNullable(existing.ReasoningTokens, incoming.ReasoningTokens);
+        existing.TotalTokens = sumMetrics ? SumNullable(existing.TotalTokens, incoming.TotalTokens) : MaxNullable(existing.TotalTokens, incoming.TotalTokens);
+        existing.CompactCount = sumMetrics ? SumNullable(existing.CompactCount, incoming.CompactCount) : MaxNullable(existing.CompactCount, incoming.CompactCount);
+        existing.DurationMs = sumMetrics ? SumNullable(existing.DurationMs, incoming.DurationMs) : MaxNullable(existing.DurationMs, incoming.DurationMs);
+        existing.CostUsd = sumMetrics ? SumNullable(existing.CostUsd, incoming.CostUsd) : MaxNullable(existing.CostUsd, incoming.CostUsd);
+        if (incoming.TruthLevel > existing.TruthLevel) {
+            existing.TruthLevel = incoming.TruthLevel;
+        }
+    }
+
+    private static string? PreferIncoming(string? existing, string? incoming) {
+        return string.IsNullOrWhiteSpace(incoming) ? existing : incoming;
+    }
+
+    private static string? PreferExisting(string? existing, string? incoming) {
+        return string.IsNullOrWhiteSpace(existing) ? incoming : existing;
+    }
+
+    private static long? MaxNullable(long? existing, long? incoming) {
+        if (!existing.HasValue) {
+            return incoming;
+        }
+
+        if (!incoming.HasValue) {
+            return existing;
+        }
+
+        return Math.Max(existing.Value, incoming.Value);
+    }
+
+    private static long? SumNullable(long? existing, long? incoming) {
+        if (!existing.HasValue) {
+            return incoming;
+        }
+
+        if (!incoming.HasValue) {
+            return existing;
+        }
+
+        return existing.Value + incoming.Value;
+    }
+
+    private static int? MaxNullable(int? existing, int? incoming) {
+        if (!existing.HasValue) {
+            return incoming;
+        }
+
+        if (!incoming.HasValue) {
+            return existing;
+        }
+
+        return Math.Max(existing.Value, incoming.Value);
+    }
+
+    private static int? SumNullable(int? existing, int? incoming) {
+        if (!existing.HasValue) {
+            return incoming;
+        }
+
+        if (!incoming.HasValue) {
+            return existing;
+        }
+
+        return existing.Value + incoming.Value;
+    }
+
+    private static decimal? MaxNullable(decimal? existing, decimal? incoming) {
+        if (!existing.HasValue) {
+            return incoming;
+        }
+
+        if (!incoming.HasValue) {
+            return existing;
+        }
+
+        return Math.Max(existing.Value, incoming.Value);
+    }
+
+    private static decimal? SumNullable(decimal? existing, decimal? incoming) {
+        if (!existing.HasValue) {
+            return incoming;
+        }
+
+        if (!incoming.HasValue) {
+            return existing;
+        }
+
+        return existing.Value + incoming.Value;
     }
 
     private void UpdateLatestSourceRoots(IReadOnlyList<SourceRootRecord> sourceRoots) {

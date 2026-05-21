@@ -13,6 +13,7 @@
     <Color x:Key="AccentColor">#5b63e8</Color>
     <Color x:Key="AccentDimColor">#454fcf</Color>
     <Color x:Key="GreenColor">#1f9c69</Color>
+    <Color x:Key="WarningColor">#b98307</Color>
     <Color x:Key="BrandStartColor">#5b63e8</Color>
     <Color x:Key="BrandEndColor">#1f9c69</Color>
     <Color x:Key="PopupShadowColor">#1f3048</Color>
@@ -28,6 +29,8 @@
     <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource AccentColor}" />
     <SolidColorBrush x:Key="AccentDimBrush" Color="{StaticResource AccentDimColor}" />
     <SolidColorBrush x:Key="GreenBrush" Color="{StaticResource GreenColor}" />
+    <SolidColorBrush x:Key="SuccessBrush" Color="{StaticResource GreenColor}" />
+    <SolidColorBrush x:Key="WarningBrush" Color="{StaticResource WarningColor}" />
     <SolidColorBrush x:Key="SectionStripBrush" Color="#0a182541" />
     <SolidColorBrush x:Key="FavoriteBadgeBrush" Color="#b98307" />
     <SolidColorBrush x:Key="SuccessBadgeBrush" Color="#141f9c69" />

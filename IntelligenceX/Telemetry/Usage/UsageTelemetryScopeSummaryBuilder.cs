@@ -134,10 +134,28 @@ public static class UsageTelemetryScopeSummaryBuilder {
         if (limitSnapshot.Windows.Count > 0) {
             text += " These windows are account-wide online usage, not just the local roots above.";
         } else if (!string.IsNullOrWhiteSpace(limitSnapshot.DetailMessage)) {
-            text += " " + limitSnapshot.DetailMessage!.Trim();
+            text += " " + BuildLimitDetailSummary(providerTitle, limitSnapshot.DetailMessage);
         }
 
         return text;
+    }
+
+    private static string BuildLimitDetailSummary(string providerTitle, string? detailMessage) {
+        var normalized = NormalizeOptional(detailMessage);
+        if (normalized is null) {
+            return providerTitle + " live limits are unavailable.";
+        }
+
+        if (normalized.Contains("OAuth token request failed", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("refresh_token_reused", StringComparison.OrdinalIgnoreCase)) {
+            return providerTitle + " live limits need a fresh sign-in before account windows can update.";
+        }
+
+        normalized = string.Join(" ", normalized.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        const int maxDetailLength = 180;
+        return normalized.Length <= maxDetailLength
+            ? normalized
+            : normalized.Substring(0, maxDetailLength).TrimEnd() + "...";
     }
 
     private static string? BuildDifferenceText(
