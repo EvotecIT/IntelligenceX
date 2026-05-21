@@ -15,13 +15,7 @@ internal static class UsageTelemetryCachedSnapshotMerge {
         DateTimeOffset serviceScannedAtUtc) {
         if (mergedRawEvents.Count > 0) {
             var rawRollups = UsageTelemetryQuickReportScanner.BuildMergedEventsFromRawRecords(mergedRawEvents);
-            if (hasCachedRawEvents && hasServiceRawEvents) {
-                return rawRollups.ToList();
-            }
-
-            var fallbackRollups = hasCachedRawEvents
-                ? serviceEvents
-                : cachedEvents;
+            var fallbackRollups = cachedEvents.Concat(serviceEvents);
             return MergeRollups(rawRollups, fallbackRollups);
         }
 

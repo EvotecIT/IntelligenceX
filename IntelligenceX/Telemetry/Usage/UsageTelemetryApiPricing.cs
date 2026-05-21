@@ -198,8 +198,12 @@ public static class UsageTelemetryApiPricing {
 
         var inputTokens = Math.Max(0L, record.InputTokens ?? 0L);
         var cachedInputTokens = Math.Max(0L, record.CachedInputTokens ?? 0L);
-        var freshInputTokens = ShouldTreatCachedInputAsInputSubset(record.ProviderId)
-            ? Math.Max(0L, inputTokens - Math.Min(inputTokens, cachedInputTokens))
+        var treatsCachedInputAsSubset = ShouldTreatCachedInputAsInputSubset(record.ProviderId);
+        var effectiveCachedInputTokens = treatsCachedInputAsSubset
+            ? Math.Min(inputTokens, cachedInputTokens)
+            : cachedInputTokens;
+        var freshInputTokens = treatsCachedInputAsSubset
+            ? Math.Max(0L, inputTokens - effectiveCachedInputTokens)
             : inputTokens;
         var outputTokens = Math.Max(0L, record.OutputTokens ?? 0L);
         var reasoningTokens = Math.Max(0L, record.ReasoningTokens ?? 0L);
@@ -209,7 +213,7 @@ public static class UsageTelemetryApiPricing {
 
         var estimatedCostUsd =
             ComputePerMillionCost(freshInputTokens, rate.InputUsdPerMillion) +
-            ComputePerMillionCost(cachedInputTokens, rate.CachedInputUsdPerMillion ?? rate.InputUsdPerMillion) +
+            ComputePerMillionCost(effectiveCachedInputTokens, rate.CachedInputUsdPerMillion ?? rate.InputUsdPerMillion) +
             ComputePerMillionCost(effectiveOutputTokens, rate.OutputUsdPerMillion);
 
         return new UsageTelemetryApiEventCostEstimate(
