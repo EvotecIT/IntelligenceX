@@ -117,6 +117,36 @@ internal static partial class Program {
         AssertEqual("vendor/gpt-5.5/fast", nonOpenAiEstimate.Model, "api pricing preserves third-party slash id");
     }
 
+    private static void TestUsageTelemetryApiPricingClampsSubsetCachedInput() {
+        var clampedEstimate = UsageTelemetryApiPricing.EstimateEvent(new UsageEventRecord(
+            "evt-cached-clamped",
+            "openai",
+            "codex.logs",
+            "src-1",
+            new DateTimeOffset(2026, 03, 10, 11, 20, 0, TimeSpan.Zero)) {
+            Model = "gpt-5.5/fast",
+            InputTokens = 100,
+            CachedInputTokens = 100,
+            TotalTokens = 100,
+            TruthLevel = UsageTruthLevel.Exact
+        });
+        var overflowEstimate = UsageTelemetryApiPricing.EstimateEvent(new UsageEventRecord(
+            "evt-cached-overflow",
+            "openai",
+            "codex.logs",
+            "src-1",
+            new DateTimeOffset(2026, 03, 10, 11, 21, 0, TimeSpan.Zero)) {
+            Model = "gpt-5.5/fast",
+            InputTokens = 100,
+            CachedInputTokens = 200,
+            TotalTokens = 200,
+            TruthLevel = UsageTruthLevel.Exact
+        });
+
+        AssertEqual(true, overflowEstimate.HasKnownPricing, "api pricing recognizes cached overflow fixture");
+        AssertEqual(clampedEstimate.EstimatedCostUsd, overflowEstimate.EstimatedCostUsd, "api pricing clamps OpenAI cached input to input tokens");
+    }
+
     private static void TestUsageTelemetryScopeSummaryKeepsProviderErrorsCompact() {
         var sourceRoots = new[] {
             new SourceRootRecord("src-codex", "codex", UsageSourceKind.LocalLogs, @"C:\Users\example\.codex\sessions") {
@@ -169,6 +199,41 @@ internal static partial class Program {
 
         AssertEqual(2, merged.Count, "cached startup merge keeps available raw and fallback rollups");
         AssertEqual(220L, merged.Sum(static item => item.TotalTokens ?? 0L), "cached startup merge preserves combined non-overlapping coverage");
+    }
+
+    private static void TestUsageTelemetryCachedStartupMergeKeepsPartialRawFallbackRollups() {
+        var cachedScannedAt = new DateTimeOffset(2026, 03, 10, 9, 0, 0, TimeSpan.Zero);
+        var serviceScannedAt = cachedScannedAt.AddMinutes(5);
+        var cachedEvents = new[] {
+            new UsageEventRecord("codex-rollup-cached", "codex", "codex.logs", "src-1", cachedScannedAt.AddDays(-1)) {
+                InputTokens = 80,
+                TotalTokens = 80
+            }
+        };
+        var serviceEvents = new[] {
+            new UsageEventRecord("codex-rollup-service", "codex", "codex.logs", "src-1", cachedScannedAt.AddDays(1)) {
+                InputTokens = 120,
+                TotalTokens = 120
+            }
+        };
+        var mergedRawEvents = new[] {
+            new UsageEventRecord("codex-raw-cached-partial", "codex", "codex.logs", "src-1", cachedScannedAt) {
+                InputTokens = 100,
+                TotalTokens = 100
+            }
+        };
+
+        var merged = UsageTelemetryCachedSnapshotMerge.SelectStartupEvents(
+            cachedEvents,
+            serviceEvents,
+            mergedRawEvents,
+            hasCachedRawEvents: true,
+            hasServiceRawEvents: true,
+            cachedScannedAt,
+            serviceScannedAt);
+
+        AssertEqual(3, merged.Count, "cached startup merge keeps fallback rollups when both raw caches are partial");
+        AssertEqual(300L, merged.Sum(static item => item.TotalTokens ?? 0L), "cached startup merge preserves partial raw and full fallback totals");
     }
 
     private static void TestProviderLimitForecastingFlagsOverLimitPace() {

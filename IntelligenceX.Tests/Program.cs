@@ -103,10 +103,14 @@ internal static partial class Program {
             TestUsageTelemetryApiPricingBlendsExactAndEstimatedCosts);
         failed += Run("Usage telemetry API pricing covers OpenAI mode suffixes",
             TestUsageTelemetryApiPricingCoversOpenAiModeSuffixes);
+        failed += Run("Usage telemetry API pricing clamps subset cached input",
+            TestUsageTelemetryApiPricingClampsSubsetCachedInput);
         failed += Run("Usage telemetry scope summary keeps provider errors compact",
             TestUsageTelemetryScopeSummaryKeepsProviderErrorsCompact);
         failed += Run("Usage telemetry cached startup merge avoids incomplete raw overlap",
             TestUsageTelemetryCachedStartupMergeAvoidsIncompleteRawOverlap);
+        failed += Run("Usage telemetry cached startup merge keeps partial raw fallback rollups",
+            TestUsageTelemetryCachedStartupMergeKeepsPartialRawFallbackRollups);
         failed += Run("Provider limit forecasting flags over-limit pace",
             TestProviderLimitForecastingFlagsOverLimitPace);
         failed += Run("Provider limit forecasting recognizes on-pace window",
