@@ -113,6 +113,7 @@ public sealed class ProviderViewModel : ViewModelBase {
     private bool _pulseCostUsesEstimate;
     private int _pulseEventCount;
     private long _pulsePreviousDayTokens;
+    private bool _pulseCachedInputSubsetDescribable;
     private string? _pulseProviderMetricOverride;
 
     // 7-day rolling
@@ -1575,6 +1576,7 @@ public sealed class ProviderViewModel : ViewModelBase {
         _pulseReasoningTokens = pulseEvents.Sum(e => e.ReasoningTokens ?? 0L);
         _pulseFreshInputTokens = pulseEvents.Sum(GetPulseFreshInputTokens);
         _pulseVisibleOutputTokens = pulseEvents.Sum(GetPulseVisibleOutputTokens);
+        _pulseCachedInputSubsetDescribable = CanDescribeCachedInputAsSubset(pulseEvents);
         ApplyDisplayCost(
             UsageTelemetryApiPricing.BuildDisplayCost(pulseEvents),
             value => _pulseCostUsd = value,
@@ -1823,16 +1825,15 @@ public sealed class ProviderViewModel : ViewModelBase {
             return "Cached input appears when token telemetry includes it.";
         }
 
-        if (!CanDescribePulseCachedInputAsSubset()) {
+        if (!_pulseCachedInputSubsetDescribable) {
             return "Cached input is reported separately by provider telemetry.";
         }
 
         return FormatPulsePercent(Math.Min(1d, Math.Max(0d, (double)PulseCachedTokens / PulseInputTokens))) + " of today's input";
     }
 
-    private bool CanDescribePulseCachedInputAsSubset() {
-        var today = DateTime.Now.Date;
-        var events = FilterByWindow(today, today)
+    private static bool CanDescribeCachedInputAsSubset(IEnumerable<UsageEventRecord> pulseEvents) {
+        var events = pulseEvents
             .Where(static usageEvent => (usageEvent.CachedInputTokens ?? 0L) > 0)
             .ToList();
         return events.Count > 0 &&
