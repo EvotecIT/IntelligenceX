@@ -332,6 +332,7 @@ public sealed partial class MainWindow : Window {
     private string _localProviderTextVerbosity = string.Empty;
     private double? _localProviderTemperature;
     private bool _localProviderImageGenerationEnabled;
+    private bool _localProviderImageGenerationOverrideActive;
     private string _localProviderImageGenerationQuality = string.Empty;
     private string _localProviderImageGenerationSize = string.Empty;
     private string _localProviderImageGenerationOutputFormat = string.Empty;
@@ -599,6 +600,7 @@ public sealed partial class MainWindow : Window {
         string? TextVerbosity,
         string? Temperature,
         bool ImageGenerationEnabled,
+        bool ImageGenerationOverrideActive,
         string? ImageGenerationQuality,
         string? ImageGenerationSize,
         string? ImageGenerationOutputFormat,

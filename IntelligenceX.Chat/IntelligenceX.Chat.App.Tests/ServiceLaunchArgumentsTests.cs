@@ -301,6 +301,23 @@ public sealed class ServiceLaunchArgumentsTests {
     }
 
     /// <summary>
+    /// Ensures an explicit image-generation disable override is preserved.
+    /// </summary>
+    [Fact]
+    public void Build_IncludesDisableImageGenerationFlag_WhenExplicitlyDisabled() {
+        var args = ServiceLaunchArguments.Build(
+            "intelligencex.chat",
+            detachedServiceMode: true,
+            parentProcessId: 12345,
+            new ServiceLaunchArguments.ProfileOptions {
+                ImageGenerationEnabled = false
+            });
+
+        Assert.DoesNotContain("--enable-image-generation", args);
+        Assert.Contains("--disable-image-generation", args);
+    }
+
+    /// <summary>
     /// Ensures repeatable plugin paths are forwarded, while empty/duplicate entries are ignored.
     /// </summary>
     [Fact]

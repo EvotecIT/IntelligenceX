@@ -1182,6 +1182,7 @@ public sealed partial class MainWindow : Window {
         _localProviderTextVerbosity = NormalizeLocalProviderTextVerbosity(_appState.LocalProviderTextVerbosity);
         _localProviderTemperature = NormalizeLocalProviderTemperature(_appState.LocalProviderTemperature);
         _localProviderImageGenerationEnabled = _appState.LocalProviderImageGenerationEnabled;
+        _localProviderImageGenerationOverrideActive = _appState.LocalProviderImageGenerationOverrideActive;
         _localProviderImageGenerationQuality = NormalizeLocalProviderImageGenerationQuality(_appState.LocalProviderImageGenerationQuality);
         _localProviderImageGenerationSize = NormalizeLocalProviderImageGenerationSize(_appState.LocalProviderImageGenerationSize);
         _localProviderImageGenerationOutputFormat = NormalizeLocalProviderImageGenerationOutputFormat(_appState.LocalProviderImageGenerationOutputFormat);
@@ -1199,6 +1200,7 @@ public sealed partial class MainWindow : Window {
         _appState.LocalProviderTextVerbosity = _localProviderTextVerbosity;
         _appState.LocalProviderTemperature = _localProviderTemperature;
         _appState.LocalProviderImageGenerationEnabled = _localProviderImageGenerationEnabled;
+        _appState.LocalProviderImageGenerationOverrideActive = _localProviderImageGenerationOverrideActive;
         _appState.LocalProviderImageGenerationQuality = _localProviderImageGenerationQuality;
         _appState.LocalProviderImageGenerationSize = _localProviderImageGenerationSize;
         _appState.LocalProviderImageGenerationOutputFormat = _localProviderImageGenerationOutputFormat;

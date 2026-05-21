@@ -528,12 +528,12 @@ internal static partial class Program {
         }
 
         private ImageGenerationOptions? BuildImageGenerationOptions() {
-            if (!_options.EnableImageGeneration) {
+            if (!HasImageGenerationOptions()) {
                 return null;
             }
 
             return new ImageGenerationOptions {
-                Enabled = true,
+                Enabled = _options.ImageGenerationEnabledOverride ?? _options.EnableImageGeneration || HasImageGenerationSettingOverrides(),
                 Quality = _options.ImageGenerationQuality,
                 Size = _options.ImageGenerationSize,
                 OutputFormat = _options.ImageGenerationOutputFormat,
@@ -542,6 +542,19 @@ internal static partial class Program {
                 OutputDirectory = _options.ImageGenerationOutputDirectory
             };
         }
+
+        private bool HasImageGenerationOptions() =>
+            _options.ImageGenerationEnabledOverride.HasValue ||
+            _options.EnableImageGeneration ||
+            HasImageGenerationSettingOverrides();
+
+        private bool HasImageGenerationSettingOverrides() =>
+            !string.IsNullOrWhiteSpace(_options.ImageGenerationQuality) ||
+            !string.IsNullOrWhiteSpace(_options.ImageGenerationSize) ||
+            !string.IsNullOrWhiteSpace(_options.ImageGenerationOutputFormat) ||
+            _options.ImageGenerationOutputCompression.HasValue ||
+            !string.IsNullOrWhiteSpace(_options.ImageGenerationBackground) ||
+            !string.IsNullOrWhiteSpace(_options.ImageGenerationOutputDirectory);
 
         private bool ShouldSuppressReportedDuplicateReadOnlySignature(
             ToolCall call,

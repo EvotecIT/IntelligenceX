@@ -1542,6 +1542,7 @@
       textVerbosity: textVerbosity,
       temperature: temperature,
       imageGenerationEnabled: imageGenerationEnabled,
+      imageGenerationOverrideActive: true,
       imageGenerationQuality: imageGenerationQuality,
       imageGenerationSize: imageGenerationSize,
       imageGenerationOutputFormat: imageGenerationOutputFormat,

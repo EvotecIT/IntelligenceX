@@ -590,6 +590,7 @@ public sealed partial class MainWindow : Window {
                 textVerbosity = _localProviderTextVerbosity,
                 temperature = _localProviderTemperature,
                 imageGenerationEnabled = _localProviderImageGenerationEnabled,
+                imageGenerationOverrideActive = _localProviderImageGenerationOverrideActive,
                 imageGenerationQuality = _localProviderImageGenerationQuality,
                 imageGenerationSize = _localProviderImageGenerationSize,
                 imageGenerationOutputFormat = _localProviderImageGenerationOutputFormat,

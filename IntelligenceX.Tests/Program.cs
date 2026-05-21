@@ -113,6 +113,12 @@ internal static partial class Program {
             TestUsageTelemetryCachedStartupMergeKeepsPartialRawFallbackRollups);
         failed += Run("Usage telemetry cached startup merge sums overlapping rollups",
             TestUsageTelemetryCachedStartupMergeSumsOverlappingRollups);
+        failed += Run("Usage telemetry cached startup merge deduplicates equivalent rollups with metadata",
+            TestUsageTelemetryCachedStartupMergeDeduplicatesEquivalentRollupsWithMetadata);
+        failed += Run("Usage telemetry cached startup merge deduplicates original contribution after aggregate changes",
+            TestUsageTelemetryCachedStartupMergeDeduplicatesOriginalContributionAfterAggregateChanges);
+        failed += Run("Usage telemetry cached startup merge keeps dominating updated rollup",
+            TestUsageTelemetryCachedStartupMergeKeepsDominatingUpdatedRollup);
         failed += Run("Usage telemetry cached startup merge prefers newest source root metadata",
             TestUsageTelemetryCachedStartupMergePrefersNewestSourceRootMetadata);
         failed += Run("Usage telemetry cached startup merge keeps complete health over partial service health",

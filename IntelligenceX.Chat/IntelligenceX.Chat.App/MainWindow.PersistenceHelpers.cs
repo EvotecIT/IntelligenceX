@@ -64,6 +64,7 @@ public sealed partial class MainWindow : Window {
             _appState.LocalProviderTextVerbosity = _localProviderTextVerbosity;
             _appState.LocalProviderTemperature = _localProviderTemperature;
             _appState.LocalProviderImageGenerationEnabled = _localProviderImageGenerationEnabled;
+            _appState.LocalProviderImageGenerationOverrideActive = _localProviderImageGenerationOverrideActive;
             _appState.LocalProviderImageGenerationQuality = _localProviderImageGenerationQuality;
             _appState.LocalProviderImageGenerationSize = _localProviderImageGenerationSize;
             _appState.LocalProviderImageGenerationOutputFormat = _localProviderImageGenerationOutputFormat;

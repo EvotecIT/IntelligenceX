@@ -117,7 +117,13 @@ public sealed class OpenAIChatTreatmentProvider : ITreatmentProvider {
             return null;
         }
 
-        return uri.IsAbsoluteUri ? uri.AbsolutePath : uri.OriginalString;
+        if (uri.IsAbsoluteUri) {
+            return uri.AbsolutePath;
+        }
+
+        var value = uri.OriginalString;
+        var queryIndex = value.IndexOfAny(new[] { '?', '#' });
+        return queryIndex < 0 ? value : value.Substring(0, queryIndex);
     }
 
     private static bool IsSupportedImageMediaType(string mediaType) =>

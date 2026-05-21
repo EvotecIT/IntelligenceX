@@ -39,6 +39,7 @@ internal static partial class Program {
         public TextVerbosity? TextVerbosity { get; set; }
         public double? Temperature { get; set; }
         public bool EnableImageGeneration { get; set; }
+        public bool? ImageGenerationEnabledOverride { get; set; }
         public string? ImageGenerationQuality { get; set; }
         public string? ImageGenerationSize { get; set; }
         public string? ImageGenerationOutputFormat { get; set; }
@@ -207,9 +208,11 @@ internal static partial class Program {
                         break;
                     case "--enable-image-generation":
                         options.EnableImageGeneration = true;
+                        options.ImageGenerationEnabledOverride = true;
                         break;
                     case "--disable-image-generation":
                         options.EnableImageGeneration = false;
+                        options.ImageGenerationEnabledOverride = false;
                         break;
                     case "--image-generation-quality":
                         if (!TryGetValue(args, ref i, out var imageQuality, out error)) {
@@ -677,6 +680,7 @@ internal static partial class Program {
                 TextVerbosity = TextVerbosity,
                 Temperature = Temperature,
                 EnableImageGeneration = EnableImageGeneration,
+                ImageGenerationEnabledOverride = ImageGenerationEnabledOverride,
                 ImageGenerationQuality = ImageGenerationQuality,
                 ImageGenerationSize = ImageGenerationSize,
                 ImageGenerationOutputFormat = ImageGenerationOutputFormat,
@@ -763,6 +767,7 @@ internal static partial class Program {
             TextVerbosity = source.TextVerbosity;
             Temperature = source.Temperature;
             EnableImageGeneration = source.EnableImageGeneration;
+            ImageGenerationEnabledOverride = source.ImageGenerationEnabledOverride;
             ImageGenerationQuality = source.ImageGenerationQuality;
             ImageGenerationSize = source.ImageGenerationSize;
             ImageGenerationOutputFormat = source.ImageGenerationOutputFormat;

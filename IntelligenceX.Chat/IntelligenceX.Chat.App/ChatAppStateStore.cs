@@ -241,6 +241,7 @@ internal sealed class ChatAppState {
     public string LocalProviderTextVerbosity { get; set; } = string.Empty;
     public double? LocalProviderTemperature { get; set; }
     public bool LocalProviderImageGenerationEnabled { get; set; }
+    public bool LocalProviderImageGenerationOverrideActive { get; set; }
     public string LocalProviderImageGenerationQuality { get; set; } = string.Empty;
     public string LocalProviderImageGenerationSize { get; set; } = string.Empty;
     public string LocalProviderImageGenerationOutputFormat { get; set; } = string.Empty;

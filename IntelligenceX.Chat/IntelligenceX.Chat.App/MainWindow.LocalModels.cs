@@ -174,6 +174,7 @@ public sealed partial class MainWindow : Window {
             textVerbosityValue: _localProviderTextVerbosity,
             temperatureValue: _localProviderTemperature?.ToString("0.###", CultureInfo.InvariantCulture),
             imageGenerationEnabled: _localProviderImageGenerationEnabled,
+            imageGenerationOverrideActive: _localProviderImageGenerationOverrideActive,
             imageGenerationQualityValue: _localProviderImageGenerationQuality,
             imageGenerationSizeValue: _localProviderImageGenerationSize,
             imageGenerationOutputFormatValue: _localProviderImageGenerationOutputFormat,
@@ -263,7 +264,7 @@ public sealed partial class MainWindow : Window {
     private async Task ApplyLocalProviderAsync(string? transportValue, string? baseUrlValue, string? modelValue, string? openAIAuthModeValue,
         string? openAIBasicUsernameValue, string? openAIBasicPasswordValue, string? openAIAccountIdValue, int? activeNativeAccountSlotValue,
         string? activeSlotAccountIdValue, string? reasoningEffortValue, string? reasoningSummaryValue, string? textVerbosityValue,
-        string? temperatureValue, bool imageGenerationEnabled, string? imageGenerationQualityValue, string? imageGenerationSizeValue,
+        string? temperatureValue, bool imageGenerationEnabled, bool imageGenerationOverrideActive, string? imageGenerationQualityValue, string? imageGenerationSizeValue,
         string? imageGenerationOutputFormatValue, int? imageGenerationOutputCompressionValue, bool clearImageGenerationOutputCompression,
         string? imageGenerationBackgroundValue,
         string? imageGenerationOutputDirectoryValue, string? apiKeyValue, bool clearBasicAuth, bool clearApiKey, bool forceModelRefresh,
@@ -293,6 +294,7 @@ public sealed partial class MainWindow : Window {
             TextVerbosity: textVerbosityValue,
             Temperature: temperatureValue,
             ImageGenerationEnabled: imageGenerationEnabled,
+            ImageGenerationOverrideActive: imageGenerationOverrideActive,
             ImageGenerationQuality: imageGenerationQualityValue,
             ImageGenerationSize: imageGenerationSizeValue,
             ImageGenerationOutputFormat: imageGenerationOutputFormatValue,
@@ -411,6 +413,7 @@ public sealed partial class MainWindow : Window {
         var previousTextVerbosity = _localProviderTextVerbosity;
         var previousTemperature = _localProviderTemperature;
         var previousImageGenerationEnabled = _localProviderImageGenerationEnabled;
+        var previousImageGenerationOverrideActive = _localProviderImageGenerationOverrideActive;
         var previousImageGenerationQuality = _localProviderImageGenerationQuality;
         var previousImageGenerationSize = _localProviderImageGenerationSize;
         var previousImageGenerationOutputFormat = _localProviderImageGenerationOutputFormat;
@@ -463,6 +466,7 @@ public sealed partial class MainWindow : Window {
         _localProviderTextVerbosity = normalizedTextVerbosity;
         _localProviderTemperature = normalizedTemperature;
         _localProviderImageGenerationEnabled = request.ImageGenerationEnabled;
+        _localProviderImageGenerationOverrideActive = request.ImageGenerationOverrideActive;
         _localProviderImageGenerationQuality = normalizedImageGenerationQuality;
         _localProviderImageGenerationSize = normalizedImageGenerationSize;
         _localProviderImageGenerationOutputFormat = normalizedImageGenerationOutputFormat;
@@ -495,6 +499,7 @@ public sealed partial class MainWindow : Window {
         _appState.LocalProviderTextVerbosity = _localProviderTextVerbosity;
         _appState.LocalProviderTemperature = _localProviderTemperature;
         _appState.LocalProviderImageGenerationEnabled = _localProviderImageGenerationEnabled;
+        _appState.LocalProviderImageGenerationOverrideActive = _localProviderImageGenerationOverrideActive;
         _appState.LocalProviderImageGenerationQuality = _localProviderImageGenerationQuality;
         _appState.LocalProviderImageGenerationSize = _localProviderImageGenerationSize;
         _appState.LocalProviderImageGenerationOutputFormat = _localProviderImageGenerationOutputFormat;
@@ -514,6 +519,7 @@ public sealed partial class MainWindow : Window {
             _localProviderTextVerbosity = previousTextVerbosity;
             _localProviderTemperature = previousTemperature;
             _localProviderImageGenerationEnabled = previousImageGenerationEnabled;
+            _localProviderImageGenerationOverrideActive = previousImageGenerationOverrideActive;
             _localProviderImageGenerationQuality = previousImageGenerationQuality;
             _localProviderImageGenerationSize = previousImageGenerationSize;
             _localProviderImageGenerationOutputFormat = previousImageGenerationOutputFormat;
@@ -539,6 +545,7 @@ public sealed partial class MainWindow : Window {
             _appState.LocalProviderTextVerbosity = _localProviderTextVerbosity;
             _appState.LocalProviderTemperature = _localProviderTemperature;
             _appState.LocalProviderImageGenerationEnabled = _localProviderImageGenerationEnabled;
+            _appState.LocalProviderImageGenerationOverrideActive = _localProviderImageGenerationOverrideActive;
             _appState.LocalProviderImageGenerationQuality = _localProviderImageGenerationQuality;
             _appState.LocalProviderImageGenerationSize = _localProviderImageGenerationSize;
             _appState.LocalProviderImageGenerationOutputFormat = _localProviderImageGenerationOutputFormat;
@@ -720,6 +727,7 @@ public sealed partial class MainWindow : Window {
                     TextVerbosity: null,
                     Temperature: null,
                     ImageGenerationEnabled: false,
+                    ImageGenerationOverrideActive: false,
                     ImageGenerationQuality: null,
                     ImageGenerationSize: null,
                     ImageGenerationOutputFormat: null,
@@ -772,7 +780,8 @@ public sealed partial class MainWindow : Window {
         var imageOutputFormat = (_localProviderImageGenerationOutputFormat ?? string.Empty).Trim();
         var imageBackground = (_localProviderImageGenerationBackground ?? string.Empty).Trim();
         var imageOutputDirectory = (_localProviderImageGenerationOutputDirectory ?? string.Empty).Trim();
-        var hasImageGenerationOverrides = _localProviderImageGenerationEnabled
+        var hasImageGenerationOverrides = _localProviderImageGenerationOverrideActive
+                                      || _localProviderImageGenerationEnabled
                                       || imageQuality.Length > 0
                                       || imageSize.Length > 0
                                       || imageOutputFormat.Length > 0

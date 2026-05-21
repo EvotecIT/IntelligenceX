@@ -69,7 +69,10 @@ internal sealed partial class ChatServiceSession {
             var accountId = (_options.OpenAIAccountId ?? string.Empty).Trim();
             opts.NativeOptions.AuthAccountId = accountId.Length == 0 ? null : accountId;
             if (HasImageGenerationOverrides(_options)) {
-                opts.NativeOptions.ImageGeneration.Enabled = _options.EnableImageGeneration;
+                if (_options.ImageGenerationEnabledOverride.HasValue) {
+                    opts.NativeOptions.ImageGeneration.Enabled = _options.ImageGenerationEnabledOverride.Value;
+                }
+
                 opts.NativeOptions.ImageGeneration.Quality = _options.ImageGenerationQuality;
                 opts.NativeOptions.ImageGeneration.Size = _options.ImageGenerationSize;
                 opts.NativeOptions.ImageGeneration.OutputFormat = _options.ImageGenerationOutputFormat;
@@ -110,7 +113,7 @@ internal sealed partial class ChatServiceSession {
     }
 
     private static bool HasImageGenerationOverrides(ServiceOptions options) =>
-        options.EnableImageGeneration ||
+        options.ImageGenerationEnabledOverride.HasValue ||
         !string.IsNullOrWhiteSpace(options.ImageGenerationQuality) ||
         !string.IsNullOrWhiteSpace(options.ImageGenerationSize) ||
         !string.IsNullOrWhiteSpace(options.ImageGenerationOutputFormat) ||
@@ -547,6 +550,7 @@ internal sealed partial class ChatServiceSession {
 
             if (request.ImageGenerationEnabled.HasValue) {
                 _options.EnableImageGeneration = request.ImageGenerationEnabled.Value;
+                _options.ImageGenerationEnabledOverride = request.ImageGenerationEnabled.Value;
             }
             if (request.ImageGenerationQuality is not null) {
                 _options.ImageGenerationQuality = NormalizeRuntimeOptionalValue(request.ImageGenerationQuality);

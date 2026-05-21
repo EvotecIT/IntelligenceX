@@ -430,6 +430,7 @@ public sealed partial class MainWindow : Window {
                         var clearImageGenerationOutputCompression = TryGetBoolean(root, "clearImageGenerationOutputCompression") ?? false;
                         var imageGenerationBackground = TryGetString(root, "imageGenerationBackground");
                         var imageGenerationOutputDirectory = TryGetString(root, "imageGenerationOutputDirectory");
+                        var imageGenerationOverrideActive = TryGetBoolean(root, "imageGenerationOverrideActive") ?? true;
                         var apiKey = TryGetString(root, "apiKey");
                         var clearBasicAuth = TryGetBoolean(root, "clearBasicAuth");
                         var clearApiKey = TryGetBoolean(root, "clearApiKey");
@@ -450,6 +451,7 @@ public sealed partial class MainWindow : Window {
                                 textVerbosity,
                                 temperature,
                                 imageGenerationEnabled,
+                                imageGenerationOverrideActive,
                                 imageGenerationQuality,
                                 imageGenerationSize,
                                 imageGenerationOutputFormat,

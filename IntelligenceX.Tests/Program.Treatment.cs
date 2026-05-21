@@ -376,7 +376,7 @@ internal static partial class Program {
             Inputs = new[] {
                 new TreatmentInputArtifact {
                     Id = "relative-image",
-                    Uri = new Uri("images/source.png", UriKind.Relative)
+                    Uri = new Uri("images/source.png?download=1#view", UriKind.Relative)
                 }
             }
         };
@@ -388,7 +388,7 @@ internal static partial class Program {
         var image = items[1].AsObject();
         AssertNotNull(image, "relative image uri item");
         AssertEqual("image", image!.GetString("type"), "relative image uri item type");
-        AssertEqual("images/source.png", image.GetString("url"), "relative image uri preserved as url");
+        AssertEqual("images/source.png?download=1#view", image.GetString("url"), "relative image uri preserved as url");
     }
 
     private sealed class FakeTreatmentChatClient : ITreatmentChatClient {

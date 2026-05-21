@@ -153,7 +153,9 @@ internal static partial class Program {
                 TransportKind = options.OpenAITransport,
                 DefaultModel = options.Model
             };
-            clientOptions.NativeOptions.ImageGeneration.Enabled = options.EnableImageGeneration;
+            if (options.ImageGenerationEnabledOverride.HasValue) {
+                clientOptions.NativeOptions.ImageGeneration.Enabled = options.ImageGenerationEnabledOverride.Value;
+            }
             clientOptions.NativeOptions.ImageGeneration.Quality = options.ImageGenerationQuality;
             clientOptions.NativeOptions.ImageGeneration.Size = options.ImageGenerationSize;
             clientOptions.NativeOptions.ImageGeneration.OutputFormat = options.ImageGenerationOutputFormat;
