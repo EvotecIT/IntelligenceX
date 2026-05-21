@@ -107,6 +107,7 @@ public partial class App : Application {
                 "Startup Error",
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
+            DisposeSingleInstanceResources();
             Shutdown(1);
         }
     }
@@ -804,23 +805,7 @@ public partial class App : Application {
         _viewModel?.Dispose();
         _usageArtifactStore?.Dispose();
         _usageArtifactStore = null;
-        _showPopupRegistration?.Unregister(null);
-        _showPopupRegistration = null;
-        _showPopupEvent?.Dispose();
-        _showPopupEvent = null;
-        if (_singleInstanceMutex is not null) {
-            if (_ownsSingleInstanceMutex) {
-                try {
-                    _singleInstanceMutex.ReleaseMutex();
-                } catch (ApplicationException) {
-                    // The mutex was abandoned or ownership was lost during shutdown.
-                }
-            }
-
-            _ownsSingleInstanceMutex = false;
-            _singleInstanceMutex.Dispose();
-            _singleInstanceMutex = null;
-        }
+        DisposeSingleInstanceResources();
         _trayIcon?.Dispose();
         if (_popupWindow is not null) {
             _popupWindow.ManualPlacementCommitted -= OnPopupManualPlacementCommitted;
@@ -830,6 +815,28 @@ public partial class App : Application {
             _popupWindow.Close();
         }
         base.OnExit(e);
+    }
+
+    private void DisposeSingleInstanceResources() {
+        _showPopupRegistration?.Unregister(null);
+        _showPopupRegistration = null;
+        _showPopupEvent?.Dispose();
+        _showPopupEvent = null;
+        if (_singleInstanceMutex is null) {
+            return;
+        }
+
+        if (_ownsSingleInstanceMutex) {
+            try {
+                _singleInstanceMutex.ReleaseMutex();
+            } catch (ApplicationException) {
+                // The mutex was abandoned or ownership was lost during shutdown.
+            }
+        }
+
+        _ownsSingleInstanceMutex = false;
+        _singleInstanceMutex.Dispose();
+        _singleInstanceMutex = null;
     }
 
     private static string ResolveTrayUsageCachePath() {
