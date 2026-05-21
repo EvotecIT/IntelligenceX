@@ -126,7 +126,7 @@
       "out": "./data/xrefmap.json",
       "mapFiles": ["./_site/api/xrefmap.json", "./_site/api/powershell/xrefmap.json"],
       "preferLast": true,
-      "maxReferences": 5000,
+      "maxReferences": 6000,
       "maxDuplicates": 25,
       "maxReferenceGrowthCount": 1000,
       "maxReferenceGrowthPercent": 50

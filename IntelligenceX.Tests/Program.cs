@@ -421,6 +421,17 @@ internal static partial class Program {
         failed += Run("Native request body normalizes tools/tool_choice", TestNativeRequestBodyNormalizesToolsAndToolChoice);
         failed += Run("Native request body includes image generation tool", TestNativeRequestBodyIncludesImageGenerationTool);
         failed += Run("Native image generation output saves base64 payload", TestNativeImageGenerationOutputSavesBase64Payload);
+        failed += Run("Treatment prompt builder includes artifacts and contract", TestTreatmentPromptBuilderIncludesArtifactsAndContract);
+        failed += Run("Treatment prompt builder rejects empty request", TestTreatmentPromptBuilderRejectsEmptyRequest);
+        failed += Run("Treatment prompt builder inlines local text artifacts", TestTreatmentPromptBuilderInlinesLocalTextArtifacts);
+        failed += Run("Treatment prompt builder honors inline local file limit", TestTreatmentPromptBuilderHonorsInlineLocalFileLimit);
+        failed += Run("Treatment prompt builder handles null metadata and parameterized media type", TestTreatmentPromptBuilderHandlesNullMetadataAndParameterizedMediaType);
+        failed += Run("Treatment prompt builder reports traversal as warning", TestTreatmentPromptBuilderReportsTraversalAsWarning);
+        failed += Run("Treatment prompt builder clamps inline local file limit", TestTreatmentPromptBuilderClampsInlineLocalFileLimit);
+        failed += Run("OpenAI treatment provider maps text JSON and options", TestOpenAIChatTreatmentProviderMapsTextJsonAndOptions);
+        failed += Run("OpenAI treatment provider parses array JSON", TestOpenAIChatTreatmentProviderParsesArrayJson);
+        failed += Run("OpenAI treatment provider maps image assets", TestOpenAIChatTreatmentProviderMapsImageAssets);
+        failed += Run("OpenAI treatment provider skips unsupported implicit images", TestOpenAIChatTreatmentProviderSkipsUnsupportedImplicitImages);
         failed += Run("Native request body normalizes tool replay items", TestNativeRequestBodyNormalizesToolReplayInputItems);
         failed += Run("Native request body normalizes type-missing replay items", TestNativeRequestBodyNormalizesTypeMissingToolReplayItems);
         failed += Run("Native request body filters unpaired tool replay items", TestNativeRequestBodyFiltersUnpairedToolReplayItems);
