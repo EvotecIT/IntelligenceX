@@ -167,15 +167,7 @@ internal static partial class Program {
                 ReasoningSummary = _options.ReasoningSummary,
                 TextVerbosity = _options.TextVerbosity,
                 Temperature = _options.Temperature,
-                ImageGeneration = new ImageGenerationOptions {
-                    Enabled = _options.EnableImageGeneration,
-                    Quality = _options.ImageGenerationQuality,
-                    Size = _options.ImageGenerationSize,
-                    OutputFormat = _options.ImageGenerationOutputFormat,
-                    OutputCompression = _options.ImageGenerationOutputCompression,
-                    Background = _options.ImageGenerationBackground,
-                    OutputDirectory = _options.ImageGenerationOutputDirectory
-                },
+                ImageGeneration = BuildImageGenerationOptions(),
                 ParallelToolCalls = _options.ParallelToolCalls,
                 Tools = toolDefs.Count == 0 ? null : toolDefs,
                 ToolChoice = toolDefs.Count == 0 ? null : ToolChoice.Auto,
@@ -534,6 +526,37 @@ internal static partial class Program {
                 reportedOutputs.Add(protocolOutputs[index]);
             }
         }
+
+        private ImageGenerationOptions? BuildImageGenerationOptions() {
+            if (!HasImageGenerationOptions()) {
+                return null;
+            }
+
+            return new ImageGenerationOptions {
+                Enabled = _options.ImageGenerationEnabledOverride.HasValue
+                    ? _options.ImageGenerationEnabledOverride.Value
+                    : _options.EnableImageGeneration || HasImageGenerationSettingOverrides(),
+                Quality = _options.ImageGenerationQuality,
+                Size = _options.ImageGenerationSize,
+                OutputFormat = _options.ImageGenerationOutputFormat,
+                OutputCompression = _options.ImageGenerationOutputCompression,
+                Background = _options.ImageGenerationBackground,
+                OutputDirectory = _options.ImageGenerationOutputDirectory
+            };
+        }
+
+        private bool HasImageGenerationOptions() =>
+            _options.ImageGenerationEnabledOverride.HasValue ||
+            _options.EnableImageGeneration ||
+            HasImageGenerationSettingOverrides();
+
+        private bool HasImageGenerationSettingOverrides() =>
+            !string.IsNullOrWhiteSpace(_options.ImageGenerationQuality) ||
+            !string.IsNullOrWhiteSpace(_options.ImageGenerationSize) ||
+            !string.IsNullOrWhiteSpace(_options.ImageGenerationOutputFormat) ||
+            _options.ImageGenerationOutputCompression.HasValue ||
+            !string.IsNullOrWhiteSpace(_options.ImageGenerationBackground) ||
+            !string.IsNullOrWhiteSpace(_options.ImageGenerationOutputDirectory);
 
         private bool ShouldSuppressReportedDuplicateReadOnlySignature(
             ToolCall call,

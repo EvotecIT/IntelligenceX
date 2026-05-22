@@ -93,7 +93,11 @@ public sealed class OpenAIChatTreatmentProvider : ITreatmentProvider {
             if (!string.IsNullOrWhiteSpace(artifact.Path)) {
                 input.AddImagePath(ResolveLocalArtifactPath(artifact.Path!, request));
             } else if (artifact.Uri is not null) {
-                input.AddImageUrl(artifact.Uri.ToString());
+                if (TryGetRelativeUriPath(artifact.Uri, out var relativePath)) {
+                    input.AddImagePath(ResolveLocalArtifactPath(relativePath!, request));
+                } else {
+                    input.AddImageUrl(artifact.Uri.ToString());
+                }
             }
         }
     }
@@ -104,12 +108,36 @@ public sealed class OpenAIChatTreatmentProvider : ITreatmentProvider {
             return true;
         }
 
-        var extension = Path.GetExtension(artifact.Path ?? artifact.Uri?.AbsolutePath ?? string.Empty);
+        var extension = Path.GetExtension(artifact.Path ?? GetUriExtensionPath(artifact.Uri) ?? string.Empty);
         return extension.Equals(".png", StringComparison.OrdinalIgnoreCase) ||
                extension.Equals(".jpg", StringComparison.OrdinalIgnoreCase) ||
                extension.Equals(".jpeg", StringComparison.OrdinalIgnoreCase) ||
                extension.Equals(".gif", StringComparison.OrdinalIgnoreCase) ||
                extension.Equals(".webp", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string? GetUriExtensionPath(Uri? uri) {
+        if (uri is null) {
+            return null;
+        }
+
+        if (uri.IsAbsoluteUri) {
+            return uri.AbsolutePath;
+        }
+
+        var value = uri.OriginalString;
+        var queryIndex = value.IndexOfAny(new[] { '?', '#' });
+        return queryIndex < 0 ? value : value.Substring(0, queryIndex);
+    }
+
+    private static bool TryGetRelativeUriPath(Uri uri, out string? path) {
+        path = null;
+        if (uri.IsAbsoluteUri) {
+            return false;
+        }
+
+        path = GetUriExtensionPath(uri);
+        return !string.IsNullOrWhiteSpace(path);
     }
 
     private static bool IsSupportedImageMediaType(string mediaType) =>
@@ -120,9 +148,14 @@ public sealed class OpenAIChatTreatmentProvider : ITreatmentProvider {
         mediaType.Equals("image/webp", StringComparison.OrdinalIgnoreCase);
 
     private static string ResolveLocalArtifactPath(string path, TreatmentRequest request) {
-        var baseDirectory = request.WorkingDirectory ?? request.Workspace;
+        var baseDirectory = ResolveLocalArtifactBaseDirectory(request);
         return TreatmentLocalInputReader.ResolvePath(path, baseDirectory);
     }
+
+    private static string? ResolveLocalArtifactBaseDirectory(TreatmentRequest request) =>
+        !string.IsNullOrWhiteSpace(request.Workspace)
+            ? request.Workspace
+            : request.WorkingDirectory;
 
     private static string NormalizeMediaType(string? mediaType) {
         if (string.IsNullOrWhiteSpace(mediaType)) {

@@ -110,11 +110,16 @@ public static class TreatmentPromptBuilder {
 
     private static TreatmentPromptBuildOptions CreateDefaultOptions(TreatmentRequest request) {
         return new TreatmentPromptBuildOptions {
-            BaseDirectory = request.WorkingDirectory ?? request.Workspace,
+            BaseDirectory = ResolveLocalArtifactBaseDirectory(request),
             InlineLocalFiles = request.InlineLocalInputFiles,
             MaxInlineFileCharacters = request.MaxInlineFileCharacters ?? 120000
         };
     }
+
+    private static string? ResolveLocalArtifactBaseDirectory(TreatmentRequest request) =>
+        !string.IsNullOrWhiteSpace(request.Workspace)
+            ? request.Workspace
+            : request.WorkingDirectory;
 
     private static void AppendInput(StringBuilder sb, TreatmentInputArtifact input, int index, TreatmentPromptBuildOptions options) {
         if (input is null) {

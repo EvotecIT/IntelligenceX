@@ -182,6 +182,24 @@ public sealed partial class ServiceOptionsProfileBootstrapTests {
     }
 
     [Fact]
+    public void ApplyProfile_ReplacesImageGenerationRuntimeOverrideWithProfileValue() {
+        var options = new ServiceOptions {
+            EnableImageGeneration = true,
+            ImageGenerationEnabledOverride = true
+        };
+        var profile = new ServiceProfile {
+            EnableImageGeneration = false
+        };
+
+        var method = typeof(ServiceOptions).GetMethod("ApplyProfile", BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(method);
+        method!.Invoke(options, new object[] { profile });
+
+        Assert.False(options.EnableImageGeneration);
+        Assert.False(options.ImageGenerationEnabledOverride ?? true);
+    }
+
+    [Fact]
     public void ToProfile_ClampsExecutionLaneValuesToParserBounds() {
         var options = new ServiceOptions {
             SessionExecutionQueueLimit = 99_999,

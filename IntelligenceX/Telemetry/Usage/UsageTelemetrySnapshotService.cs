@@ -181,12 +181,10 @@ public sealed class UsageTelemetrySnapshotService {
                 providerResults,
                 errors,
                 rootsByProvider.Select(static group => group.Key).ToArray()),
-            rawEvents: startupWarmup
-                ? Array.Empty<UsageEventRecord>()
-                : providerResults
-                    .SelectMany(static result => result.RawEvents)
-                    .OrderBy(static usageEvent => usageEvent.TimestampUtc)
-                    .ToArray());
+            rawEvents: providerResults
+                .SelectMany(static result => result.RawEvents)
+                .OrderBy(static usageEvent => usageEvent.TimestampUtc)
+                .ToArray());
     }
 
     private IReadOnlyList<SourceRootRecord> DiscoverAllRoots() {

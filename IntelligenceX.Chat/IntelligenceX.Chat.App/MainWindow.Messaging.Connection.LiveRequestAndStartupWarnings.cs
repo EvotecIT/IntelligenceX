@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Text.Json;
 using IntelligenceX.Chat.Abstractions.Policy;
@@ -388,7 +389,7 @@ public sealed partial class MainWindow : Window {
         var bounded = Math.Max(0, milliseconds);
         var elapsed = TimeSpan.FromMilliseconds(bounded);
         if (elapsed.TotalSeconds >= 1) {
-            return $"{elapsed.TotalSeconds:0.0}s";
+            return elapsed.TotalSeconds.ToString("0.0", CultureInfo.InvariantCulture) + "s";
         }
 
         return $"{Math.Max(1, bounded)}ms";

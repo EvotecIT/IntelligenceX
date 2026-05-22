@@ -430,6 +430,8 @@ public sealed partial class MainWindow : Window {
                         var clearImageGenerationOutputCompression = TryGetBoolean(root, "clearImageGenerationOutputCompression") ?? false;
                         var imageGenerationBackground = TryGetString(root, "imageGenerationBackground");
                         var imageGenerationOutputDirectory = TryGetString(root, "imageGenerationOutputDirectory");
+                        // Existing UI payloads always represent an explicit apply action, so absence keeps the override active.
+                        var imageGenerationOverrideActive = TryGetBoolean(root, "imageGenerationOverrideActive") ?? true;
                         var apiKey = TryGetString(root, "apiKey");
                         var clearBasicAuth = TryGetBoolean(root, "clearBasicAuth");
                         var clearApiKey = TryGetBoolean(root, "clearApiKey");
@@ -450,6 +452,7 @@ public sealed partial class MainWindow : Window {
                                 textVerbosity,
                                 temperature,
                                 imageGenerationEnabled,
+                                imageGenerationOverrideActive,
                                 imageGenerationQuality,
                                 imageGenerationSize,
                                 imageGenerationOutputFormat,

@@ -111,6 +111,32 @@ internal static partial class Program {
             TestUsageTelemetryCachedStartupMergeAvoidsIncompleteRawOverlap);
         failed += Run("Usage telemetry cached startup merge keeps partial raw fallback rollups",
             TestUsageTelemetryCachedStartupMergeKeepsPartialRawFallbackRollups);
+        failed += Run("Usage telemetry cached startup merge sums overlapping rollups",
+            TestUsageTelemetryCachedStartupMergeSumsOverlappingRollups);
+        failed += Run("Usage telemetry cached startup merge sums distinct rollup costs",
+            TestUsageTelemetryCachedStartupMergeSumsDistinctRollupCosts);
+        failed += Run("Usage telemetry cached startup merge deduplicates equivalent rollups with metadata",
+            TestUsageTelemetryCachedStartupMergeDeduplicatesEquivalentRollupsWithMetadata);
+        failed += Run("Usage telemetry cached startup merge deduplicates original contribution after aggregate changes",
+            TestUsageTelemetryCachedStartupMergeDeduplicatesOriginalContributionAfterAggregateChanges);
+        failed += Run("Usage telemetry cached startup merge keeps dominating updated rollup",
+            TestUsageTelemetryCachedStartupMergeKeepsDominatingUpdatedRollup);
+        failed += Run("Usage telemetry cached startup merge deduplicates refreshed rollup timestamp",
+            TestUsageTelemetryCachedStartupMergeDeduplicatesRefreshedRollupTimestamp);
+        failed += Run("Usage telemetry cached startup merge deduplicates refreshed rollup when newer seen first",
+            TestUsageTelemetryCachedStartupMergeDeduplicatesRefreshedRollupWhenNewerSeenFirst);
+        failed += Run("Usage telemetry cached startup merge preserves newest duplicate rollup timestamp",
+            TestUsageTelemetryCachedStartupMergePreservesNewestDuplicateRollupTimestamp);
+        failed += Run("Usage telemetry cached startup merge deduplicates older dominating rollup",
+            TestUsageTelemetryCachedStartupMergeDeduplicatesOlderDominatingRollup);
+        failed += Run("Usage telemetry cached startup merge deduplicates all primary matches",
+            TestUsageTelemetryCachedStartupMergeDeduplicatesAllPrimaryMatches);
+        failed += Run("Usage telemetry cached startup merge deduplicates older dominating fallback rollup",
+            TestUsageTelemetryCachedStartupMergeDeduplicatesOlderDominatingFallbackRollup);
+        failed += Run("Usage telemetry cached startup merge preserves duplicate metadata and truth",
+            TestUsageTelemetryCachedStartupMergePreservesDuplicateMetadataAndTruth);
+        failed += Run("Usage telemetry cached startup merge deduplicates equal compact older dominating fallback rollup",
+            TestUsageTelemetryCachedStartupMergeDeduplicatesEqualCompactOlderDominatingFallbackRollup);
         failed += Run("Usage telemetry cached startup merge prefers newest source root metadata",
             TestUsageTelemetryCachedStartupMergePrefersNewestSourceRootMetadata);
         failed += Run("Usage telemetry cached startup merge keeps complete health over partial service health",
@@ -424,6 +450,7 @@ internal static partial class Program {
         failed += Run("Treatment prompt builder includes artifacts and contract", TestTreatmentPromptBuilderIncludesArtifactsAndContract);
         failed += Run("Treatment prompt builder rejects empty request", TestTreatmentPromptBuilderRejectsEmptyRequest);
         failed += Run("Treatment prompt builder inlines local text artifacts", TestTreatmentPromptBuilderInlinesLocalTextArtifacts);
+        failed += Run("Treatment prompt builder prefers workspace for local artifacts", TestTreatmentPromptBuilderPrefersWorkspaceForLocalArtifacts);
         failed += Run("Treatment prompt builder honors inline local file limit", TestTreatmentPromptBuilderHonorsInlineLocalFileLimit);
         failed += Run("Treatment prompt builder handles null metadata and parameterized media type", TestTreatmentPromptBuilderHandlesNullMetadataAndParameterizedMediaType);
         failed += Run("Treatment prompt builder reports traversal as warning", TestTreatmentPromptBuilderReportsTraversalAsWarning);
@@ -432,6 +459,7 @@ internal static partial class Program {
         failed += Run("OpenAI treatment provider parses array JSON", TestOpenAIChatTreatmentProviderParsesArrayJson);
         failed += Run("OpenAI treatment provider maps image assets", TestOpenAIChatTreatmentProviderMapsImageAssets);
         failed += Run("OpenAI treatment provider skips unsupported implicit images", TestOpenAIChatTreatmentProviderSkipsUnsupportedImplicitImages);
+        failed += Run("OpenAI treatment provider handles relative image URIs", TestOpenAIChatTreatmentProviderHandlesRelativeImageUris);
         failed += Run("Native request body normalizes tool replay items", TestNativeRequestBodyNormalizesToolReplayInputItems);
         failed += Run("Native request body normalizes type-missing replay items", TestNativeRequestBodyNormalizesTypeMissingToolReplayItems);
         failed += Run("Native request body filters unpaired tool replay items", TestNativeRequestBodyFiltersUnpairedToolReplayItems);

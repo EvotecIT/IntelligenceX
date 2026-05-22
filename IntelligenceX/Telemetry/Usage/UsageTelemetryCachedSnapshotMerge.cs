@@ -69,18 +69,33 @@ internal static class UsageTelemetryCachedSnapshotMerge {
     private static IReadOnlyList<UsageEventRecord> MergeRollups(
         IEnumerable<UsageEventRecord> primaryEvents,
         IEnumerable<UsageEventRecord> fallbackEvents) {
+        var primaryEventList = primaryEvents.ToList();
+        var primaryEventIds = new HashSet<string>(
+            primaryEventList
+                .Where(static usageEvent => usageEvent is not null && !string.IsNullOrWhiteSpace(usageEvent.EventId))
+                .Select(static usageEvent => usageEvent.EventId),
+            StringComparer.OrdinalIgnoreCase);
         var mergedById = new Dictionary<string, UsageEventRecord>(StringComparer.OrdinalIgnoreCase);
-        foreach (var usageEvent in fallbackEvents.Concat(primaryEvents)) {
-            if (usageEvent is null || string.IsNullOrWhiteSpace(usageEvent.EventId)) {
-                continue;
-            }
+        var contributionsById = new Dictionary<string, List<UsageEventRecord>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var usageEvent in fallbackEvents) {
+            MergeRollupContribution(
+                mergedById,
+                contributionsById,
+                usageEvent,
+                allowDominatingCoverage: true,
+                allowOlderExistingDominance: true,
+                allowEqualOlderExistingDominance: usageEvent is not null &&
+                                                   !primaryEventIds.Contains(usageEvent.EventId));
+        }
 
-            if (!mergedById.TryGetValue(usageEvent.EventId, out var existing)) {
-                mergedById[usageEvent.EventId] = CloneUsageEvent(usageEvent);
-                continue;
-            }
-
-            MergeUsageEventInto(existing, usageEvent);
+        foreach (var usageEvent in primaryEventList) {
+            MergeRollupContribution(
+                mergedById,
+                contributionsById,
+                usageEvent,
+                allowDominatingCoverage: true,
+                allowOlderExistingDominance: true,
+                allowEqualOlderExistingDominance: false);
         }
 
         return mergedById.Values
@@ -89,6 +104,36 @@ internal static class UsageTelemetryCachedSnapshotMerge {
             .ThenBy(static usageEvent => usageEvent.Model, StringComparer.OrdinalIgnoreCase)
             .ThenBy(static usageEvent => usageEvent.EventId, StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
+
+    private static void MergeRollupContribution(
+        IDictionary<string, UsageEventRecord> mergedById,
+        IDictionary<string, List<UsageEventRecord>> contributionsById,
+        UsageEventRecord usageEvent,
+        bool allowDominatingCoverage,
+        bool allowOlderExistingDominance,
+        bool allowEqualOlderExistingDominance) {
+        if (usageEvent is null || string.IsNullOrWhiteSpace(usageEvent.EventId)) {
+            return;
+        }
+
+        if (!contributionsById.TryGetValue(usageEvent.EventId, out var contributions)) {
+            contributions = new List<UsageEventRecord>();
+            contributionsById[usageEvent.EventId] = contributions;
+        }
+
+        if (TryMergeExistingContribution(
+                contributions,
+                usageEvent,
+                allowDominatingCoverage,
+                allowOlderExistingDominance,
+                allowEqualOlderExistingDominance)) {
+            mergedById[usageEvent.EventId] = RebuildMergedUsageEvent(contributions);
+            return;
+        }
+
+        contributions.Add(CloneUsageEvent(usageEvent));
+        mergedById[usageEvent.EventId] = RebuildMergedUsageEvent(contributions);
     }
 
     private static UsageEventRecord CloneUsageEvent(UsageEventRecord usageEvent) {
@@ -124,18 +169,202 @@ internal static class UsageTelemetryCachedSnapshotMerge {
         };
     }
 
+    private static bool TryMergeExistingContribution(
+        List<UsageEventRecord> contributions,
+        UsageEventRecord incoming,
+        bool allowDominatingCoverage,
+        bool allowOlderExistingDominance,
+        bool allowEqualOlderExistingDominance) {
+        var matchedIndex = -1;
+        UsageEventRecord? merged = null;
+        for (var i = 0; i < contributions.Count; i++) {
+            var existing = contributions[i];
+            if (!IsDuplicateContribution(
+                    existing,
+                    merged ?? incoming,
+                    allowDominatingCoverage,
+                    allowOlderExistingDominance,
+                    allowEqualOlderExistingDominance)) {
+                continue;
+            }
+
+            merged = MergeDuplicateContribution(existing, merged ?? incoming);
+            if (matchedIndex < 0) {
+                matchedIndex = i;
+                contributions[i] = merged;
+            } else {
+                contributions[matchedIndex] = merged;
+                contributions.RemoveAt(i);
+                i--;
+            }
+        }
+
+        return matchedIndex >= 0;
+    }
+
+    private static bool IsDuplicateContribution(
+        UsageEventRecord existing,
+        UsageEventRecord incoming,
+        bool allowDominatingCoverage,
+        bool allowOlderExistingDominance,
+        bool allowEqualOlderExistingDominance) =>
+        HasSameRollupCoverage(existing, incoming) ||
+        allowDominatingCoverage &&
+        HasSameRollupIdentity(existing, incoming) &&
+        HasCompatibleDominatingRollupCoverage(
+            existing,
+            incoming,
+            allowOlderExistingDominance,
+            allowEqualOlderExistingDominance);
+
+    private static UsageEventRecord RebuildMergedUsageEvent(IReadOnlyList<UsageEventRecord> contributions) {
+        var merged = CloneUsageEvent(contributions[0]);
+        merged.InputTokens = null;
+        merged.CachedInputTokens = null;
+        merged.OutputTokens = null;
+        merged.ReasoningTokens = null;
+        merged.TotalTokens = null;
+        merged.CompactCount = null;
+        merged.DurationMs = null;
+        merged.CostUsd = null;
+        for (var i = 0; i < contributions.Count; i++) {
+            MergeUsageEventInto(merged, contributions[i]);
+        }
+
+        return merged;
+    }
+
     private static void MergeUsageEventInto(UsageEventRecord existing, UsageEventRecord incoming) {
-        existing.InputTokens = MaxNullable(existing.InputTokens, incoming.InputTokens);
-        existing.CachedInputTokens = MaxNullable(existing.CachedInputTokens, incoming.CachedInputTokens);
-        existing.OutputTokens = MaxNullable(existing.OutputTokens, incoming.OutputTokens);
-        existing.ReasoningTokens = MaxNullable(existing.ReasoningTokens, incoming.ReasoningTokens);
-        existing.TotalTokens = MaxNullable(existing.TotalTokens, incoming.TotalTokens);
-        existing.CompactCount = MaxNullable(existing.CompactCount, incoming.CompactCount);
+        existing.InputTokens = SumNullable(existing.InputTokens, incoming.InputTokens);
+        existing.CachedInputTokens = SumNullable(existing.CachedInputTokens, incoming.CachedInputTokens);
+        existing.OutputTokens = SumNullable(existing.OutputTokens, incoming.OutputTokens);
+        existing.ReasoningTokens = SumNullable(existing.ReasoningTokens, incoming.ReasoningTokens);
+        existing.TotalTokens = SumNullable(existing.TotalTokens, incoming.TotalTokens);
+        existing.CompactCount = SumNullable(existing.CompactCount, incoming.CompactCount);
         existing.DurationMs = MaxNullable(existing.DurationMs, incoming.DurationMs);
-        existing.CostUsd = MaxNullable(existing.CostUsd, incoming.CostUsd);
+        existing.CostUsd = SumNullable(existing.CostUsd, incoming.CostUsd);
         if (incoming.TruthLevel > existing.TruthLevel) {
             existing.TruthLevel = incoming.TruthLevel;
         }
+    }
+
+    private static UsageEventRecord MergeDuplicateContribution(UsageEventRecord existing, UsageEventRecord incoming) {
+        var merged = CloneUsageEvent(existing.TimestampUtc >= incoming.TimestampUtc ? existing : incoming);
+        MergeDuplicateMetadata(merged, existing);
+        MergeDuplicateMetadata(merged, incoming);
+        merged.InputTokens = MaxNullable(existing.InputTokens, incoming.InputTokens);
+        merged.CachedInputTokens = MaxNullable(existing.CachedInputTokens, incoming.CachedInputTokens);
+        merged.OutputTokens = MaxNullable(existing.OutputTokens, incoming.OutputTokens);
+        merged.ReasoningTokens = MaxNullable(existing.ReasoningTokens, incoming.ReasoningTokens);
+        merged.TotalTokens = MaxNullable(existing.TotalTokens, incoming.TotalTokens);
+        merged.CompactCount = MaxNullable(existing.CompactCount, incoming.CompactCount);
+        merged.DurationMs = MaxNullable(existing.DurationMs, incoming.DurationMs);
+        merged.CostUsd = MaxNullable(existing.CostUsd, incoming.CostUsd);
+        merged.TruthLevel = StrongestTruthLevel(existing.TruthLevel, incoming.TruthLevel);
+
+        return merged;
+    }
+
+    private static void MergeDuplicateMetadata(UsageEventRecord target, UsageEventRecord source) {
+        target.ProviderAccountId = PreferExistingString(target.ProviderAccountId, source.ProviderAccountId);
+        target.AccountLabel = PreferExistingString(target.AccountLabel, source.AccountLabel);
+        target.PersonLabel = PreferExistingString(target.PersonLabel, source.PersonLabel);
+        target.MachineId = PreferExistingString(target.MachineId, source.MachineId);
+        target.SessionId = PreferExistingString(target.SessionId, source.SessionId);
+        target.ThreadId = PreferExistingString(target.ThreadId, source.ThreadId);
+        target.ConversationTitle = PreferExistingString(target.ConversationTitle, source.ConversationTitle);
+        target.WorkspacePath = PreferExistingString(target.WorkspacePath, source.WorkspacePath);
+        target.RepositoryName = PreferExistingString(target.RepositoryName, source.RepositoryName);
+        target.TurnId = PreferExistingString(target.TurnId, source.TurnId);
+        target.ResponseId = PreferExistingString(target.ResponseId, source.ResponseId);
+        target.Model = PreferExistingString(target.Model, source.Model);
+        target.Surface = PreferExistingString(target.Surface, source.Surface);
+        target.RawHash = PreferExistingString(target.RawHash, source.RawHash);
+    }
+
+    private static bool HasSameRollupCoverage(UsageEventRecord existing, UsageEventRecord incoming) =>
+        existing.InputTokens == incoming.InputTokens &&
+        existing.CachedInputTokens == incoming.CachedInputTokens &&
+        existing.OutputTokens == incoming.OutputTokens &&
+        existing.ReasoningTokens == incoming.ReasoningTokens &&
+        existing.TotalTokens == incoming.TotalTokens &&
+        existing.CompactCount == incoming.CompactCount;
+
+    private static bool HasSameRollupIdentity(UsageEventRecord existing, UsageEventRecord incoming) =>
+        string.Equals(existing.EventId, incoming.EventId, StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(existing.ProviderId, incoming.ProviderId, StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(existing.AdapterId, incoming.AdapterId, StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(existing.SourceRootId, incoming.SourceRootId, StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(existing.ProviderAccountId ?? string.Empty, incoming.ProviderAccountId ?? string.Empty, StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(existing.AccountLabel ?? string.Empty, incoming.AccountLabel ?? string.Empty, StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(existing.SessionId ?? string.Empty, incoming.SessionId ?? string.Empty, StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(existing.ThreadId ?? string.Empty, incoming.ThreadId ?? string.Empty, StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(existing.TurnId ?? string.Empty, incoming.TurnId ?? string.Empty, StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(existing.ResponseId ?? string.Empty, incoming.ResponseId ?? string.Empty, StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(existing.Model ?? string.Empty, incoming.Model ?? string.Empty, StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(existing.Surface ?? string.Empty, incoming.Surface ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+
+    private static bool HasCompatibleDominatingRollupCoverage(
+        UsageEventRecord existing,
+        UsageEventRecord incoming,
+        bool allowOlderExistingDominance,
+        bool allowEqualOlderExistingDominance) =>
+        (incoming.TimestampUtc >= existing.TimestampUtc &&
+         CoverageDominates(incoming, existing)) ||
+        ((existing.TimestampUtc >= incoming.TimestampUtc ||
+          allowOlderExistingDominance && HasStrongerAggregateEvidence(existing, incoming, allowEqualOlderExistingDominance)) &&
+         CoverageDominates(existing, incoming));
+
+    private static bool CoverageDominates(UsageEventRecord candidate, UsageEventRecord other) =>
+        NullableGreaterOrEqual(candidate.InputTokens, other.InputTokens) &&
+        NullableGreaterOrEqual(candidate.CachedInputTokens, other.CachedInputTokens) &&
+        NullableGreaterOrEqual(candidate.OutputTokens, other.OutputTokens) &&
+        NullableGreaterOrEqual(candidate.ReasoningTokens, other.ReasoningTokens) &&
+        NullableGreaterOrEqual(candidate.TotalTokens, other.TotalTokens) &&
+        NullableGreaterOrEqual(candidate.CompactCount, other.CompactCount);
+
+    private static bool HasStrongerAggregateEvidence(
+        UsageEventRecord candidate,
+        UsageEventRecord other,
+        bool allowEqual) =>
+        allowEqual
+            ? NullableGreaterOrEqual(candidate.CompactCount, other.CompactCount)
+            : NullableGreater(candidate.CompactCount, other.CompactCount);
+
+    private static long? SumNullable(long? existing, long? incoming) {
+        if (!existing.HasValue) {
+            return incoming;
+        }
+
+        if (!incoming.HasValue) {
+            return existing;
+        }
+
+        return existing.Value + incoming.Value;
+    }
+
+    private static int? SumNullable(int? existing, int? incoming) {
+        if (!existing.HasValue) {
+            return incoming;
+        }
+
+        if (!incoming.HasValue) {
+            return existing;
+        }
+
+        return existing.Value + incoming.Value;
+    }
+
+    private static decimal? SumNullable(decimal? existing, decimal? incoming) {
+        if (!existing.HasValue) {
+            return incoming;
+        }
+
+        if (!incoming.HasValue) {
+            return existing;
+        }
+
+        return existing.Value + incoming.Value;
     }
 
     private static long? MaxNullable(long? existing, long? incoming) {
@@ -173,4 +402,19 @@ internal static class UsageTelemetryCachedSnapshotMerge {
 
         return Math.Max(existing.Value, incoming.Value);
     }
+
+    private static bool NullableGreaterOrEqual(long? candidate, long? other) =>
+        (candidate ?? 0L) >= (other ?? 0L);
+
+    private static bool NullableGreaterOrEqual(int? candidate, int? other) =>
+        (candidate ?? 0) >= (other ?? 0);
+
+    private static bool NullableGreater(int? candidate, int? other) =>
+        (candidate ?? 0) > (other ?? 0);
+
+    private static string? PreferExistingString(string? existing, string? incoming) =>
+        string.IsNullOrWhiteSpace(existing) ? incoming : existing;
+
+    private static UsageTruthLevel StrongestTruthLevel(UsageTruthLevel existing, UsageTruthLevel incoming) =>
+        incoming > existing ? incoming : existing;
 }

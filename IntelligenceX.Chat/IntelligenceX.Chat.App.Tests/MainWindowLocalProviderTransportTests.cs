@@ -38,4 +38,40 @@ public sealed class MainWindowLocalProviderTransportTests {
         Assert.False(parsed);
         Assert.Equal("native", transport);
     }
+
+    /// <summary>
+    /// Ensures an explicit disable-only image-generation apply is still emitted to service launch options.
+    /// </summary>
+    [Fact]
+    public void HasImageGenerationLaunchOverrides_PreservesExplicitDisableOnlyOverride() {
+        var hasOverrides = MainWindow.HasImageGenerationLaunchOverrides(
+            imageGenerationOverrideActive: true,
+            imageGenerationEnabled: false,
+            imageQuality: string.Empty,
+            imageSize: string.Empty,
+            imageOutputFormat: string.Empty,
+            imageOutputCompression: null,
+            imageBackground: string.Empty,
+            imageOutputDirectory: string.Empty);
+
+        Assert.True(hasOverrides);
+    }
+
+    /// <summary>
+    /// Ensures the default image-generation state remains unset when no override was applied.
+    /// </summary>
+    [Fact]
+    public void HasImageGenerationLaunchOverrides_OmitsUnsetDefaultDisable() {
+        var hasOverrides = MainWindow.HasImageGenerationLaunchOverrides(
+            imageGenerationOverrideActive: false,
+            imageGenerationEnabled: false,
+            imageQuality: string.Empty,
+            imageSize: string.Empty,
+            imageOutputFormat: string.Empty,
+            imageOutputCompression: null,
+            imageBackground: string.Empty,
+            imageOutputDirectory: string.Empty);
+
+        Assert.False(hasOverrides);
+    }
 }

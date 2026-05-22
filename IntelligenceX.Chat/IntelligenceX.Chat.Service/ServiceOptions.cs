@@ -49,6 +49,7 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
     public TextVerbosity? TextVerbosity { get; set; }
     public double? Temperature { get; set; }
     public bool EnableImageGeneration { get; set; }
+    public bool? ImageGenerationEnabledOverride { get; set; }
     public string? ImageGenerationQuality { get; set; }
     public string? ImageGenerationSize { get; set; }
     public string? ImageGenerationOutputFormat { get; set; }
@@ -246,10 +247,12 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
             }
             if (arg is "--enable-image-generation") {
                 options.EnableImageGeneration = true;
+                options.ImageGenerationEnabledOverride = true;
                 continue;
             }
             if (arg is "--disable-image-generation") {
                 options.EnableImageGeneration = false;
+                options.ImageGenerationEnabledOverride = false;
                 continue;
             }
             if (arg is "--image-generation-quality") {

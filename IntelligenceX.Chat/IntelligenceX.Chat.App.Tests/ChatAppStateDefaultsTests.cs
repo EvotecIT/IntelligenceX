@@ -21,4 +21,32 @@ public sealed class ChatAppStateDefaultsTests {
         Assert.Empty(state.PendingTurns);
         Assert.Empty(state.QueuedTurnsAfterLogin);
     }
+
+    /// <summary>
+    /// Ensures old persisted disabled image-generation state keeps emitting an explicit disable override.
+    /// </summary>
+    [Fact]
+    public void ResolveLocalProviderImageGenerationOverrideActive_MigratesLegacyPersistedDisable() {
+        var state = new ChatAppState {
+            LocalProviderImageGenerationEnabled = false,
+            LocalProviderImageGenerationOverrideActive = false,
+            LocalProviderImageGenerationOverrideActiveWasPresent = false
+        };
+
+        Assert.True(MainWindow.ResolveLocalProviderImageGenerationOverrideActive(state, isLoadedProfile: true));
+    }
+
+    /// <summary>
+    /// Ensures new persisted state can intentionally keep image-generation override unset.
+    /// </summary>
+    [Fact]
+    public void ResolveLocalProviderImageGenerationOverrideActive_PreservesNewPersistedUnsetDisable() {
+        var state = new ChatAppState {
+            LocalProviderImageGenerationEnabled = false,
+            LocalProviderImageGenerationOverrideActive = false,
+            LocalProviderImageGenerationOverrideActiveWasPresent = true
+        };
+
+        Assert.False(MainWindow.ResolveLocalProviderImageGenerationOverrideActive(state, isLoadedProfile: true));
+    }
 }

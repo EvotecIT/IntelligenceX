@@ -83,6 +83,40 @@ internal static partial class Program {
         }
     }
 
+    private static void TestTreatmentPromptBuilderPrefersWorkspaceForLocalArtifacts() {
+        var workspace = Path.Combine(Path.GetTempPath(), "ix-treatment-workspace-" + Guid.NewGuid().ToString("N"));
+        var workingDirectory = Path.Combine(Path.GetTempPath(), "ix-treatment-working-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(workspace);
+        Directory.CreateDirectory(workingDirectory);
+        try {
+            File.WriteAllText(Path.Combine(workspace, "evidence.md"), "workspace evidence");
+            File.WriteAllText(Path.Combine(workingDirectory, "evidence.md"), "working-directory evidence");
+            var request = new TreatmentRequest {
+                Prompt = "Read the evidence.",
+                Workspace = workspace,
+                WorkingDirectory = workingDirectory,
+                Inputs = new[] {
+                    new TreatmentInputArtifact {
+                        Id = "evidence",
+                        MediaType = "text/markdown",
+                        Path = "evidence.md"
+                    }
+                }
+            };
+
+            var prompt = TreatmentPromptBuilder.Build(request);
+
+            AssertContainsText(prompt, "resolvedPath: evidence.md", "workspace artifact relative path");
+            AssertContainsText(prompt, "workspace evidence", "workspace artifact content");
+            AssertDoesNotContainText(prompt, "working-directory evidence", "working directory artifact ignored when workspace exists");
+            AssertDoesNotContainText(prompt, workspace, "workspace prompt omits absolute path");
+            AssertDoesNotContainText(prompt, workingDirectory, "workspace prompt omits working directory path");
+        } finally {
+            Directory.Delete(workspace, recursive: true);
+            Directory.Delete(workingDirectory, recursive: true);
+        }
+    }
+
     private static void TestTreatmentPromptBuilderHonorsInlineLocalFileLimit() {
         var directory = Path.Combine(Path.GetTempPath(), "ix-treatment-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
@@ -324,6 +358,42 @@ internal static partial class Program {
             provider.RunAsync(request).GetAwaiter().GetResult();
 
             AssertEqual(0, client.Input?.GetImagePaths().Length ?? -1, "unsupported implicit image inputs skipped");
+        } finally {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    private static void TestOpenAIChatTreatmentProviderHandlesRelativeImageUris() {
+        var directory = Path.Combine(Path.GetTempPath(), "ix-treatment-image-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var client = new FakeTreatmentChatClient(new TreatmentChatResponse(
+            "turn-relative-image-uri",
+            "completed",
+            new[] {
+                new TreatmentChatOutput("out-1", "text", "ok")
+            }));
+        var provider = new OpenAIChatTreatmentProvider(client);
+        var request = new TreatmentRequest {
+            Prompt = "Use the image.",
+            WorkingDirectory = directory,
+            Inputs = new[] {
+                new TreatmentInputArtifact {
+                    Id = "relative-image",
+                    Uri = new Uri("images/source.png?download=1#view", UriKind.Relative)
+                }
+            }
+        };
+
+        try {
+            provider.RunAsync(request).GetAwaiter().GetResult();
+
+            var expectedPath = Path.Combine(directory, "images", "source.png");
+            var items = CallChatInputToJson(client.Input!);
+            AssertEqual(2, items.Count, "relative image uri input item count");
+            var image = items[1].AsObject();
+            AssertNotNull(image, "relative image uri item");
+            AssertEqual("image", image!.GetString("type"), "relative image uri item type");
+            AssertEqual(expectedPath, image.GetString("path"), "relative image uri resolved as local path");
         } finally {
             Directory.Delete(directory, recursive: true);
         }

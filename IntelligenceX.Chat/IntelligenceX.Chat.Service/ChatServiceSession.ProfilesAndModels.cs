@@ -68,13 +68,18 @@ internal sealed partial class ChatServiceSession {
         if (opts.TransportKind == OpenAITransportKind.Native) {
             var accountId = (_options.OpenAIAccountId ?? string.Empty).Trim();
             opts.NativeOptions.AuthAccountId = accountId.Length == 0 ? null : accountId;
-            opts.NativeOptions.ImageGeneration.Enabled = _options.EnableImageGeneration;
-            opts.NativeOptions.ImageGeneration.Quality = _options.ImageGenerationQuality;
-            opts.NativeOptions.ImageGeneration.Size = _options.ImageGenerationSize;
-            opts.NativeOptions.ImageGeneration.OutputFormat = _options.ImageGenerationOutputFormat;
-            opts.NativeOptions.ImageGeneration.OutputCompression = _options.ImageGenerationOutputCompression;
-            opts.NativeOptions.ImageGeneration.Background = _options.ImageGenerationBackground;
-            opts.NativeOptions.ImageGeneration.OutputDirectory = _options.ImageGenerationOutputDirectory;
+            if (HasImageGenerationOverrides(_options)) {
+                if (_options.ImageGenerationEnabledOverride.HasValue) {
+                    opts.NativeOptions.ImageGeneration.Enabled = _options.ImageGenerationEnabledOverride.Value;
+                }
+
+                opts.NativeOptions.ImageGeneration.Quality = _options.ImageGenerationQuality;
+                opts.NativeOptions.ImageGeneration.Size = _options.ImageGenerationSize;
+                opts.NativeOptions.ImageGeneration.OutputFormat = _options.ImageGenerationOutputFormat;
+                opts.NativeOptions.ImageGeneration.OutputCompression = _options.ImageGenerationOutputCompression;
+                opts.NativeOptions.ImageGeneration.Background = _options.ImageGenerationBackground;
+                opts.NativeOptions.ImageGeneration.OutputDirectory = _options.ImageGenerationOutputDirectory;
+            }
         }
 
         if (opts.TransportKind == OpenAITransportKind.CompatibleHttp) {
@@ -106,6 +111,15 @@ internal sealed partial class ChatServiceSession {
         opts.Validate();
         return await IntelligenceXClient.ConnectAsync(opts, cancellationToken).ConfigureAwait(false);
     }
+
+    private static bool HasImageGenerationOverrides(ServiceOptions options) =>
+        options.ImageGenerationEnabledOverride.HasValue ||
+        !string.IsNullOrWhiteSpace(options.ImageGenerationQuality) ||
+        !string.IsNullOrWhiteSpace(options.ImageGenerationSize) ||
+        !string.IsNullOrWhiteSpace(options.ImageGenerationOutputFormat) ||
+        options.ImageGenerationOutputCompression.HasValue ||
+        !string.IsNullOrWhiteSpace(options.ImageGenerationBackground) ||
+        !string.IsNullOrWhiteSpace(options.ImageGenerationOutputDirectory);
 
     private string ResolveStateDbPath() {
         return string.IsNullOrWhiteSpace(_options.StateDbPath)
@@ -536,6 +550,7 @@ internal sealed partial class ChatServiceSession {
 
             if (request.ImageGenerationEnabled.HasValue) {
                 _options.EnableImageGeneration = request.ImageGenerationEnabled.Value;
+                _options.ImageGenerationEnabledOverride = request.ImageGenerationEnabled.Value;
             }
             if (request.ImageGenerationQuality is not null) {
                 _options.ImageGenerationQuality = NormalizeRuntimeOptionalValue(request.ImageGenerationQuality);

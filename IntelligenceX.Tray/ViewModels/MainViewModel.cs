@@ -726,16 +726,16 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
             return true;
         }
 
-        if (IsStartupQuietWindowActive()) {
-            return false;
-        }
-
         if (!_usageChangeWatcher.HasActiveWatchers) {
             return true;
         }
 
         if (HasPendingUsageChanges()) {
             return true;
+        }
+
+        if (IsStartupQuietWindowActive()) {
+            return false;
         }
 
         if (_lastUsageRootDiscoveryUtc == default) {

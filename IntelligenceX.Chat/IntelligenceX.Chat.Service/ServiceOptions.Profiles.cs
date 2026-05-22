@@ -36,6 +36,7 @@ internal sealed partial class ServiceOptions : IToolRuntimePolicySettings, ITool
         TextVerbosity = profile.TextVerbosity;
         Temperature = profile.Temperature;
         EnableImageGeneration = profile.EnableImageGeneration;
+        ImageGenerationEnabledOverride = profile.EnableImageGeneration;
         ImageGenerationQuality = profile.ImageGenerationQuality;
         ImageGenerationSize = profile.ImageGenerationSize;
         ImageGenerationOutputFormat = profile.ImageGenerationOutputFormat;
