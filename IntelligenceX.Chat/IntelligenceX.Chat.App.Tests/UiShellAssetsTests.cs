@@ -884,14 +884,20 @@ public sealed partial class UiShellAssetsTests {
     }
 
     /// <summary>
-    /// Ensures applying unrelated local-provider settings does not force image-generation overrides active.
+    /// Ensures unrelated local-provider applies preserve active image-generation overrides without forcing new ones.
     /// </summary>
     [Fact]
     public void Load_DoesNotForceImageGenerationOverrideForEveryLocalProviderApply() {
         var bindingsPath = Path.Combine(UiDirectory, "Shell.20.bindings.js");
         var script = File.ReadAllText(bindingsPath);
 
-        Assert.Contains("var imageGenerationOverrideActive = imageGenerationEnabled !== (local.imageGenerationEnabled === true)", script, StringComparison.Ordinal);
+        Assert.Contains("var localProviderImageGenerationDraftTouched = false;", script, StringComparison.Ordinal);
+        Assert.Contains("function markLocalProviderImageGenerationDraftChanged()", script, StringComparison.Ordinal);
+        Assert.Contains("var imageGenerationSettingsChanged = imageGenerationEnabled !== (local.imageGenerationEnabled === true)", script, StringComparison.Ordinal);
+        Assert.Contains("var imageGenerationOverrideActive = imageGenerationSettingsChanged", script, StringComparison.Ordinal);
+        Assert.Contains("|| (local.imageGenerationOverrideActive === true && !localProviderImageGenerationDraftTouched);", script, StringComparison.Ordinal);
+        Assert.Contains("localProviderImageGenerationDraftTouched = false;", script, StringComparison.Ordinal);
+        Assert.Contains("markLocalProviderImageGenerationDraftChanged();", script, StringComparison.Ordinal);
         Assert.DoesNotContain("var currentImageGenerationOverrideActive = local.imageGenerationOverrideActive === true;", script, StringComparison.Ordinal);
         Assert.Contains("state.options.localModel.imageGenerationOverrideActive = imageGenerationOverrideActive;", script, StringComparison.Ordinal);
         Assert.Contains("imageGenerationOverrideActive: imageGenerationOverrideActive,", script, StringComparison.Ordinal);

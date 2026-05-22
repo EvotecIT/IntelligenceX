@@ -1331,6 +1331,7 @@
   var localProviderAutoApplyDelayMs = 220;
   var pendingLocalProviderApply = null;
   var localProviderApplyRequestId = 0;
+  var localProviderImageGenerationDraftTouched = false;
 
   function normalizeRuntimeApplyRequestId(value) {
     var parsed = Number(value);
@@ -1397,6 +1398,11 @@
     renderLocalModelOptions();
   }
 
+  function markLocalProviderImageGenerationDraftChanged() {
+    localProviderImageGenerationDraftTouched = true;
+    markLocalProviderDraftChanged();
+  }
+
   function applyLocalProviderSettings(forceRefresh, clearApiKey, clearBasicAuth) {
     clearScheduledLocalProviderApply();
     var local = ((state.options || {}).localModel || {});
@@ -1421,13 +1427,15 @@
     var imageGenerationOutputCompression = (byId("optImageGenerationOutputCompression").value || "").trim();
     var imageGenerationBackground = (byId("optImageGenerationBackground").value || "").trim();
     var imageGenerationOutputDirectory = (byId("optImageGenerationOutputDirectory").value || "").trim();
-    var imageGenerationOverrideActive = imageGenerationEnabled !== (local.imageGenerationEnabled === true)
+    var imageGenerationSettingsChanged = imageGenerationEnabled !== (local.imageGenerationEnabled === true)
       || imageGenerationQuality !== String(local.imageGenerationQuality || "").trim()
       || imageGenerationSize !== String(local.imageGenerationSize || "").trim()
       || imageGenerationOutputFormat !== String(local.imageGenerationOutputFormat || "").trim()
       || imageGenerationOutputCompression !== String(local.imageGenerationOutputCompression == null ? "" : local.imageGenerationOutputCompression).trim()
       || imageGenerationBackground !== String(local.imageGenerationBackground || "").trim()
       || imageGenerationOutputDirectory !== String(local.imageGenerationOutputDirectory || "").trim();
+    var imageGenerationOverrideActive = imageGenerationSettingsChanged
+      || (local.imageGenerationOverrideActive === true && !localProviderImageGenerationDraftTouched);
     var reasoningSupport = resolveReasoningSupportForDraft(transport, baseUrl);
     if (!reasoningSupport.supported) {
       reasoningEffort = "";
@@ -1519,6 +1527,7 @@
       state.options.localModel.imageGenerationBackground = imageGenerationBackground;
       state.options.localModel.imageGenerationOutputDirectory = imageGenerationOutputDirectory;
       state.options.localModel.imageGenerationOverrideActive = imageGenerationOverrideActive;
+      localProviderImageGenerationDraftTouched = false;
       state.options.localModel.isApplying = true;
       var runtimeApply = state.options.localModel.runtimeApply;
       if (!runtimeApply || typeof runtimeApply !== "object") {
@@ -1814,31 +1823,31 @@
   });
 
   byId("optImageGenerationEnabled").addEventListener("change", function() {
-    markLocalProviderDraftChanged();
+    markLocalProviderImageGenerationDraftChanged();
   });
 
   byId("optImageGenerationQuality").addEventListener("change", function() {
-    markLocalProviderDraftChanged();
+    markLocalProviderImageGenerationDraftChanged();
   });
 
   byId("optImageGenerationSize").addEventListener("change", function() {
-    markLocalProviderDraftChanged();
+    markLocalProviderImageGenerationDraftChanged();
   });
 
   byId("optImageGenerationOutputFormat").addEventListener("change", function() {
-    markLocalProviderDraftChanged();
+    markLocalProviderImageGenerationDraftChanged();
   });
 
   byId("optImageGenerationOutputCompression").addEventListener("change", function() {
-    markLocalProviderDraftChanged();
+    markLocalProviderImageGenerationDraftChanged();
   });
 
   byId("optImageGenerationBackground").addEventListener("change", function() {
-    markLocalProviderDraftChanged();
+    markLocalProviderImageGenerationDraftChanged();
   });
 
   byId("optImageGenerationOutputDirectory").addEventListener("change", function() {
-    markLocalProviderDraftChanged();
+    markLocalProviderImageGenerationDraftChanged();
   });
 
   byId("optLocalBasicUsername").addEventListener("change", function() {
