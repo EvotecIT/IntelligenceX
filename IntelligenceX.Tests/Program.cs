@@ -133,6 +133,10 @@ internal static partial class Program {
             TestUsageTelemetryCachedStartupMergeDeduplicatesAllPrimaryMatches);
         failed += Run("Usage telemetry cached startup merge deduplicates older dominating fallback rollup",
             TestUsageTelemetryCachedStartupMergeDeduplicatesOlderDominatingFallbackRollup);
+        failed += Run("Usage telemetry cached startup merge preserves duplicate metadata and truth",
+            TestUsageTelemetryCachedStartupMergePreservesDuplicateMetadataAndTruth);
+        failed += Run("Usage telemetry cached startup merge deduplicates equal compact older dominating fallback rollup",
+            TestUsageTelemetryCachedStartupMergeDeduplicatesEqualCompactOlderDominatingFallbackRollup);
         failed += Run("Usage telemetry cached startup merge prefers newest source root metadata",
             TestUsageTelemetryCachedStartupMergePrefersNewestSourceRootMetadata);
         failed += Run("Usage telemetry cached startup merge keeps complete health over partial service health",

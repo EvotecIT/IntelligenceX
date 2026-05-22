@@ -69,6 +69,12 @@ internal static class UsageTelemetryCachedSnapshotMerge {
     private static IReadOnlyList<UsageEventRecord> MergeRollups(
         IEnumerable<UsageEventRecord> primaryEvents,
         IEnumerable<UsageEventRecord> fallbackEvents) {
+        var primaryEventList = primaryEvents.ToList();
+        var primaryEventIds = new HashSet<string>(
+            primaryEventList
+                .Where(static usageEvent => usageEvent is not null && !string.IsNullOrWhiteSpace(usageEvent.EventId))
+                .Select(static usageEvent => usageEvent.EventId),
+            StringComparer.OrdinalIgnoreCase);
         var mergedById = new Dictionary<string, UsageEventRecord>(StringComparer.OrdinalIgnoreCase);
         var contributionsById = new Dictionary<string, List<UsageEventRecord>>(StringComparer.OrdinalIgnoreCase);
         foreach (var usageEvent in fallbackEvents) {
@@ -77,16 +83,19 @@ internal static class UsageTelemetryCachedSnapshotMerge {
                 contributionsById,
                 usageEvent,
                 allowDominatingCoverage: true,
-                allowOlderExistingDominance: true);
+                allowOlderExistingDominance: true,
+                allowEqualOlderExistingDominance: usageEvent is not null &&
+                                                   !primaryEventIds.Contains(usageEvent.EventId));
         }
 
-        foreach (var usageEvent in primaryEvents) {
+        foreach (var usageEvent in primaryEventList) {
             MergeRollupContribution(
                 mergedById,
                 contributionsById,
                 usageEvent,
                 allowDominatingCoverage: true,
-                allowOlderExistingDominance: true);
+                allowOlderExistingDominance: true,
+                allowEqualOlderExistingDominance: false);
         }
 
         return mergedById.Values
@@ -102,7 +111,8 @@ internal static class UsageTelemetryCachedSnapshotMerge {
         IDictionary<string, List<UsageEventRecord>> contributionsById,
         UsageEventRecord usageEvent,
         bool allowDominatingCoverage,
-        bool allowOlderExistingDominance) {
+        bool allowOlderExistingDominance,
+        bool allowEqualOlderExistingDominance) {
         if (usageEvent is null || string.IsNullOrWhiteSpace(usageEvent.EventId)) {
             return;
         }
@@ -112,7 +122,12 @@ internal static class UsageTelemetryCachedSnapshotMerge {
             contributionsById[usageEvent.EventId] = contributions;
         }
 
-        if (TryMergeExistingContribution(contributions, usageEvent, allowDominatingCoverage, allowOlderExistingDominance)) {
+        if (TryMergeExistingContribution(
+                contributions,
+                usageEvent,
+                allowDominatingCoverage,
+                allowOlderExistingDominance,
+                allowEqualOlderExistingDominance)) {
             mergedById[usageEvent.EventId] = RebuildMergedUsageEvent(contributions);
             return;
         }
@@ -158,12 +173,18 @@ internal static class UsageTelemetryCachedSnapshotMerge {
         List<UsageEventRecord> contributions,
         UsageEventRecord incoming,
         bool allowDominatingCoverage,
-        bool allowOlderExistingDominance) {
+        bool allowOlderExistingDominance,
+        bool allowEqualOlderExistingDominance) {
         var matchedIndex = -1;
         UsageEventRecord? merged = null;
         for (var i = 0; i < contributions.Count; i++) {
             var existing = contributions[i];
-            if (!IsDuplicateContribution(existing, merged ?? incoming, allowDominatingCoverage, allowOlderExistingDominance)) {
+            if (!IsDuplicateContribution(
+                    existing,
+                    merged ?? incoming,
+                    allowDominatingCoverage,
+                    allowOlderExistingDominance,
+                    allowEqualOlderExistingDominance)) {
                 continue;
             }
 
@@ -185,11 +206,16 @@ internal static class UsageTelemetryCachedSnapshotMerge {
         UsageEventRecord existing,
         UsageEventRecord incoming,
         bool allowDominatingCoverage,
-        bool allowOlderExistingDominance) =>
+        bool allowOlderExistingDominance,
+        bool allowEqualOlderExistingDominance) =>
         HasSameRollupCoverage(existing, incoming) ||
         allowDominatingCoverage &&
         HasSameRollupIdentity(existing, incoming) &&
-        HasCompatibleDominatingRollupCoverage(existing, incoming, allowOlderExistingDominance);
+        HasCompatibleDominatingRollupCoverage(
+            existing,
+            incoming,
+            allowOlderExistingDominance,
+            allowEqualOlderExistingDominance);
 
     private static UsageEventRecord RebuildMergedUsageEvent(IReadOnlyList<UsageEventRecord> contributions) {
         var merged = CloneUsageEvent(contributions[0]);
@@ -224,6 +250,8 @@ internal static class UsageTelemetryCachedSnapshotMerge {
 
     private static UsageEventRecord MergeDuplicateContribution(UsageEventRecord existing, UsageEventRecord incoming) {
         var merged = CloneUsageEvent(existing.TimestampUtc >= incoming.TimestampUtc ? existing : incoming);
+        MergeDuplicateMetadata(merged, existing);
+        MergeDuplicateMetadata(merged, incoming);
         merged.InputTokens = MaxNullable(existing.InputTokens, incoming.InputTokens);
         merged.CachedInputTokens = MaxNullable(existing.CachedInputTokens, incoming.CachedInputTokens);
         merged.OutputTokens = MaxNullable(existing.OutputTokens, incoming.OutputTokens);
@@ -232,11 +260,26 @@ internal static class UsageTelemetryCachedSnapshotMerge {
         merged.CompactCount = MaxNullable(existing.CompactCount, incoming.CompactCount);
         merged.DurationMs = MaxNullable(existing.DurationMs, incoming.DurationMs);
         merged.CostUsd = MaxNullable(existing.CostUsd, incoming.CostUsd);
-        if (incoming.TruthLevel > merged.TruthLevel) {
-            merged.TruthLevel = incoming.TruthLevel;
-        }
+        merged.TruthLevel = StrongestTruthLevel(existing.TruthLevel, incoming.TruthLevel);
 
         return merged;
+    }
+
+    private static void MergeDuplicateMetadata(UsageEventRecord target, UsageEventRecord source) {
+        target.ProviderAccountId = PreferExistingString(target.ProviderAccountId, source.ProviderAccountId);
+        target.AccountLabel = PreferExistingString(target.AccountLabel, source.AccountLabel);
+        target.PersonLabel = PreferExistingString(target.PersonLabel, source.PersonLabel);
+        target.MachineId = PreferExistingString(target.MachineId, source.MachineId);
+        target.SessionId = PreferExistingString(target.SessionId, source.SessionId);
+        target.ThreadId = PreferExistingString(target.ThreadId, source.ThreadId);
+        target.ConversationTitle = PreferExistingString(target.ConversationTitle, source.ConversationTitle);
+        target.WorkspacePath = PreferExistingString(target.WorkspacePath, source.WorkspacePath);
+        target.RepositoryName = PreferExistingString(target.RepositoryName, source.RepositoryName);
+        target.TurnId = PreferExistingString(target.TurnId, source.TurnId);
+        target.ResponseId = PreferExistingString(target.ResponseId, source.ResponseId);
+        target.Model = PreferExistingString(target.Model, source.Model);
+        target.Surface = PreferExistingString(target.Surface, source.Surface);
+        target.RawHash = PreferExistingString(target.RawHash, source.RawHash);
     }
 
     private static bool HasSameRollupCoverage(UsageEventRecord existing, UsageEventRecord incoming) =>
@@ -264,11 +307,12 @@ internal static class UsageTelemetryCachedSnapshotMerge {
     private static bool HasCompatibleDominatingRollupCoverage(
         UsageEventRecord existing,
         UsageEventRecord incoming,
-        bool allowOlderExistingDominance) =>
+        bool allowOlderExistingDominance,
+        bool allowEqualOlderExistingDominance) =>
         (incoming.TimestampUtc >= existing.TimestampUtc &&
          CoverageDominates(incoming, existing)) ||
         ((existing.TimestampUtc >= incoming.TimestampUtc ||
-          allowOlderExistingDominance && HasStrongerAggregateEvidence(existing, incoming)) &&
+          allowOlderExistingDominance && HasStrongerAggregateEvidence(existing, incoming, allowEqualOlderExistingDominance)) &&
          CoverageDominates(existing, incoming));
 
     private static bool CoverageDominates(UsageEventRecord candidate, UsageEventRecord other) =>
@@ -279,8 +323,13 @@ internal static class UsageTelemetryCachedSnapshotMerge {
         NullableGreaterOrEqual(candidate.TotalTokens, other.TotalTokens) &&
         NullableGreaterOrEqual(candidate.CompactCount, other.CompactCount);
 
-    private static bool HasStrongerAggregateEvidence(UsageEventRecord candidate, UsageEventRecord other) =>
-        NullableGreater(candidate.CompactCount, other.CompactCount);
+    private static bool HasStrongerAggregateEvidence(
+        UsageEventRecord candidate,
+        UsageEventRecord other,
+        bool allowEqual) =>
+        allowEqual
+            ? NullableGreaterOrEqual(candidate.CompactCount, other.CompactCount)
+            : NullableGreater(candidate.CompactCount, other.CompactCount);
 
     private static long? SumNullable(long? existing, long? incoming) {
         if (!existing.HasValue) {
@@ -362,4 +411,10 @@ internal static class UsageTelemetryCachedSnapshotMerge {
 
     private static bool NullableGreater(int? candidate, int? other) =>
         (candidate ?? 0) > (other ?? 0);
+
+    private static string? PreferExistingString(string? existing, string? incoming) =>
+        string.IsNullOrWhiteSpace(existing) ? incoming : existing;
+
+    private static UsageTruthLevel StrongestTruthLevel(UsageTruthLevel existing, UsageTruthLevel incoming) =>
+        incoming > existing ? incoming : existing;
 }

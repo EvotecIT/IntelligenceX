@@ -699,6 +699,109 @@ internal static partial class Program {
         AssertEqual(serviceScannedAt, main.TimestampUtc, "cached startup merge older dominating fallback newest timestamp");
     }
 
+    private static void TestUsageTelemetryCachedStartupMergePreservesDuplicateMetadataAndTruth() {
+        var cachedScannedAt = new DateTimeOffset(2026, 03, 10, 9, 0, 0, TimeSpan.Zero);
+        var serviceScannedAt = cachedScannedAt.AddMinutes(5);
+        var rawRecords = new[] {
+            new UsageEventRecord("other-raw", "codex", "codex.logs", "src-2", cachedScannedAt.AddMinutes(10)) {
+                InputTokens = 10,
+                TotalTokens = 10
+            }
+        };
+        var cachedRollup = new UsageEventRecord("rollup-main", "codex", "codex.logs", "src-1", cachedScannedAt) {
+            ProviderAccountId = "acc-work",
+            AccountLabel = "work",
+            SessionId = "session-a",
+            ConversationTitle = "Daily usage",
+            WorkspacePath = @"C:\Support\GitHub\IntelligenceX",
+            RepositoryName = "IntelligenceX",
+            Model = "gpt-5.5",
+            Surface = "cli",
+            InputTokens = 120,
+            OutputTokens = 40,
+            TotalTokens = 160,
+            CompactCount = 1,
+            TruthLevel = UsageTruthLevel.Exact
+        };
+        var serviceRollup = new UsageEventRecord("rollup-main", "codex", "codex.logs", "src-1", serviceScannedAt) {
+            Model = "gpt-5.5",
+            Surface = "cli",
+            InputTokens = 120,
+            OutputTokens = 40,
+            TotalTokens = 160,
+            CompactCount = 1,
+            TruthLevel = UsageTruthLevel.Estimated
+        };
+
+        var merged = UsageTelemetryCachedSnapshotMerge.SelectStartupEvents(
+            cachedEvents: new[] { cachedRollup },
+            serviceEvents: new[] { serviceRollup },
+            mergedRawEvents: rawRecords,
+            hasCachedRawEvents: true,
+            hasServiceRawEvents: true,
+            cachedScannedAt,
+            serviceScannedAt);
+
+        var main = merged.FirstOrDefault(static item => string.Equals(item.EventId, "rollup-main", StringComparison.OrdinalIgnoreCase));
+        AssertNotNull(main, "cached startup merge duplicate metadata rollup exists");
+        AssertEqual(2, merged.Count, "cached startup merge duplicate metadata count");
+        AssertEqual(serviceScannedAt, main!.TimestampUtc, "cached startup merge duplicate metadata newest timestamp");
+        AssertEqual("acc-work", main.ProviderAccountId, "cached startup merge duplicate metadata provider account");
+        AssertEqual("work", main.AccountLabel, "cached startup merge duplicate metadata account label");
+        AssertEqual("session-a", main.SessionId, "cached startup merge duplicate metadata session");
+        AssertEqual("Daily usage", main.ConversationTitle, "cached startup merge duplicate metadata conversation");
+        AssertEqual(@"C:\Support\GitHub\IntelligenceX", main.WorkspacePath, "cached startup merge duplicate metadata workspace");
+        AssertEqual("IntelligenceX", main.RepositoryName, "cached startup merge duplicate metadata repository");
+        AssertEqual(UsageTruthLevel.Exact, main.TruthLevel, "cached startup merge duplicate metadata truth");
+    }
+
+    private static void TestUsageTelemetryCachedStartupMergeDeduplicatesEqualCompactOlderDominatingFallbackRollup() {
+        var cachedScannedAt = new DateTimeOffset(2026, 03, 10, 9, 0, 0, TimeSpan.Zero);
+        var serviceScannedAt = cachedScannedAt.AddMinutes(5);
+        var rawRecords = new[] {
+            new UsageEventRecord("other-raw", "codex", "codex.logs", "src-2", cachedScannedAt.AddMinutes(10)) {
+                InputTokens = 10,
+                TotalTokens = 10
+            }
+        };
+        var cachedRollup = new UsageEventRecord("rollup-main", "codex", "codex.logs", "src-1", cachedScannedAt) {
+            Model = "gpt-5.5",
+            Surface = "cli",
+            InputTokens = 120,
+            OutputTokens = 40,
+            TotalTokens = 160,
+            CompactCount = 1,
+            CostUsd = 0.04m
+        };
+        var serviceRollup = new UsageEventRecord("rollup-main", "codex", "codex.logs", "src-1", serviceScannedAt) {
+            Model = "gpt-5.5",
+            Surface = "cli",
+            InputTokens = 100,
+            OutputTokens = 30,
+            TotalTokens = 130,
+            CompactCount = 1,
+            CostUsd = 0.02m
+        };
+
+        var merged = UsageTelemetryCachedSnapshotMerge.SelectStartupEvents(
+            cachedEvents: new[] { cachedRollup },
+            serviceEvents: new[] { serviceRollup },
+            mergedRawEvents: rawRecords,
+            hasCachedRawEvents: true,
+            hasServiceRawEvents: true,
+            cachedScannedAt,
+            serviceScannedAt);
+
+        var main = merged.FirstOrDefault(static item => string.Equals(item.EventId, "rollup-main", StringComparison.OrdinalIgnoreCase));
+        AssertNotNull(main, "cached startup merge equal compact older dominating fallback rollup exists");
+        AssertEqual(2, merged.Count, "cached startup merge equal compact older dominating fallback rollup count");
+        AssertEqual(120L, main!.InputTokens ?? 0L, "cached startup merge equal compact older dominating fallback input");
+        AssertEqual(160L, main.TotalTokens ?? 0L, "cached startup merge equal compact older dominating fallback total");
+        AssertEqual(1, main.CompactCount ?? 0, "cached startup merge equal compact older dominating fallback compact count");
+        AssertEqual(0.04m, main.CostUsd ?? 0m, "cached startup merge equal compact older dominating fallback cost");
+        AssertEqual(serviceScannedAt, main.TimestampUtc, "cached startup merge equal compact older dominating fallback newest timestamp");
+    }
+
     private static void TestUsageTelemetryCachedStartupMergePrefersNewestSourceRootMetadata() {
         var cachedScannedAt = new DateTimeOffset(2026, 03, 10, 9, 0, 0, TimeSpan.Zero);
         var serviceScannedAt = cachedScannedAt.AddMinutes(5);

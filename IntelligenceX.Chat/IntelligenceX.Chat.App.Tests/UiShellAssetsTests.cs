@@ -891,8 +891,8 @@ public sealed partial class UiShellAssetsTests {
         var bindingsPath = Path.Combine(UiDirectory, "Shell.20.bindings.js");
         var script = File.ReadAllText(bindingsPath);
 
-        Assert.Contains("var currentImageGenerationOverrideActive = local.imageGenerationOverrideActive === true;", script, StringComparison.Ordinal);
-        Assert.Contains("var imageGenerationOverrideActive = currentImageGenerationOverrideActive", script, StringComparison.Ordinal);
+        Assert.Contains("var imageGenerationOverrideActive = imageGenerationEnabled !== (local.imageGenerationEnabled === true)", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("var currentImageGenerationOverrideActive = local.imageGenerationOverrideActive === true;", script, StringComparison.Ordinal);
         Assert.Contains("state.options.localModel.imageGenerationOverrideActive = imageGenerationOverrideActive;", script, StringComparison.Ordinal);
         Assert.Contains("imageGenerationOverrideActive: imageGenerationOverrideActive,", script, StringComparison.Ordinal);
         Assert.DoesNotContain("imageGenerationOverrideActive: true,", script, StringComparison.Ordinal);

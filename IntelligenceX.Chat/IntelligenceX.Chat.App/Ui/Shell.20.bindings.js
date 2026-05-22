@@ -1421,9 +1421,7 @@
     var imageGenerationOutputCompression = (byId("optImageGenerationOutputCompression").value || "").trim();
     var imageGenerationBackground = (byId("optImageGenerationBackground").value || "").trim();
     var imageGenerationOutputDirectory = (byId("optImageGenerationOutputDirectory").value || "").trim();
-    var currentImageGenerationOverrideActive = local.imageGenerationOverrideActive === true;
-    var imageGenerationOverrideActive = currentImageGenerationOverrideActive
-      || imageGenerationEnabled !== (local.imageGenerationEnabled === true)
+    var imageGenerationOverrideActive = imageGenerationEnabled !== (local.imageGenerationEnabled === true)
       || imageGenerationQuality !== String(local.imageGenerationQuality || "").trim()
       || imageGenerationSize !== String(local.imageGenerationSize || "").trim()
       || imageGenerationOutputFormat !== String(local.imageGenerationOutputFormat || "").trim()
