@@ -50,7 +50,8 @@ public sealed class PowerForgePackagingContractTests
     {
         var script = File.ReadAllText(Path.Combine(ResolveRepositoryRoot(), "Build", scriptName));
 
-        Assert.DoesNotContain("'SignTimeoutSeconds'\r\n", script, StringComparison.Ordinal);
+        Assert.DoesNotContain("'SignTimeoutSeconds'" + Environment.NewLine + "    'SignTimestampUrl'", script, StringComparison.Ordinal);
+        Assert.Contains("$script:BoundCliParameters.ContainsKey('SignTimeoutSeconds')", script, StringComparison.Ordinal);
         Assert.Contains("$SignTimeoutSeconds -gt 0", script, StringComparison.Ordinal);
         Assert.Contains("$hasExplicitSigningOverride = 'SignTimeoutSeconds'", script, StringComparison.Ordinal);
     }
