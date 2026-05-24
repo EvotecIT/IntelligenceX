@@ -79,7 +79,7 @@ $buildProjectScript = Join-Path $script:RepoRoot 'Build\Build-Project.ps1'
 $frontendNormalized = $Frontend.ToLowerInvariant()
 
 if ($frontendNormalized -ne 'app') {
-    throw "Build-Release.ps1 only supports -Frontend app on the unified PowerForge path. Host MSI release flow is not modeled in Build\\powerforge.dotnetpublish.json yet."
+    throw "Build-Release.ps1 only supports -Frontend app on the unified PowerForge path. Use Build\\Advanced\\Build-Installer.ps1 for host/custom installer fallback until Build\\powerforge.dotnetpublish.json models that release flow."
 }
 
 if ($IncludeService -and $frontendNormalized -eq 'app') {

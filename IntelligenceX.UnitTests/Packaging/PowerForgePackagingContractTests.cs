@@ -32,13 +32,15 @@ public sealed class PowerForgePackagingContractTests
     }
 
     [Fact]
-    public void InstallerWrapper_ReusesPowerForgeCliResolver()
+    public void InstallerWrapper_PreservesLegacyHostFallback()
     {
         var script = File.ReadAllText(Path.Combine(ResolveRepositoryRoot(), "Build", "Advanced", "Build-Installer.ps1"));
 
-        Assert.Contains("Resolve-PowerForgeCli.ps1", script, StringComparison.Ordinal);
-        Assert.Contains("Resolve-PowerForgeCliInvocation", script, StringComparison.Ordinal);
-        Assert.Contains("$cli.Prefix", script, StringComparison.Ordinal);
+        Assert.Contains("Use-LegacyInstallerFlow", script, StringComparison.Ordinal);
+        Assert.Contains("Build-Installer.Legacy.ps1", script, StringComparison.Ordinal);
+        Assert.Contains("Build-Project.ps1", script, StringComparison.Ordinal);
+        Assert.True(File.Exists(Path.Combine(ResolveRepositoryRoot(), "Build", "Internal", "Build-Installer.Legacy.ps1")));
+        Assert.True(File.Exists(Path.Combine(ResolveRepositoryRoot(), "Installer", "IntelligenceX.Chat", "IntelligenceX.Chat.wxs")));
     }
 
     [Theory]
