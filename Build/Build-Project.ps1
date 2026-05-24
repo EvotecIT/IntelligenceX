@@ -34,6 +34,7 @@ param(
     [string] $SignOnMissingTool,
     [ValidateSet('Warn', 'Fail', 'Skip')]
     [string] $SignOnFailure,
+    [int] $SignTimeoutSeconds,
     [string] $SignTimestampUrl,
     [string] $SignDescription,
     [string] $SignUrl,
@@ -165,6 +166,7 @@ $hasExplicitSigningOverride = @(
     'SignSubjectName'
     'SignOnMissingTool'
     'SignOnFailure'
+    'SignTimeoutSeconds'
     'SignTimestampUrl'
     'SignDescription'
     'SignUrl'
@@ -180,6 +182,9 @@ if ($enableSigning) {
     Add-Option '--sign-subject-name' $SignSubjectName
     Add-Option '--sign-on-missing-tool' $SignOnMissingTool
     Add-Option '--sign-on-failure' $SignOnFailure
+    if ($SignTimeoutSeconds -gt 0) {
+        Add-Option '--sign-timeout-seconds' ([string] $SignTimeoutSeconds)
+    }
     Add-Option '--sign-timestamp-url' $SignTimestampUrl
     Add-Option '--sign-description' $SignDescription
     Add-Option '--sign-url' $SignUrl

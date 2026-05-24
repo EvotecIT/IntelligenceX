@@ -38,6 +38,7 @@
     [string] $SignOnMissingTool,
     [ValidateSet('Warn','Fail','Skip')]
     [string] $SignOnFailure,
+    [int] $SignTimeoutSeconds,
     [string] $SignTimestampUrl = 'http://timestamp.digicert.com',
     [string] $SignDescription = 'IntelligenceX Chat',
     [string] $SignUrl,
@@ -149,6 +150,7 @@ $hasExplicitSigningOverride = @(
     'SignSubjectName'
     'SignOnMissingTool'
     'SignOnFailure'
+    'SignTimeoutSeconds'
     'SignTimestampUrl'
     'SignDescription'
     'SignUrl'
@@ -171,6 +173,9 @@ if ($enableSigning -and -not [string]::IsNullOrWhiteSpace($SignOnMissingTool)) {
 }
 if ($enableSigning -and -not [string]::IsNullOrWhiteSpace($SignOnFailure)) {
     $parameters['SignOnFailure'] = $SignOnFailure
+}
+if ($enableSigning -and $SignTimeoutSeconds -gt 0) {
+    $parameters['SignTimeoutSeconds'] = $SignTimeoutSeconds
 }
 if ($enableSigning -and -not [string]::IsNullOrWhiteSpace($SignTimestampUrl)) {
     $parameters['SignTimestampUrl'] = $SignTimestampUrl

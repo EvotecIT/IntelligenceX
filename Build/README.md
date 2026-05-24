@@ -80,6 +80,7 @@ dotnet exec C:\Support\GitHub\PSPublishModule\PowerForge.Cli\bin\Release\net10.0
 
 Notes:
 - the packaging project is `Installer/IntelligenceX.Tray.Store/IntelligenceX.Tray.Store.wapproj`
+- `Build\powerforge.dotnetpublish.json` enables typed App Installer generation for tray MSIX outputs, including prompt/background update settings
 - the checked-in Store manifest identity/publisher is placeholder metadata for local packaging validation and must be replaced with the real Partner Center identity before production submission
 - `Build/store.submit.tray.example.json` is only an example; fill in the real `SellerId`, `TenantId`, `ClientId`, secret, and Partner Center `ApplicationId`
 
@@ -92,6 +93,7 @@ Signing is also resolved centrally for the normal case:
 - prefer `CERT_THUMBPRINT` when you want one default code-signing certificate for the repo
 - `Build-Project.ps1 -SignInstaller` and `Build-Release.ps1 -SignInstaller` now use that thumbprint automatically
 - `-SignThumbprint` still wins when you need to override it for one run
+- `-SignTimeoutSeconds` caps each signing invocation so a stuck Windows SDK `signtool.exe` fails through the configured signing policy instead of hanging the release
 - `-SignSubjectName`, `-SignCsp`, and `-SignKeyContainer` remain available as advanced escape hatches
 
 Keep these specialist helpers:

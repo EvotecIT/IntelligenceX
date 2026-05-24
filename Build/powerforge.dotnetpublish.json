@@ -35,11 +35,6 @@
       "Group": "tools"
     },
     {
-      "Id": "chat-app-installer",
-      "Path": "Installer/IntelligenceX.Chat/IntelligenceX.Chat.Installer.wixproj",
-      "Group": "installer"
-    },
-    {
       "Id": "tray-store",
       "Path": "Installer/IntelligenceX.Tray.Store/IntelligenceX.Tray.Store.wapproj",
       "Group": "store"
@@ -280,7 +275,6 @@
       "Id": "IntelligenceX.Chat.App.Msi",
       "PrepareFromTarget": "IntelligenceX.Chat.App",
       "PrepareFromBundleId": "IntelligenceX.Chat.Portable",
-      "InstallerProjectId": "chat-app-installer",
       "Frameworks": [
         "net10.0-windows10.0.26100.0"
       ],
@@ -293,6 +287,60 @@
       "Harvest": "Auto",
       "HarvestDirectoryRefId": "INSTALLFOLDER",
       "HarvestComponentGroupId": "ProductFiles",
+      "HarvestExcludePatterns": [
+        "IntelligenceX.Chat.App.exe"
+      ],
+      "Authoring": {
+        "Product": {
+          "Name": "IntelligenceX Chat",
+          "Manufacturer": "Evotec",
+          "Version": "1.0.0",
+          "UpgradeCode": "{a2b787a5-f539-4763-add6-2baa2c2518c7}",
+          "Scope": "PerMachine",
+          "DowngradeErrorMessage": "A newer version of IntelligenceX Chat is already installed."
+        },
+        "CompanyFolderName": "Evotec",
+        "InstallDirectoryName": "IntelligenceX Chat",
+        "PayloadComponentGroupId": "ProductFiles",
+        "ExitLaunch": {
+          "Enabled": true,
+          "Text": "Launch IntelligenceX Chat",
+          "Target": "[INSTALLFOLDER]IntelligenceX.Chat.App.exe"
+        },
+        "Directories": [
+          {
+            "StandardDirectoryId": "ProgramMenuFolder",
+            "Segments": [
+              {
+                "Id": "ApplicationProgramsFolder",
+                "Name": "IntelligenceX Chat"
+              }
+            ]
+          }
+        ],
+        "Components": [
+          {
+            "Type": "File",
+            "Id": "ChatAppExecutable",
+            "DirectoryRefId": "INSTALLFOLDER",
+            "Guid": "*",
+            "FileId": "ChatAppExe",
+            "Source": "$(var.PayloadDir)\\IntelligenceX.Chat.App.exe",
+            "Name": "IntelligenceX.Chat.App.exe"
+          },
+          {
+            "Type": "Shortcut",
+            "Id": "LaunchChatShortcut",
+            "DirectoryRefId": "ApplicationProgramsFolder",
+            "ShortcutId": "LaunchChatShortcut",
+            "Name": "IntelligenceX Chat",
+            "TargetFileId": "ChatAppExe",
+            "WorkingDirectoryId": "INSTALLFOLDER",
+            "RegistryKey": "Software\\Evotec\\IntelligenceX\\Chat",
+            "RegistryValueName": "LaunchShortcut"
+          }
+        ]
+      },
       "Versioning": {
         "Enabled": true,
         "Major": 1,
@@ -324,7 +372,16 @@
       "OutputPath": "Artifacts/DotNetPublish/Store/{storePackage}/{target}/{rid}/{framework}/{style}",
       "BuildMode": "StoreUpload",
       "Bundle": "Always",
-      "GenerateAppInstaller": false
+      "GenerateAppInstaller": true,
+      "AppInstaller": {
+        "Enabled": true,
+        "SchemaVersion": "2021",
+        "HoursBetweenUpdateChecks": 12,
+        "ShowPrompt": true,
+        "UpdateBlocksActivation": false,
+        "AutomaticBackgroundTask": true,
+        "ForceUpdateFromAnyVersion": false
+      }
     }
   ],
   "Outputs": {
