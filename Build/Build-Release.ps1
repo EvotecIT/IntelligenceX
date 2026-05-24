@@ -79,7 +79,7 @@ $buildProjectScript = Join-Path $script:RepoRoot 'Build\Build-Project.ps1'
 $frontendNormalized = $Frontend.ToLowerInvariant()
 
 if ($frontendNormalized -ne 'app') {
-    throw "Build-Release.ps1 only supports -Frontend app on the unified path. Use Build\\Advanced\\Package-Portable.ps1 / Build\\Advanced\\Build-Installer.ps1 for host mode until Build\\powerforge.dotnetpublish.json models that release flow."
+    throw "Build-Release.ps1 only supports -Frontend app on the unified PowerForge path. Host MSI release flow is not modeled in Build\\powerforge.dotnetpublish.json yet."
 }
 
 if ($IncludeService -and $frontendNormalized -eq 'app') {
@@ -150,13 +150,17 @@ $hasExplicitSigningOverride = @(
     'SignSubjectName'
     'SignOnMissingTool'
     'SignOnFailure'
-    'SignTimeoutSeconds'
     'SignTimestampUrl'
     'SignDescription'
     'SignUrl'
     'SignCsp'
     'SignKeyContainer'
 ) | Where-Object { Has-BoundNonEmptyOption $_ } | Select-Object -First 1
+if (-not $hasExplicitSigningOverride -and
+    $script:BoundCliParameters.ContainsKey('SignTimeoutSeconds') -and
+    $SignTimeoutSeconds -gt 0) {
+    $hasExplicitSigningOverride = 'SignTimeoutSeconds'
+}
 $enableSigning = $SignInstaller -or $hasExplicitSigningOverride
 
 if ($enableSigning -and -not [string]::IsNullOrWhiteSpace($SignToolPath)) {

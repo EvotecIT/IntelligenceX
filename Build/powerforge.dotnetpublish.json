@@ -288,7 +288,12 @@
       "HarvestDirectoryRefId": "INSTALLFOLDER",
       "HarvestComponentGroupId": "ProductFiles",
       "HarvestExcludePatterns": [
-        "IntelligenceX.Chat.App.exe"
+        "IntelligenceX.Chat.App.exe",
+        "run-chat.ps1",
+        "run-chat.cmd",
+        "README.md",
+        "portable-bundle.json",
+        "createdump.exe"
       ],
       "Authoring": {
         "Product": {

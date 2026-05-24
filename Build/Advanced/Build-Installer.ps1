@@ -5,7 +5,14 @@ param(
     [string[]] $PowerForgeArgs
 )
 
-$cli = if ($env:POWERFORGE_CLI_PATH) { [System.IO.Path]::GetFullPath($env:POWERFORGE_CLI_PATH) } else { 'powerforge' }
-$args = @('dotnet', 'publish', '--config', [System.IO.Path]::GetFullPath($ConfigPath), '--target', $Target, '--style', 'PortableCompat') + $PowerForgeArgs
-if ([System.IO.Path]::GetExtension($cli) -ieq '.dll') { & dotnet $cli @args } else { & $cli @args }
-exit $LASTEXITCODE
+$ErrorActionPreference = 'Stop'
+$repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
+. (Join-Path $repoRoot 'Build\Internal\Resolve-PowerForgeCli.ps1')
+$cli = Resolve-PowerForgeCliInvocation -RepoRoot $repoRoot
+$args = [System.Collections.Generic.List[string]]::new()
+$args.AddRange([string[]] $cli.Prefix)
+$args.AddRange([string[]] @('dotnet', 'publish', '--config', [System.IO.Path]::GetFullPath($ConfigPath), '--target', $Target, '--style', 'PortableCompat'))
+if ($PowerForgeArgs) { $args.AddRange([string[]] $PowerForgeArgs) }
+& $cli.Command @args
+if (-not $?) { exit 1 }
+exit $(if ($null -eq $LASTEXITCODE) { 0 } else { $LASTEXITCODE })

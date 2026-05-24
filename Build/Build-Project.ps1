@@ -166,13 +166,17 @@ $hasExplicitSigningOverride = @(
     'SignSubjectName'
     'SignOnMissingTool'
     'SignOnFailure'
-    'SignTimeoutSeconds'
     'SignTimestampUrl'
     'SignDescription'
     'SignUrl'
     'SignCsp'
     'SignKeyContainer'
 ) | Where-Object { Has-BoundNonEmptyOption $_ } | Select-Object -First 1
+if (-not $hasExplicitSigningOverride -and
+    $script:BoundCliParameters.ContainsKey('SignTimeoutSeconds') -and
+    $SignTimeoutSeconds -gt 0) {
+    $hasExplicitSigningOverride = 'SignTimeoutSeconds'
+}
 $enableSigning = $SignInstaller -or $hasExplicitSigningOverride
 
 Add-Flag '--sign' $enableSigning
