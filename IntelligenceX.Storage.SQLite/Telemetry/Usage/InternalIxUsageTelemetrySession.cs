@@ -5,6 +5,16 @@ using IntelligenceX.OpenAI.CompatibleHttp;
 namespace IntelligenceX.Telemetry.Usage;
 
 /// <summary>
+/// Creates SQLite-backed persistent usage telemetry sessions.
+/// </summary>
+public sealed class SqliteInternalIxUsageTelemetrySessionFactory : IIntelligenceXUsageTelemetrySessionFactory {
+    /// <inheritdoc />
+    public IDisposable? TryCreate(IntelligenceXClient client, IntelligenceXClientOptions options) {
+        return InternalIxUsageTelemetrySession.TryCreate(client, options);
+    }
+}
+
+/// <summary>
 /// Attaches persistent runtime usage telemetry to an <see cref="IntelligenceXClient"/>.
 /// </summary>
 public sealed class InternalIxUsageTelemetrySession : IDisposable {

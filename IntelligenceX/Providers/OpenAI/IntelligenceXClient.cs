@@ -132,12 +132,27 @@ public sealed class IntelligenceXClient : IDisposable
             if (options.AutoInitialize) {
                 await wrapper.InitializeAsync(options.ClientInfo, cancellationToken).ConfigureAwait(false);
             }
-            wrapper._usageTelemetrySession = InternalIxUsageTelemetrySession.TryCreate(wrapper, options);
+            wrapper._usageTelemetrySession = CreateUsageTelemetrySession(wrapper, options);
             return wrapper;
         } catch {
             wrapper.Dispose();
             throw;
         }
+    }
+
+    private static IDisposable? CreateUsageTelemetrySession(IntelligenceXClient client, IntelligenceXClientOptions options) {
+        var dbPath = UsageTelemetryPathResolver.ResolveDatabasePath(
+            options.UsageTelemetryDatabasePath,
+            options.EnableUsageTelemetry);
+        if (string.IsNullOrWhiteSpace(dbPath)) {
+            return null;
+        }
+
+        if (options.UsageTelemetrySessionFactory is null) {
+            throw new NotSupportedException("Persistent usage telemetry requires a storage provider. Reference IntelligenceX.Storage.SQLite and set UsageTelemetrySessionFactory to SqliteInternalIxUsageTelemetrySessionFactory.");
+        }
+
+        return options.UsageTelemetrySessionFactory.TryCreate(client, options);
     }
 
     /// <summary>

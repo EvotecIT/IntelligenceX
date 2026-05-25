@@ -34,6 +34,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../IntelligenceX/IntelligenceX.csproj" />
+    <ProjectReference Include="../IntelligenceX.Storage.SQLite/IntelligenceX.Storage.SQLite.csproj" />
     <ProjectReference Include="../IntelligenceX.Reviewer/IntelligenceX.Reviewer.csproj" />
   </ItemGroup>
 

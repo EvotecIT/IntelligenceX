@@ -11,7 +11,10 @@ namespace IntelligenceX.Visualization.Heatmaps;
 internal static class UsageTelemetryReportBundleWriter {
     private static readonly UTF8Encoding Utf8NoBom = new(encoderShouldEmitUTF8Identifier: false);
 
-    public static void WriteOverviewBundle(UsageTelemetryOverviewDocument overview, string outputDirectory) {
+    public static void WriteOverviewBundle(
+        UsageTelemetryOverviewDocument overview,
+        string outputDirectory,
+        GitHubObservabilitySummaryData? gitHubObservabilitySummary = null) {
         if (overview is null) {
             throw new ArgumentNullException(nameof(overview));
         }
@@ -24,7 +27,6 @@ internal static class UsageTelemetryReportBundleWriter {
         var lightSvgFiles = new System.Collections.Generic.List<string>();
         var darkSvgFiles = new System.Collections.Generic.List<string>();
         var gitCodeChurnSummary = TryLoadGitCodeChurnSummary();
-        var gitHubObservabilitySummary = TryLoadGitHubObservabilitySummary();
         var gitHubLocalAlignment = GitHubLocalActivityCorrelationSummaryBuilder.BuildFromDailySeries(
             gitCodeChurnSummary,
             BuildProviderDailySeries(overview),
@@ -97,14 +99,6 @@ internal static class UsageTelemetryReportBundleWriter {
 
     private static bool HasHeatmapActivity(HeatmapDocument heatmap) {
         return heatmap.Sections.Any(static section => section.Days.Count > 0);
-    }
-
-    private static GitHubObservabilitySummaryData? TryLoadGitHubObservabilitySummary() {
-        try {
-            return new GitHubObservabilitySummaryService().Load();
-        } catch {
-            return null;
-        }
     }
 
     private static GitCodeChurnSummaryData? TryLoadGitCodeChurnSummary() {

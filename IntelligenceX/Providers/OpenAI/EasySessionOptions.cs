@@ -146,6 +146,10 @@ public sealed class EasySessionOptions {
     /// Optional logical source path used for the usage telemetry root.
     /// </summary>
     public string? UsageTelemetrySourcePath { get; set; }
+    /// <summary>
+    /// Optional factory used to attach persistent usage telemetry storage.
+    /// </summary>
+    public IntelligenceX.Telemetry.Usage.IIntelligenceXUsageTelemetrySessionFactory? UsageTelemetrySessionFactory { get; set; }
 
     /// <summary>
     /// Validates the options and throws on invalid configuration.

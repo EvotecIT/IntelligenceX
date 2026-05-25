@@ -3,6 +3,7 @@ using IntelligenceX.Copilot;
 using IntelligenceX.OpenAI.AppServer;
 using IntelligenceX.OpenAI.CompatibleHttp;
 using IntelligenceX.OpenAI.Native;
+using IntelligenceX.Telemetry.Usage;
 
 namespace IntelligenceX.OpenAI;
 
@@ -86,6 +87,10 @@ public sealed class IntelligenceXClientOptions {
     /// Optional logical source path used for the usage telemetry root.
     /// </summary>
     public string? UsageTelemetrySourcePath { get; set; }
+    /// <summary>
+    /// Optional factory used to attach persistent usage telemetry storage.
+    /// </summary>
+    public IIntelligenceXUsageTelemetrySessionFactory? UsageTelemetrySessionFactory { get; set; }
 
     /// <summary>
     /// Validates the configuration and throws on invalid values.

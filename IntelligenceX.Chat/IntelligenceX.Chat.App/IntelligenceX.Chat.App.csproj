@@ -27,6 +27,7 @@
 
   <ItemGroup>
     <!-- Use a stable WinAppSDK version. -->
+    <PackageReference Include="DBAClientX.SQLite" Version="0.6.0" />
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.250907003" />
     <PackageReference Include="OfficeIMO.MarkdownRenderer" Version="$(OfficeImoMarkdownRendererNuGetVersion)" />
     <PackageReference Include="OfficeIMO.Markdown" Version="$(OfficeImoMarkdownNuGetVersion)" />

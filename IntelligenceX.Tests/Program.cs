@@ -349,6 +349,10 @@ internal static partial class Program {
             TestCodexSessionUsageAdapterDoesNotDuplicateSessionsRootArtifacts);
         failed += Run("Codex session usage adapter does not duplicate archived session copies",
             TestCodexSessionUsageAdapterDoesNotDuplicateArchivedSessionCopies);
+        failed += Run("Codex local state diagnostics flags extended paths and metadata",
+            TestCodexLocalStateDiagnosticsFlagsExtendedPathsAndMetadata);
+        failed += Run("Codex local state diagnostics ignores path syntax in text columns",
+            TestCodexLocalStateDiagnosticsIgnoresPathSyntaxInTextColumns);
 #if !NET472
         failed += Run("GitHub owner scope resolver returns administered organizations with public repos", TestGitHubOwnerScopeResolverReturnsAdministeredOrganizationsWithPublicRepos);
         failed += Run("GitHub overview collector appends correlated owners for user runs", TestGitHubOverviewDataCollectorAppendsCorrelatedOwnersForUserRuns);

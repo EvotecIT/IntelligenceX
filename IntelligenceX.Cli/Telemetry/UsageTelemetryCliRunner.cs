@@ -10,6 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using IntelligenceX.Cli.GitHub;
 using IntelligenceX.Json;
+using IntelligenceX.Telemetry.GitHub;
 using IntelligenceX.Telemetry.Limits;
 using IntelligenceX.Telemetry.Usage;
 using IntelligenceX.Visualization.Heatmaps;
@@ -1766,7 +1767,18 @@ internal static class UsageTelemetryCliRunner {
     }
 
     private static void WriteOverviewArtifacts(UsageTelemetryOverviewDocument overview, string outputDirectory) {
-        UsageTelemetryReportBundleWriter.WriteOverviewBundle(overview, outputDirectory);
+        UsageTelemetryReportBundleWriter.WriteOverviewBundle(
+            overview,
+            outputDirectory,
+            TryLoadGitHubObservabilitySummary());
+    }
+
+    private static GitHubObservabilitySummaryData? TryLoadGitHubObservabilitySummary() {
+        try {
+            return new SqliteGitHubObservabilitySummaryService().Load();
+        } catch {
+            return null;
+        }
     }
 
     private static bool MatchesProvider(string providerId, string? filter) {
