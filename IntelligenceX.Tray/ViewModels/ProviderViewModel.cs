@@ -170,6 +170,7 @@ public sealed class ProviderViewModel : ViewModelBase {
     private HashSet<string> _providerComparisonFavorites = new(StringComparer.OrdinalIgnoreCase);
     private GitCodeChurnSummaryData _codeChurnSummary = GitCodeChurnSummaryData.Empty;
     private GitCodeUsageCorrelationSummaryData _codeUsageCorrelationSummary = GitCodeUsageCorrelationSummaryData.Empty;
+    private GitHubObservabilitySummaryData _gitHubObservabilitySummary = GitHubObservabilitySummaryData.Empty;
     private GitHubLocalActivityCorrelationSummaryData _gitHubLocalActivityCorrelationSummary = GitHubLocalActivityCorrelationSummaryData.Empty;
     private GitHubRepositoryClusterSummaryData _gitHubRepositoryClusterSummary = GitHubRepositoryClusterSummaryData.Empty;
 
@@ -1281,6 +1282,10 @@ public sealed class ProviderViewModel : ViewModelBase {
         if (IsCombinedProvider) {
             RebuildSelectedRangeViews();
         }
+    }
+
+    internal void ApplyGitHubObservabilitySummary(GitHubObservabilitySummaryData? summary) {
+        _gitHubObservabilitySummary = summary ?? GitHubObservabilitySummaryData.Empty;
     }
 
     internal void ApplyGitHubRepositoryClusterSummary(GitHubRepositoryClusterSummaryData? summary) {
@@ -3204,7 +3209,11 @@ public sealed class ProviderViewModel : ViewModelBase {
                     Subtitle = "Tray explorer: " + TodayLabel + " | " + BuildFilterSummary(),
                     Metadata = BuildReportMetadata()
                 })).ConfigureAwait(true);
-            var reportPath = await Task.Run(() => UsageTelemetryOverviewReportExporter.WriteBundle(overview, outputDirectory)).ConfigureAwait(true);
+            var gitHubObservabilitySummary = _gitHubObservabilitySummary;
+            var reportPath = await Task.Run(() => UsageTelemetryOverviewReportExporter.WriteBundle(
+                overview,
+                outputDirectory,
+                gitHubObservabilitySummary)).ConfigureAwait(true);
 
             Process.Start(new ProcessStartInfo {
                 FileName = reportPath,

@@ -2777,6 +2777,46 @@ internal static partial class Program {
         }
     }
 
+    private static void TestUsageTelemetryOverviewReportExporterCarriesGitHubObservabilitySummary() {
+        var summary = new UsageSummarySnapshot {
+            Metric = UsageSummaryMetric.TotalTokens,
+            StartDayUtc = new DateTime(2025, 03, 14),
+            EndDayUtc = new DateTime(2026, 03, 12),
+            TotalValue = 0m,
+            TotalDays = 365,
+            ActiveDays = 71,
+            PeakDayUtc = new DateTime(2026, 03, 11),
+            PeakValue = 18m
+        };
+        var overview = new UsageTelemetryOverviewDocument(
+            title: "Usage Overview",
+            subtitle: "@przemyslawklys",
+            metric: UsageSummaryMetric.TotalTokens,
+            units: "tokens",
+            summary: summary,
+            cards: Array.Empty<UsageTelemetryOverviewCard>(),
+            heatmaps: Array.Empty<UsageTelemetryOverviewHeatmap>(),
+            providerSections: new[] { CreateSampleGitHubOverviewSection() });
+
+        var tempPath = Path.Combine(Path.GetTempPath(), "ix-report-exporter-github-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempPath);
+        try {
+            var reportPath = UsageTelemetryOverviewReportExporter.WriteBundle(
+                overview,
+                tempPath,
+                CreateSampleGitHubObservabilitySummary());
+
+            var html = File.ReadAllText(reportPath);
+            var wrappedHtml = File.ReadAllText(Path.Combine(tempPath, "github-wrapped.html"));
+            AssertContainsText(html, "Watched repo momentum", "overview report carries watched repository summary");
+            AssertContainsText(wrappedHtml, "Watched repo momentum", "wrapped report carries watched repository summary");
+        } finally {
+            if (Directory.Exists(tempPath)) {
+                Directory.Delete(tempPath, recursive: true);
+            }
+        }
+    }
+
     private static UsageTelemetryOverviewProviderSection CreateSampleGitHubOverviewSection() {
         return new UsageTelemetryOverviewProviderSection(
             key: "provider-github",

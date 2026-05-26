@@ -149,7 +149,7 @@ public sealed class IntelligenceXClient : IDisposable
         }
 
         if (options.UsageTelemetrySessionFactory is null) {
-            throw new NotSupportedException("Persistent usage telemetry requires a storage provider. Reference IntelligenceX.Storage.SQLite and set UsageTelemetrySessionFactory to SqliteInternalIxUsageTelemetrySessionFactory.");
+            return null;
         }
 
         return options.UsageTelemetrySessionFactory.TryCreate(client, options);

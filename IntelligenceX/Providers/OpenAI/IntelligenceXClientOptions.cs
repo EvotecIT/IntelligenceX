@@ -88,7 +88,7 @@ public sealed class IntelligenceXClientOptions {
     /// </summary>
     public string? UsageTelemetrySourcePath { get; set; }
     /// <summary>
-    /// Optional factory used to attach persistent usage telemetry storage.
+    /// Optional factory used to attach persistent usage telemetry storage. When omitted, telemetry persistence is skipped.
     /// </summary>
     public IIntelligenceXUsageTelemetrySessionFactory? UsageTelemetrySessionFactory { get; set; }
 

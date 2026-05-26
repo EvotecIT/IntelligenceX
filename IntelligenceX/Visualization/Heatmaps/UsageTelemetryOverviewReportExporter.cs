@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using IntelligenceX.Telemetry.GitHub;
 
 namespace IntelligenceX.Visualization.Heatmaps;
 
@@ -20,6 +21,22 @@ public static class UsageTelemetryOverviewReportExporter {
 
         Directory.CreateDirectory(outputDirectory);
         UsageTelemetryReportBundleWriter.WriteOverviewBundle(overview, outputDirectory);
+        return Path.Combine(outputDirectory, "index.html");
+    }
+
+    internal static string WriteBundle(
+        UsageTelemetryOverviewDocument overview,
+        string outputDirectory,
+        GitHubObservabilitySummaryData? gitHubObservabilitySummary) {
+        if (overview is null) {
+            throw new ArgumentNullException(nameof(overview));
+        }
+        if (string.IsNullOrWhiteSpace(outputDirectory)) {
+            throw new ArgumentException("Output directory cannot be null or whitespace.", nameof(outputDirectory));
+        }
+
+        Directory.CreateDirectory(outputDirectory);
+        UsageTelemetryReportBundleWriter.WriteOverviewBundle(overview, outputDirectory, gitHubObservabilitySummary);
         return Path.Combine(outputDirectory, "index.html");
     }
 }
