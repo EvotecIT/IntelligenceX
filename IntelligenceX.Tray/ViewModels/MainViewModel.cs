@@ -1827,6 +1827,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     private static void ApplyGitHubObservabilitySummary(
         IEnumerable<ProviderViewModel> providers,
         GitHubObservabilitySummaryData summary) {
+        // Detailed report export is launched from the combined provider, so keep this snapshot there.
         foreach (var provider in providers.Where(static provider =>
                      string.Equals(provider.ProviderId, "__all__", StringComparison.Ordinal))) {
             provider.ApplyGitHubObservabilitySummary(summary);
