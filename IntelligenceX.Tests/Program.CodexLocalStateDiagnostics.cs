@@ -112,6 +112,58 @@ internal static partial class Program {
         }
     }
 
+    private static void TestCodexLocalStateDiagnosticsHandlesMigrationDefaultValues() {
+        var root = CreateCodexDiagnosticsTempDirectory();
+        try {
+            var codexHome = Path.Combine(root, ".codex");
+            Directory.CreateDirectory(codexHome);
+            var dbPath = Path.Combine(codexHome, "state_5.sqlite");
+            var sqlite = new SQLite();
+            sqlite.ExecuteNonQuery(
+                dbPath,
+                """
+                CREATE TABLE _sqlx_migrations (
+                    version BIGINT PRIMARY KEY,
+                    description TEXT NOT NULL,
+                    installed_on TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );
+                """);
+            sqlite.ExecuteNonQuery(
+                dbPath,
+                """
+                CREATE TABLE threads (
+                    id TEXT PRIMARY KEY,
+                    title TEXT,
+                    first_user_message TEXT,
+                    cwd TEXT,
+                    archived INTEGER
+                );
+                """);
+            sqlite.ExecuteNonQuery(
+                dbPath,
+                """
+                INSERT INTO threads (id, title, first_user_message, cwd, archived)
+                VALUES (@id, @title, @preview, @cwd, 0);
+                """,
+                new Dictionary<string, object?> {
+                    ["@id"] = "cccccccc-cccc-cccc-cccc-cccccccccccc",
+                    ["@title"] = "short title",
+                    ["@preview"] = "short preview",
+                    ["@cwd"] = @"\\?\C:\Support\GitHub\Example"
+                });
+
+            var service = new CodexLocalStateDiagnosticsService();
+            var diagnostics = service.CollectAsync(codexHome).GetAwaiter().GetResult();
+
+            AssertEqual(CodexLocalStateHealthStatus.Warning, diagnostics.Status, "codex migrations default status");
+            AssertEqual(true, diagnostics.CanConnect, "codex migrations default can connect");
+            AssertEqual(1, diagnostics.ExtendedPathCount, "codex migrations default extended path count");
+            AssertEqual(true, diagnostics.Findings.Any(f => f.Key == "extended-paths:threads.cwd"), "codex migrations default cwd finding");
+        } finally {
+            TryDeleteCodexDiagnosticsDirectory(root);
+        }
+    }
+
     private static string CreateCodexDiagnosticsTempDirectory() {
         var path = Path.Combine(Path.GetTempPath(), "ix-codex-diagnostics-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(path);

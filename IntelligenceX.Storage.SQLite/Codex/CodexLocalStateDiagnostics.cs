@@ -9,6 +9,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using DBAClientX;
+using Microsoft.Data.Sqlite;
 
 namespace IntelligenceX.Codex;
 
@@ -232,25 +233,17 @@ public sealed class CodexLocalStateDiagnosticsService {
                 continue;
             }
 
-            foreach (var column in ToRows(_sqlite.Query(stateDb, $"PRAGMA table_info({QuoteString(table)});"))) {
-                var columnName = Convert.ToString(column["name"], CultureInfo.InvariantCulture);
-                var columnType = Convert.ToString(column["type"], CultureInfo.InvariantCulture);
-                if (string.IsNullOrWhiteSpace(columnName)) {
-                    continue;
-                }
-
-                if (IsTextColumn(columnType) && IsPathColumn(columnName)) {
-                    columns.Add((table, columnName));
-                }
-            }
+            columns.AddRange(GetTableColumns(stateDb, table)
+                .Where(static column => IsTextColumn(column.Type) && IsPathColumn(column.Name))
+                .Select(column => (table, column.Name)));
         }
 
         return columns;
     }
 
     private (int ActiveThreads, int OversizedRows) CountThreadMetadata(string stateDb) {
-        var columns = ToRows(_sqlite.Query(stateDb, "PRAGMA table_info('threads');"))
-            .Select(static row => Convert.ToString(row["name"], CultureInfo.InvariantCulture) ?? string.Empty)
+        var columns = GetTableColumns(stateDb, "threads")
+            .Select(static column => column.Name)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         if (!columns.Contains("title")) {
             return (0, 0);
@@ -280,6 +273,32 @@ public sealed class CodexLocalStateDiagnosticsService {
         return (
             Convert.ToInt32(row["active_count"], CultureInfo.InvariantCulture),
             Convert.ToInt32(row["oversized_count"], CultureInfo.InvariantCulture));
+    }
+
+    private static IReadOnlyList<(string Name, string Type)> GetTableColumns(string stateDb, string table) {
+        var columns = new List<(string Name, string Type)>();
+        var builder = new SqliteConnectionStringBuilder {
+            DataSource = stateDb,
+            Mode = SqliteOpenMode.ReadOnly
+        };
+        using var connection = new SqliteConnection(builder.ConnectionString);
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = $"PRAGMA table_info({QuoteString(table)});";
+        using var reader = command.ExecuteReader();
+        var nameOrdinal = reader.GetOrdinal("name");
+        var typeOrdinal = reader.GetOrdinal("type");
+        while (reader.Read()) {
+            var name = reader.IsDBNull(nameOrdinal) ? string.Empty : reader.GetString(nameOrdinal);
+            if (string.IsNullOrWhiteSpace(name)) {
+                continue;
+            }
+
+            var type = reader.IsDBNull(typeOrdinal) ? string.Empty : reader.GetString(typeOrdinal);
+            columns.Add((name, type));
+        }
+
+        return columns;
     }
 
     private static int CountConfigExtendedPaths(string codexHome) {
