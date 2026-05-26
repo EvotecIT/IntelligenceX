@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using IntelligenceX.Telemetry.GitHub;
 
 namespace IntelligenceX.Visualization.Heatmaps;
 
@@ -11,6 +12,13 @@ public static class UsageTelemetryOverviewReportExporter {
     /// Writes a telemetry overview bundle and returns the main HTML report path.
     /// </summary>
     public static string WriteBundle(UsageTelemetryOverviewDocument overview, string outputDirectory) {
+        return WriteBundle(overview, outputDirectory, gitHubObservabilitySummary: null);
+    }
+
+    internal static string WriteBundle(
+        UsageTelemetryOverviewDocument overview,
+        string outputDirectory,
+        GitHubObservabilitySummaryData? gitHubObservabilitySummary) {
         if (overview is null) {
             throw new ArgumentNullException(nameof(overview));
         }
@@ -19,7 +27,7 @@ public static class UsageTelemetryOverviewReportExporter {
         }
 
         Directory.CreateDirectory(outputDirectory);
-        UsageTelemetryReportBundleWriter.WriteOverviewBundle(overview, outputDirectory);
+        UsageTelemetryReportBundleWriter.WriteOverviewBundle(overview, outputDirectory, gitHubObservabilitySummary);
         return Path.Combine(outputDirectory, "index.html");
     }
 }

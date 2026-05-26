@@ -51,6 +51,33 @@ internal static partial class Program {
         }
     }
 
+    private static void TestIntelligenceXClientSkipsUsageTelemetryWhenFactoryUnset() {
+        var dbDirectory = Path.Combine(Path.GetTempPath(), $"ix-usage-runtime-no-factory-{Guid.NewGuid():N}");
+        var dbPath = Path.Combine(dbDirectory, "usage.db");
+        Directory.CreateDirectory(dbDirectory);
+        try {
+            var options = new IntelligenceXClientOptions {
+                AutoInitialize = false,
+                TransportKind = OpenAITransportKind.CompatibleHttp,
+                EnableUsageTelemetry = true,
+                UsageTelemetryDatabasePath = dbPath
+            };
+            options.CompatibleHttpOptions.BaseUrl = "http://localhost:1234/v1";
+            options.CompatibleHttpOptions.AllowInsecureHttp = true;
+
+            using var client = IntelligenceXClient.ConnectAsync(options).GetAwaiter().GetResult();
+
+            AssertNotNull(client, "client without telemetry factory");
+            AssertEqual(false, File.Exists(dbPath), "client without telemetry factory should not create usage db");
+        } finally {
+            try {
+                Directory.Delete(dbDirectory, recursive: true);
+            } catch {
+                // best-effort cleanup
+            }
+        }
+    }
+
     private static void TestInternalIxUsageTelemetrySessionPersistsTurnsToSqlite() {
         var dbDirectory = Path.Combine(Path.GetTempPath(), $"ix-usage-runtime-{Guid.NewGuid():N}");
         var dbPath = Path.Combine(dbDirectory, "usage.db");

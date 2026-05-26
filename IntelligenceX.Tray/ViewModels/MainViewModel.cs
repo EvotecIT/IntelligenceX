@@ -1797,6 +1797,9 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         _latestGitHubRepositoryClusterSummary = BuildGitHubRepositoryClusterSummary();
         GitHub.ApplyLocalActivityCorrelationSummary(_latestGitHubLocalActivityCorrelationSummary);
         GitHub.ApplyRepositoryClusterSummary(_latestGitHubRepositoryClusterSummary);
+        ApplyGitHubObservabilitySummary(
+            providers ?? Providers,
+            _latestGitHubObservabilitySummary);
         ApplyGitHubLocalActivityCorrelationSummary(
             providers ?? Providers,
             _latestGitHubLocalActivityCorrelationSummary);
@@ -1818,6 +1821,16 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         foreach (var provider in providers.Where(static provider =>
                      string.Equals(provider.ProviderId, "__all__", StringComparison.Ordinal))) {
             provider.ApplyGitHubLocalActivityCorrelationSummary(summary);
+        }
+    }
+
+    private static void ApplyGitHubObservabilitySummary(
+        IEnumerable<ProviderViewModel> providers,
+        GitHubObservabilitySummaryData summary) {
+        // Detailed report export is launched from the combined provider, so keep this snapshot there.
+        foreach (var provider in providers.Where(static provider =>
+                     string.Equals(provider.ProviderId, "__all__", StringComparison.Ordinal))) {
+            provider.ApplyGitHubObservabilitySummary(summary);
         }
     }
 

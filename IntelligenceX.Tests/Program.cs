@@ -259,6 +259,8 @@ internal static partial class Program {
             TestUsageTelemetryGitHubWrappedCardPageModelBuilderAddsWatchedMomentumWhenProvided);
         failed += Run("Usage report bundle writer publishes shared assets",
             TestUsageTelemetryReportBundleWriterPublishesSharedAssets);
+        failed += Run("Usage telemetry overview report exporter carries GitHub observability summary",
+            TestUsageTelemetryOverviewReportExporterCarriesGitHubObservabilitySummary);
         failed += Run("IntelligenceX client emits turn completed telemetry",
             TestIntelligenceXClientEmitsTurnCompletedTelemetry);
         failed += Run("EasySession forwards telemetry labels", TestEasySessionForwardsTelemetryLabels);
@@ -270,6 +272,8 @@ internal static partial class Program {
             TestUsageTelemetryPathResolverHonorsEnvironmentOverrides);
         failed += Run("Usage telemetry path resolver disables when flag off",
             TestUsageTelemetryPathResolverDisablesWhenFlagOff);
+        failed += Run("IntelligenceX client skips usage telemetry when factory unset",
+            TestIntelligenceXClientSkipsUsageTelemetryWhenFactoryUnset);
         failed += Run("Internal IX usage telemetry session persists turns to sqlite",
             TestInternalIxUsageTelemetrySessionPersistsTurnsToSqlite);
         failed += Run("Internal IX usage telemetry session classifies native transport as ChatGPT",
