@@ -9,6 +9,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
 using IntelligenceX.OpenAI.Usage;
+using IntelligenceX.Codex;
 using IntelligenceX.Telemetry.Git;
 using IntelligenceX.Telemetry.GitHub;
 using IntelligenceX.Telemetry.Limits;
@@ -36,12 +37,17 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     private static readonly Geometry ThemeAutoIcon = CreateFrozenGeometry("M12 3C7.03 3 3 7.03 3 12H1L4 15L7 12H5C5 8.13 8.13 5 12 5C14.12 5 16.03 5.93 17.33 7.4L18.75 5.98C17.1 4.15 14.7 3 12 3ZM20 9L17 12H19C19 15.87 15.87 19 12 19C9.88 19 7.97 18.07 6.67 16.6L5.25 18.02C6.9 19.85 9.3 21 12 21C16.97 21 21 16.97 21 12H23L20 9Z");
     private static readonly Geometry ThemeDarkIcon = CreateFrozenGeometry("M20.5 14.15C18.97 15.02 17.2 15.46 15.36 15.28C10.9 14.86 7.36 11.32 6.94 6.86C6.76 5.02 7.2 3.25 8.07 1.72C4.55 3.14 2.05 6.6 2.05 10.65C2.05 15.96 6.36 20.27 11.67 20.27C15.72 20.27 19.08 17.77 20.5 14.15Z");
     private static readonly Geometry ThemeLightIcon = CreateFrozenGeometry("M12 4.5C7.86 4.5 4.5 7.86 4.5 12C4.5 16.14 7.86 19.5 12 19.5C16.14 19.5 19.5 16.14 19.5 12C19.5 7.86 16.14 4.5 12 4.5ZM12 7C14.76 7 17 9.24 17 12C17 14.76 14.76 17 12 17C9.24 17 7 14.76 7 12C7 9.24 9.24 7 12 7ZM11 1H13V4H11V1ZM11 20H13V23H11V20ZM20 11H23V13H20V11ZM1 11H4V13H1V11ZM18.36 4.22L19.78 5.64L17.66 7.76L16.24 6.34L18.36 4.22ZM4.22 18.36L6.34 16.24L7.76 17.66L5.64 19.78L4.22 18.36ZM17.66 16.24L19.78 18.36L18.36 19.78L16.24 17.66L17.66 16.24ZM4.22 5.64L5.64 4.22L7.76 6.34L6.34 7.76L4.22 5.64Z");
+    private static readonly Brush CodexHealthyBrush = CreateFrozenBrush(0x50, 0xd8, 0x80);
+    private static readonly Brush CodexWarningBrush = CreateFrozenBrush(0xf0, 0xc0, 0x40);
+    private static readonly Brush CodexErrorBrush = CreateFrozenBrush(0xff, 0x6b, 0x6b);
+    private static readonly Brush CodexUnknownBrush = CreateFrozenBrush(0x90, 0x90, 0xb8);
 
     private readonly UsageTelemetrySnapshotService _usageService;
+    private readonly CodexLocalStateDiagnosticsService _codexDiagnosticsService;
     private readonly ProviderLimitSnapshotService _limitService;
     private readonly GitHubService _gitHubService;
     private readonly GitCodeChurnSummaryService _gitCodeChurnSummaryService;
-    private readonly GitHubObservabilitySummaryService _gitHubObservabilitySummaryService;
+    private readonly SqliteGitHubObservabilitySummaryService _gitHubObservabilitySummaryService;
     private readonly GitHubRepositoryWatchAutoSyncService _gitHubWatchAutoSyncService;
     private readonly TrayPreferencesStore _preferencesStore;
     private readonly TrayUsageSnapshotStore _usageSnapshotStore;
@@ -60,13 +66,17 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     private Dictionary<string, ProviderRefreshSnapshot> _previousProviderSnapshots = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, Queue<ProviderRefreshSnapshot>> _providerRefreshHistory = new(StringComparer.OrdinalIgnoreCase);
     private UsageTelemetrySnapshotHealth? _latestUsageHealth;
+    private CodexLocalStateDiagnostics? _latestCodexDiagnostics;
     private GitCodeChurnSummaryData _latestGitCodeChurnSummary = GitCodeChurnSummaryData.Empty;
     private GitHubObservabilitySummaryData _latestGitHubObservabilitySummary = GitHubObservabilitySummaryData.Empty;
     private GitHubLocalActivityCorrelationSummaryData _latestGitHubLocalActivityCorrelationSummary = GitHubLocalActivityCorrelationSummaryData.Empty;
     private GitHubRepositoryClusterSummaryData _latestGitHubRepositoryClusterSummary = GitHubRepositoryClusterSummaryData.Empty;
     private ProviderViewModel? _selectedProvider;
     private bool _isLoading;
+    private bool _isCodexDiagnosticsLoading;
     private string _statusText = "Initializing...";
+    private string _codexDiagnosticsStatusText = "Codex state not scanned";
+    private string _codexDiagnosticsDetailText = "Waiting for first local state check.";
     private string _loadingDetailText = "Preparing tray refresh...";
     private double _loadingProgressValue;
     private double _loadingProgressMaximum = 1d;
@@ -97,14 +107,16 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
 
     internal MainViewModel(
         UsageTelemetrySnapshotService usageService,
+        CodexLocalStateDiagnosticsService codexDiagnosticsService,
         ProviderLimitSnapshotService limitService,
         GitHubService gitHubService,
         GitCodeChurnSummaryService gitCodeChurnSummaryService,
-        GitHubObservabilitySummaryService gitHubObservabilitySummaryService,
+        SqliteGitHubObservabilitySummaryService gitHubObservabilitySummaryService,
         GitHubRepositoryWatchAutoSyncService gitHubWatchAutoSyncService,
         TrayPreferencesStore preferencesStore,
         TrayUsageSnapshotStore usageSnapshotStore) {
         _usageService = usageService;
+        _codexDiagnosticsService = codexDiagnosticsService;
         _limitService = limitService;
         _gitHubService = gitHubService;
         _gitCodeChurnSummaryService = gitCodeChurnSummaryService;
@@ -135,8 +147,10 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         GitHub.PropertyChanged += OnGitHubPropertyChanged;
 
         RefreshCommand = new RelayCommand(() => RefreshAsync(startupWarmup: false));
+        RefreshCodexDiagnosticsCommand = new RelayCommand(RefreshCodexDiagnosticsAsync, () => !IsCodexDiagnosticsLoading);
         RefreshGitHubCommand = new RelayCommand(RefreshGitHubCurrentAsync);
         OpenOpenAiCacheCommand = new RelayCommand(OpenOpenAiCacheAsync);
+        OpenCodexHomeCommand = new RelayCommand(OpenCodexHomeAsync);
         CycleThemeModeCommand = new RelayCommand(CycleThemeModeAsync);
         ToggleSelectedProviderFavoriteCommand = new RelayCommand(ToggleSelectedProviderFavoriteAsync, () => CanToggleFavoriteSelectedProvider);
 
@@ -236,6 +250,16 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         }
     }
 
+    public bool IsCodexDiagnosticsLoading {
+        get => _isCodexDiagnosticsLoading;
+        private set {
+            if (SetProperty(ref _isCodexDiagnosticsLoading, value)) {
+                OnPropertyChanged(nameof(CodexDiagnosticsActionLabel));
+                RefreshCodexDiagnosticsCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
     public string StatusText {
         get => _statusText;
         set {
@@ -275,6 +299,50 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     public string FooterStatusText => IsLoading && !string.IsNullOrWhiteSpace(LoadingDetailText)
         ? BuildLoadingStatusText(LoadingDetailText)
         : StatusText;
+
+    public string CodexDiagnosticsStatusText {
+        get => _codexDiagnosticsStatusText;
+        private set => SetProperty(ref _codexDiagnosticsStatusText, value);
+    }
+
+    public string CodexDiagnosticsDetailText {
+        get => _codexDiagnosticsDetailText;
+        private set => SetProperty(ref _codexDiagnosticsDetailText, value);
+    }
+
+    public string CodexDiagnosticsIssueText {
+        get {
+            if (_latestCodexDiagnostics is null) {
+                return "Not scanned";
+            }
+
+            var count = _latestCodexDiagnostics.Findings.Count;
+            return count == 1 ? "1 finding" : count.ToString(CultureInfo.InvariantCulture) + " findings";
+        }
+    }
+
+    public string CodexDiagnosticsDatabaseText {
+        get {
+            if (_latestCodexDiagnostics is null) {
+                return "No database snapshot";
+            }
+
+            if (!_latestCodexDiagnostics.DatabaseExists && !_latestCodexDiagnostics.CanConnect) {
+                return "No database snapshot";
+            }
+
+            return FormatBytes(_latestCodexDiagnostics.StateDatabaseTotalBytes) + " state";
+        }
+    }
+
+    public string CodexDiagnosticsActionLabel => IsCodexDiagnosticsLoading ? "Checking" : "Check";
+
+    public Brush CodexDiagnosticsStatusBrush => _latestCodexDiagnostics?.Status switch {
+        CodexLocalStateHealthStatus.Healthy => CodexHealthyBrush,
+        CodexLocalStateHealthStatus.Warning => CodexWarningBrush,
+        CodexLocalStateHealthStatus.Error => CodexErrorBrush,
+        _ => CodexUnknownBrush
+    };
 
     public DateTimeOffset LastRefreshed {
         get => _lastRefreshed;
@@ -364,12 +432,15 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     public string AccentToolTip => "Accent: " + TrayThemeService.GetAccentDisplayName(AccentPreset) + ". Use the tray context menu to switch presets.";
 
     public RelayCommand RefreshCommand { get; }
+    public RelayCommand RefreshCodexDiagnosticsCommand { get; }
     public RelayCommand RefreshGitHubCommand { get; }
     public RelayCommand OpenOpenAiCacheCommand { get; }
+    public RelayCommand OpenCodexHomeCommand { get; }
     public RelayCommand CycleThemeModeCommand { get; }
     public RelayCommand ToggleSelectedProviderFavoriteCommand { get; }
 
     public async Task InitializeAsync() {
+        _ = RefreshCodexDiagnosticsAsync();
         var cachedUsageSnapshot = await LoadBestCachedUsageSnapshotAsync().ConfigureAwait(true);
         var loadedCachedUsageSnapshot = ApplyCachedUsageSnapshot(cachedUsageSnapshot);
         ConfigureRefreshTimer();
@@ -993,6 +1064,70 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         return Task.CompletedTask;
     }
 
+    private async Task RefreshCodexDiagnosticsAsync() {
+        if (IsCodexDiagnosticsLoading) {
+            return;
+        }
+
+        IsCodexDiagnosticsLoading = true;
+        CodexDiagnosticsStatusText = "Checking Codex state...";
+        CodexDiagnosticsDetailText = "Reading local SQLite state and config metadata.";
+        try {
+            var diagnostics = await Task.Run(
+                () => _codexDiagnosticsService.CollectAsync(),
+                CancellationToken.None).ConfigureAwait(true);
+            _latestCodexDiagnostics = diagnostics;
+            CodexDiagnosticsStatusText = diagnostics.StatusText;
+            CodexDiagnosticsDetailText = diagnostics.DetailText;
+            OnPropertyChanged(nameof(CodexDiagnosticsIssueText));
+            OnPropertyChanged(nameof(CodexDiagnosticsDatabaseText));
+            OnPropertyChanged(nameof(CodexDiagnosticsStatusBrush));
+        } catch (Exception ex) {
+            _latestCodexDiagnostics = new CodexLocalStateDiagnostics {
+                CodexHome = CodexLocalStateDiagnosticsService.ResolveDefaultCodexHome(),
+                Status = CodexLocalStateHealthStatus.Error,
+                StatusText = "Codex state check failed",
+                DetailText = ex.Message,
+                Findings = [
+                    new CodexLocalStateFinding(
+                        "codex-state-scan-failed",
+                        CodexLocalStateHealthStatus.Error,
+                        ex.Message)
+                ]
+            };
+            CodexDiagnosticsStatusText = _latestCodexDiagnostics.StatusText;
+            CodexDiagnosticsDetailText = _latestCodexDiagnostics.DetailText;
+            OnPropertyChanged(nameof(CodexDiagnosticsIssueText));
+            OnPropertyChanged(nameof(CodexDiagnosticsDatabaseText));
+            OnPropertyChanged(nameof(CodexDiagnosticsStatusBrush));
+        } finally {
+            IsCodexDiagnosticsLoading = false;
+        }
+    }
+
+    private Task OpenCodexHomeAsync() {
+        try {
+            var path = _latestCodexDiagnostics?.CodexHome;
+            if (string.IsNullOrWhiteSpace(path)) {
+                path = CodexLocalStateDiagnosticsService.ResolveDefaultCodexHome();
+            }
+
+            Directory.CreateDirectory(path);
+            Process.Start(new ProcessStartInfo {
+                FileName = path,
+                UseShellExecute = true
+            });
+        } catch (Exception ex) {
+            MessageBox.Show(
+                "Unable to open the Codex home folder.\n\n" + ex.Message,
+                "Codex State",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+        }
+
+        return Task.CompletedTask;
+    }
+
     private async Task RefreshGitHubAsync(string? ghLogin, string? autoLoadKey = null) {
         var dispatcher = Application.Current.Dispatcher;
         var currentVersion = Interlocked.Increment(ref _gitHubRefreshVersion);
@@ -1201,6 +1336,30 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         var geometry = Geometry.Parse(data);
         geometry.Freeze();
         return geometry;
+    }
+
+    private static Brush CreateFrozenBrush(byte red, byte green, byte blue) {
+        var brush = new SolidColorBrush(Color.FromRgb(red, green, blue));
+        brush.Freeze();
+        return brush;
+    }
+
+    private static string FormatBytes(long bytes) {
+        if (bytes <= 0) {
+            return "0 B";
+        }
+
+        string[] units = ["B", "KB", "MB", "GB"];
+        var value = (double)bytes;
+        var unitIndex = 0;
+        while (value >= 1024d && unitIndex < units.Length - 1) {
+            value /= 1024d;
+            unitIndex++;
+        }
+
+        return unitIndex == 0
+            ? bytes.ToString(CultureInfo.InvariantCulture) + " " + units[unitIndex]
+            : value.ToString("0.0", CultureInfo.InvariantCulture) + " " + units[unitIndex];
     }
 
     private void ConfigureRefreshTimer() {

@@ -5,6 +5,7 @@ using System.IO;
 using IntelligenceX.Presentation;
 using H.NotifyIcon;
 using H.NotifyIcon.Core;
+using IntelligenceX.Codex;
 using IntelligenceX.Telemetry.Git;
 using IntelligenceX.Telemetry.GitHub;
 using IntelligenceX.Telemetry.Limits;
@@ -57,15 +58,17 @@ public partial class App : Application {
 
             _usageArtifactStore = new SqliteRawArtifactStore(ResolveTrayUsageCachePath());
             var usageService = new UsageTelemetrySnapshotService(_usageArtifactStore);
+            var codexDiagnosticsService = new CodexLocalStateDiagnosticsService();
             var limitService = new ProviderLimitSnapshotService();
             var gitHubService = new GitHubService();
             var gitCodeChurnSummaryService = new GitCodeChurnSummaryService();
-            var gitHubObservabilitySummaryService = new GitHubObservabilitySummaryService();
+            var gitHubObservabilitySummaryService = new SqliteGitHubObservabilitySummaryService();
             var gitHubWatchAutoSyncService = new GitHubRepositoryWatchAutoSyncService();
             var preferencesStore = new TrayPreferencesStore();
             var usageSnapshotStore = new TrayUsageSnapshotStore();
             _viewModel = new MainViewModel(
                 usageService,
+                codexDiagnosticsService,
                 limitService,
                 gitHubService,
                 gitCodeChurnSummaryService,
@@ -286,6 +289,12 @@ public partial class App : Application {
             if (_viewModel is not null) await _viewModel.OpenOpenAiCacheAsync();
         };
 
+        var codexHomeItem = new System.Windows.Controls.MenuItem { Header = "Open Codex Home" };
+        if (itemStyle is not null) codexHomeItem.Style = itemStyle;
+        codexHomeItem.Click += (_, _) => {
+            if (_viewModel is not null) _viewModel.OpenCodexHomeCommand.Execute(null);
+        };
+
         _gitHubWatchAutoSyncItem = new System.Windows.Controls.MenuItem {
             Header = "Auto Sync Watched Repos",
             IsCheckable = true,
@@ -353,6 +362,7 @@ public partial class App : Application {
         menu.Items.Add(autoRefreshItem);
         menu.Items.Add(_gitHubWatchAutoSyncItem);
         menu.Items.Add(cacheItem);
+        menu.Items.Add(codexHomeItem);
         menu.Items.Add(_notificationsItem);
         menu.Items.Add(_startWithWindowsItem);
         menu.Items.Add(_closeHidesToTrayItem);

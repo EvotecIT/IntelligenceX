@@ -15,6 +15,7 @@ using IntelligenceX.OpenAI;
 using IntelligenceX.OpenAI.AppServer.Models;
 using IntelligenceX.OpenAI.Chat;
 using IntelligenceX.OpenAI.Native;
+using IntelligenceX.Telemetry.Usage;
 
 namespace IntelligenceX.Reviewer;
 
@@ -33,7 +34,8 @@ internal sealed partial class ReviewRunner {
             DefaultModel = _settings.Model,
             TransportKind = _settings.OpenAITransport,
             EnableUsageTelemetry = true,
-            UsageTelemetryProviderAccountId = _settings.OpenAiAccountId
+            UsageTelemetryProviderAccountId = _settings.OpenAiAccountId,
+            UsageTelemetrySessionFactory = new SqliteInternalIxUsageTelemetrySessionFactory()
         };
         options.NativeOptions.AuthAccountId = _settings.OpenAiAccountId;
         if (options.TransportKind == OpenAITransportKind.AppServer) {

@@ -9,6 +9,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../IntelligenceX/IntelligenceX.csproj" />
+    <ProjectReference Include="../IntelligenceX.Storage.SQLite/IntelligenceX.Storage.SQLite.csproj" />
   </ItemGroup>
 
   <ItemGroup>

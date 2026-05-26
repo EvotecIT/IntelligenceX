@@ -235,7 +235,8 @@ public sealed class EasySession : IDisposable
             UsageTelemetryMachineId = options.UsageTelemetryMachineId,
             UsageTelemetryAccountLabel = options.UsageTelemetryAccountLabel,
             UsageTelemetryProviderAccountId = options.UsageTelemetryProviderAccountId,
-            UsageTelemetrySourcePath = options.UsageTelemetrySourcePath
+            UsageTelemetrySourcePath = options.UsageTelemetrySourcePath,
+            UsageTelemetrySessionFactory = options.UsageTelemetrySessionFactory
         };
 
         clientOptions.NativeOptions.AuthStore = options.NativeOptions.AuthStore;

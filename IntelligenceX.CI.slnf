@@ -3,6 +3,7 @@
     "path": "IntelligenceX.sln",
     "projects": [
       "IntelligenceX\\IntelligenceX.csproj",
+      "IntelligenceX.Storage.SQLite\\IntelligenceX.Storage.SQLite.csproj",
       "IntelligenceX.Examples\\IntelligenceX.Examples.csproj",
       "IntelligenceX.Tests\\IntelligenceX.Tests.csproj",
       "IntelligenceX.PowerShell\\IntelligenceX.PowerShell.csproj",

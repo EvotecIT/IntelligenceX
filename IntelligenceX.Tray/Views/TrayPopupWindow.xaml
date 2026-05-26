@@ -76,6 +76,7 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
@@ -318,8 +319,81 @@
                 </Grid>
             </Border>
 
+            <!-- ═══ CODEX STATE ═══ -->
+            <Border Grid.Row="2"
+                    Background="{StaticResource SectionStripBrush}"
+                    BorderBrush="{StaticResource BorderBrush}"
+                    BorderThickness="0,0,0,1"
+                    Padding="14,8">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Orientation="Horizontal" Grid.Column="0">
+                        <Ellipse Width="9"
+                                 Height="9"
+                                 Fill="{Binding CodexDiagnosticsStatusBrush}"
+                                 VerticalAlignment="Center"
+                                 Margin="0,0,9,0" />
+                        <StackPanel VerticalAlignment="Center">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="{Binding CodexDiagnosticsStatusText}"
+                                           FontFamily="{StaticResource AppFont}"
+                                           FontSize="12"
+                                           FontWeight="SemiBold"
+                                           Foreground="{StaticResource PrimaryTextBrush}"
+                                           TextTrimming="CharacterEllipsis"
+                                           MaxWidth="300" />
+                                <TextBlock Text="{Binding CodexDiagnosticsIssueText}"
+                                           FontFamily="{StaticResource AppFont}"
+                                           FontSize="10"
+                                           Foreground="{StaticResource TertiaryTextBrush}"
+                                           Margin="8,1,0,0" />
+                                <TextBlock Text="{Binding CodexDiagnosticsDatabaseText}"
+                                           FontFamily="{StaticResource AppFont}"
+                                           FontSize="10"
+                                           Foreground="{StaticResource TertiaryTextBrush}"
+                                           Margin="8,1,0,0" />
+                            </StackPanel>
+                            <TextBlock Text="{Binding CodexDiagnosticsDetailText}"
+                                       FontFamily="{StaticResource AppFont}"
+                                       FontSize="10"
+                                       Foreground="{StaticResource SecondaryTextBrush}"
+                                       TextTrimming="CharacterEllipsis"
+                                       MaxWidth="500" />
+                        </StackPanel>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1"
+                                Orientation="Horizontal"
+                                VerticalAlignment="Center">
+                        <Button Style="{StaticResource RefreshButtonStyle}"
+                                Command="{Binding RefreshCodexDiagnosticsCommand}"
+                                ToolTip="Check local Codex state"
+                                AutomationProperties.Name="Check local Codex state"
+                                Margin="0,0,6,0">
+                            <TextBlock Text="{Binding CodexDiagnosticsActionLabel}"
+                                       FontFamily="{StaticResource AppFont}"
+                                       FontSize="10.5"
+                                       FontWeight="SemiBold"
+                                       Foreground="{StaticResource PrimaryTextBrush}" />
+                        </Button>
+                        <Button Style="{StaticResource RefreshButtonStyle}"
+                                Command="{Binding OpenCodexHomeCommand}"
+                                ToolTip="Open Codex home"
+                                AutomationProperties.Name="Open Codex home">
+                            <TextBlock Text="Open"
+                                       FontFamily="{StaticResource AppFont}"
+                                       FontSize="10.5"
+                                       FontWeight="SemiBold"
+                                       Foreground="{StaticResource PrimaryTextBrush}" />
+                        </Button>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
             <!-- ═══ MAIN CONTENT ═══ -->
-            <Grid Grid.Row="2">
+            <Grid Grid.Row="3">
                 <!-- ── USAGE CONTENT (provider tab selected) ── -->
                 <ScrollViewer x:Name="UsageContentScrollViewer"
                               VerticalScrollBarVisibility="Auto"
@@ -5006,7 +5080,7 @@
             </Grid>
 
             <!-- ═══ FOOTER ═══ -->
-            <Border Grid.Row="3"
+            <Border Grid.Row="4"
                     Background="{StaticResource FooterBrush}"
                     Padding="16,8">
                 <Grid>
