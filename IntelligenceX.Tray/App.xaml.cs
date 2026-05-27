@@ -102,7 +102,7 @@ public partial class App : Application {
                 DispatcherPriority.Background);
             if (openOnStartup) {
                 Dispatcher.InvokeAsync(
-                    () => ShowPopup(TimeSpan.FromSeconds(30)),
+                    ShowPopup,
                     DispatcherPriority.ApplicationIdle);
             }
         } catch (Exception ex) {
@@ -162,7 +162,7 @@ public partial class App : Application {
         }
 
         Dispatcher.BeginInvoke(
-            new Action(() => ShowPopup(TimeSpan.FromSeconds(10))),
+            new Action(ShowPopup),
             DispatcherPriority.ApplicationIdle);
     }
 
@@ -454,12 +454,12 @@ public partial class App : Application {
         }
     }
 
-    private void ShowPopup(TimeSpan? suppressDeactivateFor = null) {
+    private void ShowPopup() {
         if (_popupWindow is null) {
             return;
         }
 
-        _popupWindow.PrepareForTrayOpen(suppressDeactivateFor);
+        _popupWindow.PrepareForTrayOpen();
         _suppressTrayToggleUntilUtc = DateTimeOffset.UtcNow.AddMilliseconds(500);
         PositionPopupForOpen();
         _popupWindow.Show();

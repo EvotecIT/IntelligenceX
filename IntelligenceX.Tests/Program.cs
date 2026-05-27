@@ -365,6 +365,8 @@ internal static partial class Program {
             TestCodexLocalStateDiagnosticsReportsStorageAreas);
         failed += Run("Codex local state cleanup archives stale files",
             TestCodexLocalStateCleanupArchivesStaleFiles);
+        failed += Run("Codex local state cleanup creates empty archive root",
+            TestCodexLocalStateCleanupCreatesEmptyArchiveRoot);
 #if !NET472
         failed += Run("GitHub owner scope resolver returns administered organizations with public repos", TestGitHubOwnerScopeResolverReturnsAdministeredOrganizationsWithPublicRepos);
         failed += Run("GitHub overview collector appends correlated owners for user runs", TestGitHubOverviewDataCollectorAppendsCorrelatedOwnersForUserRuns);

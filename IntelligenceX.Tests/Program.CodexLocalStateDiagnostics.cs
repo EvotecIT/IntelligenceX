@@ -325,7 +325,7 @@ internal static partial class Program {
                     ["@title"] = "active",
                     ["@preview"] = "active preview",
                     ["@rollout_path"] = activeSession,
-                    ["@cwd"] = root
+                    ["@cwd"] = string.Empty
                 });
 
             var service = new CodexLocalStateDiagnosticsService();
@@ -338,6 +338,38 @@ internal static partial class Program {
             AssertEqual(false, File.Exists(staleLog), "codex cleanup moved stale log");
             AssertEqual(true, Directory.Exists(result.ArchiveDirectory), "codex cleanup archive directory");
             AssertEqual(true, File.Exists(result.PathRepair.BackupDatabasePath), "codex cleanup path repair backup");
+        } finally {
+            TryDeleteCodexDiagnosticsDirectory(root);
+        }
+    }
+
+    private static void TestCodexLocalStateCleanupCreatesEmptyArchiveRoot() {
+        var root = CreateCodexDiagnosticsTempDirectory();
+        try {
+            var codexHome = Path.Combine(root, ".codex");
+            var backupRoot = Path.Combine(root, "backups");
+            Directory.CreateDirectory(codexHome);
+            var dbPath = Path.Combine(codexHome, "state_5.sqlite");
+            var sqlite = new SQLite();
+            sqlite.ExecuteNonQuery(
+                dbPath,
+                """
+                CREATE TABLE threads (
+                    id TEXT PRIMARY KEY,
+                    title TEXT,
+                    first_user_message TEXT,
+                    rollout_path TEXT,
+                    cwd TEXT,
+                    archived INTEGER
+                );
+                """);
+
+            var service = new CodexLocalStateDiagnosticsService();
+            var result = service.CleanUpAsync(codexHome, backupRoot).GetAwaiter().GetResult();
+
+            AssertEqual(0, result.ArchivedSessionFileCount, "codex cleanup empty archive sessions");
+            AssertEqual(0, result.ArchivedLogFileCount, "codex cleanup empty archive logs");
+            AssertEqual(true, Directory.Exists(result.ArchiveDirectory), "codex cleanup empty archive directory");
         } finally {
             TryDeleteCodexDiagnosticsDirectory(root);
         }

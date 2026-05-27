@@ -45,7 +45,7 @@ public partial class TrayPopupWindow : Window {
         var originalLeft = Left;
         var originalTop = Top;
         try {
-            PrepareForTrayOpen(TimeSpan.FromMilliseconds(900));
+            PrepareForTrayOpen();
             ShowActivated = false;
             Opacity = 0;
             Left = -10000;
@@ -62,7 +62,7 @@ public partial class TrayPopupWindow : Window {
         }
     }
 
-    public void PrepareForTrayOpen(TimeSpan? suppressDeactivateFor = null) {
+    public void PrepareForTrayOpen() {
         ApplyAdaptiveSizing();
     }
 
@@ -350,7 +350,7 @@ public partial class TrayPopupWindow : Window {
             return;
         }
 
-        PrepareForTrayOpen(TimeSpan.FromMinutes(2));
+        PrepareForTrayOpen();
         try {
             var dialog = new SaveFileDialog {
                 Filter = "PNG images (*.png)|*.png|All files (*.*)|*.*",

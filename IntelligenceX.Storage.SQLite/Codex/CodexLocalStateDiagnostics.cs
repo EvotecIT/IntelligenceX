@@ -307,6 +307,7 @@ public sealed class CodexLocalStateDiagnosticsService {
         var requestedHome = string.IsNullOrWhiteSpace(codexHome) ? ResolveDefaultCodexHome() : codexHome!.Trim();
         var home = Path.GetFullPath(requestedHome);
         var archiveRoot = CreateArchiveDirectory(home);
+        Directory.CreateDirectory(archiveRoot);
         var pathRepair = NormalizeActiveThreadPaths(home, backupRoot, cancellationToken);
         var activeSessionPaths = ReadActiveSessionPaths(home);
         var staleSessionArchive = Path.Combine(archiveRoot, "sessions");
@@ -574,8 +575,9 @@ public sealed class CodexLocalStateDiagnosticsService {
             var ordinals = pathColumns.Select(reader.GetOrdinal).ToArray();
             while (reader.Read()) {
                 foreach (var ordinal in ordinals) {
-                    if (!reader.IsDBNull(ordinal)) {
-                        result.Add(Path.GetFullPath(reader.GetString(ordinal)));
+                    if (!reader.IsDBNull(ordinal)
+                        && TryResolveActiveSessionPath(reader.GetString(ordinal), out var activePath)) {
+                        result.Add(activePath);
                     }
                 }
             }
@@ -598,14 +600,23 @@ public sealed class CodexLocalStateDiagnosticsService {
         var archived = 0;
         var bytes = 0L;
         var sourceFullPath = Path.GetFullPath(sourceRoot);
+        if (IsReparsePoint(new DirectoryInfo(sourceFullPath))) {
+            return (0, 0);
+        }
+
         foreach (var file in EnumerateFilesSafe(sourceFullPath)) {
             cancellationToken.ThrowIfCancellationRequested();
+            var fileFullPath = Path.GetFullPath(file.FullName);
+            if (!IsDescendantPath(sourceFullPath, fileFullPath) || IsReparsePoint(file)) {
+                continue;
+            }
+
             if (!shouldArchive(file)) {
                 continue;
             }
 
             var length = SafeLength(file);
-            var relative = GetRelativePath(sourceFullPath, file.FullName);
+            var relative = GetRelativePath(sourceFullPath, fileFullPath);
             var destination = Path.Combine(archiveRoot, relative);
             var destinationDirectory = Path.GetDirectoryName(destination);
             if (!string.IsNullOrWhiteSpace(destinationDirectory)) {
@@ -656,7 +667,8 @@ public sealed class CodexLocalStateDiagnosticsService {
 
     private static IEnumerable<FileInfo> EnumerateFilesSafe(string path) {
         var pending = new Stack<string>();
-        pending.Push(path);
+        var root = Path.GetFullPath(path);
+        pending.Push(root);
         while (pending.Count > 0) {
             var current = pending.Pop();
             IEnumerable<string> directories;
@@ -671,12 +683,66 @@ public sealed class CodexLocalStateDiagnosticsService {
             }
 
             foreach (var directory in directories) {
-                pending.Push(directory);
+                var directoryInfo = new DirectoryInfo(directory);
+                if (IsReparsePoint(directoryInfo)) {
+                    continue;
+                }
+
+                var directoryFullPath = Path.GetFullPath(directoryInfo.FullName);
+                if (IsDescendantPath(root, directoryFullPath)) {
+                    pending.Push(directoryFullPath);
+                }
             }
 
             foreach (var file in files) {
-                yield return new FileInfo(file);
+                var fileInfo = new FileInfo(file);
+                if (!IsReparsePoint(fileInfo) && IsDescendantPath(root, fileInfo.FullName)) {
+                    yield return fileInfo;
+                }
             }
+        }
+    }
+
+    private static bool TryResolveActiveSessionPath(string? value, out string path) {
+        path = string.Empty;
+        if (string.IsNullOrWhiteSpace(value)) {
+            return false;
+        }
+
+        var candidate = value!.Trim();
+        if (TryNormalizeExtendedWindowsPath(candidate, out var normalized)) {
+            candidate = normalized;
+        }
+
+        if (!Path.IsPathRooted(candidate)) {
+            return false;
+        }
+
+        try {
+            path = Path.GetFullPath(candidate);
+            return true;
+        } catch (ArgumentException) {
+            return false;
+        } catch (NotSupportedException) {
+            return false;
+        } catch (PathTooLongException) {
+            return false;
+        }
+    }
+
+    private static bool IsDescendantPath(string root, string path) {
+        var normalizedRoot = AppendDirectorySeparator(Path.GetFullPath(root));
+        var normalizedPath = Path.GetFullPath(path);
+        return normalizedPath.StartsWith(normalizedRoot, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsReparsePoint(FileSystemInfo info) {
+        try {
+            return info.Exists && (info.Attributes & FileAttributes.ReparsePoint) != 0;
+        } catch (IOException) {
+            return true;
+        } catch (UnauthorizedAccessException) {
+            return true;
         }
     }
 
