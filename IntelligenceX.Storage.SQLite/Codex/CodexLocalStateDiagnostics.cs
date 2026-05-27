@@ -459,14 +459,15 @@ public sealed class CodexLocalStateDiagnosticsService {
         SqliteTransaction transaction,
         long rowId,
         IReadOnlyDictionary<string, string> updates) {
+        var orderedUpdates = updates.ToArray();
         using var command = connection.CreateCommand();
         command.Transaction = transaction;
         command.CommandText = "UPDATE threads SET "
-                              + string.Join(", ", updates.Keys.Select((column, index) => $"{QuoteIdentifier(column)} = @p{index.ToString(CultureInfo.InvariantCulture)}"))
+                              + string.Join(", ", orderedUpdates.Select((item, index) => $"{QuoteIdentifier(item.Key)} = @p{index.ToString(CultureInfo.InvariantCulture)}"))
                               + " WHERE rowid = @rowid;";
         var parameterIndex = 0;
-        foreach (var value in updates.Values) {
-            command.Parameters.AddWithValue("@p" + parameterIndex.ToString(CultureInfo.InvariantCulture), value);
+        foreach (var item in orderedUpdates) {
+            command.Parameters.AddWithValue("@p" + parameterIndex.ToString(CultureInfo.InvariantCulture), item.Value);
             parameterIndex++;
         }
 
@@ -612,7 +613,10 @@ public sealed class CodexLocalStateDiagnosticsService {
 
         return Path.Combine(
             root!,
-            "intelligencex-codex-hot-repair-" + DateTimeOffset.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture));
+            "intelligencex-codex-hot-repair-"
+            + DateTimeOffset.Now.ToString("yyyyMMdd-HHmmss-fff", CultureInfo.InvariantCulture)
+            + "-"
+            + Guid.NewGuid().ToString("N").Substring(0, 8));
     }
 
     private static string QuoteIdentifier(string value) {
