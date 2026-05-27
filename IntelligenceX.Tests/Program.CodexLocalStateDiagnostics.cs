@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using DBAClientX;
 using IntelligenceX.Codex;
@@ -159,6 +160,89 @@ internal static partial class Program {
             AssertEqual(true, diagnostics.CanConnect, "codex migrations default can connect");
             AssertEqual(1, diagnostics.ExtendedPathCount, "codex migrations default extended path count");
             AssertEqual(true, diagnostics.Findings.Any(f => f.Key == "extended-paths:threads.cwd"), "codex migrations default cwd finding");
+        } finally {
+            TryDeleteCodexDiagnosticsDirectory(root);
+        }
+    }
+
+    private static void TestCodexLocalStateDiagnosticsNormalizesActiveThreadPaths() {
+        var root = CreateCodexDiagnosticsTempDirectory();
+        try {
+            var codexHome = Path.Combine(root, ".codex");
+            var backupRoot = Path.Combine(root, "backups");
+            Directory.CreateDirectory(codexHome);
+            var dbPath = Path.Combine(codexHome, "state_5.sqlite");
+            var sqlite = new SQLite();
+            sqlite.ExecuteNonQuery(
+                dbPath,
+                """
+                CREATE TABLE threads (
+                    id TEXT PRIMARY KEY,
+                    title TEXT,
+                    first_user_message TEXT,
+                    rollout_path TEXT,
+                    cwd TEXT,
+                    archived INTEGER
+                );
+                """);
+            sqlite.ExecuteNonQuery(
+                dbPath,
+                """
+                INSERT INTO threads (id, title, first_user_message, rollout_path, cwd, archived)
+                VALUES (@id, @title, @preview, @rollout_path, @cwd, @archived);
+                """,
+                new Dictionary<string, object?> {
+                    ["@id"] = "dddddddd-dddd-dddd-dddd-dddddddddddd",
+                    ["@title"] = "active",
+                    ["@preview"] = "active preview",
+                    ["@rollout_path"] = @"\\?\C:\Users\Example\.codex\sessions\rollout.jsonl",
+                    ["@cwd"] = @"\\?\C:\Support\GitHub\Example",
+                    ["@archived"] = 0
+                });
+            sqlite.ExecuteNonQuery(
+                dbPath,
+                """
+                INSERT INTO threads (id, title, first_user_message, rollout_path, cwd, archived)
+                VALUES (@id, @title, @preview, @rollout_path, @cwd, @archived);
+                """,
+                new Dictionary<string, object?> {
+                    ["@id"] = "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee",
+                    ["@title"] = "archived",
+                    ["@preview"] = "archived preview",
+                    ["@rollout_path"] = @"\\?\C:\Users\Example\.codex\sessions\archived.jsonl",
+                    ["@cwd"] = @"\\?\C:\Support\GitHub\Archived",
+                    ["@archived"] = 1
+                });
+
+            var service = new CodexLocalStateDiagnosticsService();
+            var result = service.NormalizeActiveThreadPathsAsync(codexHome, backupRoot).GetAwaiter().GetResult();
+            var activeRolloutPath = Convert.ToString(sqlite.ExecuteScalar(
+                dbPath,
+                "SELECT rollout_path FROM threads WHERE id = @id;",
+                new Dictionary<string, object?> {
+                    ["@id"] = "dddddddd-dddd-dddd-dddd-dddddddddddd"
+                }), CultureInfo.InvariantCulture);
+            var activeCwd = Convert.ToString(sqlite.ExecuteScalar(
+                dbPath,
+                "SELECT cwd FROM threads WHERE id = @id;",
+                new Dictionary<string, object?> {
+                    ["@id"] = "dddddddd-dddd-dddd-dddd-dddddddddddd"
+                }), CultureInfo.InvariantCulture);
+            var archivedRolloutPath = Convert.ToString(sqlite.ExecuteScalar(
+                dbPath,
+                "SELECT rollout_path FROM threads WHERE id = @id;",
+                new Dictionary<string, object?> {
+                    ["@id"] = "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee"
+                }), CultureInfo.InvariantCulture);
+
+            AssertEqual(true, result.DatabaseExists, "codex path repair database exists");
+            AssertEqual(2, result.ScannedPathValueCount, "codex path repair scanned values");
+            AssertEqual(2, result.ChangedPathValueCount, "codex path repair changed values");
+            AssertEqual(1, result.ChangedThreadRowCount, "codex path repair changed rows");
+            AssertEqual(true, File.Exists(result.BackupDatabasePath), "codex path repair backup exists");
+            AssertEqual(@"C:\Users\Example\.codex\sessions\rollout.jsonl", activeRolloutPath, "codex path repair active rollout");
+            AssertEqual(@"C:\Support\GitHub\Example", activeCwd, "codex path repair active cwd");
+            AssertEqual(@"\\?\C:\Users\Example\.codex\sessions\archived.jsonl", archivedRolloutPath, "codex path repair archived unchanged");
         } finally {
             TryDeleteCodexDiagnosticsDirectory(root);
         }

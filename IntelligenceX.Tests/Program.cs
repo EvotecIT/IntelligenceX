@@ -359,6 +359,8 @@ internal static partial class Program {
             TestCodexLocalStateDiagnosticsIgnoresPathSyntaxInTextColumns);
         failed += Run("Codex local state diagnostics handles migration default values",
             TestCodexLocalStateDiagnosticsHandlesMigrationDefaultValues);
+        failed += Run("Codex local state diagnostics normalizes active thread paths",
+            TestCodexLocalStateDiagnosticsNormalizesActiveThreadPaths);
 #if !NET472
         failed += Run("GitHub owner scope resolver returns administered organizations with public repos", TestGitHubOwnerScopeResolverReturnsAdministeredOrganizationsWithPublicRepos);
         failed += Run("GitHub overview collector appends correlated owners for user runs", TestGitHubOverviewDataCollectorAppendsCorrelatedOwnersForUserRuns);

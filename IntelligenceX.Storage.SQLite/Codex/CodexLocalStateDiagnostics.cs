@@ -83,6 +83,28 @@ public sealed class CodexLocalStateDiagnostics {
 }
 
 /// <summary>
+/// Result of a backup-first Codex local state path repair.
+/// </summary>
+public sealed class CodexLocalStatePathRepairResult {
+    /// <summary>Resolved Codex home directory.</summary>
+    public string CodexHome { get; init; } = string.Empty;
+    /// <summary>Resolved Codex SQLite state database path.</summary>
+    public string StateDatabasePath { get; init; } = string.Empty;
+    /// <summary>Whether the state database existed when repair was requested.</summary>
+    public bool DatabaseExists { get; init; }
+    /// <summary>Directory containing the SQLite backup created before mutation.</summary>
+    public string BackupDirectory { get; init; } = string.Empty;
+    /// <summary>Path to the SQLite backup created before mutation.</summary>
+    public string BackupDatabasePath { get; init; } = string.Empty;
+    /// <summary>Number of active thread path values inspected.</summary>
+    public int ScannedPathValueCount { get; init; }
+    /// <summary>Number of active thread path values rewritten.</summary>
+    public int ChangedPathValueCount { get; init; }
+    /// <summary>Number of active thread rows updated.</summary>
+    public int ChangedThreadRowCount { get; init; }
+}
+
+/// <summary>
 /// Reads local Codex Desktop/CLI state in a read-only way and summarizes issues
 /// that can make resume/navigation brittle.
 /// </summary>
@@ -198,6 +220,115 @@ public sealed class CodexLocalStateDiagnosticsService {
         };
     }
 
+    /// <summary>
+    /// Backs up the Codex SQLite state database, then rewrites active thread path
+    /// values from extended Windows paths to normal drive-rooted paths.
+    /// </summary>
+    /// <param name="codexHome">Optional Codex home override. Defaults to CODEX_HOME or ~/.codex.</param>
+    /// <param name="backupRoot">Optional backup root override. Defaults to Documents\Codex\codex-backups.</param>
+    /// <param name="cancellationToken">Cancellation token for the repair operation.</param>
+    /// <returns>A summary of the backed-up repair.</returns>
+    public Task<CodexLocalStatePathRepairResult> NormalizeActiveThreadPathsAsync(
+        string? codexHome = null,
+        string? backupRoot = null,
+        CancellationToken cancellationToken = default) {
+        return Task.Run(
+            () => NormalizeActiveThreadPaths(codexHome, backupRoot, cancellationToken),
+            cancellationToken);
+    }
+
+    private CodexLocalStatePathRepairResult NormalizeActiveThreadPaths(
+        string? codexHome,
+        string? backupRoot,
+        CancellationToken cancellationToken) {
+        var requestedHome = string.IsNullOrWhiteSpace(codexHome) ? ResolveDefaultCodexHome() : codexHome!.Trim();
+        var home = Path.GetFullPath(requestedHome);
+        var stateDb = Path.Combine(home, "state_5.sqlite");
+        if (!File.Exists(stateDb)) {
+            return new CodexLocalStatePathRepairResult {
+                CodexHome = home,
+                StateDatabasePath = stateDb,
+                DatabaseExists = false
+            };
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        var backupDirectory = CreateBackupDirectory(backupRoot);
+        var backupDb = Path.Combine(backupDirectory, "state_5.sqlite");
+
+        var builder = new SqliteConnectionStringBuilder {
+            DataSource = stateDb,
+            Mode = SqliteOpenMode.ReadWrite
+        };
+        using var connection = new SqliteConnection(builder.ConnectionString);
+        connection.Open();
+        SetBusyTimeout(connection, 10000);
+        BackupDatabase(connection, backupDb);
+
+        var columns = GetTableColumns(stateDb, "threads");
+        var columnNames = columns
+            .Select(static column => column.Name)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var pathColumns = columns
+            .Where(static column => IsTextColumn(column.Type) && IsPathColumn(column.Name))
+            .Select(static column => column.Name)
+            .ToArray();
+        if (pathColumns.Length == 0) {
+            return new CodexLocalStatePathRepairResult {
+                CodexHome = home,
+                StateDatabasePath = stateDb,
+                DatabaseExists = true,
+                BackupDirectory = backupDirectory,
+                BackupDatabasePath = backupDb
+            };
+        }
+
+        var activeExpr = BuildActiveThreadExpression(columnNames);
+        var rows = ReadActiveThreadPathRows(connection, pathColumns, activeExpr, cancellationToken);
+        var scannedValues = 0;
+        var changedValues = 0;
+        var changedRows = 0;
+
+        using var transaction = connection.BeginTransaction();
+        foreach (var row in rows) {
+            cancellationToken.ThrowIfCancellationRequested();
+            var updates = new List<(string Column, string OriginalValue, string NormalizedValue)>();
+            foreach (var (column, value) in row.Values) {
+                if (string.IsNullOrWhiteSpace(value)) {
+                    continue;
+                }
+
+                scannedValues++;
+                if (!TryNormalizeExtendedWindowsPath(value!, out var normalized)) {
+                    continue;
+                }
+
+                updates.Add((column, value!, normalized));
+            }
+
+            if (updates.Count == 0) {
+                continue;
+            }
+
+            if (UpdateThreadPathRow(connection, transaction, row.RowId, updates, activeExpr)) {
+                changedValues += updates.Count;
+                changedRows++;
+            }
+        }
+
+        transaction.Commit();
+        return new CodexLocalStatePathRepairResult {
+            CodexHome = home,
+            StateDatabasePath = stateDb,
+            DatabaseExists = true,
+            BackupDirectory = backupDirectory,
+            BackupDatabasePath = backupDb,
+            ScannedPathValueCount = scannedValues,
+            ChangedPathValueCount = changedValues,
+            ChangedThreadRowCount = changedRows
+        };
+    }
+
     private int CountExtendedPathRows(string stateDb, List<CodexLocalStateFinding> findings) {
         var total = 0;
         foreach (var (table, column) in EnumeratePathTextColumns(stateDb)) {
@@ -249,11 +380,7 @@ public sealed class CodexLocalStateDiagnosticsService {
             return (0, 0);
         }
 
-        var activeExpr = columns.Contains("archived")
-            ? "COALESCE(archived,0)=0"
-            : columns.Contains("archived_at")
-                ? "archived_at IS NULL"
-                : "1=1";
+        var activeExpr = BuildActiveThreadExpression(columns);
         var previewExpr = columns.Contains("first_user_message")
             ? $"length(first_user_message) > {DefaultPreviewLimit.ToString(CultureInfo.InvariantCulture)}"
             : "0";
@@ -299,6 +426,80 @@ public sealed class CodexLocalStateDiagnosticsService {
         }
 
         return columns;
+    }
+
+    private static IReadOnlyList<(long RowId, IReadOnlyList<(string Column, string? Value)> Values)> ReadActiveThreadPathRows(
+        SqliteConnection connection,
+        IReadOnlyList<string> pathColumns,
+        string activeExpr,
+        CancellationToken cancellationToken) {
+        var selectedColumns = string.Join(", ", pathColumns.Select(QuoteIdentifier));
+        using var command = connection.CreateCommand();
+        command.CommandText = $"SELECT rowid AS __ix_rowid, {selectedColumns} FROM threads WHERE {activeExpr};";
+        using var reader = command.ExecuteReader();
+        var rowIdOrdinal = reader.GetOrdinal("__ix_rowid");
+        var columnOrdinals = pathColumns
+            .Select(column => (Column: column, Ordinal: reader.GetOrdinal(column)))
+            .ToArray();
+        var rows = new List<(long RowId, IReadOnlyList<(string Column, string? Value)> Values)>();
+        while (reader.Read()) {
+            cancellationToken.ThrowIfCancellationRequested();
+            var values = new List<(string Column, string? Value)>(columnOrdinals.Length);
+            foreach (var (column, ordinal) in columnOrdinals) {
+                values.Add((column, reader.IsDBNull(ordinal) ? null : reader.GetString(ordinal)));
+            }
+
+            rows.Add((reader.GetInt64(rowIdOrdinal), values));
+        }
+
+        return rows;
+    }
+
+    private static bool UpdateThreadPathRow(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        long rowId,
+        IReadOnlyList<(string Column, string OriginalValue, string NormalizedValue)> updates,
+        string activeExpr) {
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = "UPDATE threads SET "
+                              + string.Join(", ", updates.Select((item, index) => $"{QuoteIdentifier(item.Column)} = @p{index.ToString(CultureInfo.InvariantCulture)}"))
+                              + " WHERE rowid = @rowid AND "
+                              + activeExpr
+                              + " AND "
+                              + string.Join(" AND ", updates.Select((item, index) => $"{QuoteIdentifier(item.Column)} = @old{index.ToString(CultureInfo.InvariantCulture)}"))
+                              + ";";
+        var parameterIndex = 0;
+        foreach (var item in updates) {
+            command.Parameters.AddWithValue("@p" + parameterIndex.ToString(CultureInfo.InvariantCulture), item.NormalizedValue);
+            command.Parameters.AddWithValue("@old" + parameterIndex.ToString(CultureInfo.InvariantCulture), item.OriginalValue);
+            parameterIndex++;
+        }
+
+        command.Parameters.AddWithValue("@rowid", rowId);
+        return command.ExecuteNonQuery() == 1;
+    }
+
+    private static void BackupDatabase(SqliteConnection sourceConnection, string backupDb) {
+        var directory = Path.GetDirectoryName(backupDb);
+        if (!string.IsNullOrWhiteSpace(directory)) {
+            Directory.CreateDirectory(directory);
+        }
+
+        var builder = new SqliteConnectionStringBuilder {
+            DataSource = backupDb,
+            Mode = SqliteOpenMode.ReadWriteCreate
+        };
+        using var destination = new SqliteConnection(builder.ConnectionString);
+        destination.Open();
+        sourceConnection.BackupDatabase(destination);
+    }
+
+    private static void SetBusyTimeout(SqliteConnection connection, int milliseconds) {
+        using var command = connection.CreateCommand();
+        command.CommandText = "PRAGMA busy_timeout = " + milliseconds.ToString(CultureInfo.InvariantCulture) + ";";
+        command.ExecuteNonQuery();
     }
 
     private static int CountConfigExtendedPaths(string codexHome) {
@@ -373,6 +574,55 @@ public sealed class CodexLocalStateDiagnosticsService {
 
     private static bool IsPathColumn(string columnName) {
         return PathColumnHints.Any(hint => columnName.IndexOf(hint, StringComparison.OrdinalIgnoreCase) >= 0);
+    }
+
+    private static string BuildActiveThreadExpression(ISet<string> columns) {
+        return columns.Contains("archived")
+            ? "COALESCE(archived,0)=0"
+            : columns.Contains("archived_at")
+                ? "archived_at IS NULL"
+                : "1=1";
+    }
+
+    private static bool TryNormalizeExtendedWindowsPath(string value, out string normalized) {
+        normalized = value;
+        if (!value.StartsWith(ExtendedPathPrefix, StringComparison.Ordinal)) {
+            return false;
+        }
+
+        var withoutPrefix = value.Substring(ExtendedPathPrefix.Length);
+        if (!IsDriveRootedWindowsPath(withoutPrefix)) {
+            return false;
+        }
+
+        normalized = withoutPrefix;
+        return true;
+    }
+
+    private static bool IsDriveRootedWindowsPath(string value) {
+        return value.Length >= 3
+               && char.IsLetter(value[0])
+               && value[1] == ':'
+               && value[2] == '\\';
+    }
+
+    private static string CreateBackupDirectory(string? backupRoot) {
+        var root = backupRoot;
+        if (string.IsNullOrWhiteSpace(root)) {
+            var documents = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+            if (string.IsNullOrWhiteSpace(documents)) {
+                documents = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Documents");
+            }
+
+            root = Path.Combine(documents, "Codex", "codex-backups");
+        }
+
+        return Path.Combine(
+            root!,
+            "intelligencex-codex-hot-repair-"
+            + DateTimeOffset.Now.ToString("yyyyMMdd-HHmmss-fff", CultureInfo.InvariantCulture)
+            + "-"
+            + Guid.NewGuid().ToString("N").Substring(0, 8));
     }
 
     private static string QuoteIdentifier(string value) {
