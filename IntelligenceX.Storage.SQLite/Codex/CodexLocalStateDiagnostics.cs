@@ -292,7 +292,7 @@ public sealed class CodexLocalStateDiagnosticsService {
         using var transaction = connection.BeginTransaction();
         foreach (var row in rows) {
             cancellationToken.ThrowIfCancellationRequested();
-            var updates = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var updates = new List<(string Column, string OriginalValue, string NormalizedValue)>();
             foreach (var (column, value) in row.Values) {
                 if (string.IsNullOrWhiteSpace(value)) {
                     continue;
@@ -303,16 +303,17 @@ public sealed class CodexLocalStateDiagnosticsService {
                     continue;
                 }
 
-                updates[column] = normalized;
-                changedValues++;
+                updates.Add((column, value!, normalized));
             }
 
             if (updates.Count == 0) {
                 continue;
             }
 
-            UpdateThreadPathRow(connection, transaction, row.RowId, updates);
-            changedRows++;
+            if (UpdateThreadPathRow(connection, transaction, row.RowId, updates, activeExpr)) {
+                changedValues += updates.Count;
+                changedRows++;
+            }
         }
 
         transaction.Commit();
@@ -454,25 +455,30 @@ public sealed class CodexLocalStateDiagnosticsService {
         return rows;
     }
 
-    private static void UpdateThreadPathRow(
+    private static bool UpdateThreadPathRow(
         SqliteConnection connection,
         SqliteTransaction transaction,
         long rowId,
-        IReadOnlyDictionary<string, string> updates) {
-        var orderedUpdates = updates.ToArray();
+        IReadOnlyList<(string Column, string OriginalValue, string NormalizedValue)> updates,
+        string activeExpr) {
         using var command = connection.CreateCommand();
         command.Transaction = transaction;
         command.CommandText = "UPDATE threads SET "
-                              + string.Join(", ", orderedUpdates.Select((item, index) => $"{QuoteIdentifier(item.Key)} = @p{index.ToString(CultureInfo.InvariantCulture)}"))
-                              + " WHERE rowid = @rowid;";
+                              + string.Join(", ", updates.Select((item, index) => $"{QuoteIdentifier(item.Column)} = @p{index.ToString(CultureInfo.InvariantCulture)}"))
+                              + " WHERE rowid = @rowid AND "
+                              + activeExpr
+                              + " AND "
+                              + string.Join(" AND ", updates.Select((item, index) => $"{QuoteIdentifier(item.Column)} = @old{index.ToString(CultureInfo.InvariantCulture)}"))
+                              + ";";
         var parameterIndex = 0;
-        foreach (var item in orderedUpdates) {
-            command.Parameters.AddWithValue("@p" + parameterIndex.ToString(CultureInfo.InvariantCulture), item.Value);
+        foreach (var item in updates) {
+            command.Parameters.AddWithValue("@p" + parameterIndex.ToString(CultureInfo.InvariantCulture), item.NormalizedValue);
+            command.Parameters.AddWithValue("@old" + parameterIndex.ToString(CultureInfo.InvariantCulture), item.OriginalValue);
             parameterIndex++;
         }
 
         command.Parameters.AddWithValue("@rowid", rowId);
-        command.ExecuteNonQuery();
+        return command.ExecuteNonQuery() == 1;
     }
 
     private static void BackupDatabase(SqliteConnection sourceConnection, string backupDb) {
