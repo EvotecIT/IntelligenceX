@@ -25,8 +25,6 @@ public partial class TrayPopupWindow : Window {
     private const double ProviderTabsScrollStep = 180d;
 
     private bool _isPrimed;
-    private DateTimeOffset _suppressDeactivateUntilUtc;
-
     public event EventHandler? ManualPlacementCommitted;
     public event EventHandler? MinimizeRequested;
     public event EventHandler? CloseRequested;
@@ -66,15 +64,6 @@ public partial class TrayPopupWindow : Window {
 
     public void PrepareForTrayOpen(TimeSpan? suppressDeactivateFor = null) {
         ApplyAdaptiveSizing();
-        _suppressDeactivateUntilUtc = DateTimeOffset.UtcNow + (suppressDeactivateFor ?? TimeSpan.FromMilliseconds(450));
-    }
-
-    private void OnDeactivated(object? sender, EventArgs e) {
-        if (DateTimeOffset.UtcNow < _suppressDeactivateUntilUtc) {
-            return;
-        }
-
-        Hide();
     }
 
     private void OnProviderTabClick(object sender, RoutedEventArgs e) {

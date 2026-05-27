@@ -248,6 +248,101 @@ internal static partial class Program {
         }
     }
 
+    private static void TestCodexLocalStateDiagnosticsReportsStorageAreas() {
+        var root = CreateCodexDiagnosticsTempDirectory();
+        try {
+            var codexHome = Path.Combine(root, ".codex");
+            Directory.CreateDirectory(Path.Combine(codexHome, "sessions"));
+            Directory.CreateDirectory(Path.Combine(codexHome, "logs"));
+            var dbPath = Path.Combine(codexHome, "state_5.sqlite");
+            var sqlite = new SQLite();
+            sqlite.ExecuteNonQuery(
+                dbPath,
+                """
+                CREATE TABLE threads (
+                    id TEXT PRIMARY KEY,
+                    title TEXT,
+                    first_user_message TEXT,
+                    rollout_path TEXT,
+                    cwd TEXT,
+                    archived INTEGER
+                );
+                """);
+            File.WriteAllText(Path.Combine(codexHome, "sessions", "rollout.jsonl"), "session");
+            File.WriteAllText(Path.Combine(codexHome, "logs", "codex.log"), "log");
+
+            var service = new CodexLocalStateDiagnosticsService();
+            var diagnostics = service.CollectAsync(codexHome).GetAwaiter().GetResult();
+
+            AssertEqual(true, diagnostics.Areas.Any(a => a.Key == "state-db"), "codex areas include sqlite state");
+            AssertEqual(true, diagnostics.Areas.Any(a => a.Key == "sessions" && a.FileCount == 1), "codex areas include sessions");
+            AssertEqual(true, diagnostics.Areas.Any(a => a.Key == "logs" && a.FileCount == 1), "codex areas include logs");
+        } finally {
+            TryDeleteCodexDiagnosticsDirectory(root);
+        }
+    }
+
+    private static void TestCodexLocalStateCleanupArchivesStaleFiles() {
+        var root = CreateCodexDiagnosticsTempDirectory();
+        try {
+            var codexHome = Path.Combine(root, ".codex");
+            var backupRoot = Path.Combine(root, "backups");
+            var sessions = Path.Combine(codexHome, "sessions", "2026", "05", "01");
+            var logs = Path.Combine(codexHome, "logs");
+            Directory.CreateDirectory(sessions);
+            Directory.CreateDirectory(logs);
+            var dbPath = Path.Combine(codexHome, "state_5.sqlite");
+            var sqlite = new SQLite();
+            sqlite.ExecuteNonQuery(
+                dbPath,
+                """
+                CREATE TABLE threads (
+                    id TEXT PRIMARY KEY,
+                    title TEXT,
+                    first_user_message TEXT,
+                    rollout_path TEXT,
+                    cwd TEXT,
+                    archived INTEGER
+                );
+                """);
+            var staleSession = Path.Combine(sessions, "old.jsonl");
+            var activeSession = Path.Combine(sessions, "active.jsonl");
+            var staleLog = Path.Combine(logs, "old.log");
+            File.WriteAllText(staleSession, "old-session");
+            File.WriteAllText(activeSession, "active-session");
+            File.WriteAllText(staleLog, "old-log");
+            File.SetLastWriteTimeUtc(staleSession, DateTime.UtcNow.AddDays(-20));
+            File.SetLastWriteTimeUtc(activeSession, DateTime.UtcNow.AddDays(-20));
+            File.SetLastWriteTimeUtc(staleLog, DateTime.UtcNow.AddHours(-4));
+            sqlite.ExecuteNonQuery(
+                dbPath,
+                """
+                INSERT INTO threads (id, title, first_user_message, rollout_path, cwd, archived)
+                VALUES (@id, @title, @preview, @rollout_path, @cwd, 0);
+                """,
+                new Dictionary<string, object?> {
+                    ["@id"] = "ffffffff-ffff-ffff-ffff-ffffffffffff",
+                    ["@title"] = "active",
+                    ["@preview"] = "active preview",
+                    ["@rollout_path"] = activeSession,
+                    ["@cwd"] = root
+                });
+
+            var service = new CodexLocalStateDiagnosticsService();
+            var result = service.CleanUpAsync(codexHome, backupRoot).GetAwaiter().GetResult();
+
+            AssertEqual(1, result.ArchivedSessionFileCount, "codex cleanup archived stale inactive session");
+            AssertEqual(1, result.ArchivedLogFileCount, "codex cleanup archived stale log");
+            AssertEqual(false, File.Exists(staleSession), "codex cleanup moved stale session");
+            AssertEqual(true, File.Exists(activeSession), "codex cleanup kept active session");
+            AssertEqual(false, File.Exists(staleLog), "codex cleanup moved stale log");
+            AssertEqual(true, Directory.Exists(result.ArchiveDirectory), "codex cleanup archive directory");
+            AssertEqual(true, File.Exists(result.PathRepair.BackupDatabasePath), "codex cleanup path repair backup");
+        } finally {
+            TryDeleteCodexDiagnosticsDirectory(root);
+        }
+    }
+
     private static string CreateCodexDiagnosticsTempDirectory() {
         var path = Path.Combine(Path.GetTempPath(), "ix-codex-diagnostics-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(path);

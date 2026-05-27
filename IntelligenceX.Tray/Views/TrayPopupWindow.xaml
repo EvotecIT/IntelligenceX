@@ -12,7 +12,6 @@
         Topmost="False"
         ResizeMode="NoResize"
         SizeChanged="OnWindowSizeChanged"
-        Deactivated="OnDeactivated"
         Closing="OnWindowClosing">
 
     <Window.Resources>
@@ -368,21 +367,10 @@
                                 Orientation="Horizontal"
                                 VerticalAlignment="Center">
                         <Button Style="{StaticResource RefreshButtonStyle}"
-                                Command="{Binding RefreshCodexDiagnosticsCommand}"
-                                ToolTip="Check local Codex state"
-                                AutomationProperties.Name="Check local Codex state"
-                                Margin="0,0,6,0">
-                            <TextBlock Text="{Binding CodexDiagnosticsActionLabel}"
-                                       FontFamily="{StaticResource AppFont}"
-                                       FontSize="10.5"
-                                       FontWeight="SemiBold"
-                                       Foreground="{StaticResource PrimaryTextBrush}" />
-                        </Button>
-                        <Button Style="{StaticResource RefreshButtonStyle}"
-                                Command="{Binding OpenCodexHomeCommand}"
-                                ToolTip="Open Codex home"
-                                AutomationProperties.Name="Open Codex home">
-                            <TextBlock Text="Open"
+                                Command="{Binding ToggleCodexDiagnosticsDetailsCommand}"
+                                ToolTip="Show or hide Codex local-state details"
+                                AutomationProperties.Name="Toggle Codex local-state details">
+                            <TextBlock Text="{Binding CodexDiagnosticsDetailsActionLabel}"
                                        FontFamily="{StaticResource AppFont}"
                                        FontSize="10.5"
                                        FontWeight="SemiBold"
@@ -690,7 +678,7 @@
 
                         <Border Style="{StaticResource CardStyle}"
                                 Padding="14,12"
-                                Visibility="{Binding DataContext.IsCodexProviderSelected, RelativeSource={RelativeSource AncestorType={x:Type Window}}, Converter={StaticResource BoolToVis}}">
+                                Visibility="{Binding DataContext.IsCodexDiagnosticsDetailsVisible, RelativeSource={RelativeSource AncestorType={x:Type Window}}, Converter={StaticResource BoolToVis}}">
                             <StackPanel>
                                 <Grid Margin="0,0,0,10">
                                     <Grid.ColumnDefinitions>
@@ -719,9 +707,10 @@
                                                        Foreground="{StaticResource TertiaryTextBrush}" />
                                         </StackPanel>
                                     </StackPanel>
-                                    <StackPanel Grid.Column="1"
-                                                Orientation="Horizontal"
-                                                VerticalAlignment="Top">
+                                    <WrapPanel Grid.Column="1"
+                                               Orientation="Horizontal"
+                                               VerticalAlignment="Top"
+                                               HorizontalAlignment="Right">
                                         <Button Style="{StaticResource LinkButtonStyle}"
                                                 Command="{Binding DataContext.RefreshCodexDiagnosticsCommand, RelativeSource={RelativeSource AncestorType={x:Type Window}}}"
                                                 ToolTip="Check local Codex state"
@@ -737,12 +726,19 @@
                                             <TextBlock Text="{Binding DataContext.CodexDiagnosticsRepairActionLabel, RelativeSource={RelativeSource AncestorType={x:Type Window}}}" />
                                         </Button>
                                         <Button Style="{StaticResource LinkButtonStyle}"
+                                                Command="{Binding DataContext.CleanUpCodexStateCommand, RelativeSource={RelativeSource AncestorType={x:Type Window}}}"
+                                                ToolTip="Back up, repair paths, archive stale sessions, and rotate old logs"
+                                                AutomationProperties.Name="Clean up Codex local state"
+                                                Margin="0,0,6,0">
+                                            <TextBlock Text="{Binding DataContext.CodexDiagnosticsCleanupActionLabel, RelativeSource={RelativeSource AncestorType={x:Type Window}}}" />
+                                        </Button>
+                                        <Button Style="{StaticResource LinkButtonStyle}"
                                                 Command="{Binding DataContext.OpenCodexHomeCommand, RelativeSource={RelativeSource AncestorType={x:Type Window}}}"
                                                 ToolTip="Open Codex home"
                                                 AutomationProperties.Name="Open Codex home">
                                             <TextBlock Text="Open home" />
                                         </Button>
-                                    </StackPanel>
+                                    </WrapPanel>
                                 </Grid>
 
                                 <UniformGrid Columns="4" Margin="0,0,0,10">
@@ -810,7 +806,8 @@
                                         Background="{StaticResource InsetPanelBrush}"
                                         BorderBrush="{StaticResource BorderBrush}"
                                         BorderThickness="1"
-                                        Padding="10,8">
+                                        Padding="10,8"
+                                        Margin="0,0,0,10">
                                     <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="Auto" />
@@ -835,6 +832,109 @@
                                                    TextWrapping="Wrap" />
                                     </Grid>
                                 </Border>
+
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+
+                                    <Border Grid.Column="0"
+                                            CornerRadius="10"
+                                            Background="{StaticResource SubtleSurfaceMutedBrush}"
+                                            BorderBrush="{StaticResource BorderBrush}"
+                                            BorderThickness="1"
+                                            Padding="10,8"
+                                            Margin="0,0,5,0">
+                                        <StackPanel>
+                                            <TextBlock Text="STORAGE"
+                                                       Style="{StaticResource SectionHeaderStyle}"
+                                                       Margin="0,0,0,6" />
+                                            <ItemsControl ItemsSource="{Binding DataContext.CodexDiagnosticsAreas, RelativeSource={RelativeSource AncestorType={x:Type Window}}}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Grid Margin="0,0,0,7">
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*" />
+                                                                <ColumnDefinition Width="Auto" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <StackPanel>
+                                                                <TextBlock Text="{Binding Label}"
+                                                                           FontFamily="{StaticResource AppFont}"
+                                                                           FontSize="11"
+                                                                           FontWeight="SemiBold"
+                                                                           Foreground="{StaticResource PrimaryTextBrush}" />
+                                                                <TextBlock Text="{Binding Recommendation}"
+                                                                           FontFamily="{StaticResource AppFont}"
+                                                                           FontSize="10"
+                                                                           Foreground="{StaticResource TertiaryTextBrush}"
+                                                                           TextTrimming="CharacterEllipsis" />
+                                                            </StackPanel>
+                                                            <StackPanel Grid.Column="1"
+                                                                        HorizontalAlignment="Right"
+                                                                        Margin="8,0,0,0">
+                                                                <TextBlock Text="{Binding SizeText}"
+                                                                           FontFamily="{StaticResource AppFont}"
+                                                                           FontSize="11"
+                                                                           FontWeight="SemiBold"
+                                                                           Foreground="{StaticResource PrimaryTextBrush}"
+                                                                           HorizontalAlignment="Right" />
+                                                                <TextBlock Text="{Binding FileCountText}"
+                                                                           FontFamily="{StaticResource AppFont}"
+                                                                           FontSize="10"
+                                                                           Foreground="{StaticResource TertiaryTextBrush}"
+                                                                           HorizontalAlignment="Right" />
+                                                            </StackPanel>
+                                                        </Grid>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <Border Grid.Column="1"
+                                            CornerRadius="10"
+                                            Background="{StaticResource SubtleSurfaceMutedBrush}"
+                                            BorderBrush="{StaticResource BorderBrush}"
+                                            BorderThickness="1"
+                                            Padding="10,8"
+                                            Margin="5,0,0,0">
+                                        <StackPanel>
+                                            <TextBlock Text="FINDINGS"
+                                                       Style="{StaticResource SectionHeaderStyle}"
+                                                       Margin="0,0,0,6" />
+                                            <ItemsControl ItemsSource="{Binding DataContext.CodexDiagnosticsFindings, RelativeSource={RelativeSource AncestorType={x:Type Window}}}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Grid Margin="0,0,0,7">
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="Auto" />
+                                                                <ColumnDefinition Width="*" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <Border Padding="6,3"
+                                                                    CornerRadius="8"
+                                                                    Background="{StaticResource InsetPanelBrush}"
+                                                                    Margin="0,0,8,0"
+                                                                    VerticalAlignment="Top">
+                                                                <TextBlock Text="{Binding SeverityLabel}"
+                                                                           FontFamily="{StaticResource AppFont}"
+                                                                           FontSize="9.5"
+                                                                           FontWeight="SemiBold"
+                                                                           Foreground="{Binding SeverityBrush}" />
+                                                            </Border>
+                                                            <TextBlock Grid.Column="1"
+                                                                       Text="{Binding Message}"
+                                                                       FontFamily="{StaticResource AppFont}"
+                                                                       FontSize="10.5"
+                                                                       Foreground="{StaticResource SecondaryTextBrush}"
+                                                                       TextWrapping="Wrap" />
+                                                        </Grid>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </StackPanel>
+                                    </Border>
+                                </Grid>
                             </StackPanel>
                         </Border>
 

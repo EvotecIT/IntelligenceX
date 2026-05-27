@@ -361,6 +361,10 @@ internal static partial class Program {
             TestCodexLocalStateDiagnosticsHandlesMigrationDefaultValues);
         failed += Run("Codex local state diagnostics normalizes active thread paths",
             TestCodexLocalStateDiagnosticsNormalizesActiveThreadPaths);
+        failed += Run("Codex local state diagnostics reports storage areas",
+            TestCodexLocalStateDiagnosticsReportsStorageAreas);
+        failed += Run("Codex local state cleanup archives stale files",
+            TestCodexLocalStateCleanupArchivesStaleFiles);
 #if !NET472
         failed += Run("GitHub owner scope resolver returns administered organizations with public repos", TestGitHubOwnerScopeResolverReturnsAdministeredOrganizationsWithPublicRepos);
         failed += Run("GitHub overview collector appends correlated owners for user runs", TestGitHubOverviewDataCollectorAppendsCorrelatedOwnersForUserRuns);
