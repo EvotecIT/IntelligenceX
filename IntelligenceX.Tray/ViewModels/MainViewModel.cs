@@ -74,6 +74,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     private ProviderViewModel? _selectedProvider;
     private bool _isLoading;
     private bool _isCodexDiagnosticsLoading;
+    private bool _isCodexPathRepairRunning;
     private string _statusText = "Initializing...";
     private string _codexDiagnosticsStatusText = "Codex state not scanned";
     private string _codexDiagnosticsDetailText = "Waiting for first local state check.";
@@ -147,7 +148,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
         GitHub.PropertyChanged += OnGitHubPropertyChanged;
 
         RefreshCommand = new RelayCommand(() => RefreshAsync(startupWarmup: false));
-        RefreshCodexDiagnosticsCommand = new RelayCommand(RefreshCodexDiagnosticsAsync, () => !IsCodexDiagnosticsLoading);
+        RefreshCodexDiagnosticsCommand = new RelayCommand(RefreshCodexDiagnosticsAsync, () => !IsCodexDiagnosticsLoading && !IsCodexPathRepairRunning);
+        RepairCodexPathsCommand = new RelayCommand(RepairCodexPathsAsync, () => !IsCodexDiagnosticsLoading && !IsCodexPathRepairRunning);
         RefreshGitHubCommand = new RelayCommand(RefreshGitHubCurrentAsync);
         OpenOpenAiCacheCommand = new RelayCommand(OpenOpenAiCacheAsync);
         OpenCodexHomeCommand = new RelayCommand(OpenCodexHomeAsync);
@@ -196,6 +198,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
                 OnPropertyChanged(nameof(CanToggleFavoriteSelectedProvider));
                 OnPropertyChanged(nameof(FavoriteSelectedProviderLabel));
                 OnPropertyChanged(nameof(FavoriteSelectedProviderActionLabel));
+                OnPropertyChanged(nameof(IsCodexProviderSelected));
                 ToggleSelectedProviderFavoriteCommand.RaiseCanExecuteChanged();
                 SaveSelectedProviderPreference(value?.ProviderId);
                 RefreshGitHubProfileIfReady();
@@ -206,6 +209,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
     private bool HasGitHubProvider => Providers.Any(provider => provider.ProviderId == "__github__");
     private bool HasUsageProviders => Providers.Any(provider => provider.ProviderId != "__github__");
     public bool IsGitHubTabSelected => SelectedProvider?.ProviderId == "__github__";
+    public bool IsCodexProviderSelected => string.Equals(SelectedProvider?.ProviderId, "codex", StringComparison.OrdinalIgnoreCase);
 
     public bool ShowUsageContent => SelectedProvider is { ProviderId: not "__github__" };
     public bool ShowGitHubContent => IsGitHubTabSelected || (!HasUsageProviders && HasGitHubProvider);
@@ -256,6 +260,18 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
             if (SetProperty(ref _isCodexDiagnosticsLoading, value)) {
                 OnPropertyChanged(nameof(CodexDiagnosticsActionLabel));
                 RefreshCodexDiagnosticsCommand.RaiseCanExecuteChanged();
+                RepairCodexPathsCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
+    public bool IsCodexPathRepairRunning {
+        get => _isCodexPathRepairRunning;
+        private set {
+            if (SetProperty(ref _isCodexPathRepairRunning, value)) {
+                OnPropertyChanged(nameof(CodexDiagnosticsRepairActionLabel));
+                RefreshCodexDiagnosticsCommand.RaiseCanExecuteChanged();
+                RepairCodexPathsCommand.RaiseCanExecuteChanged();
             }
         }
     }
@@ -337,12 +353,92 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
 
     public string CodexDiagnosticsActionLabel => IsCodexDiagnosticsLoading ? "Checking" : "Check";
 
+    public string CodexDiagnosticsRepairActionLabel => IsCodexPathRepairRunning ? "Repairing" : "Repair paths";
+
     public Brush CodexDiagnosticsStatusBrush => _latestCodexDiagnostics?.Status switch {
         CodexLocalStateHealthStatus.Healthy => CodexHealthyBrush,
         CodexLocalStateHealthStatus.Warning => CodexWarningBrush,
         CodexLocalStateHealthStatus.Error => CodexErrorBrush,
         _ => CodexUnknownBrush
     };
+
+    public string CodexDiagnosticsScannedText => _latestCodexDiagnostics is null
+        ? "Not scanned"
+        : "Scanned " + _latestCodexDiagnostics.ScannedAtUtc.ToLocalTime().ToString("HH:mm:ss", CultureInfo.CurrentCulture);
+
+    public string CodexDiagnosticsThreadMetricText => _latestCodexDiagnostics?.ActiveThreadCount.ToString(CultureInfo.InvariantCulture) ?? "--";
+
+    public string CodexDiagnosticsPathMetricText {
+        get {
+            if (_latestCodexDiagnostics is null) {
+                return "--";
+            }
+
+            var sqlite = _latestCodexDiagnostics.ExtendedPathCount.ToString(CultureInfo.InvariantCulture);
+            var config = _latestCodexDiagnostics.ConfigExtendedPathCount.ToString(CultureInfo.InvariantCulture);
+            return sqlite + " SQLite / " + config + " config";
+        }
+    }
+
+    public string CodexDiagnosticsMetadataMetricText => _latestCodexDiagnostics is null
+        ? "--"
+        : _latestCodexDiagnostics.OversizedThreadMetadataCount.ToString(CultureInfo.InvariantCulture);
+
+    public string CodexDiagnosticsIntegrityText {
+        get {
+            if (_latestCodexDiagnostics is null) {
+                return "Not scanned";
+            }
+
+            if (!_latestCodexDiagnostics.DatabaseExists) {
+                return "State DB missing";
+            }
+
+            if (!_latestCodexDiagnostics.CanConnect) {
+                return "State DB unavailable";
+            }
+
+            var integrity = _latestCodexDiagnostics.IntegrityCheck ?? string.Empty;
+            var quick = _latestCodexDiagnostics.QuickCheck ?? string.Empty;
+            return string.Equals(integrity, "ok", StringComparison.OrdinalIgnoreCase)
+                   && string.Equals(quick, "ok", StringComparison.OrdinalIgnoreCase)
+                ? "SQLite checks ok"
+                : "SQLite checks need review";
+        }
+    }
+
+    public string CodexDiagnosticsPrimaryFindingText {
+        get {
+            var finding = _latestCodexDiagnostics?.Findings.FirstOrDefault();
+            return finding?.Message ?? "No local state findings in the latest scan.";
+        }
+    }
+
+    public string CodexDiagnosticsPrimaryFindingLabel {
+        get {
+            var finding = _latestCodexDiagnostics?.Findings.FirstOrDefault();
+            return finding?.Severity switch {
+                CodexLocalStateHealthStatus.Error => "Error",
+                CodexLocalStateHealthStatus.Warning => "Warning",
+                CodexLocalStateHealthStatus.Healthy => "Healthy",
+                _ => _latestCodexDiagnostics is null ? "Pending" : "Healthy"
+            };
+        }
+    }
+
+    public Brush CodexDiagnosticsPrimaryFindingBrush {
+        get {
+            var severity = _latestCodexDiagnostics?.Findings.FirstOrDefault()?.Severity
+                           ?? _latestCodexDiagnostics?.Status
+                           ?? CodexLocalStateHealthStatus.Unknown;
+            return severity switch {
+                CodexLocalStateHealthStatus.Healthy => CodexHealthyBrush,
+                CodexLocalStateHealthStatus.Warning => CodexWarningBrush,
+                CodexLocalStateHealthStatus.Error => CodexErrorBrush,
+                _ => CodexUnknownBrush
+            };
+        }
+    }
 
     public DateTimeOffset LastRefreshed {
         get => _lastRefreshed;
@@ -433,6 +529,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
 
     public RelayCommand RefreshCommand { get; }
     public RelayCommand RefreshCodexDiagnosticsCommand { get; }
+    public RelayCommand RepairCodexPathsCommand { get; }
     public RelayCommand RefreshGitHubCommand { get; }
     public RelayCommand OpenOpenAiCacheCommand { get; }
     public RelayCommand OpenCodexHomeCommand { get; }
@@ -1079,9 +1176,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
             _latestCodexDiagnostics = diagnostics;
             CodexDiagnosticsStatusText = diagnostics.StatusText;
             CodexDiagnosticsDetailText = diagnostics.DetailText;
-            OnPropertyChanged(nameof(CodexDiagnosticsIssueText));
-            OnPropertyChanged(nameof(CodexDiagnosticsDatabaseText));
-            OnPropertyChanged(nameof(CodexDiagnosticsStatusBrush));
+            OnCodexDiagnosticsSnapshotChanged();
         } catch (Exception ex) {
             _latestCodexDiagnostics = new CodexLocalStateDiagnostics {
                 CodexHome = CodexLocalStateDiagnosticsService.ResolveDefaultCodexHome(),
@@ -1097,12 +1192,77 @@ public sealed class MainViewModel : ViewModelBase, IDisposable {
             };
             CodexDiagnosticsStatusText = _latestCodexDiagnostics.StatusText;
             CodexDiagnosticsDetailText = _latestCodexDiagnostics.DetailText;
-            OnPropertyChanged(nameof(CodexDiagnosticsIssueText));
-            OnPropertyChanged(nameof(CodexDiagnosticsDatabaseText));
-            OnPropertyChanged(nameof(CodexDiagnosticsStatusBrush));
+            OnCodexDiagnosticsSnapshotChanged();
         } finally {
             IsCodexDiagnosticsLoading = false;
         }
+    }
+
+    private async Task RepairCodexPathsAsync() {
+        if (IsCodexPathRepairRunning) {
+            return;
+        }
+
+        IsCodexPathRepairRunning = true;
+        CodexDiagnosticsStatusText = "Repairing Codex paths...";
+        CodexDiagnosticsDetailText = "Creating a backup before updating active thread path values.";
+        try {
+            var result = await _codexDiagnosticsService.NormalizeActiveThreadPathsAsync().ConfigureAwait(true);
+            await RefreshCodexDiagnosticsAsync().ConfigureAwait(true);
+
+            if (!result.DatabaseExists) {
+                CodexDiagnosticsStatusText = "Codex state database missing";
+                CodexDiagnosticsDetailText = result.StateDatabasePath;
+                return;
+            }
+
+            CodexDiagnosticsStatusText = result.ChangedPathValueCount == 0
+                ? "Codex paths already normalized"
+                : "Codex paths repaired";
+            CodexDiagnosticsDetailText = BuildCodexPathRepairDetailText(result);
+            if (NotificationsEnabled) {
+                NotificationRequested?.Invoke(this, new TrayNotificationRequestedEventArgs(
+                    "Codex path repair complete",
+                    CodexDiagnosticsDetailText,
+                    isCritical: false,
+                    providerId: "codex"));
+            }
+        } catch (Exception ex) {
+            CodexDiagnosticsStatusText = "Codex path repair failed";
+            CodexDiagnosticsDetailText = ex.Message;
+            if (NotificationsEnabled) {
+                NotificationRequested?.Invoke(this, new TrayNotificationRequestedEventArgs(
+                    "Codex path repair failed",
+                    ex.Message,
+                    isCritical: true,
+                    providerId: "codex"));
+            }
+        } finally {
+            IsCodexPathRepairRunning = false;
+        }
+    }
+
+    private void OnCodexDiagnosticsSnapshotChanged() {
+        OnPropertyChanged(nameof(CodexDiagnosticsIssueText));
+        OnPropertyChanged(nameof(CodexDiagnosticsDatabaseText));
+        OnPropertyChanged(nameof(CodexDiagnosticsStatusBrush));
+        OnPropertyChanged(nameof(CodexDiagnosticsScannedText));
+        OnPropertyChanged(nameof(CodexDiagnosticsThreadMetricText));
+        OnPropertyChanged(nameof(CodexDiagnosticsPathMetricText));
+        OnPropertyChanged(nameof(CodexDiagnosticsMetadataMetricText));
+        OnPropertyChanged(nameof(CodexDiagnosticsIntegrityText));
+        OnPropertyChanged(nameof(CodexDiagnosticsPrimaryFindingText));
+        OnPropertyChanged(nameof(CodexDiagnosticsPrimaryFindingLabel));
+        OnPropertyChanged(nameof(CodexDiagnosticsPrimaryFindingBrush));
+    }
+
+    private static string BuildCodexPathRepairDetailText(CodexLocalStatePathRepairResult result) {
+        return string.Format(
+            CultureInfo.InvariantCulture,
+            "{0} active path value(s) repaired across {1} thread row(s). Backup: {2}",
+            result.ChangedPathValueCount,
+            result.ChangedThreadRowCount,
+            result.BackupDirectory);
     }
 
     private Task OpenCodexHomeAsync() {
