@@ -25,8 +25,6 @@ public partial class TrayPopupWindow : Window {
     private const double ProviderTabsScrollStep = 180d;
 
     private bool _isPrimed;
-    private DateTimeOffset _suppressDeactivateUntilUtc;
-
     public event EventHandler? ManualPlacementCommitted;
     public event EventHandler? MinimizeRequested;
     public event EventHandler? CloseRequested;
@@ -47,7 +45,7 @@ public partial class TrayPopupWindow : Window {
         var originalLeft = Left;
         var originalTop = Top;
         try {
-            PrepareForTrayOpen(TimeSpan.FromMilliseconds(900));
+            PrepareForTrayOpen();
             ShowActivated = false;
             Opacity = 0;
             Left = -10000;
@@ -64,17 +62,8 @@ public partial class TrayPopupWindow : Window {
         }
     }
 
-    public void PrepareForTrayOpen(TimeSpan? suppressDeactivateFor = null) {
+    public void PrepareForTrayOpen() {
         ApplyAdaptiveSizing();
-        _suppressDeactivateUntilUtc = DateTimeOffset.UtcNow + (suppressDeactivateFor ?? TimeSpan.FromMilliseconds(450));
-    }
-
-    private void OnDeactivated(object? sender, EventArgs e) {
-        if (DateTimeOffset.UtcNow < _suppressDeactivateUntilUtc) {
-            return;
-        }
-
-        Hide();
     }
 
     private void OnProviderTabClick(object sender, RoutedEventArgs e) {
@@ -361,7 +350,7 @@ public partial class TrayPopupWindow : Window {
             return;
         }
 
-        PrepareForTrayOpen(TimeSpan.FromMinutes(2));
+        PrepareForTrayOpen();
         try {
             var dialog = new SaveFileDialog {
                 Filter = "PNG images (*.png)|*.png|All files (*.*)|*.*",
