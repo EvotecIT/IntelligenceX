@@ -38,6 +38,7 @@
     [string] $SignOnMissingTool,
     [ValidateSet('Warn','Fail','Skip')]
     [string] $SignOnFailure,
+    [int] $SignTimeoutSeconds,
     [string] $SignTimestampUrl = 'http://timestamp.digicert.com',
     [string] $SignDescription = 'IntelligenceX Chat',
     [string] $SignUrl,
@@ -78,7 +79,7 @@ $buildProjectScript = Join-Path $script:RepoRoot 'Build\Build-Project.ps1'
 $frontendNormalized = $Frontend.ToLowerInvariant()
 
 if ($frontendNormalized -ne 'app') {
-    throw "Build-Release.ps1 only supports -Frontend app on the unified path. Use Build\\Advanced\\Package-Portable.ps1 / Build\\Advanced\\Build-Installer.ps1 for host mode until Build\\powerforge.dotnetpublish.json models that release flow."
+    throw "Build-Release.ps1 only supports -Frontend app on the unified PowerForge path. Use Build\\Advanced\\Build-Installer.ps1 for host/custom installer fallback until Build\\powerforge.dotnetpublish.json models that release flow."
 }
 
 if ($IncludeService -and $frontendNormalized -eq 'app') {
@@ -155,6 +156,11 @@ $hasExplicitSigningOverride = @(
     'SignCsp'
     'SignKeyContainer'
 ) | Where-Object { Has-BoundNonEmptyOption $_ } | Select-Object -First 1
+if (-not $hasExplicitSigningOverride -and
+    $script:BoundCliParameters.ContainsKey('SignTimeoutSeconds') -and
+    $SignTimeoutSeconds -gt 0) {
+    $hasExplicitSigningOverride = 'SignTimeoutSeconds'
+}
 $enableSigning = $SignInstaller -or $hasExplicitSigningOverride
 
 if ($enableSigning -and -not [string]::IsNullOrWhiteSpace($SignToolPath)) {
@@ -171,6 +177,9 @@ if ($enableSigning -and -not [string]::IsNullOrWhiteSpace($SignOnMissingTool)) {
 }
 if ($enableSigning -and -not [string]::IsNullOrWhiteSpace($SignOnFailure)) {
     $parameters['SignOnFailure'] = $SignOnFailure
+}
+if ($enableSigning -and $SignTimeoutSeconds -gt 0) {
+    $parameters['SignTimeoutSeconds'] = $SignTimeoutSeconds
 }
 if ($enableSigning -and -not [string]::IsNullOrWhiteSpace($SignTimestampUrl)) {
     $parameters['SignTimestampUrl'] = $SignTimestampUrl

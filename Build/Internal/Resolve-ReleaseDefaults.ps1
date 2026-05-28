@@ -5,8 +5,7 @@ function Resolve-TestimoXDefaultSignThumbprint {
     )
 
     $candidates = @(
-        (Join-Path $RepoRoot '..\TestimoX\Build\Build-TestimoX.Agent-MSI.ps1'),
-        (Join-Path $RepoRoot '..\TestimoX\Build\Prepare-TestimoX.Agent-MSI.ps1'),
+        (Join-Path $RepoRoot '..\TestimoX\Build\powerforge.dotnetpublish.json'),
         (Join-Path $RepoRoot '..\TestimoX\Build\Deploy-TestimoX.Agent.ps1')
     )
 
@@ -20,6 +19,11 @@ function Resolve-TestimoXDefaultSignThumbprint {
             $match = [System.Text.RegularExpressions.Regex]::Match(
                 $raw,
                 '(?im)^\s*\[string\]\s*\$SignThumbprint\s*=\s*''(?<thumb>[0-9a-f]{40})''')
+            if (-not $match.Success) {
+                $match = [System.Text.RegularExpressions.Regex]::Match(
+                    $raw,
+                    '(?im)"Thumbprint"\s*:\s*"(?<thumb>[0-9a-f]{40})"')
+            }
             if ($match.Success) {
                 return $match.Groups['thumb'].Value.ToLowerInvariant()
             }

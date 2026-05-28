@@ -34,6 +34,7 @@ param(
     [string] $SignOnMissingTool,
     [ValidateSet('Warn', 'Fail', 'Skip')]
     [string] $SignOnFailure,
+    [int] $SignTimeoutSeconds,
     [string] $SignTimestampUrl,
     [string] $SignDescription,
     [string] $SignUrl,
@@ -171,6 +172,11 @@ $hasExplicitSigningOverride = @(
     'SignCsp'
     'SignKeyContainer'
 ) | Where-Object { Has-BoundNonEmptyOption $_ } | Select-Object -First 1
+if (-not $hasExplicitSigningOverride -and
+    $script:BoundCliParameters.ContainsKey('SignTimeoutSeconds') -and
+    $SignTimeoutSeconds -gt 0) {
+    $hasExplicitSigningOverride = 'SignTimeoutSeconds'
+}
 $enableSigning = $SignInstaller -or $hasExplicitSigningOverride
 
 Add-Flag '--sign' $enableSigning
@@ -180,6 +186,9 @@ if ($enableSigning) {
     Add-Option '--sign-subject-name' $SignSubjectName
     Add-Option '--sign-on-missing-tool' $SignOnMissingTool
     Add-Option '--sign-on-failure' $SignOnFailure
+    if ($SignTimeoutSeconds -gt 0) {
+        Add-Option '--sign-timeout-seconds' ([string] $SignTimeoutSeconds)
+    }
     Add-Option '--sign-timestamp-url' $SignTimestampUrl
     Add-Option '--sign-description' $SignDescription
     Add-Option '--sign-url' $SignUrl
