@@ -27,7 +27,7 @@ concurrency:
 
 jobs:
   skip-public-repository:
-    if: ${{ !github.event.repository.private }}
+    if: ${{ github.event.repository.private == false }}
     runs-on: ubuntu-latest
     steps:
       - name: Skip runner housekeeping
