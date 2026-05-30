@@ -31,16 +31,3 @@ jobs:
     steps:
       - name: Skip runner housekeeping
         run: echo "Self-hosted runner housekeeping is only enabled for private repositories."
-
-  cleanup-linux-runner:
-    if: ${{ github.event.repository.private }}
-    uses: EvotecIT/PSPublishModule/.github/workflows/powerforge-github-runner-housekeeping.yml@23bb7cb83ca9fda14c5972f58ec1667fa87511cc
-    with:
-      config-path: ./.powerforge/runner-housekeeping.json
-      apply: true
-      powerforge-ref: 23bb7cb83ca9fda14c5972f58ec1667fa87511cc
-      runner_labels_json: '["self-hosted","ubuntu"]'
-      runner-min-free-gb: ${{ github.event_name == 'workflow_dispatch' && (inputs.min_free_gb != '' && inputs.min_free_gb || '20') || (vars.IX_RUNNER_HOUSEKEEPING_MIN_FREE_GB != '' && vars.IX_RUNNER_HOUSEKEEPING_MIN_FREE_GB || '') }}
-      report-artifact-name: runner-housekeeping-reports
-    secrets:
-      github-token: ${{ secrets.GITHUB_TOKEN }}
