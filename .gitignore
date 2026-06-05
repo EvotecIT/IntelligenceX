@@ -225,6 +225,11 @@ _pkginfo.txt
 *.appx
 *.appxbundle
 *.appxupload
+*.appinstaller
+*.msix
+*.msixbundle
+*.msixupload
+Build/store.submit.tray.local.json
 
 # Visual Studio cache files
 # files ending in .cache can be ignored
@@ -386,6 +391,8 @@ build/*
 !Build/powerforge.dotnetpublish.json
 !Build/Run-Project.ps1
 !Build/run.profiles.json
+!Build/Store/
+!Build/Store/Prepare-TrayStoreSubmission.ps1
 !Build/store.submit.tray.example.json
 !Build/workspace.validation.json
 

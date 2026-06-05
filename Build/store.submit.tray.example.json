@@ -11,9 +11,15 @@
   "Targets": [
     {
       "Name": "IntelligenceX.Tray.Store",
+      "Description": "Submit FrameworkDependent Store upload artifacts selected from the DotNetPublish manifest.",
       "Provider": "PackagedApp",
       "ApplicationId": "9NBLGGH00000",
-      "SourceDirectory": "../Installer/IntelligenceX.Tray.Store/AppPackages",
+      "ManifestPath": "../Artifacts/DotNetPublish/manifest.json",
+      "ManifestRoot": "..",
+      "StorePackageId": "IntelligenceX.Tray.Store",
+      "SourceTarget": "IntelligenceX.Tray",
+      "Framework": "net10.0-windows10.0.19041.0",
+      "Style": "FrameworkDependent",
       "PackagePatterns": [ "*.msixupload" ],
       "ZipPath": "../Artifacts/StoreSubmit/IntelligenceX.Tray/submission.zip",
       "Commit": true,

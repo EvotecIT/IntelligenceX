@@ -74,15 +74,17 @@ pwsh ./Build/Run-Project.ps1 -Target Cli -ExtraArgs setup,wizard
 Tray Store package:
 
 ```powershell
-pwsh ./Build/Build-Project.ps1 -ToolsOnly -Targets IntelligenceX.Tray -Runtimes win-x64 -Frameworks net10.0-windows10.0.19041.0 -Styles FrameworkDependent
-dotnet exec C:\Support\GitHub\PSPublishModule\PowerForge.Cli\bin\Release\net10.0\PowerForge.Cli.dll store submit --config ./Build/store.submit.tray.example.json --target IntelligenceX.Tray.Store --plan
+pwsh ./Build/Store/Prepare-TrayStoreSubmission.ps1 -SubmissionMode None
+pwsh ./Build/Store/Prepare-TrayStoreSubmission.ps1 -SkipBuild -SubmissionMode Plan
 ```
 
 Notes:
 - the packaging project is `Installer/IntelligenceX.Tray.Store/IntelligenceX.Tray.Store.wapproj`
 - `Build\powerforge.dotnetpublish.json` enables typed App Installer generation for tray MSIX outputs, including prompt/background update settings
+- Store submission selects `*.msixupload` artifacts from `Artifacts/DotNetPublish/manifest.json`, which requires PSPublishModule/PowerForge `3.0.22` or newer
 - the checked-in Store manifest identity/publisher is placeholder metadata for local packaging validation and must be replaced with the real Partner Center identity before production submission
-- `Build/store.submit.tray.example.json` is only an example; fill in the real `SellerId`, `TenantId`, `ClientId`, secret, and Partner Center `ApplicationId`
+- copy `Build/store.submit.tray.example.json` to ignored `Build/store.submit.tray.local.json`, then fill in the real `SellerId`, `TenantId`, `ClientId`, secret environment variable, and Partner Center `ApplicationId`
+- the detailed Store playbook lives in `InternalDocs/build/tray-store-publishing.md`
 
 `TestimoXRoot` is now resolved centrally for normal builds:
 - `Directory.Build.props` picks up `TESTIMOX_ROOT` when set.
