@@ -107,7 +107,12 @@ internal static class ReviewDiagnostics {
     private const string AuthRefreshTokenReusedSummary = "OpenAI auth refresh token was already used; sign in again";
     private const string UsageBudgetGuardPrefix = "Usage budget guard blocked review run:";
 
-    internal readonly record struct WorkflowFailureInfo(string Kind, string Label, string Detail, bool RequiresAuthRemediation);
+    internal readonly record struct WorkflowFailureInfo(
+        string Kind,
+        string Label,
+        string Detail,
+        bool RequiresAuthRemediation,
+        bool ShouldFailWorkflow);
 
     /// <summary>
     /// Categorizes reviewer failures for reporting and retry logic.
@@ -372,6 +377,7 @@ internal static class ReviewDiagnostics {
                 "usage-budget-guard",
                 "Usage budget guard blocked the review",
                 ExtractUsageBudgetGuardDetail(text),
+                false,
                 false);
         }
 
@@ -381,6 +387,7 @@ internal static class ReviewDiagnostics {
                 "openai-auth-refresh-reused",
                 "OpenAI auth refresh token was already used",
                 "OpenAI auth refresh token was already used; sign in again.",
+                true,
                 true);
         }
 
@@ -393,6 +400,7 @@ internal static class ReviewDiagnostics {
                 "openai-auth",
                 "OpenAI auth bundle is missing or stale",
                 "OpenAI auth bundle is missing or no longer valid; sign in again.",
+                true,
                 true);
         }
 
@@ -400,6 +408,7 @@ internal static class ReviewDiagnostics {
             "reviewer-runtime",
             "Reviewer runtime failed",
             "Reviewer execution failed after the workflow created the progress summary.",
+            false,
             false);
     }
 
@@ -420,12 +429,18 @@ internal static class ReviewDiagnostics {
 
     internal static string BuildWorkflowFailOpenSummaryBody(PullRequestContext context, string reviewerSource,
         string remediationRepo, WorkflowFailureInfo failure) {
+        var heading = failure.ShouldFailWorkflow
+            ? "## IntelligenceX Review (failed)"
+            : "## IntelligenceX Review (failed open)";
+        var warning = failure.ShouldFailWorkflow
+            ? "ERROR: Reviewer execution failed and this workflow will fail."
+            : "WARNING: Reviewer execution failed and this workflow was allowed to pass open.";
         var lines = new List<string> {
             WorkflowSummaryMarker,
-            "## IntelligenceX Review (failed open)",
+            heading,
             $"Reviewing this pull request: **{context.Title.Replace("\r", string.Empty).Replace("\n", " ")}**",
             string.Empty,
-            "WARNING: Reviewer execution failed and this workflow was allowed to pass open.",
+            warning,
             string.Empty,
             $"- Reviewer source: {reviewerSource}",
             $"- Failure type: {failure.Label}"

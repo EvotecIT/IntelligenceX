@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using ADPlayground.Pki;
+using CertNoob.Pki;
 using IntelligenceX.Json;
 using IntelligenceX.Tools;
 using IntelligenceX.Tools.Common;
@@ -11,14 +11,14 @@ using IntelligenceX.Tools.Common;
 namespace IntelligenceX.Tools.ADPlayground;
 
 /// <summary>
-/// Returns consolidated PKI posture findings (ROCA/weak RSA/enrollment endpoint HTTPS) for a forest (read-only).
+/// Returns consolidated PKI posture findings (ROCA availability, weak crypto, enrollment endpoint HTTPS) for a forest (read-only).
 /// </summary>
 public sealed class AdPkiPostureTool : ActiveDirectoryToolBase, ITool {
     private const int MaxViewTop = 5000;
 
     private static readonly ToolDefinition DefinitionValue = new(
         "ad_pki_posture",
-        "Get consolidated PKI posture findings (ROCA confirmed/suspected, weak RSA, insecure enrollment endpoints) for a forest (read-only).",
+        "Get consolidated PKI posture findings (ROCA availability, weak crypto, insecure enrollment endpoints) for a forest (read-only).",
         ToolSchema.Object(
                 ("forest_name", ToolSchema.String("Optional forest DNS name. When omitted, uses current forest.")),
                 ("include_details", ToolSchema.Boolean("When true, include detailed finding rows in output payload. Default true.")),
@@ -38,11 +38,11 @@ public sealed class AdPkiPostureTool : ActiveDirectoryToolBase, ITool {
         bool IncludeDetails,
         bool InsecureEndpointsOnly,
         IReadOnlyList<PkiPostureSummaryRow> Summary,
-        IReadOnlyList<RocaConfirmedEvaluator.Item> RocaConfirmed,
-        IReadOnlyList<RocaSuspectedEvaluator.Item> RocaSuspected,
-        IReadOnlyList<WeakRsaComponentEvaluator.Item> WeakRsaComponents,
-        IReadOnlyList<EnrollmentHttpsRequiredEvaluator.Endpoint> InsecureEnrollmentEndpoints,
-        IReadOnlyList<EnrollmentHttpsRequiredEvaluator.Endpoint> EnrollmentEndpoints);
+        IReadOnlyList<AdPkiToolSupport.PkiFindingRow> RocaConfirmed,
+        IReadOnlyList<AdPkiToolSupport.PkiFindingRow> RocaSuspected,
+        IReadOnlyList<AdPkiToolSupport.PkiFindingRow> WeakRsaComponents,
+        IReadOnlyList<AdPkiToolSupport.PkiEndpointRow> InsecureEnrollmentEndpoints,
+        IReadOnlyList<AdPkiToolSupport.PkiEndpointRow> EnrollmentEndpoints);
 
     /// <summary>
     /// Initializes a new instance of the <see cref="AdPkiPostureTool"/> class.
@@ -62,57 +62,61 @@ public sealed class AdPkiPostureTool : ActiveDirectoryToolBase, ITool {
         var maxDetailsPerCategory = ToolArgs.GetCappedInt32(arguments, "max_details_per_category", 200, 1, Options.MaxResults);
 
         if (!TryExecute(
-                action: () => PkiApi.GetPosture(forestName),
-                result: out PkiConfiguration posture,
+                action: () => AdPkiToolSupport.BuildAssessment(
+                    forestName,
+                    includeEnrollmentPolicyEntries: true,
+                    includeIssuedRequestSample: true),
+                result: out PkiAssessmentSnapshot snapshot,
                 errorResponse: out var errorResponse,
                 defaultErrorMessage: "PKI posture query failed.",
                 invalidOperationErrorCode: "query_failed")) {
             return Task.FromResult(errorResponse!);
         }
 
-        var forest = posture.RocaConfirmed.ForestName;
-        if (string.IsNullOrWhiteSpace(forest)) {
-            forest = posture.RocaSuspected.ForestName;
-        }
-        if (string.IsNullOrWhiteSpace(forest)) {
-            forest = posture.WeakRsaComponents.ForestName;
-        }
-        if (string.IsNullOrWhiteSpace(forest)) {
-            forest = posture.EnrollmentEndpoints.ForestName;
-        }
-        forest ??= forestName ?? string.Empty;
+        var forest = AdPkiToolSupport.ResolveScopeName(snapshot, forestName);
+        var findings = AdPkiToolSupport.BuildFindings(snapshot);
+        var weakCryptoFindings = findings
+            .Where(AdPkiToolSupport.IsWeakRsaOrCryptoFinding)
+            .ToArray();
+        var endpointRows = AdPkiToolSupport.EnumerateEndpointRows(snapshot);
+        var insecureEndpointRows = endpointRows
+            .Where(endpoint => endpoint.Insecure)
+            .ToArray();
+        var httpEndpointFindings = findings
+            .Where(finding => string.Equals(finding.Id, PkiFindingIds.EnrollmentPolicyEndpointUsesHttp, StringComparison.OrdinalIgnoreCase))
+            .ToArray();
 
         var summaryRows = new List<PkiPostureSummaryRow> {
             new(
                 Category: "roca_confirmed",
-                Count: posture.RocaConfirmed.Confirmed.Count,
-                Severity: posture.RocaConfirmed.Confirmed.Count > 0 ? "critical" : "info",
-                Notes: posture.RocaConfirmed.DatasetAvailable
-                    ? "Dataset-based ROCA confirmation."
-                    : "ROCA dataset unavailable; confirmed list may be empty."),
+                Count: 0,
+                Severity: "info",
+                Notes: RocaDetector.IsAvailable
+                    ? "ROCA dataset is available, but CertNoob now exposes PKI assessment findings rather than legacy confirmed-item rows."
+                    : "ROCA dataset unavailable; set TESTIMOX_ROCA_DATASET, CERTNOOB_ROCA_DATASET, or ADP_ROCA_DATASET to enable checks where supported."),
             new(
                 Category: "roca_suspected",
-                Count: posture.RocaSuspected.Items.Count,
-                Severity: posture.RocaSuspected.Items.Count > 0 ? "high" : "info",
-                Notes: "Heuristic ROCA indicators."),
+                Count: 0,
+                Severity: "info",
+                Notes: "Legacy suspected-item rows are no longer produced by the CertNoob assessment surface."),
             new(
                 Category: "weak_rsa_components",
-                Count: posture.WeakRsaComponents.Items.Count,
-                Severity: posture.WeakRsaComponents.Items.Count > 0 ? "medium" : "info",
-                Notes: "Weak RSA exponent/parameter indicators."),
+                Count: weakCryptoFindings.Sum(finding => Math.Max(finding.AffectedCount, 1)),
+                Severity: ResolveHighestSeverity(weakCryptoFindings),
+                Notes: "Weak RSA and related weak-crypto indicators from CertNoob findings."),
             new(
                 Category: "enrollment_endpoints_insecure",
-                Count: posture.EnrollmentEndpoints.Insecure.Count,
-                Severity: posture.EnrollmentEndpoints.Insecure.Count > 0 ? "high" : "info",
+                Count: insecureEndpointRows.Length,
+                Severity: httpEndpointFindings.Length > 0 ? ResolveHighestSeverity(httpEndpointFindings) : "info",
                 Notes: "HTTP enrollment endpoints should be remediated to HTTPS.")
         };
 
-        var insecureEndpointDetails = posture.EnrollmentEndpoints.Insecure
+        var insecureEndpointDetails = insecureEndpointRows
             .Take(maxDetailsPerCategory)
             .ToArray();
         var endpointDetails = insecureEndpointsOnly
             ? insecureEndpointDetails
-            : posture.EnrollmentEndpoints.Endpoints.Take(maxDetailsPerCategory).ToArray();
+            : endpointRows.Take(maxDetailsPerCategory).ToArray();
 
         var result = new AdPkiPostureResult(
             ForestName: forest,
@@ -120,20 +124,20 @@ public sealed class AdPkiPostureTool : ActiveDirectoryToolBase, ITool {
             InsecureEndpointsOnly: insecureEndpointsOnly,
             Summary: summaryRows,
             RocaConfirmed: includeDetails
-                ? posture.RocaConfirmed.Confirmed.Take(maxDetailsPerCategory).ToArray()
-                : Array.Empty<RocaConfirmedEvaluator.Item>(),
+                ? Array.Empty<AdPkiToolSupport.PkiFindingRow>()
+                : Array.Empty<AdPkiToolSupport.PkiFindingRow>(),
             RocaSuspected: includeDetails
-                ? posture.RocaSuspected.Items.Take(maxDetailsPerCategory).ToArray()
-                : Array.Empty<RocaSuspectedEvaluator.Item>(),
+                ? Array.Empty<AdPkiToolSupport.PkiFindingRow>()
+                : Array.Empty<AdPkiToolSupport.PkiFindingRow>(),
             WeakRsaComponents: includeDetails
-                ? posture.WeakRsaComponents.Items.Take(maxDetailsPerCategory).ToArray()
-                : Array.Empty<WeakRsaComponentEvaluator.Item>(),
+                ? AdPkiToolSupport.ToFindingRows(weakCryptoFindings, maxDetailsPerCategory)
+                : Array.Empty<AdPkiToolSupport.PkiFindingRow>(),
             InsecureEnrollmentEndpoints: includeDetails
                 ? insecureEndpointDetails
-                : Array.Empty<EnrollmentHttpsRequiredEvaluator.Endpoint>(),
+                : Array.Empty<AdPkiToolSupport.PkiEndpointRow>(),
             EnrollmentEndpoints: includeDetails
                 ? endpointDetails
-                : Array.Empty<EnrollmentHttpsRequiredEvaluator.Endpoint>());
+                : Array.Empty<AdPkiToolSupport.PkiEndpointRow>());
 
         return Task.FromResult(BuildAutoTableResponse(
             arguments: arguments,
@@ -151,6 +155,18 @@ public sealed class AdPkiPostureTool : ActiveDirectoryToolBase, ITool {
                 meta.Add("max_details_per_category", maxDetailsPerCategory);
             }));
     }
-}
 
+    private static string ResolveHighestSeverity(IReadOnlyList<PkiFinding> findings) {
+        if (findings.Count == 0) {
+            return "info";
+        }
+
+        return findings
+            .OrderByDescending(finding => finding.Severity)
+            .First()
+            .Severity
+            .ToString()
+            .ToLowerInvariant();
+    }
+}
 

@@ -85,6 +85,7 @@ internal static partial class Program {
         failed += Run("Workflow fail-open log classification uses auth refresh label", TestWorkflowFailOpenLogClassificationUsesAuthRefreshLabel);
         failed += Run("Workflow fail-open log classification prefers usage budget guard", TestWorkflowFailOpenLogClassificationPrefersUsageBudgetGuard);
         failed += Run("Workflow fail-open summary body uses runtime guidance", TestWorkflowFailOpenSummaryBodyUsesRuntimeGuidance);
+        failed += Run("Workflow failure summary body uses auth failure gate", TestWorkflowFailureSummaryBodyUsesAuthFailureGate);
         failed += Run("Failure summary comment update", TestFailureSummaryCommentUpdate);
         failed += Run("Review fail-open only transient", TestReviewFailOpenTransientOnly);
         failed += Run("Review fail-open decision", TestReviewFailOpenDecision);

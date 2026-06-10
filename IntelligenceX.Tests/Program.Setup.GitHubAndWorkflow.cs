@@ -493,6 +493,16 @@ jobs:
             "reusable workflow uploads durable reviewer artifacts");
         AssertContainsText(content, "path: artifacts/reviewer",
             "reusable workflow uploads reviewer artifact directory");
+        AssertContainsText(content, "Enforce reviewer runtime failure policy",
+            "reusable workflow has a final reviewer failure policy gate");
+        AssertContainsText(content, "ci reviewer-failure-gate",
+            "reusable workflow delegates reviewer failure policy to the CLI helper");
+        AssertContainsText(content, "--source-reviewer-exit \"${{ steps.reviewer_run_source.outputs.exit_code }}\"",
+            "reusable workflow passes source reviewer exit code to failure gate");
+        AssertEqual(true,
+            content.IndexOf("Enforce reviewer runtime failure policy", StringComparison.Ordinal) >
+            content.IndexOf("Upload reviewer artifacts", StringComparison.Ordinal),
+            "reusable workflow runs reviewer failure policy after reporting and artifact upload");
         AssertEqual(false, content.Contains("&review_inputs", StringComparison.Ordinal),
             "reusable workflow should avoid YAML anchors in workflow schema");
         AssertEqual(false, content.Contains("*review_inputs", StringComparison.Ordinal),

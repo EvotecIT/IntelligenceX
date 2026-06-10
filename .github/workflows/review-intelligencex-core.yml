@@ -987,3 +987,19 @@ jobs:
         with:
           name: intelligencex-reviewer-artifacts
           path: artifacts/reviewer
+
+      - name: Enforce reviewer runtime failure policy
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          if [ ! -f IntelligenceX.Cli/IntelligenceX.Cli.csproj ]; then
+            echo "Reviewer failure policy gate skipped: IntelligenceX.Cli source project is not available in this checkout."
+            exit 0
+          fi
+          dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -c Release -f net8.0 -- ci reviewer-failure-gate \
+            --source-reviewer-exit "${{ steps.reviewer_run_source.outputs.exit_code }}" \
+            --source-log artifacts/reviewer-run-source.log \
+            --release-unix-exit "${{ steps.reviewer_run_release_unix.outputs.exit_code }}" \
+            --release-unix-log artifacts/reviewer-run-release-unix.log \
+            --release-windows-exit "${{ steps.reviewer_run_release_windows.outputs.exit_code }}" \
+            --release-windows-log artifacts/reviewer-run-release-windows.log

@@ -135,7 +135,7 @@ public sealed partial class TranscriptHtmlFormatterTests {
     }
 
     /// <summary>
-    /// Ensures transcript rendering applies the shared adjacent ordered-list spacing repair before HTML conversion.
+    /// Ensures transcript rendering keeps adjacent ordered items as separate HTML list entries.
     /// </summary>
     [Fact]
     public void Format_RendersAdjacentOrderedItemsAsSeparateListEntries() {
@@ -145,8 +145,8 @@ public sealed partial class TranscriptHtmlFormatterTests {
             ("Assistant", "1. First check\n2. Second check", now)
         }, "HH:mm:ss", options);
 
-        Assert.Contains("<li>First check</li>", html, StringComparison.Ordinal);
-        Assert.Contains("<li>Second check</li>", html, StringComparison.Ordinal);
+        Assert.Contains("<li><p>First check</p></li>", html, StringComparison.Ordinal);
+        Assert.Contains("<li><p>Second check</p></li>", html, StringComparison.Ordinal);
     }
 
     /// <summary>
