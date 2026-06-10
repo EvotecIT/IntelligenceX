@@ -993,8 +993,26 @@ jobs:
         shell: bash
         run: |
           if [ ! -f IntelligenceX.Cli/IntelligenceX.Cli.csproj ]; then
-            echo "Reviewer failure policy gate skipped: IntelligenceX.Cli source project is not available in this checkout."
-            exit 0
+            echo "Reviewer failure policy gate using shell fallback because IntelligenceX.Cli source project is not available in this checkout."
+            gate_failed=0
+            evaluate_log() {
+              stage="$1"
+              exit_code="$2"
+              log_path="$3"
+              if [ -z "$exit_code" ] || [ "$exit_code" = "0" ]; then
+                return
+              fi
+              if [ -f "$log_path" ] && grep -Eiq 'OpenAI auth bundle is missing|OpenAI auth bundle is missing or no longer valid|OpenAI auth refresh token was already used|Interactive ChatGPT sign-in cannot run inside GitHub Actions' "$log_path"; then
+                echo "::error title=IntelligenceX reviewer auth failure::$stage exited with $exit_code and requires OpenAI auth remediation."
+                gate_failed=1
+              else
+                echo "$stage exited with $exit_code and remains fail-open by policy."
+              fi
+            }
+            evaluate_log "Source reviewer" "${{ steps.reviewer_run_source.outputs.exit_code }}" artifacts/reviewer-run-source.log
+            evaluate_log "Release reviewer (unix)" "${{ steps.reviewer_run_release_unix.outputs.exit_code }}" artifacts/reviewer-run-release-unix.log
+            evaluate_log "Release reviewer (windows)" "${{ steps.reviewer_run_release_windows.outputs.exit_code }}" artifacts/reviewer-run-release-windows.log
+            exit "$gate_failed"
           fi
           dotnet run --project IntelligenceX.Cli/IntelligenceX.Cli.csproj -c Release -f net8.0 -- ci reviewer-failure-gate \
             --source-reviewer-exit "${{ steps.reviewer_run_source.outputs.exit_code }}" \

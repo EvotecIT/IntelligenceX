@@ -89,7 +89,6 @@ internal static class AdPkiToolSupport {
 
     internal static bool IsWeakKeyTemplate(TemplateRiskView template) =>
         template.MinimalKeySize.HasValue &&
-        template.MinimalKeySize.Value >= 1024 &&
         template.MinimalKeySize.Value < 2048;
 
     internal static bool IsTakeoverRiskTemplate(TemplateRiskView template) =>

@@ -497,6 +497,12 @@ jobs:
             "reusable workflow has a final reviewer failure policy gate");
         AssertContainsText(content, "ci reviewer-failure-gate",
             "reusable workflow delegates reviewer failure policy to the CLI helper");
+        AssertContainsText(content, "Reviewer failure policy gate using shell fallback",
+            "reusable workflow enforces auth failures when CLI source is unavailable");
+        AssertContainsText(content, "OpenAI auth bundle is missing",
+            "reusable workflow shell fallback detects stale auth bundle logs");
+        AssertContainsText(content, "::error title=IntelligenceX reviewer auth failure::",
+            "reusable workflow shell fallback fails required checks for auth remediation");
         AssertContainsText(content, "--source-reviewer-exit \"${{ steps.reviewer_run_source.outputs.exit_code }}\"",
             "reusable workflow passes source reviewer exit code to failure gate");
         AssertEqual(true,

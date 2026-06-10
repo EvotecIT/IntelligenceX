@@ -123,12 +123,8 @@ public sealed class AdPkiPostureTool : ActiveDirectoryToolBase, ITool {
             IncludeDetails: includeDetails,
             InsecureEndpointsOnly: insecureEndpointsOnly,
             Summary: summaryRows,
-            RocaConfirmed: includeDetails
-                ? Array.Empty<AdPkiToolSupport.PkiFindingRow>()
-                : Array.Empty<AdPkiToolSupport.PkiFindingRow>(),
-            RocaSuspected: includeDetails
-                ? Array.Empty<AdPkiToolSupport.PkiFindingRow>()
-                : Array.Empty<AdPkiToolSupport.PkiFindingRow>(),
+            RocaConfirmed: Array.Empty<AdPkiToolSupport.PkiFindingRow>(),
+            RocaSuspected: Array.Empty<AdPkiToolSupport.PkiFindingRow>(),
             WeakRsaComponents: includeDetails
                 ? AdPkiToolSupport.ToFindingRows(weakCryptoFindings, maxDetailsPerCategory)
                 : Array.Empty<AdPkiToolSupport.PkiFindingRow>(),
@@ -169,4 +165,3 @@ public sealed class AdPkiPostureTool : ActiveDirectoryToolBase, ITool {
             .ToLowerInvariant();
     }
 }
-

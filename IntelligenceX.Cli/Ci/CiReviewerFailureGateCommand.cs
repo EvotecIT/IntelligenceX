@@ -112,7 +112,7 @@ internal static class CiReviewerFailureGateCommand {
     }
 
     private static void PrintHelp() {
-        Console.WriteLine("Fail required reviewer CI checks for non-passable reviewer runtime failures.");
+        Console.WriteLine("Fail required reviewer CI checks for non-passable reviewer failures such as auth-remediation failures.");
         Console.WriteLine();
         Console.WriteLine("Usage:");
         Console.WriteLine("  intelligencex ci reviewer-failure-gate [--source-reviewer-exit <n>] [--source-log <path>] [release options]");

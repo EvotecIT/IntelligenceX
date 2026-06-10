@@ -129,7 +129,7 @@ public sealed class AdPkiTemplatesTool : ActiveDirectoryToolBase, ITool {
             Scanned: scanned,
             Truncated: truncated,
             TotalTemplates: templates.Count,
-            TakeoverCount: takeoverFindings.Length,
+            TakeoverCount: takeoverFindings.Sum(finding => Math.Max(finding.AffectedCount, 1)),
             Templates: projectedRows,
             TakeoverRows: projectedTakeoverRows);
 
